@@ -136,14 +136,17 @@ HWE kernels for LTS releases get the same security support as the LTS itself, ma
 ## Checking EOL Dates
 
 ```bash
-# Check support status for your current release
-ubuntu-support-status
+# Check overall security coverage for installed packages
+pro security-status
 
-# Or check via the internet
+# Show your Ubuntu Pro subscription and service status
+pro status
+
+# Check Hardware Enablement (HWE) kernel support end date
 hwe-support-status --verbose
 
-# Install the tool if not present
-sudo apt install ubuntu-advantage-tools
+# Install the Pro client if not present
+sudo apt install ubuntu-pro-client
 ```
 
 ## Version Numbering Explained
