@@ -197,7 +197,7 @@ openssl s_client -connect yourdomain.com:443 -showcerts </dev/null
 
 # Verify the chain validates against system trust store
 echo | openssl s_client -connect yourdomain.com:443 2>/dev/null | \
-    openssl x509 -noout -verify_hostname yourdomain.com 2>&1
+    openssl x509 -noout -checkhost yourdomain.com 2>&1
 
 # Use curl for a quick end-to-end test
 curl -v https://yourdomain.com 2>&1 | grep -E "SSL|certificate|verify"
