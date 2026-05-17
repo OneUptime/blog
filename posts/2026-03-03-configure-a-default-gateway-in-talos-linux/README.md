@@ -204,14 +204,16 @@ talosctl get routes --nodes 192.168.1.10
 # Look for the 0.0.0.0/0 route
 ```
 
-Test that the gateway is working by pinging an external address:
+Talos does not ship with a `ping` subcommand or a shell on the node, so test connectivity from inside the cluster. Schedule a debug pod and ping from there:
 
 ```bash
-# Test internet connectivity
-talosctl ping 8.8.8.8 --nodes 192.168.1.10
+# Run a pod with networking tools and test from inside the cluster
+kubectl run nettest --rm -it --image=nicolaka/netshoot --restart=Never -- \
+  ping -c 3 8.8.8.8
 
 # Test DNS resolution (requires both gateway and DNS)
-talosctl ping google.com --nodes 192.168.1.10
+kubectl run nettest --rm -it --image=nicolaka/netshoot --restart=Never -- \
+  ping -c 3 google.com
 ```
 
 ## Common Mistakes
