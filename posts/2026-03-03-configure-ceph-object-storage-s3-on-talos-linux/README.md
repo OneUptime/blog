@@ -69,8 +69,12 @@ spec:
         - key: storage-node
           operator: Exists
   healthCheck:
-    bucket:
-      interval: 60s
+    startupProbe:
+      disabled: false
+    readinessProbe:
+      disabled: false
+      periodSeconds: 5
+      failureThreshold: 2
 ```
 
 ```bash
