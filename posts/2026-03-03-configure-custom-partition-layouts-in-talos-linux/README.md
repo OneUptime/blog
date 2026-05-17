@@ -125,22 +125,25 @@ Using stable identifiers prevents issues where device names change between reboo
 
 ## Partition Encryption
 
-Additional disk partitions can be encrypted for security:
+The legacy `machine.disks` schema does not support an `encryption` field on partitions - only `size` and `mountpoint` are accepted. To encrypt an additional disk partition, define it as a `UserVolumeConfig` document instead:
 
 ```yaml
-machine:
-  disks:
-    - device: /dev/sdb
-      partitions:
-        - mountpoint: /var/mnt/secure-storage
-          encryption:
-            provider: luks2
-            keys:
-              - nodeID: {}
-                slot: 0
+apiVersion: v1alpha1
+kind: UserVolumeConfig
+name: secure-storage
+provisioning:
+  diskSelector:
+    match: system_disk == false
+  filesystem:
+    type: xfs
+encryption:
+  provider: luks2
+  keys:
+    - nodeID: {}
+      slot: 0
 ```
 
-With encryption enabled, the partition data is encrypted at rest using LUKS2. The encryption key is derived from the node's identity, so the partition can only be decrypted on the same node. This protects data if the disk is physically removed.
+User volumes are automatically allocated as partitions on the matched disk and mounted under `/var/mnt/<name>` (in this example, `/var/mnt/secure-storage`). With encryption enabled, the partition data is encrypted at rest using LUKS2. The `nodeID` key is derived from the node's UUID, so the partition can only be decrypted on the same node. This protects data if the disk is physically removed.
 
 ## Exposing Partitions to Kubernetes
 
