@@ -302,7 +302,7 @@ Upgrading the Kubernetes version is a separate operation:
   tasks:
     - name: Check current Kubernetes version
       ansible.builtin.command:
-        cmd: kubectl version --short
+        cmd: kubectl version
       register: current_k8s
 
     - name: Display current Kubernetes version
@@ -324,7 +324,7 @@ Upgrading the Kubernetes version is a separate operation:
 
     - name: Verify new Kubernetes version
       ansible.builtin.command:
-        cmd: kubectl version --short
+        cmd: kubectl version
       register: new_k8s
 
     - name: Display new version
