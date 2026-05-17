@@ -219,13 +219,14 @@ machine:
 
 ## Kubernetes Node Addresses
 
-Kubernetes uses the node's primary IP for its internal communications. When you have multiple addresses, kubelet picks one as the "node IP." You can explicitly set which address Kubernetes should use:
+Kubernetes uses the node's primary IP for its internal communications. When you have multiple addresses, kubelet picks one as the "node IP." Talos provides a dedicated `nodeIP.validSubnets` field to control which address Kubernetes should use:
 
 ```yaml
 machine:
   kubelet:
-    extraArgs:
-      node-ip: "192.168.1.10"
+    nodeIP:
+      validSubnets:
+        - 192.168.1.0/24
   network:
     interfaces:
       - interface: eth0
@@ -234,7 +235,7 @@ machine:
           - 10.0.0.10/24
 ```
 
-The `node-ip` kubelet argument tells Kubernetes to use `192.168.1.10` as the node's address, regardless of what other addresses are configured.
+The `validSubnets` field tells kubelet to pick the node IP from the listed subnets. You can list multiple subnets (including IPv6) and use the `!` prefix to exclude specific ranges, for example `'!10.0.0.3/32'`.
 
 ## Common Pitfalls
 
