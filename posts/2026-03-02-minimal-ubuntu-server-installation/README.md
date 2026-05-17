@@ -62,7 +62,7 @@ dpkg -l | grep -c '^ii'
 dpkg-query -W --showformat='${Installed-Size}\t${Package}\n' | sort -nr | head -50
 
 # List automatically installed packages that are no longer needed
-apt list --auto-removable 2>/dev/null
+apt autoremove --dry-run 2>/dev/null
 ```
 
 ### Removing Snap
@@ -94,7 +94,7 @@ sudo apt purge -y \
     cloud-guest-utils \
     python3-commandnotfound \
     apport \
-    ubuntu-advantage-tools
+    ubuntu-pro-client
 
 # Remove documentation and man pages to save space
 sudo apt purge -y man-db manpages
@@ -171,7 +171,7 @@ apt-rdepends ubuntu-minimal | grep -v '^ '
 sudo debootstrap --variant=minbase noble /tmp/minimal-ubuntu http://archive.ubuntu.com/ubuntu
 ```
 
-The `--variant=minbase` flag tells debootstrap to install only `essential` and `priority=required` packages, resulting in a ~200 MB base system.
+The `--variant=minbase` flag tells debootstrap to install only essential packages plus apt (the default variant additionally pulls in `priority=required` packages), resulting in a ~200 MB base system.
 
 ## Minimal Kernel Configuration
 
