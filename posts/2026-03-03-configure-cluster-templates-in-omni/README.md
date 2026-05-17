@@ -14,7 +14,7 @@ This post covers how to create cluster templates in Omni, what you can configure
 
 ## What Are Cluster Templates?
 
-A cluster template in Omni is a declarative specification that defines how a cluster should look. It includes the Talos version, Kubernetes version, number and type of nodes, network configuration, and any custom Talos machine configuration patches. When you create a cluster from a template, Omni uses these specifications to configure and bootstrap the cluster automatically.
+A cluster template in Omni is a declarative specification that defines how a cluster should look. It is a multi-document YAML file in which each document has a `kind` field. Together, the documents describe the Talos version, the Kubernetes version, the number and type of nodes, the machine selection rules, and any custom Talos machine configuration patches. When you create a cluster from a template, Omni uses these specifications to configure and bootstrap the cluster automatically.
 
 Templates are stored as YAML files, which means they can be versioned in Git, reviewed through pull requests, and applied through CI/CD pipelines. This brings infrastructure-as-code practices to your Talos cluster management.
 
@@ -39,20 +39,26 @@ patches:
         kubelet:
           extraArgs:
             rotate-server-certificates: "true"
-controlPlane:
-  machineCount: 1
-workers:
-  machineCount: 2
+---
+kind: ControlPlane
+machineClass:
+  name: dev-control-plane
+  size: 1
+---
+kind: Workers
+machineClass:
+  name: dev-workers
+  size: 2
 ```
 
-This template specifies the versions, a custom kubelet argument, and the node counts. When you apply this template, Omni will allocate machines from the available pool and configure them according to these settings.
+This template specifies the versions, a custom kubelet argument, and the node counts. The `ControlPlane` and `Workers` documents reference machine classes (`dev-control-plane` and `dev-workers`) that you create separately in Omni; Omni then allocates matching machines from the pool and configures them according to these settings.
 
 ```bash
 # Apply the template to create a new cluster
-omnictl cluster template apply -f cluster-template-basic.yaml
+omnictl cluster template sync -f cluster-template-basic.yaml
 
 # Verify the cluster was created
-omnictl cluster status dev-cluster
+omnictl cluster template status -f cluster-template-basic.yaml
 ```
 
 ## Production-Ready Templates
@@ -68,57 +74,82 @@ kubernetes:
   version: v1.29.0
 talos:
   version: v1.6.0
-controlPlane:
-  machineCount: 3
-  patches:
-    - name: control-plane-config
-      inline:
-        machine:
-          network:
-            hostname: cp-${index}
-          kubelet:
-            extraArgs:
-              rotate-server-certificates: "true"
-          install:
-            disk: /dev/nvme0n1
-            # Wipe the disk before installing
-            wipe: false
-        cluster:
-          etcd:
-            extraArgs:
-              # Increase etcd snapshot count for better history
-              snapshot-count: "10000"
-              # Set quota to 8GB
-              quota-backend-bytes: "8589934592"
-          apiServer:
-            extraArgs:
-              # Enable audit logging
-              audit-log-path: /var/log/audit.log
-              audit-log-maxage: "30"
-              audit-log-maxbackup: "10"
-workers:
-  machineCount: 5
-  patches:
-    - name: worker-config
-      inline:
-        machine:
-          network:
-            hostname: worker-${index}
-          install:
-            disk: /dev/nvme0n1
-          kubelet:
-            extraArgs:
-              rotate-server-certificates: "true"
-              # Reserve resources for system daemons
-              system-reserved: cpu=500m,memory=1Gi
-              kube-reserved: cpu=500m,memory=1Gi
+---
+kind: ControlPlane
+machineClass:
+  name: prod-control-plane
+  size: 3
+patches:
+  - name: control-plane-config
+    inline:
+      machine:
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "true"
+        install:
+          disk: /dev/nvme0n1
+          # Wipe the disk before installing
+          wipe: false
+      cluster:
+        etcd:
+          extraArgs:
+            # Increase etcd snapshot count for better history
+            snapshot-count: "10000"
+            # Set quota to 8GB
+            quota-backend-bytes: "8589934592"
+        apiServer:
+          extraArgs:
+            # Enable audit logging
+            audit-log-path: /var/log/audit.log
+            audit-log-maxage: "30"
+            audit-log-maxbackup: "10"
+---
+kind: Workers
+machineClass:
+  name: prod-workers
+  size: 5
+patches:
+  - name: worker-config
+    inline:
+      machine:
+        install:
+          disk: /dev/nvme0n1
+        kubelet:
+          extraArgs:
+            rotate-server-certificates: "true"
+            # Reserve resources for system daemons
+            system-reserved: cpu=500m,memory=1Gi
+            kube-reserved: cpu=500m,memory=1Gi
 ```
 
 This template creates a three-node HA control plane with five workers. It customizes etcd settings, enables audit logging on the API server, and reserves system resources on worker nodes.
 
-## Using Machine Selectors in Templates
+## Using Machine Classes in Templates
 
-Instead of letting Omni pick any available machine, you can specify requirements for the machines that should be used. This is done through machine selectors.
+Instead of letting any available machine be picked, you can specify requirements for the machines that should be used. In Omni, this is done by defining `MachineClass` resources whose selectors match labels on your machines, and then referencing those classes from `ControlPlane` and `Workers`.
+
+You first create the machine classes (these are top-level Omni resources, not cluster-template documents) with `omnictl apply`:
+
+```yaml
+# machine-classes.yaml
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: gpu-control-plane
+spec:
+  matchLabels:
+    - role=control-plane,datacenter=us-east-1
+---
+metadata:
+  namespace: default
+  type: MachineClasses.omni.sidero.dev
+  id: gpu-worker
+spec:
+  matchLabels:
+    - role=gpu-worker,gpu=nvidia-a100
+```
+
+Then reference them from the cluster template:
 
 ```yaml
 # cluster-template-with-selectors.yaml
@@ -128,21 +159,19 @@ kubernetes:
   version: v1.29.0
 talos:
   version: v1.6.0
-controlPlane:
-  machineCount: 3
-  machineSelector:
-    matchLabels:
-      role: control-plane
-      datacenter: us-east-1
-workers:
-  machineCount: 4
-  machineSelector:
-    matchLabels:
-      role: gpu-worker
-      gpu: nvidia-a100
+---
+kind: ControlPlane
+machineClass:
+  name: gpu-control-plane
+  size: 3
+---
+kind: Workers
+machineClass:
+  name: gpu-worker
+  size: 4
 ```
 
-Machine selectors use labels that you assign to machines when they register with Omni. This lets you direct specific hardware to specific cluster roles. GPU nodes go to GPU clusters, high-memory machines go to data processing clusters, and so on.
+Machine classes use labels that you assign to machines when they register with Omni. This lets you direct specific hardware to specific cluster roles. GPU nodes go to GPU clusters, high-memory machines go to data processing clusters, and so on. The `size` field also accepts the keywords `unlimited` or `infinity`, which makes the machine set pick up every available machine in the class.
 
 ## Template Versioning and Git Integration
 
@@ -181,13 +210,13 @@ jobs:
 
       - name: Install omnictl
         run: |
-          curl -LO https://omni.siderolabs.com/omnictl/latest/omnictl-linux-amd64
+          curl -LO https://github.com/siderolabs/omni/releases/latest/download/omnictl-linux-amd64
           chmod +x omnictl-linux-amd64
           sudo mv omnictl-linux-amd64 /usr/local/bin/omnictl
 
       - name: Apply production template
         run: |
-          omnictl cluster template apply \
+          omnictl cluster template sync \
             -f cluster-templates/production/cluster-template.yaml
 ```
 
@@ -227,26 +256,49 @@ patches:
               [plugins."io.containerd.grpc.v1.cri"]
                 enable_unprivileged_ports = true
                 enable_unprivileged_icmp = true
-            path: /var/cri/conf.d/20-customization.toml
+            path: /etc/cri/conf.d/20-customization.part
             op: create
-controlPlane:
-  machineCount: 3
-workers:
-  machineCount: 3
+---
+kind: ControlPlane
+machineClass:
+  name: custom-control-plane
+  size: 3
+---
+kind: Workers
+machineClass:
+  name: custom-workers
+  size: 3
 ```
 
-## Template Inheritance and Composition
+## Sharing Configuration Across Templates
 
-For organizations with many clusters, you can build a layered template system. Start with a base template that defines common settings, then overlay environment-specific customizations.
+For organizations with many clusters, the recommended way to share configuration is through file-based patches. Patches in a template can be loaded from a separate YAML file using the `file` field, so a set of common machine-config patches can live in one repository directory and be referenced from each cluster template.
 
-```bash
-# Apply a base template with environment overrides
-omnictl cluster template apply \
-  -f base-template.yaml \
-  -f production-overrides.yaml
+```yaml
+# cluster-template-with-shared-patches.yaml
+kind: Cluster
+name: production-cluster
+kubernetes:
+  version: v1.29.0
+talos:
+  version: v1.6.0
+patches:
+  # Reuse shared patches kept in a common directory
+  - file: ../base/patches/ntp.yaml
+  - file: ../base/patches/sysctls.yaml
+---
+kind: ControlPlane
+machineClass:
+  name: prod-control-plane
+  size: 3
+---
+kind: Workers
+machineClass:
+  name: prod-workers
+  size: 5
 ```
 
-The override file only needs to contain the settings that differ from the base template. This reduces duplication and makes it easier to keep your clusters consistent.
+The shared patch files only contain the Talos machine configuration that differs from the defaults. This reduces duplication and makes it easier to keep your clusters consistent.
 
 ## Updating Existing Clusters with Templates
 
@@ -254,8 +306,8 @@ Templates are not just for creating new clusters. You can also use them to updat
 
 ```bash
 # Update the Kubernetes version in the template
-# Then re-apply it
-omnictl cluster template apply -f cluster-template-production.yaml
+# Then re-sync it
+omnictl cluster template sync -f cluster-template-production.yaml
 
 # Omni will detect that only the Kubernetes version changed
 # and trigger a rolling upgrade
