@@ -116,7 +116,7 @@ Control plane recovery requires more care because of etcd.
 ```bash
 # Step 1: Check etcd health on remaining nodes
 talosctl -n 10.0.1.11 etcd status
-talosctl -n 10.0.1.11 etcd member list
+talosctl -n 10.0.1.11 etcd members
 
 # Step 2: Remove the failed member from etcd
 talosctl -n 10.0.1.11 etcd remove-member <member-id>
