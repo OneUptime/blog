@@ -26,41 +26,49 @@ For maximum reliability, you want both types active. The hardware watchdog catch
 
 ## Enabling Hardware Watchdog in Talos Linux
 
-Most server motherboards include a hardware watchdog (usually the Intel TCO or IPMI watchdog). Talos Linux includes the necessary kernel modules and can activate the watchdog through the machine configuration:
+Most server motherboards include a hardware watchdog (usually the Intel TCO or IPMI watchdog). Talos Linux ships the common watchdog drivers and exposes a dedicated `WatchdogTimerConfig` document that tells the Talos runtime to open the device, set the timeout via `ioctl`, and pet it periodically:
 
 ```yaml
-# talos-machine-config.yaml
-
-machine:
-  install:
-    extraKernelArgs:
-      # Load watchdog modules
-      - iTCO_wdt.heartbeat=30     # Intel TCO watchdog with 30s timeout
+# talos-watchdog-config.yaml
+apiVersion: v1alpha1
+kind: WatchdogTimerConfig
+device: /dev/watchdog0
+timeout: 1m0s
 ```
 
-The hardware watchdog typically creates a device at `/dev/watchdog` or `/dev/watchdog0`. Talos Linux opens this device and periodically writes to it to prevent the timeout from expiring.
+The hardware watchdog typically creates a device at `/dev/watchdog` or `/dev/watchdog0`. Once the `WatchdogTimerConfig` document is applied, Talos opens that device and writes to it on an interval shorter than the configured timeout, preventing the hardware from triggering a reset while the system is healthy.
 
 ## Configuring the Watchdog Timeout
 
 The watchdog timeout determines how long the system can be unresponsive before a reset is triggered. Setting it too short causes unnecessary reboots during temporary load spikes. Setting it too long means a hung node sits idle for too long before recovering.
 
 ```yaml
-# talos-machine-config.yaml
-machine:
-  install:
-    extraKernelArgs:
-      # Hardware watchdog timeout
-      - iTCO_wdt.heartbeat=60        # 60 second timeout
-      - iTCO_wdt.nowayout=1          # Prevent accidental watchdog disable
+# talos-watchdog-config.yaml
+apiVersion: v1alpha1
+kind: WatchdogTimerConfig
+device: /dev/watchdog0
+timeout: 1m0s   # Hardware watchdog timeout
 ```
 
 A good starting point is 60 seconds. This gives the system enough time to recover from temporary high-load situations while ensuring that genuinely hung nodes reboot within a minute.
+
+If the kernel needs specific module parameters (for example, to set `nowayout` on `iTCO_wdt` so the device cannot be disabled once opened), pass them through `machine.kernel.modules` in the main machine config:
+
+```yaml
+# talos-machine-config.yaml
+machine:
+  kernel:
+    modules:
+      - name: iTCO_wdt
+        parameters:
+          - nowayout=1
+```
 
 The `nowayout` option prevents the watchdog from being stopped once started. This is a safety feature: if the process that was petting the watchdog crashes, the watchdog will still trigger a reset rather than being accidentally disabled.
 
 ## Software Watchdog Configuration
 
-The software watchdog (softdog) provides an additional layer of monitoring. It can detect kernel soft lockups and scheduler stalls that the hardware watchdog might not catch:
+The kernel's soft lockup and hung task detectors provide an additional, in-kernel layer of monitoring (distinct from the `softdog` module, which is a separate `/dev/watchdog` driver). They can detect kernel soft lockups, scheduler stalls, and tasks blocked in uninterruptible sleep for too long &mdash; cases the hardware watchdog might not catch on its own:
 
 ```yaml
 # talos-machine-config.yaml
@@ -135,7 +143,7 @@ Layer 2: Talos service monitoring
   - Restarts system services (kubelet, containerd)
   - Timeout: 30-60 seconds
 
-Layer 3: Software watchdog (softdog)
+Layer 3: Kernel soft lockup / hung task detector
   - Detects kernel soft lockups and scheduler stalls
   - Timeout: 10-20 seconds for detection, panic triggers reboot
 
@@ -181,9 +189,11 @@ spec:
         - -c
         - |
           apk add --no-cache ipmitool
-          # Set IPMI watchdog: 5 minute timeout, reset action
-          ipmitool mc watchdog set timer use 4 action 1 timeout 300
-          ipmitool mc watchdog set running
+          # Configure IPMI watchdog: 300 second timeout, hard reset on expiry,
+          # SMS/OS timer use, and don't stop the timer on BMC init.
+          ipmitool mc watchdog set timeout=300 action=reset use=sms dontstop
+          # Arm/start the watchdog (also pets it).
+          ipmitool mc watchdog reset
           # Pet the IPMI watchdog every 60 seconds
           while true; do
             ipmitool mc watchdog reset
@@ -210,26 +220,29 @@ talosctl read /proc/sys/kernel/hung_task_timeout_secs --nodes 10.0.0.1
 
 ## Testing the Watchdog
 
-Testing the watchdog in a controlled manner is important. Do this only on non-production nodes:
+Testing the watchdog in a controlled manner is important. Do this only on non-production nodes. `talosctl` does not expose a generic write to `/proc/sysrq-trigger`, so an end-to-end "crash and reboot" test usually requires either a privileged workload that writes `c` into `/proc/sysrq-trigger`, or pulling power to confirm the BMC/IPMI watchdog kicks in.
+
+For a safer check, verify that the watchdog device exists and that the timeout Talos applied is what you expect:
 
 ```bash
-# Trigger a kernel panic to test watchdog reboot
-# WARNING: This will immediately crash the node
-talosctl read /proc/sysrq-trigger --nodes 10.0.0.1
-# Then write 'c' to trigger panic
+# Confirm the device is present and inspect its state
+talosctl read /sys/class/watchdog/watchdog0/status --nodes 10.0.0.1
+talosctl read /sys/class/watchdog/watchdog0/timeout --nodes 10.0.0.1
 ```
-
-A safer test is to verify the watchdog device exists and has the correct timeout, without actually triggering it.
 
 ## Applying Watchdog Configuration
 
 Apply the watchdog configuration and reboot:
 
 ```bash
-# Apply machine configuration
+# Apply the main machine configuration
 talosctl apply-config --nodes 10.0.0.1 --file talos-machine-config.yaml
 
-# Reboot for kernel arg changes
+# Apply the WatchdogTimerConfig document (Talos picks it up at runtime;
+# no reboot is required for watchdogTimer changes)
+talosctl apply-config --nodes 10.0.0.1 --file talos-watchdog-config.yaml
+
+# Reboot if any kernel args or kernel.modules entries changed
 talosctl reboot --nodes 10.0.0.1
 
 # Verify after reboot
