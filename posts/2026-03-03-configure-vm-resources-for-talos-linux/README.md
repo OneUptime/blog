@@ -34,7 +34,7 @@ On VMware vSphere, you configure CPU through the VM settings:
 ```bash
 # Using govc to set CPU count for a Talos VM
 
-govc vm.change -vm talos-cp-1 -cpu 4
+govc vm.change -vm talos-cp-1 -c 4
 
 # You can also set CPU reservation to guarantee resources
 govc vm.change -vm talos-cp-1 -cpu.reservation 2000
