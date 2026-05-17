@@ -43,8 +43,7 @@ WebDAV support in Apache requires three modules:
 ```bash
 # Enable WebDAV modules
 sudo a2enmod dav
-sudo a2enmod dav_fs    # Stores DAV properties on the filesystem
-sudo a2enmod dav_lock  # Locking support
+sudo a2enmod dav_fs    # Filesystem provider for DAV (includes its own locking via DavLockDB)
 
 # Also enable auth modules for access control
 sudo a2enmod auth_basic
@@ -362,7 +361,7 @@ The DAV module isn't loaded or the Dav directive is missing:
 
 ```bash
 sudo apache2ctl -M | grep dav
-# If missing: sudo a2enmod dav dav_fs dav_lock
+# If missing: sudo a2enmod dav dav_fs
 ```
 
 ### 403 Forbidden When Uploading
