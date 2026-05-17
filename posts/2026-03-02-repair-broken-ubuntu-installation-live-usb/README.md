@@ -57,12 +57,14 @@ sudo mkdir -p /mnt/ubuntu
 # Mount the root partition
 sudo mount /dev/sda2 /mnt/ubuntu
 
-# If you have a separate /boot partition, mount it too
-sudo mount /dev/sda1 /mnt/ubuntu/boot
+# If you have a separate /boot partition, mount it too (a different partition than the ESP)
+sudo mount /dev/sda3 /mnt/ubuntu/boot
 
-# For UEFI systems, mount the EFI partition
+# For UEFI systems, mount the EFI System Partition (vfat, usually the first partition)
 sudo mount /dev/sda1 /mnt/ubuntu/boot/efi
 ```
+
+Note: a typical Ubuntu UEFI install has the ESP at `/dev/sda1` and the root filesystem at `/dev/sda2` with no separate `/boot` partition. Only mount a `/boot` partition if you actually created one during install. Adjust the device names to match your `lsblk` output.
 
 ### If Using LVM
 
