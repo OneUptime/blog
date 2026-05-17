@@ -49,7 +49,7 @@ emacs file1.txt file2.txt
 emacs +42 /etc/nginx/nginx.conf
 
 # Run a quick single-command edit and exit
-emacs --batch --eval '(find-file "file.txt") (goto-line 5) (save-buffer) (kill-emacs)'
+emacs --batch --eval '(progn (find-file "file.txt") (goto-line 5) (save-buffer) (kill-emacs))'
 ```
 
 ## Key Notation
