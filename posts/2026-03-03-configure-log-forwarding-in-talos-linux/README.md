@@ -112,11 +112,11 @@ machine:
         format: json_lines
 EOF
 
-# Apply the patch to a node
-talosctl apply-config --nodes 192.168.1.10 \
-  --config-patch @log-forwarding-patch.yaml
+# Apply the patch to a node using a patch file
+talosctl patch machineconfig --nodes 192.168.1.10 \
+  --patch @log-forwarding-patch.yaml
 
-# Or apply using talosctl patch
+# Or apply using an inline JSON patch
 talosctl patch machineconfig --nodes 192.168.1.10 \
   --patch '[{"op": "add", "path": "/machine/logging", "value": {"destinations": [{"endpoint": "tcp://logserver.example.com:5514/", "format": "json_lines"}]}}]'
 ```
@@ -242,9 +242,10 @@ The log forwarding mechanism sends logs from Talos system services:
 - **kubelet**: Kubernetes node agent
 - **etcd**: Distributed key-value store (control plane)
 - **trustd**: Certificate management
-- **kernel**: Kernel-level messages
 
-Note that application logs from Kubernetes pods are not forwarded through this mechanism. Pod logs should be collected separately using a Kubernetes-level log collector like Fluent Bit or Vector running as a DaemonSet.
+Note that kernel logs are forwarded separately, not through `machine.logging.destinations`. Kernel log forwarding is configured via the `talos.logging.kernel=<url>` kernel boot parameter (set through `machine.install.extraKernelArgs`) or via a `KmsgLogConfig` document.
+
+Also note that application logs from Kubernetes pods are not forwarded through this mechanism. Pod logs should be collected separately using a Kubernetes-level log collector like Fluent Bit or Vector running as a DaemonSet.
 
 ## Handling High Log Volume
 
