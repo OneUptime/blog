@@ -98,7 +98,7 @@ Here's a complete configuration that multiplexes SSH, HTTPS, and OpenVPN:
 listen:
 (
     { host: "0.0.0.0"; port: "443"; },
-    { host: "[::]"; port: "443"; }
+    { host: "::"; port: "443"; }
 );
 
 # Protocol definitions - sslh tries each in order
@@ -226,9 +226,11 @@ echo "100 sslh" | sudo tee -a /etc/iproute2/rt_tables
 sudo ip rule add fwmark 0x1 lookup sslh
 sudo ip route add local 0.0.0.0/0 dev lo table sslh
 
-# Set iptables rules to mark packets from sslh
-sudo iptables -t mangle -A PREROUTING -i lo -p tcp -m multiport \
-    --dports 22,4443 -j MARK --set-mark 0x1
+# Mark packets originating from the sslh user so they get
+# routed back through lo to the sslh process instead of out
+# the default interface
+sudo iptables -t mangle -A OUTPUT -p tcp -m owner \
+    --uid-owner sslh -j MARK --set-mark 0x1
 
 # Enable transparent mode in sslh config
 # Set the 'transparent: true;' option in /etc/sslh/sslh.cfg
