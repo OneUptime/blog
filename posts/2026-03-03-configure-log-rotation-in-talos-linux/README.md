@@ -48,7 +48,7 @@ Apply the configuration:
 
 ```bash
 # Apply to all nodes in the cluster
-talosctl apply-config --nodes 192.168.1.10,192.168.1.20,192.168.1.21 \
+talosctl patch machineconfig --nodes 192.168.1.10,192.168.1.20,192.168.1.21 \
   --patch @kubelet-log-rotation.yaml
 ```
 
@@ -99,7 +99,7 @@ machine:
     - content: |
         [plugins."io.containerd.grpc.v1.cri"]
           max_container_log_line_size = 16384
-      path: /var/cri/conf.d/20-customization.toml
+      path: /etc/cri/conf.d/20-customization.part
       op: create
 ```
 
