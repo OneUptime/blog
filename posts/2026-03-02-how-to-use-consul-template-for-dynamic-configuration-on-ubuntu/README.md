@@ -37,7 +37,7 @@ With consul-template:
 ```bash
 # Download the latest release
 
-CTMPL_VERSION="0.39.0"
+CTMPL_VERSION="0.42.0"
 wget "https://releases.hashicorp.com/consul-template/${CTMPL_VERSION}/consul-template_${CTMPL_VERSION}_linux_amd64.zip"
 
 # Extract and install
@@ -102,10 +102,11 @@ template {
   backup      = true  # Keep a .bak copy before overwriting
 
   # Command to run after the template renders
+  # (only invoked when the rendered content changes)
   command         = "nginx -s reload"
   command_timeout = "10s"
 
-  # Only run command if the file actually changed
+  # Exit with an error if a referenced Consul key is missing
   error_on_missing_key = true
 }
 ```
@@ -255,7 +256,7 @@ filebeat.inputs:
     fields:
       host: {{ env "HOSTNAME" }}
       datacenter: {{ key "config/datacenter" }}
-      {{ range node }}
+      {{ with node }}
       node_id: {{ .Node.ID }}
       {{ end }}
 ```
@@ -342,7 +343,7 @@ template {
     max = "10s"  # But always render within 10s
   }
 
-  # Retry the command if it fails
+  # Command to run after rendering, with a timeout
   command = "/usr/local/bin/app reload"
   command_timeout = "30s"
 }
