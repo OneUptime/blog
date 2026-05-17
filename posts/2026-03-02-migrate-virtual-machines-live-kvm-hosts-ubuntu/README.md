@@ -128,16 +128,19 @@ auth_tcp = "none"   # Use "sasl" in production
 ```
 
 ```bash
-# Edit libvirtd startup to enable listening
-sudo nano /etc/default/libvirtd
-# Add:
-LIBVIRTD_ARGS="--listen"
-
+# On Ubuntu 22.04+, libvirtd uses systemd socket activation by default,
+# which ignores listen_tcp in libvirtd.conf and rejects the --listen flag.
+# Disable the per-protocol sockets and enable the TCP socket unit instead:
+sudo systemctl disable --now libvirtd.socket libvirtd-ro.socket libvirtd-admin.socket
+sudo systemctl enable --now libvirtd-tcp.socket
 sudo systemctl restart libvirtd
+
+# On older Ubuntu (18.04 / early 20.04) without socket activation, set:
+# LIBVIRTD_ARGS="--listen" in /etc/default/libvirtd, then restart libvirtd.
 
 # Allow through firewall
 sudo ufw allow 16509/tcp
-sudo ufw allow 49152:49261/tcp  # Migration data ports
+sudo ufw allow 49152:49215/tcp  # Migration data ports (libvirt default range)
 ```
 
 ## Preparing a VM for Migration
@@ -209,7 +212,7 @@ virsh domjobinfo myvm
 
 # Cancel migration if needed
 virsh migrate-setmaxdowntime myvm 500   # Set max 500ms downtime
-virsh migrate-setspeed myvm 1000        # Limit to 1 Gbps
+virsh migrate-setspeed myvm 125         # Limit to ~125 MiB/s (~1 Gbps)
 ```
 
 ### Live Migration with Copy Storage (No Shared Storage)
@@ -283,13 +286,13 @@ virsh edit myvm
 **Migration takes too long:**
 
 ```bash
-# Increase migration speed limit (in Mbps)
+# Increase migration speed limit (bandwidth is in MiB/s)
 virsh migrate-setspeed myvm 0     # Remove limit
 
-# Reduce memory dirtying by limiting VM CPU
-virsh schedinfo myvm --set cpu_quota=50000
+# Reduce memory dirtying by limiting VM vCPU bandwidth
+virsh schedinfo myvm --set vcpu_quota=50000
 # Restore after migration:
-virsh schedinfo myvm --set cpu_quota=-1
+virsh schedinfo myvm --set vcpu_quota=-1
 ```
 
 **VM unreachable after migration:**
