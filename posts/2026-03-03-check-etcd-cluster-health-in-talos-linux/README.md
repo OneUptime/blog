@@ -85,7 +85,7 @@ If you see alarms, they need to be addressed immediately.
 ### Resolving the NOSPACE Alarm
 
 ```bash
-# First, compact the etcd database to reclaim space
+# First, defragment the etcd database to reclaim space
 talosctl etcd defrag --nodes <cp-ip>
 
 # Then clear the alarm
