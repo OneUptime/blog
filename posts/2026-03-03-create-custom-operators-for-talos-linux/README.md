@@ -37,7 +37,7 @@ brew install operator-sdk
 # Or download directly
 export ARCH=$(case $(uname -m) in x86_64) echo -n amd64 ;; aarch64) echo -n arm64 ;; esac)
 export OS=$(uname | awk '{print tolower($0)}')
-curl -LO https://github.com/operator-framework/operator-sdk/releases/download/v1.33.0/operator-sdk_${OS}_${ARCH}
+curl -LO https://github.com/operator-framework/operator-sdk/releases/download/v1.42.2/operator-sdk_${OS}_${ARCH}
 chmod +x operator-sdk_${OS}_${ARCH}
 sudo mv operator-sdk_${OS}_${ARCH} /usr/local/bin/operator-sdk
 
@@ -75,7 +75,7 @@ webapp-operator/
   cmd/
     main.go             # Entry point
   config/               # Deployment manifests
-  controllers/
+  internal/controller/
     webapp_controller.go # Reconciliation logic
 ```
 
@@ -170,8 +170,8 @@ func init() {
 The controller contains the reconciliation logic - what should happen when a WebApp resource is created, updated, or deleted:
 
 ```go
-// controllers/webapp_controller.go
-package controllers
+// internal/controller/webapp_controller.go
+package controller
 
 import (
     "context"
@@ -386,8 +386,8 @@ kubectl get ingress my-frontend
 Test your Operator using the envtest framework:
 
 ```go
-// controllers/webapp_controller_test.go
-package controllers
+// internal/controller/webapp_controller_test.go
+package controller
 
 import (
     "context"
