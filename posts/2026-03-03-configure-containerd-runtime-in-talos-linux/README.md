@@ -16,7 +16,7 @@ This guide covers how to configure containerd in Talos Linux through the machine
 
 Talos Linux runs containerd as a core system service. Unlike traditional Linux distributions where you install and configure containerd separately, Talos manages it as part of the operating system. The containerd configuration is generated from the Talos machine configuration and applied automatically.
 
-You customize containerd by dropping configuration fragments into `/var/cri/conf.d/` through the `machine.files` section of the Talos configuration.
+You customize containerd by dropping configuration fragments into `/etc/cri/conf.d/` through the `machine.files` section of the Talos configuration. Talos expects these fragments to use the `.part` file extension (for example, `20-customization.part`) and merges them with the base containerd configuration.
 
 ## Basic Containerd Customization
 
@@ -32,7 +32,7 @@ machine:
               default_runtime_name = "runc"
               snapshotter = "overlayfs"
               discard_unpacked_layers = false
-      path: /var/cri/conf.d/20-custom.toml
+      path: /etc/cri/conf.d/20-custom.part
       op: create
 ```
 
@@ -56,7 +56,7 @@ machine:
                   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
                     SystemdCgroup = true
                     BinaryName = "/usr/bin/runc"
-      path: /var/cri/conf.d/20-runtime.toml
+      path: /etc/cri/conf.d/20-runtime.part
       op: create
 ```
 
@@ -80,7 +80,7 @@ machine:
                   runtime_type = "io.containerd.runsc.v1"
                   [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.gvisor.options]
                     TypeUrl = "io.containerd.runsc.v1.options"
-      path: /var/cri/conf.d/20-gvisor.toml
+      path: /etc/cri/conf.d/20-gvisor.part
       op: create
 ```
 
@@ -123,7 +123,7 @@ machine:
                 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata]
                   runtime_type = "io.containerd.kata.v2"
                   privileged_without_host_devices = true
-      path: /var/cri/conf.d/20-kata.toml
+      path: /etc/cri/conf.d/20-kata.part
       op: create
 ```
 
@@ -139,7 +139,7 @@ machine:
           [plugins."io.containerd.grpc.v1.cri"]
             [plugins."io.containerd.grpc.v1.cri".containerd]
               snapshotter = "overlayfs"
-      path: /var/cri/conf.d/20-snapshotter.toml
+      path: /etc/cri/conf.d/20-snapshotter.part
       op: create
 ```
 
@@ -154,7 +154,7 @@ machine:
             [plugins."io.containerd.grpc.v1.cri".containerd]
               # Use native snapshotter for btrfs filesystems
               snapshotter = "btrfs"
-      path: /var/cri/conf.d/20-snapshotter.toml
+      path: /etc/cri/conf.d/20-snapshotter.part
       op: create
 ```
 
@@ -170,7 +170,7 @@ machine:
           [plugins."io.containerd.grpc.v1.cri"]
             [plugins."io.containerd.grpc.v1.cri".image_decryption]
               key_model = "node"
-      path: /var/cri/conf.d/20-decryption.toml
+      path: /etc/cri/conf.d/20-decryption.part
       op: create
 ```
 
@@ -187,7 +187,7 @@ machine:
             stream_server_address = "127.0.0.1"
             stream_server_port = "0"
             enable_tls_streaming = false
-      path: /var/cri/conf.d/20-streaming.toml
+      path: /etc/cri/conf.d/20-streaming.part
       op: create
 ```
 
@@ -203,7 +203,7 @@ machine:
         [plugins]
           [plugins."io.containerd.internal.v1.tracing"]
             sampling_ratio = 0.0
-      path: /var/cri/conf.d/20-plugins.toml
+      path: /etc/cri/conf.d/20-plugins.part
       op: create
 ```
 
@@ -223,7 +223,7 @@ talosctl service containerd --nodes 10.0.0.5
 talosctl logs containerd --nodes 10.0.0.5
 
 # Read the merged containerd configuration
-talosctl read /etc/containerd/config.toml --nodes 10.0.0.5
+talosctl read /etc/cri/containerd.toml --nodes 10.0.0.5
 ```
 
 ## Verifying Runtime Configuration
@@ -261,7 +261,7 @@ talosctl logs containerd --nodes 10.0.0.5 --tail 100
 talosctl logs containerd --nodes 10.0.0.5 | grep -i "error\|fail\|invalid"
 
 # Verify the config file was written correctly
-talosctl read /var/cri/conf.d/20-custom.toml --nodes 10.0.0.5
+talosctl read /etc/cri/conf.d/20-custom.part --nodes 10.0.0.5
 ```
 
 Common issues include TOML syntax errors (missing quotes, wrong bracket nesting), referencing runtime binaries that are not installed, and conflicting settings between configuration fragments.
@@ -280,7 +280,7 @@ machine:
             max_container_log_line_size = 16384
             [plugins."io.containerd.grpc.v1.cri".containerd]
               discard_unpacked_layers = true
-      path: /var/cri/conf.d/20-performance.toml
+      path: /etc/cri/conf.d/20-performance.part
       op: create
 ```
 
