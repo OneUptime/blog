@@ -131,8 +131,8 @@ meson configure builddir
 
 # Set build type (affects optimization and debug symbols)
 meson setup builddir --buildtype=release        # Optimized, no debug info
-meson setup builddir --buildtype=debug          # No optimization, with debug
-meson setup builddir --buildtype=debugoptimized # Default: some optimization + debug
+meson setup builddir --buildtype=debug          # Default: no optimization, with debug
+meson setup builddir --buildtype=debugoptimized # Some optimization + debug
 meson setup builddir --buildtype=minsize        # Optimize for size
 
 # Change the install prefix
@@ -240,10 +240,10 @@ test('utils tests verbose', test_exe,
 ninja -C builddir test
 
 # Run tests and show output even for passing tests
-ninja -C builddir test --verbose
+meson test -C builddir --verbose
 
-# Run a specific test
-ninja -C builddir test --test-args="--gtest_filter=UtilsTest.*"
+# Pass arguments through to the test executables
+meson test -C builddir --test-args="--gtest_filter=UtilsTest.*"
 
 # Run tests with a specific timeout
 meson test -C builddir --timeout-multiplier 2
@@ -292,7 +292,7 @@ c = 'aarch64-linux-gnu-gcc'
 cpp = 'aarch64-linux-gnu-g++'
 ar = 'aarch64-linux-gnu-ar'
 strip = 'aarch64-linux-gnu-strip'
-pkgconfig = 'aarch64-linux-gnu-pkg-config'
+pkg-config = 'aarch64-linux-gnu-pkg-config'
 EOF
 
 # Set up cross-compilation build
