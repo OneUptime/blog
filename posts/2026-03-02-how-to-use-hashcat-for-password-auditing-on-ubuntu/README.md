@@ -30,11 +30,11 @@ For the latest version, download from the Hashcat releases page:
 
 ```bash
 # Download latest Hashcat release
-wget https://hashcat.net/files/hashcat-6.2.6.tar.gz
+wget https://hashcat.net/files/hashcat-7.1.2.tar.gz
 
 # Extract and build
-tar xf hashcat-6.2.6.tar.gz
-cd hashcat-6.2.6
+tar xf hashcat-7.1.2.tar.gz
+cd hashcat-7.1.2
 make
 sudo make install
 ```
@@ -185,9 +185,9 @@ hashcat -m 0 -a 1 /tmp/test.hash /tmp/words1.txt /tmp/words2.txt
 
 # Add rules to each side of the combination
 hashcat -m 0 -a 1 /tmp/test.hash /tmp/words1.txt /tmp/words2.txt \
-  -j 'u' -k 'd'
-# -j applies rule to left wordlist (u = uppercase)
-# -k applies rule to right wordlist (d = append digit)
+  -j 'u' -k '$1'
+# -j applies rule to left wordlist (u = uppercase all letters)
+# -k applies rule to right wordlist ($1 = append the digit '1')
 ```
 
 ## Performance Optimization
