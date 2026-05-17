@@ -124,8 +124,8 @@ sudo cpupower frequency-set --governor performance
 Constrain the frequency range:
 
 ```bash
-# Get available frequency steps
-cpufreq-info -s
+# Get hardware frequency limits (min and max)
+cpufreq-info -l
 
 # Set minimum frequency to 2GHz, max to 3.6GHz
 sudo cpufreq-set -c 0 --min 2GHz --max 3.6GHz
