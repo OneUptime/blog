@@ -209,7 +209,7 @@ echo madvise | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 # Disable THP defragmentation to prevent latency spikes
 echo defer+madvise | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
-# Make persistent
+# Make persistent via rc.local (must be executable)
 sudo nano /etc/rc.local
 ```
 
@@ -221,15 +221,37 @@ echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag
 exit 0
 ```
 
-Or use sysctl (works on newer kernels):
+```bash
+sudo chmod +x /etc/rc.local
+```
+
+Or set the top-level THP mode via the kernel boot parameter (THP is not exposed via sysctl, so the `defrag` knob still needs a sysfs write at boot):
 
 ```bash
-# Note: THP settings via sysctl require kernel 5.15+
-sudo tee /etc/sysctl.d/99-thp.conf << 'EOF'
-kernel.mm.transparent_hugepage.enabled = madvise
-kernel.mm.transparent_hugepage.defrag = defer+madvise
+sudo nano /etc/default/grub
+# Append transparent_hugepage=madvise to GRUB_CMDLINE_LINUX_DEFAULT
+sudo update-grub
+```
+
+For a systemd-managed alternative, create a one-shot unit that writes the sysfs values at boot:
+
+```bash
+sudo tee /etc/systemd/system/thp-tune.service << 'EOF'
+[Unit]
+Description=Tune Transparent Huge Pages for KVM host
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo madvise > /sys/kernel/mm/transparent_hugepage/enabled'
+ExecStart=/bin/sh -c 'echo defer+madvise > /sys/kernel/mm/transparent_hugepage/defrag'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
 EOF
-sudo sysctl --system
+sudo systemctl daemon-reload
+sudo systemctl enable --now thp-tune.service
 ```
 
 ## Verifying Huge Page Usage
@@ -242,10 +264,13 @@ cat /proc/meminfo | grep -i huge
 # HugePages_Free:     1048    <- available
 # HugePages_Rsvd:     3048    <- reserved by VMs
 
-# Check per-process huge page usage
-sudo cat /proc/$(pgrep -f "qemu.*myvm")/status | grep HugePages
+# Check per-process huge page usage (field is HugetlbPages, total hugetlb bytes)
+sudo grep -i huge /proc/$(pgrep -f "qemu.*myvm")/status
 
-# Check if VM is actually using huge pages
+# Per-mapping breakdown including NUMA distribution and 'huge' annotations
+sudo grep -B 1 huge /proc/$(pgrep -f "qemu.*myvm")/numa_maps
+
+# Confirm KVM acceleration is active for the VM
 virsh qemu-monitor-command myvm --hmp "info kvm"
 ```
 
@@ -265,8 +290,10 @@ echo 4096 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 echo 1 | sudo tee /proc/sys/vm/compact_memory
 echo 4096 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
-# Check fragmentation
-grep -i hugepages /proc/buddyinfo
+# Check fragmentation: columns are free page counts at orders 0..10
+# (order 9 = 2 MB chunks on x86_64). Sparse high-order columns mean
+# fragmented memory and likely huge-page allocation failure.
+cat /proc/buddyinfo
 ```
 
 To ensure huge pages are always available, allocate them earlier in the boot process before memory becomes fragmented:
