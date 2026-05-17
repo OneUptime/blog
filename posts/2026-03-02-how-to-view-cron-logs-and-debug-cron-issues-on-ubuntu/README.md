@@ -39,9 +39,9 @@ sudo grep CRON /var/log/syslog
 sudo grep CRON /var/log/syslog | tail -50
 
 # Follow cron log in real time
-sudo grep --line-buffered CRON /var/log/syslog | tail -f /var/log/syslog
+sudo tail -f /var/log/syslog | grep --line-buffered CRON
 
-# Or more cleanly:
+# Or more simply:
 sudo tail -f /var/log/syslog | grep CRON
 ```
 
