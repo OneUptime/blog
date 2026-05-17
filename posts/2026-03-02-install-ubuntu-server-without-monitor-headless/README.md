@@ -72,7 +72,7 @@ For IPMI Serial Over LAN (SOL):
 # Access console via IPMI SOL
 ipmitool -I lanplus -H 192.168.1.10 -U admin -P password sol activate
 
-# Access BIOS/UEFI setup
+# Set next boot to CD-ROM (virtual media) and reset to start the installer
 ipmitool -I lanplus -H 192.168.1.10 -U admin -P password chassis bootdev cdrom
 ipmitool -I lanplus -H 192.168.1.10 -U admin -P password power reset
 ```
@@ -145,8 +145,8 @@ python3 -m http.server 8080
 Extract and modify the ISO to pass the autoinstall parameters without manual intervention at GRUB:
 
 ```bash
-# Install tools
-sudo apt install xorriso isolinux
+# Install tools (Ubuntu 24.04 server ISO boots via GRUB only, so isolinux is not needed)
+sudo apt install xorriso
 
 # Extract ISO
 mkdir /tmp/ubuntu-iso
@@ -177,19 +177,22 @@ set timeout=0
 Repack the ISO:
 
 ```bash
-sudo xorriso -as mkisofs \
-    -r -V "Ubuntu Autoinstall" \
-    -cache-inodes -J -l \
-    -isohybrid-mbr /usr/lib/ISOLINUX/isohdpfx.bin \
+sudo xorriso -as mkisofs -r \
+    -V 'Ubuntu Autoinstall' \
+    -o ubuntu-autoinstall.iso \
+    --grub2-mbr /tmp/ubuntu-iso/boot/grub/i386-pc/boot_hybrid.img \
     -partition_offset 16 \
-    -b isolinux/isolinux.bin \
-    -c isolinux/boot.cat \
-    -no-emul-boot -boot-load-size 4 -boot-info-table \
+    --mbr-force-bootable \
+    -append_partition 2 0xef /tmp/ubuntu-iso/EFI/boot/grubx64.efi \
+    -appended_part_as_gpt \
+    -iso_mbr_part_type a2a0d0ebe5b9334487c068b6b72699c7 \
+    -c '/boot.catalog' \
+    -b '/boot/grub/i386-pc/eltorito.img' \
+        -no-emul-boot -boot-load-size 4 -boot-info-table --grub2-boot-info \
     -eltorito-alt-boot \
-    -e boot/grub/efi.img \
-    -no-emul-boot \
-    -isohybrid-gpt-basdat \
-    -o ubuntu-autoinstall.iso /tmp/ubuntu-iso
+    -e '--interval:appended_partition_2:::' \
+        -no-emul-boot \
+    /tmp/ubuntu-iso
 ```
 
 Write the custom ISO to a USB drive and plug it into the headless machine. It will install without any interaction.
@@ -268,16 +271,25 @@ EOF
 
 # Create TFTP directory structure
 sudo mkdir -p /srv/tftp/ubuntu-24.04
+
+# Install the PXELINUX bootloader and copy the required files into TFTP root
+sudo apt install pxelinux syslinux-common -y
+sudo cp /usr/lib/PXELINUX/pxelinux.0 /srv/tftp/
+sudo cp /usr/lib/syslinux/modules/bios/ldlinux.c32 /srv/tftp/
 ```
 
-Copy Ubuntu netboot files to the TFTP server:
+Copy Ubuntu kernel and initrd from the live ISO to the TFTP server, and serve the ISO itself over HTTP so the casper initrd can fetch the live filesystem during install:
 
 ```bash
-# Extract netboot kernel and initrd from the ISO
+# Extract kernel and initrd from the ISO
 sudo mount ubuntu-24.04-live-server-amd64.iso /mnt
 sudo cp /mnt/casper/vmlinuz /srv/tftp/ubuntu-24.04/
 sudo cp /mnt/casper/initrd /srv/tftp/ubuntu-24.04/
 sudo umount /mnt
+
+# Serve the ISO over HTTP (referenced by url= below)
+sudo mkdir -p /srv/http
+sudo cp ubuntu-24.04-live-server-amd64.iso /srv/http/
 ```
 
 Create PXE boot configuration:
@@ -289,7 +301,7 @@ DEFAULT ubuntu-autoinstall
 LABEL ubuntu-autoinstall
   KERNEL ubuntu-24.04/vmlinuz
   INITRD ubuntu-24.04/initrd
-  APPEND autoinstall ds=nocloud-net;s=http://192.168.1.10:8080/ ip=dhcp quiet ---
+  APPEND autoinstall ds=nocloud-net;s=http://192.168.1.10:8080/ url=http://192.168.1.10/ubuntu-24.04-live-server-amd64.iso ip=dhcp quiet ---
 EOF
 ```
 
