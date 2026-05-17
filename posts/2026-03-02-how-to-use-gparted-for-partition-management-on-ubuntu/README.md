@@ -27,14 +27,20 @@ sudo gparted
 For filesystem-specific operations, install the relevant filesystem tools:
 
 ```bash
-# Install support for various filesystem types
+# Install support for various filesystem types:
+# ntfs-3g    - NTFS
+# exfatprogs - exFAT
+# hfsprogs   - HFS+
+# f2fs-tools - F2FS
+# btrfs-progs - Btrfs
+# xfsprogs   - XFS
 sudo apt-get install -y \
-  ntfs-3g \          # NTFS support
-  exfat-fuse \       # exFAT support
-  hfsprogs \         # HFS+ support
-  f2fs-tools \       # F2FS support
-  btrfs-progs \      # Btrfs support
-  xfsprogs           # XFS support
+  ntfs-3g \
+  exfatprogs \
+  hfsprogs \
+  f2fs-tools \
+  btrfs-progs \
+  xfsprogs
 ```
 
 GParted automatically detects which filesystem tools are available and enables operations accordingly.
