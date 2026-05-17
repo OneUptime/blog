@@ -71,19 +71,21 @@ machine:
 
 Resource reservations are critical in production. Without them, your pods can consume all available resources on the node, starving the kubelet and other system processes. This can lead to nodes becoming unresponsive.
 
-### Container Runtime Settings
+### Image Garbage Collection
 
 ```yaml
 machine:
   kubelet:
     extraArgs:
-      # Set the container runtime endpoint
-      container-runtime-endpoint: "unix:///var/run/containerd/containerd.sock"
-      # Configure the image service endpoint
-      image-service-endpoint: "unix:///var/run/containerd/containerd.sock"
-      # Set the maximum number of containers per pod
-      max-container-count: "50"
+      # Start image garbage collection at 85% disk usage
+      image-gc-high-threshold: "85"
+      # Stop image garbage collection at 80% disk usage
+      image-gc-low-threshold: "80"
+      # Set the runtime request timeout
+      runtime-request-timeout: "5m"
 ```
+
+Note that Talos manages the container runtime endpoint itself, so `container-runtime-endpoint` is rejected if set in `extraArgs`.
 
 ### Logging and Debugging
 
@@ -93,11 +95,13 @@ machine:
     extraArgs:
       # Increase log verbosity for debugging
       v: "4"
-      # Set log directory
-      log-dir: /var/log/kubelet
-      # Enable logging to stderr
-      logtostderr: "true"
+      # Restrict log output to a specific component (vmodule pattern)
+      vmodule: "kubelet*=4"
+      # Control how often log buffers are flushed
+      log-flush-frequency: "5s"
 ```
+
+Note that in newer Kubernetes versions (1.26+), klog-specific flags like `--logtostderr` and `--log-dir` were removed. Only `--v`, `--vmodule`, and `--log-flush-frequency` are still available for controlling kubelet logging.
 
 ## Using extraConfig for KubeletConfiguration
 
