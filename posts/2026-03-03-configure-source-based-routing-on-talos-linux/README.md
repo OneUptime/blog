@@ -31,6 +31,8 @@ Source-based routing fixes this. It says: "If the source address of this packet 
 
 ### Basic Two-Interface Setup
 
+Talos 1.13 introduced the `RoutingRuleConfig` multi-document machine config for declaring Linux policy routing rules. Rules live in their own top-level documents (separated by `---`) rather than nested under an interface. The `name` field of the document is the rule priority and must be unique.
+
 Here is a complete Talos machine configuration for a node with two interfaces, each needing source-based routing:
 
 ```yaml
@@ -42,46 +44,41 @@ machine:
         addresses:
           - 192.168.1.10/24
         routes:
-          # Default route (used when no source-based rule matches)
           - network: 0.0.0.0/0
             gateway: 192.168.1.1
-          # Same default route in a custom table
-          - network: 0.0.0.0/0
-            gateway: 192.168.1.1
-            table: 100
-          # Connected network route in custom table
-          - network: 192.168.1.0/24
-            table: 100
-        routingRules:
-          # Traffic from eth0's IP uses table 100
-          - from: 192.168.1.10/32
-            table: 100
-            priority: 100
-
       # Secondary network interface
       - interface: eth1
         addresses:
           - 10.0.0.10/24
         routes:
-          # Default route for this interface in its own table
+          # Higher metric so this default is the backup, not the primary
           - network: 0.0.0.0/0
             gateway: 10.0.0.1
-            table: 200
-          # Connected network route in custom table
-          - network: 10.0.0.0/24
-            table: 200
-        routingRules:
-          # Traffic from eth1's IP uses table 200
-          - from: 10.0.0.10/32
-            table: 200
-            priority: 200
-
+            metric: 200
   sysctls:
     # Use loose reverse path filtering for multi-homed setup
     net.ipv4.conf.all.rp_filter: "2"
     net.ipv4.conf.default.rp_filter: "2"
     net.ipv4.ip_forward: "1"
+---
+# Traffic sourced from eth0's IP looks up table 100
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "100"
+src: 192.168.1.10/32
+table: "100"
+action: unicast
+---
+# Traffic sourced from eth1's IP looks up table 200
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "200"
+src: 10.0.0.10/32
+table: "200"
+action: unicast
 ```
+
+Note: `RoutingRuleConfig` only declares the policy rule itself. Talos does not currently expose a way to populate routes in custom (non-main) tables through machine configuration. For the rules above to direct traffic to a specific gateway, tables `100` and `200` need to be populated with routes (for example, by an in-cluster operator or a post-boot script that runs `ip route add` on each node). If a rule looks up an empty table, the kernel falls through to the next rule.
 
 ### What This Configuration Does
 
@@ -160,7 +157,7 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
 
 ## Source-Based Routing with VLANs
 
-If your Talos node uses VLANs, each VLAN can have its own source-based routing:
+If your Talos node uses VLANs, each VLAN can be targeted by its own `RoutingRuleConfig`:
 
 ```yaml
 machine:
@@ -176,25 +173,23 @@ machine:
           - vlanId: 100
             addresses:
               - 10.100.0.10/24
-            routes:
-              - network: 0.0.0.0/0
-                gateway: 10.100.0.1
-                table: 100
-            routingRules:
-              - from: 10.100.0.10/32
-                table: 100
-                priority: 100
           - vlanId: 200
             addresses:
               - 10.200.0.10/24
-            routes:
-              - network: 0.0.0.0/0
-                gateway: 10.200.0.1
-                table: 200
-            routingRules:
-              - from: 10.200.0.10/32
-                table: 200
-                priority: 200
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "100"
+src: 10.100.0.10/32
+table: "100"
+action: unicast
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "200"
+src: 10.200.0.10/32
+table: "200"
+action: unicast
 ```
 
 ## Source-Based Routing for Kubernetes Services
@@ -209,14 +204,6 @@ machine:
       - interface: eth0
         addresses:
           - 203.0.113.10/24
-        routes:
-          - network: 0.0.0.0/0
-            gateway: 203.0.113.1
-            table: 100
-        routingRules:
-          - from: 203.0.113.10/32
-            table: 100
-            priority: 100
       # Internal cluster interface
       - interface: eth1
         addresses:
@@ -226,9 +213,16 @@ machine:
             gateway: 10.0.0.1
           - network: 10.0.0.0/8
             gateway: 10.0.0.1
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "100"
+src: 203.0.113.10/32
+table: "100"
+action: unicast
 ```
 
-When a LoadBalancer service binds to the public IP (203.0.113.10), response traffic will correctly route through eth0 back to the internet-facing gateway.
+When a LoadBalancer service binds to the public IP (203.0.113.10), the rule above directs response traffic to table 100. Table 100 must hold a default route via 203.0.113.1 (added out-of-band — see the note in the basic setup section) so the reply leaves through eth0 to the internet-facing gateway.
 
 ## Handling Multiple IPs on the Same Interface
 
@@ -245,14 +239,21 @@ machine:
         routes:
           - network: 0.0.0.0/0
             gateway: 192.168.1.1
-        routingRules:
-          # Both IPs use the same table since they share the same gateway
-          - from: 192.168.1.10/32
-            table: 100
-            priority: 100
-          - from: 192.168.1.11/32
-            table: 100
-            priority: 101
+---
+# Both IPs use the same table since they share the same gateway
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "100"
+src: 192.168.1.10/32
+table: "100"
+action: unicast
+---
+apiVersion: v1alpha1
+kind: RoutingRuleConfig
+name: "101"
+src: 192.168.1.11/32
+table: "100"
+action: unicast
 ```
 
 ## The Reverse Path Filter Setting
@@ -308,11 +309,17 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
 
 ### Rules Not Persisting After Reboot
 
-If routing rules disappear after a reboot, they are not properly configured in the machine configuration. Verify:
+If routing rules disappear after a reboot, they are not properly configured in the machine configuration. Verify the applied `RoutingRuleConfig` documents and the rules Talos has materialized:
 
 ```bash
-# Check the applied configuration
-talosctl get machineconfig --nodes 192.168.1.10 -o yaml | grep -A20 "routingRules"
+# Inspect the applied machine configuration
+talosctl --nodes 192.168.1.10 get machineconfig -o yaml
+
+# Inspect the routing rule resources Talos manages via COSI
+talosctl --nodes 192.168.1.10 get routingrules
+
+# Or read the kernel's view of the rules directly
+talosctl --nodes 192.168.1.10 read /proc/net/fib_rules
 ```
 
 ## Conclusion
