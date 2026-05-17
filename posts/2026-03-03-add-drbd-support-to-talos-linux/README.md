@@ -28,28 +28,9 @@ Key characteristics of DRBD:
 
 Talos Linux provides DRBD as a system extension. The extension includes the DRBD kernel module compiled against the Talos kernel.
 
-### Machine Configuration
-
-Add the DRBD extension to your worker node configuration.
-
-```yaml
-# worker.yaml
-
-machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/drbd:9.2.6-v1.7.0
-  kernel:
-    modules:
-      - name: drbd
-        parameters:
-          - usermode_helper=disabled
-      - name: drbd_transport_tcp
-```
-
-The `usermode_helper=disabled` parameter is important for Talos because the OS does not have a standard userspace environment for DRBD helper scripts.
-
 ### Using Image Factory
+
+In Talos Linux 1.5 and later, system extensions are no longer applied via `machine.install.extensions`. Instead, you bake them into a custom installer image using the Image Factory, then point `machine.install.image` at that installer.
 
 ```bash
 # Create a schematic with DRBD
@@ -69,6 +50,27 @@ SCHEMATIC_ID=$(curl -sX POST \
 echo "Installer: factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0"
 ```
 
+### Machine Configuration
+
+Reference the factory-built installer and load the DRBD kernel modules on your worker nodes.
+
+```yaml
+# worker.yaml
+
+machine:
+  install:
+    # Installer image built via the Image Factory above
+    image: factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0
+  kernel:
+    modules:
+      - name: drbd
+        parameters:
+          - usermode_helper=disabled
+      - name: drbd_transport_tcp
+```
+
+The `usermode_helper=disabled` parameter is important for Talos because the OS does not have a standard userspace environment for DRBD helper scripts.
+
 ## Applying the Configuration
 
 Apply the DRBD extension to your nodes and upgrade.
@@ -79,10 +81,10 @@ for node in 10.0.0.20 10.0.0.21 10.0.0.22; do
   talosctl -n $node apply-config --file worker.yaml
 done
 
-# Upgrade each node to apply extensions
+# Upgrade each node to the factory-built installer that includes the DRBD extension
 for node in 10.0.0.20 10.0.0.21 10.0.0.22; do
   talosctl -n $node upgrade \
-    --image ghcr.io/siderolabs/installer:v1.7.0
+    --image factory.talos.dev/installer/${SCHEMATIC_ID}:v1.7.0
   # Wait for node to be ready
   echo "Waiting for $node to come back..."
   sleep 60
@@ -123,9 +125,22 @@ helm repo update
 # Install the LINSTOR operator
 helm install linstor-operator piraeus-charts/piraeus-operator \
   --namespace piraeus-system \
-  --create-namespace \
-  --set operator.controller.enabled=true \
-  --set operator.csi.enabled=true
+  --create-namespace
+```
+
+The Piraeus Operator v2 only deploys its own controller pod from the Helm chart. Apply a `LinstorCluster` resource to have the operator roll out the LINSTOR controller and CSI driver.
+
+```yaml
+# linstor-cluster.yaml
+apiVersion: piraeus.io/v1
+kind: LinstorCluster
+metadata:
+  name: linstorcluster
+spec: {}
+```
+
+```bash
+kubectl apply -f linstor-cluster.yaml
 ```
 
 ### Configuring LINSTOR Satellite Nodes
@@ -185,7 +200,6 @@ provisioner: linstor.csi.linbit.com
 parameters:
   linstor.csi.linbit.com/storagePool: pool1
   linstor.csi.linbit.com/placementCount: "2"  # Replicate to 2 nodes
-  linstor.csi.linbit.com/autoPlace: "2"
   csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
@@ -255,12 +269,21 @@ Monitor the replication status of your DRBD resources.
 kubectl exec -it -n piraeus-system deploy/linstor-controller -- \
   linstor resource list
 
-# Check DRBD connection status on a node
+# Check the DRBD module version on a node (DRBD 9 /proc/drbd only reports version info)
 talosctl -n 10.0.0.20 read /proc/drbd
 
-# The output shows connection state and sync progress
-# version: 9.2.6
-#  0: cs:Connected ro:Primary/Secondary ds:UpToDate/UpToDate
+# Expected output (DRBD 9):
+# version: 9.2.6 (api:2/proto:118-122)
+# GIT-hash: ... build by @buildkitsandbox, ...
+
+# For per-resource state in DRBD 9, run drbdsetup status from inside the LINSTOR satellite pod
+kubectl exec -n piraeus-system <linstor-satellite-pod> -- drbdsetup status --verbose
+
+# Example output:
+# myresource role:Primary
+#   disk:UpToDate
+#   peer-node role:Secondary
+#     replication:Established peer-disk:UpToDate
 ```
 
 ## DRBD Performance Tuning
