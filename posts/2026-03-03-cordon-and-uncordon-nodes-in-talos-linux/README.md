@@ -158,7 +158,7 @@ talosctl apply-config --nodes <node-ip> --file new-config.yaml
 # If a reboot is needed, the cordoned state persists across reboots
 ```
 
-Resource Pressure Situations
+### Resource Pressure Situations
 
 If a node is running low on resources, cordoning prevents the scheduler from making things worse:
 
