@@ -33,7 +33,7 @@ The fundamental difference between Ubuntu Server and Desktop is what gets instal
 
 Both editions use the same Ubuntu repositories, so you can install anything from either starting point. The difference is purely what ships by default.
 
-Resource Usage Comparison
+## Resource Usage Comparison
 
 This matters if you are constrained on RAM or disk, or if you want to minimize attack surface.
 
@@ -102,8 +102,7 @@ You can install a desktop environment on Ubuntu Server at any time:
 
 ```bash
 # Install minimal GNOME (no extra apps)
-
-sudo apt install ubuntu-gnome-desktop --no-install-recommends
+sudo apt install ubuntu-desktop-minimal
 
 # Install full GNOME desktop
 sudo apt install ubuntu-desktop
@@ -170,7 +169,7 @@ Fewer running services on Server means:
 
 This applies to both editions, but is more important for servers. Always use LTS (Long Term Support) releases for production:
 
-- LTS releases: 24.04, 22.04, 20.04 - supported for 5 years standard, 10 years with Ubuntu Pro
+- LTS releases: 24.04, 22.04, 20.04 - supported for 5 years standard, up to 12 years with Ubuntu Pro
 - Standard releases: 24.10, 25.04 - supported for 9 months only
 
 Desktop users might want the latest features from standard releases. Server administrators almost always want LTS for stability and long support windows.
