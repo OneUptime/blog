@@ -34,7 +34,7 @@ sudo apt install linux-tools-generic -y
 `perf` requires certain privileges:
 
 ```bash
-# Check paranoia level (0=most permissive, 4=most restrictive)
+# Check paranoia level (-1=most permissive; 2 is upstream max, Ubuntu adds 3 and 4)
 cat /proc/sys/kernel/perf_event_paranoid
 ```
 
@@ -78,7 +78,7 @@ perf report
 perf report --stdio
 
 # Non-interactive with call graph
-perf report --call-graph --stdio | head -100
+perf report -g --stdio | head -100
 ```
 
 The report shows percentages of CPU time per symbol (function):
@@ -201,7 +201,7 @@ perf trace ls /tmp
 sudo perf trace -p 1234
 
 # Summary of syscall counts and time
-sudo perf trace -s -p 1234 sleep 10
+sudo perf trace -s -p 1234
 ```
 
 ## Using perf top (Real-Time Profiling)
@@ -215,8 +215,8 @@ sudo perf top
 # Profile a specific process
 sudo perf top -p $(pgrep myapp)
 
-# Increase sampling frequency (higher overhead)
-sudo perf top -F 1000
+# Increase sampling frequency above the default (higher overhead)
+sudo perf top -F 9999
 ```
 
 Press `a` to annotate assembly for the selected function, showing which instructions are hottest.
