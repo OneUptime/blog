@@ -77,8 +77,6 @@ machine:
                     weight: 1
                   - name: NodeResourcesFit
                     weight: 2
-                disabled:
-                  - name: NodeResourcesLeastAllocated
             pluginConfig:
               - name: NodeResourcesFit
                 args:
@@ -173,12 +171,13 @@ In this example, memory availability is weighted twice as heavily as CPU, which 
 
 ## Disabling the Scheduler
 
-In some specialized setups, you might want to disable the default scheduler entirely and use a custom scheduler deployed as a regular Kubernetes deployment. Talos supports disabling the built-in scheduler:
+In some specialized setups, you might want to disable the default scheduler entirely and use a custom scheduler deployed as a regular Kubernetes deployment. Talos supports disabling the built-in scheduler per node under `machine.controlPlane.scheduler`:
 
 ```yaml
-cluster:
-  scheduler:
-    disabled: true
+machine:
+  controlPlane:
+    scheduler:
+      disabled: true
 ```
 
 Only do this if you have a replacement scheduler ready to deploy through extra manifests or another mechanism.
@@ -202,9 +201,9 @@ The `percentage-of-nodes-to-score` flag tells the scheduler to evaluate only a p
 After configuring the scheduler, monitor its behavior to make sure it is working as expected:
 
 ```bash
-# Check scheduler logs on control plane nodes
-
-talosctl logs kube-scheduler --nodes 10.0.0.2
+# Check scheduler logs on control plane nodes (kube-scheduler is a static pod,
+# so the -k flag is required to query the Kubernetes CRI namespace)
+talosctl logs -k kube-scheduler --nodes 10.0.0.2
 
 # View scheduler events
 kubectl get events --field-selector reason=Scheduled -A
@@ -228,8 +227,9 @@ talosctl apply-config --nodes 10.0.0.2 --file controlplane.yaml
 talosctl apply-config --nodes 10.0.0.3 --file controlplane.yaml
 talosctl apply-config --nodes 10.0.0.4 --file controlplane.yaml
 
-# Verify the scheduler restarted
-talosctl service kube-scheduler --nodes 10.0.0.2
+# Verify the scheduler restarted (kube-scheduler runs as a static pod, not a
+# Talos system service, so check it through kubectl)
+kubectl get pods -n kube-system -l component=kube-scheduler
 ```
 
 The scheduler will restart automatically when the configuration changes. There may be a brief period where new pods are not scheduled while the scheduler restarts.
