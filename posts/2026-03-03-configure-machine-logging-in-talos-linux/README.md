@@ -46,7 +46,7 @@ machine:
 The configuration has two key fields:
 
 - **endpoint** - Where to send the logs. Supports both TCP and UDP protocols.
-- **format** - The log format. Options are `json_lines` and `json_lines` (Talos primarily uses JSON lines format).
+- **format** - The log format. Currently `json_lines` is the only supported value.
 
 ## Supported Protocols
 
@@ -97,12 +97,11 @@ The `json_lines` format produces one JSON object per line, which is the standard
   "talos-level": "info",
   "talos-service": "kubelet",
   "talos-time": "2024-01-15T10:30:45.123456Z",
-  "msg": "Starting kubelet",
-  "node": "192.168.1.10"
+  "msg": "Starting kubelet"
 }
 ```
 
-The fields include the severity level, the originating service, a timestamp, the actual log message, and the node identifier.
+The fields include the severity level, the originating service, a timestamp, and the actual log message. If you need additional identifiers such as the node IP or cluster name, you can attach them per destination using the `extraTags` field in the logging config.
 
 ## Integration with Popular Log Systems
 
@@ -147,24 +146,27 @@ mode = "tcp"
 decoding.codec = "json"
 ```
 
-### Loki with Promtail
+### Loki with Vector
 
-For Grafana Loki, you can use a syslog receiver or a TCP input through Promtail or Vector as an intermediary:
+Talos sends `json_lines`, not RFC 3164/5424 syslog, so Promtail's `syslog` input cannot parse it directly. The simplest path to Grafana Loki is to use Vector as an intermediary: it accepts the JSON stream over TCP and forwards it through Loki's push API:
 
-```yaml
-# Promtail configuration for receiving Talos logs
-server:
-  http_listen_port: 9080
+```toml
+# Vector configuration: receive Talos logs and push to Loki
+[sources.talos_logs]
+type = "socket"
+address = "0.0.0.0:5170"
+mode = "tcp"
+decoding.codec = "json"
 
-clients:
-  - url: http://loki:3100/loki/api/v1/push
+[sinks.loki]
+type = "loki"
+inputs = ["talos_logs"]
+endpoint = "http://loki:3100"
+encoding.codec = "json"
 
-scrape_configs:
-  - job_name: talos
-    syslog:
-      listen_address: 0.0.0.0:1514
-      labels:
-        job: talos
+[sinks.loki.labels]
+job = "talos"
+service = "{{ talos-service }}"
 ```
 
 ## Applying the Configuration
