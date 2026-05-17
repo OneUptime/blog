@@ -57,7 +57,7 @@ To watch counters in real time:
 
 ```bash
 # Watch iptables stats every 2 seconds
-watch -n 2 'iptables -L -n -v'
+watch -n 2 'sudo iptables -L -n -v'
 ```
 
 ## Logging Specific Traffic
@@ -65,7 +65,7 @@ watch -n 2 'iptables -L -n -v'
 Logging is the most powerful debugging technique. The LOG target writes to the kernel log (visible via `dmesg` or `journalctl`), which you can then grep and analyze.
 
 ```bash
-# Log all dropped packets
+# Log packets that fall through to the end of INPUT (about to hit the default policy)
 sudo iptables -A INPUT -j LOG --log-prefix "IPTABLES-DROP: " --log-level 4
 
 # Log traffic from a specific IP
@@ -134,7 +134,7 @@ sudo iptables -A INPUT -m state --state NEW -j LOG --log-prefix "NEW-CONN: "
 # Log invalid packets (often a sign of problems)
 sudo iptables -A INPUT -m state --state INVALID -j LOG --log-prefix "INVALID: "
 
-# Log packets from unexpected states
+# Log RELATED and ESTABLISHED traffic (very high volume - use only briefly for inspection)
 sudo iptables -A INPUT -m conntrack --ctstate RELATED,ESTABLISHED \
   -j LOG --log-prefix "RELATED-EST: " --log-level 7
 ```
