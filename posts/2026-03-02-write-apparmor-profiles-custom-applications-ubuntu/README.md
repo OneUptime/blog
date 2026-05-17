@@ -136,7 +136,7 @@ capability setfcap,
 # Allow all network access
 network,
 
-# Allow only outbound TCP over IPv4
+# Allow TCP sockets over IPv4
 network inet tcp,
 
 # Allow UDP
@@ -176,8 +176,8 @@ AppArmor provides pre-built abstraction snippets for common patterns. Including 
 # For applications that open a user interface
 #include <abstractions/X>
 
-# For desktop applications
-#include <abstractions/gnome>
+# For applications that use D-Bus
+#include <abstractions/dbus-session-strict>
 ```
 
 View available abstractions:
@@ -327,8 +327,8 @@ Here's a complete profile for a hypothetical web service:
 Before loading a profile, check it for syntax errors:
 
 ```bash
-# Parse and check for errors without loading
-sudo apparmor_parser -p /etc/apparmor.d/usr.local.bin.myapp
+# Parse and check for errors without loading into the kernel
+sudo apparmor_parser -Q /etc/apparmor.d/usr.local.bin.myapp
 
 # Parse, check, and load
 sudo apparmor_parser -r /etc/apparmor.d/usr.local.bin.myapp
