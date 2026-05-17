@@ -59,13 +59,14 @@ Check that WireGuard is active on each node:
 
 ```bash
 # Check Cilium encryption status
-kubectl -n kube-system exec ds/cilium -- cilium encrypt status
+# In Cilium 1.14+ the in-agent CLI is cilium-dbg
+kubectl -n kube-system exec ds/cilium -- cilium-dbg encrypt status
 
 # Expected output should show WireGuard is enabled
 # and list the number of peers
 
 # Verify WireGuard interfaces exist on nodes
-kubectl -n kube-system exec ds/cilium -- cilium encrypt status --verbose
+kubectl -n kube-system exec ds/cilium -- cilium-dbg encrypt status --verbose
 
 # Check that traffic is being encrypted
 # Run a test pod and capture traffic between nodes
@@ -120,39 +121,39 @@ machine:
                 - 10.10.0.2/32
                 # Node 2 pod CIDR
                 - 10.244.1.0/24
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             # Node 3
             - publicKey: "NODE3_PUBLIC_KEY"
               endpoint: 192.168.1.3:51820
               allowedIPs:
                 - 10.10.0.3/32
                 - 10.244.2.0/24
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             # Node 4
             - publicKey: "NODE4_PUBLIC_KEY"
               endpoint: 192.168.1.4:51820
               allowedIPs:
                 - 10.10.0.4/32
                 - 10.244.3.0/24
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
             # Node 5
             - publicKey: "NODE5_PUBLIC_KEY"
               endpoint: 192.168.1.5:51820
               allowedIPs:
                 - 10.10.0.5/32
                 - 10.244.4.0/24
-              persistentKeepalive: 25
+              persistentKeepaliveInterval: 25s
 ```
 
 ### Step 3: Apply to All Nodes
 
 ```bash
 # Apply WireGuard configuration to each node
-talosctl -n 192.168.1.1 patch machineconfig --patch-file wireguard-patch-node1.yaml
-talosctl -n 192.168.1.2 patch machineconfig --patch-file wireguard-patch-node2.yaml
-talosctl -n 192.168.1.3 patch machineconfig --patch-file wireguard-patch-node3.yaml
-talosctl -n 192.168.1.4 patch machineconfig --patch-file wireguard-patch-node4.yaml
-talosctl -n 192.168.1.5 patch machineconfig --patch-file wireguard-patch-node5.yaml
+talosctl -n 192.168.1.1 patch machineconfig --patch @wireguard-patch-node1.yaml
+talosctl -n 192.168.1.2 patch machineconfig --patch @wireguard-patch-node2.yaml
+talosctl -n 192.168.1.3 patch machineconfig --patch @wireguard-patch-node3.yaml
+talosctl -n 192.168.1.4 patch machineconfig --patch @wireguard-patch-node4.yaml
+talosctl -n 192.168.1.5 patch machineconfig --patch @wireguard-patch-node5.yaml
 ```
 
 ### Step 4: Configure CNI to Use WireGuard Addresses
@@ -176,7 +177,7 @@ In practice, the performance impact is small. On modern hardware, WireGuard can 
 
 ### MTU Settings
 
-The WireGuard overhead reduces the effective MTU. Set the WireGuard interface MTU to account for the WireGuard header (typically 60 bytes). If your physical interface has a 1500 byte MTU, set the WireGuard MTU to 1420.
+The WireGuard overhead reduces the effective MTU. Set the WireGuard interface MTU to account for the WireGuard header (60 bytes over an IPv4 transport, 80 bytes over IPv6). If your physical interface has a 1500 byte MTU, a safe default that works for both transports is 1420.
 
 ```yaml
 # Correct MTU setting for WireGuard
@@ -199,8 +200,9 @@ WireGuard uses SIMD instructions on modern CPUs, which makes encryption very eff
 Once WireGuard is encrypting your pod traffic, you will want to monitor the tunnel status to catch issues early.
 
 ```bash
-# Check WireGuard interface statistics
-talosctl -n 192.168.1.1 read /proc/net/wireguard
+# Inspect the WireGuard link status (peer state lives in COSI resources,
+# not in /proc — WireGuard exposes its state via generic netlink)
+talosctl -n 192.168.1.1 get links wg0 -o yaml
 
 # The output shows for each peer:
 # - Public key
@@ -209,7 +211,7 @@ talosctl -n 192.168.1.1 read /proc/net/wireguard
 # - Transfer bytes (rx/tx)
 # - Allowed IPs
 
-# Monitor transfer rates over time
+# Monitor link state over time
 # Run this periodically to track traffic patterns
 talosctl -n 192.168.1.1 get links | grep wg0
 ```
