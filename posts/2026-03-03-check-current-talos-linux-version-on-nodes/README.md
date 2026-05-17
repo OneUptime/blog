@@ -64,50 +64,39 @@ talosctl version --nodes 192.168.1.10 --short
 talosctl version --nodes 192.168.1.10 2>/dev/null | grep "Tag:" | tail -1 | awk '{print $2}'
 
 # For JSON output that is easier to parse programmatically
-talosctl version --nodes 192.168.1.10 -o json
+talosctl version --nodes 192.168.1.10 --json
 ```
 
 ## Using talosctl get Resource Commands
 
-Talos exposes version information through its resource API:
+Talos exposes a number of resources through its COSI-based resource API. While the `talosctl version` command is the canonical way to read the running version, you can inspect related runtime state through `talosctl get`:
 
 ```bash
-# Get the machine version resource
+# Show overall machine status (stage and readiness)
 talosctl get machinestatus --nodes 192.168.1.10 -o yaml
 
-# This includes the Talos version along with other system status information
-```
-
-You can also check the META partition, which stores the installed version:
-
-```bash
-# Check metadata that includes version information
+# List keys stored in the META partition (used for upgrade state and similar metadata)
 talosctl get meta --nodes 192.168.1.10
 ```
 
-## Checking via Kubernetes Node Labels
+These resources are useful for understanding the broader runtime context around an upgrade, even though the version string itself is read via `talosctl version`.
 
-Talos Linux sets labels on Kubernetes nodes that include version information:
+## Checking via Kubernetes Node Labels and Annotations
+
+Talos does not automatically attach a label that contains its own version to Kubernetes nodes, but you can configure custom labels in the machine config (under `machine.nodeLabels`) or annotations (under `machine.nodeAnnotations`) and have them propagated to the node object. If you adopt this convention, you can then read them back with `kubectl`:
 
 ```bash
-# Get node labels that include Talos version
-kubectl get nodes --show-labels | grep talos
-
-# Filter for specific Talos-related labels
-kubectl get nodes -o custom-columns=\
-NAME:.metadata.name,\
-TALOS_VERSION:.metadata.labels.node\\.kubernetes\\.io/instance-type
+# Show all labels on each node
+kubectl get nodes --show-labels
 
 # Get all labels on a specific node
 kubectl describe node worker-01 | grep -A 20 Labels
-```
 
-Talos also sets annotations on nodes:
-
-```bash
-# Check node annotations for version info
+# Read node annotations
 kubectl get node worker-01 -o jsonpath='{.metadata.annotations}' | jq .
 ```
+
+If you have not configured custom version labels, the most reliable Kubernetes-side view of the Talos version comes from the kubelet-reported OS image, covered in the next section.
 
 ## Checking via the Kubernetes API
 
