@@ -70,7 +70,7 @@ data:
     .:53 {
         errors
         health {
-           lazystart
+           lameduck 5s
         }
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -112,7 +112,7 @@ data:
     .:53 {
         errors
         health {
-           lazystart
+           lameduck 5s
         }
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -192,7 +192,7 @@ For better privacy, you can forward queries using DNS-over-TLS (DoT):
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -366,7 +366,7 @@ corp.example.com:53 {
 }
 ```
 
-With these settings, CoreDNS will check each upstream every 5 seconds. After 3 consecutive failures, it marks the server as down and skips it for 30 seconds before trying again.
+With these settings, CoreDNS will check each upstream every 5 seconds. After 3 consecutive failed health checks, it marks the server as down and stops sending queries to it until subsequent health checks succeed. The `expire 30s` setting controls how long idle upstream connections are cached before being closed, which helps prevent TCP exhaustion.
 
 ## Wrapping Up
 
