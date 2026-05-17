@@ -45,7 +45,7 @@ echo "deb https://packages.smallstep.com/stable/deb/ any main" | \
     sudo tee /etc/apt/sources.list.d/smallstep.list
 
 sudo apt update
-sudo apt install step-cli step-certificates
+sudo apt install step-cli step-ca
 ```
 
 ## Initializing the Certificate Authority
@@ -60,13 +60,13 @@ sudo chown step:step /etc/step-ca
 
 # Initialize the CA as the step user
 # This creates the CA root key, intermediate key, and config
-sudo -u step step ca init \
+# STEPPATH controls where the CA files are written
+sudo -u step STEPPATH=/etc/step-ca step ca init \
     --name "Internal CA" \
     --dns "ca.internal.example.com" \
     --address ":9000" \
     --provisioner admin@example.com \
-    --deployment-type standalone \
-    --home /etc/step-ca
+    --deployment-type standalone
 
 # You'll be prompted to:
 # 1. Confirm the CA configuration
@@ -79,14 +79,16 @@ After initialization, the CA structure is:
 ```text
 /etc/step-ca/
 ├── certs/
-│   ├── root_ca.crt          # Root CA certificate (share this with clients)
-│   └── intermediate_ca.crt  # Intermediate CA certificate
+│   ├── root_ca.crt              # Root CA certificate (share this with clients)
+│   └── intermediate_ca.crt      # Intermediate CA certificate
 ├── config/
-│   └── ca.json              # Main CA configuration
-├── db/                      # Certificate database
+│   ├── ca.json                  # Main CA configuration
+│   └── defaults.json            # Default CLI settings for this CA
+├── db/                          # Certificate database
 ├── secrets/
-│   └── root_ca_key          # Encrypted root CA private key
-└── templates/               # Certificate templates
+│   ├── root_ca_key              # Encrypted root CA private key
+│   └── intermediate_ca_key      # Encrypted intermediate CA private key
+└── templates/                   # Certificate templates
 ```
 
 ## Creating a systemd Service
@@ -265,15 +267,15 @@ acme.sh --issue \
     --server https://ca.internal.example.com:9000/acme/acme/directory
 ```
 
-## Viewing the CA's Issued Certificates
+## Revoking Certificates
+
+step-ca does not ship a built-in CLI command to list every certificate it has
+issued - the issuance log lives in the CA's badger database under `db/` and is
+typically inspected via your monitoring/logging pipeline. Revocation, however,
+is a first-class CLI operation:
 
 ```bash
-# List certificates issued by the CA
-step ca certificate list \
-    --ca-url https://ca.internal.example.com:9000 \
-    --root /etc/step-ca/certs/root_ca.crt
-
-# Revoke a certificate if compromised
+# Revoke a certificate if compromised, using the cert and key
 step ca revoke --ca-url https://ca.internal.example.com:9000 \
     --cert service.crt --key service.key
 
