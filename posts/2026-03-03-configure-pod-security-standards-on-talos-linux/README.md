@@ -305,8 +305,13 @@ kubectl apply -f my-deployment.yaml -n staging
 ### Checking Violations
 
 ```bash
-# See audit violations in API server logs
-talosctl -n 10.0.1.10 logs kube-apiserver | grep "pod-security"
+# Audit-mode violations are recorded as annotations on the Kubernetes audit log
+# (key: pod-security.kubernetes.io/audit-violations). This requires the API
+# server to be running with an audit policy that captures at least Metadata-level
+# events for pod-creating resources.
+
+# Enforce-mode rejections and warnings are visible in the kube-apiserver logs:
+talosctl -n 10.0.1.10 logs kube-apiserver | grep -i "pod-security"
 
 # Check warnings for existing workloads
 kubectl get pods -n staging -o yaml | \
@@ -394,7 +399,10 @@ cluster:
               - metallb-system
               - storage-system
             usernames:
-              - system:serviceaccount:kube-system:*
+              # Exact match only — PSA does not support wildcards.
+              # Enumerate each service account explicitly.
+              - system:serviceaccount:kube-system:daemon-set-controller
+              - system:serviceaccount:kube-system:replicaset-controller
 ```
 
 ## Conclusion
