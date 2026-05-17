@@ -88,12 +88,15 @@ global:
   redis:
     host: gitlab-redis.gitlab.svc.cluster.local
     port: 6379
-    password:
+    auth:
       enabled: true
       secret: gitlab-redis-secret
       key: password
   # MinIO for object storage
   minio:
+    enabled: true
+  # KAS (Kubernetes Agent Server) is enabled here at the global level
+  kas:
     enabled: true
   time_zone: UTC
   email:
@@ -136,8 +139,6 @@ gitlab:
           enabled: true
           storageClass: local-path
           size: 50Gi
-  kas:
-    enabled: true
   gitlab-shell:
     minReplicas: 1
 
@@ -399,15 +400,15 @@ Monitor GitLab health through its built-in endpoints:
 
 ```bash
 # Check GitLab health
-kubectl exec -it deploy/gitlab-webservice -n gitlab -- \
+kubectl exec -it deploy/gitlab-webservice-default -n gitlab -- \
   curl -s http://localhost:8080/-/health
 
 # Check readiness
-kubectl exec -it deploy/gitlab-webservice -n gitlab -- \
+kubectl exec -it deploy/gitlab-webservice-default -n gitlab -- \
   curl -s http://localhost:8080/-/readiness
 
 # View Sidekiq queues
-kubectl exec -it deploy/gitlab-sidekiq -n gitlab -- \
+kubectl exec -it deploy/gitlab-sidekiq-all-in-1-v2 -n gitlab -- \
   bundle exec rails runner "puts Sidekiq::Stats.new.inspect"
 ```
 
