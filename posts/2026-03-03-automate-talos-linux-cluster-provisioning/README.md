@@ -55,10 +55,10 @@ fi
 
 # Generate base configuration from secrets
 talosctl gen config "${CLUSTER_NAME}" "${CLUSTER_ENDPOINT}" \
-    --from "${OUTPUT_DIR}/secrets.yaml" \
+    --with-secrets "${OUTPUT_DIR}/secrets.yaml" \
     --kubernetes-version "${KUBERNETES_VERSION}" \
     --install-image "ghcr.io/siderolabs/installer:${TALOS_VERSION}" \
-    --output-dir "${OUTPUT_DIR}/base"
+    --output "${OUTPUT_DIR}/base"
 
 echo "Base configuration generated"
 ```
@@ -145,20 +145,20 @@ done
 
 For bare metal provisioning, set up a PXE boot environment:
 
-```yaml
-# matchbox/groups/talos-controlplane.json
+```json
+// matchbox/groups/talos-controlplane.json
 {
   "id": "talos-controlplane",
   "name": "Talos Control Plane",
   "profile": "talos-controlplane",
   "selector": {
-    "mac": "00:11:22:33:44:*"
+    "mac": "00:11:22:33:44:55"
   }
 }
 ```
 
-```yaml
-# matchbox/profiles/talos-controlplane.json
+```json
+// matchbox/profiles/talos-controlplane.json
 {
   "id": "talos-controlplane",
   "name": "Talos Control Plane",
@@ -280,7 +280,7 @@ done
 
 # Get kubeconfig
 echo "=== Retrieving kubeconfig ==="
-talosctl kubeconfig --nodes "${FIRST_CP}" -f "${OUTPUT_DIR}/kubeconfig"
+talosctl kubeconfig --nodes "${FIRST_CP}" --force "${OUTPUT_DIR}/kubeconfig"
 export KUBECONFIG="${OUTPUT_DIR}/kubeconfig"
 
 # Wait for Kubernetes API
