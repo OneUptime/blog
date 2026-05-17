@@ -30,7 +30,7 @@ If you are building an appliance or IoT gateway that will receive OTA updates an
 
 Ubuntu Core 24 supports:
 
-- Raspberry Pi 2/3/4/5 (armhf and arm64)
+- Raspberry Pi 2 (v1.2+), 3, 4, 5, Zero 2 W, and CM3/3+/4/5 (arm64 only on Core 24)
 - Intel and AMD x86_64 systems (including NUC, industrial PCs)
 - ARM-based development boards (limited)
 - Custom boards via Ubuntu Core Build Service
@@ -42,7 +42,7 @@ The full list of tested hardware and certified devices is at certification.ubunt
 Ubuntu Core requires an Ubuntu One account for initial setup. The system uses your SSH public keys registered with Ubuntu One to authenticate during first-boot setup.
 
 1. Create an account at login.ubuntu.com
-2. Add your SSH public key at ubuntu.com/login (SSH keys section)
+2. Add your SSH public key at login.ubuntu.com/ssh-keys
 
 This is required - Ubuntu Core has no default password and no way to log in without an Ubuntu One account's associated SSH keys.
 
@@ -160,12 +160,12 @@ Snaps run in confinement (AppArmor/seccomp sandbox). Interfaces declare what res
 
 ```bash
 # List interfaces (permissions) for a snap
-snap interfaces mosquitto
+snap connections mosquitto
 
 # Connect an interface manually
 snap connect mosquitto:network-bind
 
-# List all available interfaces
+# List all connections across the system
 snap connections
 ```
 
@@ -236,7 +236,7 @@ snap refresh --list
 sudo snap refresh
 
 # Configure update schedule (Core 20+)
-sudo snap set system refresh.schedule="00:00-04:00/mon-fri"
+sudo snap set system refresh.timer="mon-fri,00:00-04:00"
 
 # Hold updates for testing
 sudo snap refresh --hold=48h my-app
@@ -252,9 +252,9 @@ sudo snap revert my-app
 snap changes
 ```
 
-## Remote Management with Ubuntu IoT Device Management
+## Remote Management with Landscape
 
-Canonical provides the IoT Device Management portal (formerly known as Landscape for IoT) for managing fleets of Ubuntu Core devices. For smaller fleets, direct SSH management works fine.
+Canonical provides Landscape for managing fleets of Ubuntu devices, with Ubuntu Core support added in the Core 24 release cycle. For smaller fleets, direct SSH management works fine.
 
 ### Serial Console for Headless Recovery
 
