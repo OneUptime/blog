@@ -8,7 +8,7 @@ Description: A detailed guide to enabling and configuring machine features in Ta
 
 ---
 
-Talos Linux has a set of optional machine features that you can toggle on or off depending on your needs. These features control things like RBAC for the Talos API, disk encryption, KubePrism for local API server load balancing, host DNS forwarding, and more. Some of these are enabled by default in newer versions of Talos, while others need to be explicitly turned on.
+Talos Linux has a set of optional machine features that you can toggle on or off depending on your needs. These features control things like RBAC for the Talos API, KubePrism for local API server load balancing, host DNS forwarding, and more. Some of these are enabled by default in newer versions of Talos, while others need to be explicitly turned on. We also cover disk encryption here, which is closely related but lives in its own top-level configuration section.
 
 Understanding and properly configuring these features is important for both security and functionality. This guide walks through each available machine feature, explains what it does, and shows you how to configure it.
 
@@ -106,23 +106,22 @@ This is particularly useful when your nodes need to resolve Kubernetes service n
 
 ## Disk Encryption
 
-Talos supports encrypting the state and ephemeral partitions using LUKS2. This is configured through the machine features section:
+Talos supports encrypting the state and ephemeral partitions using LUKS2. This is configured through the `machine.systemDiskEncryption` section (a separate top-level field under `machine`, not under `machine.features`):
 
 ```yaml
-# Enable disk encryption for the state partition
+# Enable disk encryption for the state and ephemeral partitions
 machine:
-  features:
-    diskEncryption:
-      state:
-        provider: luks2
-        keys:
-          - nodeID: {}
-            slot: 0
-      ephemeral:
-        provider: luks2
-        keys:
-          - nodeID: {}
-            slot: 0
+  systemDiskEncryption:
+    state:
+      provider: luks2
+      keys:
+        - nodeID: {}
+          slot: 0
+    ephemeral:
+      provider: luks2
+      keys:
+        - nodeID: {}
+          slot: 0
 ```
 
 The `nodeID` key provider derives the encryption key from the node's unique identity. This means the disk can only be decrypted on the same physical machine, which protects against someone pulling a disk from one server and reading it on another.
@@ -132,18 +131,17 @@ For more advanced setups, you can use TPM-based keys:
 ```yaml
 # Disk encryption with TPM
 machine:
-  features:
-    diskEncryption:
-      state:
-        provider: luks2
-        keys:
-          - tpm: {}
-            slot: 0
-      ephemeral:
-        provider: luks2
-        keys:
-          - tpm: {}
-            slot: 0
+  systemDiskEncryption:
+    state:
+      provider: luks2
+      keys:
+        - tpm: {}
+          slot: 0
+    ephemeral:
+      provider: luks2
+      keys:
+        - tpm: {}
+          slot: 0
 ```
 
 TPM-based encryption ties the decryption to the hardware TPM module, providing hardware-rooted security. The disk will only decrypt on the original hardware with the original TPM.
