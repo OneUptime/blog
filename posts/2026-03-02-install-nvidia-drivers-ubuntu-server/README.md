@@ -224,9 +224,13 @@ echo 'export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH' | sudo tee 
 source /etc/profile.d/cuda.sh
 
 # Test CUDA with a sample
-# If cuda-samples is installed:
-cd /usr/local/cuda/samples/1_Utilities/deviceQuery
-sudo make
+# CUDA samples are no longer bundled with the toolkit (since CUDA 11.6).
+# Clone them from GitHub:
+sudo apt install -y git cmake build-essential
+git clone https://github.com/NVIDIA/cuda-samples.git
+cd cuda-samples/Samples/1_Utilities/deviceQuery
+cmake .
+make
 ./deviceQuery
 ```
 
