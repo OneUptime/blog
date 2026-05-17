@@ -182,7 +182,7 @@ Generate the machine configuration:
 ```bash
 # Generate Talos config with VIP for the control plane
 talosctl gen config libvirt-cluster https://10.10.0.100:6443 \
-  --config-patch='[
+  --config-patch-control-plane='[
     {"op": "add", "path": "/machine/network/interfaces", "value": [
       {
         "interface": "eth0",
@@ -275,7 +275,8 @@ For infrastructure-as-code, use the libvirt Terraform provider:
 terraform {
   required_providers {
     libvirt = {
-      source = "dmacvicar/libvirt"
+      source  = "dmacvicar/libvirt"
+      version = "~> 0.8.0"
     }
   }
 }
