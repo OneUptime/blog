@@ -72,7 +72,8 @@ sudo nano /etc/ssh/sshd_config
 # Add or change this setting:
 GatewayPorts yes
 
-# Or allow only specific IPs to access the remote-forwarded port:
+# Or let the client choose the bind address with the -R flag
+# (e.g. ssh -R 0.0.0.0:2222:localhost:22 ... to bind to all interfaces):
 GatewayPorts clientspecified
 ```
 
@@ -149,7 +150,8 @@ WantedBy=multi-user.target
 
 ```bash
 # Create a dedicated user for the tunnel (no login shell needed)
-sudo useradd -r -s /bin/false tunnel-user
+# -m creates the home directory (system users don't get one by default)
+sudo useradd -r -m -s /bin/false tunnel-user
 
 # Generate an SSH key for this service user
 sudo -u tunnel-user ssh-keygen -t ed25519 -f /home/tunnel-user/.ssh/id_ed25519 -N ""
@@ -181,8 +183,10 @@ restrict,port-forwarding ssh-ed25519 AAAA... tunnel-user@home-machine
 Or more specifically:
 
 ```text
-no-pty,no-agent-forwarding,no-X11-forwarding,permitopen="localhost:2222" ssh-ed25519 AAAA... tunnel-user@home-machine
+no-pty,no-agent-forwarding,no-X11-forwarding,permitlisten="2222" ssh-ed25519 AAAA... tunnel-user@home-machine
 ```
+
+Note: use `permitlisten` (not `permitopen`) to restrict which port the server may listen on for reverse forwarding. `permitopen` restricts local (`-L`) forwarding destinations, which is a different thing.
 
 ## Forwarding a Web Service (Not Just SSH)
 
