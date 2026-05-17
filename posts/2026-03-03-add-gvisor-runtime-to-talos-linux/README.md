@@ -100,7 +100,7 @@ talosctl -n 10.0.0.20 get extensions
 talosctl -n 10.0.0.20 list /usr/local/bin/ | grep runsc
 
 # Verify containerd configuration includes the gVisor runtime
-talosctl -n 10.0.0.20 dmesg | grep gvisor
+talosctl -n 10.0.0.20 read /etc/cri/conf.d/runsc.toml
 ```
 
 ## Creating the RuntimeClass
@@ -310,7 +310,7 @@ machine:
           TypeUrl = "io.containerd.runsc.v1.options"
           ConfigPath = "/etc/gvisor/runsc.toml"
       permissions: 0o644
-      path: /var/cri/conf.d/gvisor.toml
+      path: /etc/cri/conf.d/gvisor.toml
       op: create
 ```
 
