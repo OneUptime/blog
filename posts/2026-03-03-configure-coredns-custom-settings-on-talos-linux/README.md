@@ -28,7 +28,7 @@ The default Corefile looks something like this:
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -64,7 +64,7 @@ Add the hosts plugin before the forward plugin:
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -110,7 +110,7 @@ If your organization has internal DNS servers for corporate domains, you can for
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -152,7 +152,7 @@ The rewrite plugin lets you modify DNS queries before they are processed. This i
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
 
@@ -208,7 +208,7 @@ When troubleshooting DNS issues, enable the log plugin temporarily:
     log
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -266,7 +266,7 @@ talosctl patch machineconfig --nodes $NODE_IP --patch-file dns-patch.yaml
 
 ## Using ConfigMap for Custom Corefile
 
-Rather than editing the coredns ConfigMap directly (which might get overwritten during upgrades), use the `coredns-custom` ConfigMap approach. Create a separate ConfigMap that CoreDNS imports:
+Rather than editing the coredns ConfigMap directly (which might get overwritten during upgrades), use a separate `coredns-custom` ConfigMap that CoreDNS imports. Unlike K3s, Talos does not auto-mount this ConfigMap, so you also need to patch the CoreDNS Deployment to mount it at `/etc/coredns/custom`. Create the ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -295,7 +295,7 @@ Then reference it in the main Corefile using the `import` plugin:
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
