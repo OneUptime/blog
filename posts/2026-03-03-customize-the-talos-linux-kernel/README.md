@@ -26,29 +26,29 @@ The tradeoff is that you take on the responsibility of maintaining your custom k
 
 ## Understanding the Default Kernel Configuration
 
-Talos maintains its kernel configuration in the source repository. The configuration file determines which drivers, filesystems, and features are compiled into the kernel or built as modules.
+Talos builds its kernel from the separate `siderolabs/pkgs` repository, not the main `siderolabs/talos` repository. The configuration file determines which drivers, filesystems, and features are compiled into the kernel or built as modules.
 
 ```bash
-# Clone the Talos repository
+# Clone the Talos pkgs repository (this is where the kernel is built)
 
-git clone https://github.com/siderolabs/talos.git
-cd talos
+git clone https://github.com/siderolabs/pkgs.git
+cd pkgs
 
 # The kernel configuration is located at:
-# pkg/kernel/build/config-amd64 (for AMD64)
-# pkg/kernel/build/config-arm64 (for ARM64)
-ls pkg/kernel/build/
+# kernel/build/config-amd64 (for AMD64)
+# kernel/build/config-arm64 (for ARM64)
+ls kernel/build/
 ```
 
 You can inspect the current configuration to see what is enabled.
 
 ```bash
 # View the kernel configuration
-less pkg/kernel/build/config-amd64
+less kernel/build/config-amd64
 
 # Search for a specific option
-grep CONFIG_ZFS pkg/kernel/build/config-amd64
-grep CONFIG_VFIO pkg/kernel/build/config-amd64
+grep CONFIG_ZFS kernel/build/config-amd64
+grep CONFIG_VFIO kernel/build/config-amd64
 ```
 
 ## Setting Up Your Build Environment
@@ -83,9 +83,12 @@ For simple changes, editing the configuration file directly is the fastest appro
 ```bash
 # Enable a specific module (example: enabling VFIO for GPU passthrough)
 # Change from "# CONFIG_VFIO is not set" to:
-echo "CONFIG_VFIO=m" >> pkg/kernel/build/config-amd64
-echo "CONFIG_VFIO_IOMMU_TYPE1=m" >> pkg/kernel/build/config-amd64
-echo "CONFIG_VFIO_PCI=m" >> pkg/kernel/build/config-amd64
+echo "CONFIG_VFIO=m" >> kernel/build/config-amd64
+echo "CONFIG_VFIO_IOMMU_TYPE1=m" >> kernel/build/config-amd64
+echo "CONFIG_VFIO_PCI=m" >> kernel/build/config-amd64
+
+# After hand-editing, normalize the config so any new dependencies are filled in
+make kernel-olddefconfig
 ```
 
 ### Using menuconfig
@@ -93,7 +96,7 @@ echo "CONFIG_VFIO_PCI=m" >> pkg/kernel/build/config-amd64
 For more complex changes, the interactive configuration tool is better because it handles dependencies automatically.
 
 ```bash
-# Launch menuconfig inside the build container
+# Launch menuconfig inside the build container (run from the pkgs repo)
 make kernel-menuconfig
 
 # This opens a terminal-based UI where you can:
@@ -110,16 +113,16 @@ The menuconfig tool saves the updated configuration back to the config file when
 Sometimes you need to patch the kernel source code itself, not just change configuration options. This is common when backporting fixes or adding custom functionality.
 
 ```bash
-# Create a directory for your patches
-mkdir -p pkg/kernel/build/patches
+# Create a directory for your patches (inside the pkgs repo)
+mkdir -p kernel/build/patches
 
 # Place your patch files in the directory
 # Patches should be in standard unified diff format
-cp /path/to/my-fix.patch pkg/kernel/build/patches/
+cp /path/to/my-fix.patch kernel/build/patches/
 
 # Patches are applied in alphabetical order
 # Use numeric prefixes to control the order
-mv my-fix.patch pkg/kernel/build/patches/001-my-fix.patch
+mv kernel/build/patches/my-fix.patch kernel/build/patches/001-my-fix.patch
 ```
 
 Here is an example of what a kernel patch looks like:
@@ -138,35 +141,37 @@ Here is an example of what a kernel patch looks like:
 
 ## Building the Custom Kernel
 
-With your configuration changes and patches in place, you can now build the kernel.
+With your configuration changes and patches in place, you can now build the kernel from the `pkgs` repo.
 
 ```bash
-# Build only the kernel
+# Build only the kernel package (run from the pkgs repo)
 make kernel
 
 # The build output will be in _out/
-# Look for the vmlinuz file
-ls -la _out/kernel/
+ls -la _out/
 
-# Build with a custom tag for identification
-make kernel TAG=custom-kernel-v1
+# Build with a custom registry/tag and push so the talos build can consume it
+make kernel PUSH=true USERNAME=youruser
 ```
 
 The kernel build takes around 15 to 30 minutes depending on your machine. Subsequent builds are faster if you have not changed many options.
 
 ## Building a Complete Image with the Custom Kernel
 
-A standalone kernel is not very useful on its own. You need to build it into a complete Talos image.
+A standalone kernel package is not very useful on its own. You need to build it into a complete Talos image. These targets live in the main `siderolabs/talos` repository, which consumes the kernel image you just built in `pkgs`.
 
 ```bash
+# Switch to the talos repo and point it at your custom kernel via PKG_KERNEL
+cd ../talos
+
 # Build the initramfs with the custom kernel
-make initramfs
+make initramfs PKG_KERNEL=ghcr.io/youruser/kernel:<tag>
 
 # Build the installer image with everything included
-make installer TAG=custom-kernel
+make installer PKG_KERNEL=ghcr.io/youruser/kernel:<tag>
 
 # Build an ISO for bare metal deployment
-make iso TAG=custom-kernel
+make iso PKG_KERNEL=ghcr.io/youruser/kernel:<tag>
 ```
 
 The installer image bundles your custom kernel with the rest of the Talos components.
@@ -218,25 +223,28 @@ Always upgrade one node at a time and verify it is healthy before proceeding to 
 
 Keeping a custom kernel up to date requires some ongoing effort.
 
-When a new Talos release comes out, you need to rebase your changes onto the new kernel configuration. Here is a workflow that helps:
+When a new Talos release comes out, you need to rebase your changes onto the new kernel configuration. Here is a workflow that helps. Talos and `pkgs` are versioned together, so check out the matching tag in both repos:
 
 ```bash
-# Fetch the latest Talos release
+# Update the pkgs repo to the release tag (kernel changes live here)
+cd pkgs
 git fetch origin
 git checkout v1.8.0
-
-# Create a new branch for your customizations
 git checkout -b custom-kernel-v1.8.0
 
-# Apply your configuration changes
 # Re-run menuconfig or patch the config file
 make kernel-menuconfig
 
 # Apply your patches (some may need updating)
-cp patches/*.patch pkg/kernel/build/patches/
+cp ../my-patches/*.patch kernel/build/patches/
 
-# Build and test
-make installer TAG=custom-kernel-v1.8.0
+# Rebuild the kernel image
+make kernel PUSH=true USERNAME=youruser
+
+# Then rebuild the installer in the talos repo
+cd ../talos
+git fetch origin && git checkout v1.8.0
+make installer PKG_KERNEL=ghcr.io/youruser/kernel:<tag>
 ```
 
 Keep your patches and configuration changes in a separate repository so they are easy to apply to each new Talos release.
