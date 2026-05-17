@@ -15,7 +15,7 @@ MeshCentral supports Windows (RDP and native agent), Linux, and macOS endpoints 
 ## Prerequisites
 
 - Ubuntu 20.04 or newer
-- Node.js 14 or newer
+- Node.js 20 or newer (current MeshCentral releases require Node.js 20+)
 - At least 512MB RAM for the server (1GB+ recommended)
 - A domain name with DNS pointing to your server (recommended for SSL)
 
@@ -137,8 +137,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/meshcentral.example.com/privkey.pem;
 
     location / {
-        proxy_pass https://localhost:4430;
-        proxy_ssl_verify off;
+        proxy_pass http://localhost:4430;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -288,7 +287,7 @@ Add email settings to `config.json`:
         "user": "meshcentral@example.com",
         "pass": "smtp-password",
         "tls": false,
-        "tlscert": false
+        "tlscertcheck": false
     }
 }
 ```
@@ -308,8 +307,11 @@ In the MeshCentral web interface:
 {
     "domains": {
         "": {
+            "passwordRequirements": {
+                "force2factor": true
+            },
             "twoFactorCookieDurationDays": 10,
-            "_comment": "Require 2FA for all logins"
+            "_comment": "force2factor requires all accounts to set up 2FA; twoFactorCookieDurationDays controls how long the trust-this-browser cookie lasts"
         }
     }
 }
