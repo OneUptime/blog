@@ -47,7 +47,7 @@ rules:
   - apiGroups: ["apps"]
     resources: ["deployments", "replicasets", "statefulsets"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-  # Manage pods (but not delete, to prevent accidental deletions)
+  # Read pod state (developers create pods via Deployments, not directly)
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
@@ -110,13 +110,22 @@ metadata:
   name: reader
   namespace: team-backend
 rules:
-  - apiGroups: ["", "apps", "batch", "networking.k8s.io"]
-    resources: ["*"]
-    verbs: ["get", "list", "watch"]
-  # Explicitly exclude secrets from read access
+  # Read access to most namespace resources.
+  # Note: RBAC is purely additive — there are no deny rules. To exclude
+  # secrets from read access, enumerate the allowed resources explicitly
+  # rather than using "*".
   - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: []
+    resources: ["pods", "pods/log", "services", "configmaps", "events", "endpoints", "persistentvolumeclaims", "serviceaccounts"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch"]
 ```
 
 ## Binding Roles to Users and Groups
