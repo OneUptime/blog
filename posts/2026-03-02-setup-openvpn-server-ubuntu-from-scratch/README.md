@@ -189,7 +189,7 @@ ip route | grep default
 # The interface is eth0 in this example - use yours
 
 # Add NAT masquerading rule
-sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/8 -o eth0 -j MASQUERADE
+sudo iptables -t nat -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
 
 # Allow forwarding from VPN to internet
 sudo iptables -A FORWARD -i tun0 -j ACCEPT
@@ -312,7 +312,7 @@ sudo nano /etc/ufw/before.rules
 # Add before the *filter section:
 # *nat
 # :POSTROUTING ACCEPT [0:0]
-# -A POSTROUTING -s 10.8.0.0/8 -o eth0 -j MASQUERADE
+# -A POSTROUTING -s 10.8.0.0/24 -o eth0 -j MASQUERADE
 # COMMIT
 
 # Allow forwarding policy
