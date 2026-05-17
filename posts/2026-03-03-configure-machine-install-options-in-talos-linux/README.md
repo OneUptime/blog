@@ -23,11 +23,10 @@ machine:
   install:
     disk: /dev/sda
     image: ghcr.io/siderolabs/installer:v1.6.0
-    bootloader: true
     wipe: false
 ```
 
-Each field here serves a specific purpose. The `disk` field tells Talos which block device to install onto. The `image` field points to the installer container image. The `bootloader` flag determines whether Talos sets up the bootloader, and `wipe` controls whether the target disk gets wiped before installation.
+Each field here serves a specific purpose. The `disk` field tells Talos which block device to install onto. The `image` field points to the installer container image, and `wipe` controls whether the target disk gets wiped before installation.
 
 ## Choosing the Right Disk
 
@@ -61,14 +60,14 @@ machine:
   install:
     disk: /dev/sda
     image: ghcr.io/siderolabs/installer:v1.6.0
-    kernelArgs:
+    extraKernelArgs:
       - console=ttyS0        # Send console output to serial port
       - net.ifnames=0         # Use classic network interface naming
       - panic=10              # Reboot 10 seconds after a kernel panic
       - talos.platform=metal  # Explicitly set the platform
 ```
 
-Each entry in the `kernelArgs` list is a string that gets appended to the kernel command line. Be careful with these because a bad argument can prevent the system from booting. Always test changes on a non-production node first.
+Each entry in the `extraKernelArgs` list is a string that gets appended to the kernel command line. Be careful with these because a bad argument can prevent the system from booting. Always test changes on a non-production node first.
 
 ## Specifying the Installer Image
 
@@ -84,19 +83,19 @@ machine:
 
 The Talos Image Factory lets you build custom installer images that include extensions like `iscsi-tools`, `drbd`, or specific network drivers. You generate a schematic, and the factory gives you back an image URL that you plug into this field.
 
-## Bootloader Configuration
+## Legacy BIOS Support
 
-The `bootloader` field is a boolean. When set to `true`, Talos installs and configures the bootloader (GRUB) on the target disk. You almost always want this set to `true` unless you are managing the bootloader separately, which is uncommon.
+Talos always installs and configures a bootloader on the target disk as part of the install process. In Talos v1.6, GRUB is the default bootloader for both legacy BIOS and UEFI installs (SecureBoot images use systemd-boot). The `legacyBIOSSupport` flag tells the installer to also lay down the BIOS-bootable structures on a GPT disk so the same disk can boot on hardware that does not support UEFI.
 
 ```yaml
-# Enable bootloader installation
+# Enable legacy BIOS boot support on a GPT disk
 machine:
   install:
     disk: /dev/sda
-    bootloader: true
+    legacyBIOSSupport: true
 ```
 
-If you set this to `false`, Talos will write the OS to disk but will not touch the bootloader. This can be useful in specialized environments like PXE-only setups where the boot process is handled externally.
+Leave this unset (or `false`) on modern UEFI-only hardware. Turn it on when you need the same install to also boot via legacy BIOS, for example on older servers or mixed-firmware fleets.
 
 ## Wiping the Disk
 
