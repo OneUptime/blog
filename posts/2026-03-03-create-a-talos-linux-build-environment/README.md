@@ -119,7 +119,7 @@ Talos is written in Go, and you need a recent version for development.
 
 ```bash
 # Download Go (use the latest stable version)
-GO_VERSION=1.22.0
+GO_VERSION=1.26.3
 wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz
 
 # Install Go
