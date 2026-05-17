@@ -252,8 +252,8 @@ if [ $? != 0 ]; then
     # Create third window for logs, split into two panes
     tmux new-window -t $SESSION -n "logs"
     tmux split-window -h -t $SESSION:logs
-    tmux send-keys -t $SESSION:logs.left "tail -f /var/log/nginx/access.log" Enter
-    tmux send-keys -t $SESSION:logs.right "tail -f /var/log/myapp/application.log" Enter
+    tmux send-keys -t $SESSION:logs.0 "tail -f /var/log/nginx/access.log" Enter
+    tmux send-keys -t $SESSION:logs.1 "tail -f /var/log/myapp/application.log" Enter
 
     # Select the editor window
     tmux select-window -t $SESSION:editor
