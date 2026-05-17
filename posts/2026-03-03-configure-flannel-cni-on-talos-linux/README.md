@@ -14,7 +14,7 @@ This guide covers how Flannel works in Talos Linux and the configurations you ca
 
 ## How Flannel Works in Talos Linux
 
-Flannel provides a simple overlay network for Kubernetes pods. When Talos Linux boots with the default CNI configuration, it deploys Flannel as a DaemonSet in the `kube-flannel` namespace. Each Flannel pod:
+Flannel provides a simple overlay network for Kubernetes pods. When Talos Linux boots with the default CNI configuration, it deploys Flannel as a DaemonSet named `kube-flannel` in the `kube-system` namespace. Each Flannel pod:
 
 1. Reads the cluster's pod CIDR configuration
 2. Requests a subnet lease for its node from the Kubernetes API
@@ -45,10 +45,10 @@ Verify Flannel is running:
 
 ```bash
 # Check Flannel pods
-kubectl get pods -n kube-flannel
+kubectl get pods -n kube-system -l k8s-app=flannel
 
 # Check the Flannel ConfigMap
-kubectl get configmap -n kube-flannel kube-flannel-cfg -o yaml
+kubectl get configmap -n kube-system kube-flannel-cfg -o yaml
 
 # Verify the VXLAN interface on a node
 talosctl -n <node-ip> get links flannel.1
@@ -97,7 +97,7 @@ Direct routing sends traffic directly when nodes are on the same subnet, falling
 
 ```bash
 # Edit the Flannel ConfigMap
-kubectl edit configmap -n kube-flannel kube-flannel-cfg
+kubectl edit configmap -n kube-system kube-flannel-cfg
 ```
 
 ```json
@@ -170,7 +170,7 @@ After changing the MTU, restart the Flannel pods:
 
 ```bash
 # Restart Flannel to pick up the new MTU
-kubectl rollout restart daemonset -n kube-flannel kube-flannel-ds
+kubectl rollout restart daemonset -n kube-system kube-flannel
 ```
 
 Common MTU values:
@@ -188,7 +188,7 @@ By default, Flannel auto-detects the interface to use for inter-node communicati
 
 ```bash
 # Check which interface Flannel is using
-kubectl logs -n kube-flannel -l app=flannel | grep "Using interface"
+kubectl logs -n kube-system -l k8s-app=flannel | grep "Using interface"
 ```
 
 To specify an interface, edit the Flannel DaemonSet and add the `--iface` flag:
@@ -216,7 +216,7 @@ Check the health and status of your Flannel deployment:
 
 ```bash
 # Check Flannel pod logs for errors
-kubectl logs -n kube-flannel -l app=flannel --tail=50
+kubectl logs -n kube-system -l k8s-app=flannel --tail=50
 
 # Verify subnet leases
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\n"}{end}'
@@ -241,7 +241,7 @@ talosctl -n <node-ip> pcap --interface eth0 --bpf-filter "udp port 8472" --durat
 talosctl -n <node-ip> get links flannel.1
 
 # Look for errors in Flannel logs
-kubectl logs -n kube-flannel -l app=flannel | grep -i "error\|fail"
+kubectl logs -n kube-system -l k8s-app=flannel | grep -i "error\|fail"
 ```
 
 ### Subnet Lease Conflicts
@@ -251,7 +251,7 @@ kubectl logs -n kube-flannel -l app=flannel | grep -i "error\|fail"
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}: {.spec.podCIDR}{"\n"}{end}'
 
 # Look for lease-related errors
-kubectl logs -n kube-flannel -l app=flannel | grep -i "lease\|subnet"
+kubectl logs -n kube-system -l k8s-app=flannel | grep -i "lease\|subnet"
 ```
 
 ### Performance Issues
