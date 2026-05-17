@@ -261,7 +261,7 @@ kubectl -n kube-system logs -l k8s-app=kube-proxy | grep -i error
 kubectl -n kube-system logs -l k8s-app=kube-proxy | grep "Using"
 ```
 
-Common problems include missing IPVS kernel modules (kube-proxy falls back to iptables silently), conntrack table exhaustion (manifests as random connection drops), and conflicting configurations when both kube-proxy and a CNI's proxy replacement are running.
+Common problems include missing IPVS kernel modules (kube-proxy logs an error naming the missing modules and falls back to iptables), conntrack table exhaustion (manifests as random connection drops), and conflicting configurations when both kube-proxy and a CNI's proxy replacement are running.
 
 ## Best Practices
 
