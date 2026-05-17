@@ -33,7 +33,7 @@ GNOME Tweaks organizes settings into several categories in the left sidebar. Eac
 
 ## Appearance
 
-This section controls visual themes for three distinct elements:
+This section controls visual themes for four distinct elements:
 
 ### Shell Theme
 
@@ -157,7 +157,7 @@ This section provides settings that many users expect to find in the standard Se
 
 ### Titlebar Buttons
 
-By default Ubuntu removes the minimize and maximize buttons from window title bars. Re-enable them here:
+Vanilla GNOME omits the minimize and maximize buttons from window title bars (Ubuntu's Yaru theme includes them by default). If yours are missing, re-enable them here:
 
 - Under "Titlebar Buttons", toggle **Minimize** and **Maximize** to On
 
