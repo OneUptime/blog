@@ -319,7 +319,7 @@ Audit rules have performance implications. Monitor access at high rates generate
 sudo auditctl -s | grep backlog
 
 # View audit statistics
-sudo auditd -s
+sudo auditctl -s
 
 # Exclude noisy processes from monitoring
 # Exclude specific users (e.g., monitoring agents)
@@ -346,15 +346,16 @@ sudo nano /etc/audit/auditd.conf
 # Restart after changes
 sudo systemctl restart auditd
 
-# Manually rotate logs
-sudo killall -HUP auditd
+# Manually rotate logs (SIGUSR1 rotates; SIGHUP only reloads config)
+sudo killall -USR1 auditd
 ```
 
 ## Sending Audit Logs to Remote Syslog
 
 ```bash
-# Configure audisp to forward to syslog
-sudo tee /etc/audisp/plugins.d/syslog.conf << 'EOF'
+# Configure the syslog plugin to forward to syslog
+# (auditd 3.x merged audispd into auditd; plugins live under /etc/audit/plugins.d/)
+sudo tee /etc/audit/plugins.d/syslog.conf << 'EOF'
 active = yes
 direction = out
 path = builtin_syslog
