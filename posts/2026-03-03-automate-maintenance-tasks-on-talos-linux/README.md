@@ -149,10 +149,12 @@ echo "$CERTS" | jq -r '.[] | "\(.metadata.id) \(.spec.notAfter)"' | while read -
     if [ "$DAYS_LEFT" -lt "$WARNING_DAYS" ]; then
         echo "Certificate $cert_id expires in $DAYS_LEFT days"
 
-        # Trigger renewal if within warning period
+        # Alert if within urgent renewal window
         if [ "$DAYS_LEFT" -lt 7 ]; then
-            echo "Triggering automatic renewal..."
-            talosctl config rotate-certs -n "$CONTROL_PLANE_IP"
+            echo "URGENT: Cert $cert_id expires in $DAYS_LEFT days"
+            # Talos rotates node certificates automatically.
+            # To refresh Kubernetes control plane certificates, run:
+            #   talosctl upgrade-k8s --to <target-k8s-version>
         fi
     fi
 done
