@@ -63,8 +63,8 @@ View the output with journalctl:
 # Follow the journal for a specific service
 journalctl -u myapp.service -f
 
-# Show messages from a specific Python module
-journalctl PYTHON_MODULE=app
+# Show messages from a specific Python logger
+journalctl LOGGER=app
 
 # Filter by priority (0=emergency, 7=debug)
 journalctl -u myapp.service -p warning
@@ -274,18 +274,22 @@ You can also read and filter journal entries programmatically:
 
 ```python
 from systemd.journal import Reader
-from systemd import journal
 
 # Read journal entries for a specific service
 reader = Reader()
 reader.add_match(_SYSTEMD_UNIT="myapp.service")
 reader.seek_tail()
-reader.get_previous()  # Move back one entry from tail
 
-# Read the last 10 entries
-for i, entry in enumerate(reader):
-    if i >= 10:
+# Walk back to collect the last 10 entries
+entries = []
+for _ in range(10):
+    entry = reader.get_previous()
+    if not entry:
         break
+    entries.append(entry)
+
+# Print in chronological order (oldest first)
+for entry in reversed(entries):
     print(f"{entry['__REALTIME_TIMESTAMP']}: {entry.get('MESSAGE', '')}")
 ```
 
