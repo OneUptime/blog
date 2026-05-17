@@ -46,8 +46,8 @@ systemd-cron installs:
 # View generated timer units
 systemctl list-timers --all | grep cron
 
-# View a specific generated unit
-systemctl cat "cron-daily@.service"
+# View systemd-cron's main target
+systemctl cat cron.target
 
 # See jobs from /etc/crontab
 systemctl list-timers --all | grep crontab
