@@ -24,9 +24,11 @@ In Kubernetes, you apply AppArmor profiles to containers through annotations or 
 
 ## AppArmor on Talos Linux
 
-Talos Linux includes AppArmor support in its kernel. Since Talos is immutable, you cannot install AppArmor profiles the traditional way using apparmor_parser on the host. Instead, you need to load profiles through the Talos machine configuration or use a Kubernetes-native approach.
+Talos Linux ships with AppArmor compiled into its kernel, but since Talos v1.10 the default Linux Security Module is **SELinux** (enabled in permissive mode). AppArmor and SELinux cannot run simultaneously, so to use AppArmor you have to switch the active LSM via kernel arguments (for example `lsm=lockdown,capability,yama,apparmor,bpf apparmor=1`). On Talos v1.10 and later, kernel arguments are baked into the Unified Kernel Image (UKI), so `.machine.install.extraKernelArgs` is ignored — you must rebuild the UKI through the Image Factory to change the LSM selection.
 
-Check if AppArmor is enabled on your Talos nodes.
+Talos is also immutable, so you cannot install AppArmor profiles the traditional way using `apparmor_parser` on the host. Instead, profiles need to be loaded through a privileged DaemonSet or a Talos system extension.
+
+Check whether AppArmor is the active LSM on your Talos nodes.
 
 ```bash
 # Verify AppArmor is available on Talos nodes
@@ -40,12 +42,12 @@ kubectl run apparmor-check --image=busybox --rm -it --restart=Never -- \
   cat /sys/kernel/security/apparmor/profiles
 ```
 
-## Loading AppArmor Profiles via Talos Machine Config
+## Staging AppArmor Profiles via Talos Machine Config
 
-You can load AppArmor profiles through the Talos machine configuration. This ensures they are available on every node at boot time.
+Talos's `machine.files` can write files to the host, but it only accepts paths under writable locations such as `/var/`, `/etc/cri/`, and `/etc/kubernetes/`. The traditional `/etc/apparmor.d/` directory lives on the read-only SquashFS root and is not provisioned, so you cannot drop profile files there directly. A workable pattern is to stage the profile under `/var/` and then have a privileged DaemonSet pick it up with `apparmor_parser`. An example machine config snippet that stages a profile:
 
 ```yaml
-# Talos machine config snippet for AppArmor profiles
+# Talos machine config snippet for staging an AppArmor profile under /var/
 machine:
   files:
     - content: |
@@ -76,7 +78,7 @@ machine:
           deny /sys/** w,
           deny /root/** rwx,
         }
-      path: /etc/apparmor.d/custom-nginx
+      path: /var/apparmor.d/custom-nginx
       permissions: 0644
       op: create
 ```
@@ -84,11 +86,13 @@ machine:
 Apply the machine configuration.
 
 ```bash
-# Apply the machine config patch to load the AppArmor profile
+# Apply the machine config patch to stage the AppArmor profile file
 talosctl patch machineconfig \
   --nodes <node-ip> \
   --patch-file apparmor-patch.yaml
 ```
+
+For a fully integrated approach (profile loading at boot, persistence across reboots), a Talos system extension built through the [Image Factory](https://factory.talos.dev/) is the most robust option. For most users, the DaemonSet pattern described below is simpler.
 
 ## Using the AppArmor Loader DaemonSet
 
