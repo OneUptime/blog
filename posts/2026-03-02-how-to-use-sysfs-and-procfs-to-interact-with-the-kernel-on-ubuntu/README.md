@@ -43,7 +43,7 @@ ls /proc/1/
 cat /proc/1/cmdline | tr '\0' ' '   # Command line arguments
 cat /proc/1/status                   # Process status and resource usage
 cat /proc/1/maps                     # Memory mappings
-cat /proc/1/fd/ 2>/dev/null && ls /proc/1/fd/  # Open file descriptors
+ls /proc/1/fd/                       # Open file descriptors
 cat /proc/1/net/tcp                  # Network connections (in network namespace)
 ```
 
@@ -53,7 +53,7 @@ cat /proc/1/net/tcp                  # Network connections (in network namespace
 # CPU information
 cat /proc/cpuinfo
 
-# Count physical cores
+# Cores per physical CPU (multiply by socket count for total physical cores)
 cat /proc/cpuinfo | grep "cpu cores" | uniq
 
 # Memory information
@@ -68,7 +68,7 @@ cat /proc/uptime
 # System load averages
 cat /proc/loadavg
 
-# Running processes count
+# Currently runnable / total kernel scheduling entities (e.g. "1/1230")
 cat /proc/loadavg | awk '{print $4}'
 
 # Kernel command line parameters
