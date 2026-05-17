@@ -34,10 +34,11 @@ Velero is the standard backup tool for Kubernetes. It backs up cluster resources
 
 brew install velero
 
-# Linux
-wget https://github.com/vmware-tanzu/velero/releases/latest/download/velero-linux-amd64.tar.gz
-tar -zxvf velero-linux-amd64.tar.gz
-sudo mv velero-linux-amd64/velero /usr/local/bin/
+# Linux (replace VERSION with the desired release, e.g. v1.18.0)
+VELERO_VERSION=v1.18.0
+wget https://github.com/vmware-tanzu/velero/releases/download/${VELERO_VERSION}/velero-${VELERO_VERSION}-linux-amd64.tar.gz
+tar -zxvf velero-${VELERO_VERSION}-linux-amd64.tar.gz
+sudo mv velero-${VELERO_VERSION}-linux-amd64/velero /usr/local/bin/
 
 # Verify
 velero version --client-only
@@ -56,7 +57,7 @@ CREDS
 # Install Velero with S3 backend and CSI snapshot support
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+  --plugins velero/velero-plugin-for-aws:v1.9.0 \
   --bucket velero-backups \
   --backup-location-config region=us-east-1,s3ForcePathStyle=true,s3Url=https://s3.amazonaws.com \
   --snapshot-location-config region=us-east-1 \
@@ -70,7 +71,7 @@ For using MinIO as the backup target (running on your Talos cluster or elsewhere
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+  --plugins velero/velero-plugin-for-aws:v1.9.0 \
   --bucket velero-backups \
   --backup-location-config region=minio,s3ForcePathStyle=true,s3Url=http://minio.minio.svc.cluster.local:9000 \
   --snapshot-location-config region=minio \
