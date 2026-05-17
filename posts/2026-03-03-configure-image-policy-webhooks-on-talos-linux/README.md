@@ -241,32 +241,34 @@ spec:
 Connaisseur is a Kubernetes admission controller specifically designed for image verification.
 
 ```bash
-# Install Connaisseur
-helm repo add connaisseur https://sse-secure-systems.github.io/connaisseur/charts
-helm repo update
+# Clone the Connaisseur repository
+git clone https://github.com/sse-secure-systems/connaisseur.git
+cd connaisseur
 
 # Create values file
 cat > connaisseur-values.yaml <<EOF
-validators:
-  - name: company-signer
-    type: cosign
-    trustRoots:
-      - name: default
-        key: |
-          -----BEGIN PUBLIC KEY-----
-          MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
-          -----END PUBLIC KEY-----
+application:
+  validators:
+    - name: company-signer
+      type: cosign
+      trustRoots:
+        - name: default
+          key: |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+            -----END PUBLIC KEY-----
 
-policy:
-  - pattern: "registry.company.com/*"
-    validator: company-signer
-  - pattern: "docker.io/library/*"
-    validator: allow
-  - pattern: "*"
-    validator: deny
+  policy:
+    - pattern: "registry.company.com/*"
+      validator: company-signer
+    - pattern: "docker.io/library/*"
+      validator: allow
+    - pattern: "*"
+      validator: deny
 EOF
 
-helm install connaisseur connaisseur/connaisseur \
+# Install Connaisseur from the local helm chart
+helm install connaisseur helm \
   --namespace connaisseur \
   --create-namespace \
   --values connaisseur-values.yaml
@@ -293,10 +295,16 @@ spec:
       mutate:
         foreach:
           - list: "request.object.spec.containers"
-            patchesJson6902: |-
-              - op: replace
-                path: /spec/containers/{{elementIndex}}/image
-                value: "{{ images.containers.{{element.name}}.registry }}/{{ images.containers.{{element.name}}.path }}@{{ images.containers.{{element.name}}.digest }}"
+            context:
+              - name: resolvedRef
+                imageRegistry:
+                  reference: "{{ element.image }}"
+                  jmesPath: resolvedImage
+            patchStrategicMerge:
+              spec:
+                containers:
+                  - name: "{{ element.name }}"
+                    image: "{{ resolvedRef }}"
 ```
 
 ## Vulnerability Scanning Integration
@@ -314,36 +322,34 @@ helm install trivy-operator aqua/trivy-operator \
   --set trivy.ignoreUnfixed=true
 ```
 
-Then create a Kyverno policy that checks scan results before allowing pods.
+Then create a Kyverno policy that requires images to carry a valid Trivy vulnerability scan attestation before allowing pods.
 
 ```yaml
 # block-vulnerable-images.yaml
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: block-critical-vulnerabilities
+  name: check-vulnerabilities
 spec:
   validationFailureAction: Enforce
+  webhookTimeoutSeconds: 30
   rules:
-    - name: check-vuln-report
+    - name: require-recent-vuln-scan
       match:
         any:
           - resources:
               kinds:
                 - Pod
-      preconditions:
-        all:
-          - key: "{{request.operation}}"
-            operator: Equals
-            value: CREATE
-      validate:
-        message: "Image has critical vulnerabilities. Check Trivy scan results."
-        deny:
-          conditions:
-            any:
-              - key: "{{ images.containers.*.registry }}"
-                operator: AnyNotIn
-                value: "scanned-and-approved"
+      verifyImages:
+        - imageReferences:
+            - "registry.company.com/*"
+          attestations:
+            - type: https://cosign.sigstore.dev/attestation/vuln/v1
+              conditions:
+                - all:
+                    - key: "{{ time_since('','{{ metadata.scanFinishedOn }}','') }}"
+                      operator: LessThanOrEquals
+                      value: "24h"
 ```
 
 ## Talos Linux Considerations
