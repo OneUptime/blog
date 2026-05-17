@@ -164,7 +164,7 @@ grep -P "\".*?\"" config.json
 grep -P "password(?!=)" config.txt
 
 # Named character classes
-grep -P "\d{4}-\d{2}-\d{2}" logs/  # ISO date format
+grep -rP "\d{4}-\d{2}-\d{2}" logs/  # ISO date format
 
 # Match specific number of characters
 grep -P "^\S{8,}$" passwords.txt   # Lines with 8+ non-space chars
@@ -292,7 +292,7 @@ dpkg -l | grep -i "nginx"
 ss -tulnp | grep ":80 "
 ```
 
-The `[n]ginx` pattern in the ps example is a neat trick: the grep process itself appears in `ps` output as `grep nginx`, but `[n]ginx` matches `nginx` while the character class `[n]` doesn't match the square bracket in `grep [n]ginx`. This prevents the grep command from appearing in its own output.
+The `[n]ginx` pattern in the ps example is a neat trick: the grep process itself appears in `ps` output as `grep [n]ginx` (the literal command you typed). The regex `[n]ginx` is a character class containing only `n`, so it only matches the literal string `nginx` - not `[n]ginx`. This prevents the grep command from appearing in its own output.
 
 ## Grep Cheat Sheet
 
