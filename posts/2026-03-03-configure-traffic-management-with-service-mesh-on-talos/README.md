@@ -341,7 +341,7 @@ kubectl logs deployment/my-app-v2 --tail=10
 Traffic management features work identically on Talos Linux as on other Kubernetes distributions. The key considerations are:
 
 1. Make sure your CNI plugin supports the network policies that your service mesh might create
-2. Talos uses Cilium or Flannel by default - both work with Linkerd and Istio
+2. Talos uses Flannel as its default CNI, and Cilium is a commonly used alternative - both work with Linkerd and Istio
 3. All configuration is through Kubernetes resources, which aligns with Talos's declarative approach
 
 ## Conclusion
