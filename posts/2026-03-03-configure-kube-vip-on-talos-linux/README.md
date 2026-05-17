@@ -38,9 +38,9 @@ machine:
 
 However, if you prefer kube-vip for additional features or for LoadBalancer service support, you can deploy it as a static pod.
 
-## Deploying kube-vip as a Static Pod
+## Deploying kube-vip as a DaemonSet
 
-On Talos Linux, static pods are defined in the machine configuration. Add kube-vip as an extra manifest:
+On Talos Linux, cluster resources can be defined directly in the machine configuration via `cluster.inlineManifests` (true static pods, by contrast, live under `machine.pods` and are managed by the kubelet). Add the kube-vip RBAC and DaemonSet as cluster manifests:
 
 ```yaml
 # talos-kube-vip-patch.yaml
@@ -68,7 +68,7 @@ cluster:
           spec:
             containers:
             - name: kube-vip
-              image: ghcr.io/kube-vip/kube-vip:v0.7.2
+              image: ghcr.io/kube-vip/kube-vip:v1.1.2
               args:
               - manager
               env:
@@ -78,7 +78,7 @@ cluster:
                 value: "6443"
               - name: vip_interface
                 value: eth0
-              - name: vip_cidr
+              - name: vip_subnet
                 value: "32"
               - name: cp_enable
                 value: "true"
@@ -293,7 +293,7 @@ spec:
     rules:
     - alert: KubeVipLeaderChanged
       expr: |
-        changes(kube_vip_leader_is_leader[5m]) > 2
+        changes(kube_lease_owner{lease="plndr-cp-lock", namespace="kube-system"}[5m]) > 2
       labels:
         severity: warning
       annotations:
