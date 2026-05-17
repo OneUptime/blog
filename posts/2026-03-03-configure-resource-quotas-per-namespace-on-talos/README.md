@@ -129,7 +129,7 @@ This is particularly useful on Talos Linux clusters with local storage, where di
 
 ## Scoped Quotas
 
-You can create quotas that only apply to certain types of pods. For example, you might want separate quotas for best-effort pods (no resource requests) and guaranteed pods (requests equal limits).
+You can create quotas that only apply to certain types of pods. For example, you might want separate quotas for best-effort pods (no resource requests or limits) and non-best-effort pods (any pod that sets at least one CPU or memory request or limit).
 
 ```yaml
 # scoped-quota-besteffort.yaml
@@ -149,7 +149,7 @@ spec:
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: guaranteed-quota
+  name: not-besteffort-quota
   namespace: team-backend
 spec:
   hard:
