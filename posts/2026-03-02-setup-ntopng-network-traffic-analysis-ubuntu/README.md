@@ -65,11 +65,6 @@ sudo nano /etc/ntopng/ntopng.conf
 # Data directory
 -d=/var/lib/ntopng
 
-# Admin password (change this)
-# Set once; ntopng hashes and stores it
-# After first run, manage through the UI
--A=strongpassword
-
 # Local networks (comma-separated CIDR notation)
 # Used to distinguish local vs remote hosts
 -m=192.168.1.0/24,10.0.0.0/8,172.16.0.0/12
@@ -85,9 +80,6 @@ sudo nano /etc/ntopng/ntopng.conf
 
 # Maximum number of hosts to track
 --max-num-hosts=25000
-
-# How long to retain flow data in days
---lifetime=7
 ```
 
 ```bash
@@ -112,7 +104,7 @@ ssh -L 3000:localhost:3000 ubuntu@server-ip
 
 # Then open http://localhost:3000 in your local browser
 
-# Default login: admin / admin (or the password set in config)
+# Default login: admin / admin
 # Change the password immediately after first login
 ```
 
@@ -167,7 +159,7 @@ sudo nano /etc/nprobe/nprobe.conf
 --collector-port=2055
 
 # Forward to ntopng's ZMQ interface
--P=tcp://127.0.0.1:5556
+--zmq=tcp://127.0.0.1:5556
 
 # Local network hint
 -m=192.168.1.0/24
@@ -215,7 +207,7 @@ sudo nano /etc/ntopng/ntopng.conf
 
 ```ini
 # Path to GeoIP databases
---geoip-database-path=/var/lib/GeoIP
+--geoip-dir=/var/lib/GeoIP
 ```
 
 ```bash
@@ -275,14 +267,8 @@ sudo nano /etc/ntopng/ntopng.conf
 # Use Redis for session storage (install redis-server first)
 --redis=127.0.0.1:6379
 
-# Limit CPU cores
---cpu-affinity=0,1,2,3
-
-# Reduce data retention to save disk space
---lifetime=3
-
-# Set disk usage limit for the data directory
---local-networks-and-hosts 192.168.1.0/24
+# Pin ntopng threads to specific CPU cores
+--core-affinity=0,1,2,3
 ```
 
 For very high-speed networks (multiple Gbps), install PF_RING for kernel-level packet capture that avoids the overhead of normal socket-based capture:
