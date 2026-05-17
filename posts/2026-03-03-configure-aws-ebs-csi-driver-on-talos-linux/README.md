@@ -204,13 +204,21 @@ kubectl exec test-ebs-pod -- cat /data/test.txt
 
 ## Volume Snapshots
 
-The EBS CSI driver also supports volume snapshots. First, install the snapshot controller and CRDs if they are not already present:
+The EBS CSI driver also supports volume snapshots. The snapshot CRDs and the snapshot controller are separate components from the CSI driver and must be installed once per cluster. First install the CRDs:
 
 ```bash
-# Install the snapshot controller
+# Install the snapshot CRDs
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
 kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+```
+
+Then install the snapshot controller itself:
+
+```bash
+# Install the snapshot controller (RBAC and deployment)
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 ```
 
 Then create a VolumeSnapshotClass and take a snapshot:
