@@ -65,12 +65,12 @@ The most useful mode is extended, which shows much more detail:
 iostat -x 1
 ```
 
-Extended output columns:
+Extended output columns (sysstat 12.x groups read, write, discard and flush metrics together):
 
 ```text
-Device      r/s     w/s   rkB/s   wkB/s  rrqm/s  wrqm/s  %rrqm  %wrqm r_await w_await aqu-sz rareq-sz wareq-sz  svctm  %util
-sda        8.32   12.45  156.32  423.18    0.12    2.34   1.42   15.83    0.52    2.31   0.04    18.79    33.99   0.48   1.01
-nvme0n1   45.23  123.45 1234.56 5678.90    0.00    0.45   0.00    0.36    0.08    0.12   0.02    27.30    46.01   0.08   1.35
+Device     r/s    rkB/s  rrqm/s  %rrqm r_await rareq-sz    w/s    wkB/s  wrqm/s  %wrqm w_await wareq-sz   d/s   dkB/s  drqm/s  %drqm d_await dareq-sz   f/s f_await aqu-sz  %util
+sda       8.32   156.32    0.12   1.42    0.52    18.79  12.45   423.18    2.34  15.83    2.31    33.99  0.00    0.00    0.00   0.00    0.00     0.00  0.00    0.00   0.04   1.01
+nvme0n1  45.23  1234.56    0.00   0.00    0.08    27.30 123.45  5678.90    0.45   0.36    0.12    46.01  0.00    0.00    0.00   0.00    0.00     0.00  0.00    0.00   0.02   1.35
 ```
 
 Key columns explained:
@@ -79,8 +79,12 @@ Key columns explained:
 - `rkB/s` and `wkB/s` - Read and write throughput in KB/s
 - `rrqm/s` and `wrqm/s` - Requests merged per second (higher means I/O is sequential, which is good)
 - `r_await` and `w_await` - Average time in milliseconds for I/O requests to be served (includes queue time)
+- `d/s`, `dkB/s`, `d_await` - Discard request metrics (relevant for SSDs/NVMe that support TRIM)
+- `f/s`, `f_await` - Flush request metrics
 - `aqu-sz` - Average queue size. Values consistently above 1 indicate the device is overwhelmed.
 - `%util` - Percentage of time the device was busy. Values above 80-90% indicate saturation.
+
+Note: the `svctm` field that appeared in older sysstat releases was removed in sysstat 12.0 because it could no longer be reliably computed on multi-queue block devices.
 
 ## The Most Important Metrics
 
@@ -121,10 +125,14 @@ iostat -x 1 sda nvme0n1
 
 ## Human-Readable Output
 
-Use `-h` for megabytes instead of kilobytes:
+Use `-h` to auto-format sizes (k, M, G, ...) and lay out the report for easier reading (it implies `--human --pretty`). Use `-m` if you specifically want megabytes per second instead of the default kilobytes:
 
 ```bash
+# Auto-formatted, human-friendly layout
 iostat -xh 1
+
+# Force megabytes per second
+iostat -xm 1
 ```
 
 ## Comparing Disk Types
@@ -194,7 +202,7 @@ The I/O scheduler affects iostat metrics. Check the current scheduler:
 cat /sys/block/sda/queue/scheduler
 ```
 
-For SSDs and NVMe, `mq-deadline` or `none` typically performs better than `cfq`. For spinning disks, `mq-deadline` provides good latency control.
+Modern Ubuntu kernels (5.x and later) use the multi-queue block layer, so the available schedulers are typically `none`, `mq-deadline`, `kyber`, and `bfq` (the legacy `cfq` and single-queue `deadline` schedulers were removed in Linux 5.0). For NVMe, `none` is usually the default and works well; for SATA SSDs, `mq-deadline` is a common choice; for spinning disks, `mq-deadline` or `bfq` give good latency control.
 
 ## Writing a Quick I/O Health Check
 
@@ -206,15 +214,22 @@ echo "=== Disk I/O Health Check ==="
 echo "Time: $(date)"
 echo ""
 
-iostat -x 1 2 | tail -n +4 | awk '
-NF > 0 && $1 != "Device" {
-    util = $NF + 0
-    await_val = $(NF-6) + 0
+# In sysstat 12.x the extended report has these columns (after Device):
+#   1:r/s 2:rkB/s 3:rrqm/s 4:%rrqm 5:r_await 6:rareq-sz
+#   7:w/s 8:wkB/s 9:wrqm/s 10:%wrqm 11:w_await 12:wareq-sz
+#   13:d/s 14:dkB/s 15:drqm/s 16:%drqm 17:d_await 18:dareq-sz
+#   19:f/s 20:f_await 21:aqu-sz 22:%util
+# So $1=Device, $6=r_await, $12=w_await, $23=%util.
+iostat -dx 1 2 | awk '
+NF >= 23 && $1 != "Device" {
+    r_await = $6 + 0
+    w_await = $12 + 0
+    util = $23 + 0
     if (util > 80) {
         printf "WARNING: %s utilization at %.1f%%\n", $1, util
     }
-    if (await_val > 50) {
-        printf "WARNING: %s await time at %.1f ms\n", $1, await_val
+    if (r_await > 50 || w_await > 50) {
+        printf "WARNING: %s await high (r=%.1f ms, w=%.1f ms)\n", $1, r_await, w_await
     }
 }
 '
