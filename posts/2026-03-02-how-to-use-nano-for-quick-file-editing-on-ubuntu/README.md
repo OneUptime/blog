@@ -181,14 +181,19 @@ Alt+<          - Switch to previous file buffer
 ## Spell Checking
 
 ```text
-Ctrl+T         - Run spell checker (requires spell or aspell installed)
+Ctrl+T         - Open the Execute prompt
+Ctrl+T Ctrl+T  - Run spell checker (requires spell, hunspell, or aspell installed)
 ```
+
+In nano 5.0 and later (including the 7.2 that ships with current Ubuntu), `Ctrl+T` opens an Execute prompt rather than directly invoking the spell checker. Press `Ctrl+T` a second time from that prompt to invoke the spell checker.
 
 ```bash
 # Install spell checking
-sudo apt install spell
+sudo apt install hunspell hunspell-en-us
 # or
 sudo apt install aspell aspell-en
+# or the simpler GNU spell
+sudo apt install spell
 ```
 
 ## Customizing Nano with ~/.nanorc
@@ -256,19 +261,16 @@ include "/usr/share/nano/sh.nanorc"
 include "/usr/share/nano/html.nanorc"
 include "/usr/share/nano/yaml.nanorc"
 include "/usr/share/nano/json.nanorc"
-include "/usr/share/nano/dockerfile.nanorc"
+include "/usr/share/nano/markdown.nanorc"
 
 # Or include everything
 include "/usr/share/nano/*.nanorc"
 ```
 
-Extended syntax highlighting is available:
+Extended syntax highlighting definitions are available from third-party collections (Ubuntu does not ship a `nano-syntax-highlighting` package in its main repositories):
 
 ```bash
-# Install additional highlighting definitions
-sudo apt install nano-syntax-highlighting
-
-# Or download from https://github.com/scopatz/nanorc
+# Download community definitions from https://github.com/scopatz/nanorc
 curl https://raw.githubusercontent.com/scopatz/nanorc/master/install.sh | sh
 ```
 
@@ -278,7 +280,7 @@ curl https://raw.githubusercontent.com/scopatz/nanorc/master/install.sh | sh
 
 ```bash
 # Use nano's backup option for critical files
-sudo nano --backup /etc/sshd_config
+sudo nano --backup /etc/ssh/sshd_config
 
 # Or make a manual backup first
 sudo cp /etc/fstab /etc/fstab.bak
