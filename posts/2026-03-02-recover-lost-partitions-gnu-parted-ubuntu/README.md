@@ -131,11 +131,12 @@ These offsets are where you create the new partition entries.
 ### Using fdisk to Find Sector Information
 
 ```bash
-# Start fdisk expert mode to see sector information
+# Start fdisk with sector units displayed
 sudo fdisk -u /dev/sdb
 
 # In fdisk, press 'p' to print current table
 # Press 'l' to list partition types
+# Press 'x' to enter expert mode for advanced sector-level operations
 ```
 
 ### Scanning with partx
