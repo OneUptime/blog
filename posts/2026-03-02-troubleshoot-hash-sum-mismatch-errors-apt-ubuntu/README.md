@@ -67,14 +67,15 @@ sudo apt -o Acquire::http::Proxy=DIRECT update
 # If this works, the proxy is the problem
 ```
 
-For corporate proxies, contact your network team to have the cached APT files purged. For `apt-cacher-ng`:
+For corporate proxies, contact your network team to have the cached APT files purged. For `apt-cacher-ng`, use the web maintenance interface at `http://your-acng-server:3142/acng-report.html` (the "Expiration" task removes stale files), or stop the service and clear the cache directory manually:
 
 ```bash
-# On the apt-cacher-ng server, purge the cache
-sudo apt-cacher-ng-ctl purge
-# Or manually delete the cache directory
+# On the apt-cacher-ng server, stop the service
+sudo systemctl stop apt-cacher-ng
+# Delete the cache directory
 sudo rm -rf /var/cache/apt-cacher-ng/*
-sudo systemctl restart apt-cacher-ng
+# Restart the service
+sudo systemctl start apt-cacher-ng
 ```
 
 ## Fix 3: Switch to a Different Mirror
