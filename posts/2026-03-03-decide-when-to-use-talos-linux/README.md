@@ -113,7 +113,6 @@ machine:
     - device: /dev/sdb
       partitions:
         - mountpoint: /var/mnt/storage
-          size: 0
 ```
 
 ## When Talos Is Not the Right Choice
