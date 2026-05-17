@@ -19,7 +19,7 @@ There are several situations where you need to pass additional arguments to the 
 - **Hardware compatibility** - Some hardware requires specific driver options or workarounds. For example, certain NVMe drives need `nvme_core.default_ps_max_latency_us=0` to prevent power state issues.
 - **Performance tuning** - Arguments like `transparent_hugepage=never` can improve database performance by disabling transparent huge pages.
 - **Security hardening** - Options like `slab_nomerge` and `init_on_alloc=1` add extra security at the cost of some performance.
-- **Debugging** - When troubleshooting boot issues, arguments like `talos.debug=true` or `console=ttyS0` can help you see what is happening.
+- **Debugging** - When troubleshooting boot issues, arguments like `console=ttyS0` or `panic=10` can help you see what is happening before the system reboots.
 - **Virtualization** - Running Talos on certain hypervisors may require specific arguments for proper device passthrough or clock synchronization.
 
 ## Adding Kernel Arguments in Machine Configuration
@@ -121,9 +121,6 @@ machine:
 
       # Disable kernel address randomization (for debugging only)
       # - nokaslr
-
-      # Set the default I/O scheduler
-      - elevator=none
 ```
 
 ## Verifying Kernel Arguments
