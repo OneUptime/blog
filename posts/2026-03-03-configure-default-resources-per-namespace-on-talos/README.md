@@ -212,13 +212,13 @@ On Talos Linux, ephemeral storage is particularly important because the OS parti
 
 ## Init Container Defaults
 
-LimitRange defaults also apply to init containers. If your pods use init containers, make sure the defaults make sense for them too.
+LimitRange defaults also apply to init containers. The valid LimitRange types are `Container`, `Pod`, and `PersistentVolumeClaim` — there is no separate `InitContainer` type. The `Container` defaults you set will be applied to both regular containers and init containers in the namespace.
 
 ```yaml
 apiVersion: v1
 kind: LimitRange
 metadata:
-  name: init-container-defaults
+  name: container-defaults
   namespace: team-backend
 spec:
   limits:
@@ -229,18 +229,9 @@ spec:
       defaultRequest:
         cpu: 100m
         memory: 128Mi
-    # Init containers often need different resources
-    # They run briefly during pod startup
-    - type: InitContainer
-      default:
-        cpu: 250m
-        memory: 256Mi
-      defaultRequest:
-        cpu: 50m
-        memory: 64Mi
 ```
 
-Note that init containers run sequentially before the main containers. Their resource requests are not added to the main container requests but compared separately for scheduling purposes.
+Note that init containers run sequentially before the main containers. Their resource requests are not added to the main container requests but compared separately for scheduling purposes: the pod's effective request for each resource is the larger of the sum of init container requests or the sum of regular container requests.
 
 ## Pod-Level Defaults
 
@@ -284,12 +275,15 @@ Scenario 1: No resources specified
 Scenario 2: Only requests specified
   -> Specified requests are used
   -> Default limits are applied
-  -> If default limit is lower than specified request, the request value is used as the limit
+  -> LimitRange does not reconcile conflicts: if the default limit is lower
+     than the specified request, the resulting pod is rejected by the API
+     server (requests must be <= limits)
 
 Scenario 3: Only limits specified
   -> Default requests are applied
   -> Specified limits are used
-  -> If default request is higher than specified limit, the limit value is used as the request
+  -> LimitRange does not reconcile conflicts: if the default request is higher
+     than the specified limit, the resulting pod is rejected by the API server
 
 Scenario 4: Both requests and limits specified
   -> Specified values are used
