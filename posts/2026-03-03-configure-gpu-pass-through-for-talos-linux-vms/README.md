@@ -155,24 +155,22 @@ version: v1.7.0
 customization:
   systemExtensions:
     officialExtensions:
-      - siderolabs/nvidia-container-toolkit
-      - siderolabs/nvidia-open-gpu-kernel-modules
-      - siderolabs/nvidia-fabricmanager
+      - siderolabs/nvidia-container-toolkit-lts
+      - siderolabs/nvidia-open-gpu-kernel-modules-lts
+      - siderolabs/nvidia-fabricmanager-lts
 EOF
 
 # Build the image using the Talos Image Factory
 # Or use the factory URL directly in your machine config
 ```
 
-Alternatively, you can reference the extensions in your machine configuration:
+Note that since Talos v1.5, system extensions can no longer be installed at runtime via the `machine.install.extensions` field. Extensions must be baked into the boot image through the Image Factory.
+
+You can still declare the kernel modules to load via the machine configuration:
 
 ```yaml
-# Machine config snippet for NVIDIA extensions
+# Machine config snippet to load NVIDIA kernel modules
 machine:
-  install:
-    extensions:
-      - image: ghcr.io/siderolabs/nvidia-container-toolkit:latest
-      - image: ghcr.io/siderolabs/nvidia-open-gpu-kernel-modules:latest
   kernel:
     modules:
       - name: nvidia
@@ -237,7 +235,7 @@ metadata:
 spec:
   containers:
     - name: cuda-test
-      image: nvidia/cuda:12.0-base
+      image: nvidia/cuda:12.0.0-base-ubuntu22.04
       command: ["nvidia-smi"]
       resources:
         limits:
