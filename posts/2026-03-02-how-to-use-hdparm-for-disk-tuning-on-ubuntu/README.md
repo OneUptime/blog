@@ -230,9 +230,7 @@ sudo hdparm -C /dev/sda
 # or:
 #  drive state is:  standby
 
-# Force drive to spin up from standby
-sudo hdparm -S 0 /dev/sda
-# Or simply read from it:
+# Force drive to spin up from standby by issuing any read
 sudo dd if=/dev/sda bs=512 count=1 of=/dev/null
 ```
 
@@ -266,10 +264,10 @@ sudo hdparm -I /dev/sda | grep -E "SMART|NCQ|TRIM|Sanitize|Security"
 cat /sys/block/sda/device/queue_depth
 
 # Check SMART status
-sudo hdparm -H /dev/sda    # Check SMART health
-# Or use smartmontools for detailed SMART data:
+# hdparm does not have a SMART health command; use smartmontools instead.
 sudo apt install smartmontools -y
-sudo smartctl -a /dev/sda
+sudo smartctl -H /dev/sda          # Quick SMART health check
+sudo smartctl -a /dev/sda          # Detailed SMART data
 ```
 
 ## Benchmarking Comparison
