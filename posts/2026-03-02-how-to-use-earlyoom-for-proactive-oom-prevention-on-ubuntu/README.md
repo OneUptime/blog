@@ -64,44 +64,53 @@ sudo nano /etc/default/earlyoom
 ```bash
 # /etc/default/earlyoom
 
-# Memory threshold: kill when free RAM drops below this percentage
-# Default: 10%
+# Memory threshold: send SIGTERM when available RAM drops below this percentage,
+# SIGKILL when it drops below KILL_PERCENT (default: PERCENT/2).
+# Default: 10% (so SIGTERM at 10%, SIGKILL at 5%).
 # Adjust based on your system - on systems with 64GB RAM, 10% is 6.4GB
 # which is very conservative. 5% might be more appropriate.
 EARLYOOM_ARGS="-m 5 -s 5"
 
 # Full options breakdown:
-# -m <percent>    Minimum free memory threshold (default 10%)
-# -s <percent>    Minimum free swap threshold (default 10%)
-# -M <KiB>        Minimum free memory in KiB (alternative to percentage)
-# -S <KiB>        Minimum free swap in KiB (alternative to percentage)
-# -k              Send SIGTERM first, wait 1 second, then SIGKILL
-#                 Default is to send SIGTERM only
-# -i              Enable notifications via dbus (desktop use)
-# -n              Send notifications using notify-send
-# -d              Print debug information
-# -r <seconds>    Poll interval in seconds (default 1)
-# --prefer REGEX  Prefer killing processes matching this regex
-# --avoid REGEX   Avoid killing processes matching this regex
+# -m PERCENT[,KILL_PERCENT]  Available memory thresholds (default 10%).
+#                            SIGTERM at PERCENT, SIGKILL at KILL_PERCENT
+#                            (default: PERCENT/2).
+# -s PERCENT[,KILL_PERCENT]  Free swap thresholds (default 10%).
+#                            Both memory AND swap must be below their minimums
+#                            for earlyoom to act.
+# -M SIZE[,KILL_SIZE]        Available memory minimum in KiB (alternative to -m)
+# -S SIZE[,KILL_SIZE]        Free swap minimum in KiB (alternative to -s)
+# -n                         Enable d-bus notifications
+# -N /PATH/TO/SCRIPT         Call script after each oom kill (absolute path)
+# -g                         Kill all processes within a process group
+# -d, --debug                Enable debugging messages
+# -r INTERVAL                Memory report interval in seconds (default 1,
+#                            0 to disable)
+# -p                         Raise earlyoom priority (nice -20, oom_score_adj -100)
+# --prefer REGEX             Prefer killing processes matching this regex
+# --avoid REGEX              Avoid killing processes matching this regex
+# --ignore REGEX             Ignore processes matching this regex (never kill)
+# --sort-by-rss              Pick victim by largest RSS (default: largest oom_score)
+# --ignore-root-user         Do not kill processes owned by root
+# --dryrun                   Dry run - do not actually kill processes
 ```
 
 A well-tuned configuration for a production server:
 
 ```bash
 # /etc/default/earlyoom
-# Kill at 5% free memory and 10% free swap
-# Send SIGTERM first (graceful shutdown) then SIGKILL
+# SIGTERM at 5% available memory and 10% free swap (SIGKILL at 2.5% / 5%)
 # Avoid killing critical system processes
-EARLYOOM_ARGS="-m 5 -s 10 -k --avoid '(^|/)(init|systemd|sshd|dbus-daemon|rsyslogd|cron|agetty)$'"
+EARLYOOM_ARGS="-m 5 -s 10 --avoid '(^|/)(init|systemd|sshd|dbus-daemon|rsyslogd|cron|agetty)$'"
 ```
 
 For a desktop workstation:
 
 ```bash
 # /etc/default/earlyoom
-# Kill at 8% free memory, prefer killing browser tabs
-# Send notifications
-EARLYOOM_ARGS="-m 8 -s 5 -k --prefer '(^|/)(chrome|chromium|firefox|electron)' --avoid '(^|/)(Xorg|gnome-shell|systemd|sshd)' -n"
+# SIGTERM at 8% available memory, prefer killing browser tabs
+# Enable d-bus notifications
+EARLYOOM_ARGS="-m 8 -s 5 --prefer '(^|/)(chrome|chromium|firefox|electron)' --avoid '(^|/)(Xorg|gnome-shell|systemd|sshd)' -n"
 ```
 
 Apply changes:
@@ -113,7 +122,7 @@ sudo systemctl status earlyoom
 
 ## Understanding Process Priority for Killing
 
-earlyoom uses memory-mapped sizes to rank processes as OOM kill candidates. The highest memory user that isn't protected by `--avoid` gets killed first.
+By default, earlyoom ranks candidates by the kernel's `oom_score` (the same metric the kernel OOM killer uses). With `--sort-by-rss`, it instead picks the process with the largest resident set size (RSS). The highest-scoring process that isn't protected by `--avoid` gets killed first.
 
 ```bash
 # See which processes earlyoom considers as candidates
@@ -169,9 +178,9 @@ earlyoom can send notifications when it kills a process. This is essential for p
 # Already visible in: journalctl -u earlyoom
 
 # Send to a specific command (e.g., a monitoring webhook)
-# Use the --notify-command option
-EARLYOOM_ARGS="-m 5 -s 10 -k \
-  --notify-command '/usr/local/bin/oom-notify.sh %p %n'"
+# Use the -N option (absolute path required)
+EARLYOOM_ARGS="-m 5 -s 10 \
+  -N /usr/local/bin/oom-notify.sh"
 ```
 
 Create the notification script:
@@ -179,11 +188,12 @@ Create the notification script:
 ```bash
 sudo tee /usr/local/bin/oom-notify.sh << 'EOF'
 #!/bin/bash
-# Called by earlyoom when killing a process
-# Arguments: $1 = PID, $2 = process name
+# Called by earlyoom when killing a process.
+# earlyoom passes context via environment variables:
+#   EARLYOOM_PID, EARLYOOM_UID, EARLYOOM_NAME, EARLYOOM_CMDLINE
 
-PID="$1"
-PNAME="$2"
+PID="${EARLYOOM_PID}"
+PNAME="${EARLYOOM_NAME}"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 FREE_MEM=$(free -h | awk '/^Mem:/{print $4}')
 FREE_SWAP=$(free -h | awk '/^Swap:/{print $4}')
