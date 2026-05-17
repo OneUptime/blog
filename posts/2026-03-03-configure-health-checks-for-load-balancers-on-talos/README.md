@@ -233,18 +233,20 @@ backend app-workers
 
 ## Ingress Controller Health Checks
 
-Configure health checks at the ingress level for finer-grained control:
+The community `ingress-nginx` controller does not perform active upstream health checks (that feature is exclusive to NGINX Plus). Instead, it relies on Kubernetes readiness probes to keep the endpoint list accurate, and you can tune how it reacts when an upstream returns errors or times out:
 
 ```yaml
-# Nginx Ingress with custom health check annotations
+# Nginx Ingress with upstream resilience annotations
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: my-app
   annotations:
-    nginx.ingress.kubernetes.io/health-check-path: /ready
-    nginx.ingress.kubernetes.io/health-check-interval: "10"
-    nginx.ingress.kubernetes.io/health-check-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-next-upstream: "error timeout http_502 http_503 http_504"
+    nginx.ingress.kubernetes.io/proxy-next-upstream-tries: "3"
     nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
 spec:
   ingressClassName: nginx
@@ -360,7 +362,7 @@ spec:
 
     - alert: EndpointsNotReady
       expr: |
-        kube_endpoint_address_not_ready > 0
+        kube_endpoint_address{ready="false"} == 1
       for: 10m
       labels:
         severity: warning
@@ -369,7 +371,7 @@ spec:
 
     - alert: NoHealthyBackends
       expr: |
-        kube_endpoint_address_available == 0
+        count by (namespace, endpoint) (kube_endpoint_address{ready="true"}) == 0
       for: 1m
       labels:
         severity: critical
