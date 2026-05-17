@@ -59,13 +59,14 @@ The kubelet on Talos Linux needs proper cgroup configuration to work with cgroup
 machine:
   kubelet:
     extraArgs:
-      # Use systemd cgroup driver (required for cgroup v2)
-      cgroup-driver: "systemd"
       # Set the kubelet's own cgroup
       kubelet-cgroups: "/system.slice/kubelet.service"
       # Set the runtime cgroup
       runtime-cgroups: "/system.slice/containerd.service"
     extraConfig:
+      # Use systemd cgroup driver (required for cgroup v2).
+      # Talos already defaults to systemd; setting it here is explicit.
+      cgroupDriver: "systemd"
       # Enable memory manager for guaranteed memory QoS
       memoryManagerPolicy: "Static"
       # Reserve memory for system components
@@ -120,11 +121,13 @@ Cgroup v2 introduces memory.min and memory.low, which provide guaranteed minimum
 # Enable memory QoS in kubelet configuration
 machine:
   kubelet:
+    extraArgs:
+      # MemoryQoS is an alpha feature gate and must be explicitly enabled
+      feature-gates: "MemoryQoS=true"
     extraConfig:
-      # Enable memory QoS feature
+      # memoryThrottlingFactor controls memory.high relative to memory.max.
+      # Default is 0.9; lowering it throttles sooner, raising it throttles later.
       memoryThrottlingFactor: 0.9
-      # This sets memory.high to 90% of memory.max
-      # Providing a soft limit before the hard OOM kill
 ```
 
 With memory QoS enabled, the cgroup hierarchy uses these controls:
@@ -140,18 +143,9 @@ This means pods with memory requests get a guaranteed allocation through `memory
 
 ## Configuring CPU Controller Settings
 
-The cgroup v2 CPU controller uses weights instead of shares:
+The cgroup v2 CPU controller uses `cpu.weight` (range 1-10000) instead of cgroup v1's `cpu.shares`. Kubernetes (via runc) converts a pod's CPU request into a weight using a logarithmic mapping that aligns with systemd's conversion, so a request of 1 CPU corresponds to the default weight of 100. Requests below 1 CPU yield proportionally smaller weights and requests above 1 CPU yield larger weights, with the result clamped to the 1-10000 range.
 
-```yaml
-# Kubernetes maps resource requests to CPU weights
-# Formula: weight = max(2, min(10000, ceil(cpuRequest * 1024 / 1000)))
-
-# Example for a pod with 500m CPU request:
-# weight = ceil(0.5 * 1024 / 1000) * 1024 = 512
-
-# Pod with 2 CPU request:
-# weight = 2048
-```
+You do not configure this weight directly; set the pod's `resources.requests.cpu` and the runtime will compute the appropriate `cpu.weight` for you.
 
 To configure CPU bandwidth limits on the node level:
 
@@ -176,43 +170,9 @@ machine:
 
 ## Configuring IO Controller Settings
 
-Cgroup v2 provides better IO isolation through the IO controller:
+Cgroup v2 provides better IO isolation through a unified IO controller (`io.weight`, `io.max`, and the IO cost model). Kubernetes does not currently expose first-class IO weight or IOPS limits on pod specs, so per-pod IO tuning has to be handled at the container runtime layer.
 
-```yaml
-# talos-io-config.yaml
-# IO weight configuration through container runtime
-machine:
-  kubelet:
-    extraConfig:
-      # Enable IO weight-based scheduling
-      # Higher weight = higher priority for IO
-      featureGates:
-        KubeletCgroupDriverSystemd: true
-```
-
-You can set IO weights per pod through annotations (support depends on the container runtime version):
-
-```yaml
-# pod-with-io-priority.yaml
-# Pod with custom IO weight
-apiVersion: v1
-kind: Pod
-metadata:
-  name: io-intensive-app
-  annotations:
-    io.kubernetes.cri/blkio-weight: "500"
-spec:
-  containers:
-    - name: app
-      image: my-app:latest
-      resources:
-        requests:
-          cpu: "1"
-          memory: "2Gi"
-        limits:
-          cpu: "2"
-          memory: "4Gi"
-```
+With containerd, IO priorities can be applied through NRI plugins or runtime-class configuration. With CRI-O, a `BlockIOClass` can be assigned per pod. Refer to your runtime's documentation for the exact mechanism — there is no portable Kubernetes-level annotation for setting blkio weight.
 
 ## Enabling Pressure Stall Information (PSI)
 
@@ -273,15 +233,16 @@ spec:
 
 ## Delegating Cgroup Controllers to Containers
 
-Some workloads need to manage their own cgroups (like nested containers or systemd-based containers). Configure delegation:
+Some workloads need to manage their own cgroups (like nested containers or systemd-based containers). Cgroup delegation in this sense is a property of the container runtime's systemd scope (`Delegate=yes`) rather than a kubelet feature gate. With containerd's systemd cgroup driver and a recent runc, sub-cgroup creation inside a container works out of the box on Talos.
+
+If you also want unprivileged workloads to manage cgroups inside a user namespace, enable the user-namespace support feature gate on the kubelet:
 
 ```yaml
-# talos-cgroup-delegation.yaml
-# Allow specific containers to manage sub-cgroups
+# talos-userns.yaml
+# Enable user namespace support for pods (separate from cgroup delegation)
 machine:
   kubelet:
     extraArgs:
-      # Enable cgroup delegation for specific containers
       feature-gates: "UserNamespacesSupport=true"
 ```
 
