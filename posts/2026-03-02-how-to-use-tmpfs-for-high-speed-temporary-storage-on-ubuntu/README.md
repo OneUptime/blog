@@ -155,11 +155,14 @@ Docker build context and intermediate layers can be placed on tmpfs.
 sudo mkdir -p /mnt/docker-tmp
 sudo mount -t tmpfs -o size=8g tmpfs /mnt/docker-tmp
 
-# Tell Docker to use it for temp files
-echo '{
-    "tmp-dir": "/mnt/docker-tmp"
-}' | sudo tee /etc/docker/daemon.json
+# Tell Docker to use it for temp files via DOCKER_TMPDIR
+sudo mkdir -p /etc/systemd/system/docker.service.d
+sudo tee /etc/systemd/system/docker.service.d/tmpdir.conf > /dev/null <<'EOF'
+[Service]
+Environment="DOCKER_TMPDIR=/mnt/docker-tmp"
+EOF
 
+sudo systemctl daemon-reload
 sudo systemctl restart docker
 ```
 
