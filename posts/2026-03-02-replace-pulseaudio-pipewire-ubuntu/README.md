@@ -45,7 +45,7 @@ sudo apt install pipewire pipewire-audio-client-libraries libspa-0.2-bluetooth \
 Package roles:
 - `pipewire` - the core PipeWire server
 - `pipewire-audio-client-libraries` - audio client support
-- `libspa-0.2-bluetooth` - Bluetooth audio support including aptX and AAC
+- `libspa-0.2-bluetooth` - Bluetooth audio support (SBC and mSBC by default; aptX and AAC support depends on optional libraries shipped with your Ubuntu release)
 - `libspa-0.2-jack` - JACK compatibility layer
 - `pipewire-pulse` - PulseAudio compatibility layer (makes PulseAudio apps work with PipeWire)
 - `wireplumber` - the session manager for PipeWire (replaces pipewire-media-session)
@@ -156,8 +156,8 @@ PipeWire has its own management tools alongside the PulseAudio compatibility com
 # List all PipeWire objects
 pw-cli list-objects
 
-# Check PipeWire status
-pw-cli info
+# Show info for all PipeWire objects
+pw-cli info all
 ```
 
 ### pw-top (PipeWire Process Monitor)
@@ -199,7 +199,7 @@ Helvum is a graphical patchbay for PipeWire that shows audio connections:
 ```bash
 # Install via flatpak (most up to date version)
 sudo apt install flatpak -y
-flatpak install flathub org.freedesktop.pipewire.Helvum
+flatpak install flathub org.pipewire.Helvum
 
 # Or install from Ubuntu repositories if available
 sudo apt install helvum
