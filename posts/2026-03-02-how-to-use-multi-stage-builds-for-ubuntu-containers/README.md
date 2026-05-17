@@ -68,8 +68,9 @@ RUN cmake -B build -DCMAKE_BUILD_TYPE=Release && \
 FROM ubuntu:22.04 AS runtime
 
 # Install only runtime dependencies (no build tools)
+# Note: libssl3 is the runtime library, libssl-dev is only needed at build time
 RUN apt-get update && apt-get install -y \
-    libssl3 \       # Runtime library (not -dev)
+    libssl3 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -188,7 +189,7 @@ WORKDIR /app
 
 # Install wheels from build stage (no compilation needed)
 COPY --from=python-builder /wheels /wheels
-RUN pip3 install --no-index --find-links=/wheels -r /wheels/../requirements.txt && \
+RUN pip3 install --no-index --find-links=/wheels -r /wheels/requirements.txt && \
     rm -rf /wheels
 
 # Copy application code
@@ -300,6 +301,7 @@ RUN apt-get update && apt-get install -y libssl3 && rm -rf /var/lib/apt/lists/*
 
 FROM ubuntu:22.04 AS builder
 RUN apt-get update && apt-get install -y build-essential libssl-dev && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 COPY . .
 RUN make build
 
