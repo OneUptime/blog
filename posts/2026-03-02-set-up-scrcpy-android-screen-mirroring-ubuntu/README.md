@@ -123,8 +123,8 @@ scrcpy --window-borderless
 # Set a custom window title
 scrcpy --window-title "My Phone"
 
-# Lock video orientation (0=default, 1=90deg, 2=180deg, 3=270deg)
-scrcpy --lock-video-orientation=0
+# Lock video orientation in degrees (0, 90, 180, 270)
+scrcpy --orientation=0
 ```
 
 ### Screen Off Mode
@@ -143,8 +143,8 @@ scrcpy --turn-screen-off --stay-awake
 # Record the mirrored screen to an MP4 file
 scrcpy --record screen_recording.mp4
 
-# Record without displaying the window (background recording)
-scrcpy --no-display --record screen_recording.mp4
+# Record without playback/control (background recording)
+scrcpy --no-playback --record screen_recording.mp4
 
 # Record in MKV format
 scrcpy --record recording.mkv
@@ -152,14 +152,16 @@ scrcpy --record recording.mkv
 
 ### Audio Forwarding (Scrcpy 2.0+)
 
+Audio forwarding is enabled by default on Android 11+ devices using the `opus` codec.
+
 ```bash
-# Forward phone audio to the Ubuntu speakers
+# Switch the audio codec (opus is default; aac, flac and raw are also supported)
 scrcpy --audio-codec=aac
 
 # Disable audio forwarding if you only need video
 scrcpy --no-audio
 
-# Record with audio
+# Record with audio (audio is captured by default)
 scrcpy --record with_audio.mp4
 ```
 
@@ -203,23 +205,24 @@ scrcpy
 
 ## Keyboard and Mouse Controls
 
-Scrcpy maps your keyboard and mouse to phone input:
+Scrcpy maps your keyboard and mouse to phone input. The default modifier (referred to as MOD) is left Alt or left Super; you can switch it to Ctrl with `--shortcut-mod=lctrl`.
 
 | Action | Keyboard Shortcut |
 |---|---|
-| Switch fullscreen | Ctrl+F |
-| Resize to fit screen | Ctrl+G |
-| Close window | Ctrl+W or Ctrl+Q |
-| Home button | Ctrl+H |
-| Back button | Ctrl+B |
-| App switcher | Ctrl+S |
-| Volume up | Ctrl+Up |
-| Volume down | Ctrl+Down |
-| Power button | Ctrl+P |
-| Copy from device | Ctrl+C |
-| Paste to device | Ctrl+V |
-| Screenshot to clipboard | Ctrl+Shift+S |
-| Expand notification panel | Ctrl+N |
+| Switch fullscreen | Alt+F (or F11) |
+| Resize window to remove black borders | Alt+W |
+| Resize window to 1:1 (pixel-perfect) | Alt+G |
+| Quit | Alt+Q |
+| Home button | Alt+H |
+| Back button | Alt+B |
+| App switcher | Alt+S |
+| Volume up | Alt+Up |
+| Volume down | Alt+Down |
+| Power button | Alt+P |
+| Turn device screen off (keep mirroring) | Alt+O |
+| Copy from device | Alt+C |
+| Paste to device | Alt+V |
+| Expand notification panel | Alt+N |
 
 Mouse right-click simulates the Android back button. Mouse scroll maps to scrolling on the phone.
 
