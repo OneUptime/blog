@@ -64,7 +64,7 @@ The drop-in directory (`/etc/sysctl.d/`) is processed alphabetically, then `/etc
 ## Applying Changes
 
 ```bash
-# Apply all settings from /etc/sysctl.conf and /etc/sysctl.d/
+# Apply all settings from /etc/sysctl.conf (default file only)
 sudo sysctl -p
 
 # Apply a specific file
@@ -99,8 +99,10 @@ vm.overcommit_memory = 0
 # Increase if you see OOM kills under high memory pressure
 vm.min_free_kbytes = 65536
 
-# Transparent Huge Pages hint (0=never, 1=madvise, 2=always)
-# Set to 1 for databases (they manage their own memory)
+# Number of static huge pages to pre-allocate (HugeTLB)
+# Default 0. Increase to reserve huge pages for apps like databases
+# Note: Transparent Huge Pages are controlled separately via
+# /sys/kernel/mm/transparent_hugepage/enabled (not a sysctl)
 vm.nr_hugepages = 0
 ```
 
