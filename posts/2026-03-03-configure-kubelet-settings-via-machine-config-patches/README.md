@@ -12,14 +12,15 @@ The kubelet is the agent that runs on every Kubernetes node, responsible for man
 
 ## Kubelet Configuration in Talos
 
-The kubelet configuration lives under `machine.kubelet` in the Talos machine configuration. Here is the full structure of available options:
+The kubelet configuration lives under `machine.kubelet` in the Talos machine configuration. Here is the structure of commonly used options:
 
 ```yaml
 machine:
+  # Node labels and taints live at the machine level, not under kubelet
+  nodeLabels: {}
+  nodeTaints: {}
   kubelet:
     image: ghcr.io/siderolabs/kubelet:v1.29.0
-    nodeLabels: {}
-    nodeTaints: {}
     nodeIP:
       validSubnets: []
     extraArgs: {}
@@ -29,7 +30,7 @@ machine:
     credentialProviderConfig: {}
 ```
 
-Each of these fields can be set through patches to customize kubelet behavior.
+Each of these fields can be set through patches to customize kubelet behavior. Note that `nodeLabels` and `nodeTaints` are top-level `machine` fields in Talos, not nested under `machine.kubelet`.
 
 ## Setting Node Labels
 
@@ -39,20 +40,19 @@ Labels are key-value pairs attached to the Kubernetes node object. They are used
 # node-labels-patch.yaml
 
 machine:
-  kubelet:
-    nodeLabels:
-      # Standard topology labels
-      topology.kubernetes.io/region: us-east-1
-      topology.kubernetes.io/zone: us-east-1a
+  nodeLabels:
+    # Standard topology labels
+    topology.kubernetes.io/region: us-east-1
+    topology.kubernetes.io/zone: us-east-1a
 
-      # Role labels
-      node-role.kubernetes.io/compute: ""
+    # Role labels
+    node-role.kubernetes.io/compute: ""
 
-      # Custom labels
-      environment: production
-      team: backend
-      hardware-type: gpu
-      cost-center: engineering
+    # Custom labels
+    environment: production
+    team: backend
+    hardware-type: gpu
+    cost-center: engineering
 ```
 
 ```bash
@@ -73,13 +73,12 @@ Taints prevent pods from being scheduled on a node unless they tolerate the tain
 ```yaml
 # node-taints-patch.yaml
 machine:
-  kubelet:
-    nodeTaints:
-      # Only schedule GPU workloads here
-      nvidia.com/gpu: "true:NoSchedule"
+  nodeTaints:
+    # Only schedule GPU workloads here
+    nvidia.com/gpu: "true:NoSchedule"
 
-      # Mark as dedicated to a specific team
-      dedicated: "ml-team:NoSchedule"
+    # Mark as dedicated to a specific team
+    dedicated: "ml-team:NoSchedule"
 ```
 
 Common taint effects:
@@ -272,9 +271,9 @@ Different node roles often need different kubelet configurations:
 ```yaml
 # cp-kubelet-patch.yaml
 machine:
+  nodeLabels:
+    node-role.kubernetes.io/control-plane: ""
   kubelet:
-    nodeLabels:
-      node-role.kubernetes.io/control-plane: ""
     extraArgs:
       system-reserved: "cpu=1,memory=2Gi"
       kube-reserved: "cpu=1,memory=2Gi"
@@ -286,9 +285,9 @@ machine:
 ```yaml
 # worker-kubelet-patch.yaml
 machine:
+  nodeLabels:
+    node-role.kubernetes.io/worker: ""
   kubelet:
-    nodeLabels:
-      node-role.kubernetes.io/worker: ""
     extraArgs:
       system-reserved: "cpu=500m,memory=1Gi"
       kube-reserved: "cpu=500m,memory=1Gi"
@@ -301,12 +300,12 @@ machine:
 ```yaml
 # gpu-worker-kubelet-patch.yaml
 machine:
+  nodeLabels:
+    node-role.kubernetes.io/gpu: ""
+    nvidia.com/gpu.present: "true"
+  nodeTaints:
+    nvidia.com/gpu: "true:NoSchedule"
   kubelet:
-    nodeLabels:
-      node-role.kubernetes.io/gpu: ""
-      nvidia.com/gpu.present: "true"
-    nodeTaints:
-      nvidia.com/gpu: "true:NoSchedule"
     extraArgs:
       system-reserved: "cpu=1,memory=4Gi"
       kube-reserved: "cpu=1,memory=2Gi"
@@ -321,9 +320,9 @@ machine:
 ```yaml
 # storage-worker-kubelet-patch.yaml
 machine:
+  nodeLabels:
+    node-role.kubernetes.io/storage: ""
   kubelet:
-    nodeLabels:
-      node-role.kubernetes.io/storage: ""
     extraArgs:
       system-reserved: "cpu=500m,memory=2Gi"
       kube-reserved: "cpu=500m,memory=1Gi"
