@@ -32,7 +32,7 @@ openssl dgst -list
 
 ## Symmetric Encryption and Decryption
 
-OpenSSL supports dozens of symmetric ciphers. AES-256-CBC and AES-256-GCM are the recommended choices.
+OpenSSL supports dozens of symmetric ciphers. AES-256-CBC is the most practical choice for the `enc` command — note that the `enc` utility does not support authenticated-encryption modes like AES-GCM or AES-CCM, so if you need AEAD you must use a different tool or program against the libcrypto API directly.
 
 ### Encrypting Files
 
@@ -57,10 +57,10 @@ openssl enc -aes-256-cbc -salt -pbkdf2 \
     -out encrypted.bin \
     -pass file:/tmp/passfile
 
-# Use AES-256-GCM (authenticated encryption - preferred over CBC)
-openssl enc -aes-256-gcm -salt -pbkdf2 \
+# Use AES-256-CTR if you need a stream-style cipher without padding
+openssl enc -aes-256-ctr -salt -pbkdf2 \
     -in plaintext.txt \
-    -out encrypted.gcm
+    -out encrypted.ctr
 ```
 
 The `-pbkdf2` flag enables Password-Based Key Derivation Function 2, which is important for security - without it, a simple hash is used for key derivation, which is vulnerable to brute force.
@@ -179,17 +179,18 @@ openssl x509 -req \
 
 ## RSA Asymmetric Encryption
 
+The legacy `rsautl` subcommand was deprecated in OpenSSL 3.0 in favour of the more general `pkeyutl`. Use `pkeyutl` for new scripts.
+
 ```bash
 # Encrypt a small file with a public key (RSA is limited to small payloads)
 # For large files, use hybrid encryption (RSA to encrypt a symmetric key)
-openssl rsautl -encrypt \
-    -inkey public-key.pem \
-    -pubin \
+openssl pkeyutl -encrypt \
+    -inkey public-key.pem -pubin \
     -in message.txt \
     -out message.enc
 
 # Decrypt with the private key
-openssl rsautl -decrypt \
+openssl pkeyutl -decrypt \
     -inkey private-key.pem \
     -in message.enc \
     -out message-decrypted.txt
@@ -205,11 +206,11 @@ PUBKEY="$1"
 PLAINTEXT="$2"
 OUTPUT_DIR="${3:-.}"
 
-# Generate a random AES session key
-openssl rand -out "$OUTPUT_DIR/session.key" 32  # 256-bit key
+# Generate a random AES session passphrase as base64 (single line, safe for -pass file:)
+openssl rand -base64 32 > "$OUTPUT_DIR/session.key"
 
 # Encrypt the session key with RSA public key
-openssl rsautl -encrypt \
+openssl pkeyutl -encrypt \
     -inkey "$PUBKEY" -pubin \
     -in "$OUTPUT_DIR/session.key" \
     -out "$OUTPUT_DIR/session.key.enc"
@@ -236,7 +237,7 @@ DATA_ENC="$3"
 OUTPUT="$4"
 
 # Decrypt the session key with RSA private key
-openssl rsautl -decrypt \
+openssl pkeyutl -decrypt \
     -inkey "$PRIVKEY" \
     -in "$SESSION_KEY_ENC" \
     -out /tmp/session.key
