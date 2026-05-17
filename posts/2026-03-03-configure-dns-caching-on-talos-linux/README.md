@@ -39,7 +39,7 @@ data:
     .:53 {
         errors
         health {
-           lazystart
+           lameduck 5s
         }
         ready
         kubernetes cluster.local in-addr.arpa ip6.arpa {
@@ -124,7 +124,7 @@ Different domains may need different cache durations. Internal services change f
 .:53 {
     errors
     health {
-       lazystart
+       lameduck 5s
     }
     ready
     kubernetes cluster.local in-addr.arpa ip6.arpa {
