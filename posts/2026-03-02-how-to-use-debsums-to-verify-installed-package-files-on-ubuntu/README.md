@@ -35,23 +35,23 @@ The output shows the status of each file:
 
 ```text
 /usr/sbin/nginx                    OK
-/etc/nginx/nginx.conf              REPLACED  (config file, expected to be modified)
+/usr/sbin/nginx-debug              REPLACED
 /usr/share/man/man8/nginx.8.gz     OK
 ```
 
-Files marked `REPLACED` are configuration files that have been modified - this is expected behavior. Files marked `FAILED` have checksums that do not match the package's recorded checksums.
+Files marked `OK` matched the recorded MD5 sum. Files marked `FAILED` have checksums that do not match the package's recorded checksums. Files marked `REPLACED` have been replaced by a file from a different package (for example, a diversion). By default, debsums **skips configuration files** entirely - pass `-a/--all` to include them, or `-e/--config` to check only config files.
 
 ## Checking Only Failed Files
 
 ```bash
-# Show only files that fail checksum verification
+# Show only files that fail checksum verification (short form)
 sudo debsums -s
 
-# Short form - only show failures
+# Same thing using the long-form flag
 sudo debsums --silent
 
-# Or pipe and grep
-sudo debsums 2>&1 | grep -v "^OK\|REPLACED"
+# Or pipe and grep (status word is at the end of each line)
+sudo debsums 2>&1 | grep -E "FAILED|REPLACED"
 ```
 
 ## Verifying Security-Critical Packages
@@ -83,13 +83,13 @@ sudo debsums linux-image-$(uname -r) 2>/dev/null || echo "No checksum data for k
 Not all packages ship MD5 checksum files. debsums can only check packages that include a `md5sums` file in their data.
 
 ```bash
-# List packages that DO have checksum data
+# List packages that do NOT have an md5sums file
 sudo debsums -l
 
-# List packages that do NOT have checksum data
-sudo debsums -l 2>&1 | grep "missing"
+# Same thing, long form
+sudo debsums --list-missing
 
-# Or specifically list packages lacking md5sums
+# Or walk dpkg's metadata directly to find packages lacking md5sums
 dpkg -l | awk '/^ii/{print $2}' | while read pkg; do
     if [ ! -f "/var/lib/dpkg/info/${pkg}.md5sums" ] && \
        [ ! -f "/var/lib/dpkg/info/${pkg}:amd64.md5sums" ]; then
