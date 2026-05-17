@@ -44,18 +44,20 @@ To override the default etcd configuration, modify the machine config for your c
 
 cluster:
   etcd:
-    # Advertise address for this etcd member
+    # Subnets used to compute the advertise address for this etcd member
     advertisedSubnets:
       - 10.0.1.0/24  # Use the 10.0.1.x network for etcd communication
 
-    # Additional etcd configuration
+    # Subnets used to compute the listen address (defaults to advertisedSubnets when omitted)
+    listenSubnets:
+      - 10.0.1.0/24
+
+    # Tunable etcd flags (a denylist prevents overriding addresses managed by Talos)
     extraArgs:
-      listen-client-urls: "https://0.0.0.0:2379"
-      listen-peer-urls: "https://0.0.0.0:2380"
       listen-metrics-urls: "http://0.0.0.0:2381"
 ```
 
-The `advertisedSubnets` setting is the most important one. It tells Talos which network to use when calculating the advertise address. If your node has multiple interfaces (for example, one for management and one for data), this setting ensures etcd advertises the correct IP.
+The `advertisedSubnets` setting is the most important one. It tells Talos which network to use when calculating the advertise address. If your node has multiple interfaces (for example, one for management and one for data), this setting ensures etcd advertises the correct IP. Talos derives the actual `listen-client-urls`, `listen-peer-urls`, `advertise-client-urls`, and `initial-advertise-peer-urls` from `listenSubnets` and `advertisedSubnets` — these flags are on a denylist and cannot be overridden through `extraArgs`.
 
 Apply the configuration:
 
@@ -101,39 +103,38 @@ cluster:
     advertisedSubnets:
       - 10.0.1.0/24
 
-    # Restrict listening to specific interfaces
+    # Restrict listening to the cluster network as well
+    listenSubnets:
+      - 10.0.1.0/24
+
+    # Metrics listener can still be tuned via extraArgs
     extraArgs:
-      listen-client-urls: "https://10.0.1.10:2379,https://127.0.0.1:2379"
-      listen-peer-urls: "https://10.0.1.10:2380"
-      listen-metrics-urls: "http://10.0.1.10:2381"
+      listen-metrics-urls: "http://0.0.0.0:2381"
 ```
 
 This configuration ensures that:
 
 - etcd peer traffic flows over the dedicated cluster network
 - Client connections (from the API server) also use the cluster network
-- The loopback address is included for local health checks
+- The metrics endpoint stays available on each node for Prometheus scraping
 
 ## Configuring for High Availability
 
-In a 3-node or 5-node etcd cluster, every member needs to know the initial addresses of all other members. Talos handles this through the cluster discovery mechanism, but you can also specify initial cluster members explicitly:
+In a 3-node or 5-node etcd cluster, every member needs to know the initial addresses of all other members. Talos handles this entirely through its own cluster discovery and bootstrap mechanism — the `initial-cluster`, `initial-cluster-state`, and `initial-cluster-token` etcd flags are on the `extraArgs` denylist and cannot be set from the machine configuration. The very first control plane node is promoted to bootstrap the etcd cluster via `talosctl bootstrap`, and every subsequent control plane joins as a learner using the discovery service.
+
+What you can do for an HA cluster is make sure every control plane node has an `advertisedSubnets` value that resolves to a routable address on the shared cluster network:
 
 ```yaml
-# Explicit cluster member configuration
+# Apply to every control plane node
 cluster:
   etcd:
     advertisedSubnets:
       - 10.0.1.0/24
-    extraArgs:
-      initial-cluster: >-
-        cp1=https://10.0.1.10:2380,
-        cp2=https://10.0.1.11:2380,
-        cp3=https://10.0.1.12:2380
-      initial-cluster-state: "new"
-      initial-cluster-token: "my-etcd-cluster"
+    listenSubnets:
+      - 10.0.1.0/24
 ```
 
-For existing clusters where you are adding a new member, use `existing` instead of `new` for the initial-cluster-state.
+With this in place, each member registers itself with the discovery service using an IP from `10.0.1.0/24`, and Talos handles the rest of the join process.
 
 ## Verifying the Configuration
 
@@ -185,17 +186,19 @@ Common problems include:
 etcd traffic should always be encrypted with TLS, which Talos Linux handles automatically. However, if you are customizing listen addresses, make sure you are not accidentally exposing etcd on a public interface:
 
 ```yaml
-# Restrict client access to internal networks only
+# Restrict client and peer access to internal networks only
 cluster:
   etcd:
-    extraArgs:
-      # Do NOT listen on 0.0.0.0 in production if you have public interfaces
-      listen-client-urls: "https://10.0.1.10:2379,https://127.0.0.1:2379"
-      listen-peer-urls: "https://10.0.1.10:2380"
+    advertisedSubnets:
+      - 10.0.1.0/24
+    # Do NOT leave the defaults if you have public interfaces — listenSubnets
+    # narrows the listen addresses to the chosen subnet.
+    listenSubnets:
+      - 10.0.1.0/24
 ```
 
 The metrics endpoint (port 2381) uses HTTP by default and should also be restricted to internal networks. Do not expose it publicly.
 
 ## Summary
 
-Configuring etcd listen and advertise addresses in Talos Linux is done through the machine configuration, primarily using the `advertisedSubnets` setting and `extraArgs` for fine-tuning. For single-network clusters, the defaults are usually sufficient. For multi-network setups, explicitly configure the addresses to ensure etcd communicates over the correct network. Always verify your configuration with talosctl after applying changes, and keep etcd traffic on secure, low-latency networks for the best cluster performance.
+Configuring etcd listen and advertise addresses in Talos Linux is done through the machine configuration, primarily using the `advertisedSubnets` and `listenSubnets` settings, with `extraArgs` reserved for tunables that are not on the denylist. For single-network clusters, the defaults are usually sufficient. For multi-network setups, explicitly configure the addresses to ensure etcd communicates over the correct network. Always verify your configuration with talosctl after applying changes, and keep etcd traffic on secure, low-latency networks for the best cluster performance.
