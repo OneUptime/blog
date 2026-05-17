@@ -82,7 +82,7 @@ Would you like to create a new local network bridge? (yes/no) [default=yes]: yes
 What should the new bridge be called? [default=incusbr0]: incusbr0
 What IPv4 address should be used? [default=auto]: auto
 What IPv6 address should be used? [default=auto]: auto
-Would you like the LXD server to be available over the network? (yes/no) [default=no]: no
+Would you like the server to be available over the network? (yes/no) [default=no]: no
 Would you like stale cached images to be updated automatically? (yes/no) [default=yes]: yes
 Would you like a YAML "preseed" to be printed? (yes/no) [default=no]: no
 ```
@@ -178,7 +178,7 @@ incus config set limited-container limits.memory 512MB
 incus config set limited-container limits.cpu 2
 
 # Set CPU pinning to specific cores
-incus config set limited-container limits.cpu.allowance 2-3
+incus config set limited-container limits.cpu 2-3
 
 # Verify configuration
 incus config show limited-container
