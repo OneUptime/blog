@@ -213,7 +213,7 @@ curl -s -X DELETE \
   -H "Authorization: Bearer SG.your-api-key" \
   -H "Content-Type: application/json" \
   -d '{"emails": ["problematic@example.com"]}' \
-  "https://api.sendgrid.com/v3/suppressions/bounces"
+  "https://api.sendgrid.com/v3/suppression/bounces"
 ```
 
 ## Using Port 465 (SSL)
