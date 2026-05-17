@@ -43,31 +43,29 @@ machine:
 
 This sends all machine logs to the specified TCP endpoint in JSON lines format. Each log entry is a separate JSON object on its own line.
 
-Apply this configuration:
+Apply this configuration as a patch to the existing machine config:
 
 ```bash
 # Apply to a single node
-talosctl apply-config --nodes 192.168.1.10 --patch @basic-logging-destination.yaml
+talosctl patch machineconfig --nodes 192.168.1.10 --patch @basic-logging-destination.yaml
 
 # Apply to all nodes in the cluster
-talosctl apply-config --nodes 192.168.1.10,192.168.1.11,192.168.1.20,192.168.1.21 \
+talosctl patch machineconfig --nodes 192.168.1.10,192.168.1.11,192.168.1.20,192.168.1.21 \
   --patch @basic-logging-destination.yaml
 ```
 
-## Supported Formats
-
-Talos supports two log output formats:
+## Supported Format
 
 ### JSON Lines Format
 
-The `json_lines` format sends each log entry as a complete JSON object per line:
+Talos currently supports a single log output format, `json_lines`, which sends each log entry as a complete JSON object per line:
 
 ```json
 {"talos-level":"info","talos-service":"machined","talos-time":"2026-03-03T10:15:32.123Z","msg":"configuration applied successfully"}
 {"talos-level":"warn","talos-service":"etcd","talos-time":"2026-03-03T10:15:33.456Z","msg":"slow disk detected","latency":"250ms"}
 ```
 
-This format is the most widely compatible and works with virtually every log collector.
+This format is widely compatible and works with virtually every log collector.
 
 ```yaml
 # JSON lines configuration
@@ -78,19 +76,7 @@ machine:
         format: json_lines
 ```
 
-### Default Format
-
-If you omit the format field, Talos uses its default internal format:
-
-```yaml
-# Default format configuration
-machine:
-  logging:
-    destinations:
-      - endpoint: "tcp://log-collector:5140"
-```
-
-The JSON lines format is recommended for most use cases because it provides structured data that log collectors can parse without custom configuration.
+The `format` field is required on each destination entry, and `json_lines` is the only accepted value.
 
 ## Transport Protocols
 
@@ -345,11 +331,11 @@ talosctl -n 192.168.1.10 get machinestatus
 If logs are not arriving at your destination, check these common issues:
 
 ```bash
-# 1. Verify network connectivity from the Talos node to the receiver
-talosctl -n 192.168.1.10 netstat | grep 5140
+# 1. List the node's network connections and check for the destination port
+talosctl -n 192.168.1.10 netstat --tcp --extend | grep 5140
 
-# 2. Check if the endpoint is reachable from the node
-talosctl -n 192.168.1.10 ping 192.168.1.100
+# 2. Confirm the node has a route to the receiver's network
+talosctl -n 192.168.1.10 get routes
 
 # 3. Verify the Talos configuration was applied
 talosctl -n 192.168.1.10 get machineconfig -o yaml | grep -A 10 logging
