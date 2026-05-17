@@ -177,10 +177,10 @@ TS_ROUTES=10.244.0.0/16,10.96.0.0/12
 After connecting, approve the routes in the Tailscale admin console. Then from any device on your tailnet:
 
 ```bash
-# Access a Kubernetes service directly by its ClusterIP
-curl http://10.96.0.1:443
+# Access the Kubernetes API service directly by its ClusterIP
+curl -k https://10.96.0.1:443
 
-# Or by pod IP
+# Or a pod by its IP
 curl http://10.244.1.5:8080
 ```
 
@@ -307,7 +307,7 @@ machine:
         TS_HOSTNAME=talos-worker-01
       permissions: 0o600
       path: /var/etc/tailscale/auth.env
-      op: create
+      op: overwrite
 EOF
 
 # Apply to each node
