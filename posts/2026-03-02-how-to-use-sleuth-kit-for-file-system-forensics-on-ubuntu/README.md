@@ -188,7 +188,8 @@ fls -r -m "/" -o 2048 "$EVIDENCE" > body.txt
 mactime -b body.txt -d > timeline.csv
 
 # Filter to a specific time range (e.g., the day of the incident)
-mactime -b body.txt -d -z UTC 2026-01-14 2026-01-15 > incident_timeline.csv
+# DATE_RANGE uses yyyy-mm-dd..yyyy-mm-dd as a single argument
+mactime -b body.txt -d -z UTC 2026-01-14..2026-01-15 > incident_timeline.csv
 
 # View the timeline
 column -t -s',' incident_timeline.csv | less
@@ -211,8 +212,14 @@ jcat -o 2048 "$EVIDENCE" 100 | strings | head -30
 ## Searching for Specific Data
 
 ```bash
-# Search for a string in the image
-sigfind -b 512 "password" "$EVIDENCE"
+# Search for a printable string in the image
+# srch_strings is TSK's wrapper around strings(1)
+srch_strings -a -t d "$EVIDENCE" | grep -i "password"
+
+# sigfind searches for a binary signature (given in hex) at a fixed offset
+# within each block - useful for locating lost superblocks, partition tables,
+# or other file system structures. Example: find FAT boot sectors.
+sigfind -o 510 -l AA55 "$EVIDENCE"
 
 # Find which inode owns a specific block number
 ifind -o 2048 -d 98765 "$EVIDENCE"
@@ -269,7 +276,9 @@ md5sum "$EVIDENCE"
 icat -o 2048 "$EVIDENCE" 12345 | md5sum
 
 # Compare against a known-good hash database
-# TSK can import NSRL hash sets for this purpose
+# TSK can import NSRL hash sets for this purpose. The database must be
+# indexed once before it can be queried.
+hfind -i nsrl-md5 /usr/share/sleuthkit/NSRLFile.txt
 hfind /usr/share/sleuthkit/NSRLFile.txt <md5hash>
 ```
 
