@@ -69,21 +69,20 @@ cat > karpenter-trust-policy.json << EOF
 EOF
 ```
 
-Install Karpenter with Helm:
+Install Karpenter with Helm. Karpenter publishes its chart as an OCI artifact, so make sure you are logged out of the public ECR registry first to avoid authentication issues with anonymous pulls:
 
 ```bash
-# Add the Karpenter Helm repo
-helm repo add karpenter https://charts.karpenter.sh
-helm repo update
+# Karpenter charts are published to the public ECR OCI registry
+helm registry logout public.ecr.aws || true
 
-# Install Karpenter
-helm install karpenter karpenter/karpenter \
+# Install Karpenter from the OCI registry
+helm upgrade --install karpenter oci://public.ecr.aws/karpenter/karpenter \
+  --version "${KARPENTER_VERSION}" \
   --namespace karpenter \
   --create-namespace \
-  --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::${AWS_ACCOUNT_ID}:role/KarpenterControllerRole" \
-  --set settings.clusterName=${CLUSTER_NAME} \
-  --set settings.clusterEndpoint="https://your-cluster-endpoint.example.com" \
-  --set settings.interruptionQueue=${CLUSTER_NAME} \
+  --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=arn:aws:iam::${AWS_ACCOUNT_ID}:role/KarpenterControllerRole" \
+  --set "settings.clusterName=${CLUSTER_NAME}" \
+  --set "settings.interruptionQueue=${CLUSTER_NAME}" \
   --wait
 ```
 
