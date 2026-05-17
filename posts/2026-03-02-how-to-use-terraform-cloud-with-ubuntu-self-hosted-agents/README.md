@@ -22,7 +22,7 @@ Key points:
 
 ## Prerequisites
 
-- Terraform Cloud account (Business tier or higher - agents require a paid plan)
+- HCP Terraform account on the Plus edition (or Terraform Enterprise) - self-hosted agents require a paid plan
 - Ubuntu 20.04 or 22.04 for the agent host
 - The agent host needs network access to your private infrastructure
 - Outbound HTTPS access from the agent host to Terraform Cloud
@@ -76,10 +76,10 @@ TFC_AGENT_LOG_LEVEL=info
 # Optional: working directory for Terraform operations
 # TFC_AGENT_CACHE_DIR=/var/lib/tfc-agent/cache
 
-# Optional: limit concurrent jobs (default is 1)
+# Optional: run a single workload then exit (useful for ephemeral agents)
 # TFC_AGENT_SINGLE=true
 
-# Optional: automatically re-register if token changes
+# Optional: automatically update the agent binary (disabled, patch, or minor; default: minor)
 # TFC_AGENT_AUTO_UPDATE=minor
 EOF
 
@@ -217,7 +217,7 @@ sudo mv /etc/systemd/system/tfc-agent.service \
         /etc/systemd/system/tfc-agent@.service
 
 # Each instance gets its own config file
-sudo mkdir /etc/tfc-agent
+sudo mkdir -p /etc/tfc-agent
 sudo tee /etc/tfc-agent/agent1.env << 'EOF'
 TFC_AGENT_TOKEN=your-token
 TFC_AGENT_NAME=ubuntu-agent-01
@@ -249,8 +249,8 @@ The agent needs outbound HTTPS access to:
 Check connectivity from the agent host:
 
 ```bash
-# Test Terraform Cloud connectivity
-curl -v https://app.terraform.io/api/v2/ping
+# Test Terraform Cloud connectivity (TLS handshake succeeds if reachable)
+curl -v https://app.terraform.io/
 
 # Test provider registry
 curl -v https://registry.terraform.io/v1/providers/hashicorp/aws
@@ -291,9 +291,8 @@ sudo systemctl start tfc-agent
 
 **Agent shows as offline in Terraform Cloud:**
 ```bash
-# Check outbound connectivity
-curl https://app.terraform.io/api/v2/ping
-# Should return {"status":"ok"}
+# Check outbound connectivity (any HTTP response confirms TLS reachability)
+curl -v https://app.terraform.io/
 
 # Verify the token is correct
 journalctl -u tfc-agent | grep -i "error\|token\|auth"
