@@ -38,24 +38,26 @@ PTP requires hardware support. Before proceeding, verify:
 
 ## Installing PTP Support on Talos
 
-PTP support on Talos Linux comes through system extensions. You need the `ptp` extension which includes `ptp4l` (the PTP daemon) and `phc2sys` (which synchronizes the system clock to the PTP hardware clock):
+PTP on Talos Linux is delivered through a system extension that ships `ptp4l` (the PTP daemon) and `phc2sys` (which synchronizes the system clock to the PTP hardware clock). Sidero Labs does not currently publish an official `ptp` / `linuxptp` extension in the [siderolabs/extensions](https://github.com/siderolabs/extensions) catalog, so the extension has to be built and hosted yourself (or sourced from a community fork) before it can be referenced from machine config.
+
+Once you have a built image — for example `ghcr.io/<your-org>/linuxptp:<tag>` — reference it the same way as any other extension:
 
 ```yaml
-# Machine configuration with PTP extension
+# Machine configuration with a custom PTP extension
 
 machine:
   install:
     image: ghcr.io/siderolabs/installer:v1.7.0
     extensions:
-      - image: ghcr.io/siderolabs/ptp:latest
+      - image: ghcr.io/<your-org>/linuxptp:<tag>
 ```
 
-For existing clusters, add the extension through an upgrade:
+For existing clusters, bake the extension into a custom installer using the [Talos Image Factory](https://factory.talos.dev/) (which can include third-party extensions via a schematic) and upgrade to it:
 
 ```bash
-# Upgrade with PTP extension included
+# Upgrade to an installer that includes your linuxptp extension
 talosctl -n 192.168.1.10 upgrade \
-  --image factory.talos.dev/installer/<schematic-with-ptp>:v1.7.0
+  --image factory.talos.dev/installer/<schematic-id>:v1.7.0
 ```
 
 ## Configuring ptp4l
@@ -66,7 +68,7 @@ The `ptp4l` daemon handles the PTP protocol - communicating with the grandmaster
 machine:
   install:
     extensions:
-      - image: ghcr.io/siderolabs/ptp:latest
+      - image: ghcr.io/<your-org>/linuxptp:<tag>
   files:
     - content: |
         [global]
@@ -225,8 +227,9 @@ The `s2` indicates the clock is in "locked" state:
 Before troubleshooting PTP issues, verify that your NIC supports hardware timestamping:
 
 ```bash
-# Check hardware timestamping capabilities
-talosctl -n 192.168.1.10 read /proc/net/ptp0
+# Check that a PTP Hardware Clock device exists and inspect its capabilities
+talosctl -n 192.168.1.10 read /sys/class/ptp/ptp0/clock_name
+talosctl -n 192.168.1.10 read /sys/class/ptp/ptp0/capabilities
 
 # Or check through ethtool (if available via extension)
 # ethtool -T eth0
