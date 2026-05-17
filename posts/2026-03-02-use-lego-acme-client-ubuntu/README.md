@@ -19,7 +19,7 @@ The easiest way is to download the precompiled binary:
 ```bash
 # Check latest release at https://github.com/go-acme/lego/releases
 
-LEGO_VERSION="4.18.0"
+LEGO_VERSION="4.35.2"
 ARCH=$(dpkg --print-architecture)
 
 # Map Debian arch names to release filenames
@@ -394,14 +394,11 @@ lego \
 
 **Debugging provider issues:**
 
+Lego does not expose a verbosity flag; the default output already includes the requests and responses you need. To inspect provider-specific configuration (required env vars, defaults, supported options), use `dnshelp`:
+
 ```bash
-# Enable verbose output
-lego \
-    --email admin@example.com \
-    --domains example.com \
-    --dns cloudflare \
-    --log.level DEBUG \
-    run
+# Show all environment variables and tunables for a provider
+lego dnshelp -c cloudflare
 ```
 
 **Wrong data directory:**
