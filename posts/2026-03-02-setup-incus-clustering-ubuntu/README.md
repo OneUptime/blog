@@ -56,9 +56,6 @@ Would you like to use clustering? (yes/no) [default=no]: yes
 What IP address or DNS name should be used to reach this server? [default=192.168.1.10]: 192.168.1.10
 Are you joining an existing cluster? (yes/no) [default=no]: no
 What member name should be used to identify this server in the cluster? [default=node1]: node1
-Setup password authentication on the cluster? (yes/no) [default=no]: yes
-Trust password for new clients: <enter a strong password>
-Again: <repeat password>
 Do you want to configure a new storage pool? (yes/no) [default=yes]: yes
 Name of the new storage pool [default=default]: local
 Name of the storage backend to use [dir, btrfs, lvm, zfs, ceph] [default=zfs]: btrfs
@@ -238,8 +235,8 @@ incus cluster list
 # Detailed member information
 incus cluster show node1
 
-# Check for any cluster issues
-incus cluster info
+# Check state and resource usage for a specific member
+incus cluster info node1
 
 # View events across the cluster
 incus monitor --type=lifecycle --all-projects
