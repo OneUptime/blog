@@ -37,11 +37,13 @@ pro security-status
 pro security-status --format json | python3 -m json.tool
 ```
 
-The `security-status` command categorizes installed packages into groups:
-- **supported**: Package receives standard Ubuntu security updates
+The `security-status` command categorizes installed packages into groups. In the JSON output, each package has a `status` field that reflects its coverage:
+- **active**: Package receives standard Ubuntu security updates (Main/Restricted)
 - **esm-apps**: Package receives updates via ESM-Apps
 - **esm-infra**: Package receives updates via ESM-Infra
-- **end-of-life**: Package is no longer receiving any updates
+- **third-party**: Package comes from a third-party repository (PPA, etc.)
+- **unknown**: Package origin could not be determined
+- **unavailable**: Package is no longer receiving security updates
 
 ## Enabling ESM on an Ubuntu Pro System
 
@@ -175,8 +177,8 @@ import json
 with open('/tmp/security-status.json') as f:
     data = json.load(f)
 for pkg in data.get('packages', []):
-    if pkg.get('status') == 'end-of-life':
-        print(pkg['name'], '-', pkg.get('description', ''))
+    if pkg.get('status') == 'unavailable':
+        print(pkg.get('name'), '-', pkg.get('origin', ''))
 "
 ```
 
@@ -254,8 +256,9 @@ for host in server1 server2 server3; do
 import json, sys
 data = json.load(sys.stdin)
 summary = data.get('summary', {})
-print('ESM-Infra:', summary.get('esm_infra_enabled', False))
-print('ESM-Apps:', summary.get('esm_apps_enabled', False))
+enabled = summary.get('ua', {}).get('enabled_services', [])
+print('ESM-Infra:', 'esm-infra' in enabled)
+print('ESM-Apps:', 'esm-apps' in enabled)
 print('Packages needing ESM:', summary.get('num_esm_apps_packages', 0))
 "
 done
