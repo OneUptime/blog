@@ -79,8 +79,11 @@ dmesg -H
 # Show facility and level names explicitly
 dmesg -x
 
-# Combine: human time, color, and level names
+# Combine: human time and level names
 dmesg -Tx
+
+# Add color on top
+dmesg -TxL
 ```
 
 ## Filtering by Facility
@@ -280,8 +283,8 @@ For current events: use `dmesg`. For historical analysis: use `journalctl -k`.
 The ring buffer size is configurable:
 
 ```bash
-# Check current ring buffer size
-dmesg --buffer-size
+# Check the ring buffer size reported at boot
+dmesg | grep -i "log_buf_len"
 
 # Set a larger ring buffer (in /etc/default/grub)
 # Add to GRUB_CMDLINE_LINUX: log_buf_len=32M
