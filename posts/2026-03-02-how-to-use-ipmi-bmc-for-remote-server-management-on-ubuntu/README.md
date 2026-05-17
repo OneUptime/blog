@@ -208,6 +208,22 @@ sudo ipmitool -I open sensor list
 wget https://github.com/prometheus-community/ipmi_exporter/releases/download/v1.8.0/ipmi_exporter-1.8.0.linux-amd64.tar.gz
 tar xzf ipmi_exporter-*.tar.gz
 sudo mv ipmi_exporter-*/ipmi_exporter /usr/local/bin/
+
+# The release tarball ships only the binary - create a systemd unit yourself
+sudo tee /etc/systemd/system/ipmi_exporter.service >/dev/null <<'EOF'
+[Unit]
+Description=Prometheus IPMI Exporter
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/ipmi_exporter --config.file=/etc/ipmi_exporter.yml
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
 sudo systemctl enable --now ipmi_exporter
 ```
 
@@ -245,8 +261,10 @@ ipmitool $OPTS chassis status
 IPMI has a troubled history with security vulnerabilities (IPMI 2.0 has a cipher-0 authentication bypass, among others). Take these precautions:
 
 ```bash
-# Disable cipher 0 (unauthenticated access)
-sudo ipmitool lan set 1 cipher_suite_priv_max XcXXXXXXXXXXXXXX
+# Disable cipher 0 (unauthenticated access) while keeping suites 3 and 17 usable
+# Each character is the max privilege for cipher suites 0-15:
+# X=disabled, c=callback, u=user, o=operator, a=administrator
+sudo ipmitool lan set 1 cipher_suite_priv_max XaaaaXXaaaaXXaaX
 
 # Use IPMI 2.0 with cipher suite 17 (AES-128 encryption)
 ipmitool -H $IPMI_HOST -U admin -P password -I lanplus -C 17 chassis status
