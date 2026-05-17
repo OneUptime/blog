@@ -123,6 +123,7 @@ cluster:
               - identity: {}
       permissions: 0o600
       path: /etc/kubernetes/encryption/encryption-config.yaml
+      op: create
 ```
 
 ## Verifying Encryption is Active
@@ -145,23 +146,25 @@ kubectl create secret generic encryption-test \
   --from-literal=testkey=testvalue \
   -n default
 
-# Read the secret directly from etcd to verify it is encrypted
-talosctl -n 10.0.1.10 etcd get /registry/secrets/default/encryption-test
+# talosctl does not expose individual etcd keys directly.
+# Take an etcd snapshot and inspect the raw on-disk data instead.
+talosctl -n 10.0.1.10 etcd snapshot /tmp/encryption-test.snapshot
 
-# The output should be encrypted (not readable plaintext)
-# You should see binary data or encrypted content starting with "k8s:enc:secretbox:v1:"
+# Search the snapshot for the secretbox prefix
+strings /tmp/encryption-test.snapshot | grep -o "k8s:enc:secretbox:v1:[^[:space:]]*" | head
 ```
 
 If the output shows the `k8s:enc:secretbox:v1:` prefix followed by encrypted data, encryption is working correctly.
 
-### Verify Using etcd Directly
+### Verify Individual Keys with auger
 
 ```bash
-# Use etcdctl to read the raw data
-# This requires etcd client certificates
-talosctl -n 10.0.1.10 etcd get /registry/secrets/default/encryption-test -o hex
+# For per-key inspection, use auger (https://github.com/etcd-io/auger),
+# which can read individual keys from an etcd snapshot without restoring it.
+auger extract -f /tmp/encryption-test.snapshot \
+  -k /registry/secrets/default/encryption-test
 
-# Encrypted output will be binary/hex data
+# Encrypted output will be binary/non-readable data prefixed with k8s:enc:secretbox:v1:
 # Unencrypted output would show readable JSON
 ```
 
@@ -236,6 +239,7 @@ cluster:
               - identity: {}
       permissions: 0o600
       path: /etc/kubernetes/encryption/encryption-config.yaml
+      op: overwrite
 ```
 
 ### Step 3: Apply and Restart
@@ -285,9 +289,10 @@ done
 kubectl create secret generic rotation-test \
   --from-literal=key=value -n default
 
-# Check etcd to verify encryption
-talosctl -n 10.0.1.10 etcd get /registry/secrets/default/rotation-test
-# Should show encrypted data with the new key
+# Take a snapshot and verify encryption is still active
+talosctl -n 10.0.1.10 etcd snapshot /tmp/rotation-test.snapshot
+strings /tmp/rotation-test.snapshot | grep "k8s:enc:secretbox:v1:" | head
+# Should show encrypted entries written under the new key
 
 # Clean up
 kubectl delete secret rotation-test -n default
@@ -319,12 +324,15 @@ kubectl create secret generic encryption-check-$(date +%s) \
 
 LATEST_SECRET=$(kubectl get secrets -n default --sort-by=.metadata.creationTimestamp -o jsonpath='{.items[-1].metadata.name}')
 
-RAW_DATA=$(talosctl -n 10.0.1.10 etcd get /registry/secrets/default/$LATEST_SECRET 2>/dev/null)
-if echo "$RAW_DATA" | grep -q "k8s:enc:"; then
+# Take an etcd snapshot and look for the secretbox prefix in the raw data
+SNAPSHOT=$(mktemp /tmp/etcd-audit.XXXXXX.snapshot)
+talosctl -n 10.0.1.10 etcd snapshot $SNAPSHOT > /dev/null 2>&1
+if strings $SNAPSHOT | grep -q "k8s:enc:secretbox:v1:"; then
   echo "  Secret encryption: ACTIVE"
 else
   echo "  Secret encryption: INACTIVE [CRITICAL]"
 fi
+rm -f $SNAPSHOT
 
 # Clean up test secret
 kubectl delete secret $LATEST_SECRET -n default > /dev/null 2>&1
@@ -341,8 +349,9 @@ When you enable encryption at rest, your backups need special attention.
 # Without the key, you cannot read the encrypted data from backups
 
 # Back up the encryption key
+# (talosctl get machineconfig returns a COSI resource, so the path starts at .spec)
 talosctl -n 10.0.1.10 get machineconfig -o yaml | \
-  yq '.cluster.secretboxEncryptionSecret' > encryption-key-backup.txt
+  yq '.spec.cluster.secretboxEncryptionSecret' > encryption-key-backup.txt
 
 # Store this backup in a separate, secure location
 # NOT in the same backup as the etcd snapshot
