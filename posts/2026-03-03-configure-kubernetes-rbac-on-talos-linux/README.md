@@ -30,7 +30,7 @@ On Talos Linux, Kubernetes RBAC is enabled by default. Verify it is active:
 ```bash
 # Check the API server flags
 
-talosctl -n 10.0.1.10 read /etc/kubernetes/manifests/kube-apiserver.yaml | \
+talosctl -n 10.0.1.10 read /etc/kubernetes/manifests/talos-kube-apiserver.yaml | \
   grep authorization-mode
 # Should show: --authorization-mode=Node,RBAC
 
@@ -247,11 +247,12 @@ openssl req -new \
   -subj "/CN=alice@example.com/O=developers"
 
 # Sign with the Kubernetes CA
-# First, extract the Kubernetes CA from Talos
+# First, extract the Kubernetes CA from Talos. talosctl wraps the machine
+# config under .spec as a YAML-encoded string, so we parse it with from_yaml.
 talosctl -n 10.0.1.10 get machineconfig -o yaml | \
-  yq '.cluster.ca.crt' | base64 -d > k8s-ca.crt
+  yq '.spec | from_yaml | .cluster.ca.crt' | base64 -d > k8s-ca.crt
 talosctl -n 10.0.1.10 get machineconfig -o yaml | \
-  yq '.cluster.ca.key' | base64 -d > k8s-ca.key
+  yq '.spec | from_yaml | .cluster.ca.key' | base64 -d > k8s-ca.key
 
 openssl x509 -req \
   -in alice.csr \
