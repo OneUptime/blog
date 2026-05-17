@@ -24,7 +24,7 @@ If you need a more recent version, the package is also available through the `ne
 Verify the installation:
 
 ```bash
-nethogs --version
+nethogs -V
 ```
 
 ## Basic Usage
@@ -67,7 +67,7 @@ While nethogs is running, several keyboard shortcuts let you adjust the display:
 
 | Key | Action |
 |-----|--------|
-| `m` | Cycle through display modes (KB/s, KB, B, MB) |
+| `m` | Cycle through display modes (KB/s, KB, B, MB, MB/s, GB/s) |
 | `r` | Sort by received traffic |
 | `s` | Sort by sent traffic |
 | `q` | Quit nethogs |
@@ -92,13 +92,27 @@ For rapid spikes, go lower:
 sudo nethogs -d 0.5 eth0
 ```
 
-### Setting a Threshold
+### Changing the Display Units
 
-To filter out processes with very low traffic and focus on the heavy hitters:
+The `-v` flag selects the view mode, which controls the units shown in the table. The available values are `0` = KB/s (default), `1` = total KB, `2` = total bytes, `3` = total MB, `4` = MB/s, `5` = GB/s:
 
 ```bash
-# Only show processes using more than 1 KB/s
+# Show cumulative totals in KB instead of per-second rates
 sudo nethogs -v 1 eth0
+
+# Show throughput in MB/s, useful on high-bandwidth links
+sudo nethogs -v 4 eth0
+```
+
+You can also change the view mode interactively by pressing `m` while nethogs is running.
+
+### Limiting the Number of Updates
+
+The `-c` flag lets nethogs exit after a fixed number of refresh cycles, which is handy when scripting a short capture:
+
+```bash
+# Capture 10 refresh intervals and exit
+sudo nethogs -c 10 eth0
 ```
 
 ### Tracing Mode
@@ -114,9 +128,11 @@ Tracing mode output looks like:
 
 ```text
 Refreshing:
-/usr/bin/python3/1234/root	0.123	0.456
-/usr/bin/rsync/5678/backup	25.301	0.012
+/usr/bin/python3/1234/0	0.123	0.456
+/usr/bin/rsync/5678/1001	25.301	0.012
 ```
+
+Each line is `program/PID/UID` followed by tab-separated sent and received values. The UID is a numeric user ID, not a username.
 
 This makes it easy to capture a session log:
 
