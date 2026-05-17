@@ -122,7 +122,7 @@ talosctl -n <node-ip> pcap --interface eth0 --duration 30s > filtered-capture.pc
 
 ```bash
 # List disks
-talosctl -n <node-ip> disks > disk-info.txt
+talosctl -n <node-ip> get disks > disk-info.txt
 
 # Check disk usage
 talosctl -n <node-ip> usage /var > disk-usage.txt
@@ -163,7 +163,7 @@ talosctl -n <node-ip> processes > processes.txt
 talosctl -n <node-ip> memory > memory-info.txt
 
 # Check CPU information
-talosctl -n <node-ip> cpuinfo > cpu-info.txt
+talosctl -n <node-ip> get cpu > cpu-info.txt
 ```
 
 ## Collecting Kubernetes-Level Diagnostics
@@ -281,7 +281,7 @@ for ip in $NODES; do
   talosctl -n $ip services > "$node_dir/services.txt" 2>&1
   talosctl -n $ip time > "$node_dir/time.txt" 2>&1
   talosctl -n $ip memory > "$node_dir/memory.txt" 2>&1
-  talosctl -n $ip disks > "$node_dir/disks.txt" 2>&1
+  talosctl -n $ip get disks > "$node_dir/disks.txt" 2>&1
   talosctl -n $ip dmesg > "$node_dir/dmesg.txt" 2>&1
 done
 
