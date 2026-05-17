@@ -288,8 +288,8 @@ export AWS_SECRET_ACCESS_KEY="your_secret"
 
 ~/.acme.sh/acme.sh --issue --dns dns_aws -d example.com
 
-# Check supported providers
-~/.acme.sh/acme.sh --list-dns-providers 2>/dev/null | head -20
+# Check supported providers (list files in the dnsapi directory)
+ls ~/.acme.sh/dnsapi/ | head -20
 ```
 
 ### Install Certificate to a Target Location
