@@ -34,7 +34,7 @@ trustd           Running   OK       5d2h ago
 udevd            Running   OK       5d2h ago
 ```
 
-A healthy worker node will show the same services except etcd.
+A healthy worker node will show the same services except etcd and trustd, which are control-plane only.
 
 ## Checking Individual Service Status
 
@@ -88,10 +88,10 @@ talosctl service containerd -n <node-ip>
 ```
 
 ### Preparing
-The service is initializing. This is a transient state during startup. If a service stays in Preparing for more than a few minutes, something is wrong.
+The service is initializing and running its pre-start tasks. This is a transient state during startup. If a service stays in Preparing for more than a few minutes, something is wrong.
 
-### Pre
-The service is running pre-start tasks. Again, this should be brief.
+### Starting
+The service is starting up. This is a brief transient state after Preparing completes.
 
 ### Stopping
 The service is shutting down gracefully. You see this during reboots or upgrades.
