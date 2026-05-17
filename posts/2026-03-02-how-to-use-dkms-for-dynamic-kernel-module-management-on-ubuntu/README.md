@@ -134,14 +134,16 @@ sudo modprobe -r mydriver
 For distributing DKMS modules to multiple machines, package them as `.deb` files.
 
 ```bash
-# Install devscripts and helper tools
-sudo apt install devscripts dh-make debhelper
+# Install devscripts and helper tools (dh-dkms is the debhelper plugin for DKMS)
+sudo apt install devscripts dh-make debhelper dh-dkms
 
-# DKMS provides a helper for building packages
-# Create the package source structure manually or use mkdeb-dkms
+# DKMS provides a helper for creating source tarballs.
+# (Note: 'dkms mkdeb' / 'dkms mkrpm' existed in DKMS 2.x but were removed in
+# DKMS 3.0. On modern Ubuntu, build .deb packages using dh-dkms in your
+# debian/ packaging instead.)
 
-# Build a source package that includes DKMS support
-dkms mktarball -m mydriver -v 1.0
+# Build a source tarball that includes DKMS support
+sudo dkms mktarball -m mydriver -v 1.0
 
 # The tarball is in /var/lib/dkms/mydriver/1.0/tarball/
 ls /var/lib/dkms/mydriver/1.0/tarball/
