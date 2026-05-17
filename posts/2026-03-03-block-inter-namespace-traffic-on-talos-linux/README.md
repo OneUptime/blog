@@ -251,15 +251,18 @@ spec:
   rules:
     - name: add-deny-cross-namespace
       match:
-        resources:
-          kinds:
-            - Namespace
+        any:
+          - resources:
+              kinds:
+                - Namespace
       exclude:
-        resources:
-          namespaces:
-            - kube-system
-            - kube-public
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kube-public
       generate:
+        synchronize: true
         kind: NetworkPolicy
         apiVersion: networking.k8s.io/v1
         name: deny-cross-namespace
@@ -289,11 +292,17 @@ wget -qO- --timeout=3 http://my-service.staging.svc:8080
 wget -qO- --timeout=3 http://web-api.production.svc:8080
 ```
 
-If you are using Cilium, you can inspect policy verdicts:
+If you are using Cilium, you can inspect policy verdicts. The `cilium monitor` subcommand lives inside the agent pod, so run it via `kubectl exec`:
 
 ```bash
-# Watch policy decisions in real time
-cilium monitor --type policy-verdict -n production
+# Watch policy decisions in real time (filter output by namespace yourself)
+kubectl -n kube-system exec ds/cilium -- cilium monitor --type policy-verdict
+```
+
+If you have Hubble enabled, you can filter by namespace directly:
+
+```bash
+hubble observe --namespace production --type policy-verdict
 ```
 
 ## Things That Go Wrong
