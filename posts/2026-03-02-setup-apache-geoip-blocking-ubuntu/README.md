@@ -62,7 +62,7 @@ The MaxMind GeoIP2 Apache module is not in Ubuntu's default repositories, but ca
 # Install dependencies
 sudo apt-get install -y apache2-dev libmaxminddb-dev libmaxminddb0
 
-# Install from the Ubuntu universe repository (available on 20.04+)
+# Install from the Ubuntu universe repository (available on 22.04+; was removed in 20.04 and reintroduced in 22.04)
 sudo apt-get install -y libapache2-mod-geoip
 
 # Note: The older mod_geoip uses the legacy GeoIP (v1) database format
@@ -75,12 +75,14 @@ sudo apt-get install -y libapache2-mod-geoip
 ```bash
 # Download and compile mod_maxminddb for GeoIP2 support
 sudo apt-get install -y apache2-dev
-wget https://github.com/maxmind/mod_maxminddb/releases/latest/download/mod_maxminddb-1.2.0.tar.gz
-tar xzf mod_maxminddb-1.2.0.tar.gz
-cd mod_maxminddb-1.2.0
+wget https://github.com/maxmind/mod_maxminddb/releases/latest/download/mod_maxminddb-1.3.0.tar.gz
+tar xzf mod_maxminddb-1.3.0.tar.gz
+cd mod_maxminddb-1.3.0
+./configure
+make
 sudo make install
-sudo echo "LoadModule maxminddb_module /usr/lib/apache2/modules/mod_maxminddb.so" \
-    > /etc/apache2/mods-available/maxminddb.load
+echo "LoadModule maxminddb_module /usr/lib/apache2/modules/mod_maxminddb.so" \
+    | sudo tee /etc/apache2/mods-available/maxminddb.load
 sudo a2enmod maxminddb
 sudo systemctl restart apache2
 ```
@@ -237,7 +239,7 @@ echo "Blocking IP ranges for country: $COUNTRY"
 
 # Use geoiplookup to find IP ranges (limited approach)
 # Better: use a GeoIP IP block list from ipdeny.com
-wget -q "http://www.ipdeny.com/ipblocks/data/countries/${COUNTRY,,}.zone" \
+wget -q "https://www.ipdeny.com/ipblocks/data/countries/${COUNTRY,,}.zone" \
     -O "/tmp/${COUNTRY,,}.zone"
 
 if [[ ! -s "/tmp/${COUNTRY,,}.zone" ]]; then
