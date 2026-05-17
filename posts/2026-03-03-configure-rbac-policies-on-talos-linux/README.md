@@ -330,7 +330,11 @@ cluster:
       audit-log-maxage: "30"
       audit-log-maxbackup: "10"
       audit-log-maxsize: "100"
-      audit-policy-file: "/etc/kubernetes/audit-policy.yaml"
+    auditPolicy:
+      apiVersion: audit.k8s.io/v1
+      kind: Policy
+      rules:
+        - level: Metadata
 ```
 
 ## Conclusion
