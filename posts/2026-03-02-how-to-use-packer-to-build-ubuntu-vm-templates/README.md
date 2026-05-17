@@ -253,7 +253,7 @@ mkdir -p scripts
 set -euo pipefail
 
 # Configure sysctl settings for a server workload
-cat >> /etc/sysctl.d/99-template.conf << 'EOF'
+sudo tee -a /etc/sysctl.d/99-template.conf > /dev/null << 'EOF'
 # Increase network buffer sizes
 net.core.rmem_max = 16777216
 net.core.wmem_max = 16777216
@@ -262,14 +262,14 @@ net.ipv4.ip_forward = 1
 EOF
 
 # Set timezone
-timedatectl set-timezone UTC
+sudo timedatectl set-timezone UTC
 
 # Configure journald to limit log size
-sed -i 's/#SystemMaxUse=/SystemMaxUse=500M/' /etc/systemd/journald.conf
+sudo sed -i 's/#SystemMaxUse=/SystemMaxUse=500M/' /etc/systemd/journald.conf
 
 # Enable and configure chrony for NTP
-apt-get install -y chrony
-systemctl enable chrony
+sudo apt-get install -y chrony
+sudo systemctl enable chrony
 
 echo "Template configuration complete"
 ```
@@ -347,10 +347,13 @@ source "proxmox-iso" "ubuntu" {
   memory  = 2048
 
   # ISO - upload to Proxmox or reference existing
-  iso_url      = "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"
-  iso_checksum = "sha256:45f873de9f8cb637345d6e66a583762730bbea30277ef7b32c9c3bd6700a32b2"
-  iso_storage_pool = "local"
-  unmount_iso = true
+  boot_iso {
+    iso_url          = "https://releases.ubuntu.com/22.04/ubuntu-22.04.4-live-server-amd64.iso"
+    iso_checksum     = "sha256:45f873de9f8cb637345d6e66a583762730bbea30277ef7b32c9c3bd6700a32b2"
+    iso_storage_pool = "local"
+    unmount          = true
+    type             = "scsi"
+  }
 
   # Network
   network_adapters {
