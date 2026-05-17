@@ -70,7 +70,8 @@ The installer image is what you use to install Talos on a machine. Building it f
 make installer
 
 # This produces a Docker image tagged as:
-# ghcr.io/siderolabs/installer:latest
+# ghcr.io/siderolabs/installer:<git-describe-tag>
+# (TAG defaults to `git describe --tag --always --dirty`)
 ```
 
 The build process takes some time on the first run because it needs to download base images and compile the kernel. Subsequent builds are faster thanks to Docker layer caching.
@@ -120,7 +121,7 @@ If you need a bootable ISO for bare metal installations, the build system can pr
 # Build the ISO image
 make iso
 
-# The ISO will be output to _out/talos-amd64.iso
+# The ISO will be output to _out/metal-amd64.iso
 ls -la _out/
 ```
 
@@ -150,20 +151,21 @@ docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
 
 ## Including Custom Patches
 
-One of the main reasons to build from source is to include custom patches. You can apply patches to the kernel, the init system, or any other component.
+One of the main reasons to build from source is to include custom patches. Kernel patches are not maintained in the main `talos` repository; the kernel and other base packages live in the separate [`siderolabs/pkgs`](https://github.com/siderolabs/pkgs) repository. To patch the kernel, clone that repo, drop your patches into `kernel/build/patches/`, and rebuild the kernel package from there.
 
 ```bash
-# Create a patch directory
-mkdir -p patches/kernel
+# Clone the pkgs repository alongside talos
+git clone https://github.com/siderolabs/pkgs.git
+cd pkgs
 
-# Add your kernel patches
-cp my-custom-driver.patch patches/kernel/
+# Add your kernel patches to the kernel build directory
+cp ../my-custom-driver.patch kernel/build/patches/
 
-# The build system will automatically apply patches from this directory
+# Build the kernel package; the patches will be applied during the build
 make kernel
 ```
 
-For more structured changes, create a Git branch and make your modifications directly.
+You can then point the main Talos build at your custom kernel by overriding the relevant `PKGS` variable, or by updating the kernel reference in `Pkgfile`/`pkg.yaml`. For more structured changes to the Talos userland itself, create a Git branch in the main `talos` repo and make your modifications directly.
 
 ```bash
 # Create a feature branch
@@ -184,7 +186,8 @@ After building, you should test the image before deploying it to production. The
 # Create a test cluster using your custom installer
 talosctl cluster create \
   --install-image=ghcr.io/siderolabs/installer:latest \
-  --nodes 3
+  --controlplanes 1 \
+  --workers 2
 
 # Check the cluster status
 talosctl cluster show
