@@ -122,19 +122,10 @@ post   | 2 | 1     | Sun 2026-03-01 14:05:00   | root |  45.00 MiB |         | A
 
 ## Automating Snapshots with apt
 
-The most valuable feature is automatic snapshots before package operations. Install the apt plugin:
+The most valuable feature is automatic snapshots before package operations. Unlike openSUSE (which ships a zypper plugin), snapper on Ubuntu does not include an apt integration out of the box, so you add a small DPkg hook yourself:
 
 ```bash
-sudo apt install -y snapper-dbg
-
-# Or for the apt integration specifically
-sudo apt install -y btrfs-apt-snapshot
-```
-
-For manual integration, create wrapper scripts:
-
-```bash
-# Create apt pre-hook
+# Create apt pre/post hooks for snapper
 sudo nano /etc/apt/apt.conf.d/80snapper
 ```
 
@@ -160,14 +151,11 @@ sudo snapper -c root list | tail -5
 Snapper can show you exactly what changed between two snapshots:
 
 ```bash
-# Compare two snapshots (list changed files)
-sudo snapper -c root diff 1 2
-
-# Show the actual diff content
-sudo snapper -c root sdiff 1 2
-
-# Show status summary (similar to git status)
+# Show status summary (list changed files, similar to git status)
 sudo snapper -c root status 1..2
+
+# Show the actual diff content for changed files
+sudo snapper -c root diff 1..2
 ```
 
 Output shows:
@@ -263,8 +251,8 @@ sudo systemctl list-timers | grep snapper
 Snapshots consume disk space proportional to how much the filesystem has changed since each snapshot was taken:
 
 ```bash
-# View space used by each snapshot
-sudo snapper -c root list -a
+# View space used by each snapshot (requires quota; see setup-quota)
+sudo snapper -c root list
 
 # Check overall Btrfs disk usage
 sudo btrfs filesystem df /
