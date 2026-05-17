@@ -55,7 +55,7 @@ wget --tries=3 https://example.com/file.tar.gz
 # Retry indefinitely (useful for files that must be downloaded)
 wget --tries=0 https://example.com/file.tar.gz
 
-# Wait 10 seconds between retries
+# Wait 10 seconds between retrievals
 wget --wait=10 --tries=5 https://example.com/file.tar.gz
 
 # Combine: retry 5 times, wait 30 seconds between attempts
@@ -160,7 +160,7 @@ wget -r -A "*.pdf,*.png" https://example.com/docs/
 # Exclude specific file types
 wget -r -R "*.mp4,*.mov" https://example.com/
 
-# Stay within the same domain (don't follow external links)
+# Don't ascend to the parent directory (restricts recursion to the URL's path)
 wget -r --no-parent https://example.com/docs/
 
 # Convert links for local viewing (useful for offline documentation)
