@@ -290,12 +290,10 @@ spec:
       containers:
       - name: fault
         image: alpine/socat
-        command: ["sh", "-c"]
+        command: ["socat"]
         args:
-        - |
-          while true; do
-            echo -e "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\n\r\n" | socat - TCP-LISTEN:80,fork,reuseaddr
-          done
+        - "TCP-LISTEN:80,fork,reuseaddr"
+        - "SYSTEM:printf 'HTTP/1.1 503 Service Unavailable\\r\\nContent-Length: 0\\r\\n\\r\\n'"
         ports:
         - containerPort: 80
 ---
