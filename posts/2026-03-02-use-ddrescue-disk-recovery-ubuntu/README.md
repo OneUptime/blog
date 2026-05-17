@@ -40,11 +40,11 @@ The binary is named `ddrescue` after installation, not `gddrescue`.
 
 The mapfile is the most important concept in ddrescue. It records the status of every sector on the source:
 
-- `+` = sector successfully copied (rescued)
-- `-` = sector not yet tried
-- `?` = sector failed on first read (non-trimmed)
-- `/` = sector trimmed but not yet scraped (non-scraped)
-- `*` = sector failed after scraping (bad sector)
+- `+` = block successfully copied (finished)
+- `?` = block not yet tried (non-tried)
+- `*` = block failed during copying, awaiting trimming (non-trimmed)
+- `/` = block failed and trimmed, awaiting scraping (non-scraped)
+- `-` = bad sector(s) - block failed after all phases including retries
 
 Always use a mapfile. It turns a one-shot operation into a resumable, iterative process.
 
@@ -77,7 +77,7 @@ Never confuse source and destination. Writing to the wrong drive compounds the p
 
 ## First Recovery Pass
 
-The first pass uses the `-n` flag (no split) to skip retrying bad sectors and collect all easily readable data:
+The first pass uses the `-n` flag (no scrape) to skip the slow scraping phase and collect all easily readable data first:
 
 ```bash
 # Basic first pass - read good sectors quickly
@@ -89,7 +89,7 @@ sudo ddrescue -f -n /dev/sdb /mnt/backup/disk.img /mnt/backup/rescue.map
 
 Flags explained:
 - `-f`: force overwrite of existing output file
-- `-n`: no split - skip subdividing error areas on this pass
+- `-n`: no scrape - skip reading bad areas in small chunks on this pass
 
 Watch the progress output. ddrescue shows:
 
@@ -164,10 +164,10 @@ sudo ddrescue -f -R /dev/sdb /mnt/backup/disk.img /mnt/backup/rescue.map
 
 ### Scraping Mode
 
-Scraping reads in very small chunks around bad sectors to squeeze out maximum data:
+Scraping reads in very small chunks around bad sectors to squeeze out maximum data. Scraping is enabled by default (it is only skipped when `-n` is passed), so simply omitting `-n` after the first pass lets ddrescue scrape the remaining error areas:
 
 ```bash
-# Enable scraping (more time-consuming but thorough)
+# Run with scraping enabled (default) plus 1 retry pass
 sudo ddrescue -f -r1 /dev/sdb /mnt/backup/disk.img /mnt/backup/rescue.map
 ```
 
