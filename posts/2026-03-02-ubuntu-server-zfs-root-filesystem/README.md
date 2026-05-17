@@ -10,6 +10,8 @@ Description: Complete guide to installing Ubuntu Server with ZFS as the root fil
 
 ZFS is one of the most capable filesystems available on Linux, originally developed by Sun Microsystems and ported to Linux via OpenZFS. On Ubuntu, Canonical has invested significantly in ZFS support, including a tool called `zsys` that integrates ZFS boot environments with the system. Setting up Ubuntu with a ZFS root gives you features unavailable in any other filesystem: copy-on-write, end-to-end checksumming, built-in RAID-Z, compression, and bootable snapshots.
 
+> **Note on zsys**: Canonical removed zsys from the Ubuntu Desktop installer starting with 23.04, and upstream development has been minimal since 2021. The `zsys` package is still present in 24.04 (noble) for existing users, but it is no longer recommended for new installations. The ZFS-on-root portions of this guide remain valid; the zsys-specific sections are included for completeness but should be considered optional.
+
 ## ZFS on Ubuntu: Installation Options
 
 Ubuntu offers ZFS root support in two ways:
@@ -129,8 +131,10 @@ sudo mkfs.vfat -F32 -n EFI ${DISK}1
 sudo mkfs.ext4 -L boot ${DISK}2
 
 # Create mount points and mount
-sudo mkdir -p /mnt/boot/efi
+# Mount /boot first, then create /boot/efi on the mounted filesystem,
+# otherwise the efi directory is hidden when the boot partition is overmounted
 sudo mount ${DISK}2 /mnt/boot
+sudo mkdir -p /mnt/boot/efi
 sudo mount ${DISK}1 /mnt/boot/efi
 ```
 
@@ -140,7 +144,8 @@ Use debootstrap to install a minimal Ubuntu system:
 
 ```bash
 # Install Ubuntu into the mounted ZFS pool
-sudo debootstrap --arch=amd64 noble /mnt
+# A mirror URL is required for Ubuntu suites; the debootstrap default points at Debian
+sudo debootstrap --arch=amd64 noble /mnt http://archive.ubuntu.com/ubuntu
 
 # Copy fstab mounts
 sudo cp /etc/fstab /mnt/etc/fstab
@@ -168,6 +173,7 @@ sudo mount --bind /sys /mnt/sys
 sudo mount --bind /sys/firmware/efi/efivars /mnt/sys/firmware/efi/efivars
 
 # Set the ZFS cache file so zpool.cache is available in initramfs
+sudo mkdir -p /mnt/etc/zfs
 sudo cp /etc/zfs/zpool.cache /mnt/etc/zfs/
 
 # Chroot
@@ -263,11 +269,11 @@ sudo zfs rollback rpool/ROOT/ubuntu@before-upgrade-20240315
 If you installed the `zsys` package, it automates snapshot management:
 
 ```bash
-# Check zsys status
+# Check zsys status (detailed state of the current machine)
 zsysctl show
 
-# List managed boot environments
-zsysctl show
+# List managed boot environments (all machine IDs)
+zsysctl list
 
 # State is managed automatically on apt operations - zsys hooks into apt
 # to snapshot before installs and upgrades
@@ -310,7 +316,7 @@ echo "options zfs zfs_arc_max=$((8 * 1024 * 1024 * 1024))" | sudo tee /etc/modpr
 echo $((8 * 1024 * 1024 * 1024)) | sudo tee /sys/module/zfs/parameters/zfs_arc_max
 ```
 
-For database workloads, disable record size compression or increase record size:
+For database workloads, disable compression or increase the record size on the relevant dataset:
 
 ```bash
 # Set larger record size for a specific dataset (e.g., PostgreSQL)
