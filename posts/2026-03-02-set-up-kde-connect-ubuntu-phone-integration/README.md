@@ -77,8 +77,8 @@ sudo ufw status | grep 171
 3. On Ubuntu, run KDE Connect indicator from the app menu or start it from the terminal:
 
 ```bash
-# Start KDE Connect daemon (usually auto-starts)
-/usr/lib/kdeconnect/kdeconnectd &
+# Start KDE Connect daemon (usually auto-starts via D-Bus activation)
+/usr/lib/x86_64-linux-gnu/libexec/kdeconnectd &
 
 # Launch the KDE Connect settings UI
 kdeconnect-app
@@ -161,8 +161,8 @@ kdeconnect-cli --device DEVICE_ID --ping
 # Send a file to the phone
 kdeconnect-cli --device DEVICE_ID --share /home/user/document.pdf
 
-# Send a text notification to the phone
-kdeconnect-cli --device DEVICE_ID --send-notification "Hello from Ubuntu"
+# Send a ping with a custom message to the phone
+kdeconnect-cli --device DEVICE_ID --ping-msg "Hello from Ubuntu"
 
 # Ring the phone (useful if you've lost it)
 kdeconnect-cli --device DEVICE_ID --ring
@@ -183,7 +183,7 @@ The "SFTP" plugin lets you browse the phone's storage as a mounted filesystem:
 
 ```bash
 # Mount the phone filesystem (usually auto-mounts when plugin is enabled)
-# Files appear at ~/.local/share/kdeconnect/DEVICE_ID/
+# Files appear under $XDG_RUNTIME_DIR (typically /run/user/$UID/DEVICE_ID/)
 
 # Or mount manually via the GUI using Files/Nautilus
 ```
@@ -201,7 +201,7 @@ ls ~/.config/autostart/ | grep kde
 # Manually create an autostart entry if missing
 cat > ~/.config/autostart/kdeconnect.desktop <<EOF
 [Desktop Entry]
-Exec=/usr/lib/kdeconnect/kdeconnectd
+Exec=/usr/lib/x86_64-linux-gnu/libexec/kdeconnectd
 Icon=kdeconnect
 Name=KDE Connect Daemon
 Type=Application
@@ -213,7 +213,7 @@ EOF
 
 **Phone not appearing in device list**: Check that both devices are on the same Wi-Fi subnet. Guest Wi-Fi networks often isolate clients from each other. Also verify the firewall rules are applied.
 
-**Pairing fails**: Restart the KDE Connect daemon on Ubuntu: `pkill kdeconnectd && /usr/lib/kdeconnect/kdeconnectd &`. Then retry pairing from the phone.
+**Pairing fails**: Restart the KDE Connect daemon on Ubuntu: `pkill kdeconnectd && /usr/lib/x86_64-linux-gnu/libexec/kdeconnectd &`. Then retry pairing from the phone.
 
 **Notifications not syncing**: The notification plugin requires notification permissions on Android. Go to Android Settings > Apps > KDE Connect > Permissions and enable "Notification access."
 
