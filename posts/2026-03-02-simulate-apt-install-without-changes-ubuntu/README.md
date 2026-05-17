@@ -150,7 +150,7 @@ AVAILABLE_MB=$(df -m / | awk 'NR==2 {print $4}')
 # Get space required from dry run
 REQUIRED_MB=$(sudo apt install --dry-run "$PACKAGE" 2>/dev/null | \
     grep "additional disk space" | \
-    awk '{print $1}' | \
+    awk '{print $4}' | \
     sed 's/[^0-9.]//g' | \
     awk '{printf "%.0f", $1}')
 
@@ -267,7 +267,7 @@ For environments with formal change management, simulation output serves as docu
 
 ```bash
 # Generate upgrade simulation output for change request
-sudo apt full-upgrade --dry-run 2>&1 > /tmp/upgrade-simulation-$(date +%Y%m%d).txt
+sudo apt full-upgrade --dry-run > /tmp/upgrade-simulation-$(date +%Y%m%d).txt 2>&1
 cat /tmp/upgrade-simulation-$(date +%Y%m%d).txt
 ```
 
