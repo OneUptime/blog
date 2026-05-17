@@ -205,17 +205,18 @@ journalctl -u my-job.service
 You can adjust resource limits on running slices without editing files:
 
 ```bash
-# Set a memory limit on the system slice temporarily
+# Apply a memory limit persistently (survives reboots)
 sudo systemctl set-property system.slice MemoryMax=4G
-
-# Make it persistent (survives reboots)
-sudo systemctl set-property --runtime system.slice MemoryMax=4G
 # Without --runtime it writes to /etc/systemd/system.control/
+
+# Apply temporarily (effective only until the next reboot)
+sudo systemctl set-property --runtime system.slice MemoryMax=4G
+# With --runtime it writes to /run/systemd/system.control/
 
 # Set CPU limits on a custom slice
 sudo systemctl set-property myapp.slice CPUQuota=150%
 
-# Remove a property
+# Reset a property to its default (no limit)
 sudo systemctl set-property myapp.slice MemoryMax=infinity
 ```
 
