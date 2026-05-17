@@ -66,7 +66,7 @@ machine:
 
 ## Enabling Host DNS Forwarding
 
-Talos Linux v1.6 and later supports host DNS forwarding, which allows the host DNS proxy to forward queries for cluster domains (like `.cluster.local`) to CoreDNS:
+Talos Linux v1.7 introduced the host DNS feature, and v1.8 and later supports host DNS forwarding, which allows the host DNS proxy to forward queries for cluster domains (like `.cluster.local`) to CoreDNS:
 
 ```yaml
 # Enable host DNS forwarding
