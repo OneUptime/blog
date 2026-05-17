@@ -46,17 +46,17 @@ cluster:
       max-mutating-requests-inflight: "400"
       # etcd compaction
       etcd-compaction-interval: "5m0s"
-      # Feature gates
-      feature-gates: "GracefulNodeShutdown=true"
+      # Feature gates (kube-apiserver specific gates only)
+      feature-gates: "WatchList=true"
       # Logging
       v: "2"
 ```
 
-Apply the configuration:
+Apply the configuration as a patch to all control plane nodes:
 
 ```bash
-# Apply to all control plane nodes
-talosctl apply-config --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
+# Patch the running machine config on all control plane nodes
+talosctl patch mc --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
   --patch @api-server-args.yaml
 ```
 
@@ -222,7 +222,7 @@ In a multi-control-plane setup, the API server configuration should be consisten
 
 ```bash
 # Apply configuration to all control plane nodes at once
-talosctl apply-config \
+talosctl patch mc \
   --nodes 192.168.1.10,192.168.1.11,192.168.1.12 \
   --patch @api-server-config.yaml
 ```
@@ -244,11 +244,12 @@ cluster:
 After applying changes, verify the API server is running with the expected configuration:
 
 ```bash
-# Check the API server is healthy
-talosctl -n 192.168.1.10 service kube-apiserver
+# Check that the kube-apiserver static pod is running
+talosctl -n 192.168.1.10 get staticpodstatus
 
-# View API server logs for startup messages
-talosctl -n 192.168.1.10 logs kube-apiserver --tail 50
+# View API server logs (use kubectl since kube-apiserver is a Kubernetes
+# static pod, not a Talos service)
+kubectl -n kube-system logs -l component=kube-apiserver --tail=50
 
 # Verify the API server is responding
 kubectl cluster-info
@@ -271,8 +272,8 @@ If an API server configuration change causes problems, you can revert by applyin
 # Apply the previous working configuration
 talosctl apply-config --nodes 192.168.1.10 --file previous-config.yaml
 
-# Or remove problematic extra args with an empty patch
-talosctl apply-config --nodes 192.168.1.10 --patch @fixed-config.yaml
+# Or remove problematic extra args with a corrective patch
+talosctl patch mc --nodes 192.168.1.10 --patch @fixed-config.yaml
 ```
 
 Configuring the Kubernetes API server on Talos Linux is done entirely through machine configuration patches. While this is different from editing manifest files directly, it is actually more reliable because the configuration is declarative, version-controlled, and consistently applied across all control plane nodes. The key is understanding which settings go in `extraArgs`, which require `extraVolumes`, and which need files created on the host through `machine.files`.
