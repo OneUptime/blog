@@ -45,6 +45,9 @@ Create a file named `Makefile` (capital M, no extension):
 ```makefile
 # Simple project Makefile
 
+# Default target (first target is the default)
+all: build test
+
 # Build the project
 build:
 	echo "Building project..."
@@ -64,9 +67,6 @@ clean:
 # Install the built application
 install: build
 	cp build/app /usr/local/bin/
-
-# Default target (first target is the default)
-all: build test
 ```
 
 Run targets:
