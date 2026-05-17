@@ -35,7 +35,7 @@ The `c` means changed, `a` means added, `d` means deleted. The numbers indicate 
 ### Unified Format
 
 ```bash
-# -u flag produces unified diff, -N context lines (default 3)
+# -u flag produces unified diff with 3 context lines (use -U NUM to change)
 
 diff -u file1.txt file2.txt
 ```
@@ -143,8 +143,8 @@ patch original.conf < my_changes.patch
 # Dry run - show what would happen without making changes
 patch --dry-run < my_changes.patch
 
-# Verbose output
-patch -v < my_changes.patch
+# Verbose output (note: -v alone prints version; use --verbose for details)
+patch --verbose < my_changes.patch
 ```
 
 ### Strip Path Components with -p
