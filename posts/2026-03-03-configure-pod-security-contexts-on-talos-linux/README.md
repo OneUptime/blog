@@ -242,7 +242,7 @@ kubectl label namespace production \
   pod-security.kubernetes.io/warn=restricted
 ```
 
-With this label, Kubernetes will reject any pod in the production namespace that does not meet the restricted security standard. This includes requirements like running as non-root, dropping all capabilities, and using a read-only root filesystem.
+With this label, Kubernetes will reject any pod in the production namespace that does not meet the restricted security standard. This includes requirements like running as non-root, dropping all capabilities, disallowing privilege escalation, and requiring a seccomp profile.
 
 ```bash
 # Test by deploying a privileged pod to the labeled namespace
