@@ -374,7 +374,7 @@ talosctl -n 192.168.1.10 version > version.txt
 
 # Share these with the Talos community:
 # - GitHub Issues: github.com/siderolabs/talos
-# - Slack: kubernetes.slack.com #talos
+# - Slack: Talos Community Slack (join via https://slack.dev.talos-systems.io)
 ```
 
 Debugging extension loading issues on Talos Linux requires patience and a methodical approach. The API-driven model means you cannot just poke around the filesystem, but the structured logging and resource APIs provide all the information you need to identify and resolve problems. Build familiarity with the diagnostic commands covered here, and you will be able to handle any extension issue that comes your way.
