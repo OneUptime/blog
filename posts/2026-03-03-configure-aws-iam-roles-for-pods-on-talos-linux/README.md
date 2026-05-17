@@ -55,11 +55,37 @@ For a self-managed cluster, you need to host the OIDC discovery document on S3. 
 # Create an S3 bucket for the OIDC discovery document
 aws s3 mb s3://my-cluster-oidc --region us-east-1
 
-# Enable public access for the discovery document
+# Disable the bucket's public access block so a public read policy can apply
 aws s3api put-public-access-block \
   --bucket my-cluster-oidc \
   --public-access-block-configuration \
   BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false
+
+# Attach a bucket policy granting anonymous read access to the discovery objects.
+# Since April 2023, S3 buckets default to "Bucket owner enforced" object ownership,
+# which disables ACLs entirely — so --acl public-read is silently ignored and a
+# bucket policy is the supported way to make objects publicly readable.
+cat > bucket-policy.json << 'POL'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowPublicReadOfOIDCDocuments",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": [
+        "arn:aws:s3:::my-cluster-oidc/.well-known/openid-configuration",
+        "arn:aws:s3:::my-cluster-oidc/openid/v1/jwks"
+      ]
+    }
+  ]
+}
+POL
+
+aws s3api put-bucket-policy \
+  --bucket my-cluster-oidc \
+  --policy file://bucket-policy.json
 ```
 
 Next, configure Talos to use this bucket as the service account issuer. Patch your machine config:
@@ -111,8 +137,14 @@ aws s3 cp jwks.json s3://my-cluster-oidc/openid/v1/jwks \
 Register the OIDC provider with IAM:
 
 ```bash
-# Get the thumbprint of the S3 certificate
-THUMBPRINT=$(openssl s_client -connect s3.us-east-1.amazonaws.com:443 -servername s3.us-east-1.amazonaws.com 2>/dev/null | openssl x509 -fingerprint -noout | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')
+# Get the SHA-1 thumbprint of the top intermediate CA that signed the S3 endpoint
+# certificate. AWS requires the intermediate CA fingerprint, not the leaf cert.
+# -showcerts prints the full chain; we pick the second certificate (the intermediate).
+THUMBPRINT=$(openssl s_client -connect s3.us-east-1.amazonaws.com:443 \
+    -servername s3.us-east-1.amazonaws.com -showcerts </dev/null 2>/dev/null \
+  | awk '/-----BEGIN CERTIFICATE-----/{c++} c==2,/-----END CERTIFICATE-----/' \
+  | openssl x509 -fingerprint -sha1 -noout \
+  | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')
 
 # Create the OIDC identity provider in IAM
 aws iam create-open-id-connect-provider \
@@ -120,6 +152,8 @@ aws iam create-open-id-connect-provider \
   --client-id-list sts.amazonaws.com \
   --thumbprint-list $THUMBPRINT
 ```
+
+Note: since July 2023, IAM automatically retrieves and validates the OIDC IdP's root CA against AWS's trusted CA library for well-known providers (including S3-hosted JWKS endpoints), so the thumbprint you supply is effectively cosmetic in this scenario — but the CLI still requires the parameter.
 
 ## Creating an IAM Role for a Service Account
 
@@ -175,14 +209,17 @@ metadata:
 
 ## Installing the Pod Identity Webhook
 
-For the token injection to work, you need the Amazon EKS Pod Identity Webhook running in your cluster:
+For the token injection to work, you need the Amazon EKS Pod Identity Webhook running in your cluster. AWS does not publish an official Helm chart for it, so install it from the upstream manifests in [aws/amazon-eks-pod-identity-webhook](https://github.com/aws/amazon-eks-pod-identity-webhook). It uses cert-manager to issue its serving certificate, so install that first if it is not already in the cluster:
 
 ```bash
-# Deploy the pod identity webhook
-helm repo add eks https://aws.github.io/eks-charts
-helm install pod-identity-webhook eks/amazon-eks-pod-identity-webhook \
-  --namespace kube-system \
-  --set config.defaultAwsRegion=us-east-1
+# Install cert-manager (prerequisite for the webhook's TLS bootstrap)
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+
+# Wait for cert-manager to be ready
+kubectl -n cert-manager wait --for=condition=Available deployment --all --timeout=120s
+
+# Deploy the pod identity webhook from the upstream kustomize manifests
+kubectl apply -k github.com/aws/amazon-eks-pod-identity-webhook/deploy
 ```
 
 This webhook mutates pod specs at admission time. When a pod uses a service account with the IRSA annotation, the webhook injects the necessary environment variables (`AWS_ROLE_ARN` and `AWS_WEB_IDENTITY_TOKEN_FILE`) and mounts the projected service account token.
