@@ -22,7 +22,7 @@ The most common deletion task is removing a single field like a node label:
 
 ```json
 [
-    {"op": "remove", "path": "/machine/kubelet/nodeLabels/deprecated-label"}
+    {"op": "remove", "path": "/machine/nodeLabels/deprecated-label"}
 ]
 ```
 
@@ -32,7 +32,7 @@ Apply it with talosctl:
 # Remove a single label from a node
 
 talosctl apply-config --nodes 10.0.1.10 \
-    --patch '[{"op": "remove", "path": "/machine/kubelet/nodeLabels/deprecated-label"}]' \
+    --patch '[{"op": "remove", "path": "/machine/nodeLabels/deprecated-label"}]' \
     --mode no-reboot
 ```
 
@@ -41,7 +41,7 @@ You can write this in YAML format for readability:
 ```yaml
 # remove-label.yaml
 - op: remove
-  path: /machine/kubelet/nodeLabels/deprecated-label
+  path: /machine/nodeLabels/deprecated-label
 ```
 
 ```bash
@@ -55,11 +55,11 @@ To remove several fields in one operation, include multiple remove operations in
 ```yaml
 # remove-multiple.yaml
 - op: remove
-  path: /machine/kubelet/nodeLabels/old-label-1
+  path: /machine/nodeLabels/old-label-1
 - op: remove
-  path: /machine/kubelet/nodeLabels/old-label-2
+  path: /machine/nodeLabels/old-label-2
 - op: remove
-  path: /machine/kubelet/nodeLabels/temp-label
+  path: /machine/nodeLabels/temp-label
 ```
 
 ```bash
@@ -75,7 +75,7 @@ To remove a network interface from the configuration, you need to know its index
 ```bash
 # First, check the current interfaces and their indices
 talosctl get machineconfig --nodes 10.0.1.10 -o yaml | \
-    yq '.machine.network.interfaces[] | .interface'
+    yq '.spec.machine.network.interfaces[] | .interface'
 ```
 
 If the output shows:
@@ -178,11 +178,11 @@ The safest pattern for deletion combines `test` and `remove`:
 # safe-delete.yaml
 # Step 1: Verify the value exists and is what we expect
 - op: test
-  path: /machine/kubelet/nodeLabels/temporary-flag
+  path: /machine/nodeLabels/temporary-flag
   value: "true"
 # Step 2: Remove it
 - op: remove
-  path: /machine/kubelet/nodeLabels/temporary-flag
+  path: /machine/nodeLabels/temporary-flag
 ```
 
 If the `test` fails (the field does not exist or has a different value), the entire patch is rejected and nothing changes. This prevents accidental deletion of the wrong data.
@@ -193,7 +193,7 @@ If you try to remove a path that does not exist, the patch fails:
 
 ```text
 error applying configuration: remove operation does not apply:
-doc is missing path: /machine/kubelet/nodeLabels/nonexistent
+doc is missing path: /machine/nodeLabels/nonexistent
 ```
 
 To handle this gracefully in scripts, check for the field before attempting removal:
@@ -207,12 +207,12 @@ LABEL="deprecated-label"
 
 # Check if the label exists
 current_config=$(talosctl get machineconfig --nodes "$NODE" -o yaml)
-if echo "$current_config" | yq ".machine.kubelet.nodeLabels.\"$LABEL\"" | grep -q null; then
+if echo "$current_config" | yq ".spec.machine.nodeLabels.\"$LABEL\"" | grep -q null; then
     echo "Label '$LABEL' does not exist on $NODE, skipping"
 else
     echo "Removing label '$LABEL' from $NODE"
     talosctl apply-config --nodes "$NODE" \
-        --patch "[{\"op\": \"remove\", \"path\": \"/machine/kubelet/nodeLabels/$LABEL\"}]" \
+        --patch "[{\"op\": \"remove\", \"path\": \"/machine/nodeLabels/$LABEL\"}]" \
         --mode no-reboot
 fi
 ```
@@ -241,9 +241,9 @@ A common use case for deletion is cleaning up configuration after a migration or
 # post-migration-cleanup.yaml
 # Remove deprecated labels
 - op: remove
-  path: /machine/kubelet/nodeLabels/beta.kubernetes.io~1arch
+  path: /machine/nodeLabels/beta.kubernetes.io~1arch
 - op: remove
-  path: /machine/kubelet/nodeLabels/beta.kubernetes.io~1os
+  path: /machine/nodeLabels/beta.kubernetes.io~1os
 # Remove old registry mirror
 - op: remove
   path: /machine/registries/mirrors/old-registry.internal:5000
@@ -271,8 +271,8 @@ The `|| true` ensures the script continues even if a node does not have all the 
 Always preview deletions before applying:
 
 ```bash
-# Get the current config
-talosctl get machineconfig --nodes 10.0.1.10 -o yaml > before.yaml
+# Get the current config (extract the spec from the COSI resource wrapper)
+talosctl get machineconfig --nodes 10.0.1.10 -o yaml | yq '.spec' > before.yaml
 
 # Apply the delete patch to a copy
 talosctl machineconfig patch before.yaml --patch @remove-patch.yaml -o after.yaml
