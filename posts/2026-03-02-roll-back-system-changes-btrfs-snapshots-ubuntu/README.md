@@ -57,6 +57,9 @@ sudo mount -o subvolid=5 /dev/sda2 /mnt
 Replace `/dev/sda2` with your actual root partition. Then take a snapshot:
 
 ```bash
+# Create the snapshots directory if it doesn't exist
+sudo mkdir -p /mnt/snapshots
+
 # Create a read-only snapshot of the @ subvolume
 sudo btrfs subvolume snapshot -r /mnt/@ /mnt/snapshots/@_before_upgrade
 
@@ -131,10 +134,12 @@ sudo nano /etc/grub.d/40_custom
 menuentry 'Ubuntu - Rollback Snapshot' {
     insmod btrfs
     search --no-floppy --fs-uuid --set=root abc123
-    linux /@_before_upgrade/boot/vmlinuz root=UUID=abc123 rootflags=subvol=@_before_upgrade ro quiet splash
-    initrd /@_before_upgrade/boot/initrd.img
+    linux /snapshots/@_before_upgrade/boot/vmlinuz root=UUID=abc123 rootflags=subvol=snapshots/@_before_upgrade ro quiet splash
+    initrd /snapshots/@_before_upgrade/boot/initrd.img
 }
 ```
+
+The paths and `rootflags=subvol=` value must point to wherever you stored the snapshot. Adjust them if your snapshot lives somewhere other than `/snapshots/@_before_upgrade` at the Btrfs top level. Note that a read-only snapshot won't boot writable - create a writable copy first with `btrfs subvolume snapshot` (without `-r`) if you need to mount it read-write.
 
 Update GRUB:
 
@@ -206,15 +211,14 @@ sudo btrfs quota enable /
 sudo btrfs qgroup show /
 ```
 
-Enable quotas to track per-subvolume disk usage:
+Enable quotas to track per-subvolume disk usage. The `-p` flag prints the parent qgroup ID for each subvolume, and `--human-readable` formats sizes:
 
 ```bash
 sudo btrfs quota enable /
-sudo btrfs subvolume list / | awk '{print $NF}' | while read sv; do
-    echo "--- $sv ---"
-    sudo btrfs qgroup show / 2>/dev/null | grep "$sv"
-done
+sudo btrfs qgroup show --human-readable -p /
 ```
+
+Each row's qgroup ID has the form `0/SUBVOLID`, which you can cross-reference with the IDs shown in `sudo btrfs subvolume list /`.
 
 ### Deleting Old Snapshots
 
@@ -240,7 +244,7 @@ sudo timeshift --delete --snapshot '2026-02-01_02-00-00'
 Before committing to a rollback, you can mount a snapshot read-only and inspect it:
 
 ```bash
-sudo mount -o subvolid=5 /dev/sda2 /mnt
+sudo mkdir -p /tmp/snapshot-inspect
 sudo mount -o subvol=snapshots/@_before_upgrade,ro /dev/sda2 /tmp/snapshot-inspect
 
 # Inspect files
@@ -248,7 +252,6 @@ ls /tmp/snapshot-inspect/etc/
 cat /tmp/snapshot-inspect/etc/apt/sources.list
 
 sudo umount /tmp/snapshot-inspect
-sudo umount /mnt
 ```
 
 This lets you confirm the snapshot contains what you expect before swapping it in.
