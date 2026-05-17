@@ -21,7 +21,7 @@ With SSH certificates:
 - The CA's public key is placed on servers once
 - Users get certificates signed by the CA
 - Access is granted to any holder of a valid CA-signed certificate
-- Revoking access means issuing a Certificate Revocation List (CRL) or using principals/expiry
+- Revoking access means issuing a Key Revocation List (KRL) or using principals/expiry
 
 ## Setting Up a Certificate Authority
 
@@ -229,8 +229,10 @@ To revoke access, create a Key Revocation List (KRL):
 # Revoke by certificate file
 ssh-keygen -k -f revoked-keys.krl alice_id_ed25519-cert.pub
 
-# Revoke by certificate ID
-ssh-keygen -k -u -f revoked-keys.krl -z 12345  # serial number
+# Revoke by serial number using a KRL specification file
+# Serials are unique per-CA, so the CA public key must be supplied with -s
+echo "serial: 12345" > revoke.spec
+ssh-keygen -k -u -f revoked-keys.krl -s ssh_ca.pub revoke.spec
 
 # Distribute the KRL to servers
 sudo cp revoked-keys.krl /etc/ssh/revoked-keys.krl
