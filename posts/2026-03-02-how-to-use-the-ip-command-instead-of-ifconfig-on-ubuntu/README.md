@@ -21,7 +21,7 @@ This guide maps common `ifconfig` operations to their `ip` equivalents and cover
 On Ubuntu, `iproute2` is installed by default. Verify:
 
 ```bash
-ip --version
+ip -V
 ```
 
 If you still want `ifconfig` for legacy reasons:
@@ -230,8 +230,8 @@ ip -6 addr show
 # Show only UP interfaces
 ip link show up
 
-# Show interfaces of a specific type
-ip link show type ether
+# Show interfaces of a specific type (e.g., bridge, vlan, bond, veth, dummy)
+ip link show type bridge
 
 # Use -br for brief output (good for scripting)
 ip -br addr show
