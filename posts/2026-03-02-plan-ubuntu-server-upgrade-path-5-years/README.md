@@ -19,7 +19,7 @@ Understanding where current releases stand:
 | 20.04 | Focal | April 2020 | April 2025 | April 2030 |
 | 22.04 | Jammy | April 2022 | April 2027 | April 2032 |
 | 24.04 | Noble | April 2024 | April 2029 | April 2034 |
-| 26.04 | TBD | April 2026 | April 2031 | April 2036 |
+| 26.04 | Resolute | April 2026 | April 2031 | April 2036 |
 
 As of March 2026:
 - **20.04**: Past standard EOL. Needs ESM or immediate migration.
@@ -41,7 +41,7 @@ echo "Ubuntu Version: $(lsb_release -rs)"
 echo "Codename: $(lsb_release -cs)"
 echo "Kernel: $(uname -r)"
 echo "Support Status:"
-ubuntu-support-status 2>/dev/null || echo "ubuntu-support-status not available"
+pro security-status 2>/dev/null || echo "pro security-status not available"
 echo "Pro Attached: $(pro status 2>/dev/null | grep -o 'attached\|not attached' | head -1)"
 echo ""
 ```
@@ -50,7 +50,7 @@ Run across your fleet:
 
 ```bash
 # With Ansible
-ansible all -m shell -a "lsb_release -rs && ubuntu-support-status" -o
+ansible all -m shell -a "lsb_release -rs && pro security-status" -o
 
 # With SSH in a loop
 for host in $(cat servers.txt); do
@@ -213,7 +213,7 @@ If you use Ansible, Chef, Puppet, or Salt, your configuration management code ne
 # Note what fails:
 
 # Common issues:
-# - Package names changed (libssl-dev vs libssl3-dev)
+# - Package names changed (libssl1.1 vs libssl3, python3.10 vs python3.12)
 # - Service names changed
 # - File paths moved
 # - Module/plugin incompatibilities in the CM tool itself
