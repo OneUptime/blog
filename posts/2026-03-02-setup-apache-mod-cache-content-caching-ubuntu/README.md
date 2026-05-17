@@ -182,7 +182,7 @@ sudo a2enmod proxy_http
     CacheDefaultExpire 300
     CacheQuickHandler off
 
-    # Ignore Authorization headers for caching (careful with authenticated content)
+    # Don't store Set-Cookie headers in the cache (careful with authenticated content)
     CacheIgnoreHeaders Set-Cookie
 
     # Proxy to backend
@@ -293,6 +293,6 @@ ExecStart=/usr/sbin/htcacheclean -d 120 -p /var/cache/apache2/mod_cache_disk \
 sudo systemctl enable --now htcacheclean
 ```
 
-The `-d 120` flag runs the cleaner as a daemon with a 120-second interval, `-l 2048M` keeps the cache under 2GB, and `-i` makes it idle between runs rather than burning CPU constantly.
+The `-d 120` flag runs the cleaner as a daemon and repeats every 120 minutes (the interval is in minutes, not seconds), `-l 2048M` keeps the cache under 2GB, and `-i` makes it run only when the disk cache has been modified rather than burning CPU constantly.
 
 With caching properly configured, Apache can handle significantly higher request rates without additional backend resources. Even a 50% cache hit rate on a busy site can cut backend load in half, directly improving performance for all users.
