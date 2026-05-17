@@ -171,8 +171,8 @@ After applying the configuration:
 cat /proc/net/bonding/bond0
 
 # Should show:
-# Bonding Mode: active-backup
-# Primary Slave: enp3s0 (primary_reselect failure)
+# Bonding Mode: fault-tolerance (active-backup)
+# Primary Slave: enp3s0 (primary_reselect always)
 # Currently Active Slave: enp3s0
 # MII Status: up
 # MII Polling Interval (ms): 100
