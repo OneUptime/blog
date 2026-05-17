@@ -29,7 +29,7 @@ cat ~/.ssh/id_ed25519.pub
 
 Paste the output into the SSH key field on DigitalOcean. You can add multiple keys here if multiple people need access.
 
-Enable backups if this is a production machine - it adds 20% to the cost but gives you automated weekly snapshots. Once satisfied with the configuration, click "Create Droplet."
+Enable backups if this is a production machine. DigitalOcean offers a few tiers: weekly snapshots at 20% of the droplet cost, daily at 30%, plus usage-based intra-day plans (every 12h, 6h, or 4h) billed per restorable GiB. Pick whichever matches your RPO. Once satisfied with the configuration, click "Create Droplet."
 
 ## First Connection
 
@@ -100,11 +100,15 @@ AllowUsers deploy
 Port 2222
 ```
 
-Restart SSH after making changes:
+Restart SSH after making changes. On Ubuntu 22.10 and later (including 24.04), OpenSSH is socket-activated by default — `ssh.socket` holds the listener, and a systemd generator reads the `Port` from `sshd_config`. That means a port change requires reloading systemd and restarting the socket, not just the service:
 
 ```bash
-systemctl restart sshd
+systemctl daemon-reload
+systemctl restart ssh.socket
+systemctl restart ssh
 ```
+
+If you only changed config options other than `Port` (or `ListenAddress`), `systemctl restart ssh` alone is sufficient. Note that on Ubuntu the unit is `ssh.service`, not `sshd.service`.
 
 Before closing your current session, open a new terminal window and verify you can connect with the new settings:
 
