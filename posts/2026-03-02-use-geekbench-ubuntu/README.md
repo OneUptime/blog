@@ -16,8 +16,8 @@ Geekbench 6 includes the following test workload categories:
 
 - **File Compression**: Deflate and LZMA compression and decompression
 - **Navigation**: Dijkstra's shortest path algorithm
-- **HTML5**: DOM parsing, JavaScript-like code
-- **PDF Rendering**: PDF page rasterization
+- **HTML5 Browser**: DOM parsing, JavaScript-like code
+- **PDF Renderer**: PDF page rasterization
 - **Photo Library**: Image resizing, color transformation
 - **Clang**: Compilation workloads
 - **Text Processing**: Text search, manipulation
@@ -56,7 +56,7 @@ wget "https://cdn.geekbench.com/Geekbench-${GB_VERSION}-Linux.tar.gz"
 tar -xzf "Geekbench-${GB_VERSION}-Linux.tar.gz"
 
 # Move to a permanent location
-sudo mv "Geekbench ${GB_VERSION}" /opt/geekbench
+sudo mv "Geekbench-${GB_VERSION}-Linux" /opt/geekbench
 
 # Create a symlink for easy access
 sudo ln -s /opt/geekbench/geekbench6 /usr/local/bin/geekbench6
@@ -154,7 +154,7 @@ geekbench6 --no-upload 2>&1 | tee geekbench_output.log
 
 Geekbench scores are relative to a baseline:
 
-- In Geekbench 6, the baseline system is a Apple Mac mini (2023, M2) with a single-core score of 2500
+- In Geekbench 6, the baseline system is a Dell Precision 3460 with an Intel Core i7-12700, calibrated to a single-core score of 2500
 - Higher is better
 - Single-core scores typically range from:
   - Older mobile CPUs: 500-900
@@ -190,7 +190,7 @@ If you need Geekbench 5 for comparison with older results:
 # Download Geekbench 5 for Linux
 wget https://cdn.geekbench.com/Geekbench-5.5.1-Linux.tar.gz
 tar -xzf Geekbench-5.5.1-Linux.tar.gz
-cd "Geekbench 5.5.1 Linux"
+cd Geekbench-5.5.1-Linux
 
 # Run Geekbench 5
 ./geekbench5
