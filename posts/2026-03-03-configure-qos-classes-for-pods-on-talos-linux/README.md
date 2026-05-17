@@ -288,7 +288,6 @@ kind: ClusterPolicy
 metadata:
   name: require-guaranteed-qos-critical
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: guaranteed-in-critical
       match:
@@ -299,6 +298,7 @@ spec:
               namespaces:
                 - critical-services
       validate:
+        failureAction: Enforce
         message: "Pods in the critical-services namespace must have Guaranteed QoS (requests must equal limits for all containers)"
         foreach:
           - list: "request.object.spec.containers"
@@ -320,7 +320,6 @@ kind: ClusterPolicy
 metadata:
   name: prevent-besteffort-production
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-resource-requests
       match:
@@ -332,6 +331,7 @@ spec:
                 - production
                 - staging
       validate:
+        failureAction: Enforce
         message: "All containers must have CPU and memory requests set. BestEffort QoS is not allowed in production."
         foreach:
           - list: "request.object.spec.containers"
