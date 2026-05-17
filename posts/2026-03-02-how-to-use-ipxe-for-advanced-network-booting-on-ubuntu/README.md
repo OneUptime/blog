@@ -33,7 +33,7 @@ ls /usr/lib/ipxe/
 ```
 
 Key files installed:
-- `ipxe.pxe` - iPXE chainloader for legacy BIOS PXE
+- `ipxe.lkrn` - iPXE as a Linux kernel image (chainload from GRUB/SYSLINUX)
 - `undionly.kpxe` - iPXE using the NIC's UNDI driver (more compatible)
 - `ipxe.efi` - iPXE for UEFI systems
 - `snponly.efi` - iPXE using SNP driver for UEFI
@@ -116,7 +116,7 @@ choose --timeout 30000 --default local target && goto ${target}
 :ubuntu-live
 set base-url http://192.168.1.10/boot/ubuntu
 kernel ${base-url}/vmlinuz
-initrd ${base-url}/initrd.img
+initrd ${base-url}/initrd
 imgargs vmlinuz boot=casper ip=dhcp url=http://192.168.1.10/boot/ubuntu/ubuntu-24.04-desktop.iso ---
 boot || goto failed
 
@@ -235,7 +235,7 @@ sudo chown -R www-data:www-data /var/www/html/boot/
 ```bash
 #!ipxe
 # Boot different OS based on manufacturer
-iseq ${manufacturer} Dell Inc. && goto dell-boot ||
+iseq ${manufacturer} "Dell Inc." && goto dell-boot ||
 iseq ${manufacturer} HP && goto hp-boot ||
 goto default-boot
 
