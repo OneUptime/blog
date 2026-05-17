@@ -104,23 +104,21 @@ On a node with 100GB of image storage:
 - A 25% gap means about 25GB of images are freed per cycle
 - A 5% gap means about 5GB of images are freed per cycle
 
-## Container Garbage Collection
+## Container Log Rotation
 
-In addition to image garbage collection, the kubelet also cleans up dead containers. This is separate from image GC:
+In addition to image garbage collection, the kubelet rotates container log files so that a chatty container cannot fill the disk on its own. These settings are part of the kubelet configuration:
 
 ```yaml
 machine:
   kubelet:
     extraConfig:
-      # Maximum number of dead containers to retain per container
-      maxPerPodContainerCount: 2
-      # Maximum total number of dead containers to retain
-      maxContainerCount: -1  # -1 means no limit
-      # Minimum age of dead containers before cleanup
-      minimumContainerTTLDuration: "1m"
+      # Maximum size of a container log file before it is rotated
+      containerLogMaxSize: "10Mi"
+      # Maximum number of rotated log files to retain per container
+      containerLogMaxFiles: 5
 ```
 
-Dead containers are containers that have exited (successfully or with an error). Keeping some around is useful for debugging - you can inspect their logs and exit codes. But too many wastes disk space.
+Dead container cleanup itself is handled by the container runtime (containerd in Talos), not by kubelet configuration. The legacy kubelet flags for tuning dead-container retention (`--maximum-dead-containers`, `--maximum-dead-containers-per-container`, `--minimum-container-ttl-duration`) are deprecated; the recommended way to keep disk pressure under control is the eviction-based approach below.
 
 ## Eviction-Based Disk Management
 
@@ -165,10 +163,10 @@ Keep track of disk usage on your nodes:
 
 ```bash
 # Check disk usage on a node
-talosctl df --nodes 10.0.0.5
+talosctl usage --nodes 10.0.0.5 -H /var
 
 # List all images and their sizes
-talosctl images --nodes 10.0.0.5
+talosctl image list --nodes 10.0.0.5
 
 # Check node conditions for disk pressure
 kubectl describe node <node-name> | grep -A 5 Conditions
@@ -203,9 +201,6 @@ machine:
       imageGCHighThresholdPercent: 80
       imageGCLowThresholdPercent: 70
       imageMinimumGCAge: "5m"
-      # Container garbage collection
-      maxPerPodContainerCount: 2
-      minimumContainerTTLDuration: "1m"
       # Container log management
       containerLogMaxSize: "50Mi"
       containerLogMaxFiles: 3
@@ -241,7 +236,7 @@ talosctl logs kubelet --nodes 10.0.0.5 | grep -i "garbage\|image.*removed\|image
 talosctl get machineconfig --nodes 10.0.0.5 -o yaml | grep -A 5 imageGC
 
 # Check what is using disk space
-talosctl df --nodes 10.0.0.5
+talosctl usage --nodes 10.0.0.5 -H /var
 ```
 
 Common issues include the minimum age being too high (images are not old enough to collect), all images being in use by running containers, and disk usage being driven by container logs rather than images.
