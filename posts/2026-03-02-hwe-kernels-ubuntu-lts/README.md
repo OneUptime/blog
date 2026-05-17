@@ -133,7 +133,7 @@ If you have hardware that requires a newer kernel:
 lspci | grep -i "unknown"
 
 # Check dmesg for firmware or driver loading errors
-dmesg | grep -E -i "firmware\|no driver\|unknown"
+dmesg | grep -E -i "firmware|no driver|unknown"
 
 # Check if a network card is detected
 ip link show
