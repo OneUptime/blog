@@ -268,15 +268,15 @@ bounced = sum(d['Bounces'] for d in data)
 print(f'Sent: {sent}, Bounced: {bounced}')"
 ```
 
-Default sending limits for new accounts in production: typically 50,000 messages per day, 14 per second. Request increases through the AWS console if you need more.
+Default sending limits for new production accounts vary by region and use case, but historically have been around 50,000 messages per day and 14 per second. Request increases through the AWS console if you need more.
 
 ## Cost Calculation
 
 SES pricing (as of early 2026):
-- First 62,000 messages per month: free (when sending from EC2)
-- Beyond free tier: $0.10 per 1,000 messages
+- $0.10 per 1,000 outbound messages (the "always free" 62,000 messages per month from EC2 was retired in August 2023)
+- New AWS accounts may qualify for a 12-month free tier; see the SES pricing page for current details
 
-For comparison, sending 100,000 messages costs $3.80 beyond the free tier - significantly cheaper than most alternatives at scale.
+For comparison, sending 100,000 messages costs $10 - still significantly cheaper than most alternatives at scale.
 
 ```bash
 # Count messages sent this month for cost estimation
