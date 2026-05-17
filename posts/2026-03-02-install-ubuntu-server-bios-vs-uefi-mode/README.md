@@ -29,7 +29,7 @@ UEFI is the modern replacement. In UEFI mode:
 
 - The firmware reads a special FAT32 partition called the EFI System Partition (ESP)
 - The ESP contains bootloader executables (`.efi` files) in a directory structure
-- Partition tables use the GUID Partition Table (GPT) format, supporting 128 primary partitions and disks up to 8 ZB
+- Partition tables use the GUID Partition Table (GPT) format, supporting 128 primary partitions and disks up to ~9.4 ZB (with 512-byte sectors)
 - Secure Boot can be used to verify bootloader signatures
 - UEFI maintains a boot manager with entries pointing to specific `.efi` executables
 
