@@ -97,7 +97,7 @@ machine:
 
 ```bash
 # Apply to a specific node
-talosctl apply-config --nodes 10.0.1.20 --patch @nodeip-patch.yaml --mode no-reboot
+talosctl patch mc --nodes 10.0.1.20 --patch @nodeip-patch.yaml --mode no-reboot
 ```
 
 The kubelet will pick up the new configuration without requiring a full node reboot. However, if the node IP actually changes as a result, the kubelet will need to restart, which means pods on that node may experience brief disruptions.
