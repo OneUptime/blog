@@ -179,8 +179,8 @@ done
 # Enable Audio codec power management
 echo 1 | sudo tee /sys/module/snd_hda_intel/parameters/power_save
 
-# Set VM writeback timeout (default 15 seconds, increase to 60)
-echo 60 | sudo tee /proc/sys/vm/dirty_writeback_centisecs
+# Set VM writeback timeout (value is in centisecs; default 500 = 5 seconds, PowerTOP recommends 1500 = 15 seconds)
+echo 1500 | sudo tee /proc/sys/vm/dirty_writeback_centisecs
 
 # Enable PCIe ASPM
 echo powersave | sudo tee /sys/module/pcie_aspm/parameters/policy
@@ -202,8 +202,7 @@ High wakeup counts prevent the CPU from sleeping deeply. PowerTOP shows which pr
 
 # Reduce NTP poll frequency
 sudo nano /etc/chrony/chrony.conf
-# Add or modify: makestep 1.0 3
-# And increase minpoll/maxpoll values:
+# Increase minpoll/maxpoll on the server line (values are powers of 2 seconds, so 6=64s, 10=1024s):
 # server ntp.ubuntu.com iburst minpoll 6 maxpoll 10
 
 # Disable Bluetooth if not needed
