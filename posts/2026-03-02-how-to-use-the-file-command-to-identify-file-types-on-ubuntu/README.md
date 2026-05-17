@@ -105,7 +105,7 @@ file -i document.pdf
 # document.pdf: application/pdf; charset=binary
 
 file -i script.py
-# script.py: text/x-python; charset=us-ascii
+# script.py: text/x-script.python; charset=us-ascii
 
 file -i photo.jpg
 # photo.jpg: image/jpeg; charset=binary
@@ -145,7 +145,7 @@ file -L /usr/bin/python
 ## Checking Multiple Files Efficiently
 
 ```bash
-# Process a list from stdin with -f
+# Process a list of files from a file with -f
 find /home/user/downloads -type f > filelist.txt
 file -f filelist.txt
 
