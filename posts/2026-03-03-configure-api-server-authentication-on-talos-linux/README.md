@@ -86,10 +86,10 @@ cluster:
     extraArgs:
       oidc-issuer-url: "https://auth.internal.example.com"
       oidc-client-id: "kubernetes"
-      oidc-ca-file: "/etc/kubernetes/pki/oidc-ca.crt"
+      oidc-ca-file: "/etc/kubernetes/oidc/oidc-ca.crt"
     extraVolumes:
-      - hostPath: /var/oidc-ca
-        mountPath: /etc/kubernetes/pki
+      - hostPath: /var/lib/oidc-ca
+        mountPath: /etc/kubernetes/oidc
         readonly: true
 ```
 
