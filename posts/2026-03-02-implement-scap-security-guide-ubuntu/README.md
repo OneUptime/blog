@@ -27,10 +27,10 @@ The SCAP Security Guide packages all of this into content files you point a scan
 # Install the OpenSCAP scanner and utilities
 
 sudo apt-get update
-sudo apt-get install -y libopenscap8 openscap-scanner openscap-utils
+sudo apt-get install -y openscap-scanner openscap-utils
 
-# Install SCAP Security Guide content
-sudo apt-get install -y ssg-ubuntu ssg-base ssg-debderived
+# Install SCAP Security Guide content (available on Ubuntu 24.04+)
+sudo apt-get install -y ssg-base ssg-debderived
 
 # Verify installation
 oscap --version
@@ -82,8 +82,8 @@ echo "Exit code: $?"
 
 The exit code indicates the scan result:
 - `0` - all checks passed
-- `1` - some checks failed
-- `2` - evaluation error
+- `1` - evaluation error
+- `2` - operation succeeded but the system is non-compliant (some checks failed)
 
 ```bash
 # Open the HTML report in a browser to review results
@@ -104,9 +104,8 @@ oscap xccdf generate report /var/log/scap/results-$(date +%Y%m%d).xml | \
 grep -c 'result>pass<' /var/log/scap/results-$(date +%Y%m%d).xml
 grep -c 'result>fail<' /var/log/scap/results-$(date +%Y%m%d).xml
 
-# List only failing rules
-oscap xccdf generate fix \
-    --result-id xccdf_org.open-scap.results:xccdf_result \
+# List failing rule IDs (extract idref from rule-results with fail status)
+awk -v RS='</rule-result>' '/<result>fail<\/result>/ {match($0,/idref="[^"]+"/); print substr($0,RSTART+7,RLENGTH-8)}' \
     /var/log/scap/results-$(date +%Y%m%d).xml
 ```
 
