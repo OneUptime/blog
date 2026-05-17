@@ -31,7 +31,7 @@ You will need:
 # Verify your cluster is ready
 
 kubectl get nodes
-kubectl get cs
+kubectl cluster-info
 ```
 
 ## Installing Kong Ingress Controller
