@@ -303,8 +303,9 @@ kubectl logs -n kube-system -l app.kubernetes.io/name=metrics-server
 # Verify the API service is healthy
 kubectl get apiservice v1beta1.metrics.k8s.io -o yaml
 
-# Check if Metrics Server can reach the kubelet
-kubectl exec -n kube-system deploy/metrics-server -- wget -qO- --no-check-certificate https://10.0.0.10:10250/metrics/resource
+# Query the Metrics API directly to confirm node metrics are being collected
+# (The metrics-server image is distroless, so kubectl exec into the pod is not possible)
+kubectl get --raw /apis/metrics.k8s.io/v1beta1/nodes
 ```
 
 ## Monitoring Metrics Server Itself
