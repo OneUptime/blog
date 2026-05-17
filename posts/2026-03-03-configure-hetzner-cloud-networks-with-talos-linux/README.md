@@ -35,7 +35,7 @@ Create a private network for your cluster:
 hcloud network create --name talos-network --ip-range 10.0.0.0/8
 
 # Create a subnet within the network
-hcloud network create-subnet talos-network \
+hcloud network add-subnet talos-network \
   --type cloud \
   --network-zone eu-central \
   --ip-range 10.0.1.0/24
@@ -48,12 +48,12 @@ The network uses a /8 range as the overall address space, with a /24 subnet for 
 Upload the Talos Linux image and create your servers:
 
 ```bash
-# Upload Talos Linux image to Hetzner
-# First, download the Hetzner Cloud image
-curl -LO https://github.com/siderolabs/talos/releases/download/v1.7.0/hcloud-amd64.raw.xz
+# Download the Hetzner Cloud image from the Talos Image Factory
+# Generate a schematic at https://factory.talos.dev to get your own schematic ID
+curl -LO https://factory.talos.dev/image/<schematic-id>/v1.7.0/hcloud-amd64.raw.xz
 
-# Create an image through the Hetzner API or use a snapshot approach
-# For simplicity, use the Talos Image Factory URL
+# Upload it to Hetzner as a snapshot (the official Talos Hetzner docs walk through this)
+# and reference the resulting snapshot/image ID below
 hcloud server create \
   --name talos-cp-1 \
   --type cpx31 \
@@ -226,8 +226,8 @@ kubectl create secret generic hcloud-csi \
   --namespace kube-system \
   --from-literal=token=<your-hcloud-token>
 
-# Deploy the CSI driver
-kubectl apply -f https://raw.githubusercontent.com/hetznercloud/csi-driver/main/deploy/kubernetes/hcloud-csi.yml
+# Deploy the CSI driver (pin to a release tag rather than tracking main)
+kubectl apply -f https://raw.githubusercontent.com/hetznercloud/csi-driver/v2.21.0/deploy/kubernetes/hcloud-csi.yml
 ```
 
 Create a StorageClass:
