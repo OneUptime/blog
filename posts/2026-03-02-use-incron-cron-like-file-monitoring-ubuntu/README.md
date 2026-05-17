@@ -26,10 +26,10 @@ The package installs:
 ```bash
 # Enable and start the daemon
 
-sudo systemctl enable --now incrond
+sudo systemctl enable --now incron
 
 # Verify it's running
-sudo systemctl status incrond
+sudo systemctl status incron
 ```
 
 ## Understanding incron Table Syntax
@@ -299,10 +299,10 @@ incron only watches paths that exist when the daemon starts. If you add a watch 
 grep incron /var/log/syslog
 
 # Or via journald
-journalctl -u incrond
+journalctl -u incron
 
 # Follow logs in real time
-journalctl -u incrond -f
+journalctl -u incron -f
 ```
 
 ## Debugging incron
@@ -312,8 +312,8 @@ journalctl -u incrond -f
 incrontab -l
 
 # Run incrond in foreground with debug output
-sudo systemctl stop incrond
-sudo incrond -n -f
+sudo systemctl stop incron
+sudo incrond -n
 
 # Check if inotify limits might be an issue
 cat /proc/sys/fs/inotify/max_user_watches
@@ -329,12 +329,12 @@ sudo sysctl -p /etc/sysctl.d/10-inotify.conf
 
 ## Limitations
 
-- incron does not support recursive directory watching. Each directory must be listed separately.
+- Recursive watching is supported (use `recursive=false` to limit a watch to a single directory), but each top-level path still has to be listed in the table separately.
 - No built-in debouncing - rapid successive changes trigger the command multiple times.
 - Commands run under the user's shell environment, not a login shell - environment variables may differ.
 - Large numbers of watches can hit inotify kernel limits.
 
-For recursive monitoring or debouncing requirements, inotifywait in a shell script gives more flexibility. For simple "run this when that file changes" automation, incron's crontab-like syntax is more readable and maintainable.
+For debouncing or more sophisticated event coalescing, inotifywait in a shell script gives more flexibility. For simple "run this when that file changes" automation, incron's crontab-like syntax is more readable and maintainable.
 
 ## Summary
 
