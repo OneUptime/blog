@@ -35,10 +35,9 @@ cluster:
     extraArgs:
       # Logging verbosity
       v: "2"
-      # Node eviction settings
+      # Node monitoring settings
       node-monitor-period: "5s"
       node-monitor-grace-period: "40s"
-      pod-eviction-timeout: "5m0s"
       # Concurrent operations
       concurrent-deployment-syncs: "10"
       concurrent-replicaset-syncs: "10"
@@ -49,7 +48,7 @@ Each of these flags controls a specific aspect of controller behavior. Let us br
 
 ## Node Lifecycle Management
 
-The controller manager decides when a node is considered unhealthy and when to evict pods from it. These settings directly affect how your cluster responds to node failures:
+The controller manager decides when a node is considered unhealthy. These settings directly affect how your cluster responds to node failures:
 
 ```yaml
 cluster:
@@ -59,8 +58,6 @@ cluster:
       node-monitor-period: "5s"
       # How long a node can be unresponsive before it is marked NotReady
       node-monitor-grace-period: "40s"
-      # How long to wait before evicting pods from a NotReady node
-      pod-eviction-timeout: "5m0s"
 ```
 
 For clusters that need fast failover, reduce these values:
@@ -71,8 +68,9 @@ cluster:
     extraArgs:
       node-monitor-period: "2s"
       node-monitor-grace-period: "20s"
-      pod-eviction-timeout: "30s"
 ```
+
+Eviction of pods from unhealthy nodes is now driven by taint-based eviction. The legacy `--pod-eviction-timeout` flag on kube-controller-manager was removed in Kubernetes 1.27. To control how long pods tolerate `NotReady` and `Unreachable` taints before being evicted, set `--default-not-ready-toleration-seconds` and `--default-unreachable-toleration-seconds` on the kube-apiserver (under `cluster.apiServer.extraArgs`), or set tolerations on the pods themselves.
 
 Be careful with aggressive settings. In environments with occasional network blips, too-aggressive eviction can cause unnecessary pod migrations that make the situation worse.
 
@@ -182,9 +180,7 @@ cluster:
     extraArgs:
       # How often HPA checks metrics
       horizontal-pod-autoscaler-sync-period: "15s"
-      # Cooldown after scaling up
-      horizontal-pod-autoscaler-upscale-delay: "3m0s"
-      # Cooldown after scaling down
+      # Stabilization window after scaling down
       horizontal-pod-autoscaler-downscale-stabilization: "5m0s"
       # Tolerance for metric changes
       horizontal-pod-autoscaler-tolerance: "0.1"
@@ -194,12 +190,13 @@ Adjusting these values affects how responsive the HPA is. Shorter sync periods a
 
 ## Disabling the Controller Manager
 
-In rare cases, you might want to disable the built-in controller manager:
+In rare cases, you might want to disable the built-in controller manager. This is configured per-node under `machine.controlPlane`, not under `cluster.controllerManager`:
 
 ```yaml
-cluster:
-  controllerManager:
-    disabled: true
+machine:
+  controlPlane:
+    controllerManager:
+      disabled: true
 ```
 
 This is almost never needed in practice. Only disable it if you are running a completely custom control plane setup.
@@ -228,8 +225,12 @@ kubectl get lease -n kube-system kube-controller-manager -o yaml
 Keep an eye on the controller manager to ensure your configuration changes are working:
 
 ```bash
-# Check controller manager metrics
-kubectl get --raw /metrics | grep controller_manager
+# Check controller manager metrics. kube-controller-manager exposes its
+# metrics on port 10257 (HTTPS, authenticated) bound to 127.0.0.1, so scrape
+# it from inside the cluster with a bearer token:
+kubectl run -it --rm metrics --image=curlimages/curl --restart=Never -- \
+  curl -sk -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+  https://<control-plane-ip>:10257/metrics
 
 # Look for specific controller sync durations
 talosctl logs kube-controller-manager --nodes 10.0.0.2 | grep "sync"
