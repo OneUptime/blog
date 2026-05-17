@@ -14,7 +14,7 @@ This guide explains what accept routing is, when you need it in Talos Linux, and
 
 ## What Is Accept Routing?
 
-At its core, accept routing controls whether the Linux kernel accepts packets that arrive on one interface but are addressed to another interface on the same machine. By default, Linux applies a "strong host model" on each interface, which means it drops packets that arrive on an interface but have a destination address assigned to a different interface. Enabling accept routing switches to a "weak host model" where the kernel accepts these packets regardless of which interface they arrive on.
+At its core, "accept routing" refers to a group of sysctls that control how the Linux kernel handles packets in multi-homed and load balancing setups. Linux IPv4 uses a weak host model by default, accepting packets destined for any local IP on any interface. However, features like reverse path filtering (`rp_filter`) and the default ARP behavior can still cause packets to be dropped or answered on the wrong interface in scenarios like MetalLB or DSR. Tuning sysctls like `accept_local`, `rp_filter`, `arp_announce`, and `arp_ignore` lets you accept routed traffic that would otherwise be filtered out and lets you control which interface responds to ARP for a given address.
 
 The relevant kernel parameters are:
 
