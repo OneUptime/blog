@@ -206,13 +206,12 @@ After writing the ISO to a USB drive, you can also verify the write was successf
 ```bash
 # Read back from the USB drive and compare hash
 # Replace /dev/sdX with your USB device
-# The count argument matches the ISO size in blocks
-ISO_BLOCKS=$(stat -c %s ubuntu-24.04-live-server-amd64.iso)
-ISO_BYTES=$(ls -l ubuntu-24.04-live-server-amd64.iso | awk '{print $5}')
-ISO_MB=$((ISO_BYTES / 1024 / 1024))
+ISO_BYTES=$(stat -c %s ubuntu-24.04-live-server-amd64.iso)
 
-# Read back and hash (this reads only as much as the ISO size)
-sudo dd if=/dev/sdX bs=1M count=$ISO_MB status=progress | sha256sum
+# Read back exactly ISO_BYTES bytes from the USB and hash
+# head -c reads the precise byte count, so the hash matches even when
+# the ISO size is not a multiple of any block size.
+sudo head -c "$ISO_BYTES" /dev/sdX | sha256sum
 ```
 
 Compare the output hash to the value in SHA256SUMS. A match means the USB was written correctly.
