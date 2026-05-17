@@ -32,20 +32,17 @@ For many deployments, this default works fine. But there are good reasons to cus
 
 ## Configuring EPHEMERAL Size Constraints
 
-You can set minimum and maximum sizes for the EPHEMERAL volume in your machine configuration:
+You can set minimum and maximum sizes for the EPHEMERAL volume by appending a `VolumeConfig` document to your machine configuration:
 
 ```yaml
-# Machine config with EPHEMERAL size constraints
-
-machine:
-  install:
-    disk: /dev/sda
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        minSize: 50GB
-        maxSize: 200GB
-        grow: true
+# VolumeConfig with EPHEMERAL size constraints
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  minSize: 50GiB
+  maxSize: 200GiB
+  grow: true
 ```
 
 Setting `grow: true` tells Talos to expand the volume up to `maxSize` as the disk allows. If you set a `minSize`, Talos will fail to provision the volume if the disk does not have enough free space to meet that minimum.
@@ -58,77 +55,61 @@ For production clusters with heavy workloads, putting the EPHEMERAL volume on it
 
 ```yaml
 # Move EPHEMERAL to a dedicated NVMe disk
-machine:
-  install:
-    disk: /dev/sda  # System disk
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        diskSelector:
-          match: 'disk.type == "nvme"'
-        grow: true
-        filesystemSpec:
-          type: xfs
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    match: disk.transport == 'nvme' && !system_disk
+  grow: true
 ```
 
-With this configuration, Talos will look for an NVMe disk and place the EPHEMERAL volume on it instead of the system disk. The system disk still holds BOOT, EFI, META, and STATE partitions.
+With this configuration, Talos will look for an NVMe disk that is not the system disk and place the EPHEMERAL volume on it. The system disk still holds BOOT, EFI, META, and STATE partitions.
 
 ## Using Disk Selectors for EPHEMERAL
 
 When specifying a separate disk for EPHEMERAL, disk selectors give you flexible matching:
 
 ```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        diskSelector:
-          # Match by disk size
-          match: 'disk.size >= 200u * GB'
-        grow: true
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    # Match by disk size
+    match: disk.size >= 200u * GiB
+  grow: true
 ```
 
 ```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        diskSelector:
-          # Match by bus path for a specific disk slot
-          match: 'disk.busPath == "/pci0000:00/0000:00:1d.0/0000:3d:00.0/nvme/nvme0/nvme0n1"'
-        grow: true
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    # Match by bus path for a specific disk slot
+    match: disk.bus_path == '/pci0000:00/0000:00:1d.0/0000:3d:00.0/nvme/nvme0/nvme0n1'
+  grow: true
 ```
 
 ```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        diskSelector:
-          # Match by model name
-          match: 'disk.model == "Samsung SSD 970"'
-        grow: true
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    # Match by model name
+    match: disk.model == 'Samsung SSD 970'
+  grow: true
 ```
 
-Pick the selector that makes the most sense for your hardware. Bus path is the most precise, while type and size selectors offer more flexibility across different hardware configurations.
+Pick the selector that makes the most sense for your hardware. Bus path is the most precise, while transport and size selectors offer more flexibility across different hardware configurations.
 
-## Filesystem Options
+## Filesystem
 
-The default filesystem for EPHEMERAL is XFS, which works well for most workloads. XFS handles large files and concurrent writes efficiently, both of which are common patterns for container runtime data.
+The filesystem for EPHEMERAL is XFS, which works well for most workloads. XFS handles large files and concurrent writes efficiently, both of which are common patterns for container runtime data.
 
-If you have specific requirements, you can configure the filesystem:
-
-```yaml
-machine:
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        filesystemSpec:
-          type: xfs
-          label: EPHEMERAL
-```
-
-Currently, Talos supports XFS and ext4 for data volumes. XFS is recommended for EPHEMERAL because it handles the mixed workload pattern (many small files for container layers, large files for images) better than ext4 in most cases.
+The `VolumeConfig` document for system volumes like EPHEMERAL does not expose a field to change the filesystem type — XFS is used by Talos for the EPHEMERAL volume. If you need a different filesystem for workload data, the recommended approach is to provision a separate user volume (which supports XFS and ext4) and mount it where your workload needs it, rather than trying to change the EPHEMERAL filesystem.
 
 ## Sizing the EPHEMERAL Volume
 
@@ -167,15 +148,14 @@ For control plane nodes, consider:
 
 ```yaml
 # Control plane EPHEMERAL on fast storage
-machine:
-  type: controlplane
-  volumes:
-    - name: EPHEMERAL
-      provisioning:
-        diskSelector:
-          match: 'disk.type == "nvme"'
-        minSize: 50GB
-        grow: true
+apiVersion: v1alpha1
+kind: VolumeConfig
+name: EPHEMERAL
+provisioning:
+  diskSelector:
+    match: disk.transport == 'nvme'
+  minSize: 50GiB
+  grow: true
 ```
 
 Even if the control plane EPHEMERAL volume is smaller, putting it on fast storage ensures etcd latency stays low.
