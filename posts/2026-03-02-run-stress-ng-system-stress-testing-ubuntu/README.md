@@ -47,8 +47,8 @@ stress-ng --cpu $(nproc) --timeout 60s --metrics-brief
 stress-ng --cpu 4 --timeout 30s
 
 # Use a specific CPU stressor type
-# matrix: floating-point matrix math (good thermal test)
-stress-ng --cpu 4 --cpu-method matrix --timeout 60s
+# matrixprod: floating-point matrix math (good thermal test)
+stress-ng --cpu 4 --cpu-method matrixprod --timeout 60s
 
 # Test all available CPU methods
 stress-ng --cpu 4 --cpu-method all --timeout 120s
@@ -66,8 +66,7 @@ CPU stress methods available:
 - `euler`: Euler series summation
 - `fft`: Fast Fourier Transform
 - `fibonacci`: Fibonacci calculation
-- `matrix`: matrix multiplication (best for thermal testing)
-- `sha512`: SHA-512 hashing
+- `matrixprod`: matrix product of two 128x128 double-float matrices (best for thermal testing)
 
 ## Memory Stress Testing
 
@@ -96,7 +95,7 @@ stress-ng --mmap 2 --mmap-bytes 512M --timeout 60s
 stress-ng --hdd 4 --timeout 60s --metrics-brief
 
 # Specify the target directory (use a dedicated test partition)
-stress-ng --hdd 4 --hdd-dir /tmp/stress_test --timeout 60s
+stress-ng --hdd 4 --temp-path /tmp/stress_test --timeout 60s
 
 # Control write size per operation
 stress-ng --hdd 4 --hdd-write-size 1M --timeout 60s
@@ -173,7 +172,7 @@ watch -n 2 "sensors | grep -E 'Core|temp|Package'"
 cat /proc/cpuinfo | grep "cpu MHz" | head -4
 
 # Start stress test in background
-stress-ng --cpu $(nproc) --cpu-method matrix --timeout 300s &
+stress-ng --cpu $(nproc) --cpu-method matrixprod --timeout 300s &
 STRESS_PID=$!
 
 # Poll CPU frequencies during test to detect throttling
@@ -293,7 +292,7 @@ echo "Memory: $(free -h | grep Mem | awk '{print $2}')" | tee -a "$LOG_FILE"
 sensors >> "$LOG_FILE" 2>/dev/null
 
 stress-ng \
-    --cpu $(nproc) --cpu-method matrix \
+    --cpu $(nproc) --cpu-method matrixprod \
     --vm 2 --vm-bytes 75% \
     --hdd 2 \
     --io 4 \
@@ -329,10 +328,13 @@ echo "Exit code: $?"
 
 # Exit codes:
 # 0 = SUCCESS - all tests passed
-# 1 = ERROR - general error
-# 2 = FAILED - some stressors failed
-# 3 = PARTIAL - some stressors were skipped
-# 130 = INTERRUPTED - test was killed with Ctrl+C
+# 1 = ERROR - incorrect options or fatal resource issue in the harness
+# 2 = NOT_SUCCESS - one or more stressors failed
+# 3 = NO_RESOURCE - stressor failed to initialise due to lack of resources (e.g., out of memory)
+# 4 = NOT_IMPLEMENTED - stressor not implemented on this arch/OS
+# 5 = SIGNALED - stressor was killed by an unexpected signal
+# 6 = BY_SYS_EXIT - stressor called exit(2) unexpectedly
+# 7 = METRICS_UNTRUSTWORTHY - reported bogo-ops metrics may not be reliable
 ```
 
 stress-ng is essential for any hardware acceptance testing workflow. After adding RAM, replacing a CPU, or modifying cooling, a 30-minute stress test under full load will quickly surface any stability problems that would otherwise show up at unpredictable times in production.
