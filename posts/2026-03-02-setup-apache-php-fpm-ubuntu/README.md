@@ -154,7 +154,7 @@ cat /etc/apache2/conf-available/php8.3-fpm.conf
 ```apache
 <IfModule !mod_php8.c>
 <IfModule proxy_fcgi_module>
-    # Enable HTTP/1.1 Upgraded requests
+    # Enable http authorization headers
     <IfModule setenvif_module>
     SetEnvIfNoCase ^Authorization$ "(.+)" HTTP_AUTHORIZATION=$1
     </IfModule>
