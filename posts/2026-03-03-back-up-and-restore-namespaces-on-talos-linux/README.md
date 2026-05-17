@@ -228,54 +228,40 @@ for f in ./backups/production-*/*.yaml; do
 done
 ```
 
-## Automated Namespace Backup with CronJobs
+## Automated Namespace Backup with Velero Schedules
 
-Create a CronJob that backs up specific namespaces on a schedule.
+Velero ships with a native `Schedule` resource that creates backups on a recurring cron schedule, so you do not need to run your own CronJob.
 
 ```yaml
-# namespace-backup-cronjob.yaml
-apiVersion: batch/v1
-kind: CronJob
+# namespace-backup-schedule.yaml
+apiVersion: velero.io/v1
+kind: Schedule
 metadata:
   name: namespace-backup
-  namespace: backup-system
+  namespace: velero
 spec:
   schedule: "0 */6 * * *"  # Every 6 hours
-  concurrencyPolicy: Forbid
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: backup-operator
-          containers:
-            - name: backup
-              image: bitnami/kubectl:latest
-              command:
-                - /bin/bash
-                - -c
-                - |
-                  NAMESPACES="production staging team-alpha"
-                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-
-                  for ns in $NAMESPACES; do
-                    echo "Backing up namespace: $ns"
-
-                    # Create a Velero backup for each namespace
-                    velero backup create "${ns}-${TIMESTAMP}" \
-                      --include-namespaces "$ns" \
-                      --default-volumes-to-fs-backup \
-                      --ttl 168h \
-                      --wait
-
-                    STATUS=$(velero backup get "${ns}-${TIMESTAMP}" -o json | jq -r '.status.phase')
-                    echo "Backup ${ns}-${TIMESTAMP}: $STATUS"
-
-                    if [ "$STATUS" != "Completed" ]; then
-                      echo "WARNING: Backup for $ns did not complete successfully"
-                    fi
-                  done
-          restartPolicy: OnFailure
+  template:
+    includedNamespaces:
+      - production
+      - staging
+      - team-alpha
+    defaultVolumesToFsBackup: true
+    ttl: 168h0m0s
 ```
+
+```bash
+# Apply the schedule
+kubectl apply -f namespace-backup-schedule.yaml
+
+# List the backups produced by the schedule
+velero backup get --selector velero.io/schedule-name=namespace-backup
+
+# Inspect any backup created by the schedule
+velero backup describe <backup-name> --details
+```
+
+Velero names each generated backup after the schedule plus a timestamp (for example, `namespace-backup-20260303060000`) and applies the `ttl` so old backups are deleted automatically.
 
 ## Cross-Cluster Namespace Migration
 
