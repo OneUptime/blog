@@ -256,39 +256,39 @@ wget -qO- --timeout=3 http://web-api.production.svc:3000/health
 wget -qO- --timeout=3 http://postgres.production.svc:5432
 ```
 
-You can also use Cilium's built-in policy monitoring if you are running Cilium:
+You can also use Cilium's built-in policy monitoring if you are running Cilium. These commands live in the in-pod agent binary (`cilium-dbg`), so run them via `kubectl exec`:
 
 ```bash
 # Monitor policy decisions in real time
-cilium monitor --type policy-verdict
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg monitor --type policy-verdict
 
 # Check if policies are being enforced
-cilium endpoint list
+kubectl -n kube-system exec -it ds/cilium -- cilium-dbg endpoint list
 ```
 
 ## Debugging Policy Issues on Talos
 
-When policies do not work as expected on Talos Linux, check a few things. First, make sure your CNI is actually enforcing policies:
+When policies do not work as expected on Talos Linux, check a few things. First, make sure your CNI is actually enforcing policies. The "Policy Enforcement" line lives in the in-pod agent status, so query it via `kubectl exec`:
 
 ```bash
 # For Cilium
-cilium status | grep "Policy Enforcement"
+kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep "Policy Enforcement"
 
 # Check that network policies are loaded
 kubectl get networkpolicies -A
 ```
 
-Since you cannot SSH into Talos nodes directly, use `talosctl` to inspect network state:
+Since you cannot SSH into Talos nodes directly, use `talosctl` to inspect machine state, and `kubectl` to view Cilium agent logs:
 
 ```bash
-# Check the CNI configuration on a node
-talosctl get extensions --nodes <node-ip>
+# View the machine configuration including the CNI settings
+talosctl get machineconfig --nodes <node-ip>
 
 # View network interfaces
 talosctl get addresses --nodes <node-ip>
 
-# Check system logs for CNI issues
-talosctl logs -k --nodes <node-ip> | grep -i cilium
+# Check Cilium agent logs for policy or connectivity issues
+kubectl -n kube-system logs -l k8s-app=cilium --all-containers=true | grep -i error
 ```
 
 ## Best Practices for Talos Linux
