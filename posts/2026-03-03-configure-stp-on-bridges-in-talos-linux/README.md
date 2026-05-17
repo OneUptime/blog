@@ -128,15 +128,17 @@ spec:
               # Default is 20 seconds, range is 6-40
               ip link set $BRIDGE type bridge max_age 20
 
-              # Enable RSTP (Rapid STP) for faster convergence
-              # 0 = STP, 2 = RSTP
-              echo 2 > /sys/class/net/$BRIDGE/bridge/stp_state 2>/dev/null || true
+              # Note: the Linux kernel only implements classic 802.1D STP.
+              # Writing 2 to stp_state requests user-space STP mode, which
+              # requires a userspace daemon such as mstpd to handle BPDUs
+              # (RSTP/MSTP). Talos does not ship mstpd, so leave stp_state=1
+              # unless a mstpd sidecar is also deployed.
 
               # Configure per-port settings
               for PORT in eth1 eth2 eth3; do
                 if [ -d "/sys/class/net/$BRIDGE/brif/$PORT" ]; then
-                  # Set port priority (default 128, range 0-63, in multiples of 16)
-                  echo 32 > /sys/class/net/$BRIDGE/brif/$PORT/priority
+                  # Set port priority (default 32, range 0-63)
+                  echo 16 > /sys/class/net/$BRIDGE/brif/$PORT/priority
 
                   # Set port cost (default varies by speed)
                   # Lower cost = preferred path
@@ -159,8 +161,9 @@ spec:
             - |
               while true; do
                 echo "=== STP Status at $(date) ==="
-                bridge stp show br0 2>/dev/null || \
-                  cat /sys/class/net/br0/bridge/stp_state
+                echo -n "stp_state: "
+                cat /sys/class/net/br0/bridge/stp_state
+                ip -d link show br0 | grep -E 'state|stp|bridge_id|root_id' || true
                 echo ""
                 echo "=== Port States ==="
                 for port in /sys/class/net/br0/brif/*/state; do
@@ -189,17 +192,14 @@ spec:
 ```bash
 # From a debug pod
 
-kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
-  bridge stp show
-
-# Check bridge details
+# Show bridge details (includes STP timers and state)
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
   ip -d link show br0
 
 # Check STP state via sysfs
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
   cat /sys/class/net/br0/bridge/stp_state
-# 0 = disabled, 1 = STP enabled, 2 = RSTP enabled
+# 0 = disabled, 1 = kernel STP (802.1D), 2 = user-space STP (requires daemon)
 ```
 
 ### Check Port States
@@ -209,9 +209,9 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
   bridge link show
 
-# Detailed port info
+# Detailed port info (verbose link output)
 kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
-  bridge stp show br0
+  bridge -d link show
 ```
 
 ### Check Root Bridge Election
@@ -277,26 +277,25 @@ RSTP (Rapid STP) is preferred over classic STP for most deployments:
 | Port States | 5 (disabled, blocking, listening, learning, forwarding) | 3 (discarding, learning, forwarding) |
 | Topology Change | Slow notification | Fast, edge port awareness |
 
-Enable RSTP:
-
-```bash
-# Set STP version to RSTP (value 2)
-echo 2 > /sys/class/net/br0/bridge/stp_state
-```
+Important: the Linux kernel bridge only implements classic 802.1D STP. RSTP/MSTP requires a userspace daemon such as `mstpd` (from the `mstpd`/`bridge-stp` project) running on each node. Writing `2` to `stp_state` requests user-space STP mode, but if no daemon is present to process BPDUs the kernel falls back to its built-in STP. Talos Linux does not ship `mstpd`, so to use RSTP on Talos you would need to deploy `mstpd` inside a privileged DaemonSet container that shares the host network namespace.
 
 ## Edge Ports (PortFast Equivalent)
 
-Ports connected to end devices (not other bridges) should be configured as edge ports. Edge ports transition to forwarding immediately without waiting for STP convergence:
+Ports connected to end devices (not other bridges) ideally should be treated as edge ports, transitioning to forwarding immediately without waiting for STP convergence. The Linux kernel STP implementation has no native edge-port designation — that concept lives in RSTP/MSTP and requires `mstpd`. With `mstpd` running, you would mark a port as edge with:
 
 ```bash
-# Set a port as an edge port (will not participate in STP)
-echo 1 > /sys/class/net/br0/brif/eth3/hairpin_mode
+# Requires mstpd running on the node
+mstpctl setportadminedge br0 eth3 yes
+```
 
-# Or more specifically for RSTP
+The related `bridge link set dev <port> guard on` option enables BPDU Guard, which protects an edge port by disabling it if a BPDU is unexpectedly received (for example, if someone plugs a switch into a port intended for an end device). It does not itself designate the port as an edge port:
+
+```bash
+# Protect ports facing end devices from receiving BPDUs
 bridge link set dev eth3 guard on
 ```
 
-This prevents STP from slowing down the connection of end devices (like VMs or containers) that do not create loops.
+Note: `hairpin_mode` controls VEPA-style reflective relay (forwarding traffic back out the port it arrived on) and is unrelated to STP edge-port behaviour.
 
 ## Monitoring and Alerting
 
@@ -346,7 +345,7 @@ kubectl debug node/talos-node-1 -it --image=nicolaka/netshoot -- \
 If the network takes too long to recover after a link change:
 
 ```bash
-# Check if RSTP is being used (should be 2)
+# Check STP mode: 0=disabled, 1=kernel STP, 2=user-space STP (needs mstpd)
 cat /sys/class/net/br0/bridge/stp_state
 
 # Reduce forward delay if using classic STP
