@@ -106,9 +106,9 @@ machine:
     - content: |
         [proxy_plugins.stargz]
           type = "snapshot"
-          address = "/run/containerd-stargz-grpc/containerd-stargz-grpc.sock"
+          address = "/var/run/containerd-stargz-grpc/containerd-stargz-grpc.sock"
       permissions: 0o644
-      path: /var/cri/conf.d/stargz.toml
+      path: /etc/cri/conf.d/stargz.toml
       op: create
 ```
 
@@ -130,18 +130,6 @@ nerdctl image convert --estargz \
 
 # Push the converted image
 nerdctl push registry.example.com/nginx:1.25-estargz
-```
-
-### Using crane
-
-```bash
-# Install crane
-go install github.com/google/go-containerregistry/cmd/crane@latest
-
-# Convert and push (using optimize subcommand)
-crane optimize \
-  nginx:1.25 \
-  registry.example.com/nginx:1.25-estargz
 ```
 
 ### Using stargz-store directly
