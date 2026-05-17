@@ -20,7 +20,7 @@ Unlike the Horizontal Pod Autoscaler (HPA), which adds or removes pod replicas, 
 - **Updater** - Evicts pods that need to be resized
 - **Admission Controller** - Injects the recommended resource values into new pods at creation time
 
-VPA can operate in three modes: Off (recommendations only), Initial (sets resources only at pod creation), and Auto (actively evicts and recreates pods with new values).
+VPA can operate in several modes. The most commonly used are: Off (recommendations only), Initial (sets resources only at pod creation), and Recreate (actively evicts and recreates pods with new values). The legacy "Auto" mode is still accepted as an alias for Recreate but is deprecated. Newer modes such as InPlaceOrRecreate and InPlace are also available behind feature gates if your cluster supports in-place pod resizing.
 
 ## Installing VPA on Talos Linux
 
@@ -164,7 +164,7 @@ The target value is usually the one you want to focus on. It represents what the
 
 ## Enabling Automatic Updates
 
-Once you are comfortable with the recommendations, you can switch to Auto mode. Be aware that Auto mode evicts and recreates pods to apply new resource values:
+Once you are comfortable with the recommendations, you can switch to Recreate mode. Be aware that Recreate mode evicts and recreates pods to apply new resource values:
 
 ```yaml
 # vpa-auto.yaml
@@ -179,8 +179,8 @@ spec:
     kind: Deployment
     name: my-app
   updatePolicy:
-    # "Auto" will evict pods and recreate with new resource values
-    updateMode: "Auto"
+    # "Recreate" will evict pods and recreate with new resource values
+    updateMode: "Recreate"
     # Minimum number of replicas that must be available during eviction
     minReplicas: 2
   resourcePolicy:
@@ -220,7 +220,7 @@ spec:
     kind: Deployment
     name: web-with-sidecar
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: web-app
@@ -255,7 +255,7 @@ Running VPA and HPA on the same deployment can cause conflicts if both try to sc
 # while HPA adjusts the number of pods
 ```
 
-The general rule is: do not use VPA in Auto or Initial mode for CPU on the same deployment where HPA is scaling on CPU utilization. The two will fight each other. You can, however, use VPA for memory while HPA scales on CPU.
+The general rule is: do not use VPA in Recreate or Initial mode for CPU on the same deployment where HPA is scaling on CPU utilization. The two will fight each other. You can, however, use VPA for memory while HPA scales on CPU.
 
 ## Talos Linux Considerations
 
@@ -293,4 +293,4 @@ kubectl get events --field-selector reason=EvictedByVPA -A
 
 ## Summary
 
-Vertical Pod Autoscaling on Talos Linux is a powerful way to right-size your workloads without manual tuning. Start in "Off" mode to gather recommendations, review the suggestions, and then move to "Auto" or "Initial" mode when you trust the values. Combined with Talos Linux's minimal overhead and stable platform, VPA helps you run an efficient cluster where every pod gets exactly the resources it needs.
+Vertical Pod Autoscaling on Talos Linux is a powerful way to right-size your workloads without manual tuning. Start in "Off" mode to gather recommendations, review the suggestions, and then move to "Recreate" or "Initial" mode when you trust the values. Combined with Talos Linux's minimal overhead and stable platform, VPA helps you run an efficient cluster where every pod gets exactly the resources it needs.
