@@ -107,7 +107,7 @@ ldapsearch ... "(|(memberOf=cn=admins,ou=Groups,dc=example,dc=com)(memberOf=cn=d
 ldapsearch ... "(&(objectClass=posixAccount)(!(ou=ServiceAccounts)))"
 
 # Nested - users with mail in example.com who are active
-ldapsearch ... "(&(objectClass=inetOrgPerson)(mail=*@example.com)(!(pwdAccountLocked=TRUE)))"
+ldapsearch ... "(&(objectClass=inetOrgPerson)(mail=*@example.com)(!(pwdAccountLockedTime=*)))"
 ```
 
 ## Selecting Specific Attributes
@@ -212,7 +212,7 @@ ldapsearch -x -H ldap://ldap.example.com \
   -D "cn=admin,dc=example,dc=com" \
   -W -LLL \
   "(uid=jsmith)" \
-  pwdAccountLocked pwdFailureTime pwdChangedTime
+  pwdAccountLockedTime pwdFailureTime pwdChangedTime
 ```
 
 ### Search Active Directory from Ubuntu
