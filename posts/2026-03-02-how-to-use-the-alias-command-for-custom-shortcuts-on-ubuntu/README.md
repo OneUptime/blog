@@ -137,7 +137,7 @@ alias topmem='ps aux | sort -k4 -rn | head -10'
 
 # Network connections
 alias ports='ss -tlnp'
-alias connections='ss -tn | grep ESTABLISHED'
+alias connections='ss -tn | grep ESTAB'
 ```
 
 ### Package Management
