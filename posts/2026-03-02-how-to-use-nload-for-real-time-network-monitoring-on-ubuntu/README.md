@@ -18,8 +18,8 @@ nload is a terminal-based network traffic monitor that shows incoming and outgoi
 sudo apt-get update
 sudo apt-get install -y nload
 
-# Verify installation
-nload --version
+# Verify installation (nload prints version and copyright in its help banner)
+nload -h | head -n 2
 ```
 
 ## Basic Usage
@@ -63,9 +63,11 @@ nload lo
 
 nload lets you switch between interfaces without restarting:
 
-- **Left/Right arrow keys** or **Page Up/Down** - Switch between network interfaces
-- **F2 or Enter** - Open the settings screen
-- **F5** - Refresh the display
+- **Left/Up/Page Up** - Switch to the previous network interface
+- **Right/Down/Page Down/Enter/Tab** - Switch to the next network interface
+- **F2** - Show/hide the options window
+- **F5** - Save current settings to the user's config file (`~/.nload`)
+- **F6** - Reload settings from the config file
 - **q or Ctrl+C** - Quit
 
 ## Command-Line Options
@@ -79,21 +81,24 @@ nload -t 500 eth0
 # Set update interval to 2 seconds for slower updates
 nload -t 2000 eth0
 
-# Set the traffic amount unit displayed (bit, Bit, byte, Byte)
-# Display in Megabits per second
+# Set the unit used for traffic rates: h (auto bits), b/k/m/g (Bit/s, kBit/s, MBit/s, GBit/s)
+# or H (auto bytes), B/K/M/G (Byte/s, kByte/s, MByte/s, GByte/s). Default is h.
+# Display rates in MBit/s (lowercase m = bits)
+nload -u m eth0
+
+# Display rates in MByte/s (uppercase M = bytes)
 nload -u M eth0
 
-# Set graph data unit (bit or byte)
-nload -U M eth0
+# Set the unit for the total transferred amount (the "Ttl" field). Default is H.
+nload -U M eth0  # Show totals in MByte
 
-# Multiple units at once
-nload -u M -U M eth0  # Show Mbit/s
+# Combine: show rates in MBit/s and totals in MByte
+nload -u m -U M eth0
 
-# Set the size of the traffic window in seconds
-# (how much history the graph shows)
-nload -a 300 eth0  # 5-minute history window
+# Set the length in seconds of the time window for average calculation (default 300)
+nload -a 60 eth0  # 1-minute averaging window
 
-# Monitor multiple devices at once (shown sequentially)
+# Monitor multiple devices at once (switch between them with the arrow keys)
 nload eth0 eth1 lo
 ```
 
@@ -101,10 +106,10 @@ nload eth0 eth1 lo
 
 The statistics nload shows come from `/proc/net/dev`, which is the kernel's network interface statistics. This means:
 
-- **Current** - Rate calculated over the last measurement interval
-- **Average** - Mean rate since nload started (weighted by time)
-- **Min/Max** - Extremes since nload started
-- **Ttl** - Cumulative total (resets when nload restarts or kernel resets the counter)
+- **Curr** - Rate calculated over the last measurement interval
+- **Avg** - Mean rate over the average time window (controlled by `-a`, default 300 seconds)
+- **Min/Max** - Extremes observed since nload started
+- **Ttl** - Cumulative total from `/proc/net/dev` (resets when the kernel counter resets, e.g. on reboot)
 
 ```bash
 # You can view the same raw data nload uses
@@ -190,14 +195,16 @@ echo "Monitoring $INTERFACE (press Ctrl+C to stop)"
 echo "Timestamp,Interface,RX_Mbps,TX_Mbps,RX_Total_MB,TX_Total_MB"
 
 while true; do
-    # Read bytes at start of interval
-    read -r _ _ RX_BYTES_1 _ _ _ _ _ _ TX_BYTES_1 _ < \
+    # Read bytes at start of interval.
+    # /proc/net/dev fields after "iface:" are: RX bytes, packets, errs, drop, fifo,
+    # frame, compressed, multicast, TX bytes, packets, ...
+    read -r _ RX_BYTES_1 _ _ _ _ _ _ _ TX_BYTES_1 _ < \
         <(grep "${INTERFACE}:" /proc/net/dev)
 
     sleep "$INTERVAL"
 
     # Read bytes at end of interval
-    read -r _ _ RX_BYTES_2 _ _ _ _ _ _ TX_BYTES_2 _ < \
+    read -r _ RX_BYTES_2 _ _ _ _ _ _ _ TX_BYTES_2 _ < \
         <(grep "${INTERFACE}:" /proc/net/dev)
 
     # Calculate rates and totals
@@ -248,9 +255,9 @@ check_bandwidth() {
     local IFACE="${1:-eth0}"
     local THRESHOLD_MBIT="${2:-100}"
 
-    read -r _ _ RX1 _ _ _ _ _ _ TX1 _ < <(grep "${IFACE}:" /proc/net/dev)
+    read -r _ RX1 _ _ _ _ _ _ _ TX1 _ < <(grep "${IFACE}:" /proc/net/dev)
     sleep 1
-    read -r _ _ RX2 _ _ _ _ _ _ TX2 _ < <(grep "${IFACE}:" /proc/net/dev)
+    read -r _ RX2 _ _ _ _ _ _ _ TX2 _ < <(grep "${IFACE}:" /proc/net/dev)
 
     RX_MBIT=$(echo "scale=0; ($RX2 - $RX1) * 8 / 1000000" | bc)
     TX_MBIT=$(echo "scale=0; ($TX2 - $TX1) * 8 / 1000000" | bc)
