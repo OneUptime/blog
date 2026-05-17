@@ -83,8 +83,9 @@ smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
 smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
 
 # Required for Gmail - modern TLS only
-smtp_tls_protocols = !SSLv2, !SSLv3
-smtp_tls_ciphers = high
+# Use the mandatory_* variants because smtp_tls_security_level = encrypt
+smtp_tls_mandatory_protocols = !SSLv2, !SSLv3
+smtp_tls_mandatory_ciphers = high
 smtp_tls_loglevel = 1
 ```
 
