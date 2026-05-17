@@ -269,7 +269,7 @@ jobs:
   build-with-pgo:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Install dependencies
         run: sudo apt update && sudo apt install gcc make -y
