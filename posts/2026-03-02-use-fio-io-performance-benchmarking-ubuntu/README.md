@@ -226,6 +226,8 @@ To test a raw block device (bypasses the filesystem entirely):
 # Do NOT use your system drive
 
 # Test raw device performance
+# Replace /dev/sdb with your target device
+# --readonly is a safety flag that prevents accidental writes
 sudo fio \
     --name=raw_device_test \
     --ioengine=libaio \
@@ -234,10 +236,10 @@ sudo fio \
     --direct=1 \
     --numjobs=1 \
     --iodepth=32 \
-    --filename=/dev/sdb \    # Replace with your target device
+    --filename=/dev/sdb \
     --runtime=60 \
     --time_based \
-    --readonly         # Safety flag: prevents accidental writes
+    --readonly
 ```
 
 ## Using io_uring for Modern Kernels
