@@ -56,7 +56,7 @@ timedatectl show --property=Timezone --value
 timedatectl show --property=NTPSynchronized --value
 # Output: yes
 
-# Get current Unix timestamp
+# Get current system time (formatted)
 timedatectl show --property=TimeUSec --value
 ```
 
@@ -235,8 +235,8 @@ chronyc sources
 # Check what's providing NTP
 systemctl list-units --type=service | grep -E "chrony|ntp|timesync"
 
-# See which service owns the NTP function
-timedatectl show --property=NTPService
+# See which NTP-related services are active
+systemctl is-active systemd-timesyncd chrony 2>/dev/null
 ```
 
 ## Common timedatectl Operations
