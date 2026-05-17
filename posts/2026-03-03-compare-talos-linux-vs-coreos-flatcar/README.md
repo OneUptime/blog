@@ -97,7 +97,7 @@ The key difference is that Flatcar's Ignition runs once. If you need to change s
 
 ## Filesystem Immutability
 
-**Flatcar** has a dual-partition A/B update scheme. The root filesystem is ext4 (or btrfs) mounted read-only during normal operation. However, the filesystem format itself supports writes, so it can be remounted as read-write if needed.
+**Flatcar** has a dual-partition A/B update scheme. The `/usr` partition is ext4 mounted read-only during normal operation, while `/` is writable. However, the `/usr` filesystem format itself supports writes, so it can be remounted as read-write if needed.
 
 **Talos** uses SquashFS for the root filesystem. SquashFS is read-only at the format level and cannot be remounted as read-write. This provides a stronger immutability guarantee.
 
@@ -151,7 +151,7 @@ talosctl -n 10.0.0.11 bootstrap
 Both systems prioritize security, but they achieve it differently.
 
 **Flatcar** security:
-- Read-only root filesystem (can be remounted rw)
+- Read-only `/usr` partition (can be remounted rw)
 - Automatic security updates
 - SELinux support
 - SSH access with key-based authentication
