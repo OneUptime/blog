@@ -160,7 +160,7 @@ After all nodes are up, verify that KubeSpan has established connections between
 
 ```bash
 # Check peer status from a Site A node
-talosctl get kubespanpeerstatus --nodes 10.1.0.10
+talosctl get kubespanpeerstatuses --nodes 10.1.0.10
 
 # You should see peers from all three sites with state "up"
 # Look for peers with endpoints from different sites
@@ -239,12 +239,12 @@ SITE_A_NODE="10.1.0.10"
 SITE_B_NODE="10.2.0.10"
 
 echo "=== Site A to Site B connectivity ==="
-talosctl get kubespanpeerstatus --nodes $SITE_A_NODE -o json | \
-  jq '.[] | select(.spec.endpoint | contains("198.51.100")) | {peer: .spec.label, state: .spec.state, endpoint: .spec.endpoint}'
+talosctl get kubespanpeerstatuses --nodes $SITE_A_NODE -o json | \
+  jq -s '.[] | select(.spec.endpoint | contains("198.51.100")) | {peer: .spec.label, state: .spec.state, endpoint: .spec.endpoint}'
 
 echo "=== Site B to Site A connectivity ==="
-talosctl get kubespanpeerstatus --nodes $SITE_B_NODE -o json | \
-  jq '.[] | select(.spec.endpoint | contains("203.0.113")) | {peer: .spec.label, state: .spec.state, endpoint: .spec.endpoint}'
+talosctl get kubespanpeerstatuses --nodes $SITE_B_NODE -o json | \
+  jq -s '.[] | select(.spec.endpoint | contains("203.0.113")) | {peer: .spec.label, state: .spec.state, endpoint: .spec.endpoint}'
 ```
 
 ## Dealing with Site Failures
