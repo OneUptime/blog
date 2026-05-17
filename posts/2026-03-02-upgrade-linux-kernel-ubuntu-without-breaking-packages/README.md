@@ -30,8 +30,9 @@ uname -r
 # Check installed kernels
 dpkg --list | grep linux-image | grep "^ii"
 
-# Check which kernel is the default
-grub-reboot --output-name
+# Check which kernel is set as the saved default (if any)
+sudo grub-editenv list
+grep GRUB_DEFAULT /etc/default/grub
 ```
 
 ## Types of Kernel Upgrades
@@ -118,11 +119,11 @@ sudo apt install linux-image-6.8.0-40-generic linux-headers-6.8.0-40-generic
 Before rebooting into the new kernel, check that DKMS modules compiled successfully:
 
 ```bash
-# After apt install completes, check dkms status for the new kernel
-NEW_KERNEL=$(apt-cache policy linux-image-generic | grep "Candidate:" | awk '{print $2}' | sed 's/linux-image-//' 2>/dev/null || uname -r)
+# After apt install completes, identify the newest installed kernel
+NEW_KERNEL=$(ls /lib/modules/ | sort -V | tail -1)
 
 # Check dkms status for new kernel version
-dkms status | grep "$NEW_KERNEL"
+dkms status -k "$NEW_KERNEL"
 
 # If any modules show "built" but not "installed" or are missing, investigate
 # before rebooting
