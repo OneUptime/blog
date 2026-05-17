@@ -243,14 +243,17 @@ talosctl ls /boot/grub/
 
 ## Migrating from GRUB to systemd-boot
 
-If you are running GRUB on a UEFI system and want to switch to systemd-boot, you can do so during a Talos upgrade. The upgrade process will detect UEFI and install systemd-boot if the Talos version supports it.
+If you are running GRUB on a UEFI system and want to switch to systemd-boot, a regular `talosctl upgrade` will not change the boot loader - upgrades preserve whichever boot loader is already installed. To migrate, you need to reinstall Talos with a version that defaults to systemd-boot for UEFI (1.10 or later). Boot the node from a Talos installer image and apply your configuration.
 
 ```bash
-# Upgrade to a version that defaults to systemd-boot
-talosctl upgrade --image ghcr.io/siderolabs/installer:v1.9.0
+# Boot the node from a Talos installer image (v1.10+ for systemd-boot on UEFI)
+# Then apply the configuration to reinstall
+talosctl apply-config --insecure \
+  --nodes <NODE_IP> \
+  --file controlplane.yaml
 
-# After the upgrade, verify the boot loader
-talosctl dmesg | grep -i "boot\|systemd\|grub"
+# After the install, verify the boot loader by inspecting the EFI partition
+talosctl ls /boot/EFI/
 ```
 
 Note that this migration requires careful planning. Test on a non-critical node first to make sure your hardware works well with systemd-boot.
