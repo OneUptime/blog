@@ -122,11 +122,15 @@ sudo update-ca-certificates --verbose 2>&1 | grep -i "added\|company"
 # Remove the certificate file
 sudo rm /usr/local/share/ca-certificates/internal-ca.crt
 
-# Rebuild the trust store
-sudo update-ca-certificates --fresh
+# Update the trust store - this detects the removal and updates symlinks
+sudo update-ca-certificates
 
-# The --fresh flag forces a full rebuild of the certificate store
 # Expected output: 0 added, 1 removed
+
+# If you want to wipe and rebuild every symlink from scratch, use --fresh.
+# Note: --fresh first clears all managed symlinks in /etc/ssl/certs/ and then
+# re-adds every valid certificate, so the counts will not be "0 added, 1 removed".
+sudo update-ca-certificates --fresh
 ```
 
 ## Installing for Specific Applications
