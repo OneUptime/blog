@@ -124,7 +124,7 @@ Via CLI:
 maas admin fabrics read
 maas admin vlans read 0  # fabric ID 0
 
-# Enable DHCP on a VLAN (VLAN ID 5001 in this example)
+# Enable DHCP on the untagged VLAN of fabric 1
 maas admin vlan update 1 untagged \
   dhcp_on=true \
   primary_rack=your-rack-controller-id
@@ -140,7 +140,7 @@ When a machine PXE-boots into MAAS for the first time, it goes through a "commis
 
 # The machine will appear in MAAS as "New"
 # Commission it from the web UI or CLI:
-maas admin machine commission system_id=abc123
+maas admin machine commission abc123
 
 # List all machines and their status
 maas admin machines read | python3 -m json.tool | grep -E '"hostname"|"status_name"'
@@ -154,7 +154,9 @@ MAAS can power machines on and off automatically via BMC (IPMI, Redfish, DRAC, i
 # Configure power type for a machine (IPMI example)
 maas admin machine update abc123 \
   power_type=ipmi \
-  power_parameters='{"power_address": "192.168.2.101", "power_user": "admin", "power_pass": "password"}'
+  power_parameters_power_address=192.168.2.101 \
+  power_parameters_power_user=admin \
+  power_parameters_power_pass=password
 ```
 
 ## Deploying an OS
