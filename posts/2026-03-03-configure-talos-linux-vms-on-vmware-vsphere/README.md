@@ -215,8 +215,8 @@ kubectl create secret generic vsphere-creds \
   --from-literal=vcenter.example.com.username=administrator@vsphere.local \
   --from-literal=vcenter.example.com.password=your-password
 
-# Deploy the CCM
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/cloud-provider-vsphere/master/releases/latest/vsphere-cloud-controller-manager.yaml
+# Deploy the CCM (use the release matching your Kubernetes version)
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/cloud-provider-vsphere/master/releases/v1.30/vsphere-cloud-controller-manager.yaml
 ```
 
 ## vSphere CSI Driver
