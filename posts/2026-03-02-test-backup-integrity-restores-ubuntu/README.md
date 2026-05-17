@@ -25,7 +25,7 @@ The goal of backup testing is to answer two questions: Is the data intact? Can I
 ### Verifying tar Archives
 
 ```bash
-# Test tar archive integrity - checks headers and checksums
+# Print the archive volume label (quick smoke test that the header is readable)
 
 tar --test-label --file=/mnt/backup/system-backup-20260302.tar.gz
 echo "Exit code: $?"
@@ -84,8 +84,8 @@ borg info /mnt/backup/borg-repo
 pg_restore --list /var/backups/postgresql/myapp_20260302.dump | head -20
 echo "pg_restore exit code: $?"
 
-# Test restore to /dev/null (reads entire file, does not write)
-pg_restore --format=custom /var/backups/postgresql/myapp_20260302.dump | head -1
+# Test restore to /dev/null (reads entire file, does not write to a database)
+pg_restore --format=custom /var/backups/postgresql/myapp_20260302.dump > /dev/null
 
 # For SQL dumps, check the file is valid SQL
 head -5 /var/backups/mysql/myapp_20260302.sql
@@ -134,14 +134,14 @@ check_age() {
 
     if [ ! -f "$file" ]; then
         log "ERROR: $label - file not found: $file"
-        ((ERRORS++))
+        ((++ERRORS))
         return
     fi
 
     age_hours=$(( ($(date +%s) - $(stat -c %Y "$file")) / 3600 ))
     if [ "$age_hours" -gt "$max_hours" ]; then
         log "ERROR: $label - backup is ${age_hours}h old (max ${max_hours}h)"
-        ((ERRORS++))
+        ((++ERRORS))
     else
         log "OK: $label - backup is ${age_hours}h old"
     fi
@@ -150,13 +150,13 @@ check_age() {
 # Check that recent backups exist
 log "=== Checking backup file ages ==="
 LATEST_TAR=$(find "$BACKUP_DIR" -name "backup-*.tar.gz" -mtime -2 | sort | tail -1)
-[ -n "$LATEST_TAR" ] && log "OK: Recent tar backup found: $LATEST_TAR" || { log "ERROR: No recent tar backup"; ((ERRORS++)); }
+[ -n "$LATEST_TAR" ] && log "OK: Recent tar backup found: $LATEST_TAR" || { log "ERROR: No recent tar backup"; ((++ERRORS)); }
 
 LATEST_MYSQL=$(find /var/backups/mysql -name "*.sql.gz" -mtime -2 | sort | tail -1)
-[ -n "$LATEST_MYSQL" ] && log "OK: Recent MySQL backup found" || { log "ERROR: No recent MySQL backup"; ((ERRORS++)); }
+[ -n "$LATEST_MYSQL" ] && log "OK: Recent MySQL backup found" || { log "ERROR: No recent MySQL backup"; ((++ERRORS)); }
 
 LATEST_PG=$(find /var/backups/postgresql -name "*.dump" -mtime -2 | sort | tail -1)
-[ -n "$LATEST_PG" ] && log "OK: Recent PostgreSQL backup found" || { log "ERROR: No recent PostgreSQL backup"; ((ERRORS++)); }
+[ -n "$LATEST_PG" ] && log "OK: Recent PostgreSQL backup found" || { log "ERROR: No recent PostgreSQL backup"; ((++ERRORS)); }
 
 # Verify archive integrity
 log "=== Verifying archive integrity ==="
@@ -166,7 +166,7 @@ if [ -n "$LATEST_TAR" ]; then
         log "OK: tar archive integrity verified"
     else
         log "ERROR: tar archive is corrupted: $LATEST_TAR"
-        ((ERRORS++))
+        ((++ERRORS))
     fi
 fi
 
@@ -175,7 +175,7 @@ if [ -n "$LATEST_MYSQL" ]; then
         log "OK: MySQL dump integrity verified"
     else
         log "ERROR: MySQL dump is corrupted: $LATEST_MYSQL"
-        ((ERRORS++))
+        ((++ERRORS))
     fi
 fi
 
@@ -184,7 +184,7 @@ if [ -n "$LATEST_PG" ]; then
         log "OK: PostgreSQL dump is readable"
     else
         log "ERROR: PostgreSQL dump is corrupted: $LATEST_PG"
-        ((ERRORS++))
+        ((++ERRORS))
     fi
 fi
 
@@ -195,7 +195,7 @@ if [ -d "$BORG_REPO" ]; then
         log "OK: Borg repository healthy"
     else
         log "ERROR: Borg repository check failed"
-        ((ERRORS++))
+        ((++ERRORS))
     fi
 fi
 
@@ -214,7 +214,7 @@ exit $ERRORS
 sudo chmod +x /usr/local/bin/verify-backups.sh
 
 # Schedule weekly verification
-echo "0 4 * * 0 /usr/local/bin/verify-backups.sh" | sudo crontab -l | cat - | sudo crontab -
+(sudo crontab -l 2>/dev/null; echo "0 4 * * 0 /usr/local/bin/verify-backups.sh") | sudo crontab -
 ```
 
 ## Practicing Restore Procedures
