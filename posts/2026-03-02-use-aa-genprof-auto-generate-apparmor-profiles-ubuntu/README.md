@@ -150,7 +150,7 @@ For each access, you need to decide how to handle it:
 Path: /etc/myapp/config.json  -> Allow (rule: /etc/myapp/config.json r,)
 
 # System libraries - use an abstraction
-Path: /usr/lib/x86_64-linux-gnu/libssl.so -> use abstractions/ssl
+Path: /usr/lib/x86_64-linux-gnu/libssl.so -> use abstractions/openssl
 
 # Temp files with unique names - glob them
 Path: /tmp/myapp-12345.tmp -> Glob -> /tmp/myapp-*.tmp
