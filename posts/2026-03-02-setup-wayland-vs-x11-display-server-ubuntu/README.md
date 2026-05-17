@@ -8,7 +8,7 @@ Description: Understand the differences between Wayland and X11 on Ubuntu, how t
 
 ---
 
-Wayland is the modern display protocol that has been replacing X11 in Ubuntu since Ubuntu 21.04. Ubuntu 22.04 made Wayland the default for systems with compatible graphics drivers, and Ubuntu 24.04 pushes Wayland further as the primary session type. Understanding the differences between Wayland and X11, and knowing how to switch between them, matters when you encounter applications or workflows that require one or the other.
+Wayland is the modern display protocol that has been replacing X11 in Ubuntu since Ubuntu 21.04 made it the default for non-NVIDIA systems. Ubuntu 22.04 extended the default Wayland session to NVIDIA systems running recent proprietary drivers, and Ubuntu 24.04 pushes Wayland further as the primary session type. Understanding the differences between Wayland and X11, and knowing how to switch between them, matters when you encounter applications or workflows that require one or the other.
 
 ## Wayland vs X11: Key Differences
 
@@ -64,19 +64,23 @@ The choice is remembered for subsequent logins.
 
 ### Changing the Default Session
 
-To permanently change the default:
+To permanently change the default per-user, GDM3 tracks the last selected session via AccountsService rather than the legacy `~/.dmrc` file. Edit the user's AccountsService file as root:
 
 ```bash
 # Set X11 GNOME as default for a specific user
-tee ~/.dmrc << 'EOF'
-[Desktop]
-Session=gnome-xorg
+sudo tee /var/lib/AccountsService/users/$USER << 'EOF'
+[User]
+Session=ubuntu-xorg
+XSession=ubuntu-xorg
+SystemAccount=false
 EOF
 
 # Set Wayland GNOME as default
-tee ~/.dmrc << 'EOF'
-[Desktop]
-Session=gnome
+sudo tee /var/lib/AccountsService/users/$USER << 'EOF'
+[User]
+Session=ubuntu
+XSession=ubuntu
+SystemAccount=false
 EOF
 ```
 
@@ -125,11 +129,13 @@ EOF
 sudo sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf
 sudo systemctl restart gdm3
 
-# Method 2: Using the udev rule
-# This disables Wayland for systems with specific graphics configurations
+# Method 2: Using a udev rule
+# This disables Wayland for systems with specific graphics configurations.
+# GDM ships rules in /usr/lib/udev/rules.d/61-gdm.rules that invoke
+# gdm-runtime-config to flip WaylandEnable based on hardware detection.
 sudo tee /etc/udev/rules.d/61-gdm.rules << 'EOF'
-# Force X11 session
-DRIVER=="nvidia", ENV{GDM_FORCE_X11}="1"
+# Force X11 session for NVIDIA cards
+DRIVER=="nvidia", RUN+="/usr/libexec/gdm-runtime-config set daemon WaylandEnable false"
 EOF
 
 sudo udevadm control --reload-rules
@@ -214,9 +220,16 @@ systemctl --user status pipewire
 systemctl --user status xdg-desktop-portal
 
 # For Electron apps (Slack, VS Code, etc.) that need screen sharing
-# Add --enable-features=WebRTCPipeWireCapturer to launch options
-# For VS Code:
-echo "--enable-features=WebRTCPipeWireCapturer" >> ~/.config/code/argv.json
+# Add the WebRTCPipeWireCapturer feature flag at launch:
+code --enable-features=WebRTCPipeWireCapturer
+
+# For VS Code, persist it by editing ~/.config/code/argv.json (JSON/JSONC).
+# Do not append a raw CLI flag with `echo >>` - that breaks the JSON.
+# Instead set the key inside the object, for example:
+#   {
+#     "enable-features": "WebRTCPipeWireCapturer"
+#   }
+# Or open it via: Command Palette > "Preferences: Configure Runtime Arguments"
 ```
 
 ### SSH X11 Forwarding on Wayland
@@ -289,7 +302,7 @@ Wayland has implications for remote desktop:
 # GNOME Remote Desktop (native Wayland approach, Ubuntu 22.04+)
 # Enable in Settings > Sharing > Remote Desktop
 # Or via command line:
-gnome-remote-desktop-ctl status
+grdctl status
 
 # For RDP access (xrdp does not work well with Wayland yet)
 # Use GNOME Remote Desktop instead
