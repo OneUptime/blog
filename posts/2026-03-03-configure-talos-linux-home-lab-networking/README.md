@@ -165,24 +165,29 @@ helm install external-dns external-dns/external-dns \
 
 **Option 3: Use CoreDNS with custom records**
 
-Add custom DNS entries to the CoreDNS ConfigMap in your cluster:
+Edit the main `coredns` ConfigMap in `kube-system` to add a server block for your home lab zone. The upstream CoreDNS deployment used by Talos does not auto-load a separate `coredns-custom` ConfigMap (that pattern is k3s-specific), so the records need to live directly in the Corefile:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: coredns-custom
-  namespace: kube-system
-data:
-  homelab.server: |
-    home.lab:53 {
-        hosts {
-            192.168.1.200 jellyfin.home.lab
-            192.168.1.201 grafana.home.lab
-            192.168.1.202 ha.home.lab
-            fallthrough
-        }
+```bash
+kubectl -n kube-system edit configmap coredns
+```
+
+Add a new server block alongside the existing `.:53` block:
+
+```
+home.lab:53 {
+    hosts {
+        192.168.1.200 jellyfin.home.lab
+        192.168.1.201 grafana.home.lab
+        192.168.1.202 ha.home.lab
+        fallthrough
     }
+}
+```
+
+Then restart CoreDNS to pick up the change:
+
+```bash
+kubectl -n kube-system rollout restart deployment coredns
 ```
 
 ## MetalLB Configuration
@@ -308,9 +313,6 @@ talosctl get links --nodes 192.168.1.10
 
 # Check DNS resolution
 talosctl get resolvers --nodes 192.168.1.10
-
-# Check connectivity
-talosctl ping 192.168.1.1 --nodes 192.168.1.10
 
 # Check Kubernetes networking
 kubectl get svc -A
