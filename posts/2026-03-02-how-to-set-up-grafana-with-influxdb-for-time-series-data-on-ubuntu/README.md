@@ -31,12 +31,12 @@ By the end of this guide you'll have:
 ```bash
 # Add InfluxData repository
 
-wget -q https://repos.influxdata.com/influxdata-archive_compat.key
-echo "393e8779c89ac8d958f81f942f9ad7fb82a25e133faddaf92e15b16e6ac9ce4c influxdata-archive_compat.key" | sha256sum -c
-cat influxdata-archive_compat.key | gpg --dearmor | \
-  sudo tee /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg > /dev/null
+wget -q https://repos.influxdata.com/influxdata-archive.key
+echo "943666881a1b8d9b849b74caebf02d3465d6beb716510d86a39f6c8e8dac7515 influxdata-archive.key" | sha256sum -c
+cat influxdata-archive.key | gpg --dearmor | \
+  sudo tee /etc/apt/trusted.gpg.d/influxdata-archive.gpg > /dev/null
 
-echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] \
+echo "deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] \
   https://repos.influxdata.com/debian stable main" | \
   sudo tee /etc/apt/sources.list.d/influxdata.list
 
@@ -165,7 +165,8 @@ from(bucket: "infrastructure")
 
 ```bash
 # Add Grafana repository
-sudo apt install -y apt-transport-https software-properties-common
+sudo apt install -y apt-transport-https software-properties-common gnupg
+sudo mkdir -p /etc/apt/keyrings
 
 wget -q -O - https://apt.grafana.com/gpg.key | \
   sudo gpg --dearmor -o /etc/apt/keyrings/grafana.gpg
@@ -189,7 +190,7 @@ Grafana listens on port 3000. Access it at `http://your-server:3000`. Default lo
 
 In the Grafana UI:
 
-1. Go to **Configuration** (gear icon) > **Data Sources**
+1. Go to **Connections** > **Data sources**
 2. Click **Add data source**
 3. Select **InfluxDB**
 
@@ -207,7 +208,7 @@ Click **Save & Test** - you should see "datasource is working. 3 buckets found."
 
 ### Manually Creating a Panel
 
-1. Click **+** > **New Dashboard** > **Add new panel**
+1. Go to **Dashboards** > **New** > **New dashboard**, then click **Add visualization**
 2. In the query editor, select your InfluxDB data source
 3. Enter a Flux query:
 
@@ -230,8 +231,8 @@ from(bucket: "infrastructure")
 
 Grafana's dashboard library has pre-built dashboards for Telegraf:
 
-1. Go to **+** > **Import**
-2. Enter dashboard ID `928` (Telegraf system dashboard)
+1. Go to **Dashboards** > **New** > **Import**
+2. Enter dashboard ID `928` (Telegraf: system dashboard)
 3. Select your InfluxDB data source
 4. Click **Import**
 
