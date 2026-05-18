@@ -225,14 +225,11 @@ After buffer tuning:
 See what buffer sizes are actually in use:
 
 ```bash
-# Show TCP socket stats including buffer sizes
+# Show TCP socket stats including memory usage
 ss -tnm
-
-# Show in human-readable format
-ss -tnm | awk 'NR>1 {print $1, "rcvbuf:", $6, "sndbuf:", $7}'
 ```
 
-The output shows `rcvq` and `sndq` (current queue fill) and the buffer sizes. If `rcvq` is consistently near the buffer max, the buffer is too small.
+The output shows `Recv-Q` and `Send-Q` (current queue fill) on the connection line, with an indented `skmem:(...)` continuation line containing the buffer details. Key fields in `skmem`: `rb` is the receive buffer size and `tb` is the transmit buffer size (both in bytes). If `Recv-Q` is consistently near `rb`, the buffer is too small.
 
 ## Memory Considerations
 
