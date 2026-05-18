@@ -17,11 +17,11 @@ The kernel ring buffer is a circular buffer in kernel memory that stores log mes
 The buffer size is set at compile time (typically 512KB to 4MB on modern kernels):
 
 ```bash
-# Check ring buffer size
+# Check ring buffer size (from early boot messages, if logged)
+dmesg | grep -i "log_buf"
 
-dmesg -S
-# or
-cat /proc/sys/kernel/printk_devkmsg
+# Check if log_buf_len was overridden on the kernel command line
+grep -o 'log_buf_len=[^ ]*' /proc/cmdline
 ```
 
 Because it's stored in memory, the kernel ring buffer is lost on reboot - unless you configure a persistent log.
@@ -36,18 +36,25 @@ dmesg
 dmesg -T
 # Output: [Mon Mar  2 10:23:45 2026] kernel message here
 
-# With relative timestamps (seconds since boot)
-dmesg -t
+# Default output shows relative timestamps (seconds since boot)
+dmesg
 # Output: [    0.000000] Kernel version 6.8.0...
 
-# Continuous output (like tail -f)
-dmesg -W
+# Suppress timestamps entirely
+dmesg -t
+# Output: Kernel version 6.8.0...
+
+# Continuous output (like tail -f) — prints backlog then waits for new
+dmesg -w
 # or
 dmesg --follow
 
+# Only print new messages as they arrive (skip backlog)
+dmesg -W
+
 # Clear the ring buffer (requires root)
 sudo dmesg -C
-# or just clear (but still shows new messages)
+# Print current contents, then clear the buffer
 sudo dmesg -c
 ```
 
@@ -227,8 +234,8 @@ MaxRetentionSec=30day
 For systems with heavy logging (high I/O, many devices), you might want a larger ring buffer:
 
 ```bash
-# Current ring buffer size
-dmesg -S 2>/dev/null || cat /sys/module/printk/parameters/printk_devkmsg
+# Current ring buffer size (look for log_buf_len in early boot messages)
+dmesg | grep -i "log_buf"
 
 # Change size at boot via kernel parameter
 sudo nano /etc/default/grub
