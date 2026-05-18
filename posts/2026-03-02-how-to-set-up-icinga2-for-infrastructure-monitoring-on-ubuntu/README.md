@@ -44,7 +44,7 @@ sudo apt install icinga2
 # Install the monitoring plugins (checks for ping, HTTP, SSH, etc.)
 sudo apt install monitoring-plugins
 
-# Enable the built-in check plugins
+# Enable the external command pipe feature (lets external tools send commands to the daemon)
 sudo icinga2 feature enable command
 
 # Verify installation
@@ -62,7 +62,7 @@ sudo apt install mysql-server
 # Install Icinga DB
 sudo apt install icingadb
 
-# Install the MySQL connector for Icinga DB
+# Install the bundled Redis instance used by Icinga DB (listens on 127.0.0.1:6380)
 sudo apt install icingadb-redis
 ```
 
@@ -112,8 +112,8 @@ redis:
 sudo systemctl enable icingadb-redis
 sudo systemctl start icingadb-redis
 
-# Run database migrations
-sudo icingadb-schema --import-mysql-scheme
+# Import the Icinga DB schema into MySQL
+sudo mysql -u root -p icingadb < /usr/share/icingadb/schema/mysql/schema.sql
 
 # Start Icinga DB
 sudo systemctl enable icingadb
