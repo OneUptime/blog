@@ -201,8 +201,9 @@ sudo grep -i "auth\|unauthorized\|403" /var/log/cups/error_log | tail -20
 # Test authentication manually
 curl -u username:password -v http://printer-hostname/ipp/print
 
-# For Windows-style (Kerberos/NTLM) print servers
-sudo apt install libcups2 libcupsimage2 -y
+# For Kerberos-authenticated print servers, install Kerberos client tools
+# and the GSSAPI SASL plugin so CUPS can negotiate auth
+sudo apt install krb5-user libsasl2-modules-gssapi-mit -y
 
 # Test SMB printer connection
 # First install smbclient
@@ -254,9 +255,9 @@ lp -d PrinterName /usr/share/cups/data/testprint
 
 # Check if issue is driver-related (try raw printing)
 # Raw printing bypasses all filtering
-lpadmin -p PrinterName -o raw  # Switch to raw mode
-lp -d PrinterName file.ps  # Must be PostScript for raw mode
-lpadmin -p PrinterName -m everywhere  # Switch back to normal
+sudo lpadmin -p PrinterName -m raw  # Switch to raw mode
+lp -d PrinterName file.ps  # Job must already be in the printer's native format
+sudo lpadmin -p PrinterName -m everywhere  # Switch back to normal
 
 # Check for color profile issues
 ls /usr/share/color/icc/
@@ -270,11 +271,11 @@ lpoptions -p PrinterName -l | grep -i "color\|icc\|profile"
 lp -d PrinterName -# 1 -o job-hold-until=indefinite document.pdf
 JOBID=$(lpstat -o | tail -1 | awk '{print $1}')
 
-# Get detailed job info
-lpstat -l -o $JOBID
+# Get detailed job info (lpstat -o takes a destination, so grep for the job ID)
+lpstat -l -W not-completed | grep -A 10 "$JOBID"
 
 # Release the held job
-lp-release $JOBID
+lp -i $JOBID -H resume
 
 # Or cancel and try again with more debugging
 cancel $JOBID
