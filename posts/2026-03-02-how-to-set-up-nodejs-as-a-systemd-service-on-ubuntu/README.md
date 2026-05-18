@@ -68,6 +68,8 @@ sudo nano /etc/systemd/system/myapp.service
 Description=My Node.js Application
 Documentation=https://github.com/yourorg/myapp
 After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 # Run as the dedicated service user
@@ -83,8 +85,6 @@ ExecStart=/usr/bin/node /opt/myapp/server.js
 # Restart policy
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=3
 
 # Environment variables
 Environment=NODE_ENV=production
@@ -95,7 +95,7 @@ EnvironmentFile=/opt/myapp/.env
 
 # Resource limits
 # Limit memory to 512MB
-MemoryLimit=512M
+MemoryMax=512M
 
 # Security hardening
 NoNewPrivileges=yes
