@@ -139,7 +139,9 @@ You can also add a recovery configuration:
 
 ```bash
 # Create a recovery configuration file
-sudo -u postgres cat > /var/lib/postgresql/14/main/postgresql.auto.conf << 'EOF'
+# Use `tee` (not a redirect) so the file is written by the postgres user,
+# since shell `>` redirects are processed by the calling shell before sudo runs.
+sudo -u postgres tee /var/lib/postgresql/14/main/postgresql.auto.conf > /dev/null << 'EOF'
 primary_conninfo = 'host=192.168.1.10 port=5432 user=replicator password=strong_password_here application_name=standby1'
 restore_command = 'cp /var/lib/postgresql/wal_archive/%f %p'
 recovery_target_timeline = 'latest'
