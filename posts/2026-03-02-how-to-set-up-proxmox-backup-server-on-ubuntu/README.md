@@ -121,7 +121,7 @@ proxmox-backup-manager datastore update vm-backups \
     --keep-yearly 1
 
 # View current datastore configuration
-proxmox-backup-manager datastore config vm-backups
+proxmox-backup-manager datastore show vm-backups
 ```
 
 Garbage collection prunes expired chunks after the retention policy removes old snapshots. Schedule it:
@@ -222,14 +222,14 @@ Configure:
 ### Monitoring Backup Jobs
 
 ```bash
-# On PBS, view all stored backups
-proxmox-backup-client list --repository pve-backup@pbs@<pbs-ip>:vm-backups
+# List all snapshots in the datastore
+proxmox-backup-client snapshot list --repository pve-backup@pbs@<pbs-ip>:vm-backups
 
-# View backup details for a specific VM
-proxmox-backup-manager snapshots vm/201/ubuntu-web-server
+# List snapshots for a specific backup group (e.g. VM 201)
+proxmox-backup-client snapshot list vm/201 --repository pve-backup@pbs@<pbs-ip>:vm-backups
 
-# Check datastore statistics
-proxmox-backup-manager status vm-backups
+# Check datastore status (used/available bytes)
+proxmox-backup-client status --repository pve-backup@pbs@<pbs-ip>:vm-backups
 ```
 
 ## Restoring Backups
@@ -245,13 +245,15 @@ In the Proxmox VE web interface:
 
 ### Single File Restore
 
-PBS supports mounting backup archives to extract individual files:
+PBS supports inspecting backup archives and restoring individual files:
 
 ```bash
-# On the PBS server, mount a backup for file-level access
-proxmox-backup-manager catalog dump vm/201/2026-03-02T02:00:00Z
+# List files contained in a backup snapshot's catalog
+proxmox-backup-client catalog dump \
+    --repository pve-backup@pbs@<pbs-ip>:vm-backups \
+    vm/201/2026-03-02T02:00:00Z
 
-# Or use proxmox-backup-client on the PVE node
+# Restore a specific archive (e.g. a VM disk image) from the snapshot
 proxmox-backup-client restore \
     --repository pve-backup@pbs@<pbs-ip>:vm-backups \
     vm/201/2026-03-02T02:00:00Z \
@@ -264,12 +266,12 @@ proxmox-backup-client restore \
 PBS stores SHA-256 checksums for all data. Verify backup integrity regularly:
 
 ```bash
-# Verify all backups in a datastore
+# Create a scheduled verification job for a datastore
 proxmox-backup-manager verify-job create check-integrity \
-    --datastore vm-backups \
+    --store vm-backups \
     --schedule "sat 03:00"
 
-# Manually trigger verification
+# Manually trigger verification of a datastore
 proxmox-backup-manager verify vm-backups
 ```
 
