@@ -93,42 +93,48 @@ echo "HTB classes configured."
 
 IFACE="${1:-eth0}"
 
+# Note: HTB shapes EGRESS, so for services hosted on this server, response
+# packets leaving the box carry the service port in the SOURCE port field
+# (e.g., a reply from the web server has src port 80, not dst port 80).
+# Filters therefore match `sport` for locally hosted services.
+
 # Management traffic -> class 1:10
-# SSH
+# SSH (responses from the local sshd)
 tc filter add dev "$IFACE" parent 1: protocol ip prio 1 u32 \
-    match ip dport 22 0xffff flowid 1:10
+    match ip sport 22 0xffff flowid 1:10
 
 # ICMP (ping, traceroute) - keeps latency-sensitive
 tc filter add dev "$IFACE" parent 1: protocol ip prio 1 u32 \
     match ip protocol 1 0xff flowid 1:10
 
-# Custom monitoring port (e.g., Prometheus node exporter)
+# Custom monitoring port (e.g., Prometheus node exporter scraped on 9100)
 tc filter add dev "$IFACE" parent 1: protocol ip prio 1 u32 \
-    match ip dport 9100 0xffff flowid 1:10
+    match ip sport 9100 0xffff flowid 1:10
 
 # Web traffic -> class 1:20
 # HTTP
 tc filter add dev "$IFACE" parent 1: protocol ip prio 2 u32 \
-    match ip dport 80 0xffff flowid 1:20
+    match ip sport 80 0xffff flowid 1:20
 
 # HTTPS
 tc filter add dev "$IFACE" parent 1: protocol ip prio 2 u32 \
-    match ip dport 443 0xffff flowid 1:20
+    match ip sport 443 0xffff flowid 1:20
 
 # Database traffic -> class 1:30
 # PostgreSQL
 tc filter add dev "$IFACE" parent 1: protocol ip prio 3 u32 \
-    match ip dport 5432 0xffff flowid 1:30
+    match ip sport 5432 0xffff flowid 1:30
 
 # Redis
 tc filter add dev "$IFACE" parent 1: protocol ip prio 3 u32 \
-    match ip dport 6379 0xffff flowid 1:30
+    match ip sport 6379 0xffff flowid 1:30
 
 # Internal RPC/gRPC
 tc filter add dev "$IFACE" parent 1: protocol ip prio 3 u32 \
-    match ip dport 50051 0xffff flowid 1:30
+    match ip sport 50051 0xffff flowid 1:30
 
 # Backup server by IP -> class 1:40
+# (outbound traffic to the backup server, so match dst IP)
 tc filter add dev "$IFACE" parent 1: protocol ip prio 5 u32 \
     match ip dst 10.0.0.50/32 flowid 1:40
 
@@ -164,17 +170,24 @@ Use `iperf3` to test that bandwidth limits are being applied.
 # Install iperf3
 sudo apt install iperf3 -y
 
-# Start an iperf3 server on the target (in another terminal)
-iperf3 -s
+# On the target (the shaped server), start an iperf3 server on each port
+# you want to exercise. iperf3 only listens on the port given by -p.
+iperf3 -s -p 80 &
+iperf3 -s -p 22 &
+iperf3 -s -p 5201 &
 
-# Test HTTP-classified traffic (port 80) - should get class 1:20 (web) treatment
-iperf3 -c remote-server -p 80 -t 30
+# From a client, use -R (reverse) so the SERVER sends the data.
+# This exercises the server's egress, which is what HTB shapes.
 
-# Test from a backup source IP (should be limited to 200 Mbit)
-iperf3 -c remote-server -B 10.0.0.50 -t 30
+# Test traffic with source port 80 -> class 1:20 (web)
+iperf3 -c remote-server -p 80 -R -t 30
 
-# Test SSH-classified traffic (should have highest priority)
-iperf3 -c remote-server -p 22 -t 30
+# Test traffic destined to the backup IP -> class 1:40 (capped at 200 Mbit).
+# Run this from a client whose address is 10.0.0.50.
+iperf3 -c remote-server -p 5201 -R -t 30
+
+# Test traffic with source port 22 -> class 1:10 (highest priority)
+iperf3 -c remote-server -p 22 -R -t 30
 ```
 
 ## Handling Ingress Traffic
@@ -241,9 +254,10 @@ while true; do
         class=$3
     }
     /Sent/ {
-        split($2, bytes, "")
-        sent=int($2)/1024/1024
-        printf "Class %-8s Sent: %8.1f MB  Dropped: %s\n", class, sent, $6
+        sent=$2/1024/1024
+        # "Sent N bytes M pkt (dropped D, overlimits ...)" - drop count is $7
+        gsub(/,/, "", $7)
+        printf "Class %-8s Sent: %8.1f MB  Dropped: %s\n", class, sent, $7
     }'
 
     sleep 5
