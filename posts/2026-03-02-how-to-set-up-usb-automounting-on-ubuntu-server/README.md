@@ -25,6 +25,8 @@ The two main approaches are:
 
 This approach works well when you want to mount any USB drive that appears, regardless of its device name.
 
+Important: since systemd 212, `systemd-udevd` runs in a private mount namespace (`PrivateMounts=yes`), which means mounts created directly from a `RUN+=` script will not propagate to the rest of the system. The robust pattern is to have the udev rule trigger a templated systemd service that runs the mount script outside the udev namespace, as shown below.
+
 ### Step 1: Install Required Packages
 
 ```bash
@@ -146,17 +148,49 @@ sudo nano /etc/udev/rules.d/99-usb-automount.rules
 ```text
 # Automount USB storage devices when added
 # Match USB mass storage partitions
-ACTION=="add", KERNEL=="sd[b-z][0-9]", SUBSYSTEMS=="usb", RUN+="/usr/local/bin/usb-mount.sh add %N"
+ACTION=="add", KERNEL=="sd[b-z][0-9]", SUBSYSTEMS=="usb", ENV{SYSTEMD_WANTS}+="usb-mount@%k.service"
 
 # Unmount USB storage devices when removed
-ACTION=="remove", KERNEL=="sd[b-z][0-9]", SUBSYSTEMS=="usb", RUN+="/usr/local/bin/usb-mount.sh remove %N"
+ACTION=="remove", KERNEL=="sd[b-z][0-9]", SUBSYSTEMS=="usb", ENV{SYSTEMD_WANTS}+="usb-unmount@%k.service"
 ```
 
-The `KERNEL=="sd[b-z][0-9]"` pattern matches partitions on any SCSI disk from sdb onward (excluding sda which is typically the system disk). `SUBSYSTEMS=="usb"` ensures we only match USB-connected devices.
+The `KERNEL=="sd[b-z][0-9]"` pattern matches partitions on any SCSI disk from sdb onward (excluding sda which is typically the system disk). `SUBSYSTEMS=="usb"` ensures we only match USB-connected devices. `SYSTEMD_WANTS` causes systemd to start the templated service unit with the device's kernel name (e.g., `sdb1`) substituted for `%i`, which runs outside udev's private mount namespace so the mount is visible system-wide.
+
+Create the templated mount and unmount services:
+
+```bash
+sudo nano /etc/systemd/system/usb-mount@.service
+```
+
+```ini
+[Unit]
+Description=Mount USB drive %i
+Requires=dev-%i.device
+After=dev-%i.device
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/usb-mount.sh add /dev/%i
+```
+
+```bash
+sudo nano /etc/systemd/system/usb-unmount@.service
+```
+
+```ini
+[Unit]
+Description=Unmount USB drive %i
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/usb-mount.sh remove /dev/%i
+```
 
 ### Step 4: Reload udev Rules
 
 ```bash
+sudo systemctl daemon-reload
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
@@ -202,11 +236,22 @@ udisksctl unmount -b /dev/sdb1
 udisksctl power-off -b /dev/sdb
 ```
 
-To allow a service user to use udisksctl, add them to the `disk` group:
+`udisksctl` authorization is governed by polkit, not group membership. On a headless server (where the service user has no active login session), the default polkit rules block the action, so you need to grant access explicitly with a polkit rule:
 
 ```bash
-sudo usermod -aG disk serviceuser
+sudo nano /etc/polkit-1/rules.d/50-udisks-serviceuser.rules
 ```
+
+```javascript
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.udisks2.filesystem-mount") == 0 &&
+        subject.user == "serviceuser") {
+        return polkit.Result.YES;
+    }
+});
+```
+
+Avoid adding the user to the `disk` group as a shortcut — that group grants raw read/write access to every block device on the system, including the root disk, and bypasses udisks entirely.
 
 ## Approach 3: usbmount Package
 
