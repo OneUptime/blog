@@ -199,7 +199,8 @@ RSYNC_PASSWORD=securepassword123 rsync -avz /local/backups/ backupuser@192.168.1
 # Store password in a file
 echo "securepassword123" > ~/.rsync_password
 chmod 600 ~/.rsync_password
-rsync -avz --password-file=~/.rsync_password /local/backups/ backupuser@192.168.1.10::backups
+# Note: --password-file does not expand ~, so use $HOME or a full path
+rsync -avz --password-file="$HOME/.rsync_password" /local/backups/ backupuser@192.168.1.10::backups
 ```
 
 Note the double colon (`::`) for daemon connections vs single colon (`:`) for SSH connections.
@@ -223,7 +224,7 @@ Note the double colon (`::`) for daemon connections vs single colon (`:`) for SS
     hosts allow = 10.0.0.0/8 192.168.0.0/16
     hosts deny = *
 
-    # Bandwidth limit (KB/s per connection)
+    # Log every file transferred
     transfer logging = yes
 
     # Exclude certain files
