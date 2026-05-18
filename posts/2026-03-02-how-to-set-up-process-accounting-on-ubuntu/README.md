@@ -68,14 +68,14 @@ sudo sa
 # Show per-user command statistics
 sudo sa -u
 
-# Show summary sorted by CPU usage
+# Show summary with percentages of total time per command
 sudo sa -c
 
-# Show command statistics including average CPU and memory
-sudo sa -v
+# Show separate user and system CPU times
+sudo sa -l
 
-# Show a specific user's command history
-sudo sa -U username
+# Show a specific user's command history (use lastcomm)
+sudo lastcomm --user username
 ```
 
 The output from `sa` looks like:
@@ -110,8 +110,8 @@ sudo lastcomm --tty pts/0
 # Filter by time (last 2 hours)
 sudo lastcomm --forwards | tail -100
 
-# Show detailed output including flags
-sudo lastcomm -F
+# Flag characters (S, F, D, X) are shown in the default output
+sudo lastcomm --print-controls
 ```
 
 ### Interpreting lastcomm Flags
@@ -120,9 +120,8 @@ The flags column in lastcomm output indicates process characteristics:
 
 - `S` - Run by a superuser
 - `F` - Ran after a fork without exec (could indicate unusual behavior)
-- `C` - Command ran in a virtual machine
 - `D` - Wrote to core file (crashed)
-- `X` - Terminated by signal
+- `X` - Terminated by signal (SIGTERM)
 
 ```bash
 # Find commands that ran as superuser (including via sudo)
@@ -178,7 +177,8 @@ sudo accton off  # Stop accounting temporarily to get a clean snapshot
 sudo accton /var/log/account/pacct
 
 # Use dump-acct to get readable output with timestamps
-sudo apt-get install -y tcsh  # Required for dump-acct on some versions
+# dump-acct is provided by the acct package itself
+sudo dump-acct /var/log/account/pacct | tail -100
 ```
 
 ## Rotating the Accounting Log
@@ -259,7 +259,7 @@ cat /proc/sys/kernel/acct
 # Check disk space every 30 seconds
 
 # View the current accounting file
-sudo acctcom /var/log/account/pacct | head -20
+sudo dump-acct /var/log/account/pacct | head -20
 ```
 
 The kernel automatically pauses accounting if disk space drops below the threshold defined in `/proc/sys/kernel/acct`. Adjust if needed:
