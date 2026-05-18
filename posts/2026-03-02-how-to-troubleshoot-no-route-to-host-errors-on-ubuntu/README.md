@@ -221,7 +221,7 @@ Some networks block ICMP (including the "ICMP unreachable" messages that generat
 ```bash
 # Test without relying on ICMP
 curl -v --connect-timeout 5 http://192.168.1.50
-nc -zv --wait 5 192.168.1.50 443
+nc -zv -w 5 192.168.1.50 443
 
 # If TCP works but ping fails, ICMP is filtered (not a real routing problem)
 ```
