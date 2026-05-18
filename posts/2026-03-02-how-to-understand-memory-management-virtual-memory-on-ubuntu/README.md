@@ -69,11 +69,11 @@ free -h
 
 # Output breakdown:
 # total    = physical RAM
-# used     = in use (including cache/buffers)
+# used     = total - available (excludes reclaimable buff/cache)
 # free     = completely unused
 # shared   = tmpfs usage
-# buff/cache = kernel buffer + page cache
-# available = memory available for new processes (free + reclaimable cache)
+# buff/cache = kernel buffers + page cache + reclaimable slab
+# available = memory available for new processes without swapping
 
 # The "available" column is what matters for "is there enough memory?"
 
@@ -145,7 +145,7 @@ done 2>/dev/null | sort -rn | head -10
 
 ### Swappiness
 
-The `vm.swappiness` parameter (0-100) controls how aggressively the kernel uses swap vs reclaiming page cache:
+The `vm.swappiness` parameter controls how aggressively the kernel uses swap vs reclaiming page cache. The range is 0-100 historically, but kernels 5.8+ accept up to 200 (values above 100 bias the kernel toward swapping anonymous pages even when file-backed pages are reclaimable):
 
 ```bash
 # Check current value (default: 60)
@@ -262,8 +262,8 @@ cat /proc/meminfo | grep -E "CommitLimit|Committed_AS"
 ## Monitoring Memory Pressure
 
 ```bash
-# Install vmstat (sysstat package)
-sudo apt install sysstat
+# vmstat ships with the procps package (installed by default on Ubuntu)
+# sar/iostat/mpstat live in the sysstat package: sudo apt install sysstat
 
 # Real-time memory stats (update every 2 seconds)
 vmstat 2
