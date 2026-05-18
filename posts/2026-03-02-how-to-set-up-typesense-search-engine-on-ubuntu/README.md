@@ -20,22 +20,17 @@ Typesense's strengths include strong typo tolerance, vector search support for s
 
 ## Installing Typesense
 
+Typesense distributes a DEB package directly from `dl.typesense.org`. Download and install it with `apt`:
+
 ```bash
-# Add Typesense repository
+# Download the Typesense server DEB package (x86_64)
+curl -O https://dl.typesense.org/releases/29.0/typesense-server-29.0-amd64.deb
 
-curl -fsSL https://dl.typesense.org/repo/apt/pubkey.gpg | \
-  sudo gpg --dearmor -o /usr/share/keyrings/typesense-archive-keyring.gpg
-
-echo "deb [signed-by=/usr/share/keyrings/typesense-archive-keyring.gpg] \
-  https://dl.typesense.org/repo/apt stable main" | \
-  sudo tee /etc/apt/sources.list.d/typesense.list
-
-sudo apt update
-sudo apt install -y typesense-server
-
-# Verify installation
-typesense-server --version
+# Install it
+sudo apt install -y ./typesense-server-29.0-amd64.deb
 ```
+
+For arm64 systems, use the `arm64.deb` variant instead. v26.0 and later require Ubuntu 20.04 or later.
 
 ## Configuration
 
@@ -48,22 +43,27 @@ sudo nano /etc/typesense/typesense-server.ini
 ```ini
 ; /etc/typesense/typesense-server.ini
 
-; Directory to store Typesense data
 [server]
-data-dir = /var/lib/typesense
+
 ; API key for authentication (generate a strong random key)
 api-key = your-typesense-api-key-change-this
-; Address to listen on
-listen-address = 0.0.0.0
-; Port to listen on
-listen-port = 8108
-; Enable CORS for specific origins (or * for all)
-cors-domains = *
+; Directory to store Typesense data
+data-dir = /var/lib/typesense
 ; Log directory
 log-dir = /var/log/typesense
-; Thread count (default is number of CPU cores)
+; Address to listen on
+api-address = 0.0.0.0
+; Port to listen on
+api-port = 8108
+; Enable CORS so browser clients can call Typesense directly
+enable-cors = true
+; Comma-separated list of allowed CORS origins (omit to allow all when enable-cors is true)
+; cors-domains = https://example.com,https://app.example.com
+; Thread count (default is NUM_CORES * 8)
 ; thread-pool-size = 8
 ```
+
+The DEB package auto-generates an admin API key on install and writes it into this file - you can keep that key or replace it with one of your own.
 
 Generate a strong API key:
 
