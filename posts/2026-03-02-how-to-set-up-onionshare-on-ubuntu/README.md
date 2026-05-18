@@ -45,10 +45,10 @@ flatpak install flathub org.onionshare.OnionShare
 flatpak run org.onionshare.OnionShare
 ```
 
-### Method 3: From the Official PPA
+### Method 3: From the Maintainer's PPA
 
 ```bash
-# Add the OnionShare PPA
+# Add the OnionShare PPA (maintained by OnionShare's author Micah Lee)
 sudo add-apt-repository ppa:micahflee/ppa
 sudo apt update
 
@@ -73,20 +73,20 @@ When it opens, you will see tabs for different modes: Share Files, Receive Files
 
 1. Click "Share Files" in the OnionShare window
 2. Drag and drop files or click "Add Files" to choose what to share
-3. Optionally check "Stop sharing after files have been sent" for one-time sharing
+3. Optionally check "Stop sharing after files have been sent" for one-time sharing (this is the default)
 4. Click "Start sharing"
-5. OnionShare generates a `.onion` address like `http://abc123def456.onion/password`
-6. Send this address (over Signal, PGP email, etc.) to the recipient
-7. The recipient opens it in Tor Browser to download the files
+5. OnionShare generates a `.onion` address (e.g., `http://abc...xyz.onion`) along with a private key
+6. Send the address and private key (over Signal, PGP email, etc.) to the recipient
+7. The recipient opens the address in Tor Browser and enters the private key when prompted to download the files
 
 ### Receiving Files
 
 In receive mode, OnionShare creates an upload endpoint:
 
 1. Click "Receive Files"
-2. Optionally set a password
+2. Optionally toggle "Public mode" in advanced settings to disable the private key requirement
 3. Click "Start Receive Mode"
-4. Share the generated `.onion` address with whoever needs to send you files
+4. Share the generated `.onion` address (and private key, unless in Public mode) with whoever needs to send you files
 5. Files appear in your configured receive folder (default: `~/OnionShare`)
 
 ## Using the Command-Line Interface
@@ -100,8 +100,8 @@ onionshare-cli /path/to/document.pdf
 # Share multiple files
 onionshare-cli file1.txt file2.pdf directory/
 
-# Share files and automatically stop after one download
-onionshare-cli --stop-after-first-download /path/to/file.zip
+# Continue sharing after files have been downloaded (default behavior is to stop after sent)
+onionshare-cli --no-autostop-sharing /path/to/file.zip
 
 # Receive files (upload mode)
 onionshare-cli --receive
@@ -212,8 +212,8 @@ sudo journalctl -u onionshare-receive | grep "onion"
 
 OnionShare is designed to be secure, but there are a few practices to keep in mind:
 
-- The `.onion` address and password together constitute the secret. Transmit them over an already-secure channel (Signal, PGP-encrypted email, etc.)
-- Use "stop after first download" for one-time sensitive file shares
+- The `.onion` address and private key together constitute the secret. Transmit them over an already-secure channel (Signal, PGP-encrypted email, etc.)
+- Leave "stop after files have been sent" enabled (the default) for one-time sensitive file shares
 - For recurring use, persistent addresses need their private keys protected like any other credential
 - OnionShare websites support JavaScript - if you need to serve content to users who have JavaScript disabled in Tor Browser's safest mode, keep that in mind when building pages
 - If sharing sensitive files, verify checksums after transfer
