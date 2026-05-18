@@ -76,30 +76,33 @@ sudo mkdir -p /var/lib/ctdb/state
 
 ### Configure CTDB Daemon
 
-Edit the CTDB configuration file:
+Edit the CTDB configuration file. Modern CTDB (4.9+, which ships in Ubuntu 22.04 and 24.04) uses an INI-format file at `/etc/ctdb/ctdb.conf`:
 
 ```bash
-sudo nano /etc/ctdb/ctdbd.conf
+sudo nano /etc/ctdb/ctdb.conf
 ```
 
-```bash
-# CTDB configuration
-# Path to the CTDB recovery lock file - must be on shared storage
-CTDB_RECOVERY_LOCK=/srv/samba/ctdb/recovery.lock
-
+```ini
+[logging]
 # Log level (ERROR, WARNING, NOTICE, INFO, DEBUG)
-CTDB_LOGGING=file:/var/log/ctdb/ctdb.log
-CTDB_DEBUGLEVEL=NOTICE
+log level = NOTICE
+location = file:/var/log/ctdb/log.ctdb
 
+[cluster]
+# Path to the cluster lock file - must be on shared storage
+cluster lock = /srv/samba/ctdb/recovery.lock
 # Transport for inter-node communication
-CTDB_TRANSPORT=tcp
-CTDB_NODE_ADDRESS=192.168.1.10   # Change to 192.168.1.11 on Node 2
+transport = tcp
+# Change to 192.168.1.11 on Node 2
+node address = 192.168.1.10
 
-# CTDB database directories
-CTDB_DBDIR=/var/lib/ctdb/volatile
-CTDB_DBDIR_PERSISTENT=/var/lib/ctdb/persistent
-CTDB_DBDIR_STATE=/var/lib/ctdb/state
+[database]
+volatile database directory = /var/lib/ctdb/volatile
+persistent database directory = /var/lib/ctdb/persistent
+state database directory = /var/lib/ctdb/state
 ```
+
+Note: in CTDB 4.16+, `recovery lock` was renamed to `cluster lock`. The older name is still accepted for backward compatibility.
 
 ### Define Cluster Nodes
 
@@ -225,8 +228,8 @@ sudo ctdb ip
 # Show CTDB statistics
 sudo ctdb statistics
 
-# Show which node is the recovery master
-sudo ctdb recmaster
+# Show which node is the cluster leader (was "recmaster" before CTDB 4.16)
+sudo ctdb leader
 ```
 
 Expected output from `ctdb status`:
@@ -297,8 +300,8 @@ sudo smbpasswd -a smbuser
 CTDB provides built-in monitoring commands:
 
 ```bash
-# Monitor CTDB events in real time
-sudo ctdb eventscript monitor legacy
+# Show status of the most recent monitor event for the legacy component
+sudo ctdb event status legacy monitor
 
 # Watch cluster status changes
 watch -n 2 'ctdb status && echo && ctdb ip'
