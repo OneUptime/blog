@@ -152,17 +152,18 @@ print(f"GPUs available: {len(gpus)}")
 for gpu in gpus:
     print(f"  {gpu}")
 
+# Enable memory growth before any GPU operations
+# (must be set before the GPU is initialized, or it raises a RuntimeError)
+for gpu in gpus:
+    tf.config.experimental.set_memory_growth(gpu, True)
+print("Memory growth enabled")
+
 # Run a simple operation on the GPU
 with tf.device('/GPU:0'):
     a = tf.constant([[1.0, 2.0], [3.0, 4.0]])
     b = tf.constant([[5.0, 6.0], [7.0, 8.0]])
     c = tf.matmul(a, b)
     print(f"\nMatrix multiplication result:\n{c.numpy()}")
-
-# Enable memory growth to avoid TensorFlow allocating all GPU memory at once
-for gpu in gpus:
-    tf.config.experimental.set_memory_growth(gpu, True)
-print("\nMemory growth enabled")
 ```
 
 ## Training a Simple Model
@@ -249,7 +250,7 @@ policy = mixed_precision.Policy('mixed_float16')
 mixed_precision.set_global_policy(policy)
 
 # Model outputs should use float32 for numerical stability
-# The last softmax layer stays in float32 automatically
+# You must explicitly set dtype='float32' on the final layer
 
 model = models.Sequential([
     layers.Dense(512, activation='relu'),
