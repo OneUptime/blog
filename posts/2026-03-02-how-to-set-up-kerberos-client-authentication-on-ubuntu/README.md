@@ -229,8 +229,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/k5start -U -f /etc/krb5.keytab -K 60 -b -p /run/kerberos-renew.pid
-PIDFile=/run/kerberos-renew.pid
+ExecStart=/usr/bin/k5start -U -f /etc/krb5.keytab -K 60
 
 [Install]
 WantedBy=multi-user.target
