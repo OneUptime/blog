@@ -20,7 +20,7 @@ sudo snap install multipass
 # Verify installation
 multipass version
 
-# Check system requirements are met
+# Show info for all instances (none yet right after install)
 multipass info --all
 ```
 
@@ -225,7 +225,7 @@ multipass launch \
 
 # Specify Ubuntu version
 multipass launch 22.04 \
-    --name focal-vm \
+    --name jammy-vm \
     --cloud-init init.yaml
 
 # Use a specific LTS version
