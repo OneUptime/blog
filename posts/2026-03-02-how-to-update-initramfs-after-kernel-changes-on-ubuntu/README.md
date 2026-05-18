@@ -226,8 +226,9 @@ mkdir /tmp/initrd-check
 unmkinitramfs /boot/initrd.img-$(uname -r) /tmp/initrd-check
 ls /tmp/initrd-check/
 
-# Check the init script
-cat /tmp/initrd-check/init | head -30
+# Check the init script (on systems with CPU microcode, the main archive
+# is extracted into a "main" subdirectory alongside "early")
+cat /tmp/initrd-check/main/init 2>/dev/null | head -30 || cat /tmp/initrd-check/init | head -30
 ```
 
 ## Automating initramfs Updates with apt Hooks
