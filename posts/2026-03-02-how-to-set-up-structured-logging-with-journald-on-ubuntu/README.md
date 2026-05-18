@@ -22,7 +22,10 @@ sudo journalctl -n 1 -o json | python3 -m json.tool
 # See all available fields in a single message
 sudo journalctl -n 1 -o verbose
 
-# List all unique field names ever seen in the journal
+# List all field names currently used in the journal
+sudo journalctl -N | sort | head -20
+
+# List all unique values a specific field has ever taken
 sudo journalctl -F _SYSTEMD_UNIT | sort | head -20
 ```
 
@@ -31,11 +34,11 @@ sudo journalctl -F _SYSTEMD_UNIT | sort | head -20
 The main configuration is at `/etc/systemd/journald.conf`.
 
 ```bash
-# View the current effective configuration
-sudo journalctl --show-config 2>/dev/null || cat /etc/systemd/journald.conf
+# View the current effective configuration (main file plus drop-ins)
+sudo systemd-analyze cat-config systemd/journald.conf
 
-# For per-user journal configuration
-ls /etc/systemd/journald.conf.d/
+# List drop-in configuration snippets that override the main file
+ls /etc/systemd/journald.conf.d/ 2>/dev/null
 ```
 
 ## Configuring Storage
@@ -140,8 +143,10 @@ sudo journalctl -n 5 -o verbose
 # Export format for archiving (binary, preserves all fields)
 sudo journalctl --export -u nginx > /tmp/nginx-logs.export
 
-# Import/view exported logs
-sudo journalctl --file /tmp/nginx-logs.export
+# To view exported logs, first import them back into a native journal file
+# using systemd-journal-remote, then read with --file
+sudo systemd-journal-remote --output=/tmp/nginx-logs.journal /tmp/nginx-logs.export
+sudo journalctl --file=/tmp/nginx-logs.journal
 ```
 
 ## Adding Custom Structured Fields from Applications
@@ -166,7 +171,10 @@ Shell script example using `systemd-cat`:
 echo "Backup completed: 1523 files" | systemd-cat -t backup-service -p info
 
 # Alternatively using the sd_journal API via logger
-logger -t myapp --journald << 'EOF'
+# Note: --journald ignores -t / -p; include SYSLOG_IDENTIFIER and PRIORITY in the input instead
+logger --journald << 'EOF'
+PRIORITY=3
+SYSLOG_IDENTIFIER=myapp
 MESSAGE=Database connection failed
 DB_HOST=db.example.com
 DB_PORT=5432
@@ -176,23 +184,25 @@ EOF
 
 ## Writing Applications That Log to journald Natively
 
-For applications using structured journald fields, write directly to the journal socket.
+For shell scripts that need to emit structured journal entries, pipe key=value lines
+into `logger --journald`. (`systemd-cat` treats each stdin line as a separate
+MESSAGE and will not parse structured fields.)
 
 ```bash
-# Shell function to log with structured fields
+# Shell function to log a single entry with structured fields
 journal_log() {
     local priority="$1"
     local message="$2"
     shift 2
 
-    local fields=()
-    while [ $# -gt 0 ]; do
-        fields+=("$1")
-        shift
-    done
-
-    echo -e "PRIORITY=$priority\nMESSAGE=$message\n$(printf '%s\n' "${fields[@]}")" | \
-        systemd-cat -t "$(basename "$0")" -p "$priority"
+    {
+        printf 'PRIORITY=%s\n' "$priority"
+        printf 'SYSLOG_IDENTIFIER=%s\n' "$(basename "$0")"
+        printf 'MESSAGE=%s\n' "$message"
+        for field in "$@"; do
+            printf '%s\n' "$field"
+        done
+    } | logger --journald
 }
 
 # Use the function
