@@ -92,8 +92,9 @@ sudo mkdir -p /etc/u2f-mappings
 # Enroll for a specific user
 sudo -u username pamu2fcfg | sudo tee /etc/u2f-mappings/u2f_keys
 
-# Or create a combined file with multiple users
-sudo pamu2fcfg -u username >> /etc/u2f-mappings/u2f_keys
+# Or append additional users to a combined file
+# (note: the redirect runs as your shell, so use tee -a to keep root permissions)
+sudo pamu2fcfg -u username | sudo tee -a /etc/u2f-mappings/u2f_keys
 ```
 
 ## Configure PAM for Two-Factor Authentication
@@ -188,7 +189,9 @@ sudo nano /etc/ssh/sshd_config
 
 ```text
 UsePAM yes
-ChallengeResponseAuthentication yes
+# KbdInteractiveAuthentication was previously named ChallengeResponseAuthentication
+# (the old name is a deprecated alias as of OpenSSH 8.7)
+KbdInteractiveAuthentication yes
 # For keyboard-interactive (needed for FIDO2 PAM)
 AuthenticationMethods keyboard-interactive
 ```
@@ -250,11 +253,13 @@ ssh-keygen -K
 # Check if the key is detected
 lsusb | grep -i yubico
 
-# Test pamu2fcfg enrollment
-pamu2fcfg -1
+# Test pamu2fcfg enrollment with verbose debug output
+pamu2fcfg -d
 
-# Debug PAM authentication
-sudo pam_u2f --debug --authfile=/etc/security/u2f_keys
+# Debug PAM authentication by adding `debug` to the pam_u2f.so line
+# in the relevant /etc/pam.d/ file, then exercise the PAM stack, e.g.:
+#   auth required pam_u2f.so authfile=/etc/security/u2f_keys debug
+# Output goes to syslog by default; add `debug_file=/tmp/pam_u2f.log` to redirect.
 
 # Check syslog for PAM errors
 sudo journalctl -u sshd -f
