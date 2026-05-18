@@ -25,7 +25,7 @@ Applications (via POSIX mount at /mnt/juicefs)
 Metadata    Actual file data
 ```
 
-The metadata engine tracks filenames, directories, permissions, and chunk locations. Object storage holds the actual file content in fixed-size chunks (default 64 MB blocks split into 4 MB slices).
+The metadata engine tracks filenames, directories, permissions, and chunk locations. Files are partitioned into logical chunks of up to 64 MiB; each write within a chunk becomes a slice, and slices are persisted to object storage as blocks of up to 4 MiB (the default block size).
 
 ## Prerequisites
 
@@ -223,15 +223,23 @@ sudo juicefs mount \
   redis://:password@127.0.0.1:6379/1 \
   /mnt/juicefs \
   --background \
-  --cache-dir=/var/cache/juicefs \  # local cache for frequently read data
-  --cache-size=5120 \               # 5 GB local cache
-  --prefetch=3 \                    # prefetch 3 blocks ahead for sequential reads
-  --writeback \                     # async writes (faster but less durable)
-  --max-uploads=10 \                # parallel upload threads
-  --max-deletes=5                   # parallel delete threads
+  --cache-dir=/var/cache/juicefs \
+  --cache-size=5120 \
+  --prefetch=3 \
+  --writeback \
+  --max-uploads=10 \
+  --max-deletes=5
 ```
 
-The local cache is particularly important for read performance. JuiceFS caches chunks locally so repeated reads of the same data do not hit object storage every time.
+What each flag does:
+- `--cache-dir` - local directory for the read cache (defaults to `/var/jfsCache`)
+- `--cache-size` - local cache size in MiB (5120 = 5 GiB; default is 102400, i.e. 100 GiB)
+- `--prefetch` - number of blocks fetched in parallel ahead of sequential reads (default 1)
+- `--writeback` - upload to object storage asynchronously (faster writes, less durable)
+- `--max-uploads` - parallel upload threads (default 20)
+- `--max-deletes` - parallel delete threads (default 10)
+
+The local cache is particularly important for read performance. JuiceFS caches blocks locally so repeated reads of the same data do not hit object storage every time.
 
 ## Multi-Host Shared Mounting
 
@@ -257,9 +265,10 @@ Both machines now see the same files and changes propagate in near real-time. Th
 For production, use Redis Sentinel or Redis Cluster instead of a single Redis instance:
 
 ```bash
-# JuiceFS with Redis Sentinel
+# JuiceFS with Redis Sentinel: master name goes first in the host list,
+# followed by the sentinel addresses (sharing the trailing port)
 juicefs mount \
-  "redis://:password@sentinel1:26379,sentinel2:26379,sentinel3:26379/1?sentinel=mymaster" \
+  "redis://:password@mymaster,sentinel1,sentinel2,sentinel3:26379/1" \
   /mnt/juicefs \
   --background
 ```
@@ -318,7 +327,10 @@ JuiceFS does not immediately delete object storage data when files are deleted. 
 # Find and delete orphaned objects
 juicefs gc redis://:password@127.0.0.1:6379/1
 
-# Also compact metadata
+# Compact slices in object storage (reduces fragmentation)
+juicefs gc --compact redis://:password@127.0.0.1:6379/1
+
+# Check file system consistency
 juicefs fsck redis://:password@127.0.0.1:6379/1
 ```
 
