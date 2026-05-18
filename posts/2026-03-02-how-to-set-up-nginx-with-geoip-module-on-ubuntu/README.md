@@ -301,8 +301,8 @@ sudo systemctl reload nginx
 # Test with a specific IP (use curl with X-Forwarded-For if behind a load balancer)
 # Or use the MaxMind test IPs from their documentation
 
-# Check what country an IP resolves to
-geoiplookup 8.8.8.8  # If geoipupdate installed this binary
+# Check what country an IP resolves to (install mmdb-bin first: sudo apt install mmdb-bin)
+mmdblookup --file /var/lib/GeoIP/GeoLite2-Country.mmdb --ip 8.8.8.8
 ```
 
 The GeoIP2 module gives Nginx powerful geographic awareness. Combined with maps and conditional logic, you can build sophisticated routing and access control without touching your application code.
