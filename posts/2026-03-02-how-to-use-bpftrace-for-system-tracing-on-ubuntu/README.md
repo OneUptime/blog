@@ -66,8 +66,8 @@ sudo bpftrace -e 'profile:hz:99 { @[comm] = count(); } interval:s:5 { print(@); 
 # Trace write() calls - show process name and bytes written
 sudo bpftrace -e 'tracepoint:syscalls:sys_exit_write /args->ret > 0/ { @[comm] = sum(args->ret); }'
 
-# Show which processes are reading from disk (not cache)
-sudo bpftrace -e 'kprobe:blk_account_io_start { @[comm] = count(); }'
+# Show which processes are issuing block I/O (not cache)
+sudo bpftrace -e 'tracepoint:block:block_rq_issue { @[comm] = count(); }'
 
 # Trace TCP connections being established
 sudo bpftrace -e 'kprobe:tcp_connect { printf("TCP connect: %s\n", comm); }'
@@ -76,7 +76,7 @@ sudo bpftrace -e 'kprobe:tcp_connect { printf("TCP connect: %s\n", comm); }'
 sudo bpftrace -e 'tracepoint:syscalls:sys_enter_execve { printf("exec: %s -> %s\n", comm, str(args->filename)); }'
 
 # Count DNS queries by PID (queries hitting the network)
-sudo bpftrace -e 'tracepoint:syscalls:sys_enter_sendto /args->dest_len == 16/ { @[comm, pid] = count(); }'
+sudo bpftrace -e 'tracepoint:syscalls:sys_enter_sendto /args->addr_len == 16/ { @[comm, pid] = count(); }'
 ```
 
 ## Writing bpftrace Scripts
@@ -239,14 +239,14 @@ uprobe:/usr/bin/nginx:ngx_event_accept
 uprobe:/lib/x86_64-linux-gnu/libc.so.6:malloc
 /pid == $1/  // $1 is first argument passed to bpftrace
 {
-    @alloc_sizes[tid, retval] = arg0;  // Store size at (tid, return addr)
+    @sizes[tid] = arg0;  // Save requested size, keyed by thread
 }
 
 uretprobe:/lib/x86_64-linux-gnu/libc.so.6:malloc
-/pid == $1/
+/pid == $1 && @sizes[tid]/
 {
-    @allocations[retval] = @alloc_sizes[tid, retval];
-    delete(@alloc_sizes[tid, retval]);
+    @allocations[retval] = @sizes[tid];  // retval is the allocated address
+    delete(@sizes[tid]);
 }
 
 uprobe:/lib/x86_64-linux-gnu/libc.so.6:free
