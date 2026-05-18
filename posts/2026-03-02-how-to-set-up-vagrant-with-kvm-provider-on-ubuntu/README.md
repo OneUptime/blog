@@ -140,7 +140,9 @@ Vagrant.configure("2") do |config|
   config.vm.hostname = "kvm-dev"
 
   # Network configuration
-  config.vm.network "private_network", ip: "192.168.121.10"
+  # Avoid 192.168.121.0/24 — that subnet is reserved for vagrant-libvirt's
+  # internal management network and using it here will cause IP conflicts.
+  config.vm.network "private_network", ip: "192.168.50.10"
 
   # Forward ports
   config.vm.network "forwarded_port", guest: 80, host: 8080
@@ -172,13 +174,11 @@ Vagrant.configure("2") do |config|
 
     # Use virtio for better disk performance
     libvirt.disk_bus = "virtio"
+    # disk_driver supersedes the older volume_cache option — don't set both
     libvirt.disk_driver :cache => "writeback"
 
     # Networking
     libvirt.driver = "kvm"
-
-    # Storage volume type
-    libvirt.volume_cache = "writeback"
   end
 
   # Synced folders with libvirt require virtiofs or NFS
@@ -204,11 +204,18 @@ The default VirtualBox synced folder protocol doesn't work with KVM. NFS is the 
 # Install NFS server on the host
 sudo apt-get install -y nfs-kernel-server
 
-# Vagrant will automatically add NFS export entries when you run 'vagrant up'
-# It requires sudo access for /etc/exports management
-# To allow passwordless sudo for this specific command, add to sudoers:
-echo "$USER ALL=(root) NOPASSWD: /usr/sbin/exportfs" | sudo tee /etc/sudoers.d/vagrant-nfs
-echo "$USER ALL=(root) NOPASSWD: /usr/sbin/rpcbind" | sudo tee -a /etc/sudoers.d/vagrant-nfs
+# Vagrant will automatically add NFS export entries when you run 'vagrant up'.
+# It requires sudo access to manage /etc/exports and to (re)load the NFS server.
+# To allow passwordless sudo for the specific commands Vagrant invokes, add to sudoers:
+sudo tee /etc/sudoers.d/vagrant-nfs > /dev/null <<EOF
+Cmnd_Alias VAGRANT_EXPORTS_CHOWN = /bin/chown 0\:0 /tmp/*
+Cmnd_Alias VAGRANT_EXPORTS_MV = /bin/mv -f /tmp/* /etc/exports
+Cmnd_Alias VAGRANT_NFSD_CHECK = /etc/init.d/nfs-kernel-server status
+Cmnd_Alias VAGRANT_NFSD_START = /etc/init.d/nfs-kernel-server start
+Cmnd_Alias VAGRANT_NFSD_APPLY = /usr/sbin/exportfs -ar
+$USER ALL=(root) NOPASSWD: VAGRANT_EXPORTS_CHOWN, VAGRANT_EXPORTS_MV, VAGRANT_NFSD_CHECK, VAGRANT_NFSD_START, VAGRANT_NFSD_APPLY
+EOF
+sudo chmod 0440 /etc/sudoers.d/vagrant-nfs
 ```
 
 Alternatively, use `rsync` for one-way sync which requires no NFS setup:
@@ -261,11 +268,13 @@ libvirt creates a NAT network by default (`virbr0`). For more control, create a 
 sudo nmcli connection add type bridge ifname br0 con-name bridge-br0
 sudo nmcli connection add type ethernet ifname enp3s0 master br0
 
-# In Vagrantfile, use the bridge
-config.vm.provider :libvirt do |libvirt|
-  libvirt.management_network_name = "br0"
-  libvirt.management_network_address = "192.168.1.0/24"
-end
+# In Vagrantfile, attach the VM directly to the host bridge using public_network.
+# Note: libvirt.management_network_* refers to a libvirt-managed network, not a
+# host bridge, so it's the wrong option here. Use config.vm.network instead:
+config.vm.network :public_network,
+  :dev => "br0",
+  :mode => "bridge",
+  :type => "bridge"
 ```
 
 Or define a dedicated libvirt network:
