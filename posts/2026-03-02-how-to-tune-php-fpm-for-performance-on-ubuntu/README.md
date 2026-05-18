@@ -29,7 +29,7 @@ Calculate how much RAM each PHP worker uses:
 ```bash
 # Check average memory usage of running PHP-FPM processes
 
-ps -ylC php-fpm8.3 --sort:rss | awk '{ sum+=$8 } END { print sum/NR/1024, "MB average" }'
+ps -ylC php-fpm8.3 --sort=-rss | awk 'NR>1 { sum+=$8 } END { print sum/(NR-1)/1024, "MB average" }'
 
 # Or use this more readable approach
 ps aux | grep php-fpm | grep -v grep | \
@@ -101,6 +101,8 @@ With static PM, PHP-FPM allocates all worker memory at startup. This prevents th
 ## Timeout Settings
 
 ```ini
+; ---- Pool settings (/etc/php/8.3/fpm/pool.d/www.conf) ----
+
 ; Maximum time for a request to complete
 ; Requests exceeding this are terminated with a 502 to the client
 request_terminate_timeout = 60s
@@ -108,11 +110,17 @@ request_terminate_timeout = 60s
 ; Log requests that take longer than this (for performance analysis)
 slowlog = /var/log/php8.3-slow.log
 request_slowlog_timeout = 5s
+```
 
-; Timeout for child process to stop gracefully during shutdown
-; Should be >= request_terminate_timeout
+```ini
+; ---- Global FPM settings (/etc/php/8.3/fpm/php-fpm.conf) ----
+
+; Restart FPM if this many children exit with SIGSEGV/SIGBUS within
+; emergency_restart_interval. 0 disables this safety net.
 emergency_restart_threshold = 10
 emergency_restart_interval = 1m
+
+; Time the master waits for children to react to signals (reload/stop)
 process_control_timeout = 10s
 ```
 
@@ -188,12 +196,13 @@ opcache.interned_strings_buffer = 32
 ; php -r "echo count(get_required_files());" on a typical request to estimate
 opcache.max_accelerated_files = 20000
 
-; How often to check for script changes (0 = never check, requires restart to update)
-; Production: 0 (and restart FPM on deploy)
+; How often (in seconds) to check file timestamps for changes.
+; 0 = check on every request (only takes effect when validate_timestamps = 1).
 ; Development: 2
 opcache.revalidate_freq = 0
 
-; Validate that cached file timestamps match disk
+; Validate that cached file timestamps match disk.
+; 0 disables timestamp checks entirely (production: requires FPM restart on deploy).
 opcache.validate_timestamps = 0
 
 ; Enable JIT (good for CPU-intensive code, marginal for typical web apps)
@@ -264,8 +273,8 @@ echo "=== PHP-FPM Workers ==="
 ps aux | grep php-fpm | grep -v grep | wc -l
 
 echo "=== Average Worker Memory ==="
-ps -ylC php-fpm8.3 --sort:rss 2>/dev/null | \
-    awk 'NR>1 { sum+=$8 } END { printf "%.1f MB\n", sum/NR/1024 }'
+ps -ylC php-fpm8.3 --sort=-rss 2>/dev/null | \
+    awk 'NR>1 { sum+=$8 } END { printf "%.1f MB\n", sum/(NR-1)/1024 }'
 
 echo "=== OPcache Status ==="
 php -r "
