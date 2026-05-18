@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Nextcloud, Self-Hosted, Cloud Storage, Privacy
 
-Description: Install Nextcloud on Ubuntu with Apache or Nginx, configure PostgreSQL as the database, enable Redis caching, set up HTTPS, and connect desktop and mobile clients for self-hosted cloud storage.
+Description: Install Nextcloud on Ubuntu with Nginx, configure PostgreSQL as the database, enable Redis caching, set up HTTPS, and connect desktop and mobile clients for self-hosted cloud storage.
 
 ---
 
@@ -162,7 +162,11 @@ session.cookie_samesite = Strict
 apc.enable_cli = 1
 ```
 
+Apply the same settings to PHP CLI (used by cron.php and `occ`). `apc.enable_cli` only has an effect when read by the CLI SAPI, so the file must also exist under `cli/conf.d/`:
+
 ```bash
+sudo cp /etc/php/8.2/fpm/conf.d/99-nextcloud.ini /etc/php/8.2/cli/conf.d/99-nextcloud.ini
+
 sudo systemctl restart php8.2-fpm
 ```
 
@@ -329,9 +333,6 @@ $CONFIG = array(
   // Log settings
   'loglevel' => 1,
   'logfile' => '/var/nextcloud-data/nextcloud.log',
-
-  // Disable index.php in URLs
-  'htaccess.RewriteBase' => '/',
 );
 ```
 
