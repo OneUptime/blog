@@ -133,13 +133,16 @@ sudo lvs
 # Example output shows /dev/vg0/data is the LV for our share
 
 # Create a snapshot (do this periodically, e.g., via cron)
-# The snapshot name must follow the @GMT format for shadow_copy2
-SNAP_NAME=$(date -u +@GMT-%Y.%m.%d-%H.%M.%S)
-sudo lvcreate --size 1G --snapshot --name "$SNAP_NAME" /dev/vg0/data
+# LVM volume names cannot contain '@', so the LV uses a sanitized name
+# while the mount directory uses the @GMT format shadow_copy2 expects
+TS=$(date -u +%Y.%m.%d-%H.%M.%S)
+SNAP_LV="snap-${TS//./_}"
+SNAP_DIR="@GMT-${TS}"
+sudo lvcreate --size 1G --snapshot --name "$SNAP_LV" /dev/vg0/data
 
-# Mount the snapshot with the GMT-format name
-sudo mkdir -p "/srv/samba/myshare/$SNAP_NAME"
-sudo mount -o ro /dev/vg0/"$SNAP_NAME" "/srv/samba/myshare/$SNAP_NAME"
+# Mount the snapshot with the GMT-format directory name
+sudo mkdir -p "/srv/samba/myshare/$SNAP_DIR"
+sudo mount -o ro /dev/vg0/"$SNAP_LV" "/srv/samba/myshare/$SNAP_DIR"
 ```
 
 Create a snapshot script:
@@ -158,31 +161,36 @@ SNAP_SIZE="2G"
 MOUNT_BASE="/srv/samba/myshare"
 MAX_SNAPS=10  # Keep only the last 10 snapshots
 
-# Create snapshot with GMT timestamp name
-SNAP_NAME=$(date -u +@GMT-%Y.%m.%d-%H.%M.%S)
+# LVM volume names cannot contain '@', so the LV uses a sanitized name
+# while the mount directory uses the @GMT format shadow_copy2 expects
+TS=$(date -u +%Y.%m.%d-%H.%M.%S)
+SNAP_LV="snap-${TS//./_}"
+SNAP_DIR="@GMT-${TS}"
 
 # Create the LVM snapshot
-lvcreate --size "$SNAP_SIZE" --snapshot --name "$SNAP_NAME" /dev/${VG}/${LV}
+lvcreate --size "$SNAP_SIZE" --snapshot --name "$SNAP_LV" /dev/${VG}/${LV}
 
 # Create mount point
-mkdir -p "${MOUNT_BASE}/${SNAP_NAME}"
+mkdir -p "${MOUNT_BASE}/${SNAP_DIR}"
 
 # Mount read-only
-mount -o ro /dev/${VG}/${SNAP_NAME} "${MOUNT_BASE}/${SNAP_NAME}"
+mount -o ro /dev/${VG}/${SNAP_LV} "${MOUNT_BASE}/${SNAP_DIR}"
 
 # Remove old snapshots beyond MAX_SNAPS
 SNAP_COUNT=$(ls -d "${MOUNT_BASE}"/@GMT-* 2>/dev/null | wc -l)
 if [ "$SNAP_COUNT" -gt "$MAX_SNAPS" ]; then
     OLDEST=$(ls -d "${MOUNT_BASE}"/@GMT-* | head -1)
+    # Derive the LV name from the mount directory name
+    OLD_TS=$(basename "$OLDEST" | sed 's/^@GMT-//')
+    OLD_LV="snap-${OLD_TS//./_}"
     # Unmount and remove oldest snapshot
     umount "$OLDEST"
     rmdir "$OLDEST"
     # Remove the LVM snapshot
-    OLD_SNAP=$(basename "$OLDEST")
-    lvremove -f /dev/${VG}/${OLD_SNAP}
+    lvremove -f /dev/${VG}/${OLD_LV}
 fi
 
-echo "$(date): Snapshot $SNAP_NAME created" >> /var/log/samba-snapshots.log
+echo "$(date): Snapshot $SNAP_DIR created" >> /var/log/samba-snapshots.log
 ```
 
 ```bash
