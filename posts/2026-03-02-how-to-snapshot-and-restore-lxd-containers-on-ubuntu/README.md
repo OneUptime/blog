@@ -162,14 +162,18 @@ The cron format for `snapshots.schedule`:
 
 ## Setting Default Snapshot Retention
 
-Apply retention policies across all containers via a profile or the server default:
+Apply retention policies across all containers by setting the snapshot keys on the `default` profile (or any profile your containers use):
 
 ```bash
-# Set default snapshot expiry (all new snapshots expire after 7 days)
-lxc config set core.snapshots_expiry 7d
+# Set default snapshot expiry on the default profile (applies to all containers using it)
+lxc profile set default snapshots.expiry 7d
 
-# Check current server defaults
-lxc config show | grep snapshot
+# You can also set a default schedule and naming pattern on the profile
+lxc profile set default snapshots.schedule "0 0 * * *"
+lxc profile set default snapshots.pattern "snap-{{ creation_date|date:'2006-01-02-15-04-05' }}"
+
+# Check the current profile configuration
+lxc profile show default
 ```
 
 ## Using Snapshots for Pre-Maintenance Backup
