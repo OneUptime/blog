@@ -72,7 +72,9 @@ For direct remote access, configure Syncthing to listen on a non-localhost addre
 
 ```bash
 # Edit the configuration file
-nano ~/.config/syncthing/config.xml
+# (Syncthing v1.27.0+ uses ~/.local/state/syncthing; older installs may still
+# use ~/.config/syncthing)
+nano ~/.local/state/syncthing/config.xml
 
 # Find the <gui> section and change:
 # <address>127.0.0.1:8384</address>
@@ -102,7 +104,7 @@ To sync between two Ubuntu machines:
 
 ```bash
 # Get the device ID from the command line
-syncthing -device-id
+syncthing device-id
 ```
 
 3. On machine B, click "Add Remote Device", paste machine A's Device ID, give it a name
@@ -195,7 +197,7 @@ For environments where you don't want to use Syncthing's discovery infrastructur
 Or configure static addresses in the config file:
 
 ```xml
-<!-- In ~/.config/syncthing/config.xml -->
+<!-- In ~/.local/state/syncthing/config.xml (or ~/.config/syncthing/config.xml on older installs) -->
 <device id="DEVICE-ID-HERE" name="server2">
     <address>tcp://192.168.1.50:22000</address>
 </device>
@@ -205,9 +207,9 @@ Or configure static addresses in the config file:
 
 ```bash
 # Syncthing uses:
-# 22000/tcp - syncing traffic between devices
-# 22000/udp - relay transport
-# 21027/udp - local device discovery (broadcast)
+# 22000/tcp - TCP sync protocol traffic between devices
+# 22000/udp - QUIC sync protocol traffic between devices
+# 21027/udp - local device discovery (broadcasts on IPv4, multicast on IPv6)
 
 sudo ufw allow 22000/tcp
 sudo ufw allow 22000/udp
@@ -265,11 +267,13 @@ curl -s -H "X-API-Key: $API_KEY" \
 syncthing --version
 
 # Reset the index database (fixes some "stuck" sync issues)
-# Stop Syncthing first
-systemctl --user stop syncthing
-# Then delete the index database (safe - it rebuilds on next start)
-rm -rf ~/.config/syncthing/index-v0.14.0.db/
-systemctl --user start syncthing
+# Safe - the index rebuilds from the files on disk on next start.
+# Use the REST API to reset (works for both v1 LevelDB and v2 SQLite backends):
+API_KEY="your-api-key"
+# Reset all folders:
+curl -X POST -H "X-API-Key: $API_KEY" http://localhost:8384/rest/system/reset
+# Or reset a single folder by ID:
+curl -X POST -H "X-API-Key: $API_KEY" "http://localhost:8384/rest/system/reset?folder=your-folder-id"
 
 # Check for conflicts
 # Files that couldn't sync cleanly get renamed with .sync-conflict in the name
