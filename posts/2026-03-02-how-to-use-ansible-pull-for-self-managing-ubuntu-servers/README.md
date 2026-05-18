@@ -216,10 +216,8 @@ sudo crontab -e
 
 ```cron
 # Run ansible-pull every 30 minutes
-*/30 * * * * /usr/bin/ansible-pull -U https://github.com/yourorg/ansible-config.git \
-    -C main \
-    -i localhost \
-    >> /var/log/ansible-pull.log 2>&1
+# Note: cron does not support backslash line continuation - keep the entry on one line
+*/30 * * * * /usr/bin/ansible-pull -U https://github.com/yourorg/ansible-config.git -C main -i localhost >> /var/log/ansible-pull.log 2>&1
 ```
 
 ### Using a Systemd Timer (Better Option)
