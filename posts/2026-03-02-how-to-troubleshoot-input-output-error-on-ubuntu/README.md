@@ -133,8 +133,9 @@ sudo journalctl -b -1 | grep -i fsck
 ### Checking XFS Filesystems
 
 ```bash
-# Check XFS filesystem (must be unmounted)
-sudo xfs_check /dev/sdb1
+# Check XFS filesystem read-only (must be unmounted)
+# Note: the old xfs_check command was removed in xfsprogs 4.0; use xfs_repair -n instead
+sudo xfs_repair -n /dev/sdb1
 
 # Repair XFS filesystem
 sudo xfs_repair /dev/sdb1
@@ -150,7 +151,10 @@ sudo xfs_repair -L /dev/sdb1
 # WARNING: Takes hours on large drives
 sudo badblocks -v /dev/sdb 2>&1 | tee /tmp/badblocks-output.txt
 
-# Non-destructive read-write test (VERY DANGEROUS - only on unmounted disks with no important data)
+# Non-destructive read-write test (slower but preserves data; filesystem must be unmounted)
+# sudo badblocks -n -v /dev/sdb
+
+# Destructive write-mode test (VERY DANGEROUS - ERASES ALL DATA; only on unmounted disks with no important data)
 # sudo badblocks -w -v /dev/sdb
 
 # Run badblocks as part of e2fsck (reads existing bad block list)
