@@ -171,7 +171,7 @@ id
 # Map the current user to UID 0 inside the namespace
 # This requires writing to /proc/PID/uid_map
 
-# A simpler approach using newuidmap/newgidmap
+# A simpler approach: unshare's --map-root-user maps the current UID/GID to 0
 unshare --user --map-root-user bash
 # Now you appear as root inside
 id   # uid=0(root) gid=0(root)
