@@ -64,10 +64,10 @@ services:
       LD_SUPERUSER_NAME: admin
       LD_SUPERUSER_PASSWORD: your-strong-password-here
 
-      # Optional: disable public registration
+      # Optional: disable background tasks (e.g., Wayback Machine snapshots)
       LD_DISABLE_BACKGROUND_TASKS: "False"
 
-      # Optional: enable HTTPS redirect
+      # Optional: enable authentication proxy support (e.g., Authelia)
       LD_ENABLE_AUTH_PROXY: "False"
 
       # Context path if running under a subpath (e.g., /bookmarks)
@@ -148,7 +148,7 @@ After logging in:
 
 ### Via the Web Interface
 
-Click the "+" button or use the keyboard shortcut `a` to open the add bookmark form:
+Click the "+" button or use the keyboard shortcut `n` to open the add bookmark form:
 - URL: the link to save
 - Title: auto-fetched from the page, or enter manually
 - Description: optional notes about the link
@@ -284,7 +284,7 @@ docker compose exec linkding python manage.py createsuperuser
 # Follow prompts for username, email, password
 
 # Or create a regular (non-admin) user via the admin interface:
-# Visit https://bookmarks.example.com/settings/users/add
+# Visit https://bookmarks.example.com/admin/auth/user/add/
 # Fill in username and password
 ```
 
@@ -296,19 +296,17 @@ Enable a public view of bookmarks:
 
 1. Settings > General > Enable Public Sharing
 2. Mark specific bookmarks as "Shared"
-3. Public URL: `https://bookmarks.example.com/public/<username>/`
+3. Public URL: `https://bookmarks.example.com/bookmarks/shared?user=<username>`
 
 This lets you share a curated reading list or resource collection without requiring the visitor to log in.
 
 ## Export and Backup
 
 ```bash
-# Export bookmarks to Netscape HTML format via the export endpoint
-curl -H "Authorization: Token $API_TOKEN" \
-  "https://bookmarks.example.com/api/bookmarks/export/" \
-  -o bookmarks-export-$(date +%Y%m%d).html
+# Export bookmarks to Netscape HTML format via the web UI:
+# Visit Settings > Export > Download (or browse to /settings/export)
 
-# Or export all bookmarks as JSON via the list endpoint
+# Export all bookmarks as JSON via the REST API list endpoint
 curl -H "Authorization: Token $API_TOKEN" \
   "https://bookmarks.example.com/api/bookmarks/?limit=10000" \
   -o bookmarks-$(date +%Y%m%d).json
