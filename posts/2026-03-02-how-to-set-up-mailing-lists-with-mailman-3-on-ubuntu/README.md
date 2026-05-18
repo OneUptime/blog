@@ -76,7 +76,7 @@ lmtp_port: 8024
 smtp_host: localhost
 smtp_port: 25
 
-[archiver:hyperkitty]
+[archiver.hyperkitty]
 class: mailman_hyperkitty.Archiver
 enable: yes
 configuration: /etc/mailman3/mailman-hyperkitty.cfg
@@ -193,16 +193,19 @@ sudo systemctl reload postfix
 
 ### Set Up Automatic Map Updates
 
-Mailman updates these maps when lists are created/deleted. Configure Postfix to reload automatically:
+Mailman regenerates these maps and runs `postmap` on them automatically when lists are created or deleted (Postfix re-reads hash maps on the fly, so no `postfix reload` is needed). The command Mailman invokes is the `postmap_command` option, which lives in the `[postfix]` section of the Postfix configuration file referenced by `[mta] configuration:` in `mailman.cfg`. The bundled `mailman.config.postfix` module (used by default when `[mta] configuration:` is unset, and shipped with `mailman3-full`) already sets this to `/usr/sbin/postmap`, which is correct on Ubuntu, so no override is normally needed. To override it, create your own Postfix config file and point `[mta]` at it:
 
-```bash
-sudo nano /etc/mailman3/mailman.cfg
+```ini
+# /etc/mailman3/postfix.cfg
+[postfix]
+postmap_command: /usr/sbin/postmap
+transport_file_type: hash
 ```
 
 ```ini
+# /etc/mailman3/mailman.cfg
 [mta]
-# Command to reload Postfix after map changes
-postfix_map_cmd: /usr/sbin/postmap
+configuration: /etc/mailman3/postfix.cfg
 ```
 
 ## Starting Mailman Services
@@ -269,29 +272,27 @@ sudo systemctl reload nginx
 ### Via Command Line
 
 ```bash
-# Add your domain to Mailman
-sudo mailman create --domain lists.example.com
-
-# Create a new mailing list
-sudo mailman create --owner admin@example.com announce@lists.example.com
+# Create a new mailing list. The -d/--domain flag is a boolean toggle that
+# auto-creates the domain if it doesn't already exist (use -D to disable).
+sudo mailman create -d --owner admin@example.com announce@lists.example.com
 
 # List all mailing lists
 sudo mailman lists
 
-# View list configuration
-sudo mailman config list announce@lists.example.com
+# The mailman CLI has no "config" subcommand for editing list settings -
+# use Postorius or the REST API (see the REST API section below) to read
+# or update fields like subject_prefix.
 
-# Set a configuration value
-sudo mailman config set announce@lists.example.com subject_prefix "[Announce]"
-
-# Add subscribers
-sudo mailman addmembers --welcome-msg=no announce@lists.example.com << EOF
-user1@example.com  User One
-user2@example.com  User Two
+# Add subscribers. FILENAME is a required positional argument and "-" reads
+# from stdin. Lines must be RFC 822 addresses (angle-bracket or comment form).
+sudo mailman addmembers --no-welcome-msg - announce@lists.example.com << EOF
+User One <user1@example.com>
+User Two <user2@example.com>
 EOF
 
-# Remove a subscriber
-sudo mailman delmembers --file - announce@lists.example.com << EOF
+# Remove subscribers. The list is selected with -l/--list (not a positional
+# argument), and --file - reads addresses from stdin.
+sudo mailman delmembers -l announce@lists.example.com --file - << EOF
 user1@example.com
 EOF
 
@@ -331,27 +332,47 @@ Through Postorius (the web interface) at `https://lists.example.com/postorius/`,
 - **Archiving** - Enable/disable HyperKitty archiving
 
 ```bash
-# Common settings via command line
-# Set maximum message size (bytes)
-sudo mailman config set mylist@lists.example.com max_message_size 100
+# List settings are edited via Postorius or the REST API. PATCH the list's
+# /config endpoint with the fields you want to change. The list_id in the
+# URL is the fully-qualified list name with "@" replaced by ".".
+
+# Set maximum message size (in KB)
+curl -u restadmin:changeme_rest_password \
+    -X PATCH \
+    -d "max_message_size=100" \
+    http://localhost:8001/3.1/lists/mylist.lists.example.com/config
 
 # Require approval for non-member posts
-sudo mailman config set mylist@lists.example.com default_nonmember_action hold
+curl -u restadmin:changeme_rest_password \
+    -X PATCH \
+    -d "default_nonmember_action=hold" \
+    http://localhost:8001/3.1/lists/mylist.lists.example.com/config
 
 # Archive messages
-sudo mailman config set mylist@lists.example.com archive_policy public
+curl -u restadmin:changeme_rest_password \
+    -X PATCH \
+    -d "archive_policy=public" \
+    http://localhost:8001/3.1/lists/mylist.lists.example.com/config
 ```
 
 ## Handling Bounces
 
-Mailman 3 handles bounces automatically. When a member's address bounces repeatedly, Mailman disables delivery or removes them:
+Mailman 3 handles bounces automatically. When a member's address bounces repeatedly, Mailman disables delivery or removes them. Per-member bounce state lives on the membership record:
 
 ```bash
-# Check bounce information for a list
-curl -u restadmin:password http://localhost:8001/3.1/lists/mylist.lists.example.com/bans
+# Inspect a single membership (the member_id comes from
+# /3.1/lists/<list_id>/roster/member) - the response includes
+# bounce_score and last_bounce_received.
+curl -u restadmin:changeme_rest_password \
+    http://localhost:8001/3.1/members/<member_id>
 
-# View bounce info for a member
-sudo mailman info user@example.com
+# List addresses that are banned from a list (separate from bounce state)
+curl -u restadmin:changeme_rest_password \
+    http://localhost:8001/3.1/lists/mylist.lists.example.com/bans
+
+# Show information about this Mailman instance (mailman info takes no
+# positional arguments - it does not look up a user)
+sudo mailman info
 ```
 
 ## Sending to a List
