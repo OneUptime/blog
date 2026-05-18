@@ -71,10 +71,7 @@ grpc_listen_addr: 127.0.0.1:50443
 # Allow insecure gRPC for local use (CLI connects on loopback)
 grpc_allow_insecure: true
 
-# Private key for the server - auto-generated on first run
-private_key_path: /var/lib/headscale/private.key
-
-# Noise private key (for Tailscale's Noise protocol)
+# Noise private key (for Tailscale's Noise protocol) - auto-generated on first run
 noise:
   private_key_path: /var/lib/headscale/noise_private.key
 
@@ -84,8 +81,10 @@ prefixes:
   v6: fd7a:115c:a1e0::/48
 
 # Database configuration
-db_type: sqlite3
-db_path: /var/lib/headscale/db.sqlite
+database:
+  type: sqlite
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
 
 # TLS configuration
 # If using a reverse proxy (nginx), disable TLS here
@@ -191,7 +190,7 @@ sudo headscale preauthkeys create --user myuser
 # Generate a reusable key (can be used by multiple devices)
 sudo headscale preauthkeys create --user myuser --reusable
 
-# Generate an expiring key (expires in 24h by default)
+# Generate an expiring key (expires in 1h by default)
 sudo headscale preauthkeys create --user myuser --expiration 720h
 
 # List pre-auth keys for a user
