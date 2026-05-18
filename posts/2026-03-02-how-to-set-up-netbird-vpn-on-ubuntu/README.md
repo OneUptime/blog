@@ -14,7 +14,7 @@ This guide covers both the self-hosted management server deployment and the clie
 
 ## Architecture
 
-NetBird has three components:
+NetBird has four components:
 
 - **Management Server** - handles peer registration, network policy, and key exchange
 - **Signal Server** - relays connection establishment messages between peers
@@ -32,40 +32,28 @@ For a small team, you can use NetBird Cloud (netbird.io) and skip the server set
 
 ## Self-Hosted Management Server Setup
 
-NetBird provides a Docker Compose setup for self-hosting:
+NetBird provides a setup script that bundles Zitadel as the identity provider and generates the Docker Compose stack for you:
 
 ```bash
-# Download the setup script
-
-curl -fsSL https://github.com/netbirdio/netbird/releases/latest/download/setup.env.example -o setup.env
-
-# Edit the setup environment
-nano setup.env
+# Download the official getting-started script
+curl -fsSL https://github.com/netbirdio/netbird/releases/latest/download/getting-started-with-zitadel.sh -o getting-started-with-zitadel.sh
+chmod +x getting-started-with-zitadel.sh
 ```
 
-Key variables to set in `setup.env`:
+Before running it, export the required environment variables:
 
 ```bash
-# Your server's domain name
-NETBIRD_DOMAIN=vpn.yourdomain.com
+# Your server's domain name (must resolve to this host)
+export NETBIRD_DOMAIN=vpn.yourdomain.com
 
-# TURN server credentials (generate random strings)
-TURN_USER=netbird
-TURN_PASSWORD=$(openssl rand -base64 32)
-
-# Identity provider (netbird supports Google, GitHub, Azure AD, etc.)
-# For testing, use built-in authentication
-NETBIRD_AUTH_OIDC_CONFIGURATION_ENDPOINT=https://netbird.eu.auth0.com/.well-known/openid-configuration
+# Email used for Let's Encrypt certificate issuance
+export NETBIRD_LETSENCRYPT_EMAIL=admin@yourdomain.com
 ```
 
-Download and start the stack:
+Run the script, which will render the docker-compose stack from the templates in `infrastructure_files/` (`docker-compose.yml.tmpl`, `management.json.tmpl`, `turnserver.conf.tmpl`) and start the stack:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/netbirdio/netbird/main/infrastructure_files/docker-compose.yml -o docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/netbirdio/netbird/main/infrastructure_files/management.json -o management.json
-
-# Start all services
-docker compose up -d
+./getting-started-with-zitadel.sh
 ```
 
 The stack includes:
@@ -226,13 +214,9 @@ sudo systemctl restart netbird
 ```bash
 # Disconnect from the network (stops the WireGuard tunnel)
 sudo netbird down
-
-# Remove the peer from the management server (in dashboard)
-# Or via CLI
-sudo netbird logout
 ```
 
-In the dashboard, peers that have been logged out show as inactive. You can permanently delete them from the Peers section.
+To permanently remove a peer from the network, delete it from the Peers section of the dashboard. Peers that have been brought down show as inactive until they reconnect.
 
 ## Upgrading the Client
 
