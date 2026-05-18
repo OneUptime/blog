@@ -176,7 +176,7 @@ s socket
 # See examples of different types
 ls -la /dev/sda   # b for block device
 ls -la /dev/tty   # c for character device
-ls -la /run/systemd/private  # d for directory
+ls -la -d /etc/systemd  # d for directory
 ls -la /usr/bin/python3  # l for symlink (often)
 ```
 
