@@ -41,7 +41,7 @@ fusermount3 --version
 
 ## Configuring FUSE for Non-Root Users
 
-By default, only root can mount FUSE filesystems. To allow regular users:
+By default, regular users can already mount FUSE filesystems on Ubuntu - `fusermount3` is installed setuid root, so any user can invoke it. However, a FUSE mount is by default only accessible to the user who mounted it. To let other users (including root) access your FUSE mounts, you need to enable the `allow_other` mount option:
 
 ```bash
 # Enable user_allow_other in the FUSE config
@@ -49,16 +49,9 @@ sudo nano /etc/fuse.conf
 
 # Uncomment this line:
 user_allow_other
-
-# Also ensure your user is in the fuse group
-sudo usermod -aG fuse $USER
-
-# Apply group change (log out and back in, or use newgrp)
-newgrp fuse
-
-# Verify group membership
-groups
 ```
+
+With that set, non-root users may pass `-o allow_other` (or `-o allow_root`) when mounting. On modern Ubuntu (22.04+), there is no `fuse` group requirement.
 
 ## sshfs - Mount Remote Directories via SSH
 
@@ -195,8 +188,9 @@ fusermount3 -u ~/cloud-storage
 To understand FUSE internals, a minimal example is illuminating.
 
 ```bash
-# Install FUSE Python bindings
-sudo apt install python3-fuse -y
+# Install the fusepy Python binding
+# (Do not install python3-fuse - it is a different, conflicting binding
+#  that also provides a top-level "fuse" module.)
 pip3 install fusepy
 ```
 
@@ -278,8 +272,7 @@ sshfs user@host:/path ~/mount \
     -o cache_timeout=115 \
     -o attr_timeout=115 \
     -o entry_timeout=1200 \
-    -o max_readahead=131072 \
-    -o large_read
+    -o max_readahead=131072
 
 # rclone with VFS caching for better performance
 rclone mount remote:path ~/mount \
