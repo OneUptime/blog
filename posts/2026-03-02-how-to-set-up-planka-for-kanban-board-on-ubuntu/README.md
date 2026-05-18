@@ -46,17 +46,13 @@ cd /opt/planka
 
 ```bash
 sudo tee /opt/planka/docker-compose.yml << 'EOF'
-version: '3'
-
 services:
   planka:
     image: ghcr.io/plankanban/planka:latest
     container_name: planka
     restart: always
     volumes:
-      - user-avatars:/app/public/user-avatars
-      - project-background-images:/app/public/project-background-images
-      - attachments:/app/private/attachments
+      - data:/app/data
     ports:
       - "127.0.0.1:3000:1337"
     environment:
@@ -73,13 +69,18 @@ services:
       - TRUST_PROXY=true
 
       # Optional: set default language
-      # - DEFAULT_LANGUAGE=en
+      # - DEFAULT_LANGUAGE=en-US
 
       # Optional: limit file upload size (in bytes)
-      # - ATTACHMENTS_MAX_SIZE=10485760
+      # - MAX_UPLOAD_FILE_SIZE=10485760
 
-      # Optional: disable registration
-      # - ALLOW_ALL_TO_CREATE_PROJECTS=false
+      # Optional: create the initial admin user automatically on first startup.
+      # Keep DEFAULT_ADMIN_EMAIL set if you want to prevent this user from being
+      # edited or deleted; otherwise the variables can be removed after first run.
+      # - DEFAULT_ADMIN_EMAIL=admin@example.com
+      # - DEFAULT_ADMIN_PASSWORD=your-admin-password
+      # - DEFAULT_ADMIN_NAME=Admin User
+      # - DEFAULT_ADMIN_USERNAME=admin
 
     depends_on:
       postgres:
@@ -102,9 +103,7 @@ services:
       retries: 5
 
 volumes:
-  user-avatars:
-  project-background-images:
-  attachments:
+  data:
   pg-data:
 EOF
 ```
@@ -139,31 +138,27 @@ Planka initializes the database on first startup. Once it's running, it's access
 
 ## Creating the Initial Admin User
 
-Planka creates admin users via a command-line tool:
+Since Planka 1.13, an administrator user is not created automatically. You have two options.
+
+The first is to run the interactive admin creation script, which prompts for email, password, name, and an optional username:
 
 ```bash
-# Create the first admin user
-docker compose exec planka node ./dist/db/createUser.js \
-    --name "Admin User" \
-    --email admin@example.com \
-    --password "your-admin-password"
-
-# The user is created with admin privileges if it's the first user
-# Alternatively, use environment variables:
-docker compose exec planka node ./dist/db/createUser.js \
-    --name "Admin User" \
-    --email admin@example.com \
-    --password "your-admin-password" \
-    --admin
+docker compose run --rm planka npm run db:create-admin-user
 ```
 
-Some versions of Planka handle initial user creation differently. Check the logs after starting:
+The second is to uncomment the `DEFAULT_ADMIN_*` environment variables in `docker-compose.yml`, then restart:
+
+```bash
+docker compose up -d
+```
+
+The admin user is created on startup. You can remove the variables after the first successful startup; however, if you keep `DEFAULT_ADMIN_EMAIL` set, that account cannot be deleted or modified by other users.
+
+Check the logs to confirm:
 
 ```bash
 docker compose logs planka | grep -i "admin\|user\|created"
 ```
-
-If Planka supports registration through the web UI, navigate to `http://localhost:3000` and register - the first registered user typically becomes admin.
 
 ## Configuring nginx for HTTPS
 
@@ -219,22 +214,13 @@ From the web interface, admin users can:
 - Change user roles
 - Deactivate accounts
 
-From the command line:
+Additional admin users can also be created from the command line using the same script:
 
 ```bash
-# List all users
-docker compose exec planka node ./dist/db/listUsers.js
-
-# Create additional users
-docker compose exec planka node ./dist/db/createUser.js \
-    --name "Jane Smith" \
-    --email jane@example.com \
-    --password "initial-password"
-
-# Reset a user's password (check what scripts are available)
-ls /var/lib/docker/volumes/
-docker compose exec planka ls dist/db/
+docker compose run --rm planka npm run db:create-admin-user
 ```
+
+Regular (non-admin) user accounts are managed through the web UI once an administrator is logged in.
 
 ## Working with Planka's Features
 
@@ -274,11 +260,11 @@ cd /opt/planka
 docker compose exec -T postgres pg_dump -U planka planka | \
     gzip > $BACKUP_DIR/planka-db-$DATE.sql.gz
 
-# Backup attachment volumes
+# Backup the Planka data volume (avatars, background images, attachments)
 docker run --rm \
-    -v planka_attachments:/data \
+    -v planka_data:/data \
     -v $BACKUP_DIR:/backup \
-    alpine tar czf /backup/planka-attachments-$DATE.tar.gz -C /data .
+    alpine tar czf /backup/planka-data-$DATE.tar.gz -C /data .
 
 # Remove old backups (keep 14 days)
 find $BACKUP_DIR -name "*.gz" -mtime +14 -delete
@@ -303,11 +289,11 @@ docker compose stop planka
 gunzip -c /var/backups/planka/planka-db-20260301_0200.sql.gz | \
     docker compose exec -T postgres psql -U planka planka
 
-# Restore attachments
+# Restore the data volume (avatars, background images, attachments)
 docker run --rm \
-    -v planka_attachments:/data \
+    -v planka_data:/data \
     -v /var/backups/planka:/backup \
-    alpine tar xzf /backup/planka-attachments-20260301_0200.tar.gz -C /data
+    alpine tar xzf /backup/planka-data-20260301_0200.tar.gz -C /data
 
 # Start Planka again
 docker compose start planka
