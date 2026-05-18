@@ -162,7 +162,7 @@ ping 192.168.2.1  # Host on the remote site
 
 ## Making the Configuration Persistent
 
-GRE tunnels created with `ip tunnel` are not persistent across reboots. The cleanest way to persist them is with a systemd service combined with Netplan for IPsec.
+GRE tunnels created with `ip tunnel` are not persistent across reboots. The cleanest way to persist them is with a systemd service that runs after `strongswan-starter.service` is up.
 
 ```bash
 # Create a tunnel setup script
