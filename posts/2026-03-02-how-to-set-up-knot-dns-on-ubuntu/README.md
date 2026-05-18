@@ -30,7 +30,7 @@ sudo apt install -y knot
 
 # Verify the installation
 knotd --version
-knotc version
+knotc -V
 ```
 
 ## Understanding the Configuration Format
@@ -256,8 +256,8 @@ sudo knotc reload
 # Check zone status
 sudo knotc zone-status example.com
 
-# List all zones
-sudo knotc zone-list
+# List all configured zones
+sudo knotc conf-read zone.domain
 ```
 
 ## Configuring DNSSEC
@@ -305,7 +305,7 @@ sudo knotc reload
 sudo knotc zone-status example.com
 
 # Get the DS record to submit to your registrar
-sudo knotc zone-ksk-status example.com
+sudo keymgr example.com ds
 # Or directly query:
 dig @127.0.0.1 example.com DNSKEY
 dig @127.0.0.1 example.com DS
@@ -353,16 +353,20 @@ keymgr -t transfer-key hmac-sha256
 # Check server statistics
 sudo knotc stats
 
-# Specific statistics
+# Specific built-in statistics
 sudo knotc stats server.zone-count
-sudo knotc stats server.query-received
-sudo knotc stats resolver.answer-nodata
+
+# Per-zone statistics (requires zone stats enabled)
+sudo knotc zone-stats example.com
+
+# Detailed query statistics require the mod-stats module to be enabled
+sudo knotc stats mod-stats
 
 # Real-time monitoring with systemd journal
 journalctl -u knot -f
 
-# Query rate by checking statistics over time
-watch -n 5 "knotc stats server.query-received"
+# Watch zone counts over time
+watch -n 5 "knotc stats server.zone-count"
 ```
 
 Knot DNS's focus on authoritative serving means it does one job and does it well. The configuration is cleaner than BIND's, DNSSEC automation is solid, and the performance headroom is substantial even on modest hardware.
