@@ -147,30 +147,43 @@ For environments where you don't want to rely on ZeroTier Central:
 
 ```bash
 # ZeroTier One includes the controller functionality
-# It's activated when you create networks through the local API
+# It's activated when you create networks through the local HTTP API
+# Networks managed by this controller have IDs of the form
+# <controller-node-id><6 hex chars>
 
-# Create a network via the local API
-sudo zerotier-cli api /controller/network/$(sudo zerotier-cli info | cut -d' ' -f3)______ -X POST \
+NODE_ID=$(sudo zerotier-cli info | cut -d' ' -f3)
+AUTH_TOKEN=$(sudo cat /var/lib/zerotier-one/authtoken.secret)
+
+# Create a network via the local API (replace 'abcdef' with any 6 hex chars)
+curl -X POST "http://localhost:9993/controller/network/${NODE_ID}abcdef" \
+    -H "X-ZT1-Auth: ${AUTH_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{"name": "mynetwork", "private": true}'
 
 # List networks managed by this controller
-sudo zerotier-cli listnetworks
+curl -H "X-ZT1-Auth: ${AUTH_TOKEN}" http://localhost:9993/controller/network
 ```
 
-Alternatively, `ztncui` is a web UI for self-hosted ZeroTier controllers:
+Alternatively, `ztncui` is a web UI for self-hosted ZeroTier controllers. It is not on npm - install it from source:
 
 ```bash
-# Install Node.js first
-sudo apt install nodejs npm
+# Install Node.js and build dependencies
+sudo apt install nodejs npm git
 
-# Install ztncui globally
-sudo npm install -g ztncui
+# Clone and install ztncui
+git clone https://github.com/key-networks/ztncui
+cd ztncui/src
+npm install
 
-# Configure and start the web UI
-export ZT_TOKEN=$(sudo cat /var/lib/zerotier-one/authtoken.secret)
-export ZT_ADDR=http://localhost:9993
-sudo -E ztncui
+# Copy the example env file and configure it
+cp .env.example .env
+# Edit .env to set HTTPS_PORT, HTTP_ALL_INTERFACES, etc.
+
+# Give ztncui access to the ZeroTier auth token
+sudo cp /var/lib/zerotier-one/authtoken.secret etc/
+
+# Start ztncui (defaults to listening on https://localhost:3443)
+sudo npm start
 ```
 
 ## Moons: Self-Hosted Infrastructure Nodes
@@ -178,10 +191,7 @@ sudo -E ztncui
 By default, all traffic that can't go peer-to-peer routes through ZeroTier's planet nodes. You can add your own "moon" nodes to reduce reliance on ZeroTier's infrastructure - useful for air-gapped environments or when you want predictable relay paths.
 
 ```bash
-# On the machine you want to make a moon
-sudo zerotier-cli orbit <moon-node-id> <moon-node-id>
-
-# Generate a moon definition file on the moon server
+# On the machine you want to make a moon, generate a moon definition file
 cd /var/lib/zerotier-one
 sudo zerotier-idtool initmoon identity.public > moon.json
 
