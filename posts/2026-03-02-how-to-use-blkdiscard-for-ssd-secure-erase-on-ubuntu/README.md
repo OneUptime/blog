@@ -83,7 +83,7 @@ Some drives implement TRIM but do not immediately erase data - they just mark bl
 sudo blkdiscard --secure /dev/sda
 ```
 
-Not all drives support this. If the drive does not support it, `blkdiscard --secure` falls back to a regular discard.
+Not all drives support this. If the drive does not support it, `blkdiscard --secure` will fail with an error (BLKSECDISCARD ioctl failed) rather than fall back to a regular discard.
 
 ### Discarding Specific Ranges
 
@@ -199,14 +199,15 @@ sudo nvme list
 sudo nvme id-ctrl /dev/nvme0 | grep -i "sanicap\|sani"
 
 # Run Format (erase) on NVMe drive
-# ses=1: Cryptographic erase (if drive is self-encrypting)
-# ses=2: User data erase
+# ses=1: User data erase
+# ses=2: Cryptographic erase (if drive is self-encrypting)
 sudo nvme format /dev/nvme0n1 --ses=1
 # Or:
 sudo nvme format /dev/nvme0n1 --ses=2
 
-# Alternative: Sanitize command (more thorough, writes pattern)
-sudo nvme sanitize /dev/nvme0 --sanact=4    # Block erase sanitize
+# Alternative: Sanitize command (more thorough, operates on all media including unmapped/overprovisioned areas)
+sudo nvme sanitize /dev/nvme0 --sanact=2    # Block erase sanitize
+# sanact=3: overwrite sanitize, sanact=4: crypto erase sanitize
 ```
 
 ## Verifying TRIM is Working Regularly
