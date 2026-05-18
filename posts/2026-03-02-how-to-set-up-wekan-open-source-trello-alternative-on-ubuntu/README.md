@@ -138,6 +138,13 @@ Since Wekan listens on localhost:8080, put nginx in front for SSL:
 ```bash
 sudo apt install nginx certbot python3-certbot-nginx
 
+# Get SSL certificate first using standalone mode so the certs exist
+# before nginx tries to load a config that references them.
+# Port 80 must be free; stop nginx if it was auto-started by apt.
+sudo systemctl stop nginx
+sudo certbot certonly --standalone -d kanban.example.com
+
+# Now create the nginx site config (certs are in place)
 sudo tee /etc/nginx/sites-available/wekan << 'EOF'
 server {
     listen 80;
@@ -181,13 +188,8 @@ server {
 }
 EOF
 
-# Temporarily stop Wekan's port if it's conflicting with certbot
-# (Wekan is on 8080, so certbot should be fine with 80 open)
 sudo ln -s /etc/nginx/sites-available/wekan /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-
-# Get SSL certificate
-sudo certbot --nginx -d kanban.example.com
+sudo nginx -t && sudo systemctl start nginx
 ```
 
 ## Creating the Admin Account
