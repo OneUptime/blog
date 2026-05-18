@@ -78,9 +78,6 @@ $servers->setValue('login','auth_type','session');
 // Leave blank to prompt for credentials each time
 $servers->setValue('login','bind_id','');
 
-// Show template warnings - set to false in production
-$servers->setValue('appearance','show_hints',false);
-
 // Optional: define an anonymous bind for read-only access
 // $servers->setValue('login','anon_bind',true);
 ?>
