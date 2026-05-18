@@ -43,7 +43,7 @@ sudo snap install firefox --channel=stable
 
 # Check current channel tracking
 snap list firefox
-# Track column shows: latest/stable
+# Tracking column shows: latest/stable
 ```
 
 Stable releases get the most conservative update policy. Breaking changes should never appear here, and regressions are treated as bugs that get hotfixed rather than "we'll fix it in the next release."
