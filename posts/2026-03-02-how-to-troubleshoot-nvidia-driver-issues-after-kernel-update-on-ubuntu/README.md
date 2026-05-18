@@ -213,10 +213,10 @@ NVIDIA now provides an open-source kernel module (for Turing and newer GPUs) tha
 # Check if your GPU supports the open module
 # Works with: RTX 20xx, 30xx, 40xx, A-series datacenter GPUs
 
-# Install the open kernel module variant
-sudo apt-get install -y nvidia-kernel-open-545
+# Install the open kernel module variant (metapackage)
+sudo apt-get install -y nvidia-driver-545-open
 
-# Or via DKMS source
+# Or install the DKMS package directly
 sudo apt-get install -y nvidia-dkms-545-open
 ```
 
