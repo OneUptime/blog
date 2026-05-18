@@ -158,7 +158,7 @@ cat /proc/net/bonding/bond0
 The output shows detailed bond status:
 
 ```text
-Ethernet Channel Bonding Driver: v6.x
+Ethernet Channel Bonding Driver: v3.7.1 (April 27, 2011)
 
 Bonding Mode: IEEE 802.3ad Dynamic link aggregation
 Transmit Hash Policy: layer3+4 (1)
@@ -169,7 +169,7 @@ Down Delay (ms): 0
 
 802.3ad info
 LACP rate: fast
-Min links: 0
+Min links: 1
 Aggregator selection policy (ad_select): stable
 System priority: 65535
 System MAC address: aa:bb:cc:dd:ee:ff
