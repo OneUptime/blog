@@ -73,27 +73,27 @@ By default shows: PID, user, CPU%, memory, disk read/write, command name.
 
 ## Keyboard Navigation
 
-In interactive mode:
+In interactive mode (note that sort keys are uppercase, view-toggle keys are lowercase):
 
 | Key | Action |
 |-----|--------|
-| `c` | Sort by CPU usage |
-| `m` | Sort by memory usage |
-| `d` | Sort by disk activity |
-| `n` | Sort by network activity |
-| `a` | Automatic sorting (most active resource) |
-| `g` | Generic info (default) |
-| `t` | Show network per process |
-| `p` | Show disk per process |
-| `u` | Show memory per process |
-| `v` | Show various process flags |
-| `f` | Show only active processes (ignore idle) |
-| `z` | Toggle showing only active system rows |
-| `i` | Toggle showing idle processes |
-| `h` | Help |
+| `C` | Sort by CPU usage |
+| `M` | Sort by memory usage |
+| `D` | Sort by disk activity |
+| `N` | Sort by network activity |
+| `A` | Automatic sorting (most active resource) |
+| `g` | Generic info (default view) |
+| `m` | Show memory-related columns per process |
+| `d` | Show disk-related columns per process |
+| `n` | Show network-related columns per process |
+| `v` | Show various process characteristics |
+| `c` | Show full command line per process |
+| `u` | Filter by username |
+| `p` | Aggregate per program |
+| `i` | Modify the interval timer |
+| `z` | Pause output |
+| `h` or `?` | Help |
 | `q` | Quit |
-
-The `f` key is particularly useful - it hides lines with zero activity, making busy systems easier to read.
 
 ## Changing the Display Interval
 
@@ -139,7 +139,6 @@ In replay mode:
 - Press `t` to step forward one interval
 - Press `T` to step backward
 - Press `b` to jump to a specific time
-- Press `g` to fast-forward to the next interval with high activity
 
 ## Analyzing a Specific Time Window
 
@@ -186,13 +185,13 @@ sudo nano /etc/default/atop
 Change:
 
 ```text
-INTERVAL=600
+LOGINTERVAL=600
 ```
 
 To:
 
 ```text
-INTERVAL=30
+LOGINTERVAL=30
 ```
 
 Restart the service:
@@ -217,18 +216,15 @@ To change retention:
 sudo nano /etc/default/atop
 ```
 
-Set `LOGPATH` and the days to keep data.
+Set `LOGGENERATIONS` to the number of days to keep data, and optionally `LOGPATH` to change where logs are stored.
 
 ## Filtering the Process List
 
 In interactive mode, limit the process view:
 
 ```bash
-# Show only processes matching a pattern
 # Press 'u' then type a username to filter by user
-
-# Or from command line, show only processes for a user
-atop -u www-data 5
+# Press 'p' to aggregate processes per program name
 ```
 
 ## Per-Process Network Statistics
@@ -251,7 +247,9 @@ Use atop's text output to trigger alerts:
 
 CPU_THRESHOLD=80
 
-CURRENT_CPU=$(atop -P CPU 1 1 | awk '/^CPU/ {print 100 - $NF}')
+# Parse atop's CPU line (fields 9-17 are sys/user/nice/idle/wait/irq/softirq/steal/guest ticks).
+# Compute busy% as (total - idle) / total * 100, using the latest sample.
+CURRENT_CPU=$(atop -P CPU 2 2 | awk '$1=="CPU" {idle=$12; total=$9+$10+$11+$12+$13+$14+$15+$16+$17} END {if (total>0) printf "%.0f", 100*(total-idle)/total}')
 
 if (( $(echo "$CURRENT_CPU > $CPU_THRESHOLD" | bc -l) )); then
     echo "HIGH CPU: ${CURRENT_CPU}%" | mail -s "CPU Alert on $(hostname)" admin@example.com
@@ -271,7 +269,7 @@ The historical replay capability makes atop uniquely valuable for debugging inci
 ```bash
 # Quick start: install, configure short interval, start recording
 sudo apt install atop -y
-sudo sed -i 's/INTERVAL=600/INTERVAL=60/' /etc/default/atop
+sudo sed -i 's/LOGINTERVAL=600/LOGINTERVAL=60/' /etc/default/atop
 sudo systemctl restart atop
 
 # Now you have 1-minute resolution historical data being collected
