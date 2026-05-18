@@ -274,8 +274,8 @@ For automatic pre/post snapshots with apt, install `snapper-zypp-plugin` equival
 
 ```bash
 # /etc/apt/apt.conf.d/80snapper
-DPkg::Pre-Install-Pkgs {
-    "snapper -c root create --type pre --cleanup-algorithm number --print-number --description 'apt'";
+DPkg::Pre-Invoke {
+    "snapper -c root create --type pre --cleanup-algorithm number --print-number --description 'apt' > /run/snapper_pre_num";
 };
 DPkg::Post-Invoke {
     "snapper -c root create --type post --cleanup-algorithm number --pre-number $(cat /run/snapper_pre_num) --description 'apt'";
@@ -301,8 +301,12 @@ sudo snapper -c root delete 5-10
 # See how much space snapshots are using
 sudo btrfs filesystem usage /
 
-# List subvolumes with size info
+# List only snapshot subvolumes
 sudo btrfs subvolume list -s /
+
+# Show per-subvolume usage via qgroups (requires quotas enabled first)
+sudo btrfs quota enable /
+sudo btrfs qgroup show /
 ```
 
 Over time, many snapshots accumulate. Set up automatic cleanup via snapper's timeline to prevent the filesystem from filling with old snapshots.
