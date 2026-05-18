@@ -22,7 +22,7 @@ The server can be scaled across multiple components (admin UI, worker, frontend)
 
 ## Installing GRR Server on Ubuntu
 
-GRR provides pre-built server packages and Docker images. The recommended method for a new deployment is the server DEB:
+GRR provides pre-built server packages and Docker images. A pip-based virtualenv install gives you the full set of `grr_*` binaries and is convenient for a single-host deployment:
 
 ```bash
 # Install prerequisites
@@ -145,10 +145,10 @@ sudo /opt/grr/venv/bin/grr_config_updater initialize \
   --adminui_url=http://your-server-ip:8000 \
   --frontend_url=http://your-server-ip:8080
 
-# Create an admin user
+# Create an admin user (new users are admin by default; you will be prompted for a password)
 sudo /opt/grr/venv/bin/grr_config_updater \
   --config=/etc/grr/server.local.yaml \
-  add_user admin --admin
+  add_user admin
 ```
 
 ## Creating systemd Services
@@ -218,25 +218,28 @@ sudo systemctl start grr-frontend grr-admin-ui grr-worker
 After the server is running, generate client installers from the GRR admin interface or command line:
 
 ```bash
-# Build a DEB package for Ubuntu clients
+# Build a DEB package for Ubuntu clients from a published template
 sudo /opt/grr/venv/bin/grr_client_build \
   --config=/etc/grr/server.local.yaml \
-  --platform linux_deb \
-  --output_dir=/tmp/grr-clients
+  --platform linux \
+  --package_format deb \
+  repack \
+  --template /opt/grr/venv/share/grr-response-templates/templates/grr_*_amd64.deb.zip \
+  --output_dir /tmp/grr-clients
 
 ls /tmp/grr-clients/
-# grr-client_x.y.z_amd64.deb
+# grr_x.y.z_amd64.deb
 
 # Deploy the client to monitored machines
-scp /tmp/grr-clients/grr-client_*.deb target-machine:/tmp/
+scp /tmp/grr-clients/grr_*_amd64.deb target-machine:/tmp/
 
 # On the target machine, install the client
-sudo dpkg -i /tmp/grr-client_*.deb
-sudo systemctl enable grr-client
-sudo systemctl start grr-client
+sudo dpkg -i /tmp/grr_*_amd64.deb
+sudo systemctl enable grr
+sudo systemctl start grr
 ```
 
-The client will appear in the GRR admin UI under "Manage Client" once it checks in.
+The client will appear in the GRR admin UI under "Manage Clients" once it checks in.
 
 ## Basic Investigation Workflows
 
@@ -253,9 +256,9 @@ From the GRR admin UI:
 Common flows:
 - **ArtifactCollectorFlow** - collect forensic artifacts (browser history, Windows registry, startup items)
 - **ListProcesses** - enumerate running processes
-- **ListNetworkConnections** - show open network connections
+- **Netstat** - show open network connections
 - **FileFinder** - search for files matching criteria
-- **MemoryCollector** - collect a memory image
+- **YaraProcessScan** - scan process memory with YARA rules
 
 ### Running Hunts
 
@@ -282,8 +285,8 @@ hunt = grrapi.CreateHunt(
 )
 
 # Start the hunt
-hunt.Start()
-print(f"Hunt started: {hunt.urn}")
+hunt = hunt.Start()
+print(f"Hunt started: {hunt.hunt_id}")
 EOF
 ```
 
@@ -291,10 +294,10 @@ EOF
 
 ```bash
 # On a monitored machine, check the GRR client
-sudo systemctl status grr-client
+sudo systemctl status grr
 
 # Check the client log
-sudo journalctl -u grr-client -n 100
+sudo journalctl -u grr -n 100
 
 # Verify the client is communicating with the server
 sudo cat /etc/grr/client.local.yaml | grep server
