@@ -82,9 +82,9 @@ CPU_MAX_PERF_ON_BAT=30
 CPU_BOOST_ON_AC=1
 CPU_BOOST_ON_BAT=0
 
-# Intel P-State min/max
+# Intel P-State min/max (0 = leave at kernel default)
 CPU_SCALING_MIN_FREQ_ON_AC=0
-CPU_SCALING_MAX_FREQ_ON_AC=0   # 0 = use hardware max
+CPU_SCALING_MAX_FREQ_ON_AC=0
 CPU_SCALING_MIN_FREQ_ON_BAT=0
 CPU_SCALING_MAX_FREQ_ON_BAT=0
 ```
@@ -114,18 +114,19 @@ Multiple values in quotes apply to multiple disks (first disk, second disk, etc.
 ## USB Autosuspend
 
 ```bash
-# Enable USB autosuspend on battery
+# Enable USB autosuspend
 USB_AUTOSUSPEND=1
-
-# Autosuspend delay in seconds
-USB_AUTOSUSPEND_DISABLE_ON_SHUTDOWN=0
 
 # Exclude specific USB devices from autosuspend
 # Use lsusb to find vendor:product IDs
 # USB_DENYLIST="046d:c31c 1d50:6089"
 
-# Enable input devices (mouse, keyboard) autosuspend
-USB_AUTOSUSPEND=1
+# Exclude common device classes that often misbehave with autosuspend
+USB_EXCLUDE_AUDIO=1
+USB_EXCLUDE_BTUSB=0
+USB_EXCLUDE_PHONE=0
+USB_EXCLUDE_PRINTER=1
+USB_EXCLUDE_WWAN=1
 ```
 
 To find device IDs to exclude (for USB devices that break with autosuspend):
@@ -148,12 +149,13 @@ lsusb | awk '{print $6, substr($0, index($0,$7))}'
 WIFI_PWR_ON_AC=off
 WIFI_PWR_ON_BAT=on
 
-# Bluetooth - disable on battery if you don't need it
-# These require tlp-rdw for event-based management
-RESTORE_DEVICE_STATE_ON_STARTUP=0
+# Radio devices to disable/enable on boot (requires tlp-rdw)
+# Possible values: bluetooth, wifi, wwan
+DEVICES_TO_DISABLE_ON_STARTUP="bluetooth wwan"
+DEVICES_TO_ENABLE_ON_STARTUP="wifi"
 ```
 
-For event-based radio management, edit `/etc/tlp/tlp.conf` (or the original file) to configure what happens when network connections change.
+For event-based radio management, edit `/etc/tlp.conf` to configure what happens when network connections change (e.g. `DEVICES_TO_DISABLE_ON_LAN_CONNECT`, `DEVICES_TO_ENABLE_ON_DOCK`).
 
 ## Battery Charge Thresholds
 
@@ -216,13 +218,13 @@ sudo tlp-stat -p
 # Disk information
 sudo tlp-stat -d
 
-# PCI devices
+# PCIe devices
 sudo tlp-stat -e
 
 # USB devices
 sudo tlp-stat -u
 
-# RadioManagement (with tlp-rdw)
+# Radio device state (rfkill)
 sudo tlp-stat -r
 ```
 
