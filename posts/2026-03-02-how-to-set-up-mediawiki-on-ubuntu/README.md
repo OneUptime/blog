@@ -238,7 +238,7 @@ sudo sed -i 's|http://wiki.example.com|https://wiki.example.com|' \
 
 ## Installing Extensions
 
-MediaWiki extensions add functionality. Install the VisualEditor for WYSIWYG editing as an example:
+MediaWiki extensions add functionality. Install the Cite extension (used for footnotes on Wikipedia) as an example:
 
 ```bash
 # Download extensions to the extensions directory
@@ -268,7 +268,7 @@ MediaWiki has a set of maintenance scripts for administrative tasks:
 # Update database after installing extensions or upgrading
 sudo -u www-data php /var/www/mediawiki/maintenance/update.php
 
-# Rebuild the search index
+# Rebuild the recentchanges table (e.g. after restoring from backup)
 sudo -u www-data php /var/www/mediawiki/maintenance/rebuildrecentchanges.php
 
 # Import a dump file (for migrating content)
@@ -305,8 +305,8 @@ EOF
 sudo tail -f /var/log/nginx/mediawiki.error.log
 sudo journalctl -u php8.1-fpm -f
 
-# Run MediaWiki's built-in environment check
-sudo -u www-data php /var/www/mediawiki/maintenance/checkSyntax.php
+# Check the installed MediaWiki version and confirm core is loadable
+sudo -u www-data php /var/www/mediawiki/maintenance/version.php
 
 # Verify database connectivity
 mysql -u mediawikiuser -p mediawiki -e "SHOW TABLES;" | head -20
