@@ -22,8 +22,9 @@ sudo apt-get update
 # Install udisks2 and the command-line interface
 sudo apt-get install -y udisks2
 
-# Verify installation
-udisksctl --version
+# Verify installation (udisksctl has no --version flag; check the package or list commands)
+dpkg -s udisks2 | grep -i version
+udisksctl help
 
 # Check that the service is running
 systemctl status udisks2
@@ -52,7 +53,7 @@ For detailed information about a specific device:
 udisksctl info -b /dev/sdb
 ```
 
-This outputs drive model, serial number, size, partition table type, filesystem types, mount points, and SMART status in a structured format.
+This outputs drive model, serial number, size, partition table type, filesystem types, mount points, and (where ATA SMART is supported) SMART status in a structured format.
 
 ### Getting Drive Information
 
@@ -60,8 +61,11 @@ This outputs drive model, serial number, size, partition table type, filesystem 
 # Query the parent drive (not partition) for hardware details
 udisksctl info -b /dev/sdb
 
-# Check SMART data for a drive
-udisksctl smart-simulate -b /dev/sda
+# Inspect SMART information that udisks2 already exposes for a drive
+udisksctl info -b /dev/sda | grep -i smart
+
+# For detailed SMART attributes, use smartctl from smartmontools
+sudo smartctl -a /dev/sda
 
 # List all managed objects (drives, block devices, partitions)
 udisksctl dump
@@ -86,10 +90,10 @@ When udisks2 mounts a device, it creates a mount point under `/run/media/<userna
 ### Mount with Specific Options
 
 ```bash
-# Mount with specific filesystem options
+# Mount with specific mount options
 udisksctl mount -b /dev/sdb1 -o ro  # Read-only mount
 
-# Mount an NFS or other special filesystem type
+# Force a specific filesystem type instead of auto-detect
 udisksctl mount -b /dev/sdc1 -t ext4
 ```
 
@@ -111,18 +115,32 @@ udisksctl loop-delete -b /dev/loop0
 
 ## Formatting Partitions
 
-udisks2 can format partitions with various filesystems. This is destructive, so double-check the device before running.
+The `udisksctl` CLI does not expose a `format` subcommand. udisks2 *does* offer a `Format` method on its D-Bus `Block` interface (callable via `gdbus` or `busctl`), but for everyday work it's simpler to unmount via udisks2 and then run the standard mkfs tools. This is destructive, so double-check the device before running.
 
 ```bash
+# Make sure the partition is not mounted first
+udisksctl unmount -b /dev/sdb1 2>/dev/null
+
 # Format /dev/sdb1 as ext4 with a label
-udisksctl format /dev/sdb1 -t ext4 --no-user-interaction -- -L "DataDisk"
+sudo mkfs.ext4 -L "DataDisk" /dev/sdb1
 
 # Format as FAT32 (useful for USB drives)
-udisksctl format /dev/sdb1 -t vfat --no-user-interaction -- -n "USBDISK"
+sudo mkfs.vfat -F 32 -n "USBDISK" /dev/sdb1
 
 # Format as NTFS
 sudo apt-get install -y ntfs-3g  # Install NTFS support first
-udisksctl format /dev/sdb1 -t ntfs --no-user-interaction
+sudo mkfs.ntfs -L "DataDisk" /dev/sdb1
+```
+
+If you need the format operation to go through udisks2 (so polkit governs it and the change is announced over D-Bus), invoke the D-Bus method directly:
+
+```bash
+# Format /dev/sdb1 as ext4 with a label via the UDisks2 D-Bus Format method
+gdbus call --system \
+    --dest org.freedesktop.UDisks2 \
+    --object-path /org/freedesktop/UDisks2/block_devices/sdb1 \
+    --method org.freedesktop.UDisks2.Block.Format \
+    "ext4" "{'label': <'DataDisk'>}"
 ```
 
 ## Power Management
@@ -133,9 +151,11 @@ For removable drives and SSDs, udisks2 provides power management commands.
 # Safely power off a drive (spins it down and prepares for removal)
 udisksctl power-off -b /dev/sdb
 
-# Check SMART status (requires smartmontools)
+# Check SMART status with smartmontools
+# (udisksctl's smart-simulate command is for loading a fake SMART blob from a file
+# for testing - it is not a way to read live SMART data)
 sudo apt-get install -y smartmontools
-udisksctl smart-simulate -b /dev/sda
+sudo smartctl -a /dev/sda
 ```
 
 ## Using udisks2 in Scripts
