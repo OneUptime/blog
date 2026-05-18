@@ -122,12 +122,11 @@ curl --insecure -X PUT \
 
 ## Using a Custom Port
 
-By default, all access keys share port 443 (to blend in with HTTPS traffic). You can change this during install:
+By default, both the management API port and the access keys port are random. Many admins change the access keys port to 443 in the Outline Manager so traffic blends in with HTTPS. You can also set the ports at install time using the script's flags:
 
 ```bash
-# Set environment variable before running install script
-export SB_API_PORT=8080
-sudo bash -c "$(wget -qO- https://raw.githubusercontent.com/Jigsaw-Code/outline-server/master/src/server_manager/install_scripts/install_server.sh)"
+# Use --api-port for the management API and --keys-port for access keys
+sudo bash -c "$(wget -qO- https://raw.githubusercontent.com/Jigsaw-Code/outline-server/master/src/server_manager/install_scripts/install_server.sh)" install_server.sh --api-port 8080 --keys-port 443
 ```
 
 ## Hardening the Server
@@ -155,7 +154,7 @@ docker ps
 
 # The install script already runs with --network=host
 # Verify no extra capabilities are set
-docker inspect outline-shadowbox | grep -A 10 CapAdd
+docker inspect shadowbox | grep -A 10 CapAdd
 ```
 
 ## Monitoring the Server
@@ -164,13 +163,13 @@ Check server status and active connections:
 
 ```bash
 # View server logs
-docker logs outline-shadowbox
+docker logs shadowbox
 
 # Follow logs in real time
-docker logs -f outline-shadowbox
+docker logs -f shadowbox
 
 # Check resource usage
-docker stats outline-shadowbox
+docker stats shadowbox
 ```
 
 The management API exposes server metrics:
@@ -194,7 +193,7 @@ sudo tar czf outline-backup-$(date +%Y%m%d).tar.gz /opt/outline
 sudo mv outline-backup-*.tar.gz /backup/
 ```
 
-To restore on a new server, extract this archive to `/opt/outline` before running the install script with `--skip-config-gen`.
+To restore on a new server, extract this archive to `/opt/outline` before running the install script. If the persisted state files (such as `persisted-state/shadowbox_server_config.json` and the TLS cert/key under `persisted-state/`) are already in place, the script reuses them instead of regenerating new ones.
 
 ## Revoking Access
 
@@ -213,10 +212,10 @@ curl --insecure -X DELETE \
 **Cannot connect to management API:**
 ```bash
 # Check if the shadowbox container is running
-docker ps | grep outline
+docker ps | grep shadowbox
 
 # Check container logs for errors
-docker logs outline-shadowbox --tail 50
+docker logs shadowbox --tail 50
 
 # Verify the port is listening
 sudo ss -tlnp | grep 12345
@@ -234,10 +233,10 @@ sudo ufw status verbose
 **Server rebooted and Outline is not running:**
 ```bash
 # The container should auto-restart, verify restart policy
-docker inspect outline-shadowbox | grep RestartPolicy
+docker inspect shadowbox | grep RestartPolicy
 
 # Start manually if needed
-docker start outline-shadowbox
+docker start shadowbox
 ```
 
 Outline hits the right balance for team VPN access - there is no identity provider to configure, no certificates to renew, and distributing access is as simple as sharing a URL. For teams that need occasional secure tunnel access, it is significantly simpler to operate than a full WireGuard or OpenVPN setup.
