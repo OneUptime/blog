@@ -41,7 +41,7 @@ Download the latest TeamSpeak 3 server package:
 cd /tmp
 
 # Get the latest version (check https://teamspeak.com/en/downloads/#server for current URL)
-wget https://files.teamspeak-systems.com/releases/server/3.13.7/teamspeak3-server_linux_amd64-3.13.7.tar.bz2
+wget https://files.teamspeak-services.com/releases/server/3.13.7/teamspeak3-server_linux_amd64-3.13.7.tar.bz2
 
 # Extract the archive
 tar xjf teamspeak3-server_linux_amd64-3.13.7.tar.bz2
