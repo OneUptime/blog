@@ -72,9 +72,6 @@ Key settings:
 # Working directory (metadata storage)
 DATA_PATH = /var/lib/lizardfs
 
-# Master server port (default: 9421)
-MASTER_PORT = 9421
-
 # Metalogger port for metadata backup
 MATOML_LISTEN_PORT = 9419
 
@@ -82,7 +79,7 @@ MATOML_LISTEN_PORT = 9419
 MATOCS_LISTEN_PORT = 9420
 
 # Client (mount) port
-MATOCU_LISTEN_PORT = 9421
+MATOCL_LISTEN_PORT = 9421
 ```
 
 Configure exports (which paths are accessible):
@@ -218,7 +215,7 @@ For persistent mounting, add to `/etc/fstab`:
 
 ```bash
 # /etc/fstab entry
-mfsmaster=192.168.1.10,mfsport=9421,mfspassword=    /mnt/lizardfs    lizardfs    defaults,_netdev    0    0
+mfsmount    /mnt/lizardfs    fuse    mfsmaster=192.168.1.10,mfsport=9421,_netdev    0    0
 ```
 
 Or use the `mfsmount` service:
@@ -257,10 +254,11 @@ Custom goals with disk labels (useful for tiered storage):
 
 ```bash
 # In /etc/lizardfs/mfsgoals.cfg on the master
-1 1 : _
-2 2 : _ _
-ssd 1 : [ssd]  # store on SSD-labeled chunk servers only
-ec_4_2 4 2 : [hdd] [hdd] [hdd] [hdd] _ _  # erasure coding
+# Format: id name : list_of_labels
+1 default : _
+2 double : _ _
+9 ssd : [ssd]  # store on SSD-labeled chunk servers only
+10 ec_4_2 : $ec(4,2)  # Reed-Solomon erasure coding (4 data + 2 parity)
 ```
 
 ## Managing Quotas
@@ -281,7 +279,7 @@ LizardFS supports copy-on-write snapshots:
 
 ```bash
 # Create a snapshot of a directory
-mfssnapshot /mnt/lizardfs/data /mnt/lizardfs/data-snapshot-$(date +%Y%m%d)
+mfsmakesnapshot /mnt/lizardfs/data /mnt/lizardfs/data-snapshot-$(date +%Y%m%d)
 
 # List entries (snapshots appear as regular directories)
 ls /mnt/lizardfs/
@@ -298,11 +296,8 @@ lizardfs-admin info 192.168.1.10 9421
 # List all connected clients
 lizardfs-admin list-mounts 192.168.1.10 9421
 
-# Show chunk distribution across servers
-lizardfs-admin list-chunks 192.168.1.10 9421
-
-# Check for endangered chunks (fewer copies than goal)
-lizardfs-admin list-endangered-chunks 192.168.1.10 9421
+# Show chunk health (missing, endangered, undergoal, overgoal copies)
+lizardfs-admin chunks-health 192.168.1.10 9421
 ```
 
 ## Troubleshooting
@@ -328,7 +323,7 @@ sudo journalctl -u lizardfs-master -n 50
 **Files not accessible after chunk server failure:**
 If a chunk server goes down and goal is 2, files remain accessible from the surviving server. Check for endangered chunks:
 ```bash
-lizardfs-admin list-endangered-chunks 192.168.1.10 9421
+lizardfs-admin chunks-health 192.168.1.10 9421
 ```
 
 Add a replacement chunk server to restore replication.
