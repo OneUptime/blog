@@ -66,8 +66,8 @@ clamscan -r --remove /tmp/suspicious-files/
 # Verbose output with file names as they're scanned
 clamscan -r --verbose /home/ubuntu/
 
-# Scan only specific file extensions
-clamscan -r --include="*.php" --include="*.js" /var/www/html/
+# Scan only specific file extensions (--include takes a regex, not a glob)
+clamscan -r --include='\.php$' --include='\.js$' /var/www/html/
 
 # Exclude directories from scan
 clamscan -r \
@@ -105,19 +105,17 @@ Then use clamdscan which communicates with the running daemon:
 
 ```bash
 # Scan with clamdscan (much faster than clamscan)
+# Note: clamdscan recurses into directories by default — no -r needed
 clamdscan /home/ubuntu/uploads/
 
-# Recursive scan
-clamdscan -r /home/ubuntu/uploads/
-
 # Show only infected files
-clamdscan -r --infected /home/ubuntu/uploads/
+clamdscan --infected /home/ubuntu/uploads/
 
 # Multi-threaded scanning using all available CPUs
-clamdscan -r --multiscan /home/ubuntu/uploads/
+clamdscan --multiscan /home/ubuntu/uploads/
 
-# Scan a file passed via stdin (useful for pipes)
-cat suspicious.file | clamdscan --stdin
+# Scan a file passed via stdin (useful for pipes) — use - as the filename
+cat suspicious.file | clamdscan -
 ```
 
 ## Scanning File Uploads Automatically
