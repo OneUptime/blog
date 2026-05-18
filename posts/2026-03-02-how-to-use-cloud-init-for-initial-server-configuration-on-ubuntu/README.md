@@ -283,15 +283,15 @@ sudo apt install cloud-init -y
 # Validate your user-data syntax
 sudo cloud-init schema --config-file user-data.yaml
 
-# Run cloud-init manually with a specific user-data file
-sudo cloud-init --file user-data.yaml init
+# Validate with annotated errors highlighting the exact lines with problems
+sudo cloud-init schema --annotate --config-file user-data.yaml
 
-# Test specific modules
+# Test specific modules (module name comes from the cc_<name>.py source file)
 sudo cloud-init single --name users_groups
-sudo cloud-init single --name packages
+sudo cloud-init single --name package_update_upgrade_install
 
-# Check what would run
-sudo cloud-init devel schema --annotate --config-file user-data.yaml
+# Validate the cloud-config currently applied to the running system
+sudo cloud-init schema --system --annotate
 ```
 
 ## Debugging cloud-init Issues
@@ -306,8 +306,9 @@ sudo cat /var/log/cloud-init-output.log
 # Check cloud-init status
 cloud-init status --long
 
-# See what datasource was detected
-cloud-init query datasource
+# See what datasource was detected (also shown by `status --long`)
+cloud-init query v1.cloud_name
+cloud-init query v1.platform
 
 # Re-run cloud-init for testing (clears previous state)
 sudo cloud-init clean --logs
