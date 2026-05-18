@@ -24,12 +24,12 @@ The default trap port is UDP 162. Your trap receiver (Ubuntu server running `snm
 ## Installing snmptrapd
 
 ```bash
-# Install the SNMP tools package
+# Install the SNMP tools and trap receiver packages
 
 sudo apt update
-sudo apt install snmpd snmp snmp-mibs-downloader
+sudo apt install snmpd snmptrapd snmp snmp-mibs-downloader
 
-# snmptrapd is part of the snmpd package on Ubuntu
+# On current Ubuntu releases snmptrapd is shipped as its own package
 # Verify it is installed
 which snmptrapd
 snmptrapd --version
@@ -54,9 +54,6 @@ authCommunity log,execute,net public
 
 # Accept traps from a specific network only (more secure)
 # authCommunity log,execute,net mysecretcommunity 192.168.1.0/24
-
-# Log traps to syslog
-traphandle default /usr/sbin/snmptrapd-default-handler
 
 # Log all traps
 doNotLogTraps no
@@ -196,14 +193,14 @@ sudo systemctl restart snmptrapd
 For secure trap reception with SNMPv3:
 
 ```bash
-# Create an SNMPv3 user for receiving traps
-# On Ubuntu, use net-snmp-create-v3-user
-sudo net-snmp-create-v3-user -ro -a SHA -A "authpassword123" \
-  -x AES -X "privpassword456" trapuser
+# Stop snmptrapd before editing its persistent state file
+sudo systemctl stop snmptrapd
 
-# This adds to /var/lib/snmp/snmptrapd.conf automatically
-# Verify the user was created
-sudo cat /var/lib/snmp/snmptrapd.conf
+# Add a createUser directive to snmptrapd's persistent config.
+# snmptrapd reads it on next start, creates the user, and rewrites
+# the line in hashed form so the plaintext password is not kept.
+echo 'createUser trapuser SHA "authpassword123" AES "privpassword456"' | \
+  sudo tee -a /var/lib/snmp/snmptrapd.conf
 
 # Update snmptrapd.conf to accept v3 traps
 sudo nano /etc/snmp/snmptrapd.conf
@@ -212,19 +209,27 @@ sudo nano /etc/snmp/snmptrapd.conf
 Add for SNMPv3:
 
 ```text
-# SNMPv3 authentication
-createUser trapuser SHA "authpassword123" AES "privpassword456"
+# Authorize the SNMPv3 user (the user itself was created above in
+# /var/lib/snmp/snmptrapd.conf; createUser also works here but the
+# persistent file is preferred so plaintext keys can be rewritten)
 authUser log,execute,net trapuser
 
 # Keep v2c support if needed
 authCommunity log,execute,net public
 ```
 
-Test with an SNMPv3 trap:
+Start snmptrapd again and verify the user was hashed:
 
 ```bash
-# Send a test SNMPv3 inform
-sudo snmptrap -v 3 \
+sudo systemctl start snmptrapd
+sudo cat /var/lib/snmp/snmptrapd.conf
+```
+
+Test with an SNMPv3 inform. Informs work best for SNMPv3 because the sender can discover the receiver's engine ID automatically; raw v3 traps require the sender to already know it. Add `-Ci` to send an inform instead of a trap:
+
+```bash
+# Send a test SNMPv3 inform (-Ci tells snmptrap to use INFORM-PDU)
+sudo snmptrap -Ci -v 3 \
   -u trapuser \
   -l authPriv \
   -a SHA \
@@ -246,11 +251,9 @@ forward default udp:10.0.0.5:162
 
 # Forward specific traps only
 forward .1.3.6.1.6.3.1.1.5 udp:10.0.0.5:162
-
-# Forward with modified community string
-# (useful for aggregating from multiple community strings to one)
-forward default udp:10.0.0.5:162 -c unified-community
 ```
+
+The `forward` directive does not accept credential flags inline; the community/credentials of the original trap are preserved when forwarding. To re-emit traps under a different community or as SNMPv3, run a `traphandle` script that invokes `snmptrap` with the desired arguments instead.
 
 ## Configuring Network Devices to Send Traps
 
@@ -269,12 +272,19 @@ sudo nano /etc/snmp/snmpd.conf
 Add to `/etc/snmp/snmpd.conf` on the device side:
 
 ```text
-# Send traps to the trap receiver
+# Send SNMPv2c traps to the trap receiver
 trap2sink 10.0.0.100 public 162
 
-# Or for SNMPv3
-trapsink 10.0.0.100 trapuser
-informsink 10.0.0.100
+# Send SNMPv2c informs (acknowledged) to the same receiver
+informsink 10.0.0.100 public 162
+
+# For SNMPv3, use trapsess with the full snmpcmd argument set.
+# trapsink/informsink are community-based (v1/v2c) only and cannot do v3.
+# Add -Ci to trapsess for an SNMPv3 inform.
+trapsess -v 3 -u trapuser -l authPriv \
+  -a SHA -A authpassword123 \
+  -x AES -X privpassword456 \
+  -e 0x8000000001020304 10.0.0.100
 
 # Send link up/down traps
 linkUpDownNotifications yes
@@ -282,6 +292,8 @@ linkUpDownNotifications yes
 # Send process monitoring traps
 proc nginx 5 1
 ```
+
+For raw SNMPv3 traps the `-e` engine ID must match the receiver's. You can read it from the receiver with `snmpget -v 3 -l noAuthNoPriv -u <user> <receiver> .1.3.6.1.6.3.10.2.1.1.0`, or use an inform (`-Ci`) so the engine ID is discovered automatically.
 
 ## Logging Traps to a Database
 
@@ -299,7 +311,7 @@ sudo apt install snmptt
 # traphandle default /usr/sbin/snmptt
 ```
 
-Configure `/etc/snmptt.ini`:
+Configure `/etc/snmp/snmptt.ini` (the path used by the Debian/Ubuntu package):
 
 ```ini
 [General]
