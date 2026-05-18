@@ -61,7 +61,7 @@ server {
 }
 ```
 
-The `proxy_http_version 1.1` directive is critical. HTTP/1.0 does not support persistent connections, so WebSockets require at minimum HTTP/1.1.
+The `proxy_http_version 1.1` directive is critical. Nginx proxies to upstream servers using HTTP/1.0 by default, which does not properly forward the `Upgrade` and `Connection` hop-by-hop headers that WebSockets rely on. RFC 6455 also mandates HTTP/1.1 for the WebSocket handshake.
 
 Enable the site and test:
 
