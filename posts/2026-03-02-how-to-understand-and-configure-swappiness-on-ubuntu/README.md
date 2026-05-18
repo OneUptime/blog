@@ -132,8 +132,9 @@ Swappiness doesn't exist in isolation. These related parameters work together:
 ```bash
 # /etc/sysctl.d/99-memory.conf
 
-# How much of dirty (modified) page cache can accumulate before writeback
-# Default: 20% of RAM can be dirty before background writeback starts
+# Hard limit on dirty (modified) page cache before processes doing writes
+# are forced into synchronous writeback (foreground throttling).
+# Default: 20% of RAM
 vm.dirty_ratio = 15
 
 # Background writeback threshold - writeback starts when this % is dirty
