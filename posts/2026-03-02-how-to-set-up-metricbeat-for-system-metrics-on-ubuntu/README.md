@@ -180,7 +180,7 @@ sudo metricbeat setup --dashboards
 sudo metricbeat setup -e
 ```
 
-The `-e` flag logs to stdout, useful for debugging setup issues.
+The `-e` flag logs to stderr and disables syslog/file output, which is useful for debugging setup issues.
 
 ## Starting Metricbeat
 
