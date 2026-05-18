@@ -45,7 +45,9 @@ network:
       dhcp4: false
       addresses:
         - 192.168.1.10/24
-      gateway4: 192.168.1.1
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
         addresses:
           - 127.0.0.1    # The DC will be its own DNS server
@@ -204,7 +206,10 @@ sudo ufw allow 53/tcp    # DNS
 sudo ufw allow 53/udp    # DNS
 sudo ufw allow 88/tcp    # Kerberos
 sudo ufw allow 88/udp    # Kerberos
+sudo ufw allow 123/udp   # NTP (Kerberos requires time sync)
 sudo ufw allow 135/tcp   # RPC endpoint mapper
+sudo ufw allow 137/udp   # NetBIOS Name Service
+sudo ufw allow 138/udp   # NetBIOS Datagram
 sudo ufw allow 139/tcp   # NetBIOS
 sudo ufw allow 389/tcp   # LDAP
 sudo ufw allow 389/udp   # LDAP
@@ -250,7 +255,7 @@ sudo samba-tool group list
 
 From a Windows machine (ensure DNS is pointing to `192.168.1.10`):
 
-```cmd
+```powershell
 # PowerShell - join the domain
 Add-Computer -DomainName corp.example.com -Credential corp\Administrator
 
