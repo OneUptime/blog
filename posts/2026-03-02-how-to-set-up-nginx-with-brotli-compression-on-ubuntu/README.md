@@ -134,7 +134,6 @@ http {
     brotli_static on;           # Serve pre-compressed .br files if they exist
     brotli_comp_level 6;        # Compression level 0-11 (11 is maximum)
     brotli_min_length 256;      # Minimum size to compress (bytes)
-    brotli_buffers 16 8k;       # Number and size of buffers
     brotli_window 512k;         # Sliding window size
 
     # MIME types to compress
