@@ -50,8 +50,6 @@ sudo tee /etc/keepalived/keepalived.conf <<'EOF'
 global_defs {
     # Router ID - unique identifier for this node
     router_id server1
-    # Suppress log messages when same state is retained
-    vrrp_skip_if_not_master
 }
 
 vrrp_instance VI_1 {
@@ -355,8 +353,9 @@ ip addr show | grep "192.168.10.100"
 # Check VRRP advertisement packets (requires tcpdump)
 sudo tcpdump -n -i eth0 vrrp
 
-# Keepalived statistics
-sudo kill -USR1 $(pidof keepalived)
+# Keepalived statistics (SIGUSR2 dumps to /tmp/keepalived.stats;
+# SIGUSR1 dumps configuration/state to /tmp/keepalived.data)
+sudo kill -USR2 $(pidof keepalived)
 cat /tmp/keepalived.stats
 ```
 
@@ -365,14 +364,12 @@ cat /tmp/keepalived.stats
 VRRP uses IP protocol 112 and sends to multicast address 224.0.0.18. Allow it through the firewall:
 
 ```bash
-# UFW
-sudo ufw allow in on eth0 proto 112
-sudo ufw allow to 224.0.0.18
-
-# Or iptables directly
+# iptables
 sudo iptables -A INPUT -i eth0 -p 112 -j ACCEPT
 sudo iptables -A INPUT -i eth0 -d 224.0.0.18 -j ACCEPT
 ```
+
+UFW's `proto` keyword only accepts a small allowlist (tcp, udp, ah, esp, gre, ipv6, igmp) and will reject `proto 112` or `proto vrrp`. To allow VRRP on a UFW host, add the iptables rules above to `/etc/ufw/before.rules` (in the `*filter` table, before the `COMMIT`).
 
 If your servers are on different subnets or behind a router that blocks multicast, configure unicast VRRP:
 
