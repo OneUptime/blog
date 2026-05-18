@@ -64,7 +64,7 @@ cloud-init query ds
 cloud-init query --all
 
 # Show a specific field
-cloud-init query local-hostname
+cloud-init query local_hostname
 cloud-init query public_ssh_keys
 ```
 
