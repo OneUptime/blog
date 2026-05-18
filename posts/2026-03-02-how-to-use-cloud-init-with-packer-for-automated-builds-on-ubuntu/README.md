@@ -51,16 +51,15 @@ autoinstall:
     layout: us
     variant: ""
 
-  # Network configuration during installation
+  # Network configuration during installation (Netplan-formatted)
   network:
-    network:
-      version: 2
-      ethernets:
-        # Match any ethernet interface
-        any-nic:
-          match:
-            name: "e*"
-          dhcp4: true
+    version: 2
+    ethernets:
+      # Match any ethernet interface
+      any-nic:
+        match:
+          name: "e*"
+        dhcp4: true
 
   # Disk layout - LVM on the first available disk
   storage:
@@ -125,12 +124,9 @@ autoinstall:
     # Disable motd-news which phones home
     - "in-target sed -i 's/^ENABLED=1$/ENABLED=0/' /etc/default/motd-news"
 
-  # Disable confirmation prompts at the end of installation
+  # Cloud-init user-data applied to the installed system
   user-data:
     disable_root: true
-
-  # Skip the installer's final confirmation screen
-  confirm-bugs: false
 ```
 
 ### meta-data File
