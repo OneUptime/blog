@@ -106,8 +106,8 @@ pid = /var/run/stunnel4/stunnel4.pid
 debug = 5
 output = /var/log/stunnel4/stunnel4.log
 
-# Disable SSLv2 and SSLv3 - only allow TLS
-sslVersion = TLSv1.2
+# Require TLSv1.2 or newer (disables SSLv2, SSLv3, TLSv1.0, TLSv1.1)
+sslVersionMin = TLSv1.2
 
 # Cipher preferences (allow modern ciphers only)
 ciphers = HIGH:!aNULL:!SSLv2:!DES:!3DES
@@ -205,7 +205,7 @@ setgid = stunnel4
 pid = /var/run/stunnel4/stunnel4.pid
 debug = 5
 output = /var/log/stunnel4/stunnel4.log
-sslVersion = TLSv1.2
+sslVersionMin = TLSv1.2
 ciphers = HIGH:!aNULL:!SSLv2
 
 # TLS-wrapped Redis
