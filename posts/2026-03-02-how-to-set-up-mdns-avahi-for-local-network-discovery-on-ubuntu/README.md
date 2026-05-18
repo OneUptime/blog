@@ -50,7 +50,7 @@ For most setups, the defaults work fine. Common customizations:
 # Deny mDNS on specific interfaces (useful for VPN or untrusted interfaces)
 # deny-interfaces=wg0,tun0
 
-# Use the system hostname as the mDNS hostname
+# Monitor the IFF_RUNNING interface flag (only enable if your driver reports it correctly)
 use-iff-running=no
 
 # Enable IPv4 and/or IPv6
@@ -62,9 +62,6 @@ use-ipv6=yes
 
 # The domain suffix for local names
 domain-name=local
-
-# Do not announce on link-local addresses by default
-# publish-address=yes
 
 [publish]
 # Whether to publish this machine's hostname and addresses
@@ -124,7 +121,7 @@ Ubuntu 22.04+ uses systemd-resolved by default. Avahi and systemd-resolved can c
 
 ```bash
 # Check systemd-resolved status
-systemd-resolve --status | head -30
+resolvectl status | head -30
 
 # The MulticastDNS line shows whether resolved has mDNS enabled
 # On Ubuntu, Avahi handles mDNS and resolved defers to it
@@ -248,7 +245,7 @@ sudo tee -a /etc/avahi/avahi-daemon.conf > /dev/null <<'EOF'
 
 [reflector]
 enable-reflector=yes
-# reflect-ipv=yes  # Also reflect IPv6 mDNS
+# reflect-ipv=yes  # Also forward mDNS traffic between IPv4 and IPv6 (usually not recommended)
 EOF
 
 sudo systemctl restart avahi-daemon
@@ -291,10 +288,10 @@ grep hosts /etc/nsswitch.conf
 # Check if mdns is in the right position - 'dns' should come after mdns4_minimal
 # Correct: files mdns4_minimal [NOTFOUND=return] dns
 
-# Verify Avahi sees your interfaces
+# Check whether avahi-daemon is already running (exits 0 if running)
 sudo avahi-daemon --check
 
-# List all interfaces Avahi is using
+# Dump the list of DNS-SD service types Avahi knows about
 avahi-browse --dump-db 2>&1 | head -20
 ```
 
