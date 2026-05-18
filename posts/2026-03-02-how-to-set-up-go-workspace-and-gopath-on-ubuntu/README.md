@@ -119,7 +119,7 @@ go get golang.org/x/crypto@v0.20.0
 # Update a dependency to latest
 go get github.com/gin-gonic/gin@latest
 
-# Update all dependencies to their latest patch versions
+# Update all dependencies to their latest minor or patch versions
 go get -u ./...
 
 # Remove unused dependencies and tidy go.mod
@@ -228,7 +228,7 @@ go env -w GOPROXY="https://athens.corp.internal,https://proxy.golang.org,direct"
 go env -w GOPRIVATE="gitlab.corp.internal,github.com/corp-org"
 
 # Disable sum checking for private modules
-go env -w GONOSUMCHECK="gitlab.corp.internal/*"
+go env -w GONOSUMDB="gitlab.corp.internal/*"
 ```
 
 ## Setting GOPATH to a Custom Location
