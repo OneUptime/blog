@@ -186,7 +186,7 @@ ipmi sdr type "Processor"
 # Show sensors in compact format
 ipmi sensor list
 
-# Show only sensors in alarm state
+# Get detailed info for a specific sensor
 ipmi sensor get "CPU Temp" 2>/dev/null
 
 # Show temperature sensors
@@ -258,12 +258,12 @@ sudo reboot
 # Check current firmware version
 ipmi bmc info
 
-# For Dell: check iDRAC firmware version
-ipmi raw 0x30 0x01
+# Equivalent shorter alias for the same Get Device ID command
+ipmi mc info
 
 # Update BMC firmware (varies by vendor)
-# For generic IPMI:
-ipmitool -H 192.168.1.200 -U admin -P password \
+# For generic IPMI (HPM.1 standard):
+ipmitool -I lanplus -H 192.168.1.200 -U admin -P password \
     hpm upgrade firmware.bin activate
 ```
 
@@ -283,9 +283,16 @@ sudo ipmitool user set password 2 "$(openssl rand -base64 24)"
 ### Use IPMI v2.0 (lanplus) Only
 
 ```bash
-# Disable IPMI v1.5 access (less secure)
+# Restrict authentication algorithms for IPMI v1.5 sessions to MD5 only
+# (disabling weaker NONE/MD2/PASSWORD types)
 sudo ipmitool lan set 1 auth CALLBACK,USER,OPERATOR,ADMIN MD5
+
+# To restrict which IPMI v2.0 cipher suites are allowed per privilege level,
+# use cipher_privs (one char per cipher suite 0..14; X = disabled, a/u/o/a = max priv)
+sudo ipmitool lan set 1 cipher_privs XaaaXXaaaXXaaXX
 ```
+
+Note: fully disabling IPMI v1.5 is typically a BMC-specific setting and must be done through the vendor's web UI or OEM commands.
 
 ### Restrict IPMI to Management VLAN
 
