@@ -291,8 +291,10 @@ sudo sysctl fs.inotify.max_user_watches=524288
 echo "fs.inotify.max_user_watches=524288" | sudo tee -a /etc/sysctl.conf
 sudo sysctl -p
 
-# Check how many watches are currently active
-cat /proc/sys/fs/inotify/max_user_watches
+# Check how many watches are currently active across all processes
+sudo find /proc/*/fdinfo -type f 2>/dev/null \
+    | xargs grep -c '^inotify wd' 2>/dev/null \
+    | awk -F: '{s+=$2} END {print s}'
 ```
 
 If recursive watching a large directory tree, watch count can be high. Each subdirectory needs its own watch.
