@@ -49,7 +49,7 @@ sudo ufw default deny incoming
 sudo ufw default allow outgoing
 
 # Deny forwarding (for servers that aren't routers)
-sudo ufw default deny forward
+sudo ufw default deny routed
 ```
 
 ## Adding SSH Rule Before Enabling
@@ -101,7 +101,7 @@ Expected output:
 ```text
 Status: active
 Logging: on (low)
-Default: deny (incoming), allow (outgoing), deny (forwarded)
+Default: deny (incoming), allow (outgoing), deny (routed)
 New profiles: skip
 
 To                         Action      From
@@ -244,7 +244,7 @@ UFW handles IPv6 automatically when IPv6 is enabled in its configuration:
 
 ```bash
 # Check IPv6 is enabled in UFW
-sudo nano /etc/ufw/ufw.conf
+sudo nano /etc/default/ufw
 ```
 
 ```bash
