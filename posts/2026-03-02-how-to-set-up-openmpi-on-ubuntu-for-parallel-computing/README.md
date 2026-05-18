@@ -85,7 +85,7 @@ mpirun -np 4 ./hello_mpi
 
 ## A More Practical Example: Parallel Sum
 
-This example divides a computation across processes using point-to-point communication:
+This example divides a computation across processes and uses a collective reduction:
 
 ```c
 /* parallel_sum.c - Distribute array sum across MPI processes */
@@ -256,8 +256,9 @@ prepend-path MANPATH $prefix/share/man
 setenv MPI_HOME $prefix
 EOF
 
-# Add modulefiles directory to module path
-echo "module use /opt/modulefiles" | sudo tee -a /etc/environment.d/modules.sh
+# Add modulefiles directory to module path (sourced by /etc/profile.d/modules.sh on login)
+echo "module use /opt/modulefiles" | sudo tee /etc/profile.d/modules-extra.sh
+sudo chmod +x /etc/profile.d/modules-extra.sh
 
 # Use a module
 module load openmpi/4.1
@@ -332,14 +333,14 @@ cd osu-micro-benchmarks-7.2
 make -j$(nproc)
 
 # Run point-to-point latency benchmark
-cd mpi/pt2pt
+cd c/mpi/pt2pt/standard
 mpirun -np 2 ./osu_latency
 
 # Run bandwidth benchmark
 mpirun -np 2 ./osu_bw
 
 # Run all-reduce benchmark (collective operation)
-cd ../collective
+cd ../../collective/blocking
 mpirun -np 4 ./osu_allreduce
 ```
 
