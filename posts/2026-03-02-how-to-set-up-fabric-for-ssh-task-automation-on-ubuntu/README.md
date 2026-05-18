@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Fabric, SSH, Automation, Python, DevOps
 
-Description: Learn how to install and use Fabric 2 on Ubuntu for SSH-based task automation, covering remote command execution, file transfers, and multi-host deployments.
+Description: Learn how to install and use modern Fabric (2.x/3.x) on Ubuntu for SSH-based task automation, covering remote command execution, file transfers, and multi-host deployments.
 
 ---
 
 Fabric is a Python library and command-line tool for executing shell commands over SSH on remote servers. Where Ansible is a full configuration management system, Fabric sits at a lower level - it is essentially a nicer wrapper around Paramiko (Python SSH) with a task-based interface. If you are comfortable with Python and want programmatic control over SSH automation without the overhead of a full CM tool, Fabric fits well.
 
-This guide covers Fabric 2 (the current version), which is substantially different from Fabric 1.x.
+This guide covers modern Fabric (2.x and 3.x — Fabric 3 has been the current major line since January 2023), which is substantially different from Fabric 1.x. The 2.x and 3.x APIs are largely compatible, so the examples below work on either.
 
 ## Installation
 
@@ -191,8 +191,13 @@ def deploy(ctx, host, branch='main'):
     """
     Deploy the application to a server.
 
-    Usage: fab -H web1 deploy
-           fab -H web1 deploy --branch=staging
+    Usage: fab deploy web1
+           fab deploy web1 --branch=staging
+
+    Note: this task takes ``host`` as a positional argument and opens its own
+    Connection internally, so it is invoked without ``-H``. The ``-H`` flag
+    controls which Connection is bound to the task's first parameter and does
+    not auto-populate other arguments.
     """
     timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     release_dir = f'{APP_DIR}/releases/{timestamp}'
