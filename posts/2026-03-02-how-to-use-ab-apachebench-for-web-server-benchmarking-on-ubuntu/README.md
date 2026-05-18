@@ -114,15 +114,15 @@ Percentage of the requests served within a certain time (ms)
 
 **Time per request (mean)** - Average time each request took from the client's perspective. Calculated as `(Concurrency * Time_taken) / Total_requests`.
 
-**Time per request (mean, across all concurrent requests)** - Same as above divided by concurrency. This is the actual throughput measurement.
+**Time per request (mean, across all concurrent requests)** - Same as above divided by concurrency. This equals `1000 / RPS` and represents the average server-side time per request.
 
-**Failed requests** - Any non-2xx/3xx responses, connection errors, or timeouts. A non-zero number here usually indicates the server is struggling.
+**Failed requests** - Requests that failed due to connection errors, read errors, exceptions, or a response body length different from the first successful response. Non-2xx HTTP responses are reported separately on a `Non-2xx responses:` line and are not counted here.
 
 **Connection Times** - Breakdown of where time is spent:
 - `Connect` - TCP connection establishment
-- `Processing` - Time from connected to first byte received
-- `Waiting` - Same as Processing (time to first byte)
-- `Total` - Full request lifecycle
+- `Processing` - Time from connection established to the last byte of the response received (includes request write, server processing, and response read)
+- `Waiting` - Time from request fully sent to the first byte of response received (time to first byte)
+- `Total` - Full request lifecycle (Connect + Processing)
 
 **Percentile distribution** - The most important section for latency analysis. The 99th percentile shows worst-case latency your users actually experience. A server with great median latency but a bad p99 is still a problem in production.
 
