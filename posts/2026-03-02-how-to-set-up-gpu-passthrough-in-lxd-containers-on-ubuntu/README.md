@@ -74,7 +74,7 @@ lxc info --resources | grep -A10 "GPU"
 #       Render: renderD128
 #     NVIDIA information:
 #       UUID: GPU-a1b2c3d4...
-#       Architecture: Ampere
+#       Architecture: Ada Lovelace
 #       Brand: GeForce
 #       Model: NVIDIA GeForce RTX 4090
 #       VRAM: 24GiB
@@ -185,10 +185,9 @@ For NVIDIA A100/H100 with MIG mode enabled:
 # Enable MIG mode on the host (requires NVIDIA A100 or H100)
 sudo nvidia-smi -i 0 -mig 1
 
-# Create MIG instances (example: 3x 3g.20gb on A100-80GB)
-sudo nvidia-smi mig -cgi 3g.20gb -C
-sudo nvidia-smi mig -cgi 3g.20gb -C
-sudo nvidia-smi mig -cgi 3g.20gb -C
+# Create MIG instances (example: 2x 3g.40gb on A100-80GB)
+sudo nvidia-smi mig -cgi 3g.40gb -C
+sudo nvidia-smi mig -cgi 3g.40gb -C
 
 # List MIG instances
 sudo nvidia-smi -L
@@ -216,7 +215,7 @@ lxc config device add gpu-workload amdgpu gpu vendorid=1002
 # Inside the container, install ROCm
 lxc exec gpu-workload -- bash -c "
   curl -fsSL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -
-  echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/5.7 jammy main' > /etc/apt/sources.list.d/rocm.list
+  echo 'deb [arch=amd64] https://repo.radeon.com/rocm/apt/6.2 noble main' > /etc/apt/sources.list.d/rocm.list
   apt update
   apt install -y rocm-dev
 
