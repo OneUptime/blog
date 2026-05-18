@@ -79,17 +79,14 @@ sudo apt install -y xfce4 xfce4-terminal xorg
 # Create or edit /usr/NX/etc/node.cfg
 ```
 
-Configure NoMachine to use Xfce:
+Configure NoMachine to use Xfce by adding the `DefaultDesktopCommand` directive to the node configuration:
 
 ```bash
-# Edit the NoMachine node configuration
-sudo tee /usr/NX/etc/node.cfg.d/desktop.cfg <<'EOF'
-# Use Xfce as the virtual desktop
-DefaultDesktopCommand "/usr/bin/startxfce4"
-EOF
+# Append the directive to /usr/NX/etc/node.cfg
+echo 'DefaultDesktopCommand "/usr/bin/startxfce4"' | sudo tee -a /usr/NX/etc/node.cfg
 
-# Restart NoMachine to apply
-sudo systemctl restart nxserver
+# Changes to DefaultDesktopCommand take effect on the next session,
+# so a service restart is not required.
 ```
 
 ## Server Configuration
@@ -102,16 +99,18 @@ grep -E "^(Port|NXPort|SSHPort|EnableNetworkAdaptation|AcceptedAuthenticationMet
     /usr/NX/etc/server.cfg
 ```
 
-Common settings to adjust:
+Common operations:
 
 ```bash
-# /usr/NX/etc/server.cfg
-# (NoMachine uses its own config format - use nxserver commands to change settings)
+# Change the listening port: uncomment and edit the NXPort key in
+# /usr/NX/etc/server.cfg, then restart the server
+sudo sed -i 's/^#\?NXPort.*/NXPort 4000/' /usr/NX/etc/server.cfg
+sudo /usr/NX/bin/nxserver --restart
 
-# Change the listening port (default 4000)
-sudo /usr/NX/bin/nxserver --changepassword
+# Set a NoMachine password for an existing system user
+sudo /usr/NX/bin/nxserver --passwd <username>
 
-# List current configuration
+# Check server status and list running sessions
 sudo /usr/NX/bin/nxserver --status
 sudo /usr/NX/bin/nxserver --list
 ```
@@ -181,19 +180,22 @@ NoMachine adapts to connection quality automatically, but you can tune it furthe
 sudo nano /usr/NX/etc/node.cfg
 ```
 
-Key performance settings:
+Useful node.cfg keys for tuning:
 
 ```ini
-# Maximum bandwidth NoMachine will use (in KB/s)
-# 0 means unlimited
-BandwidthThrottling 0
+# Limit the server-side frame rate (frames per second). Lowering this
+# reduces bandwidth on slow links. Default is unset (no limit).
+DisplayServerVideoFrameRate 30
 
-# Enable adaptive JPEG quality
-AdaptiveJPEGQuality 1
+# Force the server to honor the frame rate cap above.
+DisplayServerUseVideoFrameRate 1
 
-# Cache size in MB
-CacheSize 256
+# Pass extra options to the NX display server (e.g. to tune encoding).
+# See "DisplayServerExtraOptions" in the NoMachine KB for accepted values.
+# DisplayServerExtraOptions ""
 ```
+
+NoMachine recommends leaving these at their defaults unless you know what you are changing — see [The server.cfg and node.cfg files explained](https://kb.nomachine.com/AR02N00877) for the authoritative reference.
 
 ### On the Client
 
@@ -219,24 +221,26 @@ NoMachine's ability to reconnect to a running session (like tmux for graphical s
 
 ## Enabling Multi-User Sessions
 
-By default, multiple users can each have their own virtual sessions:
+Concurrent connections to the server are governed by the `ConnectionsLimit` key in `server.cfg` (and `ConnectionsUserLimit` for the per-user cap). Since NoMachine 7.6.2 these default to `0`, which means unlimited:
 
 ```bash
-# Check how many concurrent sessions are allowed
-grep "MaxSessions" /usr/NX/etc/server.cfg
-
-# The free version allows up to 4 users
-# The check is done when a session is created
+# Check the current limits (a value of 0 means unlimited)
+grep -E "^(ConnectionsLimit|ConnectionsUserLimit|VirtualDesktopsLimit|VirtualDesktopsUserLimit)" \
+    /usr/NX/etc/server.cfg
 ```
+
+Note that the NoMachine Free Edition itself is licensed for personal use and accepts only one remote connection at a time. To support multiple concurrent users you need an Enterprise/Workstation license, even though the config keys above accept higher values.
 
 ## Automatic Resolution and DPI
 
-NoMachine automatically adjusts resolution to match the client display. For HiDPI displays:
+NoMachine automatically adjusts resolution to match the client display. To force a specific resolution for the headless display that NoMachine creates on a server without a monitor, set the following keys in `/usr/NX/etc/node.cfg`:
 
-```bash
-# Force a specific resolution for virtual desktops
-# In /usr/NX/etc/node.cfg
-# DefaultDisplayGeometry 1920x1080
+```ini
+# Create a virtual display when no physical one is attached
+CreateDisplay 1
+
+# Resolution for that virtual display, in WxH format (default 800x600)
+DisplayGeometry 1920x1080
 ```
 
 ## Troubleshooting
@@ -245,19 +249,19 @@ NoMachine automatically adjusts resolution to match the client display. For HiDP
 # View NoMachine logs
 sudo tail -f /usr/NX/var/log/nxserver.log
 
-# Check service status
-sudo systemctl status nxserver nxnode nxd
+# Check service status (nxserver is the only systemd unit;
+# the nxnode and nxd daemons are managed internally by nxserver)
+sudo systemctl status nxserver
 
 # Restart all NoMachine services
-sudo systemctl restart nxserver
+sudo /usr/NX/bin/nxserver --restart
 
 # Test that NoMachine is listening
 ss -tlnp | grep 4000
 
 # Check for desktop environment issues
 # (Virtual desktop creation fails if Xorg or the WM is misconfigured)
-sudo /usr/NX/bin/nxserver --restart
-cat /usr/NX/var/log/nxnode.log | tail -50
+sudo tail -50 /usr/NX/var/log/nxnode.log
 ```
 
 ## Uninstalling NoMachine
