@@ -140,7 +140,7 @@ my-app 2>&1 | head -50
 sudo dmesg | grep "apparmor.*DENIED" | tail -20
 
 # Or check journalctl
-sudo journalctl -t kernel | grep "apparmor.*DENIED" | tail -20
+sudo journalctl -k | grep "apparmor.*DENIED" | tail -20
 ```
 
 When you see a denial, it tells you exactly which system call or resource was blocked:
@@ -150,7 +150,7 @@ audit: type=1400 audit(1234567890.123:456): apparmor="DENIED" operation="open"
 profile="snap.my-app.my-app" name="/etc/hosts" pid=1234 comm="my-app"
 ```
 
-This tells you the snap tried to open `/etc/hosts` and was denied. Add the appropriate interface (in this case `network` or `network-observe` provides `/etc/hosts` access).
+This tells you the snap tried to open `/etc/hosts` and was denied. Identify the resource that was blocked and add the appropriate interface plug in your `snapcraft.yaml` (for example, `network` for general network access, `home` for files under `$HOME`, or `system-files` for arbitrary system paths).
 
 ## Testing Configuration
 
@@ -202,14 +202,17 @@ ls ~/snap/my-app/current/
 Snaps have specific directories for storing data:
 
 ```bash
-# User data (backed up on snap refresh)
+# Per-revision user data (the `current` symlink points to the active revision)
 ls ~/snap/my-app/current/
 
-# User data from previous version (kept on refresh)
-ls ~/snap/my-app/previous/
+# User data shared across revisions (preserved on refresh)
+ls ~/snap/my-app/common/
 
-# System data (persists across refreshes)
+# Per-revision system data
 ls /var/snap/my-app/current/
+
+# System data shared across revisions
+ls /var/snap/my-app/common/
 
 # Temporary snap data
 ls /tmp/snap-private-tmp/snap.my-app/
@@ -239,10 +242,10 @@ ls /home/testuser/snap/my-app/current/
 ## Removing and Reinstalling for Clean Tests
 
 ```bash
-# Remove snap and all its data
+# Remove snap and its data, but save a snapshot first (default behavior)
 sudo snap remove my-app
 
-# Remove snap but keep user data
+# Remove snap and all its data without saving a snapshot
 sudo snap remove --purge my-app
 
 # Verify removal
