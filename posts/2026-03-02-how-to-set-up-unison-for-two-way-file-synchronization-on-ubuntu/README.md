@@ -109,10 +109,6 @@ ignore = Name node_modules
 ignore = Name .DS_Store
 ignore = Name Thumbs.db
 
-# Sync deletion - delete files on target that were deleted on source
-# Default is true
-deletelast = true
-
 # Log file
 log = true
 logfile = /home/ubuntu/.unison/myproject.log
@@ -139,27 +135,33 @@ When the same file has been modified on both sides since the last sync:
 ```bash
 # Unison detects and reports conflicts
 # In interactive mode, it shows each conflict and asks what to do:
-# < - accept the version from the left (local)
-# > - accept the version from the right (remote)
-# m - merge the files (if a merge tool is configured)
+# > - propagate left to right (accept the version from the left/local)
+# < - propagate right to left (accept the version from the right/remote)
+# m - merge the files (if a merge program is configured)
 # / - skip this conflict
 
-# Configure a merge tool in your profile
-mergetool = diff3 -m CURRENT2 CURRENT1 CURRENTARCH > NEW && echo 'Merged'
+# Configure a merge program in your profile
+# The placeholders CURRENT1, CURRENT2, CURRENTARCH, and NEW are substituted
+# with the two replica versions, the common ancestor, and the output file
+merge = Name * -> diff3 -m CURRENT1 CURRENTARCH CURRENT2 > NEW
 
-# Or use a GUI merge tool
-mergeprogram = meld
+# Or use a GUI merge tool such as meld
+# merge = Name * -> meld CURRENT1 CURRENT2 --output NEW
 ```
 
 In batch mode with auto:
 
 ```bash
 # With batch=true and auto=true, Unison syncs non-conflicting changes
-# and exits with an error code on conflicts
+# and exits with a non-zero code if any files were skipped
 # You can then check the log to see which files conflicted
 unison myproject -batch -auto
 
-# Exit code 0 = success, 1 = no changes needed, 2 = conflicts detected
+# Exit codes:
+#   0 = successful synchronization, everything is up to date
+#   1 = some files were skipped (e.g. due to conflicts), but transfers succeeded
+#   2 = non-fatal failures occurred during file transfer
+#   3 = a fatal error occurred or execution was interrupted
 echo "Exit code: $?"
 ```
 
@@ -240,14 +242,15 @@ ignore = Regex .*/node_modules/.*
 Before actually syncing, preview the changes:
 
 ```bash
-# Dry run - show what would be done without doing it
-unison myproject -testenv
+# Test the connection to the remote server without syncing anything
+unison myproject -testserver
 
-# More detailed output
+# Use a simpler line-by-line text interface (useful in scripts and non-tty shells)
 unison myproject -dumbtty -terse
 
-# Show all differences
-unison -diff myproject
+# The `diff` preference sets the command used to display differences
+# in the interactive UI when you press `d` on a changed file. For example:
+#   diff = diff -u
 ```
 
 ## Monitoring Sync Results
@@ -281,17 +284,15 @@ ssh ubuntu@server.example.com unison -version
 # https://github.com/bcpierce00/unison/releases
 ```
 
-## Using Unison with rsync Transport
+## Using Unison's rsync-Style Delta Transfer
 
-For large syncs, Unison can use rsync's delta transfer algorithm to only transfer the changed parts of files:
+For large files, Unison uses a built-in implementation of the rsync algorithm
+to transfer only the changed parts of files. This is enabled by default and
+does not require the separate `rsync` binary to be installed:
 
 ```bash
-# Install rsync support
-sudo apt install unison-gtk  # Includes rsync support on some systems
-
-# In your profile, enable rsync transfer
-# Note: this requires rsync on both ends
-# The rsync option depends on your Unison build
+# The `rsync` preference controls this behavior (default: true).
+# Setting it to false makes Unison use whole-file transfers instead.
 rsync = true
 ```
 
