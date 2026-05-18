@@ -241,7 +241,7 @@ sudo monit -t
 sudo monit reload
 
 # Run a manual check cycle now
-sudo monit -I
+sudo monit validate
 ```
 
 ## Web Interface
@@ -274,15 +274,18 @@ sudo tail -f /var/log/monit.log
 
 ## Testing Alert Configuration
 
-Force an alert to verify email delivery works:
+To verify email delivery works, temporarily set a threshold low enough that it will definitely trigger (e.g. `if memory usage > 1% then alert`), then reload monit and wait for the next cycle:
 
 ```bash
-# Temporarily set a threshold that will definitely trigger
-sudo monit -v
+# Reload after editing the config to apply your test threshold
+sudo monit reload
 
-# Or manually exec the alert test
-sudo monit alert
+# Run monit in verbose (foreground) mode to see diagnostic output,
+# which is helpful when debugging mail delivery
+sudo monit -Iv
 ```
+
+Once you've confirmed the alert fires, revert the threshold and reload again.
 
 ## Example: Complete System Monitoring Setup
 
