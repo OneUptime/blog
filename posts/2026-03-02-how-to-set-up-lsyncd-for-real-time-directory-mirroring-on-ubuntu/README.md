@@ -19,7 +19,7 @@ lsyncd uses three things together:
 2. **rsync** - does the actual file transfer
 3. **Lua scripting** - lsyncd's configuration is Lua code, which gives it flexibility
 
-When files change, lsyncd accumulates events for a short delay (default 20 seconds) and then runs rsync to sync the changes. This batching avoids running rsync for every individual file write during rapid changes.
+When files change, lsyncd accumulates events for a short delay (default 15 seconds) and then runs rsync to sync the changes. This batching avoids running rsync for every individual file write during rapid changes.
 
 ## Installing lsyncd
 
@@ -317,11 +317,11 @@ journalctl -u lsyncd | grep -i "inotify"
 ## Testing the Configuration
 
 ```bash
-# Test the config file syntax without starting
+# Run in foreground (config syntax is validated at startup)
 sudo lsyncd --nodaemon /etc/lsyncd/lsyncd.conf.lua
 
-# Run in foreground to see activity
-sudo lsyncd --log all /etc/lsyncd/lsyncd.conf.lua
+# Run in foreground with all log categories enabled to see activity
+sudo lsyncd --nodaemon --log all /etc/lsyncd/lsyncd.conf.lua
 
 # Create a test file to verify sync is working
 touch /var/www/html/test-lsyncd.txt
