@@ -144,7 +144,7 @@ backend mysql_backend
     # Custom TCP check: connect and verify MySQL greeting
     option tcp-check
     tcp-check connect
-    tcp-check expect binary 0a   # Wait for MySQL greeting packet starting with 0x0a
+    tcp-check expect binary 0a   # Match the MySQL protocol version byte (0x0a) in the greeting
 
     server db1 10.0.0.40:3306 check inter 5s
     server db2 10.0.0.41:3306 check inter 5s backup
@@ -272,8 +272,8 @@ Use the HAProxy socket for real-time status:
 # Check server status via socket
 echo "show servers state" | sudo socat - /run/haproxy/admin.sock
 
-# Show health check details
-echo "show servers health" | sudo socat - /run/haproxy/admin.sock
+# Show per-server connection details
+echo "show servers conn" | sudo socat - /run/haproxy/admin.sock
 
 # Manually take a server down for maintenance
 echo "set server app_servers/app1 state drain" | sudo socat - /run/haproxy/admin.sock
