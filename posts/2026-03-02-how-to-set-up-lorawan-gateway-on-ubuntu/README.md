@@ -41,11 +41,11 @@ ChirpStack provides an APT repository:
 # Add ChirpStack repository
 
 sudo apt-get install -y apt-transport-https dirmngr
-sudo gpg --dearmor -o /usr/share/keyrings/chirpstack-archive-keyring.gpg < \
-  <(wget -qO - https://artifacts.chirpstack.io/downloads/chirpstack/chirpstack.gpg)
+sudo mkdir -p /etc/apt/keyrings/
+sudo sh -c 'wget -q -O - https://artifacts.chirpstack.io/packages/chirpstack.key | gpg --dearmor > /etc/apt/keyrings/chirpstack.gpg'
 
-echo "deb [signed-by=/usr/share/keyrings/chirpstack-archive-keyring.gpg] \
-  https://artifacts.chirpstack.io/downloads/chirpstack/apt stable main" | \
+echo "deb [signed-by=/etc/apt/keyrings/chirpstack.gpg] \
+  https://artifacts.chirpstack.io/packages/4.x/deb stable main" | \
   sudo tee /etc/apt/sources.list.d/chirpstack.list
 
 sudo apt-get update
@@ -77,7 +77,7 @@ sudo -u postgres psql << 'SQL'
 CREATE ROLE chirpstack WITH LOGIN PASSWORD 'your-strong-password';
 CREATE DATABASE chirpstack WITH OWNER chirpstack;
 \c chirpstack
-CREATE EXTENSION IF NOT EXISTS hstore;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
 \q
 SQL
 ```
@@ -150,8 +150,10 @@ Configure it:
   # Connect to local Mosquitto
   server = "tcp://localhost:1883"
 
-  # Topic prefix - must match ChirpStack's gateway configuration
-  topic_prefix = "eu868/gateway"
+  # Topic templates - must match ChirpStack's gateway configuration
+  event_topic_template = "eu868/gateway/{{ .GatewayID }}/event/{{ .EventType }}"
+  state_topic_template = "eu868/gateway/{{ .GatewayID }}/state/{{ .StateType }}"
+  command_topic_template = "eu868/gateway/{{ .GatewayID }}/command/#"
 
 [backend.semtech_udp]
   # Listen for connections from the packet forwarder
@@ -192,7 +194,7 @@ rtl_test
 # This is more practical with SX1301-based hardware like the RAK2245 HAT
 ```
 
-For the RAK2245 Pi HAT (SX1302 chipset) connected to a Raspberry Pi running Ubuntu:
+For the RAK2245 Pi HAT (SX1301 chipset) connected to a Raspberry Pi running Ubuntu:
 
 ```bash
 # Install chirpstack-concentratord
