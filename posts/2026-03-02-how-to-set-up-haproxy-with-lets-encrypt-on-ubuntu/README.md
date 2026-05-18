@@ -100,6 +100,9 @@ HAProxy needs a single PEM file containing the certificate, chain, and private k
 # Check where certbot stored the certificates
 ls -la /etc/letsencrypt/live/example.com/
 
+# Create the certs directory if it does not exist
+sudo mkdir -p /etc/haproxy/certs
+
 # Combine into a single PEM file
 # The order matters: cert + chain + privkey
 sudo bash -c 'cat /etc/letsencrypt/live/example.com/fullchain.pem \
@@ -109,9 +112,6 @@ sudo bash -c 'cat /etc/letsencrypt/live/example.com/fullchain.pem \
 # Set proper permissions (private key must be protected)
 sudo chmod 600 /etc/haproxy/certs/example.com.pem
 sudo chown root:root /etc/haproxy/certs/example.com.pem
-
-# Create the certs directory if it does not exist
-sudo mkdir -p /etc/haproxy/certs
 ```
 
 ## HAProxy SSL Configuration
@@ -214,7 +214,7 @@ sudo bash -c 'cat /etc/letsencrypt/live/api.example.com/fullchain.pem \
 sudo chmod 600 /etc/haproxy/certs/*.pem
 ```
 
-Reference the directory in HAProxy (HAProxy 2.0+):
+Reference the directory in HAProxy (supported since HAProxy 1.5):
 
 ```text
 frontend https_front
