@@ -38,12 +38,7 @@ ip link show
 
 Identify the physical interfaces to bond (e.g., `eth0` and `eth1`). Note their MAC addresses and current state.
 
-Install required tools:
-
-```bash
-sudo apt update
-sudo apt install ifenslave
-```
+With Netplan and systemd-networkd, no extra packages are required - bonding is handled entirely by the kernel module and the renderer. The legacy `ifenslave` package is only needed for the older `/etc/network/interfaces` workflow.
 
 The `bonding` kernel module is included in Ubuntu kernels. Load it if not already active:
 
@@ -192,7 +187,7 @@ Sample output:
 Ethernet Channel Bonding Driver: v5.15.0
 
 Bonding Mode: active-backup
-Primary Slave: eth0 (primary_reselect failure)
+Primary Slave: eth0 (primary_reselect always)
 Currently Active Slave: eth0
 MII Status: up
 MII Polling Interval (ms): 100
