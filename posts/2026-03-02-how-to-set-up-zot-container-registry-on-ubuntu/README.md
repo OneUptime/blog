@@ -24,8 +24,8 @@ Zot is an OCI-native container registry built around the OCI Distribution Specif
 ```bash
 # Download the latest Zot binary
 
-VERSION="2.0.2"
-curl -Lo /usr/local/bin/zot \
+VERSION="2.1.16"
+sudo curl -Lo /usr/local/bin/zot \
     https://github.com/project-zot/zot/releases/download/v${VERSION}/zot-linux-amd64
 
 sudo chmod +x /usr/local/bin/zot
@@ -54,7 +54,7 @@ sudo nano /etc/zot/config.json
 
 ```json
 {
-  "distSpecVersion": "1.1.0",
+  "distSpecVersion": "1.1.1",
   "storage": {
     "rootDirectory": "/var/lib/zot",
     "gc": true,
@@ -97,7 +97,7 @@ Update the configuration to use authentication:
 
 ```json
 {
-  "distSpecVersion": "1.1.0",
+  "distSpecVersion": "1.1.1",
   "storage": {
     "rootDirectory": "/var/lib/zot"
   },
@@ -109,25 +109,36 @@ Update the configuration to use authentication:
       "htpasswd": {
         "path": "/etc/zot/htpasswd"
       }
+    },
+    "accessControl": {
+      "repositories": {
+        "**": {
+          "defaultPolicy": []
+        },
+        "dev/**": {
+          "policies": [
+            {
+              "users": ["developer"],
+              "actions": ["read", "create", "update"]
+            }
+          ],
+          "defaultPolicy": []
+        },
+        "staging/**": {
+          "policies": [
+            {
+              "users": ["developer"],
+              "actions": ["read", "create", "update"]
+            }
+          ],
+          "defaultPolicy": []
+        }
+      },
+      "adminPolicy": {
+        "users": ["admin"],
+        "actions": ["read", "create", "update", "delete"]
+      }
     }
-  },
-  "accessControl": {
-    "repositories": {
-      "**": {
-        "defaultPolicy": []
-      }
-    },
-    "adminPolicy": {
-      "users": ["admin"],
-      "actions": ["read", "create", "update", "delete"]
-    },
-    "policies": [
-      {
-        "users": ["developer"],
-        "repositories": ["dev/**", "staging/**"],
-        "actions": ["read", "create", "update"]
-      }
-    ]
   },
   "log": {
     "level": "info"
@@ -171,7 +182,7 @@ Zot supports optional extensions including a web UI:
 
 ```json
 {
-  "distSpecVersion": "1.1.0",
+  "distSpecVersion": "1.1.1",
   "storage": {
     "rootDirectory": "/var/lib/zot"
   },
