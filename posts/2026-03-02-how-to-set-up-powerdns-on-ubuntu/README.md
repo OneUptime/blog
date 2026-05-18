@@ -44,6 +44,11 @@ sudo mysql << 'EOF'
 CREATE DATABASE powerdns CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE USER 'pdns'@'localhost' IDENTIFIED BY 'StrongPdnsPassword123!';
 GRANT ALL PRIVILEGES ON powerdns.* TO 'pdns'@'localhost';
+
+-- Create database and user for PowerDNS-Admin
+CREATE DATABASE powerdns_admin CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'pdnsadmin'@'localhost' IDENTIFIED BY 'AdminDbPassword!';
+GRANT ALL PRIVILEGES ON powerdns_admin.* TO 'pdnsadmin'@'localhost';
 FLUSH PRIVILEGES;
 EOF
 ```
@@ -215,6 +220,9 @@ sudo apt install -y python3 python3-pip python3-venv \
   libssl-dev libxml2-dev libxslt1-dev \
   nodejs npm
 
+# Install yarn (required to build PowerDNS-Admin static assets)
+sudo npm install -g yarn
+
 # Clone PowerDNS-Admin
 sudo git clone https://github.com/PowerDNS-Admin/PowerDNS-Admin.git /opt/powerdns-admin
 cd /opt/powerdns-admin
@@ -246,7 +254,7 @@ PDNS_API_KEY = 'your-random-api-key-change-this'
 PDNS_VERSION = '4.9.0'
 ```
 
-Initialize the database:
+Initialize the database and build the frontend assets:
 
 ```bash
 cd /opt/powerdns-admin
@@ -254,6 +262,13 @@ sudo bash -c "source venv/bin/activate && \
   FLASK_APP=powerdnsadmin/__init__.py \
   FLASK_CONF=../configs/production.py \
   flask db upgrade"
+
+# Install JS dependencies and build static assets
+sudo yarn install --pure-lockfile
+sudo bash -c "source venv/bin/activate && \
+  FLASK_APP=powerdnsadmin/__init__.py \
+  FLASK_CONF=../configs/production.py \
+  flask assets build"
 ```
 
 Create a systemd service for PowerDNS-Admin:
