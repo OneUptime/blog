@@ -75,7 +75,9 @@ packages:
 
 The `$RELEASE` variable is automatically replaced with the Ubuntu codename (jammy, focal, etc.).
 
-### Adding a Repository with a Key URL
+### Adding a Repository with a Key ID
+
+For repositories whose signing key is published on a public keyserver, supply the `keyid` (full fingerprint) and cloud-init will fetch the key from `keyserver.ubuntu.com` by default:
 
 ```yaml
 #cloud-config
@@ -83,13 +85,15 @@ apt:
   sources:
     docker:
       source: "deb [arch=amd64] https://download.docker.com/linux/ubuntu $RELEASE stable"
-      keyurl: "https://download.docker.com/linux/ubuntu/gpg"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
 
 packages:
   - docker-ce
   - docker-ce-cli
   - containerd.io
 ```
+
+Note that cloud-init's apt module does not support a `keyurl` option — for keys hosted only at an HTTP URL (not on a keyserver), use `runcmd` to download the key with `curl` and write it into `/etc/apt/keyrings/` before configuring the source.
 
 ### Adding a Repository with an Inline Key
 
@@ -117,25 +121,27 @@ apt:
     # Docker repository
     docker:
       source: "deb [arch=amd64] https://download.docker.com/linux/ubuntu $RELEASE stable"
-      keyurl: "https://download.docker.com/linux/ubuntu/gpg"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
 
     # HashiCorp repository (Terraform, Vault, Consul, etc.)
     hashicorp:
       source: "deb [arch=amd64] https://apt.releases.hashicorp.com $RELEASE main"
-      keyurl: "https://apt.releases.hashicorp.com/gpg"
+      keyid: 798AEC654E5C15428C8E42EEAA16FCBCA621E701
 
-    # Kubernetes repository
-    kubernetes:
-      source: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
-      keyurl: "https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key"
-      filename: kubernetes.list
+# Kubernetes uses a per-minor-version signing key hosted at pkgs.k8s.io
+# (not on a public keyserver), so fetch it explicitly via runcmd.
+runcmd:
+  - mkdir -p /etc/apt/keyrings
+  - curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  - echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' > /etc/apt/sources.list.d/kubernetes.list
+  - apt-get update
+  - apt-get install -y kubectl
 
 package_update: true
 packages:
   - docker-ce
   - docker-ce-cli
   - terraform
-  - kubectl
 ```
 
 ## Configuring APT Proxy
@@ -218,13 +224,7 @@ snap:
     - snap install lxd --channel=5.21/stable
 ```
 
-Alternatively, use the `snaps` key:
-
-```yaml
-#cloud-config
-# Note: the snaps module may need to be in cloud_config_modules
-# Check /etc/cloud/cloud.cfg for module configuration
-```
+If you need to pre-load signed snap assertions (for example, to install snaps from a brand store) the `snap` module also accepts an `assertions` key alongside `commands`. There is no separate top-level `snaps` key — package installs are always expressed as `snap install ...` entries under `commands`.
 
 For more reliable snap installation, use `runcmd`:
 
@@ -278,7 +278,7 @@ apt:
   sources:
     docker:
       source: "deb [arch=amd64] https://download.docker.com/linux/ubuntu $RELEASE stable"
-      keyurl: "https://download.docker.com/linux/ubuntu/gpg"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
 
 package_update: true
 packages:
