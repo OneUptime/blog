@@ -80,7 +80,7 @@ keybase id
 
 # Look up another user and verify their proofs
 keybase id username
-keybase id github://their-github-username
+keybase id their-github-username@github
 ```
 
 ## Encrypting and Signing Files
@@ -104,10 +104,11 @@ keybase decrypt -i document.pdf.kbx -o document.pdf
 keybase sign -i release.tar.gz -d -o release.tar.gz.sig
 
 # Verify a signature from a specific user
-keybase verify -S sender-username -i release.tar.gz -d -s release.tar.gz.sig
+keybase verify -S sender-username -i release.tar.gz -d release.tar.gz.sig
 
-# Sign and encrypt in one operation
-keybase encrypt -s recipient-username -i secret.txt -o secret.txt.kbx
+# Encryption signs the output by default (auth-type=signed),
+# so this single command both signs and encrypts
+keybase encrypt recipient-username -i secret.txt -o secret.txt.kbx
 ```
 
 ## Using the Keybase Filesystem (KBFS)
@@ -138,18 +139,18 @@ cp my-gpg-key.asc /keybase/public/yourusername/
 ls /keybase/team/myteam/
 ```
 
-If KBFS is not automatically mounted, start it:
+If KBFS is not automatically mounted, restart the Keybase service - the filesystem mounts as part of `run_keybase`:
 
 ```bash
-# Mount the filesystem
-keybase fuse mount
-
-# Or restart the Keybase service
+# Restart the Keybase service to remount KBFS
 keybase ctl stop
 run_keybase
 
-# Check mount status
-keybase fs stat /keybase
+# Check overall status (includes whether KBFS is mounted)
+keybase status
+
+# List the mount root to confirm it is available
+keybase fs ls /keybase
 ```
 
 ## Working with Teams
@@ -190,9 +191,7 @@ Keybase supports end-to-end encrypted Git repositories:
 # Create a new encrypted repository
 keybase git create myrepo
 
-# Clone a Keybase Git repository
-keybase git clone keybase://private/yourusername/myrepo
-# or
+# Clone a Keybase Git repository (use plain git - keybase has no clone subcommand)
 git clone keybase://private/yourusername/myrepo
 
 # List your Keybase repositories
@@ -288,15 +287,14 @@ pkill -f keybase
 run_keybase
 
 # If KBFS isn't mounting
-keybase fs sync disable  # disable sync if causing issues
+keybase fs sync disable /keybase/private/yourusername  # disable sync for a path if it's causing issues
 keybase ctl stop
 run_keybase
 
 # Check for errors in the Keybase log
 keybase log send  # sends logs to Keybase for support
 
-# Clear and resync if things are stuck
-keybase clear-cached-public-key
+# Restart the service if things are stuck
 keybase ctl reload
 ```
 
