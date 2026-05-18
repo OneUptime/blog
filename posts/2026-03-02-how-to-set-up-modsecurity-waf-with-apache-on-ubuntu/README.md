@@ -272,7 +272,7 @@ sudo tail -f /var/log/apache2/modsec_audit.log
 sudo grep "Access denied" /var/log/apache2/modsec_audit.log
 
 # Find which rules triggered
-sudo grep "id \"" /var/log/apache2/modsec_audit.log | awk '{print $NF}' | sort | uniq -c | sort -rn
+sudo grep -oE '\[id "[0-9]+"\]' /var/log/apache2/modsec_audit.log | sort | uniq -c | sort -rn
 ```
 
 A typical audit log entry:
