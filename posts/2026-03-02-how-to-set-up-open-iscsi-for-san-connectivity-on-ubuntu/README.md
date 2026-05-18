@@ -95,7 +95,7 @@ node.session.iscsi.ImmediateData = Yes
 node.session.iscsi.MaxBurstLength = 16776192
 node.session.iscsi.FirstBurstLength = 262144
 
-# Error recovery level (0=session, 1=digest, 2=conn)
+# SCSI error recovery timeouts (seconds)
 node.session.err_timeo.abort_timeout = 15
 node.session.err_timeo.lu_reset_timeout = 30
 node.session.err_timeo.tgt_reset_timeout = 30
