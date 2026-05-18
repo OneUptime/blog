@@ -16,7 +16,7 @@ On physical hardware, the watchdog is often a dedicated circuit on the motherboa
 
 ### Hardware Watchdog
 
-Most server motherboards include an Intel TCO (Timer Counter Output) watchdog or similar circuit, exposed as `/dev/watchdog` or `/dev/watchdog0`. This is the most reliable option because it survives kernel hangs.
+Most server motherboards include an Intel TCO (Total Cost of Ownership) watchdog or similar circuit, exposed as `/dev/watchdog` or `/dev/watchdog0`. This is the most reliable option because it survives kernel hangs.
 
 ### Software Watchdog (softdog)
 
@@ -132,7 +132,7 @@ max-load-15 = 12
 # 64MB free minimum
 min-memory = 16384
 
-# Maximum temperature (in Celsius * 1000)
+# Maximum temperature (in degrees Celsius)
 # max-temperature = 90
 
 # Files to test for writes (test that filesystem is not read-only)
@@ -181,11 +181,11 @@ sudo nano /etc/systemd/system.conf
 
 ```ini
 [Manager]
-# How often to check if watchdog needs kicking (in microseconds)
+# How often to kick the hardware watchdog (bare numbers default to seconds; suffixes like s/min/h are accepted)
 RuntimeWatchdogSec=30
 
-# Watchdog timeout before forced reboot
-RuntimeWatchdogPreGoalSec=10s
+# Pre-timeout: fires a warning/action before the hardware watchdog reboots the system
+RuntimeWatchdogPreSec=10s
 
 # Reboot timeout watchdog
 RebootWatchdogSec=10min
