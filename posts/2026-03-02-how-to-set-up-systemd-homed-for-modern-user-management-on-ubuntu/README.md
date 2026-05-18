@@ -115,7 +115,7 @@ homectl list | grep -i active
 
 For LUKS-backed homes, activation decrypts the LUKS volume and mounts it. Deactivation unmounts and re-encrypts.
 
-Resource Limits per User
+## Resource Limits per User
 
 One of homed's key features is per-user resource control:
 
@@ -176,14 +176,17 @@ ls -lh /var/lib/systemd/home/*.home 2>/dev/null
 
 # On the source machine - prepare for portability
 sudo homectl deactivate alice
-# Copy alice.home and alice.identity to the target machine
+# Copy alice.home (and alice.identity, if present) to
+# /var/lib/systemd/home/ on the target machine
 
-# On the target machine - import the home
-sudo homectl adopt /path/to/alice.home
+# On the target machine - have systemd-homed pick up the new file
+sudo systemctl restart systemd-homed
 
 # Activate on the new machine (requires alice's password)
 sudo homectl activate alice
 ```
+
+For LUKS-backed homes the user record is also embedded inside the LUKS header of the `.home` file, so copying the image alone is generally enough; the matching `.identity` file is regenerated on first activation.
 
 ## PAM Integration
 
@@ -258,9 +261,13 @@ sudo homectl update alice --fido2-device=
 # Remove a user and their home directory
 sudo homectl remove alice
 
-# Remove just the user record, keep the home directory
-# (Useful before moving the home to another machine)
-sudo homectl remove --keep-home alice
+# If you want to keep the home image (for example, to move it to
+# another machine), copy the .home file out of /var/lib/systemd/home/
+# *before* running homectl remove, since the remove subcommand always
+# deletes both the user record and the home directory itself:
+sudo homectl deactivate alice
+sudo cp /var/lib/systemd/home/alice.home /backup/alice.home
+sudo homectl remove alice
 ```
 
 ## Troubleshooting
