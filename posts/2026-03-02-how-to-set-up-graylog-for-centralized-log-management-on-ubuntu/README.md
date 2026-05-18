@@ -119,8 +119,6 @@ services:
       - plugins.security.disabled=true
       - bootstrap.memory_lock=true
       - "OPENSEARCH_JAVA_OPTS=-Xms2g -Xmx2g"
-      # Disable performance analyzer
-      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=TempPassword1!
     ulimits:
       memlock:
         soft: -1
