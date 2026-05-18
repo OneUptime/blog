@@ -29,13 +29,16 @@ helm version
 Alternatively, install via apt for easier updates:
 
 ```bash
+# Install prerequisites
+sudo apt-get install -y curl gpg apt-transport-https
+
 # Add Helm's GPG key and repository
-curl https://baltocdn.com/helm/signing.asc | \
+curl -fsSL https://packages.buildkite.com/helm-linux/helm-debian/gpgkey | \
   gpg --dearmor | \
   sudo tee /usr/share/keyrings/helm.gpg > /dev/null
 
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/helm.gpg] \
-  https://baltocdn.com/helm/stable/debian/ all main" | \
+echo "deb [signed-by=/usr/share/keyrings/helm.gpg] \
+  https://packages.buildkite.com/helm-linux/helm-debian/any/ any main" | \
   sudo tee /etc/apt/sources.list.d/helm-stable-debian.list
 
 sudo apt-get update
@@ -57,7 +60,7 @@ source <(helm completion bash)
 Helm uses repositories to distribute charts. The official Artifact Hub hosts thousands of community charts.
 
 ```bash
-# Add the stable charts repository (maintained by the community)
+# Add the legacy stable charts repository (archived in November 2020; kept for reference)
 helm repo add stable https://charts.helm.sh/stable
 
 # Add Bitnami - one of the most comprehensive chart collections
