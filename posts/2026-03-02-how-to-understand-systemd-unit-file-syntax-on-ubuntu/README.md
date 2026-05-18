@@ -68,8 +68,8 @@ After=network.target syslog.target
 # Ordering: start before these units
 Before=myapp.service
 
-# Hard dependency: this unit fails if postgresql.service fails
-Requires=postgresql.service
+# Hard dependency: if the required unit fails to start (and we also order After= it), this unit fails too
+Requires=local-fs.target
 
 # Soft dependency: try to start with this unit, but don't fail if it's not available
 Wants=optional-cache.service
@@ -192,6 +192,7 @@ EnvironmentFile=-/etc/myapp/optional-env  # - = ignore if missing
 # on-failure: On non-zero exit, signal, timeout
 # on-abnormal: On signal, timeout (not clean exit)
 # on-abort: On SIGABRT or core dump
+# on-watchdog: If watchdog timeout expires
 # always: Restart regardless of reason
 Restart=on-failure
 
@@ -203,7 +204,12 @@ TimeoutStartSec=30s
 
 # Time limit for stopping before SIGKILL is sent
 TimeoutStopSec=30s
+```
 
+Start rate limiting goes in the `[Unit]` section (not `[Service]`):
+
+```ini
+[Unit]
 # Limit restart attempts
 StartLimitIntervalSec=60
 StartLimitBurst=5
@@ -215,7 +221,8 @@ StartLimitBurst=5
 ```ini
 [Service]
 # Filesystem access restrictions
-ProtectSystem=strict          # Mount /usr, /boot, /etc as read-only
+ProtectSystem=strict          # Mount entire filesystem read-only (except /dev, /proc, /sys)
+                              # Use ProtectSystem=full for /usr, /boot, /etc read-only
 ProtectHome=yes               # Make /home, /root, /run/user inaccessible
 
 # Capability restrictions
@@ -257,10 +264,9 @@ Also=related.service  # also enable this unit when this one is enabled
 ```
 
 Common `WantedBy` targets:
-- `multi-user.target` - For server services (no GUI)
+- `multi-user.target` - For server services (no GUI). Use this even for network-dependent services - combine with `After=network-online.target` for ordering.
 - `graphical.target` - For desktop services
-- `network.target` - For network-dependent services
-- `timers.target` - For systemd timers
+- `timers.target` - For systemd timer units
 
 ## Using Drop-In Files to Modify Existing Units
 
@@ -304,7 +310,7 @@ systemctl cat nginx.service
 # %n = unit name (e.g., myapp.service)
 # %p = unit prefix (part before @)
 # %i = instance name (part after @ for template units)
-# %u = user running the service
+# %u = user running the service manager (root for the system manager)
 # %H = hostname
 # %h = home directory of service user
 # %t = runtime directory path (/run)
