@@ -280,7 +280,7 @@ curl -s -X POST http://127.0.0.1:8000/ \
   -d '{
     "command": "lease4-get-by-hw-address",
     "service": ["dhcp4"],
-    "arguments": {"hwaddr": "aa:bb:cc:dd:ee:01"}
+    "arguments": {"hw-address": "aa:bb:cc:dd:ee:01"}
   }' | python3 -m json.tool
 
 # Delete a stale lease
