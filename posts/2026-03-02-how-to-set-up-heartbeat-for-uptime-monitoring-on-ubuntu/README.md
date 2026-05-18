@@ -158,7 +158,7 @@ HTTP monitors are the most feature-rich option - they check status codes, respon
   schedule: '@every 5m'
   urls:
     - "https://api.example.com/v1/status"
-  method: POST
+  check.request.method: POST
   check.request.headers:
     Content-Type: "application/json"
     Authorization: "Bearer your-health-check-token"
@@ -307,7 +307,7 @@ PUT _watcher/watch/heartbeat-down-alert
 **ICMP checks fail with "operation not permitted":**
 ```bash
 # Check if heartbeat has the required capability
-sudo setcap cap_net_raw+eip /usr/share/heartbeat/heartbeat
+sudo setcap cap_net_raw+eip /usr/share/heartbeat/bin/heartbeat
 
 # Or run via systemd which handles this automatically
 sudo systemctl restart heartbeat-elastic
