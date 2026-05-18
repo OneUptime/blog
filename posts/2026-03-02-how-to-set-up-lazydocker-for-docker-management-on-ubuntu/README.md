@@ -116,44 +116,55 @@ The lazydocker interface is split into panels:
 ### Global Navigation
 
 ```text
-Tab / Shift+Tab    Cycle between left panel sections
-Arrow keys         Navigate within a section
-Enter             Select item / toggle
-ESC               Go back or close panel
-q                 Quit lazydocker
-?                 Show help/keybindings
+1-6               Focus a side panel (projects, services, containers, images, volumes, networks)
+[ / ]             Previous / next tab in the focused panel
+Arrow keys        Navigate within a section
+Enter             Focus the main panel
+ESC               Return / close menu
+q  or  Ctrl+C     Quit lazydocker
+?                 Show options menu
+/                 Filter the current list
++  /  _           Next / previous screen mode (normal/half/fullscreen)
 ```
 
 ### Container Actions
 
 ```text
-u                 View container's CPU and memory usage
-l                 View logs
-e                 Exec into container (opens a shell)
+m                 View logs
+E                 Exec shell into container
+a                 Attach to container
 r                 Restart container
 s                 Stop container
+p                 Pause container
 d                 Remove container (with confirmation)
-x                 Open container's docker-compose menu (if applicable)
-m                 View full container details
-[                 Previous page of logs
-]                 Next page of logs
+e                 Hide / show stopped containers
+c                 Run a predefined custom command
+b                 View bulk commands
+w                 Open in browser (first port assumed to be HTTP)
 ```
+
+To view CPU and memory usage for a container, focus the container and press `]` to switch the main panel to the Stats tab.
 
 ### Image Actions
 
 ```text
 d                 Remove image
-p                 Pull latest version of the image
+c                 Run a predefined custom command
+b                 View bulk commands
 ```
 
-### Scrolling in Log View
+lazydocker does not ship a default keybinding for pulling images; you can add one via the `customCommands.images` config (see below) or pull from a regular terminal.
+
+### Scrolling in the Main Panel (logs, stats, config)
 
 ```text
-Page Up/Down      Scroll through logs
-G                 Jump to end of logs (latest)
-g                 Jump to beginning of logs
-/                 Search logs
-n                 Next search match
+PgUp / PgDn       Scroll up / down
+Ctrl+U / Ctrl+D   Half-page up / down
+K / J             Scroll up / down by line
+H / L             Scroll left / right
+Home              Jump to the top
+End               Auto-scroll to the latest output
+ESC               Return focus to the side panel
 ```
 
 ## Working with Docker Compose Projects
@@ -168,14 +179,22 @@ cd /path/to/your/project
 lazydocker
 ```
 
-In the containers panel, Compose services are grouped by project name. When a Compose service is selected:
+When a Compose service is selected in the Services panel (press `2` to focus it):
 
 ```text
-u                 Bring up the service (docker-compose up)
-d                 Bring down the service
+u                 Up service        (docker compose up for this service)
+U                 Up project        (docker compose up for the whole project)
+D                 Down project      (docker compose down)
+s                 Stop the service
+S                 Start the service
+p                 Pause the service
 r                 Restart the service
-l                 View service logs
-x                 Show Compose-specific options
+R                 View restart options
+d                 Remove the service's containers
+m                 View service logs
+E                 Exec shell into the service container
+a                 Attach to the service container
+c                 Run a predefined custom command
 ```
 
 ## Configuration
@@ -252,7 +271,7 @@ customCommands:
 
 ## Monitoring Resource Usage
 
-In the containers panel, press `u` or navigate to the Stats tab to see:
+In the containers panel, select a container and use `[` / `]` to switch the main panel to the Stats tab. You will see:
 
 - CPU usage percentage
 - Memory usage and limit
