@@ -161,7 +161,11 @@ Return values available:
 
 ## Using Legacy .pkla Files
 
-Older documentation often references `.pkla` files. They still work on current Ubuntu but are not the recommended approach for new configurations.
+Older documentation often references `.pkla` files. They are not the recommended approach for new configurations. On Ubuntu 24.04 and later (polkit 124+), the legacy backend has been split out into a separate package that is not installed by default — install it first if you need `.pkla` support:
+
+```bash
+sudo apt install polkitd-pkla
+```
 
 ```bash
 sudo nano /etc/polkit-1/localauthority/50-local.d/allow-network-restart.pkla
@@ -192,11 +196,11 @@ pkcheck --action-id org.freedesktop.NetworkManager.network-control \
         --enable-internal-agent
 ```
 
-Or use `polkit` to simulate authorization:
+Or inspect the action's default (implicit) authorization settings:
 
 ```bash
-# Check what result a given user would get
-sudo -u deployuser pkaction --action-id org.freedesktop.systemd1.manage-units --verbose
+# Show the action's defined implicit results (any/inactive/active)
+pkaction --action-id org.freedesktop.systemd1.manage-units --verbose
 ```
 
 View Polkit logs to see authorization decisions:
