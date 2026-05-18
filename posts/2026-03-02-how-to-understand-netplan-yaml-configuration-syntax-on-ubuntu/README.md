@@ -70,7 +70,7 @@ network:
 | `bridges` | Network bridges |
 | `vlans` | VLAN subinterfaces |
 | `tunnels` | VPN and tunnel interfaces |
-| `dummies` | Dummy interfaces for loopback-like uses |
+| `dummy-devices` | Dummy interfaces for loopback-like uses |
 
 ## Interface Matching
 
@@ -276,7 +276,8 @@ tunnels:
   wg0:
     mode: wireguard
     addresses: [10.0.1.2/24]
-    private-key: /etc/wireguard/wg0.key
+    keys:
+      private: /etc/wireguard/wg0.key
     peers:
       - keys:
           public: "peer-public-key-base64=="
