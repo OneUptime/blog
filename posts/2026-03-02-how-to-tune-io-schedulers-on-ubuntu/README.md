@@ -141,9 +141,12 @@ echo 8000 | sudo tee /sys/block/sda/queue/iosched/slice_idle
 # For server workloads (maximize throughput, fairness less important):
 echo 0 | sudo tee /sys/block/sda/queue/iosched/slice_idle  # Disable idle waiting
 
-# Timeout for BFQ requests (seconds)
+# Timeout for sync BFQ requests (in jiffies; BFQ does not expose a timeout_async)
 cat /sys/block/sda/queue/iosched/timeout_sync
-cat /sys/block/sda/queue/iosched/timeout_async
+
+# FIFO expiry for sync/async requests (analogous to mq-deadline's read/write_expire)
+cat /sys/block/sda/queue/iosched/fifo_expire_sync
+cat /sys/block/sda/queue/iosched/fifo_expire_async
 ```
 
 ## Queue Depth Tuning
@@ -155,7 +158,7 @@ The queue depth (nr_requests) controls how many requests can be queued:
 cat /sys/block/nvme0n1/queue/nr_requests
 cat /sys/block/sda/queue/nr_requests
 
-# NVMe can handle very deep queues (supports NCQ/NQ deeply)
+# NVMe can handle very deep queues natively (paired SQ/CQ, not SATA NCQ)
 echo 1024 | sudo tee /sys/block/nvme0n1/queue/nr_requests
 
 # For HDDs, moderate queue depth prevents head thrashing
@@ -204,7 +207,7 @@ test_scheduler() {
         --time_based \
         --runtime=30 \
         --group_reporting \
-        --output-format=terse 2>/dev/null | awk -F';' '{print "Sequential Read MB/s: "$6/1024}'
+        --output-format=terse 2>/dev/null | awk -F';' '{print "Sequential Read MB/s: "$7/1024}'
 }
 
 # Test all schedulers on an HDD
@@ -222,7 +225,7 @@ test_scheduler /dev/nvme0n1 none
 ```bash
 echo none | sudo tee /sys/block/nvme0n1/queue/scheduler
 ```
-The NVMe spec allows thousands of queues with deep queue depths. Software scheduling adds latency without benefit.
+The NVMe spec allows up to 65,535 paired submission/completion queues, each with deep queue depths. Software scheduling adds latency without benefit.
 
 ### SATA/SAS SSDs
 ```bash
@@ -249,22 +252,10 @@ echo none | sudo tee /sys/block/vda/queue/scheduler
 # The hypervisor handles scheduling; kernel scheduler adds unnecessary overhead
 ```
 
-## Making Changes in /etc/default/grub (Alternative)
+## A Note on the `elevator=` Kernel Parameter
 
-For a simple global default at boot:
+You may see older guides recommend setting `GRUB_CMDLINE_LINUX="elevator=mq-deadline"` in `/etc/default/grub`. This parameter only ever applied to the legacy single-queue block layer and is **not honored by blk-mq**, which is what modern Ubuntu kernels (5.x+) use exclusively. Setting it on a current system has no effect.
 
-```bash
-sudo nano /etc/default/grub
-
-# For all block devices default to mq-deadline:
-# GRUB_CMDLINE_LINUX="elevator=mq-deadline"
-
-# For NVMe specifically (most common case - keep none):
-# No change needed; NVMe defaults to none
-
-sudo update-grub
-```
-
-The per-device udev approach is more flexible and preferred over the global grub parameter, since different devices in the same system benefit from different schedulers.
+Use the per-device udev approach shown above instead — it's the supported way to set schedulers on blk-mq, and it's more flexible since different devices in the same system benefit from different schedulers.
 
 Monitoring the effect of scheduler changes with `iostat -xz 1` helps confirm whether your changes improved throughput and reduced await time as expected.
