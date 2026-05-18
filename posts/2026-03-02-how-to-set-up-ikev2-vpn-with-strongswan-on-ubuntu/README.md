@@ -236,14 +236,11 @@ openssl x509 -in ~/pki/cacert/ca.cert.pem -outform der -out ~/pki/cacert/ca.cert
 # Watch IKE negotiations in real time
 sudo journalctl -fu strongswan-starter
 
-# Check current security associations
+# Check current security associations and loaded connections
 sudo ipsec statusall
 
-# Show loaded connection configurations
-sudo ipsec listconn
-
-# Test config syntax without restarting
-sudo ipsec checkconfig
+# Reload the configuration without restarting (errors are reported to the log)
+sudo ipsec reload
 
 # If a client connects but cannot reach the internet:
 # Verify forwarding is enabled and NAT rule is in place
