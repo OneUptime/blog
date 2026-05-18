@@ -8,7 +8,7 @@ Description: Configure Postfix header checks on Ubuntu to filter, reject, or mod
 
 ---
 
-Postfix header checks give you fine-grained control over mail based on message headers. You can reject messages with suspicious headers, strip unwanted header fields, add custom headers, or redirect mail based on header content. Header checks run during the SMTP transaction before the message is fully accepted, allowing rejection without storing the message.
+Postfix header checks give you fine-grained control over mail based on message headers. You can reject messages with suspicious headers, strip unwanted header fields, add custom headers, or redirect mail based on header content. Header checks are applied by the `cleanup(8)` daemon before the message is committed to the queue, so a REJECT result is returned to the SMTP client at the end-of-DATA response.
 
 ## Types of Postfix Checks
 
@@ -37,8 +37,9 @@ The file format is: `regex_pattern  action  [message]`
 ```text
 # /etc/postfix/header_checks - Postfix header check rules
 
-# Block messages with no Subject header
-
+# Log every message that has a Subject header (sample WARN rule -
+# note that header_checks cannot detect a *missing* header, only match
+# headers that are present)
 /^Subject:.*$/ WARN
 
 # Reject messages with suspicious executable attachments
@@ -48,8 +49,9 @@ The file format is: `regex_pattern  action  [message]`
 # (configure in check_sender_access for better control, but header checks can catch some cases)
 /^From:.*<postmaster@yourdomain\.com>/ REJECT Forged sender address
 
-# Strip client IP from Received headers for privacy (uncomment to use)
-# /^Received:.*\(.*\).*$/ IGNORE
+# Drop Received headers entirely for privacy - IGNORE removes the whole
+# header line, not just the IP portion (uncomment to use)
+# /^Received:/ IGNORE
 
 # Block messages with base64-encoded executable names
 /^Content-Type:.*name=.*\.(exe|bat|cmd|vbs|pif|scr)/ REJECT Blocked attachment type: $0
@@ -79,7 +81,8 @@ Add or modify:
 # Header checks for incoming SMTP connections
 header_checks = regexp:/etc/postfix/header_checks
 
-# Optionally, separate rules for messages submitted by your users
+# Optionally, separate rules applied by the smtp(8) client when
+# delivering mail out to remote servers
 # smtp_header_checks = regexp:/etc/postfix/smtp_header_checks
 ```
 
@@ -95,7 +98,6 @@ Postfix header checks support several actions:
 | Action | Description |
 |--------|-------------|
 | `REJECT [message]` | Reject the message with a 5xx error code |
-| `DEFER_IF_REJECT [message]` | Defer if any reject would apply |
 | `WARN [message]` | Log a warning but deliver the message |
 | `DISCARD [message]` | Accept but silently drop (no bounce) |
 | `HOLD [message]` | Hold the message in the hold queue for review |
@@ -204,7 +206,7 @@ sudo apt install -y postfix-pcre
 # header_checks = pcre:/etc/postfix/header_checks
 ```
 
-PCRE allows features like case-insensitive matching with `/i` and lookaheads.
+Both `regexp:` and `pcre:` tables are case-insensitive by default in Postfix - the `/i` flag toggles that behaviour (so `/.../I` makes matching case-sensitive). PCRE additionally supports advanced features like lookaheads, lookbehinds, and non-greedy quantifiers that POSIX regexp does not.
 
 ## Testing Header Checks
 
@@ -212,7 +214,6 @@ PCRE allows features like case-insensitive matching with `/i` and lookaheads.
 
 ```bash
 # Test a specific header line against your rules
-# Note: regexp: tables are not postmap-queryable directly, but you can use:
 postmap -q "Content-Type: application/octet-stream; name=\"malware.exe\"" \
   regexp:/etc/postfix/header_checks
 ```
@@ -232,20 +233,19 @@ sudo tail -f /var/log/mail.log
 
 ### Debug Mode
 
+To see which header_checks rules fire, enable verbose logging on the `cleanup(8)` daemon by editing `master.cf`:
+
 ```bash
-# Enable header check debugging
-sudo nano /etc/postfix/main.cf
+sudo nano /etc/postfix/master.cf
 ```
 
-Add `D` flag to see which checks fire:
+Append `-v` to the cleanup service entry, then reload Postfix:
 
 ```text
-# For debugging, use:
-# header_checks = regexp:/etc/postfix/header_checks
-# Enable debug with D flag in the postfix logging
+cleanup   unix  n       -       y       -       0       cleanup -v
 ```
 
-Or check the mail log for WARN actions - they are logged without rejecting:
+Alternatively, use the `WARN` (or `INFO`) action in `header_checks` itself - matches are logged without rejecting:
 
 ```bash
 sudo grep "header_checks" /var/log/mail.log | tail -20
@@ -253,14 +253,13 @@ sudo grep "header_checks" /var/log/mail.log | tail -20
 
 ## Protecting Against Header Injection
 
-A specific concern for outbound mail is header injection - where attackers craft messages with embedded newlines to insert additional headers. Postfix handles this at the SMTP level, but you can add extra protection:
+A specific concern for outbound mail is header injection - where attackers craft messages with embedded newlines to insert additional headers. Postfix handles this at the SMTP protocol level: the `smtpd(8)` daemon parses headers one logical line at a time, and the `cleanup(8)` daemon presents each header to `header_checks` with the trailing newline already stripped. That means regex patterns that try to match `\n` inside a header line will never fire - header injection must be prevented at the application layer that submits the message (for example, the web app or mail submission script).
+
+You can, however, use `header_checks` to flag suspicious encoded headers that are sometimes seen in injection attempts:
 
 ```text
-# Check for common header injection patterns
-/^(To|CC|From|Reply-To):.*\n/  REJECT Header injection detected
-
-# Block RFC 2047 encoded words with newlines
-/^Subject:.*=\?.*\?=.*\n/  REJECT Encoded header injection
+# Flag base64-encoded headers for review (high false-positive rate)
+/^(To|Cc|From|Reply-To):.*=\?.*\?B\?/  WARN Encoded recipient header
 ```
 
 ## Combining Header Checks with MIME Checks
