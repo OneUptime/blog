@@ -128,8 +128,8 @@ ping -I 192.168.1.100 8.8.8.8
 ping -I 10.0.0.100 8.8.8.8
 
 # Verify routing decision
-ip route get from 192.168.1.100 8.8.8.8
-ip route get from 10.0.0.100 8.8.8.8
+ip route get 8.8.8.8 from 192.168.1.100
+ip route get 8.8.8.8 from 10.0.0.100
 ```
 
 The `ip route get` command shows which gateway would be used for each source/destination combination.
@@ -161,7 +161,7 @@ network:
           via: 192.168.1.1
           table: 100      # isp1 table ID
         - to: 192.168.1.0/24
-          via: 0.0.0.0
+          scope: link
           table: 100
       routing-policy:
         # Rule: traffic from this IP uses table 100 (isp1)
@@ -178,7 +178,7 @@ network:
           via: 10.0.0.1
           table: 200      # isp2 table ID
         - to: 10.0.0.0/24
-          via: 0.0.0.0
+          scope: link
           table: 200
       routing-policy:
         # Rule: traffic from this IP uses table 200 (isp2)
