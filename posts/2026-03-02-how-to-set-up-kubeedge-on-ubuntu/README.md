@@ -53,7 +53,7 @@ CloudCore runs on the Kubernetes control plane and acts as the bridge between th
 ```bash
 # Initialize CloudCore with the public IP of the cloud node
 # Replace <CLOUD_IP> with your cloud node's accessible IP address
-sudo keadm init --advertise-address=<CLOUD_IP> --kubeedge-version=1.17.0
+sudo keadm init --advertise-address=<CLOUD_IP> --kubeedge-version=v1.17.0
 
 # Verify CloudCore is running
 kubectl get pods -n kubeedge
@@ -99,7 +99,7 @@ On the edge node, install EdgeCore to connect it to the cloud control plane.
 sudo keadm join \
   --cloudcore-ipport=<CLOUD_IP>:10000 \
   --token=<TOKEN> \
-  --kubeedge-version=1.17.0
+  --kubeedge-version=v1.17.0
 
 # Verify EdgeCore is running
 sudo systemctl status edgecore
@@ -184,7 +184,7 @@ EdgeMesh provides service discovery and traffic routing for edge nodes. It enabl
 helm install edgemesh \
   --namespace kubeedge \
   --set agent.psk=<RANDOM_PSK> \
-  https://raw.githubusercontent.com/kubeedge/edgemesh/main/build/helm/edgemesh.tar.gz
+  https://raw.githubusercontent.com/kubeedge/edgemesh/main/build/helm/edgemesh.tgz
 
 # Verify EdgeMesh agent is running on edge node
 kubectl get pods -n kubeedge -l app=edgemesh-agent
@@ -247,7 +247,7 @@ kubectl delete node edge-node
 
 KubeEdge uses TLS for all cloud-to-edge communication. Keep these points in mind:
 
-- Rotate the registration token regularly using `keadm gettoken --force`
+- Rotate the registration token regularly by regenerating it with `keadm gettoken` after adjusting the CloudCore token TTL configuration
 - Use network policies to restrict what edge nodes can access
 - Keep EdgeCore and CloudCore versions in sync
 - Restrict physical access to edge devices since they run container workloads
