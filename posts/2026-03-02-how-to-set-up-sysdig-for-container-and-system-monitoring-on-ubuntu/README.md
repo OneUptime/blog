@@ -25,17 +25,19 @@ The companion tool `csysdig` provides an ncurses-based interactive UI, while `fa
 ```bash
 # Add the Sysdig repository
 
-curl -s https://s3.amazonaws.com/download.draios.com/stable/install-sysdig | sudo bash
+curl -s https://download.sysdig.com/stable/install-sysdig | sudo bash
 ```
 
-This script adds the apt repository and installs sysdig. Alternatively, do it manually:
+This script adds the apt repository and installs sysdig. Alternatively, do it manually (using the modern signed-by keyring approach, since `apt-key` is deprecated on Ubuntu 22.04+ and removed in 24.04):
 
 ```bash
-# Add Sysdig GPG key
-sudo curl -s https://download.sysdig.com/DRAIOS-GPG-KEY.public | sudo apt-key add -
+# Download and dearmor the Sysdig GPG key into a dedicated keyring
+curl -fsSL https://download.sysdig.com/DRAIOS-GPG-KEY.public \
+  | sudo gpg --dearmor -o /usr/share/keyrings/draios-archive-keyring.gpg
 
-# Add the repository
-sudo curl -s https://download.sysdig.com/stable/deb/draios.list -o /etc/apt/sources.list.d/draios.list
+# Add the repository, pinned to the keyring above
+echo "deb [signed-by=/usr/share/keyrings/draios-archive-keyring.gpg] https://download.sysdig.com/stable/deb stable-$(dpkg --print-architecture)/" \
+  | sudo tee /etc/apt/sources.list.d/draios.list
 
 # Install kernel headers (required for the kernel module)
 sudo apt update
@@ -120,7 +122,7 @@ sudo sysdig "evt.type=write and evt.arg.count>4096"
 Sysdig understands container context natively, which makes it invaluable for containerized workloads:
 
 ```bash
-# List all running containers sysdig can see
+# List all container-aware filter fields sysdig supports
 sudo sysdig -l | grep container
 
 # Monitor all activity in a specific Docker container
