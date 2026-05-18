@@ -215,8 +215,8 @@ Columns:
 # TCP mode (port 443) - better against firewalls
 sudo mtr -T -P 443 google.com
 
-# ICMP mode instead of UDP
-mtr -I google.com
+# UDP mode instead of the default ICMP
+mtr -u google.com
 
 # No hostname resolution (faster, cleaner output)
 mtr -n google.com
