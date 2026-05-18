@@ -50,12 +50,12 @@ After=default.target
 [Service]
 # No User= or Group= directives needed - runs as the current user
 
-ExecStart=/usr/bin/python3 -m http.server 8080 --directory /home/user/www
+ExecStart=/usr/bin/python3 -m http.server 8080 --directory %h/www
 Restart=on-failure
 RestartSec=5s
 
 # Set working directory
-WorkingDirectory=/home/%h/www
+WorkingDirectory=%h/www
 
 [Install]
 WantedBy=default.target
@@ -159,10 +159,12 @@ With lingering enabled, the user's systemd instance starts at boot and keeps run
 [Unit]
 Description=My Node.js Application
 After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
-ExecStart=/usr/bin/node /home/user/myapp/server.js
-WorkingDirectory=/home/%h/myapp
+ExecStart=/usr/bin/node %h/myapp/server.js
+WorkingDirectory=%h/myapp
 Environment=NODE_ENV=production
 Environment=PORT=3000
 
@@ -172,8 +174,6 @@ EnvironmentFile=-%h/.config/myapp/env
 # Restart settings
 Restart=on-failure
 RestartSec=5s
-StartLimitIntervalSec=60
-StartLimitBurst=3
 
 # Redirect stdout/stderr
 StandardOutput=journal
@@ -206,7 +206,7 @@ Description=User Data Backup
 
 [Service]
 Type=oneshot
-ExecStart=/home/%h/scripts/backup.sh
+ExecStart=%h/scripts/backup.sh
 ```
 
 ```ini
@@ -217,7 +217,7 @@ Description=Daily backup timer
 
 [Timer]
 # Run daily at 2 AM
-OnCalendar=daily
+OnCalendar=*-*-* 02:00:00
 Persistent=true
 
 [Install]
