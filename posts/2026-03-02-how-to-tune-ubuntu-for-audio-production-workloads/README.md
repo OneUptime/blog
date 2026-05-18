@@ -156,8 +156,8 @@ EOF
 Frequency scaling causes unpredictable latency as the CPU ramps up and down:
 
 ```bash
-# Install cpufrequtils
-sudo apt install -y cpufrequtils
+# Install the cpupower tool (provided by linux-tools)
+sudo apt install -y linux-tools-common linux-tools-generic
 
 # Set CPU governor to performance mode
 sudo cpupower frequency-set -g performance
@@ -195,8 +195,8 @@ sudo nano /etc/default/grub
 
 # Modify GRUB_CMDLINE_LINUX_DEFAULT:
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash processor.max_cstate=1 intel_idle.max_cstate=1"
-# For AMD systems:
-# GRUB_CMDLINE_LINUX_DEFAULT="quiet splash processor.max_cstate=1 amd_idle.max_cstate=1"
+# For AMD systems (there is no amd_idle driver; processor.max_cstate covers AMD):
+# GRUB_CMDLINE_LINUX_DEFAULT="quiet splash processor.max_cstate=1 idle=nomwait"
 
 sudo update-grub
 ```
