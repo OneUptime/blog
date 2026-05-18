@@ -232,8 +232,8 @@ sudo ovs-vsctl list interface vxlan0 | grep -A 5 "tunnel"
 For continuous monitoring:
 
 ```bash
-# Watch OVS events
-sudo ovs-vsctl --db=unix:/var/run/openvswitch/db.sock monitor
+# Watch OVS database changes
+sudo ovsdb-client monitor Open_vSwitch
 ```
 
 ## Persistence Across Reboots
