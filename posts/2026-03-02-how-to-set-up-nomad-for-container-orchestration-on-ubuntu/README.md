@@ -28,7 +28,7 @@ sudo apt-get install -y wget gpg curl
 
 # Add HashiCorp's GPG key
 wget -O- https://apt.releases.hashicorp.com/gpg | \
-    sudo gpg --dearmit -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
+    sudo gpg --dearmor -o /usr/share/keyrings/hashicorp-archive-keyring.gpg
 
 # Add the repository
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
