@@ -31,7 +31,7 @@ sudo apt install cloud-image-utils qemu-system-x86 qemu-utils -y
 sudo apt install qemu-kvm libvirt-daemon-system -y
 
 # Verify installation
-cloud-localds --version
+cloud-localds --help | head -5
 qemu-img --version
 ```
 
@@ -95,7 +95,7 @@ write_files:
 
 # Final message for log verification
 final_message: |
-  Cloud-init complete. Uptime: $UPTIME
+  Cloud-init complete. Uptime: $uptime
 EOF
 
 # Create a minimal meta-data file
@@ -210,7 +210,7 @@ write_files:
 runcmd:
   - netplan apply
   - ping -c 3 8.8.8.8 || echo "no external connectivity (expected in QEMU NAT)"
-  - systemd-resolve --status
+  - resolvectl status
 
 users:
   - name: testuser
@@ -325,10 +325,11 @@ cloud-localds \
     seed.img \
     user-data.yaml
 
-# Set the disk label (must be CIDATA for cloud-init to recognize it)
+# Specify the disk format explicitly (default is raw; other options include qcow2, vmdk)
+# The filesystem label is always "cidata" — cloud-localds sets this automatically
 cloud-localds \
-    --disk-format=raw \
-    seed.iso \
+    --disk-format=qcow2 \
+    seed.qcow2 \
     user-data.yaml
 ```
 
@@ -351,7 +352,8 @@ sudo cloud-init modules --mode=config
 sudo cloud-init modules --mode=final
 
 # Check which datasource was detected
-sudo cloud-init query datasource
+cloud-id
+sudo cloud-init query v1.cloud_name
 ```
 
 cloud-localds removes the cloud provider from the testing loop entirely. Changes to user-data files can be tested in minutes on local hardware before committing to cloud deployments, which saves both time and money.
