@@ -25,9 +25,10 @@ lspci | grep -i nvidia
 
 As a rule of thumb:
 - Compute 6.x (Pascal): GTX 10-series, supports CUDA up to 12.x
-- Compute 7.x (Volta/Turing): V100, RTX 20-series, supports CUDA up to 12.x
-- Compute 8.x (Ampere): A100, RTX 30-series, full CUDA 12.x support
-- Compute 9.x (Ada/Hopper): RTX 40-series, H100, requires CUDA 11.8+
+- Compute 7.x (Volta/Turing): V100 (7.0), RTX 20-series (7.5), supports CUDA up to 12.x
+- Compute 8.0/8.6 (Ampere): A100 (8.0), RTX 30-series (8.6), full CUDA 12.x support
+- Compute 8.9 (Ada Lovelace): RTX 40-series, requires CUDA 11.8+
+- Compute 9.0 (Hopper): H100, requires CUDA 12+
 
 ## Installing the NVIDIA Driver
 
@@ -41,8 +42,8 @@ ubuntu-drivers devices
 # Install the recommended driver automatically
 sudo ubuntu-drivers autoinstall
 
-# Or install a specific driver version
-sudo apt-get install -y nvidia-driver-545
+# Or install a specific driver version (use a current LTS branch, e.g. 550 or newer)
+sudo apt-get install -y nvidia-driver-550
 ```
 
 After installation, reboot and verify:
@@ -89,8 +90,8 @@ nvcc --version
 cuDNN provides highly optimized routines for neural network operations (convolutions, pooling, etc.). It's required by TensorFlow and strongly recommended for PyTorch.
 
 ```bash
-# Install cuDNN via apt (NVIDIA repo must be configured)
-sudo apt-get install -y libcudnn8 libcudnn8-dev
+# Install cuDNN 9 via apt (NVIDIA repo must be configured)
+sudo apt-get install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12
 
 # Verify cuDNN installation
 cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
@@ -138,8 +139,8 @@ print(f'GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f}
 TensorFlow 2.x includes GPU support in the main package:
 
 ```bash
-# Install TensorFlow
-pip install tensorflow
+# Install TensorFlow with bundled CUDA libraries (TF 2.15+ on Linux)
+pip install 'tensorflow[and-cuda]'
 
 # Verify GPU detection
 python3 -c "
@@ -217,12 +218,12 @@ GPU memory is often the bottleneck. Common optimizations:
 import torch
 
 # Enable automatic mixed precision (AMP) for 2x memory savings
-from torch.cuda.amp import autocast, GradScaler
+from torch.amp import autocast, GradScaler
 
-scaler = GradScaler()
+scaler = GradScaler("cuda")
 
 # Training loop with AMP
-with autocast():
+with autocast("cuda"):
     output = model(input)
     loss = criterion(output, target)
 
