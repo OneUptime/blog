@@ -124,7 +124,6 @@ sudo ufw allow 464/tcp   # Kerberos password change
 sudo ufw allow 464/udp   # Kerberos password change
 sudo ufw allow 53/tcp    # DNS
 sudo ufw allow 53/udp    # DNS
-sudo ufw allow 7389/tcp  # IPA-specific LDAP (dogtag)
 sudo ufw enable
 ```
 
