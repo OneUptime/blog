@@ -69,9 +69,9 @@ hostname -f  # Should output: mail.example.com
 
 ```bash
 # Download iRedMail (check https://www.iredmail.org/download.html for the latest version)
-wget https://github.com/iredmail/iRedMail/archive/refs/tags/1.7.0.tar.gz
-tar -xzf 1.7.0.tar.gz
-cd iRedMail-1.7.0
+wget https://github.com/iredmail/iRedMail/archive/refs/tags/1.8.1.tar.gz
+tar -xzf 1.8.1.tar.gz
+cd iRedMail-1.8.1
 
 # Make the installer executable
 chmod +x iRedMail.sh
@@ -147,20 +147,20 @@ Via the admin panel:
 Via command line:
 
 ```bash
-# iRedMail provides a script for adding users from the command line
-# For MariaDB-based installations:
-sudo mysql -u root vmail << 'EOF'
-INSERT INTO mailbox (username, password, name, maildir, quota, domain, active)
-VALUES (
-    'user@example.com',
-    ENCRYPT('userpassword'),
-    'User Name',
-    'example.com/u/user/',
-    1024,
-    'example.com',
-    1
-);
-EOF
+# iRedMail bundles a script that generates the correct SQL with a properly
+# hashed password (SSHA512 by default, via doveadm pw). Do NOT write raw
+# INSERTs with MySQL's ENCRYPT() - Dovecot will not be able to verify those
+# passwords, and the mailbox table has additional NOT NULL columns the
+# script populates for you.
+
+# From the extracted iRedMail source directory:
+cd ~/iRedMail-1.8.1/tools
+
+# Generate the SQL (writes to stdout)
+bash create_mail_user_SQL.sh user@example.com 'userpassword' > /tmp/new_user.sql
+
+# Import it into the vmail database
+sudo mysql -u root vmail < /tmp/new_user.sql
 ```
 
 ## SSL/TLS Certificate Setup
