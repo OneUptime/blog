@@ -21,17 +21,11 @@ sudo apt install -y buildah
 # Verify installation
 buildah --version
 
-# On Ubuntu 20.04, the available version may be older
-# For a more recent version, use the kubic repository
-. /etc/os-release
-echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/ /" | \
-    sudo tee /etc/apt/sources.list.d/containers.list
-
-curl -L "https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_${VERSION_ID}/Release.key" | \
-    sudo apt-key add -
-
-sudo apt update
-sudo apt install -y buildah
+# Ubuntu 20.10 and later ship buildah in the universe repository
+# If you need a newer version than your distribution provides, the
+# upstream Kubic OBS repository was discontinued in 2023; building
+# from source against the latest tag is now the recommended option:
+#   https://github.com/containers/buildah/blob/main/install.md
 ```
 
 ## Rootless Configuration
@@ -307,9 +301,6 @@ buildah inspect image-or-container-name
 
 # Show image configuration
 buildah config --help
-
-# Diff two images or containers
-buildah diff $CONTAINER
 
 # Pull an image
 buildah pull ubuntu:22.04
