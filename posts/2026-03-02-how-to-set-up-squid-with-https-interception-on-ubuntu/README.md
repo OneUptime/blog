@@ -83,14 +83,15 @@ Add this SSL bumping configuration:
 ```squid
 # /etc/squid/squid.conf
 
-# Port for transparent HTTPS interception
-# mode=intercept means traffic is redirected by iptables
+# Port for explicit proxy (clients configured to use this proxy)
+# SSL bumping happens on CONNECT requests sent by clients
 http_port 3128 ssl-bump \
     cert=/etc/squid/ssl_cert/squid-ca.pem \
     generate-host-certificates=on \
     dynamic_cert_mem_cache_size=4MB
 
-# Port for explicit proxy (clients configured to use this proxy)
+# Port for transparent HTTPS interception
+# intercept means traffic is redirected here by iptables
 https_port 3129 intercept ssl-bump \
     cert=/etc/squid/ssl_cert/squid-ca.pem \
     generate-host-certificates=on \
@@ -133,7 +134,7 @@ You likely do not want to intercept all HTTPS traffic - banking sites, for insta
 acl no_intercept dstdomain .bankofamerica.com
 acl no_intercept dstdomain .chase.com
 acl no_intercept dstdomain .wellsfargo.com
-acl no_intercept dstdomain /etc/squid/no_intercept_domains.txt
+acl no_intercept dstdomain "/etc/squid/no_intercept_domains.txt"
 
 # Peek at all connections first
 ssl_bump peek step1
@@ -245,8 +246,8 @@ sudo tail -f /var/log/squid/access.log
 # Filter for HTTPS connections
 sudo grep "CONNECT" /var/log/squid/access.log | tail -50
 
-# Check SSL bump activity
-sudo grep "SSL_bump" /var/log/squid/cache.log
+# Check SSL bump activity (requires debug_options ALL,1 83,5 in squid.conf)
+sudo grep -E "bump|splice|peek" /var/log/squid/cache.log
 ```
 
 HTTPS interception is powerful but carries responsibility. Ensure you have proper authorization and that employees are informed, as required by law in many jurisdictions.
