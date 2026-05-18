@@ -232,7 +232,7 @@ sudo gpg --export MISSINGKEYID | sudo apt-key add -
 
 # Or with modern approach
 sudo gpg --keyserver keyserver.ubuntu.com --recv-keys MISSINGKEYID
-sudo gpg --export MISSINGKEYID > /etc/apt/keyrings/myrepo.gpg
+sudo gpg --export MISSINGKEYID | sudo tee /etc/apt/keyrings/myrepo.gpg > /dev/null
 
 # "EXPKEYSIG" error - key has expired
 # The maintainer needs to extend the key or rotate to a new one
