@@ -109,10 +109,7 @@ Add or modify the `[global]` section:
    bind interfaces only = yes
 
    # Performance tuning
-   socket options = TCP_NODELAY IPTOS_LOWDELAY SO_RCVBUF=131072 SO_SNDBUF=131072
-   read raw = yes
-   write raw = yes
-   max xmit = 65535
+   socket options = TCP_NODELAY IPTOS_LOWDELAY
    dead time = 15
 
    # Logging
@@ -143,11 +140,11 @@ From a Windows client, open PowerShell and connect to the share, then check the 
 # Connect to the share
 net use Z: \\192.168.1.10\Data /user:smbuser
 
-# Check SMB session details - look for NumChannels > 1
+# Check SMB session details - one row per channel, multiple rows means Multi-Channel is active
 Get-SmbMultichannelConnection -ServerName 192.168.1.10
 ```
 
-The output should show multiple entries with different client and server IP pairs. If `NumChannels` is 1, Multi-Channel did not activate.
+The output should show multiple entries with different client and server IP pairs (one row per active channel). If only one row appears, Multi-Channel did not activate.
 
 On the Ubuntu server, check active connections:
 
@@ -228,7 +225,7 @@ Compare results before and after enabling Multi-Channel. On dual 1GbE links, exp
 
 ## Troubleshooting
 
-**Multi-Channel not activating:** The client must also support Multi-Channel. Windows 10 Home edition does NOT support SMB Multi-Channel - you need Pro, Enterprise, or a Windows Server edition. Check with `Get-SmbClientConfiguration | Select EnableMultiChannel`.
+**Multi-Channel not activating:** The client must also have Multi-Channel enabled. SMB Multi-Channel is supported on all editions of Windows 10/11 and Windows Server 2012 R2 and later, and is enabled by default. Check the client setting with `Get-SmbClientConfiguration | Select EnableMultiChannel` (should be `True`). Activation also requires the client to have a route via more than one interface to the server.
 
 **Only one IP is used:** Samba must be bound to both interfaces with `bind interfaces only = yes`. Verify with `ss -tlnp | grep smbd`.
 
