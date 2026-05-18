@@ -48,7 +48,9 @@ Rate formats you can use:
 SSH is a common target for brute force attacks. Rate limiting new SSH connections is a standard defense:
 
 ```bash
-# Allow SSH but limit to 3 new connection attempts per minute per source IP
+# Allow SSH but limit to 3 new connection attempts per minute (global rate)
+# Note: the `limit` module applies a global rate, not per-source-IP.
+# For per-source-IP limiting, use `hashlimit` (see the next section).
 # First, allow established connections (so active sessions are not interrupted)
 sudo iptables -A INPUT -p tcp --dport 22 -m state --state ESTABLISHED -j ACCEPT
 
@@ -109,15 +111,21 @@ cat /proc/net/ipt_hashlimit/ssh-ratelimit
 The `recent` module tracks IP addresses and when they last sent packets. It is very powerful for detecting and blocking repeated connection attempts:
 
 ```bash
-# Block IPs that have made more than 5 new SSH connections in 60 seconds
-# First rule: record the source IP in the "SSH" list
-sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
-  -m recent --set --name SSH --rsource
+# Block IPs that have made 5 or more new SSH connections in 60 seconds.
+# Order matters: check first, then record. Both --set and --update add a
+# timestamp to the IP's list, so putting --set first would inflate the
+# hitcount that --update checks (off-by-one) and refresh the timestamp
+# on every blocked packet.
 
-# Second rule: if the IP has hit the port more than 5 times in 60 seconds, drop
+# First rule: if the IP has hit the port 5+ times in the last 60 seconds, drop
 sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
   -m recent --update --seconds 60 --hitcount 5 --name SSH --rsource \
   -j DROP
+
+# Second rule: record the source IP in the "SSH" list (reached only when
+# the connection is allowed by the rule above)
+sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
+  -m recent --set --name SSH --rsource
 ```
 
 View the recent tracking table:
