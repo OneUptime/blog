@@ -234,11 +234,12 @@ sudo gluster volume rebalance gvol0 status
 # Check volume status including brick health
 sudo gluster volume status gvol0
 
-# View volume heal info (relevant for replicated volumes too)
-sudo gluster volume heal gvol0 info
-
-# Check for split-brain conditions
-sudo gluster volume heal gvol0 info split-brain
+# Heal commands only apply to replicated/dispersed volumes — on a pure
+# distribute volume these will return "Volume gvol0 is not of type
+# replicate/disperse". Listed here for reference when you migrate to a
+# distributed-replicated layout:
+# sudo gluster volume heal gvol0 info
+# sudo gluster volume heal gvol0 info split-brain
 
 # Watch process stats
 sudo gluster volume profile gvol0 start
