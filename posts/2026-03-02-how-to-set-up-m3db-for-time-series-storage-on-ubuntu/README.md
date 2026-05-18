@@ -19,27 +19,29 @@ M3DB is a distributed time-series database built by Uber to handle their massive
 
 ## Installing M3DB
 
-Download the M3DB binary:
+Download the M3 release tarball, which bundles `m3dbnode`, `m3coordinator`, `m3query`, and `m3aggregator`:
 
 ```bash
-# Download M3DB binary
+# Download M3 release tarball
 
-VERSION="1.5.3"
-curl -Lo /tmp/m3dbnode https://github.com/m3db/m3/releases/download/v${VERSION}/m3dbnode-linux-amd64
+VERSION="1.5.0"
+curl -Lo /tmp/m3.tar.gz https://github.com/m3db/m3/releases/download/v${VERSION}/m3_${VERSION}_linux_amd64.tar.gz
+
+# Extract
+tar -xzf /tmp/m3.tar.gz -C /tmp/
 
 # Install
-sudo mv /tmp/m3dbnode /usr/local/bin/
+sudo mv /tmp/m3_${VERSION}_linux_amd64/m3dbnode /usr/local/bin/
 sudo chmod +x /usr/local/bin/m3dbnode
 
 # Verify
 m3dbnode --help
 ```
 
-Also download M3Coordinator for Prometheus integration:
+Also install M3Coordinator (already in the extracted tarball) for Prometheus integration:
 
 ```bash
-curl -Lo /tmp/m3coordinator https://github.com/m3db/m3/releases/download/v${VERSION}/m3coordinator-linux-amd64
-sudo mv /tmp/m3coordinator /usr/local/bin/
+sudo mv /tmp/m3_${VERSION}_linux_amd64/m3coordinator /usr/local/bin/
 sudo chmod +x /usr/local/bin/m3coordinator
 ```
 
@@ -190,11 +192,11 @@ sudo journalctl -u m3dbnode -f
 
 ## Initializing the Cluster
 
-M3DB requires cluster initialization via the management API:
+M3DB requires cluster initialization via the management API, which is exposed by M3Coordinator on port 7201. Make sure M3Coordinator (configured in the next section) is running before issuing these requests:
 
 ```bash
 # Initialize the placement (topology) for a single node
-curl -X POST http://localhost:9002/api/v1/database/create \
+curl -X POST http://localhost:7201/api/v1/database/create \
     -H 'Content-Type: application/json' \
     -d '{
         "type": "local",
@@ -202,11 +204,11 @@ curl -X POST http://localhost:9002/api/v1/database/create \
         "retentionTime": "720h"
     }'
 
-# Check cluster status
-curl http://localhost:9002/api/v1/database/health
+# Check placement status (wait until all shards are AVAILABLE)
+curl http://localhost:7201/api/v1/services/m3db/placement
 
 # List namespaces
-curl http://localhost:9002/api/v1/namespaces
+curl http://localhost:7201/api/v1/services/m3db/namespace
 ```
 
 ## Configuring M3Coordinator
@@ -303,7 +305,7 @@ M3DB supports multiple namespaces with different retention policies - useful for
 
 ```bash
 # Create an aggregated namespace with 2-year retention (for downsampled data)
-curl -X POST http://localhost:9002/api/v1/services/m3db/namespaces \
+curl -X POST http://localhost:7201/api/v1/services/m3db/namespace \
     -H 'Content-Type: application/json' \
     -d '{
         "name": "metrics_long_term",
@@ -312,12 +314,13 @@ curl -X POST http://localhost:9002/api/v1/services/m3db/namespaces \
             "flushEnabled": true,
             "writesToCommitLog": true,
             "cleanupEnabled": true,
+            "snapshotEnabled": true,
             "repairEnabled": false,
             "retentionOptions": {
-                "retentionPeriodNanos": "63072000000000000",
-                "blockSizeNanos": "7200000000000",
-                "bufferFutureNanos": "600000000000",
-                "bufferPastNanos": "600000000000"
+                "retentionPeriodDuration": "17520h",
+                "blockSizeDuration": "2h",
+                "bufferFutureDuration": "10m",
+                "bufferPastDuration": "10m"
             }
         }
     }'
