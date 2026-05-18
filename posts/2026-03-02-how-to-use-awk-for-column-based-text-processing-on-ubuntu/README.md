@@ -8,7 +8,7 @@ Description: Learn how to use awk for column extraction, filtering, arithmetic, 
 
 ---
 
-`awk` is a programming language built specifically for processing structured text data - files where each line has fields separated by a delimiter. It's named after its creators (Aho, Weinberger, and Kernighan) and is one of the oldest and most useful tools in Unix. On Ubuntu, the installed version is `gawk` (GNU awk), which adds several useful extensions over the POSIX standard.
+`awk` is a programming language built specifically for processing structured text data - files where each line has fields separated by a delimiter. It's named after its creators (Aho, Weinberger, and Kernighan) and is one of the oldest and most useful tools in Unix. On Ubuntu, the default `/usr/bin/awk` is `mawk` (a fast, minimal POSIX implementation); `gawk` (GNU awk) is available with `sudo apt install gawk` and adds several useful extensions over the POSIX standard. The examples in this post work with both implementations.
 
 Where `sed` is best for line-by-line text transformation, `awk` shines when your data has columns. Think CSV files, `ps` output, log entries with consistent fields, `/etc/passwd`, or anything with a regular structure.
 
@@ -135,19 +135,22 @@ awk performs floating-point arithmetic natively:
 #!/bin/bash
 
 # Sum a column of numbers
-echo "Values: 10 20 30 40 50"
-seq 5 | awk '{ sum += $1 } END { print "Sum:", sum }'
+printf "10\n20\n30\n40\n50\n" | awk '{ sum += $1 } END { print "Sum:", sum }'
 
 # Calculate average
 seq 10 | awk '{ sum += $1; count++ } END { print "Average:", sum/count }'
 
-# Process disk usage - find total used space
-df -h | awk 'NR > 1 { sum += $3 } END { print "Total used: " sum "G" }'
+# Process disk usage - find total used space (df without -h gives 1K-blocks,
+# so we get consistent units; mixing -h's "1.5G"/"256M" values would be wrong)
+df | awk 'NR > 1 { sum += $3 } END { printf "Total used: %.1f GB\n", sum/1024/1024 }'
 
 # Process /proc/meminfo - memory in MB
+# ($1 includes a trailing colon, so strip it before printing)
 awk '/MemTotal|MemFree|MemAvailable/ {
+    label = $1
+    sub(/:$/, "", label)
     val = $2 / 1024
-    printf "%s: %.1f MB\n", $1, val
+    printf "%s: %.1f MB\n", label, val
 }' /proc/meminfo
 ```
 
