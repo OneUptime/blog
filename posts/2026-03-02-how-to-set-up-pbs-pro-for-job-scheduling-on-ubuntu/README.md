@@ -24,9 +24,11 @@ PBS Pro is available as open source from the Altair GitHub repository. You need 
 # Install build dependencies
 
 sudo apt update
-sudo apt install -y build-essential python3-dev libssl-dev \
-    libexpat1-dev libhwloc-dev libcjson-dev tcl-dev tk-dev \
-    libx11-dev libxt-dev libedit-dev postgresql postgresql-contrib \
+sudo apt install -y gcc g++ make autoconf automake libtool \
+    python3-dev libssl-dev libexpat1-dev libhwloc-dev libical-dev \
+    libedit-dev libx11-dev libxt-dev libxext-dev libxft-dev \
+    tcl-dev tk-dev ncurses-dev swig perl \
+    postgresql postgresql-server-dev-all postgresql-contrib \
     python3-pip git
 
 # Clone the PBS Pro source
@@ -110,9 +112,9 @@ sudo systemctl enable pbs
 Back on the head node, register the compute nodes with the PBS server:
 
 ```bash
-# Create the nodes in PBS
-sudo /opt/pbs/bin/qmgr -c "create node compute01 np=8"
-sudo /opt/pbs/bin/qmgr -c "create node compute02 np=8"
+# Create the nodes in PBS (MOM auto-detects ncpus; override if needed)
+sudo /opt/pbs/bin/qmgr -c "create node compute01 resources_available.ncpus=8"
+sudo /opt/pbs/bin/qmgr -c "create node compute02 resources_available.ncpus=8"
 
 # Verify nodes are visible
 /opt/pbs/bin/pbsnodes -a
