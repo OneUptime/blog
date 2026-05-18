@@ -48,8 +48,8 @@ velociraptor --version
 sudo mkdir -p /etc/velociraptor
 sudo mkdir -p /var/lib/velociraptor
 
-# Generate self-signed TLS server configuration
-sudo velociraptor config generate --self_signed \
+# Generate a server configuration (defaults to self-signed TLS)
+sudo velociraptor config generate \
   > /tmp/server.config.yaml
 
 # Review and adjust the configuration
@@ -268,11 +268,13 @@ sources:
       WHERE Mode.IsSetuid OR Mode.IsSetgid
 ```
 
-Upload the artifact to the server:
+Make the artifact available to the server. The simplest option is to paste the YAML into the web UI under "View Artifacts" → "Add an Artifact". You can also validate it locally first, or load custom artifacts from a directory at runtime:
 
 ```bash
+# Validate the artifact YAML
 sudo velociraptor --config /etc/velociraptor/server.config.yaml \
-  artifacts upload /etc/velociraptor/custom-artifact.yaml
+  artifacts verify Custom.Linux.SuspiciousPaths \
+  --definitions /etc/velociraptor/
 ```
 
 ## Running Hunts (Fleet-Wide Queries)
@@ -338,7 +340,7 @@ sudo velociraptor --config /etc/velociraptor/server.config.yaml \
 ```bash
 # Rotate server certificates periodically
 sudo velociraptor --config /etc/velociraptor/server.config.yaml \
-  config rotate_key
+  config rotate_keys
 ```
 
 Velociraptor strikes a good balance between capability and operational simplicity. For security teams that need more than log monitoring but don't want the complexity of a full commercial EDR stack, it's one of the strongest options available.
