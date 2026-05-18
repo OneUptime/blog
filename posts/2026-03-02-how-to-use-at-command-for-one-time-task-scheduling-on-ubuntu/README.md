@@ -73,7 +73,7 @@ at 14:30 2026-03-05
 at "2:30 PM March 5, 2026"
 
 # POSIX-style date specification
-at 14:30 050326  # MMDDYY format - March 5, 2026
+at 14:30 030526  # MMDDYY format - March 5, 2026
 ```
 
 ### Relative Times
@@ -274,7 +274,8 @@ echo "/usr/local/bin/urgent-task.sh" | at -q a now + 5 minutes
 # Use a low-priority queue for batch jobs
 echo "/usr/local/bin/batch-job.sh" | at -q z 3am
 
-# The = queue is used for batch jobs (runs when load is low)
+# The b queue is the default queue for batch jobs
+# (the = queue is reserved for currently running jobs)
 at -q b 3am << 'EOF'
 /usr/local/bin/data-processing.sh
 EOF
