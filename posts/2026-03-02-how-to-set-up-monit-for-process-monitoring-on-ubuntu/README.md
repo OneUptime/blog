@@ -211,7 +211,7 @@ check file root-crontab with path /var/spool/cron/crontabs/root
 
 # Monitor log file - alert if it stops growing (stuck application)
 check file app-log with path /var/log/myapp/app.log
-    if not changed for 10 minutes then alert
+    if timestamp > 10 minutes then alert
 
 # Alert if a log file gets too large
 check file nginx-access-log with path /var/log/nginx/access.log
@@ -291,7 +291,7 @@ sudo monit status
 # Check status of a specific item
 sudo monit status nginx
 
-# Force an immediate check
+# Re-enable monitoring for a service (after unmonitor)
 sudo monit monitor nginx
 
 # Stop monitoring something temporarily
@@ -342,7 +342,7 @@ set alert admin@example.com
 
 # Per-service overrides
 check process nginx ...
-    alert devops@example.com on { restart, nonexist }
+    alert devops@example.com on { action, nonexist }
     alert security@example.com on { checksum }
 
 # Reminder alerts - resend alert every N cycles if still in error
