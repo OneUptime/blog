@@ -91,13 +91,12 @@ sudo useradd -r -s /usr/sbin/nologin -m -d /var/mail/archive mailarchive
 sudo mkdir -p /var/mail/archive/Maildir/{cur,new,tmp}
 sudo chown -R mailarchive:mailarchive /var/mail/archive
 
-# Create a Postfix transport for the archive address
+# Map the archive address to the local archive user
 sudo nano /etc/postfix/main.cf
 ```
 
 ```ini
-# Add archive transport
-transport_maps = hash:/etc/postfix/transport
+# Route archive@ via a virtual alias to a local user
 virtual_alias_maps = hash:/etc/postfix/virtual
 ```
 
@@ -111,17 +110,7 @@ archive@example.com   mailarchive
 ```
 
 ```bash
-sudo nano /etc/postfix/transport
-```
-
-```text
-# Deliver archive@ to local Maildir
-mailarchive  local:
-```
-
-```bash
 sudo postmap /etc/postfix/virtual
-sudo postmap /etc/postfix/transport
 sudo systemctl reload postfix
 
 # Configure local delivery to Maildir
@@ -303,10 +292,7 @@ Even with flat-file archiving, you can make the archive searchable:
 # Index .eml files using notmuch
 sudo apt install notmuch
 
-# Initialize notmuch for the archive
-sudo -u mailarchive notmuch --config=/etc/notmuch-archive.cfg new
-
-# Create notmuch configuration
+# Create notmuch configuration first (the database path is read from here)
 sudo nano /etc/notmuch-archive.cfg
 ```
 
@@ -323,7 +309,7 @@ tags=unread;inbox;
 ```
 
 ```bash
-# Index new messages
+# Initialize the database and index existing messages
 sudo -u mailarchive notmuch --config=/etc/notmuch-archive.cfg new
 
 # Search the archive
