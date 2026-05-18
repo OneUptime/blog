@@ -31,7 +31,7 @@ Or configure via racadm from Ubuntu:
 wget -q -O - https://linux.dell.com/repo/pgp_pubkeys/0x1285491434D8786F.asc | \
     sudo apt-key add -
 
-echo "deb [arch=amd64] https://linux.dell.com/repo/community/openmanage/960/focal focal main" | \
+echo "deb [arch=amd64] https://linux.dell.com/repo/community/openmanage/950/focal focal main" | \
     sudo tee /etc/apt/sources.list.d/dell.list
 
 sudo apt update
@@ -60,7 +60,7 @@ Once configured, access the iDRAC web interface at `https://<idrac-ip>`:
 
 Default credentials:
 - Username: `root`
-- Password: `calvin` (Dell default - change immediately)
+- Password: `calvin` on older systems. On 14th-generation and newer PowerEdge servers (iDRAC 9), Dell ships each unit with a unique factory-generated password printed on the pull-out Service Tag unless `calvin` was explicitly requested at order time. Either way, change it immediately.
 
 ```bash
 # Change the root password via racadm
@@ -142,11 +142,12 @@ echo "deb https://downloads.linux.hpe.com/SDR/repo/mcp focal/current non-free" |
     sudo tee /etc/apt/sources.list.d/hpe.list
 
 sudo apt update
-sudo apt install -y ilo-utilities hp-health
+# hp-health is for Gen9 and earlier; on Gen10+ use amsd (Agentless Management Service) instead
+sudo apt install -y hponcfg hp-health
 
 # Use hponcfg to configure iLO
-# First get the current config
-sudo hponcfg -g -f /tmp/current_ilo_config.xml
+# First write the current config to a file (-w writes, -f reads)
+sudo hponcfg -w /tmp/current_ilo_config.xml
 
 # View it
 cat /tmp/current_ilo_config.xml
@@ -207,22 +208,22 @@ HPE iLO 4 and 5 support a RESTful API, which is significantly more scriptable th
 pip install python-ilorest-library
 
 # Or use curl directly
-IDRAC_HOST="https://192.168.100.70"
+ILO_HOST="https://192.168.100.70"
 USER="Administrator"
 PASS="password"
 
 # Get system overview
-curl -k -u "$USER:$PASS" "$IDRAC_HOST/redfish/v1/Systems/1/" | python3 -m json.tool
+curl -k -u "$USER:$PASS" "$ILO_HOST/redfish/v1/Systems/1/" | python3 -m json.tool
 
 # Get power state
-curl -k -u "$USER:$PASS" "$IDRAC_HOST/redfish/v1/Systems/1/" | \
+curl -k -u "$USER:$PASS" "$ILO_HOST/redfish/v1/Systems/1/" | \
     python3 -c "import json,sys; d=json.load(sys.stdin); print(d['PowerState'])"
 
 # Power reset
 curl -k -u "$USER:$PASS" -X POST \
     -H "Content-Type: application/json" \
     -d '{"ResetType":"ForceRestart"}' \
-    "$IDRAC_HOST/redfish/v1/Systems/1/Actions/ComputerSystem.Reset/"
+    "$ILO_HOST/redfish/v1/Systems/1/Actions/ComputerSystem.Reset/"
 ```
 
 ### Using iLO RIBCL for Common Operations
@@ -275,11 +276,13 @@ print(output)
 Both Dell iDRAC and HPE iLO support the Redfish API, a modern REST standard for server management:
 
 ```bash
-# Common Redfish endpoints
-BASE="https://192.168.100.60"  # Works for both iDRAC and iLO
+# Common Redfish endpoints (examples below use Dell iDRAC's named instance
+# System.Embedded.1; HPE iLO uses a numeric ID, e.g. Systems/1.
+# Discover the actual resource via /redfish/v1/Systems rather than hard-coding.)
+BASE="https://192.168.100.60"
 CREDS="admin:password"
 
-# System info
+# System info (iDRAC)
 curl -k -u $CREDS "$BASE/redfish/v1/Systems/System.Embedded.1"
 
 # Get all managers (BMC info)
@@ -306,7 +309,10 @@ curl -k -u $CREDS -X POST \
 # Keep iDRAC/iLO firmware updated
 
 # For iDRAC - update firmware via racadm
-sudo racadm update -f iDRAC_Firmware.exe -l /tmp/
+# Local firmware file (Local RACADM on the host):
+sudo racadm update -f /tmp/iDRAC_Firmware.exe
+# Remote firmware from a network share (-l is a CIFS/NFS/HTTP(S)/FTP path, not a local one):
+# racadm -r <idrac-ip> -u root -p password update -f firmware.exe -l //10.10.10.1/share -u user -p pass
 
 # For iLO - update via web interface or hponcfg
 # System Utilities > Embedded Applications > iLO 5 > Firmware Update
