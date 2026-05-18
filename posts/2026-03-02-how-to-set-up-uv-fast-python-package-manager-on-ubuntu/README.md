@@ -153,13 +153,21 @@ uv has its own project management mode that competes directly with Poetry and pi
 uv init myproject
 cd myproject
 
-# Project structure:
+# Default (application) project structure:
 # myproject/
 #   .python-version    # Pinned Python version
 #   pyproject.toml     # Project metadata and dependencies
 #   README.md
+#   main.py            # Sample entry point in the project root
+
+# For a packaged project using the src/ layout, pass --package or --lib:
+uv init --package mylib
+# mylib/
+#   pyproject.toml
+#   README.md
+#   .python-version
 #   src/
-#     myproject/
+#     mylib/
 #       __init__.py
 
 # Or add uv project management to an existing directory
@@ -434,11 +442,9 @@ export PATH="$HOME/.local/bin:$PATH"
 
 **Package not found in registry:**
 ```bash
-# Search PyPI
-uv pip search requests  # Note: requires --index-url for private registries
-
-# Check if the package exists
-pip index versions requests  # Fallback to pip for searching
+# uv does not implement a `pip search` subcommand (PyPI's XML-RPC
+# search API has been disabled), so use pip's index command instead
+pip index versions requests
 
 # Use --extra-index-url for private registries
 uv pip install mypackage --extra-index-url https://pypi.example.com/simple/
