@@ -50,7 +50,7 @@ git clone -b main https://github.com/SigNoz/signoz.git
 cd signoz/deploy
 
 # Review the docker-compose file before running it
-cat docker-compose.yaml
+cat docker/docker-compose.yaml
 
 # Start SigNoz (this pulls several images - give it a few minutes)
 ./install.sh
@@ -67,14 +67,14 @@ The stack starts these containers:
 Check that everything is up:
 
 ```bash
-docker compose -f docker-compose.yaml ps
+docker compose -f docker/docker-compose.yaml ps
 ```
 
-Access the UI at `http://your-server-ip:3301`. On first visit, create your admin account.
+Access the UI at `http://your-server-ip:8080`. On first visit, create your admin account.
 
 ## Configuring the OpenTelemetry Collector
 
-SigNoz uses an OpenTelemetry Collector as the telemetry ingestion point. The collector config is at `deploy/docker/clickhouse-setup/otel-collector-config.yaml`.
+SigNoz uses an OpenTelemetry Collector as the telemetry ingestion point. The collector config is at `deploy/docker/otel-collector-config.yaml`.
 
 By default, it listens on these ports:
 
@@ -89,7 +89,7 @@ To accept telemetry from external hosts, ensure your firewall allows these ports
 # Open OTLP ports (adjust if using ufw)
 sudo ufw allow 4317/tcp
 sudo ufw allow 4318/tcp
-sudo ufw allow 3301/tcp  # UI access
+sudo ufw allow 8080/tcp  # UI access
 ```
 
 ## Instrumenting a Node.js Application
@@ -113,7 +113,7 @@ const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc')
 const sdk = new NodeSDK({
   // Point to your SigNoz collector endpoint
   traceExporter: new OTLPTraceExporter({
-    url: 'grpc://your-signoz-host:4317',
+    url: 'http://your-signoz-host:4317',
   }),
   // Auto-instrument Express, HTTP, MongoDB, Redis, etc.
   instrumentations: [getNodeAutoInstrumentations()],
@@ -146,7 +146,9 @@ Run your Flask or FastAPI app with auto-instrumentation:
 
 ```bash
 # Set environment variables for the collector endpoint and service name
-export OTEL_EXPORTER_OTLP_ENDPOINT="http://your-signoz-host:4318"
+# The Python OTLP exporter defaults to gRPC, so point at the 4317 gRPC port.
+# To use the HTTP endpoint (4318) instead, also set OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf.
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://your-signoz-host:4317"
 export OTEL_SERVICE_NAME="my-python-service"
 
 # opentelemetry-instrument wraps your app and handles all instrumentation
@@ -182,7 +184,7 @@ service:
 Restart the collector after config changes:
 
 ```bash
-docker compose -f docker-compose.yaml restart otel-collector
+docker compose -f docker/docker-compose.yaml restart otel-collector
 ```
 
 ## Setting Up Alerts
@@ -226,21 +228,15 @@ cd signoz/deploy
 git pull
 
 # Pull new images and recreate containers
-docker compose -f docker-compose.yaml pull
-docker compose -f docker-compose.yaml up -d
+docker compose -f docker/docker-compose.yaml pull
+docker compose -f docker/docker-compose.yaml up -d
 ```
 
 ## Retention and Storage Management
 
-ClickHouse handles data retention through TTL settings. The default is 3 days for traces. To extend it, set the `STORAGE` environment variable before starting:
+ClickHouse handles data retention through TTL settings. The defaults are 15 days for logs and traces and 30 days for metrics. The recommended way to change these is through the SigNoz UI under **Settings > General**, where you can set independent retention periods per data type. Updates apply only to newly ingested data.
 
-```bash
-# Set 15-day retention (in hours: 15 * 24 = 360)
-export STORAGE=360
-./install.sh
-```
-
-Or modify the ClickHouse TTL directly:
+You can also inspect the current TTL on the ClickHouse tables directly:
 
 ```bash
 # Connect to ClickHouse
