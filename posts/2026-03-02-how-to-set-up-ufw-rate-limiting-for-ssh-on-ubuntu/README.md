@@ -10,7 +10,7 @@ Description: Configure UFW rate limiting for SSH on Ubuntu to automatically bloc
 
 SSH brute-force attacks are a constant reality for any server with port 22 exposed to the internet. Attackers run automated tools that try thousands of username/password combinations per hour. Even with key-based authentication (which everyone should use), these failed attempts clutter logs and waste server resources.
 
-UFW has a built-in rate limiting feature specifically designed for this scenario. It uses iptables' `hashlimit` module to track connection attempts per source IP and automatically block IPs that exceed a threshold.
+UFW has a built-in rate limiting feature specifically designed for this scenario. It uses iptables' `recent` module to track connection attempts per source IP and automatically block IPs that exceed a threshold.
 
 ## How UFW Rate Limiting Works
 
