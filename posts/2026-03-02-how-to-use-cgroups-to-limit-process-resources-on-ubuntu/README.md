@@ -119,7 +119,6 @@ sudo nano /etc/systemd/system/limited.slice
 ```ini
 [Unit]
 Description=Slice for resource-limited services
-Before=slices.target
 
 [Slice]
 CPUQuota=200%
@@ -276,7 +275,6 @@ sudo nano /etc/systemd/system/critical.slice
 ```ini
 [Unit]
 Description=Critical Services Slice
-Before=slices.target
 
 [Slice]
 # High CPU priority
