@@ -216,7 +216,6 @@ Automatic Mixed Precision (AMP) uses FP16 for most operations, reducing memory u
 
 ```python
 import torch
-from torch.cuda.amp import autocast, GradScaler
 
 device = torch.device('cuda')
 model = SimpleNet(128, 512, 10).to(device)
@@ -224,7 +223,7 @@ optimizer = optim.Adam(model.parameters())
 criterion = nn.CrossEntropyLoss()
 
 # GradScaler prevents gradients from underflowing in FP16
-scaler = GradScaler()
+scaler = torch.amp.GradScaler('cuda')
 
 for epoch in range(10):
     for batch_X, batch_y in loader:
@@ -234,7 +233,7 @@ for epoch in range(10):
         optimizer.zero_grad()
 
         # Forward pass in mixed precision
-        with autocast():
+        with torch.amp.autocast('cuda'):
             output = model(batch_X)
             loss = criterion(output, batch_y)
 
@@ -287,6 +286,7 @@ model = model.to(device)
 For more advanced distributed training use `torch.nn.parallel.DistributedDataParallel`:
 
 ```python
+import os
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
