@@ -56,8 +56,9 @@ sudo apt install linux-modules-extra-$(uname -r)
 # After installing, check if the module is now available
 sudo modprobe modulename
 
-# For HWE (Hardware Enablement) kernels
-sudo apt install linux-modules-extra-hwe-22.04
+# For HWE (Hardware Enablement) kernels, install the extras for the running kernel.
+# `uname -r` already reflects the HWE kernel version if one is in use:
+sudo apt install linux-modules-extra-$(uname -r)
 
 # List what modules are in the extra package
 dpkg -L linux-modules-extra-$(uname -r) | grep ".ko"
@@ -88,16 +89,16 @@ A module may fail to load because one of its dependencies is missing.
 # View module dependencies
 modinfo -F depends modulename
 
-# Recursively load all dependencies
+# Show dependencies that would be loaded (one insmod line per module, in dependency order)
 sudo modprobe --show-depends modulename
 
 # Example output:
+# insmod /lib/modules/6.8.0-52-generic/kernel/drivers/dca/dca.ko
+# insmod /lib/modules/6.8.0-52-generic/kernel/drivers/ptp/ptp.ko
 # insmod /lib/modules/6.8.0-52-generic/kernel/drivers/net/ethernet/intel/igb/igb.ko
-# modprobe requires: dca i2c-core ptp
 
 # Load dependencies manually if needed
 sudo modprobe dca
-sudo modprobe i2c-core
 sudo modprobe ptp
 sudo modprobe igb
 ```
@@ -114,8 +115,11 @@ grep -r "blacklist" /lib/modprobe.d/
 # Check if a specific module is blacklisted
 grep "blacklist.*modulename" /etc/modprobe.d/*.conf /lib/modprobe.d/*.conf 2>/dev/null
 
-# Temporarily override a blacklist (for testing)
-sudo modprobe -f modulename
+# A `blacklist` directive only prevents auto-loading via aliases; you can still
+# load the module manually by name for testing:
+sudo modprobe modulename
+# If the blacklist uses `install <module> /bin/false` instead, bypass it with:
+sudo modprobe --ignore-install modulename
 
 # Permanently remove a blacklist entry
 sudo nano /etc/modprobe.d/blacklist-somefile.conf
@@ -155,8 +159,8 @@ If a module is needed early in boot (for the root filesystem, for example), it m
 # Check what modules are currently in initramfs
 lsinitramfs /boot/initrd.img-$(uname -r) | grep ".ko"
 
-# Add a module to initramfs
-sudo tee /etc/initramfs-tools/modules << 'EOF'
+# Add a module to initramfs (append, so the existing file header is preserved)
+sudo tee -a /etc/initramfs-tools/modules << 'EOF'
 # Modules to include in initramfs
 modulename
 EOF
@@ -234,11 +238,13 @@ sudo depmod -a
 # Rebuild for a specific kernel version
 sudo depmod -a 6.8.0-52-generic
 
-# Force rebuild even if timestamps suggest it is current
-sudo depmod -ae
+# `depmod -a` always rebuilds; use `-A` (quick check) only if you want to skip
+# work when nothing has changed. To report unresolved symbols, combine `-e` with
+# `-F` pointing at the kernel's System.map:
+sudo depmod -e -F /boot/System.map-$(uname -r) $(uname -r)
 
-# Check for errors in the dependency file
-sudo depmod -n | grep -i error
+# Dry run: print what would be written to modules.dep instead of writing it
+sudo depmod -n $(uname -r) | head
 ```
 
 ## Summary Diagnostic Flow
