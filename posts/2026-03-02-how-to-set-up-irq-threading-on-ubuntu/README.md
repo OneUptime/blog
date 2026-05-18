@@ -112,13 +112,10 @@ sudo apt install -y tuna
 sudo tuna --show_irqs
 
 # Move specific IRQs to CPU 0
-sudo tuna --irqs=<IRQ_NUMBERS> --cpu=0 --move
+sudo tuna --irqs=<IRQ_NUMBERS> --cpus=0 --move
 
 # Set priority of an IRQ thread
 sudo tuna --irqs=18 --priority=f:75
-
-# Interactive mode (ncurses UI)
-sudo tuna --gui
 ```
 
 ## Controlling IRQ Balancing with irqbalance
@@ -232,14 +229,19 @@ sudo taskset -c 2 cyclictest \
 ### IRQ Threads Not Showing Up
 
 ```bash
-# Check if threaded IRQs are enabled
-# With PREEMPT_RT, this should be 1 by default
-cat /sys/bus/workqueue/devices/default/max_active
+# Check if the running kernel was booted with forced IRQ threading
+# (PREEMPT_RT enables threaded handlers automatically; without RT, the
+# threadirqs boot parameter forces all non-IRQF_NO_THREAD handlers to be threaded)
+cat /proc/cmdline | grep -o "threadirqs" || echo "threadirqs not set"
 
-# Force threaded IRQs (may not work for all drivers)
-echo 1 | sudo tee /proc/sys/kernel/threaded_irqs 2>/dev/null || \
-  sudo modprobe genirq_thread_all 2>/dev/null || \
-  echo "Threaded IRQs require PREEMPT_RT kernel"
+# List currently running IRQ kernel threads
+ps -eo pid,comm | grep "^.* irq/"
+
+# To enable forced threading without PREEMPT_RT, add 'threadirqs' to the
+# kernel command line in /etc/default/grub (GRUB_CMDLINE_LINUX), then run:
+#   sudo update-grub && sudo reboot
+# Note: there is no runtime sysctl to toggle threaded IRQs; it must be a
+# boot parameter or a PREEMPT_RT kernel.
 ```
 
 ### High Latency Despite IRQ Affinity
@@ -259,13 +261,15 @@ sudo cpupower idle-set -d 3  # Disable C3
 
 ### Cannot Change IRQ Affinity
 
-Some IRQs are marked as non-balanceable and will not accept affinity changes:
+Some IRQs are marked as non-balanceable (via the kernel's `IRQF_NO_BALANCING` flag) and will not accept affinity changes:
 
 ```bash
-# Check if the IRQ is balanceable
+# View the driver's suggested affinity (advisory only — does not pin the IRQ)
 cat /proc/irq/<IRQ_NUMBER>/affinity_hint
 
-# IRQs with affinity_hint != 0 may be pinned by the driver
+# If a write to smp_affinity returns -EIO, the IRQ has IRQF_NO_BALANCING set
+# and its affinity cannot be changed from userspace. This is common for
+# per-CPU interrupts (timers, IPIs) and some MSI-X queues pinned by the driver.
 # You may need to use the driver's module parameters to change this
 # For example, for Intel NICs with multiple queues:
 ethtool -L eth0 combined 4  # Set number of queues
