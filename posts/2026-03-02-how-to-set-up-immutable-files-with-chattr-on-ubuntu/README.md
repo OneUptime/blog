@@ -238,8 +238,8 @@ Configure the Linux audit daemon to detect chattr calls:
 ```bash
 # Audit any use of chattr (clearing immutable flags would trigger this)
 sudo auditctl -a exit,always -F arch=b64 -S ioctl \
-  -F a1=0x40086601 -k immutable-change
-# Note: 0x40086601 is the ioctl code for FS_IOC_SETFLAGS
+  -F a1=0x40086602 -k immutable-change
+# Note: 0x40086602 is the ioctl code for FS_IOC_SETFLAGS on x86_64
 
 # A simpler audit for the chattr binary
 sudo auditctl -w /usr/bin/chattr -p x -k chattr-executed
