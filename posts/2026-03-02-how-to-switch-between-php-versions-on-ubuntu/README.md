@@ -175,7 +175,7 @@ fastcgi_pass unix:/run/php/php8.2-fpm.sock;
 Apply to all sites at once:
 
 ```bash
-sudo sed -i 's|php7.4-fpm.sock|php8.2-fpm.sock|g' /etc/nginx/sites-enabled/*.conf
+sudo sed -i 's|php7.4-fpm.sock|php8.2-fpm.sock|g' /etc/nginx/sites-enabled/*
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
