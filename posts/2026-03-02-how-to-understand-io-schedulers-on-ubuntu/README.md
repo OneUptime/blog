@@ -111,17 +111,9 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 ```
 
-### Setting Default via Kernel Command Line
+### Note on the `elevator=` Kernel Parameter
 
-```bash
-# Edit GRUB
-sudo nano /etc/default/grub
-
-# Add to GRUB_CMDLINE_LINUX_DEFAULT
-# GRUB_CMDLINE_LINUX_DEFAULT="quiet splash elevator=bfq"
-
-sudo update-grub
-```
+Older guides recommend setting `elevator=bfq` (or similar) in `GRUB_CMDLINE_LINUX_DEFAULT`. This parameter was tied to the legacy single-queue block layer, which was removed in Linux 5.0. On modern Ubuntu (22.04+ ships kernel 5.15 or newer, all blk-mq), the `elevator=` boot parameter is ignored. Use the udev rules approach above (or the per-device sysfs writes) instead.
 
 ## Scheduler-Specific Tuning
 
@@ -157,8 +149,9 @@ cat /sys/block/sda/queue/iosched/slice_idle
 cat /sys/block/sda/queue/iosched/timeout_sync
 
 # Low latency mode (optimize for interactive responsiveness)
+# Enabled by default (value 1); set to 0 to prioritize throughput over latency
 cat /sys/block/sda/queue/iosched/low_latency
-echo 1 | sudo tee /sys/block/sda/queue/iosched/low_latency
+echo 0 | sudo tee /sys/block/sda/queue/iosched/low_latency
 
 # Per-cgroup weights (for cgroup-based I/O fairness)
 # Weights are in range 1-1000, default 100
