@@ -15,9 +15,9 @@ FRRouting on Ubuntu provides a full OSPF implementation that interoperates with 
 ## Lab Topology
 
 ```text
-Router A (10.0.1.1) --- 10.0.12.0/30 --- Router B (10.0.12.2)
-Router A (10.0.1.1) --- 10.0.13.0/30 --- Router C (10.0.13.2)
-Router B             --- 10.0.23.0/30 --- Router C (10.0.23.2)
+Router A (10.0.12.1) --- 10.0.12.0/30 --- Router B (10.0.12.2)
+Router A (10.0.13.1) --- 10.0.13.0/30 --- Router C (10.0.13.2)
+Router B (10.0.23.1) --- 10.0.23.0/30 --- Router C (10.0.23.2)
 
 Loopbacks:
   Router A: 1.1.1.1/32
@@ -194,8 +194,8 @@ sudo vtysh -c "show ip ospf database"
 # View the routing table - OSPF routes show as 'O' or 'O IA' (inter-area)
 sudo vtysh -c "show ip route ospf"
 
-# Also check the kernel routing table
-ip route show | grep ospf
+# Also check the kernel routing table for OSPF-installed routes
+ip route show proto ospf
 ```
 
 ## Multi-Area OSPF
@@ -251,7 +251,8 @@ router ospf
   ! Redistribute connected interfaces not covered by 'network' statements
   redistribute connected
 
-  ! Redistribute a default route (requires a default route in the RIB)
+  ! Originate a default route into OSPF
+  ! The 'always' keyword originates it even if no default route exists in the RIB
   default-information originate always metric 100
 
 exit
@@ -302,8 +303,8 @@ write memory
 ## Troubleshooting
 
 ```bash
-# Check if OSPF packets are being sent and received
-sudo tcpdump -i eth0 -n proto ospf
+# Check if OSPF packets are being sent and received (OSPF is IP protocol 89)
+sudo tcpdump -i eth0 -n ip proto 89
 
 # Enable OSPF event debugging
 sudo vtysh -c "debug ospf event"
