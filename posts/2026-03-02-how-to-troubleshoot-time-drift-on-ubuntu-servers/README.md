@@ -248,7 +248,7 @@ sudo systemctl restart chrony
 # View drift history
 tail -50 /var/log/chrony/tracking.log
 
-# Fields: Date, Time, IP, Freq(ppm), Skew(ppm), Offset, RMS_offset
+# Fields: Date, Time, IP, Stratum, Freq(ppm), Skew(ppm), Offset, Leap, Co, Offset_sd, Rem_corr, Root_delay, Root_disp
 # freq ppm = how fast clock is running (positive = fast, negative = slow)
 # A large ppm value indicates significant drift
 ```
@@ -334,14 +334,15 @@ timedatectl | grep "RTC in local TZ"
 ```bash
 # Plot drift over time (with chrony tracking log)
 # Install gnuplot: sudo apt install gnuplot
-awk 'NR > 1 {print $2, $5}' /var/log/chrony/tracking.log | \
+# Field $7 is Offset; $2 is Time. Skip header/comment lines.
+awk '$1 ~ /^[0-9]/ {print $2, $7}' /var/log/chrony/tracking.log | \
     gnuplot -p -e "
     set xlabel 'Time';
     set ylabel 'Offset (seconds)';
     set title 'Time Drift';
     plot '-' using 1:2 with lines
     " 2>/dev/null || \
-    awk 'NR > 1 {print $1, $2, $5}' /var/log/chrony/tracking.log | tail -20
+    awk '$1 ~ /^[0-9]/ {print $1, $2, $7}' /var/log/chrony/tracking.log | tail -20
 
 # Check drift rate (ppm = parts per million, 1 ppm = 1 microsecond per second)
 chronyc tracking | grep "Frequency"
