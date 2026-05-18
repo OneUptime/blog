@@ -45,7 +45,7 @@ sudo apt install flatpak
 flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
 # Install Tor Browser
-flatpak install flathub com.github.micahflee.torbrowser-launcher
+flatpak install flathub org.torproject.torbrowser-launcher
 ```
 
 ### Option 3: Direct Download
@@ -193,7 +193,7 @@ Security updates are critical for a privacy tool. The browser launcher handles u
 torbrowser-launcher
 
 # If installed via Flatpak
-flatpak update com.github.micahflee.torbrowser-launcher
+flatpak update org.torproject.torbrowser-launcher
 ```
 
 Tor Browser will also notify you of available updates within the browser interface. Never run an outdated version for extended periods.
