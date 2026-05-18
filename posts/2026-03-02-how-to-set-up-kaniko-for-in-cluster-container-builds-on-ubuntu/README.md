@@ -90,32 +90,46 @@ kubectl create secret docker-registry regcred \
 
 ```bash
 # Get the ECR login token and create a secret
-aws ecr get-login-password --region us-east-1 | \
-  kubectl create secret docker-registry ecr-credentials \
-    --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
-    --docker-username=AWS \
-    --docker-password-stdin
+# Note: kubectl create secret docker-registry has no --password-stdin flag,
+# so capture the password into a variable first.
+ECR_PASSWORD=$(aws ecr get-login-password --region us-east-1)
+kubectl create secret docker-registry ecr-credentials \
+  --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
+  --docker-username=AWS \
+  --docker-password="$ECR_PASSWORD"
 ```
+
+ECR tokens expire every 12 hours, so refresh the secret on a schedule (e.g., via a CronJob) for long-running setups.
 
 **For Google Container Registry (GCR):**
 
+The canonical Kaniko approach is to mount a service account key file and point `GOOGLE_APPLICATION_CREDENTIALS` at it.
+
 ```bash
 # Create a service account key and store it as a secret
-kubectl create secret generic gcr-credentials \
-  --from-file=config.json=/path/to/keyfile.json
+kubectl create secret generic kaniko-secret \
+  --from-file=kaniko-secret.json=/path/to/keyfile.json
 ```
 
-For GCR, the config.json format is:
+Then in the Kaniko pod, mount the secret and set the env var:
 
-```json
-{
-  "credHelpers": {
-    "gcr.io": "gcr",
-    "us.gcr.io": "gcr",
-    "eu.gcr.io": "gcr"
-  }
-}
+```yaml
+containers:
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:latest
+    env:
+      - name: GOOGLE_APPLICATION_CREDENTIALS
+        value: /secret/kaniko-secret.json
+    volumeMounts:
+      - name: kaniko-secret
+        mountPath: /secret
+volumes:
+  - name: kaniko-secret
+    secret:
+      secretName: kaniko-secret
 ```
+
+On GKE, prefer Workload Identity over long-lived service account keys.
 
 ## Using a Local Context (Git Repository)
 
@@ -297,13 +311,19 @@ jobs:
                 }]
               }
             }'
-          kubectl wait --for=condition=ready pod/kaniko-build-$GITHUB_RUN_ID --timeout=5m
+          # Wait for the pod to leave Pending (don't use condition=Ready: Kaniko
+          # pods often finish before Ready is observed, and a completed pod has
+          # Ready=False, which would cause `kubectl wait` to time out).
+          until [ "$(kubectl get pod kaniko-build-$GITHUB_RUN_ID -o jsonpath='{.status.phase}')" != "Pending" ]; do sleep 2; done
           kubectl logs -f kaniko-build-$GITHUB_RUN_ID
+          # Surface the final pod phase as the step's exit status
+          phase=$(kubectl get pod kaniko-build-$GITHUB_RUN_ID -o jsonpath='{.status.phase}')
+          [ "$phase" = "Succeeded" ]
 ```
 
 ## Multi-Architecture Builds
 
-Kaniko supports building for different architectures using the `--custom-platform` flag:
+Kaniko does not virtualize the build host, so it cannot cross-compile to an architecture the host doesn't natively support. The `--custom-platform` flag only sets the platform metadata on the produced image (and is useful for compatible variants like `i386` on `amd64`):
 
 ```yaml
 args:
@@ -312,7 +332,7 @@ args:
   - "--custom-platform=linux/arm64"
 ```
 
-For multi-platform images, build once for each architecture and use `docker manifest` to create a multi-arch manifest.
+To build a real arm64 image, schedule the Kaniko pod onto an arm64 node (for example with a `nodeSelector` of `kubernetes.io/arch: arm64`). For a multi-arch image, build once per architecture on a native node and then combine the per-arch images with `docker manifest create` / `docker buildx imagetools create`.
 
 ## Monitoring Build Progress
 
