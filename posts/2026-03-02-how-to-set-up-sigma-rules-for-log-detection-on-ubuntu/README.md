@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Sigma, Security, SIEM, Log Analysis
 
-Description: Learn how to use Sigma rules on Ubuntu for threat detection in log files, converting rules to grep, jq, and SIEM query formats with the sigmac converter tool.
+Description: Learn how to use Sigma rules on Ubuntu for threat detection in log files, converting rules to Elasticsearch and Splunk query formats with the sigma-cli converter tool.
 
 ---
 
-Sigma is an open, generic signature format for describing log events. Think of it as YARA for log files: you write a detection rule once in Sigma's format, and then convert it to run against Elasticsearch, Splunk, Graylog, QRadar, Azure Sentinel, or even plain grep. This backend-agnostic approach means your detection logic isn't locked to any particular SIEM.
+Sigma is an open, generic signature format for describing log events. Think of it as YARA for log files: you write a detection rule once in Sigma's format, and then convert it to run against Elasticsearch, Splunk, QRadar, Microsoft Sentinel, OpenSearch, or other supported backends. This backend-agnostic approach means your detection logic isn't locked to any particular SIEM.
 
 This guide focuses on getting Sigma working on Ubuntu: installing the tools, writing rules, converting them to usable query formats, and integrating them with your log pipeline.
 
@@ -31,7 +31,10 @@ pip install sigma-cli
 # Install backend plugins for your target systems
 sigma plugin install elasticsearch
 sigma plugin install splunk
-sigma plugin install qradar
+sigma plugin install ibm-qradar-aql
+
+# Install the Linux processing pipeline (used by Linux log conversions)
+sigma plugin install linux
 
 # Verify installation
 sigma --version
@@ -156,7 +159,7 @@ detection:
     - 'Failed password'
     - 'authentication failure'
     - 'Invalid user'
-condition: keywords
+  condition: keywords
 level: medium
 falsepositives:
   - Misconfigured services
@@ -228,13 +231,13 @@ source /opt/sigma-venv/bin/activate
 # Convert a single rule
 sigma convert \
   --target elasticsearch \
-  --pipeline ecs_linux \
+  --pipeline linux \
   /opt/sigma-rules/custom/linux_ssh_bruteforce.yml
 
 # Convert all Linux rules
 sigma convert \
   --target elasticsearch \
-  --pipeline ecs_linux \
+  --pipeline linux \
   /opt/sigma-rules/rules/linux/ \
   --output /tmp/sigma-elasticsearch-rules.json
 ```
@@ -247,82 +250,6 @@ sigma convert \
   /opt/sigma-rules/custom/linux_ssh_bruteforce.yml
 ```
 
-### Convert to grep (for Local Log Searching)
-
-The `grep` backend is useful for ad-hoc searching on a single host:
-
-```bash
-sigma convert \
-  --target grep \
-  /opt/sigma-rules/custom/linux_ssh_bruteforce.yml
-```
-
-This outputs a grep command you can run directly against log files:
-
-```bash
-# The generated command looks something like:
-grep -P "Failed password|authentication failure|Invalid user" /var/log/auth.log
-```
-
-### Convert to Sigma's JSON Format for Custom Processing
-
-```bash
-sigma convert \
-  --target json \
-  /opt/sigma-rules/rules/linux/ \
-  --output /tmp/sigma-rules.json
-```
-
-## Running Detections Against Local Logs
-
-For organizations not yet running a SIEM, you can use Sigma rules with the `evtx2es` approach or with plain tools by converting to grep patterns.
-
-### Using zq for Structured Log Analysis
-
-If your application logs in JSON, `zq` (from the Zed project) can apply Sigma-like queries:
-
-```bash
-# Install zq
-wget https://github.com/brimdata/zed/releases/latest/download/zed-linux-amd64.tar.gz -O /tmp/zed.tar.gz
-tar -xzf /tmp/zed.tar.gz -C /tmp
-sudo mv /tmp/zq /usr/local/bin/zq
-
-# Query JSON logs directly
-zq 'where msg contains "Failed password"' /var/log/app/auth.json
-```
-
-### Automated Scanning with sigma-cli
-
-Create a script that converts rules and applies them to local logs:
-
-```bash
-cat > /usr/local/bin/sigma-scan.sh << 'EOF'
-#!/bin/bash
-# sigma-scan.sh - Run Sigma rules against local log files
-
-source /opt/sigma-venv/bin/activate
-
-RULES_DIR="/opt/sigma-rules/rules/linux"
-LOG_FILES="/var/log/auth.log /var/log/syslog"
-ALERT_LOG="/var/log/sigma-alerts.log"
-
-# Convert rules to grep patterns and apply them
-for rule in $(find "$RULES_DIR" -name "*.yml"); do
-    rule_name=$(grep "^title:" "$rule" | cut -d: -f2 | xargs)
-    pattern=$(sigma convert --target grep "$rule" 2>/dev/null | tail -1)
-
-    if [ -n "$pattern" ]; then
-        matches=$(eval "$pattern" $LOG_FILES 2>/dev/null | wc -l)
-        if [ "$matches" -gt 0 ]; then
-            echo "$(date): ALERT - $rule_name - $matches matches" | tee -a "$ALERT_LOG"
-        fi
-    fi
-done
-EOF
-
-chmod +x /usr/local/bin/sigma-scan.sh
-```
-
 ## Integrating with Elasticsearch/OpenSearch
 
 After converting rules to Elasticsearch format, import them as detection rules or Watcher alerts:
@@ -331,7 +258,7 @@ After converting rules to Elasticsearch format, import them as detection rules o
 # Convert rules to Elasticsearch format
 sigma convert \
   --target elasticsearch \
-  --pipeline ecs_linux \
+  --pipeline linux \
   /opt/sigma-rules/rules/linux/ \
   --format kibana_ndjson \
   --output /tmp/kibana-rules.ndjson
@@ -356,7 +283,7 @@ git log --oneline --since="1 week ago" -- rules/linux/
 # Run conversion again after updates
 sigma convert \
   --target elasticsearch \
-  --pipeline ecs_linux \
+  --pipeline linux \
   /opt/sigma-rules/rules/linux/ \
   --output /tmp/sigma-elasticsearch-rules.json
 ```
@@ -371,4 +298,4 @@ sigma check /opt/sigma-rules/custom/linux_ssh_bruteforce.yml
 sigma check /opt/sigma-rules/custom/
 ```
 
-Sigma's value comes from the shared community of rules. The SigmaHQ repository contains thousands of detection rules contributed by security researchers, and because they're backend-agnostic, you can use them with whatever log infrastructure you have - from plain grep on a single server to a multi-cluster Elasticsearch deployment.
+Sigma's value comes from the shared community of rules. The SigmaHQ repository contains thousands of detection rules contributed by security researchers, and because they're backend-agnostic, you can use them with whatever log infrastructure you have - from a single Splunk index to a multi-cluster Elasticsearch deployment.
