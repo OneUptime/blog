@@ -21,7 +21,7 @@ Verify the installation:
 
 ```bash
 smbd --version
-samba --version
+smbclient --version
 ```
 
 ## Understanding Samba Configuration
@@ -77,10 +77,7 @@ sudo nano /etc/samba/smb.conf
    # DNS resolution
    dns proxy = no
 
-   # Samba performance tuning
-   socket options = TCP_NODELAY IPTOS_LOWDELAY
-
-   # Prevent "print$" and "homes" shares from being auto-created
+   # Disable printer auto-sharing ([printers] and [print$])
    load printers = no
    printing = bsd
    printcap name = /dev/null
@@ -159,13 +156,11 @@ sudo useradd -M -s /usr/sbin/nologin bwilliams
 sudo usermod -aG sambagroup jsmith
 sudo usermod -aG sambagroup bwilliams
 
-# Set Samba passwords (separate from Linux passwords)
+# Set Samba passwords (separate from Linux passwords).
+# With the tdbsam backend, smbpasswd -a creates the account
+# in an enabled state - no separate "enable" step is needed.
 sudo smbpasswd -a jsmith
 sudo smbpasswd -a bwilliams
-
-# Enable the Samba account (it starts disabled)
-sudo smbpasswd -e jsmith
-sudo smbpasswd -e bwilliams
 
 # Verify Samba users
 sudo pdbedit -L
@@ -176,11 +171,11 @@ sudo pdbedit -L
 Always test the configuration before restarting:
 
 ```bash
-# Check smb.conf syntax
-sudo testparm
+# Check smb.conf syntax (-s skips the "press enter" prompt)
+sudo testparm -s
 
 # More verbose output
-sudo testparm -v 2>/dev/null | head -50
+sudo testparm -sv 2>/dev/null | head -50
 ```
 
 Fix any errors reported before proceeding.
@@ -202,8 +197,8 @@ sudo systemctl status nmbd
 ## Firewall Configuration
 
 ```bash
-# Allow Samba through the firewall
-sudo ufw allow samba
+# Allow Samba through the firewall (the UFW app profile name is capitalized)
+sudo ufw allow Samba
 
 # Or specifically:
 sudo ufw allow 139/tcp   # NetBIOS session service
