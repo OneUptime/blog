@@ -25,12 +25,12 @@ Maltrail is a Python application. Install dependencies:
 
 ```bash
 sudo apt update
-sudo apt install -y git python3 python3-pip python3-pcapy libpcap-dev \
-    python3-dev build-essential
+sudo apt install -y git python3 python3-pip python-is-python3 libpcap-dev \
+    python3-dev build-essential procps schedtool
 
-# Install Python dependencies
+# Install Python dependencies (use pcapy-ng; the older pcapy is deprecated)
 
-pip3 install pcapy-ng
+sudo pip3 install pcapy-ng
 ```
 
 ## Installing Maltrail
@@ -53,80 +53,71 @@ The main configuration file controls both sensor and server behavior:
 sudo nano /opt/maltrail/maltrail.conf
 ```
 
-Key settings to configure:
+Maltrail's config format is whitespace-separated `KEY VALUE` pairs (not INI-style `key = value`). The `# [Sensor]` and `# [Server]` markers in the file are just comments that group related directives. Key settings to configure:
 
-```ini
+```sh
 # /opt/maltrail/maltrail.conf - essential settings
 
-[Sensor]
-# Network interface to monitor
-MONITOR_INTERFACE             = eth0
+# [Server]
+# Listen address of (reporting) HTTP server
+HTTP_ADDRESS 0.0.0.0
 
-# Use "any" to monitor all interfaces
-# MONITOR_INTERFACE           = any
+# Listen port of (reporting) HTTP server
+HTTP_PORT 8338
 
-# Address of the reporting server
-SERVER_ADDR                   = 127.0.0.1
-SERVER_PORT                   = 8337
+# User entries (format: username:sha256(password):UID:filter_netmask(s))
+# Generate hash: echo -n 'yourpassword' | sha256sum | cut -d " " -f 1
+# UID 0 = admin; UID >= 1000 = read-only
+USERS
+    admin:8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918:0:
 
-# Update trails on startup
-UPDATE_SERVER                 = True
+# Listen address/port of the (log collecting) UDP server (uncomment for distributed setup)
+#UDP_ADDRESS 0.0.0.0
+#UDP_PORT 8337
 
-# Log directory for sensor output
-LOG_DIR                       = /var/log/maltrail
+# [Sensor]
+# Network interface to monitor (use "any" for all interfaces)
+MONITOR_INTERFACE any
 
-# BPF filter to exclude certain traffic from analysis
-# PCAP_FILTER               = "not port 22"
+# Network capture filter (BPF)
+CAPTURE_FILTER udp or icmp or (tcp and (tcp[tcpflags] == tcp-syn or port 80 or port 1080 or port 3128 or port 8000 or port 8080 or port 8118))
 
-[Server]
-# Address to bind the web dashboard on
-HTTP_ADDRESS                  = 0.0.0.0
-HTTP_PORT                     = 8338
+# Remote Maltrail server to send log entries (only for distributed setup)
+#LOG_SERVER 192.168.2.107:8337
 
-# Username and password for the web interface
-ADMIN_USERNAME                = admin
-# Generate hash: python3 -c "import hashlib; print(hashlib.sha256('yourpassword'.encode()).hexdigest())"
-ADMIN_PASSWORD                = 8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918
+# How often to update trails (in seconds)
+UPDATE_PERIOD 86400
 
-# Maximum number of events to keep in memory
-MAX_EVENTS                    = 100000
-
-# Data directory for server storage
-DATA_DIR                      = /var/maltrail
+# [All]
+# Directory used for log storage
+LOG_DIR /var/log/maltrail
 ```
 
-Create the required directories:
+Create the required log directory:
 
 ```bash
-sudo mkdir -p /var/log/maltrail /var/maltrail
-sudo chown -R $USER:$USER /var/log/maltrail /var/maltrail
+sudo mkdir -p /var/log/maltrail
 ```
 
 ## Setting Up the Threat Feeds
 
-Maltrail aggregates many threat intelligence feeds. Update them before starting:
+Maltrail aggregates many threat intelligence feeds. The sensor pulls/refreshes them automatically on startup and then every `UPDATE_PERIOD` seconds (default 86400 = 24h); the consolidated set is written to `~/.maltrail/trails.csv` (override with the `TRAILS_FILE` directive). To skip the online pull on a particular run, start the sensor with `--offline`.
+
+The `/opt/maltrail/trails/` directory contains:
+- `static/` - hard-coded indicators bundled with Maltrail
+- `feeds/` - Python modules that fetch each external feed
+- `custom/` - drop-in directory for your own indicator files (configurable via `CUSTOM_TRAILS_DIR`)
+
+You can add custom indicators by creating files in `/opt/maltrail/trails/custom/`:
 
 ```bash
-cd /opt/maltrail
-
-# Update trail lists (downloads feeds from configured sources)
-sudo python3 sensor.py --update
-
-# Check what feeds are configured
-grep -i "trail" maltrail.conf | head -20
+sudo nano /opt/maltrail/trails/custom/custom.txt
 ```
 
-The trail files are stored in `/opt/maltrail/trails/` and include:
-- `static/` - hard-coded known bad indicators
-- `dynamic/` - downloaded threat intel feeds
-
-You can add custom indicators by creating files in `/opt/maltrail/trails/static/custom.txt`:
-
 ```text
-# Custom threat intel entries
-# Format: indicator,type,info
-malicious-domain.com,domain,Internal Threat Intel
-192.168.100.50,ip,Compromised Host
+# Custom threat intel entries (one per line, optionally followed by a comment)
+malicious-domain.com  # Internal Threat Intel
+192.168.100.50        # Compromised Host
 ```
 
 ## Running as a Service
@@ -221,23 +212,22 @@ Log entries look like:
 2026-03-02 14:23:01 192.168.1.55 -> 45.33.32.156:443 (malware.domain.com) [trojan, malware feed: EmergingThreats]
 ```
 
-## Setting Up Scheduled Updates
+## Scheduled Updates
 
-Threat feeds should update regularly. Add a cron job:
+The sensor refreshes trails on its own every `UPDATE_PERIOD` seconds, so no cron job is needed. To update more or less often, change the value in `maltrail.conf` and restart the sensor:
 
-```bash
-# Update trails daily at 2am
-echo '0 2 * * * root cd /opt/maltrail && python3 sensor.py --update >> /var/log/maltrail/update.log 2>&1' | \
-    sudo tee /etc/cron.d/maltrail-update
+```ini
+# Refresh trails every 12 hours instead of the default 24
+UPDATE_PERIOD 43200
 ```
 
 ## Tuning False Positives
 
-New deployments tend to have false positives, especially for ad networks and analytics domains that appear on some threat lists. You can whitelist indicators:
+New deployments tend to have false positives, especially for ad networks and analytics domains that appear on some threat lists. Maltrail ships with `misc/whitelist.txt` as a starting point; copy it (or create your own) and add your entries:
 
 ```bash
-# Create a whitelist file
-sudo nano /opt/maltrail/trails/static/whitelist.txt
+sudo cp /opt/maltrail/misc/whitelist.txt /opt/maltrail/misc/whitelist.local.txt
+sudo nano /opt/maltrail/misc/whitelist.local.txt
 ```
 
 ```text
@@ -246,11 +236,11 @@ analytics.google.com
 content.googleapis.com
 ```
 
-Add the whitelist to the configuration:
+Point Maltrail at the file via the `USER_WHITELIST` directive:
 
-```ini
+```sh
 # In maltrail.conf
-WHITELIST                     = /opt/maltrail/trails/static/whitelist.txt
+USER_WHITELIST /opt/maltrail/misc/whitelist.local.txt
 ```
 
 Restart the sensor after making changes:
