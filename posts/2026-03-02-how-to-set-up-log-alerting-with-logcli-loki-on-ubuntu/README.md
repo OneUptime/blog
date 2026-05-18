@@ -297,17 +297,22 @@ sudo systemctl enable alertmanager
 sudo systemctl start alertmanager
 ```
 
-## Querying Active Alerts via LogCLI
+## Querying Active Alerts via the Loki Ruler API
+
+LogCLI itself does not have `rules` or `alerts` subcommands - rule and alert state are exposed by the Loki ruler over its HTTP API. Use `curl` against the ruler endpoints:
 
 ```bash
-# List currently firing rules
-logcli rules
+# List all configured rule groups (returns YAML)
+curl http://localhost:3100/loki/api/v1/rules
 
-# Show alert status
-logcli alerts
+# List rules for a specific namespace (the "fake" tenant when auth is disabled)
+curl http://localhost:3100/loki/api/v1/rules/fake
 
-# Query rules for a specific namespace
-logcli rules --namespace=fake
+# Show currently loaded rules and their evaluation state (Prometheus-compatible)
+curl http://localhost:3100/prometheus/api/v1/rules
+
+# Show currently firing alerts (Prometheus-compatible)
+curl http://localhost:3100/prometheus/api/v1/alerts
 ```
 
 ## Using LogCLI for Live Log Tailing
@@ -328,11 +333,12 @@ logcli query '{job="myapp"}' --tail --output=jsonl
 For the alert rules to work, logs need to be ingested. Install Promtail to ship local logs:
 
 ```bash
-LOKI_VERSION=$(logcli --version 2>&1 | awk '{print $3}')
+LOKI_VERSION=$(curl -s https://api.github.com/repos/grafana/loki/releases/latest | grep tag_name | cut -d'"' -f4)
 curl -Lo promtail.gz \
   "https://github.com/grafana/loki/releases/download/${LOKI_VERSION}/promtail-linux-amd64.zip"
 unzip promtail.gz
 sudo mv promtail-linux-amd64 /usr/local/bin/promtail
+sudo chmod +x /usr/local/bin/promtail
 ```
 
 Configure Promtail:
@@ -372,8 +378,8 @@ for i in $(seq 1 20); do
 done
 
 # Wait for the alert evaluation interval, then check
-logcli alerts
-# Should show HighErrorRate or DatabaseConnectionFailed in FIRING state
+curl http://localhost:3100/prometheus/api/v1/alerts
+# Should show HighErrorRate or DatabaseConnectionFailed in "firing" state
 ```
 
 ## Troubleshooting
@@ -393,8 +399,8 @@ curl http://localhost:3100/ready
 # Check Loki ruler is processing rules
 curl http://localhost:3100/loki/api/v1/rules
 
-# Verify rule syntax
-logcli rules
+# View currently loaded rules and their evaluation state
+curl http://localhost:3100/prometheus/api/v1/rules
 
 # Check Loki logs for ruler errors
 docker logs loki --tail 50 2>&1 | grep -i ruler
