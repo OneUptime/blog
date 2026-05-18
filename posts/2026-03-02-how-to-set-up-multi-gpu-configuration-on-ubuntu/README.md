@@ -20,9 +20,9 @@ Multiple GPUs connected through PCIe slots. Each GPU operates independently. No 
 
 High-bandwidth direct GPU-to-GPU interconnect. Supported on: RTX 3090, A100, A6000, H100, and other high-end cards. Enables much faster peer-to-peer transfers and unified memory across GPUs.
 
-### NVSwitch (Multi-node)
+### NVSwitch (High-density Single-node)
 
-For large-scale distributed training across many GPU nodes. Used in NVIDIA DGX systems and large clusters. Beyond scope of single-machine setup.
+A high-bandwidth NVLink switch fabric that fully connects all GPUs within a single server (e.g., 8 or 16 GPUs in DGX systems). Multi-node clusters layer InfiniBand on top of NVSwitch-connected nodes. Beyond scope of typical single-machine setup.
 
 ## Verifying All GPUs Are Detected
 
@@ -42,7 +42,9 @@ The topology matrix output shows:
 - `NV1`, `NV2`: NVLink connections (higher number = more NVLink bridges)
 - `PHB`: PCIe host bridge (going through the CPU)
 - `PXB`: PCIe bridge (on-board switch, faster than PHB)
-- `SOC`: Connected on same SoC (embedded systems)
+- `PIX`: Connection traversing at most a single PCIe bridge
+- `NODE`: Connection traversing the interconnect between PCIe host bridges within a NUMA node
+- `SYS`: Connection traversing the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
 
 ## Checking NVLink Connectivity
 
@@ -53,8 +55,8 @@ nvidia-smi nvlink -s
 # Check NVLink capabilities
 nvidia-smi nvlink -c
 
-# Monitor NVLink bandwidth
-nvidia-smi nvlink -gt d  # Throughput in MB/s
+# Read NVLink throughput counters (cumulative KiB; sample twice to compute rate)
+nvidia-smi nvlink -gt d
 ```
 
 ## Driver and CUDA Configuration
@@ -231,11 +233,10 @@ for i in range(torch.cuda.device_count()):
             can_access = torch.cuda.can_device_access_peer(i, j)
             print(f"GPU {i} -> GPU {j}: peer access {'available' if can_access else 'not available'}")
 
-# Enable peer access explicitly (usually handled by frameworks)
-import ctypes
-libcuda = ctypes.CDLL('libcuda.so')
-# Enable peer access from device 0 to device 1
-libcuda.cuCtxEnablePeerAccess(device_1_context, 0)
+# Explicit peer-access enable is normally handled by PyTorch/NCCL the first
+# time a tensor crosses devices. To control it manually, drop into CUDA C/C++
+# and call cudaDeviceEnablePeerAccess (runtime API) or cuCtxEnablePeerAccess
+# (driver API) against the actual device contexts.
 ```
 
 ## Monitoring All GPUs Together
