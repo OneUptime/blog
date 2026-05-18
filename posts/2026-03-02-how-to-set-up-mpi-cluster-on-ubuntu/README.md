@@ -35,7 +35,7 @@ sudo hostnamectl set-hostname head-node
 # On compute-node-01:
 sudo hostnamectl set-hostname compute-node-01
 
-# On head-node:
+# On compute-node-02:
 sudo hostnamectl set-hostname compute-node-02
 
 # On ALL nodes, add all cluster hosts to /etc/hosts
@@ -254,12 +254,13 @@ mpirun --hostfile /shared/hostfile -np 12 \
 If your nodes have InfiniBand:
 
 ```bash
-# Install OFED and OpenMPI with InfiniBand support
-sudo apt install -y libopenmpi-dev openmpi-bin rdma-core
+# Install RDMA and UCX support (recommended for OpenMPI 4.x+)
+sudo apt install -y libopenmpi-dev openmpi-bin rdma-core libucx0
 
-# Run with InfiniBand transport
+# Run with UCX as the point-to-point messaging layer (preferred over the
+# deprecated openib BTL in OpenMPI 4.x and removed in 5.x)
 mpirun --hostfile /shared/hostfile -np 12 \
-  --mca btl openib,self,sm \
+  --mca pml ucx --mca osc ucx \
   /shared/mpi_examples/hello_mpi
 ```
 
@@ -298,7 +299,7 @@ ping -c 10 compute-node-01
 
 # Use the OSU MPI benchmark suite for detailed performance analysis
 sudo apt install -y openmpi-bin
-# Download and build OSU benchmarks from http://mvapich.cse.ohio-state.edu/benchmarks/
+# Download and build OSU benchmarks from https://mvapich.cse.ohio-state.edu/benchmarks/
 ```
 
 OpenMPI on Ubuntu is a solid foundation for parallel computing. Once the basic cluster is working, you can layer on job schedulers like SLURM for managing multiple users and workloads, which transforms this setup into a proper HPC cluster.
