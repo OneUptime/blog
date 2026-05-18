@@ -149,14 +149,14 @@ GRE uses IP protocol number 47 (not TCP or UDP):
 
 ```bash
 # Allow GRE traffic between the two public IPs
-sudo ufw allow proto 47 from 203.0.113.20 to 203.0.113.10
+sudo ufw allow proto gre from 203.0.113.20 to 203.0.113.10
 
 # Or with iptables directly
 sudo iptables -A INPUT -p gre -s 203.0.113.20 -j ACCEPT
 sudo iptables -A OUTPUT -p gre -d 203.0.113.20 -j ACCEPT
 ```
 
-If the hosts are behind NAT, GRE may not traverse it well (since it lacks port numbers for NAT to track). In that case, use GRE over UDP with the `ip6gre` or consider VXLAN instead.
+If the hosts are behind NAT, GRE may not traverse it well (since it lacks port numbers for NAT to track). In that case, use GRE over UDP with Foo-over-UDP (FOU) or consider VXLAN instead.
 
 ## Making GRE Tunnels Persistent
 
@@ -256,7 +256,7 @@ GRE can also tunnel IPv4 traffic over IPv6:
 
 ```bash
 # Create a GRE tunnel using IPv6 endpoints
-sudo ip tunnel add gre6 mode ip6gre \
+sudo ip -6 tunnel add gre6 mode ip6gre \
   local 2001:db8::1 \
   remote 2001:db8::2
 
