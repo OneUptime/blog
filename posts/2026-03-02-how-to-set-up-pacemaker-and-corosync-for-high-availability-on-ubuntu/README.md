@@ -47,9 +47,9 @@ ping -c 2 node1
 ping -c 2 node2
 ```
 
-## Step 2: Set Up SSH Keys Between Nodes
+## Step 2: Set Up SSH Keys Between Nodes (Optional)
 
-Pacemaker needs passwordless SSH to perform fencing operations:
+Pacemaker itself does not require SSH between nodes — cluster authentication goes through `pcsd` (port 2224) using the `hacluster` user configured in the next step. Passwordless SSH is only needed if you plan to use an SSH-based fence agent (e.g. `fence_virsh`) or simply want it for general administration:
 
 ```bash
 # On node1: generate and copy key to node2
@@ -70,7 +70,7 @@ ssh root@node1 "hostname"
 ```bash
 # On both nodes: install the HA stack
 sudo apt update
-sudo apt install -y pacemaker corosync pcs fence-agents
+sudo apt install -y pacemaker corosync pcs fence-agents-base fence-agents-extra
 
 # Set the hacluster user password (used by pcs for cluster authentication)
 # Must be the same password on both nodes
@@ -185,19 +185,19 @@ sudo pcs property set stonith-enabled=false
 # Production: configure an appropriate fencing agent
 # Examples depend on your environment:
 
-# For VMs on VMware/libvirt - use fence_vmware or fence_virsh
-sudo pcs stonith create vmfence fence_vmware \
-  ipaddr=vcenter.example.com \
-  login=admin \
-  passwd=password \
+# For VMs on VMware/libvirt - use fence_vmware_rest, fence_vmware_soap, or fence_virsh
+sudo pcs stonith create vmfence fence_vmware_rest \
+  ip=vcenter.example.com \
+  username=admin \
+  password=password \
   pcmk_reboot_action=off
 
 # For physical servers with IPMI/iDRAC
 sudo pcs stonith create ipmi-fence fence_ipmilan \
   pcmk_host_map="node1:192.168.10.21;node2:192.168.10.22" \
-  ipaddr=192.168.10.21 \
-  login=admin \
-  passwd=password
+  ip=192.168.10.21 \
+  username=admin \
+  password=password
 
 # For cloud VMs (AWS example)
 sudo pcs stonith create aws-fence fence_aws \
@@ -274,13 +274,13 @@ By default, resources move back to their preferred node when it recovers. In mos
 
 ```bash
 # Set resource stickiness (higher = less likely to move)
-sudo pcs resource defaults resource-stickiness=100
+sudo pcs resource defaults update resource-stickiness=100
 
 # Or set on a specific resource
 sudo pcs resource meta virtual-ip resource-stickiness=100
 
 # To prevent resources from moving back automatically:
-sudo pcs resource defaults resource-stickiness=INFINITY
+sudo pcs resource defaults update resource-stickiness=INFINITY
 ```
 
 ## Monitoring the Cluster
@@ -319,7 +319,7 @@ sudo ss -ulnp | grep 5405
 nc -u 192.168.10.12 5405  # test connectivity
 ```
 
-Resources Not Starting
+### Resources Not Starting
 
 ```bash
 # Force a resource to start on a specific node
