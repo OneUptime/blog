@@ -8,7 +8,7 @@ Description: Learn how to install and use Mozilla SOPS on Ubuntu to encrypt secr
 
 ---
 
-SOPS (Secrets OPerationS) is a tool from Mozilla that encrypts secrets files while keeping the structure intact. Unlike encrypting an entire file as a blob, SOPS encrypts only the values in YAML, JSON, ENV, or INI files - leaving the keys visible. This means diffs are readable, code reviews are meaningful, and secrets can be safely committed to version control.
+SOPS (Secrets OPerationS) is an open-source tool (originally from Mozilla, now a CNCF Sandbox project maintained by the `getsops` community) that encrypts secrets files while keeping the structure intact. Unlike encrypting an entire file as a blob, SOPS encrypts only the values in YAML, JSON, ENV, or INI files - leaving the keys visible. This means diffs are readable, code reviews are meaningful, and secrets can be safely committed to version control.
 
 ## How SOPS Encryption Works
 
@@ -58,6 +58,9 @@ age is a modern, simple encryption tool that works well with SOPS. It's easier t
 ```bash
 # Install age
 sudo apt-get install -y age
+
+# Create the key directory (age-keygen does not create parents)
+mkdir -p ~/.config/sops/age
 
 # Generate a key pair
 age-keygen -o ~/.config/sops/age/keys.txt
