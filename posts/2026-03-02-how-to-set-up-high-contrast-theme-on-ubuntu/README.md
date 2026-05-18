@@ -63,14 +63,15 @@ gsettings set org.gnome.desktop.interface gtk-theme 'HighContrastInverse'
 ### From Ubuntu Repositories
 
 ```bash
-# Install GNOME themes package (includes additional high contrast options)
+# The HighContrast theme is provided by gnome-accessibility-themes
+# (usually preinstalled on Ubuntu Desktop)
 sudo apt update
-sudo apt install gnome-themes-extra gnome-themes-extra-data -y
+sudo apt install gnome-accessibility-themes gnome-themes-extra -y
 
 # List newly available themes
 ls /usr/share/themes/ | grep -iE 'contrast|high'
 
-# Apply one of the additional themes
+# Apply the high contrast theme
 gsettings set org.gnome.desktop.interface gtk-theme 'HighContrast'
 ```
 
@@ -112,8 +113,8 @@ gsettings set org.gnome.desktop.interface gtk-theme 'MyContrastTheme'
 GTK4 applications use a different theming approach. On Ubuntu 22.04+, you can force high contrast for GTK4 apps.
 
 ```bash
-# Enable high contrast preference (applications that support it will adapt)
-gsettings set org.gnome.desktop.a11y prefers-color-scheme 'high-contrast'
+# Enable the system high contrast preference (applications that support it will adapt)
+gsettings set org.gnome.desktop.a11y.interface high-contrast true
 
 # For individual GTK4 applications, set the environment variable
 GTK_THEME=HighContrast:dark gedit &
