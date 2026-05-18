@@ -171,7 +171,7 @@ class CheckDiskAction(Action):
 
         self.logger.info(f"Disk {path}: {usage_pct:.1f}% used ({free_gb:.1f}GB free)")
 
-        return (not result['is_critical'], result)
+        return (True, result)
 EOF
 
 # Register the pack
@@ -262,9 +262,9 @@ tasks:
     input:
       path: <% ctx(path) %>
     next:
-      - when: <% succeeded() and result().output.is_critical %>
+      - when: <% succeeded() and result().is_critical %>
         do: clean_logs
-      - when: <% succeeded() and not result().output.is_critical %>
+      - when: <% succeeded() and not result().is_critical %>
         do: notify_ok
 
   clean_logs:
