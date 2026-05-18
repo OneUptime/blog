@@ -113,7 +113,7 @@ Add a share definition to `/etc/samba/smb.conf`:
    # Allow browsing the share
    browseable = yes
 
-   # Read-only - change to yes for writable
+   # Read-only - change to no for writable
    read only = yes
 
    # Force all files to be created with these permissions
