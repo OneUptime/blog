@@ -34,11 +34,12 @@ This guide assumes you have a MySQL primary at `10.0.0.1` and replicas at `10.0.
 ## Installing ProxySQL on Ubuntu
 
 ```bash
-# Add ProxySQL repository
+# Add ProxySQL repository (replace 2.7.x with the release series you want)
 
-wget -O- 'https://repo.proxysql.com/ProxySQL/proxysql-2.x-repo/proxysql_pub_key' | \
-    sudo apt-key add -
-echo "deb https://repo.proxysql.com/ProxySQL/proxysql-2.x-repo/$(lsb_release -sc)/ ./" | \
+sudo apt install -y --no-install-recommends lsb-release wget apt-transport-https ca-certificates
+sudo wget -nv -O /etc/apt/trusted.gpg.d/proxysql-2.7.x-keyring.gpg \
+    'https://repo.proxysql.com/ProxySQL/proxysql-2.7.x/repo_pub_key.gpg'
+echo "deb https://repo.proxysql.com/ProxySQL/proxysql-2.7.x/$(lsb_release -sc)/ ./" | \
     sudo tee /etc/apt/sources.list.d/proxysql.list
 
 sudo apt update
@@ -238,12 +239,15 @@ done
 ```sql
 -- Connect to admin interface
 -- Check server status
-SELECT hostgroup_id, hostname, port, status, connections_used, connections_free
+SELECT hostgroup, srv_host, srv_port, status, ConnUsed, ConnFree
     FROM stats_mysql_connection_pool;
 
 -- Check query routing (which rules are being hit)
-SELECT rule_id, hits, match_digest, destination_hostgroup
-    FROM stats_mysql_query_rules;
+-- stats_mysql_query_rules only stores rule_id and hits, so join with
+-- mysql_query_rules to see the match pattern and destination
+SELECT s.rule_id, s.hits, r.match_digest, r.destination_hostgroup
+    FROM stats_mysql_query_rules s
+    JOIN mysql_query_rules r ON s.rule_id = r.rule_id;
 
 -- Check recent queries
 SELECT digest_text, count_star, first_seen, last_seen, sum_time
