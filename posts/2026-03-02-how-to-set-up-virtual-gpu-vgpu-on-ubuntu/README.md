@@ -79,7 +79,7 @@ lspci | grep NVIDIA
 nvidia-smi vgpu -s
 
 # Detailed view with memory and capabilities
-nvidia-smi vgpu --supported-vgpu
+nvidia-smi vgpu -s -v
 
 # Check active vGPUs
 nvidia-smi vgpu -q
@@ -234,7 +234,7 @@ watch -n 2 nvidia-smi vgpu -q
 nvidia-smi vgpu -a
 
 # Get utilization statistics
-nvidia-smi vgpu --query-vgpu-stats=timestamp,vgpu_name,utilization.gpu,utilization.memory --format=csv,noheader
+nvidia-smi vgpu -u
 ```
 
 ## Troubleshooting
