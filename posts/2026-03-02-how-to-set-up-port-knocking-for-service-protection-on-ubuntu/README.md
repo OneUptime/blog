@@ -14,7 +14,7 @@ It's not a replacement for strong authentication, but it's an excellent addition
 
 ## How Port Knocking Works
 
-The `knockd` daemon monitors the firewall log (via libpcap) for connection attempts matching your sequence. When it sees the correct sequence in order, it runs a command - typically an `iptables` or `ufw` rule to open the target port for the requesting IP. After a timeout or a close sequence, it removes that rule again.
+The `knockd` daemon captures packets directly from the network interface (via libpcap, similar to how `tcpdump` works) and watches for connection attempts matching your sequence. When it sees the correct sequence in order, it runs a command - typically an `iptables` or `ufw` rule to open the target port for the requesting IP. After a timeout or a close sequence, it removes that rule again.
 
 The knock sequence is never acknowledged by the server. From the client's perspective, each knock looks like a connection to a closed port - it just times out or gets refused. The sequence is validated entirely server-side.
 
@@ -181,9 +181,9 @@ Without the `knock` client, use nmap or even failed telnet connections:
 
 ```bash
 # Using nmap to send knocks (each scan attempt counts as a knock)
-nmap -Pn --host-timeout 201 --max-retries 0 -p 7000 <server-ip>
-nmap -Pn --host-timeout 201 --max-retries 0 -p 8000 <server-ip>
-nmap -Pn --host-timeout 201 --max-retries 0 -p 9000 <server-ip>
+nmap -Pn --host-timeout 201ms --max-retries 0 -p 7000 <server-ip>
+nmap -Pn --host-timeout 201ms --max-retries 0 -p 8000 <server-ip>
+nmap -Pn --host-timeout 201ms --max-retries 0 -p 9000 <server-ip>
 ```
 
 ## Automating the Knock from Client Scripts
