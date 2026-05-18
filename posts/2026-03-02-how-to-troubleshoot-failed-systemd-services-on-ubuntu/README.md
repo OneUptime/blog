@@ -115,8 +115,11 @@ Many services validate their config before starting. The journal will show the c
 # For nginx, test the configuration directly
 sudo nginx -t
 
-# For MySQL/MariaDB
+# For MySQL 8.0.16+
 sudo mysqld --validate-config
+
+# For MariaDB (no dedicated validator; prints resolved options and exits non-zero on unknown ones)
+sudo mariadbd --help --verbose >/dev/null
 
 # For Apache
 sudo apachectl configtest
@@ -231,16 +234,18 @@ sudo systemctl edit myapp.service
 Add the following in the override file:
 
 ```ini
+[Unit]
+# Give up after 3 restart attempts within 60 seconds
+# (StartLimit* directives belong in [Unit], not [Service])
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
 [Service]
 # Restart on failure, but not on clean exit
 Restart=on-failure
 
 # Wait 5 seconds before restarting
 RestartSec=5
-
-# Give up after 3 restart attempts within 60 seconds
-StartLimitIntervalSec=60
-StartLimitBurst=3
 ```
 
 Reload and restart after making changes:
