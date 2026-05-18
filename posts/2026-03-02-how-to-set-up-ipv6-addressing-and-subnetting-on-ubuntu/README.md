@@ -92,22 +92,12 @@ network:
   renderer: networkd
   ethernets:
     eth0:
-      # IPv4 configuration
       addresses:
-        - 192.168.1.100/24
-      routes:
-        - to: default
-          via: 192.168.1.1
-      nameservers:
-        addresses: [8.8.8.8, 8.8.4.4]
-
-      # IPv6 static configuration
-      addresses:
-        - 192.168.1.100/24
+        - 192.168.1.100/24          # IPv4 address
         - 2001:db8:1234:1::10/64    # Static IPv6 address
       routes:
         - to: default
-          via: 192.168.1.1
+          via: 192.168.1.1          # IPv4 default gateway
         - to: ::/0
           via: 2001:db8:1234:1::1   # IPv6 default gateway
       nameservers:
@@ -155,7 +145,8 @@ Check if SLAAC assigned an address:
 ip -6 addr show eth0
 
 # Check if router advertisements are being received
-sudo apt install radvd-utils -y
+sudo apt install ndisc6 -y
+rdisc6 eth0
 # Or check kernel messages
 dmesg | grep -i "router advertisement"
 ```
