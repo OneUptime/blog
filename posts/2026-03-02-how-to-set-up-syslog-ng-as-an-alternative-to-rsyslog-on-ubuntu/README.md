@@ -84,7 +84,7 @@ sudo nano /etc/syslog-ng/syslog-ng.conf
 
 # Global options
 options {
-    # How long to wait before creating a new log file
+    # How long to wait (seconds) before reconnecting to a failed destination
     time_reopen(10);
 
     # Log source statistics interval
@@ -93,7 +93,7 @@ options {
     # Use DNS for resolving addresses
     use_dns(no);
 
-    # Default log level
+    # Maximum size of an incoming log message in bytes
     log_msg_size(65536);
 
     # Flush log messages to disk immediately
@@ -104,7 +104,7 @@ options {
 
 # Collect from the kernel
 source s_kernel {
-    unix-dgram("/dev/kmsg");
+    file("/proc/kmsg" program-override("kernel"));
 };
 
 # Collect from systemd journal
@@ -226,7 +226,7 @@ destination d_remote_reliable {
         port(514)
         transport("tcp")
         disk-buffer(
-            mem-buf-length(10000)
+            mem-buf-size(10485760)     # 10MB in-memory buffer (required when reliable(yes))
             disk-buf-size(1073741824)  # 1GB disk queue
             reliable(yes)
             dir("/var/spool/syslog-ng-queue")
