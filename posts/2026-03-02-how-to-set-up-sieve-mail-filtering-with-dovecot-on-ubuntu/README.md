@@ -91,11 +91,11 @@ plugin {
     # Maximum script size
     sieve_max_script_size = 1M
 
-    # Maximum number of Sieve scripts per user
+    # Maximum number of actions a script may perform during a single execution
     sieve_max_actions = 32
 
-    # Log actions to mail log
-    sieve_execute_mail_log = yes
+    # Path to per-user Sieve execution log (warnings, errors, action info)
+    sieve_user_log = ~/.dovecot.sieve.log
 }
 ```
 
@@ -328,8 +328,8 @@ ls /etc/dovecot/sieve/
 # Test a script against a sample email
 sieve-test ~/.dovecot.sieve /path/to/sample.eml
 
-# Show what actions would be taken
-sieve-test -v ~/.dovecot.sieve /path/to/sample.eml
+# Enable Sieve debugging output to see what actions would be taken
+sieve-test -D ~/.dovecot.sieve /path/to/sample.eml
 ```
 
 ### Checking Dovecot Logs
@@ -338,8 +338,8 @@ sieve-test -v ~/.dovecot.sieve /path/to/sample.eml
 # Check Dovecot delivery logs for Sieve execution
 sudo journalctl -u dovecot | grep -i sieve
 
-# More detailed logging - add to 90-sieve.conf
-# sieve_execute_mail_log = yes
+# For per-user execution logs, check the path set by sieve_user_log
+# (defaults to <active-script>.log next to the user's active Sieve script)
 sudo tail -f /var/log/mail.log | grep sieve
 ```
 
