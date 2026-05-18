@@ -39,8 +39,10 @@ grep mkhomedir /etc/pam.d/common-session
 Expected output:
 
 ```text
-session optional    pam_mkhomedir.so skel=/etc/skel umask=0077
+session optional    pam_mkhomedir.so
 ```
+
+The default `mkhomedir` profile does not specify `skel` or `umask`, so `pam_mkhomedir.so` falls back to its built-in defaults (`skel=/etc/skel`, `umask=0022`). To use different values, customize the PAM stack as shown below.
 
 ### Manual PAM Configuration
 
@@ -63,8 +65,9 @@ The `umask=0022` creates directories with permissions `755` (readable by others)
 ### Testing pam_mkhomedir
 
 ```bash
-# Log in as an AD user who has never logged in before
-sudo -u aduser@corp.example.com ls ~
+# Log in as an AD user who has never logged in before.
+# Use a login shell (-i) so PAM opens a fresh session and pam_mkhomedir fires.
+sudo -iu aduser@corp.example.com whoami
 
 # The home directory should be created at:
 ls -la /home/aduser@corp.example.com/
