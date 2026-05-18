@@ -139,19 +139,20 @@ sudo lvs -o +cache_read_hits,cache_read_misses,cache_write_hits,cache_write_miss
 sudo lvdisplay vg-data/lv-data
 
 # Check dm-cache status via dmsetup
-sudo dmsetup status vg-data-lv--data
+# Note: hyphens in VG/LV names are doubled in the dm device name
+sudo dmsetup status vg--data-lv--data
 ```
 
 The dm-cache status output shows:
 
 ```text
-0 2097152000 cache 8 928/65536 512 29/4096 0 0 0 0 - rw writeback 2 migration_threshold 2048 mq 10 random_threshold 4 sequential_threshold 512 discard_promote_adjustment 1 read_promote_adjustment 4 write_promote_adjustment 8
+0 2097152000 cache 8 928/65536 512 29/4096 0 0 0 0 - rw writethrough 2 migration_threshold 2048 smq 10 random_threshold 4 sequential_threshold 512 discard_promote_adjustment 1 read_promote_adjustment 4 write_promote_adjustment 8
 ```
 
 Key fields:
-- `928/65536`: 928 of 65536 cache blocks are used
-- `29/4096`: 29 of 4096 metadata blocks used
-- `writeback`: Current cache mode
+- `928/65536`: 928 of 65536 metadata blocks are used
+- `29/4096`: 29 of 4096 cache blocks used
+- `writethrough`: Current cache mode
 
 ## Monitoring Cache Hit Rate
 
@@ -164,11 +165,11 @@ After the cache warms up (frequently accessed data is populated), you should see
 
 ## Changing Cache Mode
 
-The default mode is writeback. To change to writethrough for better data safety:
+The default mode is writethrough. To change to writeback for better write performance (at the cost of some data safety):
 
 ```bash
-# Switch to writethrough mode
-sudo lvchange --cachemode writethrough vg-data/lv-data
+# Switch to writeback mode
+sudo lvchange --cachemode writeback vg-data/lv-data
 
 # Verify the mode changed
 sudo lvs --all -o+cache_mode vg-data/lv-data
@@ -232,15 +233,12 @@ If you need to remove the cache pool (for example, to repurpose the SSD):
 # In writethrough mode, this is instant since writes are synchronous
 # In writeback mode, this may take time
 
-# Detach the cache pool - this flushes and removes it
+# Detach the cache pool - this flushes the cache and deletes the
+# cache pool LV (including its data and metadata sub-LVs) automatically
 sudo lvconvert --uncache vg-data/lv-data
 
 # After uncaching, lv-data is backed by HDD only again
 sudo lvs vg-data
-
-# Remove the now-standalone cache LVs
-sudo lvremove vg-data/lv-cache
-sudo lvremove vg-data/lv-cache-meta
 
 # Remove the SSD from the volume group (if desired)
 sudo vgreduce vg-data /dev/sdc
