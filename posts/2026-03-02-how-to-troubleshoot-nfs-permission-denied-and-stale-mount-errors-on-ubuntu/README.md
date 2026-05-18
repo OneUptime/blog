@@ -192,17 +192,18 @@ sudo mount -t nfs4 192.168.1.10:/srv/nfs/data /mnt/nfs/data
 
 ### Preventing Stale Mounts
 
-Configure the `hard` and `intr` mount options:
+Configure the `hard` mount option:
 
 ```text
 # In /etc/fstab
-192.168.1.10:/srv/nfs/data  /mnt/nfs/data  nfs4  hard,intr,timeo=600,retrans=3,noatime,_netdev  0  0
+192.168.1.10:/srv/nfs/data  /mnt/nfs/data  nfs4  hard,timeo=600,retrans=3,noatime,_netdev  0  0
 ```
 
-- `hard`: The NFS client keeps retrying indefinitely when the server is unavailable. Operations block rather than fail.
-- `intr`: Allows Ctrl+C or signals to interrupt blocked NFS operations.
+- `hard`: The NFS client keeps retrying indefinitely when the server is unavailable. Operations block rather than fail. On modern kernels, SIGKILL can still interrupt a pending NFS operation.
 
-With `soft` mounts, a timeout returns ESTALE errors to applications, which can cause data corruption. Use `hard` for production mounts.
+Note: the old `intr` mount option is ignored on Linux kernels 2.6.25 and later, so there is no need to include it. If you need timeout errors instead of indefinite blocking, use `softerr` (returns `ETIMEDOUT`) rather than `soft` (returns `EIO`), but only for workloads that handle these errors gracefully.
+
+With `soft` mounts, a timeout returns `EIO` errors to applications, which can cause data corruption. Use `hard` for production mounts.
 
 ## Common NFS Error Codes
 
@@ -273,7 +274,7 @@ if ! timeout 5 stat "$MOUNT_POINT" > /dev/null 2>&1; then
 
     # Remount
     mount -t nfs4 "${NFS_SERVER}:${NFS_EXPORT}" "$MOUNT_POINT" \
-        -o hard,intr,noatime
+        -o hard,noatime
 
     if mount | grep -q "$MOUNT_POINT"; then
         echo "Recovery successful"
