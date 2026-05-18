@@ -67,13 +67,13 @@ sudo apt install fonts-noto fonts-noto-extra
 sudo apt install fonts-arabeyes fonts-sil-scheherazade
 
 # Hebrew fonts
-sudo apt install fonts-hosny-amiri fonts-culmus
+sudo apt install fonts-culmus fonts-sil-ezra
 
 # Persian fonts
 sudo apt install fonts-farsiweb
 
 # Urdu fonts
-sudo apt install fonts-nafees fonts-hosny-thabit
+sudo apt install fonts-nafees
 
 # Rebuild the font cache
 fc-cache -fv
@@ -160,17 +160,15 @@ From the command line, you can pre-set this in the configuration:
 # It's easier to set it via the GUI the first time
 ```
 
-Once CTL is enabled, LibreOffice Writer shows a text direction button in the toolbar. You can toggle paragraph direction with `Ctrl+Shift+D` (RTL) and `Ctrl+Shift+E` (LTR) when using LibreOffice.
+Once CTL is enabled, LibreOffice Writer shows a text direction button in the toolbar. You can toggle paragraph direction with `Ctrl+Right Shift` (RTL) and `Ctrl+Left Shift` (LTR) when using LibreOffice.
 
 ## Setting Up IBus for Arabic Input
 
 For Arabic, the standard keyboard layout (xkb) is usually sufficient. But for more advanced input features like automatic vowel diacritics (tashkeel), an IBus engine can help.
 
 ```bash
-# Install IBus for Arabic
-sudo apt install ibus-table-arabic
-
-# Or use the m17n (multilingualization) library which supports many RTL scripts
+# Install the m17n (multilingualization) library, which provides
+# Arabic input methods and supports many other RTL scripts
 sudo apt install ibus-m17n m17n-lib-mimx
 ```
 
