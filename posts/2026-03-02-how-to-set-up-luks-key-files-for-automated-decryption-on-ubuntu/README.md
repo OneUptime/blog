@@ -165,13 +165,14 @@ sudo blkid /dev/sdb1
 # Output: /dev/sdb1: UUID="usb-uuid-here" TYPE="ext4"
 ```
 
-Edit `/etc/crypttab`:
+Edit `/etc/crypttab`. The `device:path` format requires the `passdev` keyscript from the `cryptsetup-initramfs` package, since plain cryptsetup and systemd-cryptsetup only accept literal file paths in the third field:
 ```text
-# keyfile-timeout=10 means wait 10 seconds for the USB to appear
-cryptroot   UUID=root-luks-uuid   /dev/disk/by-uuid/usb-uuid-here:/luks-keyfile   luks,keyfile-timeout=10
+# The trailing :10 is the timeout (seconds) for the USB device to appear,
+# parsed by the passdev keyscript - not the systemd keyfile-timeout= option.
+cryptroot   UUID=root-luks-uuid   /dev/disk/by-uuid/usb-uuid-here:/luks-keyfile:10   luks,keyscript=passdev,tries=1,initramfs
 ```
 
-The format `device:path` tells cryptsetup to mount the device and look for the key file at that path within it. The `keyfile-timeout` option allows the system to fall back to passphrase prompt if the USB is not present within the timeout.
+The `passdev` keyscript mounts the referenced device read-only, reads the key file at the given path, and unmounts it. If the device does not appear within the timeout, cryptsetup falls back to a passphrase prompt. The `initramfs` option ensures the entry is processed in the initramfs (required for the root volume), and `tries=1` is recommended in the Debian cryptsetup documentation to avoid retry loops when the USB is absent.
 
 ## Securing Key Files Properly
 
