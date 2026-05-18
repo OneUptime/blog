@@ -20,6 +20,9 @@ systemd tracks whether service processes are running and can restart them on fai
 [Unit]
 Description=My Application
 After=network.target
+StartLimitIntervalSec=60  # Count restart attempts within 60 seconds
+StartLimitBurst=5         # Allow maximum 5 restarts within the interval
+# After 5 failures in 60 seconds, systemd stops trying
 
 [Service]
 ExecStart=/opt/myapp/bin/myapp
@@ -28,9 +31,6 @@ User=myapp
 # Restart behavior
 Restart=on-failure        # Restart when process exits with non-zero code
 RestartSec=5              # Wait 5 seconds before restarting
-StartLimitIntervalSec=60  # Count restart attempts within 60 seconds
-StartLimitBurst=5         # Allow maximum 5 restarts within the interval
-# After 5 failures in 60 seconds, systemd stops trying
 
 [Install]
 WantedBy=multi-user.target
@@ -318,12 +318,12 @@ Wire it into service files:
 Description=My Application
 # Call alert script when service enters failed state
 OnFailure=service-failure-alert@%n.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=60
-StartLimitBurst=5
 ```
 
 ```ini
