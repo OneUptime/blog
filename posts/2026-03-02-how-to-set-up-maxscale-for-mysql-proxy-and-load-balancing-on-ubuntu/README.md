@@ -60,8 +60,12 @@ MaxScale needs a user on each MySQL server to monitor replication and route quer
 -- Run on the PRIMARY MySQL server (replicates to replicas)
 
 -- Create monitoring user
+-- The extra grants beyond REPLICATION CLIENT are required so the
+-- mariadbmon module can perform auto_failover / switchover / rejoin.
 CREATE USER 'maxscale_monitor'@'192.168.1.20' IDENTIFIED BY 'MonitorPass123!';
-GRANT REPLICATION CLIENT ON *.* TO 'maxscale_monitor'@'192.168.1.20';
+GRANT BINLOG ADMIN, READ_ONLY ADMIN, RELOAD, REPLICATION SLAVE ADMIN,
+      REPLICATION SLAVE, REPLICATION CLIENT, PROCESS, EVENT
+      ON *.* TO 'maxscale_monitor'@'192.168.1.20';
 
 -- Create routing user
 CREATE USER 'maxscale_router'@'192.168.1.20' IDENTIFIED BY 'RouterPass123!';
@@ -92,7 +96,6 @@ sudo nano /etc/maxscale.cnf
 threads=auto
 log_info=false
 log_warning=true
-log_error=true
 logdir=/var/log/maxscale
 datadir=/var/lib/maxscale
 piddir=/var/run/maxscale
@@ -163,7 +166,7 @@ address=0.0.0.0
 
 ```bash
 # Validate the configuration
-sudo maxscale --configtest
+sudo maxscale --config-check
 
 # Start MaxScale
 sudo systemctl enable maxscale
@@ -216,9 +219,9 @@ SELECT @@hostname;  -- Should show primary hostname
 -- Reads go to replicas
 SELECT * FROM test_table;  -- May show different @@hostname
 
--- Force a read on primary
-SET @master_read=1;
-SELECT @@hostname;  -- Shows primary
+-- Force a read on primary using a routing hint
+-- (requires the hintfilter to be loaded and attached to the service)
+SELECT @@hostname; -- maxscale route to master
 ```
 
 ## Connection Pooling Configuration
@@ -236,9 +239,8 @@ password=RouterPass123!
 # Connection pool settings
 connection_keepalive=300s
 max_connections=1000
-connection_timeout=10s
 
-# Multiplex connections to backends
+# Replay transactions interrupted by a backend failure
 transaction_replay=true
 transaction_replay_max_size=1Mi
 ```
