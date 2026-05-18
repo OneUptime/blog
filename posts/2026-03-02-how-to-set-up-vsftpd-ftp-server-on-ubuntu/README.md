@@ -56,10 +56,10 @@ local_enable=YES
 # Allow users to upload files
 write_enable=YES
 
-# Default umask for uploaded files (022 = 755 permissions)
+# Default umask for uploaded files (022 = 644 for files, 755 for directories)
 local_umask=022
 
-# Show the server's real hostname in greeting messages
+# Custom greeting banner shown to clients on connect
 ftpd_banner=Welcome to FTP Server
 
 # Chroot users to their home directories (prevents directory traversal)
@@ -74,8 +74,10 @@ use_localtime=YES
 
 # Log file location
 xferlog_enable=YES
-xferlog_file=/var/log/vsftpd.log
-xferlog_std_format=YES
+vsftpd_log_file=/var/log/vsftpd.log
+# Use vsftpd's native log format so log_ftp_protocol takes effect
+# (log_ftp_protocol is ignored when xferlog_std_format=YES)
+xferlog_std_format=NO
 
 # Session logging
 syslog_enable=YES
