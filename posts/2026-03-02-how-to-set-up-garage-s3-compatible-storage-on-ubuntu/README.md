@@ -29,7 +29,7 @@ For small teams or homelabs, Garage's simplicity is its main appeal.
 - Ubuntu 22.04 or 24.04 server
 - At least 1 GB RAM, 2+ GB recommended
 - Storage volume mounted at a known path (e.g., `/data`)
-- Open firewall ports: 3900 (API), 3901 (S3), 3902 (web), 3903 (admin)
+- Open firewall ports: 3901 (RPC), 3900 (S3 API), 3902 (web), 3903 (admin)
 
 ## Installing Garage
 
@@ -78,7 +78,7 @@ sudo nano /etc/garage/garage.toml
 # Garage configuration file
 
 # RPC port for internal cluster communication
-rpc_bind_addr = "0.0.0.0:3900"
+rpc_bind_addr = "0.0.0.0:3901"
 
 # A secret key for cluster authentication - generate with: openssl rand -hex 32
 rpc_secret = "your_generated_secret_here"
@@ -91,13 +91,13 @@ data_dir = "/data/garage/data"
 
 [s3_api]
 # S3 API bind address and port
-api_bind_addr = "0.0.0.0:3901"
+api_bind_addr = "0.0.0.0:3900"
 
 # S3 region identifier (can be any string)
 s3_region = "us-east-1"
 
 # Root domain for virtual-hosted-style S3 URLs (optional)
-# s3_root_domain = ".s3.example.com"
+# root_domain = ".s3.example.com"
 
 [s3_web]
 # Web endpoint for static website hosting (optional)
@@ -190,7 +190,7 @@ Note the node ID (the hex string before the `@`), then set the node's zone and c
 sudo -u garage garage -c /etc/garage/garage.toml layout assign \
   <node-id> \
   --zone dc1 \
-  --capacity 100
+  --capacity 100G
 
 # Review the proposed layout
 sudo -u garage garage -c /etc/garage/garage.toml layout show
@@ -264,18 +264,18 @@ Now use the `--endpoint-url` flag to point at your Garage instance:
 
 ```bash
 # List buckets
-aws s3 ls --endpoint-url http://127.0.0.1:3901
+aws s3 ls --endpoint-url http://127.0.0.1:3900
 
 # Upload a file
 aws s3 cp /etc/hostname s3://my-bucket/hostname.txt \
-  --endpoint-url http://127.0.0.1:3901
+  --endpoint-url http://127.0.0.1:3900
 
 # Download a file
 aws s3 cp s3://my-bucket/hostname.txt /tmp/hostname-from-garage.txt \
-  --endpoint-url http://127.0.0.1:3901
+  --endpoint-url http://127.0.0.1:3900
 
 # List objects in a bucket
-aws s3 ls s3://my-bucket/ --endpoint-url http://127.0.0.1:3901
+aws s3 ls s3://my-bucket/ --endpoint-url http://127.0.0.1:3900
 ```
 
 ## Using Garage with rclone
@@ -291,7 +291,7 @@ rclone config create garage s3 \
   provider Other \
   access_key_id GK3514... \
   secret_access_key 7a9b2c... \
-  endpoint http://127.0.0.1:3901 \
+  endpoint http://127.0.0.1:3900 \
   acl private
 ```
 
@@ -311,13 +311,13 @@ If exposing Garage beyond localhost, configure UFW:
 
 ```bash
 # Allow S3 API port from trusted networks only
-sudo ufw allow from 10.0.0.0/8 to any port 3901 proto tcp
+sudo ufw allow from 10.0.0.0/8 to any port 3900 proto tcp
 
 # Allow admin port from management hosts only
 sudo ufw allow from 192.168.1.0/24 to any port 3903 proto tcp
 
 # Block public access to internal RPC port
-# Port 3900 should generally not be exposed unless running a cluster
+# Port 3901 should generally not be exposed unless running a cluster
 ```
 
 ## Monitoring Garage
@@ -326,7 +326,7 @@ The admin API provides metrics in Prometheus format:
 
 ```bash
 # Check cluster health via admin API
-curl -s http://127.0.0.1:3903/v1/health | python3 -m json.tool
+curl -s http://127.0.0.1:3903/health | python3 -m json.tool
 
 # Get Prometheus metrics
 curl -s http://127.0.0.1:3903/metrics
