@@ -143,7 +143,7 @@ services:
 
       # Resource limits per pipeline
       - DRONE_MEMORY_LIMIT=2000000000    # 2GB per build
-      - DRONE_CPU_LIMIT=2               # 2 CPU cores per build
+      - DRONE_CPU_QUOTA=200000           # 2 CPU cores per build (quota in microseconds against the default 100000 period)
 
 volumes:
   drone-data:
@@ -342,7 +342,7 @@ docker-compose up -d drone-runner-docker
 
 **Builds stuck in pending:** Check that the runner is connected to the server. In Drone's system settings, look at runner connections. Verify `DRONE_RPC_SECRET` matches between server and runner.
 
-**Builds fail immediately:** Check the pipeline YAML syntax. Drone validates YAML strictly. Use `drone jsonnet` or a YAML linter to check before committing.
+**Builds fail immediately:** Check the pipeline YAML syntax. Drone validates YAML strictly. Use `drone lint` (or a YAML linter) to check before committing.
 
 **Cannot pull images:** The runner needs Docker registry credentials. Either add them as secrets in your pipeline or configure a Docker credential helper on the runner container.
 
