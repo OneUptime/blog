@@ -70,21 +70,18 @@ driftfile /var/lib/chrony/chrony.drift
 logdir /var/log/chrony
 log measurements statistics tracking
 
-# Stop updating system time after this many seconds
+# Step the clock if the adjustment is larger than the threshold
 makestep 1.0 3
-# "1.0 3" means: adjust clock immediately if offset > 1 second
-# but only for the first 3 clock updates
-
-# Allow stepping on first three updates
-makestep 1.0 3
+# "1.0 3" means: step the clock if the offset > 1 second
+# but only for the first 3 clock updates (slew gradually after that)
 
 # Enable hardware timestamping where available
 # hwtimestamp *
 
-# Use NTP timestamps from kernel where available
+# Periodically copy system time to the real-time clock (RTC)
 rtcsync
 
-# Require at least 3 sources for synchronization
+# Require at least 2 sources for synchronization
 minsources 2
 ```
 
@@ -101,7 +98,7 @@ sudo systemctl restart chrony
 chronyc tracking
 
 # Example output:
-# Reference ID    : A29FC201 (162.159.200.1)
+# Reference ID    : A29FC801 (162.159.200.1)
 # Stratum         : 3
 # Ref time (UTC)  : Mon Mar 02 14:30:00 2026
 # System time     : 0.000023456 seconds fast of NTP time
