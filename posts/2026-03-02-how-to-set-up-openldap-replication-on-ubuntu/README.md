@@ -226,13 +226,13 @@ The `contextCSN` attribute tracks the most recent change sequence number. Compar
 ldapsearch -x -H ldap://ldap1.example.com \
   -b "dc=example,dc=com" \
   -D "cn=admin,dc=example,dc=com" \
-  -W -s base contextCSN
+  -W -s base "(objectClass=*)" contextCSN
 
 # On consumer (should match)
 ldapsearch -x -H ldap://ldap2.example.com \
   -b "dc=example,dc=com" \
   -D "cn=admin,dc=example,dc=com" \
-  -W -s base contextCSN
+  -W -s base "(objectClass=*)" contextCSN
 ```
 
 If the CSNs match, replication is in sync.
@@ -264,6 +264,16 @@ olcSuffix: cn=accesslog
 olcAccess: {0}to * by dn.base="cn=replicator,dc=example,dc=com" read by * none
 olcDbIndex: default eq
 olcDbIndex: entryCSN,objectClass,reqEnd,reqResult,reqStart
+
+# Attach the accesslog overlay to the main database so writes are logged
+dn: olcOverlay=accesslog,olcDatabase={1}mdb,cn=config
+objectClass: olcOverlayConfig
+objectClass: olcAccessLogConfig
+olcOverlay: accesslog
+olcAccessLogDB: cn=accesslog
+olcAccessLogOps: writes
+olcAccessLogSuccess: TRUE
+olcAccessLogPurge: 07+00:00 01+00:00
 ```
 
 ```bash
