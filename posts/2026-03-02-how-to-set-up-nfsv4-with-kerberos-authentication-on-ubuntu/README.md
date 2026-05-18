@@ -157,18 +157,15 @@ sudo chown root:root /srv/nfs/shared
 sudo chmod 755 /srv/nfs/shared
 ```
 
-Enable GSSD (the Kerberos GSS daemon required for Kerberos NFS):
+Enable the server-side Kerberos GSS daemon. `rpc.svcgssd` handles the server side of GSS-API authentication and is provided by `nfs-common` (already pulled in by `nfs-kernel-server`):
 
 ```bash
-# Install and enable rpc-gssd
-sudo apt install gssd -y
-
-# Enable the service
-sudo systemctl enable rpc-gssd
-sudo systemctl start rpc-gssd
+# Enable the server-side GSS daemon
+sudo systemctl enable rpc-svcgssd
+sudo systemctl start rpc-svcgssd
 
 # Check status
-sudo systemctl status rpc-gssd
+sudo systemctl status rpc-svcgssd
 ```
 
 Apply the export configuration:
@@ -212,7 +209,7 @@ sudo nano /etc/idmapd.conf
     Nobody-Group = nogroup
 ```
 
-Enable GSSD on the client:
+Enable the client-side GSS daemon. `rpc.gssd` handles the client side of GSS-API authentication and is provided by `nfs-common`:
 
 ```bash
 sudo systemctl enable rpc-gssd
@@ -251,7 +248,7 @@ mount | grep nfs
 For persistent mounts in `/etc/fstab`:
 
 ```text
-nfsserver.example.com:/srv/nfs/shared  /mnt/nfs/shared  nfs4  sec=krb5p,hard,intr,noatime,_netdev  0  0
+nfsserver.example.com:/srv/nfs/shared  /mnt/nfs/shared  nfs4  sec=krb5p,hard,noatime,_netdev  0  0
 ```
 
 ## Verifying Kerberos Authentication
