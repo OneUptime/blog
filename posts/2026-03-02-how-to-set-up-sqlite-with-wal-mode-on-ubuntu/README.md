@@ -141,7 +141,8 @@ sqlite3 /data/myapp.db "PRAGMA wal_checkpoint(FULL);"
 
 # TRUNCATE: full checkpoint + truncate WAL file to zero length
 sqlite3 /data/myapp.db "PRAGMA wal_checkpoint(TRUNCATE);"
-# Returns: 0|0|0 (if successful: wal-log|frames-written|frames-checkpointed)
+# Returns three integers: busy|pages-in-wal|pages-checkpointed
+# busy is 0 on success, 1 if the checkpoint was blocked (SQLITE_BUSY)
 ```
 
 ### Setting Up Automated Checkpointing
@@ -179,7 +180,7 @@ ls -lh /data/myapp.db-wal
 # Monitor WAL size over time
 watch -n 5 'ls -lh /data/myapp.db-wal 2>/dev/null || echo "No WAL file"'
 
-# Get WAL stats via PRAGMA (returns: busy-page-count|log-size|frames-checkpointed)
+# Get WAL stats via PRAGMA (returns: busy|pages-in-wal|pages-checkpointed)
 sqlite3 /data/myapp.db "PRAGMA wal_checkpoint(PASSIVE);"
 ```
 
