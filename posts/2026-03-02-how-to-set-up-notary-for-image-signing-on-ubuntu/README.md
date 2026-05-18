@@ -212,20 +212,25 @@ The output shows which tags are signed, who signed them, and when.
 
 ## Adding Additional Signers
 
-For team environments, you may want multiple people to be able to sign images:
+For team environments, you may want multiple people to be able to sign images. Notary delegations work with x509 certificates: each signer holds a private key, and the repository owner adds the corresponding public certificate as a delegation. Delegation role names must be prefixed with `targets/`.
 
 ```bash
-# Generate a delegation key for a team member
-notary -s https://your-notary-server:4443 \
-  -d ~/.docker/trust \
-  key generate alice
+# Alice generates her keypair and a self-signed certificate
+openssl genrsa -out alice.key 4096
+openssl req -new -sha256 -key alice.key \
+  -out alice.csr \
+  -subj "/CN=alice"
+openssl x509 -req -sha256 -days 365 \
+  -in alice.csr -signkey alice.key \
+  -out alice.crt
 
-# Add Alice as a signer for the repository
+# Repository owner adds Alice's certificate as a delegation signer
 notary -s https://your-notary-server:4443 \
   -d ~/.docker/trust \
   delegation add \
   your-registry.com/myapp \
-  alice \
+  targets/releases \
+  alice.crt \
   --all-paths
 
 # Publish the delegation changes
@@ -234,30 +239,35 @@ notary -s https://your-notary-server:4443 \
   publish your-registry.com/myapp
 ```
 
+Alice then imports her private key locally so she can sign as the `targets/releases` delegation:
+
+```bash
+notary -s https://your-notary-server:4443 \
+  -d ~/.docker/trust \
+  key import alice.key --role targets/releases
+```
+
 Alice can now sign images using her delegation key without having access to the root key.
 
 ## Enforcing Signature Verification in Production
 
-On hosts where you want to enforce that only signed images run, set DCT permanently and configure Docker to reject unsigned images:
+On hosts where you want to enforce that only signed images run, ensure `DOCKER_CONTENT_TRUST=1` is set in every environment that invokes Docker. For interactive shells, `/etc/environment` covers most cases:
 
 ```bash
-# Create or edit Docker daemon configuration
-sudo nano /etc/docker/daemon.json
+echo 'DOCKER_CONTENT_TRUST=1' | sudo tee -a /etc/environment
 ```
 
-```json
-{
-  "content-trust": {
-    "mode": "enforced"
-  }
-}
-```
+For systemd services that invoke Docker but don't read `/etc/environment`, add the variable to the relevant unit file:
 
 ```bash
-sudo systemctl restart docker
+sudo systemctl edit my-service
+# Under [Service], add:
+# Environment="DOCKER_CONTENT_TRUST=1"
 ```
 
-With this configuration, Docker will refuse to run any image that lacks a valid signature from a trusted signer.
+With `DOCKER_CONTENT_TRUST=1`, any `docker pull`, `docker build` (for `FROM` images), or `docker run` (which implicitly pulls when the image is absent) that retrieves an unsigned image will fail.
+
+> **Note:** A `content-trust` block in `/etc/docker/daemon.json` (with `mode: enforced`) is a feature exclusive to Mirantis Container Runtime (formerly Docker Enterprise Engine) and is not recognized by the open-source Docker Engine (Docker CE) on Ubuntu. On Docker CE, enforcement is only available through the `DOCKER_CONTENT_TRUST` environment variable.
 
 ## Rotating Keys
 
@@ -278,10 +288,11 @@ notary -s https://your-notary-server:4443 \
 For root key rotation (after compromise):
 
 ```bash
-# Generate a new root key
+# Rotate the root key for the repository
 notary -s https://your-notary-server:4443 \
   -d ~/.docker/trust \
-  key generate root
+  key rotate \
+  your-registry.com/myapp root
 
 # This requires coordination with all existing signers to update their trust data
 ```
