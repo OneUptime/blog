@@ -61,10 +61,9 @@ sudo apt-get install -y \
 git clone https://github.com/HandBrake/HandBrake.git
 cd HandBrake
 
-# Configure and build
+# Configure and build (the --launch flag runs make for you)
 ./configure --launch-jobs=$(nproc) --launch
-cd build && make -j$(nproc)
-sudo make install
+cd build && sudo make install
 ```
 
 ## Using the HandBrake GUI
@@ -80,9 +79,9 @@ Launch HandBrake and you'll see the main interface:
 HandBrake's built-in presets cover most needs:
 
 - **Fast 1080p30**: Good quality, quick encode. Suitable for most devices.
-- **H.265 1080p 30**: Smaller files with H.265 codec. Requires more CPU.
+- **H.265 MKV 1080p30**: Smaller files with H.265 codec. Requires more CPU.
 - **Very Fast 1080p30**: Fastest encode, slightly larger file.
-- **HQ 1080p60 Surround**: High quality with surround sound.
+- **HQ 1080p30 Surround**: High quality with surround sound.
 - **Production Max**: Near-lossless for editing workflows.
 
 ### Video Settings
@@ -168,7 +167,7 @@ HandBrakeCLI -i input.mkv -o output.mp4 \
 
 # Auto-crop black bars and scale to 1080p
 HandBrakeCLI -i input.mkv -o output.mp4 \
-    --preset="HQ 1080p60 Surround" \
+    --preset="HQ 1080p30 Surround" \
     --auto-anamorphic
 
 # Custom crop (top:bottom:left:right pixels)
@@ -190,10 +189,10 @@ HandBrakeCLI -i input.mkv -o output.mp4 \
     -E aac,copy:ac3,copy:dts \
     -B 160,384,0
 
-# Normalize audio
+# Normalize audio mix levels (1 enables, 0 disables)
 HandBrakeCLI -i input.mkv -o output.mp4 \
-    --normalize-mix stereo \
-    -a 1 -E aac -B 160
+    --normalize-mix 1 \
+    -a 1 -E aac -B 160 -6 stereo
 
 # Add audio gain (+3dB)
 HandBrakeCLI -i input.mkv -o output.mp4 \
@@ -220,13 +219,8 @@ HandBrakeCLI -i input.mkv -o output.mp4 \
 ## Listing Presets
 
 ```bash
-# List all available presets
+# List all available presets (grouped by category)
 HandBrakeCLI --preset-list
-
-# List presets in a specific category
-HandBrakeCLI --preset-list "Devices"
-HandBrakeCLI --preset-list "Production"
-HandBrakeCLI --preset-list "Web"
 ```
 
 ## Batch Processing Script
@@ -286,11 +280,11 @@ HandBrakeCLI --help 2>&1 | grep "nvenc\|vaapi\|qsv\|amf"
 # NVIDIA NVENC (requires NVIDIA GPU and driver)
 HandBrakeCLI -i input.mkv -o output.mp4 \
     -e nvenc_h264 \
-    --encopts "rc-lookahead=0:b-adapt=0" \
+    --encoder-preset slow \
     -q 22 \
     -a 1 -E aac -B 160
 
-# VA-API (Intel/AMD on Linux)
+# AMD VCE (uses VA-API on Linux, AMF on Windows)
 HandBrakeCLI -i input.mkv -o output.mp4 \
     -e vce_h264 \
     -q 22 \
@@ -310,8 +304,9 @@ Hardware encoding is 5-10x faster but typically produces slightly larger files a
 Save your settings as a reusable preset via the GUI (Presets -> Save New Preset), or import a JSON preset:
 
 ```bash
-# Export a preset from GUI to JSON
-HandBrakeCLI --preset-export "My Custom Preset" -o my_preset.json
+# Export a preset to JSON (writes to the file specified by --preset-export-file)
+HandBrakeCLI --preset-export "My Custom Preset" \
+    --preset-export-file my_preset.json
 
 # Import and use a preset
 HandBrakeCLI --preset-import-file my_preset.json \
