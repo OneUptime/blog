@@ -33,7 +33,7 @@ For development where you don't have a dedicated disk:
 
 lxc storage create default zfs size=50GiB
 
-# LXD creates a file at /var/snap/multipass/... and sets up ZFS automatically
+# LXD creates a file at /var/snap/lxd/common/lxd/disks/default.img and sets up ZFS automatically
 lxc storage show default
 ```
 
