@@ -53,7 +53,7 @@ sudo modprobe usb-storage
 ```bash
 # Install USBGuard
 sudo apt update
-sudo apt install -y usbguard usbguard-applet-qt
+sudo apt install -y usbguard
 
 # Check the service status
 sudo systemctl status usbguard
@@ -103,7 +103,7 @@ PresentControllerPolicy=apply-policy
 # Where the rules file lives
 RuleFile=/etc/usbguard/rules.conf
 
-# Allow users in the 'wheel' group to interact with USBGuard
+# Allow users in the 'sudo' group to interact with USBGuard
 IPCAllowedUsers=root
 IPCAllowedGroups=sudo
 ```
@@ -204,8 +204,8 @@ sudo nano /etc/udev/rules.d/99-block-usb-storage.rules
 ```
 
 ```text
-# Block USB mass storage devices from being accessed
-SUBSYSTEM=="block", SUBSYSTEMS=="usb", ACTION=="add", RUN+="/bin/sh -c 'echo 0 > /sys/bus/usb/devices/%k/authorized'"
+# Prevent USB block devices from being automounted by UDisks
+SUBSYSTEM=="block", SUBSYSTEMS=="usb", ACTION=="add", ENV{UDISKS_IGNORE}="1"
 ```
 
 ### Allowing Only Specific Devices by Vendor ID
