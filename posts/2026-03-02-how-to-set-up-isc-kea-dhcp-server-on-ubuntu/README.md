@@ -31,7 +31,7 @@ sudo apt install -y kea-dhcp4-server kea-admin kea-common
 curl -1sLf 'https://dl.cloudsmith.io/public/isc/kea-2-4/setup.deb.sh' | sudo bash
 
 # Install the packages
-sudo apt install -y isc-kea-dhcp4-server isc-kea-admin isc-kea-common
+sudo apt install -y isc-kea-dhcp4 isc-kea-admin isc-kea-common
 ```
 
 Check the installed version:
@@ -160,8 +160,8 @@ sudo chown kea:kea /var/log/kea
 For a MySQL backend setup:
 
 ```bash
-# Install the MySQL connector
-sudo apt install -y isc-kea-dhcp4-server isc-kea-admin mysql-server
+# Install MySQL (Kea's MySQL backend is included with kea-common)
+sudo apt install -y mysql-server
 
 # Create the Kea database
 sudo mysql -u root <<EOF
@@ -215,7 +215,7 @@ sudo tail -f /var/log/kea/kea-dhcp4.log
 One of Kea's major advantages over ISC DHCP is its REST API, which allows you to query and manage the server without restarting it. The control agent is a separate process:
 
 ```bash
-sudo apt install -y isc-kea-ctrl-agent
+sudo apt install -y kea-ctrl-agent
 ```
 
 Configure the control agent:
