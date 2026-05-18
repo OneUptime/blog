@@ -155,7 +155,10 @@ Adjust how long entries remain in the cache:
 # Time before an unused entry becomes stale (default: 30 seconds)
 cat /proc/sys/net/ipv4/neigh/default/base_reachable_time_ms
 
-# Maximum time to wait for ARP response (default: 500ms)
+# Time between retransmitted ARP solicitations (default: 1000ms)
+cat /proc/sys/net/ipv4/neigh/default/retrans_time_ms
+
+# Number of probes before giving up (defaults: 3 each)
 cat /proc/sys/net/ipv4/neigh/default/ucast_solicit
 cat /proc/sys/net/ipv4/neigh/default/mcast_solicit
 
@@ -194,10 +197,9 @@ network:
       routes:
         - to: default
           via: 192.168.1.1
-      # Netplan 0.105+ supports static ARP (neighbors)
-      # neighbors:
-      #   - to: 192.168.1.1
-      #     mac: 52:54:00:12:34:56
+      # Netplan has no native keyword for static ARP entries.
+      # Use a systemd-networkd [Neighbor] section in a .network file,
+      # or a networkd-dispatcher hook running `ip neigh add ...`.
 ```
 
 ## Detecting ARP Spoofing
@@ -266,8 +268,9 @@ sudo tcpdump -i eth0 arp
 # Filter for ARP replies only (to see who is responding)
 sudo tcpdump -i eth0 arp and arp[6:2] = 2
 
-# Look for unexpected ARP replies for a specific IP (potential spoofing)
-sudo tcpdump -i eth0 'arp[6:2]=2 and arp[24:4]=0xC0A80101'
+# Look for unexpected ARP replies claiming a specific IP (potential spoofing)
+# arp[14:4] is the sender protocol address - the IP being announced
+sudo tcpdump -i eth0 'arp[6:2]=2 and arp[14:4]=0xC0A80101'
 # Replace 0xC0A80101 with hex of your gateway IP (192.168.1.1)
 ```
 
