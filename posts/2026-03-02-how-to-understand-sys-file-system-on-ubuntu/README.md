@@ -223,7 +223,7 @@ cat /sys/kernel/mm/transparent_hugepage/enabled
 # [always] madvise never  <- value in brackets is current
 
 # Disable transparent huge pages (common for databases like Redis/MongoDB)
-echo madvise | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
+echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 ```
 
 ## Power Management
