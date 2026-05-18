@@ -76,11 +76,11 @@ bmon -p "ens*,eth*"  # Match both ens and eth naming schemes
 # Show rates in bits per second instead of bytes
 bmon -b
 
-# Set update interval to 2 seconds (default is 1)
-bmon -s 2
+# Set the read interval to 2 seconds (default is 1)
+bmon -r 2
 
-# Set display history to 30 seconds
-bmon --histsize=30
+# Use SI (1000-based) units instead of binary (1024-based)
+bmon -U
 
 # Start with a specific interface selected
 bmon -p eth0
@@ -101,26 +101,23 @@ While bmon is running, use these keyboard shortcuts:
 
 bmon supports different output modes beyond the interactive display.
 
-### Plain Text Output
+### ASCII Output
 
 ```bash
-# Output in plain text format (useful for logging)
-bmon -o plain
+# Output in ASCII format (useful for logging)
+bmon -o ascii
 
-# Output plain text with specific interface
-bmon -p eth0 -o plain
+# Output ASCII with specific interface
+bmon -p eth0 -o ascii
 
 # Redirect to a file
-bmon -p eth0 -o plain > /var/log/bandwidth-$(date +%Y%m%d).log
+bmon -p eth0 -o ascii > /var/log/bandwidth-$(date +%Y%m%d).log
 ```
 
 ### ASCII Output for Scripts
 
 ```bash
-# Output in a format suitable for parsing
-bmon -o ascii
-
-# Run for a specific duration and output
+# Run for a specific duration and capture output
 timeout 60 bmon -o ascii -p eth0 | tee /tmp/bandwidth-sample.txt
 ```
 
@@ -128,10 +125,10 @@ timeout 60 bmon -o ascii -p eth0 | tee /tmp/bandwidth-sample.txt
 
 ```bash
 # Output in CSV format for importing into spreadsheets or databases
-bmon -o format:'$(element:name) $(attr:rxrate:bytes) $(attr:txrate:bytes)\n'
+bmon -o 'format:fmt=$(element:name),$(attr:rxrate:bytes),$(attr:txrate:bytes)\n'
 
-# Custom format with timestamp
-bmon -o format:'$(ts) $(element:name) $(attr:rxrate:bytes) $(attr:txrate:bytes)\n'
+# Custom format with element description
+bmon -o 'format:fmt=$(element:name),$(element:desc),$(attr:rxrate:bytes),$(attr:txrate:bytes)\n'
 ```
 
 ## Capturing Bandwidth Statistics
@@ -197,7 +194,7 @@ INTERFACE="eth0"
 for SERVER in "${SERVERS[@]}"; do
     echo "=== $SERVER ==="
     # Get a 5-second bandwidth sample from the remote server
-    ssh "$SERVER" "timeout 5 bmon -p $INTERFACE -o plain 2>/dev/null || \
+    ssh "$SERVER" "timeout 5 bmon -p $INTERFACE -o ascii 2>/dev/null || \
         cat /proc/net/dev | grep $INTERFACE"
     echo ""
 done
@@ -304,9 +301,9 @@ bmon
 bmon -p eth0 -b
 
 # Run for exactly 30 seconds and output statistics
-timeout 30 bmon -o plain -p eth0
+timeout 30 bmon -o ascii -p eth0
 
-# Show current bandwidth in a simple one-liner using /proc
+# Show cumulative bytes for the first interface (line 3 of /proc/net/dev) since boot
 awk 'NR==3{rx=$2; tx=$10} END{print "RX:", rx/1024/1024 "MB, TX:", tx/1024/1024 "MB"}' /proc/net/dev
 
 # Check cumulative bytes since boot for an interface
