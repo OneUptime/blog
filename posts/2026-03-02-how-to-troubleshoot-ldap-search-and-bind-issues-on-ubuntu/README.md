@@ -207,14 +207,15 @@ Log levels useful for debugging:
 
 | Level | Name | Content |
 |-------|------|---------|
-| 64 | filter | Filter processing |
-| 128 | config | Configuration processing |
+| 32 | filter | Search filter processing |
+| 64 | config | Configuration file processing |
+| 128 | ACL | Access control list processing |
 | 256 | stats | Connection, operations, results |
 | 512 | stats2 | Sent entries |
 | 1024 | shell | Shell backend stats |
-| 32768 | none | Only emergency messages |
+| 32768 | none | Only messages logged regardless of log level |
 
-Combine levels: `olcLogLevel: 256 64` for stats plus filter processing.
+Combine levels: `olcLogLevel: 256 32` for stats plus filter processing.
 
 ## Client-Side Debugging with SSSD
 
