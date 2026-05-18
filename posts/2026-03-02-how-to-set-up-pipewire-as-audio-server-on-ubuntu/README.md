@@ -8,7 +8,7 @@ Description: Guide to installing and configuring PipeWire as the audio server on
 
 ---
 
-PipeWire is the modern replacement for both PulseAudio and JACK on Linux. It provides lower latency, better Bluetooth support, and a unified graph for both audio and video routing. Ubuntu 22.04 ships with PipeWire available but defaults to PulseAudio in some configurations; Ubuntu 23.04 and later fully default to PipeWire. This guide covers setting up PipeWire and its compatibility layers so existing applications work without changes.
+PipeWire is the modern replacement for both PulseAudio and JACK on Linux. It provides lower latency, better Bluetooth support, and a unified graph for both audio and video routing. Ubuntu 22.04 ships with PipeWire available but defaults to PulseAudio in some configurations; Ubuntu 22.10 and later fully default to PipeWire. This guide covers setting up PipeWire and its compatibility layers so existing applications work without changes.
 
 ## Why Switch to PipeWire
 
@@ -80,7 +80,7 @@ pactl info | grep "Server Name"
 pw-cli info
 
 # List all audio nodes
-pw-cli list-objects | grep -i "type:PipeWire:Interface:Node"
+pw-cli list-objects | grep -i "PipeWire:Interface:Node"
 
 # Or use the more user-friendly wpctl (WirePlumber control)
 wpctl status
