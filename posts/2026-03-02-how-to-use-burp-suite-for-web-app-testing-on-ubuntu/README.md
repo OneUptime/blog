@@ -14,18 +14,14 @@ Burp Suite is the standard tool for web application penetration testing. It acts
 
 ```bash
 # Download Burp Suite Community Edition from PortSwigger
+# The latest installer is linked from:
+# https://portswigger.net/burp/releases/community/latest
 
-# Visit: https://portswigger.net/burp/communitydownload
-
-# Or download via command line
-wget "https://portswigger-cdn.net/burp/releases/download?product=community&type=Linux" \
-  -O burpsuite_community_linux.sh
-
-# Make the installer executable
-chmod +x burpsuite_community_linux.sh
+# After downloading, make the installer executable
+chmod +x burpsuite_community_linux_*.sh
 
 # Run the installer
-./burpsuite_community_linux.sh
+./burpsuite_community_linux_*.sh
 
 # The installer creates a desktop launcher and CLI wrapper
 # Default install location: ~/BurpSuiteCommunity/
@@ -33,16 +29,16 @@ chmod +x burpsuite_community_linux.sh
 # Launch from command line
 ~/BurpSuiteCommunity/BurpSuiteCommunity
 
-# Or if you want to run headlessly (for scripting)
+# Or if you want to run the standalone JAR (for scripting)
 java -jar /path/to/burpsuite_community.jar
 ```
 
-Burp Suite requires Java 17+:
+The native installer bundles its own private JRE, so you don't need Java installed separately. If you prefer to run the standalone JAR file, you'll need Java 21 or later:
 
 ```bash
-# Install Java if not present
+# Install Java if running the standalone JAR
 sudo apt update
-sudo apt install default-jre
+sudo apt install openjdk-21-jre
 
 # Verify Java version
 java -version
@@ -63,14 +59,15 @@ Configure your browser to use the proxy:
 - HTTP Proxy: 127.0.0.1, Port: 8080
 - Check "Also use this proxy for HTTPS"
 
-**Via command line (launch Firefox with proxy):**
+**Via command line (Chromium-based browsers only):**
 
 ```bash
-# Launch Firefox with Burp proxy
-firefox --proxy-server="127.0.0.1:8080" &
-
-# Or use chromium
+# Chromium and Chrome support a --proxy-server flag
 chromium --proxy-server="127.0.0.1:8080" &
+
+# Firefox does not accept a --proxy-server CLI flag — configure it via
+# Settings > Network Settings, the FoxyProxy extension, or environment
+# variables (http_proxy / https_proxy) for command-line tools.
 ```
 
 ## Installing the Burp CA Certificate
@@ -79,9 +76,9 @@ For HTTPS interception, install Burp's CA certificate in your browser:
 
 ```bash
 # While the proxy is running, visit this URL in your proxied browser:
-# http://burpsuite or http://burp
+# http://burpsuite
 
-# Download the CA certificate
+# Download the CA certificate (served as cacert.der)
 curl -x http://127.0.0.1:8080 http://burpsuite/cert -o burp_ca.der
 
 # Convert to PEM format
@@ -106,11 +103,12 @@ The Proxy > Intercept tab lets you pause and modify requests in flight:
 3. The request appears in Burp - you can modify it and click **Forward**
 4. Or click **Drop** to discard the request
 
-Useful keyboard shortcuts in the intercept view:
+Useful default keyboard shortcuts:
 - Ctrl+F - Forward the request
-- Ctrl+D - Drop the request
 - Ctrl+I - Send to Intruder
 - Ctrl+R - Send to Repeater
+
+Drop has no default shortcut — you can assign one under **Settings > User interface > Hotkeys**.
 
 ## Using the Repeater
 
@@ -158,19 +156,7 @@ Note: In Burp Community edition, Intruder attacks are throttled. Burp Profession
 
 ## Scanning with Burp Scanner
 
-The active scanner (Professional edition only) crawls and tests automatically. In Community edition, you can use the passive scanner:
-
-```bash
-# Enable passive scanning in Proxy > Options:
-# Check "Perform passive scanning"
-
-# The passive scanner analyzes requests as you browse
-# It looks for:
-# - Reflected XSS opportunities
-# - Potential injection points
-# - Information disclosure
-# - Cookie security issues
-```
+Burp Scanner — including both active (crawling/auditing) and passive scanning — is a **Professional-only** feature. The Community edition does not ship a vulnerability scanner. Pro users start a scan from the **Dashboard > New scan** button, or queue a live passive task from **Dashboard > New live task**.
 
 For Community edition, use the target site map for manual coverage:
 
@@ -261,12 +247,13 @@ Configure the scope to avoid accidentally testing out-of-scope systems:
 For CI/CD pipeline integration (Professional edition):
 
 ```bash
-# Run Burp in headless mode with a config file
+# Run Burp in headless mode with a project and config file
 java -jar burpsuite_pro.jar \
   --project-file=scan.burp \
-  --config-file=scan_config.json \
-  --collaborator-server-location=your-collab-server:9090
+  --config-file=scan_config.json
 ```
+
+If you need to point at a private Burp Collaborator server, configure that via **Settings > Project > Collaborator** and save it into the project / config file — there is no top-level CLI flag for the client-side collaborator location.
 
 A minimal scan configuration JSON:
 
