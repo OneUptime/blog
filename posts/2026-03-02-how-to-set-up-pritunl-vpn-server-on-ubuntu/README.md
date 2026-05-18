@@ -130,16 +130,21 @@ Start the server by clicking the start button. The first startup takes a moment 
 Pritunl also exposes configuration through the command line:
 
 ```bash
-# Set the public server address (important if behind a NAT/EIP)
-sudo pritunl set-server-ip 203.0.113.5
+# View current app-level settings
+sudo pritunl get app
 
-# View current settings
-sudo pritunl settings
+# Read an individual setting
+sudo pritunl get app.server_port
 
-# Configure settings (key=value format)
+# Configure settings (category.property value format)
 sudo pritunl set app.server_ssl true
 sudo pritunl set app.server_port 443
+
+# Clear a setting back to its default
+sudo pritunl unset app.server_port
 ```
+
+The public server address (used when behind NAT or an elastic IP) is set in the web UI on the initial setup screen or under the host's Public Address field — there is no CLI command for it.
 
 ## Firewall Configuration
 
@@ -244,8 +249,8 @@ sudo journalctl -u pritunl -f
 # Check MongoDB logs
 sudo journalctl -u mongod -f
 
-# View connected users from CLI
-sudo pritunl users
+# Tail Pritunl's own log file
+sudo pritunl logs
 
 # Backup MongoDB (for disaster recovery)
 sudo mongodump --db pritunl --out /var/backups/pritunl-$(date +%Y%m%d)
