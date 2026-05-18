@@ -133,7 +133,7 @@ NetworkManager and the Linux power management subsystem can put NICs to sleep to
 
 ```bash
 # Check if power management is enabled for the NIC
-sudo ethtool -s eth0 | grep power
+sudo ethtool eth0 | grep -i wake
 # Or
 cat /sys/class/net/eth0/device/power/control
 # "auto" = power management enabled (may sleep)
