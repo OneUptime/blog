@@ -121,21 +121,23 @@ sudo anacron -f
 # Run a specific job (by identifier)
 sudo anacron -f -t /etc/anacrontab cron.daily
 
-# Test mode - show what would run without actually running it
-sudo anacron -n -s
+# Test the anacrontab file for syntax errors (does not run any jobs)
+sudo anacron -T
 
-# Run all jobs immediately, ignoring timestamps
+# Run all jobs immediately, ignoring timestamps and delays
 sudo anacron -f -s -n
 
-# Show what anacron would do (verbose)
+# Run in the foreground with messages on stderr (useful for troubleshooting)
 sudo anacron -d -s
 ```
 
 Flags:
-- `-f`: Force execution even if the job ran recently
-- `-n`: No delays (ignores the delay field)
-- `-s`: Serialize jobs (run one at a time)
-- `-d`: Debug mode (verbose output)
+- `-f`: Force execution even if the job ran recently (ignores timestamps)
+- `-n`: Now - run jobs immediately, ignoring the delay field (implies `-s`)
+- `-s`: Serialize jobs (wait for each one to finish before starting the next)
+- `-d`: Don't fork to the background; informational messages are written to stderr in addition to syslog
+- `-T`: Test the anacrontab file for syntax validity (returns 0 if valid)
+- `-u`: Update timestamps to today without running the jobs
 
 ## Checking When Jobs Last Ran
 
@@ -230,15 +232,16 @@ echo "7   30  weekly-cleanup  /usr/local/bin/weekly-cleanup.sh" | sudo tee -a /e
 
 ## Combining anacron with cron
 
-On Ubuntu, cron calls anacron. The typical setup is:
+On Ubuntu, the periodic directories are triggered by anacron when it is installed. The typical setup is:
 
-1. `cron` runs at specific times (via `/etc/crontab`)
-2. `/etc/crontab` has an entry like `07 6 * * * root anacron -s`
-3. This means anacron runs daily at 6:07 AM, checking if any periodic jobs are overdue
-4. If the machine was off at 6:07 AM, anacron runs when the machine next boots
+1. `/etc/crontab` contains entries that only run the periodic directories when anacron is **not** present, for example:
+   `25 6 * * * root test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )`
+2. Anacron itself is started periodically by `/etc/cron.d/anacron` (on systems without systemd) or by the `anacron.timer` systemd unit (`/lib/systemd/system/anacron.timer`), which fires hourly during the daytime with a small random delay.
+3. When anacron runs, it checks the timestamps in `/var/spool/anacron/` and executes any periodic jobs that are overdue.
+4. If the machine was off when the timer would have fired, the `Persistent=true` setting on the timer (or the catch-up logic in anacron itself) ensures missed work is picked up after the next boot.
 
 This hybrid approach gives you:
-- Reliable scheduling for machines that are always on (jobs run at the scheduled time)
+- Reliable scheduling for machines that are always on (jobs run shortly after the scheduled time)
 - Catch-up execution for machines that were off (anacron runs missed jobs on next boot)
 
 ## When to Use anacron vs cron
