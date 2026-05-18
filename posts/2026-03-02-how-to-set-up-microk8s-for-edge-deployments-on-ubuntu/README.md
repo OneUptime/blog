@@ -123,7 +123,7 @@ sudo ufw allow 30000:32767/tcp
 sudo ufw allow 30000:32767/udp
 ```
 
-Resource Limits for Edge Hardware
+## Resource Limits for Edge Hardware
 
 On resource-constrained edge devices, set cluster-wide resource defaults:
 
@@ -299,10 +299,10 @@ docker save nginx:1.25 | gzip > nginx-1.25.tar.gz
 scp nginx-1.25.tar.gz edge-device:/tmp/
 
 # On edge device, import into MicroK8s containerd
-microk8s ctr images import /tmp/nginx-1.25.tar.gz
+microk8s ctr image import /tmp/nginx-1.25.tar.gz
 
 # Verify
-microk8s ctr images list | grep nginx
+microk8s ctr image list | grep nginx
 ```
 
 ## Setting Up a Local Registry
@@ -326,8 +326,7 @@ docker push localhost:32000/myapp:latest
 Configure MicroK8s to start automatically and recover from power loss:
 
 ```bash
-# MicroK8s snap auto-starts on boot
-sudo snap set microk8s start-timeout=60s
+# MicroK8s snap auto-starts on boot (managed by snapd, no extra config needed)
 
 # Enable automatic snap refresh
 sudo snap refresh microk8s --channel=1.29/stable
@@ -350,12 +349,16 @@ kubectl top nodes
 kubectl top pods --all-namespaces
 ```
 
-For more detailed monitoring, enable Prometheus:
+For more detailed monitoring, enable the observability stack (kube-prometheus-stack):
 
 ```bash
-microk8s enable prometheus
+# The 'prometheus' add-on was deprecated; use 'observability' on 1.25+
+microk8s enable observability
 
-# Access Grafana at http://node-ip:31000 (NodePort)
+# Resources are deployed into the 'observability' namespace.
+# Access Grafana via port-forward (no NodePort by default):
+microk8s kubectl port-forward -n observability service/kube-prom-stack-grafana --address 0.0.0.0 3000:80
+
 # Default credentials: admin/prom-operator
 ```
 
