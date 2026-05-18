@@ -28,8 +28,9 @@ This guide assumes you have a Kubernetes cluster initialized with kubeadm. If no
 # Install kubeadm, kubelet, kubectl
 
 sudo apt update
-sudo apt install -y apt-transport-https ca-certificates curl
+sudo apt install -y apt-transport-https ca-certificates curl gpg
 
+sudo mkdir -p -m 755 /etc/apt/keyrings
 curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | \
   sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
@@ -307,7 +308,7 @@ Flannel itself does not implement Kubernetes NetworkPolicy. If you need to enfor
 
 ```bash
 # Install Calico for policy enforcement only (not networking)
-kubectl apply -f https://docs.projectcalico.org/manifests/canal.yaml
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/canal.yaml
 # Canal is Flannel + Calico policy engine combined
 ```
 
