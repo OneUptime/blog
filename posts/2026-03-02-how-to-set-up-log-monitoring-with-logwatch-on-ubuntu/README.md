@@ -85,10 +85,7 @@ Service = All
 # text or html
 Format = text
 
-# Logfile path for logwatch's own log
-# LogFile = /var/log/logwatch
-
-# Mailer command
+# Mailer command (used for email delivery)
 # mailer = "/usr/sbin/sendmail -t"
 ```
 
@@ -121,7 +118,7 @@ sudo logwatch --print --format html > /tmp/logwatch-report.html
 A typical Logwatch report includes sections like:
 
 ```text
- ################### Logwatch 7.6 (01/22/21) ####################
+ ################### Logwatch 7.7 (07/22/22) ####################
         Processing Initiated: Mon Mar  2 08:00:01 2026
         Date Range Processed: yesterday
                               ( 2026-Mar-01 )
@@ -358,8 +355,8 @@ sudo crontab -e
 
 ```bash
 # Daily logwatch - email and save to file
-0 7 * * * /usr/sbin/logwatch --output mail --detail Med && \
-          /usr/sbin/logwatch --output file --filename /var/log/logwatch-reports/$(date +%Y-%m-%d).txt --detail Med
+# Note: % must be escaped as \% in crontab, or cron treats it as a newline
+0 7 * * * /usr/sbin/logwatch --output mail --detail Med && /usr/sbin/logwatch --output file --filename /var/log/logwatch-reports/$(date +\%Y-\%m-\%d).txt --detail Med
 ```
 
 ```bash
@@ -379,20 +376,26 @@ sudo nano /etc/logrotate.d/logwatch-reports
 
 ## Customizing the Report Format
 
-Create custom templates for the report header/footer:
+The default subject line is `Logwatch for <hostname> (<OS>)`. To set a custom subject or from address, edit `/etc/logwatch/conf/logwatch.conf`:
 
 ```bash
-# Override the logwatch message header
-sudo mkdir -p /etc/logwatch/conf
-sudo nano /etc/logwatch/conf/override.conf
+sudo nano /etc/logwatch/conf/logwatch.conf
 ```
 
 ```bash
-# Custom subject line
-MailSubject = "[$(hostname)] Logwatch Report for $date$"
+# Custom subject line (static string - no variable expansion is performed
+# inside the config file, so put the literal hostname here)
+subject = "Daily Logwatch Report for myserver.example.com"
 
-# Include hostname in from address
-MailFrom = "logwatch@$(hostname -f)"
+# From address (also a literal string)
+MailFrom = "logwatch@myserver.example.com"
+```
+
+If you need dynamic values like the current hostname in the subject, pass them on the command line from your cron entry where the shell will expand them:
+
+```bash
+# Use shell substitution in the cron command (not in the config file)
+0 7 * * * /usr/sbin/logwatch --output mail --subject "[$(hostname)] Logwatch Report"
 ```
 
 ## Verifying Logwatch is Working
