@@ -148,12 +148,13 @@ sftp> ls -la
 sftp> get testfile.txt /tmp/downloaded-testfile.txt
 sftp> bye
 
-# Test SSH login (should be denied)
+# Test SSH login (no interactive shell available)
 ssh sftpuser1@localhost
-# Expected: "This service allows sftp connections only."
+# Expected: the connection terminates without providing a usable shell, because
+# internal-sftp is forced and cannot serve as an interactive session
 ```
 
-The "this service allows sftp connections only" message comes from `ForceCommand internal-sftp` - when a regular SSH session is attempted, the SFTP subsystem receives the request and refuses it.
+With `ForceCommand internal-sftp`, every shell request is replaced by the SFTP subsystem. When a regular SSH session is attempted, internal-sftp runs but expects SFTP protocol on stdin, so the interactive session is unusable and the connection closes.
 
 ## SFTP with SSH Key Authentication
 
@@ -163,9 +164,10 @@ Password authentication over SFTP is secure (since the password is encrypted), b
 # Generate an SSH key pair for the user (or have the user do this)
 ssh-keygen -t ed25519 -f ~/.ssh/sftpuser1_key -C "sftpuser1 SFTP key"
 
-# The chroot complicates key-based auth setup
-# The .ssh directory and authorized_keys must be inside the chroot,
-# and OpenSSH looks relative to the chroot root
+# sshd reads authorized_keys BEFORE chrooting, so AuthorizedKeysFile takes an
+# absolute path on the host filesystem. The .ssh directory can live at the
+# user's home path (which is also the chroot root) as long as the chroot
+# directory itself stays owned by root
 
 # Create .ssh inside the chroot
 sudo mkdir -p /home/sftpuser1/.ssh
