@@ -49,18 +49,20 @@ ssh admin@kdc.example.com date
 
 **Fix:**
 
-```bash
-# Enable and start systemd-timesyncd (simpler)
-sudo systemctl enable systemd-timesyncd
-sudo systemctl start systemd-timesyncd
-timedatectl set-ntp true
+Ubuntu uses `systemd-timesyncd` by default. If you have `chrony` installed, use the chrony commands instead.
 
-# Force immediate sync
-sudo chronyc makestep
-# or for timedatectl:
+```bash
+# Option A: systemd-timesyncd (Ubuntu default)
+sudo systemctl enable --now systemd-timesyncd
+sudo timedatectl set-ntp true
+# Force a resync by restarting the service
 sudo systemctl restart systemd-timesyncd
 
-# Verify sync
+# Option B: chrony (if installed)
+sudo systemctl enable --now chrony
+sudo chronyc makestep
+
+# Verify sync (works for both)
 timedatectl show --value --property=NTPSynchronized
 ```
 
@@ -180,11 +182,12 @@ sudo kadmin.local -q "cpw jsmith"
 If the account is locked (too many failed attempts):
 
 ```bash
-# Check for lockout
+# Check failed authentication count
 sudo kadmin.local -q "getprinc jsmith"
-# Look for: LOCKED_OUT
+# Look for: "Failed password attempts" and "Last failed authentication"
+# Lockout is enforced when this count exceeds the policy's max_fail
 
-# Clear the lockout
+# Clear the lockout (resets the failed authentication count)
 sudo kadmin.local -q "modprinc -unlock jsmith"
 ```
 
@@ -294,8 +297,8 @@ klist -k /etc/krb5.keytab
 kinit jsmith
 kvno host/server.example.com
 
-# Test GSSAPI authentication
-gss-client server.example.com host < /dev/null
+# List cached tickets to confirm credentials were obtained
+klist
 ```
 
 ## Common Issues with Active Directory
