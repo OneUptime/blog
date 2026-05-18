@@ -88,9 +88,11 @@ sudo ovs-vsctl clear port eth0 trunks
 
 # Add a specific VLAN to an existing trunk
 sudo ovs-vsctl set port eth0 trunks=100,200,300
-# Note: you must specify the full list each time
+# Note: `set` replaces the value, so you must specify the full list each time.
+# Alternatively, use `add` to append a single VLAN:
+sudo ovs-vsctl add port eth0 trunks 400
 
-# Remove trunks restriction (allow all VLANs)
+# Remove a single VLAN from the trunks list
 sudo ovs-vsctl remove port eth0 trunks 200
 # This removes VLAN 200 from the trunks list
 ```
@@ -108,10 +110,10 @@ sudo ovs-vsctl set port eth0 tag=1 trunks=100,200,300
 sudo ovs-vsctl set port eth0 vlan_mode=native-untagged
 
 # Available vlan_mode values:
-# trunk         - pass only tagged frames in trunks list
-# access        - access port behavior
-# native-tagged - like trunk but native VLAN traffic is tagged
-# native-untagged - like trunk but native VLAN traffic is untagged (802.1Q native)
+# trunk           - pass tagged frames in trunks list; untagged ingress is dropped
+# access          - access port behavior (uses tag)
+# native-tagged   - like trunk plus untagged ingress is mapped to the native VLAN (tag); egress on native VLAN is tagged
+# native-untagged - like native-tagged but egress on native VLAN is sent untagged
 ```
 
 ## Connecting to a Physical Switch Trunk
@@ -131,7 +133,7 @@ sudo ovs-vsctl add-port br-vlan vlan300 tag=300 -- set interface vlan300 type=in
 # Assign addresses to VLAN interfaces
 sudo ip link set vlan100 up && sudo ip addr add 10.100.0.1/24 dev vlan100
 sudo ip link set vlan200 up && sudo ip addr add 10.200.0.1/24 dev vlan200
-sudo ip link set vlan300 up && sudo ip addr add 10.300.0.1/24 dev vlan300
+sudo ip link set vlan300 up && sudo ip addr add 10.30.0.1/24 dev vlan300
 ```
 
 ## VLAN Trunking with Netplan
