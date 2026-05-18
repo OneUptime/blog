@@ -412,8 +412,8 @@ steps:
 # Check runner logs
 docker compose logs drone-runner
 
-# Verify runner is connected to server
-docker compose exec drone-runner drone-runner ping
+# Verify runner has successfully connected to the server
+docker compose logs drone-runner | grep -i "successfully pinged the remote server"
 ```
 
 **Webhook not triggering builds:**
