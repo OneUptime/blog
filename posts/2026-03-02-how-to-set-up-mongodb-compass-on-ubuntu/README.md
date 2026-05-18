@@ -25,7 +25,7 @@ Compass gives you:
 
 Before installing, confirm your system meets the requirements:
 
-- Ubuntu 18.04 or later (64-bit)
+- Ubuntu 20.04 LTS or later (64-bit)
 - At least 4GB RAM (8GB recommended for large datasets)
 - A running MongoDB instance (local or remote) to connect to
 
@@ -231,9 +231,13 @@ If Compass fails to launch, check for missing libraries:
 # Check for dependency issues
 ldd /usr/bin/mongodb-compass | grep "not found"
 
-# Install common missing libraries
-sudo apt install -y libgconf-2-4 libatk1.0-0 libatk-bridge2.0-0 \
+# Install common missing libraries (Ubuntu 22.04)
+sudo apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 \
   libgdk-pixbuf2.0-0 libgtk-3-0 libgbm1 libasound2
+
+# On Ubuntu 24.04 the t64 variants of these libraries are used instead:
+sudo apt install -y libnss3 libatk1.0-0t64 libatk-bridge2.0-0t64 \
+  libgdk-pixbuf-2.0-0 libgtk-3-0t64 libgbm1 libasound2t64
 ```
 
 If Compass connects but shows no databases, verify the MongoDB user has the necessary privileges:
