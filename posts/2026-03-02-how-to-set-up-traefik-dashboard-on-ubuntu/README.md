@@ -83,13 +83,10 @@ Generate a bcrypt hashed password for dashboard access:
 # Install apache2-utils for htpasswd
 sudo apt install apache2-utils -y
 
-# Generate a hashed password - replace 'yoursecretpassword'
+# Generate a hashed password
 htpasswd -nB admin
 # Enter the password when prompted
 # Output: admin:$2y$12$abc123...
-
-# The $$ escaping is needed in Traefik YAML files
-# Double each $ sign for the configuration file
 ```
 
 The output will look like:
@@ -97,12 +94,7 @@ The output will look like:
 admin:$2y$12$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-In YAML files, every `$` must be doubled to `$$` to prevent Traefik from treating them as variable references:
-
-```bash
-# Get the escaped version for YAML
-htpasswd -nB admin | sed 's/\$/\$\$/g'
-```
+Paste this line as-is into the Traefik File provider YAML configuration shown below. Note: the `$` doubling rule (`$$`) only applies when defining users via Docker labels or in `docker-compose.yml`, where Docker performs variable expansion. It is not needed in dynamic YAML configuration loaded by Traefik's File provider.
 
 ## Dynamic Configuration for the Dashboard Router
 
@@ -133,8 +125,8 @@ http:
       basicAuth:
         realm: "Traefik Dashboard"
         users:
-          # Replace with your generated hash - note the doubled $$ signs
-          - "admin:$$2y$$12$$examplehashxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          # Replace with your generated hash (single $ signs in YAML file provider)
+          - "admin:$2y$12$examplehashxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 
     # Rate limiting to slow brute force attempts
     dashboard-ratelimit:
@@ -146,13 +138,11 @@ http:
 Apply the configuration:
 
 ```bash
-# Validate
-traefik --configFile=/etc/traefik/traefik.yml --dry-run
+# Restart Traefik to pick up static config changes
+# (dynamic config in conf.d/ is reloaded automatically when watch: true is set)
+sudo systemctl restart traefik
 
-# Reload Traefik
-sudo systemctl reload traefik
-
-# Check logs
+# Check logs for any errors
 sudo journalctl -u traefik -n 50
 ```
 
@@ -188,7 +178,7 @@ http:
     dashboard-auth:
       basicAuth:
         users:
-          - "admin:$$2y$$12$$examplehash..."
+          - "admin:$2y$12$examplehash..."
 ```
 
 ## Using Digest Authentication
@@ -310,7 +300,7 @@ http:
 
 **Dashboard shows 404:** The path must end with a trailing slash: `/dashboard/` not `/dashboard`. The router rule must include both `/api` and `/dashboard` path prefixes.
 
-**Authentication not working:** Double-check that `$` characters in password hashes are doubled (`$$`) in YAML. Single `$` signs are interpreted as variable references and cause parsing failures.
+**Authentication not working:** Confirm the password hash was generated with `htpasswd -nB` (bcrypt) and pasted into the YAML file exactly as produced. The `$$` doubling rule applies only to Docker Compose files and Docker labels (where Docker performs variable expansion), not to YAML config loaded by the File provider.
 
 **Dashboard not updating:** The dashboard polls the API periodically. If routes appear stale, check that the file provider has `watch: true` in the static configuration.
 
