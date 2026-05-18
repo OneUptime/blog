@@ -18,7 +18,7 @@ Insomnia is an open-source desktop application for testing APIs. It supports RES
 # Download the latest .deb package from the Insomnia releases page
 
 # Check https://github.com/Kong/insomnia/releases for the current version
-INSOMNIA_VERSION="9.3.2"
+INSOMNIA_VERSION="12.5.0"
 
 wget https://github.com/Kong/insomnia/releases/download/core@${INSOMNIA_VERSION}/Insomnia.Core-${INSOMNIA_VERSION}.deb \
   -O /tmp/insomnia.deb
@@ -49,7 +49,7 @@ The AppImage format runs without installation:
 
 ```bash
 # Download the AppImage
-wget https://github.com/Kong/insomnia/releases/download/core@9.3.2/Insomnia.Core-9.3.2.AppImage \
+wget https://github.com/Kong/insomnia/releases/download/core@12.5.0/Insomnia.Core-12.5.0.AppImage \
   -O ~/Applications/Insomnia.AppImage
 
 chmod +x ~/Applications/Insomnia.AppImage
@@ -311,17 +311,21 @@ This is useful when you need to share a request with someone who prefers command
 
 ## Testing and Response Validation
 
-Insomnia supports basic response testing in the "Tests" tab:
+Insomnia supports response testing in the "Scripts" tab via the "After-response" script. The script runs after the response is received and exposes an `insomnia` object with Chai-style assertions:
 
 ```javascript
+const jsonBody = insomnia.response.json();
+
 // Test that the response status is 200
-const response = await insomnia.send();
-expect(response.status).to.equal(200);
+insomnia.test('Status is 200', () => {
+  insomnia.expect(insomnia.response.status).to.eql(200);
+});
 
 // Test that the response body has expected fields
-const body = JSON.parse(response.body);
-expect(body).to.have.property('id');
-expect(body.name).to.equal('Alice');
+insomnia.test('Body has expected fields', () => {
+  insomnia.expect(jsonBody).to.have.property('id');
+  insomnia.expect(jsonBody.name).to.eql('Alice');
+});
 ```
 
 ## Keyboard Shortcuts
@@ -331,11 +335,11 @@ Common shortcuts to speed up your workflow:
 | Shortcut | Action |
 |---|---|
 | `Ctrl+Enter` | Send request |
-| `Ctrl+K` | Quick search |
-| `Ctrl+E` | Switch environment |
+| `Ctrl+P` | Quick search |
+| `Ctrl+Shift+E` | Switch environment |
 | `Ctrl+D` | Duplicate request |
-| `Ctrl+/` | Toggle sidebar |
-| `Ctrl+Shift+E` | Manage environments |
+| `Ctrl+\` | Toggle sidebar |
+| `Ctrl+E` | Manage environments |
 
 ## Troubleshooting
 
