@@ -88,36 +88,7 @@ sudo ip link set macvlan2 up
 
 ## Persistent Configuration with Netplan
 
-For Ubuntu 18.04 and later using netplan, add MacVLAN configuration to your netplan YAML:
-
-```yaml
-# /etc/netplan/01-netcfg.yaml
-network:
-  version: 2
-  renderer: networkd
-  ethernets:
-    eth0:
-      dhcp4: false
-      dhcp6: false
-  macvlans:
-    macvlan0:
-      link: eth0
-      mode: bridge
-      addresses:
-        - 192.168.1.150/24
-      routes:
-        - to: default
-          via: 192.168.1.1
-      nameservers:
-        addresses: [8.8.8.8, 1.1.1.1]
-```
-
-Apply with:
-
-```bash
-sudo netplan generate
-sudo netplan apply
-```
+Netplan does not currently expose MacVLAN as a top-level device type (the supported device types are `ethernets`, `bonds`, `bridges`, `dummy-devices`, `modems`, `tunnels`, `virtual-ethernets`, `vlans`, `vrfs`, `wifis`, and `nm-devices`). On Ubuntu systems that use netplan with the `networkd` renderer, drop a systemd-networkd `.netdev` and `.network` snippet alongside your netplan-generated configuration as shown in the next section — netplan will leave non-netplan-managed networkd units in place.
 
 ## Persistent Configuration with systemd-networkd
 
@@ -166,37 +137,35 @@ networkctl status macvlan0
 
 ## Using MacVLAN with DHCP
 
-If you want the MacVLAN interface to get its IP from DHCP (it will get a different IP than the parent since it has a different MAC):
+If you want the MacVLAN interface to get its IP from DHCP (it will get a different IP than the parent since it has a different MAC), use a systemd-networkd `.network` file with `DHCP=yes` instead of a static `Address=`:
 
-```yaml
-# Netplan config for DHCP MacVLAN
-network:
-  version: 2
-  renderer: networkd
-  ethernets:
-    eth0:
-      dhcp4: true
-  macvlans:
-    macvlan0:
-      link: eth0
-      mode: bridge
-      dhcp4: true
+```ini
+# /etc/systemd/network/40-macvlan0.network
+[Match]
+Name=macvlan0
+
+[Network]
+DHCP=yes
 ```
 
-Each MacVLAN interface with DHCP will get its own IP from the DHCP server because it presents a unique MAC address.
+The `.netdev` file and the parent-interface `MACVLAN=` snippet from the previous section are still required. Each MacVLAN interface with DHCP will get its own IP from the DHCP server because it presents a unique MAC address.
 
 ## The Host-to-MacVLAN Communication Problem
 
 As mentioned, MacVLAN interfaces can't communicate with the parent interface by default. This is frustrating if you want the host to communicate with services running on the MacVLAN IP.
 
-The workaround is to add a route on the host that routes traffic to the MacVLAN IP through the MacVLAN interface:
+The standard workaround is to create a second MacVLAN interface on the host (a "shim") that shares the same parent. Because both children sit on the same MacVLAN bridge, they can talk to each other even though neither can talk to the parent directly. Then route the target MacVLAN IPs through the shim:
 
 ```bash
-# On the host, add route to reach the MacVLAN address through the MacVLAN interface
-sudo ip route add 192.168.1.150/32 dev macvlan0
+# Create a host-side MacVLAN that shares the same parent
+sudo ip link add macvlan-shim link eth0 type macvlan mode bridge
 
-# Or use a loopback alias for services that need to bind to that IP
-sudo ip addr add 192.168.1.150/32 dev lo
+# Give the shim its own IP in the same subnet (a /32 avoids overlapping the eth0 subnet route)
+sudo ip addr add 192.168.1.250/32 dev macvlan-shim
+sudo ip link set macvlan-shim up
+
+# Route traffic destined for the other MacVLAN IP through the shim
+sudo ip route add 192.168.1.150/32 dev macvlan-shim
 ```
 
 Alternatively, use `ipvlan` in L2 mode instead, which doesn't have this restriction (covered separately).
@@ -231,7 +200,7 @@ journalctl -u systemd-networkd | grep macvlan0
 sudo ip link set macvlan0 down
 sudo ip link delete macvlan0
 
-# For persistent configs, remove the netplan/networkd files
+# For persistent configs, remove the systemd-networkd files
 sudo rm /etc/systemd/network/30-macvlan0.netdev
 sudo rm /etc/systemd/network/40-macvlan0.network
 sudo systemctl restart systemd-networkd
