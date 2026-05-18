@@ -119,7 +119,7 @@ The Project Manager shows your existing projects and lets you create new ones.
 1. Click "New Project"
 2. Enter a project name
 3. Choose a project path
-4. Select "2D" as the renderer (or "Mobile" for simpler 2D projects)
+4. Select "Compatibility" as the renderer (OpenGL 3.3, works on more hardware and is fine for 2D projects)
 5. Click "Create & Edit"
 
 The Godot editor opens with the default scene.
@@ -129,7 +129,7 @@ The Godot editor opens with the default scene.
 For 3D games:
 
 1. Click "New Project"
-2. Select "Forward+" renderer (Vulkan, best quality) or "Mobile" (lighter, compatible with more hardware)
+2. Select "Forward+" renderer (Vulkan, best quality) or "Mobile" (Vulkan, optimized for mobile and lighter hardware)
 3. Click "Create & Edit"
 
 ## Understanding Godot's Scene System
@@ -201,6 +201,9 @@ git init
 
 # Create a .gitignore for Godot
 cat > .gitignore << 'EOF'
+# Godot 4+ specific ignores
+.godot/
+
 # Godot-specific ignores
 .import/
 export.cfg
@@ -288,14 +291,15 @@ godot --headless --export-release "Linux/X11" /path/to/output/mygame.x86_64 \
 godot --headless --export-list --path /path/to/project
 ```
 
-### Export for Web (HTML5/WebGL)
+### Export for Web
 
 ```bash
-# Web export requires additional setup
-sudo apt install -y emscripten
+# Web export uses the prebuilt Web export template (downloaded via
+# Editor > Manage Export Templates). Emscripten is only required if
+# you compile the Godot web export template from source yourself.
 
-# Export to WebGL
-godot --headless --export-release "HTML5" /path/to/output/index.html \
+# Export to Web
+godot --headless --export-release "Web" /path/to/output/index.html \
   --path /path/to/project
 ```
 
