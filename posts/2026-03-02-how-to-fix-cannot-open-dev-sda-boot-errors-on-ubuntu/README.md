@@ -104,6 +104,8 @@ GRUB's `grub.cfg` is auto-generated, so you fix it by updating the template and 
 
 ```bash
 # Chroot into the system
+# If /boot is a separate partition, mount it before chrooting
+sudo mount /dev/sdb1 /mnt/boot   # adjust partition as needed
 sudo mount --bind /dev /mnt/dev
 sudo mount --bind /proc /mnt/proc
 sudo mount --bind /sys /mnt/sys
@@ -129,11 +131,12 @@ The fix is to ensure the AHCI module loads in initramfs:
 
 ```bash
 # In a chroot or on the running system
+# If you are already root in a chroot, omit sudo
 # Add ahci to the modules list
-echo 'ahci' >> /etc/initramfs-tools/modules
+echo 'ahci' | sudo tee -a /etc/initramfs-tools/modules
 
 # Regenerate initramfs
-update-initramfs -u -k all
+sudo update-initramfs -u -k all
 ```
 
 Then update GRUB and reboot. If you changed from AHCI to IDE mode in BIOS, just change it back - Ubuntu generally needs AHCI.
@@ -184,14 +187,23 @@ At the `grub rescue>` prompt:
 # List disks GRUB can see
 grub rescue> ls
 
-# List partitions on first disk
+# Find the partition that contains /boot/grub
 grub rescue> ls (hd0,1)/
 
-# If you can browse the filesystem, set root and boot manually
-grub rescue> set root=(hd0,2)
-grub rescue> linux /boot/vmlinuz root=/dev/sda2
-grub rescue> initrd /boot/initrd.img
-grub rescue> boot
+# If you can browse the filesystem, point GRUB at its modules and load normal mode
+grub rescue> set root=(hd0,1)
+grub rescue> set prefix=(hd0,1)/boot/grub
+grub rescue> insmod normal
+grub rescue> normal
+```
+
+If you reach the full `grub>` prompt instead, you can boot manually:
+
+```bash
+grub> set root=(hd0,2)
+grub> linux /boot/vmlinuz-<version> root=UUID=<root-filesystem-uuid> ro
+grub> initrd /boot/initrd.img-<version>
+grub> boot
 ```
 
 Once booted, run `update-grub` to fix the configuration permanently.
