@@ -39,8 +39,8 @@ GRANT ALL ON SCHEMA public TO mmuser;
 \q
 EOF
 
-# Verify connection
-sudo -u postgres psql -U mmuser -d mattermost -c "SELECT version();"
+# Verify connection (uses TCP since peer auth requires matching OS/DB usernames)
+PGPASSWORD='strong-password-here' psql -h 127.0.0.1 -U mmuser -d mattermost -c "SELECT version();"
 ```
 
 ## Installing Mattermost
@@ -54,10 +54,10 @@ sudo useradd -r -m -s /bin/bash -d /opt/mattermost mattermost
 # Download Mattermost Team Edition (check mattermost.com for current version)
 MATTERMOST_VERSION="9.4.0"
 cd /tmp
-wget "https://releases.mattermost.com/${MATTERMOST_VERSION}/mattermost-${MATTERMOST_VERSION}-linux-amd64.tar.gz"
+wget "https://releases.mattermost.com/${MATTERMOST_VERSION}/mattermost-team-${MATTERMOST_VERSION}-linux-amd64.tar.gz"
 
 # Extract to /opt
-sudo tar -xzf "mattermost-${MATTERMOST_VERSION}-linux-amd64.tar.gz" -C /opt
+sudo tar -xzf "mattermost-team-${MATTERMOST_VERSION}-linux-amd64.tar.gz" -C /opt
 
 # Create data directory
 sudo mkdir -p /opt/mattermost/data
@@ -318,12 +318,14 @@ Connection: Use `https://chat.example.com` as the server URL.
 The Linux desktop client:
 
 ```bash
-# Download and install Mattermost desktop for Ubuntu
-wget "https://releases.mattermost.com/desktop/latest/mattermost-desktop-linux-x64.AppImage"
-chmod +x mattermost-desktop-linux-x64.AppImage
+# Download and install Mattermost desktop for Ubuntu (check mattermost.com/download for the current version)
+DESKTOP_VERSION="5.7.0"
+wget "https://releases.mattermost.com/desktop/${DESKTOP_VERSION}/mattermost-desktop-${DESKTOP_VERSION}-linux-x86_64.AppImage"
+chmod +x "mattermost-desktop-${DESKTOP_VERSION}-linux-x86_64.AppImage"
 
-# Or install via apt (if you've added the Mattermost repository)
-sudo apt install -y mattermost-desktop
+# Or install the .deb package
+wget "https://releases.mattermost.com/desktop/${DESKTOP_VERSION}/mattermost-desktop-${DESKTOP_VERSION}-linux-amd64.deb"
+sudo apt install -y "./mattermost-desktop-${DESKTOP_VERSION}-linux-amd64.deb"
 ```
 
 ## Setting Up Incoming Webhooks for Alerts
@@ -393,7 +395,7 @@ echo "0 2 * * * root /opt/mattermost/backup.sh >> /var/log/mattermost-backup.log
 ```bash
 # Download the new version
 NEW_VERSION="9.5.0"
-wget "https://releases.mattermost.com/${NEW_VERSION}/mattermost-${NEW_VERSION}-linux-amd64.tar.gz" -P /tmp
+wget "https://releases.mattermost.com/${NEW_VERSION}/mattermost-team-${NEW_VERSION}-linux-amd64.tar.gz" -P /tmp
 
 # Stop Mattermost
 sudo systemctl stop mattermost
@@ -402,7 +404,7 @@ sudo systemctl stop mattermost
 sudo cp -r /opt/mattermost /opt/mattermost-backup-$(date +%Y%m%d)
 
 # Extract new version
-sudo tar -xzf "/tmp/mattermost-${NEW_VERSION}-linux-amd64.tar.gz" -C /tmp
+sudo tar -xzf "/tmp/mattermost-team-${NEW_VERSION}-linux-amd64.tar.gz" -C /tmp
 sudo rsync -a --exclude='config' --exclude='data' --exclude='logs' --exclude='plugins' \
   /tmp/mattermost/ /opt/mattermost/
 
