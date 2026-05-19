@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, CNI, Container, Networking, Kubernetes
 
-Description: Configure container networking on Ubuntu using CNI plugins to create bridge networks, VXLAN overlays, and custom network setups for containerized workloads outside Kubernetes.
+Description: Configure container networking on Ubuntu using CNI plugins to create bridge, MACVLAN, IPVLAN, and custom network setups for containerized workloads outside Kubernetes.
 
 ---
 
@@ -29,8 +29,8 @@ CNI plugins are simple binaries that receive JSON on stdin and write JSON to std
 sudo apt update
 sudo apt install -y containernetworking-plugins
 
-# The plugins are installed to /opt/cni/bin/
-ls /opt/cni/bin/
+# Ubuntu installs the plugins under /usr/lib/cni/
+ls /usr/lib/cni/
 
 # If not available via apt, download directly
 CNI_VERSION="v1.4.0"
@@ -110,15 +110,12 @@ sudo apt install -y golang-go
 go install github.com/containernetworking/cni/cnitool@latest
 sudo mv ~/go/bin/cnitool /usr/local/bin/
 
-# Or download a pre-built binary
-curl -L https://github.com/containernetworking/cni/releases/latest/download/cni-tools-linux-amd64.tgz | \
-    sudo tar xz -C /usr/local/bin
-
 # Create a network namespace to test with
 sudo ip netns add testns
 
 # Add the network namespace to CNI
-sudo CNI_PATH=/opt/cni/bin \
+# Use CNI_PATH=/opt/cni/bin here if you installed the upstream tarball instead of the Ubuntu package.
+sudo CNI_PATH=/usr/lib/cni \
     NETCONFPATH=/etc/cni/net.d \
     cnitool add mynet /var/run/netns/testns
 
@@ -131,7 +128,8 @@ ip link show cni-br0
 ip addr show cni-br0
 
 # Remove the network when done
-sudo CNI_PATH=/opt/cni/bin \
+# Use the same CNI_PATH value that was used for add.
+sudo CNI_PATH=/usr/lib/cni \
     NETCONFPATH=/etc/cni/net.d \
     cnitool del mynet /var/run/netns/testns
 
@@ -140,11 +138,14 @@ sudo ip netns del testns
 
 ## Using CNI with Podman
 
-Podman uses CNI (or Netavark on newer versions) for container networking. You can create custom CNI-based networks:
+Podman supports CNI and Netavark for container networking. Current Podman installations use Netavark by default; CNI is deprecated in Podman but may still be used on older or explicitly configured systems. Check the active backend before looking for CNI configuration files:
 
 ```bash
-# Install Podman (which includes CNI support)
+# Install Podman
 sudo apt install -y podman
+
+# Check the active network backend
+podman info --format '{{.Host.NetworkBackend}}'
 
 # Create a Podman network with custom CIDR
 podman network create --driver bridge \
@@ -152,7 +153,7 @@ podman network create --driver bridge \
     --gateway 172.20.0.1 \
     my-custom-network
 
-# View the CNI configuration Podman created
+# If Podman is using the CNI backend, view the CNI configuration it created
 cat ~/.config/cni/net.d/my-custom-network.conflist
 
 # Run a container on this network
@@ -312,10 +313,10 @@ sudo chmod +x /opt/cni/bin/my-logger-plugin
 ## Debugging CNI Networking
 
 ```bash
-# Enable CNI debug logging (for containerd)
+# Enable debug logging for containerd when troubleshooting CNI
 # In /etc/containerd/config.toml:
-# [plugins."io.containerd.grpc.v1.cni"]
-#   log_level = "debug"
+# [debug]
+#   level = "debug"
 
 # Watch CNI invocations via syslog
 sudo journalctl -f | grep cni
