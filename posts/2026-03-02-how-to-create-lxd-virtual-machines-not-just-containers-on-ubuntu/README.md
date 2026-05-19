@@ -78,18 +78,18 @@ lxc launch images:alpine/3.19 vm6 --vm   # Alpine Linux
 ## Accessing a VM
 
 ```bash
-# Open a shell (uses QEMU agent for communication)
+# Open a shell (uses the LXD agent for communication)
 lxc exec myvm -- bash
 
 # If the agent isn't ready yet, use the console
 lxc console myvm
 # Press Ctrl+a q to exit the console
 
-# Check if the QEMU guest agent is running
-lxc exec myvm -- systemctl status qemu-guest-agent
+# Check if the LXD agent is running
+lxc exec myvm -- systemctl status lxd-agent
 ```
 
-The QEMU guest agent (`qemu-guest-agent`) is pre-installed in LXD VM images and allows `lxc exec` to work without SSH.
+The LXD agent (`lxd-agent`) is included in LXD VM images and allows `lxc exec` to work without SSH.
 
 ## Configuring VM Resources
 
@@ -144,11 +144,11 @@ The console connects directly to the VM's serial/VGA console, useful when the OS
 # Open the console
 lxc console myvm
 
-# VGA console (graphical output via a VNC-like interface)
+# VGA console (graphical output via SPICE)
 lxc console myvm --type=vga
 ```
 
-For the VGA console, you need `remote-viewer` or a compatible VNC client on the host.
+For the VGA console, you need a SPICE client such as `remote-viewer` from `virt-viewer` or `spice-gtk-client` on the host.
 
 ## Configuring the VM's UEFI Settings
 
@@ -181,28 +181,32 @@ lxc delete myvm/baseline
 
 ## Live Migration of VMs
 
-In an LXD cluster, VMs can be live-migrated between cluster nodes:
+In an LXD cluster, VMs can be live-migrated between cluster nodes when stateful migration is enabled:
 
 ```bash
+# Enable stateful migration for this VM
+lxc config set myvm migration.stateful true
+
 # Migrate a VM to another cluster node
 lxc move myvm --target node2
 
-# Or evacuate a node (migrate all its VMs)
-lxc cluster evacuate node1
+# Or evacuate a node and request live migration
+lxc cluster evacuate node1 --action=live-migrate
 ```
 
 ## Attaching Additional Disks
 
 ```bash
-# Create a new disk in the storage pool
+# Create a new block volume in the storage pool
+lxc storage volume create default data-disk --type=block size=100GiB
+
+# Attach it to the VM
 lxc config device add myvm data-disk disk \
   pool=default \
-  size=100GiB \
-  path=/mnt/data
+  source=data-disk
 
-# The disk appears inside the VM at /mnt/data
+# The disk appears inside the VM as a block device
 lxc exec myvm -- lsblk
-lxc exec myvm -- df -h /mnt/data
 ```
 
 ## Network Configuration
@@ -236,9 +240,9 @@ lxc config device add myvm gpu0 gpu \
 lxc config device add myvm gpu0 gpu gputype=physical pci=0000:01:00.0
 ```
 
-## Comparing LXD VM Performance with Docker
+## Comparing LXD VM Performance with Containers
 
-A practical benchmark shows LXD VMs are significantly lighter than KVM VMs managed via libvirt, and start faster:
+A practical benchmark shows the boot-time difference between LXD containers and LXD VMs:
 
 ```bash
 # Time a container launch
@@ -300,8 +304,9 @@ kvm-ok
 The DHCP lease may not have been issued yet, or the guest agent may not be running. Wait 30 seconds after the VM shows Running, then check again:
 
 ```bash
-# Force refresh
-lxc list --refresh
+# Check the current network state
+lxc list
+lxc info myvm
 ```
 
 LXD's VM support makes it a versatile tool that covers both lightweight containers and full hardware-isolated VMs under a single CLI and API. For teams already using LXD containers, adding VMs for specific workloads requires no additional tooling.
