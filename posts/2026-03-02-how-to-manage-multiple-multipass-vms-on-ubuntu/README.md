@@ -198,18 +198,26 @@ chmod +x mp-manager.sh
 
 ## Working with Instance Snapshots
 
-While Multipass does not have a first-class snapshot feature like libvirt, you can simulate it by copying the disk image:
+Multipass supports snapshots natively (since v1.13). Snapshots can only be taken when the instance is stopped:
 
 ```bash
-# Stop the VM
+# Stop the VM first - snapshots only work on stopped instances
 multipass stop myvm
 
-# Locate the disk image
-sudo ls /var/snap/multipass/common/data/multipassd/vault/instances/myvm/
+# Take a snapshot (auto-named snapshot1, snapshot2, ...)
+multipass snapshot myvm
 
-# Copy the disk image as a backup
-sudo cp /var/snap/multipass/common/data/multipassd/vault/instances/myvm/ubuntu-24.04.img \
-        /var/snap/multipass/common/data/multipassd/vault/instances/myvm/ubuntu-24.04.img.bak
+# Or give it an explicit name and comment
+multipass snapshot myvm --name pre-upgrade --comment "before kernel upgrade"
+
+# List all snapshots
+multipass list --snapshots
+
+# Restore from a snapshot (referenced as <instance>.<snapshot>)
+multipass restore myvm.pre-upgrade
+
+# Delete a snapshot when no longer needed
+multipass delete myvm.pre-upgrade --purge
 
 # Restart the VM
 multipass start myvm
@@ -255,24 +263,30 @@ ssh ubuntu@$IP1 "cat /home/ubuntu/file.txt" | ssh ubuntu@$IP2 "cat > /home/ubunt
 
 ## Setting Resource Limits for New Instances
 
-When managing multiple VMs on a constrained host, set reasonable defaults to prevent any single VM from being over-provisioned:
-
-```bash
-# Set conservative defaults
-sudo multipass set local.cpus=2
-sudo multipass set local.memory=2G
-sudo multipass set local.disk=15G
-```
-
-Override defaults for specific VMs that need more:
+Multipass does not expose global default settings for CPU, memory, or disk - new VMs default to 1 CPU, 1G RAM, and 5G disk unless you specify otherwise at launch time. Pick sensible values per VM based on its role:
 
 ```bash
 # Heavy dev machine gets more resources
 multipass launch 24.04 --name dev-primary --cpus 4 --memory 8G --disk 50G
 
-# Lightweight test VMs use defaults
-multipass launch 24.04 --name test-1
-multipass launch 24.04 --name test-2
+# Lightweight test VMs use small allocations
+multipass launch 24.04 --name test-1 --cpus 2 --memory 2G --disk 15G
+multipass launch 24.04 --name test-2 --cpus 2 --memory 2G --disk 15G
+```
+
+Resources for existing instances can be adjusted while the VM is stopped, using the per-instance settings keys:
+
+```bash
+# Stop the instance first
+multipass stop dev-primary
+
+# Bump CPU, memory, and disk
+multipass set local.dev-primary.cpus=6
+multipass set local.dev-primary.memory=12G
+multipass set local.dev-primary.disk=80G
+
+# Start it again
+multipass start dev-primary
 ```
 
 ## Cleaning Up Stale VMs
