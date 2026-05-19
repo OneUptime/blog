@@ -19,7 +19,7 @@ When running real-time workloads, Linux kernel background tasks, interrupt handl
 
 ## Understanding CPU Isolation
 
-When you isolate a CPU core, the Linux scheduler stops migrating tasks to it automatically. Only processes that are explicitly pinned to that core (using `taskset` or `cpuset`) will run there. The remaining cores handle all OS housekeeping tasks, keeping the isolated cores free for deterministic work.
+When you isolate a CPU core, the Linux scheduler stops migrating regular tasks to it automatically. Processes that are explicitly pinned to that core (using `taskset` or `cpuset`) can still run there, and you must handle interrupts and some kernel threads separately. The remaining cores handle OS housekeeping tasks, keeping the isolated cores free for deterministic work.
 
 There are two complementary mechanisms:
 
@@ -60,13 +60,13 @@ Find the `GRUB_CMDLINE_LINUX_DEFAULT` line and add CPU isolation parameters:
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
 
 # After (isolates CPUs 2 and 3):
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash isolcpus=2,3 nohz_full=2,3 rcu_nocbs=2,3"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash isolcpus=domain,2,3 nohz_full=2,3 rcu_nocbs=2,3"
 ```
 
 Parameter explanation:
-- `isolcpus=2,3` - removes CPUs from the scheduler domain
+- `isolcpus=domain,2,3` - removes CPUs from the scheduler domain
 - `nohz_full=2,3` - disables periodic timer interrupts on isolated CPUs (reduces OS noise)
-- `rcu_nocbs=2,3` - moves RCU callbacks off isolated CPUs
+- `rcu_nocbs=2,3` - moves RCU callbacks off isolated CPUs (also done automatically for `nohz_full` CPUs)
 
 ```bash
 # Update GRUB and reboot
@@ -86,7 +86,7 @@ cat /sys/devices/system/cpu/nohz_full
 # Expected: 2-3
 
 # See what processes are running on isolated CPUs
-ps -eo pid,psr,comm | awk '$2 >= 2'
+ps -eo pid,psr,comm | awk '$2 == 2 || $2 == 3'
 # Should show mostly kthreads and your pinned processes
 ```
 
@@ -95,21 +95,24 @@ ps -eo pid,psr,comm | awk '$2 >= 2'
 cgroups provide a more dynamic approach that can be reconfigured without rebooting.
 
 ```bash
-# Install cgroup tools
-sudo apt install -y cgroup-tools
+# Enable the cpuset controller in the unified cgroup v2 hierarchy
+echo "+cpuset" | sudo tee /sys/fs/cgroup/cgroup.subtree_control
 
 # Create a cpuset for real-time tasks
-sudo cgcreate -g cpuset:/realtime
+sudo mkdir /sys/fs/cgroup/realtime
 
 # Assign CPUs 2 and 3 to the realtime group
-echo "2-3" | sudo tee /sys/fs/cgroup/cpuset/realtime/cpuset.cpus
+echo "2-3" | sudo tee /sys/fs/cgroup/realtime/cpuset.cpus
 
-# Assign memory nodes (required for cpuset cgroups)
+# Assign memory nodes
 # Use node 0 unless you have NUMA and want to restrict memory
-echo "0" | sudo tee /sys/fs/cgroup/cpuset/realtime/cpuset.mems
+echo "0" | sudo tee /sys/fs/cgroup/realtime/cpuset.mems
+
+# Disable scheduler load balancing for this cpuset partition
+echo "isolated" | sudo tee /sys/fs/cgroup/realtime/cpuset.cpus.partition
 
 # Move a process to the realtime cgroup
-sudo cgclassify -g cpuset:/realtime <PID>
+echo <PID> | sudo tee /sys/fs/cgroup/realtime/cgroup.procs
 
 # Verify the process is on the correct CPU
 taskset -p <PID>
@@ -125,6 +128,7 @@ sudo apt install -y tuna
 
 # Display current CPU and IRQ assignments
 sudo tuna --show_threads
+sudo tuna --show_irqs
 
 # Isolate CPUs 2 and 3 dynamically (runtime, no reboot needed)
 sudo tuna --cpus=2,3 --isolate
@@ -167,7 +171,7 @@ done
 
 # Move all IRQs to CPUs 0 and 1 (away from isolated 2 and 3)
 for irq_dir in /proc/irq/*/; do
-    echo "0,1" > ${irq_dir}smp_affinity_list 2>/dev/null
+    echo "0,1" | sudo tee "${irq_dir}smp_affinity_list" >/dev/null 2>&1 || true
 done
 
 # Automate this with irqbalance exclusions
@@ -201,7 +205,7 @@ sudo taskset -c 2 cyclictest \
   --histogram=200
 
 # Compare maximum latency with and without isolation
-# With proper isolation, max latency should be < 50 microseconds on RT kernel
+# With proper isolation on suitable hardware, maximum latency should be much lower than without isolation
 ```
 
 ## Creating a Startup Script
