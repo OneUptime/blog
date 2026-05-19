@@ -108,7 +108,7 @@ sudo vtysh
 
 ### Example: Level-2-Only IS-IS Configuration (Data Center Style)
 
-This example assumes two routers connected via interfaces `eth1` and `eth2`.
+This example assumes two routers connected using interface `eth1` on each router.
 
 On Router 1 (NET: 49.0000.0000.0001.00):
 
@@ -119,17 +119,14 @@ configure terminal
 ! Enable IS-IS routing process
 router isis CORE
  ! Set the NET address
- ! Format: Area(49.0000) + System ID(0000.0001, derived from 10.0.0.1) + Selector(00)
+ ! Format: Area(49.0000) + System ID(0000.0000.0001) + Selector(00)
  net 49.0000.0000.0001.00
  !
  ! Set this router to operate only at Level 2 (backbone)
  is-type level-2-only
  !
- ! Optionally set the hostname for easier identification
- hostname router1
- !
- ! Redistribute connected routes into IS-IS
- redistribute connected
+ ! Advertise dynamic hostnames for easier identification
+ hostname dynamic
 exit
 
 ! Configure IS-IS on the interface connecting to Router 2
@@ -143,8 +140,8 @@ interface eth1
  isis network point-to-point
  !
  ! Optional: adjust hello interval and multiplier
- isis hello-interval 3
- isis hello-multiplier 3
+ isis hello-interval level-2 3
+ isis hello-multiplier level-2 3
 exit
 
 ! Add a loopback interface (used as the router ID)
@@ -166,16 +163,15 @@ configure terminal
 router isis CORE
  net 49.0000.0000.0002.00
  is-type level-2-only
- hostname router2
- redistribute connected
+ hostname dynamic
 exit
 
 interface eth1
  ip router isis CORE
  isis circuit-type level-2-only
  isis network point-to-point
- isis hello-interval 3
- isis hello-multiplier 3
+ isis hello-interval level-2 3
+ isis hello-multiplier level-2 3
 exit
 
 interface lo
@@ -224,7 +220,7 @@ sudo vtysh -c "show ip route isis"
 sudo vtysh -c "show ip route"
 ```
 
-Routes learned from Router 2 should appear with the `I` or `i` prefix indicator.
+Routes learned from Router 2 should appear with the `I` prefix indicator.
 
 ## Level-1 and Level-2 Mixed Configuration
 
@@ -276,15 +272,7 @@ exit
 
 ! Per-interface authentication
 interface eth1
- isis authentication mode md5
- isis authentication key-chain isis-keys
-exit
-
-! Define the key chain
-key chain isis-keys
- key 1
-  key-string your_interface_password
-  ! Set accept/send lifetimes as needed
+ isis password md5 your_interface_password
 exit
 
 end
@@ -299,14 +287,11 @@ IS-IS uses a metric system to influence path selection. The default metric is 10
 configure terminal
 
 interface eth1
- ! Lower metric = preferred path (default is 10)
- isis metric 5
- !
  ! Wide metrics support values > 63 (needed for MPLS traffic engineering)
- isis metric 100 level-2
+ isis metric level-2 100
 exit
 
-! Enable wide metrics globally
+! FRR uses wide metrics by default, but you can set it explicitly
 router isis CORE
  metric-style wide
 exit
@@ -337,7 +322,7 @@ If adjacency does not form:
 sudo vtysh
 debug isis adj-packets
 debug isis events
-debug isis hello-pkt
+debug isis packet-dump
 # Watch the output - common issues are MTU mismatch, NET area mismatch,
 # or authentication failures
 
@@ -349,11 +334,11 @@ ip link show eth1
 sudo vtysh -c "show isis interface eth1"
 ```
 
-A common issue is MTU mismatch between routers. IS-IS performs MTU checks during adjacency formation. Ensure both ends of a link have matching MTU values, or disable the check:
+A common issue is MTU mismatch between routers. IS-IS hello padding can expose MTU problems during adjacency formation. Ensure both ends of a link have matching MTU values, or configure hello padding only during adjacency formation:
 
 ```text
 interface eth1
- isis dont-check-mtu
+ isis hello padding during-adjacency-formation
 ```
 
 IS-IS is a solid choice for data center spine-leaf topologies and carrier networks where fast convergence, operational simplicity, and IPv6 support (IS-IS natively carries both IPv4 and IPv6 prefixes) are priorities. FRRouting on Ubuntu provides a production-capable IS-IS implementation suitable for both lab testing and real deployments.
