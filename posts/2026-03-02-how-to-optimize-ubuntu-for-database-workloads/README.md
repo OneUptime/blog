@@ -63,7 +63,8 @@ vm.swappiness = 1
 vm.dirty_ratio = 15
 vm.dirty_background_ratio = 5
 
-# How often kswapd reclaims memory (centiseconds)
+# Tendency of the kernel to reclaim dentry/inode cache memory
+# Default is 100; lower values keep more metadata cached - useful for databases
 vm.vfs_cache_pressure = 50
 
 # Maximum amount of memory (bytes) that can be used for shared memory
@@ -168,10 +169,10 @@ echo 1024 | sudo tee /sys/block/nvme0n1/queue/nr_requests
 
 # Disable read-ahead for random I/O workloads (databases mostly do random I/O)
 # 0 = no readahead (better for OLTP)
-blockdev --setra 0 /dev/nvme0n1
+sudo blockdev --setra 0 /dev/nvme0n1
 
 # For sequential workloads (data warehousing), keep some readahead
-# blockdev --setra 256 /dev/nvme0n1
+# sudo blockdev --setra 256 /dev/nvme0n1
 
 # Make read-ahead persistent
 cat << 'EOF' | sudo tee /etc/udev/rules.d/61-readahead.rules
@@ -208,13 +209,17 @@ sudo systemctl edit postgresql
 # For databases on XFS (recommended for large files)
 # Mount with noatime and appropriate log stripe settings
 # Add to /etc/fstab:
-# /dev/nvme0n1 /var/lib/postgresql xfs defaults,noatime,nodiratime,logbsize=256k,nobarrier 0 0
+# /dev/nvme0n1 /var/lib/postgresql xfs defaults,noatime,nodiratime,logbsize=256k 0 0
 
 # For ext4
-# /dev/nvme0n1 /var/lib/postgresql ext4 defaults,noatime,nodiratime,data=ordered,barrier=0 0 0
+# /dev/nvme0n1 /var/lib/postgresql ext4 defaults,noatime,nodiratime,data=ordered 0 0
 
-# Note: only disable barrier if you have a UPS (battery-backed write cache)
-# Disabling barrier without battery protection risks data corruption on power loss
+# Note: the XFS "nobarrier" and "barrier" mount options were deprecated in kernel
+# 4.10 and removed in 4.19 - modern Ubuntu kernels always use write barriers and
+# will refuse or warn on these options. Disabling barriers is only safe with a
+# battery-backed/UPS-protected write cache; otherwise it risks corruption on
+# power loss. For storage with a reliable BBU, prefer disabling the drive's
+# volatile write cache instead (e.g. via the controller or hdparm -W 0).
 ```
 
 ## CPU Performance Governor
@@ -276,10 +281,12 @@ sudo nano /etc/default/grub
 
 sudo update-grub
 
-# Disable CPU frequency scaling
+# Set energy_perf_bias to performance on boot
+# On modern Ubuntu, /etc/rc.local is not shipped by default; rc-local.service
+# only runs if /etc/rc.local exists AND is executable, so create + chmod +x
 cat << 'EOF' | sudo tee /etc/rc.local
 #!/bin/bash
-# Disable CPU C-states for database server
+# Bias CPUs toward performance for database server
 for cpu in /sys/devices/system/cpu/cpu*/power/energy_perf_bias; do
     echo 0 > $cpu 2>/dev/null
 done
