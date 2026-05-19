@@ -73,9 +73,6 @@ sudo apt install language-pack-es         # Spanish
 sudo apt install language-pack-ja         # Japanese
 sudo apt install language-pack-zh-hans    # Simplified Chinese
 
-# Install language support (includes more components)
-sudo apt install language-support-en
-
 # Generate locale data (alternative to language packs)
 sudo locale-gen en_US.UTF-8
 sudo locale-gen de_DE.UTF-8
@@ -285,7 +282,7 @@ sudo nano /etc/ssh/sshd_config
 ```
 
 ```bash
-sudo systemctl restart sshd
+sudo systemctl restart ssh
 ```
 
 ## Locale in Docker Containers
