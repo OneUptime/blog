@@ -82,8 +82,7 @@ sudo dmesg | grep -A 10 "Out of memory"
 OOM kill messages look like:
 
 ```text
-[123456.789] Out of memory: Kill process 12345 (java) score 823 or sacrifice child
-[123456.790] Killed process 12345 (java) total-vm:4194304kB, anon-rss:2097152kB, file-rss:0kB
+[123456.789] Out of memory: Killed process 12345 (java) total-vm:4194304kB, anon-rss:2097152kB, file-rss:0kB, shmem-rss:0kB, UID:0 pgtables:8192kB oom_score_adj:0
 ```
 
 ### Check systemd Journal
@@ -160,7 +159,7 @@ echo -1000 | sudo tee /proc/1/oom_score_adj  # protect init
 
 ## Disabling OOM Killer (Rare Cases)
 
-In some scenarios you want the system to hang rather than kill processes (e.g., a database where data integrity matters more than availability):
+In some scenarios you want allocation requests to fail upfront rather than risk having processes killed later (e.g., a database where data integrity matters more than availability):
 
 ```bash
 # Disable OOM killer system-wide (use with caution)
