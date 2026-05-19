@@ -32,16 +32,16 @@ The lock file distinction matters: `requirements.txt` from `pip freeze` pins eve
 
 ## Installation
 
-### Method 1: pip (Simplest)
+### Method 1: pipx (Recommended for Tools)
+
+pipx installs Python CLI tools in isolated environments, which prevents conflicts:
 
 ```bash
-pip install --user pipenv
+sudo apt-get install -y pipx
+pipx install pipenv
+pipx ensurepath
 
-# Add pipenv to PATH (if not already)
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
-
-# Verify
 pipenv --version
 ```
 
@@ -55,18 +55,22 @@ sudo apt-get install -y pipenv
 pipenv --version
 ```
 
-### Method 3: pipx (Recommended for Tools)
+### Method 3: pip (Legacy User Install)
 
-pipx installs Python CLI tools in isolated environments, which prevents conflicts:
+On older Ubuntu releases that do not enforce PEP 668, you can install pipenv with pip:
 
 ```bash
-sudo apt-get install -y pipx
-pipx install pipenv
-pipx ensurepath
+pip install --user pipenv
 
+# Add pipenv to PATH (if not already)
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
+
+# Verify
 pipenv --version
 ```
+
+On modern Ubuntu releases such as Ubuntu 24.04 and newer, `pip install --user pipenv` may be blocked by Python's externally managed environment protections. Use pipx or the Ubuntu package instead.
 
 ## Creating a New Project
 
@@ -82,7 +86,7 @@ pipenv --python 3
 
 # This creates:
 # Pipfile        - dependency declarations
-# .venv/         - virtual environment (or in ~/.local/share/virtualenvs/)
+# virtualenv     - in ~/.local/share/virtualenvs/ (or .venv/ with PIPENV_VENV_IN_PROJECT)
 ```
 
 The virtual environment lives in `~/.local/share/virtualenvs/myproject-<hash>/` by default. Set `PIPENV_VENV_IN_PROJECT=1` to keep it inside the project directory as `.venv/`:
@@ -208,7 +212,7 @@ pipenv update requests
 pipenv update
 
 # After updating, check for security vulnerabilities
-pipenv check
+pipenv scan
 ```
 
 ## Environment Variables with .env
@@ -272,11 +276,14 @@ If a tool or service requires a `requirements.txt`:
 # Generate from the lock file
 pipenv requirements > requirements.txt
 
-# Generate dev requirements
+# Generate requirements including dev packages
 pipenv requirements --dev > requirements-dev.txt
 
-# Generate locked (exact versions)
-pipenv requirements --dev > requirements-dev.txt
+# Generate only dev requirements
+pipenv requirements --dev-only > requirements-dev-only.txt
+
+# Generate with hashes
+pipenv requirements --hash > requirements.txt
 ```
 
 ## Removing and Cleaning
@@ -292,7 +299,7 @@ pipenv uninstall --dev pytest
 pipenv clean
 
 # Remove the entire virtual environment
-pipenv --rm
+pipenv remove
 
 # Recreate it
 pipenv install
@@ -385,7 +392,7 @@ pipenv --venv
 
 # Delete and recreate with PIPENV_VENV_IN_PROJECT
 export PIPENV_VENV_IN_PROJECT=1
-pipenv --rm
+pipenv remove
 pipenv install
 ```
 
