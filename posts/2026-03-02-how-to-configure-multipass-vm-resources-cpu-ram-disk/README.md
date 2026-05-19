@@ -17,12 +17,10 @@ Before changing anything, understand what defaults Multipass uses:
 ```bash
 # Check current defaults
 
-multipass get local.cpus    # default: 1
-multipass get local.memory  # default: 1G
-multipass get local.disk    # default: 5G
+multipass help launch
 ```
 
-These defaults apply to any `multipass launch` command that doesn't explicitly specify resources.
+The `launch` help shows the default resources used by any `multipass launch` command that doesn't explicitly specify them: 1 CPU, 1G of memory, and 5G of disk.
 
 ## Specifying Resources at Launch Time
 
@@ -55,7 +53,7 @@ multipass launch --name compiler-vm --cpus $CORES --memory 16G --disk 100G
 
 ### Memory Specification
 
-Memory accepts suffixes: `K`, `M`, `G`. Always use whole numbers:
+Memory accepts positive sizes in bytes or with suffixes such as `K`, `M`, and `G`:
 
 ```bash
 # 512MB (minimal)
@@ -70,7 +68,7 @@ multipass launch --name db-server --memory 16G
 
 ### Disk Specification
 
-Disk size uses `G` (gigabytes). The disk image uses copy-on-write, so actual disk usage on the host is only as much as data written:
+Disk size accepts positive sizes in bytes or with suffixes such as `K`, `M`, and `G`. The disk image grows as data is written, so unused allocated space usually does not immediately consume the same amount of host disk:
 
 ```bash
 # 20GB for moderate work
@@ -83,31 +81,13 @@ multipass launch --name data-vm --disk 100G
 # Always provision more than you think you'll need
 ```
 
-## Setting Persistent Defaults
+## Reusing Resource Settings
 
-If you always need more than 1 CPU and 1G RAM, set global defaults so every launch inherits them:
-
-```bash
-# Set new defaults
-sudo multipass set local.cpus=2
-sudo multipass set local.memory=4G
-sudo multipass set local.disk=20G
-
-# Verify they took effect
-multipass get local.cpus
-multipass get local.memory
-multipass get local.disk
-
-# Now this launch uses 2 CPUs, 4G RAM, 20G disk
-multipass launch --name myvm
-```
-
-To reset a default back to the factory value:
+Multipass does not currently expose global CPU, memory, or disk defaults through `multipass set`. If you always need more than 1 CPU and 1G RAM, keep the resource flags in your launch command or wrap them in a small shell alias/function:
 
 ```bash
-sudo multipass set local.cpus=1
-sudo multipass set local.memory=1G
-sudo multipass set local.disk=5G
+# Example reusable launch command
+multipass launch 24.04 --cpus 2 --memory 4G --disk 20G --name myvm
 ```
 
 ## Verifying Resources Inside the VM
@@ -144,33 +124,27 @@ Filesystem      Size  Used Avail Use% Mounted on
 
 ## Adjusting Resources on an Existing VM
 
-Multipass does not currently support live resource modification. To change resources, you need to stop the VM, modify its configuration, and restart. However, Multipass's CLI does not expose a direct `set-resources` command for existing instances.
+Multipass does not currently support live resource modification. To change resources, you need to stop the VM, update its per-instance settings, and restart it.
 
-### The Workaround: Edit the Instance Configuration
+### Update the Instance Settings
 
-For the KVM/QEMU backend, instance configurations are stored in JSON files:
+CPU, memory, and disk are exposed through `local.<instance-name>.cpus`, `local.<instance-name>.memory`, and `local.<instance-name>.disk` settings:
 
 ```bash
 # Stop the instance first
 multipass stop workstation
 
-# Find the instance config (path may vary by snap version)
-sudo ls /var/snap/multipass/common/data/multipassd/vault/instances/workstation/
+# Update resources
+multipass set local.workstation.cpus=4
+multipass set local.workstation.memory=8G
+multipass set local.workstation.disk=50G
 
-# Edit the config file (backup first)
-sudo cp /var/snap/multipass/common/data/multipassd/vault/instances/workstation/multipass-info.json \
-        /tmp/workstation-backup.json
-
-sudo nano /var/snap/multipass/common/data/multipassd/vault/instances/workstation/multipass-info.json
-```
-
-Inside the JSON, update the CPU, memory fields, then restart:
-
-```bash
-sudo snap restart multipass
+# Restart and verify
 multipass start workstation
 multipass info workstation  # verify new resources
 ```
+
+The disk size can only be increased. CPU, memory, and disk settings can only be updated while the instance is stopped.
 
 ### The Safer Workaround: Recreate with Transferred Data
 
@@ -198,22 +172,22 @@ multipass exec newvm -- tar xzf /home/ubuntu/data-backup.tar.gz -C /
 
 ## Disk Expansion Inside the VM
 
-Even if you allocated enough disk at launch, you might later need more space. Since Multipass uses cloud images, the filesystem inside often uses less than the allocated disk:
+Even if you increase the disk size with `multipass set`, the partition inside the VM may not automatically expand to use the new space:
 
 ```bash
 # Check available space inside the VM
 multipass exec myvm -- df -h /
 
-# If there's unpartitioned space, expand from inside
-multipass exec myvm -- bash -c "
-  # Check current partition layout
-  lsblk
+# If there's unpartitioned space, shell into the instance
+multipass shell myvm
 
-  # Grow the partition and filesystem (cloud images use growpart)
-  sudo growpart /dev/sda 1
-  sudo resize2fs /dev/sda1
-  df -h /
-"
+# Check current partition layout
+lsblk
+
+# Grow the partition and filesystem
+sudo parted /dev/sda resizepart 1 100%
+sudo resize2fs /dev/sda1
+df -h /
 ```
 
 Resource Planning Guidelines
