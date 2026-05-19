@@ -23,7 +23,7 @@ The recommended setup is 3 server nodes plus clients on all application hosts.
 
 ## Prerequisites
 
-- Ubuntu 20.04 or 22.04
+- Ubuntu 22.04 or 24.04
 - 3 server VMs (or 1 for dev/test)
 - Network connectivity between all nodes
 - sudo privileges
@@ -43,7 +43,7 @@ curl -fsSL https://apt.releases.hashicorp.com/gpg | \
 
 # Add the repository
 echo "deb [signed-by=/usr/share/keyrings/hashicorp-archive-keyring.gpg] \
-  https://apt.releases.hashicorp.com $(lsb_release -cs) main" | \
+  https://apt.releases.hashicorp.com $(grep -oP '(?<=UBUNTU_CODENAME=).*' /etc/os-release || lsb_release -cs) main" | \
   sudo tee /etc/apt/sources.list.d/hashicorp.list
 
 # Install Consul
@@ -62,13 +62,17 @@ Generate a gossip encryption key that all cluster members will share:
 consul keygen
 # Output: a base64 string like: J54AQ6UtgVGXfXXH5+pHVA==
 
-# Generate CA and TLS certificates for RPC encryption
+# Generate CA and TLS certificates for RPC and HTTPS encryption
 consul tls ca create
 # Creates: consul-agent-ca.pem, consul-agent-ca-key.pem
 
 # Create server certificates (run for each server)
 consul tls cert create -server -dc dc1 -domain consul
 # Creates: dc1-server-consul-0.pem, dc1-server-consul-0-key.pem
+
+# Create certificates for client agents and CLI/API access
+consul tls cert create -client -domain consul
+consul tls cert create -cli -domain consul
 ```
 
 ## Configuring the Server Nodes
@@ -80,8 +84,8 @@ sudo mkdir -p /etc/consul.d
 sudo mkdir -p /var/lib/consul
 ```
 
-```json
-// /etc/consul.d/server.hcl (use HCL or JSON)
+```hcl
+# /etc/consul.d/server.hcl
 datacenter = "dc1"
 data_dir   = "/var/lib/consul"
 log_level  = "INFO"
@@ -132,9 +136,9 @@ performance {
 
 # Ports
 ports {
-  grpc  = 8502
-  https = 8501
-  http  = 8500  # Disable in production (use HTTPS only)
+  grpc_tls = 8503
+  https    = 8501
+  http     = 8500  # Disable in production (use HTTPS only)
 }
 
 # Retry join - list of server addresses to join
@@ -165,7 +169,9 @@ encrypt = "J54AQ6UtgVGXfXXH5+pHVA=="
 
 tls {
   defaults {
-    ca_file         = "/etc/consul.d/consul-agent-ca.pem"
+    ca_file   = "/etc/consul.d/consul-agent-ca.pem"
+    cert_file = "/etc/consul.d/consul-client-0.pem"
+    key_file  = "/etc/consul.d/consul-client-0-key.pem"
     verify_outgoing = true
   }
 }
@@ -210,6 +216,8 @@ export CONSUL_HTTP_TOKEN="<management-token-uuid>"
 export CONSUL_HTTP_ADDR="https://localhost:8501"
 export CONSUL_TLS_SERVER_NAME="server.dc1.consul"
 export CONSUL_CACERT="/etc/consul.d/consul-agent-ca.pem"
+export CONSUL_CLIENT_CERT="/etc/consul.d/consul-cli-0.pem"
+export CONSUL_CLIENT_KEY="/etc/consul.d/consul-cli-0-key.pem"
 ```
 
 Create an agent token for servers and clients:
@@ -243,8 +251,8 @@ Services can be registered via config file or HTTP API.
 
 ### Config File Registration
 
-```json
-// /etc/consul.d/nginx.hcl
+```hcl
+# /etc/consul.d/nginx.hcl
 service {
   id   = "nginx-01"
   name = "nginx"
@@ -275,6 +283,8 @@ curl -H "X-Consul-Token: $CONSUL_HTTP_TOKEN" \
   -X PUT \
   -H "Content-Type: application/json" \
   --cacert /etc/consul.d/consul-agent-ca.pem \
+  --cert /etc/consul.d/consul-cli-0.pem \
+  --key /etc/consul.d/consul-cli-0-key.pem \
   https://localhost:8501/v1/agent/service/register \
   -d '{
     "ID": "postgres-01",
@@ -290,11 +300,15 @@ curl -H "X-Consul-Token: $CONSUL_HTTP_TOKEN" \
 ## Querying Services
 
 ```bash
-# Discover healthy instances of a service
+# List services in the catalog
 consul catalog services
 
 # Find all healthy nginx instances
-curl "http://localhost:8500/v1/health/service/nginx?passing=true"
+curl -H "X-Consul-Token: $CONSUL_HTTP_TOKEN" \
+  --cacert /etc/consul.d/consul-agent-ca.pem \
+  --cert /etc/consul.d/consul-cli-0.pem \
+  --key /etc/consul.d/consul-cli-0-key.pem \
+  "https://localhost:8501/v1/health/service/nginx?passing=true"
 
 # DNS query (Consul runs a DNS server on port 8600)
 dig @127.0.0.1 -p 8600 nginx.service.consul
@@ -309,7 +323,8 @@ Configure your system to use Consul DNS:
 # /etc/systemd/resolved.conf.d/consul.conf
 [Resolve]
 DNS=127.0.0.1:8600
-DOMAINS=~consul
+DNSSEC=false
+Domains=~consul
 ```
 
 ```bash
@@ -360,12 +375,13 @@ consul health checks
 **Agent fails to join cluster:**
 ```bash
 # Check connectivity
-nc -zv 10.0.1.10 8301  # Gossip port (TCP and UDP)
+nc -zv 10.0.1.10 8301   # Gossip port (TCP)
+nc -zvu 10.0.1.10 8301  # Gossip port (UDP)
 nc -zv 10.0.1.10 8300  # RPC port
 
 # Check firewall
 sudo ufw status
-sudo iptables -L -n | grep -E '8300|8301|8500|8501|8502|8600'
+sudo iptables -L -n | grep -E '8300|8301|8500|8501|8503|8600'
 ```
 
 **ACL token errors:**
@@ -374,7 +390,11 @@ sudo iptables -L -n | grep -E '8300|8301|8500|8501|8502|8600'
 echo $CONSUL_HTTP_TOKEN
 
 # Test with the API directly
-curl -H "X-Consul-Token: $CONSUL_HTTP_TOKEN" http://localhost:8500/v1/acl/info
+curl -H "X-Consul-Token: $CONSUL_HTTP_TOKEN" \
+  --cacert /etc/consul.d/consul-agent-ca.pem \
+  --cert /etc/consul.d/consul-cli-0.pem \
+  --key /etc/consul.d/consul-cli-0-key.pem \
+  https://localhost:8501/v1/acl/token/self
 ```
 
 **Leader not elected:**
