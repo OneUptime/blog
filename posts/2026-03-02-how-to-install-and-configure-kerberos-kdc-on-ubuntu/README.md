@@ -82,7 +82,7 @@ sudo nano /etc/krb5.conf
     # Default realm (must be uppercase)
     default_realm = EXAMPLE.COM
 
-    # Enable DNS lookup for KDC addresses
+    # Use the KDC addresses listed below
     dns_lookup_realm = false
     dns_lookup_kdc = false
 
@@ -91,10 +91,8 @@ sudo nano /etc/krb5.conf
     renew_lifetime = 7d
     forwardable = true
 
-    # Encryption types (modern defaults)
-    default_tkt_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
-    default_tgs_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
-    permitted_enctypes = aes256-cts-hmac-sha1-96 aes128-cts-hmac-sha1-96
+    # Use the system default encryption types unless compatibility requires otherwise
+    permitted_enctypes = DEFAULT
 
 [realms]
     EXAMPLE.COM = {
@@ -145,14 +143,14 @@ The `*` privilege grants all capabilities (add, modify, delete, inquire, etc.).
 
 ```bash
 sudo systemctl enable krb5-kdc krb5-admin-server
-sudo systemctl start krb5-kdc krb5-admin-server
+sudo systemctl restart krb5-kdc krb5-admin-server
 sudo systemctl status krb5-kdc krb5-admin-server
 ```
 
 Verify the KDC is listening:
 
 ```bash
-sudo ss -tlnup | grep kdc
+sudo ss -tulnp | grep -E ':(88|749)\b'
 # Should show port 88 (Kerberos) and 749 (kadmind)
 ```
 
@@ -218,15 +216,19 @@ If `kinit` succeeds and `klist` shows a valid ticket, the KDC is working.
 ## Firewall Configuration
 
 ```bash
-# Allow Kerberos traffic
+# Option 1: Allow Kerberos traffic from any source
 sudo ufw allow 88/tcp
 sudo ufw allow 88/udp
 sudo ufw allow 749/tcp   # kadmind
 sudo ufw allow 464/tcp   # kpasswd
 sudo ufw allow 464/udp
 
-# Restrict to internal network if possible
-sudo ufw allow from 192.168.1.0/24 to any port 88
+# Option 2: Restrict Kerberos traffic to the internal network instead
+sudo ufw allow from 192.168.1.0/24 to any port 88 proto tcp
+sudo ufw allow from 192.168.1.0/24 to any port 88 proto udp
+sudo ufw allow from 192.168.1.0/24 to any port 749 proto tcp
+sudo ufw allow from 192.168.1.0/24 to any port 464 proto tcp
+sudo ufw allow from 192.168.1.0/24 to any port 464 proto udp
 ```
 
 ## Managing Principals with kadmin
