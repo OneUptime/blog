@@ -135,6 +135,7 @@ autoload_nvmrc() {
 
 # Run on directory change
 if [ -n "$ZSH_VERSION" ]; then
+    autoload -U add-zsh-hook
     add-zsh-hook chpwd autoload_nvmrc
     autoload_nvmrc
 fi
@@ -218,7 +219,7 @@ Modern npm includes npx, which runs a package without installing it globally:
 # Run a command with a specific package version
 npx --yes create-react-app my-app
 
-# Run without caching
+# Only run if the package is already installed; don't fetch it
 npx --no-install some-cli-tool
 ```
 
@@ -284,7 +285,7 @@ rm -rf ~/.nvm
 | `.nvmrc` support | Yes | Yes |
 | Windows support | No | Yes |
 | Maturity | Very mature | Mature |
-| Shell compatibility | bash, zsh, fish | bash, zsh, fish, PowerShell |
+| Shell compatibility | bash, zsh, ksh, dash | bash, zsh, fish, PowerShell |
 
 For new setups, fnm is worth considering due to its speed. For teams already using nvm, the switching cost is rarely worth it.
 
