@@ -51,21 +51,21 @@ grep hashicorp /etc/apt/sources.list.d/*.list
 # sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys AA16FCBCA621E701
 
 # Method 3: Download key from keyserver using gpg
+sudo install -d -m 0755 /etc/apt/keyrings
 gpg --keyserver keyserver.ubuntu.com --recv-keys AA16FCBCA621E701
-gpg --export AA16FCBCA621E701 | sudo tee /usr/share/keyrings/custom-key.gpg > /dev/null
+gpg --export AA16FCBCA621E701 | sudo tee /etc/apt/keyrings/custom-archive-keyring.gpg > /dev/null
+# Then update the repository entry to use:
+# signed-by=/etc/apt/keyrings/custom-archive-keyring.gpg
 ```
 
 ### Fix for Expired Ubuntu Keys
 
 ```bash
-# Ubuntu archive keys can expire - update them
-sudo apt-key list | grep expired
-
-# Refresh all keys
-sudo apt-key adv --keyserver keyserver.ubuntu.com --refresh-keys
-
-# Or update the ubuntu-keyring package
+# Ubuntu archive keys are managed by the ubuntu-keyring package
 sudo apt-get install --reinstall ubuntu-keyring
+
+# On older systems, check for legacy expired keys
+sudo apt-key list | grep expired
 ```
 
 ## Error: 404 Not Found
@@ -86,8 +86,9 @@ This happens when a repository URL no longer exists. Common causes:
 
 ```bash
 # Check your sources
-cat /etc/apt/sources.list
+cat /etc/apt/sources.list 2>/dev/null
 ls /etc/apt/sources.list.d/
+# Ubuntu 24.04+ uses /etc/apt/sources.list.d/ubuntu.sources by default
 
 # For an EOL Ubuntu release, switch to old-releases
 # Hirsute (21.04), Groovy (20.10), etc. moved to old-releases.ubuntu.com
@@ -193,7 +194,7 @@ Duplicate or malformed entries in source files.
 grep -r "^deb" /etc/apt/sources.list /etc/apt/sources.list.d/ | sort
 
 # Find duplicates
-grep -r "^deb" /etc/apt/sources.list /etc/apt/sources.list.d/ | awk '{print $2}' | sort | uniq -d
+grep -r "^deb" /etc/apt/sources.list /etc/apt/sources.list.d/ | sed 's/^[^:]*://' | sort | uniq -d
 
 # Check for syntax errors in sources.list
 sudo apt-get update 2>&1 | grep "Malformed"
@@ -293,9 +294,9 @@ Add apt update verification to your monitoring:
 LOGFILE="/var/log/apt-update-check.log"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
-if sudo apt-get update -qq 2>&1 | grep -qiE "error|fail"; then
+if ! OUTPUT=$(sudo apt-get -qq --error-on=any update 2>&1); then
     echo "[$TIMESTAMP] apt-get update encountered errors:" >> "$LOGFILE"
-    sudo apt-get update 2>&1 >> "$LOGFILE"
+    echo "$OUTPUT" >> "$LOGFILE"
     echo "[$TIMESTAMP] APT UPDATE FAILED - check $LOGFILE"
     exit 1
 fi
