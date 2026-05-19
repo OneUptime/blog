@@ -27,7 +27,7 @@ git --version
 # Output: git version 2.x.x
 ```
 
-For the latest Git version, use the official Git PPA:
+For a newer stable Git build, use the Ubuntu Git Maintainers PPA:
 
 ```bash
 sudo add-apt-repository ppa:git-core/ppa
@@ -81,7 +81,7 @@ git config --global core.editor nvim
 
 ### Set Default Branch Name
 
-Modern Git defaults to `main` for new repositories. Ensure consistency:
+Git currently defaults to `master` for new repositories unless configured. Ensure new repositories use `main`:
 
 ```bash
 git config --global init.defaultBranch main
@@ -127,7 +127,7 @@ A configured `~/.gitconfig` looks like:
 
 ## Setting Up SSH Authentication
 
-SSH key authentication is more secure and convenient than entering a password for every Git operation.
+SSH key authentication is more secure and convenient than entering HTTPS credentials or tokens for Git operations.
 
 ### Generate an SSH Key
 
@@ -285,7 +285,7 @@ Avoid the "pulling without reconcile strategy" warning:
 # Rebase on pull (preferred for clean history)
 git config --global pull.rebase true
 
-# Or merge on pull (default behavior)
+# Or merge on pull
 git config --global pull.rebase false
 
 # Or fast-forward only (safe, fails if not possible)
@@ -304,7 +304,7 @@ git config --global credential.helper 'cache --timeout=3600'
 git config --global credential.helper store
 
 # On Ubuntu, use the libsecret backend (secure keyring integration)
-sudo apt install libsecret-1-0 libsecret-1-dev
+sudo apt install libsecret-1-0 libsecret-1-dev build-essential
 sudo make --directory=/usr/share/doc/git/contrib/credential/libsecret
 git config --global credential.helper /usr/share/doc/git/contrib/credential/libsecret/git-credential-libsecret
 ```
@@ -346,4 +346,4 @@ git config --global --unset setting.name
 git config --global --edit
 ```
 
-Running through this setup on a fresh Ubuntu installation takes about 10 minutes and makes every subsequent interaction with Git smoother. The SSH key setup is the most impactful step - eliminating password prompts for every push and pull reduces friction significantly.
+Running through this setup on a fresh Ubuntu installation takes about 10 minutes and makes every subsequent interaction with Git smoother. The SSH key setup is the most impactful step - reducing credential prompts for every push and pull reduces friction significantly.
