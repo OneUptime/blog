@@ -104,10 +104,10 @@ net.core.netdev_max_backlog = 65535
 net.core.rmem_max = 16777216
 net.core.wmem_max = 16777216
 
-# Reuse TIME_WAIT sockets more aggressively
+# Reuse TIME_WAIT sockets for new outbound connections
 net.ipv4.tcp_tw_reuse = 1
 
-# Reduce TIME_WAIT timeout
+# Reduce FIN_WAIT_2 timeout for orphaned sockets
 net.ipv4.tcp_fin_timeout = 15
 
 # Increase local port range for outbound connections
