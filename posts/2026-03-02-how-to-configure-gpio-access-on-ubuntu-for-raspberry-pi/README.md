@@ -20,7 +20,7 @@ This guide covers both command-line GPIO access and Python GPIO programming on U
 
 ## Understanding GPIO on Ubuntu vs Raspberry Pi OS
 
-On Raspberry Pi OS, the popular `RPi.GPIO` Python library uses the legacy sysfs interface and works out of the box. On Ubuntu, the situation is different:
+On Raspberry Pi OS, the popular `RPi.GPIO` Python library uses low-level Raspberry Pi hardware access and works out of the box on supported models. On Ubuntu, the situation is different:
 
 - The `RPi.GPIO` library does not work reliably on Ubuntu (it was designed for Raspberry Pi OS)
 - Ubuntu uses the character device GPIO interface (`/dev/gpiochip0`, etc.)
@@ -41,7 +41,7 @@ sudo apt-get install -y python3-gpiozero python3-lgpio python3-pip
 
 # Optional: RPi.GPIO works on some Ubuntu versions with extra setup
 # (gpiozero is strongly preferred)
-pip3 install RPi.GPIO  # May or may not work depending on kernel version
+python3 -m pip install --user RPi.GPIO  # May or may not work depending on kernel version and Pi model
 ```
 
 ## Configuring GPIO Permissions
@@ -60,7 +60,7 @@ getent group gpio
 sudo groupadd gpio
 
 # Change group ownership of gpiochip devices
-sudo chown root:gpio /dev/gpiochip0
+sudo chown root:gpio /dev/gpiochip*
 
 # Add your user to the gpio group
 sudo usermod -aG gpio $USER
@@ -109,8 +109,10 @@ gpiodetect
 gpioinfo gpiochip0
 
 # Output shows pin index, name, direction, and current state
-# Lines 0-27 correspond to GPIO 0-27 (physical BCM pin numbers)
+# On the user-facing GPIO chip, line offsets generally match BCM GPIO numbers
 ```
+
+Use the chip whose label is the Raspberry Pi pin controller, such as `pinctrl-bcm2711` on Raspberry Pi 4 or `pinctrl-rp1` on Raspberry Pi 5. Current Raspberry Pi kernels normally expose that chip as `gpiochip0`, but older Raspberry Pi 5 kernels may expose the header GPIOs as `gpiochip4`, so replace `gpiochip0` in the examples if `gpiodetect` shows a different user-facing chip.
 
 ### BCM Pin Numbering
 
@@ -135,24 +137,24 @@ Ubuntu uses BCM (Broadcom) numbering. The 40-pin header on Pi 3/4/5 maps as foll
 gpioget gpiochip0 4
 
 # Set a pin high (output)
-gpioset gpiochip0 4=1
+gpioset --mode=wait gpiochip0 4=1
 
 # Set a pin low
-gpioset gpiochip0 4=0
+gpioset --mode=wait gpiochip0 4=0
 
 # Read multiple pins at once
 gpioget gpiochip0 4 17 27
 
 # Set multiple pins
-gpioset gpiochip0 4=1 17=0 27=1
+gpioset --mode=wait gpiochip0 4=1 17=0 27=1
 
 # Monitor a pin for state changes (blocks until change)
 gpiomon --num-events=5 gpiochip0 4
 
 # Toggle an LED rapidly (500ms on, 500ms off)
 while true; do
-  gpioset gpiochip0 4=1; sleep 0.5
-  gpioset gpiochip0 4=0; sleep 0.5
+  gpioset --mode=time --usec=500000 gpiochip0 4=1
+  gpioset --mode=time --usec=500000 gpiochip0 4=0
 done
 ```
 
@@ -309,11 +311,10 @@ sudo reboot
 # pip3 install adafruit-circuitpython-bme280
 
 import board
-import busio
-import adafruit_bme280
+from adafruit_bme280 import basic as adafruit_bme280
 
 # Initialize I2C
-i2c = busio.I2C(board.SCL, board.SDA)
+i2c = board.I2C()  # uses board.SCL and board.SDA
 
 # Create sensor object
 bme280 = adafruit_bme280.Adafruit_BME280_I2C(i2c)
