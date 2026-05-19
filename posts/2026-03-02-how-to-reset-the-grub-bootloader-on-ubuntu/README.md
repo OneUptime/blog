@@ -145,8 +145,8 @@ Install GRUB to the MBR of the disk (not a partition):
 # Install to the disk, not a partition (use /dev/sda not /dev/sda1)
 grub-install /dev/sda
 
-# Verify installation
-grub-install --version
+# Verify GRUB core files were placed in /boot/grub
+ls /boot/grub/i386-pc/
 ```
 
 ### For UEFI Systems
