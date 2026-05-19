@@ -8,7 +8,7 @@ Description: Learn how to use systemd's built-in sandboxing and security directi
 
 ---
 
-systemd provides a rich set of security directives that let you sandbox individual services - restricting their filesystem access, system call permissions, network capabilities, and process privileges. Unlike external sandboxing tools, these controls are built directly into the service manager and apply automatically every time the service starts. A well-hardened systemd service can't read files outside its designated directories, can't call dangerous system calls, and can't escalate privileges even if the application is compromised.
+systemd provides a rich set of security directives that let you sandbox individual services - restricting their filesystem access, system call permissions, network capabilities, and process privileges. Unlike external sandboxing tools, these controls are built directly into the service manager and apply automatically every time the service starts. A well-hardened systemd service has limited access outside its designated directories, can be blocked from calling dangerous system calls, and has fewer paths to escalate privileges if the application is compromised.
 
 ## Checking Current Security Score
 
@@ -26,7 +26,7 @@ sudo systemd-analyze security | sort -k 2 -n
 sudo systemd-analyze security --no-pager nginx
 ```
 
-The score ranges from 0 (fully hardened) to 10 (no hardening). Most default services score 8-9, indicating significant hardening potential.
+The exposure score ranges from 0.0 (tight sandboxing) to 10.0 (very little sandboxing). Most default services score 8-9, indicating significant hardening potential.
 
 ## Core Hardening Directives
 
@@ -48,7 +48,7 @@ sudo systemctl edit nginx
 [Service]
 # Make the entire filesystem read-only, then selectively allow writes
 ProtectSystem=strict
-# With strict, only /proc, /sys, /dev, and /run stay writable by default
+# With strict, only the API filesystem subtrees /proc, /sys, and /dev are excluded
 
 # Make home directories inaccessible to the service
 ProtectHome=yes
@@ -83,14 +83,13 @@ PrivateDevices=yes
 
 ```ini
 [Service]
-# Deny access to network namespaces (prevents creating new network interfaces)
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 # Only allow IPv4, IPv6, and Unix sockets
 # Remove AF_INET/AF_INET6 for services that don't need network access
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 # For services that need no network at all:
 PrivateNetwork=yes
-# Note: This prevents ALL network access including loopback
+# Note: This creates a private network namespace with only the loopback device
 ```
 
 ### User and Privilege Restrictions
@@ -137,6 +136,8 @@ SystemCallFilter=~@debug @mount @swap @reboot @privileged
 
 # For stricter filtering, specify exact allowed calls
 # (too strict can break services - test thoroughly)
+# Reset the previous filter before replacing it with an exact allow list
+SystemCallFilter=
 SystemCallFilter=read write close mmap mprotect munmap brk rt_sigaction
 
 # Set the action when a filtered syscall is attempted
@@ -275,7 +276,7 @@ RemoveIPC=yes
 # Resource limits
 LimitNOFILE=65536
 LimitNPROC=512
-MemoryLimit=512M
+MemoryMax=512M
 CPUQuota=200%
 
 [Install]
@@ -293,8 +294,8 @@ sudo journalctl -u myapp.service --since "5 minutes ago" -p err
 # Look for specific syscall violations
 sudo journalctl -k | grep "audit: type=1326" | tail -20
 
-# Check for file permission denials
-sudo ausearch -m AVC,USER_AVC -ts recent 2>/dev/null | grep myapp
+# Check for AppArmor or audit denials on Ubuntu
+sudo journalctl -k --since "5 minutes ago" | grep -Ei "apparmor|denied|audit" | grep myapp
 ```
 
 ### Gradually Adding Restrictions
