@@ -20,7 +20,7 @@ Before configuration, understand what makes cross-site replication different fro
 
 **Bandwidth**: WAL data can be substantial on write-heavy systems. A site pushing 50MB/s of writes generates significant WAN bandwidth costs.
 
-**Split-brain**: When the WAN link goes down, both sites continue operating independently. When connectivity restores, you need a strategy for reconciling divergent histories.
+**Split-brain**: A physical standby remains read-only unless it is promoted. Split-brain happens when a standby is promoted while the old primary also continues accepting writes; when connectivity restores, you need a strategy for preventing or reconciling divergent histories.
 
 **Security**: Replication traffic crossing the public internet must be encrypted.
 
@@ -42,13 +42,14 @@ If using the public internet between sites, establish a VPN first:
 
 sudo apt-get install -y wireguard
 
-# Generate keys on primary (Site A)
-wg genkey | tee /etc/wireguard/private.key | wg pubkey > /etc/wireguard/public.key
-chmod 600 /etc/wireguard/private.key
+# Generate keys on each server
+sudo install -d -m 700 /etc/wireguard
+wg genkey | sudo tee /etc/wireguard/private.key | wg pubkey | sudo tee /etc/wireguard/public.key > /dev/null
+sudo chmod 600 /etc/wireguard/private.key
 
 # View the generated keys
-cat /etc/wireguard/private.key
-cat /etc/wireguard/public.key
+sudo cat /etc/wireguard/private.key
+sudo cat /etc/wireguard/public.key
 ```
 
 Create the WireGuard config on Site A:
@@ -59,10 +60,6 @@ Create the WireGuard config on Site A:
 Address = 172.16.0.1/30
 ListenPort = 51820
 PrivateKey = <site-a-private-key>
-
-# PostUp/PreDown rules to allow replication traffic through the tunnel
-PostUp = iptables -A FORWARD -i wg0 -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-PreDown = iptables -D FORWARD -i wg0 -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
 
 [Peer]
 PublicKey = <site-b-public-key>
@@ -107,7 +104,10 @@ sudo nano /etc/postgresql/14/main/postgresql.conf
 Key settings for cross-site replication:
 
 ```ini
-# WAL settings - larger WAL buffer helps absorb WAN latency spikes
+# Listen on the VPN address for standby connections
+listen_addresses = 'localhost,172.16.0.1'
+
+# WAL settings for streaming replication
 wal_level = replica
 max_wal_senders = 10
 
@@ -116,7 +116,7 @@ wal_keep_size = 1GB
 
 # WAL archiving as a safety net for large replication gaps
 archive_mode = on
-archive_command = 'rsync -a %p postgres@172.16.0.2:/var/lib/postgresql/wal_archive/%f'
+archive_command = 'rsync -a --ignore-existing %p postgres@172.16.0.2:/var/lib/postgresql/wal_archive/%f'
 
 # Use asynchronous replication for the remote standby to avoid write latency
 # (the remote standby is listed here for documentation only - sync mode is off by default)
@@ -129,7 +129,13 @@ wal_sender_timeout = 120s
 # wal_compression = on  # Available in PostgreSQL 9.5+
 ```
 
-For the replication user and pg_hba.conf:
+Create the replication user:
+
+```bash
+sudo -u postgres psql -c "CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'replication_password';"
+```
+
+For pg_hba.conf:
 
 ```bash
 sudo nano /etc/postgresql/14/main/pg_hba.conf
@@ -137,15 +143,16 @@ sudo nano /etc/postgresql/14/main/pg_hba.conf
 
 ```text
 # Allow Site B standby to connect via the VPN tunnel
-host    replication     replicator      172.16.0.2/32           md5
+host    replication     replicator      172.16.0.2/32           scram-sha-256
 ```
 
 ### Standby Server Configuration (Site B)
 
-After taking a base backup (same procedure as local standby), configure the standby for WAN-specific settings:
+After taking a base backup (same procedure as local standby), create the standby signal file and configure the standby for WAN-specific settings:
 
 ```bash
-sudo nano /var/lib/postgresql/14/main/postgresql.auto.conf
+sudo -u postgres touch /var/lib/postgresql/14/main/standby.signal
+sudo nano /etc/postgresql/14/main/postgresql.conf
 ```
 
 ```ini
@@ -153,12 +160,12 @@ sudo nano /var/lib/postgresql/14/main/postgresql.auto.conf
 primary_conninfo = 'host=172.16.0.1 port=5432 user=replicator password=replication_password application_name=site_b_standby connect_timeout=30'
 
 # Use WAL archive as fallback if streaming falls too far behind
-restore_command = 'cp /var/lib/postgresql/wal_archive/%f %p'
+restore_command = 'test -f /var/lib/postgresql/wal_archive/%f && cp /var/lib/postgresql/wal_archive/%f %p'
 
 # Always follow the latest timeline
 recovery_target_timeline = 'latest'
 
-# Slow down hot standby feedback to reduce primary overhead
+# Send feedback to reduce query conflicts on the standby; monitor primary bloat
 hot_standby_feedback = on
 wal_receiver_timeout = 120s
 ```
@@ -235,7 +242,7 @@ check_wal_receiver
 
 ## Handling Network Partitions
 
-When the WAN link goes down, the standby enters a degraded state but continues operating with its last replicated data. Configure what happens:
+When the WAN link goes down, the standby remains available for read-only queries if hot standby is enabled, but it stops receiving new WAL until connectivity is restored. Configure what happens:
 
 ```ini
 # In postgresql.conf on primary - use async replication so WAN outages don't block writes
@@ -256,10 +263,10 @@ wal_compression = on
 You can also throttle replication to avoid saturating the WAN link:
 
 ```bash
-# Use tc to limit replication traffic bandwidth on the standby
-# Limit WAL receiver to 50Mbps to leave bandwidth for other traffic
-sudo tc qdisc add dev eth0 root handle 1: htb default 30
-sudo tc class add dev eth0 parent 1: classid 1:1 htb rate 50mbit
+# Run this on the primary to limit outbound traffic on the WireGuard interface.
+# This limits the whole replication tunnel to 50Mbps; use a dedicated tunnel or
+# add classifiers if the tunnel carries other traffic.
+sudo tc qdisc add dev wg0 root tbf rate 50mbit burst 64kb latency 400ms
 ```
 
 ## Planned Failover Procedure
