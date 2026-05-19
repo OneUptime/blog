@@ -53,7 +53,7 @@ sudo apt install php8.3-imagick -y   # ImageMagick (more powerful)
 
 # String and encoding
 sudo apt install php8.3-mbstring -y  # Multibyte string functions
-sudo apt install php8.3-iconv -y     # Character encoding conversion
+# Note: iconv is built into the main PHP package, no separate package needed
 
 # XML and data formats
 sudo apt install php8.3-xml -y       # XML parsing and generation
@@ -62,7 +62,7 @@ sudo apt install php8.3-xmlrpc -y    # XML-RPC protocol
 # Network and cryptography
 sudo apt install php8.3-curl -y      # HTTP client
 sudo apt install php8.3-soap -y      # SOAP web services
-sudo apt install php8.3-openssl -y   # SSL/TLS (usually compiled in)
+# Note: OpenSSL support is built into the main PHP package, no separate package needed
 
 # Compression
 sudo apt install php8.3-zip -y       # ZIP file support
@@ -158,7 +158,7 @@ sudo make install
 
 # The .so file is now in the PHP extension directory
 php-config8.3 --extension-dir
-# Example output: /usr/lib/php/20220829
+# Example output: /usr/lib/php/20230831
 
 # Enable the extension
 echo "extension=your_extension.so" | sudo tee /etc/php/8.3/mods-available/your_extension.ini
@@ -250,7 +250,7 @@ sudo systemctl reload php8.3-fpm
 php-config8.3 --extension-dir
 
 # List all .so files in the extension directory
-ls /usr/lib/php/20220829/*.so
+ls /usr/lib/php/20230831/*.so
 
 # Check which extensions are configured
 ls /etc/php/8.3/mods-available/
@@ -272,7 +272,7 @@ sudo tail -f /var/log/php8.3-fpm.log
 php --no-php-ini -d error_reporting=E_ALL -r "extension_loaded('redis');" 2>&1
 
 # Check for missing shared libraries
-ldd /usr/lib/php/20220829/redis.so
+ldd /usr/lib/php/20230831/redis.so
 ```
 
 A good practice is to only install extensions your application actually uses. Each loaded extension adds to PHP's startup time and memory usage, so keeping the extension list lean results in faster, more resource-efficient PHP processes.
