@@ -54,7 +54,7 @@ sudo nano /usr/local/bin/create-snapshot.sh
 
 VOLUME_GROUP="vg0"
 SOURCE_LV="data"
-MOUNT_BASE="/srv/samba/.snapshots"
+MOUNT_BASE="/srv/samba/data/.snapshots"
 TIMESTAMP=$(date -u +"%Y.%m.%d-%H.%M.%S")
 SNAP_NAME="snap-${TIMESTAMP}"
 SNAP_LV="${VOLUME_GROUP}/${SNAP_NAME}"
@@ -86,7 +86,7 @@ sudo nano /usr/local/bin/prune-snapshots.sh
 #!/bin/bash
 # Remove snapshots older than 7 days
 
-MOUNT_BASE="/srv/samba/.snapshots"
+MOUNT_BASE="/srv/samba/data/.snapshots"
 VOLUME_GROUP="vg0"
 MAX_AGE_DAYS=7
 
@@ -95,7 +95,7 @@ find "${MOUNT_BASE}" -maxdepth 1 -name "@GMT-*" -type d -mtime +${MAX_AGE_DAYS} 
     # Unmount the snapshot
     umount "${snapdir}" 2>/dev/null
 
-    # Get the LV name from the mount
+    # Get the LV name from the snapshot directory
     SNAP_NAME=$(basename "${snapdir}" | sed 's/@GMT-/snap-/')
 
     # Remove the LV snapshot
@@ -134,7 +134,7 @@ The snapshot mount point must be inside or alongside the share path. Set up the 
 # Create the snapshots directory inside the share path
 sudo mkdir -p /srv/samba/data/.snapshots
 
-# The shadow_copy2 module will look here by default
+# The shadow_copy2 module will look here with the configuration below
 # You can also place snapshots outside the share path using configuration
 ```
 
@@ -176,8 +176,7 @@ sudo nano /etc/samba/smb.conf
    # This matches the @GMT-YYYY.MM.DD-HH.MM.SS format
    shadow:format = @GMT-%Y.%m.%d-%H.%M.%S
 
-   # How to present the path inside snapshots
-   # "yes" means use the same relative path inside the snapshot
+   # Snapshot names are in UTC/GMT because the script uses date -u
    shadow:localtime = no
 ```
 
@@ -197,11 +196,11 @@ If your filesystem is Btrfs, the snapshot process is simpler and more efficient:
 sudo btrfs subvolume create /srv/samba/data
 
 # Create snapshot directory
-sudo mkdir -p /srv/samba/.snapshots
+sudo mkdir -p /srv/samba/data/.snapshots
 
 # Create a snapshot
 TIMESTAMP=$(date -u +"%Y.%m.%d-%H.%M.%S")
-sudo btrfs subvolume snapshot -r /srv/samba/data "/srv/samba/.snapshots/@GMT-${TIMESTAMP}"
+sudo btrfs subvolume snapshot -r /srv/samba/data "/srv/samba/data/.snapshots/@GMT-${TIMESTAMP}"
 ```
 
 The Samba configuration for Btrfs is identical - the shadow_copy2 module doesn't care about the underlying snapshot technology, only the directory naming convention.
@@ -216,12 +215,7 @@ On a Windows client connected to the share:
 
 If shadow copies are configured correctly, you will see a list of available restore points with timestamps. If the tab is empty, check the troubleshooting section below.
 
-From PowerShell, you can also query available shadow copies:
-
-```powershell
-# List available shadow copies on the share
-Get-WmiObject Win32_ShadowCopy
-```
+PowerShell's `Win32_ShadowCopy` class reports Windows VSS snapshots on the Windows host; it does not verify Samba `shadow_copy2` snapshots on a network share. Use Windows Explorer for the client-side check, then verify the Samba configuration from Linux.
 
 ## Verifying from the Linux Side
 
@@ -236,7 +230,7 @@ ls -la /srv/samba/data/.snapshots/
 sudo smbclient //localhost/Data -U smbuser -c "ls"
 ```
 
-You can also use the `vfs_shadow_copy2` test mode:
+There is no separate `vfs_shadow_copy2` test mode, but you can inspect the parsed share configuration:
 
 ```bash
 # Check shadow copy configuration via testparm
