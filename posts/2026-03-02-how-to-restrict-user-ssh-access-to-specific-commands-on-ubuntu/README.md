@@ -109,23 +109,14 @@ A common use case is allowing automated backups via rsync without granting a ful
 # In /home/backupuser/.ssh/authorized_keys:
 command="/usr/bin/rrsync /var/backups/",no-pty,no-agent-forwarding,no-port-forwarding ssh-ed25519 AAAA...
 
-# rrsync is a restricted rsync wrapper
-# Install it:
+# rrsync is a restricted rsync wrapper.
+# On Ubuntu 22.04 and later, rrsync ships with the rsync package at /usr/bin/rrsync:
 sudo apt install rsync
-# rrsync is included with rsync at /usr/share/doc/rsync/scripts/rrsync
-sudo cp /usr/share/doc/rsync/scripts/rrsync /usr/local/bin/rrsync
-sudo chmod +x /usr/local/bin/rrsync
+which rrsync
+# /usr/bin/rrsync
 ```
 
-```bash
-# For simple scp-only access, use the scponly shell
-sudo apt install scponly
-
-# Set user's shell to scponly
-sudo usermod -s /usr/bin/scponly scpuser
-
-# scponly allows scp and sftp operations but blocks shell commands
-```
+For SFTP-only or SCP-only access, the recommended approach on modern Ubuntu is to use sshd's built-in `internal-sftp` subsystem with a `ForceCommand` and `ChrootDirectory` (covered in Method 4). The legacy `scponly` package is no longer maintained and is not available in current Ubuntu repositories.
 
 ## Method 3: SSH Configuration Restrictions
 
