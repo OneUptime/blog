@@ -24,7 +24,7 @@ sysctl vm.swappiness
 # Show all parameters in a namespace
 sysctl net.ipv4
 
-# Show with descriptions (on newer kernels)
+# Filter parameters by regular expression
 sysctl -a --pattern "net.ipv4.tcp"
 ```
 
@@ -94,9 +94,9 @@ sudo sysctl -p /etc/sysctl.d/99-custom.conf
 Controls how aggressively the kernel uses swap:
 
 ```bash
-# Range: 0-100 (default: 60)
-# 0 = avoid swap, only use when absolutely necessary
-# 100 = swap aggressively
+# Range: 0-200 (default: 60 on many systems)
+# 0 = delay swap use as much as possible
+# 100 = treat swap and filesystem paging as roughly equal I/O cost
 sudo sysctl -w vm.swappiness=10
 ```
 
@@ -107,8 +107,8 @@ For servers with plenty of RAM: 10. For database servers: 1-5. For general purpo
 Controls when modified pages are flushed to disk:
 
 ```bash
-# Percentage of RAM that can be "dirty" (awaiting writeback) before sync
-# Default: 20 (20% of RAM)
+# Percentage of total available memory that can be "dirty" (awaiting writeback) before sync
+# Default: 20
 sudo sysctl -w vm.dirty_ratio=15
 
 # Percentage at which background writeback starts
@@ -150,7 +150,7 @@ sudo sysctl -w net.core.somaxconn=65535
 # TCP listen backlog
 sudo sysctl -w net.ipv4.tcp_max_syn_backlog=65535
 
-# Maximum number of connections waiting to be accepted
+# Maximum number of packets queued on input when interfaces receive packets faster than the kernel can process them
 sudo sysctl -w net.core.netdev_max_backlog=65535
 ```
 
@@ -178,7 +178,7 @@ Servers handling many short-lived connections can exhaust ports due to TIME_WAIT
 # Enable TCP socket reuse for TIME_WAIT connections
 sudo sysctl -w net.ipv4.tcp_tw_reuse=1
 
-# Reduce TIME_WAIT timeout (not recommended for most cases)
+# Reduce FIN_WAIT_2 timeout for orphaned connections (not recommended for most cases)
 sudo sysctl -w net.ipv4.tcp_fin_timeout=30
 
 # Maximum number of TIME_WAIT sockets
@@ -297,7 +297,7 @@ sysctl -a | grep -E "swappiness|somaxconn|file-max"
 
 ## Checking Applied Order
 
-The `/etc/sysctl.d/` files are applied in alphabetical order. Files in `/etc/sysctl.d/` override `/etc/sysctl.conf`. Use numbered prefixes to control order:
+The `/etc/sysctl.d/` files are applied in lexicographic order by filename, and `sysctl --system` also reads other system directories and `/etc/sysctl.conf`. Files with the same name in `/etc/sysctl.d/` override lower-priority system directories. Use numbered prefixes to control order:
 
 ```text
 /etc/sysctl.d/10-network.conf      # applied first
