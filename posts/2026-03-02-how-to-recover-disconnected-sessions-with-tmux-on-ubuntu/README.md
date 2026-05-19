@@ -277,7 +277,7 @@ pgrep tmux
 # Prefix + Ctrl+r inside tmux
 
 # Auto-start on SSH login (.bashrc)
-[ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ] && tmux attach || tmux new
+[ -n "$SSH_CONNECTION" ] && [ -z "$TMUX" ] && { tmux attach || tmux new -s main; }
 ```
 
 The fundamental rule: if you are doing anything important on a remote server, start a tmux session first. The few seconds it takes will save you from starting over if your connection drops mid-operation.
