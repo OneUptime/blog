@@ -37,14 +37,14 @@ sudo apt install -y ovmf
 
 # Verify installation location
 ls /usr/share/OVMF/
-# You should see: OVMF_CODE.fd, OVMF_VARS.fd, and SecureBoot variants
+# On Ubuntu 24.04 and newer you should see: OVMF_CODE_4M.fd, OVMF_VARS_4M.fd, and Secure Boot variants
 ```
 
 The two key files are:
-- `OVMF_CODE.fd` - the read-only firmware code (shared across VMs)
-- `OVMF_VARS.fd` - the NVRAM template that stores EFI variables (copied per VM)
+- `OVMF_CODE_4M.fd` - the read-only firmware code (shared across VMs)
+- `OVMF_VARS_4M.fd` - the NVRAM template that stores EFI variables (copied per VM)
 
-For Secure Boot, you'll find files with `_VARS.secboot.fd` and `_CODE.secboot.fd` suffixes.
+For Secure Boot, you'll find files such as `OVMF_CODE_4M.secboot.fd` and enrolled-key variable templates such as `OVMF_VARS_4M.ms.fd`.
 
 ## Creating the UEFI NVRAM Variables File
 
@@ -55,7 +55,7 @@ Each VM needs its own copy of the NVRAM variables file so EFI settings are isola
 mkdir -p ~/vms/myvm
 
 # Copy the OVMF vars template for this VM
-cp /usr/share/OVMF/OVMF_VARS.fd ~/vms/myvm/OVMF_VARS.fd
+cp /usr/share/OVMF/OVMF_VARS_4M.fd ~/vms/myvm/OVMF_VARS.fd
 
 # Adjust ownership
 sudo chown libvirt-qemu:kvm ~/vms/myvm/OVMF_VARS.fd
@@ -98,7 +98,7 @@ virt-install \
   --disk path=~/vms/myvm/disk.qcow2,format=qcow2 \
   --cdrom /path/to/ubuntu-24.04-desktop-amd64.iso \
   --os-variant ubuntu24.04 \
-  --boot loader=/usr/share/OVMF/OVMF_CODE.fd,loader.readonly=yes,loader.type=pflash,nvram.template=/usr/share/OVMF/OVMF_VARS.fd \
+  --boot loader=/usr/share/OVMF/OVMF_CODE_4M.fd,loader.readonly=yes,loader.type=pflash,nvram.template=/usr/share/OVMF/OVMF_VARS_4M.fd \
   --graphics spice \
   --noautoconsole
 ```
@@ -119,7 +119,7 @@ virt-install \
   --disk path=~/vms/myvm/disk.qcow2,format=qcow2 \
   --cdrom /path/to/windows11.iso \
   --os-variant win11 \
-  --boot loader=/usr/share/OVMF/OVMF_CODE.secboot.fd,loader.readonly=yes,loader.type=pflash,loader.secure=yes,nvram.template=/usr/share/OVMF/OVMF_VARS.secboot.fd \
+  --boot loader=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd,loader.readonly=yes,loader.type=pflash,loader_secure=yes,nvram.template=/usr/share/OVMF/OVMF_VARS_4M.ms.fd \
   --features smm.state=on \
   --machine q35 \
   --graphics spice \
@@ -129,7 +129,7 @@ virt-install \
 Note the additional flags:
 - `--machine q35` - required for Secure Boot (q35 emulates a modern PCIe chipset)
 - `--features smm.state=on` - System Management Mode, needed for UEFI Secure Boot
-- `loader.secure=yes` - enables the Secure Boot enforcement mode
+- `loader_secure=yes` - marks the loader as Secure Boot-capable; the `OVMF_VARS_4M.ms.fd` template provides enrolled Microsoft keys so Secure Boot can enforce signature checks
 
 ## Adding TPM for Windows 11
 
@@ -147,7 +147,7 @@ virt-install \
   --disk path=~/vms/win11/disk.qcow2,format=qcow2,bus=virtio \
   --cdrom /path/to/windows11.iso \
   --os-variant win11 \
-  --boot loader=/usr/share/OVMF/OVMF_CODE.secboot.fd,loader.readonly=yes,loader.type=pflash,loader.secure=yes,nvram.template=/usr/share/OVMF/OVMF_VARS.secboot.fd \
+  --boot loader=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd,loader.readonly=yes,loader.type=pflash,loader_secure=yes,nvram.template=/usr/share/OVMF/OVMF_VARS_4M.ms.fd \
   --features smm.state=on \
   --machine q35 \
   --tpm model=tpm-crb,type=emulator,version=2.0 \
@@ -175,8 +175,8 @@ ls /sys/firmware/efi/
 If the VM fails to boot, you can access the UEFI shell:
 
 ```bash
-# Get the VM's VNC/SPICE port
-virsh vncdisplay myvm-uefi
+# Get the VM's VNC/SPICE display URI
+virsh domdisplay myvm-uefi
 
 # Connect and press ESC at the TianoCore logo to enter UEFI setup
 # Or connect via virt-viewer
@@ -198,7 +198,7 @@ Expected output shows the loader and NVRAM paths:
 ```xml
 <os>
   <type arch='x86_64' machine='pc-q35-8.2'>hvm</type>
-  <loader readonly='yes' type='pflash'>/usr/share/OVMF/OVMF_CODE.fd</loader>
+  <loader readonly='yes' type='pflash'>/usr/share/OVMF/OVMF_CODE_4M.fd</loader>
   <nvram>/var/lib/libvirt/qemu/nvram/myvm-uefi_VARS.fd</nvram>
   <boot dev='hd'/>
 </os>
