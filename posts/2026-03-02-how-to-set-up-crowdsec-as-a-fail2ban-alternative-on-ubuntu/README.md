@@ -304,14 +304,11 @@ sudo systemctl restart crowdsec
 The CrowdSec console at https://app.crowdsec.net provides a web dashboard when enrolled:
 
 ```bash
-# Or run a local dashboard with Metabase
-sudo apt-get install -y crowdsec-dashboard
-
-# Initialize Metabase
-sudo crowdsec-setup-metabase
-
-# Access at http://localhost:3000
+# Enroll your instance with the Console (see the section above)
+cscli console enroll YOUR_ENROLLMENT_KEY
 ```
+
+The built-in `cscli dashboard` Metabase integration was deprecated in CrowdSec 1.6 and removed in 1.7. For self-hosted dashboards, use the Prometheus metrics endpoint (below) with Grafana, or rely on the hosted Console.
 
 ## Integrating with Prometheus
 
@@ -350,8 +347,11 @@ cscli bouncers list
 # Check bouncer service
 sudo systemctl status crowdsec-firewall-bouncer
 
-# Verify iptables chains created
-sudo iptables -L crowdsec-blacklists -n | head -20
+# Verify the ipset was created and is populated
+sudo ipset list crowdsec-blacklists | head -20
+
+# Verify iptables rules reference the ipset
+sudo iptables -L INPUT -n | grep crowdsec
 ```
 
 ### CrowdSec not detecting attacks
