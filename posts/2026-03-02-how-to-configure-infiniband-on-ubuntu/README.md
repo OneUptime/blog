@@ -61,13 +61,14 @@ Alternatively, use the Ubuntu inbox OFED packages:
 # Install inbox OFED packages
 sudo apt update
 sudo apt install rdma-core ibverbs-utils infiniband-diags perftest \
-    libmlx5-1 mlnx-tools
+    ibverbs-providers
 
 # Load required kernel modules
 sudo modprobe ib_uverbs
 sudo modprobe ib_core
 sudo modprobe mlx5_core
 sudo modprobe mlx5_ib
+sudo modprobe ib_ipoib
 
 # Make modules persistent
 cat << 'EOF' | sudo tee /etc/modules-load.d/infiniband.conf
@@ -75,6 +76,7 @@ ib_uverbs
 ib_core
 mlx5_core
 mlx5_ib
+ib_ipoib
 rdma_ucm
 ib_umad
 EOF
@@ -142,7 +144,8 @@ network:
     ib0:
       addresses:
         - 192.168.100.1/24  # Use a dedicated subnet for IB
-      mtu: 65520            # Use jumbo frames for better IPoIB performance
+      infiniband-mode: connected
+      mtu: 65520            # Valid only for IPoIB connected mode
 ```
 
 Apply the configuration:
@@ -154,11 +157,13 @@ sudo netplan apply
 ip addr show ib0
 ```
 
-Set the IPoIB mode to Connected mode for better performance (vs Datagram mode):
+If your netplan version does not support `infiniband-mode`, set the IPoIB mode manually while the interface is down:
 
 ```bash
 # Enable connected mode
+sudo ip link set ib0 down
 echo connected | sudo tee /sys/class/net/ib0/mode
+sudo ip link set ib0 up
 
 # Make it persistent with udev rule
 cat << 'EOF' | sudo tee /etc/udev/rules.d/70-infiniband.rules
@@ -184,11 +189,11 @@ ib_write_bw server_hostname
 # Test latency
 ib_send_lat server_hostname
 
-# Test using IPoIB (IP-based)
+# Test using RDMA CM for connection setup
 ib_send_bw -R server_hostname
 ```
 
-Expected results for a 100Gb/s HDR InfiniBand link:
+Expected results for a 100Gb/s EDR or HDR100 InfiniBand link:
 - Bandwidth: ~12 GB/s for large messages
 - Latency: 1-2 microseconds for small messages
 
@@ -203,30 +208,31 @@ sudo apt install openmpi-bin libopenmpi-dev
 # Configure MPI to use InfiniBand via UCX
 export OMPI_MCA_pml=ucx
 export OMPI_MCA_btl='^uct'
+export OMPI_MCA_osc=ucx
 export UCX_NET_DEVICES=mlx5_0:1
 
 # Test MPI over InfiniBand
-mpirun --hostfile hosts.txt -np 8 -mca pml ucx ./mpi_benchmark
+mpirun --hostfile hosts.txt -np 8 -mca pml ucx -mca osc ucx ./mpi_benchmark
 ```
 
 ## Diagnosing Connectivity Issues
 
 ```bash
 # Check the SM routing tables
-ibroute
+ibroute switch_lid
 
 # Trace the path between two nodes
-ibsysstat
+ibtracert source_lid destination_lid
+ibsysstat -G guid_of_destination
 ibping -G guid_of_destination
 
 # Check for errors on the port
-perfquery -x mlx5_0 1
+perfquery -C mlx5_0 -P 1 -x
 
 # Show the complete subnet topology
 ibnetdiscover
 
 # Check for symbol errors (a reliable indicator of cable or transceiver issues)
-infiniband-diags
 ibcheckerrors
 ```
 
