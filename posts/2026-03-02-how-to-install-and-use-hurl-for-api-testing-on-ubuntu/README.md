@@ -17,11 +17,11 @@ Hurl provides prebuilt packages for Ubuntu. The easiest installation path is thr
 ```bash
 # Download the latest hurl deb package (check https://github.com/Orange-OpenSource/hurl/releases for latest version)
 
-HURL_VERSION="4.3.0"
+HURL_VERSION="8.0.0"
 curl -LO "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb"
 
 # Install the package
-sudo dpkg -i "hurl_${HURL_VERSION}_amd64.deb"
+sudo apt update && sudo apt install -y "./hurl_${HURL_VERSION}_amd64.deb"
 
 # Verify installation
 hurl --version
@@ -31,12 +31,12 @@ Alternatively, if you have cargo (Rust's package manager) installed:
 
 ```bash
 # Install via cargo
-cargo install hurl
+cargo install --locked hurl
 
 # Or install Rust first if needed
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source ~/.cargo/env
-cargo install hurl
+cargo install --locked hurl
 ```
 
 ## Basic Hurl File Format
@@ -163,7 +163,7 @@ Authorization: Bearer {{api_token}}
 
 HTTP 200
 [Asserts]
-jsonpath "$.products" isCollection
+jsonpath "$.products" isList
 jsonpath "$.total" >= 0
 ```
 
@@ -188,9 +188,9 @@ hurl parameterized-test.hurl --variables-file staging.env
 ### Loading Variables from Environment
 
 ```bash
-# Export variables to environment, hurl picks them up with HURL_ prefix
-export HURL_base_url="https://staging.example.com"
-export HURL_api_token="your-token"
+# Export variables to environment, hurl picks them up with HURL_VARIABLE_ prefix
+export HURL_VARIABLE_base_url="https://staging.example.com"
+export HURL_VARIABLE_api_token="your-token"
 
 hurl parameterized-test.hurl
 ```
@@ -219,7 +219,7 @@ Run all tests in a directory:
 
 ```bash
 # Run all hurl files in the tests directory recursively
-hurl --test tests/**/*.hurl --variables-file production.env
+hurl --test tests/ --variables-file production.env
 
 # Run a specific subdirectory
 hurl --test tests/users/*.hurl --variables-file staging.env
@@ -236,7 +236,7 @@ The `--test` flag changes hurl's output to a test report format showing pass/fai
 hurl --test \
   --variables-file staging.env \
   --report-junit /tmp/hurl-results/junit.xml \
-  tests/**/*.hurl
+  tests/
 ```
 
 ### JSON Report
@@ -245,8 +245,8 @@ hurl --test \
 # JSON report with full request/response details
 hurl --test \
   --variables-file staging.env \
-  --report-json /tmp/hurl-results/report.json \
-  tests/**/*.hurl
+  --report-json /tmp/hurl-results/json/ \
+  tests/
 ```
 
 ### HTML Report
@@ -256,7 +256,7 @@ hurl --test \
 hurl --test \
   --variables-file staging.env \
   --report-html /tmp/hurl-results/ \
-  tests/**/*.hurl
+  tests/
 ```
 
 ## CI/CD Integration
@@ -270,22 +270,23 @@ api-tests:
   stage: test
   before_script:
     - apt-get update -qq
-    - HURL_VERSION="4.3.0"
+    - HURL_VERSION="8.0.0"
     - apt-get install -y curl
     - curl -LO "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb"
-    - dpkg -i "hurl_${HURL_VERSION}_amd64.deb"
+    - apt-get install -y "./hurl_${HURL_VERSION}_amd64.deb"
   script:
+    - mkdir -p results
     - hurl --test
         --variables-file environments/staging.env
         --variable api_token="${API_TOKEN}"
         --report-junit results/junit.xml
-        tests/**/*.hurl
+        tests/
   artifacts:
     reports:
       junit: results/junit.xml
     expire_in: 1 week
   variables:
-    HURL_base_url: "https://staging.example.com"
+    HURL_VARIABLE_base_url: "https://staging.example.com"
 ```
 
 ### GitHub Actions
@@ -304,19 +305,20 @@ jobs:
 
       - name: Install hurl
         run: |
-          HURL_VERSION="4.3.0"
+          HURL_VERSION="8.0.0"
           curl -LO "https://github.com/Orange-OpenSource/hurl/releases/download/${HURL_VERSION}/hurl_${HURL_VERSION}_amd64.deb"
-          sudo dpkg -i "hurl_${HURL_VERSION}_amd64.deb"
+          sudo apt update && sudo apt install -y "./hurl_${HURL_VERSION}_amd64.deb"
 
       - name: Run API tests
         env:
-          HURL_base_url: "https://staging.example.com"
-          HURL_api_token: ${{ secrets.STAGING_API_TOKEN }}
+          HURL_VARIABLE_base_url: "https://staging.example.com"
+          HURL_VARIABLE_api_token: ${{ secrets.STAGING_API_TOKEN }}
         run: |
+          mkdir -p results
           hurl --test \
             --report-junit results/junit.xml \
             --report-html results/html/ \
-            tests/**/*.hurl
+            tests/
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
@@ -349,7 +351,7 @@ jsonpath "$.count" == 42
 jsonpath "$.name" == "Alice"
 jsonpath "$.active" == true
 jsonpath "$.score" > 9.5
-jsonpath "$.tags" isCollection
+jsonpath "$.tags" isList
 jsonpath "$.tags" count == 3
 jsonpath "$.description" matches "^[A-Z].*"  # Regex match
 
@@ -380,7 +382,7 @@ hurl --very-verbose api-tests.hurl 2>&1 | tee debug.log
 
 ```bash
 # Validate hurl file syntax
-hurl --dry-run api-tests.hurl
+hurlfmt api-tests.hurl > /dev/null
 ```
 
 Hurl's plain-text format makes API tests easy to review in code reviews, diff clearly in git, and run anywhere Node.js or Docker aren't available. For teams that want API testing without heavy tooling overhead, it's a practical choice.
