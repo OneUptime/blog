@@ -32,8 +32,11 @@ The logic is:
    - On Ubuntu, the default behavior depends on the cron implementation
    - With the `cron` package on Ubuntu, everyone can use cron by default
 
-4. If both files are empty or `/etc/cron.deny` is empty with no `/etc/cron.allow`:
+4. If `/etc/cron.deny` is empty (or exists with no entries) and `/etc/cron.allow` does not exist:
    - Everyone can use cron
+
+5. If `/etc/cron.allow` exists but is empty:
+   - No regular users can use cron (only `root` is still allowed on Debian/Ubuntu, since root bypasses these files)
 
 ## Checking the Current State
 
@@ -75,7 +78,7 @@ After this, any user not in `/etc/cron.allow` who tries to edit their crontab wi
 You (username) are not allowed to use this program (crontab)
 ```
 
-Note that `root` should generally always be in the allow list. If root is not listed and `cron.allow` exists, even root will be denied.
+Note that on Debian/Ubuntu, `root` is always allowed to use `crontab` regardless of `cron.allow`/`cron.deny` (the Debian cron package patches the access check to bypass these files for root). Even so, it is a good habit to list `root` explicitly in the allow file for clarity and to stay portable to other cron implementations (e.g. cronie on RHEL-based systems) that do not exempt root.
 
 ## Blocking Specific Users with cron.deny
 
@@ -229,7 +232,9 @@ sudo usermod -aG cron-users admin
 
 # Add PAM restriction (requires pam_succeed_if)
 sudo tee -a /etc/pam.d/cron << 'EOF'
-# Only allow users in the cron-users group or root
+# Only allow users in the cron-users group to have cron jobs executed.
+# pam_succeed_if does NOT special-case root, so add root to cron-users
+# as well or this rule will block root's cron jobs too.
 account required pam_succeed_if.so user ingroup cron-users
 EOF
 ```
