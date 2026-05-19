@@ -26,11 +26,12 @@ sudo nano /etc/default/cron
 ```bash
 # Add this line to /etc/default/cron
 EXTRA_OPTS="-L 15"
-# -L 15 logs: scheduling, job start, job end
-# -L 1  logs: scheduling only
-# -L 2  logs: job execution
-# -L 4  logs: failed jobs
-# -L 8  logs: process info
+# Loglevel is a bitmask (sum of the values below):
+# -L 1   logs: start of all cron jobs
+# -L 2   logs: end of all cron jobs
+# -L 4   logs: failed jobs (exit status != 0)
+# -L 8   logs: process number of all cron jobs
+# -L 15  logs: all of the above (1+2+4+8)
 ```
 
 ```bash
@@ -256,13 +257,16 @@ JOBS["hourly-metrics"]=2
 
 NOW=$(date +%s)
 FAILED=0
+REPORT=""
 
 for JOB in "${!JOBS[@]}"; do
     MAX_AGE=${JOBS[$JOB]}
     HEARTBEAT_FILE="${HEARTBEAT_DIR}/${JOB}"
 
     if [ ! -f "$HEARTBEAT_FILE" ]; then
-        echo "MISSING: $JOB - No heartbeat file found"
+        LINE="MISSING: $JOB - No heartbeat file found"
+        echo "$LINE"
+        REPORT+="$LINE"$'\n'
         FAILED=1
         continue
     fi
@@ -273,14 +277,16 @@ for JOB in "${!JOBS[@]}"; do
 
     if [ $AGE_HOURS -ge $MAX_AGE ]; then
         LAST_RAN=$(date -d @$LAST_PING '+%Y-%m-%d %H:%M:%S')
-        echo "OVERDUE: $JOB - Last ran $AGE_HOURS hours ago at $LAST_RAN (max: $MAX_AGE hours)"
+        LINE="OVERDUE: $JOB - Last ran $AGE_HOURS hours ago at $LAST_RAN (max: $MAX_AGE hours)"
+        echo "$LINE"
+        REPORT+="$LINE"$'\n'
         FAILED=1
     fi
 done
 
 if [ $FAILED -ne 0 ]; then
-    # Re-run and email the failures
-    $0 2>&1 | mail -s "CRON MONITORING: Missed Jobs on $(hostname)" "$ALERT_EMAIL"
+    # Email the captured report (avoid re-invoking $0, which would recurse)
+    printf '%s' "$REPORT" | mail -s "CRON MONITORING: Missed Jobs on $(hostname)" "$ALERT_EMAIL"
 fi
 ```
 
@@ -302,21 +308,22 @@ sudo nano /usr/local/bin/cron-metrics.sh
 ```bash
 #!/bin/bash
 # cron-metrics.sh - Update Prometheus textfile metrics after each cron job run
-# Usage: source this in your cron wrapper, or call it with job name and exit code
+# Usage: cron-metrics.sh <job-name> <exit-code> <duration-seconds>
 
 JOB_NAME="$1"
 EXIT_CODE="${2:-0}"
+DURATION="${3:-0}"
 METRICS_DIR="/var/lib/prometheus/node-exporter"
 METRICS_FILE="${METRICS_DIR}/cron_jobs.prom"
 
 mkdir -p "$METRICS_DIR"
 
-# Write/update metrics
-cat >> "${METRICS_FILE}.tmp" << EOF
+# Write metrics to a fresh tmp file, then atomically replace
+cat > "${METRICS_FILE}.tmp" << EOF
 # Job: $JOB_NAME
 cron_job_last_run_timestamp{job="$JOB_NAME"} $(date +%s)
 cron_job_last_exit_code{job="$JOB_NAME"} $EXIT_CODE
-cron_job_last_duration_seconds{job="$JOB_NAME"} $(($(date +%s) - START_EPOCH))
+cron_job_last_duration_seconds{job="$JOB_NAME"} $DURATION
 EOF
 
 mv "${METRICS_FILE}.tmp" "$METRICS_FILE"
