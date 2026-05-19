@@ -345,7 +345,7 @@ sudo ufw allow from 192.168.1.50 to any app PostgreSQL
 sudo ufw allow from 10.0.0.0/8 to any app 'MonitoringFull'
 
 # Allow on a specific interface
-sudo ufw allow in on eth1 app Redis
+sudo ufw allow in on eth1 to any app Redis
 
 # Limit a profile (rate limiting)
 sudo ufw limit OpenSSH
@@ -377,4 +377,4 @@ For infrastructure managed with configuration management (Ansible, Chef, Puppet)
   notify: update ufw app profiles
 ```
 
-Application profiles make UFW configurations self-documenting. When someone looks at the firewall rules and sees `ALLOW MyApp` instead of `ALLOW 8080,8443/tcp`, the purpose is immediately clear. For teams managing multiple servers, profiles also ensure consistency - if a service's ports change, updating the profile and reloading is simpler than hunting through port-based rules across multiple servers.
+Application profiles make UFW configurations self-documenting. When someone looks at the firewall rules and sees `ALLOW MyApp` instead of `ALLOW 8080,8443/tcp`, the purpose is immediately clear. For teams managing multiple servers, profiles also ensure consistency - if a service's ports change, updating the profile with `ufw app update` is simpler than hunting through port-based rules across multiple servers.
