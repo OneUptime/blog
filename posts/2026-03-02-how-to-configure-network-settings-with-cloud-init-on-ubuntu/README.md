@@ -33,12 +33,12 @@ cat /etc/netplan/50-cloud-init.yaml
 netplan get
 ```
 
-## Providing Network Config via User Data
+## Providing Network Config via System Config
 
-You can include network configuration directly in your cloud-config user data using the `network:` key:
+You can include network configuration in cloud-init system config, for example in `/etc/cloud/cloud.cfg.d/custom-networking.cfg`, using the `network:` key. User data runs too late to change an instance's network configuration:
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 2
   ethernets:
@@ -59,7 +59,7 @@ network:
 ### Single Interface Static IP
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 2
   ethernets:
@@ -87,7 +87,7 @@ network:
 In cloud environments, interface names can be unpredictable. Match by MAC address for reliability:
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 2
   ethernets:
@@ -108,7 +108,7 @@ network:
 ### Multiple Interfaces
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 2
   ethernets:
@@ -134,7 +134,7 @@ network:
 ## IPv6 Configuration
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 2
   ethernets:
@@ -155,7 +155,7 @@ network:
 Bond two interfaces for redundancy or increased throughput:
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 2
   ethernets:
@@ -189,7 +189,7 @@ network:
 ## VLAN Configuration
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 2
   ethernets:
@@ -222,7 +222,7 @@ network:
 Used for KVM hosts or container networking:
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 2
   ethernets:
@@ -267,7 +267,7 @@ cloud-localds --network-config=network-config.yaml seed.iso user-data.yaml
 Some older tools or documentation use Version 1 format:
 
 ```yaml
-#cloud-config
+# /etc/cloud/cloud.cfg.d/custom-networking.cfg
 network:
   version: 1
   config:
@@ -303,10 +303,7 @@ Version 1 still works but Version 2 is preferred for new configurations.
 If you want to manage networking outside of cloud-init:
 
 ```bash
-# Create a marker file that tells cloud-init not to touch networking
-sudo touch /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
-
-# Or configure it in the cloud.cfg
+# Write a cloud-init system config file that disables network configuration
 sudo tee /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg << 'EOF'
 network:
   config: disabled
@@ -362,9 +359,9 @@ cloud-init status --long
 # Look for network-related errors
 grep -i "network\|netplan\|ip\|route" /var/log/cloud-init.log
 
-# Check if netplan applied successfully
-journalctl -u netplan-wpa-eth0.service
+# Check the renderer logs
 journalctl -u systemd-networkd.service
+journalctl -u NetworkManager.service
 
 # Manually re-apply netplan configuration
 sudo netplan apply --debug
