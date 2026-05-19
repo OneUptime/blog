@@ -275,9 +275,6 @@ ZED_EMAIL_OPTS="-s '@subject@' @address@"
 # Alert on these event classes
 ZED_NOTIFY_INTERVAL_SECS=3600
 ZED_NOTIFY_VERBOSE=0
-
-# Log level
-ZED_LOG_EVERYTHING=0
 ```
 
 ```bash
@@ -288,25 +285,26 @@ zed sends emails on pool state changes, scrub completion, resilver completion, a
 
 ## Prometheus/Grafana Integration
 
-For infrastructure monitoring, the `prometheus-zfs-exporter` exports ZFS metrics:
+For infrastructure monitoring, `prometheus-node-exporter` includes a ZFS collector that exposes ARC and per-pool I/O metrics:
 
 ```bash
-# Install the exporter
-sudo apt install prometheus-zfs-exporter
+# Install the node exporter (includes a ZFS collector)
+sudo apt install prometheus-node-exporter
 
 # Start and enable
-sudo systemctl enable --now prometheus-zfs-exporter
+sudo systemctl enable --now prometheus-node-exporter
 
-# Verify metrics are available
-curl http://localhost:9134/metrics | grep zfs_pool
+# Verify ZFS metrics are available
+curl http://localhost:9100/metrics | grep node_zfs
 ```
 
 Sample metrics:
 ```text
-zfs_pool_health{pool="tank"} 1
-zfs_pool_allocated_bytes{pool="tank"} 1.96e+12
-zfs_pool_free_bytes{pool="tank"} 1.94e+12
-zfs_pool_fragmentation_percent{pool="tank"} 12
+node_zfs_arc_size 8589934592
+node_zfs_arc_hits 82371029
+node_zfs_arc_misses 15892134
+node_zfs_zpool_nread{zpool="tank"} 3.21e+09
+node_zfs_zpool_nwritten{zpool="tank"} 9.84e+09
 ```
 
 Add scrape config to Prometheus:
@@ -314,9 +312,9 @@ Add scrape config to Prometheus:
 ```yaml
 # /etc/prometheus/prometheus.yml
 scrape_configs:
-  - job_name: 'zfs'
+  - job_name: 'node'
     static_configs:
-      - targets: ['localhost:9134']
+      - targets: ['localhost:9100']
 ```
 
 ## ARC (Cache) Monitoring
