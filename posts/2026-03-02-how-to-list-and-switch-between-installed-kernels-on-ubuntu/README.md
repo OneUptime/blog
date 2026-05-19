@@ -79,7 +79,7 @@ To test a specific kernel version at next boot (one time), use `grub-reboot`:
 
 ```bash
 # List available GRUB entries with their numbers
-awk -F\' '/^menuentry |^submenu / {print NR-1, $2}' /boot/grub/grub.cfg
+awk -F\' '/^menuentry |^submenu / {print i++, $2}' /boot/grub/grub.cfg
 
 # Boot into a specific entry once (using the entry number)
 sudo grub-reboot 2
@@ -100,7 +100,7 @@ After the temporary reboot, the system returns to the default kernel on the next
 
 ```bash
 # First, find the exact menu entry name
-awk -F\' '/^menuentry |^submenu / {print NR-1, $2}' /boot/grub/grub.cfg
+awk -F\' '/^menuentry |^submenu / {print i++, $2}' /boot/grub/grub.cfg
 
 # Set the default by entry number
 sudo grub-set-default 2
@@ -177,7 +177,7 @@ sudo apt install curl -y
 
 VERSION="v6.8"
 cd /tmp
-wget "https://kernel.ubuntu.com/~kernel-ppa/mainline/${VERSION}/amd64/linux-image-unsigned-*.deb" -A "*.deb" -r -l 1 -nd
+wget -r -l 1 -nd -A "*.deb" "https://kernel.ubuntu.com/~kernel-ppa/mainline/${VERSION}/amd64/"
 
 # Install all downloaded packages
 sudo dpkg -i linux-*.deb
