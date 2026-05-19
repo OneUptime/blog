@@ -12,7 +12,7 @@ CPU microcode is firmware that runs inside your processor, controlling low-level
 
 ## Why Early Microcode Matters
 
-Microcode can be applied at two points:
+Microcode can be applied at three points:
 
 1. **BIOS/UEFI level** - Loaded by firmware before the OS boots
 2. **Early OS level** - Loaded by the kernel during initramfs, before most drivers initialize
@@ -67,7 +67,7 @@ After installation, the packages should automatically configure early loading:
 
 ```bash
 # Check that the microcode initramfs hook is installed
-ls /etc/initramfs-tools/hooks/ | grep micro
+ls /usr/share/initramfs-tools/hooks/*microcode* /etc/initramfs-tools/hooks/*microcode* 2>/dev/null
 
 # Check if microcode files are in the initramfs
 lsinitramfs /boot/initrd.img-$(uname -r) | grep -i micro
@@ -76,10 +76,10 @@ lsinitramfs /boot/initrd.img-$(uname -r) | grep -i micro
 lsinitramfs /boot/initrd.img-$(uname -r) | grep "kernel/x86/microcode"
 ```
 
-For GRUB-based systems, early microcode is provided via a separate initrd-like section prepended to the initramfs. Check that GRUB is using it:
+On Ubuntu systems using initramfs-tools, early microcode is normally embedded as an uncompressed cpio section prepended to the initramfs. If you use the optional `microcode-initrd` package for an initrd-less boot setup, GRUB can also load `/boot/microcode.cpio` as a separate initrd-like image:
 
 ```bash
-# Look for early microcode in GRUB config
+# Look for a separate microcode initrd in GRUB config, if microcode-initrd is used
 grep -i "initrd\|microcode" /boot/grub/grub.cfg | head -10
 
 # Verify the microcode files exist
@@ -149,7 +149,7 @@ dmesg | grep "microcode updated early"
 # Check via /proc/cpuinfo after boot
 grep "microcode" /proc/cpuinfo | sort -u
 
-# The version should match or exceed what's in your package
+# Check the installed package version (this is not the same as the CPU microcode revision)
 dpkg -l intel-microcode | tail -1
 ```
 
@@ -212,16 +212,15 @@ sudo apt-mark unhold intel-microcode
 For non-critical testing, you can apply a new microcode without rebooting using late loading:
 
 ```bash
-# Check if late loading is supported
-ls /dev/cpu/*/microcode 2>/dev/null || echo "No microcode device found"
+# Check if the sysfs late-loading interface is present
+test -e /sys/devices/system/cpu/microcode/reload && echo "late load interface present"
 
-# For systems with the device
-# (Intel microcode package includes the iucode-tool)
-sudo apt install iucode-tool
+# Make sure the updated microcode files are installed under /lib/firmware first
+sudo apt update
+sudo apt install intel-microcode   # or: sudo apt install amd64-microcode
 
-# Apply microcode without reboot (late load - less protection but useful for testing)
-sudo iucode-tool --scan-system --write-earlyfw=/tmp/test-microcode.bin \
-    /lib/firmware/intel-ucode/
+# Apply microcode without reboot (late load - less protection and not always enabled)
+echo 1 | sudo tee /sys/devices/system/cpu/microcode/reload
 
 # Warning: late load doesn't provide full protection
 # Always reboot for production security patching
