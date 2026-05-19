@@ -132,7 +132,7 @@ CREATE DATABASE myapp_db
 CREATE USER myapp_user WITH ENCRYPTED PASSWORD 'strong-password-here';
 
 -- Grant privileges on the database
-GRANT ALL PRIVILEGES ON myapp_db TO myapp_user;
+GRANT ALL PRIVILEGES ON DATABASE myapp_db TO myapp_user;
 
 -- Connect to the database and set default privileges for future tables
 \c myapp_db
