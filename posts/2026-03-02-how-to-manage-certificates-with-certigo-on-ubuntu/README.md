@@ -15,19 +15,17 @@ Certigo is a command-line utility for working with TLS certificates. It fills th
 Certigo is written in Go and distributed as a single binary:
 
 ```bash
-# Download the latest release
+# Download a release
 
-VERSION="1.16.0"
-curl -Lo /tmp/certigo.tar.gz \
-    https://github.com/square/certigo/releases/download/v${VERSION}/certigo_linux_amd64.tar.gz
+VERSION="1.18.0"
+curl -Lo /tmp/certigo \
+    https://github.com/square/certigo/releases/download/v${VERSION}/certigo-linux-amd64
 
-# Extract and install
-tar xzf /tmp/certigo.tar.gz -C /tmp/
-sudo mv /tmp/certigo /usr/local/bin/
-sudo chmod +x /usr/local/bin/certigo
+# Install
+sudo install -m 0755 /tmp/certigo /usr/local/bin/certigo
 
 # Verify installation
-certigo version
+certigo --version
 ```
 
 ## Inspecting Certificates from Files
@@ -36,14 +34,14 @@ The most basic use case is reading certificate information from a file:
 
 ```bash
 # Inspect a PEM certificate
-certigo dump --pem /etc/ssl/certs/ssl-cert-snakeoil.pem
+certigo dump /etc/ssl/certs/ssl-cert-snakeoil.pem
 
 # Inspect a certificate in different formats
 certigo dump /path/to/certificate.crt
-certigo dump /path/to/certificate.der
+certigo dump --format DER /path/to/certificate.der
 
 # Inspect a PKCS#12 bundle (pfx/p12)
-certigo dump --p12 /path/to/cert.p12
+certigo dump --format PKCS12 /path/to/cert.p12
 # You'll be prompted for the password
 
 # Inspect all certs in a chain/bundle file
@@ -53,24 +51,19 @@ certigo dump /path/to/ca-chain.crt
 The output shows the certificate in a structured, readable format:
 
 ```text
-Subject:
-    Common Name:  example.com
-    Organization: Example Corp
-    Country:      US
-
-Issuer:
-    Common Name:  Example Corp Intermediate CA
-
-SHA-256 Fingerprint:
-    AB:CD:EF:12:34:56:78:90:...
-
+** CERTIFICATE 1 **
+Input Format: PEM
 Serial: 12345678
+Valid: 2026-01-01 00:00 UTC to 2027-01-01 00:00 UTC
+Signature: SHA256-RSA
 
-Not Before: 2026-01-01 00:00:00 +0000 UTC
-Not After:  2027-01-01 00:00:00 +0000 UTC (expires in 305 days)
+Subject Info:
+    Country: US
+    Organization: Example Corp
+    CommonName: example.com
 
-Signature Algorithm: SHA256WithRSA
-Public Key Algorithm: RSA (2048 bits)
+Issuer Info:
+    CommonName: Example Corp Intermediate CA
 
 DNS Names:
     example.com
@@ -108,16 +101,16 @@ Certigo can verify that a certificate correctly chains to a given CA:
 
 ```bash
 # Verify a certificate against the system trust store
-certigo verify /path/to/server.crt
+certigo verify --name www.example.com /path/to/server-chain.pem
 
 # Verify against a specific CA bundle
-certigo verify --ca /path/to/ca-chain.crt /path/to/server.crt
+certigo verify --ca /path/to/ca-chain.crt --name www.example.com /path/to/server-chain.pem
 
 # Verify a remote host's certificate
-certigo verify example.com
+certigo connect --verify example.com
 
 # Verify with expected hostname
-certigo verify --name api.example.com 10.0.0.5
+certigo connect --verify --expected-name api.example.com 10.0.0.5
 ```
 
 ## Checking Certificate Expiry
@@ -126,10 +119,10 @@ One of the most common operations is checking when certificates expire, especial
 
 ```bash
 # Check expiry for a local file
-certigo dump /etc/ssl/private/server.crt | grep "Not After"
+certigo dump /etc/ssl/private/server.crt | grep "Valid:"
 
 # Check expiry for a remote host
-certigo connect example.com 2>/dev/null | grep "Not After"
+certigo connect example.com 2>/dev/null | grep "Valid:"
 
 # Script to check multiple hosts
 #!/bin/bash
@@ -144,7 +137,7 @@ WARNING_DAYS=30
 
 for host in "${HOSTS[@]}"; do
     echo "Checking $host..."
-    expiry=$(certigo connect "$host" 2>/dev/null | grep "Not After" | head -1)
+    expiry=$(certigo connect "$host" 2>/dev/null | grep "Valid:" | head -1)
     echo "  $expiry"
 done
 ```
@@ -155,10 +148,10 @@ When debugging mismatches between certificate files, compare fingerprints:
 
 ```bash
 # Get fingerprint of a certificate file
-certigo dump /etc/ssl/certs/server.crt | grep "SHA-256"
+openssl x509 -in /etc/ssl/certs/server.crt -noout -fingerprint -sha256
 
 # Get fingerprint from a remote host
-certigo connect example.com | grep "SHA-256"
+certigo connect --pem --first example.com | openssl x509 -noout -fingerprint -sha256
 
 # Compare private key and certificate modulus
 # (These should match if the key and cert belong together)
@@ -182,12 +175,9 @@ This is useful when debugging "hostname mismatch" errors - the displayed DNS Nam
 
 ## Certificate Format Conversion
 
-Certigo can convert between certificate formats:
+Certigo's primary strength is inspection, not conversion. For format conversion, combine certigo with openssl:
 
 ```bash
-# Note: certigo's primary strength is inspection, not conversion
-# For format conversion, combine certigo with openssl:
-
 # PEM to DER
 openssl x509 -in cert.pem -outform DER -out cert.der
 
@@ -201,12 +191,12 @@ certigo dump cert.pem
 
 ## Integrating with Monitoring
 
-Use certigo in monitoring scripts to alert on expiring certificates:
+Use certigo's JSON output with `jq` in monitoring scripts to alert on expiring certificates:
 
 ```bash
 #!/bin/bash
 # /usr/local/bin/check-cert-expiry.sh
-# Returns exit code 2 if cert expires within $WARNING_DAYS, 1 if already expired
+# Returns exit code 2 if cert is expired or within $CRITICAL_DAYS, 1 if within $WARNING_DAYS
 
 HOSTNAME="$1"
 PORT="${2:-443}"
@@ -214,14 +204,17 @@ WARNING_DAYS="${3:-30}"
 CRITICAL_DAYS="${4:-7}"
 
 # Get days until expiry
-expiry_str=$(certigo connect "${HOSTNAME}:${PORT}" 2>/dev/null | \
-    grep "Not After" | head -1 | grep -oP '\d+ days')
-days_left=$(echo "$expiry_str" | grep -oP '\d+')
+expiry_iso=$(certigo connect --json "${HOSTNAME}:${PORT}" 2>/dev/null | \
+    jq -r '.certificates[0].not_after // empty')
 
-if [ -z "$days_left" ]; then
+if [ -z "$expiry_iso" ]; then
     echo "UNKNOWN: Could not connect to $HOSTNAME:$PORT"
     exit 3
 fi
+
+expiry_epoch=$(date -d "$expiry_iso" +%s)
+now_epoch=$(date +%s)
+days_left=$(( (expiry_epoch - now_epoch) / 86400 ))
 
 if [ "$days_left" -lt "$CRITICAL_DAYS" ]; then
     echo "CRITICAL: Certificate for $HOSTNAME expires in $days_left days"
@@ -252,9 +245,9 @@ printf "%-50s %s\n" "Certificate" "Expiry"
 
 for cert_file in "$CERT_DIR"/*.crt "$CERT_DIR"/*.pem; do
     if [ -f "$cert_file" ] && openssl x509 -noout -in "$cert_file" 2>/dev/null; then
-        expiry=$(certigo dump "$cert_file" 2>/dev/null | grep "Not After" | head -1 | awk '{print $3, $4, $5}')
+        expiry=$(certigo dump --json "$cert_file" 2>/dev/null | jq -r '.certificates[0].not_after // empty')
         if [ -n "$expiry" ]; then
-            printf "%-50s %s\n" "$(basename $cert_file)" "$expiry"
+            printf "%-50s %s\n" "$(basename "$cert_file")" "$expiry"
         fi
     fi
 done | sort -k2
