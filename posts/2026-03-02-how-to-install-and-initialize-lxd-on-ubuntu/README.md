@@ -14,7 +14,7 @@ LXD (pronounced "lex-dee") is a container and virtual machine manager developed 
 
 LXD and Docker solve different problems:
 
-- **Docker** - application containers, single-process per container, designed for packaging and distributing apps
+- **Docker** - application containers, usually one application or service per container, designed for packaging and distributing apps
 - **LXD** - system containers and VMs, full OS inside, designed for running environments
 
 An LXD container feels like a lightweight VM with almost bare-metal performance. It runs systemd, has its own init process, and behaves like a full Ubuntu installation.
@@ -30,9 +30,9 @@ LXD is distributed as a snap package:
 
 sudo snap install lxd
 
-# If upgrading from the older apt package
+# If migrating from the older deb package with existing data
+sudo lxd.migrate
 sudo apt remove lxd lxd-client
-sudo snap install lxd
 ```
 
 ### Adding Your User to the LXD Group
@@ -283,7 +283,7 @@ sudo snap refresh lxd --channel=5.0/stable
 The LXD daemon may not have started:
 
 ```bash
-sudo systemctl status snap.lxd.daemon
+snap services lxd
 sudo snap restart lxd
 ```
 
@@ -308,12 +308,12 @@ lxd init
 
 ### "Storage pool 'default' already exists" During Re-init
 
-Delete existing configuration and start fresh:
+Remove or rename the conflicting existing configuration before re-running init:
 
 ```bash
-lxd init --auto  # non-interactive with safe defaults
-# or
-lxc storage delete default  # then re-run lxd init
+lxc storage list
+lxc storage delete default  # only works after dependent instances and volumes are removed
+lxd init
 ```
 
 LXD's initialization process sets up the foundation for all subsequent container and VM work. Taking a few minutes to configure storage and networking properly at the start avoids painful migrations later.
