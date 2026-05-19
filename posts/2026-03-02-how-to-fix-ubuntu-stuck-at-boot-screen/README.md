@@ -29,7 +29,7 @@ With splash removed, you'll see the actual systemd output scrolling by. The last
 
 This is the most frequent culprit, especially after kernel updates or fresh installs on NVIDIA hardware. The system loads, hits the graphics initialization, and locks up.
 
-The `nomodeset` parameter you set above disables kernel mode-setting, which forces software rendering. If the system boots with `nomodeset` but not without it, you have a GPU driver issue.
+The `nomodeset` parameter you set above disables kernel mode-setting, leaving the system on the firmware-provided framebuffer during early boot. If the system boots with `nomodeset` but not without it, you have a GPU driver issue.
 
 To make `nomodeset` permanent while you fix the underlying driver:
 
@@ -52,14 +52,16 @@ Then fix the actual driver:
 
 ```bash
 # Check what graphics hardware you have
-lspci | grep -i vga
+lspci | grep -Ei 'vga|3d|display'
 
-# For NVIDIA: remove the nouveau driver and install proprietary
-sudo apt purge xserver-xorg-video-nouveau
-sudo ubuntu-drivers autoinstall
+# For NVIDIA: show the recommended proprietary driver
+ubuntu-drivers devices
+
+# Install the recommended proprietary driver
+sudo ubuntu-drivers install
 
 # Or install a specific version
-sudo apt install nvidia-driver-535
+sudo ubuntu-drivers install nvidia:535
 
 # Reboot
 sudo reboot
@@ -156,8 +158,8 @@ If the old kernel works but the new one doesn't and regenerating initramfs doesn
 # Remove the problematic kernel
 sudo apt remove linux-image-6.8.0-50-generic
 
-# Keep using the older working kernel
-sudo apt hold linux-image-6.8.0-50-generic
+# Prevent that specific kernel image from being installed again
+sudo apt-mark hold linux-image-6.8.0-50-generic
 ```
 
 ## Common Cause 5: Plymouth Crash
@@ -190,7 +192,7 @@ If the system is waiting for a disk that doesn't exist or is slow to spin up, it
 rootdelay=30
 ```
 
-This gives the disk 30 extra seconds to appear before the kernel gives up.
+This makes the kernel wait 30 seconds before trying to mount the root filesystem.
 
 ## Using Recovery Mode for Diagnosis
 
