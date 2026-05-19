@@ -14,12 +14,13 @@ OpenJDK is the open-source reference implementation of Java. On Ubuntu Server, i
 
 Java releases on a 6-month cadence. Long-Term Support (LTS) releases get extended maintenance periods and are what you should run in production:
 
-- **Java 21** - Current LTS (released September 2023)
-- **Java 17** - Previous LTS, still widely supported
+- **Java 25** - Current LTS (released September 2025)
+- **Java 21** - Previous LTS (released September 2023), still widely supported
+- **Java 17** - Older LTS, still in common use
 - **Java 11** - Older LTS, many legacy applications
 - **Java 8** - Very old LTS, still in use for old codebases
 
-For new projects, use Java 21. For existing projects, use whatever the application requires.
+For new projects, use Java 25. For existing projects, use whatever the application requires.
 
 ## Installing from Ubuntu Repositories
 
@@ -34,6 +35,7 @@ sudo apt update
 sudo apt install default-jdk
 
 # Install a specific version
+sudo apt install openjdk-25-jdk    # Java 25 LTS
 sudo apt install openjdk-21-jdk    # Java 21 LTS
 sudo apt install openjdk-17-jdk    # Java 17 LTS
 sudo apt install openjdk-11-jdk    # Java 11 LTS
@@ -181,7 +183,7 @@ java -Xms512m -Xmx2g -jar myapp.jar
 java -XX:MaxRAMPercentage=75 -jar myapp.jar
 ```
 
-System-wide JVM options go in `/etc/java-21-openjdk/jvm.cfg` or via the `JAVA_TOOL_OPTIONS` environment variable:
+For system-wide JVM defaults, the most portable approach is the `JAVA_TOOL_OPTIONS` environment variable, which the JVM picks up automatically:
 
 ```bash
 # Set memory options for all JVM processes
