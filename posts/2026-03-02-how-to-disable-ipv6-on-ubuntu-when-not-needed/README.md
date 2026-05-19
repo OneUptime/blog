@@ -27,11 +27,12 @@ ip -6 route show
 # Look for IPv6 connections
 ss -6 -tuln
 
-# Check if any services are listening on IPv6 addresses (shown as :::port)
-ss -tuln | grep ':::'
+# Check if any services are listening on IPv6 wildcard addresses
+# (shown as [::]:port or :::port depending on output format)
+ss -tuln | grep -E '\[::\]|:::'
 ```
 
-If you have no IPv6 addresses other than link-local (fe80::) and no services are using it, it is safe to disable. If you have a global IPv6 address (2xxx:: or fc00::) that is in use, disabling will affect connectivity.
+If you have no IPv6 addresses other than link-local (fe80::) and no services are using it, it is safe to disable. If you have an IPv6 address in use, such as a global unicast address (2000::/3) or unique local address (fc00::/7), disabling will affect connectivity.
 
 ## Method 1: sysctl (Temporary, for Testing)
 
@@ -88,7 +89,7 @@ This method is the recommended approach for most cases. The change persists acro
 
 ## Method 3: GRUB Kernel Parameters
 
-An alternative is to pass a kernel boot parameter. This affects IPv6 at the kernel level, preventing it from loading at all:
+An alternative is to pass a kernel boot parameter. This affects IPv6 at the kernel level, disabling IPv6 functionality before interfaces are configured:
 
 ```bash
 sudo nano /etc/default/grub
@@ -173,7 +174,7 @@ After disabling IPv6, some services need updating to remove IPv6 listeners:
 Check if SSH has IPv6 addresses:
 
 ```bash
-ss -tuln | grep sshd | grep ':::'
+sudo ss -tulnp | grep sshd | grep -E '\[::\]|:::'
 ```
 
 If you want to restrict SSH to IPv4 explicitly:
@@ -206,7 +207,7 @@ Check if any applications are configured to listen on `[::]` (all IPv6 interface
 
 ```bash
 # Find services listening on IPv6
-ss -tuln | grep ':::'
+ss -tuln | grep -E '\[::\]|:::'
 
 # Check Nginx/Apache configuration for IPv6 listeners
 grep -r 'listen.*:80\|listen.*\[::\]' /etc/nginx/ /etc/apache2/ 2>/dev/null
@@ -229,7 +230,7 @@ ss -6 -tuln
 # sysctl values confirm disabled
 sysctl -a 2>/dev/null | grep disable_ipv6
 
-# Test that IPv6 DNS resolution fails gracefully
+# Confirm DNS can still return AAAA records, even though your machine will not use them
 dig AAAA google.com  # Should still work but your machine won't use AAAA results
 ping6 ::1            # Should fail
 ```
@@ -242,8 +243,10 @@ To re-enable IPv6 if needed:
 # Remove the sysctl file
 sudo rm /etc/sysctl.d/99-disable-ipv6.conf
 
-# Apply the change
-sudo sysctl --system
+# Re-enable IPv6 for the current boot
+sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
+sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
+sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=0
 
 # IPv6 addresses will be configured at next network restart or reboot
 sudo netplan apply  # or: sudo systemctl restart networking
