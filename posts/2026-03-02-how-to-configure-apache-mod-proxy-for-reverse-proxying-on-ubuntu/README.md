@@ -25,6 +25,7 @@ sudo a2enmod proxy_wstunnel   # For WebSocket proxying
 sudo a2enmod headers          # For header manipulation
 sudo a2enmod rewrite          # For URL rewriting
 sudo a2enmod ssl              # For HTTPS
+sudo a2enmod unique_id        # For UNIQUE_ID request IDs
 
 # Restart Apache to load the modules
 sudo systemctl restart apache2
@@ -59,14 +60,13 @@ sudo nano /etc/apache2/sites-available/myapp.conf
 
     # SSL Configuration
     SSLEngine on
-    SSLCertificateFile /etc/letsencrypt/live/app.example.com/cert.pem
+    SSLCertificateFile /etc/letsencrypt/live/app.example.com/fullchain.pem
     SSLCertificateKeyFile /etc/letsencrypt/live/app.example.com/privkey.pem
-    SSLCertificateChainFile /etc/letsencrypt/live/app.example.com/chain.pem
 
-    # Disable buffering for better performance with streaming
+    # Ignore malformed response headers from the backend
     ProxyBadHeader Ignore
 
-    # Required: prevent header injection attacks
+    # Pass the original Host header to the backend
     ProxyPreserveHost On
 
     # The main proxy directive - forward everything to the backend
@@ -147,7 +147,8 @@ Distribute traffic across multiple backend servers:
         # Each BalancerMember is a backend server
         BalancerMember http://10.0.0.10:3000 loadfactor=1
         BalancerMember http://10.0.0.11:3000 loadfactor=1
-        BalancerMember http://10.0.0.12:3000 loadfactor=2  # Gets double the traffic
+        # Gets double the traffic
+        BalancerMember http://10.0.0.12:3000 loadfactor=2
 
         # A "hot standby" only used when others are down
         BalancerMember http://10.0.0.13:3000 status=+H
@@ -181,7 +182,7 @@ Distribute traffic across multiple backend servers:
 
 ## WebSocket Proxying
 
-WebSocket connections require the `proxy_wstunnel` module and special handling because the connection is upgraded from HTTP:
+WebSocket connections can use the `proxy_wstunnel` module because the connection is upgraded from HTTP. In Apache 2.4.47 and later, `mod_proxy_http` can also handle protocol upgrades:
 
 ```apache
 <VirtualHost *:443>
@@ -234,9 +235,9 @@ Control what headers are sent to backends and returned to clients:
     RequestHeader unset Cookie
 
     # Headers sent to the client (downstream)
-    # Remove server identification headers
+    # Remove backend identification headers
     Header unset X-Powered-By
-    Header always unset Server
+    # Use ServerTokens in the main Apache config to limit Apache's own Server header
 
     # Add security headers
     Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
@@ -267,8 +268,10 @@ Tune timeouts to match your backend's response time:
     SSLCertificateKeyFile /etc/ssl/private/key.pem
 
     # Timeout settings
-    ProxyTimeout 300          # Total proxy timeout in seconds
-    Timeout 300               # Apache's overall request timeout
+    # Total proxy timeout in seconds
+    ProxyTimeout 300
+    # Apache's overall request timeout
+    Timeout 300
 
     # Connection pooling settings
     <Proxy http://localhost:8080>
@@ -276,12 +279,10 @@ Tune timeouts to match your backend's response time:
         # ProxySet max=100 min=10
     </Proxy>
 
-    ProxyPass / http://localhost:8080/
-    ProxyPassReverse / http://localhost:8080/
-
     # For slow backends: return 503 immediately if backend is unavailable
     # rather than waiting for timeout
     ProxyPass / http://localhost:8080/ retry=0
+    ProxyPassReverse / http://localhost:8080/
 
     ErrorLog ${APACHE_LOG_DIR}/timeout.error.log
     CustomLog ${APACHE_LOG_DIR}/timeout.access.log combined
@@ -309,8 +310,8 @@ CacheDirLength 1
 CacheMaxFileSize 1000000
 CacheMinFileSize 1
 
-# Do not cache authenticated requests
-CacheIgnoreHeaders Authorization
+# Do not store Set-Cookie headers in cached responses
+CacheIgnoreHeaders Set-Cookie
 ```
 
 ```bash
