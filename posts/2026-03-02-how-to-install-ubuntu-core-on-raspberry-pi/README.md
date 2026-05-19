@@ -86,38 +86,26 @@ Alternatively, use the Raspberry Pi Imager application:
 
 ## Step 4: First Boot and Configuration
 
-Insert the microSD into the Pi, connect it to your network via Ethernet, and power it on.
+Insert the microSD into the Pi, connect it to a display and keyboard (or to a serial console via the UART pins), connect it to your network via Ethernet, and power it on.
 
-Ubuntu Core runs an interactive first-boot setup over a serial console or via the network. The first time you SSH in, it presents a setup wizard.
+Ubuntu Core runs an interactive first-boot setup called `console-conf` on the local console (HDMI/keyboard or serial line). It asks for the email address associated with your Ubuntu One account; snapd then imports the SSH keys you registered there. SSH access only becomes available after `console-conf` completes — you cannot SSH in before then.
 
-```bash
-# Find the Pi's IP address from your router's DHCP leases
-# Or connect via serial console
-
-# SSH in using your Ubuntu One username
-ssh <ubuntu-one-username>@<raspberry-pi-ip>
-```
-
-On first connection, the Pi will prompt you to complete setup:
+The wizard on the local console looks like:
 
 ```text
 Welcome to Ubuntu Core 22!
 
 This is the first boot of this Ubuntu Core system.
 
-The system will be configured using your Ubuntu One account.
+Press enter to configure.
 
-After setup, you can log in as 'ubuntu' or with your Ubuntu One credentials.
-
-> Done
+[ Start ]
 ```
 
-After setup completes, you can log in as:
+Walk through the prompts and enter your Ubuntu One email when asked. Once `console-conf` reports it is done, find the Pi's IP address from your router's DHCP leases and SSH in using the Ubuntu One username that was associated with your account:
 
 ```bash
-ssh <ubuntu-one-username>@<pi-ip>
-# or
-ssh ubuntu@<pi-ip>  # if you set up the ubuntu user
+ssh <ubuntu-one-username>@<raspberry-pi-ip>
 ```
 
 ## Step 5: Basic System Exploration
