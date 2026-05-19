@@ -18,7 +18,7 @@ Different RAID levels expand differently:
 
 - **RAID 1 (mirror):** Replace drives with larger ones, one at a time. The usable space increases only when all drives are replaced.
 - **RAID 5/6:** Can add drives to increase both capacity and stripe count. mdadm reshapes the array, redistributing data across all drives.
-- **RAID 10:** Add pairs of drives. More complex to expand.
+- **RAID 10:** Replacing drives with larger ones is supported, but increasing the number of active RAID 10 devices is more limited than RAID 5/6 and depends on the layout.
 
 ## Checking Current Array Status
 
@@ -48,16 +48,13 @@ The `[3/3] [UUU]` means 3 of 3 drives active and healthy. A degraded array shows
 
 ## Method 1: Add Drives to Increase Stripe Count (RAID 5/6)
 
-Adding a drive to RAID 5 increases both capacity and provides one more drive of redundancy.
+Adding a drive to RAID 5 increases capacity and stripe count, but RAID 5 still provides single-drive redundancy. RAID 6 still provides two-drive redundancy.
 
 ### Prepare the New Drive
 
 ```bash
 # Check the new drive is detected
 lsblk | grep sdd
-
-# Zero the superblock to ensure no old RAID data
-sudo mdadm --zero-superblock /dev/sdd
 
 # Partition the new drive to match existing drives (optional but recommended)
 # Check existing drive partitioning
@@ -66,14 +63,17 @@ sudo fdisk -l /dev/sda
 # Create matching partition on new drive
 sudo fdisk /dev/sdd
 # Create a new partition using the same type as existing drives
-# Press n (new), p (primary), 1 (partition number), accept defaults, t (type), fd (Linux RAID), w (write)
+# For MBR, type fd is Linux RAID. For GPT, select the Linux RAID member type.
+
+# Zero the new member's superblock to ensure no old RAID metadata remains
+sudo mdadm --zero-superblock /dev/sdd1
 ```
 
 ### Add the Drive to the Array
 
 ```bash
 # Add the new drive as a spare first
-sudo mdadm --add /dev/md0 /dev/sdd
+sudo mdadm --add /dev/md0 /dev/sdd1
 
 # Verify it was added as spare
 sudo mdadm --detail /dev/md0 | grep -E "Spare|State"
@@ -149,13 +149,16 @@ sudo sgdisk -G /dev/sde             # Randomize GUID on the new drive
 
 # Or for MBR partitions
 sudo sfdisk -d /dev/sdb | sudo sfdisk /dev/sde
+
+# Expand the new RAID member partition to use the larger disk
+sudo parted /dev/sde resizepart 1 100%
 ```
 
 ### Step 3: Add the New Drive
 
 ```bash
 # Add the new drive to the array
-sudo mdadm --add /dev/md0 /dev/sde
+sudo mdadm --add /dev/md0 /dev/sde1
 
 # Watch the rebuild (sync)
 watch -n 10 cat /proc/mdstat
@@ -178,8 +181,8 @@ sudo mdadm --grow /dev/md0 --size=max
 # Verify new array size
 sudo mdadm --detail /dev/md0 | grep "Array Size"
 
-# Expand the partition if using partitions
-# Use parted or gdisk to resize the partition first
+# If the filesystem is inside a partition on /dev/md0, resize that partition first.
+# Skip this step if the filesystem is directly on /dev/md0.
 sudo parted /dev/md0 resizepart 1 100%
 
 # Then expand the filesystem
@@ -201,9 +204,9 @@ sudo mdadm --monitor --mail=admin@example.com --delay=300 /dev/md0 &
 
 # Or watch with a script
 while true; do
-    STATUS=$(cat /proc/mdstat | grep "md0")
+    STATUS=$(cat /proc/mdstat)
     echo "$(date): $STATUS"
-    if echo "$STATUS" | grep -qv "reshape\|recover"; then
+    if ! echo "$STATUS" | grep -qE "reshape|recovery|resync"; then
         echo "Reshape complete or stopped"
         break
     fi
@@ -268,7 +271,7 @@ A mismatch count greater than 0 on RAID 5/6 after a check indicates potential da
 
 **Reshape stalls:** If the reshape speed drops to zero, check for drive errors with `dmesg | grep -E "sda|sdb|error"`. A failing drive during a reshape is critical - the array may be at risk.
 
-**Not enough space for reshape:** RAID 5 reshape requires temporary space. If the array is nearly full, the reshape may fail. Free up at least 10-15% of the array before growing.
+**Backup space required for reshape:** Some RAID 5/6 reshape operations need temporary backup space for the critical section. For grows, mdadm can often use spare devices; for shrinks, RAID level changes, or layout changes, specify an external `--backup-file` that is not stored on the array being reshaped.
 
 **Array not recognized after reboot:** Run `sudo mdadm --assemble --scan` and update `/etc/mdadm/mdadm.conf`. Then rebuild initramfs with `sudo update-initramfs -u`.
 
