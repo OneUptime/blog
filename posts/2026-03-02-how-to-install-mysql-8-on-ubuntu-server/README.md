@@ -177,7 +177,9 @@ max_allowed_packet = 64M
 # Binary logging (required for replication and point-in-time recovery)
 log_bin = /var/log/mysql/mysql-bin.log
 binlog_format = ROW
-expire_logs_days = 7
+# binlog_expire_logs_seconds replaces the deprecated expire_logs_days in MySQL 8.0
+# 604800 seconds = 7 days
+binlog_expire_logs_seconds = 604800
 
 # General query log (disable in production - very verbose)
 # general_log = 1
