@@ -64,25 +64,25 @@ sudo journalctl --vacuum-time=30d
 
 ### rsyslog Data Minimization
 
-Configure rsyslog to filter or anonymize personal data before writing logs:
+Configure rsyslog to reduce the metadata written to selected log files:
 
 ```bash
-# Install rsyslog string processing module
+# Install rsyslog if it is not already present
 sudo apt install rsyslog -y
 
 # Create GDPR-focused rsyslog configuration
-sudo tee /etc/rsyslog.d/50-gdpr.conf << 'EOF'
-# Load required modules
-module(load="imuxsock")
-module(load="imklog")
-
-# Define a template that excludes sensitive fields
+sudo tee /etc/rsyslog.d/30-gdpr-auth.conf << 'EOF'
+# Define a template that avoids logging rsyslog sender metadata
 # Use this template for auth logs
 template(name="gdpr_auth" type="string"
   string="%TIMESTAMP% %HOSTNAME% %programname%: %msg%\n")
 
-# Forward auth logs with IP anonymization (handled by separate script)
-auth.*;authpriv.* /var/log/auth.log;gdpr_auth
+# Write auth logs with the reduced template, then stop so later default
+# rules do not write the same message again with a broader template.
+if ($syslogfacility-text == "auth" or $syslogfacility-text == "authpriv") then {
+    action(type="omfile" file="/var/log/auth.log" template="gdpr_auth")
+    stop
+}
 
 # Standard logging for non-personal-data sources
 *.info;mail.none;authpriv.none;cron.none /var/log/messages
@@ -105,19 +105,13 @@ sudo nano /etc/nginx/nginx.conf
 http {
     # Map to anonymize IPv4 addresses (zero last octet)
     map $remote_addr $anonymized_ip {
-        ~(?P<ip>\d+\.\d+\.\d+)\.    $ip.0;
-        ~(?P<ip>[^:]+:[^:]+):        $ip::;
+        ~^(?P<ipv4>\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}$    $ipv4.0;
         default                       0.0.0.0;
     }
 
-    # Map to anonymize IPv6 addresses (keep only first 32 bits)
-    geo $remote_addr $anonymized_ipv6 {
-        default 0000:0000::;
-    }
-
     # GDPR-compliant log format
-    # Uses anonymized IP, omits referer if it might contain personal data
-    log_format gdpr_format '$anonymized_ip - $remote_user [$time_local] '
+    # Uses anonymized IP, omits authenticated user and referer
+    log_format gdpr_format '$anonymized_ip - - [$time_local] '
                            '"$request" $status $body_bytes_sent '
                            '"$http_user_agent"';
 
@@ -137,14 +131,8 @@ sudo nano /etc/apache2/apache2.conf
 ```
 
 ```apache
-# Define log format with anonymized IP (removes last octet)
-LogFormat "%{GDPR_IP}e %l %u %t \"%r\" %>s %b \"%{User-Agent}i\"" gdpr_combined
-
-# Add a SetEnvIf to create the anonymized IP variable
-# (Requires mod_setenvif and mod_rewrite)
-
-# Simpler approach: use a custom log format that drops the user IP
-LogFormat "ANONYMIZED %l %u %t \"%r\" %>s %b" gdpr_minimal
+# Use a custom log format that drops the user IP and authenticated username
+LogFormat "ANONYMIZED - - %t \"%r\" %>s %b" gdpr_minimal
 CustomLog ${APACHE_LOG_DIR}/access_gdpr.log gdpr_minimal
 ```
 
@@ -166,10 +154,13 @@ class GDPRLogFilter(logging.Filter):
     IPV4_PATTERN = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3})\.\d{1,3}\b')
 
     def filter(self, record):
+        message = record.getMessage()
         # Anonymize email addresses in log messages
-        record.msg = self.EMAIL_PATTERN.sub('[EMAIL REDACTED]', str(record.msg))
+        message = self.EMAIL_PATTERN.sub('[EMAIL REDACTED]', message)
         # Anonymize IP addresses
-        record.msg = self.IPV4_PATTERN.sub(r'\1.0', record.msg)
+        message = self.IPV4_PATTERN.sub(r'\1.0', message)
+        record.msg = message
+        record.args = ()
         return True
 
 # Apply the filter
@@ -249,11 +240,9 @@ Logs containing personal data must be protected from unauthorized access:
 
 ```bash
 # Restrict log file access to privileged users only
+sudo groupadd --force log-readers
 sudo chmod 640 /var/log/nginx/access.log
-sudo chown root:adm /var/log/nginx/access.log
-
-# Create a dedicated log readers group
-sudo groupadd log-readers
+sudo chown root:log-readers /var/log/nginx/access.log
 
 # Add only authorized users to this group
 sudo usermod -aG log-readers security_analyst
@@ -283,25 +272,25 @@ if [ -z "$IP_ADDRESS" ]; then
     exit 1
 fi
 
-LOG_FILES=$(find /var/log -name "*.log" -o -name "*.log.*.gz")
-
 case "$ACTION" in
     find)
         echo "=== Log entries containing $IP_ADDRESS ==="
-        for FILE in $LOG_FILES; do
+        while IFS= read -r FILE; do
             if [[ "$FILE" == *.gz ]]; then
-                COUNT=$(zgrep -c "$IP_ADDRESS" "$FILE" 2>/dev/null)
+                COUNT=$(zgrep -F -c -- "$IP_ADDRESS" "$FILE" 2>/dev/null)
             else
-                COUNT=$(grep -c "$IP_ADDRESS" "$FILE" 2>/dev/null)
+                COUNT=$(grep -F -c -- "$IP_ADDRESS" "$FILE" 2>/dev/null)
             fi
             [ "$COUNT" -gt 0 ] && echo "$FILE: $COUNT occurrences"
-        done
+        done < <(find /var/log \( -name "*.log" -o -name "*.log.*.gz" \) -type f)
         ;;
     delete)
         echo "Removing log entries for $IP_ADDRESS..."
         for FILE in /var/log/nginx/access.log; do
             if [ -f "$FILE" ]; then
-                sed -i "/$IP_ADDRESS/d" "$FILE"
+                TMPFILE=$(mktemp)
+                awk -v ip="$IP_ADDRESS" 'index($0, ip) == 0' "$FILE" > "$TMPFILE" && cat "$TMPFILE" > "$FILE"
+                rm -f "$TMPFILE"
                 echo "Processed: $FILE"
             fi
         done
