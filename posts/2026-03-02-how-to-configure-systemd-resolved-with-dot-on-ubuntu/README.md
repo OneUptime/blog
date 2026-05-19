@@ -13,7 +13,7 @@ Ubuntu 18.04 and later ships with `systemd-resolved` as the default DNS resolver
 ## Checking What You Have
 
 ```bash
-# Check systemd version (need 239+ for DoT, 243+ for strict mode)
+# Check systemd version (need 239+ for DoT)
 
 systemd --version
 
@@ -53,12 +53,12 @@ DNS=1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com
 DNS=2606:4700:4700::1111#cloudflare-dns.com 2606:4700:4700::1001#cloudflare-dns.com
 
 # Enable DNS over TLS
-# yes = use DoT if available, fall back to plaintext
-# opportunistic = same as yes
+# yes = require DoT and fail if TLS can't be established
+# opportunistic = try DoT, but fall back to plaintext
 # no = never use DoT (default)
 DNSOverTLS=yes
 
-# Fallback DNS if the primary is unreachable
+# Fallback DNS used only if no other DNS server information is known
 FallbackDNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net
 ```
 
@@ -71,7 +71,7 @@ FallbackDNS=9.9.9.9#dns.quad9.net
 
 # Strict mode: only use DoT, fail if TLS can't be established
 # This prevents fallback to plaintext DNS
-DNSOverTLS=opportunistic
+DNSOverTLS=yes
 
 # Enable DNSSEC validation
 DNSSEC=yes
@@ -161,7 +161,7 @@ nslookup github.com
 # Make a query through systemd-resolved and see details
 resolvectl query example.com
 
-# Or using the older dig syntax (also goes through resolved)
+# Or using dig, if /etc/resolv.conf points at the resolved stub
 dig example.com
 
 # Check DNSSEC validation
@@ -195,7 +195,7 @@ When using NetworkManager, configure per-connection DNS in the connection profil
 ```bash
 # Create or edit a connection
 sudo nmcli connection modify "Your Connection Name" \
-  ipv4.dns "1.1.1.1 1.0.0.1" \
+  ipv4.dns "1.1.1.1#cloudflare-dns.com 1.0.0.1#cloudflare-dns.com" \
   ipv4.ignore-auto-dns yes
 
 # Apply changes
@@ -263,8 +263,8 @@ sudo resolvectl reset-statistics
 sudo journalctl -u systemd-resolved -n 50
 
 # Common error: certificate validation failure
-# Make sure the #hostname suffix matches the server's actual certificate CN
-openssl s_client -connect 1.1.1.1:853 -servername cloudflare-dns.com 2>&1 | grep "subject\|CN="
+# Make sure the #hostname suffix matches a name in the server's TLS certificate
+openssl s_client -connect 1.1.1.1:853 -servername cloudflare-dns.com -verify_hostname cloudflare-dns.com </dev/null 2>&1 | grep "Verify return code"
 
 # Try with a different server
 sudo nano /etc/systemd/resolved.conf
@@ -293,7 +293,7 @@ NegativeTrustAnchors=failing-domain.com
 If NetworkManager or DHCP keeps overwriting `/etc/resolv.conf`:
 
 ```bash
-# Tell NetworkManager to not manage DNS
+# Tell NetworkManager to use systemd-resolved for DNS
 sudo nano /etc/NetworkManager/NetworkManager.conf
 ```
 
