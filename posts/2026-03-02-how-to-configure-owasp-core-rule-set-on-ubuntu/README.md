@@ -39,14 +39,18 @@ ls /usr/share/modsecurity-crs/
 ```bash
 # Download the latest CRS release
 cd /tmp
-wget https://github.com/coreruleset/coreruleset/archive/refs/tags/v3.3.5.tar.gz
-tar -xzf v3.3.5.tar.gz
+wget https://github.com/coreruleset/coreruleset/releases/download/v4.26.0/coreruleset-4.26.0.tar.gz
+tar -xzf coreruleset-4.26.0.tar.gz
 
 # Move to the ModSecurity directory
-sudo mv coreruleset-3.3.5 /etc/modsecurity/crs
+sudo mv coreruleset-4.26.0 /etc/modsecurity/crs
 
 # Copy the example setup file
 sudo cp /etc/modsecurity/crs/crs-setup.conf.example /etc/modsecurity/crs/crs-setup.conf
+sudo cp /etc/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf.example \
+    /etc/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
+sudo cp /etc/modsecurity/crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf.example \
+    /etc/modsecurity/crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
 ```
 
 ## Configuring Apache to Load CRS
@@ -65,39 +69,11 @@ sudo nano /etc/apache2/conf-available/modsecurity-crs.conf
     # Load CRS setup configuration
     Include /etc/modsecurity/crs/crs-setup.conf
 
-    # Load CRS exclusion rules BEFORE the main rules
-    Include /etc/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
-
-    # Load CRS rules
-    Include /etc/modsecurity/crs/rules/REQUEST-901-INITIALIZATION.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-905-COMMON-EXCEPTIONS.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-910-IP-REPUTATION.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-911-METHOD-ENFORCEMENT.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-912-DOS-PROTECTION.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-913-SCANNER-DETECTION.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-920-PROTOCOL-ENFORCEMENT.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-921-PROTOCOL-ATTACK.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-922-MULTIPART-ATTACK.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-930-APPLICATION-ATTACK-LFI.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-931-APPLICATION-ATTACK-RFI.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-932-APPLICATION-ATTACK-RCE.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-933-APPLICATION-ATTACK-PHP.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-934-APPLICATION-ATTACK-NODEJS.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-941-APPLICATION-ATTACK-XSS.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-943-APPLICATION-ATTACK-SESSION-FIXATION.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-944-APPLICATION-ATTACK-JAVA.conf
-    Include /etc/modsecurity/crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf
-    Include /etc/modsecurity/crs/rules/RESPONSE-950-DATA-LEAKAGES.conf
-    Include /etc/modsecurity/crs/rules/RESPONSE-951-DATA-LEAKAGES-SQL.conf
-    Include /etc/modsecurity/crs/rules/RESPONSE-952-DATA-LEAKAGES-JAVA.conf
-    Include /etc/modsecurity/crs/rules/RESPONSE-953-DATA-LEAKAGES-PHP.conf
-    Include /etc/modsecurity/crs/rules/RESPONSE-954-DATA-LEAKAGES-IIS.conf
-    Include /etc/modsecurity/crs/rules/RESPONSE-959-BLOCKING-EVALUATION.conf
-    Include /etc/modsecurity/crs/rules/RESPONSE-980-CORRELATION.conf
-
-    # Load application-specific exclusions AFTER the main rules
-    Include /etc/modsecurity/crs/rules/REQUEST-999-EXCLUSION-RULES-AFTER-CRS.conf
+    # Load CRS plugins and rules in the recommended order
+    IncludeOptional /etc/modsecurity/crs/plugins/*-config.conf
+    IncludeOptional /etc/modsecurity/crs/plugins/*-before.conf
+    Include /etc/modsecurity/crs/rules/*.conf
+    IncludeOptional /etc/modsecurity/crs/plugins/*-after.conf
 </IfModule>
 ```
 
@@ -129,8 +105,8 @@ SecAction \
     t:none,\
     nolog,\
     tag:'OWASP_CRS',\
-    ver:'OWASP_CRS/3.3.5',\
-    setvar:tx.paranoia_level=1"
+    ver:'OWASP_CRS/4.26.0',\
+    setvar:tx.blocking_paranoia_level=1"
 
 # Optionally set higher detection level without blocking at that level
 # This detects PL2 violations but only blocks on PL1 matches
@@ -141,7 +117,7 @@ SecAction \
     t:none,\
     nolog,\
     tag:'OWASP_CRS',\
-    ver:'OWASP_CRS/3.3.5',\
+    ver:'OWASP_CRS/4.26.0',\
     setvar:tx.detection_paranoia_level=2"
 ```
 
@@ -185,16 +161,13 @@ sudo grep "REQUEST_URI" /var/log/apache2/modsec_audit.log | sort | uniq -c | sor
 
 ### Exclusion Methods
 
-The CRS provides two exclusion rule files. Add your exclusions there:
+The CRS provides two exclusion rule files. Add per-transaction exclusions to the BEFORE file:
 
 ```bash
 sudo nano /etc/modsecurity/crs/rules/REQUEST-900-EXCLUSION-RULES-BEFORE-CRS.conf
 ```
 
 ```apache
-# Disable a specific rule globally
-SecRuleRemoveById 941100
-
 # Disable a rule for a specific URI
 SecRule REQUEST_URI "@beginsWith /admin/upload" \
     "id:9001,\
@@ -202,9 +175,6 @@ SecRule REQUEST_URI "@beginsWith /admin/upload" \
     pass,\
     nolog,\
     ctl:ruleRemoveById=941100"
-
-# Disable a rule for a specific parameter
-SecRuleUpdateTargetById 942100 "!ARGS:sql_query"
 
 # Disable a rule for a specific IP (admin access)
 SecRule REMOTE_ADDR "@ipMatch 10.0.0.5" \
@@ -215,18 +185,29 @@ SecRule REMOTE_ADDR "@ipMatch 10.0.0.5" \
     ctl:ruleEngine=Off"
 ```
 
+Add startup-time exclusions that modify existing CRS rules to the AFTER file:
+
+```bash
+sudo nano /etc/modsecurity/crs/rules/RESPONSE-999-EXCLUSION-RULES-AFTER-CRS.conf
+```
+
+```apache
+# Disable a specific rule globally
+SecRuleRemoveById 941100
+
+# Disable a rule for a specific parameter
+SecRuleUpdateTargetById 942100 "!ARGS:sql_query"
+```
+
 Application-specific exclusion profiles are also available for popular frameworks:
 
 ```bash
-# CRS ships with exclusion profiles for common applications
-ls /etc/modsecurity/crs/plugins/ 2>/dev/null || ls /usr/share/modsecurity-crs/plugins/ 2>/dev/null
-# wordpress-rule-exclusions.conf
-# drupal-rule-exclusions.conf
-# nextcloud-rule-exclusions.conf
-# etc.
+# CRS plugins are listed in the official plugin registry
+git clone https://github.com/coreruleset/plugin-registry.git
 
 # Enable a plugin
-# Copy and include it in your configuration
+# Download the plugin and include its *-config.conf, *-before.conf, and *-after.conf files
+# from /etc/modsecurity/crs/plugins/ as shown in the Apache configuration above.
 ```
 
 ## Enabling Specific Rule Categories
@@ -236,7 +217,7 @@ You might not need all rule files. For a PHP application, you'd want PHP rules b
 ```apache
 # Selective inclusion - only load what you need
 # Comment out rules that don't apply to your stack
-# Include /etc/modsecurity/crs/rules/REQUEST-934-APPLICATION-ATTACK-NODEJS.conf
+# Include /etc/modsecurity/crs/rules/REQUEST-934-APPLICATION-ATTACK-GENERIC.conf
 Include /etc/modsecurity/crs/rules/REQUEST-933-APPLICATION-ATTACK-PHP.conf
 # Include /etc/modsecurity/crs/rules/REQUEST-944-APPLICATION-ATTACK-JAVA.conf
 ```
@@ -287,15 +268,15 @@ sudo tail /var/log/apache2/error.log | grep ModSecurity
 grep "OWASP_CRS" /etc/modsecurity/crs/crs-setup.conf | head -1
 
 # Download latest version
-wget https://github.com/coreruleset/coreruleset/archive/refs/tags/v3.3.6.tar.gz
-tar -xzf v3.3.6.tar.gz
+wget https://github.com/coreruleset/coreruleset/releases/download/v4.26.0/coreruleset-4.26.0.tar.gz
+tar -xzf coreruleset-4.26.0.tar.gz
 
 # Back up current setup
 sudo cp /etc/modsecurity/crs/crs-setup.conf /tmp/crs-setup.conf.backup
-sudo cp -r /etc/modsecurity/crs/rules/*EXCLUSION* /tmp/
+sudo cp -r /etc/modsecurity/crs/rules/*EXCLUSION* /tmp/ 2>/dev/null || true
 
 # Replace the rules (not the setup file or exclusions)
-sudo rsync -av coreruleset-3.3.6/rules/ /etc/modsecurity/crs/rules/ \
+sudo rsync -av coreruleset-4.26.0/rules/ /etc/modsecurity/crs/rules/ \
     --exclude="*EXCLUSION*"
 
 # Test and restart
