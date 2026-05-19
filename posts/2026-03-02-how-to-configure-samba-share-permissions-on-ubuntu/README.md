@@ -70,18 +70,18 @@ sudo nano /etc/samba/smb.conf
    read only = no
 
    # Permissions for new files and directories
-   # 0664 = owner rw, group rw, others none
+   # 0660 = owner rw, group rw, others none
    create mask = 0660
    force create mode = 0660
 
-   # 0775 = owner rwx, group rwx, others none
+   # 0770 = owner rwx, group rwx, others none
    directory mask = 0770
    force directory mode = 0770
 
    # Force all files to be owned by the finance group
    force group = finance
 
-   # Inherit permissions from parent directory
+   # Inherit permissions from parent directory instead of using the masks above
    inherit permissions = yes
 ```
 
@@ -138,7 +138,7 @@ Prevent accidental deletion by enabling the recycle bin VFS module:
 
    # Enable recycle bin
    vfs objects = recycle
-   recycle:repository = .recycle
+   recycle:repository = .recycle/%U
    recycle:keeptree = yes
    recycle:versions = yes
    recycle:touch = yes
@@ -162,7 +162,7 @@ Track who accesses and modifies files:
    # Enable full audit logging
    vfs objects = full_audit
    full_audit:prefix = %U|%I|%m|%S
-   full_audit:success = mkdir rmdir read write rename unlink
+   full_audit:success = mkdirat unlinkat read write renameat
    full_audit:failure = connect
    full_audit:facility = LOCAL5
    full_audit:priority = NOTICE
@@ -197,20 +197,22 @@ For full Windows ACL compatibility (as opposed to mapping to Unix permissions):
    map acl inherit = yes
    store dos attributes = yes
 
-   # Required for Windows ACL support
+   # Allow members of the owning group to modify permissions
    acl group control = yes
 
-   # Disable Samba's internal permission mapping
-   # (Windows ACLs take precedence)
+   # Keep NT ACL support enabled
    nt acl support = yes
 ```
 
-Enable extended attributes on the filesystem:
+Verify that extended attributes and ACLs are enabled on the filesystem. On modern Ubuntu ext4 filesystems, ACL and extended attribute support are normally enabled by default; on older or custom mounts, you may need to add the mount options explicitly:
 
 ```bash
 # For ext4
 sudo tune2fs -l /dev/sda1 | grep "Default mount options"
-# Add 'user_xattr' if not present
+# Check the active mount options
+findmnt -no OPTIONS /srv
+
+# If needed, add the options in /etc/fstab
 sudo nano /etc/fstab
 # Change options to include: defaults,user_xattr,acl
 sudo mount -o remount /srv
@@ -235,8 +237,7 @@ Create a base directory for home shares:
 ```bash
 sudo mkdir -p /home/samba
 
-# When each user connects, Samba creates their directory
-# Optionally pre-create for existing users:
+# Samba expects each user's directory to exist
 for user in jsmith bwilliams; do
     sudo mkdir -p /home/samba/$user
     sudo chown $user:$user /home/samba/$user
@@ -292,9 +293,8 @@ id jsmith | grep finance
 ### Cannot Delete Files Created by Others
 
 ```bash
-# If file deletion requires ownership matching:
-# Enable 'store dos attributes' for Windows-style delete behavior
-# Or set sticky bit to prevent others from deleting:
+# Check directory write/execute permissions and whether the sticky bit is set
+# Set the sticky bit if users should only delete their own files:
 # chmod +t /srv/samba/shared/  (sticky bit)
 # Note: sticky bit means only owner can delete their own files
 ```
