@@ -51,12 +51,13 @@ The `dmon` (device monitoring) subcommand streams statistics to stdout, which is
 
 ```bash
 # dmon flags:
-# -s: stats to show (p=power, u=utilization, c=clock, v=vram, m=memory, e=ecc, t=temp)
+# -s: stats to show (p=power+temp, u=utilization, c=clocks, v=power/thermal violations,
+#                    m=FB+Bar1 memory, e=ecc+PCIe replay errors, t=PCIe Rx/Tx throughput)
 # -d: delay in seconds
 # -f: write to file
 
-# Log GPU stats to a file for post-analysis
-nvidia-smi dmon -s putm -d 5 -f /var/log/gpu_stats.log
+# Log GPU stats to a file for post-analysis (p already includes temperature)
+nvidia-smi dmon -s pum -d 5 -f /var/log/gpu_stats.log
 ```
 
 ## Querying Specific Metrics
@@ -184,9 +185,11 @@ For datacenter GPUs with ECC support:
 # Check ECC errors
 nvidia-smi --query-gpu=ecc.errors.corrected.volatile.total,ecc.errors.uncorrected.volatile.total --format=csv
 
-# Reset ECC error counts
-sudo nvidia-smi --ecc-config=1  # enable ECC
-sudo nvidia-smi -r  # reset accumulated ECC counts
+# Enable ECC (takes effect after a GPU reset / reboot)
+sudo nvidia-smi --ecc-config=1
+
+# Reset ECC error counts: 0 = volatile (since last driver load), 1 = aggregate (lifetime)
+sudo nvidia-smi -p 0
 ```
 
 ## Integration with Prometheus for Long-term Monitoring
