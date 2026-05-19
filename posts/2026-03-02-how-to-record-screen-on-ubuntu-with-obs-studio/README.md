@@ -56,7 +56,6 @@ echo $XDG_SESSION_TYPE  # outputs "x11" or "wayland"
 # For Wayland, install PipeWire support
 sudo apt-get install -y \
     pipewire \
-    libpipewire-0.3-dev \
     xdg-desktop-portal \
     xdg-desktop-portal-gnome  # for GNOME
     # or xdg-desktop-portal-kde for KDE
@@ -166,8 +165,8 @@ Hardware encoders (much faster, uses GPU):
 To enable VA-API (hardware encoding for Intel/AMD):
 
 ```bash
-# Install VA-API drivers
-sudo apt-get install -y vainfo libva-dev
+# Install VA-API tools
+sudo apt-get install -y vainfo
 
 # For Intel
 sudo apt-get install -y intel-media-va-driver
@@ -299,8 +298,9 @@ sudo apt-get install -y obs-plugins
 # waveform: Real-time audio visualization
 # obs-move-transition: Smooth scene transitions
 
-# For Wayland game capture:
-sudo apt-get install -y obs-vkcapture
+# For Wayland game capture, obs-vkcapture is not in the Ubuntu repos;
+# build it from source: https://github.com/nowrep/obs-vkcapture
+# or use the Flatpak OBS, which bundles a compatible capture pipeline.
 ```
 
 ## Troubleshooting
