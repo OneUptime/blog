@@ -10,7 +10,7 @@ Description: A guide to installing and configuring Resilio Sync on Ubuntu for pe
 
 Resilio Sync (formerly BitTorrent Sync) is a proprietary peer-to-peer file synchronization application built on the BitTorrent protocol. It creates direct connections between devices to transfer files without routing through a central server. Unlike cloud sync services, there's no storage limit (beyond your own disk) and files don't live on any provider's servers.
 
-The core sync engine is efficient - it uses the same chunked transfer approach as BitTorrent, so syncing large files is fast and resumable. The free tier has limitations (no selective sync on mobile, basic features), but for server-to-server or small team file sync, the free version is often sufficient.
+The core sync engine is efficient - it uses the same chunked transfer approach as BitTorrent, so syncing large files is fast and resumable. Resilio Sync v3 makes the former Pro features available for personal non-commercial use, but commercial or Business deployments still need the appropriate Resilio licensing.
 
 ## Installing Resilio Sync
 
@@ -23,8 +23,8 @@ echo "deb http://linux-packages.resilio.com/resilio-sync/deb resilio-sync non-fr
     sudo tee /etc/apt/sources.list.d/resilio-sync.list
 
 # Import the signing key
-curl -LO https://linux-packages.resilio.com/resilio-sync/key.asc
-sudo apt-key add key.asc
+wget -qO- https://linux-packages.resilio.com/resilio-sync/key.asc | \
+    sudo tee /etc/apt/trusted.gpg.d/resilio-sync.asc > /dev/null 2>&1
 
 sudo apt update
 sudo apt install resilio-sync
@@ -42,15 +42,20 @@ systemctl status resilio-sync
 For better control over file permissions, run Resilio Sync as your own user rather than the default `rslsync` system user:
 
 ```bash
-# Method 1: Configure the default service to run as your user
-sudo nano /lib/systemd/system/resilio-sync.service
+# Method 1: Use the packaged per-user systemd service
+sudo systemctl disable --now resilio-sync
 
-# Change the User= line to your username
-# User=your-username
-# Group=your-username
+# Edit the user service and change:
+# WantedBy=multi-user.target
+# to:
+# WantedBy=default.target
+sudo nano /usr/lib/systemd/user/resilio-sync.service
 
-sudo systemctl daemon-reload
-sudo systemctl restart resilio-sync
+systemctl --user daemon-reload
+systemctl --user enable --now resilio-sync
+
+# On headless servers, keep the user service running after logout
+sudo loginctl enable-linger your-username
 ```
 
 Method 2: Run a per-user instance:
@@ -59,10 +64,7 @@ Method 2: Run a per-user instance:
 # Create a user-specific configuration
 mkdir -p ~/.config/resilio-sync
 
-# Run directly as your user
-rslsync --config ~/.config/resilio-sync/sync.conf
-
-# Create the config file first
+# Create the config file
 cat > ~/.config/resilio-sync/sync.conf << 'EOF'
 {
   "device_name": "my-ubuntu-server",
@@ -75,6 +77,9 @@ cat > ~/.config/resilio-sync/sync.conf << 'EOF'
   }
 }
 EOF
+
+# Run directly as your user
+rslsync --config ~/.config/resilio-sync/sync.conf
 ```
 
 ## Accessing the Web Interface
@@ -86,10 +91,10 @@ Resilio Sync provides a web UI for configuration:
 # Access via SSH tunnel if running on a remote server
 ssh -L 8888:localhost:8888 user@remote-server.example.com -N
 
-# Then open http://localhost:8888 in your browser
+# Then open http://localhost:8888/gui/ in your browser
 ```
 
-Set a password for the web interface immediately. Go to Settings -> GUI -> set username and password.
+Set a password for the web interface immediately. Go to Settings -> WebUI -> set username and password.
 
 ## Configuring via the Web Interface
 
@@ -106,9 +111,9 @@ The web UI is fairly straightforward:
 When you create a new folder, Resilio generates sync keys:
 - **Read & Write key** - allows full bidirectional sync
 - **Read Only key** - allows downloading only, no uploads
-- **Approval key** - requires approval from an existing peer before syncing
+- **Encrypted key** - allows an untrusted peer to store and seed encrypted data without decrypting file names or contents
 
-Share the appropriate key with other devices to start syncing.
+Share the appropriate key with other devices to start syncing. Keys do not use the approval flow; use sharing links if you want an existing peer to approve new peers before syncing.
 
 ## Configuring via Config File
 
@@ -117,6 +122,8 @@ For headless server deployments, the JSON config file gives full control:
 ```bash
 sudo nano /etc/resilio-sync/config.json
 ```
+
+If you define `shared_folders` in the config file, Resilio Sync runs those shares from the file and disables the WebUI folder list for managing them.
 
 ```json
 {
@@ -234,7 +241,7 @@ EOF
 Check sync status through the web UI (the "Devices" and folder lists show connection status and sync progress), or through the API:
 
 ```bash
-# Resilio Sync has an undocumented REST API
+# Resilio Sync exposes API v2 through the WebUI port
 # Get a list of folders and their status
 curl -s -u admin:password http://localhost:8888/api/v2/folders | python3 -m json.tool
 
@@ -273,15 +280,11 @@ dpkg -l resilio-sync
 ## Alternative: Using the CLI for Key Management
 
 ```bash
-# Get device identity
-rslsync --get-deviceid --config /etc/resilio-sync/config.json
+# Generate a new read/write key
+rslsync --generate-secret
 
-# Generate a new folder key pair
-# This is typically done through the web UI, but you can also
-# use the API:
-curl -s -X POST -u admin:password \
-    http://localhost:8888/api/v2/folders \
-    -d '{"name":"new-folder","path":"/srv/new-folder"}' | python3 -m json.tool
+# Get the read-only key associated with a read/write key
+rslsync --get-ro-secret YOUR_READ_WRITE_KEY
 ```
 
 Resilio Sync works well for large-file synchronization scenarios where BitTorrent's chunked transfer approach shines. For teams already familiar with cloud sync behavior (Dropbox-like), it's an easy transition. The primary tradeoff versus open-source alternatives like Syncthing is the proprietary protocol, though Resilio's desktop and mobile apps are polished and widely used.
