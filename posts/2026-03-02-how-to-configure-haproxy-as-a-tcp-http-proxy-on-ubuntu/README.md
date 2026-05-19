@@ -14,18 +14,18 @@ This guide covers installing HAProxy on Ubuntu and configuring it for both HTTP 
 
 ## Installing HAProxy
 
-The version in Ubuntu's default repositories is typically older. Use the official HAProxy PPA for the latest stable version:
+The version in Ubuntu's default repositories can be older on some releases. Use the HAProxy Debian/Ubuntu packaging PPA when you need a newer supported branch than your Ubuntu release provides:
 
 ```bash
 sudo apt update
 sudo apt install -y software-properties-common
 
-# Add the HAProxy PPA (adjust version as needed - 2.8 is a current LTS)
+# Add the HAProxy PPA (adjust version as needed - 2.8 is a supported LTS)
 
 sudo add-apt-repository ppa:vbernat/haproxy-2.8
 
 sudo apt update
-sudo apt install -y haproxy
+sudo apt install -y haproxy socat
 
 # Verify the version
 haproxy -v
@@ -76,6 +76,9 @@ global
     # Maximum connections
     maxconn 50000
 
+    # Runtime API socket for administrative commands
+    stats socket /var/run/haproxy/admin.sock mode 660 level admin
+
     # SSL/TLS settings
     ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384
     ssl-default-bind-options ssl-min-ver TLSv1.2 no-tls-tickets
@@ -103,7 +106,6 @@ defaults
 
     # Enable connection reuse
     option http-server-close
-    option forwardfor
 
     # Health check interval
     timeout check 5s
@@ -136,6 +138,9 @@ frontend https_frontend
     # Listen on 443 with SSL termination
     bind *:443 ssl crt /etc/haproxy/certs/example.com.pem
 
+    # Add X-Forwarded-For to proxied HTTP requests
+    option forwardfor
+
     # HSTS header
     http-response set-header Strict-Transport-Security "max-age=31536000"
 
@@ -159,7 +164,8 @@ backend web_backend
     option http-server-close
 
     # Health check - check this path on backend servers
-    option httpchk GET /health HTTP/1.1\r\nHost:\ example.com
+    option httpchk
+    http-check send meth GET uri /health ver HTTP/1.1 hdr Host example.com
 
     # Backend servers (name, host, port, weight)
     server web1 192.168.1.10:8080 check weight 100 inter 5s rise 2 fall 3
@@ -231,6 +237,9 @@ backend mysql_backend
 frontend redis_frontend
     mode tcp
     bind *:6379
+
+    # TCP logging
+    option tcplog
 
     default_backend redis_backend
 
