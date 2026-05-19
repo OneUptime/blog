@@ -287,29 +287,47 @@ sudo td-agent-gem install fluent-plugin-s3
 
 ### Split Logs by Level (Error vs Info)
 
+The `@type copy` plugin does not support embedded filters inside its `<store>` blocks, so to apply a grep filter to only one branch of the stream use `@type relabel` to fork events into a separate `<label>` section where a `<filter>` can run before the output:
+
 ```xml
-## Separate error logs from info logs using grep filter
+## Send all logs to stdout, and a copy into the @errors label for filtering
 <match docker.**>
   @type copy
 
-  ## Copy error logs to a dedicated error log file
-  <store>
-    @type file
-    path /var/log/fluentd/errors/${tag}
-    <filter>
-      @type grep
-      <regexp>
-        key log
-        pattern /\b(ERROR|FATAL|CRITICAL)\b/i
-      </regexp>
-    </filter>
-  </store>
-
-  ## Send all logs to stdout for debugging
   <store>
     @type stdout
   </store>
+
+  ## Re-emit a copy of the events under the @errors label
+  <store>
+    @type relabel
+    @label @errors
+  </store>
 </match>
+
+## In the @errors label, keep only error-level lines and write them to a file
+<label @errors>
+  <filter **>
+    @type grep
+    <regexp>
+      key log
+      pattern /\b(ERROR|FATAL|CRITICAL)\b/i
+    </regexp>
+  </filter>
+
+  <match **>
+    @type file
+    path /var/log/fluentd/errors/${tag}
+    <buffer tag,time>
+      @type file
+      path /var/log/fluentd/buffer/errors
+      timekey 1d
+      timekey_wait 10m
+      flush_mode interval
+      flush_interval 30s
+    </buffer>
+  </match>
+</label>
 ```
 
 ## Parsing Application Log Formats
