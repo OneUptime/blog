@@ -8,7 +8,7 @@ Description: Build optimized Go binaries on Ubuntu, strip debug symbols, create 
 
 ---
 
-One of Go's most compelling features for server deployments is that it compiles to a single, statically linked binary with no runtime dependencies. Deploying a Go application means copying one file and running it. This simplicity makes Go deployments reliable and reproducible, but there are still techniques for producing smaller binaries, managing deployments cleanly, and integrating with systemd.
+One of Go's most compelling features for server deployments is that it often compiles to a single self-contained binary, especially for pure Go applications built with CGO disabled. Deploying a Go application can be as simple as copying one file and running it. This simplicity makes Go deployments reliable and reproducible, but there are still techniques for producing smaller binaries, managing deployments cleanly, and integrating with systemd.
 
 ## Basic Build
 
@@ -24,6 +24,7 @@ go build -o myapp .
 go build -o bin/api-server ./cmd/api-server/
 
 # Build all binaries in a monorepo
+mkdir -p bin
 go build -o bin/ ./cmd/...
 ```
 
@@ -56,7 +57,7 @@ go build -ldflags="-s -w" -o myapp-stripped .
 ls -lh myapp-debug myapp-stripped
 ```
 
-Stripping typically reduces binary size by 30-40%. Stripped binaries can't be analyzed with debuggers or profilers, so keep the debug version around if you need post-mortem analysis.
+Stripping often reduces binary size significantly. Stripped binaries have less symbol and DWARF data available for debugging tools, so keep the debug version around if you need post-mortem analysis.
 
 ## Embedding Version Information
 
@@ -142,6 +143,7 @@ LDFLAGS     := -ldflags "-s -w \
 .PHONY: build test clean install
 
 build:
+	mkdir -p bin
 	go build $(LDFLAGS) -trimpath -o bin/$(APP_NAME) .
 
 test:
@@ -192,6 +194,8 @@ Create the service unit:
 Description=My Go Application
 After=network.target
 Documentation=https://github.com/yourorg/myapp
+StartLimitIntervalSec=30
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -211,16 +215,14 @@ ExecReload=/bin/kill -HUP $MAINPID
 
 # Environment
 Environment=APP_ENV=production
-EnvironmentFile=/opt/myapp/config/env
+EnvironmentFile=-/opt/myapp/config/env
 
 # Restart policy
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=30
-StartLimitBurst=5
 
 # Resource limits - Go programs can be memory-efficient
-MemoryLimit=256M
+MemoryMax=256M
 
 # Security hardening
 NoNewPrivileges=yes
@@ -244,7 +246,7 @@ sudo systemctl start myapp
 sudo systemctl status myapp
 ```
 
-## Zero-Downtime Deployment Script
+## Minimal-Downtime Deployment Script
 
 ```bash
 #!/bin/bash
@@ -329,7 +331,7 @@ The resulting binary includes all static files - no separate deployment of web a
 
 ## Checking Binary Dependencies
 
-Verify your binary is truly static (no external library dependencies):
+Verify whether your binary has dynamic library dependencies:
 
 ```bash
 # Check dynamic library dependencies
@@ -376,4 +378,4 @@ ExecStart=/opt/myapp/bin/myapp
 ExecStartPost=/bin/bash -c 'for i in $(seq 1 10); do curl -sf http://localhost:8080/healthz && exit 0; sleep 1; done; exit 1'
 ```
 
-Go binaries' self-contained nature makes them ideal for server deployments - once built correctly with version metadata and deployed through a reproducible process, they behave consistently across environments.
+Go binaries' self-contained nature for pure Go applications makes them ideal for server deployments - once built correctly with version metadata and deployed through a reproducible process, they behave consistently across environments.
