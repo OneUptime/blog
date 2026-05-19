@@ -62,7 +62,7 @@ timedatectl status
 
 ## Fix 2: Configure NTP Servers
 
-Ubuntu uses `systemd-timesyncd` by default, which syncs from the configured NTP servers. Configure it with reliable servers:
+Ubuntu 24.04 LTS and many older installations use `systemd-timesyncd` by default, while Ubuntu 25.10 and newer use `chrony` by default. If your system is using `systemd-timesyncd`, configure it with reliable servers:
 
 ```bash
 sudo nano /etc/systemd/timesyncd.conf
@@ -90,7 +90,7 @@ timedatectl show-timesync --all
 
 ## Fix 3: Force a Clock Correction for Large Offsets
 
-If the system clock is significantly wrong (minutes or hours off), `timesyncd` may not correct it automatically because it steps the clock gradually to avoid breaking running processes. Force a correction:
+If the system clock is significantly wrong (minutes or hours off), small clock corrections are normally slewed gradually to avoid breaking running processes, while large corrections may need an explicit step. Force a correction:
 
 ```bash
 # Stop timesyncd
@@ -103,10 +103,11 @@ sudo ntpdate -u time.google.com
 # Or use chronyc for an immediate step
 sudo apt-get install -y chrony
 sudo systemctl stop systemd-timesyncd
-sudo systemctl enable --now chronyd
+sudo systemctl enable --now chrony.service
 sudo chronyc makestep
 
-# Restart timesyncd (or leave chrony running)
+# Leave chrony running, or stop it before returning to timesyncd
+sudo systemctl disable --now chrony.service
 sudo systemctl start systemd-timesyncd
 ```
 
@@ -200,9 +201,8 @@ sudo apt-get install -y qemu-guest-agent
 # Enable and start it
 sudo systemctl enable --now qemu-guest-agent
 
-# Enable clock synchronization from hypervisor via KVM PTP clock
-# Check if the kvm-clock module is loaded
-lsmod | grep kvm
+# Check if a KVM PTP clock is available
+ls /dev/ptp*
 ```
 
 Configure `chrony` to use the KVM virtual clock source:
@@ -233,7 +233,7 @@ log measurements statistics tracking
 ```
 
 ```bash
-sudo systemctl enable --now chronyd
+sudo systemctl enable --now chrony.service
 sudo chronyc tracking
 ```
 
@@ -284,7 +284,7 @@ log measurements statistics tracking
 ```
 
 ```bash
-sudo systemctl enable --now chronyd
+sudo systemctl enable --now chrony.service
 
 # Check synchronization status
 chronyc tracking
