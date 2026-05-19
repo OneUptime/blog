@@ -16,7 +16,7 @@ This is the standard setup for running machine learning workloads, CUDA applicat
 
 - Ubuntu 20.04 or 22.04
 - NVIDIA GPU installed
-- NVIDIA driver 520+ installed
+- NVIDIA driver 525.60.13+ installed for the CUDA 12.x images used below
 - Docker CE installed (not Docker Desktop)
 - sudo privileges
 
@@ -30,7 +30,7 @@ If drivers are not installed:
 lspci | grep -i nvidia
 
 # Install recommended driver
-sudo ubuntu-drivers autoinstall
+sudo ubuntu-drivers install
 
 # Or a specific version
 sudo apt-get install -y nvidia-driver-535
@@ -115,7 +115,7 @@ docker run --rm --gpus '"device=0,1"' ubuntu:22.04 \
 docker run --rm --gpus '"device=GPU-abc12345-..."' ubuntu:22.04 \
   nvidia-smi
 
-# Limit GPU memory visible to container
+# Limit GPUs visible to container
 docker run --rm --gpus all \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
   -e CUDA_VISIBLE_DEVICES=0 \
@@ -138,8 +138,8 @@ nvidia/cuda:12.3.0-runtime-ubuntu22.04
 nvidia/cuda:12.3.0-devel-ubuntu22.04
 
 # Images with cuDNN for deep learning
-nvidia/cuda:12.3.1-cudnn9-runtime-ubuntu22.04
-nvidia/cuda:12.3.1-cudnn9-devel-ubuntu22.04
+nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
+nvidia/cuda:12.3.2-cudnn9-devel-ubuntu22.04
 ```
 
 ## Building a GPU-Enabled Container
@@ -182,8 +182,8 @@ RUN pip install --no-cache-dir \
 # Create working directory
 WORKDIR /workspace
 
-# Verify CUDA is accessible
-RUN python3 -c "import torch; print('CUDA available:', torch.cuda.is_available())"
+# Verify PyTorch imports; GPU access is checked when the container runs with --gpus
+RUN python3 -c "import torch; print('PyTorch version:', torch.__version__)"
 
 CMD ["python3"]
 ```
@@ -206,7 +206,7 @@ version: '3.8'
 services:
   ml-training:
     image: my-pytorch:cuda12.1
-    # Requires Docker Compose v2.3+ and NVIDIA Container Toolkit
+    # Requires Docker Compose with device reservation support and NVIDIA Container Toolkit
     deploy:
       resources:
         reservations:
@@ -264,8 +264,8 @@ The toolkit config file is at `/etc/nvidia-container-runtime/config.toml`:
 ```toml
 # /etc/nvidia-container-runtime/config.toml
 
-disable-require = false  # Enforce --gpus requirement
-supported-driver-capabilities-all = false
+disable-require = false  # Enforce NVIDIA_REQUIRE_* constraints
+supported-driver-capabilities = "compat32,compute,display,graphics,ngx,utility,video"
 
 [nvidia-container-cli]
 environment = []
