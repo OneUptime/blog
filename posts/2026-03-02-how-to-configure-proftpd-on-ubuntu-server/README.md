@@ -17,9 +17,8 @@ ProFTPD is an alternative to vsftpd that offers more flexibility through its Apa
 
 sudo apt update
 
-# Install ProFTPD in standalone mode
-# The installer will ask whether to run standalone or via inetd - choose standalone
-sudo apt install proftpd -y
+# Install ProFTPD
+sudo apt install proftpd-core -y
 
 # Verify the installation
 proftpd --version
@@ -78,8 +77,8 @@ PidFile                         /run/proftpd/proftpd.pid
 # Default umask (022 = 755 for directories, 644 for files)
 Umask                           022
 
-# Allow symlinks within the chroot
-AllowSymlinks                   on
+# Show symbolic links in directory listings
+ShowSymlinks                    on
 
 # Authentication type
 AuthOrder                       mod_auth_pam.c mod_auth_unix.c
@@ -103,7 +102,7 @@ DefaultRoot                     ~
 ProFTPD uses `<Limit>` blocks to control what operations are allowed:
 
 ```apache
-# Allow all authenticated users access but limit anonymous
+# Deny all logins unless overridden by a more specific AllowUser or AllowGroup rule
 <Limit LOGIN>
     DenyAll
     # Override with AllowUser or AllowGroup
@@ -152,8 +151,11 @@ Use `<Directory>` blocks to apply settings to specific paths:
 ProFTPD supports FTPS through the `mod_tls` module:
 
 ```bash
+# Install the TLS module package
+sudo apt install proftpd-mod-crypto -y
+
 # Enable the TLS module
-sudo nano /etc/proftpd/proftpd.conf
+sudo nano /etc/proftpd/modules.conf
 ```
 
 Add the TLS module load at the top:
@@ -166,12 +168,12 @@ Generate a certificate or use an existing one:
 
 ```bash
 # Generate a self-signed certificate
+sudo mkdir -p /etc/ssl/proftpd
 sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /etc/ssl/proftpd/proftpd.key \
     -out /etc/ssl/proftpd/proftpd.crt \
     -subj "/CN=ftp.example.com"
 
-sudo mkdir -p /etc/ssl/proftpd
 sudo chmod 600 /etc/ssl/proftpd/proftpd.key
 ```
 
@@ -201,8 +203,7 @@ Add TLS configuration:
     # Log options
     TLSOptions                  NoCertRequest EnableDiags
 
-    # Allow session reuse (disable if clients have issues)
-    TLSRequired                 on
+    # If clients have session reuse issues, add NoSessionReuseRequired to TLSOptions above
 </IfModule>
 ```
 
@@ -212,7 +213,7 @@ ProFTPD can authenticate users against a database instead of system users:
 
 ```bash
 # Install ProFTPD with MySQL support
-sudo apt install proftpd-mod-mysql mysql-server -y
+sudo apt install proftpd-core proftpd-mod-mysql mysql-server -y
 
 # Create the database and tables
 sudo mysql -u root -p << 'SQL'
@@ -242,16 +243,16 @@ FLUSH PRIVILEGES;
 SQL
 ```
 
-Add a virtual user (password stored as SHA1 or MD5 hash):
+Add a virtual user (password stored as a `crypt(3)` hash):
 
 ```bash
-# Generate a SHA1 password hash
-echo -n "userpassword" | sha1sum
+# Generate a SHA-512 crypt password hash
+HASH=$(openssl passwd -6 'userpassword')
 
 # Insert the user
-sudo mysql -u root -p proftpd << 'SQL'
+sudo mysql -u root -p proftpd << SQL
 INSERT INTO users (userid, passwd, uid, gid, homedir, shell)
-VALUES ('ftpvuser1', SHA1('userpassword'), 2001, 2001, '/srv/ftp/ftpvuser1', '/sbin/nologin');
+VALUES ('ftpvuser1', '${HASH}', 2001, 2001, '/srv/ftp/ftpvuser1', '/sbin/nologin');
 
 INSERT INTO groups (groupname, gid, members)
 VALUES ('ftpusers', 2001, 'ftpvuser1');
@@ -271,19 +272,20 @@ LoadModule mod_sql_mysql.c
 # Database connection settings
 SQLBackend              mysql
 SQLConnectInfo          proftpd@localhost proftpd db_password_here
-SQLAuthTypes            SHA1 Crypt
+SQLAuthTypes            Crypt
 SQLAuthenticate         users groups
 
 # SQL queries for user lookup
 SQLUserInfo             users userid passwd uid gid homedir shell
 SQLGroupInfo            groups groupname gid members
+RequireValidShell       off
 
 # Minimum UID/GID to prevent privilege escalation
 SQLMinUserUID           2000
 SQLMinUserGID           2000
 
-# Log SQL queries (useful for debugging)
-# SQLLog                PASS SELECT * WHERE userid = "%u"
+# Log SQL module messages (useful for debugging)
+# SQLLogFile            /var/log/proftpd/sql.log
 ```
 
 Include this file from the main config:
@@ -384,7 +386,7 @@ sudo tail -f /var/log/proftpd/proftpd.log
 # Check connected clients
 ftpwho
 
-# Kill a specific connection
+# Reload the daemon after configuration changes
 sudo kill -HUP $(cat /run/proftpd/proftpd.pid)
 ```
 
@@ -399,7 +401,7 @@ ServerIdent                     off
 # Do not display the server type in welcome messages
 DisplayLogin                    /etc/proftpd/welcome.txt
 
-# Disable deprecated AUTH methods
+# Keep PAM authentication enabled for system users
 AuthPAM                         on
 
 # Prevent directory traversal
@@ -408,7 +410,7 @@ DefaultRoot                     ~
 # Set max login attempts before lockout
 MaxLoginAttempts                3
 
-# Block RFC-1918 addresses for PORT command (prevents FTP bounce attacks)
+# Reject PORT commands that point at an address different from the client
 AllowForeignAddress             off
 ```
 
