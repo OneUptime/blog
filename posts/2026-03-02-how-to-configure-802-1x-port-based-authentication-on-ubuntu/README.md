@@ -41,7 +41,7 @@ sudo apt install -y freeradius freeradius-utils
 
 # Verify the installation
 
-radiusd -v
+freeradius -v
 
 # Start and enable FreeRADIUS
 sudo systemctl start freeradius
@@ -67,7 +67,7 @@ alice   Cleartext-Password := "alice_secure_password"
         Reply-Message = "Welcome, Alice",
         Tunnel-Type = 13,
         Tunnel-Medium-Type = 6,
-        Tunnel-Private-Group-Id = "100"
+        Tunnel-Private-Group-ID = "100"
 
 bob     Cleartext-Password := "bob_secure_password"
         Reply-Message = "Welcome, Bob"
@@ -140,9 +140,9 @@ eap {
     tls-config tls-common {
         # Path to server certificate and key
         private_key_password = whatever
-        private_key_file = /etc/ssl/private/radius-server.key
-        certificate_file = /etc/ssl/certs/radius-server.crt
-        ca_file = /etc/ssl/certs/ca-certificates.crt
+        private_key_file = /etc/freeradius/3.0/certs/server.key
+        certificate_file = /etc/freeradius/3.0/certs/server.pem
+        ca_file = /etc/freeradius/3.0/certs/ca.pem
 
         # Allow only TLS 1.2 and above
         tls_min_version = "1.2"
@@ -150,9 +150,9 @@ eap {
 
     peap {
         tls = tls-common
-        default_method = mschapv2
+        default_eap_type = mschapv2
         copy_request_to_tunnel = no
-        use_tunneled_reply = no
+        use_tunneled_reply = yes
     }
 
     mschapv2 {
@@ -183,7 +183,7 @@ For production, use certificates from your internal CA or a public CA.
 ```bash
 # Stop the service and run in debug mode
 sudo systemctl stop freeradius
-sudo freeradius -X 2>&1 | head -100
+sudo freeradius -X
 
 # In another terminal, test authentication
 radtest alice alice_secure_password localhost 0 testing123
@@ -216,16 +216,17 @@ sudo apt install -y wpasupplicant
 Create a wpa_supplicant configuration file:
 
 ```bash
-sudo nano /etc/wpa_supplicant/wpa_supplicant-eth0.conf
+sudo nano /etc/wpa_supplicant/wpa_supplicant-wired-eth0.conf
 ```
 
 For PEAP-MSCHAPv2 (most common for wired):
 
 ```text
-# /etc/wpa_supplicant/wpa_supplicant-eth0.conf
+# /etc/wpa_supplicant/wpa_supplicant-wired-eth0.conf
 
 ctrl_interface=/run/wpa_supplicant
 ctrl_interface_group=0
+ap_scan=0
 
 # Wired network entry
 network={
@@ -276,12 +277,12 @@ network={
 
 ```bash
 # Create a systemd service for 802.1X on eth0
-sudo systemctl enable wpa_supplicant@eth0
-sudo systemctl start wpa_supplicant@eth0
-sudo systemctl status wpa_supplicant@eth0
+sudo systemctl enable wpa_supplicant-wired@eth0
+sudo systemctl start wpa_supplicant-wired@eth0
+sudo systemctl status wpa_supplicant-wired@eth0
 ```
 
-The service name `wpa_supplicant@eth0` automatically uses the config file at `/etc/wpa_supplicant/wpa_supplicant-eth0.conf`.
+The service name `wpa_supplicant-wired@eth0` uses the wired driver and automatically uses the config file at `/etc/wpa_supplicant/wpa_supplicant-wired-eth0.conf`.
 
 ### Testing the Connection
 
@@ -290,7 +291,7 @@ The service name `wpa_supplicant@eth0` automatically uses the config file at `/e
 sudo wpa_cli -i eth0 status
 
 # Watch the authentication in real time
-journalctl -u wpa_supplicant@eth0 -f
+journalctl -u wpa_supplicant-wired@eth0 -f
 ```
 
 A successful authentication shows:
