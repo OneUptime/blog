@@ -56,7 +56,6 @@ sudo nano /etc/frr/daemons
 
 # Set bgpd=yes to enable the BGP daemon
 # The file looks like this - only change bgpd:
-# zebra=yes    <- keep this, it manages the kernel RIB
 # bgpd=yes     <- change this to yes
 # ospfd=no
 # ospf6d=no
@@ -64,8 +63,8 @@ sudo nano /etc/frr/daemons
 ```
 
 ```bash
-# Start and enable FRR
-sudo systemctl start frr
+# Restart and enable FRR
+sudo systemctl restart frr
 sudo systemctl enable frr
 
 # Verify the BGP daemon is running
@@ -200,6 +199,7 @@ exit
 
 ! After changing inbound policies, reset the session to apply
 ! (soft reset avoids dropping the session)
+end
 clear ip bgp 192.168.10.2 soft in
 
 write memory
@@ -235,6 +235,7 @@ router bgp 65001
   neighbor 10.255.0.2 ebgp-multihop 2
   neighbor 10.255.0.2 update-source lo
   neighbor 10.255.0.2 remote-as 65002
+  ! Make sure 10.255.0.2 is reachable through the underlay before relying on this session
 
 write memory
 ```
