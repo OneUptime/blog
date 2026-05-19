@@ -15,7 +15,7 @@ This guide covers both pseudo-distributed mode (single node for development) and
 ## Prerequisites
 
 - Ubuntu 22.04
-- Java 8 or 11 (Java 11 recommended for Hadoop 3.x)
+- Java 8 or 11 (Java 11 recommended for Hadoop 3.3.x)
 - At least 4 GB RAM
 - Root or sudo access
 
@@ -25,7 +25,7 @@ This guide covers both pseudo-distributed mode (single node for development) and
 # Install Java 11
 
 sudo apt update
-sudo apt install -y openjdk-11-jdk
+sudo apt install -y openjdk-11-jdk ssh pdsh
 
 # Verify
 java -version
@@ -69,6 +69,10 @@ sudo chown -R hadoop:hadoop /opt/hadoop-${HADOOP_VERSION} /opt/hadoop
 cat >> ~/.bashrc <<'EOF'
 export HADOOP_HOME=/opt/hadoop
 export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export HADOOP_COMMON_HOME=$HADOOP_HOME
+export HADOOP_HDFS_HOME=$HADOOP_HOME
+export HADOOP_MAPRED_HOME=$HADOOP_HOME
+export HADOOP_YARN_HOME=$HADOOP_HOME
 export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
 EOF
 
@@ -162,6 +166,12 @@ nano $HADOOP_HOME/etc/hadoop/yarn-site.xml
         <name>yarn.resourcemanager.hostname</name>
         <value>localhost</value>
     </property>
+
+    <!-- Environment variables allowed in NodeManager-launched containers -->
+    <property>
+        <name>yarn.nodemanager.env-whitelist</name>
+        <value>JAVA_HOME,HADOOP_COMMON_HOME,HADOOP_HDFS_HOME,HADOOP_CONF_DIR,CLASSPATH_PREPEND_DISTCACHE,HADOOP_YARN_HOME,HADOOP_HOME,PATH,LANG,TZ,HADOOP_MAPRED_HOME</value>
+    </property>
 </configuration>
 ```
 
@@ -183,6 +193,12 @@ nano $HADOOP_HOME/etc/hadoop/mapred-site.xml
     <property>
         <name>mapreduce.framework.name</name>
         <value>yarn</value>
+    </property>
+
+    <!-- Classpath used by MapReduce applications running on YARN -->
+    <property>
+        <name>mapreduce.application.classpath</name>
+        <value>$HADOOP_MAPRED_HOME/share/hadoop/mapreduce/*:$HADOOP_MAPRED_HOME/share/hadoop/mapreduce/lib/*</value>
     </property>
 
     <!-- Memory settings for MapReduce containers -->
