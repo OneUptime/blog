@@ -110,7 +110,7 @@ Edit `/etc/fstab`:
 UUID=<your-uuid-here> /mnt/data btrfs defaults,nofail 0 0
 ```
 
-The `nofail` option prevents boot failure if a device is missing, which is important for RAID arrays.
+The `nofail` option prevents boot from stopping if the array cannot be mounted. It does not automatically mount a degraded array; for that, you would need to use Btrfs degraded-mode recovery intentionally.
 
 ## Adding a Third Device to an Existing Array
 
@@ -143,7 +143,7 @@ RAID10 requires at least four devices and provides both striping and mirroring:
 sudo mkfs.btrfs -d raid10 -m raid10 /dev/sdb /dev/sdc /dev/sdd /dev/sde
 ```
 
-RAID10 tolerates losing one drive per mirror pair, so you can lose up to two drives if they are in different pairs.
+RAID10 can tolerate one drive failure. Additional failures may be survivable if every block group still has a valid copy on the remaining devices, but this depends on how chunks were allocated.
 
 ## Checking Array Health
 
@@ -165,31 +165,34 @@ View overall filesystem statistics including error counters:
 sudo btrfs device stats /mnt/data
 ```
 
-Zero values across all error types indicate a healthy array.
+Zero values across all error types indicate that Btrfs has not recorded device-level errors. Continue pairing this with regular scrubs and normal disk health monitoring.
 
 ## Handling a Failed Device
 
-If a drive fails, the array continues operating (for RAID1/RAID10). Replace the failed device:
+If a drive is failing but still present, the array can continue operating (for RAID1/RAID10). Replace the failed device directly:
 
 ```bash
-# Remove the failed device from the array (while mounted)
-sudo btrfs device remove /dev/sdb /mnt/data
+# Replace /dev/sdb with /dev/sdx while the filesystem is mounted
+sudo btrfs replace start /dev/sdb /dev/sdx /mnt/data
 
-# Add the replacement device
-sudo btrfs device add /dev/sdx /mnt/data
-
-# Rebalance to distribute data to the new device
-sudo btrfs balance start /mnt/data
+# Check replacement progress
+sudo btrfs replace status /mnt/data
 ```
 
-If the failed device cannot be removed normally (it has been physically removed), use the missing keyword:
+If the failed device has already been physically removed, mount the filesystem in degraded mode, identify the missing device ID, and use that ID as the replacement source:
 
 ```bash
-# Replace a physically absent device
-sudo btrfs replace start -r /dev/sdx /mnt/data
+# Mount with a missing device
+sudo mount -o degraded /dev/sdc /mnt/data
+
+# Find the missing device ID
+sudo btrfs filesystem show /mnt/data
+
+# Replace the missing device ID, for example devid 1, with /dev/sdx
+sudo btrfs replace start 1 /dev/sdx /mnt/data
 ```
 
-## Monitoring with btrfs-usage
+## Monitoring Space Usage
 
 For a concise summary of space usage across the array:
 
