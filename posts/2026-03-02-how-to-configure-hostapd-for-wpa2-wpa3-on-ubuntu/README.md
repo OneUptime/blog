@@ -15,21 +15,20 @@ WPA3 brings significant security improvements over WPA2, primarily through Simul
 Before configuring WPA3, verify your wireless adapter and kernel support it:
 
 ```bash
-# Check if your adapter supports SAE (WPA3)
+# Check if your adapter supports AP mode and SAE/WPA3
 
-sudo iw list | grep -i sae
+sudo iw list | grep -E "Supported interface modes|\\* AP|SAE"
 
 # Example output showing SAE support:
+#     * AP
 # Supported extended features:
 #     * [ SAE_OFFLOAD_AP ]: AP SAE offloading
+# or:
+# Device supports SAE with AUTHENTICATE command
 
 # Check hostapd version and compiled-in features
 hostapd -v 2>&1
-# Look for: OpenSSL and SAE in the configuration line
-
-# Check kernel SAE support
-grep -i sae /boot/config-$(uname -r) 2>/dev/null
-# CONFIG_IEEE80211W=y  ← Required for WPA3
+# The Ubuntu package must be built with SAE support (CONFIG_SAE=y)
 ```
 
 ## WPA2 Personal Configuration
@@ -108,10 +107,10 @@ ieee80211w=2          # 2 = required (mandatory for WPA3)
 
 # SAE specific settings
 sae_require_mfp=1     # Require MFP for SAE associations
-sae_pwe=2             # SAE Password Element: 2 = H2E (hash-to-element, more secure)
+sae_pwe=2             # SAE Password Element: 2 = enable both hunting-and-pecking and H2E
 
 # Optional: Set SAE anti-clogging threshold
-sae_anti_clogging_threshold=5
+anti_clogging_threshold=5
 
 # Groups allowed for SAE: 19=256-bit ECC (NIST P-256), 20=384-bit, 21=521-bit
 sae_groups=19 20 21
@@ -160,7 +159,7 @@ ieee80211w=1          # 1 = optional
 
 # SAE settings for WPA3 clients
 sae_require_mfp=1
-sae_pwe=2
+sae_pwe=2             # Enable both hunting-and-pecking and H2E for compatibility
 
 # SAE groups
 sae_groups=19 20 21
@@ -232,11 +231,11 @@ require_ht=1      # Require 802.11n
 wpa_group_rekey=3600    # Rotate group key hourly
 wpa_strict_rekey=1      # Rekey group when a client leaves
 
-# Deauthenticate clients that fail authentication
+# Disable periodic pairwise key rekeying (0 = disabled; set seconds to enable)
 wpa_ptk_rekey=0
 
-# Limit failed authentication attempts (basic brute-force protection)
-max_auth_tries=5
+# Enable SAE anti-clogging protection when several SAE handshakes are in progress
+anti_clogging_threshold=5
 
 # Beacon interval (default 100ms = 10 beacons per second)
 beacon_int=100
@@ -244,9 +243,9 @@ beacon_int=100
 # DTIM period - affects battery life of clients
 dtim_period=2
 
-# Minimum RSN capability (require CCMP, disable TKIP for all but group)
+# Optional RSN pre-authentication for WPA-Enterprise roaming
 rsn_preauth=1
-rsn_preauth_interfaces=wlan0
+rsn_preauth_interfaces=eth0
 ```
 
 ## Debugging WPA3 Issues
@@ -272,15 +271,15 @@ sudo hostapd_cli sta <mac-address>
 
 ## Common Issues and Fixes
 
-### SAE not supported by kernel
+### SAE not supported by the adapter or hostapd
 
 ```bash
-# Check if CONFIG_IEEE80211W is enabled
-grep IEEE80211W /boot/config-$(uname -r)
-# Should show: CONFIG_IEEE80211W=y
+# Check for AP mode and SAE support in the wireless stack
+sudo iw list | grep -E "Supported interface modes|\\* AP|SAE"
 
-# If not, upgrade to a newer kernel
-sudo apt-get install linux-generic
+# If your hostapd package was built without SAE, install an Ubuntu-supported version
+sudo apt-get update
+sudo apt-get install --reinstall hostapd
 sudo reboot
 ```
 
@@ -293,7 +292,7 @@ sudo reboot
 # Also check sae_pwe setting
 # sae_pwe=0 = hunting-and-pecking only (older)
 # sae_pwe=1 = H2E only (newer, some clients don't support)
-# sae_pwe=2 = H2E only (newer)
+# sae_pwe=2 = both hunting-and-pecking and H2E enabled
 # For compatibility, use sae_pwe=0 or don't set it initially
 ```
 
@@ -314,6 +313,6 @@ The recommended configuration for most deployments is WPA2/WPA3 transition mode:
 - Set `wpa_key_mgmt=WPA-PSK SAE` to support both
 - Use `ieee80211w=1` (optional MFP) to allow WPA2 clients while enabling MFP for WPA3
 - Use 5GHz (hw_mode=a) where possible for better WPA3 support
-- Set `sae_pwe=2` for H2E mode if all your clients support it, or omit for maximum compatibility
+- Set `sae_pwe=2` to allow both hunting-and-pecking and H2E, or omit it for the hostapd default
 
 WPA3 provides genuine security improvements over WPA2, particularly resistance to offline dictionary attacks. Transition mode gives you these benefits for WPA3-capable clients while maintaining backward compatibility.
