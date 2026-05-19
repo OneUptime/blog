@@ -82,6 +82,8 @@ network:
   ethernets:
     eth0:
       dhcp4: true
+      dhcp4-overrides:
+        use-dns: false
       nameservers:
         # These override DHCP-provided DNS servers
         addresses:
@@ -121,7 +123,7 @@ These changes are not persistent. For permanent changes, use Netplan or direct `
 
 ## Configuring systemd-resolved Directly
 
-For system-wide fallback DNS (used when no interface-specific DNS is configured):
+For system-wide DNS configuration:
 
 ```bash
 # Edit resolved.conf
@@ -131,10 +133,10 @@ sudo nano /etc/systemd/resolved.conf
 ```ini
 # /etc/systemd/resolved.conf
 [Resolve]
-# Fallback DNS servers - used when no per-interface DNS is configured
+# System DNS servers
 DNS=9.9.9.9 149.112.112.112
 
-# Fallback search domains
+# System-wide search domains
 Domains=example.com
 
 # Enable DNSSEC validation
@@ -195,17 +197,17 @@ network:
       nameservers:
         # Public DNS for the main interface
         addresses: [1.1.1.1, 8.8.8.8]
-    vpn0:
+    eth1:
       dhcp4: false
       addresses: [10.0.0.2/24]
       nameservers:
-        # Internal DNS for VPN interface
+        # Internal DNS for the internal network interface
         addresses: [10.0.0.1]
-        # Route .internal names through VPN DNS
-        search: [internal.company.com]
+        # Route internal.company.com names through this interface
+        search: ["~internal.company.com"]
 ```
 
-`systemd-resolved` handles per-interface DNS routing automatically. Names matching a search domain are routed to that interface's DNS server.
+`systemd-resolved` handles per-interface DNS routing automatically. Names matching a search or route-only domain are routed to that interface's DNS server.
 
 ## Split-DNS Configuration
 
@@ -234,8 +236,8 @@ nameservers:
 # Basic lookup
 resolvectl query webserver.example.com
 
-# Lookup with verbose output showing which server was used
-resolvectl query --legend webserver.example.com
+# Lookup with legend output
+resolvectl query --legend=yes webserver.example.com
 
 # Check which DNS server is being used for a domain
 resolvectl query --type=A google.com
