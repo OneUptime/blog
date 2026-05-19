@@ -16,7 +16,7 @@ ZFS's `send` and `receive` commands let you stream snapshot data from one ZFS po
 
 Because ZFS understands its own data format, send/receive is more efficient than generic file-copy tools:
 - Only changed blocks are transferred in incremental sends
-- Compressed data transfers in compressed form
+- Compressed data can be transferred in compressed form using the `-c` flag (by default `zfs send` decompresses data before sending)
 - All properties, permissions, and timestamps are preserved
 
 ## Prerequisites
