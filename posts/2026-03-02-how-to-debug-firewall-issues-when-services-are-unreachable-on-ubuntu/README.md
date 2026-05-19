@@ -28,8 +28,8 @@ sudo ss -ulnp   # UDP listening
 sudo netstat -tlnp
 
 # Check if a specific port is listening
-sudo ss -tlnp | grep ':80'
-sudo ss -tlnp | grep ':5432'
+sudo ss -tlnp 'sport = :80'
+sudo ss -tlnp 'sport = :5432'
 ```
 
 If the port isn't in the listening list, the service isn't running or isn't configured to listen on that port - no amount of firewall work will fix that.
@@ -39,7 +39,7 @@ If the port isn't in the listening list, the service isn't running or isn't conf
 Before testing remote connectivity, verify the service works locally:
 
 ```bash
-# Test from the same server (bypasses all network firewalls)
+# Test from the same server (bypasses external network firewalls)
 curl -v http://localhost:80
 curl -v http://127.0.0.1:80
 
@@ -51,7 +51,7 @@ nc -zv 127.0.0.1 22
 openssl s_client -connect localhost:443
 ```
 
-If local connectivity fails, the issue is with the service configuration, not the firewall. Fix the service first.
+If local connectivity fails, the issue is usually with the service configuration rather than an external firewall. Fix the local service path first.
 
 ## Step 2: Test from Another Host on the Same Network
 
@@ -69,13 +69,13 @@ nc -zv -w 5 192.168.1.10 80
 curl -v http://192.168.1.10
 
 # Diagnose connection behavior:
-# - Connection refused: Service not listening on that port
+# - Connection refused: Service not listening on that port, or an active reject
 # - Connection timeout: Firewall is dropping packets (DROP rule)
-# - "Connection refused" immediately: Firewall is rejecting (REJECT rule)
+# - "Connection refused" immediately: Could also be a firewall REJECT rule
 ```
 
 The behavior tells you something:
-- **Connection refused**: Port not open or service not listening - firewall rule isn't the issue (a firewall DROP would time out, not refuse)
+- **Connection refused**: Port not open, service not listening, or a firewall is actively rejecting the connection - it is not a silent DROP
 - **Connection timeout**: Firewall is DROPping packets - check firewall rules
 - **Connection reset**: Application is resetting connections, or a proxy is interfering
 
@@ -119,8 +119,8 @@ sudo nft -a list ruleset
 # List specific chain
 sudo nft list chain inet filter input
 
-# Add a temporary counter rule to see traffic
-sudo nft add rule inet filter input tcp dport 80 counter
+# Insert a temporary counter rule to see traffic before later rules can accept/drop it
+sudo nft insert rule inet filter input tcp dport 80 counter
 ```
 
 ## Step 4: Use tcpdump to Watch Packets
@@ -155,7 +155,7 @@ What to look for in the output:
 14:30:01.123500 IP 192.168.1.10.80 > 192.168.1.100.54321: Flags [R.]  # RST (reset)
 ```
 
-If you see SYN packets arriving but no SYN-ACK, the firewall is dropping them.
+If you see SYN packets arriving but no SYN-ACK, something is dropping the packet or preventing the response. A host firewall DROP is a common cause.
 
 ## Step 5: Trace Packets Through iptables
 
@@ -164,18 +164,18 @@ For complex rule sets, iptables tracing shows exactly which rules a packet match
 ```bash
 # Enable tracing for packets on port 80
 sudo iptables -t raw -A PREROUTING -p tcp --dport 80 -j TRACE
-sudo iptables -t raw -A OUTPUT -p tcp --dport 80 -j TRACE
+sudo iptables -t raw -A OUTPUT -p tcp --sport 80 -j TRACE
 
 # Make a connection from another host
-# Watch the trace in the kernel log
-sudo journalctl -f -k | grep TRACE
+# On systems using iptables-nft, watch trace events with xtables-monitor
+sudo xtables-monitor --trace
 
-# Or in syslog
-sudo tail -f /var/log/kern.log | grep TRACE
+# On systems using iptables-legacy, trace output is usually in the kernel log
+sudo journalctl -f -k | grep TRACE
 
 # IMPORTANT: Remove trace rules when done (they generate huge log volume)
 sudo iptables -t raw -D PREROUTING -p tcp --dport 80 -j TRACE
-sudo iptables -t raw -D OUTPUT -p tcp --dport 80 -j TRACE
+sudo iptables -t raw -D OUTPUT -p tcp --sport 80 -j TRACE
 ```
 
 The trace output shows each table and chain the packet passes through, and which rule it matches. This makes it possible to find exactly where a packet is being dropped.
@@ -206,17 +206,17 @@ Some applications have their own access control that can look like a firewall bl
 
 ```bash
 # PostgreSQL pg_hba.conf
-sudo cat /etc/postgresql/14/main/pg_hba.conf
+sudo cat /etc/postgresql/*/main/pg_hba.conf
 
 # PostgreSQL listen_addresses
-grep listen_addresses /etc/postgresql/14/main/postgresql.conf
+grep listen_addresses /etc/postgresql/*/main/postgresql.conf
 # If set to 'localhost', it won't accept external connections
 
 # Nginx - check if it's bound to all interfaces or just localhost
 sudo grep -E "listen|server_name" /etc/nginx/sites-enabled/*
 
 # Apache
-sudo grep -E "Listen|BindAddress" /etc/apache2/ports.conf
+sudo grep -E "Listen" /etc/apache2/ports.conf
 ```
 
 An application bound to `127.0.0.1` won't accept connections from other hosts regardless of firewall rules.
@@ -255,7 +255,13 @@ echo "=== Connectivity Diagnostic for Port $PORT ==="
 
 echo ""
 echo "1. Service listening?"
-ss -tlnp | grep ":$PORT" && echo "YES - port is listening" || echo "NO - port is not listening"
+LISTENERS="$(ss -H -tlnp "sport = :$PORT")"
+if [ -n "$LISTENERS" ]; then
+    echo "$LISTENERS"
+    echo "YES - port is listening"
+else
+    echo "NO - port is not listening"
+fi
 
 echo ""
 echo "2. UFW status?"
@@ -272,7 +278,7 @@ iptables -L INPUT -n | head -3
 
 echo ""
 echo "5. Listening on all interfaces or just localhost?"
-ss -tlnp | grep ":$PORT" | awk '{print "Interface:", $4}'
+ss -H -tlnp "sport = :$PORT" | awk '{print "Interface:", $4}'
 
 echo ""
 echo "=== End Diagnostic ==="
@@ -289,7 +295,7 @@ sudo /usr/local/bin/diagnose-connectivity.sh 80
 
 ```bash
 # Check if service is bound to localhost only
-sudo ss -tlnp | grep ':80'
+sudo ss -tlnp 'sport = :80'
 # If output shows "127.0.0.1:80" instead of "0.0.0.0:80", bind to all interfaces
 # Edit the service configuration to listen on 0.0.0.0 or *
 ```
