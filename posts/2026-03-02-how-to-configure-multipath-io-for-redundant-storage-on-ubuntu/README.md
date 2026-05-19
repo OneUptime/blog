@@ -38,8 +38,8 @@ sudo multipath -ll
 # List all block devices and their paths
 lsblk
 
-# Show disk identifiers
-sudo multipath -v3 2>&1 | head -50
+# Show detected paths and WWIDs without creating maps
+sudo multipath -d -v3 2>&1 | head -50
 ```
 
 ## Basic Configuration
@@ -48,7 +48,7 @@ The main configuration file is `/etc/multipath.conf`. Ubuntu ships a minimal def
 
 ```bash
 # Generate a baseline configuration
-sudo multipath -T > /etc/multipath.conf.generated
+sudo multipath -T | sudo tee /etc/multipath.conf.generated >/dev/null
 
 # View the current effective configuration
 sudo multipathd show config
@@ -73,8 +73,8 @@ defaults {
     # How often to check paths (seconds)
     polling_interval 5
 
-    # Fail a path after 3 missed checks
-    path_checker readsector0
+    # Use TEST UNIT READY to check path health
+    path_checker tur
     no_path_retry fail
 
     # Retain SCSI ordering
@@ -85,13 +85,6 @@ blacklist {
     # Exclude local disks from multipath (avoid accidentally multipathing the root disk)
     devnode "^sda"
     devnode "^sr[0-9]*"
-
-    # Exclude by device type - only want SCSI disk type 0
-    device {
-        vendor ".*"
-        product ".*"
-        # Uncomment to blacklist all - then whitelist specific devices below
-    }
 }
 
 multipaths {
@@ -108,9 +101,8 @@ devices {
         vendor "EMC"
         product "SYMMETRIX"
         path_grouping_policy multibus
-        getuid_callout "/lib/udev/scsi_id --whitelisted --device=/dev/%n"
         path_selector "round-robin 0"
-        path_checker readsector0
+        path_checker tur
         no_path_retry 6
     }
 }
@@ -236,14 +228,14 @@ sudo multipathd -k
 When new LUNs are added to the storage array:
 
 ```bash
-# Rescan SCSI bus for new devices
+# Rescan SCSI bus for new devices (rescan-scsi-bus.sh is provided by sg3-utils)
 sudo rescan-scsi-bus.sh
 # Or manually:
 echo "- - -" | sudo tee /sys/class/scsi_host/host*/scan
 
 # Force multipath to recognize new devices
-sudo multipath -F  # flush current maps
-sudo multipath     # rebuild maps with new devices
+sudo multipathd reconfigure
+sudo multipath
 
 # Verify new multipath device appeared
 sudo multipath -ll
@@ -271,10 +263,10 @@ sudo iscsiadm --mode node --targetname iqn.example.storage.lun1 --logout
 sudo journalctl -u multipathd -f
 
 # Verbose path discovery
-sudo multipath -v3
+sudo multipath -d -v3
 
 # Check if a specific device is claimed by multipath
-sudo multipath -v2
+sudo multipath -c /dev/sdb
 
 # If paths show as 'failed' but the device is accessible:
 sudo multipathd -k
