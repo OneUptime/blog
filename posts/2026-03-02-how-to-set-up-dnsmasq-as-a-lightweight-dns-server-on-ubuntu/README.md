@@ -267,7 +267,9 @@ dig @127.0.0.1 google.com A
 nslookup google.com 127.0.0.1
 
 # Check cache statistics
-dig @127.0.0.1 bind.version CHAOS TXT
+dig @127.0.0.1 cachesize.bind CHAOS TXT
+dig @127.0.0.1 hits.bind CHAOS TXT
+dig @127.0.0.1 misses.bind CHAOS TXT
 ```
 
 ## DNS Caching Benefits
