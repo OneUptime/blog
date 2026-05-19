@@ -23,7 +23,7 @@ Key considerations:
 
 - **Internal LDAP** (`ldap.internal.example.com`) - company engineers
 - **Partner AD** (`ad.partner.com`) - contractor accounts
-- **Local files** - emergency/service accounts
+- **Local NSS files** - emergency/service accounts outside SSSD
 
 ## Setting Up sssd.conf with Multiple Domains
 
@@ -74,9 +74,9 @@ ldap_user_object_class = posixAccount
 ldap_group_object_class = posixGroup
 ldap_group_member = memberUid
 
-# UID range for internal users (prevents overlap with partner domain)
-ldap_idmap_range_min = 100000
-ldap_idmap_range_max = 199999
+# Accept only POSIX IDs in this range for internal users
+min_id = 100000
+max_id = 199999
 
 # Use short names for internal users
 use_fully_qualified_names = false
@@ -96,9 +96,11 @@ ad_domain = partner.com
 ad_server = dc.partner.com
 krb5_realm = PARTNER.COM
 
-# UID range for partner users (does not overlap with internal)
+# Generate UIDs algorithmically from AD SIDs in a non-overlapping range
+ldap_id_mapping = true
 ldap_idmap_range_min = 200000
-ldap_idmap_range_max = 299999
+ldap_idmap_range_max = 400000
+ldap_idmap_range_size = 200000
 
 # Partner users must use FQN to disambiguate
 use_fully_qualified_names = true
@@ -132,9 +134,9 @@ id contractor@partner.com
 su - jsmith               # Uses internal LDAP password
 su - contractor@partner.com   # Uses AD password
 
-# List users from each domain separately
-getent passwd | awk -F: '$3 >= 100000 && $3 < 200000'  # Internal
-getent passwd | awk -F: '$3 >= 200000 && $3 < 300000'  # Partner
+# Check the expected UID ranges for sample users
+id -u jsmith                    # Internal: 100000-199999
+id -u contractor@partner.com    # Partner: 200000-399999
 ```
 
 ## Adding a Kerberos-Only Domain
@@ -157,14 +159,14 @@ krb5_store_password_if_offline = true
 krb5_renewable_lifetime = 7d
 krb5_lifetime = 24h
 
-ldap_idmap_range_min = 300000
-ldap_idmap_range_max = 399999
+min_id = 300000
+max_id = 399999
 fallback_homedir = /home/%u@%d
 ```
 
 ## Handling UID Conflicts Between Domains
 
-If two domains use the same UID numbers for different users, you need ID mapping to generate unique local UIDs. With AD, SSSD's `ldap_id_mapping = true` generates UIDs algorithmically from the SID:
+If two domains use the same UID numbers for different users, SSSD cannot safely expose both sets of POSIX IDs unchanged. With AD, SSSD's `ldap_id_mapping = true` generates UIDs algorithmically from the SID:
 
 ```ini
 [domain/partner.com]
@@ -173,11 +175,11 @@ ldap_id_mapping = true
 
 # Range for generated IDs
 ldap_idmap_range_min = 200000
-ldap_idmap_range_max = 299999
+ldap_idmap_range_max = 400000
 ldap_idmap_range_size = 200000
 ```
 
-For OpenLDAP, you cannot use `ldap_id_mapping` (no SID). Instead, ensure UID ranges do not overlap by convention, or use separate search ranges.
+For OpenLDAP, you cannot use `ldap_id_mapping` unless the directory provides Active Directory-style objectSID attributes. Instead, ensure UID/GID values do not overlap in the directory, and optionally use `min_id`/`max_id` to filter which POSIX IDs SSSD accepts from each domain.
 
 ## Configuring Subdomains (AD Trusted Domains)
 
@@ -227,8 +229,9 @@ sudo nano /etc/sudoers.d/multi-domain
 sudo sssctl domain-status internal.example.com
 sudo sssctl domain-status partner.com
 
-# View all users in SSSD's cache across all domains
-sudo sssctl user-list
+# Inspect cached entries for specific users
+sudo sssctl user-show jsmith
+sudo sssctl user-show contractor@partner.com
 
 # Check for provider errors
 sudo journalctl -u sssd --since "1 hour ago" | grep -i error
@@ -243,11 +246,11 @@ SSSD searches domains in the order listed in `[sssd] domains`. If both domains h
 ### UID Range Conflicts
 
 ```bash
-# Find duplicate UIDs across domains
+# If enumeration is enabled, find duplicate UIDs across visible users
 getent passwd | awk -F: '{print $3}' | sort | uniq -d
 ```
 
-If duplicates exist, adjust the `ldap_idmap_range_min`/`ldap_idmap_range_max` for each domain and clear the SSSD cache.
+If duplicates exist, adjust the directory UID/GID assignments or the `min_id`/`max_id` filters for POSIX LDAP domains. For AD domains using SID-based mapping, adjust `ldap_idmap_range_min`/`ldap_idmap_range_max`, then clear the SSSD cache while the identity providers are reachable.
 
 ### Authentication Works for One Domain but Not Another
 
