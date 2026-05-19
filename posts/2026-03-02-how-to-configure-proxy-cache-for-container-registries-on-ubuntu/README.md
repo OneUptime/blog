@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Docker, Container Registry, Caching, DevOps
 
-Description: Learn how to set up a registry proxy cache on Ubuntu to speed up container image pulls, reduce external bandwidth usage, and work around rate limits from Docker Hub and other registries.
+Description: Learn how to set up a registry proxy cache on Ubuntu to speed up container image pulls, reduce external bandwidth usage, and reduce repeated pulls against Docker Hub and other registries.
 
 ---
 
-Running Docker Hub pulls across a team or in a CI environment hits rate limits fast - especially on the free tier with anonymous pulls. A local registry proxy cache solves this by intercepting image pull requests, fetching from the upstream registry once, and serving subsequent requests from local storage. Your CI jobs get faster, bandwidth usage drops, and you're no longer blocked when Docker Hub is slow or rate-limiting your IP.
+Running Docker Hub pulls across a team or in a CI environment hits rate limits fast - especially on the free tier with anonymous pulls. A local registry proxy cache helps by intercepting image pull requests, fetching from the upstream registry once, and serving subsequent requests from local storage. Your CI jobs get faster, bandwidth usage drops, and you make fewer repeated requests when Docker Hub is slow or rate-limiting your IP.
 
 This guide sets up a registry proxy cache on Ubuntu using the official Docker Registry image, covering configuration for Docker Hub and other registries.
 
 ## How Registry Proxy Caching Works
 
-When a Docker client is configured to use a mirror, it sends pull requests to the mirror first. If the mirror has the image cached, it serves it directly. If not, the mirror fetches it from the upstream registry, caches it locally, and serves it to the client. Subsequent pulls of the same image tag hit the cache until the cached content expires.
+When a Docker client is configured to use a mirror, it sends pull requests to the mirror first. If the mirror has the image cached, it serves it directly. If not, the mirror fetches it from the upstream registry, caches it locally, and serves it to the client. For tag-based pulls, the Registry checks the upstream registry to make sure it has the latest content before serving the cached copy.
 
 ## Prerequisites
 
@@ -62,7 +62,7 @@ log:
 storage:
   filesystem:
     rootdirectory: /var/lib/registry
-  # Delete old layers when disk space is low
+  # Required for the pull-through cache scheduler to remove old cached content
   delete:
     enabled: true
 
@@ -76,7 +76,7 @@ http:
 # Proxy configuration - points to Docker Hub
 proxy:
   remoteurl: https://registry-1.docker.io
-  # Optional: Docker Hub credentials to avoid rate limits
+  # Optional: Docker Hub credentials to use authenticated pull limits
   # username: your-dockerhub-username
   # password: your-dockerhub-password-or-token
 
@@ -127,7 +127,7 @@ docker run -d \
   -p 5000:5000 \
   -v /opt/registry-cache/config/config.yml:/etc/docker/registry/config.yml:ro \
   -v /opt/registry-cache/data:/var/lib/registry \
-  registry:2
+  registry:3
 
 # Verify it's running
 docker ps | grep registry-cache
@@ -140,11 +140,9 @@ For easier management, use Docker Compose:
 
 ```yaml
 # /opt/registry-cache/docker-compose.yml
-version: '3.8'
-
 services:
   registry-cache:
-    image: registry:2
+    image: registry:3
     container_name: registry-cache
     restart: unless-stopped
     ports:
@@ -214,12 +212,10 @@ The Docker Registry only supports proxying one upstream registry per instance. T
 
 ```yaml
 # /opt/registry-cache/docker-compose.yml - Multiple registry caches
-version: '3.8'
-
 services:
   # Docker Hub cache - port 5000
   dockerhub-cache:
-    image: registry:2
+    image: registry:3
     container_name: dockerhub-cache
     restart: unless-stopped
     ports:
@@ -230,7 +226,7 @@ services:
 
   # GitHub Container Registry cache - port 5001
   ghcr-cache:
-    image: registry:2
+    image: registry:3
     container_name: ghcr-cache
     restart: unless-stopped
     ports:
@@ -241,7 +237,7 @@ services:
 
   # Quay.io cache - port 5002
   quay-cache:
-    image: registry:2
+    image: registry:3
     container_name: quay-cache
     restart: unless-stopped
     ports:
@@ -286,7 +282,7 @@ proxy:
 EOF
 ```
 
-Configure the Docker daemon to use all mirrors:
+Configure Docker clients to allow insecure HTTP access to the non-Docker Hub cache endpoints if you pull from them explicitly:
 
 ```json
 {
@@ -307,6 +303,15 @@ For GHCR and Quay, you configure the mirror differently since Docker's `registry
 If you're running Kubernetes with containerd, configure mirrors in containerd:
 
 ```bash
+# Make sure containerd loads per-registry hosts.toml files.
+# For containerd 1.x, /etc/containerd/config.toml should include:
+# [plugins."io.containerd.grpc.v1.cri".registry]
+#   config_path = "/etc/containerd/certs.d"
+#
+# For containerd 2.x, the plugin key is:
+# [plugins."io.containerd.cri.v1.images".registry]
+#   config_path = "/etc/containerd/certs.d"
+
 # Create containerd mirror configuration directory
 sudo mkdir -p /etc/containerd/certs.d/docker.io
 
@@ -356,10 +361,18 @@ Cached images consume disk space. Set up periodic garbage collection:
 sudo tee /usr/local/bin/registry-gc.sh << 'EOF'
 #!/bin/bash
 # Run registry garbage collection to reclaim space from deleted layers
+set -e
 
-docker exec registry-cache registry garbage-collect \
+docker stop registry-cache
+trap 'docker start registry-cache >/dev/null' EXIT
+
+docker run --rm \
+  -v /opt/registry-cache/config/config.yml:/etc/docker/registry/config.yml:ro \
+  -v /opt/registry-cache/data:/var/lib/registry \
+  registry:3 \
+  registry garbage-collect \
   /etc/docker/registry/config.yml \
-  --delete-untagged=true
+  --delete-untagged
 
 echo "$(date): Garbage collection completed" >> /var/log/registry-gc.log
 EOF
