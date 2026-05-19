@@ -12,14 +12,14 @@ Suspend and hibernate are power-saving sleep states that make sense on laptops a
 
 ## Understanding Sleep States
 
-Linux exposes several sleep states through the ACPI interface:
+Linux exposes several sleep states through the kernel power management interface:
 
 - **S1 (standby)** - CPU clock stopped, memory powered, fast wake
 - **S3 (suspend to RAM)** - system state saved to RAM, most components powered off, fast wake (seconds)
-- **S4 (suspend to disk / hibernate)** - system state written to swap on disk, complete power off, slow wake (30+ seconds)
+- **S4 (suspend to disk / hibernate)** - system state written to swap on disk, then the system enters a platform low-power state or powers off, slow wake (30+ seconds)
 - **S5 (soft-off)** - powered off but AC still connected, requires full boot
 
-On modern hardware, `suspend` typically refers to S3 (suspend to RAM), and `hibernate` refers to S4 (suspend to disk).
+On Linux, `suspend` writes `mem` to `/sys/power/state`; depending on `/sys/power/mem_sleep`, that may use `s2idle` or `deep` (traditional S3 suspend to RAM). `hibernate` refers to suspend to disk.
 
 ## Checking Available Sleep States
 
@@ -39,14 +39,14 @@ cat /sys/power/mem_sleep
 # s2idle [deep]   <- deep is selected (brackets)
 
 # Available sleep mode options
-# s2idle = suspend to idle (software freeze only, shallower but faster)
+# s2idle = suspend to idle (software-driven suspend, shallower but faster)
 # deep = S3 (traditional suspend to RAM)
 ```
 
 ## Manually Triggering Suspend/Hibernate
 
 ```bash
-# Suspend to RAM (S3)
+# Suspend using the configured kernel sleep mode
 sudo systemctl suspend
 
 # Hibernate to disk (S4 - requires configured swap space)
@@ -91,12 +91,12 @@ swapon --show | grep file
 
 # Get the UUID of the filesystem containing swap
 # (needed for kernel resume parameter)
-SWAP_FILE=$(swapon --show --noheadings --raw | awk '{print $1}')
-SWAP_DEVICE=$(df "$SWAP_FILE" | tail -1 | awk '{print $1}')
+SWAP_FILE=$(swapon --show --noheadings --raw --output=NAME,TYPE | awk '$2=="file"{print $1; exit}')
+SWAP_DEVICE=$(findmnt -no SOURCE --target "$SWAP_FILE")
 SWAP_UUID=$(blkid -o value -s UUID "$SWAP_DEVICE")
 
 # Get the offset of the swap file (needed for resume_offset)
-SWAP_OFFSET=$(sudo filefrag -v "$SWAP_FILE" | awk 'NR==4{print $4}' | tr -d '.')
+SWAP_OFFSET=$(sudo filefrag -v "$SWAP_FILE" | awk '$1=="0:"{print $4; exit}' | tr -d '.')
 
 echo "UUID: $SWAP_UUID"
 echo "Offset: $SWAP_OFFSET"
@@ -108,7 +108,7 @@ Configure the kernel to resume from this swap file:
 # Add to GRUB kernel parameters
 sudo nano /etc/default/grub
 
-# Add resume parameters
+# Add resume parameters to the existing value
 GRUB_CMDLINE_LINUX="resume=UUID=your-uuid resume_offset=your-offset"
 
 sudo update-grub
@@ -155,18 +155,12 @@ HibernateDelaySec=180min
 # Hibernate mode: platform, shutdown, reboot, suspend, test-suspend
 HibernateMode=platform
 
-# Suspend mode: suspend, freeze, standby
-SuspendMode=
-
 # Sleep state to use for suspend
 SuspendState=mem freeze
 
-# Sleep state to use for hibernate
-HibernateState=disk
+# Memory sleep mode to use when SuspendState=mem (systemd 256+)
+MemorySleepMode=deep
 
-# Sleep state to use for hybrid-sleep
-HybridSleepMode=suspend platform shutdown
-HybridSleepState=disk
 ```
 
 ## Preventing Automatic Suspend
@@ -175,6 +169,7 @@ On servers, you want to prevent automatic suspend from occurring:
 
 ```bash
 # Via systemd-logind
+sudo mkdir -p /etc/systemd/logind.conf.d
 sudo tee /etc/systemd/logind.conf.d/no-suspend.conf << 'EOF'
 [Login]
 # Disable idle suspend
@@ -249,10 +244,10 @@ Run custom scripts before or after suspend/resume:
 
 ```bash
 # Create hook directory
-sudo mkdir -p /etc/systemd/system-sleep/
+sudo mkdir -p /usr/lib/systemd/system-sleep/
 
 # Create a hook script
-sudo tee /etc/systemd/system-sleep/my-hook.sh << 'EOF'
+sudo tee /usr/lib/systemd/system-sleep/my-hook.sh << 'EOF'
 #!/bin/bash
 # Called by systemd-sleep before and after sleep
 
@@ -281,7 +276,7 @@ case "$1" in
 esac
 EOF
 
-sudo chmod +x /etc/systemd/system-sleep/my-hook.sh
+sudo chmod +x /usr/lib/systemd/system-sleep/my-hook.sh
 ```
 
 ## Suspend on Servers: When It Makes Sense
@@ -312,13 +307,13 @@ systemd-inhibit --list
 # A process holding a sleep inhibitor will prevent suspend
 # Find and stop it if needed
 
-# Test suspend with verbose output
-sudo systemctl isolate sleep.target
+# Test suspend through systemd
+sudo systemctl suspend
 
 # Check wake reason after resume
 dmesg | grep -E "wake|ACPI|resume" | tail -20
 
-# Check kernel suspend log
+# Check whether PM trace debugging is enabled
 cat /sys/power/pm_trace
 
 # Check for failed resume
