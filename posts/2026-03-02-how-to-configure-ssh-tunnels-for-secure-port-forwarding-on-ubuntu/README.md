@@ -68,10 +68,10 @@ Remote forwarding works in the opposite direction - it exposes a local service o
 # Expose local port 3000 (a dev server) on the remote server's port 8080
 ssh -R 8080:localhost:3000 user@public-server.example.com
 
-# Now anyone who can reach public-server.example.com:8080 will reach your local :3000
+# Now processes on public-server.example.com can reach your local :3000 via localhost:8080
 
 # Expose with a specific bind address on the remote end
-# By default, remote forwarding only binds to loopback (127.0.0.1)
+# By default, remote forwarding only binds to loopback addresses
 # To bind to all interfaces on the remote server, you need:
 # 1. GatewayPorts yes in the remote server's sshd_config
 # 2. Then use:
@@ -115,10 +115,8 @@ To use the SOCKS proxy:
 # Use curl through the proxy
 curl --socks5 localhost:1080 https://example.com
 
-# Use wget
-export http_proxy=socks5://localhost:1080
-export https_proxy=socks5://localhost:1080
-wget https://example.com
+# Use curl with a SOCKS proxy URL
+curl --proxy socks5h://localhost:1080 https://example.com
 
 # Test DNS resolution through the proxy (SOCKS5 supports remote DNS)
 curl --socks5-hostname localhost:1080 https://example.com
@@ -145,7 +143,7 @@ Host dbserver-tunnel
     # Stay connected
     ServerAliveInterval 30
     ServerAliveCountMax 3
-    # Don't execute a shell
+    # Don't request a TTY for this tunnel
     RequestTTY no
     ExitOnForwardFailure yes
 ```
