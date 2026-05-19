@@ -12,14 +12,14 @@ Description: Configure IRQ affinity on Ubuntu to distribute network interrupt ha
 
 Every time a network packet arrives at your server, it triggers a hardware interrupt (IRQ). By default, Linux may route all interrupts from a given network interface to a single CPU core. On servers handling thousands of packets per second, that single core becomes a bottleneck while the remaining cores sit idle.
 
-Configuring IRQ affinity lets you distribute interrupt processing across multiple cores, which directly translates to lower latency and higher throughput. This is especially important on servers running 10Gbps or faster NICs.
+Configuring IRQ affinity lets you distribute interrupt processing across multiple cores, which can translate to lower latency and higher throughput. This is especially important on servers running 10Gbps or faster NICs.
 
 ## Checking Current IRQ Assignments
 
 Start by identifying which IRQs are assigned to your network interface.
 
 ```bash
-# List all IRQs and their CPU affinity
+# List interrupt counts by CPU
 
 cat /proc/interrupts | head -5
 
@@ -57,7 +57,7 @@ cat /proc/irq/42/smp_affinity_list
 
 ## Multi-Queue NICs and RSS
 
-Modern NICs support multiple transmit/receive queues, each with its own IRQ. This feature is called Receive Side Scaling (RSS). Check if your NIC supports multiple queues.
+Modern NICs support multiple receive and transmit queues. On the receive path, Receive Side Scaling (RSS) distributes flows across receive queues, and each receive queue typically has its own IRQ. Check if your NIC supports multiple queues.
 
 ```bash
 # Check the number of combined queues
@@ -67,11 +67,11 @@ ethtool -l eth0
 If your NIC supports multiple queues but is using fewer than the maximum, increase them.
 
 ```bash
-# Set the number of combined queues to match CPU count
+# Set the number of combined queues to match CPU core count
 sudo ethtool -L eth0 combined 8
 ```
 
-Each queue gets its own IRQ, and you can pin each queue to a different CPU core. This is the foundation of effective IRQ affinity for networking.
+Each receive queue typically gets its own IRQ, and you can pin each queue's IRQ to a different CPU core. This is the foundation of effective IRQ affinity for networking.
 
 ## Setting IRQ Affinity Manually
 
@@ -86,26 +86,26 @@ Then assign each queue to a specific CPU core.
 
 ```bash
 # Pin IRQ 41 (queue 0) to CPU 0
-echo 1 > /proc/irq/41/smp_affinity
+echo 1 | sudo tee /proc/irq/41/smp_affinity > /dev/null
 
 # Pin IRQ 42 (queue 1) to CPU 1
-echo 2 > /proc/irq/42/smp_affinity
+echo 2 | sudo tee /proc/irq/42/smp_affinity > /dev/null
 
 # Pin IRQ 43 (queue 2) to CPU 2
-echo 4 > /proc/irq/43/smp_affinity
+echo 4 | sudo tee /proc/irq/43/smp_affinity > /dev/null
 
 # Pin IRQ 44 (queue 3) to CPU 3
-echo 8 > /proc/irq/44/smp_affinity
+echo 8 | sudo tee /proc/irq/44/smp_affinity > /dev/null
 ```
 
 You can also use the smp_affinity_list interface, which is more readable.
 
 ```bash
 # Pin IRQ 41 to CPU 0
-echo 0 > /proc/irq/41/smp_affinity_list
+echo 0 | sudo tee /proc/irq/41/smp_affinity_list > /dev/null
 
 # Pin IRQ 42 to CPU 1
-echo 1 > /proc/irq/42/smp_affinity_list
+echo 1 | sudo tee /proc/irq/42/smp_affinity_list > /dev/null
 ```
 
 ## Automating with a Script
@@ -211,11 +211,11 @@ If your NIC does not support multiple hardware queues, you can use Receive Packe
 
 ```bash
 # Enable RPS on eth0 queue 0 across CPUs 0-7
-echo ff > /sys/class/net/eth0/queues/rx-0/rps_cpus
+echo ff | sudo tee /sys/class/net/eth0/queues/rx-0/rps_cpus > /dev/null
 
 # Enable RFS with 32768 flow entries
-echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
-echo 4096 > /sys/class/net/eth0/queues/rx-0/rps_flow_cnt
+echo 32768 | sudo tee /proc/sys/net/core/rps_sock_flow_entries > /dev/null
+echo 32768 | sudo tee /sys/class/net/eth0/queues/rx-0/rps_flow_cnt > /dev/null
 ```
 
 RPS distributes packets to CPUs based on a hash of the packet header, while RFS takes it further by steering packets to the CPU where the application socket is running.
