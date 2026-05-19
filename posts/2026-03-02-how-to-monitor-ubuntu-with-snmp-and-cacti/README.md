@@ -93,7 +93,7 @@ Install Cacti on a dedicated monitoring server:
 # Install LAMP stack prerequisites
 sudo apt update
 sudo apt install apache2 mariadb-server mariadb-client \
-  php8.3 php8.3-mysql php8.3-xml php8.3-mbstring php8.3-json \
+  php8.3 php8.3-mysql php8.3-xml php8.3-mbstring \
   php8.3-gd php8.3-curl rrdtool snmp snmp-mibs-downloader \
   librrds-perl
 
@@ -286,8 +286,8 @@ If Cacti cannot connect to a host:
 # Test SNMP from the Cacti server
 snmpwalk -v 2c -c monitoring_secret 192.168.1.50 .1.3.6.1.2.1.1
 
-# Test with verbose output
-snmpget -v 2c -c monitoring_secret -v 192.168.1.50 .1.3.6.1.2.1.1.1.0
+# Test a specific OID (sysDescr)
+snmpget -v 2c -c monitoring_secret 192.168.1.50 .1.3.6.1.2.1.1.1.0
 
 # Check firewall on the monitored host
 sudo ufw status
@@ -306,6 +306,9 @@ snmpwalk -v 2c -c monitoring_secret localhost .1.3.6.1.4.1.2021
 For production environments, use SNMPv3:
 
 ```bash
+# Stop snmpd before creating the v3 user (the tool writes to /var/lib/snmp/snmpd.conf)
+sudo systemctl stop snmpd
+
 # Create an SNMPv3 user on the monitored host
 sudo net-snmp-create-v3-user -ro -a SHA -A "authpass123" \
   -x AES -X "privpass456" cacti_monitor
@@ -313,7 +316,7 @@ sudo net-snmp-create-v3-user -ro -a SHA -A "authpass123" \
 # Update snmpd.conf
 echo "rouser cacti_monitor" | sudo tee -a /etc/snmp/snmpd.conf
 
-sudo systemctl restart snmpd
+sudo systemctl start snmpd
 
 # Test SNMPv3
 snmpwalk -v 3 -u cacti_monitor -l authPriv \
