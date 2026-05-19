@@ -70,7 +70,7 @@ account    required     pam_nologin.so
 
 # Uncomment and edit /etc/security/access.conf if you need to
 # set complex access limits that are hard to express in sshd_config.
-account  required     pam_access.so
+# account  required     pam_access.so
 
 # Standard Un*x authorization.
 @include common-account
@@ -92,7 +92,7 @@ session    optional     pam_mail.so standard noenv # [1]
 
 ## Common PAM Modules
 
-Ubuntu ships with a large collection of PAM modules. These are the ones you'll encounter most often:
+Ubuntu provides a large collection of PAM modules. These are the ones you'll encounter most often:
 
 - `pam_unix.so` - Traditional Unix password authentication
 - `pam_ldap.so` - LDAP authentication
@@ -101,7 +101,7 @@ Ubuntu ships with a large collection of PAM modules. These are the ones you'll e
 - `pam_access.so` - Login access control (reads from `/etc/security/access.conf`)
 - `pam_time.so` - Time-based access restrictions
 - `pam_env.so` - Set environment variables on login
-- `pam_tally2.so` / `pam_faillock.so` - Account lockout after failed attempts
+- `pam_faillock.so` - Account lockout after failed attempts
 
 ## Example: Enforcing Account Lockout
 
@@ -184,8 +184,8 @@ sudo nano /etc/ssh/sshd_config
 ```
 
 ```text
-ChallengeResponseAuthentication yes
-AuthenticationMethods keyboard-interactive
+KbdInteractiveAuthentication yes
+AuthenticationMethods keyboard-interactive:pam
 ```
 
 ```bash
@@ -222,10 +222,10 @@ sudo nano /etc/security/time.conf
 ```text
 # Format: services;ttys;users;times
 # Allow SSH logins only on weekdays from 8am to 6pm
-sshd;*;!root;Al0800-1800
+sshd;*;!root;Wk0800-1800
 ```
 
-The time format uses: `Al` for all days, `Wk` for weekdays, `We` for weekends. Hours are in 24-hour format.
+The time format uses: `Al` for all days, `Wk` for weekdays, `Wd` for weekends. Hours are in 24-hour format.
 
 ## The common-* Files
 
@@ -274,7 +274,7 @@ PAM misconfiguration can lock you out of your own system. Follow these practices
 
 - Always keep an active root session open when modifying PAM files
 - Test changes on a non-critical service before applying to SSH or sudo
-- Use `pam_tally2 --reset` or `faillock --reset` to undo lockouts
+- Use `faillock --reset` to undo lockouts
 - Back up PAM files before editing: `sudo cp /etc/pam.d/sshd /etc/pam.d/sshd.bak`
 - On cloud instances, use the cloud provider's console as a fallback if SSH breaks
 
