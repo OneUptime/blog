@@ -70,7 +70,7 @@ sudo nano /etc/meilisearch/config.toml
 db_path = "/var/lib/meilisearch/data"
 
 # Environment: development or production
-# production mode disables the /experimental-features and has better defaults
+# production mode requires a master key and disables the search preview interface
 env = "production"
 
 # Bind address and port
@@ -83,10 +83,10 @@ master_key = "your-super-secret-master-key-at-least-16-bytes"
 # Disable analytics (optional)
 no_analytics = true
 
-# Log level: ERROR, WARN, INFO, DEBUG, TRACE
+# Log level: OFF, ERROR, WARN, INFO, DEBUG, TRACE
 log_level = "INFO"
 
-# Maximum index size (bytes) - default is 100GB
+# Maximum RAM Meilisearch can use while indexing (default is 2/3 of available RAM)
 max_indexing_memory = "512 MiB"
 
 # Number of indexing threads (default = half of available cores)
@@ -233,7 +233,8 @@ curl -X POST http://localhost:7700/indexes/products/search \
   }'
 # Note: "wirelss" is a typo - Meilisearch still finds "Wireless Keyboard"
 
-# Search with filters and facets
+# After configuring filterableAttributes and sortableAttributes as shown below,
+# search with filters and sorting
 curl -X POST http://localhost:7700/indexes/products/search \
   -H "Authorization: Bearer YOUR_SEARCH_KEY" \
   -H "Content-Type: application/json" \
@@ -316,20 +317,25 @@ server {
     ssl_certificate /etc/letsencrypt/live/search.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/search.example.com/privkey.pem;
 
-    location / {
+    location = /health {
         proxy_pass http://127.0.0.1:7700;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+    }
 
-        # Only allow GET search requests from the internet
-        # Block admin endpoints
+    # Only expose search requests from the internet
+    location ~ ^/indexes/[^/]+/search$ {
         limit_except GET POST {
             deny all;
         }
+
+        proxy_pass http://127.0.0.1:7700;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
     }
 
-    # Block admin endpoints from external access
-    location ~ ^/(keys|dumps|settings|indexes/.*/settings|tasks) {
+    # Block all other API endpoints from external access
+    location / {
         return 403;
     }
 }
