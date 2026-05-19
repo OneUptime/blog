@@ -45,8 +45,8 @@ networkctl status
 # Force a DHCP renew on a specific interface
 sudo networkctl renew eth0
 
-# Renew all DHCP-configured interfaces
-sudo networkctl renew
+# Renew multiple interfaces (one or more device names required)
+sudo networkctl renew eth0 wlan0
 ```
 
 `networkctl renew` sends a DHCPv4 DHCPREQUEST and DHCPv6 RENEW to try to extend the current lease. If the server denies the renewal, it starts a new DORA exchange (Discover, Offer, Request, Acknowledge).
@@ -148,13 +148,15 @@ ADDRESS=192.168.1.105
 NETMASK=255.255.255.0
 ROUTER=192.168.1.1
 SERVER_ADDRESS=192.168.1.1
-NEXT_SERVER=192.168.1.1
-EXPIRY=1740998400
-T1=1740955200
-T2=1740976800
+NEXT_SERVER=0.0.0.0
+LIFETIME=86400
+T1=43200
+T2=75600
 DNS=8.8.8.8 8.8.4.4
 DOMAINNAME=example.com
 ```
+
+`LIFETIME`, `T1`, and `T2` are stored as durations in seconds (relative to when the lease was acquired), not as absolute timestamps.
 
 ### With dhclient
 
@@ -186,11 +188,14 @@ Understanding DHCP lease timing helps predict when renewals happen automatically
 To check remaining lease time:
 
 ```bash
-# With systemd-networkd, check the EXPIRY field
-sudo cat /run/systemd/netif/leases/2 | grep EXPIRY
+# With systemd-networkd, view the LIFETIME (seconds) for the interface
+sudo cat /run/systemd/netif/leases/2 | grep -E '^(LIFETIME|T1|T2)='
 
-# Convert epoch to human-readable
-date -d @$(sudo cat /run/systemd/netif/leases/2 | grep EXPIRY | cut -d= -f2)
+# Approximate the absolute expiry by combining the file mtime with LIFETIME.
+# The lease file's mtime is roughly when the lease was acquired or last refreshed.
+ACQUIRED=$(sudo stat -c %Y /run/systemd/netif/leases/2)
+LIFETIME=$(sudo grep '^LIFETIME=' /run/systemd/netif/leases/2 | cut -d= -f2)
+date -d "@$((ACQUIRED + LIFETIME))"
 ```
 
 ## Scripting DHCP Renewal
