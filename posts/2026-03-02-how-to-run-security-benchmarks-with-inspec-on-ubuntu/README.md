@@ -58,12 +58,12 @@ Before running profiles, understand the key concepts:
 Start with a simple inline check to verify InSpec is working:
 
 ```bash
-# Run a one-off InSpec check (no profile required)
+# Run a one-off InSpec check using the shell (no profile required)
 # Check that SSH is configured securely
-inspec exec -e 'describe sshd_config do; its("PermitRootLogin") { should eq "no" }; end'
+inspec shell -c 'describe sshd_config do; its("PermitRootLogin") { should eq "no" }; end'
 
 # Check that a specific file has correct permissions
-inspec exec -e '
+inspec shell -c '
 describe file("/etc/passwd") do
   it { should exist }
   it { should be_file }
@@ -78,13 +78,13 @@ end
 The InSpec community maintains profiles for major compliance frameworks. The most widely used is the CIS Ubuntu Linux benchmark.
 
 ```bash
-# Run the CIS Ubuntu 22.04 L1 benchmark profile from Chef Supermarket
-# This checks against Center for Internet Security Level 1 recommendations
+# Run the dev-sec Linux baseline profile (general Linux hardening checks)
 inspec exec https://github.com/dev-sec/linux-baseline \
   --chef-license accept
 
-# Run CIS Ubuntu 22.04 benchmark (requires Supermarket account for some)
-inspec exec https://github.com/nicholasfountain/cis-ubuntu-22.04-level1-hardening \
+# Run the CIS Distribution Independent Linux benchmark from dev-sec
+# This checks against Center for Internet Security recommendations
+inspec exec https://github.com/dev-sec/cis-dil-benchmark \
   --chef-license accept
 
 # Save results to JSON for further processing
@@ -203,7 +203,7 @@ control "pkg-001" do
   title "Unnecessary packages must not be installed"
   desc "Unused packages increase attack surface"
 
-  %w[telnet rsh-client talk).each do |pkg|
+  %w[telnet rsh-client talk].each do |pkg|
     describe package(pkg) do
       it { should_not be_installed }
     end
