@@ -12,12 +12,12 @@ The error "Name or service not known" means a DNS lookup failed - the system tri
 
 ## Understanding the Resolution Chain
 
-When an application calls `getaddrinfo("google.com")`, Linux checks these sources in order (as defined in `/etc/nsswitch.conf`):
+When an application calls `getaddrinfo("google.com")`, Linux checks name-service sources in the order defined in `/etc/nsswitch.conf`. A simple server configuration usually checks:
 
 1. `/etc/hosts` - local static hostname entries
 2. DNS resolver - queries a DNS server
 
-If both fail, you get "Name or service not known" (POSIX error code EAI_NONAME or EAI_AGAIN).
+Desktop systems and systems using systemd-resolved may also include sources such as `resolve`, `mdns4_minimal`, or `myhostname`. If the name does not exist in any configured source, you get "Name or service not known" (POSIX `getaddrinfo` error `EAI_NONAME`). Temporary lookup failures usually return `EAI_AGAIN` with a message such as "Temporary failure in name resolution".
 
 ## Step 1: Verify Basic Connectivity
 
@@ -100,7 +100,7 @@ If `resolvectl status` shows no DNS servers, or shows servers that are unreachab
 ### Setting DNS Servers in systemd-resolved
 
 ```bash
-# Set DNS servers globally
+# Set DNS servers for an interface at runtime
 sudo resolvectl dns enp3s0 8.8.8.8 8.8.4.4
 
 # Or set via Netplan (recommended for persistence)
@@ -130,7 +130,7 @@ The Name Service Switch configuration controls how names are resolved. A broken 
 cat /etc/nsswitch.conf | grep hosts
 ```
 
-Normal output:
+A simple working server configuration:
 
 ```text
 hosts:          files dns
@@ -155,10 +155,10 @@ sudo nano /etc/nsswitch.conf
 If `mdns4_minimal` or `resolve` are in the line:
 
 ```text
-hosts:          files mdns4_minimal [NOTFOUND=return] dns resolve [!UNAVAIL=return] mach
+hosts:          files mdns4_minimal [NOTFOUND=return] resolve [!UNAVAIL=return] dns myhostname
 ```
 
-This is Ubuntu's default with Avahi. The `[NOTFOUND=return]` after `mdns4_minimal` can cause issues if mdns fails before DNS is tried. For servers, simplify to:
+This is a common Ubuntu-style setup when mDNS and systemd-resolved NSS integration are installed. The `[NOTFOUND=return]` after `mdns4_minimal` is mainly intended to stop `.local` names from leaking to unicast DNS, but it can cause issues if your environment uses `.local` as a regular DNS domain. For servers that do not need mDNS, simplify to:
 
 ```text
 hosts:          files dns
@@ -178,7 +178,7 @@ dig @$(resolvectl status | grep 'DNS Servers' | awk '{print $NF}') google.com
 # Test with a different DNS server
 nslookup google.com 1.1.1.1
 
-# Check DNSSEC validation
+# Request DNSSEC records
 dig +dnssec google.com
 
 # See detailed query path
@@ -268,9 +268,9 @@ nmcli connection show --active
 # Force DHCP to renew and get fresh DNS servers
 sudo dhclient -v enp3s0
 
-# Or with NetworkManager
-nmcli connection down enp3s0
-nmcli connection up enp3s0
+# Or reconnect the device with NetworkManager
+nmcli device disconnect enp3s0
+nmcli device connect enp3s0
 ```
 
 ## Step 10: Dealing with /etc/resolv.conf Being Overwritten
