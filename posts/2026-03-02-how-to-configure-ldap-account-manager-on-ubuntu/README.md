@@ -14,7 +14,7 @@ LDAP Account Manager (LAM) is a web-based front-end for managing LDAP directorie
 
 - Ubuntu 22.04 or newer
 - A running LDAP server (OpenLDAP or 389 Directory Server)
-- Apache or Nginx web server
+- Apache web server (or Nginx with manual configuration)
 - PHP 8.x
 - Root or sudo access
 
@@ -33,7 +33,7 @@ sudo apt install -y ldap-account-manager
 sudo systemctl status apache2
 ```
 
-The package installs LAM under `/usr/share/ldap-account-manager/` and creates an Apache configuration at `/etc/apache2/conf-available/ldap-account-manager.conf`.
+The package installs LAM under `/usr/share/ldap-account-manager/`, stores its Apache configuration at `/etc/ldap-account-manager/apache.conf`, and normally creates an Apache symlink at `/etc/apache2/conf-available/ldap-account-manager.conf`.
 
 ## Enabling the LAM Configuration
 
@@ -76,7 +76,7 @@ Bind user: cn=admin,dc=example,dc=com
 Bind password: your_admin_password
 ```
 
-For TLS connections, change the server address to `ldaps://localhost:636` and adjust the SSL settings accordingly.
+For LDAP over SSL/TLS (LDAPS), change the server address to `ldaps://localhost:636`. For StartTLS, keep an `ldap://` URL and enable TLS in the profile's SSL/TLS settings.
 
 ### Configuring Account Types
 
@@ -205,25 +205,25 @@ LAM supports importing users via a CSV file:
 2. Download the template CSV for your account type
 3. Fill in the template and upload it
 
-The CSV format for users looks like:
+The generated CSV template uses LAM module-specific column names. For a typical Unix user profile, the CSV format looks like:
 
 ```csv
-UID;Last name;First name;Email;Password
-jdoe;Doe;Jane;jdoe@example.com;TempPass123!
-bwilson;Wilson;Bob;bwilson@example.com;TempPass456!
+posixAccount_userName;posixAccount_group;inetOrgPerson_lastName;inetOrgPerson_firstName;inetOrgPerson_email;posixAccount_password
+jdoe;users;Doe;Jane;jdoe@example.com;TempPass123!
+bwilson;users;Wilson;Bob;bwilson@example.com;TempPass456!
 ```
 
 ## Configuring Password Policies in LAM
 
-LAM can enforce password complexity rules:
+LAM can enforce password complexity rules for passwords set through LAM:
 
-1. Go to **LAM Configuration -> Edit server profiles**
-2. Select your profile
-3. Navigate to **Module settings -> Users**
+1. Go to **LAM Configuration -> Edit general settings**
+2. Enter the master configuration password
+3. Navigate to **Password policy**
 4. Adjust password settings:
    - Minimum password length
    - Password complexity requirements
-   - Account expiry settings
+   - External password checks, if needed
 
 ## Troubleshooting
 
@@ -257,6 +257,7 @@ sudo chmod 750 /var/lib/ldap-account-manager/
 If sessions expire too quickly, adjust the PHP session timeout:
 
 ```bash
+# Replace 8.x with the PHP version installed on your server, such as 8.1 or 8.3
 sudo nano /etc/php/8.x/apache2/php.ini
 # Find and update:
 # session.gc_maxlifetime = 3600
@@ -267,10 +268,10 @@ sudo systemctl reload apache2
 
 ```bash
 # Update LAM with your package manager
-sudo apt update && sudo apt upgrade -y ldap-account-manager
+sudo apt update && sudo apt install --only-upgrade ldap-account-manager
 
 # Check the LAM changelog for breaking changes before upgrading
-cat /usr/share/doc/ldap-account-manager/changelog.gz | zcat | head -100
+zcat /usr/share/doc/ldap-account-manager/changelog.Debian.gz | head -100
 ```
 
 LDAP Account Manager makes routine directory administration much faster than working with raw LDAP commands or LDIF files. For organizations running their own LDAP infrastructure, it is worth the setup time, particularly when non-technical staff need to manage user accounts without getting into command-line LDAP operations.
