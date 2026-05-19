@@ -56,8 +56,8 @@ sudo nano /etc/sysctl.d/99-core-dump-restrictions.conf
 
 # Disable core dumps for setuid/setgid processes
 # 0 = no core dumps for setuid processes (most secure)
-# 1 = core dumps allowed but owned by root
-# 2 = core dumps allowed, owned by the process owner (least secure)
+# 1 = core dumps allowed and owned by the dumping process user (insecure)
+# 2 = core dumps allowed but readable by root only
 fs.suid_dumpable = 0
 
 # Redirect core dumps to /dev/null (discards them)
@@ -80,7 +80,7 @@ cat /proc/sys/kernel/core_pattern
 
 ### Using PAM Limits
 
-PAM limits apply to user sessions and control resource limits including core dump size:
+PAM limits apply to login sessions that use the `pam_limits` module and control resource limits including core dump size:
 
 ```bash
 sudo nano /etc/security/limits.conf
@@ -98,7 +98,7 @@ Add these lines:
 @developers   hard   core   unlimited
 ```
 
-For system services that do not go through PAM, set limits via `/etc/security/limits.d/`:
+You can also place the same PAM limits in a dedicated file under `/etc/security/limits.d/`:
 
 ```bash
 sudo tee /etc/security/limits.d/no-core-dumps.conf <<EOF
@@ -117,7 +117,7 @@ ulimit -c  # Should output: 0
 
 ### Using systemd for Service Core Dumps
 
-Services managed by systemd have their own limit settings. Disable core dumps for all services:
+systemd-coredump has its own storage settings. Disable persistent storage and processing of dumps handled by systemd-coredump:
 
 ```bash
 sudo nano /etc/systemd/coredump.conf
@@ -126,27 +126,23 @@ sudo nano /etc/systemd/coredump.conf
 ```ini
 [Coredump]
 # Control whether core dumps are stored or discarded
-# 'none' discards all core dumps immediately
-# 'external' stores them via core_pattern
+# 'none' logs the event but does not store the core dump
+# 'external' stores them in /var/lib/systemd/coredump/
 # 'journal' stores them in the systemd journal
 Storage=none
 
 # Compress stored core dumps
 Compress=yes
 
-# Maximum size of a core dump to store (in bytes)
-# Set to 0 to discard all
+# Maximum size of a core dump to process (in bytes)
+# Set to 0 with Storage=none to disable processing except for a log entry
 ProcessSizeMax=0
 
-# Maximum disk space for all stored core dumps
+# Maximum size of an externally stored core dump
 ExternalSizeMax=0
 ```
 
-Reload systemd:
-
-```bash
-sudo systemctl daemon-reload
-```
+Changes to `coredump.conf` take effect the next time systemd-coredump handles a core dump.
 
 ## Restricting Core Dumps Per Service
 
@@ -154,7 +150,7 @@ For services that may handle sensitive data, add explicit restrictions to their 
 
 ```bash
 # Create an override for a specific service
-sudo systemctl edit sshd
+sudo systemctl edit ssh
 ```
 
 Add:
@@ -170,7 +166,7 @@ MemoryDenyWriteExecute=true
 
 ```bash
 # Apply to multiple sensitive services
-for service in sshd nginx postgres redis; do
+for service in ssh nginx postgresql redis-server; do
     sudo mkdir -p /etc/systemd/system/${service}.service.d/
     sudo tee /etc/systemd/system/${service}.service.d/no-core-dump.conf <<EOF
 [Service]
@@ -250,7 +246,7 @@ Test that core dumps are suppressed:
 ulimit -c
 
 # Generate a test core dump by running a program that crashes
-# (cat /dev/null kills itself with SIGSEGV in this test)
+# The test program below intentionally dereferences a null pointer
 # This should NOT produce a core file if restrictions are correct
 
 # Create a simple program to crash
