@@ -60,13 +60,13 @@ talosctl gen config my-cluster https://lb.example.com:6443 \
     --config-patch @cert-sans-patch.yaml
 ```
 
-Or apply it to a running cluster:
+Or apply it to a running cluster using `talosctl patch mc`:
 
 ```bash
 # Apply to each control plane node
-talosctl apply-config --nodes 10.0.1.10 --patch @cert-sans-patch.yaml
-talosctl apply-config --nodes 10.0.1.11 --patch @cert-sans-patch.yaml
-talosctl apply-config --nodes 10.0.1.12 --patch @cert-sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.10 --patch @cert-sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.11 --patch @cert-sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.12 --patch @cert-sans-patch.yaml
 ```
 
 ## Common Load Balancer Scenarios
@@ -183,9 +183,9 @@ machine:
 
 ```bash
 # Apply the updated SANs to each control plane node
-talosctl apply-config --nodes 10.0.1.10 --patch @updated-sans-patch.yaml
-talosctl apply-config --nodes 10.0.1.11 --patch @updated-sans-patch.yaml
-talosctl apply-config --nodes 10.0.1.12 --patch @updated-sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.10 --patch @updated-sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.11 --patch @updated-sans-patch.yaml
+talosctl patch mc --nodes 10.0.1.12 --patch @updated-sans-patch.yaml
 ```
 
 After applying, the node will regenerate its certificates to include the new SANs. This may require a brief service restart but should not require a full reboot.

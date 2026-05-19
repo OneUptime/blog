@@ -170,7 +170,9 @@ MAX_UPLOAD_SIZE=10MB
 APP_ENV=production
 DATABASE_URL=postgresql://myapp:prod-password@db.internal:5432/myapp_prod
 REDIS_URL=redis://cache.internal:6379/0
-DATABASE_POOL_SIZE=20  # Override default for production
+# Override default pool size for production (inline comments are NOT supported,
+# so the comment must be on its own line)
+DATABASE_POOL_SIZE=20
 
 # /etc/myapp/local.override - Machine-specific (not in version control)
 # DATACENTER_REGION=us-east-1
@@ -183,25 +185,29 @@ Environment files are better than embedding secrets in service files, but they s
 
 ### Using systemd Credentials (systemd 250+)
 
-For Ubuntu 22.04 and later, systemd credentials provide encrypted secret storage:
+For Ubuntu 22.10 and later (or any release with systemd 250 or newer — note that stock Ubuntu 22.04 LTS ships with systemd 249, so this is unavailable there), systemd credentials provide encrypted secret storage:
 
 ```bash
 # Set a credential value using systemd-creds
-sudo systemd-creds --system encrypt --name=database-password - <<< "your-secret-password"
-# This outputs an encrypted blob
+# encrypt requires both INPUT and OUTPUT positional args; use '-' for stdin/stdout
+# (--system is only meaningful with list/cat, not encrypt, so it's omitted here)
+sudo systemd-creds encrypt --name=database-password - - <<< "your-secret-password"
+# This outputs an encrypted blob to stdout
 
-# Store the encrypted credential
-sudo mkdir -p /etc/credstore
-sudo systemd-creds --system encrypt --name=database-password --output=/etc/credstore/database-password - <<< "your-secret-password"
+# Store the encrypted credential to a file
+sudo mkdir -p /etc/credstore.encrypted
+sudo systemd-creds encrypt --name=database-password - /etc/credstore.encrypted/database-password <<< "your-secret-password"
 ```
 
 ```ini
 # /etc/systemd/system/myapp.service (partial)
 [Service]
-# Load the credential - systemd decrypts and makes it available
-LoadCredential=database-password:/etc/credstore/database-password
+# Load and decrypt the credential - use LoadCredentialEncrypted= for files
+# created by 'systemd-creds encrypt'. Plain LoadCredential= would pass the
+# ciphertext through unchanged.
+LoadCredentialEncrypted=database-password:/etc/credstore.encrypted/database-password
 
-# The credential is available at $CREDENTIALS_DIRECTORY/database-password
+# The decrypted credential is available at $CREDENTIALS_DIRECTORY/database-password
 ExecStart=/bin/bash -c 'export DATABASE_PASSWORD=$(cat $CREDENTIALS_DIRECTORY/database-password) && exec /opt/myapp/bin/myapp'
 ```
 
@@ -259,7 +265,8 @@ sudo systemctl show myapp.service -p Environment
 sudo cat /proc/$(systemctl show myapp.service -p MainPID --value)/environ | \
   tr '\0' '\n' | sort
 
-# Test an environment file for syntax errors before deploying
+# Verify the service unit file for syntax/dependency errors before deploying
+# (this validates the unit file itself; it does not parse the EnvironmentFile contents)
 sudo systemd-analyze verify /etc/systemd/system/myapp.service
 ```
 
@@ -304,7 +311,10 @@ EnvironmentFile=-/etc/myapp/local.override
 
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
-ExecReload=/usr/bin/docker compose pull && /usr/bin/docker compose up -d
+# systemd does not invoke a shell for Exec* directives, so '&&' won't work.
+# Use multiple ExecReload= lines; they run sequentially.
+ExecReload=/usr/bin/docker compose pull
+ExecReload=/usr/bin/docker compose up -d
 
 [Install]
 WantedBy=multi-user.target
@@ -322,8 +332,9 @@ sudo nano /etc/myapp/environment
 sudo systemctl restart myapp
 
 # Or for services that support signal-based config reload:
-sudo systemctl reload myapp  # Sends SIGHUP without stopping the service
-# (only works if the application handles SIGHUP for config reload)
+sudo systemctl reload myapp  # Runs the unit's ExecReload= without stopping the service
+# (requires ExecReload= to be set in the unit, e.g. ExecReload=/bin/kill -HUP $MAINPID,
+#  and the application must actually handle SIGHUP as a reload signal)
 ```
 
 For applications that read configuration on startup only (most do), a rolling restart or blue-green deployment minimizes downtime during secret rotation.

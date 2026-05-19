@@ -28,13 +28,12 @@ FedRAMP requires FIPS 140-2 validated cryptographic modules for cryptographic op
 ```bash
 # Install Ubuntu's FIPS packages
 
-# Note: FIPS mode is available in Ubuntu Pro/Advantage
-sudo ua enable fips
+# FIPS-validated modules on Ubuntu are distributed via Ubuntu Pro
+# (free for personal use on up to 5 machines). Attach first, then enable:
+sudo pro attach <YOUR_TOKEN>
+sudo pro enable fips
 
-# Or manually install FIPS kernel and cryptographic modules
-sudo apt install ubuntu-fips -y
-
-# After installation, reboot to activate FIPS kernel
+# After installation, reboot to activate the FIPS kernel
 sudo reboot
 
 # Verify FIPS mode is active after reboot
@@ -48,10 +47,10 @@ openssl version -a | grep -i fips
 On non-Ubuntu Pro systems, you can partially enforce FIPS-compliant settings:
 
 ```bash
-# Install FIPS-compliant cryptographic tools
-sudo apt install libssl1.1 strongswan -y
+# Install FIPS-related cryptographic tools (OpenSSL 3 ships in Ubuntu 22.04)
+sudo apt install openssl strongswan -y
 
-# Configure OpenSSL to use FIPS module
+# Configure OpenSSL 3 to load the FIPS provider
 sudo nano /etc/ssl/openssl.cnf
 ```
 
@@ -131,9 +130,9 @@ PermitRootLogin no
 PasswordAuthentication no
 PubkeyAuthentication yes
 
-# Session controls
+# Session controls (terminate idle sessions after ~10 minutes)
 ClientAliveInterval 600
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 LoginGraceTime 60
 MaxAuthTries 3
 MaxSessions 10
@@ -242,14 +241,18 @@ sudo chown root:root /var/log/audit/audit.log
 sudo chmod 600 /var/log/audit/audit.log
 
 # Configure auditd to write to remote log server (AU-9(2))
-sudo tee /etc/audisp/plugins.d/au-remote.conf << 'EOF'
+# On Ubuntu 22.04 (auditd 3.x), audispd is part of auditd and configs
+# live under /etc/audit/ rather than the legacy /etc/audisp/
+sudo apt install audispd-plugins -y
+
+sudo tee /etc/audit/plugins.d/au-remote.conf << 'EOF'
 active = yes
 direction = out
 path = /sbin/audisp-remote
 type = always
 EOF
 
-sudo tee /etc/audisp/audisp-remote.conf << 'EOF'
+sudo tee /etc/audit/audisp-remote.conf << 'EOF'
 remote_server = siem.agency.gov
 port = 60
 transport = tcp
@@ -299,9 +302,10 @@ sudo apt purge telnet rsh-client rsh-redone-client ftp -y
 sudo apt autoremove -y
 
 # Check for unnecessary SUID/SGID files
+sudo mkdir -p /var/log/fedramp
 find / -perm /4000 -o -perm /2000 2>/dev/null | \
   grep -v proc | \
-  tee /var/log/fedramp/suid-sgid-files.txt
+  sudo tee /var/log/fedramp/suid-sgid-files.txt
 ```
 
 ## System and Information Integrity (SI Family)
