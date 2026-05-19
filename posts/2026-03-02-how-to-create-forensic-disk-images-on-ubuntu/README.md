@@ -34,9 +34,9 @@ Common hardware write blockers:
 If you only have software options on Ubuntu:
 
 ```bash
-# Mount the source disk read-only
+# Mount a source partition read-only
 
-sudo mount -o ro /dev/sdb /mnt/evidence
+sudo mount -o ro /dev/sdb1 /mnt/evidence
 
 # Or use blockdev to set read-only at the block level
 sudo blockdev --setro /dev/sdb
@@ -48,7 +48,7 @@ sudo blockdev --getro /dev/sdb
 
 ## Method 1: Using dd
 
-`dd` is available on every Linux system. It lacks built-in hashing and progress reporting, but it works.
+`dd` is available on every Linux system. It lacks built-in hashing, but modern GNU `dd` includes progress reporting.
 
 ```bash
 # Basic disk image creation
@@ -79,7 +79,7 @@ sha256sum /evidence/case001/disk.dd > /evidence/case001/disk.dd.sha256
 sudo apt install -y dcfldd
 
 # Create image with real-time hashing
-# hashwindow=0 computes hash of the entire image
+# hash=sha256 computes a total SHA-256 hash
 sudo dcfldd if=/dev/sdb of=/evidence/case001/disk.dd \
     bs=4M \
     hash=sha256 \
@@ -100,14 +100,14 @@ cat /evidence/case001/disk.sha256.log
 # Install dc3dd
 sudo apt install -y dc3dd
 
-# Create image with verification
-sudo dc3dd if=/dev/sdb of=/evidence/case001/disk.dd \
+# Create image with output hash verification
+sudo dc3dd if=/dev/sdb hof=/evidence/case001/disk.dd \
     hash=sha256 \
     log=/evidence/case001/imaging.log \
     verb=on
 
 # Split into 2GB chunks (useful for FAT32 storage or transfer)
-sudo dc3dd if=/dev/sdb ofs=/evidence/case001/disk.dd \
+sudo dc3dd if=/dev/sdb hofs=/evidence/case001/disk.dd.000 \
     ofsz=2G \
     hash=sha256 \
     log=/evidence/case001/imaging.log
@@ -136,7 +136,7 @@ In the Guymager interface:
    - **Expert Witness Format (EWF/E01)** - Compressed, includes metadata
    - **Advanced Forensics Format (AFF)** - Open format with metadata
 5. Set output path and filename
-6. Enable hash verification (MD5, SHA-1, SHA-256)
+6. Enable hash verification (MD5, SHA-256)
 7. Click "Start"
 
 Guymager's log file includes all case metadata and both source and destination hashes, making it excellent for chain of custody documentation.
@@ -192,17 +192,17 @@ After imaging, always verify the hash matches:
 ```bash
 # Compare hash of original disk to image
 # Hash the source disk
-sudo md5sum /dev/sdb > /tmp/source_hash.txt
+sudo sha256sum /dev/sdb | awk '{print $1}' > /tmp/source_hash.txt
 
 # Hash the image
-md5sum /evidence/case001/disk.dd > /tmp/image_hash.txt
+sha256sum /evidence/case001/disk.dd | awk '{print $1}' > /tmp/image_hash.txt
 
 # Compare (hashes should match)
 diff /tmp/source_hash.txt /tmp/image_hash.txt
 
 # Or do it manually
-SOURCE_HASH=$(sudo md5sum /dev/sdb | awk '{print $1}')
-IMAGE_HASH=$(md5sum /evidence/case001/disk.dd | awk '{print $1}')
+SOURCE_HASH=$(sudo sha256sum /dev/sdb | awk '{print $1}')
+IMAGE_HASH=$(sha256sum /evidence/case001/disk.dd | awk '{print $1}')
 
 if [ "$SOURCE_HASH" = "$IMAGE_HASH" ]; then
     echo "Hashes match - image is verified"
