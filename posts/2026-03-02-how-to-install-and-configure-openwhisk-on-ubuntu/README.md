@@ -20,18 +20,17 @@ OpenWhisk has several components:
 - **Invoker** - executes actions in Docker containers
 - **Kafka** - message broker between controller and invokers
 - **CouchDB** - stores actions, activations, and namespaces
-- **API Gateway** - routes HTTP traffic to actions
-- **Nginx** - SSL termination and load balancing
+- **API Gateway / edge proxy** - routes HTTP traffic to actions and terminates HTTPS
 
-For development and small production workloads, all components run on a single host with Docker Compose.
+For development and local testing, all components can run on a single host with Docker Compose.
 
 ## Prerequisites
 
-Install Docker and Docker Compose:
+Install Docker, Docker Compose, and the local tooling used by the Docker Compose deployment:
 
 ```bash
 sudo apt update
-sudo apt install -y docker.io docker-compose-v2 git curl
+sudo apt install -y docker.io docker-compose git curl make lsof net-tools rsync default-jdk
 
 # Add your user to the docker group
 
@@ -53,12 +52,6 @@ free -h
 
 ```bash
 # Clone the OpenWhisk Docker Compose deployment
-git clone https://github.com/apache/openwhisk-deploy-kube.git
-# For local Docker Compose deployment, use the standalone setup:
-git clone https://github.com/apache/openwhisk.git
-cd openwhisk
-
-# Alternative: use the docker-compose project
 git clone https://github.com/apache/openwhisk-devtools.git
 cd openwhisk-devtools/docker-compose
 ```
@@ -66,52 +59,39 @@ cd openwhisk-devtools/docker-compose
 The docker-compose approach is simplest for getting started:
 
 ```bash
-cd openwhisk-devtools/docker-compose
-
 # Review the configuration
 cat docker-compose.yml
 ```
 
 ## Configuring OpenWhisk
 
-Create a configuration file:
+Configure the OpenWhisk version and image tag to use:
 
 ```bash
-# Create configuration directory
-mkdir -p /etc/openwhisk
-
-# Configure the deployment
-cat > .env << 'EOF'
-# OpenWhisk configuration
-WHISK_AUTH=23bc46b1-71f6-4ed5-8c54-816aa4f8c502:123zO3xZCLrMN6v2BKK1dXYFpXlPkccOFqm12CdAsMgRU4VrNZ9lyGVCGuMDGIwP
-DOCKER_COMPOSE_PROJECT_NAME=openwhisk
-# Limit containers per invoker
-LIMITS_CONCURRENCY=100
-EOF
+# Use the latest OpenWhisk source and published nightly images
+export OPENWHISK_VERSION=master
+export DOCKER_IMAGE_TAG=nightly
 ```
 
 ## Starting OpenWhisk
 
 ```bash
-# Start all OpenWhisk services
-docker compose up -d
+# Start all OpenWhisk services and initialize CouchDB, the CLI, and API Gateway
+make quick-start
 
 # This takes a few minutes on first run as images are pulled
 # Monitor the startup
-docker compose logs -f
+tail -f ~/tmp/openwhisk/docker-compose.log
 
 # Check that all services are running
-docker compose ps
+docker-compose --project-name openwhisk ps
 ```
 
 Wait until the system is ready:
 
 ```bash
-# The edge service indicates readiness
-docker compose logs edge | grep -i "ready"
-
-# Alternatively, poll the health endpoint
-until curl -sk https://localhost/api/v1/info > /dev/null 2>&1; do
+# The invoker ping endpoint indicates readiness
+until curl -s http://localhost:8085/ping > /dev/null 2>&1; do
     echo "Waiting for OpenWhisk..."
     sleep 5
 done
@@ -122,23 +102,20 @@ echo "OpenWhisk is ready"
 
 ```bash
 # Download the wsk CLI
-curl -Lo wsk https://github.com/apache/openwhisk-cli/releases/download/1.2.0/OpenWhisk_CLI-1.2.0-linux-amd64.tgz
+curl -Lo OpenWhisk_CLI-1.2.0-linux-amd64.tgz https://github.com/apache/openwhisk-cli/releases/download/1.2.0/OpenWhisk_CLI-1.2.0-linux-amd64.tgz
 
 # Extract and install
 tar xzf OpenWhisk_CLI-1.2.0-linux-amd64.tgz
 sudo mv wsk /usr/local/bin/
-chmod +x /usr/local/bin/wsk
+sudo chmod +x /usr/local/bin/wsk
 
 # Configure the CLI to connect to your instance
 wsk property set \
-    --apihost localhost \
+    --apihost https://localhost \
     --auth 23bc46b1-71f6-4ed5-8c54-816aa4f8c502:123zO3xZCLrMN6v2BKK1dXYFpXlPkccOFqm12CdAsMgRU4VrNZ9lyGVCGuMDGIwP
 
-# Disable TLS verification for local development (don't do this in production)
-wsk property set --apihost https://localhost -i
-
 # Test the connection
-wsk namespace list
+wsk -i namespace list
 ```
 
 ## Creating Your First Action
@@ -160,13 +137,13 @@ function main(params) {
 EOF
 
 # Create the action
-wsk action create hello hello.js
+wsk -i action create hello hello.js
 
 # Invoke the action
-wsk action invoke hello --result
+wsk -i action invoke hello --result
 
 # Invoke with parameters
-wsk action invoke hello --param name Ubuntu --result
+wsk -i action invoke hello --param name Ubuntu --result
 ```
 
 ## Python Actions
@@ -199,11 +176,11 @@ def main(args):
 EOF
 
 # Create the action
-wsk action create process-text process.py --kind python:3
+wsk -i action create process-text process.py --kind python:3
 
 # Test it
-wsk action invoke process-text --param text "Hello World" --result
-wsk action invoke process-text --param text "OpenWhisk" --param algorithm md5 --result
+wsk -i action invoke process-text --param text "Hello World" --result
+wsk -i action invoke process-text --param text "OpenWhisk" --param algorithm md5 --result
 ```
 
 ## Web Actions (HTTP Endpoints)
@@ -233,14 +210,14 @@ function main(params) {
 }
 EOF
 
-# Create as a web action
-wsk action create http-handler http-handler.js --web true
+# Create as a raw web action so __ow_query and __ow_body are passed through
+wsk -i action create http-handler http-handler.js --web raw
 
 # Get the web action URL
-wsk action get http-handler --url
+wsk -i action get http-handler --url
 
 # Test the web action
-curl -s $(wsk action get http-handler --url | tail -1)
+curl -sk "$(wsk -i action get http-handler --url | tail -1).json"
 ```
 
 ## Setting Up Triggers and Rules
@@ -248,8 +225,12 @@ curl -s $(wsk action get http-handler --url | tail -1)
 OpenWhisk's event model connects event sources (triggers) to actions through rules:
 
 ```bash
+# Install the catalog and alarms feed provider if you did not already add them
+make add-catalog
+make create-provider-alarms
+
 # Create a trigger (event source)
-wsk trigger create hourly-trigger \
+wsk -i trigger create hourly-trigger \
     --feed /whisk.system/alarms/alarm \
     --param cron "0 * * * *"
 
@@ -261,54 +242,54 @@ function main(params) {
     return { executed: true, time: new Date().toISOString() };
 }
 EOF
-wsk action create scheduled-task scheduled-task.js
+wsk -i action create scheduled-task scheduled-task.js
 
 # Create a rule connecting trigger to action
-wsk rule create run-scheduled-task hourly-trigger scheduled-task
+wsk -i rule create run-scheduled-task hourly-trigger scheduled-task
 
 # Manually fire the trigger to test
-wsk trigger fire hourly-trigger
+wsk -i trigger fire hourly-trigger
 
 # Check the activation log
-wsk activation list | head -10
+wsk -i activation list | head -10
 
 # View activation result
-wsk activation result <activation-id>
+wsk -i activation result <activation-id>
 ```
 
 ## Monitoring and Logs
 
 ```bash
 # List recent activations
-wsk activation list
+wsk -i activation list
 
 # Get details of a specific activation
-wsk activation get <activation-id>
+wsk -i activation get <activation-id>
 
 # Poll for new activations in real time
-wsk activation poll
+wsk -i activation poll
 
 # Get action logs
-wsk activation logs <activation-id>
+wsk -i activation logs <activation-id>
 
 # Check action execution statistics
-wsk activation list --limit 20 | awk '{print $3}' | sort | uniq -c
+wsk -i activation list --limit 20 | awk '{print $3}' | sort | uniq -c
 ```
 
 ## Managing Resources
 
 ```bash
 # List all actions
-wsk action list
+wsk -i action list
 
 # Delete an action
-wsk action delete hello
+wsk -i action delete hello
 
 # Update an action
-wsk action update hello hello.js --timeout 10000 --memory 256
+wsk -i action update hello hello.js --timeout 10000 --memory 256
 
 # Set default parameters for an action
-wsk action update hello hello.js --param-file defaults.json
+wsk -i action update hello hello.js --param-file defaults.json
 ```
 
 OpenWhisk is a mature, production-grade serverless platform used by IBM Cloud (as IBM Cloud Functions). Running it yourself gives you the same event-driven programming model without the per-invocation costs or vendor lock-in that come with commercial serverless offerings.
