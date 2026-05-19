@@ -12,7 +12,7 @@ OpenLDAP's access control system determines who can read, write, add, or delete 
 
 ## How OpenLDAP ACLs Work
 
-OpenLDAP evaluates ACLs in order, stopping at the first matching rule. Each rule has two parts:
+OpenLDAP evaluates ACLs in order, stopping at the first matching `to` rule and then the first matching `by` clause unless you use a control such as `continue` or `break`. Each rule has two parts:
 
 1. **What** - the resource being protected (`to` clause): an attribute, subtree, or specific entry
 2. **Who** - the principal (`by` clause): specific DN, group, anonymous users, authenticated users, or everyone
@@ -33,9 +33,9 @@ Access levels, from lowest to highest:
 - `search` - can use in search filters
 - `read` - can read attribute values
 - `write` - can modify attributes
-- `add` - can add new entries
-- `delete` - can delete entries
 - `manage` - full management access
+
+Adding or deleting entries is controlled with `write` access on the entry's `entry` pseudo-attribute and the parent entry's `children` pseudo-attribute.
 
 ## Viewing Current ACLs
 
@@ -179,7 +179,7 @@ changetype: modify
 add: olcAccess
 olcAccess: {2}to dn.exact="ou=Restricted,dc=example,dc=com"
   by dn="cn=admin,dc=example,dc=com" write
-  by dn.subtree="cn=SecurityTeam,ou=Groups,dc=example,dc=com" read
+  by group.exact="cn=SecurityTeam,ou=Groups,dc=example,dc=com" read
   by * none
 ```
 
@@ -211,8 +211,8 @@ Use `dn.regex` for pattern matching:
 ```ldif
 # Managers can write entries in their department's OU
 # DN format: cn=manager,ou=Engineering,dc=example,dc=com
-access to dn.regex="ou=([^,]+),dc=example,dc=com"
-  by dn.regex="cn=manager,ou=$1,dc=example,dc=com" write
+access to dn.regex="^(.+,)?ou=([^,]+),dc=example,dc=com$"
+  by dn.exact,expand="cn=manager,ou=$2,dc=example,dc=com" write
   by * read
 ```
 
