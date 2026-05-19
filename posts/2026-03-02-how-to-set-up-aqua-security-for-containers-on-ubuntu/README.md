@@ -332,7 +332,7 @@ tar -czf trivy-db.tar.gz ~/.cache/trivy/
 
 # On the air-gapped machine
 tar -xzf trivy-db.tar.gz -C ~/
-trivy image --skip-update your-image:tag
+trivy image --skip-db-update your-image:tag
 ```
 
 Container security scanning is most effective when integrated early - catching vulnerabilities in base images before they reach production is far better than discovering them during a security audit. Trivy's combination of accuracy, speed, and ease of integration makes it a solid foundation for container security on Ubuntu.
