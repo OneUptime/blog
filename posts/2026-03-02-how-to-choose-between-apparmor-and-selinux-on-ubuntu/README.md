@@ -14,7 +14,7 @@ Ubuntu ships with AppArmor enabled by default. Red Hat, Fedora, and CentOS ship 
 
 Standard Unix permissions (DAC - discretionary access control) rely on file ownership and group membership. If a process runs as root, it can do almost anything. Even non-root processes can do substantial damage within what their user account has access to.
 
-MAC systems add a second layer: even if a process has the Unix permissions, the MAC policy might still deny the action. A web server running as the `www-data` user with AppArmor active can be restricted so it can only read specific directories, cannot spawn shells, cannot make network connections to unexpected destinations, and cannot access files outside its intended scope.
+MAC systems add a second layer: even if a process has the Unix permissions, the MAC policy might still deny the action. A web server running as the `www-data` user with AppArmor active can be restricted so it can only read specific directories, cannot spawn shells, cannot create unexpected network sockets, and cannot access files outside its intended scope.
 
 ## AppArmor: The Path-Based Model
 
@@ -28,7 +28,7 @@ AppArmor associates security profiles with programs by their path. A profile for
 sudo apparmor_status
 
 # List loaded profiles
-sudo aa-status --profiled
+sudo aa-status --show=profiles
 
 # View a profile
 cat /etc/apparmor.d/usr.sbin.nginx
@@ -91,7 +91,7 @@ sudo aa-logprof
 
 ## SELinux: The Label-Based Model
 
-SELinux assigns security labels (contexts) to every process, file, port, and socket. Policies are defined in terms of these labels, not paths. Access is allowed only when the policy explicitly permits a particular label combination.
+SELinux assigns security labels (contexts) to processes, files, and other system resources such as ports. Policies are defined in terms of these labels, not paths. Access is allowed only when the policy explicitly permits a particular label combination.
 
 ### How SELinux Works in Practice
 
@@ -111,7 +111,7 @@ The context format is `user:role:type:level`. The type is the most commonly rele
 
 ### SELinux Strengths
 
-**Comprehensive coverage by default**: The `targeted` policy covers essentially all standard system services. If something is in the policy, it is confined.
+**Broad service coverage by default**: The `targeted` policy confines many standard system services. If a process is targeted by the policy, it runs in a confined domain; processes that are not targeted run unconfined.
 
 **Multi-level security**: SELinux supports MLS, which is required for some government and defense use cases.
 
@@ -127,7 +127,7 @@ The context format is `user:role:type:level`. The type is the most commonly rele
 
 **Ubuntu is a second-class citizen**: SELinux support on Ubuntu is community-maintained. The tooling, documentation, and default profiles are far less complete than on RHEL/Fedora.
 
-**Relabeling required**: Changing the policy or moving files requires relabeling operations. This takes time and can cause issues.
+**Relabeling sometimes required**: Changing file context policy or moving files into a location where their existing label is wrong may require `restorecon` or another relabeling operation. This takes time and can cause issues.
 
 **Policy modules are complex to write**: Generating policy modules with `audit2allow` is straightforward, but understanding what you are allowing is much harder.
 
@@ -144,7 +144,7 @@ The context format is `user:role:type:level`. The type is the most commonly rele
 | Compliance frameworks | Limited | Extensive |
 | Profile generation | Easy (aa-genprof) | Moderate (audit2allow) |
 | Debugging | Relatively easy | Complex |
-| Coverage on fresh install | Good | Complete (with policy) |
+| Coverage on fresh install | Good | Broad for targeted services |
 | Performance impact | Minimal | Minimal |
 
 ## Which Should You Choose?
@@ -182,4 +182,4 @@ cat /proc/cmdline | grep -E "apparmor|selinux"
 cat /sys/kernel/security/lsm
 ```
 
-Whatever you choose, configure it correctly and keep it enabled. A MAC system in permissive or complaint-only mode provides logging but not actual protection. Enforcing mode, with properly tuned policies, is the only configuration that actually constrains what a compromised process can do.
+Whatever you choose, configure it correctly and keep it enabled. A MAC system in permissive or complain mode provides logging but not actual protection. Enforcing mode, with properly tuned policies, is the only configuration that actually constrains what a compromised process can do.
