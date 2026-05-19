@@ -23,7 +23,7 @@ The governor is the key decision-maker. Different governors optimize for differe
 ## Checking Current CPU Frequency Configuration
 
 ```bash
-# Install cpufrequtils for easy management
+# Install cpufrequtils and Linux tools for cpufreq-info, cpupower, turbostat, and perf
 
 sudo apt install -y cpufrequtils linux-tools-common linux-tools-$(uname -r)
 
@@ -52,7 +52,7 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
 
 ### performance
 
-Runs the CPU at maximum frequency at all times. Use this for latency-sensitive applications where you want consistent, maximum performance.
+Requests the highest allowed CPU frequency. Use this for latency-sensitive applications where you want consistent, maximum performance.
 
 ```bash
 # Set performance governor on all CPUs
@@ -64,7 +64,7 @@ cat /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
 ### powersave
 
-Runs the CPU at minimum frequency. Saves power but hurts performance. Rarely appropriate for servers unless running cool idle workloads.
+With generic CPUFreq drivers, requests the lowest allowed CPU frequency. Saves power but hurts performance. Rarely appropriate for servers unless running cool idle workloads.
 
 ```bash
 sudo cpupower frequency-set -g powersave
@@ -88,7 +88,7 @@ sudo cpupower frequency-set -g conservative
 
 ### schedutil
 
-Uses the Linux scheduler's CPU utilization data to make scaling decisions. More accurate and responsive than ondemand for modern kernels (5.x+). Recommended default for general workloads.
+Uses the Linux scheduler's CPU utilization data to make scaling decisions. More tightly integrated with the scheduler than ondemand on modern kernels. Recommended default for general workloads.
 
 ```bash
 sudo cpupower frequency-set -g schedutil
@@ -103,7 +103,7 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver
 # intel_pstate  or  acpi-cpufreq  or  intel_cpufreq
 ```
 
-With `intel_pstate`, available governors are limited to `performance` and `powersave`. The driver handles internal frequency optimization within these policies.
+With `intel_pstate` in active mode, available policies are limited to `performance` and `powersave`. These are driver-specific P-state selection algorithms, not the generic CPUFreq governors with the same names. In passive mode, the driver appears as `intel_cpufreq` and works with generic governors such as `schedutil`.
 
 ```bash
 # Check intel_pstate status
@@ -176,7 +176,7 @@ sudo nano /etc/default/grub
 # Add governor to GRUB_CMDLINE_LINUX
 GRUB_CMDLINE_LINUX="cpufreq.default_governor=performance"
 
-# Or for intel systems
+# Or for Intel systems when you want intel_pstate passive mode with generic governors
 GRUB_CMDLINE_LINUX="intel_pstate=passive cpufreq.default_governor=performance"
 
 sudo update-grub
@@ -193,9 +193,10 @@ Restrict the range of frequencies the CPU can use:
 cpufreq-info -l
 
 # Set a specific frequency range
+# 2 GHz minimum, 3 GHz maximum
 sudo cpupower frequency-set \
-    --min 2000000 \   # 2 GHz minimum
-    --max 3000000     # 3 GHz maximum
+    --min 2000000 \
+    --max 3000000
 
 # Lock to a specific frequency (min = max)
 sudo cpupower frequency-set \
@@ -220,8 +221,8 @@ sudo turbostat --interval 1
 # Monitor frequency changes with cpupower
 watch -n0.5 cpupower monitor
 
-# Use perf for frequency statistics
-sudo perf stat -a sleep 5 2>&1 | grep MHz
+# Use cpupower monitor for a short frequency sample
+sudo cpupower monitor sleep 5
 
 # Log frequency over time
 for i in $(seq 1 60); do
@@ -262,7 +263,7 @@ sudo cpupower frequency-set -g performance
 
 Software governor configuration can be overridden or constrained by BIOS settings. Check for:
 
-- **Intel SpeedStep / AMD Cool'n'Quiet** - must be enabled in BIOS for software frequency scaling to work
+- **Intel SpeedStep / Speed Shift / AMD Cool'n'Quiet / CPPC** - must be enabled in BIOS for OS-managed frequency scaling to work
 - **C-States** - CPU sleep states. Disable C6/C7 on latency-sensitive servers to prevent wakeup delays
 - **Turbo Boost / Turbo Core** - can be enabled or disabled in BIOS
 
@@ -270,8 +271,8 @@ Software governor configuration can be overridden or constrained by BIOS setting
 # Check available C-states
 cat /sys/devices/system/cpu/cpu0/cpuidle/*/name
 
-# Disable deep C-states for low latency (temporary)
-sudo cpupower idle-set -D 2   # disable states deeper than C2
+# Disable idle states with exit latency of 10 us or higher (temporary)
+sudo cpupower idle-set -D 10
 ```
 
 For the most reliable performance on production servers, set the governor to `performance` and verify BIOS power management settings match your performance requirements. The `schedutil` governor is an excellent alternative that balances performance and power with good accuracy on modern kernels.
