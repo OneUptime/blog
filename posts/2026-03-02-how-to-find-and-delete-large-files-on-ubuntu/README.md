@@ -36,14 +36,14 @@ sudo du -sh /tmp /var/tmp 2>/dev/null | sort -rh
 ```bash
 # Find the 20 largest files on the entire system
 # Excludes /proc and /sys which contain virtual files
-sudo find / -type f -printf "%s %p\n" \
+sudo find / -type f -printf "%s\t%p\n" \
   -not -path "/proc/*" \
   -not -path "/sys/*" \
   -not -path "/dev/*" \
   2>/dev/null | \
   sort -rn | \
   head -20 | \
-  awk '{printf "%s\t%s\n", $1/1024/1024 " MB", $2}'
+  awk -F '\t' '{printf "%.1f MB\t%s\n", $1/1024/1024, $2}'
 
 # Simpler: find files over 100MB
 sudo find / -type f -size +100M \
@@ -76,7 +76,7 @@ sudo find /home -type f -atime +30 -size +100M 2>/dev/null
 sudo apt install -y ncdu
 
 # Analyze the root filesystem (excludes other mounts)
-sudo ncdu /
+sudo ncdu -x /
 
 # Analyze a specific directory
 ncdu /home/username/
@@ -94,7 +94,7 @@ ncdu /var/
 ```bash
 # Find large log files
 sudo find /var/log -type f -name "*.log" -size +100M | \
-  xargs ls -lh | sort -k5 -rh
+  xargs -r ls -lh | sort -k5 -rh
 
 # Truncate a log file safely (preserves the file, applications can still write to it)
 sudo truncate -s 0 /var/log/large-application.log
@@ -162,15 +162,8 @@ sudo docker system prune
 # More aggressive: also remove unused volumes and all unused images
 sudo docker system prune -a --volumes
 
-# List large Docker volumes
-sudo docker volume ls -q | \
-  xargs docker volume inspect | \
-  python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for v in data:
-    print(v['Name'], v.get('Mountpoint',''))
-"
+# List detailed Docker disk usage, including local volumes
+sudo docker system df -v
 ```
 
 ### APT Package Cache
@@ -182,7 +175,7 @@ du -sh /var/cache/apt/archives/
 # Clean old downloaded packages
 sudo apt clean
 
-# Or remove only packages no longer needed for installation
+# Or remove only package files that can no longer be downloaded
 sudo apt autoclean
 
 # Remove orphaned packages
@@ -195,22 +188,24 @@ A common situation: a large log file is deleted, but a process still has it open
 
 ```bash
 # Find deleted files that are still open by processes
-sudo lsof | grep "(deleted)"
+sudo lsof -nP | grep "(deleted)"
 
 # Filter for large deleted-but-open files
-sudo lsof | grep "(deleted)" | \
-  awk '{printf "%s\t%s\t%s\t%s\n", $1, $2, $7, $9}' | \
-  sort -k3 -rn | \
+sudo lsof -nP -s | \
+  awk 'NR==1 { for (i=1; i<=NF; i++) if ($i=="SIZE") size_col=i; next }
+       /\(deleted\)/ { print $(size_col) "\t" $0 }' | \
+  sort -k1,1rn | \
   head -20
 
 # The fix: either restart the process holding the file open,
 # or truncate it through the /proc filesystem
 # PID is column 2 from lsof output, FD is column 4
+# Use the numeric part of FD (for example, use 4 from 4w)
 # Find the file descriptor for the deleted file
 sudo ls -la /proc/<PID>/fd/ | grep deleted
 
 # Truncate through proc to free space without killing the process
-sudo truncate -s 0 /proc/<PID>/fd/<FD>
+sudo truncate -s 0 /proc/<PID>/fd/<FD_NUMBER>
 ```
 
 ## Creating a Disk Usage Report
