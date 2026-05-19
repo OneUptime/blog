@@ -13,15 +13,30 @@ Immich is a self-hosted photo and video backup solution that provides an experie
 ## Prerequisites
 
 - Ubuntu 22.04 or 24.04
-- Docker and Docker Compose
-- At least 4GB RAM (8GB recommended for machine learning features)
+- Docker Engine and the Docker Compose plugin
+- At least 6GB RAM (8GB recommended)
 - Sufficient storage for your photo library (photos are stored on disk, not in the database)
 
 ```bash
-# Install Docker and Docker Compose
+# Install Docker Engine and Docker Compose from Docker's official apt repository
 
 sudo apt update
-sudo apt install -y docker.io docker-compose-plugin
+sudo apt install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
 sudo systemctl enable --now docker
 sudo usermod -aG docker $USER
@@ -35,6 +50,7 @@ Immich provides an official Docker Compose setup that includes all required serv
 ```bash
 # Create directory for Immich
 sudo mkdir -p /opt/immich
+sudo chown "$USER":"$USER" /opt/immich
 cd /opt/immich
 
 # Download the official docker-compose.yml and .env file
@@ -51,36 +67,33 @@ nano /opt/immich/.env
 ```env
 # Immich environment configuration
 
-# PostgreSQL database credentials
+# Storage location for photo uploads (host path)
+# This is the most important setting - point it to your photo storage
+UPLOAD_LOCATION=/var/lib/immich/library
+
+# Database files location (host path)
+# Note: network shares are not supported here
+DB_DATA_LOCATION=/var/lib/immich/postgres
+
+# Timezone (optional, IANA identifier)
+TZ=Etc/UTC
+
+# Immich version - pin to a specific tag (e.g. v1.140.0) for stability,
+# or use a major-version tag like v2 (the default) to follow that line.
+IMMICH_VERSION=v2
+
+# PostgreSQL credentials
+# Use only A-Z, a-z, 0-9 for DB_PASSWORD - no special characters
 DB_PASSWORD=strong-postgres-password-here
 DB_USERNAME=postgres
 DB_DATABASE_NAME=immich
-
-# JWT secret for session tokens (generate with: openssl rand -base64 48)
-JWT_SECRET=generate-a-random-jwt-secret-here
-
-# Storage location for photo uploads
-# This is the most important setting - point it to your photo storage
-UPLOAD_LOCATION=/var/lib/immich/upload
-
-# Thumbnails and transcoded videos
-THUMBS_LOCATION=/var/lib/immich/thumbs
-ENCODED_VIDEO_LOCATION=/var/lib/immich/encoded-video
-PROFILE_LOCATION=/var/lib/immich/profile
-
-# Immich version - pin to specific version for stability
-# Or leave as "release" to always use the latest
-IMMICH_VERSION=release
 ```
 
 Create storage directories:
 
 ```bash
 # Create storage directories
-sudo mkdir -p /var/lib/immich/{upload,thumbs,encoded-video,profile}
-
-# Set ownership (Immich runs as UID 1000 by default)
-sudo chown -R 1000:1000 /var/lib/immich
+sudo mkdir -p /var/lib/immich/{library,postgres}
 
 # If you have an existing photo library to import, you can also add it as a read-only volume
 # We'll configure that in the next section
@@ -89,11 +102,10 @@ sudo chown -R 1000:1000 /var/lib/immich
 ## Reviewing the Docker Compose File
 
 The downloaded `docker-compose.yml` includes:
-- `immich-server` - the main API server and web interface
-- `immich-microservices` - handles background tasks (thumbnail generation, ML processing)
+- `immich-server` - the main API server, web interface, and background workers (thumbnail generation, metadata extraction, transcoding, etc. - the old `immich-microservices` container was merged into this one in v1.118.0)
 - `immich-machine-learning` - facial recognition, CLIP image search
-- `redis` - caching and job queue
-- `database` - PostgreSQL for metadata
+- `redis` - caching and job queue (the image is actually Valkey, a Redis-compatible fork)
+- `database` - PostgreSQL with the VectorChord extension, used for metadata and vector embeddings
 
 ```bash
 # Start Immich
@@ -111,22 +123,18 @@ docker compose ps
 
 If you have existing photos stored elsewhere, Immich can index them without moving them - this is called an External Library.
 
-First, mount the existing photo directory into the containers. Edit `docker-compose.yml`:
+First, mount the existing photo directory into the `immich-server` container. Edit `docker-compose.yml`:
 
 ```yaml
-# Add this volume to immich-server and immich-microservices services:
+# Add this volume to the immich-server service
+# (background workers now run inside immich-server, so this is the only place to add it):
 services:
   immich-server:
     # ... existing config ...
     volumes:
-      - /var/lib/immich/upload:/usr/src/app/upload
+      - ${UPLOAD_LOCATION}:/data
+      - /etc/localtime:/etc/localtime:ro
       # Mount existing photo library as read-only
-      - /home/user/Photos:/mnt/external-photos:ro
-
-  immich-microservices:
-    # ... existing config ...
-    volumes:
-      - /var/lib/immich/upload:/usr/src/app/upload
       - /home/user/Photos:/mnt/external-photos:ro
 ```
 
@@ -214,13 +222,15 @@ The app backs up new photos automatically over WiFi (configurable to include mob
 
 ## Managing Storage
 
-Immich stores original photos unchanged in the upload directory, plus thumbnails and transcoded versions. Plan for roughly 2-3x your original library size in storage requirements.
+Immich stores original photos unchanged in the upload directory, plus thumbnails and transcoded versions. Generated thumbnails and transcoded videos can increase storage use by roughly 10-20% on average, but you should still leave extra headroom for backups and future imports.
 
 ```bash
 # Check current storage usage by Immich
-du -sh /var/lib/immich/upload/
-du -sh /var/lib/immich/thumbs/
-du -sh /var/lib/immich/encoded-video/
+# Originals, thumbnails, encoded videos, profile images, and backups all live under UPLOAD_LOCATION
+du -sh /var/lib/immich/library/
+du -sh /var/lib/immich/library/upload/
+du -sh /var/lib/immich/library/thumbs/
+du -sh /var/lib/immich/library/encoded-video/
 
 # Check database size
 docker compose exec database psql -U postgres -c "\l+" immich
@@ -228,20 +238,18 @@ docker compose exec database psql -U postgres -c "\l+" immich
 
 ### Storage Cleanup
 
-```bash
-# Remove orphaned files (photos without database entries and vice versa)
-# Run this through the Immich CLI (bundled in the immich-server container)
-docker compose exec immich-server immich-admin library cleanup
+Storage maintenance is driven from the web UI rather than a CLI command:
 
-# The web UI also has a "Storage Template Migration" job under Administration > Jobs
-```
+- Administration > Jobs > **Storage Template Migration** > "Run all" - re-applies the storage template to existing files
+- Administration > Settings > Trash Settings has options to control trash retention
+- Trashed assets are emptied automatically based on the configured retention (30 days by default), or you can empty the trash manually from the user UI
 
 ## Using Machine Learning Features
 
 Immich's machine learning container handles:
 - **Facial recognition** - groups photos by people
 - **CLIP search** - semantic search (find photos by describing what's in them)
-- **Smart albums** - auto-generated albums for events
+- **Duplicate detection** - finds visually similar assets for review
 
 These features require the `immich-machine-learning` container to be running and have sufficient CPU/RAM. The first run downloads model files (~1-2GB).
 
@@ -254,24 +262,26 @@ docker compose logs immich-machine-learning | tail -20
 # In the web UI: Administration > Jobs > Smart Search > Run all
 ```
 
-For GPU acceleration (significantly speeds up ML processing):
+For GPU acceleration (significantly speeds up ML processing), Immich ships a separate `hwaccel.ml.yml` file that you compose in alongside the main file. For NVIDIA you also need the NVIDIA Container Toolkit installed on the host.
 
 ```bash
-# For NVIDIA GPU, use the CUDA version of the ML container
-# Edit docker-compose.yml to add GPU support:
+# Download the hardware-acceleration compose file next to docker-compose.yml
+wget -O hwaccel.ml.yml https://github.com/immich-app/immich/releases/latest/download/hwaccel.ml.yml
+```
+
+Then in `docker-compose.yml`, switch the machine-learning image to the `-cuda` tag and have the service `extends` the `cuda` profile from `hwaccel.ml.yml`:
+
+```yaml
 services:
   immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}-cuda
+    extends:
+      file: hwaccel.ml.yml
+      service: cuda
     # ... existing config ...
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    environment:
-      - MACHINE_LEARNING_DEVICE=cuda
 ```
+
+Other backends (`openvino`, `rocm`, `armnn`, `rknn`) are configured the same way - just change the image suffix and the `extends.service` name. Re-run `docker compose up -d` to apply.
 
 ## Backup Strategy
 
@@ -285,14 +295,18 @@ DATE=$(date +%Y%m%d-%H%M)
 mkdir -p "$BACKUP_DIR"
 
 # Backup PostgreSQL database (most critical - contains all metadata)
+# Immich recommends pg_dump with --clean --if-exists so the dump can restore cleanly
+# over an existing database. pg_dumpall is NOT supported - it dumps cluster-wide objects
+# (like roles) that conflict with Immich's expected schema on restore.
 docker compose -f /opt/immich/docker-compose.yml exec -T database \
-  pg_dumpall -U postgres | gzip > "$BACKUP_DIR/immich-db-${DATE}.sql.gz"
+  pg_dump --clean --if-exists --dbname=immich --username=postgres \
+  | gzip > "$BACKUP_DIR/immich-db-${DATE}.sql.gz"
 
 echo "Database backup: $BACKUP_DIR/immich-db-${DATE}.sql.gz"
 
-# Photo originals are in /var/lib/immich/upload/
+# Photo originals, profile images, and generated files are under UPLOAD_LOCATION (/var/lib/immich/library/)
 # Sync to backup location using rsync (preserves changed files only)
-rsync -av --delete /var/lib/immich/upload/ /backup/immich/photos/
+rsync -av --delete /var/lib/immich/library/ /backup/immich/photos/
 
 # Remove DB backups older than 30 days
 find "$BACKUP_DIR" -name "immich-db-*.sql.gz" -mtime +30 -delete
@@ -331,11 +345,11 @@ docker compose logs immich-server | tail -20
 
 **Thumbnails not generating:**
 ```bash
-# Check microservices logs
-docker compose logs immich-microservices | grep -i error
+# Background workers run inside immich-server now, so check its logs
+docker compose logs immich-server | grep -i error
 
 # Manually trigger thumbnail regeneration
-# Administration > Jobs > Thumbnail Generation > Run all
+# Administration > Jobs > Generate Thumbnails > Run all
 ```
 
 **Machine learning container crashing:**
@@ -353,7 +367,7 @@ docker stats immich-machine-learning
 docker compose logs immich-server | grep -i "upload\|error"
 
 # Verify storage permissions
-ls -la /var/lib/immich/upload/
+ls -la /var/lib/immich/library/upload/
 sudo chown -R 1000:1000 /var/lib/immich/
 ```
 
