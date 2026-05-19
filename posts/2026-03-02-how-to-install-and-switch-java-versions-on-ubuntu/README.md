@@ -82,15 +82,14 @@ sudo apt install temurin-21-jdk   # Java 21
 For Oracle JDK (requires accepting a license):
 
 ```bash
-# Add Oracle PPA
-sudo add-apt-repository ppa:linuxuprising/java
-sudo apt update
+# Download the Oracle JDK 21 Debian package for Linux x64
+wget https://download.oracle.com/java/21/latest/jdk-21_linux-x64_bin.deb
 
 # Install Oracle JDK 21
-sudo apt install oracle-java21-installer
+sudo dpkg -i jdk-21_linux-x64_bin.deb
 
-# Set Oracle JDK as default
-sudo apt install oracle-java21-set-default
+# If dpkg reports missing dependencies, fix them
+sudo apt -f install
 ```
 
 ## Switching Between Java Versions
@@ -173,7 +172,7 @@ export JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:bin/java::")
 export PATH=$JAVA_HOME/bin:$PATH
 ```
 
-This dynamic approach automatically updates when you switch Java versions with `update-alternatives`.
+This dynamic approach picks up `update-alternatives` changes when you open a new shell or source the file again.
 
 For a fixed version:
 
@@ -247,7 +246,7 @@ sdk install java 21.0.2-tem    # Temurin 21
 sdk install java 17.0.10-tem   # Temurin 17
 sdk install java 11.0.22-tem   # Temurin 11
 
-# Switch globally
+# Switch in the current shell
 sdk use java 17.0.10-tem
 
 # Set as default
@@ -325,4 +324,4 @@ export JAVA_HOME=$(readlink -f /usr/bin/java | sed "s:bin/java::")
 java -version && echo $JAVA_HOME
 ```
 
-The most common setup for development work is installing both a current LTS version (like Java 21) and whatever version your team's projects require, then using `update-alternatives` or SDKMAN! to switch as needed. SDKMAN! is the more flexible option if you need to switch frequently across projects.
+The most common setup for development work is installing both a supported LTS version (like Java 21 or 25) and whatever version your team's projects require, then using `update-alternatives` or SDKMAN! to switch as needed. SDKMAN! is the more flexible option if you need to switch frequently across projects.
