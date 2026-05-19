@@ -16,7 +16,7 @@ When the kernel boots, `udev` detects hardware and uses modalias matching to det
 
 Two mechanisms exist:
 - **`blacklist`** - prevents automatic loading via `udev`, but the module can still be manually loaded with `modprobe`
-- **`install modulename /bin/false`** - completely prevents loading, even with explicit `modprobe`
+- **`install modulename /bin/false`** - prevents normal `modprobe modulename` loading by replacing the load action with a failing command
 
 ## Finding the Module to Blacklist
 
@@ -54,9 +54,8 @@ sudo nano /etc/modprobe.d/blacklist-custom.conf
 # Prevent the nouveau (open-source NVIDIA) driver from loading
 # Use this when running the proprietary nvidia driver instead
 blacklist nouveau
-blacklist lbm-nouveau
 
-# Prevent the old Realtek driver when using vendor driver
+# Prevent the in-kernel Realtek driver when using vendor driver
 blacklist r8169
 
 # Prevent PC speaker beeping
@@ -75,7 +74,7 @@ sudo update-initramfs -u
 
 ## Using `install` to Completely Block a Module
 
-The `blacklist` directive only stops automatic loading. If a script or service calls `modprobe`, the module will still load. To completely prevent loading:
+The `blacklist` directive only stops automatic loading. If a script or service calls `modprobe`, the module will still load. To block normal `modprobe` loading:
 
 ```bash
 sudo tee /etc/modprobe.d/disable-modules.conf << 'EOF'
@@ -83,7 +82,7 @@ sudo tee /etc/modprobe.d/disable-modules.conf << 'EOF'
 # Use this in high-security environments
 install usb_storage /bin/false
 
-# Completely disable FireWire/Thunderbolt DMA (security hardening)
+# Disable FireWire and Thunderbolt modules when not needed
 install firewire-core /bin/false
 install thunderbolt /bin/false
 
@@ -94,12 +93,12 @@ EOF
 sudo update-initramfs -u
 ```
 
-With `install modulename /bin/false`, attempting to load the module returns an error rather than silently skipping it.
+With `install modulename /bin/false`, attempting to load the module with a normal `modprobe` command returns an error rather than silently skipping it. This is not a kernel-level security boundary: root can bypass the install command with tools such as `modprobe --ignore-install` or `insmod`.
 
 ```bash
 # After applying install override:
 sudo modprobe usb_storage
-# modprobe: ERROR: could not insert 'usb_storage': Operation not permitted
+# modprobe exits with an error because the configured install command failed
 ```
 
 ## Blacklisting by Device ID
@@ -110,7 +109,7 @@ In some cases, you want to prevent a driver from loading only for a specific har
 # Create a udev rule to ignore a specific PCI device
 sudo tee /etc/udev/rules.d/70-blacklist-device.rules << 'EOF'
 # Blacklist a specific PCI device by vendor/device ID
-# This unbinds and prevents driver attachment for just this device
+# This removes just this device from sysfs so no driver remains attached
 ACTION=="add", SUBSYSTEM=="pci", ATTRS{vendor}=="0x10de", ATTRS{device}=="0x1b80", RUN+="/bin/sh -c 'echo 1 > /sys/bus/pci/devices/$kernel/remove'"
 EOF
 
@@ -119,7 +118,7 @@ sudo udevadm control --reload-rules
 
 ## System-Wide vs. Package-Provided Blacklists
 
-Ubuntu ships some blacklists through packages in `/lib/modprobe.d/`. Your files in `/etc/modprobe.d/` override these.
+Ubuntu ships some blacklists through packages in `/lib/modprobe.d/`. Your files in `/etc/modprobe.d/` have the highest precedence. A file in `/etc/modprobe.d/` with the same name as a package file replaces the lower-priority file; otherwise configuration files are merged in lexicographic order.
 
 ```bash
 # View all package-provided blacklists
@@ -132,12 +131,14 @@ ls /etc/modprobe.d/
 cat /lib/modprobe.d/blacklist*.conf
 
 # Your /etc/modprobe.d/ entries take precedence
-# If a package blacklists something you want loaded, create an override in /etc/modprobe.d/:
+# If a package uses an install override and you want the module loadable, create a later override:
 sudo tee /etc/modprobe.d/override-blacklist.conf << 'EOF'
-# Override package blacklist - allow pcspkr to load
-install pcspkr modprobe --ignore-install pcspkr
+# Override package install rule - allow pcspkr to load normally
+install pcspkr /sbin/modprobe --ignore-install pcspkr
 EOF
 ```
+
+If the package used a `blacklist` directive, remove or replace that specific directive instead. Another `blacklist` or `install` line does not cancel an earlier `blacklist`.
 
 ## Verifying the Blacklist Works
 
@@ -148,7 +149,7 @@ grep -r "blacklist.*nouveau" /etc/modprobe.d/ /lib/modprobe.d/
 # Try loading the blacklisted module (should be prevented or ignored)
 sudo modprobe nouveau
 # "blacklist" prevents automatic loading but not manual - this might still load it
-# "install /bin/false" prevents both
+# "install /bin/false" blocks normal modprobe loads
 
 # After reboot, verify the module is not loaded
 lsmod | grep nouveau
@@ -204,7 +205,7 @@ install btusb /bin/false
 
 # Disable firewire DMA (prevents DMA attacks via FireWire)
 install firewire-core /bin/false
-install ohci1394 /bin/false
+install firewire-ohci /bin/false
 EOF
 
 sudo update-initramfs -u
@@ -218,12 +219,13 @@ This type of configuration aligns with CIS (Center for Internet Security) benchm
 
 ```bash
 # Check if the module is a dependency of another module
-modinfo modulename | grep "^alias"
+modinfo modulename | grep "^depends"
+modprobe --show-depends modulename
 lsmod | grep modulename
 
 # The module might be loaded by its dependency chain
 # Blacklist both the module and what loads it
-grep -r "alias.*modulename" /lib/modules/$(uname -r)/modules.alias
+grep -r "modulename" /lib/modules/$(uname -r)/modules.dep
 ```
 
 ### Module Needed at Boot Cannot Be Blacklisted
