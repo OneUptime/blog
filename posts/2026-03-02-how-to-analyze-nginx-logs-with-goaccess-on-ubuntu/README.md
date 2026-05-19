@@ -8,7 +8,7 @@ Description: Learn how to use GoAccess to analyze Nginx access logs on Ubuntu in
 
 ---
 
-GoAccess is a fast, terminal-based log analyzer that turns raw Nginx access logs into actionable traffic data. It runs in a terminal with a curses-based dashboard, or generates standalone HTML reports. Both modes work on logs of any size - GoAccess parses and displays results in seconds even for logs with millions of lines.
+GoAccess is a fast, terminal-based log analyzer that turns raw Nginx access logs into actionable traffic data. It runs in a terminal with a curses-based dashboard, or generates standalone HTML reports. Both modes work efficiently with large logs, including logs with millions of lines.
 
 This guide covers installing GoAccess, analyzing Nginx logs interactively, generating HTML reports, and setting up a real-time streaming dashboard.
 
@@ -22,7 +22,7 @@ The version in Ubuntu's default repositories is often outdated. Use the official
 curl -fsSL https://deb.goaccess.io/gnugpg.key | sudo gpg --dearmor -o /usr/share/keyrings/goaccess.gpg
 
 # Add the repository
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/goaccess.gpg] https://deb.goaccess.io/ $(lsb_release -cs) main" \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/goaccess.gpg] https://deb.goaccess.io/ $(lsb_release -cs) main" \
   | sudo tee /etc/apt/sources.list.d/goaccess.list
 
 # Install
@@ -45,8 +45,8 @@ This matches GoAccess's `COMBINED` log format.
 Check your actual Nginx log format:
 
 ```bash
-grep log_format /etc/nginx/nginx.conf
-# Default is usually 'combined' or 'main'
+grep -R "log_format\|access_log" /etc/nginx/nginx.conf /etc/nginx/conf.d /etc/nginx/sites-enabled 2>/dev/null
+# If no access_log format is specified, Nginx uses the predefined 'combined' format
 ```
 
 ## Basic Log Analysis
@@ -65,7 +65,7 @@ zcat /var/log/nginx/access.log.1.gz | goaccess --log-format=COMBINED -a
 
 The terminal dashboard shows:
 
-- **Unique visitors** - unique IPs per day
+- **Unique visitors** - unique combinations of IP address, date, and User-Agent
 - **Requested files** - most popular URLs
 - **Static requests** - CSS, JS, image requests
 - **Not found (404)** - broken links
@@ -126,7 +126,7 @@ sudo goaccess /var/log/nginx/access.log \
   --log-format=COMBINED \
   --real-time-html \
   -o /var/www/html/live-report.html \
-  --daemon
+  --daemonize
 
 # GoAccess runs in background, updating the HTML file
 # Visit http://your-server/live-report.html for live charts
@@ -156,7 +156,7 @@ Or put the format in a config file:
 
 ```bash
 # /etc/goaccess/goaccess.conf
-log-format %h %^[%d:%t %^] "%r" %s %b "%R" "%u"
+log-format %h - [%d:%t %^] "%r" %s %b "%R" "%u" %T
 date-format %d/%b/%Y
 time-format %H:%M:%S
 ```
@@ -179,8 +179,12 @@ grep "api.example.com" /var/log/nginx/access.log | goaccess --log-format=COMBINE
 grep '" 5[0-9][0-9] ' /var/log/nginx/access.log | goaccess --log-format=COMBINED -a
 
 # Analyze only the last hour of logs
-awk -v d="$(date -d '1 hour ago' '+%d/%b/%Y:%H:%M:%S')" '$4 > "["d' \
-  /var/log/nginx/access.log | goaccess --log-format=COMBINED -a
+perl -MTime::Piece -ne '
+  if (/\[([^\]]+)/) {
+    my $t = Time::Piece->strptime($1, "%d/%b/%Y:%H:%M:%S %z");
+    print if $t->epoch >= time - 3600;
+  }
+' /var/log/nginx/access.log | goaccess --log-format=COMBINED -a
 
 # Exclude bot traffic
 grep -v 'Googlebot\|Bingbot\|Slurp' /var/log/nginx/access.log | \
@@ -240,10 +244,12 @@ grep -vE "^(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)" \
 GoAccess can show visitor locations with GeoIP databases:
 
 ```bash
-# Install GeoIP database
-sudo apt install geoip-database -y
-wget -O /usr/share/GeoIP/GeoLite2-City.mmdb \
-  "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&license_key=YOUR_KEY&suffix=tar.gz"
+# Install MaxMind's GeoIP updater
+sudo apt install geoipupdate -y
+
+# Edit /etc/GeoIP.conf with your MaxMind account ID, license key,
+# and EditionIDs GeoLite2-City, then download the database
+sudo geoipupdate
 
 # Run with GeoIP
 sudo goaccess /var/log/nginx/access.log \
@@ -260,14 +266,12 @@ For integration with other tools:
 # Export as JSON
 sudo goaccess /var/log/nginx/access.log \
   --log-format=COMBINED \
-  -o report.json \
-  --output-format=json
+  -o report.json
 
-# Export specific panel as CSV
+# Export as CSV
 sudo goaccess /var/log/nginx/access.log \
   --log-format=COMBINED \
-  -o requests.csv \
-  --output-format=csv
+  -o report.csv
 ```
 
 ## Troubleshooting
