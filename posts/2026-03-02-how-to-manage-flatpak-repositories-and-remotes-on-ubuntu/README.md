@@ -34,11 +34,11 @@ flatpak remotes --user
 
 # Example output:
 # Name    Options
-# flathub system,eno
-# gnome   system,eno
+# flathub system
+# gnome   system
 ```
 
-The `eno` in Options means "no enumeration" is disabled, meaning apps from this remote show up in searches.
+The Options column shows whether the remote is configured at the `system` or `user` level. Other flags such as `no-gpg-verify` or `disabled` may also appear when set.
 
 ## Adding Remotes
 
@@ -104,7 +104,7 @@ sudo flatpak remote-modify --enable gnome-nightly
 # Change the URL of an existing remote
 sudo flatpak remote-modify --url=https://new-url.example.com myrepo
 
-# Set a priority (lower number = higher priority)
+# Set a priority (higher number = higher priority, default is 1)
 # Used when the same app is in multiple remotes
 sudo flatpak remote-modify --prio=100 flathub
 sudo flatpak remote-modify --prio=200 myrepo
@@ -165,13 +165,17 @@ sudo apt install ostree
 mkdir -p /srv/flatpak-mirror
 
 # Mirror Flathub (large - will take time and space)
-# This creates a partial mirror (only apps you specify)
+# This creates a partial mirror (only refs you pull)
 ostree --repo=/srv/flatpak-mirror init --mode=archive
 
+# Add Flathub as an ostree remote in your local mirror
+ostree --repo=/srv/flatpak-mirror remote add --no-gpg-verify flathub https://dl.flathub.org/repo/
+
 # Pull a specific app into your mirror
-flatpak build-pull /srv/flatpak-mirror \
-    --from-branch=app/org.mozilla.firefox/x86_64/stable \
-    https://dl.flathub.org/repo/
+ostree --repo=/srv/flatpak-mirror pull --mirror flathub app/org.mozilla.firefox/x86_64/stable
+
+# Update the repository summary so clients can use it
+flatpak build-update-repo /srv/flatpak-mirror
 
 # Serve the mirror over HTTP
 sudo apt install nginx
