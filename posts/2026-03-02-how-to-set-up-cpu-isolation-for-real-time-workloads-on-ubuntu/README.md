@@ -227,10 +227,10 @@ Measure scheduling latency before and after isolation:
 sudo apt install rt-tests -y
 
 # Run cyclictest on a non-isolated CPU (baseline)
-sudo cyclictest -p 80 -t 1 -n -i 1000 -l 100000 -q -c 0
+sudo cyclictest -p 80 -t 1 -n -i 1000 -l 100000 -q -a 0
 
 # Run on an isolated CPU (should show much lower max latency)
-sudo cyclictest -p 80 -t 1 -n -i 1000 -l 100000 -q -c 4
+sudo cyclictest -p 80 -t 1 -n -i 1000 -l 100000 -q -a 4
 
 # The output shows:
 # T: thread number
