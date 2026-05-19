@@ -28,7 +28,7 @@ Call Trace:
 Key elements to extract:
 - **Panic message** - describes what failed (e.g., "unable to mount root fs", "out of memory", "BUG: kernel NULL pointer dereference")
 - **CPU and PID** - which processor and process was running when the panic occurred
-- **Tainted kernel** - indicates if non-GPL modules were loaded (proprietary drivers)
+- **Tainted kernel** - indicates conditions that affect debugging, such as proprietary, out-of-tree, or unsigned modules, previous warnings, or hardware errors
 - **Call trace** - the sequence of function calls leading to the panic
 - **RIP/EIP** - the instruction pointer showing exactly where execution stopped
 
@@ -62,7 +62,8 @@ sudo apt install kdump-tools linux-crashdump
 
 # Configure reserved memory in GRUB
 sudo nano /etc/default/grub
-# Add: crashkernel=512M to GRUB_CMDLINE_LINUX_DEFAULT
+# Add or adjust crashkernel=512M in GRUB_CMDLINE_LINUX_DEFAULT
+# kdump-config show can suggest a better size for your system
 
 sudo update-grub
 sudo reboot
@@ -107,7 +108,7 @@ journalctl -b -1 -p err
 journalctl -b -1 | grep -i "kernel panic\|BUG:\|oops\|WARN:"
 
 # Check dmesg from the crash dump
-cat /var/crash/*/dmesg.txt 2>/dev/null
+cat /var/crash/*/dmesg.* 2>/dev/null
 
 # If using persistent journal
 journalctl --list-boots
@@ -136,18 +137,19 @@ Each line shows `function_name+offset/size`. The `RIP:` line shows exactly where
 
 ```bash
 # Install kernel debug symbols
-sudo apt install linux-image-$(uname -r)-dbgsym 2>/dev/null || \
-    sudo apt install linux-crashdump
+# If apt cannot find the package, enable Ubuntu ddebs first:
+# https://documentation.ubuntu.com/server/how-to/debugging/debug-symbol-packages/
+sudo apt install linux-image-$(uname -r)-dbgsym
 
 # Use addr2line to find source location from an address
 addr2line -e /usr/lib/debug/boot/vmlinux-$(uname -r) 0xffffffff81234567
 
-# Use nm to look up symbols
-nm /boot/System.map-$(uname -r) | grep some_function
+# Use System.map to look up symbols
+grep " some_function$" /boot/System.map-$(uname -r)
 
 # Decode a complete oops with a script
-# Install: sudo apt install linux-tools-common
-decode_stacktrace.sh /boot/vmlinux-$(uname -r) < /var/crash/*/dmesg.txt
+# Install: sudo apt install linux-headers-$(uname -r)
+/usr/src/linux-headers-$(uname -r)/scripts/decode_stacktrace.sh -r "$(uname -r)" < /var/crash/*/dmesg.*
 ```
 
 ## Using the crash Tool for Post-Mortem Analysis
@@ -232,7 +234,8 @@ modinfo <module_name>
 Out of memory: Kill process 12345 (some-process) score 850 or sacrifice child
 ```
 
-The OOM killer is not always a panic, but can lead to one if the system kills critical processes.
+The OOM killer is not always a panic, but memory exhaustion can accompany or precede a panic.
+The kernel can also be configured to panic on OOM with `vm.panic_on_oom`.
 
 ```bash
 # Find OOM events in logs
@@ -284,15 +287,17 @@ mce: Hardware Error: Machine check events logged
 ```
 
 ```bash
-# Install MCE tools
-sudo apt install mcelog
+# Install RAS/MCE logging tools
+sudo apt install rasdaemon
 
-# Check machine check error log
-sudo mcelog
-sudo cat /var/log/mcelog
+# Enable and check hardware error logging
+sudo systemctl enable --now rasdaemon
+journalctl -k | grep -i "mce\|machine check\|hardware error"
 
 # More detailed hardware error checking
-sudo mcelog --client
+sudo ras-mc-ctl --status
+sudo ras-mc-ctl --summary
+sudo ras-mc-ctl --errors
 ```
 
 ## Enabling Kernel Debugging Options
@@ -332,19 +337,19 @@ When a system is hung but not panicked, SysRq can help:
 
 ```bash
 # Enable SysRq
-echo 1 > /proc/sys/kernel/sysrq
+sudo sysctl -w kernel.sysrq=1
 
 # Show all running processes and their state
-echo t > /proc/sysrq-trigger
+echo t | sudo tee /proc/sysrq-trigger
 
 # Show memory information
-echo m > /proc/sysrq-trigger
+echo m | sudo tee /proc/sysrq-trigger
 
 # Show blocked tasks (useful for hang debugging)
-echo w > /proc/sysrq-trigger
+echo w | sudo tee /proc/sysrq-trigger
 
 # Controlled crash for testing kdump
-echo c > /proc/sysrq-trigger   # WARNING: crashes the system immediately
+echo c | sudo tee /proc/sysrq-trigger   # WARNING: crashes the system immediately
 ```
 
 ## Checking for Driver Issues
