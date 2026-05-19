@@ -147,10 +147,11 @@ sudo apt install -y ipmitool
 
 # Enable SOL on the BMC
 sudo ipmitool sol set enabled true 1
-sudo ipmitool sol set baud-rate 115200 1
+sudo ipmitool sol set non-volatile-bit-rate 115.2 1
+sudo ipmitool sol set volatile-bit-rate 115.2 1
 
 # From a remote machine, activate SOL
-ipmitool -H <bmc-ip> -U admin -P password sol activate
+ipmitool -I lanplus -H <bmc-ip> -U admin -P password sol activate
 
 # Press Enter to get a prompt
 # Terminate with ~ and . (tilde then period, same as SSH escape)
@@ -162,7 +163,8 @@ For SOL to work, the GRUB and getty configuration above must match the serial po
 
 ```bash
 # For Dell iDRAC - check iDRAC serial port assignment
-sudo racadm get iDRAC.SerialCapture
+sudo racadm get BIOS.SerialCommSettings
+sudo racadm get iDRAC.Serial
 
 # For IPMI in general
 sudo ipmitool sol info
@@ -181,14 +183,14 @@ Running both video and serial consoles simultaneously is the recommended setup f
 # In /etc/default/grub
 GRUB_CMDLINE_LINUX="console=tty0 console=ttyS1,115200n8"
 # Note: the LAST console= entry is the one used for /dev/console
-# Order matters: tty0 first means TTY1 is primary, ttyS1 gets same output
+# Order matters: tty0 first keeps video output, ttyS1 becomes /dev/console
 ```
 
 When multiple `console=` arguments are given, Linux sends kernel messages to all of them. The last one in the list becomes `/dev/console` and is used for system messages that reference the console directly.
 
 ```bash
 # Enable getty on both
-sudo systemctl enable serial-getty@tty1.service    # Video terminal
+sudo systemctl enable getty@tty1.service          # Video terminal
 sudo systemctl enable serial-getty@ttyS1.service   # Serial console
 ```
 
@@ -200,15 +202,16 @@ For VM-based Ubuntu (not physical hardware), serial console works slightly diffe
 
 ```bash
 # AWS EC2 serial console access is available in the EC2 console
-# Instance must be configured for it
+# Account/IAM access and a password-based OS user must be configured for login
 
-# Verify EC2 serial console support
-aws ec2 describe-instance-attribute \
-    --instance-id i-xxxxx \
-    --attribute enaSrdSpecification
+# Verify account-level EC2 serial console access
+aws ec2 get-serial-console-access-status
 
-# Enable serial console access (EC2 Instance Connect Endpoint required)
-# Configuration is the same as physical - GRUB + getty
+# Enable account-level serial console access if needed
+aws ec2 enable-serial-console-access
+
+# Linux EC2 serial console uses ttyS0
+sudo systemctl enable --now serial-getty@ttyS0.service
 ```
 
 ### KVM/QEMU Virtual Machines
@@ -243,10 +246,10 @@ default * {
 }
 
 console server1 {
-    type host;
+    type ipmi;
     host 192.168.100.50;  # BMC IP for SOL
-    port 623;
-    protocol ipmi;
+    username admin;
+    password password;
 }
 EOF
 
