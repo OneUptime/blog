@@ -42,8 +42,8 @@ source ~/.bashrc
 git clone https://github.com/rbenv/ruby-build.git ~/.rbenv/plugins/ruby-build
 
 # Install the desired Ruby version (check https://www.ruby-lang.org for latest)
-rbenv install 3.3.0
-rbenv global 3.3.0
+rbenv install 3.4.9
+rbenv global 3.4.9
 
 # Verify
 ruby -v
@@ -89,6 +89,9 @@ sudo -u deploy tee /var/www/myapp/shared/config/puma.rb > /dev/null <<'EOF'
 app_dir = File.expand_path("../../..", __FILE__)
 shared_dir = "#{app_dir}/shared"
 
+# Run from the current symlink so phased restarts load the active release
+directory "#{app_dir}/current"
+
 # Number of Puma workers (processes)
 # Adjust based on RAM: each worker uses ~300-500MB
 workers ENV.fetch("WEB_CONCURRENCY", 3).to_i
@@ -118,12 +121,11 @@ stdout_redirect "#{shared_dir}/log/puma.stdout.log",
 # Environment
 environment ENV.fetch("RAILS_ENV", "production")
 
-# Preload the application before forking workers
-# Enables copy-on-write memory benefits
-preload_app!
+# Allow phased restarts to load code and gems from the active release
+prune_bundler
 
 # Properly handle database connection after forking
-on_worker_boot do
+before_worker_boot do
   ActiveRecord::Base.establish_connection if defined?(ActiveRecord)
 end
 
@@ -154,7 +156,6 @@ SECRET_KEY_BASE=your_very_long_secret_key_base_here
 DB_USERNAME=dbuser
 DB_PASSWORD=dbpassword
 RAILS_SERVE_STATIC_FILES=false
-RAILS_LOG_TO_STDOUT=true
 EOF
 sudo chmod 600 /var/www/myapp/shared/.env
 ```
@@ -173,12 +174,17 @@ sudo -u deploy ln -sf /var/www/myapp/shared/config/database.yml \
     /var/www/myapp/releases/$RELEASE/config/database.yml
 sudo -u deploy ln -sf /var/www/myapp/shared/.env \
     /var/www/myapp/releases/$RELEASE/.env
+sudo -u deploy rm -rf /var/www/myapp/releases/$RELEASE/log
+sudo -u deploy ln -sfn /var/www/myapp/shared/log \
+    /var/www/myapp/releases/$RELEASE/log
 
 # Install gems
 sudo -u deploy bash -c "
 source ~/.bashrc
 cd /var/www/myapp/releases/$RELEASE
-bundle install --deployment --without development test
+bundle config set --local deployment true
+bundle config set --local without 'development test'
+bundle install
 "
 
 # Precompile assets
