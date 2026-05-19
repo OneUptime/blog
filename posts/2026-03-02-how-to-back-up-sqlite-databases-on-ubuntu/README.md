@@ -22,11 +22,11 @@ The `.backup` dot-command in the SQLite shell uses the SQLite Backup API, which 
 
 ```bash
 # Create a backup while the database may be in use
-
-sqlite3 /data/myapp.db ".backup /backup/myapp_$(date +%Y%m%d_%H%M%S).db"
+BACKUP_FILE="/backup/myapp_$(date +%Y%m%d_%H%M%S).db"
+sqlite3 /data/myapp.db ".backup $BACKUP_FILE"
 
 # Verify the backup is valid
-sqlite3 /backup/myapp_backup.db "PRAGMA integrity_check;"
+sqlite3 "$BACKUP_FILE" "PRAGMA integrity_check;"
 # Should return: ok
 ```
 
@@ -92,7 +92,7 @@ ls -la /data/myapp.db*
 
 ## Automated Backup Script with Rotation
 
-A practical backup script that keeps daily backups for 7 days, weekly for 4 weeks, and monthly for 3 months.
+A practical backup script that keeps daily backups for 7 days.
 
 ```bash
 #!/bin/bash
@@ -107,8 +107,6 @@ LOG_FILE="/var/log/sqlite-backup.log"
 
 # Retention settings
 DAILY_RETAIN=7    # days
-WEEKLY_RETAIN=28  # days (4 weeks)
-MONTHLY_RETAIN=90 # days (3 months)
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') $*" | tee -a "$LOG_FILE"
@@ -221,7 +219,7 @@ A backup you never tested is not a reliable backup. Test restoration periodicall
 LATEST=$(ls -t /backup/sqlite/myapp_*.db.gz | head -1)
 RESTORE_PATH="/tmp/myapp_restore_test.db"
 
-log "Testing restoration from: $LATEST"
+echo "Testing restoration from: $LATEST"
 
 # Decompress and restore
 gunzip -c "$LATEST" > "$RESTORE_PATH"
