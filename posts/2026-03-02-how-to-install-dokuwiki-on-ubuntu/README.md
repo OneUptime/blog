@@ -14,7 +14,7 @@ The plain text storage also means content is version-controlled by DokuWiki's ow
 
 ## Prerequisites
 
-- Ubuntu 20.04 or 22.04
+- Ubuntu 22.04 or 24.04
 - Root access
 - A domain name or server IP
 
@@ -24,7 +24,7 @@ DokuWiki runs on PHP. Install nginx and PHP-FPM:
 
 ```bash
 sudo apt update
-sudo apt install nginx php-fpm php-xml php-mbstring php-gd php-zip unzip curl
+sudo apt install nginx php-fpm php-xml php-mbstring php-gd php-zip php-bz2 unzip curl
 
 # Verify PHP is installed
 
@@ -89,7 +89,7 @@ server {
     }
 
     # Block hidden files
-    location ~ /\. {
+    location ~ /\.(?!well-known) {
         deny all;
         access_log off;
         log_not_found off;
@@ -114,10 +114,10 @@ server {
         include fastcgi_params;
     }
 
-    # Deny access to DokuWiki install script after initial setup
-    location ~ /install\.php {
-        deny all;
-    }
+    # After initial setup, uncomment this block or remove install.php
+    # location ~ /install\.php {
+    #     deny all;
+    # }
 
     # Logging
     access_log /var/log/nginx/dokuwiki.access.log;
@@ -221,11 +221,11 @@ DokuWiki has a large plugin library. Install through the web UI (Admin -> Extens
 cd /var/www/dokuwiki/lib/plugins
 
 # Download a plugin (example: the discussion plugin)
-sudo wget https://github.com/dokuteamrepo/discussion/archive/refs/heads/master.tar.gz \
-    -O discussion.tar.gz
+sudo curl -L https://github.com/dokufreaks/plugin-discussion/archive/master.tar.gz \
+    -o discussion.tar.gz
 
 sudo tar xzf discussion.tar.gz
-sudo mv discussion-master discussion
+sudo mv plugin-discussion-master discussion
 sudo chown -R www-data:www-data discussion
 sudo rm discussion.tar.gz
 ```
@@ -274,7 +274,7 @@ sudo -u www-data touch /var/www/dokuwiki/data/test.txt && \
     sudo rm /var/www/dokuwiki/data/test.txt
 
 # PHP configuration check
-php -m | grep -E "xml|mbstring|gd|zip"
+php -m | grep -E "xml|mbstring|gd|zip|bz2"
 ```
 
 DokuWiki is a mature, well-supported wiki that's hard to break. The flat-file approach means disaster recovery is a copy-paste operation, and the lack of a database removes an entire category of maintenance overhead. For documentation that needs to be writable by a team but doesn't need the complexity of a full CMS, it's a practical default choice.
