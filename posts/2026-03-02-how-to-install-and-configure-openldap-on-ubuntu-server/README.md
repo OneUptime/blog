@@ -209,14 +209,14 @@ ldapwhoami -x -H ldap://localhost \
 If you plan to allow LDAP clients from other hosts:
 
 ```bash
-# Allow LDAP (port 389)
+# Allow LDAP (port 389) from any host
 sudo ufw allow 389/tcp
 
 # Allow LDAPS (port 636) if using TLS
 sudo ufw allow 636/tcp
 
-# Restrict to specific subnet for security
-sudo ufw allow from 192.168.1.0/24 to any port 389
+# Or restrict LDAP to a specific subnet instead of allowing all hosts
+sudo ufw allow proto tcp from 192.168.1.0/24 to any port 389
 ```
 
 ## slapd Configuration Overview
@@ -257,6 +257,9 @@ sudo journalctl -u slapd -f
 ## Backing Up the Directory
 
 ```bash
+# Create the backup directory if it does not already exist
+sudo mkdir -p /backup
+
 # Export the entire directory to LDIF
 sudo slapcat -n 1 -l /backup/ldap-backup-$(date +%F).ldif
 
