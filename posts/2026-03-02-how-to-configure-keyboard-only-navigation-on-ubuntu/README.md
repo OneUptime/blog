@@ -21,14 +21,14 @@ Super                     - Open Activities overview
 Super + A                 - Show all applications
 Super + Tab               - Switch between running applications
 Super + Shift + Tab       - Switch applications in reverse
-Alt + Tab                 - Switch windows (same application groups)
+Super + `                 - Switch windows in the same application
 Alt + F4                  - Close the focused window
 Alt + F10                 - Maximize/restore window
 Super + Up                - Maximize window
-Super + Down              - Restore/minimize window
+Super + Down              - Restore maximized window
 Super + Left/Right        - Tile window to left/right half
 Super + H                 - Hide (minimize) window
-Super + D                 - Show desktop
+Ctrl + Alt + Tab          - Give keyboard focus to the top bar
 ```
 
 ### Within Applications
@@ -88,9 +88,6 @@ Sticky Keys allows modifier keys (Ctrl, Alt, Shift) to be pressed one at a time 
 ```bash
 # Enable Sticky Keys
 gsettings set org.gnome.desktop.a11y.keyboard stickykeys-enable true
-
-# Configure: lock modifier when pressed twice
-gsettings set org.gnome.desktop.a11y.keyboard stickykeys-latch-to-lock true
 
 # Configure: turn off when two keys are pressed simultaneously
 gsettings set org.gnome.desktop.a11y.keyboard stickykeys-two-key-off true
@@ -158,14 +155,14 @@ Ctrl + H                  - Show hidden files
 
 ## Terminal Keyboard Shortcuts
 
-```bash
-# GNOME Terminal keyboard shortcuts
+```text
+GNOME Terminal keyboard shortcuts
 Ctrl + Alt + T            - Open new terminal window
 Ctrl + Shift + T          - Open new tab in terminal
 Ctrl + Shift + W          - Close current tab
 Ctrl + Shift + N          - New window
 Alt + 1-9                 - Switch to tab 1-9
-Ctrl + Page Up/Down       - Next/previous tab
+Ctrl + Page Up/Down       - Previous/next tab
 Ctrl + Shift + C/V        - Copy/paste in terminal (different from normal Ctrl+C/V)
 ```
 
@@ -260,7 +257,6 @@ gsettings set org.gnome.desktop.a11y.keyboard mousekeys-max-speed 750
 
 # Enable Sticky Keys
 gsettings set org.gnome.desktop.a11y.keyboard stickykeys-enable true
-gsettings set org.gnome.desktop.a11y.keyboard stickykeys-latch-to-lock true
 
 # Increase cursor size for visibility
 gsettings set org.gnome.desktop.interface cursor-size 48
