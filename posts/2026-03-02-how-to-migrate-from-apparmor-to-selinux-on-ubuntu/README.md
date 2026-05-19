@@ -24,8 +24,8 @@ sudo apparmor_status
 # Export all current profiles for reference
 sudo cat /etc/apparmor.d/* > /root/apparmor_profiles_backup.txt
 
-# List which services have active profiles
-sudo aa-status --profiled | sort > /root/apparmor_profiled_services.txt
+# List loaded profiles and their enforcement modes
+sudo aa-status > /root/apparmor_profiled_services.txt
 
 # Document current firewall and security rules
 sudo ufw status verbose > /root/ufw_status_before.txt
@@ -66,9 +66,10 @@ sudo aa-teardown
 sudo aa-status
 # Should show 0 profiles loaded
 
-# Remove AppArmor from startup sequence
-echo "apparmor=0" | sudo tee -a /etc/default/grub
-# Or edit GRUB_CMDLINE_LINUX to include apparmor=0
+# Disable AppArmor at the kernel level by editing /etc/default/grub
+# Append apparmor=0 to GRUB_CMDLINE_LINUX_DEFAULT, for example:
+# GRUB_CMDLINE_LINUX_DEFAULT="quiet splash apparmor=0"
+sudo nano /etc/default/grub
 sudo update-grub
 ```
 
@@ -305,8 +306,8 @@ After migrating:
 # Confirm SELinux is in enforcing mode
 sestatus
 
-# Confirm no unexpected denials in the last hour
-sudo ausearch -m avc -ts "1 hour ago" | wc -l
+# Confirm no unexpected denials recently (last 10 minutes)
+sudo ausearch -m avc -ts recent | wc -l
 
 # All services running as expected
 sudo systemctl list-units --state=failed
