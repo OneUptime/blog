@@ -55,10 +55,9 @@ PermitRootLogin no
 # Disable password authentication - use SSH keys only
 PasswordAuthentication no
 PermitEmptyPasswords no
-ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
 
-# Use SSH Protocol 2 only
-Protocol 2
+# Modern OpenSSH supports SSH protocol 2 only
 
 # Change default port to reduce automated scan noise
 # Port 2222  # uncomment if changing port
@@ -154,6 +153,7 @@ sendername = Fail2Ban
 
 [sshd]
 enabled = true
+# Use 2222 here if you changed SSH to Port 2222
 port = ssh
 filter = sshd
 logpath = /var/log/auth.log
@@ -190,10 +190,10 @@ sudo visudo  # review /etc/sudoers
 getent group sudo
 
 # Ensure no world-writable files in critical directories
-find /etc -writable -type f 2>/dev/null
+sudo find /etc -xdev -type f -perm -0002 -print
 
 # Check for files with no owner
-find / -nouser -o -nogroup 2>/dev/null | grep -v "^/proc" | grep -v "^/sys"
+sudo find / \( -path /proc -o -path /sys -o -path /run -o -path /dev \) -prune -o \( -nouser -o -nogroup \) -print 2>/dev/null
 
 # Restrict su to sudo group
 sudo dpkg-statoverride --update --add root sudo 4750 /bin/su
@@ -266,7 +266,7 @@ sudo sysctl -p /etc/sysctl.d/99-hardening.conf
 sudo chmod 640 /etc/shadow
 sudo chmod 644 /etc/passwd
 sudo chmod 644 /etc/group
-sudo chmod 600 /etc/gshadow
+sudo chmod 640 /etc/gshadow
 
 # Mount /tmp with restrictions
 # Edit /etc/fstab to add noexec,nodev,nosuid to /tmp
@@ -274,7 +274,7 @@ sudo nano /etc/fstab
 # tmpfs /tmp tmpfs defaults,nosuid,nodev,noexec 0 0
 
 # Check for SUID/SGID binaries (review these carefully)
-find / -perm /6000 -type f -exec ls -la {} \; 2>/dev/null | grep -v "^/proc"
+sudo find / \( -path /proc -o -path /sys -o -path /run -o -path /dev \) -prune -o -perm /6000 -type f -exec ls -la {} \; 2>/dev/null
 ```
 
 ## 8. Audit Logging with auditd
@@ -369,7 +369,7 @@ Ubuntu ships with AppArmor enabled. Verify it's active:
 sudo aa-status
 
 # Enable any profiles in complain mode to enforced
-sudo aa-enforce /etc/apparmor.d/*
+sudo aa-enforce /etc/apparmor.d/<profile-name>
 
 # Check for AppArmor denials
 sudo dmesg | grep -i apparmor
@@ -379,8 +379,8 @@ sudo dmesg | grep -i apparmor
 
 ```bash
 # Secure shared memory
-echo "tmpfs /run/shm tmpfs defaults,noexec,nosuid,nodev 0 0" | sudo tee -a /etc/fstab
-sudo mount -o remount /run/shm
+echo "tmpfs /dev/shm tmpfs defaults,noexec,nosuid,nodev 0 0" | sudo tee -a /etc/fstab
+sudo mount -o remount /dev/shm
 ```
 
 ## 12. Security Auditing Tools
