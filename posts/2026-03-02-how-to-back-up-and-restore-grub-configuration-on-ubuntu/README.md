@@ -21,7 +21,7 @@ GRUB has two distinct pieces: the configuration file at `/boot/grub/grub.cfg` an
 ### GRUB Stage Binaries
 
 On BIOS systems, GRUB writes binary data into:
-- The MBR (first 446 bytes of the disk)
+- The boot code area of the MBR (first 446 bytes of the disk)
 - The post-MBR gap (sectors between MBR and first partition)
 - The `/boot/grub/` directory on the filesystem
 
@@ -98,7 +98,7 @@ echo "Extended MBR backup: $(ls -lh $BACKUP_DIR/mbr-extended-backup.bin)"
 ### Backing Up for UEFI Systems
 
 ```bash
-# Back up the entire EFI System Partition
+# Back up the EFI bootloader directory
 sudo mkdir -p "$BACKUP_DIR/efi"
 sudo cp -a /boot/efi/EFI/ "$BACKUP_DIR/efi/"
 
@@ -203,7 +203,7 @@ RESTORE_DIR=$(ls -d /tmp/2026*/ | head -1)
 sudo cp "$RESTORE_DIR/grub" /etc/default/grub
 
 # Restore GRUB scripts
-sudo cp -a "$RESTORE_DIR/grub.d/" /etc/grub.d/
+sudo cp -a "$RESTORE_DIR/grub.d/." /etc/grub.d/
 
 # Regenerate grub.cfg from the restored templates
 sudo update-grub
@@ -219,8 +219,9 @@ If the MBR is corrupted and the system will not boot, restore from a live USB:
 # Mount the system partition
 sudo mount /dev/sda1 /mnt
 
-# Restore the MBR backup (if you have it)
-sudo dd if=/mnt/root/grub-backups/mbr.bin of=/dev/sda bs=512 count=1
+# Restore only the MBR boot code from the backup (if you have it)
+# Restoring all 512 bytes can overwrite the partition table.
+sudo dd if=/mnt/root/grub-backups/mbr.bin of=/dev/sda bs=446 count=1
 
 # Or reinstall GRUB from the running live environment
 sudo mount --bind /dev /mnt/dev
@@ -265,8 +266,8 @@ Keep a copy of the working `grub.cfg` in multiple locations:
 # Copy grub.cfg to a safe location after every update-grub
 sudo cp /boot/grub/grub.cfg /boot/grub/grub.cfg.backup
 
-# Create a hook that runs after kernel updates
-sudo nano /etc/kernel/postinst.d/backup-grub-cfg
+# Create a hook that runs after Ubuntu's update-grub kernel hook
+sudo nano /etc/kernel/postinst.d/zzzz-backup-grub-cfg
 ```
 
 ```bash
@@ -278,7 +279,7 @@ ls -t /boot/grub/grub.cfg.backup-* 2>/dev/null | tail -n +6 | xargs rm -f
 ```
 
 ```bash
-sudo chmod +x /etc/kernel/postinst.d/backup-grub-cfg
+sudo chmod +x /etc/kernel/postinst.d/zzzz-backup-grub-cfg
 ```
 
 ## Copying GRUB Backups Off-Server
@@ -287,8 +288,8 @@ Local backups on the same disk that GRUB lives on do not help when the disk fail
 
 ```bash
 # Copy to a remote backup server via scp
-BACKUP_FILE="/root/grub-backups/$(ls -t /root/grub-backups/*.tar.gz | head -1 | xargs basename)"
-scp /root/grub-backups/"$BACKUP_FILE" backup-server:/backups/$(hostname)/grub/
+BACKUP_FILE="$(ls -t /root/grub-backups/*.tar.gz | head -1)"
+scp "$BACKUP_FILE" backup-server:/backups/$(hostname)/grub/
 
 # Or sync the entire backup directory
 rsync -az /root/grub-backups/ backup-server:/backups/$(hostname)/grub/
