@@ -21,11 +21,11 @@ sudo apt update
 sudo apt install neofetch -y
 ```
 
-This installs neofetch along with any needed dependencies. The version in Ubuntu's repository may lag slightly behind the latest GitHub release, but it is adequate for most uses.
+This installs neofetch along with any needed dependencies. The version in Ubuntu's repository is adequate for most uses.
 
-### From the GitHub Repository (Latest Version)
+### From the GitHub Repository (Upstream Source)
 
-If you need the latest features:
+If you specifically need the archived upstream source:
 
 ```bash
 # Clone the repository
@@ -40,7 +40,7 @@ sudo make install
 make PREFIX=~/.local install
 ```
 
-Note: As of 2025, the original neofetch repository is archived. The community maintains forks such as `fastfetch` and `hyfetch` that are actively developed. The package in Ubuntu's repos continues to function, however.
+Note: The original neofetch repository was archived in April 2024. The community maintains alternatives such as `fastfetch` and `hyfetch` that are actively developed. The package in Ubuntu's repos continues to function, however.
 
 ## Basic Usage
 
@@ -83,7 +83,7 @@ Show only certain fields to reduce noise:
 
 ```bash
 # Show only OS, kernel, uptime, and memory
-neofetch --os_arch off --cpu_brand off --gpu_type all
+neofetch distro kernel uptime memory --off
 ```
 
 ### Display Without ASCII Art
@@ -112,15 +112,15 @@ neofetch --ascii_distro block
 The ASCII art width can cause wrapping issues in narrow terminals:
 
 ```bash
-# Reduce the ASCII art size
-neofetch --ascii_bold off
+# Use Ubuntu's smaller ASCII logo
+neofetch --ascii_distro Ubuntu_small
 ```
 
 ### Print to a File
 
 ```bash
 # Save output to a file (without ANSI color codes)
-neofetch --off 2>/dev/null > /tmp/system-info.txt
+neofetch --stdout 2>/dev/null > /tmp/system-info.txt
 ```
 
 ## Configuration File
@@ -209,7 +209,7 @@ sudo nano /etc/update-motd.d/01-neofetch
 
 ```bash
 #!/bin/bash
-# Run neofetch as the logging-in user for MOTD display
+# Run neofetch for MOTD display
 
 # Use the system-wide config to ensure consistent output
 neofetch \
@@ -255,8 +255,8 @@ print_info() {
     info "Local IP" local_ip
 }
 
-# Disable slow lookups
-public_ip_host="off"
+# Leave this disabled on servers; it performs network lookups
+# info "Public IP" public_ip
 
 # Show disk usage for root and any mounted data volumes
 disk_show=('/' '/data' '/var')
@@ -276,24 +276,29 @@ memory_unit="gib"
 If you find neofetch's performance sluggish (it is a bash script and can be slow), `fastfetch` is a C-based replacement that is significantly faster and actively maintained:
 
 ```bash
-# Install from the Ubuntu PPA or snap
+# Ubuntu 25.04 or newer
+sudo apt install fastfetch -y
+
+# Ubuntu 22.04 or newer: use the upstream PPA for the latest version
+sudo add-apt-repository ppa:zhangsongcui3371/fastfetch
+sudo apt update
 sudo apt install fastfetch -y
 
 # Basic usage is the same
 fastfetch
 ```
 
-fastfetch uses a JSON configuration file and produces similar output with much faster execution, making it better suited for MOTD use where every millisecond of login delay matters.
+fastfetch uses a JSONC configuration file and produces similar output with much faster execution, making it better suited for MOTD use where every millisecond of login delay matters.
 
 ## Scripting with Neofetch Output
 
 Since neofetch can output without ANSI color codes, you can parse it in scripts:
 
 ```bash
-# Get specific fields using --off for clean output
-CPU=$(neofetch --off cpu 2>/dev/null | grep "CPU" | cut -d: -f2 | xargs)
-MEMORY=$(neofetch --off memory 2>/dev/null | grep "Memory" | cut -d: -f2 | xargs)
-UPTIME=$(neofetch --off uptime 2>/dev/null | grep "Uptime" | cut -d: -f2 | xargs)
+# Get specific fields using --stdout for clean output
+CPU=$(neofetch --stdout cpu 2>/dev/null | cut -d: -f2- | xargs)
+MEMORY=$(neofetch --stdout memory 2>/dev/null | cut -d: -f2- | xargs)
+UPTIME=$(neofetch --stdout uptime 2>/dev/null | cut -d: -f2- | xargs)
 
 echo "CPU: $CPU"
 echo "Memory: $MEMORY"
