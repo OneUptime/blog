@@ -69,7 +69,7 @@ When multiple users work on the same project and need to read/write each other's
 umask 002
 ```
 
-Combined with setting the group sticky bit on shared directories, this lets team members create files that the whole group can modify.
+Combined with setting the setgid bit (`chmod g+s`) on shared directories, this lets team members create files that the whole group can modify.
 
 ## Setting umask Per User
 
@@ -81,7 +81,7 @@ For a specific user, add the umask setting to their shell initialization file:
 # Add to ~/.bashrc for interactive shells
 echo 'umask 027' >> ~/.bashrc
 
-# Or ~/.profile for login shells (affects non-interactive scripts too)
+# Or ~/.profile for login shells (sourced on login, including SSH logins)
 echo 'umask 027' >> ~/.profile
 
 # Apply immediately without logging out
