@@ -42,22 +42,24 @@ Use the official RabbitMQ repository for the latest version:
 
 sudo apt update && sudo apt install -y curl gnupg apt-transport-https
 
-# Add Erlang (required by RabbitMQ) signing key
-curl -fsSL https://packages.erlang-solutions.com/ubuntu/erlang_solutions.asc | \
-  sudo gpg --dearmor -o /usr/share/keyrings/erlang-archive-keyring.gpg
+# Add Team RabbitMQ's signing key
+curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | \
+  sudo gpg --dearmor -o /usr/share/keyrings/com.rabbitmq.team.gpg
 
-# Add Erlang repository
-echo "deb [signed-by=/usr/share/keyrings/erlang-archive-keyring.gpg] \
-  https://packages.erlang-solutions.com/ubuntu $(lsb_release -cs) contrib" | \
-  sudo tee /etc/apt/sources.list.d/erlang.list
+# Add Team RabbitMQ repositories for Erlang and RabbitMQ
+sudo tee /etc/apt/sources.list.d/rabbitmq.list <<EOF
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-erlang/ubuntu/ $(lsb_release -cs) main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-erlang/ubuntu/ $(lsb_release -cs) main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb1.rabbitmq.com/rabbitmq-server/ubuntu/ $(lsb_release -cs) main
+deb [arch=amd64 signed-by=/usr/share/keyrings/com.rabbitmq.team.gpg] https://deb2.rabbitmq.com/rabbitmq-server/ubuntu/ $(lsb_release -cs) main
+EOF
 
-# Add RabbitMQ signing key and repository
-curl -fsSL https://packagecloud.io/rabbitmq/rabbitmq-server/gpgkey | \
-  sudo gpg --dearmor -o /usr/share/keyrings/rabbitmq-archive-keyring.gpg
-
-echo "deb [signed-by=/usr/share/keyrings/rabbitmq-archive-keyring.gpg] \
-  https://packagecloud.io/rabbitmq/rabbitmq-server/ubuntu/ $(lsb_release -cs) main" | \
-  sudo tee /etc/apt/sources.list.d/rabbitmq.list
+# Prefer Team RabbitMQ packages over distribution packages
+sudo tee /etc/apt/preferences.d/rabbitmq <<EOF
+Package: erlang* rabbitmq-server
+Pin: origin RabbitMQ
+Pin-Priority: 1001
+EOF
 
 # Install Erlang and RabbitMQ
 sudo apt update
@@ -93,12 +95,12 @@ Create a proper admin user and remove the default guest account:
 
 ```bash
 # Add an admin user
-sudo rabbitmqctl add_user admin YourStrongPassword123!
+sudo rabbitmqctl add_user admin 'YourStrongPassword123!'
 
 # Grant administrator tag
 sudo rabbitmqctl set_user_tags admin administrator
 
-# Grant full access to all virtual hosts
+# Grant full access to the default virtual host
 sudo rabbitmqctl set_permissions -p "/" admin ".*" ".*" ".*"
 
 # Remove the insecure default guest user (if security matters)
@@ -110,7 +112,7 @@ sudo rabbitmqctl list_users
 
 ## Configuration File
 
-RabbitMQ's advanced configuration file is at `/etc/rabbitmq/rabbitmq.conf`:
+RabbitMQ's main configuration file is at `/etc/rabbitmq/rabbitmq.conf`:
 
 ```bash
 sudo nano /etc/rabbitmq/rabbitmq.conf
@@ -128,9 +130,9 @@ listeners.tcp.default = 5672
 management.tcp.port = 15672
 management.tcp.ip = 0.0.0.0
 
-# Default user (used for clustering, not login)
+# Default user created only when RabbitMQ initializes a new database
 default_user = rabbitmq_internal
-default_pass = InternalPass123!
+default_pass = 'InternalPass123!'
 default_vhost = /
 
 # Default permissions for the default user
@@ -139,7 +141,7 @@ default_permissions.write = .*
 default_permissions.read = .*
 
 # Message storage
-# Maximum message size (bytes) - default 128MB
+# Maximum message size (bytes) - default 16MB in RabbitMQ 4.3
 max_message_size = 134217728
 
 # Disk free space watermark
@@ -171,7 +173,7 @@ Virtual hosts provide logical separation between applications:
 sudo rabbitmqctl add_vhost /myapp
 
 # Create an application user
-sudo rabbitmqctl add_user myapp_user AppUserPass123!
+sudo rabbitmqctl add_user myapp_user 'AppUserPass123!'
 sudo rabbitmqctl set_user_tags myapp_user monitoring
 
 # Grant the user permissions on the vhost
@@ -210,11 +212,11 @@ The management plugin exposes a full REST API for automation:
 
 ```bash
 # List queues
-curl -u admin:YourStrongPassword123! \
+curl -u 'admin:YourStrongPassword123!' \
   http://localhost:15672/api/queues
 
 # Create a queue
-curl -u admin:YourStrongPassword123! \
+curl -u 'admin:YourStrongPassword123!' \
   -X PUT http://localhost:15672/api/queues/%2F/my-new-queue \
   -H "Content-Type: application/json" \
   -d '{
@@ -226,12 +228,12 @@ curl -u admin:YourStrongPassword123! \
   }'
 
 # Get queue details
-curl -u admin:YourStrongPassword123! \
+curl -u 'admin:YourStrongPassword123!' \
   http://localhost:15672/api/queues/%2F/my-new-queue
 
 # Publish a test message
-curl -u admin:YourStrongPassword123! \
-  -X POST http://localhost:15672/api/exchanges/%2F/amq.default/publish \
+curl -u 'admin:YourStrongPassword123!' \
+  -X PUT http://localhost:15672/api/exchanges/%2F/amq.default/publish \
   -H "Content-Type: application/json" \
   -d '{
     "properties": {},
@@ -247,25 +249,25 @@ Dead letter queues (DLQ) capture messages that fail processing - rejected, expir
 
 ```bash
 # Create the dead letter exchange
-curl -u admin:YourStrongPassword123! \
+curl -u 'admin:YourStrongPassword123!' \
   -X PUT http://localhost:15672/api/exchanges/%2F/dead-letter-exchange \
   -H "Content-Type: application/json" \
   -d '{"type": "direct", "durable": true}'
 
 # Create the dead letter queue
-curl -u admin:YourStrongPassword123! \
+curl -u 'admin:YourStrongPassword123!' \
   -X PUT http://localhost:15672/api/queues/%2F/dead-letter-queue \
   -H "Content-Type: application/json" \
   -d '{"durable": true}'
 
 # Bind the DLQ to the DLX
-curl -u admin:YourStrongPassword123! \
+curl -u 'admin:YourStrongPassword123!' \
   -X POST http://localhost:15672/api/bindings/%2F/e/dead-letter-exchange/q/dead-letter-queue \
   -H "Content-Type: application/json" \
   -d '{"routing_key": "dead-letter"}'
 
 # Create the main queue with DLX configured
-curl -u admin:YourStrongPassword123! \
+curl -u 'admin:YourStrongPassword123!' \
   -X PUT http://localhost:15672/api/queues/%2F/job-queue \
   -H "Content-Type: application/json" \
   -d '{
