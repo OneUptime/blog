@@ -17,7 +17,7 @@ This guide covers configuring automatic LUKS unlock using keyfiles, the `/etc/cr
 The most practical method for server environments is a keyfile stored on the root filesystem. When the server boots:
 
 1. The root partition mounts (it may have its own passphrase or be unencrypted)
-2. The initramfs reads `/etc/crypttab` and unlocks any listed LUKS volumes using their keyfiles
+2. systemd reads `/etc/crypttab` and unlocks listed LUKS volumes using their keyfiles
 3. Those volumes mount per `/etc/fstab`
 4. Services start normally
 
@@ -89,7 +89,7 @@ data_drive     UUID=a1b2c3d4-e5f6-7890-abcd-ef1234567890  /etc/luks-keys/data_dr
 ```
 
 Options explained:
-- `luks` - specifies LUKS format (required)
+- `luks` - explicitly specifies LUKS format
 - `discard` - allows TRIM/discard commands to pass through (for SSDs; omit for HDDs or if you want to hide which sectors are used)
 - `nofail` - if the device isn't present, don't fail boot (useful for removable drives)
 - `noauto` - don't unlock automatically at boot (for drives you want to unlock manually)
@@ -97,8 +97,10 @@ Options explained:
 ### For a drive that may not always be present (external/removable)
 
 ```text
-backup_drive   UUID=b2c3d4e5-f6a7-8901-bcde-f12345678901  /etc/luks-keys/backup_drive.key   luks,nofail,noauto
+backup_drive   UUID=b2c3d4e5-f6a7-8901-bcde-f12345678901  /etc/luks-keys/backup_drive.key   luks,nofail
 ```
+
+Add `noauto` only if you want to skip automatic unlocking at boot and unlock the drive manually later with `cryptdisks_start backup_drive` or the corresponding systemd unit.
 
 ## Step 5: Configure /etc/fstab
 
@@ -148,15 +150,21 @@ df -h /data
 
 If this works cleanly, the automatic unlock should work at boot.
 
-## Step 7: Update initramfs
+## Step 7: Reload systemd or update initramfs if needed
 
-On Ubuntu, you need to update initramfs so the unlock configuration is embedded in the early boot process:
+For ordinary non-root data volumes, systemd generates the cryptsetup units from `/etc/crypttab` at boot. To test the new configuration before rebooting, reload systemd's generated units:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+If the encrypted volume must be unlocked in the initramfs stage, such as for encrypted `/usr`, `/var`, root, or another filesystem needed before the main system starts, add the `initramfs` option in `/etc/crypttab` and update initramfs:
 
 ```bash
 sudo update-initramfs -u -k all
 ```
 
-This rebuilds the initramfs for all installed kernels, incorporating the crypttab configuration.
+This rebuilds the initramfs for all installed kernels, incorporating the early-boot crypttab configuration.
 
 ## Reboot and Verify
 
@@ -226,7 +234,7 @@ Then investigate the logs once the system is up. Common issues: wrong UUID in cr
 
 ```bash
 # Validate that cryptdisks can parse crypttab
-sudo cryptdisks_start --all
+sudo cryptdisks_start data_drive
 ```
 
 ### systemd unit for the crypto device
