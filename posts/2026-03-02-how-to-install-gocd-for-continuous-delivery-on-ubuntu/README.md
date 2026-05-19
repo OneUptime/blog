@@ -155,13 +155,7 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d gocd.example.com
 ```
 
-Update GoCD server to know its public URL:
-
-```bash
-sudo nano /etc/go/go-site.sh
-```
-
-Set the site URL through the GoCD admin interface: Admin > Server Configuration > Site URL > `https://gocd.example.com/go`.
+Update GoCD server to know its public URL. Set the site URL through the GoCD admin interface: Admin > Server Configuration > Site URL > `https://gocd.example.com/go`.
 
 ## Creating a Basic Pipeline
 
@@ -194,7 +188,7 @@ pipelines:
     group: my-app
     label_template: "${COUNT}"
     display_order: 1
-    locking: single
+    lock_behavior: unlockWhenFinished
 
     environment_variables:
       APP_NAME: my-app
@@ -243,7 +237,7 @@ pipelines:
   my-app-deploy-staging:
     group: my-app
     display_order: 2
-    locking: single
+    lock_behavior: unlockWhenFinished
 
     materials:
       upstream:
@@ -270,7 +264,7 @@ pipelines:
   my-app-deploy-production:
     group: my-app
     display_order: 3
-    locking: single
+    lock_behavior: unlockWhenFinished
 
     materials:
       upstream:
