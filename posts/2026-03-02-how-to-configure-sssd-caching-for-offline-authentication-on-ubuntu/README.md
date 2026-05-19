@@ -19,7 +19,7 @@ SSSD maintains two types of cached data:
 
 When the directory is reachable, SSSD refreshes cached data periodically. When the directory is unreachable, SSSD serves identity data from cache and verifies passwords against the cached hash.
 
-The caches are stored in SQLite databases in `/var/lib/sss/db/`.
+The caches are stored in LDB databases in `/var/lib/sss/db/`.
 
 ## Enabling Credential Caching
 
@@ -40,7 +40,7 @@ services = nss, pam
 
 offline_credentials_expiration = 7
 
-# Warn users when their cached credentials are aging (days before expiry)
+# Limit failed offline login attempts before delaying retries
 offline_failed_login_attempts = 3
 offline_failed_login_delay = 5
 
@@ -50,8 +50,8 @@ offline_failed_login_delay = 5
 # Enable credential caching (required for offline auth)
 cache_credentials = true
 
-# Maximum age of cached credentials in days
-# 0 = no limit (use offline_credentials_expiration from [pam] instead)
+# Store the password temporarily if Kerberos is offline so SSSD can request
+# a TGT when the provider comes back online
 krb5_store_password_if_offline = true
 ```
 
@@ -69,13 +69,14 @@ Control how frequently SSSD refreshes cached data from the directory:
 # How long a positive cache entry is valid (seconds)
 entry_cache_timeout = 5400       # 90 minutes (default: 5400)
 
-# How long a negative cache entry is valid (entry does not exist)
+# Percentage of entry_cache_timeout after which SSSD returns the cached
+# entry immediately and refreshes it in the background
 entry_cache_nowait_percentage = 50
 
-# Minimum time before refreshing user info in background
+# How often to refresh the cache of enumerated LDAP records
 ldap_enumeration_refresh_timeout = 300
 
-# Group members are more expensive to refresh
+# How many nested group levels SSSD follows for schemas that support nesting
 ldap_group_nesting_level = 2
 
 # How long before SSSD considers the server offline
@@ -98,7 +99,7 @@ refresh_expired_interval = 3600
 entry_cache_nowait_percentage = 75
 ```
 
-With `entry_cache_nowait_percentage = 75`, SSSD starts a background refresh when 75% of the cache lifetime has elapsed, so entries are always fresh when accessed.
+With `entry_cache_nowait_percentage = 75`, SSSD starts a background refresh when 75% of the cache lifetime has elapsed, so future requests are less likely to block on a cache refresh.
 
 ## Controlling Offline Authentication Lifetime
 
@@ -138,19 +139,14 @@ After `offline_failed_login_attempts` failures, the account is locked for `offli
 
 ## Forcing Online Authentication for Sensitive Services
 
-Some services should never allow offline authentication. You can configure this per PAM service:
+Some services should never allow offline authentication. SSSD does not provide a `pam_sss.so` option that forces online authentication for a single PAM service, so avoid adding `pam_sss.so` options for this purpose.
 
 ```bash
-# For sudo, require online auth
+# Review the PAM stack for sudo before changing authentication behavior
 sudo nano /etc/pam.d/sudo
 ```
 
-```text
-# Add the 'use_first_pass' option removed and 'online_auth' flag
-auth    required    pam_sss.so use_first_pass forward_pass
-```
-
-Or configure it in `sssd.conf` per service:
+There is no standard per-service option in `sssd.conf` for this either:
 
 ```ini
 [pam]
@@ -165,7 +161,7 @@ A practical approach: restrict sudo to AD/LDAP groups that require online verifi
 ## Cache Management Commands
 
 ```bash
-# Clear all cached data (forces re-sync with directory)
+# Invalidate all cached entries (forces re-sync with directory on next lookup)
 sudo sss_cache -E
 
 # Clear cache for a specific user
@@ -174,13 +170,10 @@ sudo sss_cache -u jsmith
 # Clear cache for a specific group
 sudo sss_cache -g devops
 
-# List all cached users (requires debug or tools)
-sudo sssctl user-list
-
 # Check domain online/offline status
 sudo sssctl domain-status example.com
 
-# Force a domain back online check (after reconnecting to network)
+# Show only the domain's online/offline state
 sudo sssctl domain-status example.com --online
 ```
 
@@ -248,7 +241,7 @@ entry_cache_nowait_percentage = 75
 refresh_expired_interval = 14400
 ```
 
-Also configure the Kerberos credential cache for offline Kerberos:
+If you use Kerberos, you can also tune ticket lifetimes and let SSSD store a password temporarily while the provider is offline so it can request a TGT when connectivity returns:
 
 ```ini
 [domain/example.com]
@@ -263,11 +256,9 @@ krb5_lifetime = 24h
 # Create a simple monitoring script
 cat > /usr/local/bin/sssd-cache-check.sh << 'EOF'
 #!/bin/bash
-# Check SSSD domain status and alert if offline too long
+# Check SSSD domain status and alert if offline
 
 DOMAIN="example.com"
-ALERT_THRESHOLD=3600  # 1 hour
-
 STATUS=$(sssctl domain-status $DOMAIN 2>/dev/null | grep "Online status")
 echo "SSSD Domain $DOMAIN: $STATUS"
 
