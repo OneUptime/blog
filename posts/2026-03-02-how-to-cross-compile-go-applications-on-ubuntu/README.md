@@ -8,7 +8,7 @@ Description: Cross-compile Go applications on Ubuntu for multiple target platfor
 
 ---
 
-Go's cross-compilation support is one of its standout features. From an Ubuntu build machine, you can produce binaries for Windows, macOS, ARM servers, Raspberry Pi, and more - without any additional toolchains or VMs. The entire process happens through standard Go environment variables.
+Go's cross-compilation support is one of its standout features. From an Ubuntu build machine, you can produce pure Go binaries for Windows, macOS, ARM servers, Raspberry Pi, and more - without any additional toolchains or VMs. The entire process happens through standard Go environment variables.
 
 ## How Go Cross-Compilation Works
 
@@ -175,8 +175,8 @@ Check if your code uses CGO:
 # Does the binary use CGO?
 CGO_ENABLED=1 go build -v . 2>&1 | grep -i cgo
 
-# Or check deps
-go list -f '{{.CgoFiles}}' ./...
+# Or check packages and their dependencies
+go list -deps -f '{{if .CgoFiles}}{{.ImportPath}} {{.CgoFiles}}{{end}}' ./...
 ```
 
 ### Cross-Compiling CGO Code
@@ -227,11 +227,11 @@ Some packages that use CGO have pure Go alternatives. For example:
 
 ## Using Docker for Cross-Compilation
 
-For CGO-heavy projects where managing cross-compilers is painful, use the official Go Docker image:
+For containerized pure Go builds, use the official Go Docker image:
 
 ```dockerfile
 # Dockerfile.cross-build
-FROM golang:1.22 AS builder
+FROM golang:1.26 AS builder
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -252,6 +252,9 @@ RUN GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w" \
     -o /dist/myapp-linux-amd64 \
     .
+
+FROM scratch
+COPY --from=builder /dist/ /
 ```
 
 ```bash
@@ -336,7 +339,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26.x'
 
       - name: Build all platforms
         run: |
