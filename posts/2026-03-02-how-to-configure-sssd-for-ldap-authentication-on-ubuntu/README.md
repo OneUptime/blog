@@ -23,7 +23,7 @@ SSSD mediates between the operating system (NSS for user lookups, PAM for authen
 
 ```bash
 sudo apt update
-sudo apt install -y sssd sssd-ldap libpam-sss libnss-sss sssd-tools
+sudo apt install -y sssd sssd-ldap libpam-sss libnss-sss sssd-tools ldap-utils
 ```
 
 ## Basic SSSD Configuration for LDAP
@@ -45,11 +45,11 @@ domains = ldap.example.com
 # Services SSSD provides
 services = nss, pam
 
-# Log level (0=no debug, 3=default, 7=verbose)
-# debug_level = 3
+# Log level (0=no debug, 2=default, 7=verbose)
+# debug_level = 2
 
 [nss]
-# Timeout for name service lookups
+# Substitution value for override_homedir templates that use %H
 homedir_substring = /home
 
 [pam]
@@ -101,7 +101,9 @@ ldap_group_member = memberUid
 cache_credentials = true
 entry_cache_timeout = 600
 
-# Account expiry enforcement
+# Account expiry enforcement using shadow attributes
+access_provider = ldap
+ldap_access_order = expire
 ldap_account_expire_policy = shadow
 
 # Enumerate users/groups (set true for small directories)
@@ -176,10 +178,10 @@ getent group devops
 # Test authentication
 su - jsmith
 
-# Check SSSD cache
+# Expire the cached entry for one user
 sudo sss_cache -u jsmith
 
-# View all cached users
+# View passwd entries visible through NSS
 getent passwd | grep -v "^root"
 ```
 
@@ -217,7 +219,7 @@ simple_allow_groups = sysadmins, devops
 ### Configuring Multiple LDAP Servers for Redundancy
 
 ```ini
-ldap_uri = ldap://ldap1.example.com ldap://ldap2.example.com
+ldap_uri = ldap://ldap1.example.com,ldap://ldap2.example.com
 
 # SSSD tries servers in order and fails over automatically
 ```
@@ -236,10 +238,10 @@ Most environments should disable referrals to avoid confusion and performance is
 
 ```ini
 # Subtree (default) - searches base and all descendants
-ldap_search_scope = subtree
+ldap_search_base = dc=example,dc=com?subtree?
 
 # OneLevel - searches only immediate children of the base
-ldap_search_scope = onelevel
+ldap_search_base = dc=example,dc=com?onelevel?
 ```
 
 ## Using SSSD with rfc2307bis Schema
