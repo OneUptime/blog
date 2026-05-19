@@ -137,9 +137,11 @@ sudo apt install -y nyx
 # Grant your user access to the Tor control socket
 sudo usermod -aG debian-tor $USER
 
-# Enable the control port in torrc
+# Enable the control socket in torrc with group access for nyx
 echo "ControlSocket /var/run/tor/control" | sudo tee -a /etc/tor/torrc
+echo "ControlSocketsGroupWritable 1" | sudo tee -a /etc/tor/torrc
 echo "CookieAuthentication 1" | sudo tee -a /etc/tor/torrc
+echo "CookieAuthFileGroupReadable 1" | sudo tee -a /etc/tor/torrc
 sudo systemctl reload tor
 
 # Launch nyx (may need to re-login for group membership)
@@ -168,9 +170,11 @@ AccountingStart month 1 00:00  # Reset on the 1st of each month
 When the limit is reached, Tor hibernates until the next accounting period starts. You can check the current accounting status:
 
 ```bash
-# Check accounting status via Tor control port
-sudo -u debian-tor tor --verify-config
-echo "getinfo accounting/bytes" | sudo nc -q 1 /var/run/tor/control
+# View accounting status in the Tor logs
+sudo grep -i accounting /var/log/tor/notices.log | tail -20
+
+# Or launch nyx (configured above) to view live accounting status
+nyx
 ```
 
 ## Keeping the Relay Updated
@@ -223,9 +227,9 @@ If Tor is consuming excessive CPU:
 # Check if descriptor building is happening frequently
 sudo grep -i "descriptor" /var/log/tor/notices.log | tail -20
 
-# Reduce the number of file descriptors if needed
+# Raise the file descriptor limit if needed
 # Add to torrc:
-# MaxOpenFiles 8192
+# ConnLimit 8192
 ```
 
 Running a middle relay is one of the most impactful ways to support the Tor network. The more relays available, the faster and more resilient the network becomes for users who depend on it.
