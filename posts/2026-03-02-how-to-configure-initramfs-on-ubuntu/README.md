@@ -53,13 +53,16 @@ ls /tmp/initramfs-extract/
 Ubuntu provides `update-initramfs` to manage initramfs images:
 
 ```bash
-# Update initramfs for the currently running kernel
+# Update initramfs for the newest installed kernel
 sudo update-initramfs -u
+
+# Update initramfs for the currently running kernel
+sudo update-initramfs -u -k $(uname -r)
 
 # Update for a specific kernel version
 sudo update-initramfs -u -k 6.8.0-51-generic
 
-# Update for all installed kernels
+# Update for all installed kernels that already have an initramfs
 sudo update-initramfs -u -k all
 
 # Create a new initramfs (used after kernel install)
@@ -88,10 +91,10 @@ sudo nano /etc/initramfs-tools/initramfs.conf
 Key settings:
 
 ```bash
-# Boot type: most and dep are common
+# Module inclusion mode: most and dep are common
 # most = include most modules
 # dep = only include modules needed to boot this system
-# list = only include modules listed in modules file
+# list = only include modules listed in modules files
 MODULES=dep
 
 # Compression algorithm for the initramfs image
@@ -99,7 +102,7 @@ MODULES=dep
 # Options: gzip, bzip2, lz4, lzma, lzop, xz, zstd
 COMPRESS=lz4
 
-# Include NFS support (for network root filesystems)
+# Boot from local media. Set BOOT=nfs for an NFS root filesystem.
 BOOT=local
 
 # Network device drivers for network boot
@@ -224,7 +227,7 @@ Scripts that run during boot are organized by phase:
 # local-top     - before mounting local filesystems
 # local-premount - just before mounting root
 # local-bottom  - just after mounting root
-# init-bottom   - last stage before pivot_root
+# init-bottom   - last stage before handing off to the real init
 
 sudo nano /etc/initramfs-tools/scripts/local-top/my-boot-script
 ```
@@ -352,9 +355,10 @@ Add to kernel command line in GRUB:
 ```bash
 # Edit /etc/default/grub temporarily
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash break=premount"
+sudo update-grub
 # break=premount drops to shell before premount scripts run
 # break=mount drops to shell before mounting root
-# break=bottom drops to shell just before pivot_root
+# break=bottom drops to shell near the end of initramfs processing
 ```
 
 ## Verifying Changes
