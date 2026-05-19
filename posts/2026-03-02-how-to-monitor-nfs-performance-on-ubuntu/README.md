@@ -71,8 +71,8 @@ Key metrics:
 # Watch statistics update every 2 seconds
 watch -n 2 'nfsstat -c'
 
-# Or use nfsstat's built-in interval mode (if supported)
-nfsstat -c 2  # update every 2 seconds
+# Or use nfsstat's built-in interval mode (snapshot, sleep, then show delta)
+nfsstat -c --sleep=2
 ```
 
 ## mountstats - Detailed Per-Mount Statistics
@@ -124,10 +124,11 @@ The `rtt` (round-trip time) and `execute` times per operation are the most usefu
 # Get a formatted summary
 mountstats --rpc /mnt/nfs/data
 
-# Compare two snapshots to see changes over time
+# Save a baseline snapshot first (mountstats reads /proc/self/mountstats)
+sudo cp /proc/self/mountstats /tmp/nfs-baseline.stats
+
+# Later, compare current stats against the baseline to see changes
 mountstats --since /tmp/nfs-baseline.stats /mnt/nfs/data
-# (save a baseline first)
-mountstats --dump /tmp/nfs-baseline.stats
 ```
 
 ## Benchmarking NFS Throughput
@@ -185,8 +186,8 @@ watch -n 1 'ip -s link show eth0'
 sudo apt install ifstat -y
 ifstat 1  # update every second
 
-# Check network errors
-ip -s link show eth0 | grep -A 5 "RX errors\|TX errors"
+# Check network errors (RX:/TX: lines are followed by counters including errors and dropped)
+ip -s link show eth0 | grep -E -A 1 '^[[:space:]]*(RX|TX):'
 ```
 
 Watch for:
