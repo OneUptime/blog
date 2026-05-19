@@ -17,7 +17,7 @@ Vulkan has several components:
 - **Vulkan Loader**: The central dispatcher (`libvulkan.so.1`) that sits between your application and the GPU drivers
 - **ICD (Installable Client Driver)**: The actual Vulkan implementation from GPU vendors (NVIDIA, AMD, Intel)
 - **Vulkan Validation Layers**: Debug layers that catch API misuse during development
-- **Vulkan Tools**: `vulkaninfo`, `vkvia` for verification
+- **Vulkan Tools**: `vulkaninfo`, `vkcube` for verification; the LunarG SDK also includes `vkvia`
 
 ## Installing Vulkan Packages
 
@@ -26,12 +26,12 @@ Vulkan has several components:
 NVIDIA's Vulkan support is included in the proprietary driver. Install the driver and Vulkan headers:
 
 ```bash
-# Install NVIDIA driver (if not already installed)
+# Install the recommended NVIDIA driver for your hardware (if not already installed)
 
 sudo apt-get update
-sudo apt-get install -y nvidia-driver-545  # or latest recommended version
+sudo ubuntu-drivers install
 
-# Install Vulkan loader and NVIDIA ICD
+# Install Vulkan loader, headers, and tools
 sudo apt-get install -y libvulkan1 libvulkan-dev vulkan-tools
 
 # NVIDIA ICD is typically installed with the driver at:
@@ -41,10 +41,10 @@ ls /usr/share/vulkan/icd.d/
 
 ### For AMD GPUs
 
-AMD's Vulkan support comes through the RADV driver (Mesa) for open-source, or the AMDVLK proprietary driver:
+AMD's Vulkan support comes through the RADV driver (Mesa). AMDVLK was AMD's official open-source Vulkan driver, but AMD discontinued the project in September 2025 and now supports RADV for Radeon Vulkan on Linux:
 
 ```bash
-# RADV (Mesa Vulkan driver) - included in Mesa, most up-to-date
+# RADV (Mesa Vulkan driver) - included in Mesa
 sudo apt-get install -y mesa-vulkan-drivers libvulkan1 vulkan-tools
 
 # For 32-bit support (needed for Steam and Proton)
@@ -52,10 +52,8 @@ sudo dpkg --add-architecture i386
 sudo apt-get update
 sudo apt-get install -y mesa-vulkan-drivers:i386 libvulkan1:i386
 
-# AMDVLK (AMD's official open-source Vulkan driver)
-# Download from https://github.com/GPUOpen-Drivers/AMDVLK/releases
-wget https://github.com/GPUOpen-Drivers/AMDVLK/releases/download/v-2024.Q4.1/amdvlk_2024.Q4.1_amd64.deb
-sudo dpkg -i amdvlk_2024.Q4.1_amd64.deb
+# Archived AMDVLK releases remain available if you need to test a legacy setup:
+# https://github.com/GPUOpen-Drivers/AMDVLK/releases
 ```
 
 ### For Intel Integrated Graphics
@@ -67,22 +65,25 @@ sudo apt-get install -y mesa-vulkan-drivers intel-media-va-driver libvulkan1
 
 ## Installing Vulkan Validation Layers and SDK
 
-Validation layers are essential for development. The Vulkan SDK from LunarG provides a comprehensive package:
+Validation layers are essential for development. The Vulkan SDK from LunarG provides a comprehensive package, though LunarG announced that Ubuntu package updates would stop after May 2025, so check the SDK download site if you need the newest SDK release:
 
 ```bash
-# Add LunarG repository
+# Add the LunarG repository for your Ubuntu release
 wget -qO- https://packages.lunarg.com/lunarg-signing-key-pub.asc | sudo tee /etc/apt/trusted.gpg.d/lunarg.asc
-sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list http://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
+sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-noble.list http://packages.lunarg.com/vulkan/lunarg-vulkan-noble.list
+
+# On Ubuntu 22.04, use the Jammy list instead:
+# sudo wget -qO /etc/apt/sources.list.d/lunarg-vulkan-jammy.list http://packages.lunarg.com/vulkan/lunarg-vulkan-jammy.list
 
 sudo apt-get update
 sudo apt-get install -y vulkan-sdk
 
 # Or install just the components you need
 sudo apt-get install -y \
-    libvulkan-dev \        # Development headers
-    vulkan-tools \         # vulkaninfo, vkcube
-    spirv-tools \          # SPIR-V shader tools
-    glslang-tools \        # GLSL to SPIR-V compiler
+    libvulkan-dev \
+    vulkan-tools \
+    spirv-tools \
+    glslang-tools \
     vulkan-validationlayers  # Validation layers
 ```
 
@@ -112,8 +113,8 @@ Run the demo cube:
 # 3D spinning cube rendered with Vulkan
 vkcube
 
-# Offscreen rendering test
-vkcube --c 100  # render 100 frames and exit
+# Render 100 frames and exit
+vkcube --c 100
 ```
 
 ## Selecting the Active Vulkan ICD
@@ -126,12 +127,11 @@ ls /usr/share/vulkan/icd.d/
 # Might show: nvidia_icd.json, radeon_icd.x86_64.json, amdvlk64.json, etc.
 
 # Force a specific ICD via environment variable
-VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json vulkaninfo --summary
+VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json vulkaninfo --summary
 
-# For AMD: choose between RADV (Mesa) and AMDVLK
-# RADV is generally faster for gaming; AMDVLK may perform better for compute
-VK_ICD_FILENAMES=/etc/vulkan/icd.d/amd_icd64.json vkcube  # AMDVLK
-VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json vkcube  # RADV
+# For AMD: use RADV, or select an archived AMDVLK install if you are testing one
+VK_DRIVER_FILES=/etc/vulkan/icd.d/amd_icd64.json vkcube  # AMDVLK
+VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json vkcube  # RADV
 ```
 
 ## Setting Up Vulkan for Game Development
@@ -179,7 +179,7 @@ glslangValidator -V shader.vert -o vert.spv
 
 ```bash
 # Enable validation layers via environment variable
-VK_LOADER_DEBUG=all VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation ./your-vulkan-app
+VK_LOADER_DEBUG=all VK_LOADER_LAYERS_ENABLE=VK_LAYER_KHRONOS_validation ./your-vulkan-app
 
 # Or in C/C++ code, enable them when creating the VkInstance:
 # VkInstanceCreateInfo createInfo = {};
@@ -190,15 +190,18 @@ VK_LOADER_DEBUG=all VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation ./your-vulkan
 
 ## Vulkan with DXVK and Wine for Windows Games
 
-DXVK translates DirectX 11/12 calls to Vulkan, enabling Windows games to run on Linux:
+DXVK translates Direct3D 9, 10, and 11 calls to Vulkan, enabling Windows games to run on Linux. Direct3D 12 translation is handled by VKD3D-Proton:
 
 ```bash
 # Install Wine and DXVK through Lutris or manually
+sudo dpkg --add-architecture i386
+sudo apt-get update
 sudo apt-get install -y wine64 wine32
 
 # Install DXVK
-curl -fsSL https://github.com/doitsujin/dxvk/releases/latest/download/dxvk-2.3.tar.gz | tar -xz
-cd dxvk-2.3
+DXVK_VERSION=2.7.1
+curl -fsSL "https://github.com/doitsujin/dxvk/releases/download/v${DXVK_VERSION}/dxvk-${DXVK_VERSION}.tar.gz" | tar -xz
+cd "dxvk-${DXVK_VERSION}"
 ./setup_dxvk.sh install --symlink
 
 # Or use Proton (Steam's gaming layer) which includes DXVK
@@ -215,9 +218,8 @@ echo high | sudo tee /sys/class/drm/card0/device/power_dpm_force_performance_lev
 sudo nvidia-smi --persistence-mode=1
 sudo nvidia-smi --power-limit=350  # Set higher power limit
 
-# Mesa-specific environment variables for AMD
-AMD_VULKAN_ICD=RADV  # force RADV
-RADV_PERFTEST=gpl    # enable graphics pipeline library (faster shader compilation)
+# Mesa RADV: graphics pipeline library is enabled by default on current Mesa
+RADV_DEBUG=nogpl vkcube  # disable GPL only when troubleshooting
 ```
 
 ## Troubleshooting
@@ -241,18 +243,18 @@ Usually a driver issue. Try:
 
 ```bash
 # Force software rendering to confirm loader works
-VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json vkcube
+VK_DRIVER_FILES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json vkcube
 
 # If software rendering works, the problem is in the GPU driver
-# Reinstall the driver
-sudo apt-get reinstall nvidia-driver-545
+# Reinstall the recommended driver
+sudo ubuntu-drivers install
 ```
 
 ### Multiple GPU selection
 
 ```bash
-# Select a specific GPU by index
-DISPLAY=:0 vkcube  # uses first GPU
+# Test a specific GPU index in vkcube
+vkcube --gpu_number 0
 
 # In Vulkan code, enumerate all physical devices and select by properties
 # vulkaninfo shows all available GPUs and their indices
