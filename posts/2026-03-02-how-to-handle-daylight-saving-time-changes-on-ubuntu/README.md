@@ -14,13 +14,13 @@ Daylight saving time (DST) transitions cause real problems in production systems
 
 The core issue is that local time is not monotonically increasing. When clocks fall back:
 
-- The local time 2:30 AM occurs twice in the same day
-- Log entries at 2:30 AM are ambiguous - which one?
-- Cron jobs scheduled at 2:30 AM may run twice
+- A local time in the repeated hour occurs twice in the same day
+- Log entries during the repeated hour are ambiguous - which one?
+- Cron behavior depends on the implementation; Ubuntu's standard cron avoids re-running fixed-time jobs in the repeated hour
 
 When clocks spring forward:
 - The local time 2:30 AM never occurs
-- Cron jobs scheduled during the skipped hour don't run
+- Ubuntu's standard cron runs fixed-time jobs from the skipped hour soon after the change, while other schedulers may skip them
 
 Additional complications:
 - Time comparisons in applications that use local time give wrong results
@@ -75,28 +75,26 @@ zdump -v /etc/localtime | grep "$(date +%Y)" | head -10
 # Check transitions for a specific timezone
 zdump -v America/New_York | grep "2026"
 
-# Python script for clean DST transition display
+# Python script for clean DST transition display (uses the standard library)
 python3 << 'EOF'
-import pytz
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 def show_dst_transitions(tz_name, year):
-    tz = pytz.timezone(tz_name)
+    tz = ZoneInfo(tz_name)
     print(f"DST transitions for {tz_name} in {year}:")
 
-    prev_offset = None
-    # Check each month
-    for month in range(1, 13):
-        for day in range(1, 32):
-            try:
-                dt = datetime(year, month, day, 0, 0, 0)
-                dt_aware = tz.localize(dt)
-                offset = dt_aware.utcoffset()
-                if prev_offset is not None and offset != prev_offset:
-                    print(f"  {dt.strftime('%b %d')}: offset changes from {prev_offset} to {offset}")
-                prev_offset = offset
-            except ValueError:
-                pass
+    current = datetime(year, 1, 1, tzinfo=timezone.utc)
+    end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    prev_offset = current.astimezone(tz).utcoffset()
+
+    while current < end:
+        current += timedelta(hours=1)
+        offset = current.astimezone(tz).utcoffset()
+        if offset != prev_offset:
+            local_time = current.astimezone(tz)
+            print(f"  {local_time:%b %d %H:%M %Z}: offset changes from {prev_offset} to {offset}")
+            prev_offset = offset
 
 show_dst_transitions("America/New_York", 2026)
 show_dst_transitions("Europe/London", 2026)
@@ -105,28 +103,30 @@ EOF
 
 ## Cron Jobs and DST
 
-Standard cron runs jobs based on local time. This creates DST issues:
+Standard cron runs jobs based on the system timezone. This creates DST issues, but the exact behavior depends on the cron implementation. Ubuntu's standard cron includes special handling for clock changes of less than three hours, including DST transitions.
 
-### The Fallback Problem (2 AM becomes 1 AM)
+### The Fallback Problem (the repeated hour)
 
-A cron job at `30 2 * * *` (2:30 AM) will run twice when clocks fall back because 2:30 AM happens twice.
+A cron job scheduled during the repeated hour may run twice on some cron implementations because that local time happens twice.
+
+On Ubuntu's standard cron, fixed-time jobs that fall into the repeated hour are not re-run. Jobs that use wildcards in the minute or hour field are evaluated against the new time immediately.
 
 ### The Spring Forward Problem (2 AM becomes 3 AM)
 
-A cron job at `30 2 * * *` will not run when clocks spring forward because 2:30 AM never exists.
+A cron job at `30 2 * * *` may be skipped or delayed when clocks spring forward because 2:30 AM never exists.
+
+On Ubuntu's standard cron, fixed-time jobs that would have run during the skipped time are run soon after the clock change. Other cron implementations may skip them, so do not assume identical behavior across distributions.
 
 ### Solutions for Cron DST Issues
 
-**Option 1: Schedule in UTC with the TZ variable:**
+**Option 1: Run cron in UTC by setting the server timezone to UTC:**
 
 ```bash
+sudo timedatectl set-timezone UTC
 sudo crontab -e
 ```
 
 ```bash
-# Set crontab to use UTC (ignores DST)
-CRON_TZ=UTC
-
 # This job runs at 2:30 AM UTC every day, regardless of DST
 30 2 * * * /usr/local/bin/daily-backup.sh
 
@@ -182,7 +182,7 @@ journalctl --since "2026-03-08 01:00:00" --until "2026-03-08 04:00:00"
 journalctl --utc --since "2026-03-08"
 
 # syslog format (used by rsyslog) uses local time
-# Log entries at 2:30 AM during fallback will appear twice
+# Log entries during the repeated hour can appear twice
 # Compare:
 grep "Nov  1" /var/log/syslog | grep "01:3[0-9]"
 # You may see duplicate timestamps
@@ -331,14 +331,12 @@ echo "[INFO] tzdata version: $TZDATA_VERSION"
 
 If your server is set to UTC, nothing special happens. The transition is transparent to the server. Applications and databases that store UTC timestamps are unaffected.
 
-The only visible change on a UTC server during DST transitions is:
-- The wall clock offset displayed in timestamps changes (e.g., EST -0500 changes to EDT -0400)
-- Local-time representations of UTC timestamps shift
+On a UTC server, system timestamps remain in UTC and the displayed offset stays `+0000`. The only visible change is in applications or reports that convert UTC timestamps to a local timezone that observes DST.
 
 ```bash
-# On a UTC server, verify transition is handled correctly
-date -d "2026-03-08 07:00:00 UTC"   # Should show as 2 AM EST (before transition)
-date -d "2026-03-08 07:00:01 UTC"   # Should show as 3 AM EDT (after transition)
+# Verify the New York local-time representation of a UTC transition
+TZ=America/New_York date -d "2026-03-08 06:59:59 UTC"   # Shows 1:59:59 AM EST
+TZ=America/New_York date -d "2026-03-08 07:00:00 UTC"   # Shows 3:00:00 AM EDT
 # This is purely display; internally still UTC
 ```
 
