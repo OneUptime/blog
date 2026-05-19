@@ -88,8 +88,8 @@ free -h
 # Detailed memory map
 cat /proc/meminfo
 
-# Memory utilization calculation (used = total - free - buffers - cache)
-free | awk '/^Mem:/ {printf "Used: %.1f%% (%s/%s)\n", ($2-$4-$5-$6)/$2*100, $3, $2}'
+# Memory utilization percentage (used / total)
+free | awk '/^Mem:/ {printf "Used: %.1f%% (%s/%s)\n", $3/$2*100, $3, $2}'
 
 # Per-process memory usage
 ps aux --sort=-%mem | head -15
@@ -122,7 +122,8 @@ cat /proc/sys/vm/swappiness
 ```bash
 # Hardware memory errors (requires edac or mcelog)
 sudo apt install edac-utils -y
-sudo edac-util -s 4
+sudo edac-util -s   # Status of EDAC drivers
+sudo edac-util -r   # Report any corrected/uncorrected errors
 
 # Check for corrected/uncorrected memory errors
 cat /sys/bus/edac/devices/*/edac*/ce_count 2>/dev/null  # Corrected errors
@@ -153,12 +154,12 @@ sudo iotop -b -n 5 -d 1
 
 ### Saturation
 ```bash
-# avgqu-sz (average queue size) in iostat output
-# Queue > 1 means I/O is backing up
-iostat -x 1 5 | awk 'NR>3 {print $1, $9, $11, $16}'
-# Field $9 = avgqu-sz (average queue size)
-# Field $11 = await (average wait time)
-# Field $16 = %util
+# Look at iostat -x output for these columns:
+#   aqu-sz   - average queue size (>1 means I/O is backing up)
+#   r_await  - average read wait time (ms)
+#   w_await  - average write wait time (ms)
+#   %util    - % of time the device was busy
+iostat -x 1 5
 
 # I/O pressure stall info
 cat /proc/pressure/io
@@ -217,14 +218,14 @@ ip -s link show eth0 | grep "RX:" -A 2
 # "dropped" count is the key indicator
 
 # More detailed NIC stats
-sudo ethtool -S eth0 | grep -E "drop\|miss\|error" | grep -v ": 0"
+sudo ethtool -S eth0 | grep -E "drop|miss|error" | grep -v ": 0"
 
 # Socket receive buffer saturation
 ss -tmpne | awk '$2 > 0 {print "Recv-Q:"$2, "PID:"$7}'
 # Non-zero Recv-Q means the application can't read fast enough
 
-# Network pressure
-cat /proc/pressure/network 2>/dev/null || echo "Network pressure not available"
+# Note: PSI (Pressure Stall Information) covers only cpu, memory, and io.
+# There is no /proc/pressure/network in the upstream kernel.
 ```
 
 ### Errors
@@ -263,7 +264,8 @@ echo "-- Utilization (last 1 second) --"
 mpstat 1 1 | tail -1
 
 echo "-- Saturation (run queue) --"
-vmstat 1 3 | tail -1 | awk '{print "Run queue:", $1, "  Load avg:", $(NF-2), $(NF-1), $NF}'
+vmstat 1 3 | tail -1 | awk '{print "Run queue (r):", $1, "  Blocked (b):", $2}'
+uptime | awk -F'load average:' '{print "Load average:", $2}'
 
 echo "-- Errors --"
 MCE=$(dmesg | grep -ic "machine check" 2>/dev/null || echo 0)
@@ -284,7 +286,8 @@ dmesg | grep -ic "memory error" | xargs echo "Memory errors in dmesg:"
 echo ""
 echo "=== Disk I/O ==="
 echo "-- Utilization & Saturation --"
-iostat -xz 1 1 | awk 'NR>4 && $1!="" {printf "%-15s util=%.0f%% queue=%.1f await=%.1fms\n", $1, $NF, $9, $11}'
+# Show the raw iostat output; look at the aqu-sz, r_await, w_await, and %util columns
+iostat -xz 1 1
 
 echo "-- Errors --"
 dmesg | grep -c "I/O error" | xargs echo "I/O errors in dmesg:"
