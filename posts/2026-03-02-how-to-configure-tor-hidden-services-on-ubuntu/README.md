@@ -22,14 +22,17 @@ Tor hidden services (officially called onion services) allow you to host a websi
 If Tor is not already installed, add the official Tor repository:
 
 ```bash
+# Install tools used by the repository setup commands
+sudo apt install -y gnupg lsb-release
+
 # Add Tor Project signing key
 
 wget -qO- https://deb.torproject.org/torproject.org/A3C4F0F979CAA22CDBA8F512EE8CBC9E886DDD89.asc \
   | gpg --dearmor \
-  | sudo tee /usr/share/keyrings/tor-archive-keyring.gpg > /dev/null
+  | sudo tee /usr/share/keyrings/deb.torproject.org-keyring.gpg > /dev/null
 
 # Add repository
-echo "deb [signed-by=/usr/share/keyrings/tor-archive-keyring.gpg] \
+echo "deb [signed-by=/usr/share/keyrings/deb.torproject.org-keyring.gpg] \
   https://deb.torproject.org/torproject.org $(lsb_release -cs) main" \
   | sudo tee /etc/apt/sources.list.d/tor.list
 
@@ -175,16 +178,26 @@ Client authorization restricts access to your onion service to only users who ha
 sudo mkdir -p /var/lib/tor/hidden_service/authorized_clients
 
 # Generate a key pair for the client
-python3 -c "
-import base64, os
-from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
-priv = X25519PrivateKey.generate()
-pub = priv.public_key()
-priv_bytes = priv.private_bytes_raw()
-pub_bytes = pub.public_bytes_raw()
-print('Private key (for client):', base64.b32encode(priv_bytes).decode().rstrip('='))
-print('Public key (for server):', base64.b32encode(pub_bytes).decode().rstrip('='))
-"
+sudo apt install -y openssl basez
+openssl genpkey -algorithm x25519 -out /tmp/client1.prv.pem
+
+# Format the raw keys as base32
+cat /tmp/client1.prv.pem \
+  | grep -v " PRIVATE KEY" \
+  | base64pem -d \
+  | tail --bytes=32 \
+  | base32 \
+  | sed 's/=//g' > /tmp/client1.prv.key
+
+openssl pkey -in /tmp/client1.prv.pem -pubout \
+  | grep -v " PUBLIC KEY" \
+  | base64pem -d \
+  | tail --bytes=32 \
+  | base32 \
+  | sed 's/=//g' > /tmp/client1.pub.key
+
+cat /tmp/client1.prv.key
+cat /tmp/client1.pub.key
 
 # Add the client public key to authorized_clients
 # Format: descriptor:x25519:<BASE32_PUBLIC_KEY>
@@ -199,12 +212,12 @@ sudo systemctl reload tor
 
 Use the Tor Browser to access the service. Enter the `.onion` address directly in the address bar.
 
-For SSH over Tor, configure your SSH client to use the Tor SOCKS proxy:
+For SSH over a local Tor daemon, configure your SSH client to use the Tor SOCKS proxy:
 
 ```bash
 # On the client machine, add to ~/.ssh/config
 Host *.onion
-    ProxyCommand nc -x 127.0.0.1:9050 %h %p
+    ProxyCommand nc -X 5 -x 127.0.0.1:9050 %h %p
 
 # Connect to the SSH hidden service
 ssh user@yourhiddenservice.onion
@@ -214,13 +227,13 @@ ssh user@yourhiddenservice.onion
 
 ```bash
 # Watch Tor logs for hidden service activity
-sudo tail -f /var/log/tor/log
+sudo journalctl -fu tor@default.service -u tor.service
 
 # Check if the hidden service is functioning
-sudo grep -i "hidden\|onion" /var/log/tor/log
+sudo journalctl -u tor@default.service -u tor.service | grep -iE "hidden|onion"
 
 # Verify Tor has loaded the hidden service correctly
-sudo systemctl status tor
+sudo systemctl status tor@default.service tor.service
 ```
 
 ## Backing Up the Hidden Service Key
