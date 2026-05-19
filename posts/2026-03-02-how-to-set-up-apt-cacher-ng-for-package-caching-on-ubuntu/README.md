@@ -60,7 +60,7 @@ BindAddress: 192.168.1.100 localhost
 
 # Maximum cache age for volatile data (Release files, Packages lists)
 # 0 = check upstream on every request
-ExTreshold: 4
+ExThreshold: 4
 
 # Maximum disk space for cache (in MB, 0 = unlimited)
 # Set a limit to prevent the cache from filling your disk
@@ -216,8 +216,8 @@ Over time, the cache accumulates outdated package versions. Run expiration perio
 # Trigger cache expiration via the web interface
 curl "http://localhost:3142/acng-report.html?doExpire=Start+Expiration"
 
-# Or use the command-line tool
-sudo apt-cacher-ng-expiry
+# Or run the maintenance script installed by the package
+sudo /etc/cron.daily/apt-cacher-ng
 
 # Check disk usage before and after
 du -sh /var/cache/apt-cacher-ng/
