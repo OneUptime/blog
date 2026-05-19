@@ -108,7 +108,7 @@ Selector                mail
 # Path to the private key
 KeyFile                 /etc/opendkim/keys/example.com/mail.private
 
-# Sign outgoing mail only (Mode s), verify incoming (Mode sv)
+# Operating mode: s = sign only, v = verify only, sv = both sign and verify
 Mode                    sv
 
 # Canonicalization: how headers/body are normalized before signing
@@ -290,8 +290,8 @@ ls -la /run/opendkim/
 # Verify path and permissions
 ls -la /etc/opendkim/keys/example.com/mail.private
 
-# Test signing without Postfix (debug mode)
-sudo opendkim -n -v -f
+# Validate the OpenDKIM configuration syntax (parses config and exits)
+sudo opendkim -n -v
 ```
 
 With DKIM correctly configured, email headers will include `dkim=pass` in the Authentication-Results field when received by major mail providers. This, combined with SPF and DMARC, dramatically improves deliverability for legitimate mail.
