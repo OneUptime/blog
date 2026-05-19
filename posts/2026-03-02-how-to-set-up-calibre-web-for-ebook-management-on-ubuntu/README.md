@@ -107,9 +107,7 @@ After=network.target
 Type=simple
 User=calibreweb
 Group=calibreweb
-ExecStart=/opt/calibre-web/venv/bin/cps \
-    --config-file /opt/calibre-web/config/app.db \
-    --port 8083
+ExecStart=/opt/calibre-web/venv/bin/cps -p /opt/calibre-web/config/app.db
 WorkingDirectory=/opt/calibre-web
 Restart=on-failure
 RestartSec=10
@@ -197,9 +195,9 @@ If you're starting fresh without an existing Calibre library, you need to create
 # Install Calibre (the desktop application that manages the library)
 sudo apt install -y calibre
 
-# Create an empty library
-calibredb add --with-library /opt/calibre-web/books /dev/null 2>/dev/null || true
-# This creates the metadata.db file that Calibre-Web needs
+# Initialize an empty library - any calibredb command against a new
+# directory will create the library and metadata.db file
+calibredb list --with-library /opt/calibre-web/books
 
 # Or simply point Calibre-Web at an empty directory and upload books via the web UI
 # Calibre-Web can create the initial database when uploading the first book
@@ -250,17 +248,15 @@ This syncs your Calibre library to your Kobo device over the network.
 
 Configure Calibre-Web to send books to your Kindle via Amazon's Send-to-Kindle email:
 
-1. Admin > Basic Configuration > Email Server:
-   - SMTP Server: your email provider's SMTP
-   - Port: 587
-   - Encryption: TLS
-   - User: your email address
-   - Password: app password
+1. Admin > Edit E-mail Server Settings:
+   - SMTP Hostname: your email provider's SMTP
+   - SMTP Port: 587
+   - Encryption: STARTTLS
+   - SMTP Username: your email address
+   - SMTP Password: app password
+   - From E-mail: `your-from-email@example.com`
 
-2. Admin > Basic Configuration > Goodreads/Send-to-Kindle:
-   - From: `your-from-email@example.com`
-
-3. Edit your user > Kindle Email: `your-kindle@kindle.com`
+2. Edit your user > Kindle E-mail: `your-kindle@kindle.com`
 
 Then from any book page, use the Send button to push directly to Kindle.
 
