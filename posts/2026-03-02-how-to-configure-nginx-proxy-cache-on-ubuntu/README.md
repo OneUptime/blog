@@ -20,9 +20,8 @@ Nginx should be installed and running. The `proxy_cache` module is included in t
 sudo apt update
 sudo apt install nginx -y
 
-# Verify the proxy_cache module is available
-nginx -V 2>&1 | grep -o 'with-http_proxy_module'
-# Should output: with-http_proxy_module
+# Verify Nginx was installed successfully
+nginx -v
 ```
 
 ## Configuring the Cache Zone
@@ -199,8 +198,8 @@ The backend can control caching behavior through response headers.
 # Respect Cache-Control headers from the backend
 # proxy_ignore_headers Cache-Control;  # Uncomment to ignore Cache-Control
 
-# Override cache validity from response headers
-proxy_cache_valid 200 10m;  # Cache 200 responses for 10 min regardless of headers
+# Set fallback cache validity when response headers do not provide caching rules
+proxy_cache_valid 200 10m;  # Cache 200 responses for 10 min unless headers override it
 ```
 
 If your backend sends `Cache-Control: no-store` or `Cache-Control: private`, Nginx will not cache those responses by default. You can override this behavior:
@@ -224,7 +223,8 @@ Nginx's open-source version does not include a cache purge module natively. The 
 CACHE_KEY="httpexample.com/api/products"
 HASH=$(echo -n "$CACHE_KEY" | md5sum | awk '{print $1}')
 
-find /var/cache/nginx/my_cache -name "${HASH: -1}/${HASH: -3:2}/${HASH}" -delete
+CACHE_FILE="/var/cache/nginx/my_cache/${HASH: -1}/${HASH: -3:2}/${HASH}"
+sudo rm -f "$CACHE_FILE"
 
 # Or simply clear all cache (restart-safe)
 sudo rm -rf /var/cache/nginx/my_cache/*
