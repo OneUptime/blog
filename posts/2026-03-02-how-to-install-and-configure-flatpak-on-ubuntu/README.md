@@ -33,7 +33,7 @@ sudo apt install gnome-software-plugin-flatpak
 # (usually requires logging out and back in)
 ```
 
-For KDE Plasma users, Discover already supports Flatpak without additional plugins.
+For KDE Plasma users, Discover supports Flatpak through its Flatpak backend; install or enable that backend if it is not already present.
 
 ## Adding the Flathub Repository
 
@@ -48,7 +48,7 @@ flatpak remotes
 
 # Output:
 # Name    Options
-# flathub system,eno
+# flathub system
 ```
 
 The `--if-not-exists` flag prevents errors if Flathub is already configured.
@@ -93,9 +93,9 @@ flatpak install flathub org.inkscape.Inkscape       # Inkscape
 # Run an installed Flatpak app
 flatpak run org.mozilla.firefox
 
-# Or use the application's name as created in /var/lib/flatpak/exports/bin/
+# Or use the exported wrapper from /var/lib/flatpak/exports/bin/
 # (This path is added to $PATH automatically after login)
-firefox  # Works if org.mozilla.firefox creates this binary
+org.mozilla.firefox
 
 # List all installed Flatpak apps
 flatpak list
@@ -211,8 +211,8 @@ flatpak install --user flathub org.mozilla.firefox
 # Check where an app is installed
 flatpak list --columns=name,installation
 
-# Convert between system and user installation
-flatpak install --user flathub org.mozilla.firefox  # If previously system-installed
+# Install a separate user-level copy
+flatpak install --user flathub org.mozilla.firefox
 ```
 
 System-installed apps are available to all users on the machine. User-installed apps are in `~/.local/share/flatpak/` and only visible to that user.
