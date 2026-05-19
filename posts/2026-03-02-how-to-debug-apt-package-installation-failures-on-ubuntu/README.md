@@ -83,8 +83,8 @@ apt-cache policy packagename
 # Install a specific version
 sudo apt install packagename=1.2.3-1ubuntu1
 
-# Check which package provides a needed dependency
-apt-cache show missing-dep-package | grep "Package\|Version"
+# Check which packages provide a virtual dependency
+apt-cache showpkg missing-dep-package
 ```
 
 ## Fixing "dpkg was interrupted"
@@ -95,7 +95,7 @@ This error means a previous installation failed mid-way, leaving the package dat
 # The fix is almost always to complete or undo the interrupted operation
 sudo dpkg --configure -a
 
-# If that fails, force the reconfiguration
+# If missing conffiles are causing the configure step to fail
 sudo dpkg --force-confmiss --configure -a
 
 # Then fix any remaining broken packages
@@ -116,12 +116,13 @@ sudo lsof /var/lib/dpkg/lock-frontend
 sudo lsof /var/lib/apt/lists/lock
 sudo lsof /var/cache/apt/archives/lock
 
-# Wait for the process to finish, or if it is stuck:
-sudo kill -9 <PID>
+# Wait for the process to finish, or if it is clearly stuck:
+sudo kill <PID>
 
 # Only remove locks after confirming no process is using them
 sudo rm /var/lib/dpkg/lock-frontend
 sudo rm /var/lib/dpkg/lock
+sudo rm /var/lib/apt/lists/lock
 sudo rm /var/cache/apt/archives/lock
 sudo dpkg --configure -a
 ```
@@ -131,19 +132,19 @@ sudo dpkg --configure -a
 Corrupted cached packages can cause installation failures.
 
 ```bash
-# Remove cached package files for the specific package
+# Remove all cached package files
 sudo apt clean
 
 # Re-download and install
 sudo apt install packagename
 
-# Remove only packages no longer needed
+# Remove cached package files that can no longer be downloaded
 sudo apt autoclean
 
-# Check cache integrity (checks download files)
-sudo apt-get -s install packagename  # simulate without downloading
+# Simulate the install without changing the system
+sudo apt-get -s install packagename
 
-# Force download even if the file appears to be cached
+# Reinstall a package that is already installed
 sudo apt install --reinstall packagename
 ```
 
@@ -155,11 +156,13 @@ sudo apt update 2>&1 | grep -E "^Err:|^W:"
 
 # Verify GPG key issues
 sudo apt update 2>&1 | grep "NO_PUBKEY"
-# If you see a key ID like "NO_PUBKEY ABCDEF123456":
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys ABCDEF123456
-# Or the newer way:
+# If you see a key ID like "NO_PUBKEY ABCDEF123456", avoid apt-key because it is deprecated.
+# Import the key into a repository-specific keyring and reference it with signed-by:
+sudo mkdir -p /etc/apt/keyrings
 sudo gpg --keyserver keyserver.ubuntu.com --recv-keys ABCDEF123456
-sudo gpg --export ABCDEF123456 | sudo tee /usr/share/keyrings/custom-keyring.gpg
+sudo gpg --export ABCDEF123456 | sudo tee /etc/apt/keyrings/custom-keyring.gpg >/dev/null
+# Then update the matching source entry to include:
+# deb [signed-by=/etc/apt/keyrings/custom-keyring.gpg] https://example.com/ubuntu noble main
 
 # Check for malformed sources
 sudo apt update 2>&1 | grep "Malformed"
@@ -206,7 +209,8 @@ dpkg -l | grep -E "^[a-z][A-Z]|^.[A-Z]"
 # States that indicate problems:
 # "iU" = installed but unconfigured
 # "rH" = removal needed, half-installed
-# "pi" = purge, package installed but not configured
+# "iF" = installation failed during configuration
+# "iHR" = installed package marked half-installed and requiring reinstallation
 
 # Force remove a package that refuses to uninstall
 sudo dpkg --force-remove-reinstreq --purge badpackage
@@ -242,14 +246,16 @@ When you are not sure where to start, run through this sequence.
 #!/bin/bash
 # apt-repair.sh - Standard APT repair sequence
 
-echo "Step 1: Kill zombie dpkg/apt processes"
-sudo killall apt apt-get dpkg 2>/dev/null
+echo "Step 1: Check for running dpkg/apt processes"
+pgrep -a '^(apt|apt-get|dpkg)$' || true
 
-echo "Step 2: Remove stale locks"
-sudo rm -f /var/lib/dpkg/lock-frontend
-sudo rm -f /var/lib/dpkg/lock
-sudo rm -f /var/cache/apt/archives/lock
-sudo rm -f /var/lib/apt/lists/lock
+echo "Step 2: If no apt/dpkg process is running, remove stale locks"
+sudo lsof /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock /var/lib/apt/lists/lock || true
+# Only run these rm commands after confirming the locks are stale:
+# sudo rm -f /var/lib/dpkg/lock-frontend
+# sudo rm -f /var/lib/dpkg/lock
+# sudo rm -f /var/cache/apt/archives/lock
+# sudo rm -f /var/lib/apt/lists/lock
 
 echo "Step 3: Complete any interrupted dpkg operations"
 sudo dpkg --configure -a
