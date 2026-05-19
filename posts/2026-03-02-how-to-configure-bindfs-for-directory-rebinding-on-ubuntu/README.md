@@ -29,7 +29,7 @@ The most common use case is mounting a directory so that it appears to be owned 
 ```bash
 # Create source and mirror directories
 mkdir -p /home/alice/projects
-mkdir -p /mnt/alice-projects
+sudo mkdir -p /mnt/alice-projects
 
 # Create some test files as alice
 su - alice -c "echo 'hello' > /home/alice/projects/test.txt"
@@ -57,7 +57,7 @@ bindfs allows fine-grained control over how permissions are translated.
 ```bash
 # Mirror a directory with all files appearing group-writable
 sudo bindfs \
-    --perms=og+w \
+    --perms=g+w \
     /srv/shared-data \
     /mnt/group-write-view
 
@@ -68,7 +68,6 @@ sudo bindfs \
     /srv/readonly-data \
     /mnt/readonly-view
 
-# Only expose files matching certain criteria
 # Force all files to appear with 644 permissions
 sudo bindfs \
     --create-with-perms=0644 \
@@ -151,7 +150,7 @@ The options for fstab use the long-form names:
 # Common fstab bindfs options:
 # force-user=USERNAME   - force owner to this user
 # force-group=GROUPNAME - force group to this group
-# perms=MODE            - force permission mode
+# perms=MODE            - apply bindfs permission mapping
 # create-for-user=UID   - new files created as this user
 # create-for-group=GID  - new files created as this group
 # multithreaded         - enable multithreaded mode
@@ -209,8 +208,8 @@ sudo bindfs \
 bindfs is a FUSE filesystem, so regular users can mount it if configured properly.
 
 ```bash
-# Allow users to mount FUSE filesystems
-# This is already the default on Ubuntu (check /etc/fuse.conf)
+# Allow non-root users to specify FUSE allow_other/allow_root
+# bindfs enables allow_other by default, so check /etc/fuse.conf
 grep user_allow_other /etc/fuse.conf
 # user_allow_other (should be uncommented)
 
@@ -218,6 +217,8 @@ grep user_allow_other /etc/fuse.conf
 sudo sed -i 's/#user_allow_other/user_allow_other/' /etc/fuse.conf
 
 # Regular user can mount with their own home as source
+mkdir -p ~/documents-mirror
+
 bindfs \
     -u $(id -u) \
     -g $(id -g) \
@@ -242,7 +243,7 @@ sudo mount -t overlay overlay \
     /tmp/overlay/merged
 
 # Now mount the overlay view with remapped ownership via bindfs
-mkdir -p /mnt/app-view
+sudo mkdir -p /mnt/app-view
 sudo bindfs -u appuser -g appuser /tmp/overlay/merged /mnt/app-view
 
 # The application sees files owned by appuser
