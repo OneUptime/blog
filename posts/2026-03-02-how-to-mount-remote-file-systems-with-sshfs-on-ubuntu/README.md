@@ -66,13 +66,22 @@ cp ~/remote/logs/access.log /tmp/
 # Mount with several useful options
 sshfs user@remote-server:/srv/app ~/remote \
     -o IdentityFile=~/.ssh/id_ed25519 \
-    -o StrictHostKeyChecking=no \      # skip host key prompt (use with caution)
-    -o ServerAliveInterval=15 \        # keep the SSH connection alive
-    -o ServerAliveCountMax=3 \         # retry 3 times before giving up
-    -o reconnect \                     # automatically reconnect if disconnected
-    -o port=2222 \                     # non-standard SSH port
-    -o follow_symlinks \               # follow symlinks on the remote server
-    -o transform_symlinks              # adjust absolute symlinks to be relative
+    -o StrictHostKeyChecking=no \
+    -o ServerAliveInterval=15 \
+    -o ServerAliveCountMax=3 \
+    -o reconnect \
+    -o port=2222 \
+    -o follow_symlinks \
+    -o transform_symlinks
+
+# Options explained:
+# -o StrictHostKeyChecking=no : skip host key prompt (use with caution)
+# -o ServerAliveInterval=15   : keep the SSH connection alive
+# -o ServerAliveCountMax=3    : retry 3 times before giving up
+# -o reconnect                : automatically reconnect if disconnected
+# -o port=2222                : non-standard SSH port
+# -o follow_symlinks          : follow symlinks on the remote server
+# -o transform_symlinks       : adjust absolute symlinks to be relative
 ```
 
 ## Specifying the Remote Port
@@ -113,7 +122,7 @@ fusermount -u ~/remote
 # Lazy unmount (waits for all file handles to close)
 fusermount3 -uz ~/remote
 
-# Force unmount (not recommended)
+# Lazy unmount via umount (alternative to fusermount3 -uz)
 sudo umount -l ~/remote
 ```
 
@@ -191,16 +200,26 @@ sshfs adds overhead compared to local disk access. These options improve through
 ```bash
 # Performance-optimized mount
 sshfs user@remote:/path ~/remote \
-    -o Ciphers=aes128-gcm@openssh.com \   # fast cipher
-    -o Compression=no \                     # disable SSH compression (often slower for binary files)
-    -o cache=yes \                          # enable attribute caching
-    -o kernel_cache \                       # cache reads in the kernel
-    -o auto_cache \                         # invalidate cache when file changes
-    -o cache_timeout=115 \                  # attribute cache timeout (seconds)
+    -o Ciphers=aes128-gcm@openssh.com \
+    -o Compression=no \
+    -o cache=yes \
+    -o kernel_cache \
+    -o auto_cache \
+    -o cache_timeout=115 \
     -o attr_timeout=115 \
     -o entry_timeout=1200 \
-    -o max_readahead=131072 \               # read-ahead buffer size
-    -o large_read                           # use larger read packets
+    -o max_readahead=131072 \
+    -o large_read
+
+# Options explained:
+# -o Ciphers=aes128-gcm@openssh.com : fast cipher
+# -o Compression=no                 : disable SSH compression (often slower for binary files)
+# -o cache=yes                      : enable attribute caching
+# -o kernel_cache                   : cache reads in the kernel
+# -o auto_cache                     : invalidate cache when file changes
+# -o cache_timeout=115              : attribute cache timeout (seconds)
+# -o max_readahead=131072           : read-ahead buffer size
+# -o large_read                     : use larger read packets
 ```
 
 ## Benchmarking sshfs Performance
