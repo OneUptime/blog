@@ -29,7 +29,7 @@ tmpfiles configuration files go in:
 /usr/lib/tmpfiles.d/      # Package-installed configuration (do not edit)
 ```
 
-Files in `/etc/tmpfiles.d/` override files with the same name in `/usr/lib/tmpfiles.d/`.
+Files in `/etc/tmpfiles.d/` override files with the same name in `/run/tmpfiles.d/` or `/usr/lib/tmpfiles.d/`.
 
 ## Configuration File Format
 
@@ -43,8 +43,8 @@ The fields are:
 - **Type**: The action to take (d, f, L, z, Z, etc.)
 - **Path**: The filesystem path
 - **Mode**: Permissions (octal) or `-` for default
-- **User**: Owner or `-` for root
-- **Group**: Group owner or `-` for root
+- **User**: Owner or `-` for the invoking user (root for system services)
+- **Group**: Group owner or `-` for the invoking group (root for system services)
 - **Age**: For cleanup, how old files must be before removal (e.g., `10d`, `1w`, `-` to disable)
 - **Argument**: Content or target for some types
 
@@ -53,9 +53,9 @@ The fields are:
 | Type | Action |
 |------|--------|
 | `d` | Create directory, clean old files if age is set |
-| `D` | Create directory and remove contents on boot |
+| `D` | Create directory and remove contents when `--remove` is used |
 | `f` | Create file if it does not exist |
-| `F` | Create or truncate file |
+| `f+` | Create or truncate file |
 | `L` | Create symlink |
 | `z` | Set ownership/permissions on existing paths |
 | `Z` | Set ownership/permissions recursively |
@@ -146,8 +146,8 @@ sudo tee /etc/tmpfiles.d/config.conf << 'EOF'
 # Create a file with specific content if it does not exist
 f  /etc/myapp/default.conf  0644  root  root  -  # This is a default config
 
-# Create or truncate a file (F overwrites)
-F  /run/myapp/version        0444  root  root  -  1.2.3
+# Create or truncate a file (f+ overwrites)
+f+ /run/myapp/version        0444  root  root  -  1.2.3
 
 # Create a symlink
 L  /etc/myapp/active.conf   -     -     -     -  /etc/myapp/production.conf
@@ -163,8 +163,8 @@ sudo tee /etc/tmpfiles.d/permissions.conf << 'EOF'
 # Fix ownership on an existing directory (not recursive)
 z  /var/lib/myapp            0750  myapp   myapp   -
 
-# Fix ownership recursively on all files
-Z  /var/lib/myapp            0640  myapp   myapp   -
+# Fix ownership recursively while preserving non-executable files as non-executable
+Z  /var/lib/myapp            ~0750 myapp   myapp   -
 EOF
 ```
 
@@ -185,8 +185,8 @@ sudo systemd-tmpfiles --clean
 # Remove paths defined with 'r' or 'R' types
 sudo systemd-tmpfiles --remove
 
-# Show what would happen without making changes (dry run)
-sudo systemd-tmpfiles --create --dry-run /etc/tmpfiles.d/myapp.conf
+# Show the merged tmpfiles configuration
+systemd-tmpfiles --cat-config
 ```
 
 ## Understanding the Systemd Timer for Cleanup
@@ -213,13 +213,15 @@ journalctl -u systemd-tmpfiles-setup.service -b
 
 ## Handling Subdirectory Cleanup
 
-By default, the `d` type only deletes files in the directory itself, not in subdirectories. To also clean subdirectories, add `!` before the age:
+By default, age-based cleanup also applies to files and subdirectories below the configured directory. Use `x` or `X` rules to exclude paths from cleanup:
 
 ```bash
 sudo tee /etc/tmpfiles.d/deep-clean.conf << 'EOF'
-# Clean files recursively in subdirectories (the ! prefix)
-# Note: this is an advanced feature, check your systemd version
+# Clean files and subdirectories older than 30 days
 d  /var/cache/myapp  0755  myapp  myapp  30d
+
+# Exclude preserved reports from age-based cleanup
+x  /var/cache/myapp/preserved-reports  -  -  -  -
 EOF
 ```
 
@@ -229,11 +231,8 @@ Here is a complete example for a web application:
 
 ```bash
 sudo tee /etc/tmpfiles.d/webapp.conf << 'EOF'
-# Runtime files (cleaned at boot since D type removes on boot)
+# Runtime files (removed when --remove runs during boot)
 D  /run/webapp                   0755  webapp  webapp  -
-
-# PID file location
-d  /run/webapp                   0755  webapp  webapp  -
 
 # Upload processing area - clean files older than 1 hour
 d  /var/lib/webapp/processing    0750  webapp  webapp  1h
@@ -251,7 +250,7 @@ d  /var/cache/webapp             0755  webapp  webapp  30d
 d  /var/log/webapp               0755  webapp  webapp  -
 
 # Ensure ownership is correct on the entire data directory
-Z  /var/lib/webapp               0750  webapp  webapp  -
+Z  /var/lib/webapp               ~0750 webapp  webapp  -
 EOF
 
 # Apply it immediately
@@ -277,4 +276,4 @@ Files in `/etc/tmpfiles.d/` take precedence over those in `/usr/lib/tmpfiles.d/`
 
 ## Summary
 
-systemd-tmpfiles replaces ad-hoc scripts for managing temporary and runtime directories. Placing a configuration file in `/etc/tmpfiles.d/` is enough to ensure directories exist with the right ownership at boot and that stale files are cleaned up automatically. The format is declarative and easy to audit. The main types to know are `d` (create directory with optional cleanup), `e` (cleanup only), `z` and `Z` (fix permissions), and `f` (create file). Use `systemd-tmpfiles --create --dry-run` to test configurations before applying them.
+systemd-tmpfiles replaces ad-hoc scripts for managing temporary and runtime directories. Placing a configuration file in `/etc/tmpfiles.d/` is enough to ensure directories exist with the right ownership at boot and that stale files are cleaned up automatically. The format is declarative and easy to audit. The main types to know are `d` (create directory with optional cleanup), `e` (cleanup only), `z` and `Z` (fix permissions), and `f` (create file). Use `systemd-tmpfiles --cat-config` to inspect the merged configuration.
