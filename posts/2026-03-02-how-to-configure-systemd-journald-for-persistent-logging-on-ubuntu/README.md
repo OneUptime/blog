@@ -14,8 +14,8 @@ By default on some Ubuntu configurations, systemd-journald stores logs in `/run/
 
 The journal operates in two modes:
 
-- **Volatile** - logs stored in `/run/log/journal/` (RAM-based tmpfs). Lost on reboot. This is the default when `/var/log/journal/` doesn't exist.
-- **Persistent** - logs stored in `/var/log/journal/` (disk). Survives reboots. Requires the directory to exist.
+- **Volatile** - logs stored in `/run/log/journal/` (RAM-based tmpfs). Lost on reboot. This is the default with `Storage=auto` when `/var/log/journal/` doesn't exist.
+- **Persistent** - logs stored in `/var/log/journal/` (disk). Survives reboots. With `Storage=auto`, the directory must exist; with `Storage=persistent`, journald creates it if needed.
 
 ```bash
 # Check current storage mode
@@ -41,13 +41,13 @@ sudo mkdir -p /var/log/journal
 # Set correct ownership
 sudo chown root:systemd-journal /var/log/journal
 
-# Set permissions (group-readable, sticky bit for security)
+# Set permissions (group-readable, setgid bit so new files inherit the group)
 sudo chmod 2755 /var/log/journal
 
 # Flush existing logs to the new location
 sudo journalctl --flush
 
-# Force journal to recognize the new directory
+# Apply tmpfiles ownership, permissions, and ACLs
 sudo systemd-tmpfiles --create --prefix /var/log/journal
 
 # Restart journald
@@ -70,8 +70,8 @@ sudo nano /etc/systemd/journald.conf
 [Journal]
 # Storage mode: auto, volatile, persistent, or none
 # auto = persistent if /var/log/journal/ exists, otherwise volatile
-# persistent = always use /var/log/journal/
-# volatile = always use /run/log/journal/
+# persistent = store under /var/log/journal/ when it is writable
+# volatile = store under /run/log/journal/
 # none = disable journal storage
 Storage=persistent
 
@@ -102,7 +102,7 @@ SystemKeepFree=1G
 # Size at which individual journal files are rotated
 SystemMaxFileSize=100M
 
-# Maximum number of journal files to keep per user
+# Maximum number of journal files to keep
 SystemMaxFiles=100
 
 # Maximum time to retain journal entries
@@ -146,7 +146,7 @@ journalctl --list-boots   # Should now show multiple boots if logs existed
 
 ## Using Drop-in Configuration Files
 
-Rather than editing the main configuration file (which may be overwritten by package updates), use drop-in files:
+Rather than editing the main configuration file directly, use drop-in files:
 
 ```bash
 # Create drop-in directory
@@ -239,10 +239,10 @@ journalctl --list-boots
 # Output shows: Boot ID, First timestamp, Last timestamp
 
 # Example output:
-# -3 abc123...  Mon 2026-02-27 08:00:00 UTC - Mon 2026-02-27 23:59:58 UTC
-# -2 def456...  Tue 2026-02-28 08:00:01 UTC - Tue 2026-02-28 23:59:59 UTC
-# -1 ghi789...  Wed 2026-02-29 08:00:00 UTC - Wed 2026-02-29 23:59:59 UTC
-#  0 jkl012...  Sun 2026-03-01 08:00:02 UTC - Sun 2026-03-01 15:30:00 UTC
+# -3 abc123...  Fri 2026-02-27 08:00:00 UTC - Fri 2026-02-27 23:59:58 UTC
+# -2 def456...  Sat 2026-02-28 08:00:01 UTC - Sat 2026-02-28 23:59:59 UTC
+# -1 ghi789...  Sun 2026-03-01 08:00:00 UTC - Sun 2026-03-01 23:59:59 UTC
+#  0 jkl012...  Mon 2026-03-02 08:00:02 UTC - Mon 2026-03-02 15:30:00 UTC
 
 # Show logs from the previous boot
 journalctl -b -1
@@ -345,6 +345,9 @@ sudo systemctl restart systemd-journald
 
 # Verify journal integrity
 sudo journalctl --verify
+
+# Verify FSS authenticity as well, using the verification key
+sudo journalctl --verify --verify-key=YOUR_VERIFICATION_KEY
 ```
 
 ## Monitoring journald Health
@@ -377,8 +380,9 @@ journalctl -o export > /backup/journal-backup.bin
 # Export a specific time range
 journalctl --since "2026-03-01" --until "2026-03-02" -o export > /backup/march-01.bin
 
-# Import exported journal data (view only, can't merge back)
-journalctl --file /backup/journal-backup.bin
+# Convert exported journal data back to native format, then view it
+systemd-journal-remote -o /tmp/journal-backup.journal /backup/journal-backup.bin
+journalctl --file=/tmp/journal-backup.journal
 
 # Export as JSON for external processing
 journalctl -o json --since "1 hour ago" > /tmp/recent-logs.json
