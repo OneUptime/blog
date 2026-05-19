@@ -14,9 +14,10 @@ CNI (Container Network Interface) is the standard that Kubernetes, containerd, C
 
 The CNI specification defines a simple interface: a container runtime calls CNI plugins (executable binaries) with a JSON configuration and information about the container's network namespace. The plugins set up networking and return the assigned IP addresses back to the runtime.
 
-CNI plugins come in two categories:
-- **Interface plugins** - Create network interfaces (bridge, macvlan, ipvlan, etc.)
-- **Chained plugins** - Operate on top of other plugins (IPAM for IP allocation, bandwidth limiting, firewall rules)
+CNI plugins are commonly grouped into three categories:
+- **Main plugins** - Create network interfaces (bridge, macvlan, ipvlan, etc.)
+- **IPAM plugins** - Allocate IP addresses (host-local, dhcp, static)
+- **Meta plugins** - Operate on top of other plugins (bandwidth limiting, firewall rules, port mapping)
 
 ## Installing CNI Plugins on Ubuntu
 
@@ -28,7 +29,7 @@ The reference CNI plugins from the CNCF cover most common needs:
 sudo mkdir -p /opt/cni/bin
 
 # Download the CNI plugins tarball
-CNI_VERSION="v1.4.0"
+CNI_VERSION="v1.9.1"
 curl -sSL https://github.com/containernetworking/plugins/releases/download/${CNI_VERSION}/cni-plugins-linux-amd64-${CNI_VERSION}.tgz \
   | sudo tar -xz -C /opt/cni/bin
 
@@ -36,7 +37,7 @@ curl -sSL https://github.com/containernetworking/plugins/releases/download/${CNI
 ls /opt/cni/bin/
 ```
 
-You should see plugins like: `bridge`, `host-local`, `loopback`, `dhcp`, `ipvlan`, `macvlan`, `ptp`, `vlan`, `portmap`, `bandwidth`, `firewall`, `static`, `tuning`, `vrf`
+You should see plugins like: `bridge`, `host-local`, `loopback`, `dhcp`, `ipvlan`, `macvlan`, `ptp`, `vlan`, `portmap`, `bandwidth`, `firewall`, `static`, `tuning`, `vrf`, `host-device`, `dummy`, `tap`, `sbr`
 
 ### Create the CNI Configuration Directory
 
@@ -46,7 +47,7 @@ sudo mkdir -p /etc/cni/net.d
 
 ## CNI Configuration Format
 
-Each CNI configuration is a JSON file in `/etc/cni/net.d/`. The filename determines the order plugins are applied (lexicographic sort - lower names run first).
+Each CNI configuration is a JSON file in `/etc/cni/net.d/`. Many runtimes load configuration files from this directory in lexicographic order. For chained plugins, the order inside the `plugins` array determines the sequence.
 
 A basic configuration has this structure:
 
@@ -116,7 +117,7 @@ sudo nano /etc/cni/net.d/10-bridge.conf
 
 - `isGateway: true` - The bridge gets an IP address and acts as the container's gateway
 - `ipMasq: true` - NAT outbound traffic so containers can reach the internet
-- `hairpinMode: true` - Allow a container to reach itself via the bridge IP
+- `hairpinMode: true` - Enable hairpin mode on the bridge port for the container interface
 - `host-local` IPAM - Assign IPs from the local subnet, tracked in files
 
 ### macvlan Plugin - Direct MAC Address Containers
@@ -147,7 +148,7 @@ sudo nano /etc/cni/net.d/20-macvlan.conf
 - `master` - The physical interface to attach macvlan to
 - `mode: bridge` - Containers on the same macvlan can communicate with each other
 
-Note: With macvlan, the host cannot directly communicate with containers using the host's physical interface. Use macvtap or a separate interface if you need host-to-container communication.
+Note: With macvlan, the host cannot directly communicate with containers using the host's physical interface. Create a macvlan interface on the host or use a separate interface if you need host-to-container communication.
 
 ### ipvlan Plugin - Similar to macvlan but Shares MAC Address
 
