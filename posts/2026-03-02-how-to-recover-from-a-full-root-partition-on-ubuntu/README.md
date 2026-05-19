@@ -186,8 +186,8 @@ sudo find / -name "core" -o -name "core.[0-9]*" 2>/dev/null | head -20
 # Check if coredumps are being collected
 coredumpctl list
 
-# Clean them
-sudo coredumpctl clean
+# Clean them - systemd-coredump stores dumps in /var/lib/systemd/coredump/
+sudo rm -rf /var/lib/systemd/coredump/*
 sudo journalctl --rotate && sudo journalctl --vacuum-time=1s
 ```
 
