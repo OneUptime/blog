@@ -8,7 +8,7 @@ Description: Comprehensive guide to configuring PulseAudio on Ubuntu, covering s
 
 ---
 
-PulseAudio has been the default sound server on Ubuntu for many years, sitting between ALSA (which talks to hardware) and applications. It handles mixing multiple audio streams, routing audio to different outputs, network audio, and Bluetooth. While Ubuntu 22.04 and later default to PipeWire, PulseAudio remains widely used and understanding it is valuable for both older systems and troubleshooting.
+PulseAudio has been the default sound server on Ubuntu for many years, sitting between ALSA (which talks to hardware) and applications. It handles mixing multiple audio streams, routing audio to different outputs, network audio, and Bluetooth. While Ubuntu 22.10 and later default to PipeWire, PulseAudio remains widely used and understanding it is valuable for both older systems and troubleshooting.
 
 ## Understanding PulseAudio Concepts
 
@@ -111,6 +111,7 @@ PulseAudio's configuration lives in several places:
 cat /etc/pulse/daemon.conf
 
 # Create user override (only add lines you want to change)
+mkdir -p ~/.config/pulse
 cat > ~/.config/pulse/daemon.conf << 'EOF'
 # Reduce latency for real-time applications
 default-fragments = 2
@@ -124,7 +125,7 @@ alternate-sample-rate = 44100
 realtime-scheduling = yes
 realtime-priority = 9
 
-# Avoid module-suspend-on-idle (prevents audio pops when stream starts)
+# Keep the daemon running after the last client disconnects
 exit-idle-time = -1
 EOF
 ```
@@ -169,11 +170,11 @@ Share audio across machines on your network:
 
 ```bash
 # On the server (the machine with speakers):
-# Load TCP module
-pactl load-module module-native-protocol-tcp
+# Load TCP module and allow clients on your LAN
+pactl load-module module-native-protocol-tcp auth-ip-acl=127.0.0.1\;192.168.1.0/24
 
 # Add to /etc/pulse/default.pa for persistence:
-# load-module module-native-protocol-tcp
+# load-module module-native-protocol-tcp auth-ip-acl=127.0.0.1;192.168.1.0/24
 
 # On the client (machine sending audio):
 # Set the remote PulseAudio server
@@ -191,19 +192,19 @@ Install and use PulseAudio EQ:
 # Install equalizer
 sudo apt-get install -y pulseaudio-equalizer
 
-# Launch equalizer GUI
-qpaeq &
-
-# Load the EQ module
-pactl load-module module-equalizer-sink sink_name=equalizer
+# Load the D-Bus and EQ modules
 pactl load-module module-dbus-protocol
+pactl load-module module-equalizer-sink sink_name=equalizer
 
 # Set equalizer as default
 pactl set-default-sink equalizer
 
+# Launch equalizer GUI
+qpaeq &
+
 # For persistence, add to ~/.config/pulse/default.pa:
-# load-module module-equalizer-sink
 # load-module module-dbus-protocol
+# load-module module-equalizer-sink sink_name=equalizer
 # set-default-sink equalizer
 ```
 
@@ -305,6 +306,7 @@ paplay /usr/share/sounds/alsa/Front_Center.wav
 pactl load-module module-switch-on-port-available
 
 # Add to ~/.config/pulse/default.pa for persistence
+mkdir -p ~/.config/pulse
 echo "load-module module-switch-on-port-available" >> ~/.config/pulse/default.pa
 ```
 
@@ -312,6 +314,7 @@ echo "load-module module-switch-on-port-available" >> ~/.config/pulse/default.pa
 
 ```bash
 # Edit daemon.conf to increase buffer size
+mkdir -p ~/.config/pulse
 cat >> ~/.config/pulse/daemon.conf << 'EOF'
 default-fragments = 8
 default-fragment-size-msec = 25
