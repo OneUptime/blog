@@ -14,8 +14,8 @@ Ubuntu users today have access to three universal package formats alongside trad
 
 | Feature | Snap | Flatpak | AppImage |
 |---------|------|---------|----------|
-| Automatic updates | Yes (background) | Yes (manual trigger) | No |
-| Sandbox security | AppArmor + seccomp | Portals + bubblewrap | None |
+| Automatic updates | Yes (background) | Manual by default | No |
+| Sandbox security | AppArmor + seccomp | Portals + bubblewrap | None by default |
 | Desktop integration | Good | Good | Basic |
 | Offline use | After install | After install | Yes |
 | No installation needed | No | No | Yes |
@@ -26,11 +26,11 @@ Ubuntu users today have access to three universal package formats alongside trad
 
 ## Snap: Best For...
 
-**Ubuntu-specific workflows and server applications**: Snap is Ubuntu's native format and gets first-class support from Canonical. Snapd is pre-installed on all Ubuntu systems, so snap packages work without any setup.
+**Ubuntu-specific workflows and server applications**: Snap is Ubuntu's native format and gets first-class support from Canonical. Snapd is pre-installed on current Ubuntu releases, so snap packages work without any setup.
 
 **System-level applications and services**: Snap supports daemons and system services directly. Running a database, web server, or monitoring tool as a snap is fully supported and provides automatic update management.
 
-**Developer tools with classic confinement**: Tools like VS Code, Go, Rust toolchain, Heroku CLI, and kubectl are available as classic snaps, meaning they get full system access needed for development workflows.
+**Developer tools with classic confinement**: Tools like VS Code, Go, the Rust installer, and kubectl are available as classic snaps, meaning they get full system access needed for development workflows.
 
 ```bash
 # Scenarios where snap is the right choice:
@@ -39,7 +39,7 @@ sudo snap install code --classic          # VS Code with full filesystem access
 sudo snap install kubectl --classic       # Kubernetes CLI
 sudo snap install multipass               # VM management (requires system integration)
 sudo snap install lxd                     # Container management
-sudo snap install postgresql14            # Database server with service management
+sudo snap install postgresql              # Database server with service management
 sudo snap install certbot                 # Let's Encrypt client (needs system access)
 
 # Check if something is available as a snap
@@ -75,7 +75,7 @@ flatpak remote-ls flathub | grep -i "my-app"
 
 **One-off use of an application without installation**: AppImages are single executable files that run without installation. Download, make executable, run. Perfect for trying an application without committing to installing it.
 
-**Air-gapped or restricted systems**: AppImages have no runtime dependencies beyond the system libraries they bundle. They work without internet access, without a package manager, and without root privileges.
+**Air-gapped or restricted systems**: AppImages bundle many of their dependencies, though most Type 2 AppImages still need FUSE support from the host system. They work without internet access, without a package manager, and without root privileges once the needed host support is present.
 
 **Specific version pinning**: When you need to run version 2.3.1 of an application specifically (not whatever the current version is), AppImage files are versioned artifacts you keep exactly as-is.
 
@@ -138,9 +138,8 @@ snap info firefox | grep publisher
 snap info some-tool | grep publisher
 # publisher: random-developer (unverified)
 
-# For Flatpak - check Flathub verification
-flatpak remote-info flathub org.mozilla.firefox | grep Verified
-# Verified: true means upstream developer submitted this
+# For Flatpak - check the Flathub app page for the verification badge
+# A verified Flathub app is published by the original developer or an authorized party.
 ```
 
 Prefer packages published by the software's actual developers over third-party repackagers. Unverified publishers can repackage software without the same level of scrutiny as verified ones.
@@ -154,13 +153,14 @@ These formats coexist fine on the same system. Many users run some snaps, some F
 sudo apt install flatpak
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
-# AppImage: just needs FUSE
-sudo apt install fuse libfuse2
+# AppImage: most Type 2 AppImages need FUSE 2 support
+sudo apt install libfuse2      # Ubuntu 22.04
+sudo apt install libfuse2t64   # Ubuntu 24.04 and newer
 
 # Now all four package formats work side by side
 # APT, snap, Flatpak, and AppImage
 ```
 
-There's no performance penalty to using multiple formats - each application runs independently with its own runtime. The only cost is disk space from multiple runtimes.
+There's no system-wide performance penalty just from having multiple formats installed - each application runs independently with its own runtime. The main cost is disk space from multiple runtimes.
 
 The choice between Snap, Flatpak, and AppImage is rarely absolute. For any given application, pick whichever format has the best-maintained version from the most authoritative source.
