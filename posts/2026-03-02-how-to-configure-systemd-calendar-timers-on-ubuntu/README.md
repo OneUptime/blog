@@ -17,17 +17,17 @@ The `OnCalendar=` directive accepts a time specification that can range from sim
 ### Basic Format
 
 ```text
-OnCalendar=DayOfWeek Year-Month-Day Hour:Minute:Second
+OnCalendar=DayOfWeek Year-Month-Day Hour:Minute:Second TimeZone
 ```
 
-Each field accepts specific values, ranges, or wildcards. Missing fields default to `*` (any).
+Each field accepts specific values, ranges, or wildcards. If the date is omitted, `*-*-*` is implied; if the time is omitted, `00:00:00` is implied; if seconds are omitted, `:00` is assumed.
 
 ### Time Zone
 
 ```ini
 # Use a specific timezone
 
-OnCalendar=America/New_York 2026-*-* 08:00:00
+OnCalendar=2026-*-* 08:00:00 America/New_York
 
 # Use local time (default)
 OnCalendar=*-*-* 08:00:00
@@ -106,9 +106,8 @@ OnCalendar=*-*-01 03:00:00
 # 15th of every month
 OnCalendar=*-*-15 12:00:00
 
-# Last day of month (use -1 for last)
-# Note: systemd doesn't support -1 directly, use specific ranges
-# Workaround: use a script that checks the date
+# Last day of month
+OnCalendar=*-*~01 00:00:00
 
 # Quarterly: 1st of Jan, Apr, Jul, Oct
 OnCalendar=*-1,4,7,10-01 00:00:00
@@ -222,7 +221,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/certbot renew --quiet --no-self-upgrade
+ExecStart=/usr/bin/certbot renew --quiet
 ExecStartPost=/bin/systemctl reload nginx
 ```
 
@@ -395,6 +394,9 @@ sudo systemctl disable db-backup.timer
 # Stop the currently running timer
 sudo systemctl stop db-backup.timer
 
+# Remove persistent timer state
+sudo systemctl clean --what=state db-backup.timer
+
 # Remove the timer unit files
 sudo rm /etc/systemd/system/db-backup.timer
 sudo rm /etc/systemd/system/db-backup.service
@@ -402,7 +404,7 @@ sudo rm /etc/systemd/system/db-backup.service
 # Reload systemd
 sudo systemctl daemon-reload
 
-# Clean up leftover runtime state
+# Reset failed status if present
 sudo systemctl reset-failed db-backup.timer
 ```
 
