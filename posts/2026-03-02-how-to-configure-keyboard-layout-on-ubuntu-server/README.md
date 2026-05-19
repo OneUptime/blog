@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Keyboard Layout, System Administration, Localectl, Console
 
-Description: Configure keyboard layout on Ubuntu Server for both the console and X11 environments, including setting up non-US layouts, key mappings, and resolving layout issues over SSH.
+Description: Configure keyboard layout on Ubuntu Server for both the console and X11 environments, including setting up non-US layouts, key mappings, and resolving layout issues over remote consoles.
 
 ---
 
@@ -41,14 +41,14 @@ localectl list-keymaps | less
 
 # Search for a specific layout
 localectl list-keymaps | grep us
-localectl list-keymaps | grep gb
+localectl list-keymaps | grep uk
 localectl list-keymaps | grep de
 localectl list-keymaps | grep fr
 localectl list-keymaps | grep es
 
 # Set the console (virtual console) keyboard layout
 sudo localectl set-keymap us          # US QWERTY
-sudo localectl set-keymap gb          # UK keyboard
+sudo localectl set-keymap uk          # UK keyboard
 sudo localectl set-keymap de-latin1   # German
 sudo localectl set-keymap fr          # French AZERTY
 sudo localectl set-keymap dvorak      # Dvorak
@@ -102,8 +102,8 @@ XKBOPTIONS=""
 After editing, apply the changes:
 
 ```bash
-# Apply keyboard configuration to the console
-sudo setupcon --force --save-only 2>/dev/null || sudo dpkg-reconfigure keyboard-configuration
+# Update saved console-setup files for boot
+sudo setupcon --save-only 2>/dev/null || true
 
 # Apply via setupcon (applies immediately)
 sudo setupcon
@@ -131,7 +131,7 @@ This walks through:
 For automated/scripted environments:
 
 ```bash
-# Set keyboard layout non-interactively
+# Apply existing keyboard-configuration selections non-interactively
 sudo DEBIAN_FRONTEND=noninteractive dpkg-reconfigure keyboard-configuration
 
 # Or manually write the config and apply
@@ -171,7 +171,7 @@ Other switching key combinations:
 
 ## Console-Only Keyboard Configuration
 
-For console (TTY) without X11, the keymap is configured separately:
+For console (TTY) without X11, Ubuntu normally uses `/etc/default/keyboard` through `setupcon`. Use `loadkeys` for temporary console-only changes:
 
 ```bash
 # List available console keymaps
@@ -186,25 +186,23 @@ sudo loadkeys uk
 sudo loadkeys de-latin1
 sudo loadkeys fr
 
-# Persist the console keymap
-# Edit /etc/vconsole.conf (systemd approach)
-sudo nano /etc/vconsole.conf
+# Persist the console keymap on Ubuntu
+sudo nano /etc/default/keyboard
 ```
 
 ```bash
-# /etc/vconsole.conf
-KEYMAP=us
-KEYMAP_TOGGLE=
-FONT=
-FONT_MAP=
-FONT_UNIMAP=
+# /etc/default/keyboard
+XKBMODEL="pc105"
+XKBLAYOUT="us"
+XKBVARIANT=""
+XKBOPTIONS=""
 ```
 
 ```bash
 # Apply immediately
-sudo systemctl restart console-setup
+sudo systemctl restart keyboard-setup.service 2>/dev/null || sudo setupcon -k
 
-# Or use localectl which updates vconsole.conf
+# Or use localectl
 sudo localectl set-keymap us
 ```
 
@@ -221,7 +219,7 @@ cat -v  # Then press the key to see its escape code
 # Using xdotool or setxkbmap for X11:
 setxkbmap -option caps:escape   # X11
 
-# Console remap (persistent in vconsole.conf or /etc/default/keyboard)
+# Console remap (persistent in /etc/default/keyboard on Ubuntu)
 sudo nano /etc/default/keyboard
 # XKBOPTIONS="caps:escape"
 
@@ -247,12 +245,12 @@ Solution: Match server keyboard layout to your physical keyboard, or use a US ke
 sudo localectl set-keymap us
 
 # 2. Or set to match your physical keyboard
-sudo localectl set-keymap gb  # If you have a UK keyboard
+sudo localectl set-keymap uk  # If you have a UK keyboard
 ```
 
 ## Keyboard Layout in Cloud Instances
 
-Cloud instances typically use US keyboard layout by default, which matches the hardware the host server uses:
+Cloud instances typically use a US keyboard layout by default for virtual or serial console access:
 
 ```bash
 # For AWS/GCP/Azure instances - check the layout
@@ -284,11 +282,11 @@ After setting the layout, test it:
 
 ```bash
 # Apply to virtual consoles immediately
-sudo systemctl restart keyboard-setup.service 2>/dev/null
-sudo setupcon
+sudo systemctl restart keyboard-setup.service 2>/dev/null || sudo setupcon -k
+sudo setupcon -k
 
-# Or reload console configuration
-sudo loadkeys $(grep XKBLAYOUT /etc/default/keyboard | cut -d= -f2 | tr -d '"')
+# Or load a specific console keymap temporarily
+sudo loadkeys us
 
 # Check systemd service status
 systemctl status keyboard-setup.service 2>/dev/null
