@@ -65,6 +65,12 @@ This approach is useful when you want to control cloud-init status from the boot
 
 Instead of disabling all of cloud-init, mask only the services you don't need:
 
+On some cloud-init versions the network-stage unit is named `cloud-init-network.service` instead of `cloud-init.service`. Check your installed unit names first:
+
+```bash
+systemctl list-unit-files 'cloud-init*.service' cloud-config.service cloud-final.service
+```
+
 ```bash
 # Disable all cloud-init services
 sudo systemctl disable cloud-init-local.service
@@ -81,6 +87,8 @@ sudo systemctl mask cloud-final.service
 # Verify
 systemctl status cloud-init.service
 ```
+
+If your system uses `cloud-init-network.service`, substitute that name anywhere the commands use `cloud-init.service`.
 
 Masking is stronger than disabling - a masked unit cannot be started even as a dependency of another service.
 
@@ -136,17 +144,6 @@ sudo nano /etc/cloud/cloud.cfg
 #  - ...
 #  - users-groups    # comment out to disable
 #  - ...
-```
-
-Or add a drop-in file to override specific settings:
-
-```bash
-# Disable cc_puppet module
-sudo tee /etc/cloud/cloud.cfg.d/90-disable-puppet.cfg << 'EOF'
-puppet:
-  install: false
-  start: false
-EOF
 ```
 
 ## Preventing cloud-init from Running on Subsequent Boots
