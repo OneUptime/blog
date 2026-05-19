@@ -36,12 +36,14 @@ sudo usermod -aG lpadmin $USER
 # List detected printers (USB printers should appear)
 lpinfo -v
 
-# Add a USB-connected printer
+# Add a connected printer
 # Find the URI from lpinfo -v output, e.g., usb://HP/LaserJet
+# Find a matching driver with lpinfo -m, or use "everywhere" for
+# driverless IPP/IPP-USB printers
 sudo lpadmin \
     -p OfficeHP \
     -v "usb://HP/LaserJet" \
-    -m "drv:///hpijs.drv/hp-laserjet_1020.ppd" \
+    -m "drv:///sample.drv/generic.ppd" \
     -D "Office HP LaserJet" \
     -E
 
@@ -62,10 +64,11 @@ sudo nano /etc/cups/cupsd.conf
 
 ```text
 # Listen on all interfaces (not just localhost)
-Listen 0.0.0.0:631
+Port 631
 
 # Enable Bonjour sharing (required for macOS discovery)
 BrowseLocalProtocols dnssd
+BrowseDNSSDSubTypes _cups,_print
 
 # Allow connections from your local network
 <Location />
@@ -207,13 +210,13 @@ sudo nano /etc/cups/cupsd.conf
   Allow localhost
   Allow 192.168.1.0/24
   AuthType Basic
-  Require user @SYSTEM @lp
+  Require user macuser
 </Location>
 ```
 
 ```bash
-# Create a CUPS user for macOS clients to authenticate
-sudo lppasswd -a macuser
+# Create a local user for macOS clients to authenticate as
+sudo adduser macuser
 ```
 
 On macOS, when adding the printer, it will prompt for credentials.
@@ -257,6 +260,7 @@ Listen *:631
 Listen /run/cups/cups.sock
 
 BrowseLocalProtocols dnssd
+BrowseDNSSDSubTypes _cups,_print
 
 ServerAlias *
 
@@ -301,13 +305,10 @@ sudo tail -f /var/log/cups/access_log
 grep "192.168.1.5" /var/log/cups/access_log | tail -20
 
 # List all completed jobs
-lpstat -W completed -p OfficeHP | head -20
+lpstat -W completed -o OfficeHP | head -20
 
 # Get page count for billing/reporting
-grep "Successful-OK" /var/log/cups/page_log | \
-    awk '{print $1, $2, $7}' | \
-    sort | \
-    uniq -c
+awk '{print $1, $2, $3, $6}' /var/log/cups/page_log | tail -20
 ```
 
 ## Troubleshooting Cross-Platform Printing
