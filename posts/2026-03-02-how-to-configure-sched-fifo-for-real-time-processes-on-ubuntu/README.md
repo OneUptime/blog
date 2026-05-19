@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Real-Time, SCHED_FIFO, Scheduling, Performance
 
-Description: Learn how to use SCHED_FIFO real-time scheduling policy on Ubuntu to give critical processes guaranteed CPU time and predictable execution order.
+Description: Learn how to use SCHED_FIFO real-time scheduling policy on Ubuntu to give critical processes predictable scheduling order and priority over normal tasks.
 
 ---
 
-Linux offers several scheduling policies. The default `SCHED_OTHER` (also called `SCHED_NORMAL`) is a fair-share time-slicing scheduler optimized for throughput. `SCHED_FIFO` is a real-time policy that operates differently: a SCHED_FIFO process runs until it either voluntarily yields, blocks waiting for I/O, or is preempted by a higher-priority SCHED_FIFO process. There is no time-slicing between processes at the same priority. This makes SCHED_FIFO ideal for processes that need deterministic, uninterrupted execution windows.
+Linux offers several scheduling policies. The default `SCHED_OTHER` (also called `SCHED_NORMAL`) is a fair-share time-slicing scheduler optimized for throughput. `SCHED_FIFO` is a real-time policy that operates differently: a SCHED_FIFO process runs until it either voluntarily yields, blocks waiting for I/O, or is preempted by a higher-priority real-time process. There is no time-slicing between SCHED_FIFO processes at the same priority. This makes SCHED_FIFO ideal for processes that need predictable execution order.
 
 ## Prerequisites
 
@@ -173,6 +173,7 @@ For C/C++ applications that need to set their own RT policy:
 #include <string.h>
 #include <errno.h>
 #include <sys/mman.h>
+#include <time.h>
 
 int set_realtime_priority(int priority) {
     struct sched_param param;
@@ -202,6 +203,8 @@ int set_realtime_priority(int priority) {
 }
 
 int main(void) {
+    struct timespec sleep_time = {0, 1000000}; /* 1 millisecond */
+
     /* Set real-time scheduling before doing any RT work */
     if (set_realtime_priority(80) != 0) {
         /* Fall back to normal operation if RT setup fails */
@@ -211,8 +214,8 @@ int main(void) {
     /* Your real-time application code here */
     while (1) {
         /* Do RT work */
-        /* Must call sched_yield() or block periodically to avoid starvation */
-        sched_yield();
+        /* Block periodically to avoid monopolizing the CPU */
+        nanosleep(&sleep_time, NULL);
     }
 
     return 0;
@@ -298,4 +301,4 @@ sudo taskset -c 2 chrt -f 80 cyclictest \
 # The Max latency in microseconds is your worst-case scheduling jitter
 ```
 
-SCHED_FIFO is a powerful but potentially dangerous tool. Used properly on an isolated CPU with appropriate priorities, it provides the deterministic execution guarantees that real-time applications require. Always pair it with CPU isolation and memory locking for a complete real-time setup.
+SCHED_FIFO is a powerful but potentially dangerous tool. Used properly on an isolated CPU with appropriate priorities, it provides the predictable scheduling behavior that real-time applications require. Always pair it with CPU isolation and memory locking for a complete real-time setup.
