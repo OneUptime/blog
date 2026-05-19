@@ -56,12 +56,12 @@ sudo slapcat -n 0 -l /backup/ldap-config-$(date +%F).ldif
 
 The configuration LDIF will be much larger than you might expect - it contains all schemas, indexes, overlays, and ACLs.
 
-### Back Up All Databases
+### Back Up Both Databases
 
 ```bash
-# Export all databases in a single command
-sudo slapcat -a "(!(entryDN:dnSubtreeMatch:=cn=schema,cn=config))" \
-  -l /backup/ldap-all-$(date +%F).ldif
+# Export cn=config and the main directory database
+sudo slapcat -n 0 -l /backup/ldap-config-$(date +%F).ldif
+sudo slapcat -n 1 -l /backup/ldap-data-$(date +%F).ldif
 ```
 
 ## Automated Backup Script
@@ -193,7 +193,7 @@ If you only lost a few entries (e.g., accidentally deleted a user), do not wipe 
 
 ```bash
 # Find the user in the backup LDIF
-grep -A 20 "uid=jsmith" /backup/ldap-data-2026-03-01.ldif.gz | zcat
+zcat /backup/ldap-data-2026-03-01.ldif.gz | grep -A 20 "uid=jsmith"
 
 # Or extract specific entries with awk
 zcat /backup/ldap-data-2026-03-01.ldif.gz | \
@@ -214,10 +214,11 @@ ldapadd -x -H ldap://localhost \
 
 ## Handling Operational Attributes
 
-When importing a backup, operational attributes like `entryUUID`, `entryCSN`, `structuralObjectClass`, and `modifyTimestamp` can sometimes cause conflicts. Use `slapadd` with the `-q` (quick) flag to skip some checks, or strip operational attributes before restoring with `ldapadd`:
+When importing a backup with `ldapadd`, operational attributes like `entryUUID`, `entryCSN`, `structuralObjectClass`, and `modifyTimestamp` can cause conflicts because they are maintained by the server. Use `slapadd` for full offline restores, or strip operational attributes before restoring with `ldapadd`:
 
 ```bash
 # Import with slapadd (preserves operational attributes, requires stopped slapd)
+# The -q flag enables quick mode and does fewer integrity checks.
 sudo slapadd -n 1 -q -l /backup/ldap-data-2026-03-01.ldif
 
 # OR strip operational attributes and use ldapadd (slapd must be running)
@@ -240,26 +241,21 @@ zcat /backup/ldap-data-2026-03-01.ldif.gz | \
 A backup you have never tested is a backup you cannot trust. Schedule quarterly restore tests:
 
 ```bash
-# Spin up a test VM or Docker container with OpenLDAP
-docker run -d \
-  --name ldap-test \
-  -e LDAP_ORGANISATION="Test" \
-  -e LDAP_DOMAIN="example.com" \
-  -e LDAP_ADMIN_PASSWORD="test123" \
-  osixia/openldap
+# Spin up a test VM with Ubuntu and OpenLDAP tools
+sudo apt update
+sudo DEBIAN_FRONTEND=noninteractive apt install -y slapd ldap-utils
 
-# Restore backup into the test instance
-docker cp /backup/ldap-data-latest.ldif.gz ldap-test:/tmp/
-docker exec ldap-test bash -c "
-  systemctl stop slapd
-  rm -rf /var/lib/ldap/*
-  zcat /tmp/ldap-data-latest.ldif.gz | slapadd -n 1
-  chown -R openldap:openldap /var/lib/ldap
-  systemctl start slapd
-"
+# Restore backup into the test VM
+sudo systemctl stop slapd
+sudo rm -rf /var/lib/ldap/*
+sudo rm -rf /etc/ldap/slapd.d/*
+sudo zcat /backup/ldap-config-latest.ldif.gz | sudo slapadd -n 0 -F /etc/ldap/slapd.d
+sudo zcat /backup/ldap-data-latest.ldif.gz | sudo slapadd -n 1 -F /etc/ldap/slapd.d
+sudo chown -R openldap:openldap /etc/ldap/slapd.d /var/lib/ldap
+sudo systemctl start slapd
 
 # Verify entries
-docker exec ldap-test ldapsearch -x -b "dc=example,dc=com" "(objectClass=posixAccount)"
+ldapsearch -x -H ldap://localhost -b "dc=example,dc=com" "(objectClass=posixAccount)"
 ```
 
 With reliable backups and a tested restore procedure, OpenLDAP failures become recoverable incidents rather than disasters.
