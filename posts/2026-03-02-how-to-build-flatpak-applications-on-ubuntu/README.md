@@ -27,7 +27,7 @@ flatpak-builder --version
 # Add Flathub for accessing SDKs
 sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
-# Add GNOME SDK repository
+# Add Flathub beta if you need beta runtimes or apps
 sudo flatpak remote-add --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
 ```
 
@@ -38,18 +38,19 @@ Flatpak applications run against a runtime - a base set of libraries. Every Flat
 - **org.freedesktop.Platform** - Minimal base, useful for CLI tools
 - **org.gnome.Platform** - GNOME libraries, for GNOME applications
 - **org.kde.Platform** - KDE Frameworks, for KDE applications
-- **org.electronjs.Electron2.BaseApp** - Electron application base
+
+Electron applications typically use `org.freedesktop.Platform` plus the `org.electronjs.Electron2.BaseApp` BaseApp.
 
 Each runtime has a corresponding SDK for building:
 
 ```bash
 # Install the runtime and SDK you'll use
-sudo flatpak install flathub org.gnome.Platform//46
-sudo flatpak install flathub org.gnome.Sdk//46
+sudo flatpak install flathub org.gnome.Platform//50
+sudo flatpak install flathub org.gnome.Sdk//50
 
 # For a simpler freedesktop base
-sudo flatpak install flathub org.freedesktop.Platform//23.08
-sudo flatpak install flathub org.freedesktop.Sdk//23.08
+sudo flatpak install flathub org.freedesktop.Platform//25.08
+sudo flatpak install flathub org.freedesktop.Sdk//25.08
 
 # List installed SDKs
 flatpak list --runtime | grep Sdk
@@ -61,9 +62,9 @@ The manifest is a JSON or YAML file that describes your application. Create a fi
 
 ```json
 {
-  "app-id": "com.example.MyApp",
+  "id": "com.example.MyApp",
   "runtime": "org.gnome.Platform",
-  "runtime-version": "46",
+  "runtime-version": "50",
   "sdk": "org.gnome.Sdk",
   "command": "myapp",
   "finish-args": [
@@ -97,9 +98,9 @@ The YAML equivalent (both formats work):
 
 ```yaml
 # com.example.MyApp.yml
-app-id: com.example.MyApp
+id: com.example.MyApp
 runtime: org.gnome.Platform
-runtime-version: '46'
+runtime-version: '50'
 sdk: org.gnome.Sdk
 command: myapp
 
@@ -167,11 +168,12 @@ Flatpak supports multiple build systems through its `buildsystem` field:
 - name: myapp
   buildsystem: simple
   build-commands:
-    - npm install --prefix /app
+    - npm install --offline --prefix /app
     - cp -r . /app/lib/myapp
   sources:
     - type: dir
       path: .
+    - generated-sources.json
 ```
 
 ## Source Types
@@ -272,7 +274,7 @@ finish-args:
 
   # Audio
   - --socket=pulseaudio      # Audio playback
-  - --talk-name=org.freedesktop.portal.Desktop  # Desktop portal
+  # Portal APIs under org.freedesktop.portal.* are available by default
 
   # Filesystem
   - --filesystem=home        # Full home directory
@@ -321,27 +323,34 @@ flatpak install myapp.flatpak
 
 Flathub is the primary distribution channel for Flatpak applications:
 
-1. Fork the `flathub` organization's template on GitHub
-2. Create a repository named after your app ID: `com.example.MyApp`
-3. Add your manifest file
-4. Submit a pull request to [flathub/flathub](https://github.com/flathub/flathub)
+1. Fork the [flathub/flathub](https://github.com/flathub/flathub) repository with all branches
+2. Create a branch from `new-pr`
+3. Add your manifest file and required metadata
+4. Submit a pull request against the `new-pr` branch
 
 The Flathub team reviews submissions and requires:
 - Verified upstream release (tagged commit, not a branch head)
 - Proper application metadata (AppStream/MetaInfo XML)
 - Reasonable permission requests
 - Functional build
+- A runtime hosted on Flathub, using the latest supported version at submission time
 
 ```xml
 <!-- com.example.MyApp.metainfo.xml - required for Flathub -->
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>com.example.MyApp</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
   <name>My App</name>
   <summary>A short description</summary>
+  <developer id="com.example">
+    <name>Example Developer</name>
+  </developer>
   <description>
     <p>A longer description of what the application does.</p>
   </description>
+  <launchable type="desktop-id">com.example.MyApp.desktop</launchable>
   <url type="homepage">https://example.com/myapp</url>
   <releases>
     <release version="1.0.0" date="2026-03-01"/>
@@ -362,14 +371,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: bilelmoussaoui/flatpak-github-actions:gnome-46
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-48
       options: --privileged
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Build and test
-        uses: bilelmoussaoui/flatpak-github-actions/flatpak-builder@v6
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: myapp.flatpak
           manifest-path: com.example.MyApp.yml
