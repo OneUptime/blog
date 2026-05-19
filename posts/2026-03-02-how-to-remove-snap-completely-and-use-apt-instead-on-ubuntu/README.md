@@ -109,6 +109,9 @@ Mozilla maintains an official APT repository for Firefox:
 # Install required tools
 sudo apt install -y wget gnupg
 
+# Ensure the keyrings directory exists
+sudo install -d -m 0755 /etc/apt/keyrings
+
 # Add Mozilla's signing key
 wget -q https://packages.mozilla.org/apt/repo-signing-key.gpg -O- | \
     sudo tee /etc/apt/keyrings/packages.mozilla.org.asc > /dev/null
@@ -167,7 +170,7 @@ sudo apt update
 sudo apt install code
 
 # Spotify - via Spotify's APT repository
-curl -sS https://download.spotify.com/debian/pubkey_6224F9941A8AA6D1.gpg | \
+curl -sS https://download.spotify.com/debian/pubkey_5384CE82BA52C83A.asc | \
     sudo gpg --dearmor --yes -o /etc/apt/trusted.gpg.d/spotify.gpg
 echo "deb https://repository.spotify.com stable non-free" | \
     sudo tee /etc/apt/sources.list.d/spotify.list
@@ -194,7 +197,7 @@ sudo umount /snap/core20/current 2>/dev/null
 # Remove empty snap directories if they weren't cleaned by apt
 sudo rm -rf /snap
 
-# Update the system journal to clear snap-related entries
+# Reload systemd so it forgets any leftover snap mount units
 sudo systemctl daemon-reload
 ```
 
