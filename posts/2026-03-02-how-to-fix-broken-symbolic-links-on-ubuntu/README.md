@@ -24,8 +24,8 @@ cat /path/to/broken-symlink
 # cat: /path/to/broken-symlink: No such file or directory
 
 # Check if a symlink target exists
-readlink -f /path/to/symlink
-# If no output or "No such file", the target doesn't exist
+readlink -e /path/to/symlink
+# If there is no output, the target doesn't exist
 ```
 
 ## Finding Broken Symbolic Links
@@ -36,7 +36,7 @@ The most reliable method:
 
 ```bash
 # Find broken symlinks in a specific directory
-find /usr -xtype l 2>/dev/null
+find /usr -xdev -xtype l 2>/dev/null
 
 # Explanation:
 # -xtype l : find symlinks where the target doesn't exist
@@ -45,7 +45,7 @@ find /usr -xtype l 2>/dev/null
 # 2>/dev/null : suppress permission errors
 
 # Find broken symlinks system-wide (excluding virtual filesystems)
-find / -xtype l \
+find / -xdev -xtype l \
     -not -path "/proc/*" \
     -not -path "/sys/*" \
     -not -path "/run/*" \
@@ -53,7 +53,7 @@ find / -xtype l \
     2>/dev/null
 
 # Find broken symlinks with their targets shown
-find /usr -xtype l -exec sh -c 'echo "Broken: {} -> $(readlink {})"' \; 2>/dev/null
+find /usr -xdev -xtype l -exec sh -c 'for path do echo "Broken: $path -> $(readlink "$path")"; done' sh {} + 2>/dev/null
 ```
 
 ### Using symlinks Utility
@@ -107,7 +107,7 @@ myapp --version
 If the target was accidentally deleted and should exist:
 
 ```bash
-# Example: Python alternative symlink is broken
+# Example: Python symlink is broken
 ls -la /usr/bin/python3
 # lrwxrwxrwx ... /usr/bin/python3 -> python3.10
 # (python3.10 doesn't exist anymore)
@@ -115,13 +115,11 @@ ls -la /usr/bin/python3
 # Check what Python versions are installed
 ls /usr/bin/python*
 
-# Recreate the symlink pointing to the installed version
-sudo rm /usr/bin/python3
-sudo ln -s /usr/bin/python3.11 /usr/bin/python3
+# Reinstall the package that owns the system Python symlink
+sudo apt-get install --reinstall python3-minimal
 
-# Or use update-alternatives for system-managed Python symlinks
-sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
-sudo update-alternatives --config python3
+# For your own scripts, create a separate symlink outside the package-managed path
+sudo ln -s /usr/bin/python3.11 /usr/local/bin/python3-local
 ```
 
 ### Method 3: Fix Library Symlinks with ldconfig
@@ -227,7 +225,7 @@ Ubuntu's `update-alternatives` system manages symlinks for commands that have mu
 
 ```bash
 # View all managed alternatives
-sudo update-alternatives --list
+sudo update-alternatives --get-selections
 
 # Fix a broken alternative
 # Example: java symlink is broken
