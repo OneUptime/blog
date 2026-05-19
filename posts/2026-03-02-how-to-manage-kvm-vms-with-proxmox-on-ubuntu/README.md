@@ -55,7 +55,8 @@ qm set 201 --scsi0 local-lvm:20
 qm set 201 --ide2 local:iso/ubuntu-22.04.4-live-server-amd64.iso,media=cdrom
 
 # Set the boot order - boot from CD first, then disk
-qm set 201 --boot order=ide2;scsi0
+# Quote the value so the shell does not interpret the semicolon
+qm set 201 --boot 'order=ide2;scsi0'
 
 # Enable the QEMU guest agent (requires agent installed in VM later)
 qm set 201 --agent enabled=1
@@ -79,7 +80,7 @@ qm stop 201
 # Reboot
 qm reboot 201
 
-# Suspend to disk (saves state and stops the VM)
+# Suspend the VM (pauses execution, state kept in RAM; add --todisk 1 to save state and stop)
 qm suspend 201
 
 # Resume from suspend
@@ -214,8 +215,8 @@ qm monitor 201
 qm agent 201 get-vcpus
 qm agent 201 get-memory-blocks
 
-# Run arbitrary QEMU guest agent commands
-qm agent 201 exec --command '{"execute":"guest-exec","arguments":{"path":"df","arg":["-h"],"capture-output":true}}'
+# Run arbitrary commands in the guest via QEMU agent
+qm guest exec 201 -- df -h
 ```
 
 From the Proxmox web interface, the Summary tab shows CPU, memory, disk I/O, and network usage over time.
