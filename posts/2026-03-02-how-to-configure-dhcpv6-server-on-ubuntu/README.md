@@ -23,7 +23,7 @@ Understanding when to use DHCPv6 versus SLAAC (Stateless Address Autoconfigurati
 Ubuntu offers two main DHCPv6 servers: ISC DHCP (isc-dhcp-server) and Kea (isc-kea). Kea is the modern replacement actively developed by ISC.
 
 ```bash
-# Install ISC DHCP server (older but widely documented)
+# Install ISC DHCP server (legacy/EOL upstream, but still packaged)
 
 sudo apt update
 sudo apt install isc-dhcp-server -y
@@ -85,12 +85,12 @@ INTERFACESv6="eth1"
 Start and enable the service:
 
 ```bash
-sudo systemctl enable isc-dhcp-server
-sudo systemctl start isc-dhcp-server
-sudo systemctl status isc-dhcp-server
+sudo systemctl enable isc-dhcp-server6
+sudo systemctl start isc-dhcp-server6
+sudo systemctl status isc-dhcp-server6
 
 # Check for errors
-sudo journalctl -u isc-dhcp-server -n 50
+sudo journalctl -u isc-dhcp-server6 -n 50
 ```
 
 ### Stateless DHCPv6 (Information-Only Mode)
@@ -115,7 +115,7 @@ subnet6 2001:db8:1234:1::/64 {
 ```conf
 # Assign a fixed address to a specific host
 host myserver {
-    # Client DUID (get from client: ip -6 address show)
+    # Client DUID (get from the client's DHCPv6 lease file)
     host-identifier option dhcp6.client-id
       00:01:00:01:12:34:56:78:aa:bb:cc:dd:ee:ff;
     fixed-address6 2001:db8:1234:1::50;
@@ -158,6 +158,7 @@ sudo nano /etc/kea/kea-dhcp6.conf
 
     "subnet6": [
       {
+        "id": 1,
         "subnet": "2001:db8:1234:1::/64",
         "pools": [
           {
@@ -231,7 +232,7 @@ In Kea:
 ```json
 "pd-pools": [
   {
-    "prefix": "2001:db8:1234:0100::",
+    "prefix": "2001:db8:1234::",
     "prefix-len": 48,
     "delegated-len": 56
   }
@@ -267,7 +268,6 @@ interface eth1 {
     prefix 2001:db8:1234:1::/64 {
         AdvOnLink on;
         AdvAutonomous off;  # Disable SLAAC when using stateful DHCPv6
-        AdvRouterAddr on;
     };
 };
 ```
@@ -315,6 +315,7 @@ From a client machine on the same network segment:
 
 ```bash
 # Request a DHCPv6 lease (using dhclient)
+sudo apt install isc-dhcp-client -y
 sudo dhclient -6 eth0
 
 # Check the acquired IPv6 address
@@ -332,7 +333,7 @@ sudo dhcp6c -c /etc/wide-dhcpv6/dhcp6c.conf eth0
 
 ```bash
 # Watch DHCPv6 server logs
-sudo journalctl -u isc-dhcp-server -f
+sudo journalctl -u isc-dhcp-server6 -f
 
 # For Kea
 sudo tail -f /var/log/kea/kea-dhcp6.log
