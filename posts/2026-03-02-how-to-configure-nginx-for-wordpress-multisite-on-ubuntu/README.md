@@ -78,8 +78,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com;
 
     root /var/www/wordpress;
@@ -177,12 +178,6 @@ sudo nano /etc/nginx/sites-available/wordpress-multisite-subdomain
 ```
 
 ```nginx
-# Map subsite requests to WordPress
-map $http_host $blogid {
-    default       -999;
-    example.com   1;
-}
-
 server {
     listen 80;
     listen [::]:80;
@@ -191,8 +186,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
 
     # Wildcard for all subsites plus the main domain
     server_name example.com *.example.com;
@@ -209,7 +205,7 @@ server {
     error_log /var/log/nginx/wordpress-multisite.error.log;
 
     # Block PHP execution in uploads
-    location ~* /files/(.+)\.php$ {
+    location ~* ^/wp-content/uploads/.*\.php$ {
         deny all;
     }
 
@@ -227,14 +223,6 @@ server {
         allow all;
         log_not_found off;
         access_log off;
-    }
-
-    # Uploads handling for multisite (each subsite stores files under its blog ID)
-    location ~ ^/files/(.*)$ {
-        try_files /wp-content/blogs.dir/$blogid/$uri /wp-includes/ms-files.php?file=$1 =404;
-        access_log off;
-        log_not_found off;
-        expires max;
     }
 
     # WordPress Multisite subdomain: main entry point
@@ -266,7 +254,7 @@ server {
 ## Enabling the Site and Testing
 
 ```bash
-# Enable the site
+# Enable the appropriate site configuration
 sudo ln -s /etc/nginx/sites-available/wordpress-multisite /etc/nginx/sites-enabled/
 
 # Remove default site if still active
@@ -292,9 +280,6 @@ define('DOMAIN_CURRENT_SITE', 'example.com');
 define('PATH_CURRENT_SITE', '/');
 define('SITE_ID_CURRENT_SITE', 1);
 define('BLOG_ID_CURRENT_SITE', 1);
-
-/* Optional: Set upload path for multisite */
-define('UPLOADBLOGSDIR', 'wp-content/blogs.dir');
 ```
 
 ## File Permissions
