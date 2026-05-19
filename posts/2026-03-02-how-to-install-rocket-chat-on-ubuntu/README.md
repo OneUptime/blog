@@ -222,7 +222,9 @@ For mobile push notifications, you can use Rocket.Chat's cloud gateway (which ha
 ```bash
 # In Admin > Administration > Push
 # Enable "Enable Gateway" and use:
-# https://gateway.rocket.chat (free tier, 5000 push notifications/month)
+# https://gateway.rocket.chat
+# Note: using the cloud gateway requires registering your workspace
+# with Rocket.Chat Cloud (Admin > Connectivity Services).
 ```
 
 ## Setting Up File Storage
