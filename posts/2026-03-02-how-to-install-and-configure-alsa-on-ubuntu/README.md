@@ -55,10 +55,10 @@ aplay -l
 # List recording devices
 arecord -l
 
-# Show all devices (playback and capture combined)
-aplay -L  # Long format with device names
+# List defined PCM device names
+aplay -L  # Long format with PCM names
 
-# Show raw PCM device names for use in configs
+# Show card indexes and ALSA device entries
 cat /proc/asound/cards
 cat /proc/asound/devices
 ```
@@ -66,7 +66,7 @@ cat /proc/asound/devices
 ## Testing Audio Output
 
 ```bash
-# Play a test tone (440Hz sine wave for 3 seconds)
+# Play a 440Hz sine wave for one speaker-test loop
 speaker-test -t sine -f 440 -l 1
 
 # Test all speakers (stereo, surround, etc.)
