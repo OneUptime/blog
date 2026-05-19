@@ -12,7 +12,7 @@ Docker's network modes control how containers communicate with each other and th
 
 ## Network Modes Overview
 
-Docker provides five built-in network drivers:
+This guide covers five commonly used built-in network drivers:
 
 | Driver | Use Case | Isolation | Performance |
 |--------|----------|-----------|-------------|
@@ -36,7 +36,7 @@ ip addr show docker0
 # inet 172.17.0.1/16 - this is the gateway for containers
 
 # Run a container and check its IP
-docker run --rm -it ubuntu:24.04 bash
+docker run --rm -it alpine sh
 # Inside: ip addr show eth0
 # inet 172.17.0.x/16
 
@@ -53,11 +53,11 @@ The default bridge (`docker0`) has limitations - containers can only communicate
 docker network create myapp-network
 
 # Run containers on the custom network - they can reach each other by name
-docker run -d --name db --network myapp-network postgres:16
+docker run -d --name db --network myapp-network -e POSTGRES_PASSWORD=secret postgres:16
 docker run -d --name web --network myapp-network nginx
 
 # From web container, reach db by name
-docker exec web ping db  # works because of Docker's embedded DNS
+docker run --rm --network myapp-network alpine ping -c 2 db  # works because of Docker's embedded DNS
 ```
 
 ### Custom Bridge with Specific Subnet
@@ -120,7 +120,7 @@ Host networking is appropriate when:
 # Bridge:
 docker run --rm --network bridge networkstatic/iperf3 -c host-ip
 
-# Host (typically 10-20% better throughput, much lower latency):
+# Host (often better throughput and lower latency because it avoids NAT):
 docker run --rm --network host networkstatic/iperf3 -c localhost
 ```
 
@@ -137,7 +137,7 @@ Completely disables networking:
 docker run -d \
   --name isolated-processor \
   --network none \
-  myprocessor
+  alpine sleep 1d
 
 # Verify: no network interfaces
 docker exec isolated-processor ip addr
@@ -151,7 +151,7 @@ Use `none` for containers that:
 
 ## Overlay Networking (Docker Swarm)
 
-Overlay networks connect containers across multiple Docker hosts. They require either Docker Swarm or an external key-value store:
+Overlay networks connect containers across multiple Docker hosts. They require Docker Swarm mode, even for standalone containers:
 
 ```bash
 # Initialize Docker Swarm (required for overlay)
@@ -174,6 +174,7 @@ docker service create \
   --name db \
   --network myswarm-network \
   --replicas 1 \
+  -e POSTGRES_PASSWORD=secret \
   postgres:16
 ```
 
@@ -277,11 +278,12 @@ docker run -d \
   --network myapp-network \
   --network-alias database \
   --network-alias db \
+  -e POSTGRES_PASSWORD=secret \
   postgres:16
 
 # Other containers can reach this container as "database" or "db"
-docker run --rm --network myapp-network ubuntu ping database
-docker run --rm --network myapp-network ubuntu ping db
+docker run --rm --network myapp-network alpine ping -c 2 database
+docker run --rm --network myapp-network alpine ping -c 2 db
 ```
 
 This is useful for zero-downtime database switching - update which container the `database` alias points to.
