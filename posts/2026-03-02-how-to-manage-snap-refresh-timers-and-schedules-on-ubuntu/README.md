@@ -125,9 +125,8 @@ sudo snap refresh --hold=forever firefox code
 sudo snap refresh --unhold firefox
 sudo snap refresh --unhold  # Remove global hold
 
-# Check hold status
-snap get system refresh.hold
-snap get firefox refresh.hold
+# Check hold status (shows system-wide and per-snap holds)
+snap refresh --time
 ```
 
 Holds take precedence over timer settings. If a snap is held, it won't refresh even during the configured timer window.
@@ -196,16 +195,16 @@ sudo snap set system refresh.timer="sun,05:00-07:00"
 
 ## Metered Connection Awareness
 
-Snapd is aware of metered network connections (mobile hotspots, etc.) and by default skips refreshes on metered connections. You can configure this behavior:
+Snapd can be configured to skip refreshes when the active network connection is metered (mobile hotspots, etc.). By default, refreshes happen normally even on metered connections — you have to opt in to the skip behavior by setting `refresh.metered=hold`:
 
 ```bash
 # Check metered connection handling
 snap get system refresh.metered
 
-# Allow refreshes even on metered connections
-sudo snap set system refresh.metered=ignore
+# Skip refreshes on metered connections
+sudo snap set system refresh.metered=hold
 
-# Restore default (no refreshes on metered)
+# Restore default (refreshes happen on metered connections)
 sudo snap unset system refresh.metered
 ```
 
@@ -262,12 +261,8 @@ sudo journalctl -u snapd -n 100
 # Manually trigger a refresh to test
 sudo snap refresh
 
-# Check if snaps are held
-snap get system refresh.hold
-snap list | while read name rest; do
-    hold=$(snap get "$name" refresh.hold 2>/dev/null)
-    [ -n "$hold" ] && echo "$name: held until $hold"
-done
+# Check hold status (system-wide and per-snap)
+snap refresh --time
 ```
 
 The refresh timer system provides enough flexibility to accommodate any update policy, from aggressive automatic updates to fully manual control. The key is matching the timer configuration to your operational requirements and combining it appropriately with the hold mechanism for fine-grained per-snap control.
