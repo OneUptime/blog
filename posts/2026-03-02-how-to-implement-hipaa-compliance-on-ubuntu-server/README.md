@@ -12,12 +12,13 @@ HIPAA's Security Rule requires covered entities and business associates to imple
 
 ## HIPAA Technical Safeguard Categories
 
-HIPAA requires safeguards in four main areas:
+HIPAA's technical safeguards are grouped into five standards:
 
 1. **Access Controls** - Limit who can access ePHI
 2. **Audit Controls** - Record access and activity
 3. **Integrity Controls** - Ensure ePHI isn't altered or destroyed improperly
-4. **Transmission Security** - Protect ePHI during network transmission
+4. **Person or Entity Authentication** - Verify users and systems are who they claim to be
+5. **Transmission Security** - Protect ePHI during network transmission
 
 ## System Hardening Foundation
 
@@ -70,9 +71,9 @@ usercheck = 1
 dictcheck = 1
 EOF
 
-# Configure password aging
+# Configure password aging if required by your organization's policy
 sudo tee -a /etc/login.defs << 'EOF'
-# HIPAA requires periodic password changes
+# Organization policy: periodic password changes
 PASS_MAX_DAYS   90
 PASS_MIN_DAYS   1
 PASS_WARN_AGE   14
@@ -111,8 +112,7 @@ PermitRootLogin no
 # Disable empty passwords
 PermitEmptyPasswords no
 
-# Protocol and cipher restrictions
-Protocol 2
+# Cipher restrictions
 Ciphers aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr
 MACs hmac-sha2-512,hmac-sha2-256
 KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521
@@ -135,7 +135,7 @@ Unauthorized access is prohibited and monitored.
 All activities on this system are logged.
 EOF
 
-sudo systemctl reload sshd
+sudo sshd -t && sudo systemctl try-reload-or-restart ssh.service
 ```
 
 ### Minimal Privilege Access
@@ -231,7 +231,7 @@ sudo systemctl restart rsyslog
 
 ```bash
 # Initialize AIDE database (do this after securing the system)
-sudo aide --init
+sudo aideinit
 
 # Move the generated database to the active location
 sudo mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
@@ -279,7 +279,7 @@ sudo chmod +x /etc/cron.daily/aide-check
 
 ## Encryption at Rest
 
-ePHI must be encrypted when stored:
+HIPAA treats encryption and decryption for stored ePHI as an addressable implementation specification. If encryption is reasonable and appropriate for your risk analysis, use full-disk or volume encryption:
 
 ```bash
 # For a data directory, use LUKS encryption
@@ -296,9 +296,11 @@ sudo cryptsetup luksOpen /dev/sdb1 ephi-data
 sudo mkfs.ext4 /dev/mapper/ephi-data
 sudo mount /dev/mapper/ephi-data /opt/ephi-data
 
-# For existing data, use eCryptfs for directory-level encryption
+# For directory-level encryption, use a separate lower directory and mount point,
+# then migrate existing data from a verified backup after choosing encryption options
 sudo apt install ecryptfs-utils -y
-sudo mount -t ecryptfs /opt/ephi-data /opt/ephi-data
+sudo mkdir -p /opt/ephi-data.encrypted /opt/ephi-data
+sudo mount -t ecryptfs /opt/ephi-data.encrypted /opt/ephi-data
 ```
 
 ## Transmission Security
@@ -318,7 +320,7 @@ EOF
 
 ## Log Retention
 
-HIPAA requires audit logs be retained for at least 6 years:
+HIPAA requires Security Rule documentation to be retained for at least 6 years. Set audit log retention according to your risk analysis, contractual obligations, and investigation needs; the example below keeps daily audit logs for roughly 6 years:
 
 ```bash
 # Configure logrotate for long retention
