@@ -18,9 +18,9 @@ The key differences:
 |---|---|---|
 | MAC addresses | All share parent MAC | Each has unique MAC |
 | DHCP support | Tricky (same MAC) | Natural (unique MACs) |
-| Promiscuous mode | Not required | Not required |
+| Promiscuous mode | Not required | Usually not required, except passthru mode |
 | Cloud-friendly | Better | Worse (MAC limits) |
-| Host communication | L3 mode allows it | Generally not possible |
+| Host communication | Use routed L3 or a separate host-side path | Generally not possible through the parent |
 
 IPVLAN works well when:
 - Your switch or cloud provider limits MAC addresses per port
@@ -29,13 +29,13 @@ IPVLAN works well when:
 
 ## IPVLAN Modes
 
-IPVLAN has two primary modes:
+IPVLAN has two primary modes plus an L3S variant:
 
-**L2 mode**: IPVLAN operates at layer 2. The parent interface receives all frames and IPVLAN dispatches based on IP address. Works like a MAC-level bridge. The host still can't communicate with IPVLAN interfaces in L2 mode.
+**L2 mode**: IPVLAN operates at layer 2. The parent interface receives frames and IPVLAN dispatches based on IP address. It behaves similarly to a bridge for the virtual endpoints while still sharing the parent's MAC address. The host still can't communicate with IPVLAN interfaces through the parent in L2 mode.
 
-**L3 mode**: IPVLAN operates at layer 3. Each IPVLAN interface has its own routing domain. Traffic between IPVLAN interfaces and the host goes through the kernel routing stack. The host can communicate with its IPVLAN sub-interfaces in L3 mode.
+**L3 mode**: IPVLAN operates at layer 3. The parent namespace routes traffic for the IPVLAN interfaces, and the IPVLAN interfaces do not receive or send broadcast and multicast traffic. Use a non-overlapping subnet and routes pointing to the parent interface for L3 container networks.
 
-**L3S mode**: Like L3 but with iptables support, allowing netfilter rules to apply to traffic between sub-interfaces.
+**L3S mode**: Like L3 but with symmetric netfilter handling, allowing host namespace iptables and nftables rules to see both ingress and egress traffic for the sub-interfaces.
 
 ## Creating IPVLAN Interfaces Manually
 
@@ -120,7 +120,7 @@ sudo ip netns exec container3 ip route add default via 192.168.1.1
 
 ## Host-to-Container Communication with L3 Mode
 
-In L3 mode, the host can communicate with IPVLAN interfaces, which is a significant advantage over MacVLAN:
+In L3 mode, the host routes traffic for IPVLAN interfaces, which is useful for routed container subnets:
 
 ```bash
 # Create namespace and L3 ipvlan
@@ -137,11 +137,11 @@ sudo ip netns exec app-ns ip link set lo up
 # Add route on the host to reach the container's network
 sudo ip route add 10.200.0.0/24 dev eth0
 
+# Add a route from the namespace back through its IPVLAN interface
+sudo ip netns exec app-ns ip route add default dev ipvl-app
+
 # Now the host can reach the container
 ping 10.200.0.2
-
-# And the container needs a route back to the host
-sudo ip netns exec app-ns ip route add default dev ipvl-app
 ```
 
 ## Persistent Configuration with systemd-networkd
@@ -185,7 +185,7 @@ sudo systemctl restart systemd-networkd
 
 ## IPVLAN with Netplan
 
-Netplan currently has limited direct support for IPVLAN. The most reliable approach is to use systemd-networkd files alongside netplan, or use a post-up script:
+Netplan currently does not expose an IPVLAN device type in its YAML schema. The most reliable approach is to use systemd-networkd files alongside netplan, or use a post-up script:
 
 ```yaml
 # /etc/netplan/01-netcfg.yaml
@@ -197,7 +197,7 @@ network:
       dhcp4: true
 ```
 
-Then create systemd-networkd files for IPVLAN as shown above. Netplan and networkd coexist fine.
+Then create systemd-networkd files for IPVLAN as shown above. If netplan already generates a `.network` file for the parent interface, make sure the generated parent configuration includes the `IPVLAN=` attachment, or replace it with a matching networkd file that is applied first.
 
 ## Checking IPVLAN Status
 
@@ -221,7 +221,7 @@ networkctl status ipvlan0
 
 ## L3S Mode for Firewall Rules
 
-L3S mode is like L3 but hooks into netfilter, enabling iptables and nftables to filter traffic:
+L3S mode is like L3 but hooks into netfilter symmetrically, enabling iptables and nftables in the host namespace to filter traffic:
 
 ```bash
 # Create in L3S mode
@@ -232,10 +232,11 @@ sudo ip netns add filtered-ns
 sudo ip link add ipvl-filtered link eth0 type ipvlan mode l3s
 sudo ip link set ipvl-filtered netns filtered-ns
 
-# Now iptables rules on the host can filter traffic
-# going to/from the namespace
-sudo iptables -A FORWARD -i eth0 -d 10.200.0.2 -j ACCEPT
-sudo iptables -A FORWARD -s 10.200.0.2 -o eth0 -j ACCEPT
+# Now host namespace firewall rules can filter traffic
+# going to/from the namespace. Match the actual interface
+# names and directions used in your routing policy.
+sudo iptables -A FORWARD -d 10.200.0.2 -j ACCEPT
+sudo iptables -A FORWARD -s 10.200.0.2 -j ACCEPT
 ```
 
 ## Cleanup
