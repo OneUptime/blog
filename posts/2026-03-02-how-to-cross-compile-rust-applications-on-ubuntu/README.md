@@ -62,7 +62,7 @@ rustup target add aarch64-apple-darwin           # macOS ARM64
 
 ## Installing Cross-Compilers
 
-Rust needs a C linker for each target. Install them with apt:
+For these targets, `rustup target add` installs the Rust standard library, but you still need the target C linker/toolchain. Install them with apt:
 
 ```bash
 sudo apt update
@@ -95,10 +95,9 @@ linker = "arm-linux-gnueabihf-gcc"
 
 [target.x86_64-pc-windows-gnu]
 linker = "x86_64-w64-mingw32-gcc"
-ar = "x86_64-w64-mingw32-ar"
 
 [target.x86_64-unknown-linux-musl]
-linker = "x86_64-linux-musl-gcc"
+linker = "musl-gcc"
 ```
 
 For project-specific configuration, put the same content in `.cargo/config.toml` inside your project directory.
@@ -153,7 +152,7 @@ cross build --release --target x86_64-unknown-linux-musl
 
 ## Building Static Linux Binaries with musl
 
-For truly portable Linux binaries that run on any Linux distribution without glibc version compatibility issues:
+For portable Linux binaries that avoid glibc version compatibility issues:
 
 ```bash
 # Install musl tools
@@ -174,7 +173,7 @@ ldd target/x86_64-unknown-linux-musl/release/myapp
 # Not a dynamic executable
 ```
 
-musl binaries run on any Linux regardless of the glibc version on the target - useful for deploying to systems with older glibc versions.
+musl binaries avoid depending on the target system's glibc version - useful for deploying to systems with older glibc versions.
 
 ## Build Script for Multiple Targets
 
@@ -253,7 +252,7 @@ Cross-compiling for macOS is more complex due to Apple's toolchain licensing. Th
 
 ```bash
 # Install prerequisites
-sudo apt install cmake libssl-dev lzma-dev libxml2-dev
+sudo apt install clang cmake git patch python-is-python3 libssl-dev lzma-dev libxml2-dev xz-utils bzip2 cpio libbz2-dev zlib1g-dev bash
 
 # Clone osxcross
 git clone https://github.com/tpoechtrager/osxcross ~/osxcross
@@ -273,11 +272,12 @@ Then configure Cargo:
 
 ```toml
 # ~/.cargo/config.toml
+# Replace XX with the Darwin version shown by osxcross-conf (for example, darwin23).
 [target.x86_64-apple-darwin]
-linker = "x86_64-apple-darwin21-clang"
+linker = "x86_64-apple-darwinXX-clang"
 
 [target.aarch64-apple-darwin]
-linker = "aarch64-apple-darwin21-clang"
+linker = "arm64-apple-darwinXX-clang"
 ```
 
 ```bash
