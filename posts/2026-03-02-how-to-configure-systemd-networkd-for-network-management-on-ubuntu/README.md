@@ -8,7 +8,7 @@ Description: Configure network interfaces on Ubuntu using systemd-networkd with 
 
 ---
 
-Ubuntu systems come with NetworkManager enabled by default. For servers that don't need a GUI-driven network manager, `systemd-networkd` is a lightweight alternative that manages network interfaces through simple INI-style configuration files. It integrates naturally with the rest of the systemd ecosystem.
+Ubuntu Desktop systems come with NetworkManager enabled by default, while Ubuntu Server commonly uses Netplan with `systemd-networkd` as the backend. For servers that don't need a GUI-driven network manager, `systemd-networkd` is a lightweight option that manages network interfaces through simple INI-style configuration files. It integrates naturally with the rest of the systemd ecosystem.
 
 ## When to Use systemd-networkd
 
@@ -47,6 +47,7 @@ Network configuration files live in:
 
 - `/etc/systemd/network/` - Your configuration files (highest priority)
 - `/run/systemd/network/` - Runtime configuration
+- `/usr/local/lib/systemd/network/` - Local system defaults
 - `/usr/lib/systemd/network/` - Vendor/distribution defaults
 
 Files are processed in alphabetical order. Use numeric prefixes to control order:
@@ -125,15 +126,15 @@ The `[Match]` section supports several criteria:
 ```ini
 [Match]
 # Match by name (supports wildcards)
-Name=eth0
-Name=en*         # All interfaces starting with "en"
+# eth0 or interfaces starting with "en"
+Name=eth0 en*
 
 # Match by MAC address
 MACAddress=aa:bb:cc:dd:ee:ff
 
 # Match by type
-Type=ether       # Ethernet
-Type=wlan        # Wireless
+# Ethernet or wireless
+Type=ether wlan
 
 # Match by PCI path (stable across reboots)
 Path=pci-0000:00:1f.6
@@ -363,18 +364,21 @@ Destination=192.168.99.0/24
 ## Monitoring Network Status
 
 ```bash
-# List all managed interfaces
+# List links and their status
 networkctl list
 
 # Detailed status of a specific interface
 networkctl status eth0
 
-# Watch status changes in real time
-networkctl monitor
+# Refresh status periodically
+watch -n 2 networkctl status eth0
 
-# Show link statistics
+# Show LLDP neighbor information
 networkctl lldp    # LLDP neighbor information
 networkctl lldp eth0
+
+# Show link statistics
+networkctl status -s eth0
 ```
 
 ## Troubleshooting
@@ -383,8 +387,9 @@ networkctl lldp eth0
 # Check systemd-networkd logs
 journalctl -u systemd-networkd -f
 
-# Check for configuration errors
-sudo systemd-analyze verify /etc/systemd/network/*.network
+# Reload configuration and check for parser errors in the logs
+sudo networkctl reload
+journalctl -u systemd-networkd -b --no-pager
 
 # Check interface configuration
 ip addr show eth0
@@ -431,7 +436,9 @@ network:
     eth0:
       addresses:
         - 192.168.1.100/24
-      gateway4: 192.168.1.1
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
         addresses: [1.1.1.1, 8.8.8.8]
 ```
