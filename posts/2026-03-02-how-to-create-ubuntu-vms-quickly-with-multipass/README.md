@@ -57,8 +57,8 @@ multipass launch 22.04 --name jammy
 # Ubuntu 20.04 (Focal Fossa)
 multipass launch 20.04 --name focal
 
-# Daily build (for testing upcoming releases)
-multipass launch daily:24.10 --name daily-test
+# Daily build (for testing the current development release)
+multipass launch daily:devel --name daily-test
 ```
 
 Check what's available:
@@ -95,18 +95,22 @@ multipass shell quickdev
 multipass exec quickdev -- uname -r
 ```
 
-## Setting Defaults to Avoid Repeating Yourself
+## Using a Wrapper to Avoid Repeating Yourself
 
 If you always want 2 CPUs and 4G RAM without specifying flags every time:
 
 ```bash
-# Set defaults for new instances
-sudo multipass set local.cpus=2
-sudo multipass set local.memory=4G
-sudo multipass set local.disk=20G
+# Wrap your preferred launch options in a shell function
+mpdev() {
+  multipass launch "${1:-24.04}" \
+    --name "$2" \
+    --cpus 2 \
+    --memory 4G \
+    --disk 20G
+}
 
-# Now a simple launch uses these defaults
-multipass launch --name myvm
+# Now create a VM with your standard sizing
+mpdev 24.04 myvm
 ```
 
 ## Pre-installing Software with cloud-init
@@ -126,8 +130,9 @@ packages:
   - htop
   - build-essential
   - python3-pip
+  - python3-venv
+  - python3-virtualenv
 runcmd:
-  - pip3 install virtualenv
   - echo "alias ll='ls -lah'" >> /home/ubuntu/.bashrc
 EOF
 
@@ -277,4 +282,4 @@ To give a sense of timing on typical hardware:
 
 These times make Multipass practical for CI-style local testing where you spin up, run tests, and tear down for each test run.
 
-The combination of cached cloud images, copy-on-write disk provisioning, and automated cloud-init execution makes Multipass the fastest option for Ubuntu VM creation available on the platform.
+The combination of cached cloud images, copy-on-write disk provisioning, and automated cloud-init execution makes Multipass one of the fastest options for Ubuntu VM creation available on the platform.
