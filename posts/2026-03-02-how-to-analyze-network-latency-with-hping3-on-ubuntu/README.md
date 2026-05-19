@@ -68,11 +68,11 @@ sudo hping3 -S -p 80 -c 5 192.168.1.100
 # Test latency to HTTPS port
 sudo hping3 -S -p 443 -c 5 example.com
 
-# TCP ACK probes (bypasses some stateful firewalls)
+# TCP ACK probes (useful for testing firewall behavior)
 sudo hping3 -A -p 80 -c 5 192.168.1.100
 ```
 
-The `-S` flag sets the SYN flag, `-A` sets the ACK flag. TCP SYN probes are useful because the target host sends a SYN-ACK back even if it doesn't complete the connection.
+The `-S` flag sets the SYN flag, `-A` sets the ACK flag. TCP SYN probes are useful because a target with an open port sends a SYN-ACK back even if it doesn't complete the connection.
 
 ## UDP Mode Testing
 
@@ -105,10 +105,10 @@ Unlike `traceroute` which uses UDP by default, `hping3` lets you trace the path 
 
 ```bash
 # TCP SYN traceroute to port 80
-sudo hping3 -S -p 80 --traceroute 192.168.1.100
+sudo hping3 -S -p 80 --traceroute --tr-stop 192.168.1.100
 
 # ICMP traceroute
-sudo hping3 -1 --traceroute 192.168.1.100
+sudo hping3 -1 --traceroute --tr-stop 192.168.1.100
 ```
 
 This is particularly valuable when network paths pass through firewalls that block UDP but allow HTTP traffic.
@@ -126,7 +126,7 @@ At the end of the run, hping3 prints a summary showing packets transmitted, rece
 
 ```text
 --- 192.168.1.100 hping statistic ---
-1000 packets transmitted, 998 packets received, 0% packet loss
+1000 packets transmitted, 990 packets received, 1% packet loss
 round-trip min/avg/max = 0.5/1.2/8.7 ms
 ```
 
@@ -147,7 +147,7 @@ awk 'BEGIN{min=9999;max=0;sum=0;n=0} {
   if(val>max) max=val;
   sum+=val; n++;
 } END {
-  printf "min=%.2f max=%.2f avg=%.2f jitter=%.2f\n", min, max, sum/n, max-min
+  printf "min=%.2f max=%.2f avg=%.2f range=%.2f\n", min, max, sum/n, max-min
 }' rtts.txt
 ```
 
@@ -173,8 +173,8 @@ Packet fragmentation can cause latency spikes. You can probe for the MTU of a pa
 
 ```bash
 # Test with various packet sizes to find MTU
-sudo hping3 -1 -d 1472 --dont-frag -c 3 192.168.1.1  # 1500 byte frame (1472 + 28 header)
-sudo hping3 -1 -d 1400 --dont-frag -c 3 192.168.1.1  # Try smaller
+sudo hping3 -1 -d 1472 --dontfrag -c 3 192.168.1.1  # 1500 byte packet (1472 + 28-byte IP/ICMP headers)
+sudo hping3 -1 -d 1400 --dontfrag -c 3 192.168.1.1  # Try smaller
 
 # If you get no response with a large size but response with smaller, MTU is between those values
 ```
@@ -215,7 +215,7 @@ THRESHOLD_MS=${3:-50}
 COUNT=10
 
 RESULT=$(sudo hping3 -S -p "$PORT" -c "$COUNT" -q "$TARGET" 2>&1)
-AVG_RTT=$(echo "$RESULT" | grep "round-trip" | awk -F'/' '{print $5}')
+AVG_RTT=$(echo "$RESULT" | grep "round-trip" | awk -F'/' '{print $4}')
 
 if [ -z "$AVG_RTT" ]; then
   echo "ERROR: Could not reach $TARGET on port $PORT"
