@@ -10,14 +10,14 @@ Description: Deploy an ASP.NET Core application on Ubuntu using Kestrel as the w
 
 ASP.NET Core applications include Kestrel, a cross-platform web server built into the framework. On Linux, the recommended production pattern is to run Kestrel behind Nginx. Nginx handles SSL termination, static file serving, rate limiting, and connection management, while Kestrel focuses on running the application code.
 
-This guide covers deploying a .NET application as a self-contained systemd service with Nginx acting as the public-facing reverse proxy.
+This guide covers deploying a .NET application as a systemd service with Nginx acting as the public-facing reverse proxy.
 
 ## Installing the .NET Runtime
 
 ```bash
 # Add Microsoft's package repository
 
-sudo apt update && sudo apt install -y wget
+sudo apt update && sudo apt install -y ca-certificates wget lsb-release
 
 # Download and add the Microsoft package signing key and repository
 wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
@@ -106,6 +106,9 @@ In `Program.cs` or `appsettings.json`, configure Kestrel to listen on a Unix soc
 
 ```csharp
 // Program.cs
+using System.Net;
+using Microsoft.AspNetCore.HttpOverrides;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Configure Kestrel to listen on a Unix socket when behind Nginx
@@ -142,6 +145,10 @@ var app = builder.Build();
 
 // Apply forwarded headers middleware early in the pipeline
 app.UseForwardedHeaders();
+
+// Configure the rest of the middleware and endpoints here
+
+app.Run();
 ```
 
 Alternatively, configure via `appsettings.json`:
@@ -175,9 +182,10 @@ Description=ASP.NET Core Web Application
 After=network.target
 
 [Service]
-Type=notify
+Type=simple
 User=myapp
-Group=myapp
+Group=www-data
+UMask=0007
 
 # Working directory
 WorkingDirectory=/opt/myapp/app
@@ -185,7 +193,8 @@ WorkingDirectory=/opt/myapp/app
 # Environment variables
 Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
-Environment=DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
+# Only enable invariant globalization if your app doesn't need culture-specific behavior
+# Environment=DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1
 
 # The application binary
 ExecStart=/opt/myapp/app/MyApp
@@ -197,7 +206,7 @@ ExecStart=/opt/myapp/app/MyApp
 Restart=always
 RestartSec=5
 
-# Allow socket directory access
+# Create the socket directory under /run
 RuntimeDirectory=myapp
 RuntimeDirectoryMode=0755
 
@@ -231,6 +240,10 @@ ls -la /run/myapp/app.sock
 sudo apt install -y nginx
 
 sudo tee /etc/nginx/sites-available/myapp > /dev/null <<'EOF'
+upstream myapp_kestrel {
+    server unix:/run/myapp/app.sock;
+}
+
 server {
     listen 80;
     server_name yourdomain.com www.yourdomain.com;
@@ -258,7 +271,7 @@ server {
 
     # Forward requests to Kestrel via Unix socket
     location / {
-        proxy_pass http://unix:/run/myapp/app.sock;
+        proxy_pass http://myapp_kestrel;
 
         # Pass real connection info
         proxy_http_version 1.1;
@@ -279,11 +292,14 @@ server {
 
     # SignalR WebSocket support
     location /hub {
-        proxy_pass http://unix:/run/myapp/app.sock;
+        proxy_pass http://myapp_kestrel;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
     }
 
@@ -316,10 +332,12 @@ cd /opt/myapp/app
 ASPNETCORE_ENVIRONMENT=Production dotnet MyApp.dll --migrate
 "
 
-# Or use the EF migrations tool directly
-# (requires SDK on server)
+# Or use the EF migrations tool from the source project
+# (requires SDK and source code on server)
 # sudo -u myapp dotnet ef database update \
-#     --project /opt/myapp/app/MyApp.dll
+#     --project /path/to/MyApp/MyApp.csproj \
+#     --startup-project /path/to/MyApp/MyApp.csproj \
+#     -- --environment Production
 ```
 
 ## Updating the Application
