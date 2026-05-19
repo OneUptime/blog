@@ -15,7 +15,7 @@ It's a good choice when you need something faster and lighter than InfluxDB but 
 ## Prerequisites
 
 - Ubuntu 22.04 or 24.04
-- Java 11+ (QuestDB is a Java application, though the query engine is native)
+- Java 17+ if you use the no-JRE package (the Linux runtime package used below bundles Java)
 - At least 2 GB RAM
 - Root or sudo access
 
@@ -32,7 +32,7 @@ java -version
 
 ## Installing QuestDB
 
-QuestDB ships as a single JAR file, which makes installation simple:
+QuestDB ships as a self-contained binary archive, which makes installation simple:
 
 ```bash
 # Create a directory for QuestDB
@@ -46,12 +46,12 @@ sudo chown -R questdb:questdb /opt/questdb
 # Download the latest QuestDB release
 cd /tmp
 QDB_VERSION=$(curl -s https://api.github.com/repos/questdb/questdb/releases/latest | \
-  grep '"tag_name"' | sed 's/.*"v\([^"]*\)".*/\1/')
-wget "https://github.com/questdb/questdb/releases/download/${QDB_VERSION}/questdb-${QDB_VERSION}-rt-linux-amd64.tar.gz"
+  grep '"tag_name"' | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+wget "https://github.com/questdb/questdb/releases/download/${QDB_VERSION}/questdb-${QDB_VERSION}-rt-linux-x86-64.tar.gz"
 
 # Extract and move to the installation directory
-tar xzf "questdb-${QDB_VERSION}-rt-linux-amd64.tar.gz"
-sudo cp -r "questdb-${QDB_VERSION}-rt-linux-amd64/"* /opt/questdb/
+tar xzf "questdb-${QDB_VERSION}-rt-linux-x86-64.tar.gz"
+sudo cp -r "questdb-${QDB_VERSION}-rt-linux-x86-64/"* /opt/questdb/
 sudo chown -R questdb:questdb /opt/questdb
 ```
 
@@ -74,14 +74,15 @@ Group=questdb
 WorkingDirectory=/opt/questdb
 
 # Start QuestDB with custom data directory
-ExecStart=/opt/questdb/bin/questdb.sh start -d /opt/questdb/data
+ExecStart=/opt/questdb/bin/questdb.sh start -d /opt/questdb/data -n
 
 # Or use the JAR directly
 # ExecStart=/usr/bin/java \
 #     -Xmx4g \
 #     -Xms4g \
-#     -p /opt/questdb/data \
-#     -jar /opt/questdb/questdb.jar
+#     -p /opt/questdb/bin/questdb.jar \
+#     -m io.questdb/io.questdb.ServerMain \
+#     -d /opt/questdb/data
 
 # Restart on failure
 Restart=on-failure
@@ -105,8 +106,9 @@ sudo systemctl status questdb
 
 QuestDB listens on multiple ports:
 - **9000**: HTTP REST API and Web Console (browser-based SQL editor)
-- **9009**: InfluxDB Line Protocol (ILP) - high-speed ingestion
+- **9009**: InfluxDB Line Protocol (ILP) over TCP - legacy high-speed ingestion
 - **8812**: PostgreSQL wire protocol - connect with any PostgreSQL client
+- **9003**: Health endpoint and Prometheus metrics
 
 ## Accessing the Web Console
 
@@ -142,9 +144,7 @@ sudo nano /opt/questdb/data/conf/server.conf
 ```properties
 # /opt/questdb/data/conf/server.conf
 
-# HTTP port for REST API and web console
-http.port=9000
-# Bind only to specific interface
+# HTTP bind address for REST API and web console
 http.bind.to=0.0.0.0:9000
 
 # ILP (InfluxDB Line Protocol) port
@@ -161,18 +161,17 @@ pg.password=QuestDBPass123!
 # http.user=admin
 # http.password=QuestDBPass123!
 
-# Data root directory
-cairo.root=/opt/questdb/data/db
+# Data root directory, relative to /opt/questdb/data
+cairo.root=db
 
-# Maximum number of open files
+# Maximum number of uncommitted rows before an automatic commit
 cairo.max.uncommitted.rows=500000
 
-# WAL enabled (for durability)
-cairo.wal.enabled=true
+# WAL enabled by default for newly created tables
+cairo.wal.enabled.default=true
 
-# Commit lag - wait this long before committing to storage
-# Higher values = better write throughput, lower = better durability
-cairo.commit.lag=10000
+# ILP/TCP commit interval in milliseconds
+line.tcp.commit.interval.default=1000
 
 # O3 (out-of-order) ingestion settings
 cairo.o3.max.lag=300000
@@ -224,18 +223,18 @@ WAL;
 
 ## Ingesting Data via InfluxDB Line Protocol
 
-The ILP protocol is the fastest way to ingest data into QuestDB:
+The ILP protocol is the high-throughput way to ingest data into QuestDB. These examples use ILP over TCP on port 9009:
 
 ```bash
 # Send a metric using nc (netcat)
-echo "server_metrics,host=web01,region=us-east cpu_pct=45.2,mem_mb=6800,disk_read=1200,disk_write=800 $(date +%s%N)" | \
+echo "server_metrics,host=web01,region=us-east cpu_pct=45.2,mem_mb=6800i,disk_read=1200i,disk_write=800i $(date +%s%N)" | \
   nc -q 1 localhost 9009
 
 # Send multiple metrics in one batch
 cat << 'EOF' | nc -q 1 localhost 9009
-server_metrics,host=web01,region=us-east cpu_pct=45.2,mem_mb=6800
-server_metrics,host=web02,region=us-east cpu_pct=62.1,mem_mb=7200
-server_metrics,host=db01,region=us-east cpu_pct=28.4,mem_mb=14900
+server_metrics,host=web01,region=us-east cpu_pct=45.2,mem_mb=6800i
+server_metrics,host=web02,region=us-east cpu_pct=62.1,mem_mb=7200i
+server_metrics,host=db01,region=us-east cpu_pct=28.4,mem_mb=14900i
 EOF
 ```
 
