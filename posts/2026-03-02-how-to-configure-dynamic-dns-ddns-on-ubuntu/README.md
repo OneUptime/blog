@@ -58,7 +58,7 @@ web=https://ipv4.icanhazip.com   # Use this URL to get your public IP
 protocol=cloudflare
 zone=example.com                  # Your Cloudflare zone (root domain)
 ttl=1                             # 1 = automatic TTL in Cloudflare
-login=your-email@example.com     # Your Cloudflare account email
+login=token                       # Use "token" when authenticating with an API token
 password=your-cloudflare-api-token  # Cloudflare API token (not global key)
 
 # Records to update (can list multiple)
@@ -89,10 +89,9 @@ web=https://ipv4.icanhazip.com
 
 protocol=duckdns
 server=www.duckdns.org
-login=your-duckdns-token
 password=your-duckdns-token
 
-yoursubdomain.duckdns.org
+yoursubdomain
 ```
 
 ### Starting and Testing ddclient
@@ -157,6 +156,11 @@ CF_RESPONSE=$(curl -s -X GET \
 
 CF_RECORD_IP=$(echo "$CF_RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['result'][0]['content'])" 2>/dev/null)
 CF_RECORD_ID=$(echo "$CF_RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); print(data['result'][0]['id'])" 2>/dev/null)
+
+if [ -z "$CF_RECORD_ID" ]; then
+    echo "$(date): ERROR - DNS record not found in Cloudflare: ${RECORD_NAME}" >&2
+    exit 1
+fi
 
 if [ "$CURRENT_IP" = "$CF_RECORD_IP" ]; then
     # IPs match, nothing to do
@@ -225,7 +229,7 @@ syslog = true
 
 # Cloudflare provider
 provider cloudflare.com {
-    username   = your-email@example.com
+    username   = example.com
     password   = your-api-token
     hostname   = home.example.com
     ttl        = 1
