@@ -219,8 +219,8 @@ The HTTP gateway lets browsers access IPFS content. Configure it:
 # Make the gateway public (allows external access)
 ipfs config Addresses.Gateway /ip4/0.0.0.0/tcp/8080
 
-# Enable the gateway (off by default for security on some versions)
-ipfs config Gateway.NoFetch false
+# Allow the gateway to fetch content from the network
+ipfs config --json Gateway.NoFetch false
 ```
 
 Access content via the gateway:
@@ -234,8 +234,8 @@ http://your-server:8080/ipfs/QmHash...
 IPFS content is immutable - a CID always refers to the same bytes. IPNS (InterPlanetary Name System) provides mutable pointers that can point to different CIDs over time:
 
 ```bash
-# Publish your node's current directory as an IPNS record
-ipfs name publish QmXnnyufdzAWL5CqZ2RnSNgidyqDe7uN41CKVb8wKB4jb8
+# Publish a CID as an IPNS record
+ipfs name publish /ipfs/QmXnnyufdzAWL5CqZ2RnSNgidyqDe7uN41CKVb8wKB4jb8
 
 # Returns your IPNS address:
 # Published to k51qzi5uqu5dlvj2baxnqndepeb86cbk3ng7n3i46uzyxzyqj2xjonzllnv0v8: /ipfs/QmXnny...
@@ -244,7 +244,7 @@ ipfs name publish QmXnnyufdzAWL5CqZ2RnSNgidyqDe7uN41CKVb8wKB4jb8
 ipfs name resolve k51qzi5uqu5dlvj2baxnqndepeb86cbk3ng7n3i46uzyxzyqj2xjonzllnv0v8
 ```
 
-IPNS records have a short TTL, so resolution can be slow. For production sites, use DNSLink:
+IPNS resolution can be slower than fetching immutable CIDs because mutable records must be resolved through the naming system. For production sites, use DNSLink:
 
 ```bash
 # Add a DNS TXT record:
@@ -274,13 +274,13 @@ ipfs repo verify
 
 ## Bandwidth Configuration
 
-Limit bandwidth for nodes with constrained connections:
+Tune connection and resource limits for nodes with constrained resources:
 
 ```bash
-# Set max bandwidth to 100 MB/s up and down
+# Limit memory used by the libp2p networking stack
 ipfs config --json Swarm.ResourceMgr.MaxMemory '"500MB"'
 
-# Restrict to specific bandwidth
+# Tune connection manager watermarks
 ipfs config --json Swarm.ConnMgr.HighWater 200  # max peers
 ipfs config --json Swarm.ConnMgr.LowWater 150   # start pruning at this level
 ```
@@ -297,8 +297,8 @@ ipfs id
 # List files in an IPFS directory
 ipfs ls QmDirectoryHash
 
-# Show object stats (size, number of links)
-ipfs object stat QmHash
+# Show DAG stats
+ipfs dag stat QmHash
 
 # Get a file's CID without adding it
 ipfs add --only-hash myfile.txt
@@ -323,7 +323,7 @@ ipfs swarm peers | wc -l
 IPFS content resolution depends on DHT routing. If a file was only pinned on a few nodes, it may take time to find. Check:
 ```bash
 # Find which peers have a CID
-ipfs dht findprovs QmHash
+ipfs routing findprovs QmHash
 ```
 
 **Out of disk space:**
