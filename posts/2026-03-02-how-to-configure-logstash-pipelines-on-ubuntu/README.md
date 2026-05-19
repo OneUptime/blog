@@ -113,6 +113,7 @@ input {
   beats {
     port => 5044
     ssl_enabled => false
+    tags => ["nginx"]
     id => "beats_input"
   }
 }
@@ -124,7 +125,7 @@ filter {
     # Parse the Nginx combined log format
     grok {
       match => {
-        "message" => '%{IPORHOST:client_ip} - %{USERNAME:auth_user} \[%{HTTPDATE:request_time}\] "%{WORD:http_method} %{URIPATHPARAM:request_path} HTTP/%{NUMBER:http_version}" %{NUMBER:response_code:int} %{NUMBER:bytes_sent:int} "%{URI:referrer}" "%{GREEDYDATA:user_agent}"'
+        "message" => '%{IPORHOST:client_ip} - %{USERNAME:auth_user} \[%{HTTPDATE:request_time}\] "%{WORD:http_method} %{URIPATHPARAM:request_path} HTTP/%{NUMBER:http_version}" %{NUMBER:response_code:int} %{NUMBER:bytes_sent:int} "%{DATA:referrer}" "%{GREEDYDATA:user_agent}"'
       }
       # If parsing fails, add a tag
       tag_on_failure => ["_grokparsefailure_nginx"]
@@ -154,7 +155,7 @@ filter {
     }
 
     # Add a field indicating if this was an error response
-    if [response_code] >= 400 {
+    if [response_code] and [response_code] >= 400 {
       mutate {
         add_field => { "is_error" => true }
         add_tag => ["http_error"]
@@ -251,9 +252,10 @@ filter {
 
     # Parse the stack trace if present
     if [stack_trace] {
-      mutate {
-        # Limit stack trace length
-        truncate => { "stack_trace" => 2000 }
+      # Limit stack trace length
+      truncate {
+        fields => ["stack_trace"]
+        length_bytes => 2000
       }
     }
   }
@@ -325,7 +327,7 @@ filter {
     }
 
     # Detect successful sudo usage
-    if "COMMAND=" in [syslog_message] {
+    if "COMMAND=" in [syslog_message] or "COMMAND=" in [message] {
       mutate {
         add_tag => ["sudo_command"]
       }
