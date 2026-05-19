@@ -46,8 +46,8 @@ For Temurin (AdoptOpenJDK) installations:
 
 ```bash
 ls /usr/lib/jvm/
-# temurin-21-amd64
-# The path would be /usr/lib/jvm/temurin-21-amd64
+# temurin-21-jdk-amd64
+# The path would be /usr/lib/jvm/temurin-21-jdk-amd64
 ```
 
 ## Setting JAVA_HOME System-Wide
@@ -217,7 +217,7 @@ $JAVA_HOME/bin/java -version
 $JAVA_HOME/bin/javac -version
 
 # Quick one-liner to confirm everything
-java -XshowSettings:property -version 2>&1 | grep java.home
+java -XshowSettings:properties -version 2>&1 | grep java.home
 ```
 
 ## Common Mistakes
