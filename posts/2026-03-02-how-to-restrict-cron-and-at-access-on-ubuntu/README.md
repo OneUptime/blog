@@ -129,8 +129,10 @@ Before locking down cron access, audit what is currently scheduled:
 ```bash
 # View all user crontabs
 for user in $(cut -f1 -d: /etc/passwd); do
-    if sudo crontab -u "$user" -l 2>/dev/null | grep -v '^#' | grep -v '^$'; then
+    crontab_content=$(sudo crontab -u "$user" -l 2>/dev/null | grep -v '^#' | grep -v '^$')
+    if [ -n "$crontab_content" ]; then
         echo "=== $user ==="
+        echo "$crontab_content"
     fi
 done
 
@@ -195,7 +197,7 @@ With restrictions in place, monitor cron execution to detect anomalies:
 grep CRON /var/log/syslog | tail -50
 
 # Find all cron executions in the last hour
-grep CRON /var/log/syslog | grep "$(date +%b %_d %H)"
+grep CRON /var/log/syslog | grep "$(date '+%b %_d %H')"
 
 # Set up an alert for unexpected cron users
 # Check daily if new users have appeared in cron.allow or crontabs
