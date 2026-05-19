@@ -28,8 +28,9 @@ The timing is controlled by the SOA record values: Refresh (how often to check),
 
 This guide assumes you already have a primary BIND9 server configured and running. The primary server must:
 - Allow zone transfers from the secondary's IP address (`allow-transfer`)
-- Have `also-notify` configured to push change notifications to the secondary
 - Have both forward and reverse zones defined
+
+It should also have `also-notify` configured if you want the primary to push change notifications to the secondary instead of waiting for the secondary's normal refresh interval.
 
 For this tutorial, assume:
 - Primary DNS server: 192.168.1.10
@@ -82,7 +83,7 @@ options {
 
 ## Defining Secondary Zones
 
-This is the key difference from a primary configuration. The zone type is `slave` (or `secondary` in newer BIND versions), and you specify where to get the zone data:
+This is the key difference from a primary configuration. The zone type is `secondary` (or `slave` in older terminology), and you specify where to get the zone data:
 
 ```bash
 sudo nano /etc/bind/named.conf.local
@@ -91,9 +92,9 @@ sudo nano /etc/bind/named.conf.local
 ```text
 // Secondary zone for example.com
 zone "example.com" {
-    type slave;
+    type secondary;
     // The primary server to transfer from
-    masters { 192.168.1.10; };
+    primaries { 192.168.1.10; };
     // Where to store the local copy of the zone
     file "/var/cache/bind/db.example.com";
     // This secondary can also transfer to other secondaries if needed
@@ -102,8 +103,8 @@ zone "example.com" {
 
 // Secondary reverse lookup zone
 zone "1.168.192.in-addr.arpa" {
-    type slave;
-    masters { 192.168.1.10; };
+    type secondary;
+    primaries { 192.168.1.10; };
     file "/var/cache/bind/db.192.168.1";
     allow-transfer { none; };
 };
@@ -117,7 +118,7 @@ On the primary server, ensure the secondary is allowed to receive zone transfers
 
 ```text
 zone "example.com" {
-    type master;
+    type primary;
     file "/etc/bind/zones/db.example.com";
     // Allow the secondary server to pull zones
     allow-transfer { 192.168.1.20; };
@@ -214,7 +215,7 @@ sudo rndc retransfer example.com
 sudo rndc refresh example.com
 ```
 
-## Adding the Secondary to Your SOA Record
+## Adding the Secondary to Your NS Records
 
 Update the primary's zone file to list the secondary server in the NS records:
 
@@ -285,4 +286,4 @@ chmod +x /usr/local/bin/check-dns-sync.sh
 echo "*/15 * * * * /usr/local/bin/check-dns-sync.sh" | crontab -
 ```
 
-A secondary DNS server is straightforward to configure but requires keeping the primary's `allow-transfer` and `also-notify` settings aligned with it. The most common problem encountered is zone transfers failing due to firewall rules blocking TCP port 53 between the servers - DNS normally runs on UDP but zone transfers use TCP.
+A secondary DNS server is straightforward to configure but requires keeping the primary's `allow-transfer` and optional `also-notify` settings aligned with it. The most common problem encountered is zone transfers failing due to firewall rules blocking TCP port 53 between the servers - normal DNS queries often use UDP, but AXFR uses TCP and IXFR may need TCP when the incremental response does not fit in a single UDP packet.
