@@ -18,7 +18,7 @@ The `pam_pwquality` module replaced the older `pam_cracklib` module in modern Ub
 
 ## Installing pam_pwquality
 
-On Ubuntu 20.04 and later, `libpam-pwquality` is usually already installed:
+On Ubuntu 20.04 and later, `libpam-pwquality` may already be installed on desktop installs, but it is safe to install it explicitly:
 
 ```bash
 # Check if the package is installed
@@ -28,6 +28,9 @@ dpkg -l libpam-pwquality
 # Install if not present
 sudo apt-get update
 sudo apt-get install -y libpam-pwquality
+
+# Optional: install pwscore for manual password quality checks
+sudo apt-get install -y libpwquality-tools
 ```
 
 ## PAM Configuration Files
@@ -94,8 +97,8 @@ gecoscheck = 1
 # Number of attempts before returning an error
 retry = 3
 
-# Enforce rules even for root (0 = root can bypass, 1 = root must comply)
-enforce_for_root = 1
+# Enforce rules even for root (omit this line if root should only receive warnings)
+enforce_for_root
 ```
 
 ## Configuring the PAM Stack
@@ -141,7 +144,7 @@ Add the history module before the password update module:
 password  requisite   pam_pwquality.so retry=3 local_users_only
 
 # Remember the last 12 passwords and prevent reuse
-password  required    pam_pwhistory.so remember=12 use_authok enforce_for_root
+password  required    pam_pwhistory.so remember=12 use_authtok enforce_for_root
 
 # Write the new password to the shadow file
 password  [success=1 default=ignore]  pam_unix.so obscure use_authtok \
@@ -176,10 +179,9 @@ Key settings in `/etc/login.defs`:
 PASS_MAX_DAYS   90      # Maximum password age in days
 PASS_MIN_DAYS   1       # Minimum days between changes
 PASS_WARN_AGE   14      # Days before expiry to warn user
-PASS_MIN_LEN    14      # Minimum length (backup for PAM)
 ```
 
-Note: `PASS_MIN_LEN` in `login.defs` is independent of PAM's `minlen`. Both should be set consistently.
+Note: On Ubuntu, password length is handled by PAM. `PASS_MIN_LEN` in `login.defs` is obsolete and should not be used as a backup for PAM's `minlen`.
 
 ## Testing the Configuration
 
@@ -201,11 +203,11 @@ passwd
 # New password: C0mpl3x!P@ssw0rd
 ```
 
-As root, you can test password strength without actually changing a password:
+You can test password strength without actually changing a password:
 
 ```bash
-# Check password quality for a specific user
-echo "TestPassword123!" | pwscore
+# Check password quality; optionally pass a username to check similarity to it
+echo "TestPassword123!" | pwscore username
 
 # Output shows score out of 100
 # Higher is better
