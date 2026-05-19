@@ -49,8 +49,10 @@ sudo apt install software-properties-common -y
 
 # Add the MariaDB repository for version 11.x (LTS)
 # Check https://mariadb.org/download/ for the current recommended version
-curl -LsSO https://downloads.mariadb.com/MariaDB/mariadb_repo_setup
-echo "6948ead6d5a7d9516b1e3fba66b16fbc1a3b1ac3  mariadb_repo_setup" | sha256sum -c -
+curl -LsSO https://r.mariadb.com/downloads/mariadb_repo_setup
+# Optional: verify the script against the SHA256 checksum published at
+# https://mariadb.com/docs/server/release-notes/mariadb_es_repo_setup/
+# echo "<published-sha256>  mariadb_repo_setup" | sha256sum -c -
 sudo bash mariadb_repo_setup --mariadb-server-version="mariadb-11.4"
 
 sudo apt update
@@ -140,9 +142,6 @@ log_error = /var/log/mysql/error.log
 
 # InnoDB buffer pool - set to 70-80% of RAM for dedicated DB servers
 innodb_buffer_pool_size = 2G
-
-# Number of buffer pool instances (increase for large buffer pools)
-innodb_buffer_pool_instances = 2
 
 # InnoDB redo log size (larger = faster writes, slower crash recovery)
 innodb_log_file_size = 512M
