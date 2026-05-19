@@ -16,7 +16,7 @@ The trade-off is a steeper learning curve. But once the model clicks, Concourse 
 
 A Concourse deployment has two main components:
 
-- **Web (ATC):** The API server and web interface. Handles pipeline scheduling, stores state in PostgreSQL.
+- **Web:** The API server and web interface. Handles pipeline scheduling and stores state in PostgreSQL. The web node also runs the TSA, which is the SSH server that workers register with.
 - **Worker:** Runs builds. Workers download inputs, execute containers, and publish outputs. Workers can be on different machines than the web component.
 
 ## Installing with Docker Compose
@@ -210,7 +210,7 @@ sudo certbot --nginx -d ci.example.com
 
 ```bash
 # Download fly matching the server version
-curl -O https://ci.example.com/api/v1/cli?arch=amd64&platform=linux -o fly
+curl -L "https://ci.example.com/api/v1/cli?arch=amd64&platform=linux" -o fly
 
 # Or download from the web interface - click the fly icon in the bottom right corner
 
@@ -336,7 +336,6 @@ jobs:
                 pytest tests/
 
   - name: build-and-push
-    depends_on: [test]
     plan:
       - get: source-repo
         trigger: true
@@ -351,7 +350,6 @@ jobs:
               repository: concourse/oci-build-task
           inputs:
             - name: source-repo
-              path: .
           outputs:
             - name: image
           run:
