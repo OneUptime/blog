@@ -42,7 +42,9 @@ network:
       dhcp4: false
       addresses:
         - 192.168.1.50/24
-      gateway4: 192.168.1.1
+      routes:
+        - to: default
+          via: 192.168.1.1
       nameservers:
         addresses:
           - 192.168.1.10   # Primary DC
@@ -187,13 +189,11 @@ auth_provider = ad
 access_provider = ad
 chpass_provider = ad
 
-# Group membership lookup (tokenGroups is faster for AD)
+# Algorithmic UID/GID mapping from the AD objectSID
 ldap_id_mapping = True
 ldap_schema = ad
 
-# Filter out system accounts
-ldap_user_extra_attrs = altSecurityIdentities:altSecurityIdentities
-ldap_user_ssh_public_key = altSecurityIdentities
+# Disable GPO-based access control (rely on access_provider instead)
 ad_gpo_access_control = disabled
 ```
 
@@ -286,20 +286,20 @@ This sets `access_provider = simple` in SSSD and configures `simple_allow_groups
 With `cache_credentials = True`, users who have logged in at least once can authenticate even when the DC is unreachable:
 
 ```bash
-# Clear SSSD cache (forces re-authentication against DC)
+# Expire all cached entries (forces re-lookup against DC)
 sudo sss_cache -E
 
-# View cached user info
+# Expire cache for a specific user
 sudo sss_cache -u jsmith
 ```
 
 ## Leaving the Domain
 
 ```bash
-# Leave the domain cleanly (removes computer account from AD)
+# Leave the domain locally (computer account remains in AD)
 sudo realm leave corp.example.com
 
-# Force leave if DC is unreachable
+# Leave and also delete the computer account from AD (requires DC reachable)
 sudo realm leave --remove corp.example.com
 ```
 
