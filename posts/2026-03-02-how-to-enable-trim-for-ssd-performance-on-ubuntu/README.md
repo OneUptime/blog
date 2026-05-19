@@ -28,8 +28,8 @@ sudo hdparm -I /dev/sda | grep -i trim
 For NVMe drives:
 
 ```bash
-# NVMe drives always support TRIM (called DEALLOCATE in NVMe)
-sudo nvme id-ctrl /dev/nvme0 | grep -i "dsm\|deallocate"
+# Check whether the NVMe controller supports Dataset Management/Deallocate
+sudo nvme id-ctrl -H /dev/nvme0 | grep -i "dataset management\|deallocate"
 ```
 
 Check via lsblk for the DISC-GRAN and DISC-MAX columns:
@@ -136,6 +136,7 @@ Add:
 
 ```ini
 [Timer]
+OnCalendar=
 OnCalendar=daily
 ```
 
@@ -149,8 +150,8 @@ sudo systemctl restart fstrim.timer
 The `discard` mount option tells the filesystem to issue TRIM commands immediately whenever blocks are freed (file deletion, truncation). This is real-time TRIM.
 
 ```bash
-# Mount with continuous discard
-sudo mount -o discard /dev/sda3 /
+# Remount the root filesystem with continuous discard
+sudo mount -o remount,discard /
 
 # In /etc/fstab:
 UUID=abc12345  /  ext4  defaults,discard  0  1
@@ -160,9 +161,9 @@ UUID=abc12345  /  ext4  defaults,discard  0  1
 
 Continuous discard has downsides:
 
-1. **Performance overhead**: Each delete operation issues a TRIM command synchronously, adding latency to delete operations
+1. **Performance overhead**: Some filesystems and device stacks issue discard commands synchronously, which can add latency to delete operations
 2. **Increased write amplification on some SSDs**: Frequent small TRIM commands are less efficient than batched ones
-3. **LVM compatibility**: TRIM with LVM requires `issue_discards = 1` in `/etc/lvm/lvm.conf`, and the LVM layer needs to be configured separately
+3. **LVM compatibility**: TRIM must be supported through every layer in the block device stack, and LVM thin pools need their discard mode to pass requests down
 4. **SSD firmware quality varies**: Some older SSD firmware handles continuous discard poorly
 
 For most workloads, weekly `fstrim` is the right choice. Use `discard` only if:
@@ -172,26 +173,21 @@ For most workloads, weekly `fstrim` is the right choice. Use `discard` only if:
 
 ## TRIM Through LVM
 
-When using LVM, TRIM requests need to pass through the LVM layer:
+When using LVM, TRIM requests need to be supported through the LVM layer and the underlying physical volumes. Verify that the mapped device reports non-zero discard limits:
 
 ```bash
-# Enable discard passthrough in LVM
-sudo nano /etc/lvm/lvm.conf
+lsblk -o NAME,TYPE,DISC-GRAN,DISC-MAX
 ```
 
-Find and set:
-
-```text
-issue_discards = 1
-```
-
-Then update the initramfs:
+For LVM thin pools, verify that discards are set to pass down:
 
 ```bash
-sudo update-initramfs -u
+lvs -o lv_name,segtype,discards
 ```
 
-Run fstrim on the LVM volume:
+The `issue_discards` setting in `/etc/lvm/lvm.conf` controls whether LVM discards physical volume space after LVM operations such as `lvremove` and `lvreduce`; it is not required just to run `fstrim` on a mounted filesystem.
+
+Run `fstrim` on the mounted LVM volume:
 
 ```bash
 sudo fstrim -av
@@ -222,18 +218,15 @@ Then run `sudo update-initramfs -u` and reboot.
 
 ## Verifying TRIM is Working
 
-After running fstrim, verify the SSD received the commands:
+After running fstrim, verify that the command completed and that the block device stack advertises discard support. Most consumer SSDs do not expose a simple counter proving that each TRIM command was received:
 
 ```bash
 # Run fstrim and check output
 sudo fstrim -v /
-# Should show a non-zero "trimmed" amount
+# A non-zero "trimmed" amount means fstrim passed discard ranges down the stack
 
-# Check SSD health (good SSD firmware reports TRIM in attributes)
-sudo smartctl -a /dev/sda | grep -i "trim\|ata_232"
-
-# For NVMe, check error statistics
-sudo nvme smart-log /dev/nvme0 | grep -i "percent_used\|available_spare"
+# Confirm the block device advertises discard support
+lsblk -o NAME,DISC-GRAN,DISC-MAX
 ```
 
 ## ext4 vs XFS vs Btrfs TRIM Support
@@ -249,8 +242,7 @@ sudo fstrim -v /data  # if /data is XFS
 
 # Btrfs: fstrim works
 sudo fstrim -v /btrfs-mount
-# Btrfs also has its own defrag+discard
-sudo btrfs filesystem defragment -r -c /data
+# Btrfs also supports asynchronous discard via the discard=async mount option
 ```
 
 For most Ubuntu server deployments, the default weekly `fstrim.timer` provides adequate SSD maintenance with minimal operational overhead. Verify it's enabled and running, check that your SSDs report TRIM support via `lsblk -o DISC-GRAN`, and run `sudo fstrim -av` after any large batch of file deletions if you want to immediately free up space on the SSD.
