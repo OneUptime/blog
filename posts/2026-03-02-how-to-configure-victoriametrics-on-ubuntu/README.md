@@ -23,7 +23,7 @@ VictoriaMetrics is a fast, cost-effective time-series database that is compatibl
 ```bash
 # Download the latest binary
 
-VERSION="v1.96.0"
+VERSION="v1.143.0"
 curl -Lo /tmp/victoria-metrics.tar.gz \
     https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/${VERSION}/victoria-metrics-linux-amd64-${VERSION}.tar.gz
 
@@ -74,12 +74,14 @@ ExecStart=/usr/local/bin/victoria-metrics \
     -retentionPeriod=12 \
     -httpListenAddr=:8428 \
     -loggerLevel=INFO \
-    -loggerOutput=/var/log/victoria-metrics/victoria-metrics.log \
+    -loggerOutput=stdout \
     -selfScrapeInterval=10s \
     -maxLabelsPerTimeseries=50 \
     -search.maxQueryDuration=60s \
     -search.maxConcurrentRequests=16
 
+StandardOutput=append:/var/log/victoria-metrics/victoria-metrics.log
+StandardError=append:/var/log/victoria-metrics/victoria-metrics.log
 Restart=always
 RestartSec=5
 LimitNOFILE=65536
@@ -114,7 +116,7 @@ Understanding the important flags:
 
 # Ingestion limits
 -maxLabelsPerTimeseries=50     # Reject series with too many labels (cardinality protection)
--maxScrapeSize=16MB            # Max scrape response size
+-promscrape.maxScrapeSize=16MB # Max scrape response size when using VictoriaMetrics scraping
 ```
 
 ## Configuring Prometheus to Use VictoriaMetrics
@@ -218,9 +220,9 @@ EOF
 Key self-metrics to watch:
 
 ```text
-vm_rows_ingested_total          # Total rows ingested
+vm_rows_inserted_total          # Total rows ingested by protocol
 vm_cache_size_bytes             # Cache memory usage
-vm_queries_total                # Total queries processed
+vm_http_requests_total{path="/api/v1/query"}  # Total instant queries processed
 vm_slow_queries_total           # Queries exceeding the duration limit
 vm_data_size_bytes              # Total on-disk data size
 ```
@@ -234,8 +236,6 @@ For environments ingesting millions of time series:
 -memory.allowedPercent=70          # Allow more RAM for caching
 -search.maxConcurrentRequests=64   # More parallel queries
 -inmemoryDataFlushInterval=5s      # Flush in-memory data more often
--smallMergeConcurrency=2           # Parallel small merge operations
--bigMergeConcurrency=1             # Serial big merge (avoids I/O saturation)
 ```
 
 For high write throughput, use faster storage:
