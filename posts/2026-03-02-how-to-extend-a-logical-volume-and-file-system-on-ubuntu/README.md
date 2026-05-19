@@ -34,7 +34,7 @@ Example output:
 
 You have 200GB free in the VG - plenty to extend a volume.
 
-If VFree shows 0, you need to add a new disk to the Volume Group first. See the guide on adding disks to an existing VG before continuing.
+If VFree shows 0, you need to add storage to the Volume Group first, either by adding a new disk or expanding an existing Physical Volume. See the guide on adding disks to an existing VG before continuing.
 
 ## Identifying What You're Working With
 
@@ -85,7 +85,7 @@ At this point the block device is larger, but the filesystem doesn't know it yet
 sudo resize2fs /dev/data_vg/db_data
 ```
 
-`resize2fs` without a size argument grows the filesystem to fill the entire block device. For online (live) resize, the filesystem must be mounted. ext4 supports live resize.
+`resize2fs` without a size argument grows the filesystem to fill the entire block device. ext4 supports online (live) resize while mounted, and `resize2fs` can also enlarge an unmounted ext2, ext3, or ext4 filesystem.
 
 Expected output:
 ```text
@@ -152,7 +152,7 @@ sudo lvs /dev/data_vg/db_data
 
 ## Extending When VG Free Space is Insufficient
 
-If the Volume Group is full, you need to add more Physical Volumes before extending. Here's the full sequence:
+If the Volume Group is full, you need to add more storage before extending. One common approach is adding another Physical Volume:
 
 ```bash
 # 1. Initialize a new disk as a Physical Volume
