@@ -75,8 +75,8 @@ Source routing allows the sender to specify the route a packet should take. It's
 # Disable source routing for all interfaces
 net.ipv4.conf.all.accept_source_route = 0
 net.ipv4.conf.default.accept_source_route = 0
-net.ipv6.conf.all.accept_source_route = 0
-net.ipv6.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = -1
+net.ipv6.conf.default.accept_source_route = -1
 ```
 
 ### ICMP Redirects
@@ -179,7 +179,7 @@ kernel.yama.ptrace_scope = 1
 kernel.kptr_restrict = 2
 ```
 
-`ptrace_scope = 1` means only parent processes can ptrace their children, blocking tools like `gdb` from attaching to unrelated processes. This stops certain privilege escalation and credential dumping techniques.
+`ptrace_scope = 1` means a process must have a predefined relationship with the process it wants to trace, usually a parent tracing its descendants, blocking tools like `gdb` from attaching to unrelated processes. This stops certain privilege escalation and credential dumping techniques.
 
 ### Restricting BPF
 
@@ -208,7 +208,7 @@ For servers that should not continue operating in a compromised or unstable stat
 The Magic SysRq key gives direct access to kernel functions. Restrict it in production:
 
 ```ini
-# Disable SysRq key (or set to 4 to allow just sync)
+# Disable SysRq key (or set to 16 to allow just sync)
 kernel.sysrq = 0
 ```
 
@@ -232,8 +232,8 @@ These settings prevent common local privilege escalation attacks that abuse syml
 # Prevent core dumps from setuid programs (reduces sensitive data exposure)
 fs.suid_dumpable = 0
 
-# Disable memory overcommit - prevents some OOM-based attacks
-# 0=heuristic, 1=always allow, 2=never allow more than ratio allows
+# Use heuristic memory overcommit handling
+# 0=heuristic, 1=always allow, 2=never overcommit beyond the configured limit
 vm.overcommit_memory = 0
 ```
 
@@ -264,7 +264,7 @@ sysctl kernel.kptr_restrict
 sysctl fs.protected_symlinks
 ```
 
-If settings reset after reboot, check that your file is in `/etc/sysctl.d/` (not `/etc/sysctl.conf` which can be overwritten by packages) and named with a `.conf` extension.
+If settings reset after reboot, check that your file is in `/etc/sysctl.d/`, named with a `.conf` extension, and ordered later than any other sysctl file that sets the same keys.
 
 ## Testing Network Behavior After Changes
 
@@ -295,12 +295,16 @@ net.ipv6.conf.all.forwarding = 0
 # --- Source Routing ---
 net.ipv4.conf.all.accept_source_route = 0
 net.ipv4.conf.default.accept_source_route = 0
+net.ipv6.conf.all.accept_source_route = -1
+net.ipv6.conf.default.accept_source_route = -1
 
 # --- ICMP Redirects ---
 net.ipv4.conf.all.accept_redirects = 0
 net.ipv4.conf.default.accept_redirects = 0
 net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
 net.ipv6.conf.all.accept_redirects = 0
+net.ipv6.conf.default.accept_redirects = 0
 
 # --- Reverse Path Filtering ---
 net.ipv4.conf.all.rp_filter = 1
@@ -310,11 +314,13 @@ net.ipv4.conf.default.rp_filter = 1
 net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_max_syn_backlog = 2048
 net.ipv4.tcp_synack_retries = 2
+net.ipv4.tcp_syn_retries = 5
 
 # --- ICMP ---
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 net.ipv4.icmp_ignore_bogus_error_responses = 1
 net.ipv4.conf.all.log_martians = 1
+net.ipv4.conf.default.log_martians = 1
 
 # --- IPv6 ---
 net.ipv6.conf.all.accept_ra = 0
@@ -335,6 +341,9 @@ fs.protected_hardlinks = 1
 fs.protected_fifos = 2
 fs.protected_regular = 2
 fs.suid_dumpable = 0
+
+# --- Virtual Memory ---
+vm.overcommit_memory = 0
 ```
 
 Apply it once and it persists through reboots. These settings cover the most important kernel-level hardening steps without breaking normal server operation.
