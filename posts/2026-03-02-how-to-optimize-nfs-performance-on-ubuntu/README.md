@@ -94,9 +94,6 @@ threads=32
 # NFSv4 settings
 grace-time=90
 lease-time=90
-
-[exportfs]
-rootdir=/
 ```
 
 ```bash
