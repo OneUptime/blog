@@ -332,16 +332,16 @@ On systems using systemd, auth events are also in the journal:
 
 ```bash
 # SSH events from current boot
-journalctl -u sshd -b
+journalctl -u ssh -b
 
 # Failed SSH attempts in the last hour
-journalctl -u sshd --since "1 hour ago" | grep "Failed"
+journalctl -u ssh --since "1 hour ago" | grep "Failed"
 
 # Authentication events from PAM
 journalctl -b | grep "pam_unix"
 
 # Sudo events
-journalctl -u sudo -b
+journalctl -t sudo -b
 journalctl -b | grep "sudo"
 
 # Failed attempts in the last 24 hours
