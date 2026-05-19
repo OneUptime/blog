@@ -8,7 +8,7 @@ Description: Manage and reclaim disk space used by systemd journal logs on Ubunt
 
 ---
 
-systemd's journal collects logs from the kernel, systemd services, and applications on Ubuntu. By default, it stores these logs in `/var/log/journal/` and will use up to 10% of your filesystem (or 4GB, whichever is smaller). On a busy server, the journal can accumulate gigabytes of log data, and on small VMs or containers, it can fill your root filesystem entirely.
+systemd's journal collects logs from the kernel, systemd services, and applications on Ubuntu. With persistent storage enabled, it stores these logs in `/var/log/journal/` and will use up to 10% of your filesystem (or 4GB, whichever is smaller). On systems using the default `Storage=auto`, persistent storage is used when `/var/log/journal/` exists; otherwise logs are kept under `/run/log/journal/`. On a busy server, the journal can accumulate gigabytes of log data, and on small VMs or containers, it can fill your root filesystem entirely.
 
 ## Checking Current Journal Size
 
@@ -22,13 +22,13 @@ journalctl --disk-usage
 # Output example:
 # Archived and active journals take up 2.4G in the filesystem.
 
-# See where the journal files are stored
+# See persistent journal files, if persistent storage is enabled
 ls -lah /var/log/journal/
 
-# List individual journal files with sizes
-ls -lah /var/log/journal/$(ls /var/log/journal/)/
+# List individual persistent journal files with sizes
+sudo find /var/log/journal/ -maxdepth 2 -type f -name "*.journal*" -exec ls -lh {} +
 
-# Check how many journal files exist
+# Check how many persistent journal files exist
 find /var/log/journal/ -name "*.journal" | wc -l
 
 # Get a breakdown by time period
@@ -120,7 +120,7 @@ Apply the new configuration:
 sudo systemctl restart systemd-journald
 
 # Verify the new configuration is active
-systemctl show systemd-journald | grep -E "Max|Keep|Retention"
+systemd-analyze cat-config systemd/journald.conf | grep -E "^[[:space:]]*(SystemMaxUse|SystemKeepFree|SystemMaxFileSize|MaxRetentionSec)="
 
 # Run vacuum to immediately enforce the new limits
 sudo journalctl --vacuum-size=500M
@@ -135,7 +135,7 @@ The `Storage=` setting fundamentally changes how logs survive reboots:
 
 ```bash
 # Check current storage mode
-sudo cat /etc/systemd/journald.conf | grep Storage
+grep -R "^[[:space:]]*Storage=" /etc/systemd/journald.conf /etc/systemd/journald.conf.d/*.conf 2>/dev/null || true
 
 # Volatile storage - logs in RAM, lost on reboot
 # Good for containers where logs should be ephemeral
@@ -143,7 +143,7 @@ sudo mkdir -p /etc/systemd/journald.conf.d/
 cat << 'EOF' | sudo tee /etc/systemd/journald.conf.d/storage.conf
 [Journal]
 Storage=volatile
-SystemMaxUse=100M
+RuntimeMaxUse=100M
 EOF
 
 # Persistent storage with strict limits
@@ -189,7 +189,7 @@ journalctl -p err --since "1 day ago" | \
 When a service generates logs faster than the rate limit allows, you'll see messages like:
 
 ```text
-systemd-journald[xxx]: /dev/kmsg buffer overrun, some messages lost.
+systemd-journald[xxx]: Suppressed 1234 messages from nginx.service
 ```
 
 ```bash
