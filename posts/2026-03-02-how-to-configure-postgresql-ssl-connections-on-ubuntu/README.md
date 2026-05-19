@@ -98,7 +98,7 @@ ssl_key_file = '/etc/postgresql/ssl/server.key'
 # Minimum TLS version (TLS 1.2 or 1.3 recommended)
 ssl_min_protocol_version = 'TLSv1.2'
 
-# Strong cipher list (optional - PostgreSQL defaults are already good)
+# Cipher list example (optional - PostgreSQL defaults are usually sufficient)
 # ssl_ciphers = 'HIGH:MEDIUM:+3DES:!aNULL'
 
 # Enable ECDH to support forward secrecy
@@ -216,11 +216,11 @@ sudo systemctl reload postgresql
 ### Using psql
 
 ```bash
-# Connect with SSL (required by default if server supports it)
+# Connect with SSL required
 psql "host=db.example.com dbname=myapp_db user=myapp_user sslmode=require"
 
 # Verify the certificate (recommended for production)
-psql "host=db.example.com dbname=myapp_db user=myapp_user sslmode=verify-full sslrootcert=server.crt"
+psql "host=db.example.com dbname=myapp_db user=myapp_user sslmode=verify-full sslrootcert=ca.crt"
 
 # Connect with client certificate
 psql "host=db.example.com dbname=myapp_db user=myapp_user \
@@ -292,8 +292,8 @@ sudo openssl req -new -x509 -days 1826 \
 
 sudo systemctl reload postgresql
 
-# For Let's Encrypt with certbot
-sudo certbot renew --post-hook "systemctl reload postgresql"
+# For Let's Encrypt with certbot, copy renewed files before reloading PostgreSQL
+sudo certbot renew --deploy-hook "cp /etc/letsencrypt/live/db.example.com/fullchain.pem /etc/postgresql/ssl/server.crt && cp /etc/letsencrypt/live/db.example.com/privkey.pem /etc/postgresql/ssl/server.key && chown postgres:postgres /etc/postgresql/ssl/server.* && chmod 600 /etc/postgresql/ssl/server.key && chmod 644 /etc/postgresql/ssl/server.crt && systemctl reload postgresql"
 ```
 
 Enabling SSL for PostgreSQL connections is straightforward and essential for any database accessible over a network. The combination of `hostssl` in pg_hba.conf and `sslmode=verify-full` on the client side provides strong protection against eavesdropping and man-in-the-middle attacks.
