@@ -37,7 +37,7 @@ sudo apt purge 'nvidia-*' 'cuda-*' 'libcuda*' 'libcudnn*' -y
 sudo apt autoremove -y
 
 # Remove DKMS modules
-sudo dkms status | grep nvidia | awk -F, '{print $1}' | xargs -I{} sudo dkms remove {}
+sudo dkms status | grep nvidia | awk -F, '{print $1}' | xargs -r -I{} sudo dkms remove {} --all
 
 # Reboot after cleanup
 sudo reboot
@@ -54,10 +54,10 @@ sudo dpkg -i cuda-keyring_1.1-1_all.deb
 sudo apt update
 
 # List available driver versions
-apt-cache search nvidia-driver | grep -E "^nvidia-driver-[0-9]+"
+apt-cache search cuda-drivers | grep -E "^cuda-drivers-[0-9]+"
 
 # Install a specific driver version (535 is common for CUDA 12.x)
-sudo apt install nvidia-driver-535
+sudo apt install cuda-drivers-535
 ```
 
 Reboot after driver installation:
@@ -80,10 +80,10 @@ With the NVIDIA repository already added, install the CUDA toolkit:
 
 ```bash
 # Install CUDA 12.3 (adjust version as needed)
-sudo apt install cuda-12-3
+sudo apt install cuda-toolkit-12-3
 
 # Or install the latest available
-sudo apt install cuda
+sudo apt install cuda-toolkit
 ```
 
 The CUDA toolkit installs to `/usr/local/cuda-12.3/` with a symlink at `/usr/local/cuda`.
@@ -110,8 +110,9 @@ Verify the installation:
 nvcc --version
 
 # Run CUDA device query sample
-cd /usr/local/cuda/samples/1_Utilities/deviceQuery
-sudo make
+git clone --depth 1 --branch v12.3 https://github.com/NVIDIA/cuda-samples.git
+cd cuda-samples/Samples/1_Utilities/deviceQuery
+make
 ./deviceQuery
 ```
 
@@ -123,8 +124,7 @@ cuDNN requires a free NVIDIA developer account to download from the NVIDIA websi
 
 ```bash
 # Install cuDNN via apt (after adding the CUDA keyring)
-sudo apt install libcudnn9-cuda-12
-sudo apt install libcudnn9-dev-cuda-12
+sudo apt install cudnn9-cuda-12
 sudo apt install libcudnn9-samples
 ```
 
@@ -132,7 +132,7 @@ Verify cuDNN installation:
 
 ```bash
 # Check cuDNN version
-cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -A 2
+grep CUDNN_MAJOR -A 2 /usr/include/cudnn_version*.h /usr/include/*/cudnn_version*.h 2>/dev/null
 
 # Or check the library
 ldconfig -v 2>/dev/null | grep cudnn
@@ -157,7 +157,7 @@ Research and production environments often need different CUDA versions for diff
 
 ```bash
 # Install CUDA 11.8 alongside CUDA 12.3
-sudo apt install cuda-11-8
+sudo apt install cuda-toolkit-11-8
 
 # Switch between versions using update-alternatives
 sudo update-alternatives --install /usr/local/cuda cuda /usr/local/cuda-11.8 118
@@ -182,7 +182,7 @@ After installation, verify GPU access from Python:
 
 ```bash
 # Install PyTorch with CUDA support
-pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu123
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 
 # Test PyTorch GPU access
 python3 << 'EOF'
@@ -204,7 +204,7 @@ For TensorFlow:
 
 ```bash
 # Install TensorFlow with GPU support
-pip3 install tensorflow
+pip3 install 'tensorflow[and-cuda]'
 
 # Verify GPU access
 python3 -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"
@@ -221,7 +221,7 @@ The CUDA toolkit requires a minimum driver version. Check the compatibility tabl
 cat /proc/driver/nvidia/version
 
 # Ensure the driver package matches the CUDA version requirement
-apt-cache show cuda-12-3 | grep Depends
+apt-cache show cuda-toolkit-12-3 | grep Depends
 ```
 
 ### CUDA libraries not found
