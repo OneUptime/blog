@@ -114,8 +114,15 @@ Knowing whether the last command succeeded is valuable. Display the exit status 
 ```bash
 # Show exit code in prompt - must capture $? before PS1 expansion happens
 # Use PROMPT_COMMAND for this approach
-PROMPT_COMMAND='EXIT=$?; echo -n ""'
-PS1='$(if [ $EXIT -eq 0 ]; then echo "\[\033[32m\]✓"; else echo "\[\033[31m\]✗ $EXIT"; fi)\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\]\$ '
+PROMPT_COMMAND='
+exit_code=$?
+if [ "$exit_code" -eq 0 ]; then
+    status_part="\[\033[32m\][OK]\[\033[00m\]"
+else
+    status_part="\[\033[31m\][$exit_code]\[\033[00m\]"
+fi
+PS1="${status_part} \[\033[01;34m\]\w\[\033[00m\]\$ "
+'
 ```
 
 Or using a function approach which is cleaner:
@@ -164,14 +171,14 @@ __git_branch() {
 PS1='\[\033[01;32m\]\u@\h\[\033[00m\]:\[\033[01;34m\]\w\[\033[01;33m\]$(__git_branch)\[\033[00m\]\$ '
 ```
 
-Many Ubuntu systems have `__git_ps1` available if you source the git completions:
+Many Ubuntu systems have `__git_ps1` available if you source the Git prompt script:
 
 ```bash
 # Check if git-prompt.sh is available
-ls /usr/share/git-core/contrib/completion/git-prompt.sh
+ls /usr/lib/git-core/git-sh-prompt
 
 # Source it in ~/.bashrc
-source /usr/share/git-core/contrib/completion/git-prompt.sh
+source /usr/lib/git-core/git-sh-prompt
 
 # Configure git status indicators in prompt
 GIT_PS1_SHOWDIRTYSTATE=1      # * for unstaged, + for staged changes
@@ -207,8 +214,13 @@ Here is a full configuration that shows username, host, directory, git branch, a
 # Add to ~/.bashrc
 
 # Source git prompt if available
-if [ -f /usr/share/git-core/contrib/completion/git-prompt.sh ]; then
+if [ -f /usr/lib/git-core/git-sh-prompt ]; then
+    source /usr/lib/git-core/git-sh-prompt
+elif [ -f /usr/share/git-core/contrib/completion/git-prompt.sh ]; then
     source /usr/share/git-core/contrib/completion/git-prompt.sh
+fi
+
+if command -v __git_ps1 &>/dev/null; then
     GIT_PS1_SHOWDIRTYSTATE=1
     GIT_PS1_SHOWUNTRACKEDFILES=1
 fi
