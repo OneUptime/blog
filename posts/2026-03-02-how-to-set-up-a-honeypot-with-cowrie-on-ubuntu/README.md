@@ -64,9 +64,9 @@ cd cowrie
 python3 -m venv cowrie-env
 source cowrie-env/bin/activate
 
-# Install Python dependencies
+# Install Cowrie and its Python dependencies
 pip install --upgrade pip
-pip install -r requirements.txt
+pip install -e .
 ```
 
 ## Configuring Cowrie
@@ -101,9 +101,8 @@ filesystem = share/cowrie/fs.pickle
 # Data directory for fake file contents
 data_path = share/cowrie
 
-# Pool of fake passwords that appear to work
+# Authentication class - UserDB reads accepted credentials from etc/userdb.txt
 auth_class = UserDB
-auth_class_parameters = etc/userdb.txt
 
 [ssh]
 enabled = true
@@ -148,8 +147,8 @@ Cowrie uses a pickled filesystem image to simulate a real Linux system:
 
 ```bash
 # Create filesystem from a real system (run on a throwaway VM)
-# Or use the included generator
-python3 bin/createfs -o share/cowrie/fs.pickle
+# Or use the included generator (installed as an entry point with pip install -e .)
+createfs -o share/cowrie/fs.pickle
 
 # Alternatively, customize an existing filesystem image
 # The default one works fine for most deployments
@@ -186,10 +185,10 @@ cd cowrie
 source cowrie-env/bin/activate
 
 # Start Cowrie
-bin/cowrie start
+cowrie start
 
 # Check that it's running
-bin/cowrie status
+cowrie status
 
 # View the log
 tail -f var/log/cowrie/cowrie.log
@@ -209,9 +208,9 @@ After=network.target
 [Service]
 User=cowrie
 Group=cowrie
+Environment=PYTHONPATH=/home/cowrie/cowrie/src
 WorkingDirectory=/home/cowrie/cowrie
-ExecStart=/home/cowrie/cowrie/bin/cowrie start-systemd
-ExecStop=/home/cowrie/cowrie/bin/cowrie stop
+ExecStart=/home/cowrie/cowrie/cowrie-env/bin/twistd --umask 0022 --nodaemon --pidfile= -l - cowrie
 Restart=always
 RestartSec=5
 
