@@ -43,7 +43,6 @@ sudo apt update
 # Install required libraries
 sudo apt install -y \
   libgconf-2-4 \
-  libgconf2-4 \
   libasound2 \
   libgtk2.0-0 \
   libgtk-3-0 \
@@ -92,7 +91,7 @@ Start Unity Hub from the applications menu or terminal:
 unityhub &
 ```
 
-On first launch, Unity Hub prompts you to sign in with a Unity account. Create one at unity.com if you do not have one. A free Personal license covers independent development and use by developers earning under $100,000 annually.
+On first launch, Unity Hub prompts you to sign in with a Unity account. Create one at unity.com if you do not have one. A free Personal license covers independent development and use by developers earning under $200,000 annually.
 
 ## Activating a License
 
@@ -145,7 +144,7 @@ In Unity Hub:
 
 1. Click "New project" or "Projects > New project"
 2. Select a template:
-   - **2D Core**: For 2D games using the universal render pipeline
+   - **2D Core**: For 2D games using the built-in render pipeline
    - **3D Core**: Standard 3D template
    - **High Definition RP**: For photorealistic 3D (GPU-intensive)
    - **Universal RP**: Scalable graphics for various platforms
@@ -192,7 +191,7 @@ Unity uses C# for scripting. The .NET SDK improves IntelliSense and debugging:
 wget https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb
 sudo dpkg -i packages-microsoft-prod.deb
 sudo apt update
-sudo apt install -y dotnet-sdk-7.0
+sudo apt install -y dotnet-sdk-8.0
 
 # Verify
 dotnet --version
