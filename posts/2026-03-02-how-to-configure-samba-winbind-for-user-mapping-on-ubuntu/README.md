@@ -8,14 +8,14 @@ Description: Configure Samba Winbind on Ubuntu to map Active Directory users and
 
 ---
 
-Winbind is a component of the Samba suite that bridges Active Directory (or NT domain) user accounts with the local Linux user database. Without Winbind, a Linux server joined to a domain cannot resolve AD usernames to UIDs or AD groups to GIDs - which means filesystem permissions cannot work correctly for domain users. Winbind solves this by providing a Name Service Switch (NSS) plugin and a PAM module.
+Winbind is a component of the Samba suite that bridges Active Directory (or NT domain) user accounts with the local Linux user database. Without Winbind on a Samba domain member, Samba cannot resolve AD usernames to UIDs or AD groups to GIDs - which means filesystem permissions cannot work correctly for domain users. Winbind solves this by providing a Name Service Switch (NSS) plugin and a PAM module.
 
 ## What Winbind Does
 
-When a domain user connects to a Samba share, Samba needs to map that user's Windows SID to a local Unix UID so it can enforce filesystem permissions. Winbind does this mapping in one of two ways:
+When a domain user connects to a Samba share, Samba needs to map that user's Windows SID to a local Unix UID so it can enforce filesystem permissions. Winbind can do this mapping in several ways, including:
 
 - **Algorithmic mapping (idmap_rid):** UID/GID values are calculated mathematically from the user's RID in Active Directory. The same user always gets the same UID.
-- **Database mapping (idmap_tdb or idmap_ad):** Winbind maintains a local database mapping SIDs to UIDs, or reads RFC 2307 attributes from the AD schema.
+- **Allocated or directory-backed mapping (idmap_tdb or idmap_ad):** Winbind maintains a local database mapping SIDs to UIDs, or reads RFC 2307 attributes from the AD schema.
 
 ## Prerequisites
 
@@ -158,17 +158,17 @@ wbinfo -u
 wbinfo -g
 
 # Check if Winbind can authenticate a domain user
-wbinfo -a COMPANY\\username
+wbinfo -a 'COMPANY\username%password'
 
-# Get the UID for a domain user
-wbinfo --name-to-sid username
-sudo getent passwd COMPANY\\username
+# Look up the SID and NSS entry for a domain user
+wbinfo --name-to-sid 'COMPANY\username'
+getent passwd username
 
 # Get all users (local + domain)
 getent passwd | head -30
 ```
 
-If `wbinfo -u` returns users but `getent passwd COMPANY\\username` fails, the NSS configuration is not correct. Double-check `nsswitch.conf`.
+If `wbinfo -u` returns users but `getent passwd username` fails, the NSS configuration is not correct. Double-check `nsswitch.conf`. If you set `winbind use default domain = no`, use `getent passwd 'COMPANY\username'` instead.
 
 ## Configuring PAM for Domain Login
 
@@ -217,20 +217,20 @@ Once Winbind is running, you can reference domain users and groups directly in `
    read only = no
 
    # Use domain group for access control (@ prefix = group)
-   valid users = @"COMPANY\Domain Users"
+   valid users = @"Domain Users"
 
    # Only domain admins can write
-   write list = @"COMPANY\Domain Admins"
+   write list = @"Domain Admins"
 
    # Or reference users directly
-   # valid users = COMPANY\alice COMPANY\bob
+   # valid users = alice bob
 ```
 
 Set filesystem permissions using domain groups:
 
 ```bash
 # Get the GID for a domain group
-getent group "COMPANY\\Domain Users"
+getent group "Domain Users"
 
 # Use the GID to set permissions
 sudo chgrp -R 20513 /srv/samba/company  # replace 20513 with actual GID
@@ -246,12 +246,14 @@ If your Active Directory schema has RFC 2307 attributes (uidNumber, gidNumber) o
    idmap config COMPANY : backend = ad
    idmap config COMPANY : range = 20000-99999
    idmap config COMPANY : schema_mode = rfc2307
+   idmap config COMPANY : unix_nss_info = yes
 
-   # winbind must be able to read the AD schema
-   winbind nss info = rfc2307
+   # Keep the same writable default backend for BUILTIN and unmapped SIDs
+   idmap config * : backend = tdb
+   idmap config * : range = 10000-19999
 ```
 
-With this configuration, the UID you set in Active Directory Users and Computers (on the "UNIX Attributes" tab) is used directly. This gives you consistent UIDs across multiple Linux servers without Winbind coordination.
+With this configuration, the UID/GID values you set in the `uidNumber` and `gidNumber` attributes are used directly if they fall inside the configured range. This gives you consistent UIDs across multiple Linux servers without Winbind coordination.
 
 ## Troubleshooting Winbind
 
