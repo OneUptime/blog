@@ -85,16 +85,17 @@ services:
       - SHOW_PASSWORD_HINT=false
 
       # Enable WebSocket notifications for real-time sync
-      - WEBSOCKET_ENABLED=true
+      # (served on the main HTTP port since Vaultwarden v1.29.0)
+      - ENABLE_WEBSOCKET=true
 
       # Log level: trace, debug, info, warn, error
       - LOG_LEVEL=warn
       - EXTENDED_LOGGING=true
 
     ports:
-      # HTTP and WebSocket ports (proxied by Nginx - not exposed to public)
+      # HTTP port (proxied by Nginx - not exposed to public)
+      # WebSocket traffic is served on the same port since v1.31.0
       - "127.0.0.1:8080:80"
-      - "127.0.0.1:3012:3012"
 ```
 
 Generate the admin token:
@@ -127,7 +128,7 @@ sudo nano /etc/nginx/sites-available/vaultwarden
 
 ```nginx
 # Vaultwarden Nginx reverse proxy configuration
-# WebSocket upstream for real-time sync
+# WebSocket upgrade map for real-time sync
 map $http_upgrade $connection_upgrade {
     default upgrade;
     '' close;
@@ -136,12 +137,6 @@ map $http_upgrade $connection_upgrade {
 upstream vaultwarden-default {
     zone vaultwarden-default 64k;
     server 127.0.0.1:8080;
-    keepalive 2;
-}
-
-upstream vaultwarden-ws {
-    zone vaultwarden-ws 64k;
-    server 127.0.0.1:3012;
     keepalive 2;
 }
 
@@ -169,7 +164,9 @@ server {
     # Allow larger file uploads (attachments)
     client_max_body_size 525m;
 
-    # Vaultwarden API and web interface
+    # Vaultwarden API, web interface, and integrated WebSocket
+    # Since v1.31.0, all traffic (including /notifications/hub) flows
+    # through the main HTTP port - no separate WS upstream needed.
     location / {
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -180,25 +177,6 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        proxy_pass http://vaultwarden-default;
-    }
-
-    # WebSocket endpoint for real-time notifications
-    location /notifications/hub {
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $connection_upgrade;
-
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_pass http://vaultwarden-ws;
-    }
-
-    location /notifications/hub/negotiate {
-        proxy_http_version 1.1;
         proxy_pass http://vaultwarden-default;
     }
 }
@@ -315,12 +293,18 @@ CREATE DATABASE vaultwarden OWNER vaultwarden;
 EOF
 ```
 
-Update `docker-compose.yml`:
+Update `docker-compose.yml` (on Linux, `host.docker.internal` must be added explicitly via `extra_hosts` since it is only resolved automatically on Docker Desktop):
 
 ```yaml
-environment:
-  # Replace SQLite with PostgreSQL
-  - DATABASE_URL=postgresql://vaultwarden:db-password@host.docker.internal:5432/vaultwarden
+services:
+  vaultwarden:
+    # ...existing config...
+    extra_hosts:
+      # Required on Linux so the container can reach PostgreSQL on the host
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Replace SQLite with PostgreSQL
+      - DATABASE_URL=postgresql://vaultwarden:db-password@host.docker.internal:5432/vaultwarden
 ```
 
 ```bash
@@ -354,9 +338,14 @@ This usually means the client version is newer than what Vaultwarden supports. U
 Ensure your server's clock is synchronized - TOTP codes are time-based.
 
 ```bash
-# Check time sync
+# Check time sync (systemd-timesyncd is enabled by default on modern Ubuntu)
 timedatectl status
-sudo apt install -y ntp && sudo systemctl enable --now ntp
+
+# If NTP is not active, enable systemd-timesyncd
+sudo timedatectl set-ntp true
+
+# Or, for a more featureful NTP daemon, install chrony
+sudo apt install -y chrony && sudo systemctl enable --now chrony
 ```
 
 ## Summary
