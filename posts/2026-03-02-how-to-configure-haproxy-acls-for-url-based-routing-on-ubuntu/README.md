@@ -51,7 +51,7 @@ acl is_api     path_beg /api/          # Path begins with /api/
 acl is_static  path_end .css .js .png  # Path ends with these extensions
 acl is_admin   path_beg /admin         # Path begins with /admin
 acl is_secure  ssl_fc                  # Request arrived over HTTPS
-acl mobile     hdr(User-Agent) -i android iphone  # User-Agent contains these
+acl mobile     hdr_sub(User-Agent) -i android iphone  # User-Agent contains these
 ```
 
 ## URL Path-Based Routing
@@ -215,17 +215,15 @@ frontend smart_frontend
     # Route to premium backend only if BOTH API and authenticated
     use_backend premium_api  if is_api is_authenticated
 
-    # Route to internal API if either internal network OR authenticated
-    # (using OR: list them in separate use_backend lines or use OR operator)
-    use_backend internal_api  if is_api is_internal
+    # Route to internal API if API traffic is from the internal network OR authenticated
+    use_backend internal_api  if is_api is_internal or is_api is_authenticated
 
     # NOT operator - deny if missing authentication for API
     http-request deny if is_api !is_authenticated
 
     # Complex condition: POST to /api/ from external networks requires auth
     acl is_post method POST
-    acl is_external !src 10.0.0.0/8
-    http-request deny if is_api is_post is_external !is_authenticated
+    http-request deny if is_api is_post !is_internal !is_authenticated
 ```
 
 ## Header-Based Routing
@@ -238,7 +236,7 @@ frontend header_routing
 
     # Route requests with a custom header to a different backend
     acl is_beta_user   hdr(X-Beta-Feature) -i true
-    acl is_mobile      hdr(User-Agent) -i -m sub mobile android iphone
+    acl is_mobile      hdr_sub(User-Agent) -i mobile android iphone
 
     # Send beta users to the beta backend
     use_backend beta_backend    if is_beta_user
@@ -299,11 +297,11 @@ sudo systemctl reload haproxy
 
 # Test routing with curl
 curl -H "Host: blog.example.com" http://localhost:80/
-curl http://localhost:80/api/v2/users
-curl http://localhost:80/static/style.css
+curl -k https://localhost/api/v2/users
+curl -k https://localhost/static/style.css
 
 # Test ACL decisions with verbose output
-curl -v http://localhost:80/admin/dashboard
+curl -k -v https://localhost/admin/dashboard
 
 # Use HAProxy stats page to see traffic distribution
 # Add to defaults or frontend:
