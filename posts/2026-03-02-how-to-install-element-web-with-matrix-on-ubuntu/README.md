@@ -23,6 +23,7 @@ This tutorial walks through setting up a production-ready Matrix homeserver with
 
 ```bash
 sudo apt update && sudo apt install -y \
+  lsb-release apt-transport-https \
   python3 python3-pip python3-venv \
   build-essential libffi-dev python3-dev \
   libssl-dev libjpeg-dev libxslt1-dev \
@@ -86,6 +87,9 @@ Key settings to configure:
 # Your server's public name (this is permanent - choose carefully)
 server_name: "example.com"
 
+# Public URL clients use to reach Synapse through Nginx
+public_baseurl: "https://matrix.example.com/"
+
 # Listen on localhost only - Nginx will handle external connections
 listeners:
   - port: 8008
@@ -133,8 +137,9 @@ max_upload_size: 50M
 # Enable presence (who's online indicators)
 use_presence: true
 
-# Federation - allow other Matrix servers to contact yours
-federation_domain_whitelist: null  # null means allow all
+# Federation: leave federation_domain_whitelist unset to allow all domains
+# federation_domain_whitelist:
+#   - trusted.example.com
 ```
 
 Generate a signing key:
@@ -194,7 +199,7 @@ server {
     ssl_certificate /etc/letsencrypt/live/matrix.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/matrix.example.com/privkey.pem;
 
-    location / {
+    location ~ ^(/_matrix|/_synapse/client) {
         proxy_pass http://127.0.0.1:8008;
         proxy_set_header X-Forwarded-For $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -205,19 +210,19 @@ server {
 
 ## Setting Up the .well-known Delegation
 
-To allow users to have addresses like `@user@example.com` instead of `@user@matrix.example.com`, set up well-known delegation on your main domain:
+To allow users to have addresses like `@user:example.com` instead of `@user:matrix.example.com`, set up well-known delegation on your main domain:
 
 ```nginx
 # Add this to your example.com Nginx configuration
 location /.well-known/matrix/client {
     return 200 '{"m.homeserver":{"base_url":"https://matrix.example.com"}}';
-    add_header Content-Type application/json;
+    default_type application/json;
     add_header Access-Control-Allow-Origin *;
 }
 
 location /.well-known/matrix/server {
-    return 200 '{"m.server":"matrix.example.com:443"}';
-    add_header Content-Type application/json;
+    return 200 '{"m.server":"matrix.example.com:8448"}';
+    default_type application/json;
 }
 ```
 
@@ -314,12 +319,14 @@ server {
 Enable sites and get certificates:
 
 ```bash
+# Get SSL certificates before enabling the SSL server blocks
+sudo systemctl stop nginx
+sudo certbot certonly --standalone -d matrix.example.com
+sudo certbot certonly --standalone -d element.example.com
+sudo systemctl start nginx
+
 sudo ln -s /etc/nginx/sites-available/matrix.example.com /etc/nginx/sites-enabled/
 sudo ln -s /etc/nginx/sites-available/element.example.com /etc/nginx/sites-enabled/
-
-# Get SSL certificates
-sudo certbot --nginx -d matrix.example.com -d element.example.com
-
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
