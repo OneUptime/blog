@@ -106,8 +106,8 @@ log "Backup size: $(du -sh "$BACKUP_DIR" | cut -f1)"
 
 # Remove old backups
 log "Removing backups older than $RETENTION_DAYS days..."
-find "$BACKUP_ROOT" -maxdepth 1 -type d -mtime +"$RETENTION_DAYS" \
-    -exec rm -rf {} + 2>/dev/null || true
+find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d \
+    -mtime +"$RETENTION_DAYS" -exec rm -rf {} + 2>/dev/null || true
 
 # List remaining backups
 log "Current backups:"
@@ -132,7 +132,7 @@ A controlled update script that logs everything and handles failures:
 ```bash
 #!/bin/bash
 # /usr/local/bin/auto-update.sh
-# Apply security updates with logging and notifications
+# Apply package updates with logging and notifications
 
 set -euo pipefail
 
@@ -148,13 +148,13 @@ log "=== Starting automated updates on $HOSTNAME ==="
 log "Updating package lists..."
 apt-get update -q 2>&1 | tee -a "$LOG"
 
-# Count available security updates
-security_updates=$(apt-get -s upgrade 2>/dev/null | \
+# Count available package updates
+available_updates=$(apt-get -s upgrade 2>/dev/null | \
     grep -c "^Inst" || true)
 
-log "Available updates: $security_updates packages"
+log "Available updates: $available_updates packages"
 
-if [ "$security_updates" -eq 0 ]; then
+if [ "$available_updates" -eq 0 ]; then
     log "System is up to date"
     exit 0
 fi
@@ -181,11 +181,11 @@ fi
 apt-get autoremove -y 2>&1 | tee -a "$LOG"
 apt-get autoclean 2>&1 | tee -a "$LOG"
 
-log "Update complete. $security_updates packages updated."
+log "Update complete. $available_updates packages updated."
 
 # Send notification
 if command -v mail > /dev/null 2>&1; then
-    echo "System update complete on $HOSTNAME. $security_updates packages updated." | \
+    echo "System update complete on $HOSTNAME. $available_updates packages updated." | \
         mail -s "Update Report: $HOSTNAME" "$NOTIFY_EMAIL"
 fi
 ```
@@ -356,7 +356,10 @@ Put automation scripts where they're easily found and maintained:
 # Place scripts in /usr/local/bin (in PATH, not overwritten by packages)
 sudo cp backup-app.sh /usr/local/bin/
 sudo cp check-disk-space.sh /usr/local/bin/
+sudo cp cleanup-logs.sh /usr/local/bin/
+sudo cp auto-update.sh /usr/local/bin/
 sudo chmod +x /usr/local/bin/backup-app.sh /usr/local/bin/check-disk-space.sh
+sudo chmod +x /usr/local/bin/cleanup-logs.sh /usr/local/bin/auto-update.sh
 
 # Set up logging directory
 sudo mkdir -p /var/log/automation
@@ -377,8 +380,8 @@ sudo crontab -e
 # Clean logs on Sundays at 3 AM
 0 3 * * 0 /usr/local/bin/cleanup-logs.sh
 
-# Security updates at 4 AM Sundays
+# Package updates at 4 AM Sundays
 0 4 * * 0 /usr/local/bin/auto-update.sh
 ```
 
-The key to reliable automation scripts is: log everything, handle errors explicitly, clean up after failures, and test with `set -n` (dry run) before deploying. Scripts that fail silently are worse than no automation at all.
+The key to reliable automation scripts is: log everything, handle errors explicitly, clean up after failures, and check syntax with `bash -n` before deploying. Scripts that fail silently are worse than no automation at all.
