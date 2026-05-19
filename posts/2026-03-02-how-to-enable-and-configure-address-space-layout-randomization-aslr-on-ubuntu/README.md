@@ -164,7 +164,11 @@ RELRO makes portions of the program's data segment read-only after startup, prot
 ```bash
 # Check RELRO status of a binary
 readelf -l /usr/sbin/sshd | grep 'GNU_RELRO'
-# Full RELRO is best, partial RELRO is acceptable
+# Presence of GNU_RELRO indicates at least partial RELRO
+
+# Full RELRO also requires immediate binding
+readelf -d /usr/sbin/sshd | grep -E 'BIND_NOW|FLAGS.*NOW'
+# Full RELRO is best; partial RELRO is better than none
 
 # checksec tool provides a summary of all these protections
 sudo apt-get install -y checksec
@@ -186,9 +190,9 @@ To understand your system's ASLR entropy (how unpredictable the addresses are):
 # On 64-bit systems, ASLR should have high entropy
 # Check the entropy for mmap randomization
 cat /proc/sys/vm/mmap_rnd_bits
-# Should be 28 (higher = more random)
+# Higher values mean more randomization; supported values vary by architecture
 
-# Check stack randomization entropy
+# Check mmap randomization entropy for 32-bit compatibility-mode processes
 cat /proc/sys/vm/mmap_rnd_compat_bits
 # 8 for 32-bit compat processes (lower, 32-bit address space limitation)
 ```
@@ -225,7 +229,7 @@ kernel.randomize_va_space = 2
 # kernel symbol addresses to defeat KASLR (kernel ASLR)
 kernel.kptr_restrict = 2
 
-# Hide kernel pointers in /proc and /sys from unprivileged users
+# Restrict unprivileged perf events, which can expose kernel addresses or data
 kernel.perf_event_paranoid = 3
 
 # Disable core dumps for setuid programs (they could expose memory layout)
@@ -248,9 +252,9 @@ When running applications in Docker or LXC on Ubuntu, the kernel's ASLR setting 
 docker run --rm ubuntu cat /proc/sys/kernel/randomize_va_space
 # Shows the host's setting (2 if properly configured)
 
-# Containers cannot increase ASLR beyond the host setting
-# They can disable it for their namespace with --security-opt systctl=kernel.randomize_va_space=0
-# Avoid this unless absolutely necessary
+# Containers cannot increase or decrease this node-level sysctl with Docker --sysctl
+# Disable ASLR only per process with setarch -R when the container runtime permits it
+# Avoid disabling ASLR unless absolutely necessary
 
 # For Kubernetes, the same principle applies - containers inherit the node's ASLR setting
 ```
