@@ -61,17 +61,17 @@ Select it and press Enter. The system boots into memtest86+ and testing begins a
 For systems where the OS can't boot, or when you want to use the standalone version with more features:
 
 ```bash
-# Download memtest86+ ISO
-wget https://www.memtest86.com/downloads/memtest86-usb.tar.gz
-tar xf memtest86-usb.tar.gz
+# Download the current 64-bit memtest86+ GRUB ISO from memtest.org
+wget https://www.memtest.org/download/v8.10/mt86plus_8.10_x86_64.grub.iso.zip
+unzip mt86plus_8.10_x86_64.grub.iso.zip
 
 # Write to USB drive (replace sdX with your USB drive)
 # WARNING: This destroys data on the USB drive
-sudo dd if=memtest86-usb.img of=/dev/sdX bs=4M status=progress
+sudo dd if=grub-memtest.iso of=/dev/sdX bs=4M status=progress
 sync
 ```
 
-Boot from the USB drive. memtest86 (the commercial variant) has a more modern interface with pass/fail results and detailed error reporting.
+Boot from the USB drive. PassMark MemTest86 is a separate tool with a more modern interface, pass/fail results, and detailed error reporting.
 
 ## Understanding the memtest86+ Display
 
@@ -84,7 +84,7 @@ Errors: 0
 
 Key fields:
 - **Pass** - percentage through the current test pass
-- **Test** - which of the 13+ tests is currently running
+- **Test** - which numbered test is currently running
 - **Testing** - memory address range being tested
 - **Errors** - count of detected errors (should be 0)
 
@@ -102,14 +102,14 @@ When errors appear, the display shows:
 
 ```text
 ERROR: Failing address: 0x12345678 - 0x12345679
-Bit: 6
 Expected: 0x00000040
 Found:     0x00000000
+Err Bits:  0x00000040
 ```
 
 This tells you:
-- The failing memory address (maps to a physical DIMM location)
-- Which bit failed
+- The failing memory address
+- Which bit or bits failed
 - What value was written vs. what was read back
 
 ### Identifying the Faulty DIMM
@@ -121,10 +121,10 @@ When errors are found, you need to identify which physical DIMM is bad:
 sudo dmidecode -t memory | grep -E "Locator:|Size:|Bank" | paste - - -
 
 # This shows which slot has which capacity
-# Match the failing address range to a specific DIMM
+# Use this with isolation testing; address-to-DIMM mapping is platform-specific
 ```
 
-The failing address translates to a physical location based on your memory controller's mapping. Generally:
+The failing address-to-DIMM mapping depends on the memory controller, motherboard, and firmware, so isolating the module is usually more reliable than trying to map an address directly. Generally:
 - Remove all but one DIMM
 - Run memtest86+
 - If errors persist on that DIMM, it's faulty
@@ -188,9 +188,12 @@ ls /sys/devices/system/edac/mc/
 cat /sys/devices/system/edac/mc/mc0/ue_count  # uncorrected errors
 cat /sys/devices/system/edac/mc/mc0/ce_count  # corrected errors
 
-# Install mcelog for machine check exception logging
-sudo apt install -y mcelog
-journalctl -u mcelog
+# Install rasdaemon for RAS and machine-check logging
+sudo apt install -y rasdaemon
+sudo systemctl enable --now rasdaemon
+sudo ras-mc-ctl --status
+sudo ras-mc-ctl --summary
+journalctl -u rasdaemon
 ```
 
 ## Server ECC Memory
@@ -203,13 +206,13 @@ sudo dmidecode -t memory | grep "Error Correction Type"
 
 # Monitor ECC errors
 sudo apt install -y edac-utils
-sudo edac-util -s 0
+sudo edac-util -s
 
 # Detailed EDAC report
-sudo edac-util -r
+sudo edac-util -r full
 
 # Watch for ECC events
-sudo edac-util -m -s 0
+watch -n 60 sudo edac-util -r simple
 ```
 
 Even with ECC memory, a high rate of corrected errors indicates a failing DIMM that needs replacement soon - before it starts generating uncorrectable double-bit errors.
@@ -218,16 +221,17 @@ Even with ECC memory, a high rate of corrected errors indicates a failing DIMM t
 
 The tests included in memtest86+:
 
-1. **Address test** - verifies that each address is unique
-2. **Own address test** - each location holds its own address
-3. **Moving inversions (8-bit)** - moving bit pattern tests
-4. **Moving inversions (random)** - random pattern variations
-5. **Block move** - tests memory bandwidth
-6. **Moving inversions (64-bit)** - 64-bit pattern tests
-7. **Random number sequence** - pseudo-random values
-8. **PRBS** - Pseudo-Random Binary Sequence test
-9. **Modulo 20** - tests at specific intervals
-10. **Bit fade** - checks if bits change state without being written
+1. **Address test, walking ones** - verifies address bits without cache
+2. **Address test, own address in window** - each location holds its own address
+3. **Address test, own address + window** - catches high-order address bit errors
+4. **Moving inversions, ones and zeros** - moving inversion tests with all-one and all-zero patterns
+5. **Moving inversions, 8-bit pattern** - moving bit pattern tests
+6. **Moving inversions, random pattern** - random pattern variations
+7. **Moving inversions, 32/64-bit pattern** - wide walking-one and walking-zero patterns
+8. **Block move** - stresses memory with block move instructions
+9. **Random number sequence** - pseudo-random values
+10. **Modulo 20** - tests at specific intervals with random patterns
+11. **Bit fade** - checks if bits change state without being written
 
 More passes = more confidence. For production servers, running overnight (many passes) before declaring memory healthy is reasonable practice.
 
