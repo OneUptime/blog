@@ -72,7 +72,6 @@ Recovery Menu:
   network          - Enable networking
   root             - Drop to root shell prompt  ← Select this
   system-summary   - System summary
-  users            - Manage user accounts and passwords
 ```
 
 Select "root" for a root shell.
