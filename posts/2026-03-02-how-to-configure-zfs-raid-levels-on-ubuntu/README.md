@@ -30,11 +30,14 @@ Use stable disk identifiers for any production pool:
 ```bash
 # List disks by their persistent ID
 
-ls -la /dev/disk/by-id/ | grep -v part | awk '{print $NF, $9}'
+for disk in /dev/disk/by-id/*; do
+  [[ "$disk" == *-part* ]] && continue
+  [[ -b "$(readlink -f "$disk")" ]] && printf "%s -> %s\n" "$(readlink -f "$disk")" "$disk"
+done
 
 # Example output:
-# /dev/sdb -> ../../sdb ata-WDC_WD4000FYYZ-xxxx-001
-# /dev/sdc -> ../../sdc ata-WDC_WD4000FYYZ-xxxx-002
+# /dev/sdb -> /dev/disk/by-id/ata-WDC_WD4000FYYZ-xxxx-001
+# /dev/sdc -> /dev/disk/by-id/ata-WDC_WD4000FYYZ-xxxx-002
 ```
 
 Throughout this guide, I'll use descriptive aliases for clarity.
@@ -199,7 +202,7 @@ RAIDZ3 is used for very large pools with large disks where rebuild times (resilv
 
 ## Adding a Hot Spare
 
-A hot spare automatically replaces a failed disk in the pool:
+A hot spare can automatically replace a failed disk in the pool when `autoreplace` is enabled and the ZFS Event Daemon (ZED) is running:
 
 ```bash
 sudo zpool create datapool raidz2 \
@@ -230,9 +233,10 @@ config:
           ata-spare-disk  AVAIL
 ```
 
-Enable `autoreplace` so ZFS uses the spare automatically when a disk fails:
+Enable `autoreplace` and make sure ZED is running so ZFS can use the spare automatically when a disk fails:
 
 ```bash
+sudo systemctl enable --now zfs-zed
 sudo zpool set autoreplace=on datapool
 ```
 
@@ -261,7 +265,7 @@ After creating a pool, test its throughput:
 sudo dd if=/dev/zero of=/datapool/testfile bs=1M count=1000 conv=fdatasync
 
 # Read speed test (after flushing cache)
-sudo echo 3 > /proc/sys/vm/drop_caches
+echo 3 | sudo tee /proc/sys/vm/drop_caches
 sudo dd if=/datapool/testfile of=/dev/null bs=1M
 
 # More comprehensive with fio
@@ -287,10 +291,10 @@ Add an L2ARC (SSD cache) to the pool:
 sudo zpool add datapool cache /dev/disk/by-id/nvme-Samsung-SSD-970-xxxx
 ```
 
-Add a SLOG (sync write log) device for improved write performance with synchronous writes:
+Add a SLOG (separate intent log) device to improve latency for synchronous writes:
 
 ```bash
-# Add an NVMe device as a write cache
+# Add an NVMe device as a separate log device
 sudo zpool add datapool log /dev/disk/by-id/nvme-Samsung-SSD-xxxx
 ```
 
