@@ -8,9 +8,9 @@ Description: Learn how to configure Transparent Huge Pages (THP) on Ubuntu to op
 
 ---
 
-Transparent Huge Pages (THP) is a Linux kernel feature that uses 2MB memory pages instead of the standard 4KB pages. The premise is that fewer, larger pages mean fewer TLB (Translation Lookaside Buffer) entries to manage, which reduces TLB misses and can improve performance for workloads that access large amounts of memory sequentially.
+Transparent Huge Pages (THP) is a Linux kernel feature that uses larger memory pages instead of the standard 4KB pages. On typical x86_64 systems, the traditional PMD-sized THP is 2MB, though modern kernels can support additional THP sizes. The premise is that fewer, larger pages mean fewer TLB (Translation Lookaside Buffer) entries to manage, which reduces TLB misses and can improve performance for workloads that access large amounts of memory sequentially.
 
-However, THP has a complicated relationship with real-world workloads. Many databases (PostgreSQL, MongoDB, Redis, Oracle) explicitly recommend disabling it. Understanding why - and when to enable or disable it - is important for tuning Ubuntu systems correctly.
+However, THP has a complicated relationship with real-world workloads. Many databases and data stores (PostgreSQL, Redis, Oracle, and MongoDB 7.0 or earlier) recommend disabling it or discourage its use. Understanding why - and when to enable or disable it - is important for tuning Ubuntu systems correctly.
 
 ## Checking Current THP Status
 
@@ -33,9 +33,11 @@ always madvise [never]
 ```
 
 Options:
-- `always` - THP is enabled system-wide (default on Ubuntu)
+- `always` - THP is enabled system-wide
 - `madvise` - THP is only used for memory regions that explicitly request it via `madvise()`
-- `never` - THP is completely disabled
+- `never` - THP is disabled for normal automatic allocation (on newer kernels, `madvise(MADV_COLLAPSE)` can still explicitly request collapse)
+
+Ubuntu's default depends on the release, kernel flavor, and boot parameters; current Ubuntu generic kernels commonly default this setting to `madvise`, but you should always check the live sysfs value.
 
 Also check the defragmentation mode:
 
@@ -47,7 +49,7 @@ cat /sys/kernel/mm/transparent_hugepage/defrag
 always defer defer+madvise [madvise] never
 ```
 
-The `defrag` setting controls whether the kernel compacts memory (khugepaged) to create huge pages:
+The `defrag` setting controls whether the kernel reclaims and compacts memory to create huge pages:
 - `always` - Aggressively defragment to create huge pages
 - `defer` - Defer defrag to background thread
 - `madvise` - Only defrag for regions that use `madvise(MADV_HUGEPAGE)`
@@ -184,7 +186,7 @@ Key metrics:
 - `thp_collapse_alloc` - THP pages created by collapsing smaller pages
 - `compact_stall` - Times a process stalled waiting for compaction
 
-High `compact_stall` values confirm THP defragmentation is causing latency.
+High `compact_stall` values indicate that synchronous memory compaction is occurring and may be contributing to latency.
 
 ## Checking if THP Is Causing Problems
 
@@ -223,8 +225,8 @@ echo 512 | sudo tee /sys/kernel/mm/transparent_hugepage/khugepaged/pages_to_scan
 
 | Workload | THP Setting | Defrag Setting |
 |----------|------------|----------------|
-| PostgreSQL, MySQL | `never` | `never` |
-| MongoDB, Redis | `never` | `never` |
+| PostgreSQL | `never` | `never` |
+| MongoDB 7.0 or earlier, Redis | `never` | `never` |
 | Oracle DB | `never` | `never` |
 | Java application (tuned) | `madvise` | `defer+madvise` |
 | Scientific computing | `always` | `defer` |
