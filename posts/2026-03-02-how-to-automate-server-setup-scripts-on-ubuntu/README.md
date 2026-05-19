@@ -177,7 +177,6 @@ configure_sshd() {
     sshd_config=$(cat <<'EOF'
 # Hardened SSH configuration
 Port 22
-Protocol 2
 PermitRootLogin no
 PasswordAuthentication no
 PubkeyAuthentication yes
@@ -235,7 +234,7 @@ add_to_group() {
     local user="$1"
     local group="$2"
 
-    if groups "$user" | grep -q "\b${group}\b"; then
+    if id -nG "$user" | tr ' ' '\n' | grep -qxF "$group"; then
         log "User $user already in group $group"
         return 0
     fi
@@ -250,12 +249,18 @@ deploy_authorized_keys() {
     local key="$2"
     local home_dir
     home_dir=$(getent passwd "$user" | cut -d: -f6)
+    if [ -z "$home_dir" ]; then
+        error "User does not exist: $user"
+        return 1
+    fi
+    local user_group
+    user_group=$(id -gn "$user")
     local ssh_dir="${home_dir}/.ssh"
     local auth_keys="${ssh_dir}/authorized_keys"
 
     mkdir -p "$ssh_dir"
     chmod 700 "$ssh_dir"
-    chown "$user:$user" "$ssh_dir"
+    chown "$user:$user_group" "$ssh_dir"
 
     if grep -qF "$key" "$auth_keys" 2>/dev/null; then
         log "SSH key already present for $user"
@@ -265,7 +270,7 @@ deploy_authorized_keys() {
     fi
 
     chmod 600 "$auth_keys"
-    chown "$user:$user" "$auth_keys"
+    chown "$user:$user_group" "$auth_keys"
 }
 ```
 
@@ -275,7 +280,7 @@ deploy_authorized_keys() {
 configure_firewall() {
     log "Configuring UFW firewall..."
 
-    # UFW is idempotent - running these rules multiple times is safe
+    # Reset creates a repeatable baseline, but removes existing UFW rules
     ufw --force reset >> "$LOG_FILE" 2>&1
     ufw default deny incoming >> "$LOG_FILE" 2>&1
     ufw default allow outgoing >> "$LOG_FILE" 2>&1
@@ -347,7 +352,9 @@ main() {
 
     log "--- Configuring automatic updates ---"
     install_packages unattended-upgrades
-    dpkg-reconfigure -plow unattended-upgrades >> "$LOG_FILE" 2>&1
+    write_config /etc/apt/apt.conf.d/20auto-upgrades \
+        'APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";'
 
     log "=== Setup complete ==="
 }
