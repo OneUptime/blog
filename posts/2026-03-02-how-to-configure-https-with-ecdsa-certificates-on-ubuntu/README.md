@@ -15,7 +15,7 @@ RSA has been the default certificate algorithm for decades, but ECDSA (Elliptic 
 The performance difference shows up most clearly under load. ECDSA key operations are significantly faster than RSA operations of equivalent strength. This matters for web servers handling thousands of TLS handshakes per second.
 
 Key size comparison:
-- RSA 2048 bits: minimum acceptable, increasingly obsolete
+- RSA 2048 bits: minimum widely accepted baseline
 - RSA 4096 bits: strong but slow
 - ECDSA P-256 (secp256r1): fast, strong, widely supported
 - ECDSA P-384 (secp384r1): stronger, slightly slower, good for high-security contexts
@@ -149,8 +149,9 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     server_name example.com www.example.com;
 
     # ECDSA certificate and key from Let's Encrypt
@@ -160,8 +161,8 @@ server {
     # Modern TLS configuration optimized for ECDSA
     ssl_protocols TLSv1.2 TLSv1.3;
 
-    # Prefer ECDSA cipher suites
-    # ECDSA ciphers work with ECDSA keys; RSA ciphers will fail silently
+    # Prefer ECDSA cipher suites for TLS 1.2
+    # ECDHE-RSA cipher suites are not usable with an ECDSA-only certificate
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305;
 
     # Let the client choose the cipher (modern recommendation)
@@ -215,7 +216,8 @@ For maximum compatibility with older clients while giving modern clients the per
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name example.com;
 
     # ECDSA certificate
@@ -226,7 +228,7 @@ server {
     ssl_certificate /etc/letsencrypt/live/example.com-rsa/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/example.com-rsa/privkey.pem;
 
-    # Cipher suites covering both key types
+    # TLS 1.2 cipher suites covering both key types
     # ECDSA ciphers (ECDHE-ECDSA) for modern clients
     # RSA ciphers (ECDHE-RSA) for older clients
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384;
@@ -242,16 +244,16 @@ server {
 openssl s_client -connect example.com:443 -servername example.com
 
 # Look for these lines in the output:
-# Certificate chain shows EC (not RSA)
-# Cipher: ECDHE-ECDSA-AES128-GCM-SHA256 (or similar ECDSA cipher)
+# Leaf certificate public key shows EC (not RSA)
+# For TLS 1.2, cipher shows ECDHE-ECDSA-AES128-GCM-SHA256 or similar
 # Server public key is 256 bit
 
 # Check the certificate details
-echo | openssl s_client -connect example.com:443 2>/dev/null | \
+echo | openssl s_client -connect example.com:443 -servername example.com 2>/dev/null | \
   openssl x509 -text -noout | grep -E "Public Key|Signature Algorithm|Subject Alt"
 
 # Test TLS handshake time (ECDSA should be faster than RSA)
-time openssl s_client -connect example.com:443 -no_ticket < /dev/null
+time openssl s_client -connect example.com:443 -servername example.com -no_ticket < /dev/null
 
 # Use testssl.sh for a comprehensive check
 bash testssl.sh example.com
