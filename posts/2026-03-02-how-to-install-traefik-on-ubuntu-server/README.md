@@ -62,7 +62,7 @@ sudo mkdir -p /var/lib/traefik    # For ACME/certificate storage
 
 # Set ownership
 sudo chown traefik:traefik /var/lib/traefik
-sudo chmod 600 /var/lib/traefik
+sudo chmod 700 /var/lib/traefik
 
 # Create log directory
 sudo mkdir -p /var/log/traefik
@@ -214,8 +214,10 @@ http:
     dashboard-auth:
       basicAuth:
         users:
-          # Generate with: echo $(htpasswd -nB admin) | sed -e s/\\$/\\$\\$/g
-          - "admin:$$2y$$12$$..."
+          # Generate with: htpasswd -nB admin
+          # In file provider YAML, use the bcrypt hash as-is (no $-escaping).
+          # Only docker-compose labels require doubling $ to $$.
+          - "admin:$2y$12$..."
 ```
 
 ## Creating the Systemd Service
@@ -286,13 +288,13 @@ sudo ufw status
 
 ## Testing the Installation
 
-Validate the static configuration:
+Validate the static configuration by starting Traefik and watching the logs for errors:
 
 ```bash
-# Test configuration
-traefik --configFile=/etc/traefik/traefik.yml --dry-run
+# Start Traefik with debug logging to surface config issues
+sudo -u traefik /usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml --log.level=DEBUG
 
-# Check Traefik logs for errors
+# Or once running under systemd, check Traefik logs for errors
 sudo tail -f /var/log/traefik/traefik.log
 ```
 
