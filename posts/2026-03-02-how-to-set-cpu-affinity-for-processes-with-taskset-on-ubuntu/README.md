@@ -117,7 +117,7 @@ lscpu
 cat /proc/cpuinfo | grep -E "^processor|^core id|^physical id"
 
 # Visual CPU topology
-lstopo --no-graphics  # requires hwloc package
+lstopo-no-graphics  # requires hwloc package
 ```
 
 For a machine with 2 sockets, 8 cores each, and hyperthreading:
@@ -146,7 +146,7 @@ A common pattern is to run application logic on some cores and keep network inte
 
 ```bash
 # Set IRQ affinity for a NIC (e.g., eth0 queue 0 on core 0)
-echo 1 > /proc/irq/$(cat /sys/class/net/eth0/device/msi_irqs/$(ls /sys/class/net/eth0/device/msi_irqs | head -1))/smp_affinity
+echo 1 | sudo tee /proc/irq/$(ls /sys/class/net/eth0/device/msi_irqs | head -1)/smp_affinity
 
 # Pin application to cores 2-7
 taskset -cp 2-7 $(pgrep myapp)
