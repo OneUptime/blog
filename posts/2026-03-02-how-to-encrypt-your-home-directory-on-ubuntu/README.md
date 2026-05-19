@@ -8,25 +8,25 @@ Description: Encrypt your home directory on Ubuntu using eCryptfs or migrate to 
 
 ---
 
-Encrypting your home directory protects personal files, SSH keys, credentials, and browsing history from unauthorized access if your laptop is lost or stolen. Ubuntu has supported home directory encryption via eCryptfs for many years, though full disk encryption (LUKS) is now the recommended approach for new installations.
+Encrypting your home directory protects personal files, SSH keys, credentials, and browsing history from unauthorized access if your laptop is lost or stolen. Ubuntu supported home directory encryption via eCryptfs for many years, though eCryptfs encrypted homes are no longer supported on modern Ubuntu releases and full disk encryption (LUKS) is now the recommended approach for new installations.
 
-This guide covers both: enabling eCryptfs-based home encryption on an existing unencrypted system, and understanding when full disk encryption is a better choice.
+This guide covers both: enabling legacy eCryptfs-based home encryption on an existing unencrypted system, and understanding when full disk encryption is a better choice.
 
 ## Understanding Your Options
 
 **eCryptfs (home directory encryption)**:
 - Encrypts only `/home/username`
 - Other parts of the disk (temporary files in `/tmp`, swap, application caches in `/var`) remain unencrypted
-- Can be added to an existing installation without reinstalling
+- Was supported for adding encryption to existing installations without reinstalling on older Ubuntu releases
 - Transparent to applications - files decrypt automatically on login
 
 **LUKS full disk encryption**:
-- Encrypts the entire disk including `/tmp`, swap, and application data
+- Encrypts the operating system data partitions, typically including `/tmp`, swap, and application data; boot/firmware partitions remain unencrypted unless you use a custom layout
 - Much stronger protection - no data leaks to unencrypted areas
 - Requires setup at installation time or a live environment migration
 - Ubuntu installer offers this as an option during setup
 
-For maximum security, use full disk encryption. If you need to add encryption to an existing installation without reinstalling, eCryptfs is practical.
+For maximum security, use full disk encryption. If you need to add encryption to an older existing installation without reinstalling, eCryptfs may still be practical as a legacy option.
 
 ## Method 1: eCryptfs Home Directory Encryption
 
@@ -43,10 +43,9 @@ The simplest approach is encrypting during user creation:
 ```bash
 # Create a new user with an encrypted home directory
 
-sudo useradd -m -s /bin/bash --encrypt-home username
+sudo adduser --encrypt-home username
 
-# Set the user's password
-sudo passwd username
+# Follow the prompts to set the user's password and account details
 ```
 
 ### Encrypting an Existing User's Home Directory
@@ -79,9 +78,7 @@ ls /home/username*
 
 ```bash
 # Log in as the encrypted user
-# You'll see the passphrase file notification:
-# "Your encrypted private directory has been set up.
-#  Passphrase: ..."
+# You may see a notification reminding you to record the mount passphrase.
 
 # IMPORTANT: Record the mount passphrase
 # This is different from your login password
@@ -127,7 +124,7 @@ sudo nano /etc/pam.d/common-auth
 Add before the `pam_deny.so` line:
 
 ```text
-auth    optional        pam_ecryptfs.so unwrap
+auth    required        pam_ecryptfs.so unwrap
 ```
 
 In `/etc/pam.d/common-session`, add:
@@ -141,17 +138,11 @@ session optional        pam_ecryptfs.so unwrap
 If auto-mount fails or for recovery:
 
 ```bash
-# Mount the encrypted home directory manually
-sudo mount -t ecryptfs \
-    /home/.ecryptfs/username/.Private \
-    /home/username \
-    -o ecryptfs_sig=<sig>,ecryptfs_cipher=aes,ecryptfs_key_bytes=16,ecryptfs_passthrough=n
+# Mount the encrypted home directory using the helper
+sudo -iu username ecryptfs-mount-private
 
-# The sig comes from the passphrase - use ecryptfs-mount-private
-sudo -u username ecryptfs-mount-private
-
-# Or use the setup tool
-ecryptfs-setup-private
+# From a LiveISO or recovery image, use the recovery helper
+sudo ecryptfs-recover-private /home/.ecryptfs/username/.Private
 ```
 
 ## Method 2: Full Disk Encryption During Installation
@@ -166,14 +157,16 @@ This is the recommended approach for new Ubuntu installations. During the Ubuntu
 ### Verifying Full Disk Encryption
 
 ```bash
-# Check if your disk is encrypted with LUKS
-sudo cryptsetup status ubuntu-vg-ubuntu--lv
+# Check which devices are LUKS containers and find the active mapping name
+lsblk -o NAME,FSTYPE,MOUNTPOINTS | grep crypto_LUKS
+
+# Check if the mapped device is active
+sudo cryptsetup status <crypt-mapping-name>
 
 # Show LUKS header information
-sudo cryptsetup luksDump /dev/sda3
+sudo cryptsetup luksDump /dev/sdXN
 
-# Check which devices are LUKS containers
-lsblk -o NAME,FSTYPE,MOUNTPOINT | grep crypto
+# Use the real encrypted partition name in place of /dev/sdXN
 ```
 
 ### Adding a Recovery Key to LUKS
@@ -183,18 +176,19 @@ LUKS supports multiple key slots. Add a backup key in case you forget the main p
 ```bash
 # Add a second passphrase (key slot)
 # This keeps the original passphrase AND adds a new one
-sudo cryptsetup luksAddKey /dev/sda3
+sudo cryptsetup luksAddKey /dev/sdXN
 
 # Generate a random recovery key file
-sudo dd if=/dev/urandom bs=32 count=1 | base64 > /tmp/recovery-key.txt
-sudo cryptsetup luksAddKey /dev/sda3 /tmp/recovery-key.txt
+sudo install -m 600 /dev/null /root/luks-recovery.key
+sudo dd if=/dev/urandom of=/root/luks-recovery.key bs=32 count=1
+sudo cryptsetup luksAddKey /dev/sdXN /root/luks-recovery.key
 
 # Store the recovery key file securely (USB drive, password manager)
 # Then delete it from the system:
-# sudo rm /tmp/recovery-key.txt
+# sudo shred -u /root/luks-recovery.key
 
 # View key slots (shows which are in use)
-sudo cryptsetup luksDump /dev/sda3 | grep "Key Slot"
+sudo cryptsetup luksDump /dev/sdXN | grep -E "Keyslots|^[[:space:]]+[0-9]+:"
 ```
 
 ## Protecting Swap Space
@@ -215,21 +209,16 @@ sudo sed -i '/swap/d' /etc/fstab
 lsblk
 # If swap is on /dev/ubuntu-vg/swap (LVM), it's already inside the encrypted container
 
-# Option 3: Create an encrypted swap file
-sudo swapoff /dev/sda5  # Current swap partition
-# Configure encrypted swap in /etc/crypttab
-echo "cryptswap1 /dev/sda5 /dev/urandom swap,cipher=aes-xts-plain64" | sudo tee -a /etc/crypttab
-# Update /etc/fstab to use the encrypted swap
-sudo sed -i 's|/dev/sda5 none swap|/dev/mapper/cryptswap1 none swap|' /etc/fstab
-sudo systemctl daemon-reload
-sudo swapon -a
+# Option 3: Configure encrypted swap with the eCryptfs helper
+sudo ecryptfs-setup-swap
+# This encrypts detected swap using cryptsetup and disables hibernation/resume from swap
 ```
 
 ## eCryptfs Backup and Recovery
 
 ```bash
 # Backup strategy for eCryptfs-encrypted home directory:
-# Option 1: Back up the encrypted data (can restore without knowing passphrase)
+# Option 1: Back up the encrypted data (does not expose plaintext in the backup)
 sudo tar -czf /backup/home-encrypted-$(date +%Y%m%d).tar.gz /home/.ecryptfs/username/
 
 # Option 2: Back up the decrypted data (while user is logged in)
@@ -237,11 +226,8 @@ rsync -av /home/username/ /backup/home-decrypted/
 
 # Recovery: If you need to mount a backed-up encrypted home on another system
 # Install ecryptfs-utils on the recovery system
-# Mount using the passphrase:
-sudo mount -t ecryptfs \
-    /backup/home-encrypted/.Private \
-    /mnt/recovered-home \
-    -o key=passphrase:passphrase_passwd=<passphrase>
+# Mount using the login passphrase or recorded mount passphrase:
+sudo ecryptfs-recover-private /path/to/restored/home/.ecryptfs/username/.Private
 ```
 
 ## Performance Considerations
@@ -251,13 +237,13 @@ eCryptfs adds encryption overhead to every file read/write:
 ```bash
 # Benchmark eCryptfs overhead
 # Test without encryption
-dd if=/dev/zero of=/tmp/test-unencrypted bs=4M count=100 oflag=direct 2>&1 | tail -1
+dd if=/dev/zero of=/tmp/test-unencrypted bs=4M count=100 conv=fdatasync 2>&1 | tail -1
 
 # Test inside encrypted home (while logged in as encrypted user)
-dd if=/dev/zero of=~/test-encrypted bs=4M count=100 oflag=direct 2>&1 | tail -1
+dd if=/dev/zero of=~/test-encrypted bs=4M count=100 conv=fdatasync 2>&1 | tail -1
 
 # Typical result: 10-30% overhead for eCryptfs on modern hardware
-# For AES-NI capable CPUs (all modern CPUs), overhead is minimal (2-5%)
+# For x86 CPUs with AES-NI, overhead can be lower
 
 # Verify AES-NI is available
 grep aes /proc/cpuinfo | head -1
@@ -268,10 +254,10 @@ grep aes /proc/cpuinfo | head -1
 
 Home directory encryption on Ubuntu provides meaningful protection for stolen laptops and unauthorized access scenarios:
 
-- **eCryptfs**: Practical for adding encryption to existing installations, but doesn't protect temporary files or swap
-- **LUKS full disk encryption**: Superior protection, configured at installation time, encrypts everything
+- **eCryptfs**: A legacy option for adding encryption to existing installations, but no longer supported for encrypted homes on modern Ubuntu and doesn't protect temporary files or swap
+- **LUKS full disk encryption**: Superior protection, configured at installation time, encrypts operating system data partitions
 
-For new installations, always choose full disk encryption in the Ubuntu installer. For existing systems, eCryptfs plus encrypted swap provides good protection with manageable complexity.
+For new installations, always choose full disk encryption in the Ubuntu installer. For older existing systems, eCryptfs plus encrypted swap can provide good protection with manageable complexity, but plan a migration to LUKS full disk encryption when practical.
 
 Critical operational requirements:
 - Store the eCryptfs mount passphrase or LUKS recovery key outside the encrypted system
