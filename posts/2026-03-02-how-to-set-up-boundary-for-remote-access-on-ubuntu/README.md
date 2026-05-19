@@ -150,7 +150,7 @@ worker {
   # Address the worker advertises to clients
   public_addr = "$(curl -s ifconfig.me)"
 
-  controllers = ["127.0.0.1:9201"]
+  initial_upstreams = ["127.0.0.1:9201"]
 }
 EOF
 ```
@@ -240,8 +240,8 @@ boundary authenticate password \
   -password=<INIT_PASSWORD>
 
 # The CLI stores the token for subsequent commands
-# Check authentication status
-boundary authenticate status
+# List auth tokens to verify a token was stored
+boundary auth-tokens list -scope-id=global
 ```
 
 ## Creating the Infrastructure Hierarchy
