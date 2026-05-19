@@ -22,14 +22,17 @@ This means:
 ## Installing Bolt on Ubuntu
 
 ```bash
-# Add the Puppet repository
+# Add the Puppet 8 repository for your Ubuntu release
 
-wget https://apt.puppet.com/puppet-tools-release-$(lsb_release -sc).deb
-sudo dpkg -i puppet-tools-release-$(lsb_release -sc).deb
+wget https://apt-puppetcore.puppet.com/public/puppet8-release-$(lsb_release -sc).deb
+sudo dpkg -i puppet8-release-$(lsb_release -sc).deb
+
+# Before updating, add your Puppet Core or Puppet Enterprise credentials
+# to /etc/apt/auth.conf.d/apt-puppetcore-puppet.conf
 
 # Install Bolt
-sudo apt update
-sudo apt install -y puppet-bolt
+sudo apt-get update
+sudo apt-get install -y puppet-bolt
 
 # Verify installation
 bolt --version
@@ -48,7 +51,7 @@ cd ~/bolt-project
 bolt project init my-infrastructure
 ```
 
-The project file `bolt-project.yaml` defines project settings:
+The project file `bolt-project.yaml` defines project settings and module dependencies:
 
 ```yaml
 # bolt-project.yaml
@@ -58,13 +61,6 @@ name: my-infrastructure
 modules:
   - puppetlabs-stdlib
   - puppetlabs-apt
-
-# Default transport settings
-config:
-  ssh:
-    host-key-check: false
-    run-as: root
-    private-key: ~/.ssh/id_ed25519
 ```
 
 ## Configuring Target Inventory
@@ -78,26 +74,32 @@ nano ~/bolt-project/inventory.yaml
 ```yaml
 # inventory.yaml - defines groups of targets
 
+config:
+  ssh:
+    host-key-check: false
+    private-key: ~/.ssh/id_ed25519
+
 groups:
   - name: webservers
     targets:
-      - host: web-01.example.com
-        alias: web01
-      - host: web-02.example.com
-        alias: web02
+      - uri: web-01.example.com
+        alias:
+          - web01
+      - uri: web-02.example.com
+        alias:
+          - web02
     config:
       ssh:
         user: deploy
-        private-key: ~/.ssh/id_ed25519
 
   - name: databases
     targets:
-      - host: db-01.example.com
-        alias: db01
+      - uri: db-01.example.com
+        alias:
+          - db01
     config:
       ssh:
         user: deploy
-        private-key: ~/.ssh/id_ed25519
         run-as: root
 
   - name: all-servers
@@ -376,7 +378,11 @@ For vault-based secret management, Bolt supports plugins for HashiCorp Vault and
 plugins:
   vault:
     server_url: https://vault.example.com:8200
-    token: "{{env.VAULT_TOKEN}}"
+    auth:
+      method: token
+      token:
+        _plugin: env_var
+        var: VAULT_TOKEN
 ```
 
 Bolt fills the gap between manual SSH operations and full configuration management. For teams that need repeatable automation without the overhead of a Puppet master deployment, it is a practical choice for Ubuntu infrastructure management.
