@@ -14,19 +14,19 @@ Jenkins is one of the most widely deployed CI/CD systems, largely because of its
 
 - Ubuntu 22.04 or 24.04 server
 - At least 2GB RAM (4GB+ recommended for busy instances)
-- Java 17 or 21 (required by Jenkins LTS)
+- Java 21 or later (required by current Jenkins LTS releases)
 - A domain name or IP address for accessing the Jenkins UI
 
 ## Installing Java
 
-Jenkins requires Java. The LTS versions of Jenkins (which is what you want for production) run on Java 17 or 21.
+Jenkins requires Java. Current Jenkins LTS releases (which are what you want for production) require Java 21 or later.
 
 ```bash
 # Update package lists
 
 sudo apt update
 
-# Install OpenJDK 21 (recommended for Jenkins LTS 2.x)
+# Install OpenJDK 21
 sudo apt install -y openjdk-21-jdk
 
 # Verify installation
@@ -44,11 +44,11 @@ Jenkins maintains its own apt repository with the LTS (Long Term Support) releas
 
 ```bash
 # Add Jenkins GPG key
-sudo wget -O /usr/share/keyrings/jenkins-keyring.asc \
-  https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+sudo wget -O /etc/apt/keyrings/jenkins-keyring.asc \
+  https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key
 
 # Add the Jenkins apt repository
-echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] \
+echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] \
   https://pkg.jenkins.io/debian-stable binary/" | \
   sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
 
@@ -85,15 +85,7 @@ After entering the password, Jenkins offers to install suggested plugins or let 
 If 8080 conflicts with something else, change it before setting up the reverse proxy:
 
 ```bash
-# Edit Jenkins default configuration
-sudo nano /etc/default/jenkins
-
-# Find and change the HTTP_PORT line
-# HTTP_PORT=8080
-# Change to:
-# HTTP_PORT=8090
-
-# For systemd-based Jenkins, edit the service override
+# Edit the systemd service override
 sudo systemctl edit jenkins
 ```
 
@@ -126,6 +118,12 @@ sudo nano /etc/nginx/sites-available/jenkins
 upstream jenkins {
     keepalive 32;
     server 127.0.0.1:8080;
+}
+
+# Required for Jenkins WebSocket agents
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
 }
 
 server {
@@ -163,7 +161,8 @@ server {
         # Required for Jenkins WebSocket agents
         proxy_http_version 1.1;
         proxy_set_header   Upgrade $http_upgrade;
-        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Connection $connection_upgrade;
+        proxy_request_buffering off;
 
         # Increase timeouts for long-running builds
         proxy_connect_timeout 90s;
@@ -207,10 +206,10 @@ wget http://localhost:8080/jnlpJars/jenkins-cli.jar
 
 # Set the Jenkins URL via groovy script
 java -jar jenkins-cli.jar -s http://localhost:8080/ -auth admin:your-token groovy = << EOF
-import jenkins.model.*
-def env = Jenkins.getInstance().getRootUrl()
-Jenkins.getInstance().setRootUrl("https://jenkins.example.com/")
-Jenkins.getInstance().save()
+import jenkins.model.JenkinsLocationConfiguration
+
+JenkinsLocationConfiguration.get().setUrl("https://jenkins.example.com/")
+JenkinsLocationConfiguration.get().save()
 EOF
 ```
 
@@ -267,11 +266,11 @@ pipeline {
                 branch 'main'
             }
             steps {
-                sh """
-                    docker build -t ${DOCKER_REGISTRY}/${APP_NAME}:${env.BUILD_NUMBER} .
-                    docker tag ${DOCKER_REGISTRY}/${APP_NAME}:${env.BUILD_NUMBER} \
-                               ${DOCKER_REGISTRY}/${APP_NAME}:latest
-                """
+                sh '''
+                    docker build -t "$DOCKER_REGISTRY/$APP_NAME:$BUILD_NUMBER" .
+                    docker tag "$DOCKER_REGISTRY/$APP_NAME:$BUILD_NUMBER" \
+                               "$DOCKER_REGISTRY/$APP_NAME:latest"
+                '''
             }
         }
 
@@ -286,11 +285,11 @@ pipeline {
                     usernameVariable: 'DOCKER_USER',
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
-                    sh """
-                        echo $DOCKER_PASS | docker login ${DOCKER_REGISTRY} -u $DOCKER_USER --password-stdin
-                        docker push ${DOCKER_REGISTRY}/${APP_NAME}:${env.BUILD_NUMBER}
-                        docker push ${DOCKER_REGISTRY}/${APP_NAME}:latest
-                    """
+                    sh '''
+                        echo "$DOCKER_PASS" | docker login "$DOCKER_REGISTRY" -u "$DOCKER_USER" --password-stdin
+                        docker push "$DOCKER_REGISTRY/$APP_NAME:$BUILD_NUMBER"
+                        docker push "$DOCKER_REGISTRY/$APP_NAME:latest"
+                    '''
                 }
             }
         }
@@ -341,11 +340,8 @@ cat jenkins_deploy_key
 A few important security settings for production Jenkins:
 
 ```bash
-# Disable Jenkins CLI over remoting (security best practice)
-# In Manage Jenkins > Security > Disable CLI
-# Or add this to Jenkins system properties:
-sudo nano /etc/default/jenkins
-# Add: JAVA_ARGS="-Djenkins.CLI.disabled=true"
+# Keep the Jenkins CLI on its default WebSocket mode and leave the SSH CLI disabled unless needed.
+# Use API tokens rather than passwords for scripted CLI access.
 
 # Restrict access to the Jenkins agent port (50000) from the internet
 sudo ufw allow from 10.0.0.0/8 to any port 50000
@@ -355,7 +351,7 @@ sudo ufw deny 50000
 In **Manage Jenkins > Security**:
 - Enable CSRF Protection
 - Set up Matrix-based security or Role-based access (with the Role Strategy Plugin)
-- Disable agent to master file access if not needed
+- Keep Agent to Controller Access Control enabled
 
 ## Maintenance and Updates
 
