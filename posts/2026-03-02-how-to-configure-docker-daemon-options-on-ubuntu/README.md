@@ -97,15 +97,10 @@ docker info | grep "Storage Driver"
 # Storage Driver: overlay2
 ```
 
-If you have a specific filesystem requirement:
+For xfs backing filesystems, make sure `d_type` support is enabled (`ftype=1`):
 
-```json
-{
-  "storage-driver": "overlay2",
-  "storage-opts": [
-    "overlay2.override_kernel_check=true"
-  ]
-}
+```bash
+xfs_info /var/lib/docker | grep ftype
 ```
 
 ## DNS Configuration
@@ -173,7 +168,7 @@ For internal registries without TLS (development only - not recommended for prod
 
 ## IP Address Pools
 
-Docker's default bridge uses `172.17.0.0/16` and Docker Compose networks use `172.18-172.31.x.x`. These ranges sometimes conflict with corporate networks. Configure custom ranges:
+Docker's built-in default address pools include ranges such as `172.17.0.0/16` through `172.31.0.0/16`, plus part of `192.168.0.0/16`. These ranges sometimes conflict with corporate networks. Configure custom ranges:
 
 ```json
 {
@@ -190,7 +185,7 @@ This makes all Docker networks use `10.10.x.x/24` subnets, avoiding conflicts wi
 
 ## Live Restore
 
-Live restore allows containers to keep running when the Docker daemon restarts (for daemon updates):
+Live restore allows containers to keep running when the Docker daemon becomes unavailable or is reloaded for daemon updates:
 
 ```json
 {
@@ -198,7 +193,7 @@ Live restore allows containers to keep running when the Docker daemon restarts (
 }
 ```
 
-With this enabled, `sudo systemctl restart docker` restarts only the daemon without stopping running containers.
+With this enabled, containers can keep running while the daemon is reloaded or restarted, as long as daemon-level options such as network or storage settings have not changed.
 
 ## Experimental Features
 
@@ -303,17 +298,17 @@ sudo journalctl -u docker.service -n 50
 
 ## Applying Settings Dynamically
 
-Some settings can be changed without a full daemon restart using the Docker API:
+Some settings can be changed without a full daemon restart by reloading the Docker daemon:
 
 ```bash
-# Enable debug mode temporarily (without modifying daemon.json)
+# Force dockerd to write a stack trace to the daemon log
 sudo kill -SIGUSR1 $(pidof dockerd)
 
 # Check current daemon configuration
 sudo docker info
 
 # Reload after daemon.json changes (some settings support reload vs full restart)
-sudo kill -SIGHUP $(pidof dockerd)
+sudo systemctl reload docker
 ```
 
 Note: full restart is safer for configuration changes - SIGHUP only reloads a subset of settings.
