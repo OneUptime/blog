@@ -44,10 +44,10 @@ Find the `GRUB_CMDLINE_LINUX_DEFAULT` line and add the IOMMU parameter:
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash intel_iommu=on iommu=pt"
 
 # For AMD:
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash amd_iommu=on iommu=pt"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash iommu=pt"
 ```
 
-The `iommu=pt` (passthrough) option improves performance by only enabling IOMMU for devices being passed through.
+The `iommu=pt` (passthrough) option improves performance by using passthrough mappings for devices that are not assigned to a VM.
 
 ```bash
 # Update GRUB and reboot
@@ -109,8 +109,7 @@ The IDs in brackets (`10de:2206` and `10de:1aef`) are what you need.
 # Add VFIO modules to load at boot
 echo "vfio
 vfio_iommu_type1
-vfio_pci
-vfio_virqfd" | sudo tee /etc/modules-load.d/vfio.conf
+vfio_pci" | sudo tee /etc/modules-load.d/vfio.conf
 ```
 
 ### Step 3: Bind GPU to VFIO at Boot
