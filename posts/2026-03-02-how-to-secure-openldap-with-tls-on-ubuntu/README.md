@@ -55,7 +55,7 @@ sudo openssl req -new -key ldap.key \
   -subj "/C=US/ST=State/L=City/O=Example Org/CN=ldap.example.com"
 
 # Create a config file for SAN (Subject Alternative Names)
-cat > san.conf << 'EOF'
+sudo tee san.conf > /dev/null << 'EOF'
 [req]
 req_extensions = v3_req
 
@@ -132,7 +132,7 @@ sudo bash /etc/letsencrypt/renewal-hooks/deploy/ldap-cert.sh
 
 ## Configuring slapd to Use TLS
 
-OpenLDAP's TLS settings live in `cn=config`. Apply them with an LDIF:
+OpenLDAP's TLS settings live in `cn=config`. Apply them with an LDIF. Note that the `slapd` package on Ubuntu is linked against GnuTLS, so `olcTLSCipherSuite` takes a GnuTLS priority string (not an OpenSSL cipher list):
 
 ```bash
 sudo nano /tmp/tls-config.ldif
@@ -151,7 +151,7 @@ replace: olcTLSCertificateKeyFile
 olcTLSCertificateKeyFile: /etc/ldap/ssl/ldap.key
 -
 replace: olcTLSCipherSuite
-olcTLSCipherSuite: HIGH:MEDIUM:+SSLv3
+olcTLSCipherSuite: SECURE256:+SECURE128:-VERS-ALL:+VERS-TLS1.3:+VERS-TLS1.2
 -
 replace: olcTLSProtocolMin
 olcTLSProtocolMin: 3.3
