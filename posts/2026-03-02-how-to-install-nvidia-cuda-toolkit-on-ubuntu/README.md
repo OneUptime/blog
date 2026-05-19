@@ -139,11 +139,11 @@ The `nvidia-smi` output should show your GPU model, driver version, and CUDA ver
 
 ## Compiling and Running a CUDA Sample
 
-Test the installation by compiling a sample program:
+Test the installation by compiling a sample program. Since CUDA 11.6, NVIDIA no longer bundles samples with the toolkit; clone them from GitHub instead:
 
 ```bash
-# Copy the samples to your home directory
-cuda-install-samples-12.3.sh ~/cuda-samples
+# Clone the CUDA samples matching your toolkit version
+git clone --branch v12.3 https://github.com/NVIDIA/cuda-samples.git ~/cuda-samples
 
 # Navigate to a simple sample
 cd ~/cuda-samples/Samples/1_Utilities/deviceQuery
@@ -220,8 +220,8 @@ sudo update-alternatives --config cuda
 Most ML frameworks also require cuDNN. Install it after CUDA:
 
 ```bash
-# Install cuDNN via the NVIDIA repository (already configured above)
-sudo apt-get install -y libcudnn8 libcudnn8-dev libcudnn8-samples
+# Install cuDNN 9 for CUDA 12 via the NVIDIA repository (already configured above)
+sudo apt-get install -y cudnn9-cuda-12
 ```
 
 With the CUDA Toolkit installed and verified, you're ready to install ML frameworks like PyTorch or TensorFlow, or build your own CUDA applications directly.
