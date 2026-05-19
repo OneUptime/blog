@@ -342,12 +342,12 @@ Most organizations use a ticketing system. Add a simple integration hook:
 TICKET="$1"
 STATUS="${2:-completed}"
 
-# Example: update a ticket via REST API
-curl -s -X PATCH \
+# Example: post a comment on a Jira ticket recording the change
+curl -s -X POST \
     -H "Authorization: Bearer $JIRA_TOKEN" \
     -H "Content-Type: application/json" \
-    -d "{\"status\": \"$STATUS\", \"resolution\": \"Change applied on $(hostname) at $(date)\"}" \
-    "https://yourorg.atlassian.net/rest/api/3/issue/$TICKET/transitions"
+    -d "{\"body\": \"Change applied on $(hostname) at $(date) - Status: $STATUS\"}" \
+    "https://yourorg.atlassian.net/rest/api/2/issue/$TICKET/comment"
 ```
 
 ## Audit Trail
