@@ -65,7 +65,7 @@ WireGuard assigns tunnel addresses independently of the transport layer. You can
 # Client tunnel address (IPv6): fd00:dead:beef::2/128
 ```
 
-ULA prefixes (fd00::/8) are the IPv6 equivalent of RFC1918 private space - they are not routable on the public internet, which is exactly what you want for VPN tunnel addresses.
+Locally assigned ULA prefixes use fd00::/8, within the overall ULA range fc00::/7. They are the IPv6 equivalent of RFC1918 private space - they are not routable on the public internet, which is exactly what you want for VPN tunnel addresses.
 
 ## Server Configuration
 
@@ -151,7 +151,7 @@ DNS = 1.1.1.1, 2606:4700:4700::1111
 # The server's public key
 PublicKey = <SERVER_PUBLIC_KEY>
 
-# The server's public endpoint - can be an IPv4 or IPv6 address
+# The server's public endpoint - use host:port for IPv4 or [host]:port for IPv6
 Endpoint = 203.0.113.1:51820
 
 # Route all traffic (IPv4 and IPv6) through the tunnel
@@ -230,6 +230,11 @@ sudo ufw allow 51820/udp
 # *nat
 # :POSTROUTING ACCEPT [0:0]
 # -A POSTROUTING -s 10.0.0.0/24 -o eth0 -j MASQUERADE
+# COMMIT
+#
+# For IPv6 masquerade, add the IPv6 rule to /etc/ufw/before6.rules:
+# *nat
+# :POSTROUTING ACCEPT [0:0]
 # -A POSTROUTING -s fd00:dead:beef::/64 -o eth0 -j MASQUERADE
 # COMMIT
 
