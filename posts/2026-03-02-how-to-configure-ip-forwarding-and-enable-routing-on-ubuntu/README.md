@@ -206,7 +206,7 @@ This allows bidirectional routing between eth0 and eth1 while blocking forwardin
 
 ## Forwarding for Containers and VMs
 
-Docker, LXC, and KVM all require IP forwarding. When you install Docker, it enables IP forwarding automatically. You can verify:
+Docker, LXC, and KVM all require IP forwarding. When Docker uses its iptables firewall backend, it enables IP forwarding automatically if needed. With Docker's nftables backend, enable IP forwarding yourself before creating bridge networks that require it. You can verify:
 
 ```bash
 # Check if Docker is managing iptables forwarding rules
@@ -230,11 +230,11 @@ You can enable forwarding on specific interfaces only, rather than globally:
 # Enable forwarding on eth0 only
 sudo sysctl -w net.ipv4.conf.eth0.forwarding=1
 
-# Disable forwarding globally (but it's still on for eth0)
-sudo sysctl -w net.ipv4.ip_forward=0
+# Check the per-interface setting
+sysctl net.ipv4.conf.eth0.forwarding
 ```
 
-Note: For IPv6, `net.ipv6.conf.all.forwarding=1` overrides per-interface settings. Set `all` to control the global behavior.
+Note: For IPv4, `net.ipv4.conf.eth0.forwarding` controls whether packets received on `eth0` can be forwarded. Changing `net.ipv4.ip_forward` resets IPv4 forwarding-related configuration to host or router defaults. For IPv6, `net.ipv6.conf.all.forwarding=1` enables global forwarding across interfaces; use `force_forwarding` for per-interface forwarding when global IPv6 forwarding is disabled.
 
 ## Debugging Forwarding Issues
 
@@ -250,14 +250,13 @@ sudo iptables -L FORWARD -n -v
 sudo conntrack -L | head -20
 
 # Trace a packet path through the kernel
-# (requires linux-headers for xtables)
 sudo iptables -t raw -A PREROUTING -s 192.168.1.50 -j TRACE
-sudo iptables -t raw -A OUTPUT -d 10.0.0.50 -j TRACE
-sudo journalctl -k | grep "TRACE"
+sudo iptables -t raw -A PREROUTING -d 10.0.0.50 -j TRACE
+sudo xtables-monitor --trace
 
 # Clean up trace rules after debugging
 sudo iptables -t raw -D PREROUTING -s 192.168.1.50 -j TRACE
-sudo iptables -t raw -D OUTPUT -d 10.0.0.50 -j TRACE
+sudo iptables -t raw -D PREROUTING -d 10.0.0.50 -j TRACE
 ```
 
 ## Reverse Path Filtering
