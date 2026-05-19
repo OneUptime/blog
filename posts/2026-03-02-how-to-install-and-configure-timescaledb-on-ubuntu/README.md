@@ -259,11 +259,11 @@ SELECT add_compression_policy('server_metrics', INTERVAL '30 days');
 
 -- Check compression ratio
 SELECT
-    hypertable_name,
+    'server_metrics' AS hypertable_name,
     pg_size_pretty(before_compression_total_bytes) AS before,
     pg_size_pretty(after_compression_total_bytes) AS after,
-    ROUND(100.0 * after_compression_total_bytes / before_compression_total_bytes, 1) AS ratio_pct
-FROM chunk_compression_stats('server_metrics');
+    ROUND(100.0 * after_compression_total_bytes / NULLIF(before_compression_total_bytes, 0), 1) AS ratio_pct
+FROM hypertable_compression_stats('server_metrics');
 ```
 
 Monitor TimescaleDB query performance and database availability with [OneUptime](https://oneuptime.com) to ensure your time-series data platform stays healthy.
