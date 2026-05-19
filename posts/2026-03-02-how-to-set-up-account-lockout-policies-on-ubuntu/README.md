@@ -14,11 +14,11 @@ This tutorial covers setting up account lockout for local logins, SSH, and sudo,
 
 ## The pam_faillock Module
 
-`pam_faillock` replaced the older `pam_tally2` module in Ubuntu 20.04 and later. It records failed authentication attempts in per-user files under `/var/run/faillock/` and checks those counts during authentication.
+`pam_faillock` replaced the older `pam_tally2` module in Ubuntu 22.04 and later (where PAM 1.4.0 removed `pam_tally2`). It records failed authentication attempts in per-user files under `/var/run/faillock/` and checks those counts during authentication.
 
 The module has two roles in the PAM stack:
-- **auth phase**: Checks whether the account is currently locked before attempting authentication
-- **account phase**: Increments the failure counter on authentication failure
+- **auth phase**: With `preauth` checks whether the account is currently locked before authentication; with `authfail` records a failed attempt; with `authsucc` clears the failure counter on success
+- **account phase**: Enforces the lockout decision (denies access if the account is locked)
 
 ## Installing Required Packages
 
@@ -67,10 +67,10 @@ even_deny_root = true
 # How long root stays locked (shorter than regular users is often sensible)
 root_unlock_time = 60
 
-# Audit log all lockout events
+# Log the user name to syslog when a non-existent user attempts to authenticate
 audit = true
 
-# Show a message indicating the remaining unlock time
+# Allow informational messages to be written to syslog (set to true to suppress them)
 no_log_info = false
 ```
 
