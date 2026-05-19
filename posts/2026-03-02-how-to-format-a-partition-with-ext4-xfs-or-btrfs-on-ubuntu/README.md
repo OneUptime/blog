@@ -44,7 +44,7 @@ sudo mkfs.ext4 -L "data-disk" /dev/sdb1
 sudo mkfs.ext4 -i 4096 /dev/sdb1   # High inode density
 sudo mkfs.ext4 -i 65536 /dev/sdb1  # Low inode density (large files)
 
-# Tune for SSD (disable journaling of full data, enable extent feature)
+# Fully initialize inode tables and the journal during formatting
 sudo mkfs.ext4 -E lazy_itable_init=0,lazy_journal_init=0 /dev/sdb1
 
 # View current ext4 settings after formatting
@@ -84,12 +84,13 @@ sudo mkfs.xfs -f /dev/sdb1
 # Set block size (4096 is default and usually optimal)
 sudo mkfs.xfs -b size=4096 /dev/sdb1
 
-# Large scale storage: use 64K block size for fewer inodes and better performance
-# with very large files (64K is the maximum XFS block size)
-sudo mkfs.xfs -b size=65536 /dev/sdb1
+# 64K is the maximum XFS block size, but Linux can only mount XFS filesystems
+# with a block size no larger than the kernel page size (commonly 4K on x86_64)
+# sudo mkfs.xfs -b size=65536 /dev/sdb1
 
-# For SSDs: set sunit and swidth to match SSD stripe parameters
-sudo mkfs.xfs -d su=128k,sw=1 /dev/sdb1
+# For RAID or striped logical volumes, set stripe unit and width explicitly
+# if mkfs.xfs cannot detect them automatically
+sudo mkfs.xfs -d su=128k,sw=4 /dev/sdb1
 ```
 
 ### XFS metadata
@@ -160,7 +161,7 @@ sudo e2fsck -n /dev/sdb1  # -n = read-only check
 sudo tune2fs -l /dev/sdb1 | grep -E "Filesystem|Block size|Inode count"
 
 # For XFS
-sudo xfs_check /dev/sdb1 2>/dev/null || sudo xfs_repair -n /dev/sdb1
+sudo xfs_repair -n /dev/sdb1
 
 # For Btrfs
 sudo btrfs check /dev/sdb1
@@ -208,10 +209,10 @@ Add the appropriate line based on your filesystem:
 UUID=abc12345-def6-7890-abcd-ef1234567890  /data  ext4  defaults,noatime  0  2
 
 # XFS entry
-UUID=abc12345-def6-7890-abcd-ef1234567890  /data  xfs   defaults,noatime  0  2
+UUID=abc12345-def6-7890-abcd-ef1234567890  /data  xfs   defaults,noatime  0  0
 
 # Btrfs entry with subvolume
-UUID=abc12345-def6-7890-abcd-ef1234567890  /data  btrfs subvol=@,noatime  0  2
+UUID=abc12345-def6-7890-abcd-ef1234567890  /data  btrfs subvol=@,noatime  0  0
 ```
 
 The `noatime` option prevents updating access timestamps on reads, improving performance especially on SSDs.
@@ -230,18 +231,18 @@ df -h /data    # Verify it mounted
 ### ext4 with SSD
 
 ```bash
-# Enable discard (TRIM) and disable journaling for frequently written data
+# Use writeback data mode for frequently written data
 sudo tune2fs -o journal_data_writeback /dev/sdb1
 
-# Mount with SSD-appropriate options
+# Mount with SSD-appropriate options, including online discard/TRIM
 sudo mount -o noatime,discard /dev/sdb1 /data
 ```
 
 ### XFS with large file workloads
 
 ```bash
-# Mount with additional write performance options for data disks
-sudo mount -o noatime,largeio,inode64 /dev/sdb1 /data
+# Mount with noatime; benchmark fixed preallocation before using it in production
+sudo mount -o noatime,allocsize=1m /dev/sdb1 /data
 ```
 
 ### Btrfs with compression
