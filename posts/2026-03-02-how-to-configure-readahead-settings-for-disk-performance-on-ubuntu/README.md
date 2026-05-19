@@ -8,7 +8,7 @@ Description: Configure block device readahead settings on Ubuntu to optimize dis
 
 ---
 
-Readahead is the kernel's mechanism for predicting that a sequential access pattern will continue and prefetching the next blocks before they're requested. When an application reads a file sequentially, the kernel sees this pattern and speculatively reads ahead by a configured number of kilobytes. If the prediction is correct, the data is already in the page cache when needed, eliminating a disk seek. If wrong, you've wasted memory bandwidth and cache space on data that won't be used.
+Readahead is the kernel's mechanism for predicting that a sequential access pattern will continue and prefetching the next blocks before they're requested. When an application reads a file sequentially, the kernel sees this pattern and speculatively reads ahead by a configured number of kilobytes. If the prediction is correct, the data is already in the page cache when needed, reducing read latency and avoiding extra disk seeks on rotational media. If wrong, you've wasted memory bandwidth and cache space on data that won't be used.
 
 Getting readahead right depends on your workload: sequential workloads (video streaming, log file analysis, backups) benefit from aggressive readahead; random workloads (databases, key-value stores) are hurt by it because the prefetched data is almost never used.
 
@@ -57,8 +57,8 @@ sudo blockdev --getra /dev/sda
 ### Random I/O Workloads (Databases, Key-Value Stores)
 
 ```bash
-# Disable readahead - random I/O doesn't benefit from it
-# PostgreSQL, MySQL, MongoDB, Redis, Cassandra all benefit from disabled readahead
+# Disable readahead - random I/O usually doesn't benefit from it
+# PostgreSQL, MySQL, MongoDB, Redis, Cassandra may benefit from reduced readahead on data volumes
 
 sudo blockdev --setra 0 /dev/nvme0n1    # NVMe database disk
 sudo blockdev --setra 0 /dev/sdb        # SSD database disk
@@ -67,7 +67,7 @@ sudo blockdev --setra 0 /dev/sdb        # SSD database disk
 sudo blockdev --getra /dev/nvme0n1
 ```
 
-With readahead enabled on a database disk, every 4K random read causes the kernel to read ahead another 128KB or more that will never be accessed. This wastes I/O bandwidth and pushes useful pages out of the page cache.
+With aggressive readahead enabled on a database disk, small random reads can cause the kernel to read ahead data that will never be accessed. This wastes I/O bandwidth and can push useful pages out of the page cache.
 
 ### Sequential Workloads (Log Processing, ETL, Backups)
 
@@ -126,13 +126,17 @@ If you have different disks for different purposes on the same system, target th
 
 # Database volume - disable readahead
 if mountpoint -q /var/lib/postgresql; then
-    DB_DEV=$(findmnt -n -o SOURCE /var/lib/postgresql | xargs -I {} lsblk -no PKNAME {} | head -1)
+    DB_SRC=$(findmnt -n -o SOURCE /var/lib/postgresql)
+    DB_DEV=$(lsblk -no PKNAME "$DB_SRC" | head -1)
+    [ -z "$DB_DEV" ] && DB_DEV=$(lsblk -no KNAME "$DB_SRC" | head -1)
     [ -n "$DB_DEV" ] && blockdev --setra 0 "/dev/$DB_DEV"
 fi
 
 # Log/backup volume - high readahead
 if mountpoint -q /data/backups; then
-    BACKUP_DEV=$(findmnt -n -o SOURCE /data/backups | xargs -I {} lsblk -no PKNAME {} | head -1)
+    BACKUP_SRC=$(findmnt -n -o SOURCE /data/backups)
+    BACKUP_DEV=$(lsblk -no PKNAME "$BACKUP_SRC" | head -1)
+    [ -z "$BACKUP_DEV" ] && BACKUP_DEV=$(lsblk -no KNAME "$BACKUP_SRC" | head -1)
     [ -n "$BACKUP_DEV" ] && blockdev --setra 8192 "/dev/$BACKUP_DEV"
 fi
 
@@ -141,14 +145,16 @@ fi
 
 ## Filesystem-Level Readahead
 
-The block device readahead is separate from the filesystem's own readahead. You can also tune the filesystem's readahead:
+The block device readahead limit is exposed through the queue's `read_ahead_kb` sysfs setting. On current Linux kernels, `blockdev --setfra` is the same as `--setra`, so there is not a separate ext4 or XFS mount option that directly sets the generic readahead window:
 
 ```bash
-# Set readahead for a mounted filesystem using fsconfig (modern approach)
-# For ext4 or XFS, mount with specific readahead options
+# View or change the queue readahead value directly
+cat /sys/block/sda/queue/read_ahead_kb
+echo 512 | sudo tee /sys/block/sda/queue/read_ahead_kb
 
-# For ext4, the max_batch_time and min_batch_time affect readahead behavior
-# For XFS, the largeio and swalloc mount options affect readahead
+# blockdev's filesystem readahead options map to the same setting on modern kernels
+sudo blockdev --getfra /dev/sda
+sudo blockdev --setfra 1024 /dev/sda
 
 # Manual filesystem readahead via posix_fadvise is for specific files - not a kernel setting
 # Applications can call: posix_fadvise(fd, offset, length, POSIX_FADV_SEQUENTIAL)
@@ -165,6 +171,7 @@ Some applications manage their own I/O and you can advise the kernel:
 cat << 'C' > /tmp/fadvise-test.c
 #include <fcntl.h>
 #include <stdio.h>
+#include <unistd.h>
 
 int main(int argc, char *argv[]) {
     if (argc < 2) return 1;
@@ -197,7 +204,8 @@ for ra in 0 128 256 1024 4096 8192; do
         --filename=/dev/sdb \
         --rw=read \
         --bs=128k \
-        --direct=1 \
+        --direct=0 \
+        --readonly \
         --numjobs=1 \
         --iodepth=4 \
         --size=2G \
@@ -206,7 +214,7 @@ for ra in 0 128 256 1024 4096 8192; do
         --group_reporting \
         --output-format=terse 2>/dev/null)
 
-    echo "$RESULT" | awk -F';' '{printf "%.0f MB/s\n", $6/1024}'
+    echo "$RESULT" | awk -F';' '{printf "%.0f MB/s\n", $7/1024}'
 done
 
 # Test random read performance with different readahead values
@@ -218,7 +226,8 @@ for ra in 0 256 1024; do
         --filename=/dev/sdb \
         --rw=randread \
         --bs=4k \
-        --direct=1 \
+        --direct=0 \
+        --readonly \
         --numjobs=4 \
         --iodepth=32 \
         --size=4G \
@@ -238,8 +247,8 @@ Typical results you'll see:
 ## Monitoring Readahead Effectiveness
 
 ```bash
-# Check page cache hit rates (readahead success shows as cache hits)
-sudo apt install linux-tools-$(uname -r) -y
+# Install iostat if needed
+sudo apt install sysstat -y
 
 # Using vmstat - look at 'bi' (blocks in from disk)
 vmstat 1 10
@@ -255,6 +264,6 @@ free -h
 cat /proc/meminfo | grep -E "Cached|Buffers|Active|Inactive"
 ```
 
-High values in `Inactive(file)` in `/proc/meminfo` can indicate that readahead is reading data into cache that isn't being accessed - a sign that readahead is too aggressive for your workload.
+High values in `Inactive(file)` in `/proc/meminfo` show reclaimable file cache. If they rise during a workload while disk reads also increase without improving application throughput, it can be a sign that readahead is too aggressive for your workload.
 
 Getting readahead right is a worthwhile optimization. For database servers, disabling readahead can measurably improve IOPS. For sequential processing jobs, tuning it upward can significantly increase throughput. Always benchmark before and after changes on your actual workload.
