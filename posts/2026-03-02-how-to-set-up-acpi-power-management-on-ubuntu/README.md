@@ -27,7 +27,7 @@ On modern Ubuntu systems, systemd-logind also handles many ACPI events. Understa
 # Install acpid and ACPI utilities
 
 sudo apt update
-sudo apt install -y acpid acpi acpi-support acpitools
+sudo apt install -y acpid acpi acpi-support acpitool
 
 # Start and enable acpid
 sudo systemctl enable --now acpid
@@ -35,7 +35,7 @@ sudo systemctl enable --now acpid
 # Check service status
 systemctl status acpid
 
-# List current ACPI events
+# Show all ACPI information
 acpi -V
 
 # Show battery status
@@ -159,8 +159,9 @@ HandleLidSwitch=ignore
 HandleLidSwitchDocked=ignore
 HandleLidSwitchExternalPower=ignore
 
-# How long power key must be held for long-press action
-HoldoffTimeoutSec=0
+# How long after startup/resume to ignore lid switch events
+# (lets external monitors and docks be detected first)
+HoldoffTimeoutSec=30s
 
 # What happens when AC power is connected/disconnected
 # (handled differently through udev)
@@ -303,8 +304,8 @@ sudo acpi_listen &
 # Test an event handler manually
 sudo /etc/acpi/powerbtn.sh
 
-# Check acpid configuration
-acpid --test
+# Run acpid in foreground with debug output to validate configuration
+sudo acpid -f -d
 ```
 
 ## Server-Specific ACPI Recommendations
