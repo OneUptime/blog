@@ -64,7 +64,7 @@ drwx------ 3 carol carol 4096 Feb 28 14:22 carol
 
 ## Setting the Default for New Users
 
-The `useradd` command gets its default behavior from `/etc/login.defs` and the `DIR_MODE` setting:
+The `useradd` command gets its default behavior from `/etc/login.defs` and the `HOME_MODE` setting:
 
 ```bash
 sudo nano /etc/login.defs
