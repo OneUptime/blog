@@ -56,12 +56,12 @@ sudo tee /etc/rkhunter.conf.local << 'EOF'
 UPDATE_MIRRORS=1
 MIRRORS_MODE=0
 
-# Rotate log file
+# Rotate the entries in the mirrors.dat file so a different mirror is tried first on each --update
 ROTATE_MIRRORS=1
 
 # Email alerts when issues are found
 MAIL_CMD=mail -s "[rkhunter] Daily scan - $(hostname)"
-MAIL_ON_WARNING=admin@example.com
+MAIL-ON-WARNING=admin@example.com
 
 # Allow specific suspect files (false positives)
 # Add here after reviewing warnings
@@ -181,7 +181,7 @@ sudo rkhunter --check --skip-keypress --report-warnings-only
 ```bash
 sudo apt-get install -y chkrootkit
 
-chkrootkit --version
+chkrootkit -V
 ```
 
 ## Running chkrootkit
@@ -196,7 +196,7 @@ sudo chkrootkit -q
 # Test a specific rootkit
 sudo chkrootkit lkm  # check for LKM rootkits
 sudo chkrootkit sniffer  # check for packet sniffers
-sudo chkrootkit cron  # check cron for rootkit entries
+sudo chkrootkit cron  # inspect the cron binary for known rootkit signatures
 
 # List all available tests
 sudo chkrootkit -l
