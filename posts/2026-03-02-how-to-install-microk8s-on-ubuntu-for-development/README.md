@@ -103,9 +103,8 @@ The Kubernetes Dashboard gives you a web UI for cluster management:
 ```bash
 microk8s enable dashboard
 
-# Get the dashboard token for login
-microk8s kubectl -n kube-system describe secret \
-  $(microk8s kubectl -n kube-system get secret | grep default-token | awk '{print $1}')
+# Get the dashboard token for login (Kubernetes 1.24+)
+microk8s kubectl create token default
 
 # Access via proxy
 microk8s kubectl proxy
