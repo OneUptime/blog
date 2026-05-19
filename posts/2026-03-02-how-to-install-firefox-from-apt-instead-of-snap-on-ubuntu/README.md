@@ -8,15 +8,15 @@ Description: Learn how to install Firefox as a traditional APT package on Ubuntu
 
 ---
 
-Since Ubuntu 22.04, Canonical switched Firefox from a traditional `.deb` package to a Snap package. The Snap version has real-world drawbacks: slower startup times, sandbox restrictions that break some integrations (KeePassXC, Yubikey, certain printing configurations), and increased memory usage. If these issues affect you, switching to the APT version of Firefox from Mozilla's official repository restores the traditional package behavior.
+Since Ubuntu 22.04, Canonical switched Firefox from a traditional `.deb` package to a Snap package. The Snap version can have real-world drawbacks: slower startup times, sandbox restrictions that affect some integrations (older KeePassXC setups, YubiKey, certain printing configurations), and increased memory usage. If these issues affect you, switching to the APT version of Firefox from Mozilla's official repository restores the traditional package behavior.
 
 ## Why the Snap Version Causes Problems
 
 The Snap package runs in a strict confinement sandbox, which:
 - Blocks certain filesystem paths that browser extensions rely on
-- Prevents integration with password managers that use native messaging (like KeePassXC-Browser or Bitwarden)
+- Can complicate integration with password managers that use native messaging
 - Causes issues with some hardware security keys and smart card authentication
-- Results in 5-15 second startup times on many systems due to Snap mounting overhead
+- Can result in slower startup times on some systems due to Snap mounting overhead
 - Stores profile data in a different location than users expect
 
 ## Step 1: Remove the Snap Version
@@ -32,15 +32,15 @@ snap list | grep firefox
 sudo snap remove firefox
 
 # Verify it's removed
-which firefox  # Should show no output
+snap list firefox 2>/dev/null  # Should show no output
 ```
 
 ## Step 2: Prevent Ubuntu from Reinstalling the Snap Version
 
-Ubuntu's APT configuration includes a preference that redirects Firefox APT installs to the Snap. Disable this:
+Ubuntu's repositories include a transitional `firefox` package that installs the Snap. Prevent APT from choosing that package:
 
 ```bash
-# Check for the redirect configuration
+# Check for the pinning configuration
 cat /etc/apt/preferences.d/firefox-no-snap 2>/dev/null || echo "File doesn't exist yet"
 
 # Create a preference file that prevents Snap Firefox from being installed via APT
@@ -49,20 +49,20 @@ sudo nano /etc/apt/preferences.d/firefox-no-snap
 
 ```text
 # /etc/apt/preferences.d/firefox-no-snap
-# Prevent the firefox Snap from being installed via APT redirects
+# Prevent Ubuntu's Firefox transitional package from being installed
 Package: firefox*
 Pin: release o=Ubuntu*
 Pin-Priority: -1
 ```
 
-Also check for and remove the Firefox Snap package redirector:
+Also check for and remove Ubuntu's Firefox transitional package:
 
 ```bash
-# This package redirects apt install firefox to snap
-sudo apt remove firefox-snap-package-redirector 2>/dev/null || true
+# This package installs the Firefox snap on Ubuntu
+sudo apt remove firefox 2>/dev/null || true
 
 # Check for the transition package
-dpkg -l | grep firefox-snap
+apt-cache policy firefox
 ```
 
 ## Step 3: Add Mozilla's Official APT Repository
@@ -79,7 +79,7 @@ sudo install -d -m 0755 /etc/apt/keyrings
 
 # Download and install Mozilla's GPG signing key
 curl -fsSL https://packages.mozilla.org/apt/repo-signing-key.gpg | \
-    sudo gpg --dearmor -o /etc/apt/keyrings/packages.mozilla.org.asc
+    sudo tee /etc/apt/keyrings/packages.mozilla.org.asc > /dev/null
 
 # Verify the key fingerprint (should be: 35BAA0B33E9EB396F59CA838C0BA5CE6DC6315A3)
 gpg -n -q --import --import-options import-show /etc/apt/keyrings/packages.mozilla.org.asc | \
@@ -132,7 +132,7 @@ which firefox
 # Check the Firefox version and build info
 firefox --version
 
-# Start Firefox and verify it launches quickly (should be 2-3 seconds, not 10+)
+# Start Firefox and verify whether startup improves on your system
 firefox &
 ```
 
@@ -167,14 +167,14 @@ apt-cache policy firefox
 
 ## Restoring KeePassXC Integration
 
-After switching to the APT version, KeePassXC-Browser should work automatically. Verify:
+After switching to the APT version, KeePassXC-Browser should work without Snap-specific native messaging issues. Current KeePassXC releases also support Ubuntu's Firefox Snap through the native messaging portal, so update KeePassXC first if you prefer to stay on the Snap version. Verify:
 
 1. Install the [KeePassXC-Browser extension](https://addons.mozilla.org/en-US/firefox/addon/keepassxc-browser/) in Firefox
 2. Open KeePassXC > **Tools** > **Settings** > **Browser Integration**
 3. Enable Firefox integration
 4. In the extension settings, click "Connect" to KeePassXC
 
-The native messaging connection that failed with Snap should now work.
+The native messaging connection should now work.
 
 ## Troubleshooting
 
@@ -197,18 +197,19 @@ If you had bookmarks and settings in the Snap version, they're stored in a diffe
 
 ```bash
 # Snap Firefox profile location
-ls ~/.snap/firefox/common/.mozilla/firefox/
+ls ~/snap/firefox/common/.mozilla/firefox/
 
 # Standard Firefox profile location (APT version)
 ls ~/.mozilla/firefox/
 
-# Copy your profile from Snap to standard location
-# First, find your profile directory name
-ls ~/.snap/firefox/common/.mozilla/firefox/
+# Copy your profile data from Snap to the standard location
+mkdir -p ~/.mozilla/firefox/
 
 # Copy it
-cp -r ~/.snap/firefox/common/.mozilla/firefox/xxxxxxxx.default-release \
-    ~/.mozilla/firefox/
+cp -a ~/snap/firefox/common/.mozilla/firefox/* ~/.mozilla/firefox/
+
+# Select the copied profile
+firefox -P
 ```
 
 The APT version of Firefox offers the same browser features as the Snap version but without the confinement overhead. For most desktop Ubuntu users who need hardware security key support, password manager integration, or fast browser startup, the APT installation is the better choice.
