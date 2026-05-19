@@ -117,8 +117,10 @@ sudo modprobe nf_conntrack_ftp
 # Make it persistent
 echo "nf_conntrack_ftp" | sudo tee -a /etc/modules
 
-# The RELATED state rule already handles this
-# but you can be explicit about the helper
+# Assign the helper to FTP control connections
+sudo iptables -t raw -A PREROUTING -p tcp --dport 21 -j CT --helper ftp
+
+# The RELATED state rule then handles the expected data connections
 sudo iptables -A INPUT -m conntrack --ctstate RELATED \
   -m helper --helper ftp -j ACCEPT
 ```
@@ -156,8 +158,8 @@ cat /proc/sys/net/netfilter/nf_conntrack_buckets
 # Increase the maximum if you are hitting limits
 sudo sysctl -w net.netfilter.nf_conntrack_max=262144
 
-# Also increase bucket count (should be max/4)
-sudo sysctl -w net.netfilter.nf_conntrack_buckets=65536
+# Also increase bucket count (size of the hash table)
+sudo sysctl -w net.netfilter.nf_conntrack_buckets=262144
 ```
 
 Make these changes permanent in `/etc/sysctl.conf`:
@@ -171,7 +173,7 @@ Add these lines:
 ```text
 # Conntrack table sizing
 net.netfilter.nf_conntrack_max = 262144
-net.netfilter.nf_conntrack_buckets = 65536
+net.netfilter.nf_conntrack_buckets = 262144
 
 # Timeout tuning (reduce for high-traffic servers)
 net.netfilter.nf_conntrack_tcp_timeout_established = 1800
@@ -220,8 +222,8 @@ sudo conntrack -D -p tcp --src 192.168.1.100 --sport 54321
 # Delete all connections from a specific IP
 sudo conntrack -D -s 192.168.1.100
 
-# Delete all connections in TIME_WAIT state
-sudo conntrack -D --state TIME_WAIT
+# Delete all TCP connections in TIME_WAIT state
+sudo conntrack -D -p tcp --state TIME_WAIT
 
 # Flush the entire conntrack table (use with caution)
 sudo conntrack -F
