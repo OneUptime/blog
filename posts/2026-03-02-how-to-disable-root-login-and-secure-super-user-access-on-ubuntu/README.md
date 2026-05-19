@@ -29,7 +29,7 @@ The output shows the account status. Common states:
 
 ```bash
 # Check if root can log in via SSH
-sudo grep -i "permitrootlogin" /etc/ssh/sshd_config
+sudo grep -Ri "permitrootlogin" /etc/ssh/sshd_config /etc/ssh/sshd_config.d/
 
 # Check if your user has sudo access
 sudo -l
@@ -62,7 +62,7 @@ sudo grep "^root:" /etc/shadow
 Even with the password locked, root could log in via SSH key if `PermitRootLogin` is not set to `no`. Always set this explicitly:
 
 ```bash
-sudo nano /etc/ssh/sshd_config
+sudo nano /etc/ssh/sshd_config.d/99-disable-root-login.conf
 ```
 
 Find the `PermitRootLogin` line and set it:
@@ -72,7 +72,7 @@ Find the `PermitRootLogin` line and set it:
 PermitRootLogin no
 ```
 
-If you don't see the line, add it. For maximum clarity, add it near the top of the file or in a dedicated hardening section.
+If you prefer to edit `/etc/ssh/sshd_config` directly, make sure no earlier file included from `/etc/ssh/sshd_config.d/` sets a different `PermitRootLogin` value.
 
 After changing, validate the config and restart SSH:
 
@@ -81,7 +81,7 @@ After changing, validate the config and restart SSH:
 sudo sshd -t
 
 # If no errors, restart the SSH daemon
-sudo systemctl restart sshd
+sudo systemctl restart ssh.service
 
 # Verify the setting took effect
 sudo sshd -T | grep permitrootlogin
@@ -183,7 +183,7 @@ Defaults timestamp_timeout=0
 # Defaults timestamp_timeout=5
 
 # Require the user's own password (not root's)
-Defaults rootpw=false
+Defaults !rootpw
 
 # Log sudo usage to syslog
 Defaults log_host, log_year, logfile="/var/log/sudo.log"
@@ -191,25 +191,17 @@ Defaults log_host, log_year, logfile="/var/log/sudo.log"
 
 ## Disabling Interactive Root Shell via su
 
-Restrict who can switch to root with `su`:
-
-```bash
-# Only members of the 'root' group can use 'su' to become root
-# (Ubuntu default: only sudo group can)
-sudo dpkg-reconfigure login
-```
-
-Or configure PAM directly:
+Restrict who can switch to root with `su` by configuring PAM:
 
 ```bash
 sudo nano /etc/pam.d/su
 ```
 
-Uncomment the line requiring `wheel` group membership (on Ubuntu, use `sudo` group):
+Uncomment and edit the line requiring group membership. On Ubuntu, use the `sudo` group:
 
 ```text
 # Require membership in sudo group to use su -
-auth required pam_wheel.so
+auth required pam_wheel.so group=sudo
 ```
 
 ## Auditing Root and sudo Usage
