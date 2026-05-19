@@ -55,11 +55,11 @@ GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=
 
 # Pass serial console to the Linux kernel as well
 # console=ttyS0,115200n8 - serial console
-# console=tty0 - keep the VGA console as well (order matters - last one gets kernel panics)
+# console=tty0 - keep the VGA console as well (order matters - last one is used for /dev/console)
 GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200n8"
 ```
 
-The `GRUB_CMDLINE_LINUX` line with two `console=` entries means kernel messages go to both VGA and serial. The last `console=` entry receives kernel panics and oops messages.
+The `GRUB_CMDLINE_LINUX` line with two `console=` entries means kernel messages go to both VGA and serial. The last usable `console=` entry is used for `/dev/console`, which affects userspace console I/O.
 
 Apply the changes:
 
@@ -69,7 +69,7 @@ sudo update-grub
 
 ## Step 2: Enable a Serial Getty Service
 
-After the system boots, a login prompt needs to run on the serial port. systemd provides `getty@.service` for this:
+After the system boots, a login prompt needs to run on the serial port. systemd provides `serial-getty@.service` for this:
 
 ```bash
 # Enable and start serial getty on ttyS0 at 115200 baud
@@ -80,7 +80,7 @@ sudo systemctl start serial-getty@ttyS0.service
 sudo systemctl status serial-getty@ttyS0.service
 ```
 
-The `serial-getty@.service` template is already installed on Ubuntu and handles the correct baud rate when the port name follows the `ttyS0` pattern.
+The `serial-getty@.service` template is already installed on Ubuntu and uses `agetty --keep-baud` with a default baud-rate list that includes 115200.
 
 ### Specifying the Baud Rate
 
@@ -108,7 +108,7 @@ Before connecting, confirm the serial port is recognized:
 ls -la /dev/ttyS*
 
 # Check if the UART is present in hardware
-dmesg | grep -i ttyS
+sudo dmesg | grep -i ttyS
 sudo setserial -g /dev/ttyS0
 ```
 
@@ -119,7 +119,7 @@ For USB serial adapters:
 ls -la /dev/ttyUSB*
 
 # Check what was detected
-dmesg | grep -i "usb.*serial\|ch341\|pl2303\|cp210x\|ftdi"
+sudo dmesg | grep -i "usb.*serial\|ch341\|pl2303\|cp210x\|ftdi"
 ```
 
 Install driver support if needed:
@@ -217,12 +217,15 @@ sudo apt install conserver-server -y
 
 # Or use ser2net to expose serial ports over TCP
 sudo apt install ser2net -y
-sudo nano /etc/ser2net.conf
+sudo nano /etc/ser2net.yaml
 ```
 
-```ini
-# ser2net.conf - expose ttyS0 on TCP port 7000
-2000:telnet:600:/dev/ttyS0:115200 8DATABITS NONE 1STOPBIT banner
+```yaml
+# ser2net.yaml - expose ttyS0 on TCP port 2000
+connection: &ttyS0-console
+  accepter: telnet,tcp,2000
+  enable: on
+  connector: serialdev,/dev/ttyS0,115200n81,local
 ```
 
 ```bash
