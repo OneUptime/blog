@@ -37,7 +37,10 @@ EOF
 Gitea releases single binaries for each platform. Check https://github.com/go-gitea/gitea/releases for the latest version.
 
 ```bash
-# Create gitea user (no login shell for security)
+# Install Git, which Gitea requires, plus download/restore tools
+sudo apt install -y git wget unzip
+
+# Create dedicated git user
 sudo useradd -r -m -s /bin/bash -d /home/git git
 
 # Create directories
@@ -45,7 +48,7 @@ sudo mkdir -p /var/lib/gitea/{custom,data,indexers,public,log}
 sudo mkdir -p /etc/gitea
 
 # Download Gitea binary (adjust version as needed)
-GITEA_VERSION="1.23.1"
+GITEA_VERSION="1.26.1"
 wget "https://github.com/go-gitea/gitea/releases/download/v${GITEA_VERSION}/gitea-${GITEA_VERSION}-linux-amd64" \
   -O /tmp/gitea
 
@@ -125,6 +128,7 @@ After the web installer runs, it writes `/etc/gitea/app.ini`. Secure the file:
 
 ```bash
 # Lock down the configuration after initial setup
+sudo chmod 750 /etc/gitea
 sudo chmod 640 /etc/gitea/app.ini
 ```
 
@@ -223,10 +227,38 @@ sudo systemctl status gitea
 ## Setting Up Nginx with HTTPS
 
 ```bash
-sudo apt install -y nginx
+sudo apt install -y nginx certbot python3-certbot-nginx
 
 sudo nano /etc/nginx/sites-available/gitea
 ```
+
+Start with an HTTP-only reverse proxy so Certbot can validate the domain and create the certificate:
+
+```nginx
+server {
+    listen 80;
+    server_name gitea.example.com;
+
+    location / {
+        proxy_pass         http://127.0.0.1:3000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```bash
+sudo ln -s /etc/nginx/sites-available/gitea /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+sudo certbot --nginx -d gitea.example.com
+
+sudo nano /etc/nginx/sites-available/gitea
+```
+
+Then update the site with the HTTPS reverse proxy configuration:
 
 ```nginx
 # Gitea reverse proxy configuration
@@ -237,7 +269,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name gitea.example.com;
 
     ssl_certificate     /etc/letsencrypt/live/gitea.example.com/fullchain.pem;
@@ -263,11 +296,7 @@ server {
 ```
 
 ```bash
-sudo ln -s /etc/nginx/sites-available/gitea /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-
-sudo apt install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d gitea.example.com
 ```
 
 ## Configuring SSH Access
@@ -299,6 +328,9 @@ sudo mkdir -p /var/lib/gitea/data/lfs
 sudo chown git:git /var/lib/gitea/data/lfs
 
 # In app.ini add:
+[server]
+LFS_START_SERVER = true
+
 [lfs]
 PATH = /var/lib/gitea/data/lfs
 ```
@@ -365,9 +397,18 @@ sudo -u git gitea dump -c /etc/gitea/app.ini --work-path /var/lib/gitea
 sudo systemctl start gitea
 
 # Restore from backup
-sudo -u git gitea restore-backup --work-path /var/lib/gitea \
-  --config /etc/gitea/app.ini \
-  gitea-dump-TIMESTAMP.zip
+unzip gitea-dump-TIMESTAMP.zip
+cd gitea-dump-TIMESTAMP
+sudo cp app.ini /etc/gitea/app.ini
+sudo cp -a data/. /var/lib/gitea/data/
+sudo cp -a log/. /var/lib/gitea/log/
+sudo cp -a repos/. /home/git/repositories/
+PGPASSWORD='strong-password-here' psql -h 127.0.0.1 -U gitea -d gitea < gitea-db.sql
+sudo chown root:git /etc/gitea/app.ini
+sudo chmod 640 /etc/gitea/app.ini
+sudo chown -R git:git /var/lib/gitea /home/git/repositories
+sudo systemctl restart gitea
+sudo -u git gitea --config /etc/gitea/app.ini admin regenerate hooks
 ```
 
 ## Administration Tasks
