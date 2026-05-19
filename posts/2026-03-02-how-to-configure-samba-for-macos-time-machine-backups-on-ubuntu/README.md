@@ -8,9 +8,9 @@ Description: Learn how to configure a Samba share on Ubuntu to act as a Time Mac
 
 ---
 
-Using a Linux server as a Time Machine destination is a practical way to centralize Mac backups without buying dedicated Apple hardware. Samba has supported the Apple Filing Protocol extensions needed for Time Machine for several years now, and with Ubuntu as the host, you get a stable, low-cost network backup solution.
+Using a Linux server as a Time Machine destination is a practical way to centralize Mac backups without buying dedicated Apple hardware. Samba has supported the Apple SMB extensions needed for Time Machine for several years now, and with Ubuntu as the host, you get a stable, low-cost network backup solution.
 
-This guide walks through setting up Samba on Ubuntu to work as a Time Machine backup target. The configuration covers share creation, user authentication, disk quotas, and verifying the setup from a Mac.
+This guide walks through setting up Samba on Ubuntu to work as a Time Machine backup target. The configuration covers share creation, user authentication, reported backup size limits, and verifying the setup from a Mac.
 
 ## Prerequisites
 
@@ -18,6 +18,7 @@ Before starting, make sure you have:
 
 - Ubuntu 20.04 or later
 - Samba 4.8 or higher (included in Ubuntu 20.04+)
+- The `samba-vfs-modules` package if your Samba package does not already install the `fruit`, `catia`, and `streams_xattr` VFS modules
 - A dedicated disk or partition for backups
 - A user account on the Ubuntu server for each Mac user
 
@@ -27,7 +28,7 @@ If Samba is not already installed:
 
 ```bash
 sudo apt update
-sudo apt install samba -y
+sudo apt install samba samba-vfs-modules -y
 ```
 
 Confirm the installed version supports the required vfs modules:
@@ -107,7 +108,6 @@ Add or modify the `[global]` section and add a new share:
    # Enable Apple Extensions for Time Machine support
    fruit:metadata = stream
    fruit:model = MacSamba
-   fruit:posix_rename = yes
    fruit:veto_appledouble = no
    fruit:wipe_intentionally_left_blank_rfork = yes
    fruit:delete_empty_adfiles = yes
@@ -197,9 +197,9 @@ Watch backup activity in real time:
 sudo tail -f /var/log/samba/log.smbd
 ```
 
-## Setting Per-User Backup Limits
+## Setting Per-User Backup Size Limits
 
-The `fruit:time machine max size` option sets a quota per share. For multiple users, create separate shares:
+The `fruit:time machine max size` option limits the disk size Samba reports for Time Machine sparsebundle backups; it is not a filesystem-enforced quota and the share should not be used for other content. For multiple users, create separate shares:
 
 ```ini
 [TimeMachine-Alice]
@@ -233,7 +233,7 @@ sudo chown bob:bob /mnt/backup/bob
 
 ## Troubleshooting Common Issues
 
-**Mac cannot find the share in Time Machine preferences:** Confirm the `fruit:time machine = yes` option is set and the `fruit` VFS module is loaded. Restart `nmbd` to re-announce the share via mDNS.
+**Mac cannot find the share in Time Machine preferences:** Confirm the `fruit:time machine = yes` option is set and the `fruit` VFS module is loaded. Samba publishes the Time Machine Bonjour records only when built with Avahi support, so restart `smbd` and `avahi-daemon` if Avahi is being used.
 
 **Authentication failures:** Verify the Samba user was created with `smbpasswd -a` and is enabled. System users and Samba users have separate password databases.
 
@@ -247,7 +247,7 @@ Add a basic monitoring check to confirm the backup disk has free space:
 
 ```bash
 # Create a simple check script
-cat > /usr/local/bin/check-tm-space.sh << 'EOF'
+sudo tee /usr/local/bin/check-tm-space.sh > /dev/null << 'EOF'
 #!/bin/bash
 THRESHOLD=90
 USAGE=$(df /mnt/backup | awk 'NR==2 {print $5}' | tr -d '%')
@@ -257,7 +257,7 @@ if [ "$USAGE" -gt "$THRESHOLD" ]; then
 fi
 EOF
 
-chmod +x /usr/local/bin/check-tm-space.sh
+sudo chmod +x /usr/local/bin/check-tm-space.sh
 
 # Schedule it via cron
 echo "0 * * * * root /usr/local/bin/check-tm-space.sh" | sudo tee /etc/cron.d/tm-space-check
