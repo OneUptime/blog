@@ -35,7 +35,7 @@ This shows you which phase is slow. If the userspace time is high, drill into wh
 systemd-analyze blame
 
 # Show the 10 slowest units
-systemd-analyze blame | head -20
+systemd-analyze blame | head -10
 ```
 
 Output example:
@@ -77,7 +77,7 @@ The chart shows each unit as a bar, with the length representing its startup tim
 # Show all currently failed units
 systemctl --failed
 
-# Show units that failed during the last boot
+# Show error-level and worse messages from the current boot
 sudo journalctl -b -p err
 
 # Show all errors and warnings from the last boot
@@ -113,7 +113,7 @@ When a service fails during boot, get its full log:
 # Example: debugging a database service that failed at boot
 sudo journalctl -b -u postgresql.service
 
-# If you need context around the failure, add timestamps
+# If you need context around the failure without a pager
 sudo journalctl -b -u postgresql.service --no-pager
 ```
 
@@ -126,25 +126,22 @@ Common reasons services fail at boot:
 
 ## Adding Boot Debug Output
 
-For diagnosing kernel-level boot problems, add `debug` to the kernel command line in GRUB:
+For diagnosing systemd boot problems, add debug logging to the kernel command line in GRUB:
 
 ```bash
 # Edit GRUB configuration temporarily at boot
 # Press 'e' at the GRUB menu, find the linux line, and add:
 systemd.log_level=debug systemd.log_target=kmsg
 
-# To see all logs including suppressed ones:
-rd.systemd.log_level=debug
+# To also enable kernel debug output:
+debug
 ```
 
 For a permanent change:
 
 ```bash
-sudo tee -a /etc/default/grub << 'EOF'
-# Add to GRUB_CMDLINE_LINUX for debug boots
-EOF
 sudo nano /etc/default/grub
-# Add systemd.log_level=debug to GRUB_CMDLINE_LINUX_DEFAULT
+# Add systemd.log_level=debug to the existing GRUB_CMDLINE_LINUX_DEFAULT value
 sudo update-grub
 ```
 
@@ -172,7 +169,7 @@ graphical.target @23.101s
       └─NetworkManager.service @5.123s +17.757s
 ```
 
-The `+` value shows how long the unit took to start. The `@` value shows when it finished. This chain tells you that NetworkManager caused the 17-second delay.
+The `+` value shows how long the unit took to start. The `@` value shows when the unit became active or started. This chain tells you that NetworkManager caused the 17-second delay.
 
 ## Emergency and Recovery Modes
 
@@ -196,7 +193,7 @@ If even rescue mode does not load properly:
 # At GRUB, append:
 systemd.unit=emergency.target
 
-# This gives you a root shell with read-only root filesystem
+# This gives you a root shell; the root filesystem may be read-only
 # Remount root read-write if you need to make changes
 mount -o remount,rw /
 
@@ -256,7 +253,7 @@ Sometimes a unit is masked (completely disabled) and causing dependent services 
 
 ```bash
 # List all masked units
-systemctl list-units --state=masked
+systemctl list-unit-files --state=masked
 
 # Check if a specific unit is masked
 systemctl status problematic.service | grep "Loaded:"
@@ -271,6 +268,7 @@ By default on Ubuntu, journal logs are stored in `/var/log/journal/` if that dir
 # Create the directory to enable persistent logging
 sudo mkdir -p /var/log/journal/
 sudo systemd-tmpfiles --create --prefix /var/log/journal
+sudo journalctl --flush
 
 # Verify persistence is enabled
 journalctl --disk-usage
