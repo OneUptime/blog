@@ -39,9 +39,7 @@ While you can initialize a whole disk as a PV without partitioning, many sysadmi
 ### Option A: Use the whole disk directly
 
 ```bash
-# Initialize /dev/sdb directly as a Physical Volume
-
-sudo pvcreate /dev/sdb
+# No partitioning is needed; continue with /dev/sdb in the next step
 ```
 
 ### Option B: Create a partition first
@@ -89,16 +87,16 @@ sudo pvs
 
 The empty VG column means this PV isn't yet assigned to a Volume Group.
 
-### Create a PV with custom extent size
+### Create a PV with custom data alignment
 
-The default PE size is 4MB. For very large volumes or specific performance requirements, you can customize it:
+LVM places the first Physical Extent (PE) at a 1MiB boundary by default. For specific storage alignment requirements, you can customize the PV data alignment:
 
 ```bash
-# 8MB PE size - reduces metadata overhead for large volumes
-sudo pvcreate --dataalignment 1m --physicalextentsize 8m /dev/sdb
+# 1MiB data alignment
+sudo pvcreate --dataalignment 1m /dev/sdb
 ```
 
-For most use cases, the default 4MB is fine.
+The PE size itself is set when creating the Volume Group. For most use cases, the default is fine.
 
 ## Step 3: Create the Volume Group
 
@@ -112,6 +110,13 @@ sudo vgcreate data_vg /dev/sdb
 Output:
 ```text
   Volume group "data_vg" successfully created
+```
+
+The default PE size is 4MiB. For very large volumes or specific requirements, you can customize it when creating the VG:
+
+```bash
+# 8MiB PE size
+sudo vgcreate -s 8m data_vg /dev/sdb
 ```
 
 ### Create a VG from multiple disks at once
