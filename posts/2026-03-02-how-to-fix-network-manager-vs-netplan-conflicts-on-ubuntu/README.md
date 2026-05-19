@@ -16,7 +16,7 @@ Understanding which component is responsible for what - and making a deliberate 
 
 On Ubuntu 22.04 and later:
 
-- **Netplan** reads `/etc/netplan/*.yaml` and generates configuration for the chosen renderer
+- **Netplan** reads YAML configuration from `/etc/netplan/` plus packaged or runtime snippets such as `/usr/lib/netplan/` and `/run/netplan/`, then generates configuration for the chosen renderer
 - **renderer: networkd** uses systemd-networkd for configuration
 - **renderer: NetworkManager** uses NetworkManager for configuration
 - Both can be active simultaneously, but each should manage different interfaces
@@ -87,7 +87,7 @@ sudo systemctl enable --now systemd-resolved
 cat /etc/netplan/*.yaml | grep renderer
 ```
 
-If no renderer is specified in Netplan, the default depends on whether NetworkManager is installed:
+If no renderer is specified for a Netplan definition, Netplan defaults to `networkd`. Ubuntu Desktop uses NetworkManager because it ships a Netplan snippet that explicitly sets `renderer: NetworkManager`:
 
 ```yaml
 # /etc/netplan/00-installer-config.yaml
@@ -159,7 +159,7 @@ plugins=ifupdown,keyfile
 managed=false
 
 [keyfile]
-# Comma-separated list of interfaces NetworkManager should ignore
+# Semicolon-separated list of interfaces NetworkManager should ignore
 unmanaged-devices=interface-name:eth0;interface-name:enp3s0
 ```
 
@@ -272,7 +272,7 @@ EOF
 ## Verification After Fixing
 
 ```bash
-# Confirm only one manager is active
+# Confirm only the intended manager or managers are active
 systemctl is-active systemd-networkd
 systemctl is-active NetworkManager
 
