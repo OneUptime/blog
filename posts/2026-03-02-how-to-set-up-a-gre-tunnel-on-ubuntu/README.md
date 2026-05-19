@@ -72,12 +72,16 @@ The goal: machines on 192.168.1.0/24 should be able to reach machines on 192.168
 
 ```bash
 # Create the GRE tunnel interface
+#   local:  this server's public IP
+#   remote: remote server's public IP
+#   ttl:    time-to-live for encapsulated packets
+#   dev:    interface to use for the tunnel
 sudo ip tunnel add gre1 \
     mode gre \
-    local 203.0.113.1 \     # This server's public IP
-    remote 198.51.100.1 \   # Remote server's public IP
-    ttl 255 \               # Time-to-live for encapsulated packets
-    dev eth0               # Interface to use for the tunnel
+    local 203.0.113.1 \
+    remote 198.51.100.1 \
+    ttl 255 \
+    dev eth0
 
 # Bring the tunnel interface up
 sudo ip link set gre1 up
@@ -97,10 +101,12 @@ sudo ip route add 192.168.2.0/24 via 10.0.0.2 dev gre1
 
 ```bash
 # Create the GRE tunnel interface (mirror of Server A)
+#   local:  this server's public IP
+#   remote: remote server's public IP
 sudo ip tunnel add gre1 \
     mode gre \
-    local 198.51.100.1 \    # This server's public IP
-    remote 203.0.113.1 \    # Remote server's public IP
+    local 198.51.100.1 \
+    remote 203.0.113.1 \
     ttl 255 \
     dev eth0
 
@@ -251,6 +257,7 @@ Name=gre1
 Kind=gre
 
 [Tunnel]
+Independent=yes
 Local=203.0.113.1
 Remote=198.51.100.1
 EOF
