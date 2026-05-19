@@ -14,10 +14,10 @@ This guide covers enabling UFW logging, understanding log format, filtering rele
 
 ## Enabling UFW Logging
 
-UFW logging is off by default. Enable it with:
+When UFW is enabled, logging is on by default at the `low` level. You can confirm or turn it on explicitly with:
 
 ```bash
-# Enable logging
+# Enable logging (defaults to 'low' if no level is given)
 
 sudo ufw logging on
 
@@ -38,16 +38,18 @@ Default: deny (incoming), allow (outgoing), deny (forwarded)
 UFW has five log levels:
 
 ```bash
-# Low - logs only blocked packets (most commonly used)
+# Low - logs blocked packets not matching the default policy (rate limited),
+# plus packets matching logged rules. The default level.
 sudo ufw logging low
 
-# Medium - adds all allowed packets that aren't matching application profiles
+# Medium - low plus allowed packets not matching the default policy,
+# INVALID packets, and all new connections (rate limited).
 sudo ufw logging medium
 
-# High - adds rate-limited packets
+# High - medium without rate limiting, plus all packets that hit a rate limit.
 sudo ufw logging high
 
-# Full - logs everything including application profile matches
+# Full - high without rate limiting (logs every matching packet).
 sudo ufw logging full
 
 # Off - disables logging
@@ -58,10 +60,10 @@ For most servers, `low` or `medium` is appropriate. `full` generates enormous lo
 
 ## Where UFW Logs Go
 
-UFW log entries appear in two places:
+UFW itself does not write log files - it emits kernel messages that the system's logging stack routes. On Ubuntu installs that ship rsyslog (the default on Server and Desktop through 22.04), `/etc/rsyslog.d/20-ufw.conf` filters those messages into a dedicated file. On minimal/cloud images of Ubuntu 24.04, rsyslog may not be installed, in which case UFW messages are only available via journald.
 
 ```bash
-# Primary location - UFW-specific log file (Ubuntu 20.04+)
+# Primary location when rsyslog is installed - UFW-specific log file
 sudo tail -f /var/log/ufw.log
 
 # Also appears in syslog
@@ -70,7 +72,7 @@ sudo tail -f /var/log/syslog | grep UFW
 # And in the kernel log
 sudo tail -f /var/log/kern.log | grep UFW
 
-# Via journalctl
+# Via journalctl (works regardless of whether rsyslog is installed)
 sudo journalctl -f -k | grep UFW
 ```
 
