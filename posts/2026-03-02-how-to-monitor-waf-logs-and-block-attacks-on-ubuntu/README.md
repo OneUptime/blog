@@ -27,7 +27,7 @@ sudo tail -f /var/log/apache2/modsec_audit.log
 
 # Use concurrent logging for high-traffic sites
 # SecAuditLogType Concurrent
-# SecAuditLogDir /var/log/modsec_audit/
+# SecAuditLogStorageDir /var/log/modsec_audit/
 ```
 
 ## Parsing the Audit Log Format
@@ -35,22 +35,22 @@ sudo tail -f /var/log/apache2/modsec_audit.log
 The ModSecurity audit log uses a multi-part format. Each request is a section bounded by markers:
 
 ```text
----UNIQUE_ID---A--   (transaction ID and timestamp)
----UNIQUE_ID---B--   (request headers)
----UNIQUE_ID---C--   (request body)
----UNIQUE_ID---F--   (response headers)
----UNIQUE_ID---G--   (response body)
----UNIQUE_ID---H--   (audit log trailer - rule matches go here)
----UNIQUE_ID---Z--   (final boundary)
+--UNIQUE_ID-A--   (transaction ID and timestamp)
+--UNIQUE_ID-B--   (request headers)
+--UNIQUE_ID-C--   (request body)
+--UNIQUE_ID-F--   (response headers)
+--UNIQUE_ID-G--   (response body)
+--UNIQUE_ID-H--   (audit log trailer - rule matches go here)
+--UNIQUE_ID-Z--   (final boundary)
 ```
 
 ```bash
 # View a complete audit log entry
-sudo awk '/^---/{ if (found) print; found=0 } /---.*---A--/{ found=1 } found{ print }' \
+sudo awk '/^--.*-A--$/{p=1} p{print} /^--.*-Z--$/{p=0; exit}' \
     /var/log/apache2/modsec_audit.log | head -100
 
 # Extract just the rule match messages (section H)
-sudo awk '/---H--/,/---[A-Z]--/' /var/log/apache2/modsec_audit.log | \
+sudo awk '/^--.*-H--$/,/^--.*-[A-Z]--$/' /var/log/apache2/modsec_audit.log | \
     grep "Message:" | head -20
 ```
 
@@ -78,8 +78,8 @@ grep "id \"" "$LOG" | \
 
 echo ""
 echo "Top attacking IP addresses:"
-# Extract source IPs from section A
-awk '/---.*---A--/{getline; split($0, a, " "); print a[3]}' "$LOG" | \
+# Extract source IPs from section A (field 4: [date, +tz], unique_id, source_ip)
+awk '/^--.*-A--$/{getline; split($0, a, " "); print a[4]}' "$LOG" | \
     sort | uniq -c | sort -rn | head -10
 
 echo ""
@@ -304,8 +304,8 @@ echo "*/5 * * * * root /usr/local/bin/waf_alert.sh" | \
 For multiple servers, use the ModSecurity log collector (`mlogc`) to centralize audit logs:
 
 ```bash
-# Install mlogc
-sudo apt install modsecurity-crs
+# The mlogc binary is shipped with the ModSecurity Apache module package
+sudo apt install libapache2-mod-security2
 
 # Configure ModSecurity for concurrent logging
 sudo nano /etc/modsecurity/modsecurity.conf
