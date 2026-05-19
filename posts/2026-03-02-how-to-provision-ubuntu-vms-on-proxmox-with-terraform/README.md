@@ -52,7 +52,7 @@ qm set 9000 --scsihw virtio-scsi-pci --scsi0 local-lvm:vm-9000-disk-0
 qm set 9000 --ide2 local-lvm:cloudinit
 
 # Set boot order to the disk
-qm set 9000 --boot c --bootdisk scsi0
+qm set 9000 --boot order=scsi0
 
 # Enable serial console and agent
 qm set 9000 --serial0 socket --vga serial0
@@ -70,7 +70,7 @@ Terraform needs API credentials to communicate with Proxmox. Create a dedicated 
 # In Proxmox, run:
 pveum user add terraform@pve --comment "Terraform automation user"
 pveum role add TerraformRole \
-  --privs "VM.Allocate VM.Clone VM.Config.CDROM VM.Config.CPU VM.Config.Cloudinit VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.Monitor VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit Pool.Audit Sys.Audit"
+  --privs "VM.Allocate VM.Audit VM.Clone VM.Config.CDROM VM.Config.CPU VM.Config.Cloudinit VM.Config.Disk VM.Config.HWType VM.Config.Memory VM.Config.Network VM.Config.Options VM.GuestAgent.Audit VM.PowerMgmt Datastore.AllocateSpace Datastore.Audit Pool.Audit Sys.Audit"
 pveum aclmod / -user terraform@pve -role TerraformRole
 
 # Create API token (no token expiry for automation)
@@ -97,7 +97,7 @@ terraform {
   required_providers {
     proxmox = {
       source  = "bpg/proxmox"
-      version = "~> 0.46"
+      version = "~> 0.98"
     }
   }
 }
