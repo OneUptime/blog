@@ -68,9 +68,12 @@ journalctl -b -2
 # List available boots with timestamps
 journalctl --list-boots
 
-# Show logs from a specific boot by its ID
-journalctl -b 0     # Current boot
+# Specify boot by offset (0 or negative = end of journal; positive = beginning)
+journalctl -b 0     # Current boot (last in journal)
 journalctl -b -3    # Three boots ago
+
+# You can also use a boot's 32-character ID from --list-boots
+# journalctl -b 8b7c93a4dbe549b6a2d2f6b3a6c2c8d4
 
 # Combine with time filter
 journalctl -b -1 --since "12:00:00" --until "14:00:00"
@@ -160,9 +163,12 @@ journalctl -b -p err | grep mysql
 # Show context around matching lines
 journalctl -b | grep -A 5 -B 2 "authentication failure"
 
-# Case-insensitive search for a pattern
-journalctl -b --grep="failed password" -i
-# Note: --grep is a native journalctl feature in newer versions
+# Case-insensitive search for a pattern (smart-case: lowercase pattern is case-insensitive)
+journalctl -b --grep="failed password"
+
+# Force case-insensitive matching explicitly
+journalctl -b --grep="Failed Password" --case-sensitive=false
+# Note: --grep (-g) is a native journalctl feature since systemd 237
 ```
 
 ## Output Format Options
