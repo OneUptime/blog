@@ -68,14 +68,14 @@ After=cache.service
 Description=My Application
 
 # If database.service fails to start, this service also fails.
-# If database.service stops, this service also stops.
+# If database.service is explicitly stopped or restarted, this service is too.
 Requires=database.service postgresql.service
 
 # Ordering still needs to be specified separately
 After=database.service postgresql.service
 ```
 
-`Requires=` creates a hard dependency. If any required unit fails to start, this unit fails too. If a required unit stops while this unit is running, this unit also stops.
+`Requires=` creates a hard dependency. If any required unit fails to start and this unit is ordered `After=` it, this unit is not started. If a required unit is explicitly stopped or restarted while this unit is running, this unit is stopped or restarted too. A required unit that exits on its own is not always propagated; use `BindsTo=` when the dependent unit must stop whenever the other unit becomes inactive.
 
 Use `Requires=` only when the service truly cannot operate without the dependency. Over-using `Requires=` makes the system fragile - if the required service is unavailable for any reason (maintenance, failure), your service fails completely.
 
@@ -85,12 +85,12 @@ Use `Requires=` only when the service truly cannot operate without the dependenc
 [Unit]
 Description=Service Bound to Device
 
-# If device.service stops for ANY reason (including reload), stop this service too
+# If device.service stops or unexpectedly becomes inactive, stop this service too
 BindsTo=device.service
 After=device.service
 ```
 
-`BindsTo=` is stricter than `Requires=`. With `Requires=`, if the required service deactivates unexpectedly (crashes), the dependent service may continue. With `BindsTo=`, if the bound unit deactivates at all, the binding unit also stops.
+`BindsTo=` is stricter than `Requires=`. With `Requires=`, if the required service deactivates unexpectedly (crashes or exits cleanly on its own), the dependent service may continue. With `BindsTo=`, if the bound unit becomes inactive, the binding unit also stops.
 
 Use `BindsTo=` for services that are tightly coupled to a device or resource and must stop when that resource disappears.
 
@@ -111,7 +111,7 @@ PartOf=parent.service
 
 ### Web Application Stack
 
-A common pattern: web server requires database, database requires network.
+A common pattern: a web application requires a database and waits for the network to be online before starting.
 
 ```bash
 sudo nano /etc/systemd/system/webapp.service
@@ -128,7 +128,10 @@ Requires=postgresql.service
 # Soft dependency on cache - app is slower without it, but still works
 Wants=redis.service
 
-# Start after all dependencies are ready
+# Pull in the network wait target when this service is started
+Wants=network-online.target
+
+# Start after dependency units finish their startup
 After=network-online.target postgresql.service redis.service
 
 [Service]
@@ -162,7 +165,8 @@ After=webapp.service
 sudo systemctl daemon-reload
 ```
 
-Now if `webapp.service` fails, `nginx.service` also fails rather than starting with nothing to proxy to.
+Now if `webapp.service` fails while both units are being started, `nginx.service` also fails rather than starting with nothing to proxy to.
+If `webapp.service` exits after both services are already running, `nginx.service` may continue; use `BindsTo=webapp.service` instead of `Requires=webapp.service` if nginx must stop whenever the backend becomes inactive.
 
 ### Service Group with Shared Lifecycle
 
@@ -207,17 +211,17 @@ With this setup:
 The correct way to express "wait for network to be up" depends on what "up" means:
 
 ```ini
-# network.target: basic network configured (IP address assigned)
-# Good enough for services that bind to 0.0.0.0 or localhost
+# network.target: network management stack is up, but IP configuration is not guaranteed
+# Good enough for services that only need local networking or shutdown ordering
 After=network.target
 
-# network-online.target: network is fully operational, routable, DNS works
-# Required for services that need to reach external hosts
+# network-online.target: waits until the network manager considers the network "online"
+# Required for services that need a configured network connection at startup
 After=network-online.target
 Wants=network-online.target
 ```
 
-`network-online.target` requires `systemd-networkd-wait-online.service` or `NetworkManager-wait-online.service` to be running to actually wait for the network to be up. Verify this:
+`network-online.target` needs an implementation-specific wait service, such as `systemd-networkd-wait-online.service` or `NetworkManager-wait-online.service`, to actually delay startup until the network is considered online. Verify this:
 
 ```bash
 systemctl is-enabled systemd-networkd-wait-online.service
@@ -225,7 +229,7 @@ systemctl is-enabled systemd-networkd-wait-online.service
 systemctl is-enabled NetworkManager-wait-online.service
 ```
 
-If neither is enabled, `network-online.target` is reached immediately and does not actually wait for the network.
+If no wait service is enabled or pulled in by your network manager, `network-online.target` may be reached without actually waiting for the network.
 
 ## Debugging Dependency Issues
 
@@ -270,7 +274,7 @@ Solutions:
 
 ```ini
 [Service]
-ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do pg_isready && break; sleep 2; done'
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do pg_isready && exit 0; sleep 2; done; exit 1'
 ExecStart=/usr/bin/webapp
 ```
 
@@ -294,7 +298,7 @@ Conditions allow a unit to be skipped (not started) when conditions are not met:
 ConditionPathExists=/etc/myapp/config.yaml
 
 # Skip if a file exists (useful for disable-flag files)
-ConditionPathNotExists=/etc/myapp/disabled
+ConditionPathExists=!/etc/myapp/disabled
 
 # Skip if not running on a specific architecture
 ConditionArchitecture=x86-64
