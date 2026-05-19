@@ -70,10 +70,10 @@ Accept=false
 # How many connections can queue before the service is started
 Backlog=128
 
-# The maximum number of simultaneous connections (0 = unlimited)
-MaxConnections=256
+# Only useful with Accept=true; limits simultaneous per-connection instances
+# MaxConnections=256
 
-# Keep the socket open even if the service fails
+# Enable TCP keepalive probes for accepted TCP connections
 KeepAlive=yes
 
 [Install]
@@ -89,7 +89,7 @@ sudo nano /etc/systemd/system/myapp.service
 ```ini
 [Unit]
 Description=MyApp Service
-# The socket unit must be started first
+# Pull in the socket if this service is started manually
 Requires=myapp.socket
 
 [Service]
@@ -274,12 +274,20 @@ class SimpleHandler(BaseHTTPRequestHandler):
 def get_systemd_socket():
     """Get the socket passed by systemd via socket activation."""
     # SD_LISTEN_FDS_START = 3 (first passed file descriptor)
-    # LISTEN_FDS environment variable contains the count of passed fds
-    listen_fds = int(os.environ.get("LISTEN_FDS", "0"))
+    # LISTEN_FDS contains the count of passed fds; LISTEN_PID must match us
+    try:
+        listen_pid = int(os.environ.get("LISTEN_PID", "0"))
+        listen_fds = int(os.environ.get("LISTEN_FDS", "0"))
+    except ValueError:
+        return None
+    finally:
+        os.environ.pop("LISTEN_PID", None)
+        os.environ.pop("LISTEN_FDS", None)
+        os.environ.pop("LISTEN_FDNAMES", None)
 
-    if listen_fds >= 1:
+    if listen_pid == os.getpid() and listen_fds >= 1:
         # Use the first passed socket (fd 3)
-        sock = socket.fromfd(3, socket.AF_INET, socket.SOCK_STREAM)
+        sock = socket.socket(fileno=3)
         sock.setblocking(True)
         return sock
     return None
@@ -289,10 +297,12 @@ def main():
 
     if sock:
         # Socket activation: use the socket provided by systemd
-        server = HTTPServer.__new__(HTTPServer)
-        HTTPServer.__init__(server, ("", 0), SimpleHandler)
+        server = HTTPServer(("", 0), SimpleHandler, bind_and_activate=False)
         server.socket.close()  # close the auto-created socket
         server.socket = sock
+        server.server_address = sock.getsockname()
+        server.server_name = socket.getfqdn(server.server_address[0])
+        server.server_port = server.server_address[1]
     else:
         # Standalone mode: bind to port ourselves
         server = HTTPServer(("", 8080), SimpleHandler)
