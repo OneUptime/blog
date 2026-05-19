@@ -16,7 +16,7 @@ Squid ACLs have two parts:
 1. **ACL definitions** - describe what to match (source IP, destination domain, time, etc.)
 2. **Access rules** - use those definitions to allow or deny traffic
 
-The evaluation order matters. Squid evaluates `http_access` rules in order and applies the first match. If no rule matches, the default is to deny.
+The evaluation order matters. Squid evaluates `http_access` rules in order and applies the first match. If no rule matches, Squid uses the opposite of the last configured action, so end the list with an explicit `http_access deny all` rule.
 
 ## Basic ACL Types
 
@@ -70,11 +70,11 @@ http_access deny CONNECT !SSL_ports
 # Allow management team unrestricted access
 http_access allow management
 
-# Block social media during business hours for regular users
-http_access deny social_media internal_users business_hours
-
 # Allow social media during lunch break
 http_access allow social_media internal_users lunch_break
+
+# Block social media during business hours for regular users
+http_access deny social_media internal_users business_hours
 
 # Block video streaming sites
 http_access deny video_streaming
@@ -174,26 +174,18 @@ Squid can use ACLs to apply bandwidth limits using delay pools:
 
 ```squid
 # Enable delay pools
-delay_pools 2
+delay_pools 1
 
-# Pool 1: Aggregate limit for the entire network
-delay_class 1 1
+# Pool 1: Aggregate and per-IP limits for the internal network
+delay_class 1 2
 # 500KB/s overall, burst up to 1MB
-delay_parameters 1 1000000/500000
-
-# Pool 2: Per-IP limits
-delay_class 2 2
-# No aggregate limit (-1/-1)
 # Per-IP: 100KB/s, burst up to 200KB
-delay_parameters 2 -1/-1 200000/100000
+delay_parameters 1 500000/1000000 100000/200000
 
 # Apply pool 1 to internal network (excluding management)
+delay_access 1 deny management
 delay_access 1 allow internal_users
 delay_access 1 deny all
-
-# Apply pool 2 to everyone
-delay_access 2 allow internal_users
-delay_access 2 deny all
 ```
 
 ## Category-Based Filtering with SquidGuard
@@ -254,7 +246,7 @@ sudo squid -k parse
 sudo squid -k reconfigure
 
 # Test access from the command line
-# This simulates a request from a specific source IP
+# This sends a request through the proxy from the current client
 curl -x http://proxy-server:3128 http://facebook.com
 
 # Check what Squid decided
