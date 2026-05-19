@@ -68,8 +68,7 @@ UpdateLogFile /var/log/clamav/freshclam.log
 # Check for updates 12 times per day (every 2 hours)
 Checks 12
 
-# Use official database mirrors
-DatabaseMirror db.local.clamav.net
+# Use the official ClamAV database CDN
 DatabaseMirror database.clamav.net
 
 # Notify the clamd daemon when updates are downloaded
@@ -85,7 +84,7 @@ ConnectTimeout 30
 ReceiveTimeout 60
 ```
 
-The `Checks` value controls how many update attempts per day. ClamAV mirrors handle up to 50 checks per day from a single IP, so staying at 12-24 is safe. Going higher risks getting rate-limited.
+The `Checks` value controls how many update attempts per day. Freshclam accepts values from 1 to 50 checks per day, so staying at 12-24 keeps you well below the maximum.
 
 ## Starting and Enabling the freshclam Service
 
@@ -233,18 +232,19 @@ A healthy log shows successful downloads or "up to date" messages. Watch for the
 - `ERROR: Can't connect to port 80` - network or DNS issue
 - `ERROR: getaddrinfo() for host` - DNS resolution failing
 - `WARNING: Invalid DNS reply` - DNS-based update check failing (usually harmless, falls back to HTTP)
-- `ERROR: 403 Forbidden` - IP may be rate-limited by ClamAV mirrors
+- `ERROR: 429 Too Many Requests` - IP may be rate-limited by the ClamAV CDN
+- `ERROR: 403 Forbidden` - client may be blocked, outdated, or using an unsupported download method
 
 ## Handling Rate Limiting
 
-If your server is flagged for excessive update attempts, you'll see 403 errors in the log. Reduce the `Checks` value and wait a few hours. You can also specify a local mirror:
+If your server is flagged for excessive update attempts, you'll usually see 429 errors in the log. Reduce the `Checks` value and wait a few hours. If you're using anything other than `freshclam` or `cvdupdate` to fetch ClamAV databases, switch to one of those supported methods.
 
 ```bash
-# In freshclam.conf, add a private mirror or use a regional one
-DatabaseMirror db.us.clamav.net
+# In freshclam.conf, use the official ClamAV database CDN
+DatabaseMirror database.clamav.net
 ```
 
-For environments with many Ubuntu servers, consider running a local ClamAV mirror using `cvdupdate` and pointing all clients to it.
+For environments with many Ubuntu servers, consider running a local ClamAV mirror using `cvdupdate` and pointing all clients to it with a private `DatabaseMirror` URL.
 
 ## Monitoring with OneUptime
 
@@ -267,4 +267,4 @@ clamscan /tmp/test.txt
 rm /tmp/test.txt
 ```
 
-A properly configured freshclam setup with `Checks 12` means your virus definitions are never more than 2 hours old. For most environments that's a reasonable balance between currency and mirror load. If you're running a mail gateway or high-security system, bump it to 24 checks per day - that's still within ClamAV's acceptable use policy.
+A properly configured freshclam setup with `Checks 12` means freshclam checks for new virus definitions about every 2 hours. For most environments that's a reasonable balance between currency and mirror load. If you're running a mail gateway or high-security system, bump it to 24 checks per day - that's still within freshclam's supported range.
