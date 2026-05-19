@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Samba, Printing, CUPS, Window
+Tags: Ubuntu, Samba, Printing, CUPS, Windows
 
 Description: Configure Samba printing services on Ubuntu to share printers with Windows clients using CUPS as the backend and automatic driver distribution.
 
@@ -139,10 +139,6 @@ sudo nano /etc/samba/smb.conf
    load printers = yes
    printing = cups
    printcap name = cups
-
-   # Where Windows printer drivers are stored
-   # Windows clients auto-download drivers from here
-   [print$]
 ```
 
 Add the printer shares:
@@ -159,7 +155,6 @@ Add the printer shares:
    read only = yes
    printable = yes
    valid users = @printusers
-   printer admin = @printadmin
 
 ##
 ## Printer driver share - Windows downloads drivers from here
@@ -184,8 +179,7 @@ Add the printer shares:
    printer name = OfficeHP
    browsable = yes
    guest ok = no
-   valid users = @staff
-   use client driver = yes
+   valid users = @printusers
 ```
 
 ## Step 3: Create the Print Spool Directory
@@ -196,17 +190,18 @@ sudo chmod 1777 /var/spool/samba
 sudo chown root:root /var/spool/samba
 
 # Driver directory
-sudo mkdir -p /var/lib/samba/printers/{W32X86,x64,WIN40,IA64,x2_85e3ef5a-577a-4dab-8de2-fa5176ef0c85}
+sudo mkdir -p /var/lib/samba/printers
+sudo groupadd -f printadmin
 sudo chown -R root:printadmin /var/lib/samba/printers
-sudo chmod -R 0775 /var/lib/samba/printers
+sudo chmod -R 2775 /var/lib/samba/printers
 ```
 
 ## Step 4: Set Up User Groups and Samba Users
 
 ```bash
 # Create groups
-sudo groupadd printusers
-sudo groupadd printadmin
+sudo groupadd -f printusers
+sudo groupadd -f printadmin
 
 # Add users
 sudo useradd -M -s /usr/sbin/nologin printuser1
@@ -220,6 +215,11 @@ sudo smbpasswd -a printuser1
 sudo smbpasswd -e printuser1
 sudo smbpasswd -a printmgr
 sudo smbpasswd -e printmgr
+
+# Allow print administrators to upload and preconfigure printer drivers
+sudo smbpasswd -a root
+sudo smbpasswd -e root
+sudo net rpc rights grant "printadmin" SePrintOperatorPrivilege -U root
 ```
 
 ## Step 5: Upload Windows Printer Drivers
@@ -234,24 +234,24 @@ For Windows clients to receive automatic driver installation, upload the drivers
 **Via rpcclient from Ubuntu** (for command-line driver upload):
 
 ```bash
-# Install rpcclient
+# Install rpcclient and smbclient
 sudo apt install -y smbclient
 
-# First, get the Windows drivers from the manufacturer
-# Then use Windows to connect and upload, or:
-# Map the print$ share from Windows and copy drivers there
+# First, get the Windows Type 3 drivers from the manufacturer.
+# Uploading drivers requires rpcclient commands such as adddriver
+# and setdriver, or the Windows Print Management console.
 
 # Verify drivers are accessible
 smbclient //localhost/print$ -U printmgr
 smb: \> ls
 ```
 
-**The practical approach** - use a Windows machine to add the printer via the Samba server and let Windows upload the driver automatically:
+**The practical approach** - use a Windows machine to upload and assign the driver on the Samba server:
 
-1. On Windows, go to `\\ubuntu-print-server\` in Explorer
-2. Double-click `OfficeHP`
-3. Windows will prompt for driver installation
-4. Install the driver - it gets uploaded to `[print$]` automatically
+1. On Windows, open "Print Management" and connect to `ubuntu-print-server`
+2. Add the manufacturer's Type 3 driver under the server's "Drivers" node
+3. Open the `OfficeHP` printer properties and assign the uploaded driver
+4. Subsequent Windows clients can download the driver from `[print$]`
 
 ## Step 6: Reload and Test Samba
 
