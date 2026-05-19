@@ -73,11 +73,11 @@ sudo ipset list geoip-cn | grep "Number of entries"
 sudo iptables -I INPUT -m set --match-set geoip-cn src -j DROP
 
 # Block but log first (for auditing how much traffic you're blocking)
-sudo iptables -I INPUT -m set --match-set geoip-cn src \
+sudo iptables -I INPUT 1 -m set --match-set geoip-cn src \
     -m limit --limit 5/min \
     -j LOG --log-prefix "GeoIP BLOCK: "
 
-sudo iptables -I INPUT -m set --match-set geoip-cn src -j DROP
+sudo iptables -I INPUT 2 -m set --match-set geoip-cn src -j DROP
 
 # Verify the rule was added
 sudo iptables -L INPUT -n | grep geoip-cn
@@ -120,6 +120,9 @@ for country in "${BLOCKED_COUNTRIES[@]}"; do
 
     echo "  Downloaded $(wc -l < "$ZONE_FILE") IP ranges"
 
+    # Remove existing rule if it exists (for updates)
+    iptables -D INPUT -m set --match-set "$SET_NAME" src -j DROP 2>/dev/null || true
+
     # Destroy existing set if it exists (for updates)
     ipset destroy "$SET_NAME" 2>/dev/null || true
 
@@ -132,9 +135,6 @@ for country in "${BLOCKED_COUNTRIES[@]}"; do
     done < "$ZONE_FILE"
 
     echo "  Loaded $(ipset list "$SET_NAME" | grep 'Number of entries' | awk '{print $NF}') entries"
-
-    # Remove existing rule if it exists (for updates)
-    iptables -D INPUT -m set --match-set "$SET_NAME" src -j DROP 2>/dev/null || true
 
     # Add iptables rule
     iptables -I INPUT -m set --match-set "$SET_NAME" src -j DROP
@@ -160,6 +160,7 @@ MaxMind's GeoLite2 database is more accurate but requires registration:
 ```bash
 # Install geoipupdate
 sudo add-apt-repository ppa:maxmind/ppa
+sudo apt update
 sudo apt install -y geoipupdate
 
 # Configure with your MaxMind license key
@@ -176,8 +177,8 @@ EditionIDs GeoLite2-Country GeoLite2-ASN
 # Download the databases
 sudo geoipupdate
 
-# The databases are stored in /var/lib/GeoIP/
-ls /var/lib/GeoIP/
+# Check the configured database directory
+sudo geoipupdate -v
 ```
 
 For iptables integration with MaxMind, you'd use `xt_geoip` kernel module or parse the databases to extract IP ranges.
@@ -188,10 +189,10 @@ ipset rules are also lost on reboot. Save them alongside iptables rules:
 
 ```bash
 # Save ipset configuration
-sudo ipset save > /etc/iptables/ipsets.conf
+sudo sh -c 'ipset save > /etc/iptables/ipsets.conf'
 
 # Restore ipset configuration
-sudo ipset restore < /etc/iptables/ipsets.conf
+sudo ipset restore -file /etc/iptables/ipsets.conf
 ```
 
 Create a restore service:
