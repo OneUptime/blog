@@ -36,7 +36,8 @@ sudo apt install -y \
     rsync \
     fail2ban ufw \
     auditd \
-    logrotate
+    logrotate \
+    mailutils
 ```
 
 ## User Account Configuration
@@ -82,9 +83,9 @@ MACs hmac-sha2-512,hmac-sha2-256
 MaxAuthTries 3
 LoginGraceTime 60
 
-# Idle session timeout (10 minutes)
+# Disconnect unresponsive clients after about 10 minutes
 ClientAliveInterval 600
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 
 # Restrict SSH users if needed
 # AllowUsers admin_user deploy_user
@@ -248,16 +249,16 @@ APT::Periodic::Download-Upgradeable-Packages "1";
 APT::Periodic::AutocleanInterval "7";
 EOF
 
-sudo systemctl enable unattended-upgrades
+sudo systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
 ```
 
 ## Monitoring Setup
 
 ```bash
 # Install node_exporter for Prometheus metrics
-wget https://github.com/prometheus/node_exporter/releases/download/v1.7.0/node_exporter-1.7.0.linux-amd64.tar.gz
-tar xf node_exporter-1.7.0.linux-amd64.tar.gz
-sudo mv node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
+wget https://github.com/prometheus/node_exporter/releases/download/v1.10.2/node_exporter-1.10.2.linux-amd64.tar.gz
+tar xf node_exporter-1.10.2.linux-amd64.tar.gz
+sudo mv node_exporter-1.10.2.linux-amd64/node_exporter /usr/local/bin/
 
 # Create systemd service for node_exporter
 sudo tee /etc/systemd/system/node_exporter.service << 'EOF'
@@ -390,16 +391,16 @@ check() {
 echo "=== Production Readiness Check - $(hostname) ==="
 echo ""
 
-check "System is up to date" "[ $(apt-get -sq upgrade 2>/dev/null | grep '^[0-9]' | awk '{print $1}') -eq 0 ]"
+check "System is up to date" "! apt-get -s upgrade 2>/dev/null | grep -q '^Inst '"
 check "UFW is active" "ufw status | grep -q 'Status: active'"
 check "fail2ban is running" "systemctl is-active fail2ban"
 check "auditd is running" "systemctl is-active auditd"
-check "SSH root login disabled" "grep -qr 'PermitRootLogin no' /etc/ssh/"
-check "SSH password auth disabled" "grep -qr 'PasswordAuthentication no' /etc/ssh/"
+check "SSH root login disabled" "sshd -T | grep -q '^permitrootlogin no$'"
+check "SSH password auth disabled" "sshd -T | grep -q '^passwordauthentication no$'"
 check "NTP sync active" "chronyc tracking | grep -q 'Leap status.*Normal'"
 check "No empty passwords" "[ $(awk -F: '(\$2 == \"\") {print}' /etc/shadow | wc -l) -eq 0 ]"
 check "Core dumps disabled" "grep -q '\\* hard core 0' /etc/security/limits.d/production.conf"
-check "Unattended upgrades enabled" "systemctl is-active unattended-upgrades"
+check "Unattended upgrades enabled" "apt-config dump | grep -q 'APT::Periodic::Unattended-Upgrade \"1\";' && systemctl is-enabled --quiet apt-daily-upgrade.timer"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
