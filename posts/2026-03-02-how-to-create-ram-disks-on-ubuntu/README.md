@@ -154,12 +154,21 @@ PostgreSQL and MySQL perform sort operations and join operations using temporary
 
 ### PostgreSQL
 
+PostgreSQL uses tablespaces for `temp_tablespaces`, so do this only for disposable development/test clusters or after accepting the reliability risk: PostgreSQL treats tablespaces as part of the database cluster, and its documentation warns that losing a tablespace on transient storage can make the cluster unreadable or unable to start.
+
 ```bash
 # Create a temp directory on the RAM disk
 sudo mkdir -p /mnt/ramdisk/pg_tmp
 sudo chown postgres:postgres /mnt/ramdisk/pg_tmp
+```
 
-# Edit PostgreSQL configuration
+```sql
+-- Create the tablespace in PostgreSQL
+CREATE TABLESPACE pg_ram_tmp LOCATION '/mnt/ramdisk/pg_tmp';
+```
+
+```bash
+# Edit PostgreSQL configuration (replace 14 with your installed major version)
 sudo nano /etc/postgresql/14/main/postgresql.conf
 ```
 
@@ -168,12 +177,7 @@ sudo nano /etc/postgresql/14/main/postgresql.conf
 temp_tablespaces = 'pg_ram_tmp'
 ```
 
-```sql
--- Create the tablespace in PostgreSQL
-CREATE TABLESPACE pg_ram_tmp LOCATION '/mnt/ramdisk/pg_tmp';
-```
-
-Note: The tablespace directory is wiped on reboot. Add a startup script or systemd service to recreate the directory and reassign permissions before PostgreSQL starts.
+Note: The tablespace directory is wiped on reboot. If you use this for a non-production cluster, add a startup script or systemd service to recreate the directory and reassign permissions before PostgreSQL starts. Do not use a RAM disk for PostgreSQL tablespaces in production unless you have explicitly designed around the data-loss and startup risks.
 
 ### MySQL / MariaDB
 
