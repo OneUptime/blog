@@ -78,7 +78,9 @@ sudo snap refresh --hold=720h firefox
 
 # Check what holds are in place
 snap refresh --time
-snap get firefox refresh.hold
+
+# Snaps that are held show 'held' in the Notes column
+snap list firefox
 ```
 
 When a hold is set, snapd skips the snap during automatic refresh cycles. You can manually remove the hold when you're ready to update again:
@@ -101,18 +103,12 @@ du -sh /var/lib/snapd/snaps/
 
 # List snap files with sizes
 ls -lh /var/lib/snapd/snaps/*.snap
-
-# Remove disabled (old) revisions for all snaps
-sudo snap set system snapshots.automatic.retention=no
 ```
 
-A more targeted approach is to adjust the number of retained revisions:
+The most effective way to control disk usage is to adjust the number of retained revisions. The `refresh.retain` system option accepts values between 2 and 20:
 
 ```bash
-# Set global revision retention to 1 (current only, no rollback available)
-sudo snap set system refresh.retain=1
-
-# Set to 2 (default - current + one previous for rollback)
+# Set to 2 (default on classic Ubuntu - current + one previous for rollback)
 sudo snap set system refresh.retain=2
 
 # Set to 3 (current + two previous revisions)
