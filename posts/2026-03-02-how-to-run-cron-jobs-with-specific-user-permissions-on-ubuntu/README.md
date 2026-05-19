@@ -102,8 +102,8 @@ Add rules like:
 www-data ALL=(root) NOPASSWD: /usr/sbin/service nginx restart
 www-data ALL=(root) NOPASSWD: /usr/sbin/service php8.1-fpm restart
 
-# Allow myapp user to clear specific system cache
-myapp ALL=(root) NOPASSWD: /usr/bin/sync, /proc/sys/vm/drop_caches
+# Allow myapp user to clear specific system caches
+myapp ALL=(root) NOPASSWD: /usr/bin/sync, /usr/sbin/sysctl vm.drop_caches=3
 ```
 
 In the cron job:
