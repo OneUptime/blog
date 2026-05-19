@@ -20,7 +20,7 @@ For individuals and small teams, Ubuntu Pro is free for up to 5 machines through
 - **FIPS**: FIPS 140 certified cryptographic modules for compliance
 - **CIS hardening**: Automated security benchmarks
 - **USG (Ubuntu Security Guide)**: Compliance automation for CIS and DISA-STIG
-- **USGR**: Real-time USN (Ubuntu Security Notices) remediation
+- **pro fix**: CVE and USN (Ubuntu Security Notices) inspection and remediation
 
 ## Getting a Ubuntu Pro Token
 
@@ -35,18 +35,18 @@ For individuals and small teams, Ubuntu Pro is free for up to 5 machines through
 
 For enterprise subscriptions, tokens are available in the Ubuntu Pro portal after purchase. Contact Canonical for quotes on large deployments.
 
-## Installing the ubuntu-advantage-tools
+## Installing the Ubuntu Pro Client
 
-Ubuntu 20.04 and later include `ubuntu-advantage-tools` (the `pro` command), but keep it updated:
+Ubuntu releases include the Ubuntu Pro Client (the `pro` command). On current releases, keep the `ubuntu-pro-client` package updated:
 
 ```bash
-# Update to the latest version of ua-client
+# Update to the latest version of the Pro client
 
 sudo apt update
-sudo apt install --only-upgrade ubuntu-advantage-tools
+sudo apt install --only-upgrade ubuntu-pro-client
 
 # Or install if missing
-sudo apt install -y ubuntu-advantage-tools
+sudo apt install -y ubuntu-pro-client
 
 # Verify version
 pro --version
@@ -61,8 +61,10 @@ sudo pro attach <your-token-here>
 # Example output:
 # Attaching the machine...
 # Enabling default service esm-infra
+# Enabling default service esm-apps
 # Updating package lists
 # Ubuntu Pro: ESM Infra enabled
+# Ubuntu Pro: ESM Apps enabled
 # Enabling default service livepatch
 # Installing Livepatch...
 # Canonical livepatch enabled.
@@ -71,8 +73,8 @@ sudo pro attach <your-token-here>
 
 The attach command:
 - Registers the machine with Canonical's systems
-- Enables ESM-infra by default
-- Enables Livepatch if the kernel is supported
+- Enables ESM-infra and ESM-apps by default on Ubuntu LTS releases
+- Enables Livepatch by default on Ubuntu LTS releases (unsupported kernels will show a warning)
 
 ## Checking Pro Status
 
@@ -164,11 +166,10 @@ Via cloud-init:
 
 ```yaml
 # cloud-config
-ubuntu_advantage:
+ubuntu_pro:
   token: <your-token>
   enable:
-    - esm-infra
-    - esm-apps
+    - esm
     - livepatch
 ```
 
@@ -222,9 +223,12 @@ sudo pro attach <token>
 ### Network Issues
 
 ```bash
-# ubuntu-advantage-tools needs to reach:
+# Ubuntu Pro Client needs to reach Canonical endpoints. Common endpoints include:
 # - contracts.canonical.com (HTTPS/443)
 # - esm.ubuntu.com (HTTPS/443)
+# - api.snapcraft.io (HTTPS/443) for Livepatch snap installation
+# - livepatch.canonical.com (HTTPS/443) for Livepatch
+# - ubuntu.com/security (HTTPS/443) for pro fix
 
 # Test connectivity
 curl -s https://contracts.canonical.com/ | head -5
@@ -240,15 +244,14 @@ sudo pro config set https_proxy http://proxy.example.com:3128
 ## Viewing Available Security Fixes
 
 ```bash
-# List known CVEs affecting your system
-sudo pro fix CVE-2023-XXXXX
+# Preview whether a specific CVE affects your system and what would change
+pro fix --dry-run CVE-2024-1234
 
-# List USNs (Ubuntu Security Notices)
-# pro fix can apply fixes for specific CVEs
-sudo pro fix USN-XXXX-X
+# Preview a specific USN (Ubuntu Security Notice)
+pro fix --dry-run USN-1234-1
 
-# Check if specific CVE is fixed on your system
-pro fix CVE-2024-1234
+# Apply fixes for a specific CVE or USN
+sudo pro fix CVE-2024-1234
 ```
 
 ## Managing Multiple Servers
