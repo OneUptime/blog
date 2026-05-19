@@ -14,7 +14,7 @@ Teleport is an open-source infrastructure access platform that replaces traditio
 
 - Ubuntu 22.04 LTS
 - A domain name or hostname for the Teleport proxy (for production)
-- Ports 443 and 3022-3026 accessible on the proxy node
+- Port 443 accessible on the proxy node, plus any legacy Teleport listener ports you explicitly enable
 - Root or sudo access
 
 For this guide:
@@ -28,11 +28,12 @@ For this guide:
 ```bash
 # Add the Teleport repository
 
-curl https://apt.releases.teleport.dev/gpg -o /tmp/teleport-gpg.key
-sudo apt-key add /tmp/teleport-gpg.key
+sudo mkdir -p /etc/apt/keyrings
+curl https://apt.releases.teleport.dev/gpg \
+  | sudo tee /etc/apt/keyrings/teleport-archive-keyring.asc > /dev/null
 
 # Add the repository for Ubuntu 22.04
-echo "deb [arch=amd64] https://apt.releases.teleport.dev/ubuntu jammy stable" \
+echo "deb [signed-by=/etc/apt/keyrings/teleport-archive-keyring.asc arch=amd64] https://apt.releases.teleport.dev/ubuntu jammy stable" \
   | sudo tee /etc/apt/sources.list.d/teleport.list
 
 sudo apt update
@@ -46,7 +47,7 @@ teleport version
 
 ```bash
 # Use the official install script (handles version and OS detection)
-curl https://goteleport.com/static/install.sh | sudo bash -s -- "$(curl -s https://api.releases.teleport.dev/v1/tags/teleport | jq -r '.latest')"
+curl https://cdn.teleport.dev/install.sh | sudo bash -s 18.8.1
 ```
 
 ## Configuring the Auth and Proxy Server
@@ -64,6 +65,7 @@ sudo teleport configure \
 
 # Or create the config manually
 sudo tee /etc/teleport.yaml > /dev/null <<'EOF'
+version: v3
 teleport:
   nodename: teleport-proxy
   data_dir: /var/lib/teleport
@@ -105,6 +107,7 @@ For production, use ACME/Let's Encrypt certificates:
 
 ```bash
 sudo tee /etc/teleport.yaml > /dev/null <<'EOF'
+version: v3
 teleport:
   nodename: teleport-proxy
   data_dir: /var/lib/teleport
@@ -158,7 +161,6 @@ sudo ufw allow 443/tcp comment "Teleport Web UI and HTTPS"
 sudo ufw allow 3022/tcp comment "Teleport SSH"
 sudo ufw allow 3023/tcp comment "Teleport Proxy SSH"
 sudo ufw allow 3024/tcp comment "Teleport Tunnel"
-sudo ufw allow 3025/tcp comment "Teleport Auth"
 sudo ufw reload
 ```
 
@@ -181,20 +183,21 @@ On each node you want to manage:
 
 ```bash
 # Install Teleport (same as the proxy installation)
-curl https://apt.releases.teleport.dev/gpg -o /tmp/teleport-gpg.key
-sudo apt-key add /tmp/teleport-gpg.key
-echo "deb [arch=amd64] https://apt.releases.teleport.dev/ubuntu jammy stable" \
+sudo mkdir -p /etc/apt/keyrings
+curl https://apt.releases.teleport.dev/gpg \
+  | sudo tee /etc/apt/keyrings/teleport-archive-keyring.asc > /dev/null
+echo "deb [signed-by=/etc/apt/keyrings/teleport-archive-keyring.asc arch=amd64] https://apt.releases.teleport.dev/ubuntu jammy stable" \
   | sudo tee /etc/apt/sources.list.d/teleport.list
 sudo apt update && sudo apt install -y teleport
 
 # Create node configuration
 sudo tee /etc/teleport.yaml > /dev/null <<'EOF'
+version: v3
 teleport:
   nodename: node1
   data_dir: /var/lib/teleport
   auth_token: "abc123def456..."   # Token from the auth server
-  auth_servers:
-    - teleport-proxy.example.com:3025
+  proxy_server: teleport-proxy.example.com:443
 
 auth_service:
   enabled: "no"
@@ -233,8 +236,8 @@ tsh ls
 # SSH to a node using its hostname
 tsh ssh ubuntu@node1
 
-# SSH using node labels
-tsh ssh --query 'env=production && team=backend' ubuntu@
+# SSH using node labels (when the selector matches a single node)
+tsh ssh ubuntu@env=production
 
 # Copy files (like scp)
 tsh scp localfile.txt ubuntu@node1:/remote/path/
@@ -251,7 +254,7 @@ Teleport's roles control who can access which nodes:
 # Create a role that allows access to production nodes
 sudo tee /tmp/production-role.yaml > /dev/null <<'EOF'
 kind: role
-version: v6
+version: v7
 metadata:
   name: production-access
 spec:
@@ -262,7 +265,7 @@ spec:
       env: production  # Only nodes labeled env=production
     rules:
       - resources: [session]
-        verbs: [list, read]  # Can view but not playback others' sessions
+        verbs: [list]        # Can list but not playback others' sessions
   deny:
     logins:
       - root           # Deny root access
@@ -281,8 +284,7 @@ One of Teleport's key features is recording SSH sessions:
 
 ```bash
 # All sessions are automatically recorded
-# View audit log
-sudo tctl audit log show --last=1h
+# View audit events in the Web UI: Audit > Audit Log
 
 # List and search sessions
 tsh recordings ls
@@ -290,8 +292,8 @@ tsh recordings ls
 # Play back a recorded session
 tsh play <SESSION_ID>
 
-# Export session as text or asciinema format
-tsh play --format=pty <SESSION_ID> > session.log
+# Export session as text
+tsh play --format=text <SESSION_ID> > session.log
 ```
 
 ## Troubleshooting
@@ -302,8 +304,8 @@ tsh play --format=pty <SESSION_ID> > session.log
 # Check the node agent logs
 sudo journalctl -u teleport -n 50 --no-pager
 
-# Verify auth server connectivity from the node
-nc -zv teleport-proxy.example.com 3025
+# Verify proxy connectivity from the node
+nc -zv teleport-proxy.example.com 443
 
 # Check that the join token is valid and not expired
 sudo tctl tokens ls   # Run on auth server
@@ -318,9 +320,8 @@ sudo tctl status
 # If using self-signed certs, accept them on the client
 tsh login --insecure --proxy=teleport-proxy.example.com
 
-# For production, ensure the ACME certificate renewed
-sudo teleport --config=/etc/teleport.yaml \
-  renew-cert --key-store=file --domain=teleport-proxy.example.com
+# For production with ACME, check proxy logs for renewal errors
+sudo journalctl -u teleport -n 100 --no-pager
 ```
 
 Teleport transforms SSH management from a scattered pile of authorized_keys files into a centralized, auditable system. Once deployed, you can see every session in real time, replay recordings for incident investigation, and grant or revoke access through a single control plane rather than chasing down SSH keys across hundreds of servers.
