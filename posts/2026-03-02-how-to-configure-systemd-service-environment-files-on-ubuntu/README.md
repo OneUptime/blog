@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Systemd, Linux, DevOps, Configuration
 
-Description: A practical guide to managing environment variables for systemd services using EnvironmentFile, keeping secrets out of unit files on Ubuntu.
+Description: A practical guide to managing environment variables for systemd services using EnvironmentFile, keeping deployment-specific configuration out of unit files on Ubuntu.
 
 ---
 
-Hardcoding configuration values directly into a systemd unit file works until it doesn't. Once you need to deploy across multiple environments, rotate secrets, or share a unit file without exposing credentials, the `EnvironmentFile` directive becomes essential. It lets you separate configuration from the service definition cleanly.
+Hardcoding configuration values directly into a systemd unit file works until it doesn't. Once you need to deploy across multiple environments, rotate values, or share a unit file without exposing deployment-specific configuration, the `EnvironmentFile` directive becomes essential. It lets you separate configuration from the service definition cleanly.
 
 ## How Environment Variables Work in systemd
 
@@ -18,7 +18,7 @@ There are two ways to set environment variables in a unit file:
 
 **Inline with `Environment=`** - Good for non-sensitive, static values that belong in version control alongside the unit file.
 
-**External file with `EnvironmentFile=`** - Good for secrets, deployment-specific values, and anything that changes per environment.
+**External file with `EnvironmentFile=`** - Good for deployment-specific values and anything that changes per environment. Environment variables are not ideal for high-value secrets because systemd exposes unit environment data over D-Bus; use systemd credentials for sensitive secrets when available.
 
 ## The EnvironmentFile Directive
 
@@ -47,7 +47,7 @@ Comments starting with `#` are allowed and ignored. Blank lines are also ignored
 
 ## Setting Up an Environment File
 
-Create the file with appropriate permissions so only root and the service user can read it:
+Create the file with appropriate permissions. For a system service, systemd reads `EnvironmentFile` as the service manager before starting the process, so root-only permissions are sufficient unless the service user also needs to inspect the file directly:
 
 ```bash
 # Create the directory for app configuration
@@ -56,8 +56,8 @@ sudo mkdir -p /etc/myapp
 # Create the environment file
 sudo nano /etc/myapp/environment
 
-# Restrict permissions - the service user needs read access
-# but no one else should see the secrets
+# Restrict permissions - root can read it for systemd,
+# and the service group can inspect it if needed
 sudo chown root:myapp /etc/myapp/environment
 sudo chmod 640 /etc/myapp/environment
 
@@ -79,7 +79,7 @@ After=network.target postgresql.service redis.service
 Wants=postgresql.service redis.service
 
 [Service]
-Type=notify
+Type=exec
 User=myapp
 Group=myapp
 WorkingDirectory=/opt/myapp
@@ -89,7 +89,7 @@ Environment=APP_ENV=production
 Environment=PYTHONUNBUFFERED=1
 Environment=PORT=8000
 
-# Sensitive and deployment-specific variables in a file
+# Deployment-specific variables in a file
 EnvironmentFile=/etc/myapp/environment
 
 # You can stack multiple environment files
@@ -132,13 +132,13 @@ APP_NAME="My Application Server"
 DATABASE_URL=postgresql://appuser:secretpass@localhost/mydb
 ```
 
-However, systemd does support basic variable expansion in the unit file itself using `%` specifiers and `$VARIABLE` references after the environment is loaded:
+However, systemd does support specifier expansion in many unit settings, and `$VARIABLE` or `${VARIABLE}` expansion in service command lines after the environment is loaded:
 
 ```ini
 [Service]
 EnvironmentFile=/etc/myapp/environment
-# This refers to the BASE_DIR variable from the environment file
-ExecStart=%h/bin/myapp --config ${CONFIG_PATH}
+# This refers to the CONFIG_PATH variable from the environment file
+ExecStart=/opt/myapp/bin/myapp --config ${CONFIG_PATH}
 ```
 
 ## Managing Multiple Environments
@@ -151,7 +151,7 @@ LOG_LEVEL=info
 MAX_WORKERS=4
 APP_NAME=MyApplication
 
-# /etc/myapp/environment.production (production-specific secrets)
+# /etc/myapp/environment.production (production-specific values)
 DATABASE_URL=postgresql://prod_user:prod_pass@db-server/prod_db
 API_SECRET_KEY=production-secret-key
 REDIS_URL=redis://cache-server:6379/0
@@ -172,7 +172,7 @@ EnvironmentFile=/etc/myapp/environment.production
 
 ## Systemd Credentials - A More Secure Alternative
 
-On Ubuntu 22.04 and later with systemd 250+, `LoadCredential` provides a more secure way to handle secrets. It places credentials in a tmpfs mount accessible only to the service:
+On Ubuntu 22.04 and later, `LoadCredential` provides a more secure way to handle secrets. It places credentials in a read-only per-unit directory, backed by unswappable memory when supported and accessible only to the service user and root:
 
 ```ini
 [Service]
@@ -212,7 +212,7 @@ systemctl status myapp
 sudo systemctl show myapp --property=MainPID
 
 # Then read its environment from /proc
-sudo cat /proc/<PID>/environ | tr '\0' '\n' | grep -E "DATABASE|API_KEY|LOG_LEVEL"
+sudo cat /proc/<PID>/environ | tr '\0' '\n' | grep -E "DATABASE|API|LOG_LEVEL"
 ```
 
 ## Debugging Environment Variable Issues
@@ -220,16 +220,18 @@ sudo cat /proc/<PID>/environ | tr '\0' '\n' | grep -E "DATABASE|API_KEY|LOG_LEVE
 When a service fails because it can't find an expected variable, there are several places to look:
 
 ```bash
-# See all environment variables the service sees
+# See inline environment variables configured on the unit
 sudo systemctl show myapp --property=Environment
 
 # Check the journal for startup errors
 journalctl -u myapp --since "5 minutes ago"
 
-# Test what the environment file contains
-sudo -u myapp env -i $(sudo cat /etc/myapp/environment | grep -v '^#' | grep '=') env
+# Test how systemd parses the environment file
+sudo systemd-run --wait --pipe --quiet --uid=myapp \
+  --property=EnvironmentFile=/etc/myapp/environment \
+  /usr/bin/env
 ```
 
-One common gotcha: environment file variables are available to the `ExecStart` command and child processes, but not to `ExecStartPre` commands unless you use a wrapper script that sources the file explicitly.
+One common gotcha: environment file variables are available to `ExecStartPre`, `ExecStart`, `ExecStartPost`, `ExecReload`, and stop commands, but only through systemd's command-line environment expansion and the environment passed to the executed process. They are not shell variables unless you explicitly run a shell or wrapper script.
 
-Using `EnvironmentFile` consistently gives you clean separation between service logic and configuration, makes secrets easier to manage, and lets you deploy the same unit file to multiple environments with confidence.
+Using `EnvironmentFile` consistently gives you clean separation between service logic and configuration, makes deployment-specific values easier to manage, and lets you deploy the same unit file to multiple environments with confidence.
