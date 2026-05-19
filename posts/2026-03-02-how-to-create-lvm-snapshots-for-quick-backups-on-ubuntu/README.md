@@ -96,34 +96,38 @@ This gives you a consistent backup of the data at snapshot creation time, even i
 
 ## Database-Consistent Snapshots
 
-For databases, take the snapshot while the database is in a consistent state. The approach varies by database:
+For databases, coordinate the snapshot with the database's consistency and recovery model. The approach varies by database:
 
 ### PostgreSQL
 
 ```bash
-# Put PostgreSQL into backup mode for a moment-in-time consistent snapshot
-sudo -u postgres psql -c "SELECT pg_start_backup('lvm_backup', true);"
+# Flush dirty buffers before the snapshot to reduce recovery time
+sudo -u postgres psql -c "CHECKPOINT;"
 
-# Create the snapshot immediately
+# Create the snapshot immediately, including the whole cluster and WAL
 sudo lvcreate -L 20G -s -n pg_snap /dev/data_vg/pg_data
-
-# End backup mode
-sudo -u postgres psql -c "SELECT pg_stop_backup();"
 ```
+
+When the backup is restored, PostgreSQL treats the snapshot like a crash-consistent copy and replays WAL. Make sure the snapshot includes the entire database cluster and WAL, or take simultaneous snapshots for any separate WAL or tablespace volumes.
 
 ### MySQL/MariaDB
 
 ```bash
-# Flush and lock tables
-sudo mysql -e "FLUSH TABLES WITH READ LOCK; SYSTEM sudo lvcreate -L 20G -s -n mysql_snap /dev/data_vg/mysql_data; UNLOCK TABLES;"
+# Flush and lock tables, create the snapshot, then unlock in the same session
+sudo mysql <<'SQL'
+FLUSH TABLES WITH READ LOCK;
+SYSTEM lvcreate -L 20G -s -n mysql_snap /dev/data_vg/mysql_data
+UNLOCK TABLES;
+SQL
 ```
 
-Or lock, snapshot, unlock in sequence:
+Or keep the client session open explicitly:
 
 ```bash
-sudo mysql -e "FLUSH TABLES WITH READ LOCK;"
-sudo lvcreate -L 20G -s -n mysql_snap /dev/data_vg/mysql_data
-sudo mysql -e "UNLOCK TABLES;"
+sudo mysql
+mysql> FLUSH TABLES WITH READ LOCK;
+mysql> SYSTEM lvcreate -L 20G -s -n mysql_snap /dev/data_vg/mysql_data
+mysql> UNLOCK TABLES;
 ```
 
 ## Monitoring Snapshot Usage
@@ -240,6 +244,7 @@ sudo lvremove -f "/dev/$VG/$SNAP_LV" 2>/dev/null || true
 
 # Create snapshot
 echo "Creating snapshot..."
+sudo -u postgres psql -c "CHECKPOINT;"
 sudo lvcreate -L "$SNAP_SIZE" -s -n "$SNAP_LV" "/dev/$VG/$ORIGIN_LV"
 
 # Mount snapshot
