@@ -36,14 +36,14 @@ frontend stats
     # Refresh the stats page every 10 seconds
     stats refresh 10s
 
-    # Show version in the header
+    # Show column legends and the node name on the page
     stats show-legends
     stats show-node
 
     # Enable detailed stat descriptions
     stats show-desc
 
-    # Optional: add a title to the page
+    # Enable the administrative interface (enable/disable servers, etc.)
     stats admin if TRUE
 
     # Authentication (highly recommended for production)
@@ -142,7 +142,7 @@ The `LastChk` column for backend servers shows the health check result. Common v
 - `L7OK` - HTTP health check passed
 - `L4CON` - TCP connection failed
 - `L7STS` - HTTP health check returned non-2xx
-- `TOUT` - health check timed out
+- `L4TOUT` / `L7TOUT` - health check timed out at layer 4 / layer 7
 
 ### Response Time
 
