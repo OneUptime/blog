@@ -8,7 +8,7 @@ Description: Configure and use Orca screen reader on Ubuntu Desktop to enable te
 
 ---
 
-Ubuntu Desktop includes Orca, a free and open-source screen reader developed by the GNOME project. Orca reads aloud the content of the screen using text-to-speech, enables refreshable braille display support, and provides magnification. It is a full-featured accessibility tool that lets visually impaired users interact with the entire desktop environment, applications, and the web.
+Ubuntu Desktop includes Orca, a free and open-source screen reader developed by the GNOME project. Orca reads aloud the content of the screen using text-to-speech and enables refreshable braille display support. It is a full-featured accessibility tool that lets visually impaired users interact with the entire desktop environment, applications, and the web.
 
 ## Enabling Orca Screen Reader
 
@@ -80,30 +80,35 @@ The Orca key (also called the Orca modifier) is the Insert key on most keyboards
 Orca uses a combination of the Orca modifier key and other keys.
 
 ```text
-Orca + F2         - List keyboard shortcuts
-Orca + F1         - Orca help
-Orca + F3         - Next element in Find
-Orca + F4         - Toggle flat review mode
-Orca + F7         - Move to previous paragraph
-Orca + F8         - Move to next paragraph
+Orca + H          - Enter Learn Mode
+F2                - List Orca-wide shortcuts while in Learn Mode
+F3                - List application-specific shortcuts while in Learn Mode
+Esc               - Exit Learn Mode
 
 Navigation:
 Tab               - Move to next focusable element
 Shift+Tab         - Move to previous focusable element
 Arrow keys        - Navigate within elements
-Orca + Left/Right - Move by word
-Orca + Up/Down    - Move by sentence/paragraph
+H / Shift+H       - Next/previous heading in supported documents
+K / Shift+K       - Next/previous link in supported documents
+E / Shift+E       - Next/previous entry field in supported documents
+P / Shift+P       - Next/previous paragraph in supported documents
 
 Reading:
-Orca + H          - Read the window title
-Orca + A          - Read from current position to end
-Orca + S          - Read current line
-Orca + W          - Read current word
-Orca + L          - Read current character
+KP 8              - Read current line (Desktop layout)
+KP 5              - Read current word (Desktop layout)
+KP 2              - Read current character (Desktop layout)
+Orca + I          - Read current line (Laptop layout)
+Orca + K          - Read current word (Laptop layout)
+Orca + Comma      - Read current character (Laptop layout)
+KP Plus           - Say All from current position (Desktop layout)
+Orca + Semicolon  - Say All from current position (Laptop layout)
 
 Miscellaneous:
-Orca + Tab        - List all items in a container
-Orca + backslash  - Toggle speech (silence/resume)
+Orca + Space      - Open Orca Preferences
+Orca + S          - Toggle speech
+Orca + V          - Toggle between brief and verbose speech
+Orca + F11        - Toggle between cell and row reading in a table
 ```
 
 ## Configuring Speech Settings
@@ -121,9 +126,9 @@ nano ~/.config/speech-dispatcher/speechd.conf
 In the Orca Preferences dialog (Orca+space), under the Speech tab:
 
 - **Speech system**: Speech Dispatcher (default)
-- **Speech synthesizer**: espeak-ng is the default; eSpeak, Festival, and others are available
+- **Speech synthesizer**: depends on the Speech Dispatcher modules installed; eSpeak NG, Festival, and others may be available
 - **Voice**: choose from available voices for your language
-- **Rate**: adjust speaking rate (100 = normal)
+- **Rate**: adjust speaking rate
 - **Pitch**: adjust pitch
 - **Volume**: adjust volume
 
@@ -157,11 +162,11 @@ Firefox has excellent accessibility support with Orca.
 sudo apt install firefox -y
 
 # Firefox accessibility tips with Orca:
-# - Orca + F for Find mode (search page text by typing)
-# - Orca + t to toggle between Browse and Focus modes
+# - Orca + A to toggle between Browse and Focus modes
 # - H key (in Browse mode) to jump between headings
 # - K key to jump between links
 # - E key to jump between edit fields
+# - Orca + Z to enable or disable structural navigation keys
 ```
 
 ### Terminal Access
@@ -172,15 +177,13 @@ Orca works with GNOME Terminal for command-line access.
 # Open GNOME Terminal
 # Orca reads output automatically
 
-# Enable accessibility in GNOME Terminal
-# Edit > Preferences > Profiles > [Profile] > Command
-# Check "Use transparent background" helps Orca track cursor
-
 # Key shortcuts in terminal with Orca:
-# Orca + Right Arrow - read next character
-# Orca + Left Arrow  - read previous character
-# Orca + A           - read all output
-# Orca + Home/End    - jump to beginning/end of line
+# KP 1 / KP 3     - read previous/next character (Desktop layout)
+# KP 4 / KP 6     - read previous/next word (Desktop layout)
+# KP Plus         - read all output from the current position (Desktop layout)
+# Orca + M / Orca + Period - read previous/next character (Laptop layout)
+# Orca + J / Orca + L      - read previous/next word (Laptop layout)
+# Orca + Semicolon         - read all output from the current position (Laptop layout)
 ```
 
 ## Configuring Autostart
@@ -215,8 +218,8 @@ Orca supports refreshable braille displays through BrlAPI.
 # Install brltty (Braille TTY daemon)
 sudo apt install brltty -y
 
-# Check if your braille display is detected
-brltty --list-drivers
+# View supported braille driver codes
+brltty --help
 
 # Configure brltty for your device
 sudo nano /etc/brltty.conf
@@ -233,26 +236,23 @@ sudo systemctl enable --now brltty
 
 ## Adjusting Verbosity
 
-Orca's verbosity level controls how much information is spoken (punctuation, capital letters, object types, etc.).
+Orca's verbosity level controls how much information is spoken, such as object roles, states, and related context.
 
-```bash
-# Change verbosity to "Brief" mode via gsettings
-gsettings set org.gnome.orca verbosity-level 1
-# 0 = Terse, 1 = Brief, 2 = Verbose, 3 = Extra Verbose
+```text
+Orca + V
 
-# Or use the Orca Preferences dialog > Speech tab > Verbosity
+Or use the Orca Preferences dialog > Speech tab > Verbosity
 ```
 
-## Magnification with Orca
+## Magnification with GNOME
 
-Orca can also magnify portions of the screen.
+GNOME provides a built-in screen magnifier separately from Orca.
 
 ```bash
-# Enable magnification
+# Enable GNOME magnification
 gsettings set org.gnome.desktop.a11y.applications screen-magnifier-enabled true
 
-# Or use GNOME's built-in magnifier (separate from Orca)
-gsettings set org.gnome.desktop.a11y.magnifier active true
+# Set the magnification factor
 gsettings set org.gnome.desktop.a11y.magnifier mag-factor 2.0
 
 # Toggle magnifier with keyboard shortcut
