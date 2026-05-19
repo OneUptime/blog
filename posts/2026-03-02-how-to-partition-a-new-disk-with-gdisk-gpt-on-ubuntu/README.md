@@ -181,7 +181,8 @@ Run verification:
 ```text
 Command (? for help): v
 
-No problems found. 0 partitions are in the GUID Partition Table.
+No problems found. 2014 free sectors (1007.0 KiB) available in 1
+segments, the largest of which is 2014 (1007.0 KiB) in size.
 ```
 
 ## Writing the Partition Table
