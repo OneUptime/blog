@@ -61,6 +61,7 @@ sudo mkdir -p /data/seaweedfs/master
 weed master \
   -mdir=/data/seaweedfs/master \
   -port=9333 \
+  -peers=none \
   -defaultReplication=001 \
   -volumeSizeLimitMB=512
 ```
@@ -68,8 +69,9 @@ weed master \
 Options:
 - `-defaultReplication=001` - replicate to 1 additional volume (total 2 copies)
 - `-volumeSizeLimitMB=512` - create a new volume when current reaches 512 MB
+- `-peers=none` - run as a single-master deployment without waiting for a Raft quorum
 
-Replication codes: `XYZ` where X=number of replicas on same rack, Y=other racks, Z=other data centers. `001` means one additional copy in the same data center on a different machine.
+Replication codes: `XYZ` where X=number of replicas in other data centers, Y=other racks in the same data center, and Z=other servers in the same rack. `001` means one additional copy on another server in the same rack.
 
 ## Starting Volume Servers
 
@@ -81,7 +83,7 @@ sudo mkdir -p /data/seaweedfs/volumes
 
 # Start a volume server, pointing to the master
 weed volume \
-  -mserver=localhost:9333 \
+  -master=localhost:9333 \
   -port=8080 \
   -dir=/data/seaweedfs/volumes \
   -max=50  # maximum number of volumes to host
@@ -92,7 +94,7 @@ For multiple volume servers on different machines:
 ```bash
 # On server 2 (replace master IP)
 weed volume \
-  -mserver=192.168.1.10:9333 \
+  -master=192.168.1.10:9333 \
   -port=8080 \
   -dir=/data/seaweedfs/volumes \
   -max=50 \
@@ -139,6 +141,7 @@ User=seaweedfs
 ExecStart=/usr/local/bin/weed master \
   -mdir=/data/seaweedfs/master \
   -port=9333 \
+  -peers=none \
   -defaultReplication=001 \
   -volumeSizeLimitMB=512
 Restart=always
@@ -161,7 +164,7 @@ After=seaweedfs-master.service
 Type=simple
 User=seaweedfs
 ExecStart=/usr/local/bin/weed volume \
-  -mserver=localhost:9333 \
+  -master=localhost:9333 \
   -port=8080 \
   -dir=/data/seaweedfs/volumes \
   -max=50
@@ -173,14 +176,41 @@ WantedBy=multi-user.target
 ```
 
 ```bash
+sudo nano /etc/systemd/system/seaweedfs-filer.service
+```
+
+```ini
+[Unit]
+Description=SeaweedFS Filer Server
+After=seaweedfs-master.service seaweedfs-volume.service
+Requires=seaweedfs-master.service seaweedfs-volume.service
+
+[Service]
+Type=simple
+User=seaweedfs
+ExecStart=/usr/local/bin/weed filer \
+  -master=localhost:9333 \
+  -port=8888 \
+  -s3 \
+  -s3.port=8333
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
 # Create the seaweedfs user
 sudo useradd -r -s /bin/false seaweedfs
 sudo mkdir -p /data/seaweedfs/{master,volumes,filer}
+sudo mkdir -p /etc/seaweedfs
 sudo chown -R seaweedfs:seaweedfs /data/seaweedfs
+sudo chown seaweedfs:seaweedfs /etc/seaweedfs
 
 sudo systemctl daemon-reload
-sudo systemctl enable seaweedfs-master seaweedfs-volume
-sudo systemctl start seaweedfs-master seaweedfs-volume
+sudo systemctl enable seaweedfs-master seaweedfs-volume seaweedfs-filer
+sudo systemctl start seaweedfs-master seaweedfs-volume seaweedfs-filer
 ```
 
 ## Using the S3-Compatible API
@@ -237,6 +267,7 @@ Mount SeaweedFS as a local file system:
 sudo apt install fuse -y
 
 # Mount the filer
+sudo mkdir -p /mnt/seaweedfs
 sudo weed mount \
   -filer=localhost:8888 \
   -filer.path=/ \
@@ -265,18 +296,18 @@ curl http://localhost:8080/3,01637037d6 -o downloaded.jpg
 
 ## Replication Setup
 
-For two-server replication (`001` means same DC, different server):
+For two-server replication (`001` means one additional copy on another server in the same rack):
 
 ```bash
 # Start master with replication policy
-weed master -defaultReplication=001
+weed master -peers=none -defaultReplication=001
 
 # Start two volume servers (on different machines)
 # Server 1
-weed volume -mserver=master:9333 -port=8080 -dir=/data/vol
+weed volume -master=master:9333 -port=8080 -dir=/data/vol -dataCenter=dc1 -rack=rack1
 
 # Server 2
-weed volume -mserver=master:9333 -port=8081 -dir=/data/vol
+weed volume -master=master:9333 -port=8081 -dir=/data/vol -dataCenter=dc1 -rack=rack1
 ```
 
 Check replication status:
@@ -317,8 +348,11 @@ weed shell -master=localhost:9333
 Back up filer metadata:
 
 ```bash
-# Export filer metadata to a backup file
-weed filer.backup -filer=localhost:8888 -dir=/backup/filer-$(date +%Y%m%d)
+# Generate a backup filer store config, then edit it for your backup store
+weed scaffold -config=filer | sudo tee /etc/seaweedfs/backup_filer.toml >/dev/null
+
+# Continuously back up filer metadata to the store defined in backup_filer.toml
+weed filer.meta.backup -filer=localhost:8888 -config=/etc/seaweedfs/backup_filer.toml -restart
 ```
 
 Volume data is binary and managed by the volume server. For full backup, either:
