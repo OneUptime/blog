@@ -22,8 +22,8 @@ When you wrap your training code with MLflow:
 
 ## Prerequisites
 
-- Ubuntu 20.04 or 22.04
-- Python 3.9+
+- Ubuntu 22.04 or 24.04
+- Python 3.10+
 - PostgreSQL (for production tracking server)
 - sudo privileges
 
@@ -100,7 +100,7 @@ with mlflow.start_run(run_name="random-forest-v1"):
     # Log the trained model
     mlflow.sklearn.log_model(
         model,
-        "random-forest-model",
+        name="random-forest-model",
         registered_model_name="iris-classifier"
     )
 
@@ -135,18 +135,20 @@ MLflow artifacts (model files, plots, etc.) need a storage location. Options:
 **Local filesystem** (for single-server setups):
 ```bash
 sudo mkdir -p /var/lib/mlflow/artifacts
-sudo chown mlflow:mlflow /var/lib/mlflow/artifacts
+# Ownership is set after creating the mlflow system user below
 ```
 
 **S3-compatible storage** (MinIO for on-premises):
 ```bash
-# Install MinIO
+# Install MinIO server and client
 wget https://dl.min.io/server/minio/release/linux-amd64/minio
 sudo install -m 755 minio /usr/local/bin/minio
+wget https://dl.min.io/client/mc/release/linux-amd64/mc
+sudo install -m 755 mc /usr/local/bin/mc
 
 # Create storage directory
 sudo mkdir -p /data/minio
-sudo chown ubuntu:ubuntu /data/minio
+sudo chown "$USER":"$USER" /data/minio
 
 # Start MinIO
 MINIO_ROOT_USER=admin \
@@ -163,7 +165,7 @@ mc mb local/mlflow-artifacts
 ```bash
 sudo useradd --system --home /var/lib/mlflow --shell /bin/false mlflow
 sudo mkdir -p /var/lib/mlflow
-sudo chown mlflow:mlflow /var/lib/mlflow
+sudo chown -R mlflow:mlflow /var/lib/mlflow
 
 # Install MLflow in a system-wide venv
 sudo python3 -m venv /opt/mlflow
@@ -173,6 +175,7 @@ sudo /opt/mlflow/bin/pip install mlflow psycopg2-binary boto3
 ### Configure Environment Variables
 
 ```bash
+sudo mkdir -p /etc/mlflow
 sudo tee /etc/mlflow/mlflow.env << 'EOF'
 # Database backend
 MLFLOW_BACKEND_STORE_URI=postgresql://mlflow:your-strong-password@localhost/mlflow
@@ -190,13 +193,13 @@ MLFLOW_DEFAULT_ARTIFACT_ROOT=/var/lib/mlflow/artifacts
 # Server settings
 MLFLOW_HOST=0.0.0.0
 MLFLOW_PORT=5000
+MLFLOW_SERVER_ALLOWED_HOSTS=mlflow.yourdomain.com,your-server:5000
 
 # Authentication (optional, for basic security)
 # MLFLOW_AUTH_CONFIG_PATH=/etc/mlflow/auth.ini
 EOF
 
 sudo chmod 600 /etc/mlflow/mlflow.env
-sudo mkdir -p /etc/mlflow
 ```
 
 ### Systemd Service
@@ -219,6 +222,7 @@ ExecStart=/opt/mlflow/bin/mlflow server \
     --default-artifact-root ${MLFLOW_DEFAULT_ARTIFACT_ROOT} \
     --host ${MLFLOW_HOST} \
     --port ${MLFLOW_PORT} \
+    --allowed-hosts ${MLFLOW_SERVER_ALLOWED_HOSTS} \
     --workers 4
 
 Restart=on-failure
@@ -276,10 +280,11 @@ server {
 import mlflow
 
 # Point to your remote tracking server
-mlflow.set_tracking_uri("http://mlflow.yourdomain.com:5000")
+mlflow.set_tracking_uri("https://mlflow.yourdomain.com")
 
-# If using basic auth via Nginx
-mlflow.set_tracking_uri("http://admin:password@mlflow.yourdomain.com:5000")
+# If using basic auth via Nginx, set credentials in the environment:
+# export MLFLOW_TRACKING_USERNAME=admin
+# export MLFLOW_TRACKING_PASSWORD=password
 
 # Set the experiment
 mlflow.set_experiment("my-project/experiment-1")
@@ -292,7 +297,7 @@ with mlflow.start_run():
 Or set via environment variable:
 
 ```bash
-export MLFLOW_TRACKING_URI="http://mlflow.yourdomain.com:5000"
+export MLFLOW_TRACKING_URI="https://mlflow.yourdomain.com"
 python3 train.py  # Uses the remote server automatically
 ```
 
@@ -327,7 +332,7 @@ with mlflow.start_run():
         }, step=epoch)
 
     # Log the final model
-    mlflow.pytorch.log_model(model, "pytorch-model")
+    mlflow.pytorch.log_model(model, name="pytorch-model")
 
     # Log artifacts
     mlflow.log_artifact("training_curve.png")
@@ -336,9 +341,10 @@ with mlflow.start_run():
 
 ## Model Registry
 
-The model registry lets you manage model versions with lifecycle stages:
+The model registry lets you manage model versions with aliases and tags:
 
 ```python
+import mlflow
 from mlflow.tracking import MlflowClient
 
 client = MlflowClient()
@@ -348,23 +354,14 @@ run_id = "your-run-id"
 model_uri = f"runs:/{run_id}/model"
 mv = mlflow.register_model(model_uri, "MyModel")
 
-# Transition to staging
-client.transition_model_version_stage(
-    name="MyModel",
-    version=mv.version,
-    stage="Staging",
-    archive_existing_versions=False
-)
+# Assign aliases to reference important versions
+client.set_registered_model_alias("MyModel", "staging", mv.version)
 
-# After validation, promote to production
-client.transition_model_version_stage(
-    name="MyModel",
-    version=mv.version,
-    stage="Production"
-)
+# After validation, promote the same version for production use
+client.set_registered_model_alias("MyModel", "champion", mv.version)
 
-# Load the production model
-model = mlflow.pyfunc.load_model("models:/MyModel/Production")
+# Load the production model by alias
+model = mlflow.pyfunc.load_model("models:/MyModel@champion")
 predictions = model.predict(test_data)
 ```
 
