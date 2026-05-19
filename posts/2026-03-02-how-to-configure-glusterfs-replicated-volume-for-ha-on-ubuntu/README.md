@@ -12,7 +12,7 @@ A GlusterFS replicated volume keeps identical copies of all data on each node in
 
 ## Planning the Setup
 
-Replicated volumes require an even number of nodes matching the replica count. The most common configuration is a 2-node or 3-node replica set.
+Replicated volumes require a number of bricks that matches the replica count, or a multiple of the replica count for distributed-replicated volumes. The most common configuration is a 2-node or 3-node replica set.
 
 - **2-node replica** - Simple, but requires an arbiter or external quorum to avoid split-brain
 - **3-node replica** - Self-quorum: volume remains writable if at least 2 of 3 nodes are up
@@ -44,6 +44,7 @@ On each node, set up a dedicated brick directory. Using a dedicated partition pr
 # Format and mount a dedicated disk on each node
 
 sudo mkfs.xfs /dev/sdb -f -L gluster-brick
+sudo mkdir -p /data/gluster
 echo "LABEL=gluster-brick /data/gluster xfs defaults,noatime 0 0" | sudo tee -a /etc/fstab
 sudo mount -a
 
@@ -116,8 +117,8 @@ Brick3: gluster3:/data/gluster/replica-brick
 
 ```bash
 # Open required ports on each node
-sudo ufw allow from 192.168.1.0/24 to any port 24007/tcp
-sudo ufw allow from 192.168.1.0/24 to any port 49152:49200/tcp
+sudo ufw allow from 192.168.1.0/24 to any port 24007:24008/tcp
+sudo ufw allow from 192.168.1.0/24 to any port 49152:60999/tcp
 sudo ufw allow from 192.168.1.0/24 to any port 111/tcp
 sudo ufw allow from 192.168.1.0/24 to any port 111/udp
 ```
@@ -131,11 +132,11 @@ sudo mkdir -p /mnt/ha-storage
 
 # Mount with backup servers for failover
 sudo mount -t glusterfs \
-  -o backupvolfile-server=gluster2,backupvolfile-server=gluster3 \
+  -o backup-volfile-servers=gluster2:gluster3 \
   gluster1:/ha-vol /mnt/ha-storage
 
 # Persistent entry in /etc/fstab
-echo "gluster1:/ha-vol /mnt/ha-storage glusterfs defaults,_netdev,backupvolfile-server=gluster2 0 0" | sudo tee -a /etc/fstab
+echo "gluster1:/ha-vol /mnt/ha-storage glusterfs defaults,_netdev,backup-volfile-servers=gluster2:gluster3 0 0" | sudo tee -a /etc/fstab
 ```
 
 ## Testing High Availability
@@ -149,8 +150,9 @@ while true; do
   sleep 1
 done &
 
-# On gluster1 - stop the GlusterFS daemon to simulate a failure
-sudo systemctl stop glusterd
+# On gluster1 - power off the node, disconnect it from the network,
+# or stop the brick process to simulate a node or brick failure
+sudo pkill -f 'glusterfsd.*replica-brick'
 
 # Back on the client - verify writes continue without interruption
 tail -f /mnt/ha-storage/ha-test.log
@@ -159,7 +161,7 @@ tail -f /mnt/ha-storage/ha-test.log
 Writes should continue uninterrupted because 2 of 3 nodes are still available.
 
 ```bash
-# Bring gluster1 back
+# Bring gluster1 back, then make sure glusterd is running
 sudo systemctl start glusterd
 
 # Check heal status - gluster1 needs to sync the writes it missed
@@ -192,8 +194,8 @@ sudo gluster volume heal ha-vol info heal-failed
 sudo gluster volume set ha-vol cluster.heal-timeout 300
 sudo gluster volume set ha-vol cluster.self-heal-daemon on
 
-# Set number of parallel heal threads
-sudo gluster volume set ha-vol client.event-threads 4
+# Set number of parallel background self-heal jobs per client
+sudo gluster volume set ha-vol cluster.background-self-heal-count 4
 ```
 
 ## Split-Brain Prevention and Resolution
@@ -224,7 +226,7 @@ sudo gluster volume set ha-vol performance.write-behind on
 sudo gluster volume set ha-vol performance.write-behind-window-size 32MB
 
 # Enable read-ahead for sequential reads
-sudo gluster volume set ha-vol performance.readdir-ahead on
+sudo gluster volume set ha-vol performance.read-ahead on
 sudo gluster volume set ha-vol performance.cache-size 256MB
 
 # For databases - disable caching to avoid stale reads
