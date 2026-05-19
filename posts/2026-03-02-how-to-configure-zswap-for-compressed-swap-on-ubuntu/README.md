@@ -71,7 +71,7 @@ Find the `GRUB_CMDLINE_LINUX_DEFAULT` line and add zswap parameters:
 
 ```bash
 # /etc/default/grub
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash zswap.enabled=1 zswap.compressor=lz4 zswap.max_pool_percent=20 zswap.zpool=z3fold"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash zswap.enabled=1 zswap.compressor=lz4 zswap.max_pool_percent=20"
 ```
 
 ```bash
@@ -84,15 +84,15 @@ grep zswap /boot/grub/grub.cfg
 
 ## Choosing Compressor and Memory Pool Algorithm
 
-zswap supports multiple compression algorithms and pool allocators. The right choice affects CPU overhead and compression ratio:
+zswap supports multiple compression algorithms. Some kernels also expose selectable pool allocators. The right choice affects CPU overhead and compression ratio:
 
 ### Compression Algorithms
 
 ```bash
 # Available compressors (varies by kernel config)
-ls /sys/kernel/debug/crypto/ | grep -E "lzo|lz4|zstd|deflate"
+grep -E "^(name|driver)" /proc/crypto | grep -E "lzo|lz4|zstd|deflate"
 
-# Or check what zswap accepts
+# Check the current zswap compressor
 cat /sys/module/zswap/parameters/compressor
 
 # lz4: fastest compression/decompression, lower compression ratio
@@ -111,20 +111,27 @@ echo lzo | sudo tee /sys/module/zswap/parameters/compressor
 ### Memory Pool Allocators
 
 ```bash
-# Check available zpool backends
+# Check whether your kernel exposes a selectable zpool backend
 ls /sys/module/zswap/parameters/
-cat /sys/module/zswap/parameters/zpool
+cat /sys/module/zswap/parameters/zpool 2>/dev/null || \
+  echo "This kernel uses the built-in zswap pool backend"
 
-# z3fold: supports up to 3 compressed pages per allocation slot
-# Better memory efficiency than zbud
-echo z3fold | sudo tee /sys/module/zswap/parameters/zpool
+# zsmalloc: current default on many kernels and the only backend on newer kernels
+# Best compression density, with a more complex allocator
+if [ -e /sys/module/zswap/parameters/zpool ]; then
+    echo zsmalloc | sudo tee /sys/module/zswap/parameters/zpool
+fi
 
 # zbud: original allocator, only 2 pages per slot
-echo zbud | sudo tee /sys/module/zswap/parameters/zpool
+if [ -e /sys/module/zswap/parameters/zpool ]; then
+    echo zbud | sudo tee /sys/module/zswap/parameters/zpool
+fi
 
-# zsmalloc: used by zram, also available for zswap
-# Best compression density but more overhead
-echo zsmalloc | sudo tee /sys/module/zswap/parameters/zpool
+# z3fold: older allocator that supports up to 3 compressed pages per page
+# It may be unavailable on newer kernels
+if [ -e /sys/module/zswap/parameters/zpool ]; then
+    echo z3fold | sudo tee /sys/module/zswap/parameters/zpool
+fi
 ```
 
 ## Tuning Pool Size
@@ -191,20 +198,13 @@ done
 Combine all settings into a coherent boot configuration:
 
 ```bash
-# Create a modprobe configuration for zswap
-sudo tee /etc/modprobe.d/zswap.conf << 'EOF'
-# zswap configuration
-# Loaded at boot when the zswap module is initialized
-options zswap enabled=1 compressor=lz4 max_pool_percent=20 zpool=z3fold
-EOF
-
-# Also set kernel parameters in GRUB for early boot
+# Set kernel parameters in GRUB for early boot
 sudo nano /etc/default/grub
 ```
 
 ```bash
 # /etc/default/grub
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash zswap.enabled=1 zswap.compressor=lz4 zswap.max_pool_percent=20 zswap.zpool=z3fold"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash zswap.enabled=1 zswap.compressor=lz4 zswap.max_pool_percent=20"
 ```
 
 ```bash
@@ -213,7 +213,9 @@ sudo update-grub
 # Apply runtime changes immediately
 echo 1 | sudo tee /sys/module/zswap/parameters/enabled
 echo lz4 | sudo tee /sys/module/zswap/parameters/compressor
-echo z3fold | sudo tee /sys/module/zswap/parameters/zpool
+if [ -e /sys/module/zswap/parameters/zpool ]; then
+    echo zsmalloc | sudo tee /sys/module/zswap/parameters/zpool
+fi
 echo 20 | sudo tee /sys/module/zswap/parameters/max_pool_percent
 ```
 
@@ -249,4 +251,4 @@ sudo nano /etc/default/grub
 sudo update-grub
 ```
 
-zswap provides a meaningful benefit on systems that swap regularly. The compressed in-RAM cache eliminates most swap disk I/O, which translates directly to lower latency and better responsiveness during memory pressure events.
+zswap provides a meaningful benefit on systems that swap regularly. The compressed in-RAM cache can reduce swap disk I/O, which often translates to lower latency and better responsiveness during memory pressure events.
