@@ -63,7 +63,7 @@ Add or modify the /dev/shm line:
 # Shared memory with security hardening
 # noexec: prevents execution of programs written to shared memory
 # nosuid: prevents setuid/setgid bits from taking effect
-# nodev: prevents creation of device files
+# nodev: prevents device files on the filesystem from being interpreted
 tmpfs  /dev/shm  tmpfs  defaults,noexec,nosuid,nodev,size=512M  0 0
 ```
 
@@ -101,8 +101,8 @@ ls -la /dev/shm/test-id  # Note the setuid bit is set
 /dev/shm/test-id
 # Should run as current user, not root
 
-# Test 3: nodev - device file creation should be blocked or unusable
-# mknod may require root but nodev makes the device file non-functional
+# Test 3: nodev - device files should be unusable
+# mknod may require root; nodev does not prevent creation, but makes the device file non-functional
 sudo mknod /dev/shm/test-device b 8 0 2>/dev/null && \
   echo "Device created (but nodev prevents it being used)" || \
   echo "Device creation blocked"
@@ -116,8 +116,7 @@ rm -f /dev/shm/test-exec.sh /dev/shm/test-id /dev/shm/test-device 2>/dev/null
 Most applications that use shared memory write data files, not executables. The `noexec` option only prevents the kernel from directly executing binaries from that filesystem - applications can still read and write data normally.
 
 Applications known to use `/dev/shm` for legitimate purposes:
-- **PostgreSQL**: Uses shared memory for buffers. PostgreSQL uses `POSIX shm` (`shm_open`), which works with `noexec` since the data is not executed.
-- **Redis**: Can use shared memory for cluster communication
+- **PostgreSQL**: Uses shared memory and semaphores for IPC. PostgreSQL can use POSIX shared memory for dynamic shared memory, which works with `noexec` since the data is not executed.
 - **Chrome/Chromium**: Uses `/dev/shm` for renderer sandboxing
 - **Java applications**: May use `/dev/shm` for IPC
 
@@ -159,8 +158,8 @@ Without a size limit, any process can fill `/dev/shm` up to 50% of RAM (the defa
 # Check current size
 df -h /dev/shm
 
-# The current maximum
-cat /proc/sys/kernel/shmmax
+# View the current mount options, including any size limit
+findmnt -no OPTIONS /dev/shm
 ```
 
 Choose a size based on your applications' requirements. A conservative limit for servers with no heavy IPC needs:
@@ -212,7 +211,7 @@ sudo chmod 755 /etc/cron.hourly/check-shm
 
 ## Systemd Service Hardening for Shared Memory
 
-If a specific service needs shared memory access, you can restrict its shared memory namespace rather than relying solely on mount options:
+If a specific service is a concern, you can add service-level hardening for temporary files and executable memory mappings rather than relying solely on mount options:
 
 ```bash
 # Add these to a service's systemd unit file in [Service] section
