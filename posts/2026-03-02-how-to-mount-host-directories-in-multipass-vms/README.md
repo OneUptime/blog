@@ -12,12 +12,11 @@ One of the most practical features of Multipass is the ability to mount director
 
 ## How Multipass Mounts Work
 
-Multipass uses a custom mount mechanism based on SSHFS (SSH Filesystem) to make host directories available inside VMs. The mount appears as a standard filesystem path inside the VM and supports:
+Multipass supports two mount types. The default, called "classic", is based on SSHFS (SSH Filesystem). The alternative, "native", uses the underlying hypervisor's file sharing - 9P on QEMU and SMB/CIFS on Hyper-V. You can pick the type with the `--type` flag on `multipass mount` (`classic` or `native`). In either case, the mount appears as a standard filesystem path inside the VM and supports:
 - Real-time file synchronization (reads and writes go through immediately)
 - Normal file permissions (mapped between host and VM users)
-- Both read-write and read-only mounts
 
-The tradeoff is performance - SSHFS introduces latency compared to native disk access, making it unsuitable for I/O-intensive workloads like database files or heavy compilation.
+The tradeoff is performance - SSHFS introduces latency compared to native disk access, making it unsuitable for I/O-intensive workloads like database files or heavy compilation. Native mounts are typically faster but availability depends on your platform's hypervisor.
 
 ## Basic Mount Syntax
 
@@ -147,24 +146,28 @@ multipass info webdev | grep IPv4
 
 ## Read-Only Mounts
 
-For data you want the VM to read but not modify:
+`multipass mount` itself does not have a `--readonly` flag. If you want the VM to read but not modify a directory, the usual approaches are:
 
 ```bash
-# Mount read-only (prevents accidental writes)
-multipass mount ~/shared-config myvm:/etc/app-config --readonly
+# Option 1: make the host directory read-only for the mapped UID
+chmod -R a-w ~/shared-config
+multipass mount ~/shared-config myvm:/etc/app-config
+
+# Option 2: remount as read-only inside the VM after mounting
+multipass exec myvm -- sudo mount -o remount,ro /etc/app-config
 ```
 
-Note: Read-only mount support depends on the Multipass version. Check with `multipass version`.
+Check `multipass mount --help` on your version for the exact set of supported flags.
 
 ## Common Issues and Fixes
 
 ### Mount Fails: "sshfs not installed in guest"
 
-Some minimal cloud images may lack sshfs:
+Multipass auto-installs the `multipass-sshfs` snap inside the guest for classic mounts, but this can fail on minimal images or when the VM has no network access during launch. If you see this error, install the snap manually:
 
 ```bash
-# Install sshfs inside the VM
-multipass exec myvm -- sudo apt install -y sshfs
+# Install the multipass-sshfs snap inside the VM
+multipass exec myvm -- sudo snap install multipass-sshfs
 
 # Retry the mount
 multipass mount ~/projects myvm:/home/ubuntu/projects
@@ -186,22 +189,17 @@ multipass umount myvm:/home/ubuntu/projects
 multipass mount ~/projects myvm:/home/ubuntu/projects --uid-map $(id -u):1000
 ```
 
-### Mount Disappears After VM Restart
+### Mount Doesn't Re-attach After VM Restart
 
-Standard `multipass mount` mounts do not persist across VM restarts by default unless you use the `--mount` flag at launch:
+Mounts added with either `multipass mount` or `multipass launch --mount` are stored in Multipass's instance configuration and re-applied automatically when the VM starts. If a mount fails to re-attach after a restart - usually because the host directory was moved or renamed, or the SSHFS connection couldn't be re-established - check that the host path still exists and re-run `multipass mount` to re-apply it:
 
 ```bash
-# Persistent approach: always use --mount at launch
-multipass launch --name myvm --mount ~/projects:/home/ubuntu/projects
+# Verify which mounts are configured
+multipass info myvm
 
-# Or re-mount after each start (script it):
-cat > ~/start-dev.sh <<'EOF'
-#!/bin/bash
-multipass start myvm
+# Re-apply if a mount is missing or stale
+multipass umount myvm:/home/ubuntu/projects
 multipass mount ~/projects myvm:/home/ubuntu/projects
-multipass shell myvm
-EOF
-chmod +x ~/start-dev.sh
 ```
 
 ### Slow File I/O on Mounted Directories
@@ -230,22 +228,17 @@ For consistent development environments:
 VM_NAME="devbox"
 MOUNTS=(
   "$HOME/projects:/home/ubuntu/projects"
-  "$HOME/.ssh:/home/ubuntu/.ssh:ro"
-  "$HOME/.gitconfig:/home/ubuntu/.gitconfig:ro"
+  "$HOME/.gitconfig:/home/ubuntu/.gitconfig"
 )
 
 # Start if stopped
 multipass start "$VM_NAME" 2>/dev/null
 
-# Apply mounts
+# Apply mounts (idempotent: ignore errors if already mounted)
 for mount in "${MOUNTS[@]}"; do
-  IFS=: read -r src dst opts <<< "$mount"
+  IFS=: read -r src dst <<< "$mount"
   echo "Mounting $src -> $dst"
-  if [ "$opts" = "ro" ]; then
-    multipass mount "$src" "$VM_NAME:$dst" --readonly
-  else
-    multipass mount "$src" "$VM_NAME:$dst"
-  fi
+  multipass mount "$src" "$VM_NAME:$dst" 2>/dev/null || true
 done
 
 # Open shell
