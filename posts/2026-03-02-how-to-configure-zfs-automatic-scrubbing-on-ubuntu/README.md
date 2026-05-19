@@ -14,7 +14,7 @@ Running scrubs regularly is not optional if you care about data integrity. Most 
 
 ## Understanding ZFS Data Integrity
 
-ZFS writes a cryptographic checksum with every block of data. When ZFS reads data, it verifies the checksum. If the data doesn't match its checksum:
+ZFS writes a checksum with every block of data. The default checksum on OpenZFS is typically Fletcher4, with cryptographic options such as SHA-256 available if configured. When ZFS reads data, it verifies the checksum. If the data doesn't match its checksum:
 
 1. ZFS detects the error
 2. If redundancy is available (mirror, RAIDZ), ZFS reads the good copy from another disk
@@ -80,7 +80,7 @@ If errors were found and repaired:
   scan: scrub repaired 128K in 01:23:45 with 0 errors on Mon Mar  2 03:23:45 2026
 ```
 
-If unrepaired errors exist (only possible when there's no redundancy to repair from):
+If unrepaired errors exist (for example, when there's no redundant copy to repair from, or when multiple copies are damaged):
 
 ```text
   scan: scrub repaired 0 in 01:23:45 with 3 errors on Mon Mar  2 03:23:45 2026
@@ -98,7 +98,7 @@ The `CKSUM` column shows checksum errors - data read from the disk that doesn't 
 
 ## Configuring Automatic Scrubs on Ubuntu
 
-Ubuntu with the `zfsutils-linux` package includes systemd timers for automatic scrubbing.
+Ubuntu with the `zfsutils-linux` package includes systemd timers for automatic scrubbing. Ubuntu packages also include a default cron job in `/etc/cron.d/zfsutils-linux` that scrubs healthy pools on the second Sunday of each month unless disabled by the pool's `org.debian:periodic-scrub` property.
 
 ### Check existing ZFS timers
 
@@ -110,7 +110,7 @@ sudo systemctl list-timers | grep zfs
 Mon 2026-03-16 00:00:00 UTC  13d 22h left  Mon 2026-03-02 01:00:00 UTC  -   zfs-scrub-monthly@tank.timer
 ```
 
-By default, Ubuntu configures monthly scrubs via systemd timers when you create a pool.
+The monthly and weekly systemd timers are available per pool, but they may not be enabled automatically on every Ubuntu install. Check `systemctl list-timers` and enable the timer you want for each pool.
 
 ### Check timer status
 
@@ -119,11 +119,11 @@ sudo systemctl status zfs-scrub-monthly@tank.timer
 ```
 
 ```text
-zfs-scrub-monthly@tank.timer - Monthly zpool scrub for tank
+zfs-scrub-monthly@tank.timer - Monthly zpool scrub timer for tank
      Loaded: loaded (/lib/systemd/system/zfs-scrub-monthly@.timer; enabled; vendor preset: enabled)
      Active: active (waiting) since Mon 2026-03-02 00:00:00 UTC; 1 month 2 days ago
     Trigger: Tue 2026-04-01 00:27:17 UTC; 13 days left
-   Triggers: zfs-scrub-monthly@tank.service
+   Triggers: zfs-scrub@tank.service
 ```
 
 If the timer is not enabled:
@@ -141,35 +141,42 @@ cat /lib/systemd/system/zfs-scrub-monthly@.timer
 
 ```ini
 [Unit]
-Description=Monthly zpool scrub for %i
+Description=Monthly zpool scrub timer for %i
+Documentation=man:zpool-scrub(8)
 
 [Timer]
 OnCalendar=monthly
-AccuracySec=1h
 Persistent=true
+RandomizedDelaySec=1h
+Unit=zfs-scrub@%i.service
 
 [Install]
 WantedBy=timers.target
 ```
 
 ```bash
-cat /lib/systemd/system/zfs-scrub-monthly@.service
+cat /lib/systemd/system/zfs-scrub@.service
 ```
 
 ```ini
 [Unit]
-Description=Monthly zpool scrub for %i
+Description=zpool scrub on %i
+Documentation=man:zpool-scrub(8)
+Requires=zfs.target
+After=zfs.target
 ConditionACPower=true
+ConditionPathIsDirectory=/sys/module/zfs
 
 [Service]
-Type=oneshot
-Nice=19
-IOSchedulingClass=idle
-ExecStart=/sbin/zpool scrub %i
-ExecStop=/sbin/zpool scrub -s %i
+EnvironmentFile=-/etc/default/zfs
+ExecStart=sh -c '\
+if zpool status %i | grep -q "scrub in progress"; then\
+exec zpool wait -t scrub %i;\
+else exec zpool scrub -w %i; fi'
+ExecStop=-sh -c 'zpool scrub -p %i 2>/dev/null || true'
 ```
 
-Note the `Nice=19` and `IOSchedulingClass=idle` - scrubs run at the lowest priority to minimize impact on the system.
+Note the `ConditionACPower=true` line - the packaged service skips scheduled scrubs when the system is not on AC power.
 
 ## Custom Scrub Schedule with Cron
 
@@ -294,7 +301,7 @@ sudo zpool clear tank
 
 ## Scrub Performance Impact
 
-Scrubs have low priority but do consume disk I/O. For large pools, monitor during the first scrub:
+Scrubs consume disk I/O. For large pools, monitor during the first scrub:
 
 ```bash
 # Watch I/O while scrubbing
