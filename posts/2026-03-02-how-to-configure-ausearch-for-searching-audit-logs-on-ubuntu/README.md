@@ -24,7 +24,7 @@ sudo ausearch
 # Show only recent events (last 10 minutes is the default for -ts recent)
 sudo ausearch -ts recent
 
-# Show events from the last hour
+# Show events since midnight today
 sudo ausearch -ts today
 
 # Show events with human-readable output (-i interprets UIDs, syscalls, etc.)
@@ -41,16 +41,16 @@ sudo ausearch -ts today           # Events since midnight today
 sudo ausearch -ts yesterday       # Events yesterday
 sudo ausearch -ts recent          # Events in last 10 minutes
 sudo ausearch -ts week-ago        # Events from one week ago to now
-sudo ausearch -ts month-ago       # Events from one month ago to now
-sudo ausearch -ts checkpoint      # Events since last time checkpoint was set
+sudo ausearch -ts this-month      # Events from the start of this month to now
+sudo ausearch --checkpoint /etc/audit/auditd_checkpoint.txt -ts checkpoint  # Events since the timestamp in a checkpoint file
 
-# Explicit start time
-sudo ausearch -ts "2026-03-01 08:00:00"
+# Explicit start time (en_US locale example)
+sudo ausearch -ts 03/01/2026 08:00:00
 
 # Time range with start and end
-sudo ausearch -ts "2026-03-01 08:00:00" -te "2026-03-01 09:00:00"
+sudo ausearch -ts 03/01/2026 08:00:00 -te 03/01/2026 09:00:00
 
-# Short date format
+# Short date format (date order depends on your locale)
 sudo ausearch -ts 03/01/2026 -te 03/02/2026
 ```
 
@@ -75,8 +75,8 @@ sudo ausearch -k setuid-execution -ts recent -i
 
 ```bash
 # Search by effective user ID
-sudo ausearch -ua admin
-sudo ausearch -ua 1001
+sudo ausearch -ue admin
+sudo ausearch -ue 1001
 
 # Search by real user ID (the user who ran the command, before setuid)
 sudo ausearch -ui 1001
@@ -84,7 +84,7 @@ sudo ausearch -ui 1001
 # Search by login UID (the UID used to log in, even if su was used after)
 sudo ausearch --loginuid 1001
 
-# Find all events by username (resolves name to UID internally)
+# Find all events matching a UID, effective UID, or login UID
 sudo ausearch -ua www-data -ts today
 ```
 
@@ -151,7 +151,7 @@ sudo ausearch --exit -2     # ENOENT - no such file or directory
 sudo ausearch --exit -1     # EPERM - operation not permitted
 
 # Find all failed operations
-sudo ausearch -ts today --exit -1
+sudo ausearch -ts today --success no
 
 # Combine with syscall
 sudo ausearch -sc open --exit -13 -ts today -i
@@ -165,16 +165,16 @@ Multiple filters are combined with AND logic by default:
 
 ```bash
 # Find execve calls by user 1001 that failed today
-sudo ausearch -sc execve -ua 1001 --exit -1 -ts today -i
+sudo ausearch -sc execve -ua 1001 --success no -ts today -i
 
 # Find all login failures
-sudo ausearch -m USER_AUTH -ts today --exit -1 -i
+sudo ausearch -m USER_AUTH -ts today --success no -i
 
 # Find sudo usage by a specific user
 sudo ausearch -k sudoers-change -ua admin -ts week-ago
 
 # Find all events from a login session
-sudo ausearch -se 42 -i    # Session ID 42
+sudo ausearch --session 42 -i    # Session ID 42
 ```
 
 ## Output Formatting
@@ -240,8 +240,8 @@ sudo aureport --file --summary | head -15
 By default, ausearch only reads the current log file. To search rotated logs:
 
 ```bash
-# Search all rotated log files in addition to current
-sudo ausearch -if /var/log/audit/audit.log.1
+# Search the audit log directory, including rotated logs
+sudo ausearch -if /var/log/audit
 
 # Search a specific log file
 sudo ausearch -if /var/log/audit/audit.log.2
@@ -249,7 +249,7 @@ sudo ausearch -if /var/log/audit/audit.log.2
 # Search across multiple logs with a loop
 for log in /var/log/audit/audit.log*; do
     echo "=== Searching $log ==="
-    sudo ausearch -if "$log" -k setuid-execution -ts "2026-02-01" 2>/dev/null
+    sudo ausearch -if "$log" -k setuid-execution -ts 02/01/2026 2>/dev/null
 done
 ```
 
@@ -261,19 +261,19 @@ When investigating a potential compromise, start with a timeline:
 
 ```bash
 # 1. Find all logins in the suspected timeframe
-sudo ausearch -m USER_LOGIN -ts "2026-03-01 00:00:00" -te "2026-03-01 23:59:59" -i
+sudo ausearch -m USER_LOGIN -ts 03/01/2026 00:00:00 -te 03/01/2026 23:59:59 -i
 
 # 2. Find all commands run by the suspicious user
-sudo ausearch -sc execve -ua suspectuser -ts "2026-03-01" -i
+sudo ausearch -sc execve -ua suspectuser -ts 03/01/2026 -i
 
 # 3. Find what files they accessed
-sudo ausearch -ua suspectuser -m PATH -ts "2026-03-01" -i
+sudo ausearch -ua suspectuser -m PATH -ts 03/01/2026 -i
 
 # 4. Check for privilege escalation
-sudo ausearch -k setuid-execution -ua suspectuser -ts "2026-03-01" -i
+sudo ausearch -k setuid-execution -ua suspectuser -ts 03/01/2026 -i
 
 # 5. Find any downloads or network connections
-sudo ausearch -sc connect -ua suspectuser -ts "2026-03-01" -i
+sudo ausearch -sc connect -ua suspectuser -ts 03/01/2026 -i
 ```
 
 ### Monitoring for Brute Force Attempts
