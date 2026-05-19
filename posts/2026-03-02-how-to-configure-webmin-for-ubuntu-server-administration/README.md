@@ -43,10 +43,10 @@ Webmin starts automatically on port 10000 using HTTPS with a self-signed certifi
 Open port 10000 for Webmin access:
 
 ```bash
-# Using UFW
+# Using UFW, choose either broad access:
 sudo ufw allow 10000/tcp
 
-# Restrict to specific IP (recommended)
+# Or restrict to specific IP ranges (recommended)
 sudo ufw allow from 192.168.1.0/24 to any port 10000 proto tcp
 
 # Reload firewall
@@ -135,16 +135,17 @@ allow=192.168.1.100 10.0.0.0/8 127.0.0.1
 
 Webmin supports TOTP (Google Authenticator compatible):
 
-1. Webmin > Webmin > Two-Factor Authentication
-2. Enable two-factor for your account
-3. Scan the QR code with your authenticator app
+1. Webmin > Webmin Configuration > Two-Factor Authentication
+2. Enable Google Authenticator as a two-factor provider
+3. Webmin > Webmin Users > Two-Factor Authentication
+4. Enroll your account and scan the QR code with your authenticator app
 
 ### Session Timeout
 
 ```bash
 # Set session timeout in Webmin configuration
 # Webmin > Webmin Configuration > Authentication
-# Set "Session lifetime" to 900 (15 minutes)
+# Set "Session lifetime" to 15 minutes
 ```
 
 ## Key Administrative Features
@@ -196,7 +197,7 @@ Webmin > Networking > Linux Firewall for iptables management, or install the Web
 
 ```bash
 # The UFW module may not be installed by default
-# Check available modules
+# Install a downloaded module file
 sudo /usr/share/webmin/install-module.pl /path/to/module.wbm.gz
 ```
 
@@ -209,7 +210,7 @@ Webmin > Others > File Manager provides a web-based file browser. Useful for:
 
 ### System Logs
 
-Webmin > System > System Logs gives you a web interface for viewing logs, with filtering options. It tails logs in real-time which is handy for watching service startups.
+Webmin > System > System Logs gives you a web interface for viewing logs and reloading the displayed log lines, which is handy for checking service startups.
 
 ## Installing Additional Modules
 
