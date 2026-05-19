@@ -83,7 +83,7 @@ sudo ip link set br0 up
 # Set the default route via the bridge
 sudo ip route add default via 192.168.1.1 dev br0
 
-# Make this persistent with Netplan (Ubuntu 18.04+)
+# Make this persistent with Netplan 0.100+ (Ubuntu 20.04+ updates)
 sudo nano /etc/netplan/01-ovs.yaml
 ```
 
@@ -91,7 +91,7 @@ sudo nano /etc/netplan/01-ovs.yaml
 # /etc/netplan/01-ovs.yaml
 network:
   version: 2
-  renderer: openvswitch
+  renderer: networkd
   ethernets:
     eth1:
       dhcp4: false
@@ -108,13 +108,13 @@ sudo netplan apply
 
 ## Configuring OVS with Netplan
 
-Netplan has native OVS support in Ubuntu 20.04 and later.
+Netplan has native OVS support in Netplan 0.100 and later, which is available in Ubuntu 20.04 updates and newer releases.
 
 ```yaml
 # /etc/netplan/01-ovs.yaml
 network:
   version: 2
-  renderer: openvswitch
+  renderer: networkd
   ethernets:
     eth0:
       dhcp4: false
@@ -133,9 +133,9 @@ network:
       openvswitch: {}
 ```
 
-## Creating Internal Ports for Virtual Machines
+## Creating Internal Ports for Hosts or Namespaces
 
-Internal ports are virtual interfaces on the bridge, useful for connecting VMs or containers.
+Internal ports are virtual interfaces on the bridge, useful for assigning host or namespace IP addresses. For VMs, add the VM's tap interface as an OVS port instead.
 
 ```bash
 # Create an internal port (appears as a network interface)
@@ -145,18 +145,19 @@ sudo ovs-vsctl add-port br0 veth-vm1 -- set interface veth-vm1 type=internal
 sudo ip link set veth-vm1 up
 sudo ip addr add 10.0.0.2/24 dev veth-vm1
 
-# Move a process into a namespace and connect to OVS
+# Or create a separate internal port for a namespace and configure it there
 # (used in container networking scenarios)
 sudo ip netns add vm1-ns
-sudo ip link set veth-vm1 netns vm1-ns
-sudo ip netns exec vm1-ns ip addr add 10.0.0.2/24 dev veth-vm1
-sudo ip netns exec vm1-ns ip link set veth-vm1 up
+sudo ovs-vsctl add-port br0 ovs-vm1 -- set interface ovs-vm1 type=internal
+sudo ip link set ovs-vm1 netns vm1-ns
+sudo ip netns exec vm1-ns ip addr add 10.0.0.3/24 dev ovs-vm1
+sudo ip netns exec vm1-ns ip link set ovs-vm1 up
 ```
 
 ## Configuring Basic OVS Settings
 
 ```bash
-# Set a human-readable name for the switch
+# Set a stable MAC address for the bridge's local interface
 sudo ovs-vsctl set bridge br0 other-config:hwaddr=02:00:00:00:00:01
 
 # Configure the bridge to use standalone mode (acts as a normal L2 switch)
