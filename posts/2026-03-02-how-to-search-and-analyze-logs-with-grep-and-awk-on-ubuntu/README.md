@@ -122,7 +122,8 @@ awk processes each line, splitting it into fields. It's ideal for extracting spe
 # awk '{print $1}' prints the first field
 
 # Print the username from auth.log failed logins
-# Example line: "Failed password for john from 1.2.3.4 port 54321"
+# Example line: "Mar  2 14:30:01 host sshd[1234]: Failed password for john from 1.2.3.4 port 54321"
+# Fields:                $1   $2   $3        $4   $5             $6     $7       $8  $9   $10  $11
 grep "Failed password" /var/log/auth.log | awk '{print $9}'
 
 # Print timestamp and message
@@ -171,8 +172,9 @@ Extract and analyze by time periods:
 # Count requests per hour in nginx logs
 awk '{
     # Extract hour from timestamp like [10/Oct/2023:14:30:00
-    match($4, /:([0-9]+):/, arr)
-    hour[arr[1]]++
+    # split() is portable across mawk (Ubuntu default) and gawk
+    split($4, parts, ":")
+    hour[parts[2]]++
 }
 END {
     for (h in hour) print h":00", hour[h]
@@ -240,7 +242,7 @@ grep "$(date +%b)" /var/log/auth.log | \
 
 echo ""
 echo "--- System Errors (last 24h) ---"
-grep "$(date +%b %e)" /var/log/syslog | \
+grep "$(date +"%b %e")" /var/log/syslog | \
     grep -i "error\|critical\|panic" | \
     awk '{$1=$2=$3=$4=""; print}' | \
     sort | uniq -c | sort -rn | head -10
