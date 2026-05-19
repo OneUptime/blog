@@ -84,7 +84,6 @@ db:
 
 bindIP: 127.0.0.1  # Listen locally only (Nginx proxies)
 port: 3000
-name: 'My Wiki'
 
 logLevel: info
 logFormat: default
@@ -240,7 +239,7 @@ After setup, log into the admin panel at `https://wiki.example.com/_admin`.
 
 Wiki.js supports multiple editing modes per page:
 - **Markdown** - standard Markdown syntax
-- **Visual Editor** - WYSIWYG TipTap-based editor
+- **Visual Editor** - WYSIWYG CKEditor 5-based editor
 - **Raw HTML** - direct HTML editing
 - **AsciiDoc** - for technical documentation
 
@@ -365,7 +364,8 @@ Query in your log aggregator: `namespace:api-gateway level:warn "rate limit exce
 Wiki.js uses a built-in search engine. For larger wikis, configure Elasticsearch or OpenSearch for better search performance:
 
 In Admin > Search Engine:
-- Built-in (Lunr.js) - works well for smaller wikis (< 1000 pages)
+- Database - Basic (default) - works on all supported databases but has limited capabilities
+- Database - PostgreSQL - uses PostgreSQL full-text search; a good upgrade if you use PostgreSQL
 - Elasticsearch - recommended for larger wikis
 
 ## Backup
