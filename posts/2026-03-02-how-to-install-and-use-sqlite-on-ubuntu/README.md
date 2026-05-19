@@ -24,18 +24,18 @@ sudo apt install sqlite3 libsqlite3-dev -y
 
 # Verify the installation
 sqlite3 --version
-# Output: 3.37.2 2022-01-06 13:25:41 ...
+# Example output on Ubuntu 22.04: 3.37.2 2022-01-06 13:25:41 ...
 ```
 
 If you need a newer version than what the repository provides, you can compile from source or use a static binary.
 
 ```bash
-# Download the latest precompiled binary from sqlite.org
-wget https://www.sqlite.org/2024/sqlite-tools-linux-x64-3450000.zip
-unzip sqlite-tools-linux-x64-3450000.zip
+# Download the current precompiled binary from sqlite.org
+wget https://www.sqlite.org/2026/sqlite-tools-linux-x64-3530100.zip
+unzip sqlite-tools-linux-x64-3530100.zip
 
 # Move the binary to a directory in PATH
-sudo mv sqlite-tools-linux-x64-3450000/sqlite3 /usr/local/bin/sqlite3-new
+sudo mv sqlite-tools-linux-x64-3530100/sqlite3 /usr/local/bin/sqlite3-new
 sqlite3-new --version
 ```
 
@@ -95,7 +95,7 @@ The SQLite shell has dot-commands (meta-commands that start with `.`) for contro
 -- Output results to a file
 .output /tmp/users_export.csv
 SELECT * FROM users;
-.output stdout
+.output
 
 -- Show database file information
 .dbinfo
@@ -151,7 +151,7 @@ VALUES (
     '{"color": "blue", "weight": 0.5}'
 );
 
--- Querying JSON fields (SQLite 3.38+ has full JSON support)
+-- Querying JSON fields (SQLite 3.38+ includes JSON functions by default)
 SELECT name, json_extract(metadata, '$.color') AS color
 FROM products;
 ```
@@ -190,14 +190,19 @@ dave,dave@example.com
 eve,eve@example.com
 EOF
 
-# Import into SQLite
+# Import into SQLite using a staging table
 sqlite3 /home/user/myapp.db << 'EOF'
 .mode csv
-.import /tmp/new_users.csv users
+DROP TABLE IF EXISTS new_users_import;
+CREATE TABLE new_users_import (username TEXT, email TEXT);
+.import /tmp/new_users.csv new_users_import
+INSERT INTO users (username, email)
+SELECT username, email FROM new_users_import;
+DROP TABLE new_users_import;
 EOF
 ```
 
-Note: `.import` will try to import all columns. If your CSV does not have the `id` and `created_at` columns, create an intermediate table or use a staging approach.
+Note: `.import` will try to import all columns in the target table. If your CSV does not have the `id` and `created_at` columns, create an intermediate table or use a staging approach.
 
 ### Export to SQL Dump
 
