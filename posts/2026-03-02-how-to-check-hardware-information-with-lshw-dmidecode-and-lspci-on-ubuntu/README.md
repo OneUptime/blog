@@ -85,12 +85,12 @@ sudo lshw | grep -i DISABLED
 sudo lshw | grep -i UNCLAIMED
 
 # Show hardware without drivers
-sudo lshw -short | grep -v "\-"
+sudo lshw -short | grep -i UNCLAIMED
 ```
 
 ## dmidecode - DMI Table Decoder
 
-`dmidecode` reads SMBIOS/DMI data from the BIOS firmware tables. This gives you accurate information about the system board, CPU sockets, memory slots, and installed components as reported by the BIOS.
+`dmidecode` reads SMBIOS/DMI data from the BIOS firmware tables. This gives you firmware-reported information about the system board, CPU sockets, memory slots, and installed components as reported by the BIOS.
 
 ```bash
 # Install dmidecode
@@ -107,7 +107,7 @@ sudo dmidecode -t chassis   # Chassis information
 sudo dmidecode -t processor # CPU information
 sudo dmidecode -t memory    # Memory information
 sudo dmidecode -t cache     # Cache information
-sudo dmidecode -t port      # Port connectors
+sudo dmidecode -t connector # Port connectors
 sudo dmidecode -t slot      # Expansion slots
 
 # Get system serial number
@@ -126,13 +126,13 @@ sudo dmidecode -t chassis | grep Type
 sudo dmidecode -t memory
 
 # Quick summary of installed RAM
-sudo dmidecode -t memory | grep -E "Size|Type|Speed|Manufacturer|Part"
+sudo dmidecode -t memory | grep -E "^[[:space:]]+Size:|Type:|Speed:|Manufacturer|Part"
 
 # Count occupied slots
-sudo dmidecode -t memory | grep Size | grep -v "No Module"
+sudo dmidecode -t memory | grep -E "^[[:space:]]+Size:" | grep -v "No Module"
 
 # Full DIMM inventory
-sudo dmidecode -t memory | grep -A5 "Memory Device" | \
+sudo dmidecode -t memory | awk '/^Memory Device$/{show=1} show && /^$/ {show=0} show' | \
     grep -E "Size:|Speed:|Type:|Manufacturer:|Part Number:|Serial Number:"
 ```
 
@@ -143,7 +143,7 @@ sudo dmidecode -t memory | grep -A5 "Memory Device" | \
 sudo dmidecode -t processor
 
 # Get physical CPU count
-sudo dmidecode -t processor | grep "Socket Designation" | wc -l
+sudo dmidecode -t processor | grep -c "Status: Populated"
 
 # Check CPU capabilities
 sudo dmidecode -t processor | grep -E "Status|Core Count|Thread Count|Max Speed"
@@ -223,7 +223,7 @@ lspci -vvv -s 02:00.0
 lspci -vv | grep -E "^[0-9a-f]|Slot"
 
 # Find devices without drivers
-lspci -k | grep -A2 "Kernel driver" | grep -v "Kernel driver"
+lspci -k | awk '/^[[:xdigit:]]/{if (dev && !driver) print dev; dev=$0; driver=0} /Kernel driver in use:/{driver=1} END{if (dev && !driver) print dev}'
 
 # Check bandwidth/speed of PCIe devices
 lspci -vv | grep -E "^[0-9a-f]|LnkSta:"
@@ -276,7 +276,7 @@ OUTPUT_FILE="/tmp/hardware-inventory-$(hostname)-$(date +%Y%m%d).txt"
     echo ""
 
     echo "=== Memory Modules ==="
-    sudo dmidecode -t memory | grep -E "Size|Speed|Type:|Manufacturer|Part Number" | \
+    sudo dmidecode -t memory | grep -E "^[[:space:]]+Size:|Speed|Type:|Manufacturer|Part Number" | \
         grep -v "No Module"
     echo ""
 
@@ -301,15 +301,15 @@ echo "Inventory saved to: $OUTPUT_FILE"
 
 ```bash
 # Total memory slots
-TOTAL_SLOTS=$(sudo dmidecode -t memory | grep "Memory Device" | wc -l)
+TOTAL_SLOTS=$(sudo dmidecode -t memory | grep -c "^Memory Device$")
 
 # Occupied slots
 OCCUPIED_SLOTS=$(sudo dmidecode -t memory | \
-    grep "Size:" | grep -v "No Module" | wc -l)
+    grep -E "^[[:space:]]+Size:" | grep -v "No Module" | wc -l)
 
 echo "Memory slots: ${OCCUPIED_SLOTS} used of ${TOTAL_SLOTS} total"
 sudo dmidecode -t memory | \
-    grep -E "Locator:|Size:|Speed:|Manufacturer:" | \
+    grep -E "Locator:|^[[:space:]]+Size:|Speed:|Manufacturer:" | \
     paste - - - -
 ```
 
@@ -317,14 +317,14 @@ sudo dmidecode -t memory | \
 
 ```bash
 # Find PCI devices with no driver loaded
-lspci -k | grep -B2 "Kernel driver in use" | grep -v "Kernel driver" | grep "^[0-9]"
+lspci -k | awk '/^[[:xdigit:]]/{if (dev && !driver) print dev; dev=$0; driver=0} /Kernel driver in use:/{driver=1} END{if (dev && !driver) print dev}'
 
 # Get vendor/device ID for unknown hardware
-lspci -nn | grep -v "Linux Foundation"
+lspci -nn -s 02:00.0  # replace with the device address from the previous command
 
 # Look up the vendor/device ID in the PCI database
-update-pciids  # update local PCI ID database
-lspci -nn | grep "0000:0000"  # unknown devices show 0000:0000
+sudo update-pciids  # update local PCI ID database
+lspci -nn
 ```
 
 ### Verifying Hardware After Maintenance
@@ -338,7 +338,7 @@ sudo lshw -short | grep -i storage
 
 # Verify all expected memory is recognized
 free -h
-sudo dmidecode -t memory | grep "Size:" | grep -v "No Module"
+sudo dmidecode -t memory | grep -E "^[[:space:]]+Size:" | grep -v "No Module"
 
 # Confirm disk is visible
 lsblk
