@@ -29,21 +29,22 @@ The apt package may be outdated. For the latest version:
 
 ```bash
 # Find the latest release at https://github.com/DNSCrypt/dnscrypt-proxy/releases
-DNSCRYPT_VERSION="2.1.5"
-ARCH="linux_amd64"
+DNSCRYPT_VERSION="2.1.15"
+PLATFORM="linux_x86_64"     # Asset filename uses underscores
+EXTRACT_DIR="linux-x86_64"   # Tarball extracts to a dash-separated directory
 
-wget https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${DNSCRYPT_VERSION}/dnscrypt-proxy-${ARCH}-${DNSCRYPT_VERSION}.tar.gz \
+wget https://github.com/DNSCrypt/dnscrypt-proxy/releases/download/${DNSCRYPT_VERSION}/dnscrypt-proxy-${PLATFORM}-${DNSCRYPT_VERSION}.tar.gz \
   -O /tmp/dnscrypt-proxy.tar.gz
 
 tar -xzf /tmp/dnscrypt-proxy.tar.gz -C /tmp
 
 # Move to system path
-sudo mv /tmp/${ARCH}/dnscrypt-proxy /usr/local/bin/
+sudo mv /tmp/${EXTRACT_DIR}/dnscrypt-proxy /usr/local/bin/
 sudo chmod +x /usr/local/bin/dnscrypt-proxy
 
 # Copy the example config
 sudo mkdir -p /etc/dnscrypt-proxy
-sudo cp /tmp/${ARCH}/example-dnscrypt-proxy.toml /etc/dnscrypt-proxy/dnscrypt-proxy.toml
+sudo cp /tmp/${EXTRACT_DIR}/example-dnscrypt-proxy.toml /etc/dnscrypt-proxy/dnscrypt-proxy.toml
 ```
 
 ## Understanding the Configuration
@@ -82,10 +83,10 @@ Or filter by capabilities:
 ```toml
 [sources]
   [sources.'public-resolvers']
-  url = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md', 'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md']
+  urls = ['https://raw.githubusercontent.com/DNSCrypt/dnscrypt-resolvers/master/v3/public-resolvers.md', 'https://download.dnscrypt.info/resolvers-list/v3/public-resolvers.md']
   cache_file = '/var/cache/dnscrypt-proxy/public-resolvers.md'
   minisign_key = 'RWQf6LRCGA9i53mlYecO4IzT51TGPpvWucNSCh1CBM0QTaLn73Y7GFO3'
-  refresh_delay = 72
+  refresh_delay = 73
 
 # Require servers with these properties:
 require_dnssec = true       # Only use resolvers with DNSSEC support
@@ -112,7 +113,7 @@ server_names = ['cloudflare']
 server_names = [
   'cloudflare',
   'cloudflare-ipv6',
-  'quad9-doh-ip4-filter-pri',
+  'quad9-doh-ip4-port443-filter-pri',
   'nextdns',
 ]
 ```
@@ -123,14 +124,13 @@ DNSCrypt uses UDP/TCP with a different encryption mechanism than DoH:
 
 ```toml
 # Use only DNSCrypt resolvers (not DoH)
-server_names = ['quad9-dnscrypt-ip4-filter-pri', 'cloudflare-dnscrypt']
+server_names = ['quad9-dnscrypt-ip4-filter-pri', 'cisco']
 
-# Or specify protocols in the filter
-[filters]
-  ipv4 = true
-  ipv6 = true
-  # Only use DNSCrypt protocol (not DoH)
-  # This filters resolvers by protocol
+# Or restrict by protocol/transport at the top level
+ipv4_servers = true
+ipv6_servers = false
+dnscrypt_servers = true
+doh_servers = false        # Disable DoH so only DNSCrypt resolvers are picked
 ```
 
 ## DNS Query Logging
@@ -152,7 +152,7 @@ Logging helps with debugging and gives you visibility into what's being resolved
 [query_log]
   file = '/var/log/dnscrypt-proxy/query.log'
   format = 'tsv'
-  # Don't log queries matching these patterns
+  # Don't log queries of these record types (e.g. skip reverse PTR lookups)
   ignored_qtypes = ['PTR']
 ```
 
@@ -194,8 +194,7 @@ wc -l /etc/dnscrypt-proxy/blocklist.txt
 Point specific domains to custom IP addresses - useful for local development or split DNS:
 
 ```toml
-[cloaking_rules]
-  cloaking_rules_file = '/etc/dnscrypt-proxy/cloaking-rules.txt'
+cloaking_rules = '/etc/dnscrypt-proxy/cloaking-rules.txt'
 ```
 
 ```bash
@@ -317,16 +316,16 @@ sudo tcpdump -i any -n "tcp port 443 and host 1.1.1.1"
 
 ```toml
 # Use parallel queries to multiple resolvers and take the fastest response
-lb_strategy = 'p2'   # p2 = pick 2 random servers, use the faster one
+lb_strategy = 'p2'   # p2 = pick 1 of the 2 fastest servers by latency
 lb_estimator = true   # Learn which servers are fastest over time
 
-# Cache DNS responses locally
-[cache]
-  size = 4096          # Cache up to 4096 entries
-  min_ttl = 2400       # Minimum TTL for cached entries (40 minutes)
-  max_ttl = 86400      # Maximum TTL (24 hours)
-  neg_min_ttl = 60     # TTL for negative responses (NXDOMAIN)
-  neg_max_ttl = 600    # Max TTL for negative responses
+# Cache DNS responses locally (these are top-level keys, not a [cache] section)
+cache = true
+cache_size = 4096          # Cache up to 4096 entries
+cache_min_ttl = 2400       # Minimum TTL for cached entries (40 minutes)
+cache_max_ttl = 86400      # Maximum TTL (24 hours)
+cache_neg_min_ttl = 60     # TTL for negative responses (NXDOMAIN)
+cache_neg_max_ttl = 600    # Max TTL for negative responses
 ```
 
 With caching enabled, repeated queries for the same domain return instantly without any network round-trip.
