@@ -77,22 +77,17 @@ HandleLidSwitchExternalPower=ignore
 HandlePowerKeyLongPress=poweroff
 HandleRebootKey=reboot
 
-# Idle timeout before session auto-lock (0 = disabled)
+# Action to take after all sessions report idle
 IdleAction=ignore
 IdleActionSec=30min
 
-# Session inactivity time before lock
-# (different from IdleAction which acts on idle sessions)
+# To lock sessions after the idle delay, use IdleAction=lock
 
-# Allow power operations without authentication (for desktop environments)
-# on servers, typically set to yes to prevent accidental shutdown
+# Maximum delay allowed for delay-mode sleep/shutdown inhibitors
 InhibitDelayMaxSec=5
 
-# Limit concurrent logins per user (0 = unlimited)
-UserTasksMax=33%
-
-# Require authentication for power operations even on the local seat
-# HandlePowerKey default depends on whether a seat is managed by a desktop session
+# Limit the total number of sessions logind manages
+SessionsMax=8192
 ```
 
 Apply changes:
@@ -119,7 +114,7 @@ HandlePowerKey=ignore
 # Useful if you run tmux/screen sessions
 KillUserProcesses=no
 
-# No automatic suspend/hibernate on servers
+# No suspend/hibernate key handling on servers
 HandleSuspendKey=ignore
 HandleHibernateKey=ignore
 
@@ -212,7 +207,7 @@ logind handles ACPI events and controls when the system can sleep:
 # Check current power settings
 loginctl show | grep -E "Handle|Idle"
 
-# Change power key behavior at runtime
+# Temporarily prevent logind from handling the power key
 sudo systemd-inhibit --what=handle-power-key sleep 3600 &
 
 # List active inhibitors (things preventing sleep/shutdown)
@@ -246,7 +241,7 @@ systemd-inhibit --list
 # Example output:
 # WHO        WHAT                 WHY                         MODE
 # apt        sleep:shutdown       Package update in progress  block
-# firefox    handle-suspend-key   Playing media               delay
+# firefox    idle                 Playing media               block
 
 # Create an inhibitor lock from a script
 # (lock is released when the script exits)
@@ -301,10 +296,8 @@ HandleSuspendKey=ignore
 HandleHibernateKey=ignore
 HandleLidSwitch=ignore
 
-# Allow maximum concurrent SSH sessions per user
-# 0 = unlimited
-# Set a reasonable limit on shared servers
-# UserTasksMax=200
+# Limit the total number of sessions logind manages on shared servers
+# SessionsMax=200
 ```
 
 ## Tracking Session Activity
