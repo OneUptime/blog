@@ -59,7 +59,8 @@ MAILADDR admin@example.com
 # Optional: identify this host in alert subjects
 MAILFROM mdadm@server01.example.com
 
-# Monitor these arrays (or use ARRAY <ignore> to monitor all)
+# mdadm --monitor watches all arrays in /proc/mdstat by default;
+# ARRAY lines below are used for assembly, not to opt arrays into monitoring.
 ARRAY /dev/md0 UUID=xxxxxxxx:xxxx:xxxx:xxxx
 ```
 
@@ -166,7 +167,7 @@ sudo nano /etc/smartd.conf
 ```
 
 ```text
-# Monitor all disks, check hourly, email on failures
+# Monitor all disks, email on failures (smartd polls every 30 minutes by default)
 # -a: enable all checks
 # -o on: enable offline testing
 # -S on: enable attribute autosave
@@ -253,6 +254,7 @@ sudo cp node_exporter-1.7.0.linux-amd64/node_exporter /usr/local/bin/
 # Key metrics:
 # node_md_disks{state="active"} - active disks per array
 # node_md_disks{state="failed"} - failed disks per array
+# node_md_disks_required - required number of disks per array
 # node_md_state{state="active"} - array is active (1) or not (0)
 # node_md_blocks_synced - blocks synced during rebuild
 ```
@@ -265,13 +267,13 @@ groups:
   - name: raid
     rules:
       - alert: RaidArrayDegraded
-        expr: node_md_disks{state="active"} < node_md_disks_total
+        expr: node_md_disks{state="active"} < node_md_disks_required
         for: 1m
         labels:
           severity: critical
         annotations:
           summary: "RAID array {{ $labels.device }} is degraded"
-          description: "{{ $value }} active disks, expected {{ $labels.total }}"
+          description: "Only {{ $value }} active disks (fewer than required)"
 
       - alert: RaidDiskFailed
         expr: node_md_disks{state="failed"} > 0
