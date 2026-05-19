@@ -225,7 +225,7 @@ c['www'] = {
             util.AnyEndpointMatcher(role="admins"),
         ],
         roleMatchers=[
-            util.RolesFromEmails(admins=["admin"])
+            util.RolesFromUsername(roles=["admins"], usernames=["admin"])
         ]
     )
 }
@@ -255,10 +255,12 @@ PYEOF
 # As buildbot user with venv active
 
 # Create a worker
+# Arguments: <worker-dir> <master-host:port> <worker-name> <password>
+# The worker name and password must match what is in master.cfg
 buildbot-worker create-worker /opt/buildbot/worker \
-    localhost:9989 \         # Master host:port
-    "local-worker" \         # Worker name (must match master.cfg)
-    "worker-secret-password"  # Password (must match master.cfg)
+    localhost:9989 \
+    "local-worker" \
+    "worker-secret-password"
 
 # Set worker info
 echo "Ubuntu 22.04 Build Worker" > /opt/buildbot/worker/info/host
@@ -408,8 +410,8 @@ buildbot sendchange --master localhost:9989 \
     --project yourrepo \
     yourrepo
 
-# Check master status
-buildbot statuslog /opt/buildbot/master
+# Check master log to confirm the change was received
+sudo tail -f /opt/buildbot/master/twistd.log
 ```
 
 ## Updating Configuration
