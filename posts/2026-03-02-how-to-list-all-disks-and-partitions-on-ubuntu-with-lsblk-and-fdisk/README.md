@@ -48,7 +48,7 @@ lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,UUID,MODEL,SERIAL
 # Show only physical disks, not partitions
 lsblk -d
 
-# Include empty drives (not mounted)
+# Disable built-in filters and include empty devices and RAM disks
 lsblk -a
 
 # Output as JSON for scripting
@@ -114,8 +114,8 @@ sudo fdisk -l /dev/sdb
 # List only partition tables without disk info
 sudo fdisk -l | grep "^/dev/"
 
-# Show sector units (default) or in KB/MB
-sudo fdisk -l --bytes  # Show in bytes
+# Show SIZE in bytes rather than the default human-readable format
+sudo fdisk -l --bytes
 ```
 
 ## blkid - Block Device IDs
