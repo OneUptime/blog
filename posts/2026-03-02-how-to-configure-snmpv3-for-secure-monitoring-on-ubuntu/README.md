@@ -35,7 +35,7 @@ sudo download-mibs
 
 The `net-snmp-create-v3-user` tool is the correct way to create users on Ubuntu. It handles the key derivation and writes to the right files.
 
-**Stop snmpd before creating users** - the user database is only written at startup:
+**Stop snmpd before creating users** - Net-SNMP's persistent user database should be modified while the agent is not running:
 
 ```bash
 sudo systemctl stop snmpd
@@ -58,12 +58,11 @@ sudo net-snmp-create-v3-user \
   adminuser
 ```
 
-This command adds entries to `/var/lib/snmp/snmpd.conf`. View them:
+This command adds entries to `/var/lib/snmp/snmpd.conf`. Before `snmpd` starts, the file can contain `createUser` lines with passphrases, so keep it readable only by root. After `snmpd` starts, Net-SNMP rewrites those entries as localized USM keys:
 
 ```bash
-cat /var/lib/snmp/snmpd.conf
-# Output contains hashed credentials:
-# createUser monitoruser SHA "hashed..." AES "hashed..."
+sudo cat /var/lib/snmp/snmpd.conf
+# Output after snmpd starts contains usmUser entries with localized keys.
 ```
 
 ## Configuring snmpd for SNMPv3
@@ -84,10 +83,10 @@ agentaddress udp:161
 
 # --- Access Control ---
 
-# Read-only access for monitoruser
-rouser monitoruser priv
+# Read-only access for monitoruser, restricted to the view defined below
+rouser monitoruser priv -V restricted
 
-# Read-write access for adminuser (restrict to specific OIDs in production)
+# Read-write access for adminuser (required for snmpusm user management; use carefully)
 rwuser adminuser priv
 
 # --- SNMP v1/v2c (disable these in production) ---
@@ -109,8 +108,8 @@ view restricted    included .1.3.6.1.2.1.2       # Interfaces
 view restricted    included .1.3.6.1.2.1.25      # Host resources
 view restricted    included .1.3.6.1.4.1.2021    # UCD-SNMP (Linux metrics)
 
-# Apply the view to the user (if not using default 'all')
-# access monitorgroup "" usm priv prefix restricted none none
+# If you want full-tree access instead, use the 'all' view:
+# rouser monitoruser priv -V all
 
 # --- Monitoring configuration ---
 
@@ -127,8 +126,7 @@ proc cron  2 1
 # Load average thresholds
 load 15.0 10.0 5.0
 
-# --- Performance tuning ---
-# Reduce load from many simultaneous queries
+# --- AgentX support for subagents ---
 agentXSocket /var/agentx/master
 master agentx
 ```
@@ -147,17 +145,9 @@ sudo ss -ulnp | grep 161
 ## Testing SNMPv3 Connectivity
 
 ```bash
-# Test with noAuthNoPriv (no security - just verify the user exists)
-snmpget -v 3 -u monitoruser -l noAuthNoPriv \
-  localhost SNMPv2-MIB::sysDescr.0
-
-# Test with authNoPriv (authentication only)
-snmpget -v 3 \
-  -u monitoruser \
-  -l authNoPriv \
-  -a SHA \
-  -A "my_auth_passphrase_min32chars" \
-  localhost SNMPv2-MIB::sysDescr.0
+# With the rouser/rwuser lines above, monitoruser requires authPriv.
+# noAuthNoPriv and authNoPriv should fail unless you explicitly configure
+# that user with a lower minimum security level.
 
 # Test with authPriv (full security - use this in production)
 snmpget -v 3 \
@@ -236,20 +226,20 @@ sudo iptables -A INPUT -p udp --dport 161 -j DROP
 When you need to change passphrases:
 
 ```bash
-# Use snmpusm to change passphrases remotely
+# Use a read-write SNMPv3 user to change passphrases remotely
 # Change authentication passphrase
-snmpusm -v 3 -u monitoruser -l authPriv \
-  -a SHA -A "old_auth_passphrase" \
-  -x AES -X "old_priv_passphrase" \
-  localhost passwd \
-  "old_auth_passphrase" "new_auth_passphrase"
+snmpusm -v 3 -u adminuser -l authPriv \
+  -a SHA -A "rw_auth_passphrase_here" \
+  -x AES -X "rw_priv_passphrase_here" \
+  -Ca localhost passwd \
+  "old_auth_passphrase" "new_auth_passphrase" monitoruser
 
 # Change privacy passphrase
-snmpusm -v 3 -u monitoruser -l authPriv \
-  -a SHA -A "new_auth_passphrase" \
-  -x AES -X "old_priv_passphrase" \
-  localhost passwd \
-  -x "old_priv_passphrase" "new_priv_passphrase"
+snmpusm -v 3 -u adminuser -l authPriv \
+  -a SHA -A "rw_auth_passphrase_here" \
+  -x AES -X "rw_priv_passphrase_here" \
+  -Cx localhost passwd \
+  "old_priv_passphrase" "new_priv_passphrase" monitoruser
 ```
 
 Or recreate the user entirely:
@@ -297,7 +287,7 @@ Nagios service definition for load monitoring:
 define service {
     host_name               web-server-01
     service_description     Load Average
-    check_command           check_snmp_v3_load
+    check_command           check_snmp_v3_load!my_auth_passphrase_min32chars!my_priv_passphrase_min32chars
     check_interval          5
     retry_interval          1
 }
@@ -322,11 +312,11 @@ The Prometheus SNMP exporter translates SNMP data to the Prometheus format:
 
 ```bash
 # Install snmp_exporter
-wget https://github.com/prometheus/snmp_exporter/releases/download/v0.26.0/snmp_exporter-0.26.0.linux-amd64.tar.gz
-tar -xzf snmp_exporter-0.26.0.linux-amd64.tar.gz
-sudo mv snmp_exporter-0.26.0.linux-amd64/snmp_exporter /usr/local/bin/
+wget https://github.com/prometheus/snmp_exporter/releases/download/v0.30.1/snmp_exporter-0.30.1.linux-amd64.tar.gz
+tar -xzf snmp_exporter-0.30.1.linux-amd64.tar.gz
+sudo mv snmp_exporter-0.30.1.linux-amd64/snmp_exporter /usr/local/bin/
 
-# Configure with SNMPv3 credentials
+# Add SNMPv3 credentials to your generated or default snmp.yml
 sudo nano /etc/snmp_exporter/snmp.yml
 ```
 
