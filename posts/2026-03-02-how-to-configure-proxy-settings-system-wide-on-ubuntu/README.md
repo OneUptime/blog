@@ -23,7 +23,7 @@ The main configuration layers are:
 
 ## Setting System-Wide Environment Variables
 
-The `/etc/environment` file is the right place for system-wide environment variables that apply to all users and all sessions. It's not a shell script - just key=value pairs.
+The `/etc/environment` file is the right place for system-wide environment variables that apply to PAM login sessions for all users. It's not a shell script - just key=value pairs.
 
 ```bash
 # Edit the system environment file
@@ -63,7 +63,7 @@ Be cautious with credentials in this file - it's readable by all users by defaul
 
 ## Using /etc/profile.d/ for Shell Sessions
 
-For interactive shell sessions and scripts, creating a file in `/etc/profile.d/` gives you more control. These files are sourced by `/etc/profile` for bash sessions.
+For login shell sessions, creating a file in `/etc/profile.d/` gives you more control. These files are sourced by `/etc/profile` for Bourne-compatible login shells, including bash login shells.
 
 ```bash
 # Create a proxy configuration script
@@ -84,8 +84,8 @@ export NO_PROXY="localhost,127.0.0.1,::1,.internal.example.com"
 ```
 
 ```bash
-# Make it executable
-sudo chmod +x /etc/profile.d/proxy.sh
+# Make it readable
+sudo chmod 644 /etc/profile.d/proxy.sh
 
 # Test by sourcing manually or starting a new shell
 source /etc/profile.d/proxy.sh
@@ -105,7 +105,7 @@ sudo nano /etc/apt/apt.conf.d/95proxy
 # APT proxy configuration
 Acquire::http::Proxy "http://proxy.example.com:3128/";
 Acquire::https::Proxy "http://proxy.example.com:3128/";
-Acquire::ftp::Proxy "http://proxy.example.com:3128/";
+Acquire::ftp::Proxy "ftp://proxy.example.com:2121/";
 
 # Direct connections for specific hosts (no proxy)
 Acquire::http::Proxy::ppa.launchpad.net "DIRECT";
@@ -118,11 +118,11 @@ Test the APT proxy:
 sudo apt update
 ```
 
-If you want APT to pick up the environment variable instead, you can use:
+If you want APT to pick up the environment variable instead, remove any explicit `Acquire::http::Proxy` or `Acquire::https::Proxy` setting. APT uses `http_proxy` and `https_proxy` only when no APT proxy option is configured; the special value `DIRECT` means "do not use a proxy".
 
 ```bash
-# Tell APT to use environment variable (less reliable)
-echo 'Acquire::http::Proxy "DIRECT";' | sudo tee /etc/apt/apt.conf.d/00no-proxy
+# Remove the APT-specific proxy file so APT can fall back to environment variables
+sudo rm /etc/apt/apt.conf.d/95proxy
 ```
 
 ## Configuring Proxy for systemd Services
