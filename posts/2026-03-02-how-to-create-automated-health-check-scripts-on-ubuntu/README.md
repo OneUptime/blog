@@ -68,7 +68,7 @@ check_service() {
 send_alert() {
     local subject="$1"
     local body="$2"
-    echo "$body" | mail -s "$subject" "$ALERT_EMAIL"
+    printf '%b\n' "$body" | mail -s "$subject" "$ALERT_EMAIL"
 }
 
 # Run checks
@@ -103,7 +103,7 @@ check_port() {
     local port="$2"
     local timeout="${3:-5}"
 
-    if timeout "$timeout" bash -c "echo >/dev/tcp/$host/$port" 2>/dev/null; then
+    if timeout "$timeout" bash -c 'echo >"/dev/tcp/$1/$2"' _ "$host" "$port" 2>/dev/null; then
         echo "OK: $host:$port is reachable"
         return 0
     else
@@ -322,6 +322,11 @@ check_queue_depth() {
     local max_depth="${1:-1000}"
     local depth
     depth=$(redis-cli llen myapp:queue 2>/dev/null)
+
+    if ! [[ "$depth" =~ ^[0-9]+$ ]]; then
+        echo "FAIL: Could not read queue depth from Redis"
+        return 1
+    fi
 
     if [ "$depth" -gt "$max_depth" ]; then
         echo "FAIL: Queue depth is $depth (max: $max_depth)"
