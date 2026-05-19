@@ -10,7 +10,7 @@ Description: Learn how to deploy Taiga, an open-source agile project management 
 
 Taiga is an open-source project management platform designed for agile teams. It supports Scrum (sprints, user stories, backlog), Kanban boards, epics, issues, wiki pages, and time tracking - the full feature set you'd expect from a commercial project management tool. Running your own instance means your project data stays on infrastructure you control, and there's no per-seat licensing.
 
-The recommended deployment method is Docker Compose, which handles the multiple services Taiga needs (backend, frontend, async workers, events, database, cache) without requiring you to manage each component separately.
+The recommended deployment method is Docker Compose, which handles the multiple services Taiga needs (backend, frontend, async workers, events, database, message broker) without requiring you to manage each component separately.
 
 ## Prerequisites
 
@@ -55,11 +55,9 @@ cd /opt/taiga
 
 ## Configuring Environment Variables
 
-The main configuration is in the `.env` file:
+The main configuration is in the `.env` file, which ships with example values you edit in place:
 
 ```bash
-# Copy the example environment file
-cp .env.example .env
 nano .env
 ```
 
@@ -68,48 +66,42 @@ Key settings to configure:
 ```bash
 # === MUST CONFIGURE THESE ===
 
+# Taiga's URLs - serve via http/https and ws/wss
+TAIGA_SCHEME=https           # use "http" or "https"
+TAIGA_DOMAIN=taiga.example.com
+SUBPATH=""                   # leave empty if serving at root, or use "/subpath"
+WEBSOCKETS_SCHEME=wss        # use "ws" or "wss"
+
 # Secret key for cryptographic operations - generate a random string
 # python3 -c "import secrets; print(secrets.token_urlsafe(50))"
-SECRET_KEY=your-very-long-random-secret-key-here
+SECRET_KEY="your-very-long-random-secret-key-here"
 
-# Your server's domain or IP
-TAIGA_DOMAIN=taiga.example.com
-TAIGA_SUBPATH=""  # Leave empty if serving at root
+# Database (PostgreSQL credentials used by taiga-db)
+POSTGRES_USER=taiga
+POSTGRES_PASSWORD=change-this-password
 
-# URLs
-TAIGA_BACKEND_URL=https://taiga.example.com
-TAIGA_FRONTEND_URL=https://taiga.example.com
-TAIGA_EVENTS_URL=wss://taiga.example.com/events
-
-# Email configuration
-EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
-DEFAULT_FROM_EMAIL=taiga@example.com
-EMAIL_USE_TLS=True
-EMAIL_USE_SSL=False
+# Email configuration - use "smtp" or "console" (console just prints emails)
+EMAIL_BACKEND=smtp
 EMAIL_HOST=smtp.example.com
 EMAIL_PORT=587
 EMAIL_HOST_USER=taiga@example.com
 EMAIL_HOST_PASSWORD=your-smtp-password
+EMAIL_DEFAULT_FROM=taiga@example.com
+# EMAIL_USE_TLS and EMAIL_USE_SSL are mutually exclusive
+EMAIL_USE_TLS=True
+EMAIL_USE_SSL=False
 
-# Public registration (set to False for private instances)
-PUBLIC_REGISTER_ENABLED=True
-
-# Database (can leave as default for Docker setup)
-POSTGRES_DB=taiga
-POSTGRES_USER=taiga
-POSTGRES_PASSWORD=change-this-password
-POSTGRES_HOST=taiga-db
-
-# RabbitMQ
+# RabbitMQ (used for both async tasks and realtime events)
 RABBITMQ_USER=taiga
 RABBITMQ_PASS=change-this-password
 RABBITMQ_VHOST=taiga
-RABBITMQ_HOST=taiga-async-rabbitmq
+RABBITMQ_ERLANG_COOKIE=secret-erlang-cookie
 
-# Object storage (MinIO for file attachments)
-AWS_ACCESS_KEY_ID=taiga-minio
-AWS_SECRET_ACCESS_KEY=change-this-minio-password
-AWS_STORAGE_BUCKET_NAME=taiga
+# Attachment token lifetime (seconds)
+ATTACHMENTS_MAX_AGE=360
+
+# Anonymous telemetry
+ENABLE_TELEMETRY=True
 ```
 
 ## Reviewing the Docker Compose Configuration
@@ -122,12 +114,13 @@ cat docker-compose.yml
 The compose file starts these services:
 - `taiga-db` - PostgreSQL database
 - `taiga-async-rabbitmq` - RabbitMQ for async tasks
+- `taiga-events-rabbitmq` - RabbitMQ for realtime events
 - `taiga-back` - Django backend
-- `taiga-async` - Celery worker for background tasks
-- `taiga-front` - Angular frontend
+- `taiga-async` - worker for background tasks
+- `taiga-front` - frontend
 - `taiga-events` - WebSocket events server
-- `taiga-protected` - Protected file storage service
-- `taiga-gateway` - nginx gateway that routes to all services
+- `taiga-protected` - protected attachment download service
+- `taiga-gateway` - nginx gateway (exposed on host port 9000) that routes to all services
 
 ## Starting Taiga
 
@@ -229,7 +222,7 @@ Update the `.env` file to use HTTPS and restart:
 ```bash
 cd /opt/taiga
 docker compose down
-# Update TAIGA_BACKEND_URL and TAIGA_FRONTEND_URL to https://
+# Set TAIGA_SCHEME=https and WEBSOCKETS_SCHEME=wss in .env
 docker compose up -d
 ```
 
@@ -241,7 +234,7 @@ docker compose exec taiga-db pg_dump -U taiga taiga | \
     gzip > /var/backups/taiga-db-$(date +%Y%m%d).sql.gz
 
 # Backup the media files (attachments, avatars)
-docker compose exec taiga-back tar czf - /taiga/media | \
+docker compose exec -T taiga-back tar czf - /taiga-back/media | \
     sudo tee /var/backups/taiga-media-$(date +%Y%m%d).tar.gz > /dev/null
 
 # Create a backup script
