@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Samba, Security, Auditing, Logging
 
-Description: Set up Samba audit logging on Ubuntu using the full_audit VFS module to track file access, creation, deletion, and authentication events for compliance and security monitoring.
+Description: Set up Samba audit logging on Ubuntu using the full_audit VFS module to track file access, creation, deletion, and other share-level file operations for compliance and security monitoring.
 
 ---
 
@@ -26,8 +26,9 @@ Samba must be installed and running:
 sudo apt update
 sudo apt install samba -y
 
-# Verify the full_audit module is available
-smbd -b | grep MODULES
+# Verify the Samba VFS module directory, then check for full_audit
+smbd -b | grep MODULESDIR
+find /usr/lib -path '*/samba/vfs/full_audit.so' -print
 ```
 
 ## Configuring full_audit on a Share
@@ -46,8 +47,7 @@ Add the `full_audit` VFS module to a share definition:
    server string = Ubuntu Samba Server
    log file = /var/log/samba/log.%m
    max log size = 1000
-   logging = syslog
-   syslog = 3
+   logging = syslog@1 file
 
 [audited-share]
    comment = Share with Audit Logging
@@ -60,7 +60,7 @@ Add the `full_audit` VFS module to a share definition:
    vfs objects = full_audit
 
    # What to log on success
-   full_audit:success = open read write rename unlink mkdir rmdir connect disconnect
+   full_audit:success = open read write renameat unlinkat mkdirat connect disconnect
 
    # What to log on failure
    full_audit:failure = connect open
@@ -72,7 +72,7 @@ Add the `full_audit` VFS module to a share definition:
    full_audit:facility = LOCAL5
 
    # Format of each log entry
-   # %u = username, %I = client IP, %S = share name, %f = file/object, %o = operation
+   # %u = username, %I = client IP, %S = share name
    full_audit:prefix = %u|%I|%S
 ```
 
@@ -84,23 +84,23 @@ The operations you can audit include:
 - `open` / `close` - file open/close
 - `read` / `pread` - file reads
 - `write` / `pwrite` - file writes
-- `rename` - file/directory renames
-- `unlink` - file deletions
-- `mkdir` / `rmdir` - directory creation/deletion
-- `chmod` / `chown` - permission changes
-- `lock` / `unlock` - file locking
+- `renameat` - file/directory renames
+- `unlinkat` - file/directory deletions
+- `mkdirat` - directory creation
+- `fchmod` / `fchown` / `lchown` - permission and ownership changes
+- `lock` - file locking
 
 For comprehensive auditing:
 
 ```ini
-full_audit:success = connect disconnect open close read write rename unlink mkdir rmdir chmod chown lock
+full_audit:success = connect disconnect open close read write renameat unlinkat mkdirat fchmod fchown lchown lock
 full_audit:failure = connect open
 ```
 
 For lighter auditing that focuses on changes:
 
 ```ini
-full_audit:success = open write rename unlink mkdir rmdir connect
+full_audit:success = open write renameat unlinkat mkdirat connect
 full_audit:failure = connect open
 ```
 
@@ -174,7 +174,7 @@ After editing `smb.conf`, validate and reload:
 # Test configuration syntax
 testparm
 
-# Reload Samba without dropping connections
+# Reload Samba; existing share connections may need to reconnect for share-level changes
 sudo smbcontrol smbd reload-config
 
 # Or restart fully
@@ -186,10 +186,10 @@ sudo systemctl restart smbd
 With the prefix format `%u|%I|%S`, log entries look like:
 
 ```text
-Mar 02 10:23:45 ubuntu smbd_audit: alice|192.168.1.101|audited-share|ok|open|documents/report.docx
-Mar 02 10:23:46 ubuntu smbd_audit: alice|192.168.1.101|audited-share|ok|write|documents/report.docx
-Mar 02 10:24:01 ubuntu smbd_audit: bob|192.168.1.102|audited-share|ok|connect|.
-Mar 02 10:24:05 ubuntu smbd_audit: bob|192.168.1.102|audited-share|FAILED|open|documents/confidential.pdf
+Mar 02 10:23:45 ubuntu smbd_audit: alice|192.168.1.101|audited-share|open|ok|documents/report.docx
+Mar 02 10:23:46 ubuntu smbd_audit: alice|192.168.1.101|audited-share|write|ok|documents/report.docx
+Mar 02 10:24:01 ubuntu smbd_audit: bob|192.168.1.102|audited-share|connect|ok|.
+Mar 02 10:24:05 ubuntu smbd_audit: bob|192.168.1.102|audited-share|open|fail|documents/confidential.pdf
 ```
 
 Each entry contains:
@@ -197,24 +197,24 @@ Each entry contains:
 - Hostname and process
 - `smbd_audit:` prefix
 - Your prefix format (user, IP, share)
-- Result (`ok` or `FAILED`)
 - Operation type
+- Result (`ok` or `fail`)
 - File or directory affected
 
 ## Parsing Audit Logs with Common Tools
 
 ```bash
 # See all failed access attempts
-sudo grep "FAILED" /var/log/samba/audit.log
+sudo grep "|fail|" /var/log/samba/audit.log
 
 # Count file deletions per user
-sudo grep "|ok|unlink|" /var/log/samba/audit.log | awk -F'|' '{print $1}' | sort | uniq -c | sort -rn
+sudo grep "|unlinkat|ok|" /var/log/samba/audit.log | awk -F'|' '{sub(/^.*smbd_audit: /, "", $1); print $1}' | sort | uniq -c | sort -rn
 
 # Find all activity from a specific IP
 sudo grep "192.168.1.101" /var/log/samba/audit.log
 
 # Find all renames (useful for tracking ransomware activity)
-sudo grep "|ok|rename|" /var/log/samba/audit.log | tail -50
+sudo grep "|renameat|ok|" /var/log/samba/audit.log | tail -50
 
 # Activity in the last hour
 sudo grep "$(date '+%b %d %H')" /var/log/samba/audit.log
@@ -230,7 +230,7 @@ If you also use other VFS modules (like `recycle` for a recycle bin), stack them
    vfs objects = full_audit recycle
 
    # full_audit settings
-   full_audit:success = open write rename unlink mkdir rmdir connect disconnect
+   full_audit:success = open write renameat unlinkat mkdirat connect disconnect
    full_audit:failure = connect open
    full_audit:priority = NOTICE
    full_audit:facility = LOCAL5
@@ -261,7 +261,8 @@ Or use Filebeat to ship logs to Elasticsearch:
 ```yaml
 # /etc/filebeat/filebeat.yml
 filebeat.inputs:
-  - type: log
+  - type: filestream
+    id: samba-audit
     enabled: true
     paths:
       - /var/log/samba/audit.log
