@@ -21,8 +21,11 @@ sudo zpool status -v
 ```text
   pool: tank
  state: DEGRADED
-status: One or more devices has been removed by the administrator.
-action: Online the device using 'zpool online' or replace the device with 'zpool replace'.
+status: One or more devices are faulted in response to persistent errors.
+        Sufficient replicas exist for the pool to continue functioning in a
+        degraded state.
+action: Replace the faulted device, or use 'zpool clear' to mark the device
+        repaired.
   scan: scrub repaired 0 in 01:23:45 with 0 errors on Sun Mar  1 03:00:00 2026
 config:
 
@@ -171,7 +174,7 @@ config:
         tank              DEGRADED     0     0     0
           mirror-0        DEGRADED     0     0     0
             sdb           ONLINE       0     0     0
-            replacing-0   UNAVAIL      0     0     0
+            replacing-0   DEGRADED     0     0     0
               sdc         OFFLINE      0     0     0
               sdd         ONLINE       0     0     0 (resilvering)
 
