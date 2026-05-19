@@ -14,7 +14,7 @@ That said, this is not a trivial operation. A backup beforehand is non-negotiabl
 
 ## How btrfs-convert Works
 
-`btrfs-convert` converts an unmounted ext4 filesystem to Btrfs without moving any file data. Instead, it creates the Btrfs metadata structures around the existing ext2/ext3/ext4 data. The original ext4 filesystem image is preserved inside the Btrfs volume as a subvolume called `ext2_saved`, which gives you a rollback path if something goes wrong.
+`btrfs-convert` converts an unmounted ext4 filesystem to Btrfs without moving any file data. Instead, it creates the Btrfs metadata structures around the existing ext2/ext3/ext4 data. The original ext4 filesystem image is preserved inside the Btrfs volume as an `image` file in a subvolume called `ext2_saved`, which gives you a rollback path if something goes wrong.
 
 After conversion, you can fully transition to Btrfs by removing the saved ext4 image, which frees up space.
 
@@ -144,11 +144,14 @@ Note that Btrfs does not use fsck for mount-time checks, so the last field shoul
 
 ## Step 6: Verify the Rollback Path
 
-The `ext2_saved` subvolume contains the original ext4 image. You can mount it to verify your data is still accessible via the original ext4 layout:
+The `ext2_saved` subvolume contains the original ext4 image. You can mount the subvolume, then loop-mount the image read-only to verify your data is still accessible via the original ext4 layout:
 
 ```bash
 # Mount the ext2_saved subvolume
-sudo mount -o subvol=ext2_saved /dev/sdb1 /mnt/ext4-backup
+sudo mount -o subvol=ext2_saved /dev/sdb1 /mnt/ext2-saved
+
+# Mount the ext4 image inside it read-only
+sudo mount -t ext4 -o loop,ro /mnt/ext2-saved/image /mnt/ext4-backup
 
 # Verify files
 ls /mnt/ext4-backup
@@ -157,6 +160,8 @@ ls /mnt/ext4-backup
 To roll back to ext4 entirely:
 
 ```bash
+sudo umount /mnt/ext4-backup
+sudo umount /mnt/ext2-saved
 sudo umount /mnt/target
 sudo btrfs-convert -r /dev/sdb1
 ```
@@ -226,7 +231,7 @@ sudo btrfs scrub status /mnt/target
 
 **No RAID after single-device conversion.** To use Btrfs RAID, add additional devices and rebalance with a RAID profile.
 
-**Snapshot deduplication.** Files that were hardlinks in ext4 are not automatically converted to shared extents in Btrfs. They become separate copies.
+**Deduplication.** Separate files with identical contents are not automatically converted to shared extents in Btrfs. Btrfs supports out-of-band deduplication, but you need a separate deduplication tool for that.
 
 **Kernel version matters.** Older kernels may have bugs with Btrfs features. Ubuntu LTS releases ship with kernels that have solid Btrfs support, but running a current kernel is always safer for Btrfs workloads.
 
