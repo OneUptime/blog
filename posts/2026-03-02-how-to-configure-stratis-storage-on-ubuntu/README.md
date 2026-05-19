@@ -8,7 +8,7 @@ Description: Learn how to install and configure Stratis, a local storage managem
 
 ---
 
-Stratis is a local storage management solution developed by Red Hat that simplifies working with block devices, LVM, and XFS. It wraps the complexity of volume management into a clean CLI and daemon, making it straightforward to create storage pools, provision filesystems on top of them, take snapshots, and add capacity without deep LVM knowledge. While it originated in the Red Hat ecosystem, Stratis works on Ubuntu too.
+Stratis is a local storage management solution developed by Red Hat that simplifies working with block devices, LVM, and XFS. It wraps the complexity of volume management into a clean CLI and daemon, making it straightforward to create storage pools, provision filesystems on top of them, take snapshots, and add capacity without deep LVM knowledge. While it originated in the Red Hat ecosystem, the Stratis tools can be built on Ubuntu too.
 
 ## What Stratis Provides
 
@@ -22,16 +22,9 @@ Stratis uses device-mapper and XFS under the hood, so its filesystems are compat
 
 ## Installing Stratis on Ubuntu
 
-Stratis is available in Ubuntu's package repositories starting from Ubuntu 20.04.
+Stratis is not currently packaged in Ubuntu's official repositories. On Ubuntu, install `stratisd` and `stratis-cli` from the upstream Stratis projects or your organization's package repository before continuing. The service and CLI commands below assume those components are already installed.
 
 ```bash
-# Update package lists
-
-sudo apt-get update
-
-# Install stratisd (the daemon) and stratis-cli (the command-line tool)
-sudo apt-get install -y stratisd stratis-cli
-
 # Start and enable the stratisd daemon
 sudo systemctl enable --now stratisd
 
@@ -42,8 +35,11 @@ sudo systemctl status stratisd
 Check the version to confirm installation:
 
 ```bash
-# Check stratis CLI and daemon versions
+# Check the stratis CLI version
 stratis --version
+
+# Check the stratisd daemon version
+stratis daemon version
 ```
 
 ## Preparing Block Devices
@@ -81,7 +77,7 @@ sudo stratis pool create data-pool /dev/sdb
 sudo stratis pool list
 ```
 
-Output shows the pool name, total physical size, used space, and state.
+Output shows the pool name, physical usage, properties, UUID, and any alerts.
 
 ### Adding More Devices to an Existing Pool
 
@@ -97,7 +93,7 @@ sudo stratis pool list
 
 ## Creating Filesystems
 
-Filesystems are thin-provisioned from pool space. You specify a name but not a size - Stratis manages space allocation dynamically.
+Filesystems are thin-provisioned from pool space. In basic usage you specify a name and let Stratis manage space allocation dynamically; current Stratis versions also support optional size limits.
 
 ```bash
 # Create a filesystem named 'home' from the pool
@@ -129,19 +125,19 @@ df -h /mnt/home /mnt/projects
 
 ### Persistent Mounts via /etc/fstab
 
-For mounts that survive reboots, add entries to `/etc/fstab`. Stratis filesystems need the `x-systemd.requires=stratisd.service` option to ensure the daemon starts before mounting.
+For mounts that survive reboots, add entries to `/etc/fstab`. Current Stratis documentation recommends using the `stratis-fstab-setup@<pool-uuid>.service` dependency so the pool starts before the filesystem is mounted.
 
 ```bash
-# Get the UUID of the Stratis filesystem device
-sudo blkid /dev/stratis/data-pool/home
+# Get the UUID of the Stratis pool for the systemd dependency
+sudo stratis pool list
 ```
 
 Add to `/etc/fstab`:
 
 ```text
 # /etc/fstab entry for Stratis filesystem
-UUID=<uuid-from-blkid>  /mnt/home  xfs  defaults,x-systemd.requires=stratisd.service  0  0
-UUID=<uuid-from-blkid>  /mnt/projects  xfs  defaults,x-systemd.requires=stratisd.service  0  0
+/dev/stratis/data-pool/home      /mnt/home      xfs  defaults,x-systemd.requires=stratis-fstab-setup@<pool-uuid>.service  0  0
+/dev/stratis/data-pool/projects  /mnt/projects  xfs  defaults,x-systemd.requires=stratis-fstab-setup@<pool-uuid>.service  0  0
 ```
 
 Test the fstab entry:
@@ -202,8 +198,7 @@ for FS in "${FILESYSTEMS[@]}"; do
     echo "Created snapshot: $SNAP_NAME"
 
     # Remove snapshots older than KEEP_DAYS
-    stratis filesystem list "$POOL" | grep "${FS}-snapshot-" | while read -r line; do
-        SNAP=$(echo "$line" | awk '{print $1}')
+    stratis filesystem list "$POOL" | awk -v pattern="${FS}-snapshot-" '$2 ~ pattern {print $2}' | while read -r SNAP; do
         SNAP_DATE=$(echo "$SNAP" | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}')
         if [[ -n "$SNAP_DATE" ]]; then
             AGE=$(( ( $(date +%s) - $(date -d "$SNAP_DATE" +%s) ) / 86400 ))
@@ -254,11 +249,13 @@ When you no longer need a filesystem or pool, destroy it cleanly:
 ```bash
 # Unmount the filesystem first
 sudo umount /mnt/home
+sudo umount /mnt/projects
 
-# Destroy the filesystem
+# Destroy the filesystems
 sudo stratis filesystem destroy data-pool home
 
-# Destroy the entire pool (removes all filesystems first)
+# Destroy any remaining filesystems, then destroy the pool
+sudo stratis filesystem destroy data-pool projects
 sudo stratis pool destroy data-pool
 ```
 
