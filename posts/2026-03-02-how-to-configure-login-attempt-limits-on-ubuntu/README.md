@@ -71,12 +71,11 @@ DenyUsers nobody www-data
 Before SSH even sees the connection, iptables can drop excessive connection attempts from a single IP:
 
 ```bash
-# Limit SSH connections to 4 per minute per source IP
-sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
-  -m recent --set --name SSH
-
 sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
   -m recent --update --seconds 60 --hitcount 4 --name SSH -j DROP
+
+sudo iptables -A INPUT -p tcp --dport 22 -m state --state NEW \
+  -m recent --set --name SSH
 
 # View the rule
 sudo iptables -L INPUT -n -v | grep -A 2 "dpt:22"
@@ -192,7 +191,8 @@ ignoreip = 127.0.0.1/8 ::1 192.168.1.0/24
 # Use aggressive banning (incremental ban times for repeat offenders)
 bantime.increment = true
 bantime.factor = 24
-bantime.maxtime = 604800  # 1 week max ban
+# 1 week max ban
+bantime.maxtime = 604800
 
 [sshd]
 enabled = true
@@ -213,13 +213,9 @@ sudo nano /etc/fail2ban/filter.d/myapp.conf
 ```
 
 ```ini
-[INCLUDES]
-before = common.conf
-
 [Definition]
 # Match lines like: 2026-03-02 10:15:22 FAILED login for user 'admin' from 10.0.0.5
-_daemon = myapp
-failregex = ^%(__prefix_line)sFAILED login for user .* from <HOST>\s*$
+failregex = ^\S+\s+\S+\s+FAILED login for user .* from <HOST>\s*$
 ignoreregex =
 ```
 
@@ -269,7 +265,8 @@ sudo grep 'Failed password' /var/log/auth.log | \
 
 # Count failed attempts by username
 sudo grep 'Failed password' /var/log/auth.log | \
-  awk '{print $9}' | sort | uniq -c | sort -rn | head -20
+  awk '{for (i=1; i<=NF; i++) if ($i=="invalid" && $(i+1)=="user") {print $(i+2); next} for (i=1; i<=NF; i++) if ($i=="for") {print $(i+1); next}}' | \
+  sort | uniq -c | sort -rn | head -20
 
 # Show all authentication successes
 sudo grep 'Accepted' /var/log/auth.log | tail -20
@@ -294,7 +291,9 @@ Update UFW:
 
 ```bash
 sudo ufw allow 2222/tcp comment 'SSH alternate port'
-sudo ufw deny 22/tcp  # Deny old port
+sudo ufw delete limit ssh  # Remove the old port 22 limit rule
+# If you used a plain allow rule instead, use: sudo ufw delete allow ssh
+sudo ufw deny 22/tcp       # Deny old port
 sudo ufw reload
 ```
 
