@@ -8,37 +8,42 @@ Description: A practical guide to installing and configuring Proxmox Backup Serv
 
 ---
 
-Proxmox Backup Server (PBS) is a backup solution designed primarily for Proxmox VE environments. It uses chunk-based deduplication to store backups efficiently, supports incremental backups, and provides end-to-end encryption. Even if you don't run Proxmox VE, PBS works well as a general-purpose backup target for Linux systems through the proxmox-backup-client tool. This guide covers installing PBS on a dedicated Ubuntu backup server and configuring it to receive backups.
+Proxmox Backup Server (PBS) is a backup solution designed primarily for Proxmox VE environments. It uses chunk-based deduplication to store backups efficiently, supports incremental backups, and provides end-to-end encryption. Even if you don't run Proxmox VE, PBS works well as a general-purpose backup target for Linux systems through the proxmox-backup-client tool. This guide covers installing PBS on a dedicated backup server and configuring Ubuntu clients to send backups to it.
 
 ## System Requirements
 
 PBS works best on dedicated hardware with:
-- A CPU with AES-NI support (for encryption)
-- At least 2GB RAM (more for large datastores)
+- A modern 64-bit AMD or Intel CPU
+- At least 4GB RAM for production use (more for large datastores)
 - Separate drives for the OS and backup storage (ZFS is supported and recommended for the datastore)
 
 ## Adding the PBS Repository
 
-PBS is not in Ubuntu's default repositories. Add the Proxmox no-subscription repository:
+PBS is not in Ubuntu's default repositories. The Proxmox Backup Server packages are built for Debian, not Ubuntu. If you are installing PBS packages directly, use a matching Debian release and add the Proxmox no-subscription repository:
 
 ```bash
 sudo apt update
-sudo apt install -y curl gnupg2
+sudo apt install -y wget
 
 # Add the Proxmox repository key
 
-curl -fsSL https://enterprise.proxmox.com/debian/proxmox-release-bookworm.gpg | \
-    sudo gpg --dearmor -o /usr/share/keyrings/proxmox-release-bookworm.gpg
+sudo wget https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg \
+    -O /usr/share/keyrings/proxmox-archive-keyring.gpg
 
-# Add the PBS repository for Debian Bookworm
-# Note: PBS packages are Debian-based; use this on Ubuntu 22.04 with care
-echo "deb [signed-by=/usr/share/keyrings/proxmox-release-bookworm.gpg] https://download.proxmox.com/debian/pbs bookworm pbs-no-subscription" | \
-    sudo tee /etc/apt/sources.list.d/pbs.list
+# Add the PBS repository for Debian Trixie
+sudo tee /etc/apt/sources.list.d/proxmox.sources > /dev/null << 'EOF'
+Types: deb
+URIs: http://download.proxmox.com/debian/pbs
+Suites: trixie
+Components: pbs-no-subscription
+Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+EOF
 
 sudo apt update
+sudo apt install proxmox-backup-server
 ```
 
-For Ubuntu specifically, it's often cleaner to install PBS using a dedicated Proxmox Backup Server ISO on bare metal. The ISO creates its own Debian-based environment. However, if you want to run it on Ubuntu, the packages above work with some adjustments.
+For Ubuntu specifically, it is cleaner to install PBS using a dedicated Proxmox Backup Server ISO on bare metal or in a Debian VM. The ISO creates its own Debian-based environment.
 
 ## Alternative: Using the Official PBS ISO
 
@@ -87,11 +92,10 @@ Create a dedicated backup user rather than using root for everything:
 
 ```bash
 # Create a PBS user
-proxmox-backup-manager user create backup@pbs --comment "Backup service account"
-proxmox-backup-manager user update backup@pbs --password 'SecurePassword123!'
+proxmox-backup-manager user create backup@pbs --comment "Backup service account" --password 'SecurePassword123!'
 
 # Grant backup permissions on the datastore
-proxmox-backup-manager acl update /datastore/backup-store backup@pbs --role DatastoreBackup
+proxmox-backup-manager acl update /datastore/backup-store DatastoreBackup --auth-id backup@pbs
 
 # List users and their permissions
 proxmox-backup-manager user list
@@ -117,12 +121,21 @@ proxmox-backup-client key paperkey /etc/pbs/encryption.key > /tmp/encryption-pap
 Install the PBS client on systems you want to back up:
 
 ```bash
-# On Ubuntu client systems
-sudo apt install proxmox-backup-client
+# On Ubuntu client systems, add the client-only repository first
 
-# Or download from Proxmox website
-wget https://downloads.proxmox.com/debian/pbs/dists/bookworm/main/binary-amd64/proxmox-backup-client_3.1.0-1_amd64.deb
-sudo dpkg -i proxmox-backup-client_3.1.0-1_amd64.deb
+sudo wget https://enterprise.proxmox.com/debian/proxmox-archive-keyring-trixie.gpg \
+    -O /usr/share/keyrings/proxmox-archive-keyring.gpg
+
+sudo tee /etc/apt/sources.list.d/pbs-client.sources > /dev/null << 'EOF'
+Types: deb
+URIs: http://download.proxmox.com/debian/pbs-client
+Suites: trixie
+Components: main
+Signed-By: /usr/share/keyrings/proxmox-archive-keyring.gpg
+EOF
+
+sudo apt update
+sudo apt install proxmox-backup-client
 ```
 
 Configure the client to connect to PBS:
@@ -131,17 +144,7 @@ Configure the client to connect to PBS:
 # Set PBS connection details as environment variables
 export PBS_REPOSITORY="backup@pbs@your-pbs-server:8007:backup-store"
 export PBS_PASSWORD="SecurePassword123!"
-export PBS_FINGERPRINT="xx:xx:xx:..."  # Get from PBS web interface
-
-# Or use a config file
-mkdir -p ~/.config/proxmox-backup
-cat > ~/.config/proxmox-backup/client.conf << 'EOF'
-[repository "backup@pbs@pbs-server:backup-store"]
-    server = pbs-server.example.com
-    port = 8007
-    datastore = backup-store
-    username = backup@pbs
-EOF
+export PBS_FINGERPRINT="xx:xx:xx:..."  # Get from the datastore connection information in the PBS web interface
 ```
 
 ## Running Backups
@@ -230,25 +233,23 @@ proxmox-backup-manager prune-job create daily-prune \
 proxmox-backup-manager garbage-collection start backup-store
 
 # Check GC status
-proxmox-backup-manager task list | grep garbage
+proxmox-backup-manager garbage-collection status backup-store
 ```
 
 ## Restoring Backups
 
 ```bash
 # List snapshots available for restore
-proxmox-backup-client snapshots --repository "backup@pbs@pbs-server:backup-store"
+proxmox-backup-client snapshot list --repository "backup@pbs@pbs-server:backup-store"
 
-# Restore a specific file from a backup snapshot
-proxmox-backup-client restore etc.pxar /tmp/restore-test \
-    --repository "backup@pbs@pbs-server:backup-store" \
-    --snapshot "host/2026-03-02T00:00:00Z"
+# Restore a backup archive from a snapshot
+proxmox-backup-client restore "host/hostname/2026-03-02T00:00:00Z" etc.pxar /tmp/restore-test \
+    --repository "backup@pbs@pbs-server:backup-store"
 
 # Restore with decryption
-proxmox-backup-client restore etc.pxar /tmp/restore-test \
+proxmox-backup-client restore "host/hostname/2026-03-02T00:00:00Z" etc.pxar /tmp/restore-test \
     --repository "backup@pbs@pbs-server:backup-store" \
-    --keyfile /etc/pbs/encryption.key \
-    --snapshot "host/2026-03-02T00:00:00Z"
+    --keyfile /etc/pbs/encryption.key
 ```
 
 PBS's deduplication means that after the first full backup, subsequent backups only transfer changed chunks. For systems with large amounts of static data, this dramatically reduces both backup time and storage consumption compared to traditional full or incremental backup approaches.
