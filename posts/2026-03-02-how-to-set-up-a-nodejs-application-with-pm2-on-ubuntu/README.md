@@ -175,11 +175,9 @@ module.exports = {
             out_file: '/var/log/pm2/myapp-out.log',
             error_file: '/var/log/pm2/myapp-error.log',
             log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-
-            // Rotate logs when they get large
             log_type: 'json',
-            max_size: '100M',
-            retain: 10,
+            // Note: log rotation is configured via the pm2-logrotate module
+            // (see "Monitoring and Logs" section below), not in this file.
         }
     ]
 };
