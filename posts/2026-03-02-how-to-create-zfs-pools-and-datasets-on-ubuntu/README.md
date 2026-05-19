@@ -12,7 +12,7 @@ ZFS storage is organized into pools (zpools) and datasets. A pool defines the ph
 
 ## Planning Your Pool Layout
 
-The vdev topology you choose at pool creation time is permanent - you cannot change the RAID level of an existing vdev without destroying and recreating the pool. Plan carefully.
+The redundancy level you choose at pool creation time is permanent - you cannot change a RAIDZ1 vdev into RAIDZ2, or a mirror into RAIDZ, without destroying and recreating the pool. Plan carefully.
 
 ### Choosing a vdev type
 
@@ -20,9 +20,9 @@ The vdev topology you choose at pool creation time is permanent - you cannot cha
 |-----------|-----------|-----------|--------------|----------|
 | Single disk | None | 1 | 100% | Dev/test only |
 | Mirror | N-1 disks can fail | 2 | 50% (2-disk) | General purpose |
-| RAIDZ1 | 1 disk can fail | 3 | N-1 disks | Balanced storage |
-| RAIDZ2 | 2 disks can fail | 4 | N-2 disks | Production data |
-| RAIDZ3 | 3 disks can fail | 5 | N-3 disks | Critical data |
+| RAIDZ1 | 1 disk can fail | 2 | N-1 disks | Balanced storage |
+| RAIDZ2 | 2 disks can fail | 3 | N-2 disks | Production data |
+| RAIDZ3 | 3 disks can fail | 4 | N-3 disks | Critical data |
 
 For a production NAS or file server with 4 drives, RAIDZ2 is often the best choice - it survives two simultaneous disk failures (which is important given how long rebuilds take on modern large disks).
 
@@ -41,7 +41,7 @@ ls -la /dev/disk/by-id/ | grep -v part
 # wwn-0x5000xxx (WWN/world wide name)
 ```
 
-Device names like `/dev/sdb` can change between reboots. By-id paths never change.
+Device names like `/dev/sdb` can change between reboots. By-id paths are stable across reboots because they are based on device identifiers.
 
 ## Creating Different Pool Types
 
@@ -111,16 +111,18 @@ sudo zpool create -m /storage datapool /dev/disk/by-id/ata-disk1
 
 ```bash
 sudo zpool create \
-  -o ashift=12 \          # 4K sector alignment (use 12 for 4096-byte sectors)
-  -O compression=lz4 \    # Default compression for all datasets
-  -O atime=off \          # Disable access time updates (performance)
-  -O xattr=sa \           # Store extended attributes in inodes (performance)
+  -o ashift=12 \
+  -O compression=lz4 \
+  -O atime=off \
+  -O xattr=sa \
   datapool raidz2 \
   /dev/disk/by-id/ata-disk1 \
   /dev/disk/by-id/ata-disk2 \
   /dev/disk/by-id/ata-disk3 \
   /dev/disk/by-id/ata-disk4
 ```
+
+Here, `ashift=12` sets 4K sector alignment, `compression=lz4` sets the default compression for all datasets, `atime=off` disables access time updates, and `xattr=sa` stores extended attributes in inodes for better performance.
 
 The `-o` flags set pool-level properties, `-O` flags set dataset properties on the root dataset (inherited by children).
 
@@ -134,7 +136,7 @@ The `-o` flags set pool-level properties, `-O` flags set dataset properties on t
 Check your disk's physical sector size:
 
 ```bash
-sudo fdisk -l /dev/sdb | grep "Sector size"
+sudo fdisk -l /dev/disk/by-id/ata-disk1 | grep "Sector size"
 ```
 
 Get it wrong and you'll have poor performance. It cannot be changed after pool creation.
