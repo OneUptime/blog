@@ -203,15 +203,18 @@ sudo chown dirsrv:dirsrv /etc/dirsrv/slapd-ldap/server.crt \
 sudo chmod 640 /etc/dirsrv/slapd-ldap/server.crt \
   /etc/dirsrv/slapd-ldap/server.key
 
-# Enable TLS using dsconf
+# Import the certificate and key (cert path first, then key path)
+sudo dsctl ldap tls import-server-key-cert \
+  /etc/dirsrv/slapd-ldap/server.crt \
+  /etc/dirsrv/slapd-ldap/server.key
+
+# Configure the minimum TLS protocol and the cert nickname
 sudo dsconf ldap security set \
   --tls-protocol-min TLS1.2 \
   --nss-cert-name Server-Cert
 
-# Import the certificate
-sudo dsctl ldap tls import-server-key-cert \
-  /etc/dirsrv/slapd-ldap/server.key \
-  /etc/dirsrv/slapd-ldap/server.crt
+# Enable security on the instance
+sudo dsconf ldap config replace nsslapd-security=on
 
 sudo dsctl ldap restart
 ```
