@@ -75,16 +75,19 @@ user.comment="This file was reviewed on 2026-03-02"
 ```
 
 ```bash
-# Get all user attributes
+# List all user attribute names
 getfattr /etc/nginx/nginx.conf
 
-# Get all attributes including trusted and security namespaces
-getfattr -m ".*" /etc/nginx/nginx.conf
+# Dump all user attribute names and values
+getfattr -d /etc/nginx/nginx.conf
 
-# Show value in hex dump format (useful for binary values)
+# Dump all attributes including trusted and security namespaces
+getfattr -d -m ".*" /etc/nginx/nginx.conf
+
+# Show value in hex encoding (useful for binary values)
 getfattr -e hex -n user.comment /etc/nginx/nginx.conf
 
-# Show attribute length instead of value
+# Show value in base64 encoding
 getfattr -e base64 -n user.comment /etc/nginx/nginx.conf
 ```
 
@@ -113,7 +116,7 @@ attr -r comment /etc/nginx/nginx.conf
 setfattr -x user.comment /etc/nginx/nginx.conf
 
 # Verify removal
-getfattr /etc/nginx/nginx.conf
+getfattr -d /etc/nginx/nginx.conf
 ```
 
 ## Recursive Operations
@@ -125,7 +128,7 @@ Extended attribute tools don't have a built-in recursive flag, so use find:
 find /var/www/html -type f -exec setfattr -n user.environment -v "production" {} \;
 
 # Get attributes from all files in a directory
-find /srv/project -type f -exec getfattr {} \;
+find /srv/project -type f -exec getfattr -d {} \;
 
 # Remove an attribute from all files recursively
 find /srv/project -type f -exec setfattr -x user.draft {} \;
@@ -234,7 +237,7 @@ setfattr -n user.requires-encryption -v "true" /srv/reports/q1-financials.pdf
 
 ## Limitations and Gotchas
 
-**xattr data limits**: Individual xattrs are limited in size (typically 64KB for ext4, but in practice keep values small). The total xattr storage per file is also limited.
+**xattr data limits**: The kernel VFS limit on an individual attribute value is 64KB (and 255 bytes for names). On ext4, the total bytes used by names and values of all attributes on a file must traditionally fit within a single filesystem block (typically 4KB) unless the `ea_inode` feature is enabled, which allows individual values up to the 64KB VFS ceiling. In practice, keep values small.
 
 **Not all tools preserve xattrs**: Many text editors, build tools, and copy utilities strip xattrs. Always verify preservation when xattrs carry important data.
 
