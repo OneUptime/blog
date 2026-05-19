@@ -62,7 +62,7 @@ The file format is:
 # TYPE  DATABASE  USER  ADDRESS        METHOD
 ```
 
-Add rules for remote access. Insert these ABOVE the existing `host all all 127.0.0.1/32` line:
+Add rules for remote access. Insert the allow rules ABOVE any more general remote rules:
 
 ```text
 # pg_hba.conf
@@ -77,6 +77,7 @@ host    all         all           192.168.1.0/24     scram-sha-256
 host    all         myapp_user    10.0.0.5/32        scram-sha-256
 
 # Reject all other remote connections (optional safety net)
+# Place this after your local 127.0.0.1/32 and ::1/128 rules so local TCP connections still work.
 # host    all         all           0.0.0.0/0          reject
 ```
 
@@ -103,20 +104,20 @@ sudo -u postgres psql
 CREATE USER myapp_user WITH ENCRYPTED PASSWORD 'strong-password-here';
 
 -- Grant access to the database
-GRANT ALL PRIVILEGES ON myapp_db TO myapp_user;
+GRANT ALL PRIVILEGES ON DATABASE myapp_db TO myapp_user;
 
 -- Verify the user exists and check their attributes
 \du myapp_user
 ```
 
-Important: A user created with `IDENTIFIED EXTERNALLY` or `peer` auth cannot use password authentication for remote connections. Ensure the user has a password set.
+Important: A role without the `LOGIN` attribute or without a password cannot use password authentication for remote connections. Ensure the user can log in and has a password set.
 
 ## Step 4: Reload PostgreSQL
 
 Apply both configuration changes:
 
 ```bash
-# Test configuration files for errors first
+# Reload changes that do not require a restart, such as pg_hba.conf
 sudo -u postgres pg_ctlcluster 16 main reload
 
 # Or reload via systemd
@@ -167,7 +168,7 @@ nc -zv 192.168.1.100 5432
 psql -h 192.168.1.100 -U myapp_user -d myapp_db
 # Enter password when prompted
 
-# Test with all parameters explicit
+# Test with SSL required (requires SSL to be enabled on the server)
 psql "host=192.168.1.100 port=5432 dbname=myapp_db user=myapp_user sslmode=require"
 
 # One-line connection test
