@@ -21,14 +21,14 @@ The effectiveness of caching depends on:
 
 ## Storage Types in Squid
 
-Squid supports four storage formats:
+Squid supports several storage formats:
 
 - `ufs` - original Unix filesystem storage, simple but not the fastest
 - `aufs` - asynchronous UFS, uses threads for non-blocking I/O
 - `diskd` - uses a separate process for disk I/O
 - `rock` - single large file database, best for SSDs
 
-For most Ubuntu deployments, `aufs` on spinning disks or `rock` on SSDs are the best choices.
+For most Ubuntu deployments, `ufs` is the safest default because it is built into Squid by default. `aufs` on spinning disks or `rock` on SSDs can be good choices when your Ubuntu package includes those storage modules.
 
 ## Configuring Cache Directories
 
@@ -115,41 +115,42 @@ refresh_pattern -i /cgi-bin/     0  0%     0
 # FTP files - cache for a while
 refresh_pattern ^ftp:            1440 20%  10080
 
-# Gopher - old protocol, cache indefinitely
+# Gopher - old protocol, cache for one day
 refresh_pattern ^gopher:         1440 0%   1440
-
-# Default rule for HTTP
-refresh_pattern .                0    20%  4320
 
 # Aggressive caching for static assets
 # Cache images for at least 1 day, up to 7 days
 refresh_pattern -i \.(jpg|jpeg|png|gif|ico|css|js)$ 1440 50% 10080
 
-# Override-stale: use cached copy even if server says it's stale
-# Useful for saving bandwidth when origin server is slow
+# Override-expire: enforce the minimum age even when the server sends
+# a shorter explicit expiry time. This violates HTTP caching semantics,
+# so use it only for content you control.
 refresh_pattern -i \.(zip|exe|msi|dmg)$ 10080 90% 43200 override-expire
+
+# Default rule for HTTP
+refresh_pattern .                0    20%  4320
 ```
 
 ## Access Control for Caching
 
-You can control what gets cached using ACLs with the `no_cache` directive:
+You can control what gets cached using ACLs with the `cache` directive:
 
 ```squid
 # Do not cache authenticated requests
 acl authenticated_request proxy_auth REQUIRED
-no_cache deny authenticated_request
+cache deny authenticated_request
 
 # Do not cache certain domains (real-time data)
 acl no_cache_domains dstdomain .stock-ticker.com .live-scores.com
-no_cache deny no_cache_domains
+cache deny no_cache_domains
 
 # Do not cache POST requests (they change server state)
 acl POST_request method POST
-no_cache deny POST_request
+cache deny POST_request
 
 # Do not cache URLs with query strings (usually dynamic)
 acl has_query url_regex \?
-no_cache deny has_query
+cache deny has_query
 ```
 
 ## Cache Hierarchy: ICP and HTCP
@@ -169,7 +170,7 @@ icp_port 3130
 # cache_peer sibling2.example.com sibling 3128 3130
 
 # Only query peers for cache misses
-cache_peer_access parent-proxy allow all
+# cache_peer_access parent-proxy allow all
 ```
 
 ## Monitoring Cache Performance
@@ -213,10 +214,14 @@ When you know an object has changed and want to clear it from the cache:
 
 ```bash
 # Purge a specific URL from the cache
+# Requires PURGE access rules in squid.conf, such as:
+# acl PURGE method PURGE
+# http_access allow PURGE localhost
+# http_access deny PURGE
 squidclient -m PURGE http://example.com/file.pdf
 
-# Reload entire cache (use sparingly - destroys cache effectiveness)
-sudo squid -k rotate
+# Remove a portion of the cache by reducing cache_dir size, then reconfigure
+sudo squid -k reconfigure
 ```
 
 ## Optimizing for a Slow Internet Connection
@@ -233,8 +238,8 @@ refresh_pattern . 60 50% 43200 override-expire ignore-reload
 # Increase memory cache for frequently accessed objects
 cache_mem 1024 MB
 
-# Use stale cache objects if origin is unreachable
-stale_if_error 86400
+# Allow serving stale cache objects if validation fails
+max_stale 1 day
 ```
 
 After making changes to cache configuration, always validate and reload:
