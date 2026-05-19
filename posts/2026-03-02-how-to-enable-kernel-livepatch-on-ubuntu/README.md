@@ -15,11 +15,10 @@ This is not a replacement for kernel upgrades entirely, but it significantly red
 ## Prerequisites
 
 Livepatch requires:
-- Ubuntu 16.04 LTS or later (20.04 and 22.04 are well-supported)
-- Ubuntu Pro subscription (free for up to 5 machines)
-- 64-bit x86 architecture
-- A generic or lowlatency kernel (not HWE kernels older than a certain version)
-- Internet access to reach livepatch.canonical.com
+- A supported Ubuntu LTS release (16.04 LTS or later; 20.04, 22.04, and 24.04 are common targets)
+- Ubuntu Pro subscription (free for personal use on up to 5 machines)
+- A Canonical-supported kernel listed in the Livepatch kernel support matrix
+- Internet access to reach the Livepatch service endpoints
 
 ## Enabling Livepatch via Ubuntu Pro
 
@@ -69,16 +68,14 @@ sudo canonical-livepatch status
 sudo canonical-livepatch status --verbose
 
 # Example output:
-# Machine ID:  abc123...
-# Machine token: [token]
-# Status: active
-# Tier:    updates
-# Last check: 2026-03-02T08:00:00Z
-# Kernel: 5.15.0-91-generic
-# Fully patched: true
-# Patches:
-#   CVE-2024-XXXX: Applied
-#   CVE-2024-YYYY: Applied
+# last check: 52 seconds ago
+# kernel: 5.4.0-216.236-generic
+# server check-in: succeeded
+# kernel state: kernel series 5.4 is covered by Livepatch
+# patch state: all applicable livepatch kernel modules applied
+# patch version: 113.1
+# tier: updates
+# machine id: abc123...
 ```
 
 ## Understanding Livepatch Output
@@ -89,10 +86,10 @@ sudo canonical-livepatch status --verbose
 
 Key fields to understand:
 
-- **Fully patched**: Whether all available patches have been applied
-- **Tier**: `updates` means you get patches, `stable` means you get fewer but more tested patches
-- **Kernel**: Which kernel is running (must match a supported kernel)
-- **Patches**: List of CVEs addressed by currently applied patches
+- **Patch state**: Whether all applicable livepatch kernel modules have been applied
+- **Kernel state**: Whether the running kernel is covered by Livepatch
+- **Tier**: Which rollout tier the client is using
+- **Patch version**: The Livepatch Security Notice (LSN) version currently applied
 
 ## Checking Kernel Compatibility
 
@@ -104,7 +101,8 @@ uname -r
 
 # List kernels that have livepatch support
 # This information is available from Canonical's documentation
-# Generally: latest 2-3 versions of generic/lowlatency kernels per LTS
+# Check Canonical's kernel support matrix:
+# https://ubuntu.com/security/livepatch/docs/kernels
 
 # If your kernel is not supported, you need to update to a supported kernel
 sudo apt update
@@ -118,9 +116,9 @@ sudo canonical-livepatch status
 
 ```bash
 # Check if specific CVEs are patched
-sudo canonical-livepatch status --verbose | grep -A5 "Patches"
+sudo canonical-livepatch status --verbose | grep -i -A20 "CVE"
 
-# The output shows which CVEs have been livep-atched
+# The output shows which CVEs have been livepatched when CVE details are available
 # This does not mean those CVEs are only fixed by livepatch
 # Rebooting to a patched kernel is still recommended during maintenance windows
 ```
@@ -153,14 +151,14 @@ For infrastructure monitoring, integrate Livepatch status checks:
 
 status=$(canonical-livepatch status 2>&1)
 
-if echo "$status" | grep -q "Fully patched: true"; then
+if echo "$status" | grep -q "patch state: .*all applicable livepatch kernel modules applied\|patch state: .*no livepatches available"; then
     echo "OK: Livepatch fully patched"
     exit 0
-elif echo "$status" | grep -q "Fully patched: false"; then
+elif echo "$status" | grep -q "kernel state: .*not covered\|patch state: .*failed\|patch state: .*cannot be livepatched"; then
     echo "WARNING: Livepatch not fully applied"
     echo "$status"
     exit 1
-elif echo "$status" | grep -q "Machine token"; then
+elif echo "$status" | grep -q "machine id"; then
     echo "WARNING: Livepatch inactive"
     exit 2
 else
@@ -183,15 +181,15 @@ While Livepatch does not expose Prometheus metrics natively, you can wrap the st
 status=$(canonical-livepatch status --verbose 2>/dev/null)
 
 # Output 1 if fully patched, 0 otherwise
-if echo "$status" | grep -q "Fully patched: true"; then
+if echo "$status" | grep -q "patch state: .*all applicable livepatch kernel modules applied\|patch state: .*no livepatches available"; then
     echo "livepatch_fully_patched 1"
 else
     echo "livepatch_fully_patched 0"
 fi
 
-# Output count of applied patches
-patch_count=$(echo "$status" | grep -c "Applied" || echo "0")
-echo "livepatch_patches_applied $patch_count"
+# Output the current patch version if one is applied
+patch_version=$(echo "$status" | awk -F': ' '/^patch version:/ {print $2; exit}')
+echo "livepatch_patch_version{version=\"${patch_version:-none}\"} 1"
 ```
 
 ## Configuring Livepatch Tier
@@ -200,12 +198,10 @@ echo "livepatch_patches_applied $patch_count"
 # Check current tier
 canonical-livepatch config | grep tier
 
-# Tiers:
-# stable   - Patches are released after more testing, slightly slower
-# updates  - Patches released sooner (default for Ubuntu Pro)
-# beta     - Early access to patches, not recommended for production
+# Tiers are rollout channels used by the Livepatch service.
+# The tier shown depends on your subscription and token configuration.
 
-# Change tier (Pro subscription required for updates tier)
+# Change tier if your subscription/token permits it
 sudo canonical-livepatch config tier=stable
 ```
 
@@ -221,7 +217,7 @@ sudo pro enable livepatch
 sudo canonical-livepatch enable <token>
 
 # Check if the daemon is running
-systemctl status canonical-livepatchd
+systemctl status snap.canonical-livepatch.canonical-livepatchd
 ```
 
 ### Kernel Not Supported
@@ -242,8 +238,9 @@ sudo apt update && sudo apt dist-upgrade
 ### Network Connectivity Issues
 
 ```bash
-# Livepatch needs access to livepatch.canonical.com
-curl -s https://livepatch.canonical.com/api/v1/ping
+# Livepatch needs access to livepatch.canonical.com and livepatch-files.canonical.com
+curl -I https://livepatch.canonical.com/
+curl -I https://livepatch-files.canonical.com/
 
 # Check proxy settings if applicable
 canonical-livepatch config | grep proxy
@@ -257,13 +254,13 @@ sudo canonical-livepatch config https-proxy=http://proxy.example.com:3128
 
 ```bash
 # Check daemon status
-sudo systemctl status canonical-livepatchd
+sudo systemctl status snap.canonical-livepatch.canonical-livepatchd
 
 # View logs
-journalctl -u canonical-livepatchd -n 50
+journalctl -u snap.canonical-livepatch.canonical-livepatchd -n 50
 
 # Restart the daemon
-sudo systemctl restart canonical-livepatchd
+sudo systemctl restart snap.canonical-livepatch.canonical-livepatchd
 ```
 
 Livepatch is particularly valuable for high-availability services where a reboot requires coordination, failover, and validation. For a three-node cluster where a rolling restart is a 30-minute process, being able to apply a kernel security fix in seconds without restarting anything is a significant operational improvement.
