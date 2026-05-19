@@ -217,10 +217,9 @@ sudo nano /etc/smbldap-tools/smbldap.conf
 ```bash
 # Initialize the LDAP tree with Samba default groups
 sudo smbldap-populate
-
-# If it fails because entries already exist, add -a flag
-sudo smbldap-populate -a
 ```
+
+If some entries already exist, `smbldap-populate` prints a warning for each and continues — it skips entries that are already present.
 
 This creates default groups like `Domain Admins`, `Domain Users`, `Domain Guests`.
 
