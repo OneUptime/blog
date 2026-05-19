@@ -103,7 +103,7 @@ sudo ovs-vsctl show
 # You should see patch-to-private and patch-to-public linked
 ```
 
-Patch ports are useful for routing between network segments on the same host without needing a physical or virtual router interface.
+Patch ports are useful for bridging traffic between OVS bridges on the same host without needing a physical or virtual cable.
 
 ## Creating VXLAN Tunnels Between Hosts
 
@@ -131,7 +131,7 @@ sudo ufw allow 4789/udp
 
 # Verify tunnel is up
 sudo ovs-vsctl show
-ip link show vxlan-to-host2
+sudo ovs-vsctl list interface vxlan-to-host2
 ```
 
 With this configuration, VMs on both hosts are on the same L2 segment, even though they are on different physical machines.
@@ -154,6 +154,10 @@ sudo ovs-vsctl add-port br-private gre-to-host2 \
 Port mirroring copies traffic from one or more ports to a monitoring port, useful for IDS, packet capture, or troubleshooting.
 
 ```bash
+# Create a monitor port that tcpdump can capture from on the host
+sudo ovs-vsctl add-port br-private vnet-monitor -- set interface vnet-monitor type=internal
+sudo ip link set vnet-monitor up
+
 # Create a mirror: copy all traffic from vnet0 to vnet-monitor
 sudo ovs-vsctl -- set bridge br-private mirrors=@m \
   -- --id=@vnet0 get port vnet0 \
@@ -184,7 +188,7 @@ sudo ovs-vsctl list port vnet1
 ## Configuring Port Quality of Service (QoS)
 
 ```bash
-# Limit a VM's bandwidth to 100Mbps
+# Limit traffic sent by a VM into OVS to 100Mbps
 sudo ovs-vsctl set interface vnet0 ingress_policing_rate=100000
 sudo ovs-vsctl set interface vnet0 ingress_policing_burst=10000
 
