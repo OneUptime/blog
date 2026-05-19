@@ -12,13 +12,13 @@ MongoDB is the most widely-used document database. Its flexible schema makes it 
 
 ## Prerequisites
 
-- Ubuntu 22.04 or 24.04
+- Ubuntu 22.04
 - At least 2 GB RAM (4 GB or more recommended for production)
 - Root or sudo access
 
 ## Installing MongoDB
 
-Use MongoDB's official repository to get the current version:
+Use MongoDB's official repository to get MongoDB 7.0:
 
 ```bash
 # Install prerequisites
@@ -32,7 +32,7 @@ curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | \
 # Add MongoDB repository
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] \
   https://repo.mongodb.org/apt/ubuntu \
-  $(lsb_release -cs)/mongodb-org/7.0 multiverse" | \
+  jammy/mongodb-org/7.0 multiverse" | \
   sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
 
 # Install MongoDB
@@ -127,10 +127,10 @@ sudo systemctl restart mongod
 
 ## Setting Up Authentication
 
-Before enabling authentication (which we already set in the config), create the admin user:
+Because we already enabled authentication in the config, connect from localhost and create the first admin user using MongoDB's localhost exception:
 
 ```bash
-# Connect to MongoDB (auth not required yet if just installed)
+# Connect locally using the localhost exception
 mongosh
 ```
 
@@ -212,12 +212,24 @@ sudo ufw reload
 
 A replica set provides automatic failover and data redundancy. For production, you need at minimum 3 nodes (1 primary, 2 secondaries, or 2 data nodes + 1 arbiter).
 
-On each node, configure the replica set name:
+Create a shared keyfile for internal member authentication, copy it to each replica set member, and set restrictive permissions:
+
+```bash
+openssl rand -base64 756 | sudo tee /etc/mongodb-keyfile >/dev/null
+sudo chown mongodb:mongodb /etc/mongodb-keyfile
+sudo chmod 400 /etc/mongodb-keyfile
+```
+
+On each node, configure the replica set name and keyfile:
 
 ```yaml
 # /etc/mongod.conf on each replica set member
 replication:
   replSetName: "rs0"
+
+security:
+  authorization: enabled
+  keyFile: /etc/mongodb-keyfile
 
 net:
   port: 27017
@@ -283,16 +295,18 @@ sudo nano /etc/systemd/system/disable-thp.service
 Description=Disable Transparent Huge Pages
 DefaultDependencies=no
 After=sysinit.target local-fs.target
+Before=mongod.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'echo never | tee /sys/kernel/mm/transparent_hugepage/enabled > /dev/null'
+ExecStart=/bin/sh -c 'echo never | tee /sys/kernel/mm/transparent_hugepage/enabled > /dev/null && echo never | tee /sys/kernel/mm/transparent_hugepage/defrag > /dev/null'
 
 [Install]
 WantedBy=basic.target
 ```
 
 ```bash
+sudo systemctl daemon-reload
 sudo systemctl enable disable-thp
 sudo systemctl start disable-thp
 ```
@@ -302,7 +316,7 @@ sudo systemctl start disable-thp
 ```bash
 # Backup all databases
 mongodump \
-  --uri="mongodb://mongoadmin:YourPassword@localhost:27017/admin" \
+  --uri="mongodb://mongoadmin:YourPassword@localhost:27017/?authSource=admin" \
   --out /var/backups/mongodb/$(date +%Y%m%d)
 
 # Backup a specific database
@@ -312,7 +326,7 @@ mongodump \
 
 # Restore
 mongorestore \
-  --uri="mongodb://mongoadmin:YourPassword@localhost:27017" \
+  --uri="mongodb://mongoadmin:YourPassword@localhost:27017/?authSource=admin" \
   /var/backups/mongodb/20240302/
 ```
 
@@ -321,7 +335,7 @@ Create an automated backup cron job:
 ```bash
 sudo crontab -e
 # Add:
-0 3 * * * mongodump --uri="mongodb://mongoadmin:password@localhost:27017/admin" --out /var/backups/mongodb/$(date +\%Y\%m\%d) --gzip >> /var/log/mongodb-backup.log 2>&1
+0 3 * * * mongodump --uri="mongodb://mongoadmin:password@localhost:27017/?authSource=admin" --out /var/backups/mongodb/$(date +\%Y\%m\%d) --gzip >> /var/log/mongodb-backup.log 2>&1
 ```
 
 Monitor your MongoDB instance's health and query performance with [OneUptime](https://oneuptime.com) to catch slow queries or availability issues before they affect your application.
