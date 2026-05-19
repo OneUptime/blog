@@ -12,7 +12,7 @@ Description: Use fsck to check and repair ext4, XFS, and other filesystems on Ub
 
 ## The Cardinal Rule: fsck on Unmounted Filesystems
 
-Running fsck on a mounted filesystem is dangerous. It can cause worse corruption than you started with, because the running system and fsck will both be modifying filesystem metadata simultaneously. The only exception is `e2fsck -n` (read-only check).
+Running fsck on a mounted filesystem is dangerous. It can cause worse corruption than you started with, because the running system and fsck will both be modifying filesystem metadata simultaneously. The only exception is `e2fsck -n` (read-only check), and even then the results can be unreliable if the filesystem is changing while the check runs.
 
 The root filesystem (`/`) cannot be unmounted while the system is running, which is why fsck of the root filesystem happens at boot time or from a live USB environment.
 
@@ -33,20 +33,18 @@ Last checked:             Mon Mar  2 09:00:00 2026
 Check interval:           0 (<none>)
 ```
 
-A `Maximum mount count` of `-1` and `Check interval` of `0` means automatic checks are disabled (the default on modern Ubuntu). Systemd handles filesystem integrity through other mechanisms.
+A `Maximum mount count` of `-1` and `Check interval` of `0` means mount-count and time-based full checks are disabled (the default on modern Ubuntu). `systemd-fsck` still starts checks at boot for filesystems with a nonzero `/etc/fstab` pass number, and the filesystem-specific checker decides whether a full check is needed.
 
 ## Checking a Filesystem Manually
 
-### Read-only check (safe on mounted filesystems)
+### Read-only check
 
 ```bash
 # Check without making any changes
 
 sudo e2fsck -n /dev/sdb1
 
-# For XFS (also read-only)
-sudo xfs_check /dev/sdb1 2>/dev/null
-# or
+# For XFS, use a dry-run scan on an unmounted filesystem
 sudo xfs_repair -n /dev/sdb1
 ```
 
@@ -54,7 +52,7 @@ Output from a clean ext4 filesystem:
 
 ```text
 e2fsck 1.46.5 (30-Dec-2021)
-/dev/sdb1: clean, 11/1310720 files, 5243100/5242880 blocks
+/dev/sdb1: clean, 11/1310720 files, 524310/5242880 blocks
 ```
 
 Output when problems exist:
@@ -100,11 +98,8 @@ sudo e2fsck -y /dev/sdb1
 ### Force check at next boot (for root filesystem)
 
 ```bash
-# Schedule a check of the root filesystem on next boot
-sudo touch /forcefsck
-
-# Or using tune2fs to force a check after a specific number of mounts
-sudo tune2fs -C 1 /dev/sda3  # Set mount count high to trigger check
+# Mark an ext filesystem so fsck runs at the next mount
+sudo tune2fs -E force_fsck /dev/sda3
 ```
 
 Alternatively:
@@ -121,13 +116,13 @@ Alternatively:
 | Filesystem | fsck calls | Direct command |
 |-----------|-----------|----------------|
 | ext2/3/4 | `e2fsck` | `e2fsck` |
-| XFS | `xfs_repair` | `xfs_repair` |
-| Btrfs | `btrfsck`/`btrfs check` | `btrfs check` |
+| XFS | `fsck.xfs` (normally exits successfully; use direct command) | `xfs_repair` |
+| Btrfs | `fsck.btrfs` (normally exits successfully; use direct command) | `btrfs check` |
 | FAT/vFAT | `dosfsck`/`fsck.fat` | `fsck.fat` |
 
 ```bash
-# fsck dispatches to the right tool automatically
-sudo fsck /dev/sdb1   # Checks whatever filesystem is on sdb1
+# fsck dispatches to the filesystem-specific helper
+sudo fsck /dev/sdb1   # Useful for filesystems with active fsck helpers, such as ext4 or FAT
 
 # Or call directly
 sudo e2fsck /dev/sdb1    # ext4
@@ -141,14 +136,15 @@ XFS has its own repair tool. Key differences from e2fsck:
 - `xfs_repair` is for more serious corruption that the journal replay didn't fix
 
 ```bash
-# Replay the XFS journal first (read-only, safe)
+# Dry-run scan (filesystem should be unmounted)
 sudo xfs_repair -n /dev/sdb1
 
 # Run repair (filesystem must be unmounted)
 sudo umount /mnt/data
 sudo xfs_repair /dev/sdb1
 
-# If xfs_repair fails with "dirty log" error, clear the log first
+# If xfs_repair fails with a "dirty log" error, mount and unmount the filesystem to replay the log.
+# If the log cannot be replayed, clearing it is a last resort.
 # (only do this if the filesystem truly won't mount)
 sudo xfs_repair -L /dev/sdb1  # -L clears the log - dangerous, last resort
 ```
@@ -166,7 +162,7 @@ sudo btrfs check --readonly /dev/sdb1
 sudo btrfs check --repair /dev/sdb1
 ```
 
-For Btrfs, the standard recovery approach is to use snapshots to roll back rather than repair. Btrfs check --repair is considered risky and should be a last resort.
+For Btrfs, prefer restoring from backups or snapshots, or using Btrfs recovery tools with expert guidance, rather than running repair first. Btrfs check --repair is considered risky and should be a last resort.
 
 ## Diagnosing and Fixing a Corrupted Superblock
 
@@ -198,25 +194,24 @@ If one backup doesn't work, try the next one.
 For checking the root filesystem without a live USB, configure fsck to run at next boot:
 
 ```bash
-# Create the flag file that triggers fsck at boot
-sudo touch /forcefsck
+# Add fsck.mode=force to the kernel command line temporarily
+# Edit the GRUB entry at boot and add 'fsck.mode=force' to the linux line
 
 # Reboot
 sudo reboot
 ```
 
-The system will run fsck on all filesystems before mounting them. Results appear on the console. After the check completes, the system boots normally and the forcefsck file is removed.
+The system will run fsck before mounting filesystems that are configured for boot-time checks. Results appear on the console. After the check completes, the system boots normally.
 
 ## fsck in Recovery Mode
 
-Ubuntu's recovery mode boot option provides a root shell where you can run fsck manually:
+Ubuntu's recovery mode boot option provides an fsck menu entry for checking filesystems:
 
 1. Reboot and hold Shift during boot to access GRUB
 2. Select "Advanced options for Ubuntu"
 3. Select the recovery mode option
-4. Choose "Drop to root shell prompt"
-5. Remount root read-write: `mount -o remount,rw /`
-6. Run fsck: `e2fsck -f /dev/sda1`
+4. Choose the "fsck" option from the recovery menu to check filesystems
+5. For a manual root filesystem check, boot from a live USB instead and run `e2fsck -f` only while the filesystem is unmounted
 
 ## Understanding fsck Exit Codes
 
@@ -230,12 +225,13 @@ Ubuntu's recovery mode boot option provides a root shell where you can run fsck 
 | 4 | Filesystem errors left uncorrected |
 | 8 | Operational error |
 | 16 | Usage or syntax error |
+| 32 | Checking canceled by user request |
 | 128 | Library error |
 
 ```bash
 sudo e2fsck -y /dev/sdb1
 echo "Exit code: $?"
-# Codes 0 and 1 are success; anything else needs attention
+# Codes 0 and 1 are non-error results; code 2 means reboot after corrections
 ```
 
 ## Preventing Filesystem Corruption
