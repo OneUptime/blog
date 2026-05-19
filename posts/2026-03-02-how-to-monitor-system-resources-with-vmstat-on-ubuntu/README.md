@@ -67,9 +67,9 @@ Note: `free` alone doesn't tell the full story. Available memory is closer to `f
 - `si` - Swap-in per second (reading from swap to RAM). Should be 0 on a healthy system.
 - `so` - Swap-out per second (writing from RAM to swap). Nonzero indicates memory pressure.
 
-### I/O (in blocks per second)
-- `bi` - Blocks received from block device (reads)
-- `bo` - Blocks sent to block device (writes)
+### I/O (in KiB/s)
+- `bi` - Kibibytes received from a block device (reads)
+- `bo` - Kibibytes sent to a block device (writes)
 
 ### System
 - `in` - Interrupts per second
