@@ -13,10 +13,13 @@ aptly is a feature-rich tool for managing Debian package repositories. It suppor
 ## Installing aptly
 
 ```bash
-# Add aptly repository
+# Add aptly repository signing key
+sudo mkdir -p /etc/apt/keyrings
+wget -qO- https://www.aptly.info/pubkey.txt | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/aptly.gpg
 
-wget -qO - https://www.aptly.info/pubkey.txt | sudo apt-key add -
-echo "deb http://repo.aptly.info/ squeeze main" | \
+# Add the aptly repository
+echo "deb [signed-by=/etc/apt/keyrings/aptly.gpg] http://repo.aptly.info/ squeeze main" | \
   sudo tee /etc/apt/sources.list.d/aptly.list
 
 # Install aptly
@@ -86,6 +89,7 @@ gpg --full-generate-key
 GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | cut -d/ -f2)
 
 # Export the public key for distribution to clients
+mkdir -p /opt/aptly/public
 gpg --armor --export $GPG_KEY_ID > /opt/aptly/public/myrepo-key.asc
 ```
 
