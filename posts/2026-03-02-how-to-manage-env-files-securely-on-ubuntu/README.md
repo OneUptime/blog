@@ -92,8 +92,10 @@ git config --global core.excludesfile ~/.gitignore_global
 Add a pre-commit hook to catch secrets before they leave the machine:
 
 ```bash
-# Install git-secrets (prevents committing common secret patterns)
-sudo apt install git-secrets -y
+# Install git-secrets from source (not packaged in Ubuntu apt repos)
+git clone https://github.com/awslabs/git-secrets.git /tmp/git-secrets
+cd /tmp/git-secrets
+sudo make install
 
 # Initialize for the repository
 cd /your/project
@@ -210,7 +212,7 @@ sudo apt install age -y
 age-keygen -o ~/.config/sops/age/keys.txt
 
 # Encrypt the .env file
-sops --age $(grep public ~/.config/sops/age/keys.txt | awk '{print $3}') \
+sops --age $(grep public ~/.config/sops/age/keys.txt | awk '{print $4}') \
   -e .env > .env.enc
 
 # Decrypt
@@ -265,8 +267,8 @@ api_key: "{{ vault_api_key }}"
 If you suspect secrets may have been committed in the past:
 
 ```bash
-# Install truffleHog for historical scanning
-pip install trufflehog
+# Install TruffleHog v3 for historical scanning (not available via pip)
+curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
 
 # Scan the entire Git history
 trufflehog git file://. --json 2>/dev/null | python3 -m json.tool
