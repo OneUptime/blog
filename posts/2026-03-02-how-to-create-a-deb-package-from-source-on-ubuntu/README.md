@@ -35,7 +35,6 @@ A Debian source package has a specific layout. For a package named `myhello` at 
 myhello-1.0/
 ├── debian/
 │   ├── changelog
-│   ├── compat
 │   ├── control
 │   ├── copyright
 │   ├── rules
@@ -77,7 +76,7 @@ myhello: src/myhello.c
 	$(CC) $(CFLAGS) -o myhello src/myhello.c
 
 install:
-	install -m 0755 myhello $(DESTDIR)/usr/bin/myhello
+	install -D -m 0755 myhello $(DESTDIR)/usr/bin/myhello
 
 clean:
 	rm -f myhello
@@ -184,9 +183,11 @@ The date format must be RFC 2822-compliant. Use `date -R` to get the correct for
 ## Setting the compat Level
 
 ```bash
-# debhelper compatibility level - use 13 for modern packaging
-echo "13" > ~/build/myhello-1.0/debian/compat
+# debhelper compatibility level is set by this Build-Depends entry
+grep 'debhelper-compat (= 13)' ~/build/myhello-1.0/debian/control
 ```
+
+Do not also create a `debian/compat` file when using `debhelper-compat` in `Build-Depends`; debhelper expects the compatibility level to be declared in one place.
 
 ## Building the Package
 
@@ -204,7 +205,7 @@ ls -la ~/build/
 
 You should see:
 - `myhello_1.0-1_amd64.deb` - the installable binary package
-- `myhello_1.0.orig.tar.xz` - the original source tarball
+- `myhello_1.0.orig.tar.gz` - the original source tarball
 - `myhello_1.0-1.debian.tar.xz` - the debian directory as a tarball
 - `myhello_1.0-1.dsc` - the source description file
 - `myhello_1.0-1_amd64.changes` - the changes file for upload
@@ -217,8 +218,8 @@ Lintian checks packages against Debian policy:
 # Run lintian against the built package
 lintian ~/build/myhello_1.0-1_amd64.deb
 
-# Get verbose output with explanations
-lintian -v --explain-tags ~/build/myhello_1.0-1_amd64.deb
+# Get explanatory output for reported tags
+lintian -i ~/build/myhello_1.0-1_amd64.deb
 
 # Check the source package too
 lintian ~/build/myhello_1.0-1.dsc
