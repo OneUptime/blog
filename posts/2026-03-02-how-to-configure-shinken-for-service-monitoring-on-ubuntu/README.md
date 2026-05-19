@@ -26,16 +26,16 @@ For a single-server setup, all daemons run on one machine. For scale, you can sp
 
 ## Prerequisites
 
-Shinken requires Python 2 or Python 3. On modern Ubuntu, Python 3 is used:
+Shinken 2.4 targets Python 2.6/2.7 and is not compatible with Python 3. On currently supported Ubuntu releases, run it in a legacy Python 2 environment or container rather than using the system Python 3 packages. Inside that legacy environment:
 
 ```bash
 sudo apt update
-sudo apt install python3 python3-pip python3-dev
+sudo apt install python-pip python-dev python-pycurl
 sudo apt install git curl
 
 # Nagios plugins (Shinken uses these)
 
-sudo apt install monitoring-plugins nagios-plugins
+sudo apt install monitoring-plugins
 ```
 
 ## Installing Shinken
@@ -49,21 +49,21 @@ sudo mkdir -p /var/lib/shinken
 sudo chown shinken:shinken /var/lib/shinken
 
 # Install Shinken
-sudo pip3 install shinken
+sudo pip install shinken
 
 # Initialize Shinken directories as the shinken user
-sudo -u shinken sh -c "shinken --init"
+sudo -u shinken shinken --init
 ```
 
 ### From Source (Current Version)
 
 ```bash
 # Clone the repository
-git clone https://github.com/naparuba/shinken.git /opt/shinken-src
+git clone https://github.com/shinken-solutions/shinken.git /opt/shinken-src
 cd /opt/shinken-src
 
 # Install
-sudo python3 setup.py install
+sudo python setup.py install --install-scripts=/usr/local/bin
 
 # Create required directories
 sudo mkdir -p /var/run/shinken
@@ -78,7 +78,7 @@ Shinken's configuration is compatible with Nagios. The main configuration files 
 
 ```bash
 ls /etc/shinken/
-# arbiter/    broker/     daemons/    modules/
+# arbiters/   brokers/    daemons/    modules/
 # pollers/    reactionners/ receivers/ schedulers/
 # hosts/      services/   contacts/   timeperiods/
 # commands/   templates/
@@ -87,7 +87,7 @@ ls /etc/shinken/
 ### Main Daemons Configuration
 
 ```bash
-cat /etc/shinken/daemons/arbiter-master.cfg
+cat /etc/shinken/arbiters/arbiter-master.cfg
 ```
 
 ```text
@@ -97,12 +97,10 @@ define arbiter{
     address         localhost
     port            7770
     spare           0
-    # Log configuration
-    log_file        /var/log/shinken/arbiter.log
 }
 ```
 
-Similar files exist for each daemon type in their respective directories.
+Similar daemon resource files exist for each daemon type in their respective directories. The runtime settings for the daemon processes themselves are in files such as `/etc/shinken/schedulerd.ini`, `/etc/shinken/pollerd.ini`, `/etc/shinken/reactionnerd.ini`, and `/etc/shinken/brokerd.ini`.
 
 ## Setting Up Basic Monitoring
 
@@ -125,10 +123,16 @@ define command {
     command_line    $PLUGINSDIR$/check_http -I $HOSTADDRESS$ -p $ARG1$ -u $ARG2$
 }
 
+# Check HTTPS
+define command {
+    command_name    check_https
+    command_line    $PLUGINSDIR$/check_http -I $HOSTADDRESS$ -S -p 443 -u $ARG1$
+}
+
 # Check SSH
 define command {
     command_name    check_ssh
-    command_line    $PLUGINSDIR$/check_ssh $HOSTADDRESS$
+    command_line    $PLUGINSDIR$/check_ssh -H $HOSTADDRESS$
 }
 
 # Check disk space via SNMP or NRPE
@@ -277,7 +281,7 @@ define service {
     use                     generic-service
     host_name               webserver01
     service_description     HTTPS
-    check_command           check_http!443!/
+    check_command           check_https!/
 }
 
 # Check disk space on localhost
@@ -323,6 +327,14 @@ define hostgroup {
 ```bash
 # Create a service for each Shinken daemon
 for daemon in arbiter scheduler poller reactionner broker; do
+    case "$daemon" in
+        arbiter) config="/etc/shinken/shinken.cfg" ;;
+        scheduler) config="/etc/shinken/schedulerd.ini" ;;
+        poller) config="/etc/shinken/pollerd.ini" ;;
+        reactionner) config="/etc/shinken/reactionnerd.ini" ;;
+        broker) config="/etc/shinken/brokerd.ini" ;;
+    esac
+
     sudo tee /etc/systemd/system/shinken-${daemon}.service << EOF
 [Unit]
 Description=Shinken ${daemon} daemon
@@ -332,7 +344,7 @@ After=network.target
 Type=forking
 User=shinken
 Group=shinken
-ExecStart=/usr/local/bin/shinken-${daemon} -d -c /etc/shinken/daemons/${daemon}-master.cfg
+ExecStart=/usr/local/bin/shinken-${daemon} -d -c ${config}
 Restart=on-failure
 RestartSec=10
 
@@ -402,7 +414,7 @@ sudo systemctl restart shinken-arbiter
 
 ```bash
 # Check configuration syntax (run as shinken user)
-sudo -u shinken shinken-arbiter -v -c /etc/shinken/daemons/arbiter-master.cfg
+sudo -u shinken shinken-arbiter -v -c /etc/shinken/shinken.cfg
 
 # This will report any configuration errors before applying
 ```
@@ -419,7 +431,7 @@ sudo chown -R shinken:shinken /var/log/shinken /var/run/shinken
 # Plugin not found errors - check the PLUGINSDIR path
 grep -r "PLUGINSDIR" /etc/shinken/resource.cfg
 # Should point to where monitoring-plugins are installed
-which check_ping  # Verify the plugins are in this path
+ls /usr/lib/nagios/plugins/check_ping  # Verify the plugins are in this path
 
 # View scheduler log for check execution issues
 sudo tail -f /var/log/shinken/schedulerd.log
