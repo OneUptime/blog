@@ -28,7 +28,9 @@ The two main scan types are:
 sudo apt update
 
 # Install the OpenSCAP scanner and utilities
-sudo apt install -y libopenscap8 openscap-scanner openscap-utils
+# On Ubuntu 22.04 the oscap binary is in libopenscap8.
+# On Ubuntu 24.04 it was split out into the openscap-scanner package.
+sudo apt install -y libopenscap8 openscap-utils
 
 # Verify installation
 oscap --version
