@@ -75,7 +75,7 @@ sudo lpadmin \
     -p MyPrinter \
     -v "ipp://printer-hostname.local/ipp/print" \
     -E \
-    -m driverless \
+    -m everywhere \
     -D "My Network Printer" \
     -L "Conference Room"
 
@@ -151,7 +151,7 @@ lp -d MyPrinter -o sides=two-sided-long-edge document.pdf
 lp -d MyPrinter -o outputorder=reverse document.pdf
 
 # Print from command line with quality setting
-lp -d MyPrinter -o print-quality=5 photo.jpg  # 5=best, 3=normal, 4=high
+lp -d MyPrinter -o print-quality=5 photo.jpg  # 3=draft, 4=normal, 5=high
 
 # Check printer job queue
 lpstat -p MyPrinter
@@ -192,7 +192,7 @@ Listen 0.0.0.0:631
 # Enable printer sharing in CUPS
 sudo cupsctl --share-printers
 
-# Enable Bonjour/mDNS broadcasting
+# Allow remote access from any address (needed for network printer sharing)
 sudo cupsctl --remote-any
 
 # Mark specific printers as shared
