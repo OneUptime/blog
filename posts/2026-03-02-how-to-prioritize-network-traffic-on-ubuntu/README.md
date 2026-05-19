@@ -24,7 +24,7 @@ Effective traffic prioritization on Ubuntu typically involves three layers:
 
 ## Using the prio Qdisc for Simple Prioritization
 
-The `prio` qdisc is the simplest priority scheduler. It has multiple bands (queues) numbered 0-3, and always services band 0 before band 1, band 1 before band 2, and so on.
+The `prio` qdisc is the simplest priority scheduler. It has multiple bands (queues, three by default, indexed 0 through bands-1), and always services band 0 before band 1, band 1 before band 2, and so on. Internally, band 0 is exposed as class 1:1, band 1 as 1:2, and so on.
 
 ```bash
 # Replace root qdisc with a 3-band priority scheduler
@@ -72,7 +72,7 @@ tc filter add dev eth0 parent 1: protocol ip prio 3 u32 \
     match ip dport 873 0xffff flowid 1:3   # rsync
 
 tc filter add dev eth0 parent 1: protocol ip prio 3 u32 \
-    match ip dport 21 0xffff flowid 1:3    # FTP data
+    match ip dport 21 0xffff flowid 1:3    # FTP control
 ```
 
 ## Comprehensive HTB + Priority Setup
@@ -181,28 +181,33 @@ tc filter add dev eth0 parent 1: handle 3 fw flowid 1:30  # mark 3 -> web
 
 ## Prioritizing by Process with cgroups v2
 
-Ubuntu 22.04 with cgroups v2 allows per-process network priority.
+Ubuntu 22.04 uses cgroups v2 by default. Note that the legacy `net_prio` and `net_cls` controllers are cgroup v1 only and have no direct equivalent in v2. With v2, match traffic by cgroup path using iptables, or have applications set their own socket priority.
 
 ```bash
 # Check cgroups v2 support
 mount | grep cgroup2
 
-# Create a cgroup for your high-priority application
-mkdir -p /sys/fs/cgroup/myapp
+# Match outgoing packets from a cgroup v2 path with iptables and mark them.
+# The path is relative to the cgroup2 root (typically /sys/fs/cgroup).
+iptables -t mangle -A OUTPUT \
+    -m cgroup --path system.slice/myapp.service \
+    -j MARK --set-mark 1
 
-# Set I/O priority (network class via SO_PRIORITY socket option)
-# Applications can set their own socket priority
+# Applications can also set their own socket priority via SO_PRIORITY.
+# The prio qdisc's priomap then maps the skb priority to a band.
 python3 -c "
-import socket, struct
+import socket
 s = socket.socket()
 # Set socket priority 6 (TC_PRIO_INTERACTIVE)
 s.setsockopt(socket.SOL_SOCKET, socket.SO_PRIORITY, 6)
 print('Socket priority set')
 "
 
-# tc can classify based on socket priority (SO_PRIORITY)
+# Separately, applications that set IP_TOS (e.g. SSH) can be matched in tc.
+# 0x10 is the legacy 'minimize delay' TOS bit; the 0x1c mask covers
+# the original RFC 791 TOS field.
 tc filter add dev eth0 parent 1: protocol ip prio 1 u32 \
-    match ip tos 0x10 0x1c flowid 1:10  # matches TOS interactive bit
+    match ip tos 0x10 0x1c flowid 1:10
 ```
 
 ## Monitoring the Impact of Prioritization
