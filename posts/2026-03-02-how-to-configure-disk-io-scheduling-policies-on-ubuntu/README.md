@@ -18,22 +18,22 @@ The kernel block layer sits between the filesystem and the storage driver. When 
 
 ### Available Schedulers
 
-**none (NoOp):** No reordering. Requests go to the device driver in submission order. Appropriate for:
+**none:** No I/O scheduler is attached; requests are passed through the multi-queue block layer to the device driver. Appropriate for:
 - NVMe drives with their own high-performance queuing
 - Virtual machines where the hypervisor handles scheduling
 - Benchmarking to establish a baseline
 
-**mq-deadline:** A multi-queue version of the classic deadline scheduler. Merges and sorts requests to minimize seek time while guaranteeing requests complete within a time limit (deadline). Best for:
+**mq-deadline:** A multi-queue version of the classic deadline scheduler. Merges and sorts requests to minimize seek time while attempting to guarantee a start service time for requests. Best for:
 - Spinning hard disks
 - Mixed read/write workloads on HDDs
 - Database servers on spinning disks
 
-**bfq (Budget Fair Queueing):** Gives each process a "budget" of I/O operations and schedules them fairly. Provides low latency for interactive workloads. Best for:
+**bfq (Budget Fair Queueing):** Gives each process a service "budget" and schedules queues fairly. Provides low latency for interactive workloads. Best for:
 - Desktop systems with spinning disks
 - Mixed workloads where responsiveness matters
 - When multiple applications compete for I/O
 
-**kyber:** Simple scheduler designed for fast storage devices. Uses two queues (read and synchronous write) with target latency goals. Best for:
+**kyber:** Simple scheduler designed for fast storage devices. Uses target latency goals for reads and synchronous writes. Best for:
 - SSDs and NVMe drives
 - Latency-sensitive workloads
 
@@ -61,7 +61,7 @@ lsblk -o NAME,SCHED
 Choosing the right scheduler starts with knowing your storage type:
 
 ```bash
-# Check rotation rate (0 = SSD, >0 = HDD RPM)
+# Check rotational flag (0 = non-rotational, 1 = rotational)
 for dev in /sys/block/sd*/queue/rotational; do
     echo "${dev%/queue/rotational}: $(cat $dev)"
 done
@@ -109,7 +109,7 @@ ACTION=="add|change", KERNEL=="sd[a-z]|mmcblk[0-9]*", ATTR{queue/rotational}=="0
 ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="mq-deadline"
 
 # NVMe drives - always use none
-ACTION=="add|change", KERNEL=="nvme[0-9]*", ATTR{queue/scheduler}="none"
+ACTION=="add|change", KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/scheduler}="none"
 ```
 
 Apply the rules:
@@ -124,27 +124,17 @@ for dev in /sys/block/*/queue/scheduler; do
 done
 ```
 
-### Permanent Change with GRUB (for root device)
+### Permanent Change at Boot
 
-For the root device, udev rules may not apply early enough in boot. Set the default scheduler via kernel parameters:
-
-```bash
-sudo nano /etc/default/grub
-```
+For modern Ubuntu kernels using blk-mq, use udev rules or a systemd service instead of the legacy `elevator=` kernel parameter. The `elevator=` parameter was used with the older single-queue I/O scheduler stack and is not the recommended way to select `mq-deadline`, `bfq`, `kyber`, or `none` on current Ubuntu releases.
 
 ```bash
-# Add elevator parameter to GRUB_CMDLINE_LINUX_DEFAULT
-# This sets the default for devices that don't have a specific udev rule
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash elevator=mq-deadline"
-```
-
-```bash
-sudo update-grub
+cat /sys/block/sda/queue/scheduler
 ```
 
 ## Scheduler-Specific Tuning
 
-Each scheduler exposes tuning knobs in `/sys/block/DEVICE/queue/iosched/`.
+Schedulers with tunable parameters expose them in `/sys/block/DEVICE/queue/iosched/` when that scheduler is active.
 
 ### Tuning mq-deadline
 
@@ -182,13 +172,13 @@ echo 4 | sudo tee /sys/block/sda/queue/iosched/writes_starved
 ls /sys/block/sda/queue/iosched/
 
 # Slice idle - time BFQ waits for more I/O from a process (microseconds)
-cat /sys/block/sda/queue/iosched/slice_idle
+cat /sys/block/sda/queue/iosched/slice_idle_us
 # Default: 8000 (8ms)
 
 # Reduce for SSDs with BFQ
-echo 0 | sudo tee /sys/block/sda/queue/iosched/slice_idle
+echo 0 | sudo tee /sys/block/sda/queue/iosched/slice_idle_us
 
-# Max budget - maximum number of requests per process per slice
+# Max budget - maximum service, measured in sectors, per BFQ queue
 cat /sys/block/sda/queue/iosched/max_budget
 # 0 = auto
 
@@ -199,13 +189,13 @@ echo 1 | sudo tee /sys/block/sda/queue/iosched/low_latency
 
 ### Tuning Queue Depth
 
-Independent of the scheduler, queue depth affects how many requests the device processes simultaneously:
+Independent of the scheduler, `nr_requests` controls how many requests may be allocated in the block layer for reads or writes:
 
 ```bash
 # Check current queue depth
 cat /sys/block/sda/queue/nr_requests
 
-# NVMe drives benefit from deeper queues
+# NVMe drives may benefit from deeper queues for highly parallel workloads
 cat /sys/block/nvme0n1/queue/nr_requests
 # Default is often 1023 for NVMe
 
@@ -234,7 +224,7 @@ echo 16 | sudo tee /sys/block/sda/queue/iosched/fifo_batch
 # none scheduler - let NVMe handle its own queue
 echo none | sudo tee /sys/block/nvme0n1/queue/scheduler
 
-# Maximize queue depth
+# Increase queue depth for highly parallel workloads
 echo 4096 | sudo tee /sys/block/nvme0n1/queue/nr_requests
 ```
 
@@ -275,8 +265,8 @@ fio --name=seqwrite --ioengine=libaio --iodepth=1 --rw=write \
 for sched in none mq-deadline bfq; do
     echo "Testing $sched..."
     echo $sched | sudo tee /sys/block/sda/queue/scheduler
-    fio --name=test --ioengine=libaio --iodepth=32 --rw=randread \
-        --bs=4k --direct=1 --size=1G --runtime=30 \
+    sudo fio --name=test --ioengine=libaio --iodepth=32 --rw=randread \
+        --bs=4k --direct=1 --readonly --size=1G --runtime=30 \
         --filename=/dev/sda --output=/tmp/fio-$sched.txt
 done
 ```
