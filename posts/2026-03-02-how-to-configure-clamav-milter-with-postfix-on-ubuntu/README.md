@@ -65,10 +65,10 @@ LogTime yes
 # 100MB is reasonable; larger files may indicate data transfer, not email
 MaxFileSize 100M
 
-# Maximum size of files to scan inside archives
+# Maximum amount of data to scan for each input file
 MaxScanSize 400M
 
-# Alert on encrypted archives (may contain viruses)
+# Do not flag encrypted archives and documents as threats by default
 AlertEncrypted no
 
 # Socket for clamd communication
@@ -338,7 +338,7 @@ sudo nano /etc/clamav/clamd.conf
 ```
 
 ```text
-# Number of threads for scanning (default is 12)
+# Number of threads for scanning (default is 10)
 # Increase for high-volume servers
 MaxThreads 20
 
