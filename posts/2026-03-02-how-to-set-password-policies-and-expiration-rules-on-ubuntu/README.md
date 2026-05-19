@@ -81,10 +81,14 @@ Key settings to configure:
 PASS_MAX_DAYS   90      # Maximum days before password must change
 PASS_MIN_DAYS   7       # Minimum days between changes
 PASS_WARN_AGE   14      # Days before expiry to start warning
-PASS_MIN_LEN    12      # Minimum password length (enforced by passwd)
+```
 
-# Account inactivity
-INACTIVE        30      # Days after expiry before account is locked
+Note: `PASS_MIN_LEN` is no longer honored by shadow-utils — password length is enforced by PAM (`pam_pwquality`, covered below). The default inactivity period for new accounts is configured separately in `/etc/default/useradd` (or via `useradd -D -f`):
+
+```bash
+# Set default inactivity to 30 days after password expiry
+sudo useradd -D -f 30
+# This updates the INACTIVE= line in /etc/default/useradd
 ```
 
 These defaults apply to new accounts created with `useradd`. They do not retroactively affect existing accounts.
@@ -167,10 +171,6 @@ dcredit = -1
 # Require at least N special characters
 ocredit = -1
 
-# How many recent passwords to check (prevents reuse)
-# Note: PAM remember setting controls the actual remembered count
-remember = 12
-
 # Minimum number of characters that differ from old password
 difok = 8
 
@@ -180,10 +180,13 @@ dictcheck = 1
 # Check if password matches username
 usercheck = 1
 
-# Enforce even for root (0 = enforce, 1 = exempt root)
+# Enforce password quality even when root is changing the password
+# (1 = enforce; if unset/0, root only gets a warning on failed checks)
 enforce_for_root = 1
 EOF
 ```
+
+Note: password reuse (the `remember=N` history) is configured on the `pam_unix.so` line in `/etc/pam.d/common-password`, not in `pwquality.conf` — see the next section.
 
 ## Configuring PAM to Use the Policy
 
@@ -240,7 +243,7 @@ sudo chage -d 0 testuser
 
 ## Account Locking After Failed Attempts
 
-In addition to password complexity, configure account lockout for repeated failures. This uses `pam_tally2` or `pam_faillock` (Ubuntu 20.04+ uses faillock):
+In addition to password complexity, configure account lockout for repeated failures. This uses `pam_tally2` on older releases or `pam_faillock` on newer ones (Ubuntu 22.04+ ships PAM 1.4+, which provides `pam_faillock`; Ubuntu 20.04 still uses `pam_tally2`):
 
 ```bash
 # Check faillock configuration
@@ -298,17 +301,15 @@ sudo faillock --user alice --reset
 # Report on all users' password status
 sudo passwd -S -a | column -t
 
-# Find users with expired passwords
-sudo chage --list --all 2>/dev/null | grep "expired"
+# Find users whose password status is expired (passwd -S prints "P", "L", "NP", etc.)
+sudo passwd -S -a | awk '$2 == "P" {print $1, $3, $5}'
 
-# Script to list users with passwords expiring soon
+# Script to list each user's password expiration date
 #!/bin/bash
-WARN_DAYS=14
-
-awk -F: '$3 >= 1000 {print $1}' /etc/passwd | while read user; do
-    days_left=$(sudo chage -l "$user" 2>/dev/null | grep "Password expires" | awk '{print $NF}')
-    echo "$user: expires $days_left"
-done | grep -v "never"
+awk -F: '$3 >= 1000 && $1 != "nobody" {print $1}' /etc/passwd | while read user; do
+    expires=$(sudo chage -l "$user" 2>/dev/null | grep "Password expires" | cut -d: -f2- | xargs)
+    echo "$user: expires $expires"
+done | grep -v ": expires never"
 ```
 
 A layered password policy - aging rules to force regular changes, complexity requirements to ensure strong choices, and lockout to prevent brute force - provides meaningful protection for interactive accounts. Service accounts and system accounts should generally have passwords locked (`sudo passwd -l serviceaccount`) and authenticate through other mechanisms like SSH keys or API tokens.
