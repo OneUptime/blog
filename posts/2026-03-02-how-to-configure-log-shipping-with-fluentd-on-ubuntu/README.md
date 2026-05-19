@@ -18,10 +18,10 @@ Ubuntu users should install Fluentd via the official package repository (td-agen
 # Install the official Fluentd package (fluent-package, formerly td-agent)
 
 # Download and run the installation script
-curl -fsSL https://toolbelt.treasuredata.com/sh/install-ubuntu-jammy-fluent-package5-lts.sh | sh
+curl -fsSL https://fluentd.cdn.cncf.io/sh/install-ubuntu-jammy-fluent-package6-lts.sh | sh
 
 # For Ubuntu 22.04 (Jammy). For other versions, check:
-# https://docs.fluentd.org/installation/install-by-deb
+# https://docs.fluentd.org/installation/install-fluent-package/install-by-deb-fluent-package
 
 # Verify installation
 fluentd --version
@@ -208,10 +208,11 @@ sudo fluent-gem install fluent-plugin-elasticsearch
   <buffer tag,time>
     @type file
     path /var/log/fluent/es-buffer
+    timekey 1d
     flush_mode interval
     flush_interval 5s
     chunk_limit_size 5MB
-    queue_limit_length 32
+    queued_chunks_limit_size 32
     retry_forever true
     retry_max_interval 30
     total_limit_size 512MB
@@ -246,7 +247,7 @@ sudo fluent-gem install fluent-plugin-s3
   # Compress before uploading
   store_as gzip
 
-  <buffer time>
+  <buffer time,hostname>
     @type file
     path /var/log/fluent/s3-buffer
     timekey 1h
@@ -323,7 +324,8 @@ Labels allow organizing complex routing logic:
     host elasticsearch.example.com
     port 9200
     index_name nginx-logs-%Y%m%d
-    <buffer>
+    <buffer time>
+      timekey 1d
       flush_interval 10s
     </buffer>
   </match>
@@ -338,6 +340,9 @@ Labels allow organizing complex routing logic:
       @type elasticsearch
       host elasticsearch.example.com
       index_name app-logs-%Y%m%d
+      <buffer time>
+        timekey 1d
+      </buffer>
     </store>
     <store>
       @type file
@@ -360,6 +365,7 @@ Buffers prevent log loss when the destination is unavailable:
     # Store buffer on disk
     @type file
     path /var/log/fluent/buffer
+    timekey 1d
 
     # Flush every 5 seconds
     flush_interval 5s
@@ -374,7 +380,7 @@ Buffers prevent log loss when the destination is unavailable:
     # Buffer size limits
     chunk_limit_size 8MB        # Max chunk size
     total_limit_size 512MB      # Max total buffer size
-    queue_limit_length 64       # Max chunks in queue
+    queued_chunks_limit_size 64 # Max queued chunks
   </buffer>
 </match>
 ```
@@ -392,7 +398,11 @@ sudo fluentd -c /etc/fluent/fluentd.conf -vv
 sudo journalctl -u fluentd -f
 
 # Test by sending a log entry manually
-# Use the in_http plugin for testing:
+# Add the in_http plugin to your config for testing:
+# <source>
+#   @type http
+#   port 9880
+# </source>
 curl -X POST -d 'json={"message":"test log entry","level":"info"}' \
     http://localhost:9880/app.test
 
