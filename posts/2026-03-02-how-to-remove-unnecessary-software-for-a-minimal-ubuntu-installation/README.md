@@ -285,19 +285,18 @@ For new servers, use a preseed file or cloud-init to start with a minimal base:
 ```yaml
 # cloud-init user-data for minimal Ubuntu server
 #cloud-config
-packages_upgrade: true
+package_update: true
+package_upgrade: true
 packages:
   - ufw
   - unattended-upgrades
   - auditd
   - fail2ban
 
-package_reconfig:
-  - unattended-upgrades
-
 # Remove packages not needed on this server role
 runcmd:
-  - apt-get purge -y telnet rsh-client nis avahi-daemon cups -y
+  - dpkg-reconfigure -f noninteractive unattended-upgrades
+  - apt-get purge -y telnet rsh-client nis avahi-daemon cups
   - apt-get autoremove --purge -y
   - systemctl mask bluetooth avahi-daemon
 ```
