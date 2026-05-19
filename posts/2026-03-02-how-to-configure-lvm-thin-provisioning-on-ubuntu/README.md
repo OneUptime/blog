@@ -145,7 +145,7 @@ Add to `/etc/fstab` for persistence:
 
 ## Monitoring Thin Pool Usage
 
-Monitoring thin pool fill percentage is critical. If the pool fills, all thin volumes in it go read-only or offline:
+Monitoring thin pool fill percentage is critical. If the pool fills, reads can continue, but writes are queued or return errors depending on the pool's `errorwhenfull` setting:
 
 ```bash
 # Check data and metadata usage
@@ -204,12 +204,18 @@ sudo lvs
 ```text
   LV           VG       Attr       LSize   Pool      Origin
   web_data     data_vg  Vwi-a-tz-- 50.00g  thin_pool
-  web_data_snap data_vg Vwi---tz-- 50.00g  thin_pool web_data
+  web_data_snap data_vg Vwi---tz-k 50.00g  thin_pool web_data
 ```
 
 Both the origin and snapshot share the same data blocks in the pool, branching only when one is written to.
 
 ### Mounting a thin snapshot read-only
+
+Thin snapshots are usually created with the activation skip flag, so activate the snapshot before mounting it:
+
+```bash
+sudo lvchange -ay -K /dev/data_vg/web_data_snap
+```
 
 ```bash
 sudo mount -o ro /dev/data_vg/web_data_snap /mnt/snap
@@ -227,11 +233,11 @@ Track how much you've over-provisioned:
 
 ```bash
 # Total provisioned vs total pool capacity
-sudo lvs -o lv_name,lv_size,pool_lv data_vg | grep thin_pool
+sudo lvs -o lv_name,lv_size,pool_lv --select 'pool_lv=thin_pool' data_vg
 
 # Or calculate manually
-POOL_SIZE=$(sudo lvs --noheadings --units g -o lv_size data_vg/thin_pool | tr -d ' g')
-PROVISIONED=$(sudo lvs --noheadings --units g -o lv_size data_vg | grep thin_pool | awk '{sum+=$1} END{print sum}')
+POOL_SIZE=$(sudo lvs --noheadings --units g --nosuffix -o lv_size data_vg/thin_pool | tr -d ' ')
+PROVISIONED=$(sudo lvs --noheadings --units g --nosuffix -o lv_size --select 'pool_lv=thin_pool' data_vg | awk '{sum+=$1} END{print sum}')
 echo "Pool: ${POOL_SIZE}G, Provisioned: ${PROVISIONED}G"
 ```
 
@@ -254,7 +260,7 @@ sudo lvremove /dev/data_vg/thin_pool
 
 ### "Pool becoming full" warning
 
-Monitor thin pool usage and extend proactively. A pool that fills completely causes all its thin volumes to go read-only.
+Monitor thin pool usage and extend proactively. A pool that fills completely causes writes to thin volumes to queue or fail, depending on the pool's `errorwhenfull` setting.
 
 ### Poor snapshot performance on thick (non-thin) pools
 
@@ -265,7 +271,7 @@ Regular LVM snapshots use copy-on-write which adds latency to writes on the orig
 Many small I/O operations create more metadata than large sequential writes. Increasing chunk size reduces metadata overhead:
 
 ```bash
-# Create pool with 512KB chunks (default is 64KB)
+# Create pool with 512KB chunks (LVM starts at 64KB by default and may scale up)
 sudo lvcreate -L 200G --thinpool thin_pool --chunksize 512k data_vg
 ```
 
