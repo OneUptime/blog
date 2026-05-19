@@ -41,12 +41,12 @@ mount | grep btrfs
 A full balance with no filters moves all chunks, which can take hours on large arrays. For most maintenance needs, filtered balancing is more appropriate:
 
 ```bash
-# Balance data and metadata chunks with usage under 50%
+# Balance data and metadata chunks with usage up to 50%
 # This targets partially filled chunks, consolidating space
 sudo btrfs balance start -dusage=50 -musage=50 /mnt/data
 ```
 
-The `-dusage` and `-musage` flags tell Btrfs to only rewrite chunks that are less than 50% full. This frees up allocated-but-mostly-empty space without touching dense chunks.
+The `-dusage` and `-musage` flags tell Btrfs to only rewrite chunks that are at most 50% full. This frees up allocated-but-mostly-empty space without touching dense chunks.
 
 ### Monitoring Balance Progress
 
@@ -54,7 +54,7 @@ Balance operations run in the foreground by default. To run in the background:
 
 ```bash
 # Start balance in background
-sudo btrfs balance start -d -m /mnt/data &
+sudo btrfs balance start --background -d -m /mnt/data
 
 # Check status
 sudo btrfs balance status /mnt/data
@@ -135,7 +135,7 @@ sudo btrfs filesystem defragment -r -czstd /mnt/data/
 
 The `-c` flag compresses file data during defragmentation. `zstd` is a good default for a balance of compression ratio and speed. Other options are `lzo` (faster, lower ratio) and `zlib` (slower, higher ratio).
 
-### Defragmenting the Entire Filesystem
+### Defragmenting a Mounted Subvolume Tree
 
 To defragment at the mount point level:
 
@@ -143,14 +143,14 @@ To defragment at the mount point level:
 sudo btrfs filesystem defragment -r /mnt/data
 ```
 
-Be aware that this can be very slow on large filesystems and may temporarily increase disk I/O significantly.
+Be aware that this can be very slow on large directory trees and may temporarily increase disk I/O significantly. Recursive defragmentation does not descend into other subvolumes or mount points.
 
 ### Important Caveat with Snapshots
 
 Defragmenting files that share extents with snapshots breaks that sharing. After defragmentation, both the original file and snapshot will have their own independent copies of the data, increasing space usage. If you rely heavily on Btrfs snapshots, be selective about what you defragment.
 
 ```bash
-# Check snapshot usage before defragmenting
+# List subvolumes and snapshots before defragmenting
 sudo btrfs subvolume list /mnt/data
 ```
 
