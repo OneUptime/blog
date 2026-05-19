@@ -21,17 +21,13 @@ This guide assumes hostapd is already running as a WiFi access point with `wlan0
 
 sudo apt-get install -y dnsmasq
 
-# Stop any existing systemd-resolved that might conflict on port 53
-sudo systemctl stop systemd-resolved
-sudo systemctl disable systemd-resolved
-
 # Backup the original configuration
 sudo cp /etc/dnsmasq.conf /etc/dnsmasq.conf.orig
 ```
 
 ### Handling systemd-resolved Conflicts
 
-On Ubuntu 22.04+, `systemd-resolved` runs a stub DNS listener on 127.0.0.53:53. dnsmasq needs to bind to all interfaces on port 53, which conflicts:
+On Ubuntu 22.04+, `systemd-resolved` runs a stub DNS listener on 127.0.0.53:53. If dnsmasq is configured to listen on loopback or all addresses on port 53, this can conflict:
 
 ```bash
 # Option 1: Disable systemd-resolved (simple but loses some system DNS features)
@@ -101,7 +97,7 @@ expand-hosts
 # Cache up to 1000 DNS entries locally
 cache-size=1000
 
-# Negative caching (cache NXDOMAIN responses)
+# Disable negative caching (do not cache NXDOMAIN responses)
 no-negcache
 
 # DNS TTL for local DHCP assignments (seconds)
@@ -122,7 +118,7 @@ dhcp-option=6,10.0.0.1,1.1.1.1
 # Option 42 = NTP server
 dhcp-option=42,216.239.35.0
 
-# Maximum lease time (seconds) - clients can't request longer than this
+# Maximum number of active DHCP leases
 dhcp-lease-max=250
 
 # The AP is authoritative for this DHCP domain
@@ -178,7 +174,7 @@ log-facility=/var/log/dnsmasq.log
 
 # Stop dnsmasq from running as root after startup
 user=dnsmasq
-group=dnsmasq
+group=nogroup
 ```
 
 ## Multi-Subnet Configuration
@@ -196,8 +192,8 @@ sudo nano /etc/dnsmasq.d/guest-network.conf
 
 interface=wlan1
 
-# Different subnet for guest network
-dhcp-range=10.0.1.100,10.0.1.200,255.255.255.0,4h
+# Different subnet for guest network, tagged for per-network options
+dhcp-range=set:wlan1,10.0.1.100,10.0.1.200,255.255.255.0,4h
 
 # Guest network uses shorter leases
 # Guest clients get different gateway and DNS
@@ -209,10 +205,10 @@ For interface-specific DHCP options, use tags:
 
 ```ini
 # Main network DHCP range
-dhcp-range=interface:wlan0,10.0.0.100,10.0.0.200,255.255.255.0,12h
+dhcp-range=set:wlan0-range,tag:wlan0,10.0.0.100,10.0.0.200,255.255.255.0,12h
 
 # Guest network DHCP range
-dhcp-range=interface:wlan1,10.0.1.100,10.0.1.200,255.255.255.0,4h
+dhcp-range=set:wlan1-range,tag:wlan1,10.0.1.100,10.0.1.200,255.255.255.0,4h
 
 # Different DNS for each subnet
 dhcp-option=tag:wlan0-range,6,10.0.0.1
@@ -250,11 +246,11 @@ sudo systemctl restart dnsmasq
 
 # Method 2: Use dhcp-host to block the MAC temporarily
 echo "dhcp-host=aa:bb:cc:dd:ee:ff,ignore" | sudo tee /etc/dnsmasq.d/block-client.conf
-sudo systemctl reload dnsmasq
+sudo systemctl restart dnsmasq
 # Wait for client to try to renew (gets no response)
-# Then remove the block file and reload
+# Then remove the block file and restart
 sudo rm /etc/dnsmasq.d/block-client.conf
-sudo systemctl reload dnsmasq
+sudo systemctl restart dnsmasq
 ```
 
 ## Testing dnsmasq Configuration
@@ -289,11 +285,11 @@ sudo nano /etc/hostapd/hostapd-event.sh
 ```bash
 #!/bin/bash
 # /etc/hostapd/hostapd-event.sh
-# Called by hostapd when client events occur
+# Called by hostapd_cli when client events occur
 
-EVENT=$1
-MAC=$2
-IFACE=$3
+IFACE=$1
+EVENT=$2
+MAC=$3
 
 case "$EVENT" in
     AP-STA-CONNECTED)
@@ -307,12 +303,14 @@ esac
 ```
 
 ```bash
-chmod +x /etc/hostapd/hostapd-event.sh
+sudo chmod +x /etc/hostapd/hostapd-event.sh
 
-# Configure hostapd to call the script
-echo "ap_event_script=/etc/hostapd/hostapd-event.sh" | sudo tee -a /etc/hostapd/hostapd.conf
-
+# Ensure hostapd exposes its control socket for hostapd_cli
+echo "ctrl_interface=/var/run/hostapd" | sudo tee -a /etc/hostapd/hostapd.conf
 sudo systemctl restart hostapd
+
+# Run hostapd_cli in the background and execute the script for events
+sudo hostapd_cli -i wlan0 -a /etc/hostapd/hostapd-event.sh -B
 ```
 
 ## Performance Tuning
@@ -320,7 +318,7 @@ sudo systemctl restart hostapd
 ```bash
 # For high client counts, increase system DNS cache
 # Also limit dnsmasq memory usage
-cat >> /etc/dnsmasq.conf << 'EOF'
+sudo tee -a /etc/dnsmasq.conf > /dev/null << 'EOF'
 
 # Performance settings for high client count
 cache-size=10000
