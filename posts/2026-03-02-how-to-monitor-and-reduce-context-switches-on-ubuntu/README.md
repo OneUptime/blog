@@ -195,8 +195,9 @@ If one CPU is handling all interrupts, distribute them with IRQ affinity:
 ```bash
 # Spread NIC interrupts across all CPUs
 # For a NIC with multiple queues (e.g., eth0 with 4 queues):
+# Filenames under msi_irqs/ are the IRQ numbers themselves.
 for i in 0 1 2 3; do
-    irq=$(cat /sys/class/net/eth0/device/msi_irqs/$(ls /sys/class/net/eth0/device/msi_irqs/ | sed -n "$((i+1))p"))
+    irq=$(ls /sys/class/net/eth0/device/msi_irqs/ | sed -n "$((i+1))p")
     echo $((1 << i)) > /proc/irq/$irq/smp_affinity
 done
 ```
@@ -252,9 +253,9 @@ The preemption model affects how frequently involuntary context switches occur:
 grep CONFIG_PREEMPT /boot/config-$(uname -r)
 ```
 
-- `CONFIG_PREEMPT_NONE` - Desktop preemption, fewer context switches, higher throughput
-- `CONFIG_PREEMPT_VOLUNTARY` - Voluntary kernel preemption
-- `CONFIG_PREEMPT` - Full preemption, better latency, more context switches
+- `CONFIG_PREEMPT_NONE` - No forced preemption (Server), fewer context switches, higher throughput
+- `CONFIG_PREEMPT_VOLUNTARY` - Voluntary kernel preemption (Desktop)
+- `CONFIG_PREEMPT` - Full preemption (Low-Latency Desktop), better latency, more context switches
 
 Ubuntu's default server kernel typically uses `PREEMPT_VOLUNTARY`. You can compile a custom kernel with different preemption settings, but this is rarely necessary.
 
