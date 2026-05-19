@@ -40,7 +40,7 @@ sudo pip3 install cobbler
 
 ```bash
 # Cobbler requires several supporting packages
-sudo apt install apache2 dhcp-server tftpd-hpa fence-agents \
+sudo apt install apache2 isc-dhcp-server tftpd-hpa fence-agents \
   libapache2-mod-wsgi-py3 python3-yaml python3-cheetah \
   python3-netaddr python3-simplejson
 
@@ -246,15 +246,15 @@ The `cobbler check` command lists any prerequisites that are missing or misconfi
 
 ```bash
 # Enable and start Cobbler
-sudo systemctl enable cobbler
-sudo systemctl start cobbler
+sudo systemctl enable cobblerd
+sudo systemctl start cobblerd
 
 # Restart DHCP and TFTP after sync
 sudo systemctl restart isc-dhcp-server
 sudo systemctl restart tftpd-hpa
 
 # Verify services
-sudo systemctl status cobbler
+sudo systemctl status cobblerd
 sudo systemctl status isc-dhcp-server
 sudo systemctl status tftpd-hpa
 ```
@@ -279,7 +279,7 @@ sudo htdigest /etc/cobbler/users.digest "Cobbler" cobbler
 
 ```bash
 # Check Cobbler logs
-sudo journalctl -u cobbler -f
+sudo journalctl -u cobblerd -f
 
 # Verify TFTP files were generated
 ls /var/lib/tftpboot/
