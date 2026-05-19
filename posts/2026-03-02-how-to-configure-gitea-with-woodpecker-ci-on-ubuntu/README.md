@@ -34,19 +34,19 @@ The redirect URI must exactly match the URL Woodpecker will use.
 
 ## Creating a Gitea User for Woodpecker
 
-Woodpecker needs a Gitea account to perform webhook management and API calls:
+Woodpecker uses Gitea OAuth to authenticate users and to perform repository API actions through the authorized user's permissions:
 
 ```bash
 # In Gitea admin interface, or via API:
 
-# Create a service account user named "woodpecker"
-# This account will manage webhooks on repositories
+# Make sure the Gitea users who activate repositories in Woodpecker
+# have admin access to those repositories so Woodpecker can manage webhooks.
 
-# Alternatively, use an existing admin account's token
-# Generate a token in Gitea: Settings > Applications > Access Tokens
+# A separate service account token is not configured for the standard
+# Woodpecker Gitea integration.
 ```
 
-In Gitea, go to Settings > Applications > Access Tokens for the service account user, generate a token with repository and admin permissions.
+In Gitea, grant the users who will activate repositories the required repository permissions.
 
 ## Setting Up Woodpecker with Docker Compose
 
@@ -59,7 +59,7 @@ mkdir -p /opt/woodpecker
 Generate a shared secret for agent-server communication:
 
 ```bash
-openssl rand -hex 16
+openssl rand -hex 32
 # Save this value
 ```
 
@@ -70,11 +70,9 @@ nano /opt/woodpecker/docker-compose.yml
 ```
 
 ```yaml
-version: '3.8'
-
 services:
   woodpecker-server:
-    image: woodpeckerci/woodpecker-server:latest
+    image: woodpeckerci/woodpecker-server:v3
     container_name: woodpecker-server
     restart: unless-stopped
     ports:
@@ -101,9 +99,6 @@ services:
       # Admin users (comma-separated Gitea usernames)
       - WOODPECKER_ADMIN=yourgiteausername
 
-      # Session secret for cookies
-      - WOODPECKER_SESSION_SECRET=another-random-secret
-
       # Database (SQLite by default, use PostgreSQL for production)
       # - WOODPECKER_DATABASE_DRIVER=postgres
       # - WOODPECKER_DATABASE_DATASOURCE=postgres://user:pass@localhost:5432/woodpecker
@@ -112,12 +107,14 @@ services:
       - WOODPECKER_LOG_LEVEL=info
 
   woodpecker-agent:
-    image: woodpeckerci/woodpecker-agent:latest
+    image: woodpeckerci/woodpecker-agent:v3
     container_name: woodpecker-agent
+    command: agent
     restart: unless-stopped
     depends_on:
       - woodpecker-server
     volumes:
+      - woodpecker-agent-config:/etc/woodpecker
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       # Connect to server
@@ -134,11 +131,14 @@ services:
 volumes:
   woodpecker-data:
     driver: local
+  woodpecker-agent-config:
+    driver: local
 ```
 
 ## Configuring the Reverse Proxy
 
 ```bash
+sudo certbot certonly --nginx -d ci.example.com
 sudo nano /etc/nginx/sites-available/woodpecker
 ```
 
@@ -179,18 +179,17 @@ server {
 ```bash
 sudo ln -s /etc/nginx/sites-available/woodpecker /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d ci.example.com
 ```
 
 ## Starting Woodpecker
 
 ```bash
 cd /opt/woodpecker
-docker-compose up -d
+docker compose up -d
 
 # Monitor startup
-docker-compose logs -f woodpecker-server
-docker-compose logs -f woodpecker-agent
+docker compose logs -f woodpecker-server
+docker compose logs -f woodpecker-agent
 ```
 
 Once started, navigate to `https://ci.example.com`. You will be redirected to Gitea for OAuth authorization.
@@ -239,24 +238,25 @@ steps:
         - latest
         - ${CI_COMMIT_SHA:0:8}
     when:
-      branch: main
-      event: push
+      - branch: main
+        event: push
 
   # Step 3: Deploy to server
   - name: deploy
-    image: alpine/ssh
+    image: alpine:3.20
     environment:
       SSH_PRIVATE_KEY:
         from_secret: deploy_ssh_key
     commands:
+      - apk add --no-cache openssh-client
       - echo "$SSH_PRIVATE_KEY" > /tmp/deploy_key
       - chmod 600 /tmp/deploy_key
       - ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no \
           deploy@prod.example.com \
-          "cd /opt/myapp && docker-compose pull && docker-compose up -d"
+          "cd /opt/myapp && docker compose pull && docker compose up -d"
     when:
-      branch: main
-      event: push
+      - branch: main
+        event: push
 
 # Only run on push to main or pull requests
 when:
@@ -267,26 +267,27 @@ when:
 
 ## Parallel Steps
 
-Woodpecker supports running steps in parallel using `group`:
+Woodpecker supports running steps in parallel using `depends_on`. When any step defines dependencies, Woodpecker builds a dependency graph and runs independent steps in parallel:
 
 ```yaml
 steps:
   # These two steps run in parallel
   - name: lint
     image: node:20-alpine
-    group: checks
     commands:
       - npm run lint
 
   - name: test-unit
     image: node:20-alpine
-    group: checks
     commands:
       - npm run test:unit
 
   # This step runs after both parallel steps complete
   - name: test-integration
     image: node:20-alpine
+    depends_on:
+      - lint
+      - test-unit
     commands:
       - npm run test:integration
 ```
@@ -305,16 +306,16 @@ export WOODPECKER_SERVER=https://ci.example.com
 export WOODPECKER_TOKEN=your-api-token  # From Woodpecker UI: Settings > Token
 
 # Add a secret
-woodpecker secret add \
+woodpecker-cli repo secret add \
     --repository myuser/myrepo \
     --name deploy_ssh_key \
     --value "$(cat ~/.ssh/deploy_id_rsa)"
 
 # List secrets
-woodpecker secret list --repository myuser/myrepo
+woodpecker-cli repo secret ls --repository myuser/myrepo
 
 # Organization-wide secret (available to all repos in org)
-woodpecker secret add \
+woodpecker-cli org secret add \
     --organization myorg \
     --name registry_password \
     --value "mypassword"
@@ -337,7 +338,7 @@ In Woodpecker pipeline, authenticate to the Gitea registry using secrets.
 
 ## Caching Build Artifacts
 
-Woodpecker supports caching to speed up builds:
+Woodpecker can use compatible cache plugins to speed up builds:
 
 ```yaml
 steps:
