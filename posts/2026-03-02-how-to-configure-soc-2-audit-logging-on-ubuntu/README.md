@@ -53,61 +53,60 @@ sudo nano /etc/audit/rules.d/99-soc2.rules
 
 # ---- User and group management ----
 # Track changes to user accounts
--w /etc/passwd -p wa -k identity-change
--w /etc/group -p wa -k identity-change
--w /etc/shadow -p wa -k identity-change
--w /etc/gshadow -p wa -k identity-change
--w /etc/sudoers -p wa -k privileged-access
--w /etc/sudoers.d/ -p wa -k privileged-access
+-a always,exit -F path=/etc/passwd -F perm=wa -F key=identity-change
+-a always,exit -F path=/etc/group -F perm=wa -F key=identity-change
+-a always,exit -F path=/etc/shadow -F perm=wa -F key=identity-change
+-a always,exit -F path=/etc/gshadow -F perm=wa -F key=identity-change
+-a always,exit -F path=/etc/sudoers -F perm=wa -F key=privileged-access
+-a always,exit -F dir=/etc/sudoers.d/ -F perm=wa -F key=privileged-access
 
 # ---- Authentication events ----
 # Track login/logout
--w /var/log/wtmp -p wa -k authentication
--w /var/log/btmp -p wa -k authentication
--w /var/log/lastlog -p wa -k authentication
--w /var/run/faillock/ -p wa -k authentication
+-a always,exit -F path=/var/log/wtmp -F perm=wa -F key=authentication
+-a always,exit -F path=/var/log/btmp -F perm=wa -F key=authentication
+-a always,exit -F path=/var/log/lastlog -F perm=wa -F key=authentication
 
 # PAM configuration changes
--w /etc/pam.d/ -p wa -k pam-config
+-a always,exit -F dir=/etc/pam.d/ -F perm=wa -F key=pam-config
 
 # ---- Privileged commands ----
 # Log all sudo usage (syscall level)
 -a always,exit -F arch=b64 -S execve -F euid=0 -F auid>=1000 -F auid!=4294967295 -k privileged-commands
 
 # Specific privileged commands
--w /usr/bin/sudo -p x -k privileged-sudo
--w /usr/bin/su -p x -k privileged-su
--w /sbin/sulogin -p x -k privileged-sulogin
--w /usr/bin/newgrp -p x -k privileged-priv-change
--w /usr/bin/chsh -p x -k privileged-priv-change
--w /usr/bin/passwd -p x -k privileged-passwd
+-a always,exit -F path=/usr/bin/sudo -F perm=x -F key=privileged-sudo
+-a always,exit -F path=/usr/bin/su -F perm=x -F key=privileged-su
+-a always,exit -F path=/sbin/sulogin -F perm=x -F key=privileged-sulogin
+-a always,exit -F path=/usr/bin/newgrp -F perm=x -F key=privileged-priv-change
+-a always,exit -F path=/usr/bin/chsh -F perm=x -F key=privileged-priv-change
+-a always,exit -F path=/usr/bin/passwd -F perm=x -F key=privileged-passwd
 
 # ---- File access - sensitive files ----
--w /etc/ssh/sshd_config -p rwa -k sshd-config-change
--w /etc/hosts -p wa -k network-config-change
--w /etc/hostname -p wa -k network-config-change
--w /etc/resolv.conf -p wa -k network-config-change
--w /etc/crontab -p wa -k scheduled-tasks
--w /etc/cron.d/ -p wa -k scheduled-tasks
--w /etc/cron.daily/ -p wa -k scheduled-tasks
--w /etc/cron.hourly/ -p wa -k scheduled-tasks
--w /var/spool/cron/ -p wa -k scheduled-tasks
+-a always,exit -F path=/etc/ssh/sshd_config -F perm=rwa -F key=sshd-config-change
+-a always,exit -F path=/etc/hosts -F perm=wa -F key=network-config-change
+-a always,exit -F path=/etc/hostname -F perm=wa -F key=network-config-change
+-a always,exit -F path=/etc/resolv.conf -F perm=wa -F key=network-config-change
+-a always,exit -F path=/etc/crontab -F perm=wa -F key=scheduled-tasks
+-a always,exit -F dir=/etc/cron.d/ -F perm=wa -F key=scheduled-tasks
+-a always,exit -F dir=/etc/cron.daily/ -F perm=wa -F key=scheduled-tasks
+-a always,exit -F dir=/etc/cron.hourly/ -F perm=wa -F key=scheduled-tasks
+-a always,exit -F dir=/var/spool/cron/ -F perm=wa -F key=scheduled-tasks
 
 # ---- System administration ----
 # Track systemctl usage
--w /usr/bin/systemctl -p x -k systemctl
--w /bin/systemctl -p x -k systemctl
+-a always,exit -F path=/usr/bin/systemctl -F perm=x -F key=systemctl
+-a always,exit -F path=/bin/systemctl -F perm=x -F key=systemctl
 
 # Track kernel module operations
--w /sbin/insmod -p x -k kernel-module
--w /sbin/rmmod -p x -k kernel-module
--w /sbin/modprobe -p x -k kernel-module
+-a always,exit -F path=/sbin/insmod -F perm=x -F key=kernel-module
+-a always,exit -F path=/sbin/rmmod -F perm=x -F key=kernel-module
+-a always,exit -F path=/sbin/modprobe -F perm=x -F key=kernel-module
 -a always,exit -F arch=b64 -S init_module -S delete_module -k kernel-module
 
 # ---- Network configuration changes ----
 -a always,exit -F arch=b64 -S sethostname -S setdomainname -k network-change
--w /etc/network/ -p wa -k network-config-change
--w /etc/netplan/ -p wa -k network-config-change
+-a always,exit -F dir=/etc/network/ -F perm=wa -F key=network-config-change
+-a always,exit -F dir=/etc/netplan/ -F perm=wa -F key=network-config-change
 
 # ---- System calls for data exfiltration detection ----
 # Log outbound connection attempts by privileged processes
@@ -143,8 +142,9 @@ sudo nano /etc/audit/auditd.conf
 ```
 
 ```text
-# SOC 2 requires retaining logs for at least 1 year (12 months minimum)
-# Configure log rotation accordingly
+# Configure retention to match your SOC 2 control description and
+# customer/regulatory commitments. Many organizations retain at least
+# 12 months of security logs.
 
 log_file = /var/log/audit/audit.log
 log_format = RAW
@@ -189,9 +189,6 @@ sudo nano /etc/rsyslog.d/50-soc2-forward.conf
 ```text
 # Forward all authentication and audit events to SIEM
 # Replace SIEM_HOST with your actual SIEM address
-
-# Load modules for TLS
-module(load="omfwd")
 
 # Forward auth logs (logins, sudo, etc.)
 auth,authpriv.*    @@SIEM_HOST:514
@@ -264,16 +261,16 @@ sudo ausearch -k privileged-sudo -ts today
 sudo ausearch -ua jsmith -ts today
 
 # Search by event type
-sudo ausearch -m USER_LOGIN -ts "start of week"
+sudo ausearch -m USER_LOGIN -ts this-week
 
 # Find failed login attempts
 sudo ausearch -m USER_LOGIN -sv no -ts today
 
 # Search for privilege escalation
-sudo ausearch -k privileged-commands -ts "this month"
+sudo ausearch -k privileged-commands -ts this-month
 
 # Generate audit report
-sudo aureport --start "last month" --end "this month" -au
+sudo aureport --start week-ago --end today -au
 
 # Logins report
 sudo aureport --start today --login
@@ -290,10 +287,6 @@ SOC 2 requires evidence that logs haven't been modified:
 # Configure AIDE for file integrity monitoring of log directories
 sudo apt install aide -y
 
-# Initialize the AIDE database
-sudo aideinit
-sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
-
 # Configure log file monitoring in AIDE
 cat << 'EOF' | sudo tee /etc/aide/aide.conf.d/99-soc2-logs
 # Monitor audit log integrity
@@ -302,31 +295,24 @@ cat << 'EOF' | sudo tee /etc/aide/aide.conf.d/99-soc2-logs
 /var/log/syslog   p+u+g+n+acl+selinux+sha256
 EOF
 
+# Initialize the AIDE database after adding your local rules
+sudo aideinit
+sudo cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+
 # Daily AIDE check - add to cron
-echo "0 4 * * * root /usr/sbin/aide --check 2>&1 | mail -s 'AIDE Integrity Report' admin@example.com" | \
+echo "0 4 * * * root /usr/bin/aide --check 2>&1 | mail -s 'AIDE Integrity Report' admin@example.com" | \
     sudo tee /etc/cron.d/aide-daily
 ```
 
 ## Documenting Log Retention for Auditors
 
-Create a log retention policy document that maps to your technical controls:
+Create a log retention policy document for logs that are not already rotated by `auditd`:
 
 ```bash
 cat << 'EOF' | sudo tee /etc/logrotate.d/soc2-audit-logs
-# SOC 2 compliant log retention
-# Retain audit logs for 13 months (1 year + 1 month buffer)
-
-/var/log/audit/audit.log {
-    rotate 52      # 52 weekly rotations = 1 year
-    weekly
-    compress
-    delaycompress
-    missingok
-    notifempty
-    postrotate
-        /usr/bin/killall -HUP auditd
-    endscript
-}
+# SOC 2 log retention
+# Retain supporting logs for 52 weekly rotations.
+# auditd rotates /var/log/audit/audit.log according to auditd.conf.
 
 /var/log/sudo.log {
     rotate 52
