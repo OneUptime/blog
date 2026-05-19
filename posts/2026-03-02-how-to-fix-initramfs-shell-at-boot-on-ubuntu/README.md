@@ -116,7 +116,7 @@ exit
 
 ## Cause 3: Corrupted initramfs Image
 
-If the initramfs image itself is corrupted or missing, the kernel can't load it. This is harder to fix from the initramfs shell since the initramfs is what you're already in.
+If the initramfs image itself is missing or badly corrupted, the system usually fails before you ever get an initramfs shell. If the initramfs exists but is incomplete, for example because it is missing a needed storage, LVM, or encryption component, you can be dropped to the shell.
 
 You need a live USB or to boot from an older kernel that has a working initramfs.
 
@@ -190,7 +190,7 @@ lvdisplay
 mount /dev/ubuntu-vg/ubuntu-lv /root
 
 # For LUKS: open the encrypted volume
-cryptsetup luksOpen /dev/sda2 cryptroot
+cryptsetup open --type luks /dev/sda2 cryptroot
 
 # Then mount the opened volume
 mount /dev/mapper/cryptroot /root
@@ -212,14 +212,15 @@ exit
 
 ## Mounting Root Read-Write from initramfs
 
-By default, the initramfs mounts root read-only. For some repairs you need write access:
+If you mounted the real root filesystem read-only under `/root`, remount that mount point read-write before editing files:
 
 ```bash
-# Remount root read-write
-mount -o remount,rw /
+# Remount the mounted root filesystem read-write
+mount -o remount,rw /root
 
-# Now you can write to files under /root if it's mounted there
-# or to / if you're in a rescue init environment
+# If you are in a rescue environment where the real root is mounted at /,
+# remount / instead
+mount -o remount,rw /
 ```
 
 ## Preventing initramfs Drops
