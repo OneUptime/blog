@@ -173,7 +173,7 @@ GRANT SELECT ON appdb.* TO 'reporter'@'localhost';
 -- Backup user: needs specific privileges for dumps
 CREATE USER 'backup'@'localhost'
     IDENTIFIED WITH caching_sha2_password BY 'backup-password';
-GRANT SELECT, SHOW VIEW, RELOAD, LOCK TABLES, EVENT,
+GRANT SELECT, SHOW VIEW, RELOAD, LOCK TABLES, PROCESS,
     TRIGGER, REPLICATION CLIENT ON *.* TO 'backup'@'localhost';
 
 FLUSH PRIVILEGES;
@@ -214,7 +214,7 @@ validate_password.length = 12
 MySQL 8 supports account locking after failed login attempts:
 
 ```sql
--- Lock an account after 5 failed attempts for 1 hour
+-- Lock an account after 5 failed attempts for 1 day
 CREATE USER 'secure_user'@'localhost'
     IDENTIFIED BY 'password'
     FAILED_LOGIN_ATTEMPTS 5
@@ -272,7 +272,7 @@ ls -la /etc/mysql/
 # Config files should not be world-readable
 
 # Fix permissions if needed
-sudo chmod 750 /var/lib/mysql
+sudo chmod 700 /var/lib/mysql
 sudo chmod 640 /etc/mysql/mysql.conf.d/mysqld.cnf
 ```
 
