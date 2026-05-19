@@ -131,8 +131,8 @@ sudo apt update
 If `dpkg --configure -a` fails, try with additional options.
 
 ```bash
-# Force configuration even if pre/post scripts fail
-sudo dpkg --force-confmiss --configure -a
+# Use non-interactive defaults for any conffile prompts that block configuration
+sudo dpkg --force-confdef --force-confold --configure -a
 
 # If a specific package is stuck, try removing it first
 sudo dpkg --remove --force-remove-reinstreq packagename
