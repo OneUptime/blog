@@ -41,7 +41,7 @@ git clone https://github.com/letsencrypt/boulder.git
 cd boulder
 
 # Check out a stable release
-git checkout release-2024-01-09
+git checkout release-2024-01-08
 ```
 
 ## Understanding Boulder's Architecture
@@ -167,7 +167,7 @@ Boulder uses MariaDB for persistence:
 sudo apt install mariadb-server
 
 # Run Boulder's database migration scripts
-docker compose run boulder-tools ./bin/create-empty-amorphic-db
+docker compose run --rm boulder ./sa/migrations.sh
 ```
 
 ## Configuring Internal DNS Override
