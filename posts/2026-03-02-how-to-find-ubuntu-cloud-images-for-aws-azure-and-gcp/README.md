@@ -72,7 +72,7 @@ aws ec2 describe-images \
 aws ec2 describe-images \
     --owners 099720109477 \
     --filters \
-        "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-minimal-*" \
+        "Name=name,Values=ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-minimal-*" \
         "Name=state,Values=available" \
     --query 'sort_by(Images, &CreationDate)[-1].[ImageId,Name,CreationDate]' \
     --output table \
@@ -91,9 +91,12 @@ curl -s "https://cloud-images.ubuntu.com/locator/ec2/releasesTable" | \
     python3 -c "
 import json, sys
 data = json.load(sys.stdin)['aaData']
-for row in data:
-    if 'noble' in row[0].lower() and 'us-east-1' in row[1] and 'amd64' in row[2] and 'hvm' in row[4]:
-        print(row)
+matches = [
+    row for row in data
+    if row[0] == 'us-east-1' and 'noble' in row[1].lower()
+    and row[3] == 'amd64' and 'hvm' in row[4]
+]
+print(max(matches, key=lambda row: row[5]))
 "
 ```
 
@@ -102,9 +105,9 @@ for row in data:
 AWS maintains public SSM parameters with current Ubuntu AMI IDs:
 
 ```bash
-# Get latest Ubuntu 24.04 LTS AMI via SSM (no auth required for public params)
+# Get latest Ubuntu 24.04 LTS AMI via SSM
 aws ssm get-parameter \
-    --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp2/ami-id \
+    --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
     --query "Parameter.Value" \
     --output text \
     --region us-east-1
@@ -118,7 +121,7 @@ aws ssm get-parameter \
 
 # Minimal Ubuntu 24.04
 aws ssm get-parameter \
-    --name /aws/service/canonical/ubuntu/server-minimal/24.04/stable/current/amd64/hvm/ebs-gp2/ami-id \
+    --name /aws/service/canonical/ubuntu/server-minimal/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
     --query "Parameter.Value" \
     --output text \
     --region us-east-1
@@ -129,7 +132,7 @@ Use this in Terraform:
 ```hcl
 # Terraform - always use the latest Ubuntu AMI
 data "aws_ssm_parameter" "ubuntu_noble" {
-  name = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
+  name = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
 }
 
 resource "aws_instance" "web" {
@@ -155,7 +158,7 @@ az vm image list-offers \
     --location eastus \
     --output table
 
-# List Ubuntu 24.04 SKUs (versions)
+# List Ubuntu 24.04 SKUs
 az vm image list-skus \
     --publisher Canonical \
     --offer ubuntu-24_04-lts \
@@ -169,24 +172,24 @@ az vm image list \
     --sku server \
     --location eastus \
     --all \
-    --query "[-1]" \
+    --query "sort_by(@, &version)[-1]" \
     --output table
 
 # Find Ubuntu 22.04 images
 az vm image list \
     --publisher Canonical \
-    --offer 0001-com-ubuntu-server-jammy \
-    --sku 22_04-lts \
+    --offer ubuntu-22_04-lts \
+    --sku server \
     --location eastus \
     --all \
-    --query "[-1]" \
+    --query "sort_by(@, &version)[-1]" \
     --output table
 ```
 
 Azure image reference format for Ubuntu:
 - Publisher: `Canonical`
-- Offer: `ubuntu-24_04-lts` (Noble) or `0001-com-ubuntu-server-jammy` (Jammy)
-- SKU: `server` or `server-gen2` for Gen2 VMs
+- Offer: `ubuntu-24_04-lts` (Noble) or `ubuntu-22_04-lts` (Jammy)
+- SKU: `server` for Gen2 VMs or `server-gen1` for Gen1 VMs
 - Version: `latest` (recommended for automation)
 
 ```bash
@@ -220,8 +223,8 @@ resource "azurerm_linux_virtual_machine" "web" {
 ### Using gcloud CLI
 
 ```bash
-# Install Google Cloud SDK
-sudo apt install google-cloud-sdk -y
+# Install Google Cloud CLI
+sudo snap install google-cloud-cli --classic
 
 # Authenticate
 gcloud auth login
@@ -233,7 +236,7 @@ gcloud compute images list \
     --format="table(name,family,creationTimestamp)"
 
 # Find the latest Ubuntu 24.04 LTS image
-gcloud compute images describe-from-family ubuntu-2404-lts \
+gcloud compute images describe-from-family ubuntu-2404-lts-amd64 \
     --project ubuntu-os-cloud \
     --format="table(name,selfLink,status)"
 
@@ -258,7 +261,7 @@ GCP image families automatically point to the latest image in that family, so us
 ```bash
 # Create instance using image family (always uses latest)
 gcloud compute instances create myinstance \
-    --image-family ubuntu-2404-lts \
+    --image-family ubuntu-2404-lts-amd64 \
     --image-project ubuntu-os-cloud \
     --machine-type n2-standard-2 \
     --zone us-central1-a
@@ -268,7 +271,7 @@ In Terraform:
 
 ```hcl
 data "google_compute_image" "ubuntu_noble" {
-  family  = "ubuntu-2404-lts"
+  family  = "ubuntu-2404-lts-amd64"
   project = "ubuntu-os-cloud"
 }
 
@@ -299,7 +302,7 @@ For GitOps workflows, regularly update image references in your infrastructure c
 
 REGION="us-east-1"
 NEW_AMI=$(aws ssm get-parameter \
-    --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp2/ami-id \
+    --name /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id \
     --query "Parameter.Value" \
     --output text \
     --region "$REGION")
