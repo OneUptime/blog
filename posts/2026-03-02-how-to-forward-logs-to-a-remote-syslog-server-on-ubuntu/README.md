@@ -193,7 +193,7 @@ action(
     queue.saveOnShutdown="on"           # Persist queue across rsyslog restarts
     queue.size="10000"                   # Max messages in memory queue
     queue.discardMark="9500"            # Start discarding when queue is 95% full
-    queue.discardSeverity="8"           # Discard debug messages first when full
+    queue.discardSeverity="7"           # Discard debug messages first when full
     # Retry behavior
     action.resumeRetryCount="-1"        # Retry indefinitely
     action.resumeInterval="30"          # Retry every 30 seconds
@@ -238,8 +238,11 @@ sudo openssl req -newkey rsa:4096 -keyout server-key.pem -out server-csr.pem \
 sudo openssl x509 -req -in server-csr.pem -CA ca-cert.pem -CAkey ca-key.pem \
     -CAcreateserial -out server-cert.pem -days 3650
 
-sudo chmod 640 *.pem
-sudo chown root:syslog *.pem
+sudo chmod 600 ca-key.pem
+sudo chmod 640 server-key.pem
+sudo chmod 644 ca-cert.pem server-cert.pem
+sudo chown root:root ca-key.pem
+sudo chown root:syslog server-key.pem server-cert.pem ca-cert.pem
 ```
 
 Server TLS configuration:
@@ -274,6 +277,7 @@ sudo apt install rsyslog-gnutls
 
 # Copy CA certificate from server
 # (In production, use your PKI's CA certificate)
+sudo mkdir -p /etc/rsyslog-certs
 sudo scp logserver:/etc/rsyslog-certs/ca-cert.pem /etc/rsyslog-certs/
 ```
 
