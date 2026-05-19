@@ -4,16 +4,16 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, AMD, GPU, ROCm, Driver
 
-Description: A practical guide to installing AMD GPU drivers on Ubuntu using AMDGPU-PRO and ROCm, covering both desktop graphics and compute workloads with troubleshooting tips.
+Description: A practical guide to installing AMD GPU drivers on Ubuntu using Radeon Software for Linux and ROCm, covering both desktop graphics and compute workloads with troubleshooting tips.
 
 ---
 
-AMD GPU driver installation on Ubuntu is handled through two separate stacks depending on your use case: the open-source AMDGPU driver for desktop graphics (already included in the Linux kernel), and AMDGPU-PRO or ROCm for compute workloads like machine learning and OpenCL. Understanding which stack you need saves a lot of frustration.
+AMD GPU driver installation on Ubuntu is handled through two separate stacks depending on your use case: the open-source AMDGPU driver for desktop graphics (already included in the Linux kernel), and ROCm or Radeon Software packages for compute workloads like machine learning and OpenCL. Understanding which stack you need saves a lot of frustration.
 
 ## Understanding the AMD Driver Stack
 
 - **amdgpu (kernel driver)**: Open-source, ships with Ubuntu's kernel. Works out of the box for most RDNA and GCN GPUs. Handles display and basic OpenGL/Vulkan.
-- **AMDGPU-PRO**: Hybrid driver from AMD that adds a proprietary OpenGL and Vulkan layer on top of the open-source kernel driver. Used for professional workloads requiring certified drivers.
+- **Radeon Software for Linux**: AMD's packaged graphics and workstation stack on top of the open-source kernel driver. Use the `graphics` use case for the open-source Mesa graphics stack; the proprietary workstation stack is only for specific supported workstation workflows.
 - **ROCm (Radeon Open Compute)**: AMD's compute platform for GPU programming, machine learning (HIP, PyTorch, TensorFlow). The AMD equivalent of NVIDIA's CUDA.
 
 For gaming and desktop use, the kernel driver is usually sufficient. For ML or OpenCL compute, install ROCm.
@@ -34,17 +34,17 @@ sudo dmesg | grep amdgpu
 
 ## Supported GPU List
 
-Not all AMD GPUs are supported by ROCm. Check https://rocm.docs.amd.com/en/latest/release/gpu_os_support.html for the current list. Generally supported:
-- RX 6000 series (RDNA 2, gfx1030/1031)
+Not all AMD GPUs are supported by ROCm. Check https://rocm.docs.amd.com/projects/install-on-linux/en/latest/reference/system-requirements.html for the current list. Generally supported:
 - RX 7000 series (RDNA 3, gfx1100/1101)
-- Pro W6000/W7000 series
-- Instinct MI100/MI200/MI300 (datacenter)
+- RX 9000 series (RDNA 4, gfx1200/1201)
+- Radeon PRO W6800/W7000 series and newer Radeon PRO cards listed in AMD's matrix
+- Instinct MI100/MI200/MI300/MI350 (datacenter)
 
-Older cards (Vega, Polaris) have limited ROCm support.
+Older Radeon cards, including Vega and Polaris desktop GPUs, are not officially supported by current ROCm releases.
 
-## Installing AMDGPU-PRO for Desktop/OpenGL
+## Installing Radeon Graphics Packages for Desktop/OpenGL
 
-If you need the professional OpenGL stack for applications like Blender, DaVinci Resolve, or CAD software:
+If you need AMD's packaged graphics stack for applications like Blender, DaVinci Resolve, or CAD software:
 
 ```bash
 # Install prerequisites
@@ -54,17 +54,17 @@ sudo apt-get install -y wget
 # Download the AMDGPU installer from AMD's support page
 # Find the latest at: https://www.amd.com/en/support/linux-drivers
 # Example for Ubuntu 22.04
-wget https://repo.radeon.com/amdgpu-install/6.1.3/ubuntu/jammy/amdgpu-install_6.1.60103-1_all.deb
+wget https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/jammy/amdgpu-install_7.2.3.70203-1_all.deb
 
 # Install the installer package
-sudo dpkg -i amdgpu-install_6.1.60103-1_all.deb
+sudo apt install ./amdgpu-install_7.2.3.70203-1_all.deb
 sudo apt-get update
 
-# Install AMDGPU-PRO with OpenGL (for graphics workloads)
+# Install the graphics stack for desktop workloads
 sudo amdgpu-install --usecase=graphics
 
 # Or install just OpenCL support
-sudo amdgpu-install --usecase=opencl
+sudo apt-get install -y rocm-opencl-runtime
 ```
 
 After installation, add your user to the render and video groups:
@@ -81,15 +81,19 @@ ROCm is AMD's answer to CUDA. The installation uses AMD's package repository:
 
 ```bash
 # Install the ROCm installer
-wget https://repo.radeon.com/amdgpu-install/6.1.3/ubuntu/jammy/amdgpu-install_6.1.60103-1_all.deb
-sudo dpkg -i amdgpu-install_6.1.60103-1_all.deb
+wget https://repo.radeon.com/amdgpu-install/7.2.3/ubuntu/jammy/amdgpu-install_7.2.3.70203-1_all.deb
+sudo apt install ./amdgpu-install_7.2.3.70203-1_all.deb
 sudo apt-get update
 
+# Install the packaged AMDGPU kernel driver
+sudo apt-get install -y "linux-headers-$(uname -r)" "linux-modules-extra-$(uname -r)"
+sudo apt-get install -y amdgpu-dkms
+
 # Install ROCm (includes HIP, rocBLAS, MIOpen)
-sudo amdgpu-install --usecase=rocm
+sudo apt-get install -y rocm
 
 # Add user to groups
-sudo usermod -aG render,video,rocm $USER
+sudo usermod -aG render,video $USER
 
 # Reboot
 sudo reboot
@@ -114,9 +118,14 @@ cat /opt/rocm/.info/version
 # Add ROCm to PATH
 cat >> ~/.bashrc << 'EOF'
 export PATH=/opt/rocm/bin:$PATH
-export LD_LIBRARY_PATH=/opt/rocm/lib:$LD_LIBRARY_PATH
 export ROCM_PATH=/opt/rocm
 EOF
+
+sudo tee --append /etc/ld.so.conf.d/rocm.conf << 'EOF'
+/opt/rocm/lib
+/opt/rocm/lib64
+EOF
+sudo ldconfig
 
 source ~/.bashrc
 ```
@@ -131,7 +140,7 @@ python3 -m venv ~/rocm-ml
 source ~/rocm-ml/bin/activate
 
 # Install PyTorch with ROCm support (check pytorch.org for latest)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.0
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.3
 
 # Test GPU detection
 python3 -c "
@@ -163,15 +172,19 @@ b = torch.randn(size, size, device=device)
 
 # Warm up
 torch.mm(a, b)
+if torch.cuda.is_available():
+    torch.cuda.synchronize()
 
 start = time.time()
 for _ in range(10):
     c = torch.mm(a, b)
-torch.cuda.synchronize()
+if torch.cuda.is_available():
+    torch.cuda.synchronize()
 elapsed = time.time() - start
 
 print(f"Matrix multiply (10 iterations): {elapsed:.3f}s")
-print(f"GPU memory used: {torch.cuda.memory_allocated()/1e9:.2f} GB")
+if torch.cuda.is_available():
+    print(f"GPU memory used: {torch.cuda.memory_allocated()/1e9:.2f} GB")
 ```
 
 ## Installing OpenCL for General Compute
@@ -180,7 +193,7 @@ For non-ML compute tasks that use OpenCL (like hashcat, Blender rendering):
 
 ```bash
 # Install ROCm OpenCL
-sudo apt-get install -y rocm-opencl rocm-opencl-dev
+sudo apt-get install -y rocm-opencl-runtime rocm-opencl-sdk
 
 # Verify
 clinfo | grep "Device Name"
@@ -237,26 +250,28 @@ This usually means the GPU is not in ROCm's supported list, or the kernel driver
 # Check the amdgpu driver version
 modinfo amdgpu | grep version
 
-# Try specifying the target GPU architecture manually
-export HSA_OVERRIDE_GFX_VERSION=10.3.0  # For RDNA 2 GPUs like RX 6700 XT
-rocminfo
+# Check the current ROCm support matrix before trying unsupported overrides
+/opt/rocm/bin/rocminfo
 ```
 
-### AMDGPU-PRO conflicts with Mesa
+### Radeon packages conflict with Mesa
 
-If you have Mesa installed and AMDGPU-PRO causes conflicts:
+If Radeon packages cause conflicts with Mesa:
 
 ```bash
-# Uninstall AMDGPU-PRO and reinstall only what you need
-sudo amdgpu-install --uninstall
-sudo amdgpu-install --usecase=rocm --no-dkms
+# Uninstall the AMDGPU stack and reinstall only what you need
+sudo amdgpu-uninstall
+sudo apt-get install -y rocm
 ```
 
 ## Monitoring GPU Performance
 
 ```bash
-# AMD's equivalent of nvidia-smi
+# Legacy ROCm system management tool
 rocm-smi
+
+# Newer ROCm releases also include AMD SMI
+amd-smi list
 
 # Watch mode
 watch -n 1 rocm-smi
