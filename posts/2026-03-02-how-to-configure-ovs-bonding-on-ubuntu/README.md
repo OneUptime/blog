@@ -18,7 +18,7 @@ OVS supports three bonding modes:
 |---|---|
 | `active-backup` | One link active, others standby. Automatic failover. |
 | `balance-slb` | Load balance based on source MAC and VLAN. No LACP required. |
-| `balance-tcp` | Load balance based on IP source/destination. Requires LACP. |
+| `balance-tcp` | Load balance based on L3/L4 fields such as IP addresses and TCP/UDP ports. Requires LACP. |
 
 `active-backup` is the safest choice for simple failover. `balance-slb` works without switch configuration. `balance-tcp` gives the best load distribution but requires 802.3ad LACP support on the connected switch.
 
@@ -45,7 +45,6 @@ Bridge br0
     Port bond0
         Interface eth0
         Interface eth1
-            type: system
     Port br0
         Interface br0
             type: internal
@@ -63,7 +62,7 @@ sudo ovs-vsctl add-bond br-uplink bond-uplink eth0 eth1 \
   other_config:bond-detect-mode=carrier
 
 # Set the primary interface (optional - OVS picks one if not set)
-sudo ovs-vsctl set port bond-uplink other_config:active-slave=eth0
+sudo ovs-vsctl set port bond-uplink other_config:bond-primary=eth0
 
 # Set a shorter failover detection interval (milliseconds)
 sudo ovs-vsctl set port bond-uplink other_config:bond-miimon-interval=100
@@ -104,8 +103,8 @@ sudo ovs-vsctl set port bond0 \
   other_config:lacp-fallback-ab=true
 
 # Set LACP system priority (lower = higher priority)
-sudo ovs-vsctl set open_vswitch . \
-  other_config:system-id=aa:bb:cc:dd:ee:ff \
+sudo ovs-vsctl set port bond0 \
+  other_config:lacp-system-id=aa:bb:cc:dd:ee:ff \
   other_config:lacp-system-priority=100
 
 # View LACP status
@@ -150,7 +149,7 @@ For persistent OVS bond configuration that survives reboots, use Netplan.
 # /etc/netplan/01-ovs-bond.yaml
 network:
   version: 2
-  renderer: openvswitch
+  renderer: networkd
   ethernets:
     eth0:
       dhcp4: false
@@ -163,6 +162,7 @@ network:
         mode: active-backup
         mii-monitor-interval: 100
       dhcp4: false
+      openvswitch: {}
   bridges:
     br-uplink:
       interfaces: [bond0]
@@ -170,7 +170,7 @@ network:
       openvswitch: {}
 ```
 
-Note: Netplan's OVS renderer creates OVS bonds differently from kernel bonds. The `renderer: openvswitch` line is required for OVS-managed bonds.
+Note: Netplan creates OVS-managed devices when the device has an `openvswitch` mapping. Netplan's `renderer` value should still be `networkd` or `NetworkManager`.
 
 ```bash
 sudo netplan apply
@@ -203,7 +203,7 @@ The time OVS takes to detect a link failure and fail over depends on the detecti
 # Carrier detection mode (fast - detects physical link down immediately)
 sudo ovs-vsctl set port bond0 other_config:bond-detect-mode=carrier
 
-# MII monitoring mode (active probing)
+# MII monitoring mode (polls each interface's MII)
 sudo ovs-vsctl set port bond0 other_config:bond-detect-mode=miimon
 
 # MII monitoring interval (check every 100ms)
@@ -211,10 +211,10 @@ sudo ovs-vsctl set port bond0 other_config:bond-miimon-interval=100
 
 # Updelay: wait this long before activating a recovered link (ms)
 # Prevents flapping if a link bounces
-sudo ovs-vsctl set port bond0 other_config:updelay=200
+sudo ovs-vsctl set port bond0 bond_updelay=200
 
 # Downdelay: wait this long before marking a link as down (ms)
-sudo ovs-vsctl set port bond0 other_config:downdelay=200
+sudo ovs-vsctl set port bond0 bond_downdelay=200
 ```
 
 ## Removing a Bond
