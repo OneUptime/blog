@@ -48,7 +48,7 @@ ls /etc/apt/sources.list.d/
 cat /etc/apt/sources.list.d/google-chrome.list
 ```
 
-On Ubuntu 22.04 and later, many systems come with `sources.list` nearly empty because repository configuration has moved to the new DEB822 format in `/etc/apt/sources.list.d/ubuntu.sources`. You may see both formats on the same system.
+On Ubuntu 24.04 and later, many systems come with `sources.list` nearly empty because repository configuration has moved to the new DEB822 format in `/etc/apt/sources.list.d/ubuntu.sources`. You may see both formats on the same system.
 
 ## Standard Ubuntu Repository Entry
 
