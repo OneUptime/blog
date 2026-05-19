@@ -95,10 +95,10 @@ For a visual representation of what's happening during boot:
 
 ```bash
 # Generate an SVG chart of the boot process
-systemd-analyze plot > boot-chart.svg
+systemd-analyze plot > /tmp/boot-chart.svg
 
 # Open in a browser
-xdg-open boot-chart.svg
+xdg-open /tmp/boot-chart.svg
 # Or copy to a machine with a browser
 scp server:/tmp/boot-chart.svg ~/boot-chart.svg
 ```
@@ -173,7 +173,7 @@ sudo systemctl mask snapd.service
 
 ### Fix NetworkManager-wait-online
 
-`NetworkManager-wait-online` waits until all network interfaces have a carrier and address. On servers where you only need one interface up before continuing:
+`NetworkManager-wait-online` waits until NetworkManager reports that startup is complete, after it has activated or attempted to activate available auto-connect profiles. On servers where services do not truly need `network-online.target` before starting:
 
 ```bash
 # Check if it's on the critical path
@@ -182,7 +182,7 @@ systemd-analyze critical-chain NetworkManager-wait-online.service
 # Option 1: Disable it entirely (if services don't truly need network at boot)
 sudo systemctl disable NetworkManager-wait-online.service
 
-# Option 2: Configure it to succeed with any interface ready
+# Option 2: Reduce its wait timeout
 sudo systemctl edit NetworkManager-wait-online.service
 ```
 
@@ -190,9 +190,9 @@ Add to the override file:
 
 ```ini
 [Service]
-# Timeout faster and accept any interface
+# Timeout faster
 ExecStart=
-ExecStart=/usr/lib/NetworkManager/nm-wait-online --any --timeout 30
+ExecStart=/usr/bin/nm-online -s -q --timeout=10
 ```
 
 ### Disable apt Auto-Update at Boot
@@ -200,16 +200,17 @@ ExecStart=/usr/lib/NetworkManager/nm-wait-online --any --timeout 30
 The `apt-daily` and `apt-daily-upgrade` services run package list updates and upgrades at boot, which can cause significant delays:
 
 ```bash
-# Disable the daily timer and socket
+# Disable the daily timers
 sudo systemctl disable apt-daily.timer apt-daily-upgrade.timer
 
-# Instead, run apt updates on a custom schedule
+# Or keep apt-daily enabled but run it on a custom schedule
 sudo systemctl edit apt-daily.timer
 ```
 
 ```ini
 [Timer]
 # Run 20 minutes after boot, then daily
+OnCalendar=
 OnBootSec=20min
 OnUnitActiveSec=24h
 ```
