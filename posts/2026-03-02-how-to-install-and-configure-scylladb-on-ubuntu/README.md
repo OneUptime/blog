@@ -19,7 +19,7 @@ ScyllaDB is a strong choice when you need low-latency, high-throughput NoSQL at 
 - SSD storage strongly recommended (ScyllaDB is I/O intensive)
 - Root or sudo access
 
-## Disabling systemd-resolved and Swap
+## Disabling Swap
 
 ScyllaDB, like Cassandra, performs best with swap disabled:
 
@@ -41,16 +41,19 @@ Use the official ScyllaDB repository:
 
 ```bash
 # Install prerequisites
-sudo apt update && sudo apt install -y curl gpg
+sudo apt update && sudo apt install -y curl gnupg wget
 
 # Add ScyllaDB's APT repository
-curl -fsSL https://downloads.scylladb.com/downloads/scylla/apt/gpg.key | \
-  sudo gpg --dearmor -o /usr/share/keyrings/scylladb-archive-keyring.gpg
+sudo mkdir -p /etc/apt/keyrings
+sudo gpg --homedir /tmp --no-default-keyring --keyring /tmp/scylladb.gpg \
+  --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys c503c686b007f39e
+sudo gpg --homedir /tmp --no-default-keyring --keyring /tmp/scylladb.gpg \
+  --export --armor c503c686b007f39e | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/scylladb.gpg
 
-# Add repository (use scylla-5.4 or the current version)
-echo "deb [signed-by=/usr/share/keyrings/scylladb-archive-keyring.gpg] \
-  https://downloads.scylladb.com/downloads/scylla/apt stable main" | \
-  sudo tee /etc/apt/sources.list.d/scylla.list
+# Add the repository file for the current stable version
+sudo wget -O /etc/apt/sources.list.d/scylla.list \
+  https://downloads.scylladb.com/deb/debian/scylla-2026.1.list
 
 sudo apt update
 
@@ -66,9 +69,9 @@ ScyllaDB includes a setup script that configures the OS for optimal performance:
 # Run the ScyllaDB setup script
 # This configures:
 # - IO scheduler
-# # CPU governor
+# - CPU governor
 # - Network settings
-# - Huge pages
+# - Other system tuning
 sudo scylla_setup
 
 # You'll be asked several questions:
@@ -134,12 +137,7 @@ authenticator: PasswordAuthenticator
 # Authorizer
 authorizer: CassandraAuthorizer
 
-# Consistency
-# Minimum replicas that must respond to satisfy a read
-read_consistency: QUORUM
-
-# Number of replicas to write to
-# write_consistency: QUORUM  # Typically set at the CQL query level
+# Consistency levels are typically set per query or per driver statement
 
 # Compaction throughput
 compaction_throughput_mb_per_sec: 16
@@ -147,8 +145,8 @@ compaction_throughput_mb_per_sec: 16
 # Memory settings (auto-detected, but can be tuned)
 # ScyllaDB will use ~60% of available memory by default
 
-# Server-side caching
-row_cache_size_in_mb: 0  # Disabled by default; enable for read-heavy workloads
+# Server-side cache tuning
+index_cache_fraction: 0.2
 ```
 
 ## Starting ScyllaDB
@@ -187,11 +185,11 @@ ALTER ROLE cassandra WITH PASSWORD = 'NewSuperuserPassword123!';
 -- Create a new superuser (optional but recommended)
 CREATE ROLE scylla_admin WITH SUPERUSER = true AND LOGIN = true AND PASSWORD = 'AdminPassword123!';
 
--- Create application keyspace with replication factor 3
+-- Create application keyspace for a single-node tutorial setup
 CREATE KEYSPACE myapp
   WITH replication = {
     'class': 'NetworkTopologyStrategy',
-    'datacenter1': 3
+    'replication_factor': 1
   }
   AND durable_writes = true;
 
