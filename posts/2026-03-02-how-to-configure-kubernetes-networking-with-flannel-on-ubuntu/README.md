@@ -8,11 +8,11 @@ Description: Detailed guide to configuring Flannel as the CNI plugin for Kuberne
 
 ---
 
-Kubernetes does not ship with a built-in pod networking solution. Instead, it defines the Container Network Interface (CNI) specification and leaves the choice of implementation to operators. Flannel is one of the oldest and most straightforward CNI plugins - it creates an overlay network that allows pods on different nodes to communicate as if they were on the same subnet.
+Kubernetes does not ship with a built-in pod networking solution. Instead, it defines the Container Network Interface (CNI) specification and leaves the choice of implementation to operators. Flannel is one of the oldest and most straightforward CNI plugins - it creates a layer 3 pod network, often using an overlay, that allows pods on different nodes to communicate as if they were on the same subnet.
 
 ## How Flannel Works
 
-Flannel assigns each node a subnet from a larger CIDR block (typically `10.244.0.0/16`). Pods on a node get IPs from that node's subnet. Traffic between pods on different nodes is encapsulated and forwarded through one of several backend mechanisms:
+Flannel assigns each node a subnet from a larger CIDR block (typically `10.244.0.0/16`). Pods on a node get IPs from that node's subnet. Traffic between pods on different nodes is encapsulated or routed through one of several backend mechanisms:
 
 - **VXLAN** (default): Encapsulates pod traffic in UDP packets. Works across most network environments including cloud VPCs.
 - **host-gw**: Adds static routes directly - faster than VXLAN but requires all nodes to be on the same L2 network segment.
@@ -33,7 +33,7 @@ kubectl get nodes
 # k8s-worker-1   NotReady   <none>          1m
 ```
 
-Flannel requires that the cluster was initialized with `--pod-network-cidr=10.244.0.0/16`. If you used a different CIDR during `kubeadm init`, you will need to adjust the Flannel configuration to match.
+The default Flannel manifest expects the cluster to be initialized with `--pod-network-cidr=10.244.0.0/16`. If you used a different CIDR during `kubeadm init`, you will need to adjust the Flannel configuration to match.
 
 ## Installing Flannel
 
@@ -67,7 +67,7 @@ kubectl apply -f kube-flannel.yml
 
 ## Configuring the Backend Mode
 
-Flannel's configuration is stored in a ConfigMap in the `kube-flannel` namespace. To change the backend mode, edit this ConfigMap.
+Flannel's configuration is stored in a ConfigMap in the `kube-flannel` namespace. Flannel recommends choosing the backend during setup, but if you need to change the backend mode later, edit this ConfigMap and plan for a restart of the Flannel pods.
 
 ```bash
 # View the current Flannel configuration
@@ -179,11 +179,11 @@ Flannel requires specific ports to be open between nodes. If you are using UFW:
 # Allow VXLAN traffic (UDP 8472)
 sudo ufw allow 8472/udp comment 'Flannel VXLAN'
 
-# Allow Flannel health check
-sudo ufw allow 8285/udp comment 'Flannel health'
+# If using the older udp backend instead of VXLAN, allow UDP 8285 instead
+# sudo ufw allow 8285/udp comment 'Flannel UDP backend'
 
-# Allow pod network CIDR through UFW
-sudo ufw allow from 10.244.0.0/16
+# Allow routed pod network traffic through UFW
+sudo ufw route allow from 10.244.0.0/16
 
 # Reload UFW
 sudo ufw reload
@@ -246,7 +246,7 @@ netstat -su | grep -i 'receive errors\|bad'
 
 ### IP Address Exhaustion
 
-Each node gets a /24 subnet by default, supporting 254 pods per node. For very large clusters, adjust the SubnetLen in the Flannel config:
+Each node gets a /24 subnet by default, providing up to 254 pod IPs per node at the Flannel subnet level. Kubernetes node pod limits may be lower. For very large clusters, adjust the SubnetLen in the Flannel config:
 
 ```json
 {
