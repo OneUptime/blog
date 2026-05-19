@@ -145,21 +145,21 @@ echo "0 3 * * 0 root /usr/local/bin/clean-snap-revisions.sh" | \
 
 ## Configuring snapd to Keep Fewer Revisions
 
-Rather than cleaning up after the fact, tell snapd to keep fewer revisions from the start. The `refresh.retain` setting controls how many revisions to keep:
+Rather than cleaning up after the fact, tell snapd how many revisions to retain. The `refresh.retain` setting controls how many revisions are kept (allowed range is 2-20, with 2 being the default on classic Ubuntu and 3 on Ubuntu Core):
 
 ```bash
-# Check current setting (default is 2)
+# Check current setting (default is 2 on classic Ubuntu, 3 on Ubuntu Core)
 sudo snap get system refresh.retain
 
-# Set to keep only 1 revision (current + no backups)
-# This means you cannot roll back after an update
-sudo snap set system refresh.retain=1
+# Set to the minimum of 2 - the previous revision is kept only until
+# the next successful refresh, then removed automatically
+sudo snap set system refresh.retain=2
 
 # Verify the setting
 sudo snap get system refresh.retain
 ```
 
-With `refresh.retain=1`, the old revision is removed immediately after a successful update instead of being kept as a fallback. If an update breaks something, you cannot roll back without downloading the previous version again.
+With `refresh.retain=2`, snapd keeps only the current and one previous revision; older revisions are removed automatically after the next refresh. Note that 2 is the lowest value snapd accepts - attempting `refresh.retain=1` will fail with an error that retain must be between 2 and 20.
 
 A balanced approach is keeping the default of 2 but running weekly cleanup - this gives you one revision of rollback ability while preventing indefinite accumulation.
 
@@ -194,7 +194,7 @@ du -sh /var/lib/snapd/cache/ 2>/dev/null
 
 # The main space users
 du -sh /var/lib/snapd/snaps/     # The actual snap images
-du -sh /var/lib/snapd/snap/      # Snap data directories
+du -sh /var/snap/                # Per-snap system data directories
 du -sh /var/lib/snapd/           # Total snapd usage
 
 # Snapshots from removed snaps (if you used snap remove without --purge)
