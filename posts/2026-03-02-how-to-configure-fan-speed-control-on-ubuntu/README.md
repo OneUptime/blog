@@ -29,10 +29,11 @@ sudo apt update
 sudo apt install -y fancontrol lm-sensors
 
 # Run sensor detection
+# Avoid this on production systems unless you accept the hardware probing risk
 sudo sensors-detect --auto
 
-# Load detected modules
-sudo service kmod start
+# Load modules listed for boot by sensors-detect
+sudo systemctl restart systemd-modules-load.service
 
 # Verify sensors are detected
 sensors
@@ -60,7 +61,7 @@ ls /sys/class/hwmon/hwmon*/pwm*
 cat /sys/class/hwmon/hwmon2/pwm1
 
 # Check PWM enable status
-# 0 = no control, 1 = manual, 2 = automatic (firmware)
+# 0 = no control, 1 = manual, 2 = automatic or driver-defined mode
 cat /sys/class/hwmon/hwmon2/pwm1_enable
 ```
 
@@ -98,14 +99,11 @@ sudo tee /etc/fancontrol << 'EOF'
 # Interval between temperature reads (seconds)
 INTERVAL=10
 
-# Hardware monitor paths for fans
-FCFANS=/sys/class/hwmon/hwmon2/fan1_input /sys/class/hwmon/hwmon2/fan2_input
+# Map PWM outputs to fan speed inputs
+FCFANS=/sys/class/hwmon/hwmon2/pwm1=/sys/class/hwmon/hwmon2/fan1_input /sys/class/hwmon/hwmon2/pwm2=/sys/class/hwmon/hwmon2/fan2_input
 
-# PWM outputs to control
-FCPWMS=/sys/class/hwmon/hwmon2/pwm1 /sys/class/hwmon/hwmon2/pwm2
-
-# Temperature sensors to read from
-FCSENSORS=/sys/class/hwmon/hwmon0/temp1_input /sys/class/hwmon/hwmon0/temp1_input
+# Map PWM outputs to temperature sensors
+FCTEMPS=/sys/class/hwmon/hwmon2/pwm1=/sys/class/hwmon/hwmon0/temp1_input /sys/class/hwmon/hwmon2/pwm2=/sys/class/hwmon/hwmon0/temp1_input
 
 # Minimum temperature to start increasing fan speed
 MINTEMP=/sys/class/hwmon/hwmon2/pwm1=50 /sys/class/hwmon/hwmon2/pwm2=50
@@ -119,7 +117,10 @@ MINPWM=/sys/class/hwmon/hwmon2/pwm1=80 /sys/class/hwmon/hwmon2/pwm2=80
 # Maximum PWM value (full speed)
 MAXPWM=/sys/class/hwmon/hwmon2/pwm1=255 /sys/class/hwmon/hwmon2/pwm2=255
 
-# Minimum start PWM value (to start fans from stopped)
+# Minimum PWM value to start fans from stopped
+MINSTART=/sys/class/hwmon/hwmon2/pwm1=100 /sys/class/hwmon/hwmon2/pwm2=100
+
+# Minimum PWM value at which fans keep spinning
 MINSTOP=/sys/class/hwmon/hwmon2/pwm1=60 /sys/class/hwmon/hwmon2/pwm2=60
 EOF
 ```
@@ -129,6 +130,8 @@ The configuration maps each PWM output to a temperature sensor and defines:
 - **MAXTEMP**: Temperature at which fans run at maximum speed
 - **MINPWM**: PWM value for minimum fan speed (0-255)
 - **MAXPWM**: PWM value for maximum fan speed (0-255)
+- **MINSTART**: PWM value used to start a stopped fan
+- **MINSTOP**: Minimum PWM value at which the fan should keep spinning
 
 ## Enabling and Starting fancontrol
 
@@ -151,7 +154,7 @@ journalctl -u fancontrol -f
 Before setting up automatic control, test manual control:
 
 ```bash
-# Enable manual PWM control (disables automatic firmware control)
+# Enable manual PWM control
 echo 1 | sudo tee /sys/class/hwmon/hwmon2/pwm1_enable
 
 # Set fan speed (0=off, 128=50%, 255=100%)
@@ -160,7 +163,7 @@ echo 128 | sudo tee /sys/class/hwmon/hwmon2/pwm1
 # Verify the fan speed changed
 cat /sys/class/hwmon/hwmon2/fan1_input
 
-# Return to automatic firmware control
+# Return to automatic or driver-defined control if supported
 echo 2 | sudo tee /sys/class/hwmon/hwmon2/pwm1_enable
 
 # Or let fancontrol manage it
@@ -171,11 +174,11 @@ Never leave fans in manual mode without a daemon managing them. If the system cr
 
 ## Dell iDRAC Fan Control
 
-Dell servers use iDRAC for fan management and often override OS-level fan control. To enable manual fan control on Dell servers:
+Dell servers use iDRAC for fan management and often override OS-level fan control. On some PowerEdge models and iDRAC firmware versions, these undocumented OEM IPMI commands enable manual fan control:
 
 ```bash
-# Install ipmitool
-sudo apt install -y ipmitool
+# Install ipmitool and jq
+sudo apt install -y ipmitool jq
 
 # Enable manual fan control via IPMI
 sudo ipmitool raw 0x30 0x30 0x01 0x00
@@ -200,7 +203,13 @@ set -euo pipefail
 
 # Get current CPU temperature
 CPU_TEMP=$(sensors -j 2>/dev/null | \
-    jq -r '."coretemp-isa-0000"."Package id 0".temp1_input // 0')
+    jq -r '."coretemp-isa-0000"."Package id 0".temp1_input // empty' || true)
+
+if [ -z "$CPU_TEMP" ]; then
+    logger "WARNING: CPU temperature unavailable; re-enabling automatic fan control"
+    ipmitool raw 0x30 0x30 0x01 0x01
+    exit 1
+fi
 
 CPU_TEMP_INT=$(echo "$CPU_TEMP" | awk '{printf "%d", $1}')
 
