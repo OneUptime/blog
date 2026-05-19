@@ -39,6 +39,10 @@ sudo systemctl disable apparmor
 # Unload all AppArmor profiles from the kernel
 sudo aa-teardown
 
+# On Ubuntu 24.04 and later, fully disable AppArmor at boot
+grep -q 'apparmor=0' /etc/default/grub || sudo sed -i '/^GRUB_CMDLINE_LINUX=/ s/"$/ apparmor=0"/' /etc/default/grub
+sudo update-grub
+
 # Verify no profiles are loaded
 sudo aa-status
 ```
@@ -47,7 +51,7 @@ If `aa-status` still shows loaded profiles, reboot and check again.
 
 ## Step 2: Install SELinux Packages
 
-Ubuntu provides SELinux packages in the main repository, though they lag behind Fedora/RHEL distributions.
+Ubuntu provides SELinux packages in the universe repository, though they lag behind Fedora/RHEL distributions.
 
 ```bash
 # Update package index
@@ -57,6 +61,7 @@ sudo apt update
 sudo apt install -y \
     selinux-basics \
     selinux-policy-default \
+    policycoreutils-python-utils \
     auditd
 
 # The selinux-activate script handles initial setup
@@ -71,7 +76,7 @@ The `selinux-activate` command does several things:
 ```bash
 # Verify the activation
 cat /etc/default/grub | grep GRUB_CMDLINE_LINUX
-# Should show security=selinux selinux=1
+# Should show security=selinux
 ```
 
 ## Step 3: Initial Reboot and Filesystem Relabeling
@@ -150,7 +155,7 @@ cat /etc/selinux/config
 SELINUX=permissive
 
 # SELINUXTYPE= can take one of these two values:
-#     default - equivalent to targeted policy
+#     default - equivalent to the old strict and targeted policies
 #     mls     - Multi-level security policy
 SELINUXTYPE=default
 ```
