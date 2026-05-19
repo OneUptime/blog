@@ -15,7 +15,7 @@ A Personal Package Archive (PPA) on Launchpad is the standard way to distribute 
 - A Launchpad account at https://launchpad.net
 - A GPG key pair (for signing packages)
 - A properly structured Debian source package
-- The `dput` tool for uploading
+- The `dput`, `dpkg-dev`, and `devscripts` tools
 
 ## Setting Up a Launchpad Account
 
@@ -31,7 +31,7 @@ Launchpad requires all uploads to be signed with a GPG key. Your public key must
 sudo apt install gnupg -y
 
 # Generate a new GPG key
-gpg --gen-key
+gpg --full-generate-key
 # Choose: RSA and RSA (default)
 # Key size: 4096
 # Expiry: 2y (2 years is reasonable)
@@ -84,15 +84,15 @@ sudo add-apt-repository ppa:yourusername/ppa-name
 `dput` handles the actual upload to Launchpad. Configure it with your PPA details:
 
 ```bash
-# Install dput
-sudo apt install dput -y
+# Install upload and packaging tools
+sudo apt install dput dpkg-dev devscripts -y
 
 # Configure dput - create or edit ~/.dput.cf
 cat > ~/.dput.cf << 'EOF'
-[launchpad]
+[my-ppa]
 fqdn = ppa.launchpad.net
 method = ftp
-incoming = ~yourusername/ubuntu/ppa-name
+incoming = ~yourusername/ubuntu/ppa-name/
 login = anonymous
 allow_unsigned_uploads = 0
 EOF
@@ -158,18 +158,18 @@ done
 ## Uploading to Launchpad
 
 ```bash
-# Upload the .changes file (dput handles the rest)
-dput launchpad ~/build/mypackage_1.0-1_source.changes
+# Upload the .changes file using the dput profile above
+dput my-ppa ~/build/mypackage_1.0-1_source.changes
 
-# If using a custom dput profile name
+# Or use dput's Launchpad PPA shortcut without a custom profile
 dput ppa:yourusername/ppa-name ~/build/mypackage_1.0-1_source.changes
 ```
 
-After uploading, you'll receive an email from Launchpad confirming the upload was accepted (or rejected with a reason). The build process typically takes 10-30 minutes. Monitor it at your PPA page on Launchpad.
+After uploading, you'll receive an email from Launchpad confirming the upload was accepted (or rejected with a reason). The build process can take anywhere from a few minutes to a few hours depending on how busy Launchpad is. Monitor it at your PPA page on Launchpad.
 
 ## Monitoring the Build
 
-On the Launchpad PPA page, you can see build status for each architecture (amd64, arm64, etc.). Common build failures include:
+On the Launchpad PPA page, you can see build status for each enabled architecture. PPAs build for amd64 by default, and you can request additional architectures such as arm64, armhf, ppc64el, riscv64, or s390x in the PPA settings. Common build failures include:
 
 - Missing build dependencies (add them to `Build-Depends` in `debian/control`)
 - Source doesn't compile cleanly in a minimal environment
@@ -210,4 +210,4 @@ sudo apt upgrade
 
 Keep your PPA's packages current - outdated packages with known security vulnerabilities reflect poorly on you as a maintainer. Document what the PPA contains in the Launchpad description field. If your software eventually gets accepted into Ubuntu's main repositories, let users know they can remove your PPA.
 
-For testing uploads before going public, create a separate "testing" PPA and verify builds there first. Launchpad's build infrastructure closely mirrors what Ubuntu's build systems use, so packages that build there will almost certainly build in Ubuntu proper.
+For testing uploads before going public, create a separate "testing" PPA and verify builds there first. Launchpad's PPA builds use the same package-building machinery as official Ubuntu packages, so successful PPA builds are a good indicator before submitting packages to Ubuntu proper.
