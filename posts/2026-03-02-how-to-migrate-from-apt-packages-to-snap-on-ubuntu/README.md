@@ -45,7 +45,7 @@ find ~/.config -name "*application*" 2>/dev/null
 
 ## Migrating Firefox
 
-Firefox is the most common migration on Ubuntu 22.04+, where Canonical made the snap the default:
+Firefox is the most common migration on Ubuntu 21.10+, where Canonical made the snap the default:
 
 ```bash
 # Step 1: Note your current Firefox profile location
@@ -125,29 +125,27 @@ cp -r ~/.config/libreoffice ~/snap/libreoffice/current/.config/libreoffice
 libreoffice --version
 ```
 
-## Migrating a Development Tool (Git)
+## Migrating a Development Tool (Node.js)
 
-Git as a classic snap is a common migration for developers who want newer versions than Ubuntu's repositories provide:
+Node.js as a classic snap is a common migration for developers who want newer versions than Ubuntu's repositories provide:
 
 ```bash
-# Check current git version from APT
-git --version
+# Check current Node.js version from APT
+node --version
 
-# Note your git configuration
-cat ~/.gitconfig
+# Note your npm configuration
+npm config list
 
-# Install git snap (classic confinement - full system access)
-sudo snap install git-ubuntu --classic
+# Install Node.js snap (classic confinement - full system access)
+# Channels track major versions, e.g. 20/stable, 22/stable
+sudo snap install node --classic --channel=22/stable
 
-# Or use the Snap Store's git snap
-sudo snap install git --classic
-
-# git configuration (~/.gitconfig) is accessible to classic snaps
-# No migration needed for user config
+# User config (~/.npmrc, ~/.nvmrc) is in standard locations
+# and accessible to classic snaps - no migration needed
 
 # Test
-git --version
-git config --list
+node --version
+npm --version
 ```
 
 ## Migrating System Services
@@ -169,18 +167,19 @@ cat /etc/postgresql/*/main/pg_hba.conf
 sudo apt remove postgresql
 
 # Step 4: Install the snap
-sudo snap install postgresql14
+# The official postgresql snap uses channels for major versions (e.g. 14/stable, 16/stable)
+sudo snap install postgresql --channel=14/stable
 
 # Step 5: Wait for the snap service to start
-sudo snap start postgresql14
-sudo snap services postgresql14
+sudo snap start postgresql
+sudo snap services postgresql
 
 # Step 6: Restore the database dump
-cat /tmp/postgres-backup.sql | sudo snap run postgresql14.psql
+cat /tmp/postgres-backup.sql | sudo snap run postgresql.psql
 
 # Step 7: Apply custom configurations
-# Snap postgresql stores config in /var/snap/postgresql14/current/etc/postgresql/
-sudo cp /tmp/my-postgresql.conf /var/snap/postgresql14/current/etc/postgresql/
+# Snap postgresql stores config under /var/snap/postgresql/current/
+sudo cp /tmp/my-postgresql.conf /var/snap/postgresql/current/etc/postgresql/
 ```
 
 ## Handling Applications That Don't Migrate Cleanly
