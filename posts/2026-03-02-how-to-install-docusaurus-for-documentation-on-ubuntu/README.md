@@ -15,15 +15,16 @@ The output is a static site - a directory of HTML, CSS, and JavaScript files tha
 ## Prerequisites
 
 - Ubuntu 20.04 or 22.04
-- Node.js 18+ (Docusaurus requires it)
+- Node.js 20+ (Docusaurus requires Node.js 20.0 or above)
 - npm or yarn
 
 ## Installing Node.js
 
 ```bash
-# Install Node.js 20 LTS using NodeSource repository
+# Install Node.js 22 LTS using NodeSource repository
 
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_22.x -o nodesource_setup.sh
+sudo -E bash nodesource_setup.sh
 sudo apt install -y nodejs
 
 # Verify installation
@@ -74,6 +75,8 @@ The main config file is `docusaurus.config.js`:
 
 ```javascript
 // docusaurus.config.js
+const {themes: prismThemes} = require('prism-react-renderer');
+
 const config = {
   title: 'My Project Docs',
   tagline: 'Complete documentation for My Project',
@@ -111,9 +114,9 @@ const config = {
         },
         blog: {
           showReadingTime: true,
-          // Disable blog if not needed:
-          // blog: false,
         },
+        // To disable the blog, replace the blog object above with:
+        // blog: false,
         theme: {
           customCss: require.resolve('./src/css/custom.css'),
         },
@@ -151,8 +154,8 @@ const config = {
     },
     // Enable syntax highlighting for code blocks
     prism: {
-      theme: require('prism-react-renderer/themes/github'),
-      darkTheme: require('prism-react-renderer/themes/dracula'),
+      theme: prismThemes.github,
+      darkTheme: prismThemes.dracula,
       additionalLanguages: ['bash', 'yaml', 'python', 'go'],
     },
   },
@@ -220,7 +223,7 @@ module.exports = sidebars;
 
 Docusaurus supports MDX - Markdown with JSX. This lets you embed interactive components:
 
-```mdx
+````mdx
 ---
 title: Interactive Demo
 ---
@@ -235,18 +238,18 @@ import TabItem from '@theme/TabItem';
 
 ```bash
 sudo apt install my-project
-```bash
+```
 
   </TabItem>
   <TabItem value="macos" label="macOS">
 
 ```bash
 brew install my-project
-```bash
+```
 
   </TabItem>
 </Tabs>
-```text
+````
 
 ## Adding Search
 
