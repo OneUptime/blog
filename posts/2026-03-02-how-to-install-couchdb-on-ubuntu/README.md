@@ -42,9 +42,10 @@ curl -fsSL https://couchdb.apache.org/repo/keys.asc | \
   sudo gpg --dearmor -o /usr/share/keyrings/couchdb-archive-keyring.gpg
 
 # Add the repository
+source /etc/os-release
 echo "deb [signed-by=/usr/share/keyrings/couchdb-archive-keyring.gpg] \
   https://apache.jfrog.io/artifactory/couchdb-deb/ \
-  $(lsb_release -cs) main" | \
+  ${VERSION_CODENAME} main" | \
   sudo tee /etc/apt/sources.list.d/couchdb.list
 
 # Install CouchDB
@@ -94,28 +95,28 @@ single_node = true
 bind_address = 127.0.0.1
 port = 5984
 
-[httpd]
-; Allow only admin access to _utils (Fauxton)
-WWW-Authenticate = Basic realm="administrator"
-
-[couch_httpd_auth]
 ; Require authentication for all requests
 require_valid_user = true
 
+[chttpd_auth]
 ; Session timeout in seconds (10 minutes)
 timeout = 600
 
 [log]
 ; Log level: debug, info, notice, warning, error, critical, alert, emergency
 level = notice
+writer = file
 file = /var/log/couchdb/couch.log
 
-; Limit log file size
-max_message_size = 16000
-
-[compactions]
+[smoosh.ratio_dbs]
 ; Schedule compaction during off-peak hours
-_default = [{db_fragmentation, "70%"}, {view_fragmentation, "60%"}, {from, "01:00"}, {to, "05:00"}]
+from = 01:00
+to = 05:00
+
+[smoosh.ratio_views]
+; Schedule view compaction during off-peak hours
+from = 01:00
+to = 05:00
 ```
 
 After any configuration changes:
@@ -177,6 +178,8 @@ curl -X PUT http://admin:password@localhost:5984/myapp/user_001 \
   -d "{\"_rev\": \"$REV\", \"name\": \"Bob Smith\", \"email\": \"bob@example.com\", \"role\": \"moderator\"}"
 
 # Delete a document
+REV=$(curl -s http://admin:password@localhost:5984/myapp/user_001 | \
+  python3 -c "import sys,json; print(json.load(sys.stdin)['_rev'])")
 curl -X DELETE "http://admin:password@localhost:5984/myapp/user_001?rev=$REV"
 
 # List all documents in a database
@@ -273,8 +276,8 @@ curl -X POST http://admin:password@localhost:5984/_replicate \
     \"create_target\": true
   }"
 
-# Or export all documents using _all_docs
-curl "http://admin:password@localhost:5984/myapp/_all_docs?include_docs=true" \
+# Or export documents using _all_docs (not a complete backup if you use attachments)
+curl "http://admin:password@localhost:5984/myapp/_all_docs?include_docs=true&attachments=true" \
   > /var/backups/couchdb/myapp_$(date +%Y%m%d).json
 ```
 
