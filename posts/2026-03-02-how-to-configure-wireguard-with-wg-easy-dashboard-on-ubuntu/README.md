@@ -63,37 +63,48 @@ mkdir -p ~/wg-easy && cd ~/wg-easy
 Create `docker-compose.yaml`:
 
 ```yaml
-version: '3.8'
-
 services:
   wg-easy:
-    image: ghcr.io/wg-easy/wg-easy
+    image: ghcr.io/wg-easy/wg-easy:15
     container_name: wg-easy
     environment:
-      # Your server's public IP or hostname
-      - WG_HOST=203.0.113.42
+      # Allow direct HTTP access to the web UI.
+      # Use a reverse proxy with HTTPS for production deployments.
+      - INSECURE=true
 
-      # Password for the web UI (use a strong password)
-      - PASSWORD=your_secure_password_here
+      # First-run setup values. They are only used when the data volume is empty.
+      - INIT_ENABLED=true
+      - INIT_USERNAME=admin
+      - INIT_PASSWORD=your_secure_password_here
+
+      # Your server's public IP or hostname
+      - INIT_HOST=203.0.113.42
 
       # WireGuard port (UDP)
-      - WG_PORT=51820
+      - INIT_PORT=51820
 
       # Web UI port
       - PORT=51821
 
       # DNS servers pushed to clients
-      - WG_DEFAULT_DNS=1.1.1.1,8.8.8.8
-
-      # Default client keepalive interval
-      - WG_PERSISTENT_KEEPALIVE=25
+      - INIT_DNS=1.1.1.1,8.8.8.8
 
       # IP range for VPN clients
-      - WG_DEFAULT_ADDRESS=10.8.0.x
+      - INIT_IPV4_CIDR=10.8.0.0/24
+      - INIT_IPV6_CIDR=fd42:42:42::/64
+
+      # Default routes pushed to clients
+      - INIT_ALLOWED_IPS=0.0.0.0/0,::/0
 
     volumes:
       # Persist WireGuard config and peer data
       - ./wireguard-data:/etc/wireguard
+      - /lib/modules:/lib/modules:ro
+
+    networks:
+      wg:
+        ipv4_address: 10.42.42.42
+        ipv6_address: fdcc:ad94:bacf:61a3::2a
 
     ports:
       - "51820:51820/udp"
@@ -108,8 +119,21 @@ services:
       # Enable IP forwarding for VPN routing
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
 
     restart: unless-stopped
+
+networks:
+  wg:
+    driver: bridge
+    enable_ipv6: true
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.42.42.0/24
+        - subnet: fdcc:ad94:bacf:61a3::/64
 ```
 
 Start it:
@@ -137,7 +161,7 @@ sudo sysctl -p /etc/sysctl.d/99-wireguard.conf
 
 ## Creating Client Peers
 
-Open the web UI at `http://your-server-ip:51821`. Log in with the password you set.
+Open the web UI at `http://your-server-ip:51821`. Log in with the username and password you set.
 
 Click "+ New Client" and give it a name (e.g., "alice-laptop"). The UI will:
 1. Generate a private/public key pair for the client
@@ -197,11 +221,11 @@ server {
 
 ## Using a Domain Name Instead of IP
 
-If your server's IP changes, using a domain (dynamic DNS or static) is better. Update the `WG_HOST` environment variable:
+If your server's IP changes, using a domain (dynamic DNS or static) is better. Update the host value in the wg-easy Admin Panel, or set `INIT_HOST` before the first container start:
 
 ```yaml
 environment:
-  - WG_HOST=vpn.yourdomain.com
+  - INIT_HOST=vpn.yourdomain.com
 ```
 
 Then restart:
@@ -210,7 +234,7 @@ Then restart:
 docker compose down && docker compose up -d
 ```
 
-Note: existing peer configs will have the old IP/hostname embedded. You will need to regenerate them or manually edit each peer's `Endpoint` field.
+Note: first-run `INIT_*` variables are ignored after wg-easy has initialized its data volume. Existing peer configs will have the old IP/hostname embedded, so regenerate them or manually edit each peer's `Endpoint` field after changing the host in the Admin Panel.
 
 ## Setting Up Split Tunneling
 
@@ -222,7 +246,7 @@ In the wg-easy UI, edit a peer's "Allowed IPs" to only include the private subne
 10.8.0.0/24, 192.168.1.0/24
 ```
 
-Instead of the default `0.0.0.0/0`.
+Instead of the default `0.0.0.0/0, ::/0`.
 
 ## Monitoring Connected Peers
 
