@@ -8,12 +8,12 @@ Description: Set up Apache Spark in standalone cluster mode on Ubuntu, configure
 
 ---
 
-Apache Spark is a distributed processing engine for large-scale data analytics. In standalone mode, Spark uses its own cluster manager rather than YARN or Mesos, which simplifies setup and is suitable for dedicated Spark deployments. This guide walks through installing Spark on Ubuntu, configuring a multi-node standalone cluster, and running a basic application.
+Apache Spark is a distributed processing engine for large-scale data analytics. In standalone mode, Spark uses its own cluster manager rather than YARN or Kubernetes, which simplifies setup and is suitable for dedicated Spark deployments. This guide walks through installing Spark on Ubuntu, configuring a multi-node standalone cluster, and running a basic application.
 
 ## Prerequisites
 
 - Ubuntu 22.04 on all nodes
-- Java 11 or 17 installed
+- Java 17 or 21 installed
 - At least 4 GB RAM per node (8 GB recommended)
 - Nodes able to reach each other over the network
 - Root or sudo access
@@ -48,10 +48,10 @@ Perform the following on all nodes:
 
 ```bash
 # Download Spark (check https://spark.apache.org/downloads.html for the latest version)
-SPARK_VERSION=3.5.1
+SPARK_VERSION=4.1.1
 HADOOP_VERSION=3
 
-wget https://archive.apache.org/dist/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz
+wget https://downloads.apache.org/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz
 
 # Extract to /opt
 sudo tar -xzf spark-${SPARK_VERSION}-bin-hadoop${HADOOP_VERSION}.tgz -C /opt/
@@ -140,7 +140,11 @@ The master needs to SSH into workers to start/stop them:
 
 ```bash
 # On the master, as the spark user
-sudo su - spark -s /bin/bash
+sudo -iu spark
+
+# Prepare the SSH directory
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
 
 # Generate SSH key
 ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
@@ -188,7 +192,7 @@ You should see the master URL (`spark://spark-master:7077`) and all registered w
 
 ```bash
 # Start a PySpark shell connected to the cluster
-sudo -u spark pyspark --master spark://spark-master:7077
+sudo -u spark /opt/spark/bin/pyspark --master spark://spark-master:7077
 
 # In the PySpark shell:
 # Create an RDD and count words
@@ -235,7 +239,7 @@ sc.stop()
 Submit the job:
 
 ```bash
-sudo -u spark spark-submit \
+sudo -u spark /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   --executor-memory 2g \
   --total-executor-cores 4 \
@@ -284,9 +288,11 @@ Type=forking
 User=spark
 Group=spark
 Environment=SPARK_HOME=/opt/spark
+Environment=SPARK_PID_DIR=/run/spark
+RuntimeDirectory=spark
 ExecStart=/opt/spark/sbin/start-master.sh
 ExecStop=/opt/spark/sbin/stop-master.sh
-PIDFile=/opt/spark/spark-master.pid
+PIDFile=/run/spark/spark-spark-org.apache.spark.deploy.master.Master-1.pid
 
 [Install]
 WantedBy=multi-user.target
@@ -303,8 +309,11 @@ Type=forking
 User=spark
 Group=spark
 Environment=SPARK_HOME=/opt/spark
+Environment=SPARK_PID_DIR=/run/spark
+RuntimeDirectory=spark
 ExecStart=/opt/spark/sbin/start-worker.sh spark://spark-master:7077
 ExecStop=/opt/spark/sbin/stop-worker.sh
+PIDFile=/run/spark/spark-spark-org.apache.spark.deploy.worker.Worker-1.pid
 
 [Install]
 WantedBy=multi-user.target
@@ -324,7 +333,7 @@ sudo systemctl enable --now spark-worker    # on workers
 ss -tlnp | grep 7077
 
 # Check spark master logs
-tail -f /var/log/spark/spark-spark-master-*.out
+tail -f /var/log/spark/spark-spark-org.apache.spark.deploy.master.Master-*.out
 
 # Verify network connectivity from worker
 nc -zv spark-master 7077
@@ -334,8 +343,8 @@ nc -zv spark-master 7077
 
 ```bash
 # Increase executor memory in spark-defaults.conf
-echo "spark.executor.memory 4g" >> /opt/spark/conf/spark-defaults.conf
-echo "spark.driver.memory 2g" >> /opt/spark/conf/spark-defaults.conf
+echo "spark.executor.memory 4g" | sudo tee -a /opt/spark/conf/spark-defaults.conf
+echo "spark.driver.memory 2g" | sudo tee -a /opt/spark/conf/spark-defaults.conf
 
 # Restart the cluster
 sudo -u spark /opt/spark/sbin/stop-all.sh
