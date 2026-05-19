@@ -170,12 +170,12 @@ sudo apt install --reinstall somepackage
 
 **Warning**: Stubbing out a script means some configuration may not be complete. Reinstall the package afterward.
 
-## Step 6: Force Remove and Reinstall
+## Step 6: Force Purge a Reinst-required Package
 
-If fixing the script is not feasible, force-remove the package and reinstall.
+If dpkg reports that the package is marked `reinstreq` (requires reinstallation), force-purge it and reinstall. This does not skip failing maintainer scripts; if a `prerm` or `postrm` script is still failing, fix or stub that script first.
 
 ```bash
-# Force remove, ignoring scripts
+# Force purge a package marked as requiring reinstallation
 sudo dpkg --force-remove-reinstreq --purge somepackage
 
 # Clear any remaining state
@@ -186,16 +186,12 @@ sudo apt update
 sudo apt install somepackage
 ```
 
-## Step 7: Mark as Needs-Reinstall
+## Step 7: Reinstall the Package
 
-dpkg has an internal mechanism to mark a package as needing reinstallation.
+dpkg has an internal `reinstreq` flag for packages that require reinstallation, but it is not set with `--clear-selections`. To reinstall a package, use APT's reinstall action.
 
 ```bash
-# Mark the package for reinstall
-sudo dpkg --clear-selection somepackage
-sudo apt install somepackage
-
-# Or use apt's reinstall
+# Reinstall the package
 sudo apt install --reinstall somepackage
 ```
 
@@ -210,8 +206,9 @@ dpkg --audit | grep "installed\|config"
 # Fix them in order - start with the most fundamental packages
 # (usually libraries or base packages)
 
-# To ignore a specific package during configuration:
-sudo dpkg --configure -a --force-configure-any 2>&1
+# If a package has unconfigured dependencies, allow dpkg to configure
+# those dependencies first:
+sudo dpkg --configure somepackage --force-configure-any
 
 # Process packages one at a time to isolate the problem
 sudo dpkg --configure somepackage
