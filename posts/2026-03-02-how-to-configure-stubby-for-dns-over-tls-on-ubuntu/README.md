@@ -272,17 +272,17 @@ sudo tcpdump -i any -n "tcp port 853"
 After configuring stubby:
 
 ```bash
-# Install curl if not present
-sudo apt install curl
+# Quick DNS leak check in a browser:
+# https://www.dnsleaktest.com/
 
-# Quick DNS leak check
-curl https://dnsleaktest.com/results.json
+# Or use a command-line DNS test after system integration
+dig +short TXT whoami.cloudflare.com
 
-# Or use a command-line DNS test
-dig +short TXT whoami.cloudflare.com @1.1.1.1
+# If you use Quad9, confirm the transport
+dig +short TXT proto.on.quad9.net
 ```
 
-If the IP shown matches your configured upstream resolver (Cloudflare, Quad9, etc.), your DNS queries are being routed correctly through stubby.
+If the results show your configured upstream resolver (Cloudflare, Quad9, etc.) and no external UDP/53 traffic appears in tcpdump, your DNS queries are being routed through stubby.
 
 ## Troubleshooting
 
