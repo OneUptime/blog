@@ -8,11 +8,11 @@ Description: Reclaim disk space on Ubuntu by cleaning the APT package cache, rem
 
 ---
 
-APT caches every package it downloads to speed up reinstallation and support offline use. Over months of updates and package installations, this cache grows substantially. Combined with orphaned packages left behind when their parent packages were removed, a neglected Ubuntu system can waste several gigabytes on package management overhead.
+APT can cache downloaded packages to speed up reinstallation and support offline use. On modern Ubuntu releases, the `apt` command may remove downloaded `.deb` files after a successful install unless package retention is configured, while `apt-get` and periodic downloads can still leave files in the cache. Over months of updates and package installations, this cache can grow substantially. Combined with orphaned packages left behind when their parent packages were removed, a neglected Ubuntu system can waste several gigabytes on package management overhead.
 
 ## Understanding What APT Caches
 
-APT stores downloaded packages in `/var/cache/apt/archives/`. When you run `apt install` or `apt upgrade`, packages are downloaded here before installation. They stay until you explicitly clear them.
+APT stores downloaded packages in `/var/cache/apt/archives/`. When you run `apt install` or `apt upgrade`, packages are downloaded here before installation. Depending on your APT configuration and the command used, they may stay in this directory until you explicitly clear them.
 
 ```bash
 # Check the current cache size
@@ -38,8 +38,8 @@ sudo apt clean
 du -sh /var/cache/apt/archives/
 # Should show a few KB at most
 
-# autoclean: remove only outdated packages
-# Keeps the latest version of each installed package's .deb
+# autoclean: remove only outdated package files
+# Keeps package files that can still be downloaded
 # Removes .deb files for versions that are no longer available in repositories
 sudo apt autoclean
 
@@ -60,7 +60,7 @@ The difference between `clean` and `autoclean` matters if you value the ability 
 After removing packages over time, dependency packages they installed are left behind. `apt autoremove` handles the most obvious cases, but some orphaned packages slip through:
 
 ```bash
-# Show packages marked as auto-installed but no longer needed
+# Show packages marked as auto-installed
 apt-mark showauto | head -30
 
 # List packages that were auto-installed (installed as dependencies)
@@ -69,11 +69,11 @@ apt list --installed 2>/dev/null | grep "automatic" | head -20
 # Install deborphan for more thorough orphan detection
 sudo apt install -y deborphan
 
-# Find packages with no dependencies and no reverse dependencies
+# Find packages with no reverse dependencies in deborphan's default sections
 deborphan
 
 # Remove what deborphan found
-sudo apt remove --purge $(deborphan)
+deborphan | sudo xargs -r apt remove --purge
 
 # Run deborphan again - some orphans are only visible after removing others
 deborphan
@@ -112,7 +112,8 @@ dpkg --list | grep "^rc" | awk '{print $2}' | \
   sudo xargs -r dpkg --purge
 
 # Or with apt
-sudo apt purge $(dpkg --list | grep "^rc" | awk '{print $2}')
+dpkg --list | grep "^rc" | awk '{print $2}' | \
+  sudo xargs -r apt purge
 
 # After purging, verify no more rc packages
 dpkg --list | grep "^rc" | wc -l
@@ -126,7 +127,7 @@ Ubuntu keeps multiple kernel versions. Each kernel image is typically 100-200MB,
 ```bash
 # See all installed kernel packages
 dpkg --list | grep -E "linux-(image|headers|modules)" | \
-  grep -v "$(uname -r | sed 's/-generic//')"
+  grep -v "$(uname -r | sed 's/-[^-]*$//')"
 
 # Check disk space used by kernel packages
 dpkg --list | grep "linux-image" | awk '{print $2}' | \
@@ -139,7 +140,7 @@ dpkg --list | grep "linux-image" | awk '{print $2}' | \
 sudo apt autoremove --purge
 
 # Verify current kernel is not removed
-uname -r  # This kernel will never be autoremoved
+uname -r  # Do not remove packages for this running kernel
 
 # If you want to manually remove a specific old kernel
 # First verify it's not the running kernel
@@ -156,7 +157,7 @@ sudo update-grub
 
 ## Setting Up Automatic Cleanup
 
-Ubuntu has a built-in automatic cleanup mechanism through `unattended-upgrades`. You can also use `apt` timers directly:
+Ubuntu has a built-in automatic cleanup mechanism through `unattended-upgrades`. You can also use APT's periodic systemd jobs:
 
 ```bash
 # Install unattended-upgrades if not present
@@ -173,10 +174,10 @@ Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
 Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
 ```
 
-For automatic cache cleanup, create a periodic cleanup timer:
+For automatic cache cleanup, create a periodic APT configuration file:
 
 ```bash
-# Create a weekly cleanup script
+# Create weekly APT periodic cleanup settings
 sudo tee /etc/apt/apt.conf.d/99periodic << 'EOF'
 // APT periodic configuration
 APT::Periodic::Update-Package-Lists "1";
