@@ -12,7 +12,7 @@ Vim's default configuration is minimal by design. With the right plugins and set
 
 ## Installing a Modern Vim
 
-Ensure you have Vim 8.0+ for plugin compatibility:
+Ensure you have Vim 8.1+ for terminal support and plugin compatibility:
 
 ```bash
 # Install latest Vim from Ubuntu repositories
@@ -23,7 +23,7 @@ sudo apt install vim
 # Check version
 vim --version | grep "Vi IMproved"
 
-# For the very latest version, install from the PPA
+# For newer package builds from the unofficial PPA
 sudo add-apt-repository ppa:jonathonf/vim
 sudo apt update
 sudo apt install vim
@@ -103,7 +103,7 @@ set splitbelow                " New horizontal splits go below
 set splitright                " New vertical splits go right
 
 " Create directories if they don't exist
-silent !mkdir -p ~/.vim/{backup,swap,undo}
+silent !mkdir -p ~/.vim/backup ~/.vim/swap ~/.vim/undo
 ```
 
 ## Plugin Configuration
@@ -135,7 +135,7 @@ Plug 'sheerun/vim-polyglot'                        " Language pack
 Plug 'dense-analysis/ale'                          " Async linting/fixing
 
 " Code completion
-Plug 'ycm-core/YouCompleteMe', { 'do': './install.py' }
+Plug 'ycm-core/YouCompleteMe'
 " OR: lighter alternative
 " Plug 'prabirshrestha/vim-lsp'
 " Plug 'mattn/vim-lsp-settings'
@@ -255,11 +255,14 @@ nnoremap <leader>t :terminal<CR>
 
 ## Installing YouCompleteMe
 
-YCM requires compilation:
+YCM requires compilation and a Vim build with Python 3 support:
 
 ```bash
 # Install dependencies
-sudo apt install build-essential cmake python3-dev
+sudo apt install build-essential cmake vim-nox python3-dev
+
+# For python3 install.py --all, install the optional language runtimes too
+sudo apt install mono-complete golang nodejs npm openjdk-17-jdk openjdk-17-jre
 
 # After :PlugInstall in Vim:
 cd ~/.vim/plugged/YouCompleteMe
@@ -268,7 +271,7 @@ python3 install.py --all
 python3 install.py --ts-completer --clangd-completer
 ```
 
-## Installing Language Servers for ALE
+## Installing Linters, Formatters, and Language Servers for ALE
 
 ```bash
 # Python
@@ -282,6 +285,9 @@ go install golang.org/x/tools/gopls@latest
 
 # Bash
 sudo apt install shellcheck
+
+# ripgrep for the :Rg fuzzy-search mapping
+sudo apt install ripgrep
 ```
 
 ## Useful Built-in Vim IDE Features
