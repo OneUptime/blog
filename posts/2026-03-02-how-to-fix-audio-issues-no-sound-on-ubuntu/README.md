@@ -78,8 +78,11 @@ dmesg | tail -20
 Bypass PulseAudio/PipeWire completely to test raw hardware:
 
 ```bash
-# Stop PulseAudio temporarily
-pulseaudio --kill
+# Stop PulseAudio temporarily, if this system uses PulseAudio
+pulseaudio --kill 2>/dev/null || true
+
+# On PipeWire systems, stop the user audio services temporarily
+systemctl --user stop pipewire pipewire-pulse wireplumber 2>/dev/null || true
 
 # Test ALSA directly
 speaker-test -c 2 -t wav
@@ -88,8 +91,9 @@ speaker-test -c 2 -t wav
 aplay /usr/share/sounds/alsa/Front_Center.wav
 
 # If this works, the problem is in PulseAudio/PipeWire, not the hardware
-# Restart PulseAudio
-pulseaudio --start
+# Restart PulseAudio or PipeWire
+pulseaudio --start 2>/dev/null || true
+systemctl --user start pipewire pipewire-pulse wireplumber 2>/dev/null || true
 ```
 
 If `aplay` produces sound but your desktop has no sound, skip to the PulseAudio section.
@@ -123,9 +127,8 @@ aplay -l
 # Find your built-in audio card number and set it as default
 # If built-in is card 1 and HDMI is card 0, swap them
 sudo tee /etc/modprobe.d/audio-fix.conf << 'EOF'
-# Make built-in audio card 0 (index=0) and HDMI card 1 (index=1)
-options snd-hda-intel index=0   # for built-in HDA
-options snd_hda_intel index=1   # for HDMI HDA (different module name sometimes)
+# Swap the first two HDA controllers handled by snd-hda-intel
+options snd-hda-intel index=1,0
 EOF
 
 # Reboot and test
@@ -155,7 +158,7 @@ pactl info | grep "Default Sink"
 pactl list sinks | grep -E "State:|Name:"
 # Suspended state won't play audio
 # Trigger it to wake up:
-paplay /dev/null
+pactl suspend-sink @DEFAULT_SINK@ false
 ```
 
 ### PulseAudio Reset
@@ -187,7 +190,7 @@ pactl move-sink-input SINK_INPUT_ID WORKING_SINK_NAME
 
 ## Step 7: Fix PipeWire Issues
 
-On Ubuntu 22.04+ with PipeWire:
+On Ubuntu 22.10+ with PipeWire, or Ubuntu 22.04 systems manually configured to use PipeWire:
 
 ```bash
 # Check PipeWire status
