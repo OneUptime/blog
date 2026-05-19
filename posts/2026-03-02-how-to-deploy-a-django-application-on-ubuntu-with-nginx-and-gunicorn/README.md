@@ -8,7 +8,7 @@ Description: Deploy a production-ready Django application on Ubuntu using Gunico
 
 ---
 
-Running Django's built-in development server in production is not suitable - it handles one request at a time and is not hardened for public traffic. Gunicorn (Green Unicorn) is a production WSGI server that spawns multiple worker processes to handle concurrent requests. Nginx sits in front as a reverse proxy, serving static files directly and forwarding dynamic requests to Gunicorn.
+Running Django's built-in development server in production is not suitable - it is designed for development and has not gone through production security or performance hardening. Gunicorn (Green Unicorn) is a production WSGI server that spawns multiple worker processes to handle concurrent requests. Nginx sits in front as a reverse proxy, serving static files directly and forwarding dynamic requests to Gunicorn.
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ Running Django's built-in development server in production is not suitable - it 
 # Install Python and pip
 
 sudo apt update
-sudo apt install -y python3 python3-pip python3-venv
+sudo apt install -y python3 python3-pip python3-venv git
 
 # Create a dedicated user for the application
 sudo useradd -m -d /opt/myapp -s /bin/bash myapp
@@ -95,8 +95,8 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.environ.get('MEDIA_ROOT', '/opt/myapp/media')
 
 # Security settings for production
-SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 X_FRAME_OPTIONS = 'DENY'
 ```
 
@@ -153,6 +153,7 @@ After=network.target
 
 [Service]
 Type=notify
+NotifyAccess=main
 
 # Run as the application user
 User=myapp
@@ -169,6 +170,7 @@ EnvironmentFile=/opt/myapp/.env
 ExecStart=/opt/myapp/venv/bin/gunicorn \
     --workers 5 \
     --bind unix:/opt/myapp/gunicorn.sock \
+    --umask 007 \
     --timeout 120 \
     --access-logfile /var/log/gunicorn/access.log \
     --error-logfile /var/log/gunicorn/error.log \
@@ -177,10 +179,6 @@ ExecStart=/opt/myapp/venv/bin/gunicorn \
 
 # Graceful reload on SIGHUP
 ExecReload=/bin/kill -s HUP $MAINPID
-
-# Allow process to write to the socket
-RuntimeDirectory=gunicorn
-RuntimeDirectoryMode=755
 
 # Restart policy
 Restart=on-failure
@@ -212,26 +210,13 @@ sudo apt install -y nginx
 
 # Create a server configuration for the application
 sudo tee /etc/nginx/sites-available/myapp > /dev/null <<'EOF'
-# Redirect HTTP to HTTPS
 server {
     listen 80;
     server_name yourdomain.com www.yourdomain.com;
-    return 301 https://$host$request_uri;
-}
-
-server {
-    listen 443 ssl http2;
-    server_name yourdomain.com www.yourdomain.com;
-
-    # SSL certificate (from Let's Encrypt or similar)
-    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Strict-Transport-Security "max-age=31536000" always;
 
     # Client max body size (for file uploads)
     client_max_body_size 50M;
@@ -290,11 +275,11 @@ sudo systemctl reload nginx
 sudo apt install -y certbot python3-certbot-nginx
 
 # Obtain a certificate
-sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
+sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com --redirect
 
 # Certbot modifies the Nginx config automatically
 # Enable auto-renewal
-sudo systemctl enable certbot.timer
+sudo systemctl enable --now certbot.timer
 sudo certbot renew --dry-run
 ```
 
