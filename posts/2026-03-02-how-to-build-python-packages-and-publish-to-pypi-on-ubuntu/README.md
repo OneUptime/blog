@@ -22,13 +22,11 @@ pip3 --version
 Install the required build tools:
 
 ```bash
-# Install build, twine, and wheel
-
-pip3 install --upgrade build twine
-
-# If you're using a virtual environment (recommended)
+# Create and activate a virtual environment (recommended)
 python3 -m venv packaging-env
 source packaging-env/bin/activate
+
+# Install build and twine
 pip install --upgrade build twine
 ```
 
@@ -88,7 +86,8 @@ name = "mypackage"
 version = "0.1.0"
 description = "A short description of what your package does"
 readme = "README.md"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
   {name = "Your Name", email = "you@example.com"},
 ]
@@ -98,7 +97,6 @@ dependencies = [
 ]
 classifiers = [
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 
@@ -116,8 +114,8 @@ If you prefer setuptools (more traditional):
 
 ```toml
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "mypackage"
@@ -193,7 +191,7 @@ Always upload to TestPyPI before the real PyPI. TestPyPI is a separate instance 
 twine upload --repository testpypi dist/*
 
 # Test installing from TestPyPI
-pip install --index-url https://test.pypi.org/simple/ mypackage
+pip install --index-url https://test.pypi.org/simple/ --no-deps mypackage
 ```
 
 Verify the package installs and works correctly:
