@@ -57,7 +57,7 @@ sudo make install
 
 # Verify installation
 which nodogsplash
-nodogsplash --version
+nodogsplash -v
 ```
 
 ## Configuring nodogsplash
@@ -85,14 +85,14 @@ MaxClients 250
 
 # ==================== Timeouts ====================
 
-# How long (minutes) a client can be idle before being deauthenticated
-ClientIdleTimeout 30
+# How long (minutes) an authenticated client can be idle before being deauthenticated
+AuthIdleTimeout 30
 
-# How long (minutes) until an authenticated client must re-authenticate
-ClientForceTimeout 360
+# Default session length (minutes); 0 means no end
+SessionTimeout 360
 
-# How long (seconds) to keep a rejected connection in the queue
-PreauthIdleTimeout 30
+# How long (minutes) before a preauthenticated client is removed from the client list
+PreAuthIdleTimeout 30
 
 # ==================== Splash Page ====================
 
@@ -105,25 +105,20 @@ SplashPage splash.html
 
 # ==================== Bandwidth Limiting ====================
 # Optional: Limit bandwidth per client
+# TrafficControl must be enabled for the limits below to take effect
+
+# TrafficControl no
 
 # Upload limit (kbits/sec) - 0 = unlimited
-UploadLimit 0
+# UploadLimit 0
 
 # Download limit (kbits/sec) - 0 = unlimited
-DownloadLimit 0
-
-# ==================== Authentication ====================
-
-# How clients authenticate:
-# login = username/password
-# none = just click to agree to terms (simplest)
-AuthenticationType none
+# DownloadLimit 0
 
 # ==================== Logging ====================
 
-# Log to syslog
-Syslog 1
-SyslogFacility LOG_DAEMON
+# Syslog facility as a numeric value (see <syslog.h>); 24 = LOG_DAEMON
+# SyslogFacility 24
 
 # ==================== Whitelist ====================
 # Allow access to these domains without authentication
@@ -207,7 +202,7 @@ sudo mkdir -p /etc/nodogsplash/htdocs
         </p>
         <!-- nodogsplash replaces $authaction with the actual auth URL -->
         <a href="$authaction" class="accept-btn">Accept &amp; Connect</a>
-        <p class="terms">Connection time: $remainingtime minutes remaining after authentication</p>
+        <p class="terms">Gateway: $gatewayname &middot; Uptime: $uptime</p>
     </div>
 </body>
 </html>
@@ -219,12 +214,16 @@ nodogsplash provides template variables that are replaced when serving the splas
 
 - `$authaction` - the URL to click to authenticate
 - `$denyaction` - the URL to explicitly deny access
+- `$authtarget` - convenience URL combining authaction with the client token and redirect
 - `$gatewayname` - the gateway name from config
-- `$tok` - unique token for this client
+- `$gatewaymac` - MAC address of the gateway interface
+- `$tok` / `$token` - unique token for this client
 - `$redir` - original URL the client tried to visit
-- `$remainingtime` - time before re-authentication required
 - `$clientip` - client's IP address
 - `$clientmac` - client's MAC address
+- `$nclients` / `$maxclients` - current and maximum client counts
+- `$uptime` - how long nodogsplash has been running
+- `$version` - nodogsplash version string
 
 ## Creating a systemd Service
 
@@ -267,11 +266,11 @@ sudo systemctl status nodogsplash
 # Check nodogsplash status
 sudo ndsctl status
 
-# View connected and authenticated clients
+# View connected and authenticated clients (machine-readable)
 sudo ndsctl clients
 
-# View clients waiting for authentication
-sudo ndsctl json status
+# View client list in JSON format (optionally filter by mac, ip, or token)
+sudo ndsctl json
 
 # Manually authenticate a specific client by MAC address
 sudo ndsctl auth AA:BB:CC:DD:EE:FF
@@ -279,17 +278,17 @@ sudo ndsctl auth AA:BB:CC:DD:EE:FF
 # Deauthenticate a client
 sudo ndsctl deauth AA:BB:CC:DD:EE:FF
 
-# Get verbose client information
-sudo ndsctl json clients
+# Look up a single client in JSON by MAC, IP, or token
+sudo ndsctl json AA:BB:CC:DD:EE:FF
 
-# Temporarily stop the portal (all traffic passes freely)
+# Stop the running nodogsplash (use systemctl to start it again)
 sudo ndsctl stop
 
 # Restart after stopping
-sudo ndsctl
+sudo systemctl start nodogsplash
 
-# View connection counts
-sudo ndsctl json status | python3 -m json.tool
+# Pipe JSON output through a pretty-printer
+sudo ndsctl json | python3 -m json.tool
 ```
 
 ## Handling HTTPS Connections
@@ -323,7 +322,8 @@ nodogsplash has a built-in web server for the splash page. For more advanced por
 # Install nginx for the portal web server
 sudo apt-get install -y nginx
 
-# Configure nginx to serve the portal on port 2050 (nodogsplash default)
+# Configure nginx to serve portal assets on the gateway IP
+# (nodogsplash's own server listens on GatewayPort, default 2050)
 sudo nano /etc/nginx/sites-available/captive-portal
 ```
 
@@ -348,7 +348,7 @@ server {
 
 ```bash
 # View active authenticated clients with connection times
-sudo ndsctl json clients | python3 -m json.tool | grep -E "mac|ip|auth|duration"
+sudo ndsctl json | python3 -m json.tool | grep -E "mac|ip|auth|duration"
 
 # Monitor connections in real-time
 sudo journalctl -u nodogsplash -f
@@ -357,7 +357,7 @@ sudo journalctl -u nodogsplash -f
 sudo cat /var/log/syslog | grep nodogsplash | tail -50
 
 # Count authenticated vs total clients
-sudo ndsctl json status | python3 -c "
+sudo ndsctl json | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 print(f\"Authenticated: {data.get('authenticated', 0)}\")
