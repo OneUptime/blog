@@ -8,13 +8,13 @@ Description: Set up Postgrey greylisting on Ubuntu with Postfix to reduce spam w
 
 ---
 
-Greylisting is one of the most effective spam-reduction techniques with one of the lowest false positive rates. The idea is simple: when an unknown sender delivers a message for the first time, the server temporarily rejects it with a "try again later" response. Legitimate mail servers retry (as the SMTP spec requires), and the second attempt is accepted. Most spam-sending bots do not retry, so the spam never arrives.
+Greylisting is one of the most effective spam-reduction techniques with one of the lowest false positive rates. The idea is simple: when an unknown sender delivers a message for the first time, the server temporarily rejects it with a "try again later" response. Legitimate mail servers retry (as the SMTP spec requires), and a later attempt is accepted after the greylist delay. Most spam-sending bots do not retry, so the spam never arrives.
 
 Postgrey implements greylisting as a Postfix policy service. It is easy to set up, has sensible defaults, and includes a whitelist of major legitimate senders that are bypassed automatically.
 
 ## How Greylisting Works
 
-When Postgrey receives a query from Postfix, it looks up the triplet: (sender IP, sender address, recipient address). If this triplet has not been seen before, it returns a 451 temporary rejection. When the sending server retries after the greylist delay (default 5 minutes), the triplet is now in the database and the message is accepted. Future mail from the same triplet is accepted immediately for the duration of the whitelist TTL.
+When Postgrey receives a query from Postfix, it looks up the triplet: (sender IP, sender address, recipient address). If this triplet has not been seen before, it returns a temporary rejection. When the sending server retries after the greylist delay (default 5 minutes), the triplet is now in the database and the message is accepted. Future mail from the same triplet is accepted immediately until the entry expires according to the max-age setting.
 
 This creates a delay for first-time senders, but most users do not notice because email is not expected to be instantaneous.
 
@@ -33,7 +33,7 @@ sudo systemctl status postgrey
 ss -xlnp | grep postgrey
 ```
 
-By default, Postgrey listens on a Unix socket at `/var/run/postgrey/postgrey.sock` or TCP port 10023.
+On Ubuntu, Postgrey listens on TCP port 10023 by default. You can change it to a Unix socket at `/var/run/postgrey/postgrey.sock` if Postfix runs on the same server.
 
 ## Configuring Postgrey
 
@@ -60,9 +60,8 @@ POSTGREY_OPTS="$POSTGREY_OPTS --delay=300"
 # If no new mail from this triplet in 35 days, it's greylisted again
 POSTGREY_OPTS="$POSTGREY_OPTS --max-age=35"
 
-# Retry window: if the retry comes in less than this many seconds, reject
-# (Prevents spam bots that retry immediately)
-POSTGREY_OPTS="$POSTGREY_OPTS --retry-window=2d"
+# Retry window: allow this many days for the first retry (default: 2)
+POSTGREY_OPTS="$POSTGREY_OPTS --retry-window=2"
 
 # Text sent to clients during greylisting
 POSTGREY_TEXT="Greylisted, please try again shortly"
@@ -81,7 +80,7 @@ ls -la /var/run/postgrey/postgrey.sock
 
 ```bash
 # Add the Postgrey policy check to Postfix's recipient restrictions
-# Place it AFTER the main access controls but BEFORE rejecting unknown users
+# Place it AFTER reject_unauth_destination; rejecting unknown users first is also recommended
 
 sudo postconf -e "smtpd_recipient_restrictions =
     permit_mynetworks,
@@ -114,7 +113,8 @@ sudo tail -f /var/log/mail.log
 # postgrey: action=pass, reason=triplet found, client_name=mail.sender.com, ...
 
 # Check the Postgrey database
-sudo postgrey-stat --status | head -30
+sudo apt install -y db-util
+sudo db_dump -p /var/lib/postgrey/postgrey.db | head -30
 ```
 
 ## Configuring the Whitelist
@@ -124,11 +124,11 @@ Postgrey ships with a whitelist of known legitimate senders (Google, Amazon SES,
 ### Whitelisting by Client IP or Network
 
 ```bash
-# /etc/postgrey/whitelist_clients
-# This file is already created by the package with common entries
+# /etc/postgrey/whitelist_clients.local
+# Use this local file for your entries; the package-managed whitelist_clients file is also read
 
 # Add entries for specific IPs or networks to bypass greylisting
-sudo tee -a /etc/postgrey/whitelist_clients > /dev/null <<'EOF'
+sudo tee -a /etc/postgrey/whitelist_clients.local > /dev/null <<'EOF'
 # Internal mail relay
 192.168.1.0/24
 
@@ -143,10 +143,10 @@ EOF
 ### Whitelisting by Recipient
 
 ```bash
-# /etc/postgrey/whitelist_recipients
+# /etc/postgrey/whitelist_recipients.local
 # Bypass greylisting for specific recipients (useful for automated accounts)
 
-sudo tee -a /etc/postgrey/whitelist_recipients > /dev/null <<'EOF'
+sudo tee -a /etc/postgrey/whitelist_recipients.local > /dev/null <<'EOF'
 # Automated system that needs real-time email
 alerts@example.com
 
@@ -159,7 +159,7 @@ EOF
 
 ```bash
 # Postgrey reloads whitelists on SIGHUP without dropping the database
-sudo systemctl reload postgrey
+sudo systemctl kill -s HUP postgrey
 
 # Verify the whitelist is applied
 sudo journalctl -u postgrey | grep whitelist
@@ -178,42 +178,37 @@ sudo systemctl restart postgrey
 
 ### Using a Network Block Instead of Exact IP
 
-Some large senders (ISPs, cloud providers) send from rotating IP pools. Whitelisting a single IP won't help. Postgrey handles this with the `--lookup-by-subnet` option, which groups IP addresses by /24 subnet:
+Some large senders (ISPs, cloud providers) send from rotating IP pools. Whitelisting a single IP won't help. Postgrey handles this by default with subnet lookups, grouping IPv4 addresses by /24 subnet and IPv6 addresses by /64 subnet:
 
 ```bash
-# Add to POSTGREY_OPTS in /etc/default/postgrey:
-POSTGREY_OPTS="$POSTGREY_OPTS --lookup-by-subnet"
+# Optional: set the subnet sizes explicitly in /etc/default/postgrey
+POSTGREY_OPTS="$POSTGREY_OPTS --ipv4cidr=24 --ipv6cidr=64"
 
 sudo systemctl restart postgrey
 ```
 
 ### Database Cleanup
 
-Postgrey's BerkeleyDB database can grow large over time. Configure auto-cleanup:
+Postgrey's BerkeleyDB database can grow large over time. The `--max-age` option handles automatic cleanup of old entries:
 
 ```bash
 # The --max-age option already handles this for old entries
-# For immediate cleanup:
-sudo postgrey --unix=/var/run/postgrey/postgrey.sock --delay=300 --cleanup
+# Add to POSTGREY_OPTS in /etc/default/postgrey if you want a shorter retention period:
+POSTGREY_OPTS="$POSTGREY_OPTS --max-age=21"
 
-# Or add a cron job for regular maintenance
-echo "0 2 * * 0 root /usr/sbin/postgrey --cleanup 2>/dev/null" | \
-    sudo tee /etc/cron.d/postgrey-cleanup
+sudo systemctl restart postgrey
 ```
 
 ## Monitoring Postgrey Statistics
 
 ```bash
-# View overall statistics
-sudo postgrey-stat --status
-
 # View recent greylist actions
 sudo journalctl -u postgrey --since "1 hour ago" | grep -c "action=greylist"
 sudo journalctl -u postgrey --since "1 hour ago" | grep -c "action=pass"
 
 # Count messages being greylisted vs. passed
-sudo grep "action=greylist" /var/log/postgrey.log 2>/dev/null | wc -l
-sudo grep "action=pass" /var/log/postgrey.log 2>/dev/null | wc -l
+sudo grep "action=greylist" /var/log/mail.log 2>/dev/null | wc -l
+sudo grep "action=pass" /var/log/mail.log 2>/dev/null | wc -l
 
 # Find which senders are being greylisted most frequently
 sudo journalctl -u postgrey --since "24 hours ago" | \
@@ -232,9 +227,9 @@ Some users will occasionally notice delayed email. The most common cause is that
 sudo grep "sender@problem-domain.com" /var/log/mail.log | tail -10
 
 # Add their IP or domain to the whitelist
-echo "problem-domain.com" | sudo tee -a /etc/postgrey/whitelist_clients
+echo "problem-domain.com" | sudo tee -a /etc/postgrey/whitelist_clients.local
 
-sudo systemctl reload postgrey
+sudo systemctl kill -s HUP postgrey
 ```
 
 For organizations that use ticket systems, appointment reminders, or time-sensitive automated email, whitelisting their sending infrastructure is the right answer rather than disabling greylisting.
@@ -246,11 +241,11 @@ For organizations that use ticket systems, appointment reminders, or time-sensit
 # Install the db utilities
 sudo apt install -y db-util
 
-# View entries in the grey database
-sudo db_dump -p /var/lib/postgrey/db | head -100
+# View entries in the greylist database
+sudo db_dump -p /var/lib/postgrey/postgrey.db | head -100
 
-# View entries in the pass (accepted) database
-sudo db_dump -p /var/lib/postgrey/db_whitelisted | head -100
+# View entries in the auto-whitelisted clients database
+sudo db_dump -p /var/lib/postgrey/postgrey_clients.db | head -100
 ```
 
 Greylisting with Postgrey is one of the best return-on-investment spam filters available. Once configured, it requires minimal maintenance and typically blocks 60-90% of spam without any content analysis, pattern matching, or Bayesian filtering complexity.
