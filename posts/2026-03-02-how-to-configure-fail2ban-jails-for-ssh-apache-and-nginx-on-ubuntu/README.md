@@ -60,8 +60,8 @@ findtime = 600
 # Number of failures before ban
 maxretry = 5
 
-# Use systemd for log backends where supported
-backend = systemd
+# Use file-based monitoring automatically for logpath-based jails
+backend = auto
 
 # Email alerts (configure if you have working SMTP)
 # destemail = admin@example.com
@@ -138,7 +138,7 @@ bantime = 86400
 enabled = true
 port = http,https
 filter = apache-noscript
-logpath = /var/log/apache2/access.log
+logpath = /var/log/apache2/error.log
 maxretry = 6
 bantime = 3600
 
@@ -199,7 +199,7 @@ bantime = 3600
 enabled = true
 port = http,https
 filter = nginx-botsearch
-logpath = /var/log/nginx/access.log
+logpath = /var/log/nginx/error.log
 maxretry = 2
 bantime = 86400
 
@@ -312,7 +312,7 @@ sudo fail2ban-client status
 sudo fail2ban-client status sshd
 sudo fail2ban-client status nginx-http-auth
 
-# List all banned IPs
+# List banned IPs for the sshd jail
 sudo fail2ban-client status sshd | grep "Banned IP"
 ```
 
@@ -387,10 +387,10 @@ done
 
 # Check the SQLite database directly
 sudo sqlite3 /var/lib/fail2ban/fail2ban.sqlite3 \
-    "SELECT jail, ip, banned, bantime FROM bans ORDER BY bantime DESC LIMIT 20;"
+    "SELECT jail, ip, timeofban, bantime FROM bans ORDER BY timeofban DESC LIMIT 20;"
 ```
 
-## Recidive Jail: Permanent Bans for Repeat Offenders
+## Recidive Jail: Longer Bans for Repeat Offenders
 
 The recidive jail bans IPs that get banned multiple times across any jail:
 
@@ -401,6 +401,7 @@ sudo tee -a /etc/fail2ban/jail.local << 'EOF'
 enabled = true
 filter = recidive
 logpath = /var/log/fail2ban.log
+banaction = %(banaction_allports)s
 action = %(action_)s
 bantime = 604800   # 1 week
 findtime = 86400   # within 24 hours
