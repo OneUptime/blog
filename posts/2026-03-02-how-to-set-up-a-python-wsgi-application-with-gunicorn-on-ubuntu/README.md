@@ -203,7 +203,7 @@ ExecStart=/var/www/myapp/venv/bin/gunicorn \
     --config /var/www/myapp/gunicorn.conf.py \
     app:application
 
-# Reload workers on SIGUSR2 (zero-downtime deploys)
+# Reload workers on SIGHUP (zero-downtime deploys)
 ExecReload=/bin/kill -s HUP $MAINPID
 
 # On failure, restart after 5 seconds
