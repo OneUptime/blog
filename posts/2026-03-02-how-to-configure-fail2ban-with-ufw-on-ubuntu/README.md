@@ -8,7 +8,7 @@ Description: Configure fail2ban to work with UFW on Ubuntu to automatically ban 
 
 ---
 
-UFW's built-in rate limiting blocks IPs after 6 connections in 30 seconds, but it doesn't persist blocks, can't inspect application logs, and only works for SSH. fail2ban fills these gaps by reading service logs, detecting attack patterns, and issuing longer-duration bans through UFW.
+UFW's built-in rate limiting blocks IPs after 6 connection attempts in 30 seconds, but it doesn't inspect application logs or make decisions from service-specific failure patterns. fail2ban fills these gaps by reading service logs, detecting attack patterns, and issuing longer-duration bans through UFW.
 
 The combination of UFW for firewall management and fail2ban for behavioral blocking is a common and effective approach on Ubuntu servers.
 
@@ -55,15 +55,39 @@ fail2ban comes with a UFW action. Check that it exists:
 cat /etc/fail2ban/action.d/ufw.conf
 ```
 
-If it exists, it typically contains:
+Make sure UFW itself is enabled; the fail2ban UFW action adds UFW rules, but those rules only affect traffic when UFW is active:
+
+```bash
+sudo ufw status
+sudo ufw enable
+```
+
+On current Ubuntu releases, the packaged action typically contains logic like this:
 
 ```text
 [Definition]
 actionstart =
 actionstop =
 actioncheck =
-actionban = ufw insert 1 deny from <ip> to any
-actionunban = ufw delete deny from <ip> to any
+
+actionban = if [ -n "<application>" ] && ufw app info "<application>"
+            then
+              ufw <add> <blocktype> from <ip> to <destination> app "<application>" comment "<comment>"
+            else
+              ufw <add> <blocktype> from <ip> to <destination> comment "<comment>"
+            fi
+
+actionunban = if [ -n "<application>" ] && ufw app info "<application>"
+              then
+                ufw delete <blocktype> from <ip> to <destination> app "<application>"
+              else
+                ufw delete <blocktype> from <ip> to <destination>
+              fi
+
+[Init]
+add = prepend
+blocktype = reject
+destination = any
 ```
 
 ## Creating jail.local
@@ -100,10 +124,6 @@ ignoreip = 127.0.0.1/8 ::1 192.168.1.0/24
 # Backend for log detection
 backend = auto
 
-# Enable logging
-logtarget = /var/log/fail2ban.log
-loglevel = INFO
-
 # SSH jail
 [sshd]
 enabled = true
@@ -130,8 +150,8 @@ sudo nano /etc/fail2ban/jail.local
 [sshd]
 enabled = true
 
-# Port to ban (use the actual port if SSH is not on 22)
-port = ssh,22
+# Port to ban (replace with the actual port number if SSH is not on 22)
+port = ssh
 
 # Filter to use
 filter = sshd
@@ -290,7 +310,7 @@ sudo fail2ban-client set sshd banip 203.0.113.100
 sudo fail2ban-client set sshd unbanip 203.0.113.100
 
 # Unban from all jails
-sudo fail2ban-client set all unbanip 203.0.113.100
+sudo fail2ban-client unban 203.0.113.100
 
 # Check if an IP is banned
 sudo fail2ban-client get sshd banned | grep 203.0.113.100
@@ -301,7 +321,7 @@ sudo ufw status | grep 203.0.113.100
 
 ## Verifying Bans Are Working Through UFW
 
-When fail2ban bans an IP, it inserts a UFW rule:
+When fail2ban bans an IP, it adds a UFW rule near the top of the ruleset:
 
 ```bash
 # After a ban, check UFW rules
@@ -311,11 +331,11 @@ sudo ufw status numbered | head -5
 You should see entries like:
 
 ```text
-[ 1] Anywhere                   DENY IN     203.0.113.100
-[ 2] Anywhere                   DENY IN     198.51.100.50
+[ 1] Anywhere                   REJECT IN   203.0.113.100
+[ 2] Anywhere                   REJECT IN   198.51.100.50
 ```
 
-These are inserted at position 1 (highest priority) so they take effect before other rules.
+The default fail2ban UFW action prepends these rules so they take effect before most other UFW rules. If you configure the action with `blocktype=deny`, the status output will show `DENY IN` instead of `REJECT IN`.
 
 ## Setting Up Email Notifications
 
@@ -338,15 +358,15 @@ action = %(action_mwl)s
 
 ## Persistent Bans
 
-By default, fail2ban bans are removed when the service restarts. For persistent bans that survive restarts:
+fail2ban stores persistent state in a SQLite database by default on Ubuntu, which allows active bans to be reinstated and log files to continue from the last read position after a restart. To confirm or customize the database settings, edit the main fail2ban configuration overrides:
 
 ```bash
-sudo nano /etc/fail2ban/jail.local
+sudo nano /etc/fail2ban/fail2ban.local
 ```
 
 ```ini
-[DEFAULT]
-# Store ban database in a file that persists across restarts
+[Definition]
+# Store persistent fail2ban state in a file
 dbfile = /var/lib/fail2ban/fail2ban.sqlite3
 dbpurgeage = 86400  # Remove entries older than 1 day from the database
 ```
@@ -400,13 +420,16 @@ sudo nano /etc/fail2ban/jail.local
 
 ```ini
 [DEFAULT]
-# Reduce polling frequency for log backends
-backend = systemd  # Use systemd journal for lower overhead than polling files
-
-# Or use polling with a longer interval
+# Use polling if file event backends are too expensive or unavailable
 backend = polling
+
+[sshd]
+# Use the systemd journal backend for jails that have a journalmatch
+# Do not combine backend = systemd with logpath in the same jail
+# Omit logpath when using backend = systemd
+backend = systemd
 ```
 
-Using the `systemd` backend reads from the journal rather than polling log files, which is more efficient on Ubuntu systems using systemd.
+Using the `systemd` backend reads from the journal rather than polling log files, which can be more efficient on Ubuntu systems using systemd. It is only valid for jails that use journal matching instead of `logpath`.
 
 The combination of UFW and fail2ban provides solid automated protection against brute force attacks. UFW handles the firewall mechanics, while fail2ban brings the intelligence layer of reading logs, detecting attack patterns, and making dynamic ban decisions. Together they handle the vast majority of automated attack traffic without requiring manual intervention.
