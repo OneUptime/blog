@@ -46,10 +46,10 @@ cat /etc/aide/aide.conf | head -100
 
 ### Attribute Groups
 
-AIDE predefines attribute groups in the default config:
+AIDE supports these common attributes, and also provides default compound groups:
 
 ```text
-# Common predefined groups (from /etc/aide/aide.conf):
+# Common attributes:
 # p = permissions
 # i = inode
 # n = number of links
@@ -62,8 +62,8 @@ AIDE predefines attribute groups in the default config:
 # md5 = MD5 hash
 # sha256 = SHA-256 hash
 # sha512 = SHA-512 hash
-# R = p+i+n+u+g+s+m+c+sha256 (typical for regular files)
-# L = p+i+n+u+g (for symlinks)
+# R = default regular-file group (check aide --version for the exact expression)
+# L = default symlink group (check aide --version for the exact expression)
 # E = empty group
 ```
 
@@ -156,8 +156,8 @@ sudo aideinit
 
 # The new database is written to: /var/lib/aide/aide.db.new
 
-# Move it to the active database location
-sudo mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+# aideinit copies it to the active database location, prompting before overwriting
+# an existing /var/lib/aide/aide.db unless you use --force
 
 # Verify the database was created
 ls -lh /var/lib/aide/aide.db
@@ -169,10 +169,8 @@ The initialization creates a snapshot of your current filesystem state. Run this
 
 ```bash
 # Run a check against the baseline
+# Detailed output is controlled by report_level and report_url in aide.conf
 sudo aide --check
-
-# Detailed output with file details
-sudo aide --check --report=stdout
 
 # Example output showing a modified file:
 # AIDE found differences between database and filesystem!!
@@ -199,6 +197,8 @@ sudo tee /usr/local/bin/aide-check.sh << 'EOF'
 #!/bin/bash
 # aide-check.sh - Run AIDE check and send report if changes found
 
+set -o pipefail
+
 LOG_FILE="/var/log/aide/aide-check.log"
 ALERT_EMAIL="admin@example.com"
 HOSTNAME=$(hostname)
@@ -214,13 +214,13 @@ EXIT_CODE=$?
 # 0 = no differences found
 # 1 = new files found
 # 2 = removed files found
-# 3 = changed files found
-# 4+ = errors
+# 4 = changed files found
+# These values are added together, so 3 means new and removed files.
+# 14+ = generic errors
 
 if [ $EXIT_CODE -ne 0 ]; then
     echo "AIDE detected changes on ${HOSTNAME}:" | \
         mail -s "AIDE Alert: File system changes on ${HOSTNAME}" \
-        -a "From: aide@${HOSTNAME}" \
         "$ALERT_EMAIL" < "$LOG_FILE"
     logger "AIDE: File integrity check found changes (exit code: $EXIT_CODE)"
 else
@@ -319,8 +319,8 @@ SECURE = p+i+n+u+g+s+m+c+sha256+sha512+xattrs
 # View a specific check report
 sudo cat /var/log/aide/aide.log
 
-# Parse for specific change types
-sudo aide --check 2>&1 | grep -E "^[A-Z]:"
+# Parse summarized change lines when report_summarize_changes is enabled
+sudo aide --check 2>&1 | grep -E '^[[:space:]]*[fdlcbpsDPI!?][ =<>]'
 
 # Change type codes:
 # f = regular file
