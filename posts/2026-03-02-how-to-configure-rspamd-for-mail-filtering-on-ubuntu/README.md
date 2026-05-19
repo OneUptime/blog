@@ -115,17 +115,15 @@ sudo rspamadm dkim_keygen \
   --selector=mail2026 \
   --domain=example.com \
   --bits=2048 \
-  --privkey=/var/lib/rspamd/dkim/example.com.mail2026.key
+  --privkey=/var/lib/rspamd/dkim/example.com.mail2026.key \
+  > /tmp/example.com.mail2026.dns
 
 # Set correct ownership
 sudo chown -R _rspamd:_rspamd /var/lib/rspamd/dkim/
 sudo chmod 600 /var/lib/rspamd/dkim/*.key
 
 # Display the public key DNS record to publish
-sudo rspamadm dkim_keygen \
-  --selector=mail2026 \
-  --domain=example.com \
-  --bits=2048 2>/dev/null | tail -n +2
+cat /tmp/example.com.mail2026.dns
 ```
 
 ### Configuring Rspamd DKIM Signing
@@ -138,7 +136,7 @@ sudo nano /etc/rspamd/local.d/dkim_signing.conf
 # Enable DKIM signing
 enabled = true;
 
-# Sign all outbound mail
+# Allow signing messages with an empty envelope sender
 allow_envfrom_empty = true;
 
 # Use header "From" for domain detection
@@ -148,7 +146,7 @@ use_domain = "header";
 path = "/var/lib/rspamd/dkim/$domain.$selector.key";
 selector = "mail2026";
 
-# Sign subdomains with the parent domain key
+# Require the envelope sender domain to match the header From domain
 allow_hdrfrom_mismatch = false;
 ```
 
@@ -160,7 +158,7 @@ After generating the key, add the DNS TXT record to your domain:
 mail2026._domainkey.example.com  IN  TXT  "v=DKIM1; k=rsa; p=MIIBIjANBg..."
 ```
 
-The full public key is printed by the `rspamadm dkim_keygen` command.
+The full public key is written to the DNS record file by the `rspamadm dkim_keygen` command.
 
 ## Setting Up Greylisting
 
@@ -174,9 +172,6 @@ sudo nano /etc/rspamd/local.d/greylist.conf
 # Greylist settings
 expire = 1d;     # Time before greylisted entry expires
 timeout = 5m;    # Delay before a new sender is whitelisted
-
-# Maximum greylist time
-max_expire = 1d;
 
 # Only greylist messages above this score
 greylist_min_score = 4.0;
@@ -365,7 +360,7 @@ sudo systemctl restart rspamd
 sudo rspamc stat
 
 # Check which modules are loaded
-sudo rspamc modules
+sudo rspamadm configdump -m
 
 # Test spam scanning on a specific message
 rspamc -h localhost check /path/to/test.eml
