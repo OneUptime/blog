@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: Ubuntu, Backup, Disaster Recovery, Rsync, Data Protection
+Tags: Ubuntu, Backup, Disaster Recovery, rclone, Data Protection
 
-Description: Learn how to implement the 3-2-1 backup strategy on Ubuntu using rsync, borgbackup, and cloud storage to protect your data against loss and corruption.
+Description: Learn how to implement the 3-2-1 backup strategy on Ubuntu using BorgBackup, rclone, and cloud storage to protect your data against loss and corruption.
 
 ---
 
-The 3-2-1 backup strategy is a widely recognized data protection model: keep at least **3** copies of data, on at least **2** different storage media types, with at least **1** copy offsite. This simple rule protects against the most common failure scenarios - disk failure, fire or theft at a physical location, and accidental deletion. On Ubuntu, you can implement this strategy using a combination of rsync, BorgBackup, and cloud storage tools without spending money on commercial backup software.
+The 3-2-1 backup strategy is a widely recognized data protection model: keep at least **3** copies of data, on at least **2** different storage media types, with at least **1** copy offsite. This simple rule protects against the most common failure scenarios - disk failure, fire or theft at a physical location, and accidental deletion. On Ubuntu, you can implement this strategy using a combination of BorgBackup, rclone, and cloud storage tools without spending money on commercial backup software.
 
 ## Understanding the 3-2-1 Model
 
@@ -36,6 +36,7 @@ sudo apt install borgbackup
 
 # Replace /mnt/backup-drive with your backup mount point
 BACKUP_DIR="/mnt/backup-drive/borg-repo"
+export BORG_PASSPHRASE="your-strong-passphrase-here"
 
 # Initialize a new encrypted repository
 borg init --encryption=repokey-blake2 "$BACKUP_DIR"
@@ -52,6 +53,7 @@ borg key export "$BACKUP_DIR" ~/borg-key-backup.txt
 
 BACKUP_DIR="/mnt/backup-drive/borg-repo"
 HOSTNAME=$(hostname)
+export BORG_PASSPHRASE="your-strong-passphrase-here"
 
 # Create a timestamped archive
 borg create \
@@ -97,12 +99,15 @@ For the offsite copy, run BorgBackup against a remote server over SSH. This coul
 
 ```bash
 # Set up SSH key authentication to the remote backup server
-ssh-keygen -t ed25519 -f ~/.ssh/backup_key -N ""
-ssh-copy-id -i ~/.ssh/backup_key backup-user@remote-backup-server.com
+sudo install -d -m 700 /root/.ssh
+sudo ssh-keygen -t ed25519 -f /root/.ssh/backup_key -N ""
+sudo ssh-copy-id -i /root/.ssh/backup_key.pub backup-user@remote-backup-server.com
 
 # Initialize remote Borg repository
 REMOTE_REPO="backup-user@remote-backup-server.com:/backups/$(hostname)"
-borg init --encryption=repokey-blake2 "$REMOTE_REPO"
+sudo env BORG_RSH="ssh -i /root/.ssh/backup_key" \
+    BORG_PASSPHRASE="your-strong-passphrase-here" \
+    borg init --encryption=repokey-blake2 "$REMOTE_REPO"
 ```
 
 Create the offsite backup script:
@@ -132,6 +137,10 @@ borg prune \
     --keep-weekly 4 \
     --keep-monthly 12 \
     "$REMOTE_REPO"
+```
+
+```bash
+sudo chmod +x /usr/local/bin/offsite-backup.sh
 ```
 
 ## Cloud Offsite with rclone
@@ -207,6 +216,24 @@ WantedBy=timers.target
 ```
 
 ```bash
+# Offsite backup service
+sudo nano /etc/systemd/system/offsite-backup.service
+```
+
+```ini
+[Unit]
+Description=Offsite Borg Backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/offsite-backup.sh
+StandardOutput=journal
+StandardError=journal
+```
+
+```bash
 # Offsite backup timer (daily)
 sudo nano /etc/systemd/system/offsite-backup.timer
 ```
@@ -239,6 +266,8 @@ Regular verification is critical. A backup you have never tested is not a backup
 
 BACKUP_DIR="/mnt/backup-drive/borg-repo"
 REMOTE_REPO="backup-user@remote-backup-server.com:/backups/$(hostname)"
+export BORG_RSH="ssh -i /root/.ssh/backup_key"
+export BORG_PASSPHRASE="your-strong-passphrase-here"
 
 echo "=== Verifying local backup ==="
 borg check --verbose "$BACKUP_DIR"
@@ -280,10 +309,10 @@ borg list /mnt/backup-drive/borg-repo
 
 # Extract a specific archive to a test directory
 mkdir -p /tmp/restore-test
+cd /tmp/restore-test
 borg extract --verbose \
     /mnt/backup-drive/borg-repo::server-2026-03-02T02:00:00 \
-    etc/nginx/ \
-    --destination /tmp/restore-test
+    etc/nginx/
 
 # Verify the restored files look correct
 ls -la /tmp/restore-test/etc/nginx/
