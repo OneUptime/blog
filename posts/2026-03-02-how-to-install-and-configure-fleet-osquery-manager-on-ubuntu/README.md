@@ -12,8 +12,8 @@ Fleet is an open-source platform for managing osquery agents at scale. Where osq
 
 ## Prerequisites
 
-Fleet requires:
-- Ubuntu 20.04 or 22.04
+This guide assumes:
+- Ubuntu 20.04, 22.04, or 24.04
 - MySQL 8.0 or later
 - Redis 6.0 or later
 - An SSL certificate (or you can use the self-signed option for testing)
@@ -34,13 +34,13 @@ sudo mysql_secure_installation
 # Create the Fleet database and user
 sudo mysql -u root -p << 'EOF'
 CREATE DATABASE fleet CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'fleet'@'localhost' IDENTIFIED BY 'your-secure-password';
-GRANT ALL PRIVILEGES ON fleet.* TO 'fleet'@'localhost';
+CREATE USER 'fleet'@'127.0.0.1' IDENTIFIED BY 'your-secure-password';
+GRANT ALL PRIVILEGES ON fleet.* TO 'fleet'@'127.0.0.1';
 FLUSH PRIVILEGES;
 EOF
 
 # Verify the database was created
-sudo mysql -u fleet -p -e "SHOW DATABASES;"
+mysql -h 127.0.0.1 -u fleet -p -e "SHOW DATABASES;"
 ```
 
 ### Redis
@@ -64,7 +64,7 @@ redis-cli ping
 
 ```bash
 # Set the Fleet version
-FLEET_VERSION="4.48.0"
+FLEET_VERSION="4.85.0"
 
 # Download Fleet server binary
 wget https://github.com/fleetdm/fleet/releases/download/fleet-v${FLEET_VERSION}/fleet_v${FLEET_VERSION}_linux.tar.gz \
@@ -74,15 +74,15 @@ wget https://github.com/fleetdm/fleet/releases/download/fleet-v${FLEET_VERSION}/
 tar -xzf /tmp/fleet.tar.gz -C /tmp
 
 # Move binary to system path
-sudo mv /tmp/fleet /usr/local/bin/fleet
+sudo mv /tmp/fleet_v${FLEET_VERSION}_linux/fleet /usr/local/bin/fleet
 sudo chmod +x /usr/local/bin/fleet
 
 # Download fleetctl (the CLI tool)
-wget https://github.com/fleetdm/fleet/releases/download/fleet-v${FLEET_VERSION}/fleetctl_v${FLEET_VERSION}_linux.tar.gz \
+wget https://github.com/fleetdm/fleet/releases/download/fleet-v${FLEET_VERSION}/fleetctl_v${FLEET_VERSION}_linux_amd64.tar.gz \
   -O /tmp/fleetctl.tar.gz
 
 tar -xzf /tmp/fleetctl.tar.gz -C /tmp
-sudo mv /tmp/fleetctl /usr/local/bin/fleetctl
+sudo mv /tmp/fleetctl_v${FLEET_VERSION}_linux_amd64/fleetctl /usr/local/bin/fleetctl
 sudo chmod +x /usr/local/bin/fleetctl
 
 # Verify installation
@@ -112,28 +112,36 @@ redis:
 server:
   address: 0.0.0.0:8080
   # For production, specify your TLS certificate paths:
-  # cert: /etc/fleet/server.cert
-  # key: /etc/fleet/server.key
-  # For testing, use insecure mode (NOT for production):
-  tls: false
+  cert: /etc/fleet/server.cert
+  key: /etc/fleet/server.key
+  tls: true
 
 logging:
   json: true
-  level: info
 
-auth:
-  jwt_key: "generate-a-strong-random-key-here"
+app:
+  token_key: "generate-a-strong-random-key-here"
 
 filesystem:
   status_log_file: /var/log/fleet/status.log
   result_log_file: /var/log/fleet/result.log
 ```
 
-Generate a random JWT key:
+Generate a random token key:
 
 ```bash
 # Generate a secure random key
 openssl rand -base64 32
+```
+
+For testing, you can generate a self-signed certificate. Replace `your-fleet-server` with the hostname clients will use to connect to Fleet:
+
+```bash
+sudo openssl req -x509 -newkey rsa:4096 -sha256 -nodes -days 365 \
+  -keyout /etc/fleet/server.key \
+  -out /etc/fleet/server.cert \
+  -subj "/CN=your-fleet-server" \
+  -addext "subjectAltName=DNS:your-fleet-server,IP:127.0.0.1"
 ```
 
 ### Create the Log Directory
@@ -202,7 +210,7 @@ With Fleet running, complete initial setup via `fleetctl`:
 
 ```bash
 # Configure fleetctl to talk to your server
-fleetctl config set --address http://localhost:8080
+fleetctl config set --address https://localhost:8080 --tls-skip-verify
 
 # Set up the admin account
 fleetctl setup \
@@ -215,7 +223,7 @@ fleetctl setup \
 fleetctl login --email admin@yourcompany.com
 ```
 
-Or access the web UI at `http://your-server:8080` and complete the setup wizard.
+Or access the web UI at `https://your-server:8080` and complete the setup wizard.
 
 ## Enrolling Hosts
 
@@ -232,8 +240,9 @@ Or from the web UI: Settings > Enrolling Hosts.
 
 ```bash
 # On each Ubuntu host you want to enroll
-curl -s https://pkg.osquery.io/deb/pubkey.gpg | sudo apt-key add -
-sudo add-apt-repository 'deb [arch=amd64] https://pkg.osquery.io/deb deb main'
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://pkg.osquery.io/deb/pubkey.gpg | sudo tee /etc/apt/keyrings/osquery.asc >/dev/null
+echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/osquery.asc] https://pkg.osquery.io/deb deb main' | sudo tee /etc/apt/sources.list.d/osquery.list
 sudo apt update
 sudo apt install osquery
 ```
@@ -270,9 +279,8 @@ sudo nano /etc/osquery/osquery.flags
 echo "your-enrollment-secret" | sudo tee /etc/osquery/enroll_secret
 sudo chmod 600 /etc/osquery/enroll_secret
 
-# Download the Fleet server certificate
-sudo curl -s http://your-fleet-server:8080/assets/fleet.pem \
-  -o /etc/osquery/fleet.pem
+# Copy the Fleet server certificate or CA chain
+sudo cp /path/to/fleet-server-ca.pem /etc/osquery/fleet.pem
 ```
 
 ### Using fleetd (The Modern Approach)
@@ -285,10 +293,11 @@ fleetctl package \
   --type=deb \
   --fleet-url=https://your-fleet-server:8080 \
   --enroll-secret=your-enrollment-secret \
-  --output=fleet-agent.deb
+  --fleet-certificate=/etc/fleet/server.cert \
+  --outfile=fleet-agent.deb
 
 # Install on target hosts
-sudo dpkg -i fleet-agent.deb
+sudo apt install ./fleet-agent.deb
 ```
 
 ## Writing and Scheduling Queries
@@ -340,10 +349,10 @@ EOF
 fleetctl get hosts
 
 # Get details for a specific host
-fleetctl get host --name hostname.example.com
+fleetctl get host hostname.example.com
 
-# View query results
-fleetctl get query-results --name active_network_connections
+# Query results are written to the configured result log
+sudo tail -f /var/log/fleet/result.log
 ```
 
 In the web UI, the "Queries" section shows recent results, and "Hosts" lets you drill into individual machines to view their configuration, queries, and collected data.
@@ -359,8 +368,10 @@ kind: policy
 spec:
   name: SSH root login disabled
   query: >
-    SELECT 1 FROM etc_hosts
-    WHERE PermitRootLogin = 'no'
+    SELECT 1 FROM augeas
+    WHERE path = '/etc/ssh/sshd_config'
+    AND label = 'PermitRootLogin'
+    AND value = 'no'
     LIMIT 1;
   description: Checks that root login via SSH is disabled
   resolution: Set PermitRootLogin to no in /etc/ssh/sshd_config
@@ -373,13 +384,13 @@ Policies show which hosts are compliant and which fail, giving you a quick view 
 
 ```bash
 # Download new version
-FLEET_VERSION="4.49.0"
+FLEET_VERSION="4.85.0"
 wget https://github.com/fleetdm/fleet/releases/download/fleet-v${FLEET_VERSION}/fleet_v${FLEET_VERSION}_linux.tar.gz -O /tmp/fleet.tar.gz
 tar -xzf /tmp/fleet.tar.gz -C /tmp
 
 # Stop service, replace binary, run migrations, start again
 sudo systemctl stop fleet
-sudo mv /tmp/fleet /usr/local/bin/fleet
+sudo mv /tmp/fleet_v${FLEET_VERSION}_linux/fleet /usr/local/bin/fleet
 sudo fleet prepare db --config /etc/fleet/fleet.yml
 sudo systemctl start fleet
 ```
