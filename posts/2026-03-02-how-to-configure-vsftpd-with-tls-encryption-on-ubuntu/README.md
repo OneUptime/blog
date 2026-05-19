@@ -103,14 +103,14 @@ force_local_data_ssl=YES
 force_local_logins_ssl=YES
 
 # Use TLS 1.2 and above only
+ssl_tlsv1=NO
+ssl_tlsv1_1=NO
 ssl_tlsv1_2=YES
+ssl_tlsv1_3=YES
 ssl_sslv2=NO
 ssl_sslv3=NO
 
-# TLS 1.3 support (vsftpd 3.0.5+)
-# ssl_tlsv1_3=YES
-
-# Prefer server cipher order
+# Allow strong ciphers and exclude known weak choices
 ssl_ciphers=HIGH:!aNULL:!MD5:!RC4
 
 # Require clients to reuse the SSL session for data connections
@@ -179,9 +179,6 @@ Standard `ftp` clients do not support TLS. Use `lftp` or `curl` for testing:
 sudo apt install lftp -y
 
 # Connect with explicit TLS (FTPES)
-lftp ftps://ftp.example.com
-
-# Or specify explicitly
 lftp -e "set ftp:ssl-force yes" -u ftpuser1 ftp.example.com
 
 # Test file upload
@@ -213,32 +210,32 @@ openssl s_client -connect ftp.example.com:21 -starttls ftp
 # Verify return code: 0 (ok) for valid certificates, non-zero for self-signed
 ```
 
-The `AUTH TLS` command in the output confirms TLS is being negotiated correctly.
+A successful TLS handshake confirms that TLS is being negotiated correctly with `AUTH TLS`.
 
 ## Setting Up Certificate Renewal for Let's Encrypt
 
-Let's Encrypt certificates expire after 90 days. Set up automatic renewal and vsftpd reload:
+Let's Encrypt certificates expire after 90 days. Set up automatic renewal and a vsftpd restart after a certificate is renewed:
 
 ```bash
-# Create a post-renewal hook to reload vsftpd
-sudo nano /etc/letsencrypt/renewal-hooks/post/vsftpd.sh
+# Create a deploy hook to restart vsftpd after successful renewal
+sudo nano /etc/letsencrypt/renewal-hooks/deploy/vsftpd.sh
 ```
 
 ```bash
 #!/bin/bash
-# Reload vsftpd after certificate renewal
-systemctl reload vsftpd || systemctl restart vsftpd
-echo "$(date): vsftpd reloaded after cert renewal" >> /var/log/letsencrypt-hooks.log
+# Restart vsftpd after certificate renewal
+systemctl restart vsftpd
+echo "$(date): vsftpd restarted after cert renewal" >> /var/log/letsencrypt-hooks.log
 ```
 
 ```bash
-sudo chmod +x /etc/letsencrypt/renewal-hooks/post/vsftpd.sh
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/vsftpd.sh
 
 # Test certificate renewal (dry run)
 sudo certbot renew --dry-run
 
-# Verify the hook runs
-sudo certbot renew --dry-run --post-hook "echo hook executed"
+# Verify deploy hooks during a dry run
+sudo certbot renew --dry-run --run-deploy-hooks
 ```
 
 ## Common TLS Issues
