@@ -14,7 +14,7 @@ SPF alone does not prevent all spoofing (it only checks the envelope sender, not
 
 ## Understanding SPF Record Syntax
 
-An SPF record is a DNS TXT record at the root of your domain. The basic structure:
+An SPF record is a DNS TXT record on the domain or subdomain used in the MAIL FROM or HELO identity. The basic structure:
 
 ```text
 v=spf1 [mechanisms] [modifiers] [all]
@@ -80,8 +80,8 @@ dig TXT example.com +short
 # Or use host
 host -t TXT example.com
 
-# Use the spf-tools to validate the record
-sudo apt install -y libmail-spf-perl
+# Use spf-tools-perl to validate the record
+sudo apt install -y spf-tools-perl
 
 # Check the SPF record syntax
 # (Use online tools like mxtoolbox.com/spf for a quick check)
@@ -90,7 +90,7 @@ sudo apt install -y libmail-spf-perl
 python3 - <<'EOF'
 import subprocess
 result = subprocess.run(
-    ['spfquery', '-ip=203.0.113.10', '-sender=test@example.com', '-helo=mail.example.com'],
+    ['spfquery', '--ip', '203.0.113.10', '--identity', 'test@example.com', '--helo-id', 'mail.example.com'],
     capture_output=True, text=True
 )
 print(result.stdout)
@@ -100,9 +100,9 @@ EOF
 
 ## Installing SPF Validation in Postfix
 
-Postfix does not check SPF natively. You need a milter or policy service. Two common options are `postfix-policyd-spf-python` and `pypolicyd-spf`.
+Postfix does not check SPF natively. You need a milter or policy service. Two common options on current Ubuntu releases are `postfix-policyd-spf-python` and `pyspf-milter`.
 
-### Option 1: pypolicyd-spf (Recommended)
+### Option 1: postfix-policyd-spf-python (Recommended)
 
 ```bash
 # Install the SPF policy daemon
@@ -119,19 +119,19 @@ sudo tee /etc/postfix-policyd-spf-python/policyd-spf.conf > /dev/null <<'EOF'
 # Debug level (0-5, default 1)
 debugLevel = 1
 
-# HELO check behavior (Pass/Fail/SoftFail/None)
+# HELO check behavior (SPF_Not_Pass/Softfail/Fail/Null/False/No_Check)
 HELO_reject = Fail
 
-# Mail From check behavior
+# Mail From check behavior (SPF_Not_Pass/Softfail/Fail/False/No_Check)
 Mail_From_reject = Fail
 
-# Skip SPF checks for authenticated senders
+# Skip SPF checks for local loopback addresses
 skip_addresses = 127.0.0.0/8,::ffff:127.0.0.0/104,::1
 
 # Header text added to messages
 Header_Type = SPF
 
-# Limit on DNS lookups (SPF allows max 10)
+# Maximum elapsed time for SPF DNS lookups, in seconds
 Lookup_Time = 20
 EOF
 ```
@@ -147,7 +147,7 @@ policyd-spf  unix  -       n       n       -       0       spawn
 EOF
 
 # Add the policy check to main.cf
-# The 3600s timeout matches SPF's 10-lookup limit giving time to resolve
+# The 3600s timeout lets the spawned policy service live as long as the SMTP server process using it
 sudo postconf -e "policyd-spf_time_limit = 3600"
 
 # Add the policy service to smtpd_recipient_restrictions
@@ -167,17 +167,20 @@ sudo systemctl restart postfix
 
 ```bash
 # For setups already using milters (e.g., with OpenDKIM)
-sudo apt install -y spf-milter-python
+sudo apt install -y pyspf-milter
 
-# Configure in /etc/spf-milter-python.conf if needed
-# Then add to smtpd_milters in main.cf alongside other milters
+# Configure in /etc/pyspf-milter/pyspf-milter.conf if needed
+# The default socket is inet:8893@localhost
+sudo postconf -e "smtpd_milters = inet:localhost:8893"
+sudo postconf -e "non_smtpd_milters = inet:localhost:8893"
+sudo systemctl restart pyspf-milter postfix
 ```
 
 ## Testing SPF Validation
 
 ```bash
 # Send a test email from an unauthorized server and check the logs
-# The Authentication-Results header should show spf=fail
+# The Received-SPF header should show fail when Header_Type = SPF
 
 # Monitor Postfix logs for SPF results
 sudo tail -f /var/log/mail.log | grep -i spf
@@ -186,6 +189,8 @@ sudo tail -f /var/log/mail.log | grep -i spf
 # which reports SPF, DKIM, and DMARC status
 
 # Check if a specific IP passes SPF for your domain
+sudo apt install -y python3-dnspython
+
 python3 - <<'EOF'
 import dns.resolver
 
@@ -203,19 +208,19 @@ EOF
 
 ### SPF Record Too Many Lookups
 
-SPF allows a maximum of 10 DNS lookups. Each `include:`, `mx`, `a`, and `ptr` mechanism consumes one lookup. If you exceed 10, you get a `permerror`.
+SPF allows a maximum of 10 DNS-querying mechanisms and modifiers during evaluation. `include:`, `mx`, `a`, `ptr`, `exists`, and `redirect` can consume that limit. If you exceed 10, you get a `permerror`.
 
 ```bash
 # Count DNS lookups in your SPF record manually
 # Or use an online SPF checker that counts for you
 
-# To reduce lookups, replace include: directives with actual IP ranges
+# To reduce lookups, replace include: directives with actual IP ranges only if
+# the provider documents them and you can keep them updated
 # Instead of: include:sendgrid.net
 # Use: ip4:149.72.0.0/16 ip4:167.89.0.0/16
 
-# SPF record flattening tools exist to automate this
-sudo apt install -y spf-tools
-# spf-flatten example.com  # not available in all distros; use online tools
+# SPF record flattening tools exist to automate this, but Ubuntu does not ship
+# a standard spf-flatten command in its SPF packages
 ```
 
 ### Multiple SPF Records
