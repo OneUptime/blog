@@ -14,7 +14,7 @@ Running your own NTP server within your infrastructure reduces external dependen
 
 A typical internal NTP infrastructure has two tiers:
 
-- **Tier 1 NTP servers** - synchronize directly with upstream internet NTP servers (pool.ntp.org, Google, Cloudflare), typically 2-3 servers for redundancy
+- **Tier 1 NTP servers** - synchronize directly with upstream internet NTP servers (pool.ntp.org, Cloudflare, or another provider with the same leap-second policy), typically 2-3 servers for redundancy
 - **Tier 2 client servers** - synchronize with your internal Tier 1 servers
 
 This design means most of your machines never reach out to the internet for time, and your Tier 1 servers are your single point of control for timekeeping across the organization.
@@ -54,8 +54,8 @@ pool 2.pool.ntp.org iburst
 pool 3.pool.ntp.org iburst
 
 # High-accuracy sources (optional, add for better accuracy)
+# Do not mix leap-smearing sources such as time.google.com with non-smearing sources.
 server time.cloudflare.com iburst
-server time.google.com iburst
 
 # === Server Settings ===
 
@@ -82,12 +82,7 @@ allow 10.0.0.0/8
 allow 192.168.0.0/16
 allow 172.16.0.0/12
 
-# Deny all other hosts
-deny all
-
-# Allow localhost
-allow 127.0.0.1
-allow ::1
+# Other hosts are denied by default unless an allow rule matches.
 
 # === Network Settings ===
 # Bind to specific interface (optional - restricts to one interface)
@@ -118,7 +113,6 @@ sudo ufw status
 
 # Using iptables directly
 sudo iptables -A INPUT -p udp --dport 123 -j ACCEPT
-sudo iptables -A INPUT -p tcp --dport 123 -j ACCEPT
 ```
 
 ## Verifying the Server is Working
@@ -137,8 +131,9 @@ sudo netstat -ulnp | grep chrony
 
 # Check that chrony responds to NTP queries (from another host)
 # From a client machine:
-# ntpdate -q your-ntp-server-ip
-# or: chronyc -h your-ntp-server-ip tracking
+# chronyd -Q 'server your-ntp-server-ip iburst'
+# Remote chronyc monitoring also requires cmdallow and UDP port 323 access:
+# chronyc -h your-ntp-server-ip tracking
 ```
 
 ## Configuring NTP Clients to Use Your Server
@@ -199,22 +194,22 @@ allow 192.168.1.0/24
 # Deny a specific host within an allowed network
 deny 10.0.0.100
 
-# Allow only queries, not clock modifications
-# (more restrictive than allow)
-# This is useful for monitoring clients
-allow 10.0.0.0/8
+# Allow chronyc monitoring commands from a monitoring subnet
+# This does not grant full chronyc control or clock modification access.
+cmdallow 10.0.0.0/8
 
-# If you want to allow client access but not for adjusting the server
-# (prevent clients from sending time adjustments to your server)
-cmdallow 127.0.0.1   # Only allow chronyc control from localhost
+# Restrict chronyc monitoring access to localhost only
+# (localhost is allowed by default; this makes the intent explicit)
 cmddeny all
+cmdallow 127.0.0.1
+cmdallow ::1
 ```
 
 ## Monitoring the NTP Server
 
 ```bash
 # Check how many clients are connecting
-# (chrony doesn't track client connections like ntpd does by default)
+chronyc clients
 
 # View server activity
 chronyc activity
@@ -266,7 +261,7 @@ The `peer` directive creates a symmetric peer relationship between servers, allo
 
 ## Setting Up NTP via DNS Records
 
-For easy client configuration, create NTP SRV records or use a hostname:
+For easy client configuration, create NTP SRV records for SRV-aware clients or use ordinary hostnames in chrony:
 
 ```bash
 # DNS configuration example (in your DNS server):
@@ -279,7 +274,8 @@ _ntp._udp.internal.example.com.  IN  SRV  1 0 123 ntp1.internal.example.com.
 _ntp._udp.internal.example.com.  IN  SRV  2 0 123 ntp2.internal.example.com.
 ```
 
-Clients can then use `ntp.internal.example.com` as their server address.
+SRV-aware clients can discover the NTP servers from `_ntp._udp.internal.example.com`.
+For chrony clients, configure the `server` lines with `ntp1.internal.example.com` and `ntp2.internal.example.com`, or create A/AAAA records for `ntp.internal.example.com` that resolve to your NTP servers.
 
 ## Using the `local` Directive for Isolated Networks
 
@@ -320,10 +316,10 @@ From a client machine:
 
 ```bash
 # Test if the server responds to NTP queries
-# Install ntpdate: sudo apt install ntpdate
-ntpdate -q 10.0.0.10
+# This prints the measured offset and exits without changing the clock.
+chronyd -Q 'server 10.0.0.10 iburst'
 
-# Using chrony itself
+# Remote chronyc monitoring requires cmdallow on the server and UDP port 323 access
 chronyc -h 10.0.0.10 tracking
 
 # Using sntp (part of ntp package)
