@@ -12,7 +12,7 @@ Description: Configure /etc/fstab on Ubuntu to set up persistent filesystem moun
 
 ## The fstab Format
 
-Each line in `/etc/fstab` has six space-separated fields:
+Each line in `/etc/fstab` has six whitespace-separated fields:
 
 ```text
 <device>  <mount point>  <filesystem type>  <options>  <dump>  <fsck order>
@@ -30,7 +30,7 @@ UUID=abc12345-def6-7890-abcd-ef1234567890  /data  ext4  defaults,noatime  0  2
 
 Can be specified as:
 - `UUID=...` (strongly preferred - survives device reordering)
-- `LABEL=...` (requires setting a label during format)
+- `LABEL=...` (requires setting a filesystem label)
 - `/dev/sdb1` (avoid - can change between reboots)
 - `//server/share` (for network filesystems)
 
@@ -44,7 +44,7 @@ Common values: `ext4`, `xfs`, `btrfs`, `vfat`, `ntfs`, `nfs`, `cifs`, `tmpfs`, `
 
 **Field 4: Options**
 
-Comma-separated list of mount options. `defaults` is equivalent to `rw,suid,dev,exec,auto,nouser,async`.
+Comma-separated list of mount options. `defaults` usually means `rw,suid,dev,exec,auto,nouser,async`.
 
 **Field 5: Dump**
 
@@ -55,9 +55,9 @@ Comma-separated list of mount options. `defaults` is equivalent to `rw,suid,dev,
 
 `0` = do not check at boot
 `1` = check first (use for root filesystem `/`)
-`2` = check after root (use for other local filesystems)
+`2` = check after root (use for other local filesystems that support boot-time fsck checks)
 
-Network and special filesystems should always have `0` here.
+Network, Btrfs, XFS, and special filesystems should have `0` here.
 
 ## Viewing Current fstab
 
@@ -110,14 +110,14 @@ UUID=abc12345-def6-7890-abcd-ef1234567890  /data  ext4  defaults,noatime  0  2
 
 ```text
 # High-performance XFS data partition
-UUID=abc12345-def6-7890-abcd-ef1234567890  /data  xfs  defaults,noatime,largeio  0  2
+UUID=abc12345-def6-7890-abcd-ef1234567890  /data  xfs  defaults,noatime,largeio  0  0
 ```
 
 ### Btrfs with subvolume
 
 ```text
 # Btrfs filesystem with subvolume
-UUID=abc12345-def6-7890-abcd-ef1234567890  /  btrfs  subvol=@,defaults,noatime  0  1
+UUID=abc12345-def6-7890-abcd-ef1234567890  /  btrfs  subvol=@,defaults,noatime  0  0
 ```
 
 ### Swap partition
@@ -137,7 +137,7 @@ tmpfs  /tmp  tmpfs  defaults,noatime,nosuid,nodev,size=2G  0  0
 ### NFS share
 
 ```text
-# NFS mount - note: _netdev option ensures network is up before mounting
+# NFS mount - note: _netdev makes systemd treat this as a network mount
 192.168.1.100:/exports/data  /mnt/nfs  nfs  defaults,_netdev,rw  0  0
 ```
 
@@ -154,7 +154,7 @@ tmpfs  /tmp  tmpfs  defaults,noatime,nosuid,nodev,size=2G  0  0
 
 | Option | Effect |
 |--------|--------|
-| `defaults` | Standard options (rw, suid, dev, exec, auto, async) |
+| `defaults` | Standard options (usually rw, suid, dev, exec, auto, nouser, async) |
 | `noatime` | Don't update access time on reads (performance) |
 | `relatime` | Update atime only if older than mtime (Ubuntu default) |
 | `noexec` | Prevent executing programs from this filesystem |
@@ -163,7 +163,7 @@ tmpfs  /tmp  tmpfs  defaults,noatime,nosuid,nodev,size=2G  0  0
 | `ro` | Mount read-only |
 | `rw` | Mount read-write (default) |
 | `user` | Allow any user to mount this filesystem |
-| `_netdev` | Mark as network device, wait for network at boot |
+| `_netdev` | Mark as a network device and order the mount after network startup |
 | `nofail` | Don't report errors if device doesn't exist at boot |
 
 ### Combining options for security
@@ -204,7 +204,7 @@ df -hT /data
 ls /data
 ```
 
-The `mount -a` command mounts everything in fstab that isn't already mounted. If there's an error in your new entry, it will fail here instead of at boot time where it could cause problems.
+The `mount -a` command mounts fstab entries that aren't already mounted, except entries marked `noauto`. If there's an error in your new entry, it will fail here instead of at boot time where it could cause problems.
 
 ## The nofail Option
 
@@ -274,7 +274,7 @@ systemctl reboot
 findmnt --verify
 
 # Test mount all entries
-sudo mount -a --fake  # dry run (shows what would be mounted)
+sudo mount -av --fake  # verbose dry run
 ```
 
 ### Finding what's mounted from fstab
@@ -283,7 +283,7 @@ sudo mount -a --fake  # dry run (shows what would be mounted)
 # Show all current mounts with their sources
 findmnt
 
-# Show only mounts that came from fstab
+# Show entries defined in fstab
 findmnt --fstab
 ```
 
