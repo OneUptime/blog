@@ -36,7 +36,7 @@ sudo apt install tcpdump -y
 # Show TOS field for all traffic on eth0
 sudo tcpdump -i eth0 -n -v ip 2>/dev/null | grep -i tos
 
-# More detailed: show DSCP in decimal
+# More detailed: show ToS details for IP packets
 sudo tcpdump -i eth0 -n '(ip)' -v 2>/dev/null | awk '/tos/ {print}'
 
 # Use tshark for cleaner output
@@ -130,13 +130,14 @@ sudo iptables -t mangle -A FORWARD \
 
 ## Marking with tc (Traffic Control)
 
-You can also apply DSCP marks using tc filters with the `skbedit` action.
+You can also apply DSCP marks using tc filters with the `pedit` action.
 
 ```bash
-# Mark packets matching a tc filter with DSCP EF (priority 0xb8 in ToS)
-tc filter add dev eth0 parent 1: protocol ip prio 1 u32 \
+# Mark packets matching a tc filter with DSCP EF (0xb8 in ToS)
+tc qdisc add dev eth0 clsact
+tc filter add dev eth0 egress protocol ip prio 1 u32 \
     match ip dport 22 0xffff \
-    action skbedit priority 0x6
+    action pedit ex munge ip dsfield set 0xb8 retain 0xfc
     # action dsmark - alternative for DSCP marking
 
 # Using the dsmark qdisc (dedicated DSCP marking qdisc)
