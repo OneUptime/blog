@@ -68,10 +68,9 @@ LISTENER="0.0.0.0"
 NICE="10"
 
 # Maximum number of concurrent compile jobs (usually 2x CPU cores)
-MAXJOBS="8"
+JOBS="8"
 
-# Log verbosity (0-7, default is 2)
-LOGFILE="/var/log/distccd.log"
+# The Ubuntu package logs to /var/log/distccd.log by default
 ```
 
 ### Start the distcc Daemon
@@ -140,7 +139,7 @@ localhost/4
 
 ```bash
 # Show the configured hosts
-distcc --list-hosts
+distcc --show-hosts
 ```
 
 ## Using distcc for Your Build
@@ -166,7 +165,7 @@ Build normally and distcc distributes the work:
 make -j20   # 4 local + 8 + 8 volunteer slots
 ```
 
-### Method 2: DISTCC_FALLBACK with CMAKE
+### Method 2: distcc with CMake
 
 ```bash
 export CC="distcc gcc"
@@ -251,8 +250,9 @@ The ordering matters: ccache should come before distcc in the PATH so local cach
 # Check that distccd is running on volunteers
 sudo systemctl status distcc
 
-# Test connectivity
-distcc --test 192.168.1.20
+# Test a remote compile
+printf 'int main(void){return 0;}\n' > /tmp/distcc-test.c
+DISTCC_HOSTS="192.168.1.20/1" distcc gcc -c /tmp/distcc-test.c -o /tmp/distcc-test.o
 
 # Enable verbose output during build
 export DISTCC_VERBOSE=1
@@ -261,7 +261,7 @@ make -j4 2>&1 | grep -E "distcc|compile"
 
 ### Compiler Version Mismatch
 
-distcc is strict about compiler versions - the volunteer must have the exact same compiler version as the coordinator:
+distcc does not enforce compiler version matching, but incompatible compiler, assembler, or system header versions can cause build failures or incorrect object files. To be safe, use the same compiler release on every machine:
 
 ```bash
 # Check version on coordinator
@@ -271,11 +271,11 @@ gcc --version
 ssh 192.168.1.20 gcc --version
 ```
 
-If versions differ, either install matching compilers or use the `--allow-version-mismatch` option (only for testing - this can cause subtle bugs):
+If versions differ, install matching compilers or use a version-qualified compiler name that exists on every machine:
 
 ```bash
-# On volunteers, in /etc/default/distcc
-DISTCC_OPTS="--allow-version-mismatch"
+export CC="distcc gcc-13"
+export CXX="distcc g++-13"
 ```
 
 ### Network Performance Issues
