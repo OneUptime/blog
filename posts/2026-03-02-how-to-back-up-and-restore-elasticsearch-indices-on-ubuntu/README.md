@@ -18,7 +18,7 @@ Snapshots are stored in a **snapshot repository** - which can be a local filesys
 
 ## Setting Up a Filesystem Repository
 
-For a local backup, create a dedicated directory and register it as a repository:
+For a local backup on a single-node cluster, create a dedicated directory and register it as a repository. On a multi-node cluster, use a shared filesystem such as NFS and mount it at the same path on every master and data node:
 
 ```bash
 # Create the backup directory
@@ -225,7 +225,7 @@ curl -u elastic:your_password \
   --cacert /etc/elasticsearch/certs/http_ca.crt \
   "https://localhost:9200/_snapshot/my_backup/*?pretty"
 
-# Close the index before restoring (if it exists)
+# Close the index before restoring in place (if it exists and has the same number of primary shards as the snapshot)
 curl -u elastic:your_password \
   --cacert /etc/elasticsearch/certs/http_ca.crt \
   -X POST "https://localhost:9200/products/_close"
@@ -285,12 +285,9 @@ curl -u elastic:your_password \
 
 ## Using S3 as a Snapshot Repository
 
-For production, use S3-compatible storage for offsite backups:
+For production, use S3-compatible storage for offsite backups. S3 repository support is bundled with current Elasticsearch releases:
 
 ```bash
-# Install the S3 repository plugin
-sudo /usr/share/elasticsearch/bin/elasticsearch-plugin install repository-s3
-
 # Configure S3 credentials using Elasticsearch keystore
 sudo /usr/share/elasticsearch/bin/elasticsearch-keystore add s3.client.default.access_key
 sudo /usr/share/elasticsearch/bin/elasticsearch-keystore add s3.client.default.secret_key
