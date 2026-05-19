@@ -43,7 +43,7 @@ named -v
 
 ```
 
-Configure a DNSSEC policy in `/etc/bind/named.conf.options`:
+Configure a DNSSEC policy in `/etc/bind/named.conf.options`, outside the `options { ... };` block:
 
 ```bash
 sudo nano /etc/bind/named.conf.options
@@ -59,7 +59,7 @@ dnssec-policy "my-policy" {
     };
 
     // NSEC3 for proof of non-existence (obscures zone enumeration)
-    nsec3param iterations 0 optout no salt-length 8;
+    nsec3param iterations 0 optout no salt-length 0;
 };
 ```
 
@@ -166,8 +166,8 @@ www     IN      A       192.168.1.100
 ```bash
 # Sign the zone file
 sudo dnssec-signzone \
-    -A \
-    -3 $(head -c 1000 /dev/random | sha1sum | cut -b 1-16) \
+    -3 - \
+    -H 0 \
     -N increment \
     -o example.com \
     -t \
@@ -198,27 +198,26 @@ sudo rndc reload example.com
 
 The DS record links your zone into the global chain of trust. Without it, resolvers can't verify your zone's signatures.
 
-For the automatic approach, get the DS record from BIND:
+For the automatic approach, generate the DS record from the DNSKEY records published by BIND:
 
 ```bash
-sudo rndc signing -list example.com
+dig +dnssec @localhost example.com DNSKEY | dnssec-dsfromkey -2 -f - example.com
 ```
 
 For manual signing, extract it from the key file:
 
 ```bash
 # Generate DS records from the KSK
-dnssec-dsfromkey /etc/bind/keys/Kexample.com.+008+22222.key
+dnssec-dsfromkey -2 /etc/bind/keys/Kexample.com.+008+22222.key
 ```
 
 This outputs something like:
 
 ```text
-example.com. IN DS 22222 8 1 ABCDEF1234567890...
 example.com. IN DS 22222 8 2 FEDCBA0987654321...
 ```
 
-Submit both SHA-1 (type 1) and SHA-256 (type 2) DS records to your registrar. The exact process depends on your registrar's control panel.
+Submit the SHA-256 (type 2) DS record to your registrar. The exact process depends on your registrar's control panel.
 
 ## Verifying DNSSEC
 
@@ -241,7 +240,7 @@ delv @localhost example.com A +multiline
 # Visit: https://dnssec-analyzer.verisignlabs.com/ and enter your domain
 ```
 
-Look for the `ad` (Authenticated Data) flag in the dig output, which confirms DNSSEC validation succeeded.
+When querying through a validating resolver, look for the `ad` (Authenticated Data) flag in the dig output, which confirms DNSSEC validation succeeded.
 
 ## Checking Signature Expiry
 
@@ -261,7 +260,8 @@ ZONE_FILE="/etc/bind/zones/db.$ZONE"
 KEYS_DIR="/etc/bind/keys"
 
 dnssec-signzone \
-    -A \
+    -3 - \
+    -H 0 \
     -N increment \
     -o $ZONE \
     -K $KEYS_DIR \
