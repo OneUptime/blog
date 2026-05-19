@@ -8,7 +8,7 @@ Description: Complete guide to installing and using Multipass on Ubuntu for fast
 
 ---
 
-Multipass is Canonical's lightweight VM manager built specifically for Ubuntu. It spins up Ubuntu instances in seconds using cloud images, and wraps KVM (or Hyper-V on Windows, HyperKit on macOS) under a simple CLI. If you want a quick Ubuntu VM without touching libvirt XML or virt-install flags, Multipass is the right tool.
+Multipass is Canonical's lightweight VM manager built specifically for Ubuntu. It spins up Ubuntu instances in seconds using cloud images, and uses QEMU on Linux and macOS (or Hyper-V on Windows) under a simple CLI. If you want a quick Ubuntu VM without touching libvirt XML or virt-install flags, Multipass is the right tool.
 
 ## What Multipass Is Good For
 
@@ -37,7 +37,7 @@ On Ubuntu Desktop, Multipass also installs a system tray indicator. On servers, 
 
 ### Setting the Backend Driver
 
-By default Multipass uses KVM on Linux. Confirm which backend is active:
+By default Multipass uses the `qemu` driver on Linux. Confirm which backend is active:
 
 ```bash
 # Check the current backend
@@ -47,10 +47,10 @@ sudo multipass get local.driver
 To explicitly set the backend:
 
 ```bash
-# Set backend to KVM (requires kvm kernel modules)
+# Set backend to QEMU (uses KVM acceleration when available)
 sudo multipass set local.driver=qemu
 
-# Or libvirt backend (requires libvirt installed)
+# Or libvirt backend (requires libvirt installed; deprecated)
 sudo multipass set local.driver=libvirt
 ```
 
@@ -176,8 +176,7 @@ multipass list
 # NAME    STATE    IPV4             IMAGE
 # myvm    Running  192.168.64.5     Ubuntu 24.04 LTS
 
-# SSH directly using the default ubuntu user
-# Multipass manages SSH keys automatically
+# SSH directly using the default ubuntu user after adding your SSH key
 ssh ubuntu@192.168.64.5
 ```
 
@@ -204,23 +203,26 @@ sudo systemctl status snap.multipass.multipassd
 sudo journalctl -u snap.multipass.multipassd -f
 ```
 
-## Setting Global Defaults
+## Modifying Instance Resources
 
-Multipass supports configurable defaults for new instances:
+Multipass supports changing the CPU, memory, and disk settings for stopped instances:
 
 ```bash
-# Set default number of CPUs
-sudo multipass set local.cpus=2
+# Stop the instance before changing resources
+multipass stop myvm
 
-# Set default memory
-sudo multipass set local.memory=2G
+# Set number of CPUs
+sudo multipass set local.myvm.cpus=2
 
-# Set default disk size
-sudo multipass set local.disk=20G
+# Set memory
+sudo multipass set local.myvm.memory=2G
+
+# Increase disk size
+sudo multipass set local.myvm.disk=20G
 
 # View all current settings
 sudo multipass get --keys
-sudo multipass get local.cpus
+sudo multipass get local.myvm.cpus
 ```
 
 ## Practical Workflow Example
@@ -269,11 +271,11 @@ sudo snap restart multipass
 Check if the Multipass bridge is up:
 
 ```bash
-# The bridge is usually named mpqemubr0 or lxdbr0
-ip link show | grep -E "mpqemubr|lxdbr"
+# With the default qemu driver, the bridge is usually named mpqemubr0
+ip link show | grep mpqemubr
 
-# Restart networking if needed
-sudo systemctl restart systemd-networkd
+# Restart Multipass if needed
+sudo snap restart multipass
 ```
 
 ### Cannot SSH to Instance
