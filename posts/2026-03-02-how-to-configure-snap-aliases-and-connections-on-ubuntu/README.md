@@ -14,10 +14,10 @@ Snap packages expose functionality through two mechanisms that users can customi
 
 ### What Aliases Are
 
-When you install a snap, its commands are exposed under the snap's name. For example, installing the `hello-world` snap gives you the `hello-world.hello` command, not just `hello`. Aliases let you create shorter, more convenient names.
+When you install a snap, its commands are exposed in the snap's command namespace. If the application name matches the snap name, the command is simply the snap name, such as `firefox`. Other applications use `<snap>.<application>`, such as `firefox.geckodriver`. Aliases let you create shorter, more convenient names.
 
 There are two types of aliases:
-- **Automatic aliases**: Declared by the snap developer in `snapcraft.yaml`, enabled by default after Snap Store review
+- **Automatic aliases**: Requested by the snap developer and enabled by default after Snap Store review
 - **Manual aliases**: Created by the user with `snap alias`
 
 ### Viewing Existing Aliases
@@ -30,25 +30,24 @@ snap aliases
 # Example output:
 # Command                   Alias     Notes
 # aws-cli.aws               aws       manual
-# git-ubuntu.git-ubuntu     git       auto
-# thunderbird.thunderbird   thunderbird auto
+# firefox.geckodriver       geckodriver -
+# lxd.lxc                   lxc       disabled
 ```
 
 ### Creating Manual Aliases
 
 ```bash
-# Create an alias 'firefox' for 'firefox.firefox'
-# (Firefox snap's main command)
-sudo snap alias firefox.firefox firefox
+# Create an alias 'webdriver' for 'firefox.geckodriver'
+sudo snap alias firefox.geckodriver webdriver
 
 # Alias a specific subcommand
 sudo snap alias aws-cli.aws aws
 
-# Create an alias for a snap tool
-sudo snap alias jq.jq jq
+# Create another alias for the same snap tool
+sudo snap alias firefox.geckodriver my-geckodriver
 
 # Verify the alias was created
-snap aliases | grep firefox
+snap aliases | grep webdriver
 ```
 
 After creating an alias, you can use the alias name directly in the terminal as if it were a regular command.
@@ -57,35 +56,34 @@ After creating an alias, you can use the alias name directly in the terminal as 
 
 ```bash
 # Remove a specific alias
-sudo snap unalias firefox
+sudo snap unalias webdriver
 
 # Remove all aliases for a snap
-sudo snap unalias firefox.firefox
+sudo snap unalias firefox
 
 # Verify removal
-snap aliases | grep firefox
+snap aliases firefox
 ```
 
 ### Automatic Aliases and Conflicts
 
-Automatic aliases are defined by the snap developer and approved by Canonical during the Snap Store review process. They activate automatically when the snap is installed, provided there's no conflict with an existing command.
+Automatic aliases are requested by the snap developer and approved during the Snap Store review process. They activate automatically when the snap is installed, provided there's no conflict with another snap alias.
 
 ```bash
-# Check if an alias is automatic or manual
-snap aliases | grep auto
+# Check aliases for a snap and their Notes column
+snap aliases lxd
 
 # If a snap has an automatic alias but it conflicts with an existing command,
-# the alias won't be created. You can force it:
-sudo snap alias snapname.command commandname
+# prefer that snap's reviewed aliases over conflicting aliases from other snaps:
+sudo snap prefer snapname
 ```
 
 If you install a snap whose automatic alias conflicts with a command from another snap, the second snap's alias won't be created. You can resolve this by manually managing which snap gets the alias:
 
 ```bash
 # Suppose both 'git-ubuntu' and a custom snap define the 'git' alias
-# Remove the one you don't want and keep the other
-sudo snap unalias git-ubuntu.git-ubuntu
-sudo snap alias mygit.git git
+# Prefer the aliases from the snap you want
+sudo snap prefer mygit
 ```
 
 ### Aliases in Scripts and Automation
@@ -131,13 +129,13 @@ snap connections firefox
 
 ```bash
 # List all available interfaces on the system
-snap interface
+snap interface --all
 
 # Get details about a specific interface
 snap interface camera
 
 # See which snaps have plugs/slots for an interface
-snap connections --interface camera
+snap interface camera
 ```
 
 ### Manually Connecting Interfaces
@@ -164,15 +162,13 @@ sudo snap connect client-snap:plug-name server-snap:slot-name
 # Disconnect a specific interface
 sudo snap disconnect firefox:camera
 
-# Disconnect all connections for a snap
-sudo snap disconnect firefox
-
-# This revokes all interface access beyond the automatic minimums
+# This revokes that specific interface access. If an automatic connection is
+# manually disconnected, snapd remembers that state across refreshes.
 ```
 
 ### Auto-Connected vs Manually Connected Interfaces
 
-The Snap Store classification determines which interfaces auto-connect:
+The interface's auto-connect setting and any Snap Store review permissions determine which interfaces auto-connect:
 
 **Auto-connected (safe interfaces)** - Connect automatically on snap install:
 - `network` - Basic network access
@@ -180,7 +176,7 @@ The Snap Store classification determines which interfaces auto-connect:
 - `home` - Access to non-hidden files in home directory
 - `x11` - X11 display access
 - `wayland` - Wayland display access
-- `browser-support` - Browser-specific kernel access
+- `browser-support` - Functions essential for web browsers (auto-connect depends on its attributes)
 
 **Manually connected (sensitive interfaces)** - Require user action:
 - `camera` - Camera device access
@@ -245,8 +241,9 @@ snap connections vlc
 connect_if_needed() {
     local snap_plug="$1"
     local system_slot="$2"
+    local snap_name="${snap_plug%%:*}"
 
-    if snap connections "$snap_plug" 2>/dev/null | grep -q "$system_slot"; then
+    if snap connections "$snap_name" 2>/dev/null | awk -v plug="$snap_plug" -v slot="$system_slot" '$2 == plug && $3 == slot { found = 1 } END { exit !found }'; then
         echo "Already connected: $snap_plug -> $system_slot"
     else
         sudo snap connect "$snap_plug" "$system_slot"
