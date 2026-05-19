@@ -40,7 +40,8 @@ sudo apt-get install -y \
   libvirt-clients \
   bridge-utils \
   virtinst \
-  cloud-image-utils
+  cloud-image-utils \
+  cpu-checker
 
 # Add your user to the libvirt group
 sudo usermod -aG libvirt $USER
