@@ -73,7 +73,7 @@ doppler setup
 doppler setup --project my-api --config dev
 ```
 
-The project and environment selection is saved in `.doppler.yaml` in the current directory (or a parent directory).
+The project and environment selection is scoped to the current directory and saved to `~/.doppler/.doppler.yaml`. The CLI looks up the active scope based on the directory you run commands from, walking up the directory tree until it finds a matching entry.
 
 ## Adding Secrets
 
@@ -95,10 +95,13 @@ doppler secrets upload .env
 View secrets:
 
 ```bash
-# List all secret names (not values)
+# List all secrets (names and values) in a table
 doppler secrets
 
-# Show secret values (requires appropriate permissions)
+# List only secret names, no values
+doppler secrets --only-names
+
+# Output secrets as JSON
 doppler secrets --json
 ```
 
@@ -139,12 +142,14 @@ doppler configs tokens create prod-server-01 --project my-api --config productio
 
 **Configuring the systemd service:**
 
+The Doppler CLI reads the token from the `DOPPLER_TOKEN` environment variable (there is no `--token-file` flag). The cleanest way to load it into a service is via systemd's `EnvironmentFile=` directive:
+
 ```bash
-# Store the service token securely
+# Store the service token securely in a systemd env file
 sudo mkdir -p /etc/doppler
-sudo bash -c 'echo "dp.st.production.YOURTOKEN" > /etc/doppler/token'
-sudo chmod 600 /etc/doppler/token
-sudo chown root:root /etc/doppler/token
+sudo bash -c 'echo "DOPPLER_TOKEN=dp.st.production.YOURTOKEN" > /etc/doppler/env'
+sudo chmod 600 /etc/doppler/env
+sudo chown root:root /etc/doppler/env
 ```
 
 Edit your service file:
@@ -162,11 +167,11 @@ After=network.target
 Type=simple
 User=app
 
-# Configure Doppler with the service token
-Environment=DOPPLER_TOKEN_FILE=/etc/doppler/token
+# Load DOPPLER_TOKEN from a protected env file
+EnvironmentFile=/etc/doppler/env
 
 # Use doppler run to inject secrets
-ExecStart=/usr/bin/doppler run --token-file /etc/doppler/token -- /opt/app/server
+ExecStart=/usr/bin/doppler run -- /opt/app/server
 Restart=always
 RestartSec=5
 
@@ -227,7 +232,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Doppler CLI
-        uses: dopplerhq/cli-action@v3
+        uses: dopplerhq/cli-action@v4
 
       - name: Deploy with Doppler secrets
         env:
@@ -239,14 +244,20 @@ jobs:
 
 ## Secret Versioning and Rollback
 
-Doppler keeps a history of every secret change. To view history:
+Doppler keeps an audit log of every change to a config. To view recent config changes from the CLI:
 
 ```bash
-# Show change history for a secret
-doppler secrets history DATABASE_URL
+# List audit log entries for the current config
+doppler configs logs
+
+# Fetch a specific entry by ID
+doppler configs logs get <LOG_ID>
+
+# Roll a config back to a previous state by audit log ID
+doppler configs logs rollback <LOG_ID>
 ```
 
-To roll back to a previous version, use the dashboard's version history UI.
+You can also view the change history and roll back from the dashboard's audit log UI.
 
 ## Automatic Secret Rotation
 
@@ -260,16 +271,13 @@ When Doppler rotates a secret, it can trigger a webhook to restart your services
 
 ## Environment Syncing
 
-Sync secrets to other systems:
+Doppler can sync secrets to other systems (AWS Parameter Store, AWS Secrets Manager, Azure Key Vault, Kubernetes, GitHub Actions, and others). Integrations are configured from the Doppler dashboard, not the CLI:
 
-```bash
-# Sync to AWS Parameter Store
-doppler setup-integrations aws-parameter-store \
-  --aws-region us-east-1 \
-  --aws-path /myapp/production/
+1. In the dashboard, open your project and select the **Integrations** tab
+2. Pick a destination (e.g. AWS Parameter Store) and provide credentials such as the role ARN, region, and path prefix
+3. Choose which config to sync and click **Set Up Integration**
 
-# After setup, changes in Doppler automatically sync to Parameter Store
-```
+Once configured, Doppler keeps the destination in sync automatically whenever secrets change.
 
 ## Access Control
 
