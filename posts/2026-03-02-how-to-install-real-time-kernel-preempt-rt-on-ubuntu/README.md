@@ -10,7 +10,7 @@ Description: Install the PREEMPT_RT real-time kernel on Ubuntu for deterministic
 
 The standard Linux kernel is designed for high throughput, not deterministic latency. For applications that require guaranteed response times - CNC machines, robotics, audio processing, telecommunications, and financial trading systems - the PREEMPT_RT patch set transforms Linux into a hard real-time operating system by making nearly all kernel code preemptible.
 
-Starting with kernel 6.x, PREEMPT_RT was merged into the mainline Linux kernel, which means Ubuntu's kernel packages now include RT support. This guide covers multiple installation methods.
+Starting with kernel 6.12, PREEMPT_RT was merged into the mainline Linux kernel, which means upstream kernels now include RT support (note: Ubuntu's default stock kernel is still not built with CONFIG_PREEMPT_RT=y — you still need the realtime kernel from Ubuntu Pro or a custom build). This guide covers multiple installation methods.
 
 ## Prerequisites
 
@@ -98,12 +98,13 @@ tar -xf linux-${KERNEL_MAJOR}.tar.xz
 cd linux-${KERNEL_MAJOR}
 
 # Download the corresponding RT patch
-# Check https://mirrors.edge.kernel.org/pub/linux/kernel/projects/rt/
+# Check https://mirrors.edge.kernel.org/pub/linux/kernel/projects/rt/ for the
+# current rt patch number; older patches live under the older/ subdirectory
 RT_PATCH=patch-6.8-rt8.patch.xz
-wget https://mirrors.edge.kernel.org/pub/linux/kernel/projects/rt/6.8/${RT_PATCH}
+wget https://mirrors.edge.kernel.org/pub/linux/kernel/projects/rt/6.8/older/${RT_PATCH}
 
 # Apply the RT patch
-xzcat ../${RT_PATCH} | patch -p1
+xzcat ${RT_PATCH} | patch -p1
 
 # Start with current kernel config
 cp /boot/config-$(uname -r) .config
