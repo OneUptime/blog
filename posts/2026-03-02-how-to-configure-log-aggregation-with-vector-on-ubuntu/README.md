@@ -17,8 +17,7 @@ The configuration model is based on "components" chained together: sources feed 
 ```bash
 # Install Vector using the official installation script
 
-curl -1sLf 'https://repositories.timber.io/public/vector/cfg/setup/bash.deb.sh' | \
-    sudo -E bash
+bash -c "$(curl -L https://setup.vector.dev)"
 
 sudo apt update
 sudo apt install vector
@@ -34,8 +33,8 @@ Alternatively, for a more controlled installation:
 
 ```bash
 # Download the .deb package directly
-curl -LO https://packages.timber.io/vector/0.39.0/vector-0.39.0-amd64.deb
-sudo dpkg -i vector-0.39.0-amd64.deb
+curl -LO https://packages.timber.io/vector/0.55.0/vector_0.55.0-1_amd64.deb
+sudo dpkg -i vector_0.55.0-1_amd64.deb
 
 # Start and enable the service
 sudo systemctl enable --now vector
@@ -113,8 +112,8 @@ source = '''
 [transforms.router]
 type = "route"
 inputs = ["enrich_journal", "syslog_input"]
-route.errors = '.message contains "error" || .message contains "ERROR"'
-route.warnings = '.message contains "warn" || .message contains "WARN"'
+route.errors = 'contains(downcase(string!(.message)), "error")'
+route.warnings = 'contains(downcase(string!(.message)), "warn")'
 
 # =============================================================
 # SINKS
@@ -174,7 +173,7 @@ inputs = ["enrich_journal", "parse_nginx"]
 endpoints = ["https://opensearch.example.com:9200"]
 
 # Index name pattern
-index = "logs-%Y.%m.%d"
+bulk.index = "logs-%Y.%m.%d"
 
 # Authentication
 auth.strategy = "basic"
@@ -203,8 +202,8 @@ endpoint = "http://loki.example.com:3100"
 
 # Labels added to all log streams
 labels.source = "vector"
-labels.host = "{{ host }}"
-labels.service = "{{ .unit }}"
+labels.host = "{{ .host }}"
+labels.service = "{{ ._SYSTEMD_UNIT }}"
 
 encoding.codec = "json"
 ```
@@ -219,7 +218,7 @@ Vector makes it easy to send the same data to multiple sinks:
 type = "elasticsearch"
 inputs = ["parsed_logs"]
 endpoints = ["https://es.example.com:9200"]
-index = "logs-%Y.%m.%d"
+bulk.index = "logs-%Y.%m.%d"
 
 [sinks.s3_archive]
 type = "aws_s3"
@@ -249,6 +248,7 @@ source = '''
 # Add derived fields
 .environment = get_env_var!("ENVIRONMENT")
 .hostname = get_hostname!()
+.status = int!(.status)
 
 # Normalize status code categories
 .status_category = if .status >= 500 {
@@ -280,12 +280,12 @@ When you have too much log data for downstream storage, use sampling:
 ```toml
 [transforms.sample_debug_logs]
 type = "sample"
-inputs = ["all_logs"]
+inputs = ["parsed_logs"]
 
 # Keep 10% of DEBUG messages, 100% of everything else
 rate = 10
 key_field = "level"
-exclude.source = 'string!(.level) == "ERROR" || string!(.level) == "WARN"'
+exclude = 'upcase(string!(.level)) != "DEBUG"'
 ```
 
 ## Using Vector as an Aggregator
@@ -307,7 +307,7 @@ source = '.received_at = now()'
 type = "elasticsearch"
 inputs = ["add_received_at"]
 endpoints = ["http://elasticsearch:9200"]
-index = "aggregated-logs-%Y.%m.%d"
+bulk.index = "aggregated-logs-%Y.%m.%d"
 ```
 
 On each agent server, send to the aggregator:
@@ -317,7 +317,7 @@ On each agent server, send to the aggregator:
 type = "vector"
 inputs = ["local_sources"]
 address = "aggregator.example.com:6000"
-compression = "gzip"
+compression = true
 ```
 
 ## Monitoring Vector Itself
@@ -370,6 +370,7 @@ source = '''
 type = "vector"
 inputs = ["add_host"]
 address = "log-aggregator.example.com:6000"
+compression = true
 
 # Buffer events locally if aggregator is unreachable
 [sinks.central_aggregator.buffer]
@@ -390,9 +391,9 @@ vector --config /etc/vector/vector.toml --verbose
 # Check which sources are active and their event counts
 vector top
 
-# Test a transformation manually with sample input
-echo '{"message":"test error message","level":"error"}' | \
-    vector test --config /etc/vector/vector.toml
+# Test a VRL expression manually with sample input
+printf '{"message":"test error message","level":"error"}\n' > /tmp/vector-sample.json
+vector vrl --input /tmp/vector-sample.json --print-object '.severity = upcase!(string!(.level))'
 
 # Check the service logs
 journalctl -u vector -f
