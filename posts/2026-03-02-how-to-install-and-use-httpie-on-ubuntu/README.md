@@ -32,10 +32,10 @@ The apt package may lag behind the latest HTTPie release. For the current versio
 sudo apt install python3-pip
 
 # Install HTTPie
-pip3 install httpie
+python3 -m pip install --upgrade httpie
 
 # Or install for the current user only
-pip3 install --user httpie
+python3 -m pip install --user --upgrade httpie
 
 # Verify
 http --version
@@ -45,7 +45,7 @@ http --version
 
 ```bash
 # Official installation script
-curl -SsL https://packages.httpie.io/deb.gpg | sudo gpg --dearmor -o /usr/share/keyrings/httpie.gpg
+curl -SsL https://packages.httpie.io/deb/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/httpie.gpg
 echo "deb [arch=amd64 signed-by=/usr/share/keyrings/httpie.gpg] https://packages.httpie.io/deb ./" | \
   sudo tee /etc/apt/sources.list.d/httpie.list > /dev/null
 
@@ -83,7 +83,7 @@ http --body GET https://httpbin.org/get
 # Show only the headers
 http --headers GET https://httpbin.org/get
 
-# Quiet mode - only output the response body, no formatting
+# Body-only shortcut
 http -b https://httpbin.org/get
 ```
 
@@ -158,7 +158,7 @@ http --auth username:password GET https://api.example.com/protected
 # Digest Authentication
 http --auth-type=digest -a username:password GET https://api.example.com/protected
 
-# Bearer Token (two equivalent ways)
+# Bearer Token
 http GET https://api.example.com/data \
   "Authorization: Bearer your-jwt-token"
 
@@ -295,7 +295,7 @@ http --print=h GET https://httpbin.org/get
 http --print=H GET https://httpbin.org/get
 
 # Show everything (request headers, request body, response headers, response body)
-http --print=HhBb GET https://httpbin.org/post name=test
+http --print=HhBb POST https://httpbin.org/post name=test
 
 # Show request body only (useful for debugging what you're sending)
 http --print=B POST https://httpbin.org/post name=test
@@ -315,7 +315,7 @@ http --offline POST https://api.example.com/data \
 ```bash
 # Set up a session with API key authentication
 http --session=github \
-  "Authorization: token your-github-token" \
+  "Authorization: Bearer your-github-token" \
   GET https://api.github.com/user
 
 # List repositories (reuses the token from session)
