@@ -52,7 +52,7 @@ The NVMeoF target is configured through the configfs filesystem (usually mounted
 mount | grep configfs
 # If not: sudo mount -t configfs none /sys/kernel/config
 
-# Create a subsystem (the NVMe namespace identifier)
+# Create a subsystem NQN
 SUBSYS_NQN="nqn.2026-03.com.example:nvme.storage01"
 
 # Create the subsystem directory
@@ -100,28 +100,30 @@ sudo ln -s /sys/kernel/config/nvmet/subsystems/${SUBSYS_NQN} \
 The `nvmetcli` tool provides a targetcli-like interface for NVMeoF:
 
 ```bash
-sudo apt install nvmetcli -y
+# Install nvmetcli from your distribution package repository or from upstream
+# if it is not packaged for your Ubuntu release.
 
 # Launch the interactive shell
 sudo nvmetcli
 
 # Inside nvmetcli:
 # ls                - list current configuration
-# cd subsystems
+# cd /subsystems
 # create nqn.2026-03.com.example:nvme.storage01
 # cd nqn.2026-03.com.example:nvme.storage01
+# set attr allow_any_host=1
 # cd namespaces
 # create 1
 # cd 1
-# set device_path /dev/nvme0n1
+# set device path=/dev/nvme0n1
 # enable
 # cd /ports
 # create 1
 # cd 1
-# set addr_trtype tcp
-# set addr_traddr 192.168.1.10
-# set addr_adrfam ipv4
-# set addr_trsvcid 4420
+# set addr trtype=tcp
+# set addr traddr=192.168.1.10
+# set addr adrfam=ipv4
+# set addr trsvcid=4420
 # cd subsystems
 # create nqn.2026-03.com.example:nvme.storage01
 # saveconfig /etc/nvmet/config.json
@@ -131,7 +133,7 @@ sudo nvmetcli
 
 ```bash
 # Save current configuration
-sudo nvmetcli saveconfig /etc/nvmet/config.json
+sudo nvmetcli save /etc/nvmet/config.json
 
 # Create a systemd service to restore on boot
 cat << 'EOF' | sudo tee /etc/systemd/system/nvmet.service
@@ -163,6 +165,7 @@ sudo ufw allow 4420/tcp
 
 ```bash
 # On the client/host machine
+sudo apt install nvme-cli -y
 sudo modprobe nvme-tcp
 
 # Persistent loading
@@ -245,9 +248,8 @@ sudo mkfs.xfs /dev/nvme1n1
 sudo mkdir -p /mnt/nvmeof
 sudo mount /dev/nvme1n1 /mnt/nvmeof
 
-# For persistent mounting, use the device path approach
-# since NVMe device numbers can change on reconnect
-# Use the UUID instead:
+# For persistent mounting, use a stable identifier such as UUID
+# since NVMe device numbers can change on reconnect:
 sudo blkid /dev/nvme1n1
 # UUID=xxxx-xxxx /mnt/nvmeof xfs defaults,_netdev 0 0
 ```
@@ -257,26 +259,24 @@ sudo blkid /dev/nvme1n1
 ```bash
 # Create a persistent connect configuration
 cat << 'EOF' | sudo tee /etc/nvme/discovery.conf
--t tcp
--a 192.168.1.10
--s 4420
+-t tcp -a 192.168.1.10 -s 4420
 EOF
 
-# Enable the nvme-connect-all service
-sudo systemctl enable nvme-connect-all.service
+# Enable the NVMe-oF autoconnect service
+sudo systemctl enable nvmf-autoconnect.service
 ```
 
 ## Monitoring NVMeoF
 
 ```bash
-# On the target - check connected hosts
+# On the target - check exported subsystems on the port
 ls /sys/kernel/config/nvmet/ports/1/subsystems/
 
 # Check namespace status
 cat /sys/kernel/config/nvmet/subsystems/nqn.2026-03.com.example:nvme.storage01/namespaces/1/enable
 
 # On the host - check path statistics
-cat /sys/class/nvme/nvme1/transport_type
+cat /sys/class/nvme/nvme1/transport
 cat /sys/class/nvme/nvme1/address
 
 # View I/O queue information
