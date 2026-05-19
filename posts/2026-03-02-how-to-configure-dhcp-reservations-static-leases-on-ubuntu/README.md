@@ -160,9 +160,6 @@ sudo dhcpd -t -cf /etc/dhcp/dhcpd.conf
 
 # Restart the server
 sudo systemctl restart isc-dhcp-server
-
-# Or for just adding reservations, a reload is enough
-sudo systemctl reload isc-dhcp-server
 ```
 
 ## Reservations in ISC Kea
@@ -225,9 +222,9 @@ sudo nano /etc/kea/kea-dhcp4.conf
 }
 ```
 
-### Adding Reservations via the Kea API
+### Adding Reservations via the Kea Control Agent API
 
-One advantage of Kea is that you can add reservations at runtime without restarting:
+One advantage of Kea is that you can add reservations at runtime without restarting when the Control Agent is enabled and `libdhcp_host_cmds.so` is loaded with a writable hosts database:
 
 ```bash
 # Add a new reservation via the REST API
@@ -306,6 +303,7 @@ ip addr show eth0
 grep "aa:bb:cc:dd:ee:01" /var/lib/dhcp/dhcpd.leases
 
 # For Kea, query via API
+# Requires the Control Agent and libdhcp_lease_cmds.so
 curl -s -X POST http://127.0.0.1:8000/ \
   -H "Content-Type: application/json" \
   -d '{"command": "lease4-get-all", "service": ["dhcp4"]}' \
@@ -314,7 +312,7 @@ curl -s -X POST http://127.0.0.1:8000/ \
 
 ## Bulk Managing Reservations
 
-For managing many reservations, a simple script approach works well:
+For managing many reservations with the Kea Control Agent, the host commands hook, and a writable hosts database, a simple script approach works well:
 
 ```bash
 #!/bin/bash
