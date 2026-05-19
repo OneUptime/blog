@@ -17,13 +17,14 @@ ZFS stores data across vdevs using striping. When you add a new vdev to a pool, 
 **What you CAN do:**
 - Add a new vdev of the same type to expand the pool (e.g., add a second mirror pair to a pool that has one mirror pair)
 - Replace a disk in an existing vdev with a larger disk and then expand (requires all disks in the vdev to be replaced)
+- On OpenZFS 2.3 and newer, expand an existing RAIDZ vdev by attaching a new disk to it
 
 **What you CANNOT do:**
-- Add a single disk to an existing RAIDZ vdev to change its width
+- Add a single disk to an existing RAIDZ vdev to change its width on OpenZFS versions older than 2.3
 - Add a disk to a mirror to change it to RAIDZ
 - Change the RAIDZ level of an existing vdev
 
-For RAIDZ pools, the most practical expansion strategy is usually adding an entirely new RAIDZ vdev (same RAIDZ level, same width).
+For RAIDZ pools, the most predictable expansion strategy is usually adding an entirely new RAIDZ vdev (same RAIDZ level, same width), especially on older Ubuntu releases. On OpenZFS 2.3 and newer, RAIDZ expansion is also available with `zpool attach`, but it does not change the RAIDZ level.
 
 ## Checking Current Pool Configuration
 
@@ -87,6 +88,12 @@ sudo zpool add tank raidz2 \
   /dev/disk/by-id/ata-newdisk2 \
   /dev/disk/by-id/ata-newdisk3 \
   /dev/disk/by-id/ata-newdisk4
+```
+
+On OpenZFS 2.3 and newer, you can instead expand an existing RAIDZ vdev by attaching a new disk to the RAIDZ vdev name:
+
+```bash
+sudo zpool attach tank raidz2-0 /dev/disk/by-id/ata-newdisk1
 ```
 
 ### Verify after adding
@@ -259,7 +266,7 @@ sudo zpool add tank cache /dev/disk/by-id/nvme-Samsung-SSD-xxxx
 ```
 
 ```bash
-sudo zpool status tank | grep cache
+sudo zpool status tank | grep -A1 cache
 ```
 
 ```text
@@ -280,7 +287,7 @@ sudo zpool remove tank /dev/disk/by-id/nvme-Samsung-SSD-xxxx
 A separate log device (SLOG) improves synchronous write performance:
 
 ```bash
-# Mirror the SLOG for reliability (SLOG failure = potential data loss)
+# Mirror the SLOG for reliability
 sudo zpool add tank log mirror \
   /dev/disk/by-id/nvme-ssd1 \
   /dev/disk/by-id/nvme-ssd2
