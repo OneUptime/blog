@@ -10,22 +10,24 @@ Description: Create a preseed configuration file to automate Ubuntu installation
 
 When deploying Ubuntu to bare metal servers or VMs at scale, answering installer questions manually is not practical. The Debian preseed mechanism lets you pre-answer every question the Ubuntu installer would ask, resulting in a fully automated installation that requires zero interaction.
 
+For Ubuntu Server 20.04 and later, the standard live-server installer uses Subiquity autoinstall YAML instead of debian-installer preseed files. Use the preseed approach below with debian-installer based Ubuntu media, such as older server/alternate images or environments that still boot d-i.
+
 ## How Preseed Works
 
-The Ubuntu installer (debian-installer, or d-i) reads a preseed file and uses the answers it contains rather than prompting the user. The preseed file can be:
+A d-i based Ubuntu installer (debian-installer, or d-i) reads a preseed file and uses the answers it contains rather than prompting the user. The preseed file can be:
 
 - Included on the installation media itself
 - Hosted on a web server and fetched during installation
-- Loaded from a network share
+- Loaded from another supported installer source such as TFTP
 
 Most automated deployment workflows use an HTTP-hosted preseed file, which is referenced in the boot parameters.
 
 ## Creating a Basic Preseed File
 
-A preseed file is structured by topic. Here is a complete working example for Ubuntu 22.04:
+A preseed file is structured by topic. Here is a complete working example for a debian-installer based Ubuntu installation:
 
 ```text
-### Preseed configuration for Ubuntu 22.04 LTS ###
+### Preseed configuration for a d-i based Ubuntu installer ###
 
 ## Localization
 d-i debian-installer/locale string en_US.UTF-8
@@ -81,7 +83,7 @@ d-i partman/confirm boolean true
 d-i partman/confirm_nooverwrite boolean true
 
 ## Package selection
-tasksel tasksel/first multiselect server, openssh-server
+tasksel tasksel/first multiselect standard, ssh-server
 d-i pkgsel/include string curl git htop vim
 
 # Disable automatic updates (manage via your config management tool)
@@ -109,6 +111,7 @@ The `atomic` recipe creates a single root partition. For more control, define a 
 ```text
 ## Custom partitioning recipe
 # Creates: 512MB /boot (ext4), 2GB swap, remaining space for /
+d-i partman-auto/method string regular
 d-i partman-auto/expert_recipe string   \
       custom-layout ::                  \
           512 512 512 ext4              \
@@ -124,12 +127,11 @@ d-i partman-auto/expert_recipe string   \
                   format{ }           . \
           10240 20480 -1 ext4           \
                   $primary{ }           \
-                  method{ lvm }         \
-                  device{ /dev/sda }    \
-                  vg_name{ ubuntu-vg } .
-
-# Then configure LVM logical volumes
-d-i partman-auto-lvm/guided_size string max
+                  method{ format }      \
+                  format{ }             \
+                  use_filesystem{ }     \
+                  filesystem{ ext4 }    \
+                  mountpoint{ / }     .
 ```
 
 ## Hosting the Preseed File
@@ -182,7 +184,7 @@ sudo apt install -y genisoimage xorriso
 
 # Mount the original Ubuntu ISO
 mkdir -p /tmp/ubuntu-iso
-sudo mount -o loop ubuntu-22.04-live-server-amd64.iso /tmp/ubuntu-iso
+sudo mount -o loop ubuntu-18.04.6-server-amd64.iso /tmp/ubuntu-iso
 
 # Copy the ISO contents to a working directory
 mkdir -p ~/custom-ubuntu-iso
@@ -200,25 +202,24 @@ nano ~/custom-ubuntu-iso/isolinux/txt.cfg
 Modify the default boot entry in `txt.cfg`:
 
 ```text
-default live-install
-label live-install
+default install
+label install
   menu label ^Install Ubuntu Server (automated)
-  kernel /casper/vmlinuz
-  append auto=true priority=critical file=/cdrom/preseed.cfg --- quiet
-  initrd /casper/initrd
+  kernel /install/vmlinuz
+  append initrd=/install/initrd.gz auto=true priority=critical file=/cdrom/preseed.cfg --- quiet
 ```
 
 ```bash
 # Rebuild the ISO
 xorriso -as mkisofs \
-  -r -V "Ubuntu 22.04 Custom" \
+  -r -V "Ubuntu Custom Preseed" \
   -J -joliet-long \
   -b isolinux/isolinux.bin \
   -c isolinux/boot.cat \
   -no-emul-boot -boot-load-size 4 -boot-info-table \
   -eltorito-alt-boot -e boot/grub/efi.img -no-emul-boot \
   -isohybrid-gpt-basdat \
-  -o ~/ubuntu-22.04-custom.iso \
+  -o ~/ubuntu-preseed-custom.iso \
   ~/custom-ubuntu-iso/
 ```
 
@@ -269,8 +270,8 @@ virt-install \
   --ram 2048 \
   --vcpus 2 \
   --disk size=20 \
-  --cdrom ubuntu-22.04-live-server-amd64.iso \
-  --os-variant ubuntu22.04 \
+  --location ubuntu-18.04.6-server-amd64.iso \
+  --os-variant ubuntu18.04 \
   --extra-args "auto=true priority=critical url=http://your-server:8080/ubuntu-preseed.cfg console=ttyS0" \
   --console pty,target_type=serial \
   --graphics none
@@ -284,6 +285,7 @@ If the installer still asks questions despite the preseed file, the question deb
 
 ```bash
 # After a manual installation, debconf stores all answers
+sudo apt install -y debconf-utils
 sudo debconf-get-selections --installer > installer-selections.txt
 # Review this file to find the exact keys to use
 ```
