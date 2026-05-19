@@ -20,7 +20,7 @@ Self-hosting secret management makes sense when:
 - You have existing encryption infrastructure to integrate with
 - Cost is a concern at scale
 
-Infisical's self-hosted option is the full platform, not a stripped-down version.
+Infisical's self-hosted option includes the open-source core platform, with additional enterprise features available under a commercial license.
 
 ## Prerequisites
 
@@ -32,18 +32,22 @@ Infisical's self-hosted option is the full platform, not a stripped-down version
 
 ## Deploying Infisical with Docker Compose
 
-Clone the official deployment repository:
+Download the official production Docker Compose file:
 
 ```bash
-git clone https://github.com/Infisical/infisical.git
+mkdir infisical
 cd infisical
+curl -o docker-compose.prod.yml https://raw.githubusercontent.com/Infisical/infisical/main/docker-compose.prod.yml
 ```
 
-Copy the environment template:
+If you will run Nginx on the host, update the backend port mapping in `docker-compose.prod.yml` from `80:8080` to `127.0.0.1:8080:8080` so Nginx can bind ports 80 and 443.
+
+Download the environment template:
 
 ```bash
-cp .env.example .env
+curl -o .env https://raw.githubusercontent.com/Infisical/infisical/main/.env.example
 nano .env
+chmod 600 .env
 ```
 
 Key settings to configure:
@@ -54,15 +58,14 @@ Key settings to configure:
 POSTGRES_DB=infisical
 POSTGRES_USER=infisical
 POSTGRES_PASSWORD=generate_a_strong_password_here
+DB_CONNECTION_URI=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+REDIS_URL=redis://redis:6379
 
 # Encryption key (generate with: openssl rand -hex 16)
 ENCRYPTION_KEY=your_32_character_hex_string_here
 
-# JWT secrets (generate each with: openssl rand -base64 32)
-JWT_AUTH_SECRET=your_jwt_auth_secret
-JWT_REFRESH_SECRET=your_jwt_refresh_secret
-JWT_SERVICE_SECRET=your_service_secret
-JWT_SIGNUP_SECRET=your_signup_secret
+# Authentication secret (generate with: openssl rand -base64 32)
+AUTH_SECRET=your_auth_secret
 
 # Application URL
 SITE_URL=https://secrets.yourdomain.com
@@ -78,10 +81,10 @@ SMTP_FROM_ADDRESS=noreply@yourdomain.com
 Start the stack:
 
 ```bash
-docker compose up -d
+docker compose -f docker-compose.prod.yml up -d
 
 # Monitor startup
-docker compose logs -f
+docker compose -f docker-compose.prod.yml logs -f
 ```
 
 ## Configuring Nginx Reverse Proxy
@@ -127,16 +130,16 @@ Create your first organization and project:
 1. Click "Create Organization"
 2. Inside the org, click "Add Project"
 3. Name it (e.g., "my-api")
-4. Projects automatically get `dev`, `staging`, and `production` environments
+4. Projects automatically get `dev`, `staging`, and `prod` environment slugs
 
 ## Installing the Infisical CLI
 
 ```bash
 # Add the Infisical repository
-curl -1sLf 'https://dl.cloudsmith.io/public/infisical/infisical-cli/setup.deb.sh' | sudo -E bash
+curl -1sLf 'https://artifacts-cli.infisical.com/setup.deb.sh' | sudo -E bash
 
 # Install
-sudo apt install infisical -y
+sudo apt-get update && sudo apt-get install -y infisical
 
 # Verify
 infisical --version
@@ -181,7 +184,7 @@ Via CLI:
 infisical secrets set DATABASE_URL="postgres://user:pass@localhost/mydb"
 
 # Set for a specific environment
-infisical secrets set API_KEY="sk-prod-abc123" --env=production
+infisical secrets set API_KEY="sk-prod-abc123" --env=prod
 
 # List secrets in current environment
 infisical secrets
@@ -217,7 +220,7 @@ Use it on the server:
 
 ```bash
 # Run with service token authentication
-INFISICAL_TOKEN="st.your-service-token" infisical run --env=production -- ./start.sh
+INFISICAL_TOKEN="st.your-service-token" infisical run --env=prod -- ./start.sh
 ```
 
 For systemd services:
@@ -235,7 +238,7 @@ After=network.target
 Type=simple
 User=app
 Environment=INFISICAL_TOKEN=st.your-service-token-here
-ExecStart=/usr/bin/infisical run --env=production -- /opt/app/server
+ExecStart=/usr/bin/infisical run --env=prod -- /opt/app/server
 Restart=always
 
 [Install]
@@ -253,42 +256,54 @@ npm install @infisical/sdk
 ```
 
 ```javascript
-const { InfisicalClient } = require("@infisical/sdk");
+const { InfisicalSDK } = require("@infisical/sdk");
 
-const client = new InfisicalClient({
-  token: process.env.INFISICAL_TOKEN,
+const client = new InfisicalSDK({
   siteUrl: "https://secrets.yourdomain.com" // for self-hosted
 });
 
-// Fetch a secret dynamically
-const secret = await client.getSecret({
-  secretName: "DATABASE_URL",
-  projectId: "your-project-id",
-  environment: "production"
-});
+async function main() {
+  await client.auth().universalAuth.login({
+    clientId: process.env.INFISICAL_CLIENT_ID,
+    clientSecret: process.env.INFISICAL_CLIENT_SECRET
+  });
 
-console.log(secret.secretValue);
+  // Fetch a secret dynamically
+  const secret = await client.secrets().getSecret({
+    secretName: "DATABASE_URL",
+    projectId: "your-project-id",
+    environment: "prod",
+    secretPath: "/"
+  });
+
+  console.log(secret.secretValue);
+}
+
+main().catch(console.error);
 ```
 
 ### Python
 
 ```bash
-pip install infisical-python
+pip install infisicalsdk
 ```
 
 ```python
-from infisical import InfisicalClient
+import os
+from infisical_sdk import InfisicalSDKClient
 
-client = InfisicalClient(
-    token=os.environ["INFISICAL_TOKEN"],
-    site_url="https://secrets.yourdomain.com"
+client = InfisicalSDKClient(host="https://secrets.yourdomain.com")
+client.auth.universal_auth.login(
+    client_id=os.environ["INFISICAL_CLIENT_ID"],
+    client_secret=os.environ["INFISICAL_CLIENT_SECRET"]
 )
 
 # Retrieve a secret
-db_url = client.get_secret(
+db_url = client.secrets.get_secret_by_name(
     secret_name="DATABASE_URL",
     project_id="your-project-id",
-    environment="production"
+    environment_slug="prod",
+    secret_path="/"
 )
 ```
 
@@ -299,7 +314,9 @@ Infisical integrates with Kubernetes via the Infisical Operator:
 ```bash
 # Install the operator
 helm repo add infisical-helm-charts 'https://dl.cloudsmith.io/public/infisical/helm-charts/helm/charts/'
-helm install infisical-operator infisical-helm-charts/infisical-operator --namespace infisical-operator-system --create-namespace
+helm repo update
+helm install infisical-operator infisical-helm-charts/secrets-operator --namespace infisical-operator-system --create-namespace
+kubectl create secret generic infisical-service-token --from-literal=infisicalToken="st.your-token"
 ```
 
 Create an InfisicalSecret resource:
@@ -316,23 +333,24 @@ spec:
       serviceTokenSecretReference:
         secretName: infisical-service-token
         secretNamespace: default
+      secretsScope:
+        envSlug: prod
+        secretsPath: "/"
 
-  infisical:
-    secretsPath: "/"
-    serviceToken: "st.your-token"
+  hostAPI: https://secrets.yourdomain.com/api
 
-  managedSecretReference:
-    secretName: my-app-k8s-secrets
-    secretNamespace: default
+  managedKubeSecretReferences:
+    - secretName: my-app-k8s-secrets
+      secretNamespace: default
 ```
 
 ## Audit Logs
 
-Every secret access and modification is logged. View audit logs in the dashboard under Audit Logs, or query them via the API:
+Audit logs record access and modification events when the feature is enabled for your plan or self-hosted license. View audit logs in the dashboard under Audit Logs, or query them via the API:
 
 ```bash
 curl -H "Authorization: Bearer $INFISICAL_TOKEN" \
-  "https://secrets.yourdomain.com/api/v1/audit-logs?workspaceId=your-project-id"
+  "https://secrets.yourdomain.com/api/v1/organization/audit-logs?projectId=your-project-id"
 ```
 
 ## Backup and Recovery
@@ -341,7 +359,7 @@ Back up the PostgreSQL database:
 
 ```bash
 # Dump the database
-docker exec infisical-postgres pg_dump -U infisical infisical > infisical-backup-$(date +%Y%m%d).sql
+docker compose -f docker-compose.prod.yml exec -T db pg_dump -U infisical infisical > infisical-backup-$(date +%Y%m%d).sql
 
 # Compress and store securely
 gzip infisical-backup-$(date +%Y%m%d).sql
@@ -350,7 +368,7 @@ gzip infisical-backup-$(date +%Y%m%d).sql
 Restore from backup:
 
 ```bash
-gunzip -c infisical-backup-20260302.sql.gz | docker exec -i infisical-postgres psql -U infisical infisical
+gunzip -c infisical-backup-20260302.sql.gz | docker compose -f docker-compose.prod.yml exec -T db psql -U infisical infisical
 ```
 
 ## Troubleshooting
@@ -369,7 +387,7 @@ curl -s https://secrets.yourdomain.com/api/status
 **Secrets not injecting:**
 ```bash
 # Verify the service token is valid
-infisical secrets --token $INFISICAL_TOKEN --env production
+infisical secrets --token $INFISICAL_TOKEN --env prod
 
 # Check the project ID in .infisical.json matches your project
 ```
