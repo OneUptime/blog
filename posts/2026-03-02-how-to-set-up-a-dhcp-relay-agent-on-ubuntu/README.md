@@ -96,7 +96,8 @@ INTERFACES="eth1"
 
 # Additional options for dhcrelay
 # -a: append agent information (option 82) - useful for tracking which circuit the request came from
-# -U: replace the giaddr with the relay agent's interface address instead of the default behavior
+# -U <ifname>: add an RFC 3527 link-selection sub-option to option 82, carrying the inbound link address,
+#              and set giaddr to the named interface's address (implies -a)
 OPTIONS="-a"
 ```
 
@@ -141,17 +142,26 @@ Restart the DHCP server:
 sudo systemctl restart isc-dhcp-server
 ```
 
-## Method 2: Using Kea DHCP Relay (dhcp-relay)
+## Method 2: Relaying to a Kea DHCP Server
 
-If you're using ISC Kea as your DHCP server, Kea also provides a relay agent:
+If you're using ISC Kea as your DHCP server, note that Kea does not ship its own relay agent daemon - the Kea distribution provides `kea-dhcp4`, `kea-dhcp6`, `kea-dhcp-ddns`, and `kea-ctrl-agent`, but no relay. Since the BOOTP/DHCP relay protocol is standardized, the `isc-dhcp-relay` package described above works fine in front of a Kea server. Hardware/router-based relays (Cisco `ip helper-address`, etc.) work equally well.
 
-```bash
-sudo apt install -y kea-dhcp-ddns-server
-# The relay agent is part of isc-kea packages
-sudo apt install -y isc-kea-dhcp4-server
+Just point `SERVERS=` at the Kea server's IP address and configure matching `subnet4` entries in `/etc/kea/kea-dhcp4.conf` for each relayed subnet:
+
+```text
+"Dhcp4": {
+    "subnet4": [
+        {
+            "subnet": "192.168.20.0/24",
+            "pools": [ { "pool": "192.168.20.100 - 192.168.20.200" } ],
+            "option-data": [
+                { "name": "routers", "data": "192.168.20.1" },
+                { "name": "domain-name-servers", "data": "192.168.1.10" }
+            ]
+        }
+    ]
+}
 ```
-
-The relay agent functionality is handled by the `kea-dhcp4` DHCP server when acting in relay mode. But for the relay agent itself, the standard `isc-dhcp-relay` works fine even with a Kea DHCP server - the relay protocol (BOOTP/DHCP relay) is standardized.
 
 ## Method 3: Using dhcrelay Directly
 
@@ -159,11 +169,11 @@ For more control over the relay agent, run `dhcrelay` directly rather than throu
 
 ```bash
 # Run dhcrelay manually to test
-sudo dhcrelay \
-    -d \              # Don't daemonize, print debug to stdout
-    -a \              # Append relay agent information (option 82)
-    -i eth1 \         # Interface to listen on (client side)
-    192.168.1.10      # DHCP server IP
+#   -d : don't daemonize, print debug to stdout
+#   -a : append relay agent information (option 82)
+#   -i : interface to listen on (client side)
+#   192.168.1.10 : DHCP server IP
+sudo dhcrelay -d -a -i eth1 192.168.1.10
 
 # Once confirmed working, create a systemd service
 sudo nano /etc/systemd/system/dhcrelay.service
@@ -177,10 +187,8 @@ Documentation=man:dhcrelay(8)
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/dhcrelay \
-    -a \
-    -i eth1 \
-    192.168.1.10
+# -d keeps dhcrelay in the foreground, which Type=simple requires
+ExecStart=/usr/sbin/dhcrelay -d -a -i eth1 192.168.1.10
 Restart=on-failure
 RestartSec=5s
 
@@ -224,11 +232,8 @@ Option 82 adds information about the circuit (which port/VLAN the client connect
 # The default agent-id uses the interface name
 
 # For custom option 82 values:
-sudo dhcrelay \
-    -a \
-    -c 10 \         # Maximum hop count
-    -i eth1 \
-    192.168.1.10
+#   -c 10 : maximum hop count (default is 10)
+sudo dhcrelay -a -c 10 -i eth1 192.168.1.10
 ```
 
 On the DHCP server, you can use option 82 to assign different pools based on which relay circuit the request came from.
@@ -266,10 +271,10 @@ The relay agent forwards DHCP packets. Ensure the firewall allows this traffic:
 
 ```bash
 # On the relay agent - allow DHCP traffic on client interface
-sudo ufw allow in on eth1 port 67 proto udp
+sudo ufw allow in on eth1 to any port 67 proto udp
 
 # Allow outbound DHCP relay packets to the server
-sudo ufw allow out port 67 proto udp
+sudo ufw allow out 67/udp
 
 # On the DHCP server - allow packets from the relay agent
 sudo ufw allow from 192.168.1.50 to any port 67 proto udp
