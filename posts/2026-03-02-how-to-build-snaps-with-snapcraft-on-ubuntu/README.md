@@ -20,8 +20,8 @@ sudo snap install snapcraft --classic
 # Verify installation
 snapcraft --version
 
-# Snapcraft uses Multipass to create clean build VMs
-# Install Multipass if not already present
+# Snapcraft uses a build provider such as LXD or Multipass
+# Install Multipass if you want to use VM-based builds
 sudo snap install multipass
 ```
 
@@ -36,8 +36,8 @@ sudo lxd init --minimal
 sudo usermod -aG lxd $USER
 newgrp lxd
 
-# Tell snapcraft to use LXD
-export SNAPCRAFT_BUILD_ENVIRONMENT=lxd
+# Use LXD for a build
+snapcraft --use-lxd
 ```
 
 ## The snapcraft.yaml File
@@ -127,6 +127,7 @@ parts:
   app:
     plugin: npm
     source: .
+    npm-include-node: true
     npm-node-version: '20.11.0'
 
 # Rust/Cargo plugin
@@ -160,7 +161,7 @@ parts:
 Snapcraft processes each part through a series of lifecycle steps:
 
 ```text
-pull -> build -> stage -> prime -> snap
+pull -> build -> stage -> prime -> pack
 ```
 
 Understanding each step helps when debugging:
@@ -171,7 +172,7 @@ Understanding each step helps when debugging:
 | `build` | Compiles the source using the plugin |
 | `stage` | Assembles build artifacts from all parts |
 | `prime` | Filters the stage directory to what goes in the snap |
-| `snap` | Packages the prime directory into a .snap file |
+| `pack` | Packages the prime directory into a .snap file |
 
 ```bash
 # Run through all steps (full build)
@@ -184,18 +185,18 @@ snapcraft stage
 snapcraft prime
 snapcraft pack     # Create .snap from prime directory
 
-# Clean and rebuild from a specific step
-snapcraft clean --step build
+# Clean and rebuild
+snapcraft clean
 snapcraft
 
 # Clean a specific part
-snapcraft clean my-application-part
+snapcraft clean my-application
 ```
 
 ## Building the Snap
 
 ```bash
-# Standard build - runs all lifecycle steps in a Multipass VM
+# Standard build - runs all lifecycle steps in an isolated build environment
 snapcraft
 
 # Build without a VM (use host system - faster but less clean)
@@ -204,7 +205,7 @@ snapcraft --destructive-mode
 # Build and see verbose output for debugging
 snapcraft --verbosity=verbose
 
-# Build for a different architecture (requires multipass or LXD)
+# Build for a different architecture defined in the build plan
 snapcraft --build-for arm64
 snapcraft --build-for armhf
 ```
@@ -216,7 +217,7 @@ The output is a `.snap` file in the current directory:
 
 ```bash
 # Install the locally built snap in devmode for testing
-sudo snap install my-application_1.2.3_amd64.snap --devmode
+sudo snap install my-application_1.2.3_amd64.snap --dangerous --devmode
 
 # Run it
 my-application
@@ -234,14 +235,14 @@ sudo snap remove my-application
 ## Debugging Build Failures
 
 ```bash
-# If the build fails inside Multipass VM, get a shell into the VM
-snapcraft --shell
+# If the build fails inside the build environment, get a shell for debugging
+snapcraft --debug
 
-# Inside the VM, you can manually run build commands
+# Inside the build environment, you can manually run build commands
 # and inspect the build environment
-cd /root/parts/my-application/build/
+cd "$CRAFT_PART_BUILD"
 make
-ls -la install/
+ls -la "$CRAFT_PART_INSTALL"
 
 # Exit the VM when done
 exit
@@ -367,7 +368,7 @@ jobs:
           my-application --version
 
       - name: Upload snap artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: snap
           path: ${{ steps.snapcraft.outputs.snap }}
