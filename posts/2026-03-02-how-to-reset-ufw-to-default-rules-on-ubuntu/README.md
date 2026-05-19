@@ -18,7 +18,7 @@ The `ufw reset` command:
 - Disables UFW completely
 - Removes all user-defined rules from the active ruleset
 - Creates backup copies of the rule files
-- Resets default policies to "allow incoming" (permissive) rather than the restrictive defaults
+- Does not modify the default policies in `/etc/default/ufw` — they persist across the reset, but only take effect once UFW is re-enabled
 
 Critically, `ufw reset` does NOT:
 - Immediately re-enable UFW (you have to do that manually)
@@ -268,6 +268,6 @@ sudo iptables -L OUTPUT -n -v
 sudo cat /etc/ufw/user.rules  # Should have minimal content
 ```
 
-After a reset, the iptables will show the UFW chains but without your custom rules populated - just the framework rules that UFW installs by default.
+After a reset, UFW is disabled, so the kernel iptables built-in chains (`INPUT`, `OUTPUT`, `FORWARD`) have their policies set to `ACCEPT` and the UFW-managed chains are removed entirely. They will be re-created next time you run `ufw enable`.
 
 A periodic review and selective reset is good housekeeping for servers that have been running a long time. The accumulated cruft of rules for services that no longer run, debug exceptions that were never removed, and forgotten temporary rules creates unnecessary complexity and potential security gaps.
