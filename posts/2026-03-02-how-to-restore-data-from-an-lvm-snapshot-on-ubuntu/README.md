@@ -126,7 +126,7 @@ While the origin is still mounted, copy individual files:
 # Restore a specific configuration file
 sudo cp /mnt/recovery/postgresql.conf /var/lib/postgresql/postgresql.conf
 
-# Restore an entire directory
+# Restore using rsync (preserves permissions, ownership, timestamps)
 sudo rsync -av /mnt/recovery/pg_hba.conf /var/lib/postgresql/
 ```
 
