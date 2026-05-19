@@ -8,7 +8,7 @@ Description: Step-by-step instructions for installing Brave browser on Ubuntu us
 
 ---
 
-Brave is a Chromium-based browser built with privacy as a core feature. It blocks ads and trackers by default without requiring extensions, includes a built-in VPN option, supports the BAT cryptocurrency for rewarding content creators, and uses less memory than Chrome because it doesn't load third-party ad scripts. Installation on Ubuntu is straightforward through Brave's official APT repository, which ensures you always get official builds with security updates.
+Brave is a Chromium-based browser built with privacy as a core feature. It blocks ads and trackers by default without requiring extensions, includes a built-in VPN option, supports the BAT cryptocurrency for rewarding content creators, and can reduce page resource usage by blocking third-party ad and tracking scripts. Installation on Ubuntu is straightforward through Brave's official APT repository, which ensures you always get official builds with security updates.
 
 ## Installing Brave via APT
 
@@ -28,8 +28,8 @@ sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg \
 gpg --show-keys /usr/share/keyrings/brave-browser-archive-keyring.gpg
 
 # Add the Brave repository to your APT sources
-echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | \
-    sudo tee /etc/apt/sources.list.d/brave-browser-release.list
+sudo curl -fsSLo /etc/apt/sources.list.d/brave-browser-release.sources \
+    https://brave-browser-apt-release.s3.brave.com/brave-browser.sources
 
 # Update package lists
 sudo apt update
@@ -66,8 +66,8 @@ The beta channel receives new features before stable. It installs alongside the 
 sudo curl -fsSLo /usr/share/keyrings/brave-browser-beta-archive-keyring.gpg \
     https://brave-browser-apt-beta.s3.brave.com/brave-browser-beta-archive-keyring.gpg
 
-echo "deb [signed-by=/usr/share/keyrings/brave-browser-beta-archive-keyring.gpg] https://brave-browser-apt-beta.s3.brave.com/ stable main" | \
-    sudo tee /etc/apt/sources.list.d/brave-browser-beta.list
+sudo curl -fsSLo /etc/apt/sources.list.d/brave-browser-beta.sources \
+    https://brave-browser-apt-beta.s3.brave.com/brave-browser.sources
 
 sudo apt update
 sudo apt install brave-browser-beta
@@ -81,8 +81,8 @@ For testing the very latest changes:
 sudo curl -fsSLo /usr/share/keyrings/brave-browser-nightly-archive-keyring.gpg \
     https://brave-browser-apt-nightly.s3.brave.com/brave-browser-nightly-archive-keyring.gpg
 
-echo "deb [signed-by=/usr/share/keyrings/brave-browser-nightly-archive-keyring.gpg] https://brave-browser-apt-nightly.s3.brave.com/ stable main" | \
-    sudo tee /etc/apt/sources.list.d/brave-browser-nightly.list
+sudo curl -fsSLo /etc/apt/sources.list.d/brave-browser-nightly.sources \
+    https://brave-browser-apt-nightly.s3.brave.com/brave-browser.sources
 
 sudo apt update
 sudo apt install brave-browser-nightly
@@ -111,10 +111,10 @@ Navigate to `brave://settings/privacy`:
 
 ```text
 - Send a "Do Not Track" request: Enable if desired
-- Block Google Sign-In: Enable to prevent Google's FLoC tracking
+- Google Sign-In permission: Leave blocked by default or allow per site when needed
 - Allow privacy-preserving product analytics: Disable for maximum privacy
-- Improve security by sending URLs to Google Safe Browsing:
-  Disable if you're concerned about URL leakage to Google
+- Safe Browsing: Enabled by default; Brave checks URLs using hash prefixes
+  and proxies desktop requests rather than sending full URLs to Google
 ```
 
 ### Search Engine
@@ -159,10 +159,10 @@ Change the `Exec=` line to include Wayland flags:
 Exec=/usr/bin/brave-browser-stable --ozone-platform=wayland %U
 ```
 
-Alternatively, set environment variable:
+Alternatively, launch Brave with the flag from a terminal:
 
 ```bash
-echo 'BRAVE_FLAGS="--ozone-platform=wayland"' | sudo tee -a /etc/environment
+brave-browser --ozone-platform=wayland &
 ```
 
 ## Brave Tor Integration
@@ -184,12 +184,14 @@ Like other Chromium-based browsers, Brave can use hardware video decoding:
 # Install VA-API support
 sudo apt install vainfo libva-drm2
 
-# Launch Brave with hardware acceleration enabled
-brave-browser --use-gl=egl --enable-features=VaapiVideoDecoder &
+# Launch Brave with VA-API-related flags
+brave-browser --use-gl=angle --use-angle=gl \
+    --enable-features=AcceleratedVideoDecodeLinuxGL &
 ```
 
-Check if hardware acceleration is active at `brave://gpu`:
-- Look for `Video Decode: Hardware accelerated`
+Check if hardware acceleration is active at `brave://gpu` and `brave://media-internals`:
+- Look for "Video Acceleration Information" at `brave://gpu`
+- Play a video, then look for `video_decoder: GpuVideoDecoder` at `brave://media-internals`
 
 ## Keeping Brave Updated
 
@@ -218,7 +220,7 @@ sudo apt remove brave-browser
 sudo apt purge brave-browser
 
 # Remove the Brave repository
-sudo rm /etc/apt/sources.list.d/brave-browser-release.list
+sudo rm /etc/apt/sources.list.d/brave-browser-release.sources
 sudo rm /usr/share/keyrings/brave-browser-archive-keyring.gpg
 sudo apt update
 ```
@@ -228,7 +230,7 @@ Your Brave profile data (bookmarks, passwords, history) stays in `~/.config/Brav
 ## Comparing Brave to Other Chromium Browsers
 
 Brave's distinction from plain Chromium or Chrome:
-- Native ad blocking at the network level (faster than extension-based blocking)
+- Native ad and tracker blocking in the browser (faster than extension-based blocking)
 - Built-in HTTPS upgrading
 - Fingerprint randomization to reduce cross-site tracking
 - No Google services or telemetry to Google in the default build
