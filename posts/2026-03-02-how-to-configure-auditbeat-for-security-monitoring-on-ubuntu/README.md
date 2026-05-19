@@ -12,7 +12,7 @@ Auditbeat is an Elastic Beat that collects audit data from the Linux kernel's au
 
 ## How Auditbeat Works
 
-Auditbeat operates through two primary modules:
+This guide uses two Auditbeat modules:
 
 - **Auditd module** - reads events from the Linux kernel audit framework (via `netlink`)
 - **File Integrity module (FIM)** - monitors specified directories for file changes
@@ -180,7 +180,7 @@ The FIM module watches files and directories at the filesystem level:
 
   # Scan files on startup to detect changes made while stopped
   scan_at_start: true
-  scan_rate_per_sec: 50   # Files per second during initial scan
+  scan_rate_per_sec: 50 MiB  # Average read rate during initial scan
 
   # Recursive watching
   recursive: true
@@ -250,8 +250,8 @@ Auditbeat can generate significant event volume on busy systems. Reduce noise:
 # Avoid -a always,exit -S all (catches everything)
 
 # Add exclusions for noisy processes
--a never,exit -F uid=33  # Exclude www-data user from some rules
--a never,exit -F path=/proc  # Exclude /proc reads
+-a never,exit -F arch=b64 -S all -F uid=33  # Exclude www-data user from some rules
+-a never,exit -F arch=b64 -F dir=/proc/ -F perm=r  # Exclude /proc reads
 ```
 
 Check the backlog:
