@@ -152,11 +152,11 @@ You can combine flags to get a comprehensive view:
 pidstat -u -r -d -p 5678 1
 ```
 
-Or all statistics at once with `-A`:
+Or combine all the activity flags to get every statistic at once:
 
 ```bash
 # Everything - CPU, memory, I/O, context switches
-pidstat -A 1
+pidstat -u -r -d -w 1
 ```
 
 ## Monitoring Child Processes
@@ -164,10 +164,10 @@ pidstat -A 1
 Some applications fork child processes. Use `-T` to control what gets reported:
 
 ```bash
-# Show parent process and child processes
+# Show individual task stats AND cumulated stats for the task and its children
 pidstat -T ALL -p 1234 1
 
-# Show only child processes
+# Show only the cumulated stats for the task and all its children
 pidstat -T CHILD -p 1234 1
 ```
 
@@ -180,11 +180,11 @@ For capacity planning, you'll often want to capture stats over time:
 pidstat -u -r -d 1 3600 > /var/log/pidstat_$(date +%Y%m%d_%H%M%S).log
 ```
 
-Or with timestamps using `-t`:
+Timestamps are included in the default output. If you prefer them expressed as seconds since the epoch (handy for downstream parsing), use `-H`:
 
 ```bash
-# Include timestamps in output
-pidstat -u -t 1 60 | tee /var/log/process_stats.log
+# Include epoch-second timestamps in output
+pidstat -u -H 1 60 | tee /var/log/process_stats.log
 ```
 
 ## Practical Troubleshooting Examples
