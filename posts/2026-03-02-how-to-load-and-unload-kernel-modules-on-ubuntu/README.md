@@ -351,7 +351,7 @@ dkms status
 sudo dkms autoinstall -k $(uname -r)
 ```
 
-When you install a new kernel, DKMS recompiles all registered modules for the new kernel version during boot.
+When you install a new kernel, DKMS recompiles all registered modules for the new kernel version as part of the kernel package's post-install hooks (not during boot), so the modules are ready when you reboot into the new kernel.
 
 ## Checking Module Signatures
 
