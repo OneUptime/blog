@@ -44,9 +44,7 @@ If you had Docker installed previously, you may want to preserve your images and
 sudo apt update
 sudo apt install -y \
   ca-certificates \
-  curl \
-  gnupg \
-  lsb-release
+  curl
 ```
 
 ### Add Docker's GPG Key
@@ -55,23 +53,25 @@ sudo apt install -y \
 # Create the keyring directory
 sudo install -m 0755 -d /etc/apt/keyrings
 
-# Download and add Docker's GPG key
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+# Download Docker's GPG key
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
 
 # Set correct permissions on the key file
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 ```
 
 ### Add the Docker Repository
 
 ```bash
 # Add Docker's stable apt repository
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources <<EOF > /dev/null
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Update package index to include Docker packages
 sudo apt update
@@ -108,11 +108,12 @@ What each package provides:
 
 ```bash
 # List available Docker versions
-apt-cache madison docker-ce | head -10
+apt list --all-versions docker-ce | head -10
 
 # Install a specific version
-sudo apt install -y docker-ce=5:25.0.5-1~ubuntu.24.04~noble \
-                   docker-ce-cli=5:25.0.5-1~ubuntu.24.04~noble \
+VERSION_STRING=5:29.5.1-1~ubuntu.24.04~noble
+sudo apt install -y docker-ce=$VERSION_STRING \
+                   docker-ce-cli=$VERSION_STRING \
                    containerd.io \
                    docker-buildx-plugin \
                    docker-compose-plugin
@@ -179,7 +180,7 @@ docker run hello-world
 
 ## Post-Installation: Configure Docker to Start on Boot
 
-On systemd-based Ubuntu (all modern versions), Docker autostart is configured via systemd:
+On Debian and Ubuntu, the Docker service starts on boot by default. To manage autostart explicitly on systemd-based systems:
 
 ```bash
 # Enable autostart
@@ -222,7 +223,7 @@ Docker Compose V2 is installed as a plugin:
 ```bash
 # Verify Compose is available
 docker compose version
-# Docker Compose version v2.24.5
+# Docker Compose version v2.40.3
 
 # Test Compose
 cat > /tmp/test-compose.yml <<'EOF'
@@ -247,7 +248,7 @@ Docker Buildx for multi-platform builds:
 docker buildx ls
 
 # Create a new builder with multi-platform support
-docker buildx create --use --name mybuilder
+docker buildx create --use --name mybuilder --driver docker-container
 
 # Verify multi-platform build capability
 docker buildx inspect --bootstrap
@@ -279,8 +280,8 @@ sudo rm -rf /var/lib/docker
 sudo rm -rf /var/lib/containerd
 
 # Remove the repository
-sudo rm /etc/apt/sources.list.d/docker.list
-sudo rm /etc/apt/keyrings/docker.gpg
+sudo rm /etc/apt/sources.list.d/docker.sources
+sudo rm /etc/apt/keyrings/docker.asc
 ```
 
 ## Troubleshooting Installation Issues
@@ -295,17 +296,16 @@ If `apt update` fails after adding the repository:
 # Should be: jammy (22.04), noble (24.04), etc.
 
 # Check the sources list entry
-cat /etc/apt/sources.list.d/docker.list
+cat /etc/apt/sources.list.d/docker.sources
 ```
 
 ### GPG Key Error
 
 ```bash
 # Re-download the key
-sudo rm /etc/apt/keyrings/docker.gpg
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
+sudo rm /etc/apt/keyrings/docker.asc
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 sudo apt update
 ```
 
