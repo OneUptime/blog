@@ -220,14 +220,14 @@ bind c new-window -c "#{pane_current_path}"
 # Break a pane into its own window
 bind b break-pane
 
-# Join a window's pane into current window
-bind J choose-window 'join-pane -h -s "%%"'
+# Join a selected pane into current window
+bind J choose-tree 'join-pane -h -s "%%"'
 
 # Toggle synchronize-panes (type in all panes at once)
 bind S setw synchronize-panes \; display "Synchronize #{?pane_synchronized,on,off}"
 
 # Clear screen and history
-bind C-l send-keys 'clear' Enter
+bind C-l send-keys C-l \; clear-history
 
 # Kill window without confirmation
 bind X kill-window
