@@ -113,9 +113,11 @@ c.JupyterHub.spawner_class = 'jupyterhub.spawner.LocalProcessSpawner'
 c.Spawner.default_url = '/lab'  # Open JupyterLab instead of classic notebook
 c.Spawner.cmd = ['/opt/jupyterhub/bin/jupyterhub-singleuser']
 
-# Resource limits per user
-c.Spawner.cpu_limit = 4.0        # Max 4 CPUs
-c.Spawner.mem_limit = '4G'       # Max 4GB RAM
+# Resource hints per user (advisory only with LocalProcessSpawner -
+# exposed to the singleuser server as CPU_LIMIT/MEM_LIMIT env vars but not
+# enforced by the kernel; use DockerSpawner/KubeSpawner for real enforcement)
+c.Spawner.cpu_limit = 4.0
+c.Spawner.mem_limit = '4G'
 
 # Notebook directory per user
 c.Spawner.notebook_dir = '~/notebooks'
@@ -177,7 +179,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=root  # JupyterHub needs root to spawn processes as different users
+# JupyterHub needs root to spawn processes as different users
+User=root
 
 Environment="PATH=/opt/jupyterhub/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
