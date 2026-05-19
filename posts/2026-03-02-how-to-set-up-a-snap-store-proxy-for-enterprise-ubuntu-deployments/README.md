@@ -214,21 +214,26 @@ sudo update-ca-certificates
 
 ```bash
 # Get your proxy's store ID from the proxy server
-# This was output during the register step
+# This was output during the register step (or retrieve it with: sudo snap-proxy status)
 PROXY_STORE_ID="your-store-id-here"
 
-# On each client machine, point snapd at your proxy
-sudo snap set core store.url=https://snap-proxy.corp.example.com
+# On each client machine, fetch and acknowledge the proxy's store assertion
+curl -sL https://snap-proxy.corp.example.com/v2/auth/store/assertions | sudo snap ack /dev/stdin
 
-# Alternative method using environment variable
-# Add to /etc/environment for persistent configuration:
-echo "SNAPPY_STORE_NO_CDN=1" | sudo tee -a /etc/environment
+# Point snapd at your proxy by setting the proxy store ID
+sudo snap set core proxy.store="$PROXY_STORE_ID"
 
 # Restart snapd on the client
 sudo systemctl restart snapd
 
 # Test by refreshing - should now route through your proxy
 sudo snap refresh
+```
+
+To later disconnect a device from the proxy, clear the setting:
+
+```bash
+sudo snap set core proxy.store=''
 ```
 
 ## Managing Snap Overrides
