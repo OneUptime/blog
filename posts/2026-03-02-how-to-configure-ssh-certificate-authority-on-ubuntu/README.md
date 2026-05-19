@@ -18,7 +18,7 @@ With an SSH CA, you have:
 - One CA key pair that servers trust
 - Users present a signed certificate instead of a raw public key
 - Certificates can have expiration times, eliminating stale access automatically
-- Revocation is straightforward - just stop issuing new certificates
+- Short-lived certificates reduce stale access; active revocation uses `RevokedKeys` or a Key Revocation List
 - Certificates can restrict which commands a user can run or which source addresses are allowed
 
 ## Creating the Certificate Authority Keys
@@ -74,6 +74,7 @@ TrustedUserCAKeys /etc/ssh/user_ca.pub
 
 # Disable password authentication since certificates are more secure
 PasswordAuthentication no
+KbdInteractiveAuthentication no
 
 # Keep public key auth enabled (certificates use this mechanism)
 PubkeyAuthentication yes
@@ -83,7 +84,7 @@ Apply the changes:
 
 ```bash
 sudo sshd -t  # Test configuration before reloading
-sudo systemctl reload sshd
+sudo systemctl reload ssh
 ```
 
 ## Issuing User Certificates
@@ -108,7 +109,7 @@ ssh-keygen -s user_ca \
   ~/.ssh/id_developer.pub
 
 # This creates id_developer-cert.pub
-# Send this file back to the developer along with their original key
+# Send this certificate file back to the developer
 ```
 
 The developer places both files in their `~/.ssh/` directory. SSH automatically finds and presents the certificate when connecting:
@@ -160,7 +161,7 @@ scp ssh_host_ed25519_key-cert.pub root@server:/etc/ssh/
 echo "HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub" | \
   sudo tee -a /etc/ssh/sshd_config
 
-sudo systemctl reload sshd
+sudo systemctl reload ssh
 ```
 
 On client machines, configure them to trust the host CA instead of individual host fingerprints:
@@ -180,7 +181,7 @@ echo "@cert-authority *.example.com $(cat host_ca.pub)" | \
 
 ## Using Principals for Fine-Grained Access Control
 
-Principals in the certificate control which usernames the certificate is valid for. Combined with the `AuthorizedPrincipalsFile` directive, you can implement role-based access:
+By default, principals in the certificate control which usernames the certificate is valid for. Combined with the `AuthorizedPrincipalsFile` directive, you can allow role-style principal names too:
 
 ```bash
 # Create principal files for each unix user
@@ -196,7 +197,7 @@ echo "deployers" | sudo tee /etc/ssh/auth_principals/deploy
 # In sshd_config, enable principal-based authorization
 echo "AuthorizedPrincipalsFile /etc/ssh/auth_principals/%u" | \
   sudo tee -a /etc/ssh/sshd_config
-sudo systemctl reload sshd
+sudo systemctl reload ssh
 
 # Now sign certificates with appropriate principals
 # A developer gets the "ubuntu" and "sudo-users" principals
