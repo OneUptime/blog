@@ -32,13 +32,19 @@ sudo usermod -aG docker $USER
 docker volume create portainer_data
 
 # Run Portainer CE
+# Ports:
+#   8000 - Used for Portainer Edge agent tunneling
+#   9443 - HTTPS web interface
+# Volumes:
+#   /var/run/docker.sock - Docker socket access
+#   portainer_data       - Persistent data
 docker run -d \
   --name portainer \
   --restart=always \
-  -p 8000:8000 \       # Used for Portainer Edge agent tunneling
-  -p 9443:9443 \       # HTTPS web interface
-  -v /var/run/docker.sock:/var/run/docker.sock \  # Docker socket access
-  -v portainer_data:/data \                        # Persistent data
+  -p 8000:8000 \
+  -p 9443:9443 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v portainer_data:/data \
   portainer/portainer-ce:latest
 ```
 
