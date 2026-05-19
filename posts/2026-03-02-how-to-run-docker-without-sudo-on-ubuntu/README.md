@@ -182,7 +182,7 @@ If you want to revoke docker access:
 
 ```bash
 # Remove a user from the docker group
-sudo gdeluser user docker
+sudo deluser user docker
 
 # Or use gpasswd
 sudo gpasswd -d $USER docker
