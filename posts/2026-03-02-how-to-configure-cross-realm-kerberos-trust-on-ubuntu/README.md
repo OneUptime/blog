@@ -42,11 +42,11 @@ sudo kadmin.local
 ```text
 # Create the principal that Realm A presents to Realm B's KDC
 
-kadmin.local: addprinc -e "aes256-cts-hmac-sha1-96:normal" krbtgt/PARTNER.EXAMPLE.COM@CORP.EXAMPLE.COM
+kadmin.local: addprinc -kvno 1 -e "aes256-cts-hmac-sha1-96:normal" krbtgt/PARTNER.EXAMPLE.COM@CORP.EXAMPLE.COM
 # Enter and confirm the shared secret password
 
 # For two-way trust, also create:
-kadmin.local: addprinc -e "aes256-cts-hmac-sha1-96:normal" krbtgt/CORP.EXAMPLE.COM@PARTNER.EXAMPLE.COM
+kadmin.local: addprinc -kvno 1 -e "aes256-cts-hmac-sha1-96:normal" krbtgt/CORP.EXAMPLE.COM@PARTNER.EXAMPLE.COM
 # Use the SAME shared secret password
 
 kadmin.local: quit
@@ -60,16 +60,16 @@ sudo kadmin.local
 
 ```text
 # Create the same principals on Realm B with identical passwords
-kadmin.local: addprinc -e "aes256-cts-hmac-sha1-96:normal" krbtgt/PARTNER.EXAMPLE.COM@CORP.EXAMPLE.COM
+kadmin.local: addprinc -kvno 1 -e "aes256-cts-hmac-sha1-96:normal" krbtgt/PARTNER.EXAMPLE.COM@CORP.EXAMPLE.COM
 # Use the SAME shared secret as on Realm A
 
-kadmin.local: addprinc -e "aes256-cts-hmac-sha1-96:normal" krbtgt/CORP.EXAMPLE.COM@PARTNER.EXAMPLE.COM
+kadmin.local: addprinc -kvno 1 -e "aes256-cts-hmac-sha1-96:normal" krbtgt/CORP.EXAMPLE.COM@PARTNER.EXAMPLE.COM
 # Use the SAME shared secret as on Realm A
 
 kadmin.local: quit
 ```
 
-The passwords must match on both sides. If they differ, the cross-realm authentication will fail.
+The passwords, key version numbers, and encryption types must match on both sides. If they differ, the cross-realm authentication will fail.
 
 ## Step 2: Configure krb5.conf on Each Realm's KDC
 
@@ -170,6 +170,9 @@ Client machines in either realm need `krb5.conf` entries for both realms:
     CORP.EXAMPLE.COM = {
         PARTNER.EXAMPLE.COM = .
     }
+    PARTNER.EXAMPLE.COM = {
+        CORP.EXAMPLE.COM = .
+    }
 ```
 
 ## Step 4: Add Services in Realm B That Accept Realm A Users
@@ -183,6 +186,14 @@ On a server in Realm B, create its host principal:
 sudo kadmin.local -q "addprinc -randkey host/server-b.partner.example.com"
 sudo kadmin.local -q "ktadd -k /tmp/server-b.keytab host/server-b.partner.example.com"
 # Copy keytab to the server
+```
+
+On the SSH server, enable GSSAPI authentication:
+
+```bash
+sudoedit /etc/ssh/sshd_config
+# Set: GSSAPIAuthentication yes
+sudo systemctl reload ssh
 ```
 
 ## Step 5: Test Cross-Realm Authentication
@@ -217,22 +228,19 @@ The process is similar but AD-specific:
 ```bash
 # On the MIT KDC
 sudo kadmin.local
-kadmin.local: addprinc -e "aes256-cts-hmac-sha1-96:normal rc4-hmac:normal" \
+kadmin.local: addprinc -kvno 1 -e "aes256-cts-hmac-sha1-96:normal rc4-hmac:normal" \
   krbtgt/AD.CORP.COM@LINUX.CORP.COM
 # Use the same password you will configure in AD
 
-kadmin.local: addprinc -e "aes256-cts-hmac-sha1-96:normal rc4-hmac:normal" \
+kadmin.local: addprinc -kvno 1 -e "aes256-cts-hmac-sha1-96:normal rc4-hmac:normal" \
   krbtgt/LINUX.CORP.COM@AD.CORP.COM
 ```
 
 In Active Directory (PowerShell on a Domain Controller):
 
 ```powershell
-# Create the trust on the AD side
-netdom trust LINUX.CORP.COM /domain:AD.CORP.COM /add /twoway /realm
-
-# Set the trust password (must match the MIT KDC principal)
-netdom trust LINUX.CORP.COM /domain:AD.CORP.COM /passwordt:SharedTrustPassword
+# Create the trust on the AD side and set the trust password
+netdom trust AD.CORP.COM /domain:LINUX.CORP.COM /add /twoway /realm /passwordt:SharedTrustPassword
 
 # Set supported encryption types
 ksetup /setenctypeattr LINUX.CORP.COM AES256-CTS-HMAC-SHA1-96
@@ -265,7 +273,7 @@ Or configure `auth_to_local` rules in `krb5.conf`:
 
 ### PAM-Based Access Control
 
-Use `pam_krb5` with `permitted_host_realm` settings or SSSD's cross-domain access control.
+Use `pam_krb5` authorization options such as `.k5login` or `search_k5login` where appropriate, or SSSD's cross-domain access control.
 
 ## Troubleshooting
 
