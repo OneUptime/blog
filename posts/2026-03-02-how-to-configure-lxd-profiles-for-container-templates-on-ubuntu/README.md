@@ -62,16 +62,16 @@ lxc profile list
 
 ```bash
 # Set resource limits
-lxc profile set webserver limits.cpu 2
-lxc profile set webserver limits.memory 4GiB
+lxc profile set webserver limits.cpu=2
+lxc profile set webserver limits.memory=4GiB
 
 # Set an environment variable for all containers using this profile
-lxc profile set webserver environment.NODE_ENV production
-lxc profile set webserver environment.TZ UTC
+lxc profile set webserver environment.NODE_ENV=production
+lxc profile set webserver environment.TZ=UTC
 
 # Set security options
-lxc profile set webserver security.nesting false
-lxc profile set webserver security.privileged false
+lxc profile set webserver security.nesting=false
+lxc profile set webserver security.privileged=false
 ```
 
 ## Adding Devices to Profiles
@@ -129,11 +129,11 @@ name: webserver
 
 ## Creating Profiles from YAML
 
-For scripted or reproducible setup, pipe YAML into `lxc profile create`:
+For scripted or reproducible setup, feed YAML into `lxc profile create`:
 
 ```bash
 # Create a database server profile
-cat | lxc profile create dbserver <<'EOF'
+lxc profile create dbserver <<'EOF'
 config:
   limits.cpu: "4"
   limits.memory: 16GiB
@@ -162,21 +162,21 @@ Some older applications require privileged mode. Keep this isolated to a specifi
 
 ```bash
 lxc profile create privileged-app
-lxc profile set privileged-app security.privileged true
-lxc profile set privileged-app raw.lxc "lxc.apparmor.profile=unconfined"
+lxc profile set privileged-app security.privileged=true
+lxc profile set privileged-app raw.lxc="lxc.apparmor.profile=unconfined"
 ```
 
-### Profile: Nested Virtualization
+### Profile: Nested Containers
 
 For containers that need to run Docker or other container runtimes:
 
 ```bash
 lxc profile create docker-host
-lxc profile set docker-host security.nesting true
-lxc profile set docker-host security.syscalls.intercept.mknod true
-lxc profile set docker-host security.syscalls.intercept.setxattr true
-lxc profile set docker-host limits.cpu 4
-lxc profile set docker-host limits.memory 8GiB
+lxc profile set docker-host security.nesting=true
+lxc profile set docker-host security.syscalls.intercept.mknod=true
+lxc profile set docker-host security.syscalls.intercept.setxattr=true
+lxc profile set docker-host limits.cpu=4
+lxc profile set docker-host limits.memory=8GiB
 ```
 
 ### Profile: High-Security Container
@@ -185,24 +185,23 @@ For containers handling sensitive data with restricted capabilities:
 
 ```bash
 lxc profile create high-security
-lxc profile set high-security security.privileged false
-lxc profile set high-security security.nesting false
-lxc profile set high-security limits.cpu 1
-lxc profile set high-security limits.memory 1GiB
+lxc profile set high-security security.privileged=false
+lxc profile set high-security security.nesting=false
+lxc profile set high-security limits.cpu=1
+lxc profile set high-security limits.memory=1GiB
 
-# Drop all capabilities then add only what's needed
-lxc profile set high-security raw.lxc "lxc.cap.drop=all
-lxc.cap.keep=net_bind_service"
+# Keep only the capability that's needed
+lxc profile set high-security raw.lxc="lxc.cap.keep=net_bind_service"
 ```
 
 ### Profile: CI/CD Runner
 
 ```bash
 lxc profile create ci-runner
-lxc profile set ci-runner limits.cpu 4
-lxc profile set ci-runner limits.memory 8GiB
-lxc profile set ci-runner security.nesting true
-lxc profile set ci-runner security.syscalls.intercept.mknod true
+lxc profile set ci-runner limits.cpu=4
+lxc profile set ci-runner limits.memory=8GiB
+lxc profile set ci-runner security.nesting=true
+lxc profile set ci-runner security.syscalls.intercept.mknod=true
 lxc profile device add ci-runner root disk pool=default size=50GiB path=/
 ```
 
@@ -244,7 +243,7 @@ When multiple profiles are applied, settings are merged. For devices, later prof
 ```bash
 # Profile sets 4 CPUs, but this container needs 6
 lxc launch ubuntu:24.04 heavy-app --profile default --profile webserver
-lxc config set heavy-app limits.cpu 6  # container override wins
+lxc config set heavy-app limits.cpu=6  # container override wins
 ```
 
 ## Copying and Exporting Profiles
@@ -257,8 +256,8 @@ lxc profile copy webserver webserver-prod
 lxc profile show webserver > webserver-profile.yaml
 
 # Import on another LXD instance
-cat webserver-profile.yaml | lxc profile create webserver
-# or
+lxc profile create webserver < webserver-profile.yaml
+# or update an existing profile
 lxc profile edit webserver < webserver-profile.yaml
 ```
 
@@ -266,10 +265,10 @@ lxc profile edit webserver < webserver-profile.yaml
 
 ```bash
 # See which containers use a profile
-lxc profile show webserver | grep "Used by"
+lxc profile show webserver | sed -n '/^used_by:/,$p'
 
 # Or list all containers with their profiles
-lxc list --format csv | while IFS=, read name state ip1 ip2 type profiles; do
+lxc list -c nP --format csv | while IFS=, read name profiles; do
   echo "$name: $profiles"
 done
 ```
@@ -280,13 +279,13 @@ Changes to a profile immediately affect all containers using it (on restart for 
 
 ```bash
 # Update memory limit in the profile
-lxc profile set webserver limits.memory 8GiB
+lxc profile set webserver limits.memory=8GiB
 
 # All containers using this profile now have the new limit
 # (some settings require container restart)
 
 # Force restart all containers using a profile
-for container in $(lxc profile show webserver | grep "Managed:" -A1 | grep "^  -" | awk '{print $2}'); do
+for container in $(lxc profile show webserver | awk -F/ '/^- \/1.0\/instances\// {print $NF}'); do
   echo "Restarting $container..."
   lxc restart "$container"
 done
