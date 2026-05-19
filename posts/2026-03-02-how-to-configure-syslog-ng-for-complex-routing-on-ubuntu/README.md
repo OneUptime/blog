@@ -72,11 +72,11 @@ The default configuration looks like:
 options {
     # Chain hostnames when forwarding
     chain_hostnames(off);
-    # Flush log file regularly even without new messages
+    # Flush each message immediately
     flush_lines(0);
     # Use DNS for hostname resolution
     use_dns(no);
-    # Preserve original timestamp format
+    # Use short hostnames instead of fully qualified domain names
     use_fqdn(no);
     # Stats frequency (seconds)
     stats_freq(0);
@@ -129,8 +129,8 @@ source s_nginx_access {
     );
 };
 
-# Accept logs in GELF format over TCP (from Graylog-compatible senders)
-source s_gelf {
+# Accept plain TCP syslog messages on port 12201
+source s_tcp_12201 {
     network(
         transport("tcp")
         port(12201)
@@ -407,7 +407,7 @@ sudo syslog-ng --syntax-only -f /etc/syslog-ng/syslog-ng.conf
 # If there are include files
 sudo syslog-ng --syntax-only
 
-# Reload after changes (graceful - no messages lost)
+# Reload after changes
 sudo systemctl reload syslog-ng
 
 # Or restart
