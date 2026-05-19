@@ -77,7 +77,7 @@ Type your overrides:
 
 ```ini
 [Service]
-# Restart the service on any non-zero exit
+# Restart the service whenever it exits, regardless of exit code
 Restart=always
 RestartSec=10s
 ```
@@ -122,11 +122,14 @@ EnvironmentFile=/etc/myapp/environment
 Package-installed services sometimes have conservative restart settings. Override them:
 
 ```ini
+[Unit]
+# Rate-limiting options live in the [Unit] section
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
 [Service]
 Restart=on-failure
 RestartSec=5s
-StartLimitIntervalSec=300
-StartLimitBurst=5
 ```
 
 ### Adding Dependencies
@@ -239,10 +242,10 @@ sudo systemctl daemon-reload
 sudo systemctl restart nginx.service
 ```
 
-Using `systemctl edit`:
+Or use `systemctl revert`:
 
 ```bash
-# This removes the drop-in if you save an empty file
+# Remove all drop-ins and full overrides for this unit
 sudo systemctl revert nginx.service
 ```
 
