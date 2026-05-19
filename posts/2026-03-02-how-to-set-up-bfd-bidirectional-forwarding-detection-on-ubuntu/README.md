@@ -74,6 +74,15 @@ This is the most common use case. BFD runs alongside BGP to detect peer failures
 ```text
 configure terminal
 
+! Define a BFD profile with custom timers (applied to BGP-driven sessions below)
+bfd
+ profile fast
+  detect-multiplier 3
+  receive-interval 300
+  transmit-interval 300
+ exit
+exit
+
 ! Configure BGP with BFD
 router bgp 65001
  bgp router-id 192.168.1.1
@@ -81,12 +90,9 @@ router bgp 65001
  neighbor 192.168.1.2 remote-as 65002
  neighbor 192.168.1.2 description "Router B"
 
- ! Enable BFD for this BGP neighbor
+ ! Enable BFD for this BGP neighbor and apply the "fast" profile
  neighbor 192.168.1.2 bfd
-
- ! Optional: set custom BFD timers for this neighbor
- ! Format: detect-multiplier receive-interval transmit-interval
- neighbor 192.168.1.2 bfd 3 300 300
+ neighbor 192.168.1.2 bfd profile fast
 
  ! Configure address family
  address-family ipv4 unicast
@@ -104,15 +110,21 @@ write memory
 ```text
 configure terminal
 
+bfd
+ profile fast
+  detect-multiplier 3
+  receive-interval 300
+  transmit-interval 300
+ exit
+exit
+
 router bgp 65002
  bgp router-id 192.168.1.2
 
  neighbor 192.168.1.1 remote-as 65001
  neighbor 192.168.1.1 description "Router A"
  neighbor 192.168.1.1 bfd
-
- ! Match the timers to Router A
- neighbor 192.168.1.1 bfd 3 300 300
+ neighbor 192.168.1.1 bfd profile fast
 
  address-family ipv4 unicast
   neighbor 192.168.1.1 activate
@@ -124,7 +136,7 @@ end
 write memory
 ```
 
-The `bfd 3 300 300` parameters mean: detect-multiplier=3, minimum-receive-interval=300ms, transmit-interval=300ms. With these settings, a peer is declared down after 3 consecutive missed packets, meaning detection happens within 900ms.
+The "fast" profile sets detect-multiplier=3, minimum-receive-interval=300ms, transmit-interval=300ms. With these settings, a peer is declared down after 3 consecutive missed packets, meaning detection happens within 900ms.
 
 ## Configuring BFD with OSPF
 
@@ -174,8 +186,8 @@ You can also configure BFD sessions directly without routing protocol integratio
 configure terminal
 
 bfd
- ! Create a static BFD peer
- peer 192.168.1.2
+ ! Create a static BFD peer (local-address optionally specifies the source address)
+ peer 192.168.1.2 local-address 192.168.1.1
   ! Transmit interval in milliseconds
   transmit-interval 150
   !
@@ -184,9 +196,6 @@ bfd
   !
   ! Number of missed packets before declaring session down
   detect-multiplier 4
-  !
-  ! Optionally specify the source address
-  local-address 192.168.1.1
  exit
 exit
 
@@ -272,7 +281,8 @@ bfd
  peer 192.168.1.2
   ! Enable echo mode
   echo-mode
-  echo-interval 50
+  echo receive-interval 50
+  echo transmit-interval 50
   detect-multiplier 3
  exit
 exit
@@ -302,7 +312,9 @@ exit
 router bgp 65001
  neighbor 10.100.0.1 remote-as 65003
  neighbor 10.100.0.1 ebgp-multihop 5
- neighbor 10.100.0.1 bfd multihop
+ ! BFD is enabled with the standard command; the multi-hop nature comes
+ ! from the matching BFD peer defined above
+ neighbor 10.100.0.1 bfd
 exit
 
 end
