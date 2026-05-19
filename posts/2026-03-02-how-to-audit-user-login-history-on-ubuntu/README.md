@@ -18,7 +18,7 @@ Login data on Ubuntu comes from a few sources:
 - `/var/log/btmp` - binary file recording failed login attempts (read by `lastb`)
 - `/var/log/lastlog` - binary file with the most recent login for each UID (read by `lastlog`)
 - `/var/log/auth.log` - text log of authentication events, PAM messages, sudo usage
-- systemd journal - contains all of the above plus more, queryable with `journalctl`
+- systemd journal - stores service and authentication logs, queryable with `journalctl`
 
 ## Viewing Recent Logins with last
 
@@ -48,8 +48,11 @@ last alice
 # Show a limited number of entries
 last -n 20
 
-# Show full hostname instead of truncating
+# Show full login and logout times
 last -F
+
+# Show full user and domain names instead of truncating
+last -w
 
 # Show IP addresses instead of hostnames
 last -i
@@ -90,7 +93,7 @@ A flood of failed attempts from the same IP is a brute force scan. Check for vol
 
 ```bash
 # Count failed attempts per source IP
-sudo lastb --ip | awk '{print $3}' | sort | uniq -c | sort -rn | head -20
+sudo lastb --ip | awk '$3 ~ /^[0-9a-fA-F:.]+$/ {print $3}' | sort | uniq -c | sort -rn | head -20
 ```
 
 ## Currently Logged-In Users with who and w
@@ -128,7 +131,7 @@ bob      pts/1    10.0.0.5         08:30    1:00  0.10s  0.05s vim /etc/nginx/ng
 lastlog
 ```
 
-Shows the last login time and source for every user account on the system, including service accounts. The "**Never logged in**" entries are important to notice - they represent accounts that could potentially be used but haven't been yet.
+Shows the last login time and source for every current user account on the system, including service accounts. The "**Never logged in**" entries are important to notice, but many service accounts may also be locked or configured with non-login shells.
 
 ```bash
 # Show only users who have logged in
@@ -140,11 +143,11 @@ lastlog -u alice
 
 ## Querying with journalctl
 
-The systemd journal captures authentication events with more context than the binary log files:
+The systemd journal captures service and authentication events with more context than the binary login databases:
 
 ```bash
-# Show all authentication-related log entries
-sudo journalctl -u ssh --since "yesterday"
+# Show SSH service log entries since yesterday
+sudo journalctl -u ssh.service --since "yesterday"
 
 # Show failed SSH login attempts
 sudo journalctl _SYSTEMD_UNIT=ssh.service | grep "Failed password"
@@ -161,7 +164,7 @@ sudo journalctl _SYSTEMD_UNIT=ssh.service | grep "alice"
 For text-based log parsing, `/var/log/auth.log` is the source:
 
 ```bash
-# All sudo usage in the last 24 hours
+# Recent sudo usage
 sudo grep "sudo" /var/log/auth.log | tail -50
 
 # Failed SSH authentication attempts
@@ -191,7 +194,7 @@ last --since "7 days ago" | grep -v "^$\|^wtmp" | head -30
 echo ""
 
 echo "--- Failed login attempts (top 10 source IPs) ---"
-sudo lastb --ip 2>/dev/null | awk '{print $3}' | \
+sudo lastb --ip 2>/dev/null | awk '$3 ~ /^[0-9a-fA-F:.]+$/ {print $3}' | \
     grep -v "^$" | sort | uniq -c | sort -rn | head -10
 echo ""
 
@@ -218,13 +221,13 @@ sudo grep "Accepted" /var/log/auth.log | \
     awk '$3 ~ /^0[0-6]:/' | head -20
 
 # Logins from unexpected geographic regions (check IPs against known ranges)
-last -i | awk '{print $3}' | grep -v "^$\|^::" | sort -u
+last -i | awk '$3 ~ /^[0-9a-fA-F:.]+$/ && $3 != "::" {print $3}' | sort -u
 
 # Multiple users logging in from the same IP
-last -i | awk '{print $3}' | sort | uniq -c | sort -rn | head -10
+last -i | awk '$3 ~ /^[0-9a-fA-F:.]+$/ {print $3}' | sort | uniq -c | sort -rn | head -10
 
 # Root logins via SSH (should be disabled but worth checking)
-sudo grep "Accepted.*root" /var/log/auth.log
+sudo grep "Accepted .* for root " /var/log/auth.log
 ```
 
 ## Log Rotation and History Depth
@@ -246,7 +249,8 @@ sudo nano /etc/logrotate.d/wtmp
 /var/log/wtmp {
     missingok
     monthly
-    rotate 12    # Keep 12 months instead of 1
+    # Keep 12 months instead of 1
+    rotate 12
     create 0664 root utmp
     minsize 1M
 }
