@@ -31,8 +31,8 @@ echo "deb [signed-by=/usr/share/keyrings/frrouting.gpg] https://deb.frrouting.or
 
 sudo apt update && sudo apt install -y frr frr-pythontools
 
-# Install multicast testing tools
-sudo apt install -y smcroute mctools
+# Install a static multicast routing daemon for simple setups
+sudo apt install -y smcroute
 ```
 
 ## Enabling Required Kernel Support
@@ -40,14 +40,14 @@ sudo apt install -y smcroute mctools
 ```bash
 # Enable multicast routing support in the kernel
 # IP_MROUTE must be compiled in or as a module
-sudo modprobe ip_gre  # needed for some multicast tunneling scenarios
+grep CONFIG_IP_MROUTE /boot/config-$(uname -r)
 
 # Enable IP forwarding
 sudo sysctl -w net.ipv4.ip_forward=1
 echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/99-multicast.conf
 
-# Verify multicast routing socket support
-cat /proc/net/dev_mcast
+# Verify multicast routing table support
+cat /proc/net/ip_mr_cache
 ```
 
 ## Enabling PIM in FRRouting
@@ -78,6 +78,7 @@ Network:
   Router B: eth0=10.0.12.2, eth1=10.0.2.1 (connects to receivers)
 
   Router A is also the Rendezvous Point (RP) for 224.0.0.0/4
+  Assume unicast routing between the subnets is already in place.
 ```
 
 ### Router A Configuration
@@ -106,7 +107,7 @@ interface eth1
 ! Configure this router as the RP for all multicast groups
 router pim
   ! Define the RP address (this router's own address)
-  rp 10.0.1.1
+  rp 10.0.12.1 224.0.0.0/4
 
 exit
 
@@ -129,7 +130,7 @@ interface eth1
 
 router pim
   ! Point to Router A as the RP
-  rp 10.0.1.1
+  rp 10.0.12.1 224.0.0.0/4
 
 exit
 
@@ -155,15 +156,30 @@ sudo vtysh -c "show ip igmp groups"
 sudo vtysh -c "show ip pim interface"
 ```
 
-## Testing Multicast with smcroute and mcjoin
+## Testing Multicast with Python
 
 ```bash
 # On a receiver host, join a multicast group
-# Install mcjoin for easy testing
-sudo apt install -y mcjoin
+# Replace 10.0.2.100 with the receiver host's address on eth1
+python3 - <<'EOF'
+import socket
+import struct
 
-# Join the multicast group 239.1.2.3 and wait for data
-sudo mcjoin -i eth1 239.1.2.3
+group = '239.1.2.3'
+port = 5000
+interface_ip = '10.0.2.100'
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(('', port))
+
+mreq = struct.pack('=4s4s', socket.inet_aton(group), socket.inet_aton(interface_ip))
+sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+
+while True:
+    data, addr = sock.recvfrom(2048)
+    print(f"{addr}: {data.decode(errors='replace')}")
+EOF
 
 # On the sender host, send multicast packets
 # Use netcat or a simple Python script
@@ -234,10 +250,9 @@ echo 1 | sudo tee /sys/class/net/br0/bridge/multicast_snooping
 bridge mdb show
 
 # To make it persistent via Netplan:
-# bridges:
-#   br0:
-#     parameters:
-#       multicast-snooping: true
+# Netplan does not currently expose a bridge multicast-snooping key.
+# Use a systemd-networkd .netdev file or a networkd-dispatcher script
+# if you need to persist this sysfs setting.
 ```
 
 ## Multicast Scoping with TTL
@@ -258,9 +273,8 @@ TTL   Scope
 # Packets with TTL <= threshold are NOT forwarded out that interface
 # This limits multicast to specific network boundaries
 
-# Via PIM configuration:
-# interface eth1
-#   ip multicast boundary 15
+# Via smcroute configuration:
+# phyint eth1 enable ttl-threshold 15
 ```
 
 ## Monitoring Multicast Traffic
