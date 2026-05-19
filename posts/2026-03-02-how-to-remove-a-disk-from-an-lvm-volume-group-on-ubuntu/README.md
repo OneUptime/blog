@@ -132,7 +132,7 @@ sudo pvdisplay /dev/sdb
   PV Name               /dev/sdb
   VG Name               data_vg
   PV Size               500.00 GiB
-  Allocatable           yes (but full)
+  Allocatable           yes
   PE Size               4.00 MiB
   Total PE              127999
   Free PE               127999       <- All free now
