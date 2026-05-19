@@ -74,9 +74,8 @@ while read old_sha new_sha ref_name; do
 
     # Get the range of commits being pushed
     if [[ "$old_sha" == "0000000000000000000000000000000000000000" ]]; then
-        # New branch: check all commits from the beginning
-        COMMIT_RANGE="$new_sha"
-        COMMITS=$(git rev-list "$COMMIT_RANGE")
+        # New branch: check only commits not already reachable from another ref
+        COMMITS=$(git rev-list "$new_sha" --not --all)
     else
         # Existing branch: check only new commits
         COMMITS=$(git rev-list "${old_sha}..${new_sha}")
@@ -161,7 +160,18 @@ if [[ "$REF_NAME" == "refs/heads/main" || "$REF_NAME" == "refs/heads/master" ]];
 fi
 
 # Prevent force pushes to protected branches
-if [[ "$REF_NAME" == "refs/heads/main" || "$REF_NAME" == "refs/heads/main" ]]; then
+if [[ "$REF_NAME" == "refs/heads/main" || "$REF_NAME" == "refs/heads/master" ]]; then
+    # Prevent deletion of protected branches
+    if [[ "$NEW_SHA" == "0000000000000000000000000000000000000000" ]]; then
+        echo "ERROR: Deleting $REF_NAME is not allowed"
+        exit 1
+    fi
+
+    # New protected branches do not have an old commit to compare
+    if [[ "$OLD_SHA" == "0000000000000000000000000000000000000000" ]]; then
+        exit 0
+    fi
+
     # Check if this is a non-fast-forward push
     if ! git merge-base --is-ancestor "$OLD_SHA" "$NEW_SHA" 2>/dev/null; then
         echo "ERROR: Force pushes to $REF_NAME are not allowed"
@@ -206,20 +216,16 @@ while read old_sha new_sha ref_name; do
         log "Previous SHA: $old_sha"
         log "New SHA: $new_sha"
 
-        # Export the repository content to the application directory
-        # GIT_DIR must be unset so git commands work in the target directory
-        export GIT_DIR="$(pwd)"
-        export GIT_WORK_TREE="$APP_DIR"
-
         # Create app directory if it doesn't exist
         sudo -u "$DEPLOY_USER" mkdir -p "$APP_DIR"
 
         # Checkout the latest code
-        sudo -u "$DEPLOY_USER" git checkout -f main
+        sudo -u "$DEPLOY_USER" git --git-dir="$(pwd)" --work-tree="$APP_DIR" \
+            checkout -f "$new_sha" -- .
 
         # Run deployment commands
         log "Installing dependencies..."
-        sudo -u "$DEPLOY_USER" bash -c "cd $APP_DIR && npm ci --production" >> "$LOG_FILE" 2>&1
+        sudo -u "$DEPLOY_USER" bash -c 'cd "$1" && npm ci --omit=dev' _ "$APP_DIR" >> "$LOG_FILE" 2>&1
 
         if [[ $? -ne 0 ]]; then
             log "ERROR: npm install failed"
@@ -239,8 +245,6 @@ while read old_sha new_sha ref_name; do
                 echo "WARNING: Service myapp.service failed to start. Check $LOG_FILE"
             fi
         fi
-
-        unset GIT_DIR GIT_WORK_TREE
     fi
 done
 ```
@@ -294,8 +298,7 @@ send_slack_notification() {
     curl -s -X POST \
         -H "Content-Type: application/json" \
         -d "{
-            \"text\": \"Push to *${repo_name}* branch *${ref_name}* (${short_sha})\",
-            \"channel\": \"#dev-notifications\"
+            \"text\": \"Push to *${repo_name}* branch *${ref_name}* (${short_sha})\"
         }" \
         "https://hooks.slack.com/services/YOUR/WEBHOOK/TOKEN"
 }
@@ -303,7 +306,7 @@ send_slack_notification() {
 
 ## Template Hooks for All Repositories
 
-Git's `init.templatedir` setting copies hook templates into every new repository:
+Git's `init.templateDir` setting copies hook templates into every new repository:
 
 ```bash
 # Create a template directory
