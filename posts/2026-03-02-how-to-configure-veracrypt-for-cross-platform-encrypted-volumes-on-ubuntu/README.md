@@ -14,9 +14,9 @@ This guide covers installing VeraCrypt on Ubuntu, creating encrypted volumes, mo
 
 ## Installing VeraCrypt on Ubuntu
 
-VeraCrypt is not in the Ubuntu default repositories. You install it either from the official PPA or by downloading the package directly from the VeraCrypt website.
+VeraCrypt is not in the Ubuntu default repositories. You install it either from a community-maintained PPA or by downloading the package directly from the VeraCrypt website.
 
-### Option 1: Install via PPA (Recommended)
+### Option 1: Install via PPA (Convenient)
 
 ```bash
 # Add the VeraCrypt PPA
@@ -31,12 +31,12 @@ sudo apt install veracrypt
 ### Option 2: Install from Official Package
 
 ```bash
-# Check the VeraCrypt website for the latest version
-# Download the console-only package for servers (no GUI dependency)
-wget https://launchpad.net/veracrypt/trunk/1.26.7/+download/veracrypt-1.26.7-Ubuntu-22.04-amd64.deb
+# Check the VeraCrypt website for the latest version and matching Ubuntu release
+# Download the GUI package for desktops
+wget https://launchpad.net/veracrypt/trunk/1.26.24/+download/veracrypt-1.26.24-Ubuntu-24.04-amd64.deb
 
 # Install the downloaded package
-sudo dpkg -i veracrypt-1.26.7-Ubuntu-22.04-amd64.deb
+sudo dpkg -i veracrypt-1.26.24-Ubuntu-24.04-amd64.deb
 
 # Resolve any dependency issues
 sudo apt -f install
@@ -46,8 +46,8 @@ For servers and scripting, install the console-only version which has no GUI dep
 
 ```bash
 # Console-only version
-wget https://launchpad.net/veracrypt/trunk/1.26.7/+download/veracrypt-console-1.26.7-Ubuntu-22.04-amd64.deb
-sudo dpkg -i veracrypt-console-1.26.7-Ubuntu-22.04-amd64.deb
+wget https://launchpad.net/veracrypt/trunk/1.26.24/+download/veracrypt-console-1.26.24-Ubuntu-24.04-amd64.deb
+sudo dpkg -i veracrypt-console-1.26.24-Ubuntu-24.04-amd64.deb
 ```
 
 ### Verify Installation
@@ -55,7 +55,7 @@ sudo dpkg -i veracrypt-console-1.26.7-Ubuntu-22.04-amd64.deb
 ```bash
 # Confirm veracrypt is installed and working
 veracrypt --version
-veracrypt --help | head -20
+veracrypt -t --help | head -20
 ```
 
 ## Creating Encrypted Volumes
@@ -88,25 +88,27 @@ For non-interactive scripted creation:
 ```bash
 # Create a 500MB container non-interactively
 # WARNING: Putting passwords in scripts is insecure - use with caution in trusted environments
-veracrypt --text --create /home/user/data.vc \
+veracrypt -t --non-interactive --create /home/user/data.vc \
   --size 500M \
   --encryption AES \
   --hash sha-512 \
   --filesystem FAT \
   --password "your-strong-passphrase-here" \
+  --pim=0 \
+  --keyfiles="" \
   --volume-type normal \
   --random-source /dev/urandom
 ```
 
 **Filesystem choice for cross-platform use:**
 - `FAT` (FAT32) - works everywhere, 4GB file size limit
-- `exFAT` - works on Windows/Mac/Linux, no 4GB limit, needs exfat-utils on Linux
+- `exFAT` - works on Windows/Mac/Linux, no 4GB limit, needs exfatprogs on Linux for formatting tools
 - `ext4` - Linux only, best for Linux-only volumes
 - `NTFS` - readable on Linux with ntfs-3g, writable on Windows/Linux
 
 ```bash
 # Install exFAT support for cross-platform volumes
-sudo apt install exfat-fuse exfatprogs
+sudo apt install exfatprogs
 ```
 
 ### Creating an Encrypted Partition
@@ -118,14 +120,16 @@ For encrypting an entire USB drive or partition:
 # Identify your device first
 lsblk
 
-# Create encrypted partition on /dev/sdb (entire disk)
+# Create encrypted volume on /dev/sdb1 (a partition)
 # Run as root
-sudo veracrypt --text --create /dev/sdb \
-  --size $(lsblk -b -d -o SIZE /dev/sdb | tail -1) \
+sudo veracrypt -t --non-interactive --create /dev/sdb1 \
+  --size max \
   --encryption AES \
   --hash sha-512 \
   --filesystem exFAT \
   --password "your-passphrase" \
+  --pim=0 \
+  --keyfiles="" \
   --volume-type normal \
   --random-source /dev/urandom
 ```
@@ -151,26 +155,23 @@ sudo veracrypt --text --mount /home/user/secure-data.vc /mnt/secure
 
 ```bash
 # Store the password in a file (restrict permissions carefully)
-echo "your-passphrase" > /root/.vc-password
-chmod 400 /root/.vc-password
+sudo sh -c 'printf "%s\n" "your-passphrase" > /root/.vc-password'
+sudo chmod 400 /root/.vc-password
 
-# Mount using the password file
-sudo veracrypt --text --mount /home/user/secure-data.vc /mnt/secure \
-  --password-file /root/.vc-password \
-  --non-interactive
+# Mount using the password file via stdin
+sudo sh -c 'veracrypt -t --non-interactive --stdin --pim=0 --keyfiles="" --protect-hidden=no /home/user/secure-data.vc /mnt/secure < /root/.vc-password'
 ```
 
 ### Mount an Encrypted Device
 
 ```bash
 # Mount an encrypted USB drive
-sudo veracrypt --text --mount /dev/sdb /mnt/usb-encrypted
+sudo veracrypt --text --mount /dev/sdb1 /mnt/usb-encrypted
 
 # With specific options
-sudo veracrypt --text --mount /dev/sdb /mnt/usb-encrypted \
+sudo veracrypt --text --mount /dev/sdb1 /mnt/usb-encrypted \
   --encryption AES \
-  --hash sha-512 \
-  --filesystem none  # Don't auto-detect, use existing filesystem
+  --hash sha-512
 ```
 
 ### List Mounted Volumes
@@ -188,16 +189,16 @@ Always unmount VeraCrypt volumes properly before removing the device or powering
 
 ```bash
 # Unmount a specific volume by mount point
-sudo veracrypt --text --dismount /mnt/secure
+sudo veracrypt --text --unmount /mnt/secure
 
 # Unmount by slot number
-sudo veracrypt --text --dismount --slot 1
+sudo veracrypt --text --unmount --slot=1
 
 # Unmount all mounted VeraCrypt volumes
-sudo veracrypt --text --dismount --all
+sudo veracrypt --text --unmount
 
 # Force unmount (use carefully - may cause data loss if files are open)
-sudo veracrypt --text --dismount --force /mnt/secure
+sudo veracrypt --text --force --unmount /mnt/secure
 ```
 
 ## Cross-Platform Considerations
@@ -216,7 +217,7 @@ veracrypt --text --create /home/user/cross-platform.vc \
   --filesystem exFAT
 
 # Verify exFAT tools are installed on Ubuntu
-sudo apt install exfatprogs fuse
+sudo apt install exfatprogs
 
 # FAT32 for maximum compatibility (4GB file size limit)
 veracrypt --text --create /home/user/portable.vc \
@@ -257,7 +258,7 @@ cat > /home/user/mount-secure.sh << 'EOF'
 # Mount VeraCrypt volume at login
 
 CONTAINER="/home/user/secure-data.vc"
-MOUNTPOINT="/mnt/secure"
+MOUNTPOINT="/home/user/secure"
 PASSFILE="/home/user/.vc-password"
 
 # Create mount point if needed
@@ -270,9 +271,8 @@ if veracrypt --text --list | grep -q "$MOUNTPOINT"; then
 fi
 
 # Mount the volume
-veracrypt --text --mount "$CONTAINER" "$MOUNTPOINT" \
-    --password-file "$PASSFILE" \
-    --non-interactive
+veracrypt -t --non-interactive --stdin --pim=0 --keyfiles="" --protect-hidden=no \
+    "$CONTAINER" "$MOUNTPOINT" < "$PASSFILE"
 
 echo "Volume mounted at $MOUNTPOINT"
 EOF
@@ -295,7 +295,7 @@ After=network.target
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/home/user/mount-secure.sh
-ExecStop=veracrypt --text --dismount /mnt/secure
+ExecStop=veracrypt --text --unmount /home/user/secure
 
 [Install]
 WantedBy=default.target
@@ -310,20 +310,16 @@ systemctl --user start veracrypt-mount.service
 
 **"fuse: device not found" error:**
 ```bash
-# Install FUSE and load the module
-sudo apt install fuse
+# Install FUSE support if it is missing and load the module
+sudo apt install fuse3
 sudo modprobe fuse
-
-# Add your user to the fuse group
-sudo usermod -aG fuse $USER
-# Log out and back in for group changes to take effect
 ```
 
 **"Volume contains wrong signature" error:**
 This usually means the wrong password was entered, or the file is not a VeraCrypt volume. Double-check the password and container path.
 
-**Slow mount on large containers:**
-VeraCrypt needs to verify the container on mount. For very large containers this takes a moment. The `--quick` flag skips some checks but is not recommended for regular use.
+**Slow creation of large containers:**
+VeraCrypt fully formats new containers by default. For large normal volumes, the `--quick` flag enables quick formatting, but do not use it when creating an outer volume for a hidden volume.
 
 **Volume shows as read-only:**
 ```bash
