@@ -40,9 +40,10 @@ A default Ubuntu installation typically shows something like this:
 GRUB_DEFAULT=0
 GRUB_TIMEOUT_STYLE=hidden
 GRUB_TIMEOUT=0
-GRUB_DISTRIBUTOR=`lsb_release -i -s 2> /dev/null || echo Debian`
+GRUB_DISTRIBUTOR=`( . /etc/os-release; echo ${NAME:-Ubuntu} ) 2>/dev/null || echo Ubuntu`
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash"
 GRUB_CMDLINE_LINUX=""
+GRUB_DISABLE_OS_PROBER=true
 ```
 
 ## Key Configuration Variables
@@ -173,7 +174,7 @@ GRUB_CMDLINE_LINUX_DEFAULT="debug"
 If you're having display issues with a particular GPU or need to force a specific framebuffer:
 
 ```bash
-# Force VESA framebuffer
+# Disable kernel mode setting and use the firmware-provided framebuffer
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash nomodeset"
 
 # Specify framebuffer resolution
@@ -244,15 +245,21 @@ For themed GRUB menus, the configuration lives in `/boot/grub/themes/` and is re
 
 ## Dual-Boot Considerations
 
-On dual-boot systems with Windows, Ubuntu's `os-prober` detects Windows automatically. If it's not finding it:
+On dual-boot systems with Windows, Ubuntu's `os-prober` can detect Windows when it is installed and enabled. If it's not finding it:
 
 ```bash
 # Make sure os-prober is installed and enabled
 sudo apt install os-prober
 
-# Re-enable it if it was disabled (it's disabled by default in some versions)
-echo "GRUB_DISABLE_OS_PROBER=false" | sudo tee -a /etc/default/grub
+# Re-enable it if it was disabled (it is disabled by default in current GRUB)
+sudo nano /etc/default/grub
+```
 
+```bash
+GRUB_DISABLE_OS_PROBER=false
+```
+
+```bash
 sudo update-grub
 ```
 
