@@ -26,7 +26,7 @@ sudo apt install -y build-essential libssl-dev libreadline-dev zlib1g-dev \
 # Download SoftEther VPN Server
 # Check https://www.softether-download.com for the latest version
 # Select: SoftEther VPN Server, Linux, Intel x64
-wget "https://www.softether-download.com/files/softether/v4.43-9799-beta-2023.08.31-tree/Linux/SoftEther_VPN_Server/64bit_-_Intel_x64_or_AMD64/softether-vpnserver-v4.43-9799-beta-2023.08.31-linux-x64-64bit.tar.gz"
+wget "https://www.softether-download.com/files/softether/v4.44-9807-rtm-2025.04.16-tree/Linux/SoftEther_VPN_Server/64bit_-_Intel_x64_or_AMD64/softether-vpnserver-v4.44-9807-rtm-2025.04.16-linux-x64-64bit.tar.gz"
 
 # Extract the archive
 tar xzf softether-vpnserver-*.tar.gz
@@ -86,7 +86,7 @@ sudo /usr/local/vpnserver/vpncmd
 # At the prompt, choose:
 # 1. Management of VPN Server or VPN Bridge
 # Enter localhost for the server address (just press Enter)
-# Press Enter for port (uses default 443)
+# Press Enter for port (uses default 5555)
 # Press Enter for virtual hub name (manage the server, not a hub)
 
 # Set the server administrator password
@@ -109,7 +109,7 @@ SoftEther uses "virtual hubs" as isolated network segments. Create one for your 
 sudo /usr/local/vpnserver/vpncmd localhost /SERVER /PASSWORD:your-password /CMD HubCreate MyVPN /PASSWORD:hub-password
 
 # Select the hub for further configuration
-sudo /usr/local/vpnserver/vpncmd localhost /SERVER /PASSWORD:your-password /HUB:MyVPN /CMD HubPasswordSet /PASSWORD:hub-password /TYPE:all
+sudo /usr/local/vpnserver/vpncmd localhost /SERVER /PASSWORD:your-password /HUB:MyVPN /CMD SetHubPassword hub-password
 ```
 
 ## Enabling L2TP/IPsec
@@ -133,7 +133,7 @@ The pre-shared key (`PSK`) is what clients enter when configuring the L2TP conne
 sudo /usr/local/vpnserver/vpncmd localhost /SERVER /PASSWORD:your-password /CMD OpenVpnEnable yes /PORTS:1194
 
 # Download the OpenVPN configuration file (to distribute to clients)
-sudo /usr/local/vpnserver/vpncmd localhost /SERVER /PASSWORD:your-password /CMD OpenVpnMakeConfig /SAVEPATH:/tmp/softether_openvpn.zip
+sudo /usr/local/vpnserver/vpncmd localhost /SERVER /PASSWORD:your-password /CMD OpenVpnMakeConfig /tmp/softether_openvpn.zip
 ```
 
 ## Enabling SSTP (for Windows native client)
@@ -168,7 +168,7 @@ sudo /usr/local/vpnserver/vpncmd localhost /SERVER /PASSWORD:your-password /HUB:
     /GW:192.168.30.1 \
     /DNS:8.8.8.8 \
     /DNS2:8.8.4.4 \
-    /DOMAIN: \
+    /DOMAIN:none \
     /LOG:yes
 ```
 
