@@ -14,7 +14,7 @@ Setting it up requires configuration at three levels: the BIOS/UEFI firmware, th
 
 ## How Wake-on-LAN Works
 
-A WoL-capable network interface card stays in a low-power listening state even when the host is shut down or suspended, as long as the machine remains plugged into power. When it receives a "magic packet" - a broadcast UDP packet containing the target MAC address repeated 16 times - it signals the motherboard to power on.
+A WoL-capable network interface card stays in a low-power listening state even when the host is shut down or suspended, as long as the machine remains plugged into power. When it receives a "magic packet" - usually sent as a broadcast UDP packet containing six `0xff` bytes followed by the target MAC address repeated 16 times - it signals the motherboard to power on.
 
 The magic packet is sent from another machine on the same network (or from outside via port forwarding if your router supports it).
 
