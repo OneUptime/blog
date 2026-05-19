@@ -161,8 +161,8 @@ sudo apt install openvswitch-switch -y
 sudo ovs-vsctl add-br br-geneve
 
 # Add a GENEVE port pointing to Host B
-sudo ovs-vsctl add-port br-geneve geneve0 -- \
-  set interface geneve0 type=geneve \
+sudo ovs-vsctl add-port br-geneve geneve-ovs0 -- \
+  set interface geneve-ovs0 type=geneve \
   options:remote_ip=192.168.1.20 \
   options:key=100
 
@@ -267,15 +267,16 @@ sudo ip link set geneve0 mtu 8950
 
 ## Tunnel Options (GENEVE Extensibility)
 
-GENEVE's key feature is the ability to carry options (Type-Length-Value attributes) in the tunnel header. With iproute2, you can set options on individual packets using `ip route` with `encap` specifications:
+GENEVE's key feature is the ability to carry options (Type-Length-Value attributes) in the tunnel header. The simple `ip link add ... type geneve` tunnel above does not attach arbitrary TLV options to individual packets. In Linux, iproute2 exposes GENEVE TLV metadata through `tc tunnel_key` actions for metadata-driven tunnel devices:
 
 ```bash
-# Route traffic to 10.20.0.0/24 via GENEVE with custom options
-# Class 1, type 1, option data 0xdeadbeef
-sudo ip route add 10.20.0.0/24 \
-  encap geneve id 100 remote 192.168.1.20 \
-  options 0001:01:deadbeef \
-  dev eth0
+# Example tunnel_key action fields for class 1, type 1, option data 0xdeadbeef
+action tunnel_key set \
+  src_ip 192.168.1.10 \
+  dst_ip 192.168.1.20 \
+  id 100 \
+  dst_port 6081 \
+  geneve_opts 0001:01:deadbeef
 ```
 
 This is primarily useful when the remote endpoint understands and processes those options (e.g., when both endpoints run specific SDN software).
