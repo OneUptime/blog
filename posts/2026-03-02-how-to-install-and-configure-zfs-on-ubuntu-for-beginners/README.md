@@ -47,7 +47,7 @@ ZFS manages everything in one layer, which lets it make intelligent decisions - 
 - **Vdev**: A virtual device - a disk, a mirror, or a RAIDZ group within a pool
 - **ARC (Adaptive Replacement Cache)**: ZFS's read cache, stored in RAM
 - **L2ARC**: An optional secondary read cache on a fast device (SSD)
-- **ZIL/SLOG**: ZFS Intent Log - a write cache for sync writes
+- **ZIL/SLOG**: ZFS Intent Log - a log for synchronous writes; SLOG is an optional separate log device
 
 ## Installing ZFS on Ubuntu
 
@@ -60,7 +60,7 @@ sudo apt update
 sudo apt install zfsutils-linux
 ```
 
-This installs the ZFS kernel module (`zfs.ko`) and command-line tools.
+This installs the ZFS command-line tools. On Ubuntu kernels with ZFS support, the ZFS kernel module (`zfs.ko`) can then be loaded when needed.
 
 Verify the installation:
 
@@ -233,8 +233,8 @@ tank/web                  120K  480G       120K  /tank/web
 sudo zfs set mountpoint=/var/www tank/web
 sudo zfs set mountpoint=/var/lib/postgresql tank/databases/postgresql
 
-# Or specify at creation
-sudo zfs create -o mountpoint=/var/lib/mysql tank/databases/mysql
+# Or specify at creation for a new dataset
+sudo zfs create -o mountpoint=/srv/data tank/data
 ```
 
 ## Enabling Compression
@@ -282,10 +282,10 @@ sudo zfs set reservation=10G tank/databases/postgresql
 Configure the pool's behavior:
 
 ```bash
-# Enable autoexpand (auto-use disk space if pool disk is replaced with larger one)
+# Enable autoexpand (auto-use expanded device space; mirror/RAIDZ vdevs need all devices expanded)
 sudo zpool set autoexpand=on tank
 
-# Enable autoreplace (auto-replace failed disks with hot spares if configured)
+# Enable autoreplace (auto-replace a device found in the same physical location)
 sudo zpool set autoreplace=on tank
 
 # Check all pool properties
