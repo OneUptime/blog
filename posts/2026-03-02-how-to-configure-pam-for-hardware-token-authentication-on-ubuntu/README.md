@@ -128,7 +128,7 @@ sudo nano /etc/pam.d/sudo
 auth required pam_google_authenticator.so
 ```
 
-For SSH with TOTP (requires `ChallengeResponseAuthentication yes` in sshd_config):
+For SSH with TOTP (requires `KbdInteractiveAuthentication yes` in sshd_config):
 
 ```bash
 sudo nano /etc/pam.d/sshd
@@ -139,19 +139,21 @@ sudo nano /etc/pam.d/sshd
 auth required pam_google_authenticator.so
 ```
 
+If you want SSH to require public key plus TOTP, instead of public key plus password plus TOTP, comment out `@include common-auth` in `/etc/pam.d/sshd`.
+
 ```bash
 # Also configure sshd
 sudo nano /etc/ssh/sshd_config
 ```
 
 ```text
-ChallengeResponseAuthentication yes
+KbdInteractiveAuthentication yes
 AuthenticationMethods publickey,keyboard-interactive
 UsePAM yes
 ```
 
 ```bash
-sudo systemctl restart sshd
+sudo systemctl restart ssh
 ```
 
 ## PKCS11 Smart Cards and Tokens
@@ -173,16 +175,23 @@ Minimum configuration:
 
 ```text
 # pam_pkcs11.conf
-use_pkcs11_module = opensc;
+pam_pkcs11 {
+  use_pkcs11_module = opensc;
 
-pkcs11_module opensc {
+  pkcs11_module opensc {
     module = /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so;
     description = "OpenSC PKCS#11 module";
     slot_num = 0;
-}
+  }
 
-# Map certificate CN to username
-use_mappers = cn;
+  # Map certificate subject to username
+  use_mappers = subject;
+
+  mapper subject {
+    module = internal;
+    mapfile = file:///etc/pam_pkcs11/subject_mapping;
+  }
+}
 ```
 
 Create the subject mapping:
@@ -250,11 +259,14 @@ sudo whoami
 # Test login PAM (test by SSH as another user, not current session)
 ssh testuser@localhost
 
+# Install pamtester if needed
+sudo apt install pamtester
+
 # Test a specific PAM service
 pamtester sudo username authenticate
 
-# Show what PAM modules are loaded for a service
-sudo pam_list sudo
+# Show the PAM configuration for a service
+sudo sed -n '/^[[:space:]]*#/!p' /etc/pam.d/sudo /etc/pam.d/common-auth
 ```
 
 ## Debugging PAM Issues
@@ -270,7 +282,7 @@ When authentication fails unexpectedly:
 sudo journalctl -f | grep -i "pam\|auth"
 
 # Specific service logs
-sudo journalctl -u sshd -f
+sudo journalctl -u ssh -f
 
 # For GUI login issues
 sudo journalctl -u gdm -f
@@ -287,10 +299,10 @@ For changes that affect all services, edit `common-auth`:
 sudo nano /etc/pam.d/common-auth
 ```
 
-The default looks like:
+The default pattern looks like this, though exact jump counts and modules vary by Ubuntu release and enabled PAM profiles:
 
 ```text
-auth [success=1 default=ignore] pam_unix.so nullok_secure
+auth [success=1 default=ignore] pam_unix.so nullok
 auth requisite pam_deny.so
 auth required pam_permit.so
 ```
@@ -300,7 +312,7 @@ The `success=1` means if `pam_unix.so` succeeds, skip the next 1 module (`pam_de
 To add FIDO2 as a second factor for everything:
 
 ```text
-auth [success=1 default=ignore] pam_unix.so nullok_secure
+auth [success=1 default=ignore] pam_unix.so nullok
 auth requisite pam_deny.so
 auth required pam_permit.so
 # Add FIDO2 requirement after successful password auth
