@@ -43,15 +43,16 @@ strings $(which sshd) | grep hosts_access
 # - sendmail
 ```
 
-Note: Modern OpenSSH (since version 6.7) no longer uses TCP Wrappers by default. The `libwrap` option was removed in OpenSSH 9.8. Ubuntu 24.04's default sshd may not respect hosts.allow/deny.
+Note: Upstream OpenSSH removed TCP Wrappers/libwrap support in version 6.7. Ubuntu and Debian builds may carry distribution-specific libwrap support; for example, Ubuntu 24.04's `openssh-server` package depends on `libwrap0`. Always check the actual binary on your system before relying on hosts.allow/deny for SSH.
 
 ```bash
-# Check if your sshd was compiled with tcp-wrappers support
-sshd -d -p 2223 2>&1 | grep "tcp wrappers"
-# Or check the compile-time options:
+# Check if your sshd binary links to libwrap
+ldd $(which sshd) | grep libwrap
+
+# Check the installed OpenSSH version
 sshd -V 2>&1 || ssh -V 2>&1
 
-# Check what version of openssh is installed
+# Check what version of the Ubuntu package is installed
 dpkg -l openssh-server | grep openssh
 ```
 
@@ -101,7 +102,7 @@ ALL : 10.0.0.0/8
 # Log connection and allow
 sshd : 192.168.1.0/24 : spawn echo "%a connected to %d at $(date)" >> /var/log/tcp_wrappers.log
 
-# Allow with custom banner
+# Replace the service with a custom message
 sshd : 192.168.1.100 : twist echo "Authorized access only"
 ```
 
@@ -192,8 +193,8 @@ sshd : KNOWN
 ALL : PARANOID : DENY
 
 # Subnet notation
-sshd : 192.168.1.0/255.255.255.0  # older CIDR notation
-sshd : 192.168.1.0/24             # modern CIDR notation (some versions)
+sshd : 192.168.1.0/255.255.255.0  # net/mask notation
+sshd : 192.168.1.0/24             # net/mask-length notation
 
 # Address prefix match
 sshd : 192.168.1.  # all addresses starting with 192.168.1.
@@ -204,11 +205,12 @@ sshd : 192.168.1.  # all addresses starting with 192.168.1.
 The `spawn` and `twist` keywords run commands:
 
 ```bash
-# spawn: run a command in background, then apply the rule decision
+# spawn: run a child command, then apply the rule decision
 # Access is still granted/denied based on the file the rule is in
+# Add & at the end of the command if you do not want TCP Wrappers to wait for it
 sshd : 192.168.1.0/24 : spawn logger "TCP Wrappers: %a connected to %d"
 
-# twist: run a command and use its exit code / output
+# twist: replace the service process with another command
 # The connection is handed to the command instead of the service
 sshd : 10.0.0.50 : twist echo "Your access attempt has been logged"
 
