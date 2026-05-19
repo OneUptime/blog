@@ -60,7 +60,7 @@ date
 
 # If needed, install and configure chrony
 apt-get install -y chrony
-systemctl enable --now chronyd
+systemctl enable --now chrony
 ```
 
 ### Configure Dedicated Cluster Network
@@ -175,6 +175,7 @@ exportfs -ra
 pvesm add nfs shared-nfs \
     --server 192.168.1.200 \
     --export /exports/vm-storage \
+    --path /mnt/pve/shared-nfs \
     --content images,backup \
     --options vers=4
 
@@ -237,12 +238,13 @@ HA-managed VMs have these states:
 
 - `started`: VM should be running
 - `stopped`: VM should be stopped (HA won't start it)
-- `disabled`: HA ignores this VM temporarily
+- `disabled`: HA stops the VM and does not relocate it on node failures
+- `ignored`: HA leaves the VM unmanaged temporarily
 - `error`: HA has exhausted restart attempts
 
 ```bash
-# Temporarily disable HA for a VM (for maintenance)
-ha-manager set vm:201 --state disabled
+# Temporarily remove a VM from HA management (for maintenance)
+ha-manager set vm:201 --state ignored
 
 # Re-enable HA management
 ha-manager set vm:201 --state started
@@ -328,8 +330,8 @@ With shared storage configured and the cluster operational:
 # Migrate a VM from pve1 to pve2 (online - no downtime required)
 qm migrate 201 pve2 --online
 
-# Migrate all VMs off a node (for maintenance)
-for vmid in $(qm list --node pve1 | awk 'NR>1 {print $1}'); do
+# On pve1, migrate all local VMs off the node (for maintenance)
+for vmid in $(qm list | awk 'NR>1 {print $1}'); do
     qm migrate $vmid pve2 --online
 done
 ```
@@ -337,11 +339,13 @@ done
 ## Removing a Node from the Cluster
 
 ```bash
-# First, migrate all VMs off the node
-# Then, on the node being removed:
+# First, migrate all VMs off the node and power it off.
+# Then, from a surviving cluster node:
 pvecm delnode pve3
 
-# If the node is already offline, run from a surviving node:
+# If the command fails because the remaining node has no quorum,
+# temporarily set expected votes to 1 and repeat the removal:
+pvecm expected 1
 pvecm delnode pve3
 ```
 
