@@ -44,17 +44,17 @@ example.com {
     respond "HTTPS site"
 }
 
-# Domain with port - no automatic HTTPS on non-standard ports
+# Domain with port - HTTPS on the specified port
 example.com:8080 {
-    respond "HTTP on port 8080"
+    respond "HTTPS on port 8080"
 }
 
-# Bare IP address - no automatic HTTPS
+# Bare IP address - uses a locally trusted IP certificate
 192.168.1.10 {
     respond "Local server"
 }
 
-# Localhost - uses self-signed certificate
+# Localhost - uses Caddy's local CA
 localhost {
     respond "Development server"
 }
@@ -84,8 +84,8 @@ example.com {
     # Compress responses
     encode gzip zstd
 
-    # Reverse proxy to backend
-    reverse_proxy localhost:3000
+    # Reverse proxy API requests to backend
+    reverse_proxy /api/* localhost:3000
 
     # Redirect
     redir /old-path /new-path 301
@@ -134,7 +134,7 @@ example.com {
 
     # Match by client IP
     @internal remote_ip 192.168.1.0/24 10.0.0.0/8
-    basicauth @internal {
+    basic_auth @internal {
         # Restrict internal paths
         admin $2a$14$...hashed...
     }
@@ -225,6 +225,11 @@ Caddy's TLS behavior can be customized per site:
 # Global TLS settings
 {
     email admin@example.com
+    pki {
+        ca internal-ca {
+            name "Internal CA"
+        }
+    }
 }
 
 example.com {
@@ -238,7 +243,7 @@ example.com {
 # Use DNS challenge for wildcard certificates (requires DNS provider plugin)
 *.example.com {
     tls {
-        dns cloudflare {env.CF_API_TOKEN}
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
 
     # Route by subdomain
@@ -246,11 +251,11 @@ example.com {
     file_server
 }
 
-# Internal PKI with custom CA
+# Internal PKI with a named Caddy CA
 internal.example.com {
     tls {
         issuer internal {
-            ca /etc/caddy/internal-ca.pem
+            ca internal-ca
         }
     }
     reverse_proxy localhost:8443
@@ -263,7 +268,7 @@ Caddy supports placeholders that expand to request or response values at runtime
 
 ```caddyfile
 example.com {
-    # Use the host header value
+    # Use the server hostname
     header X-Served-By {system.hostname}
 
     # Log the client IP
@@ -320,15 +325,14 @@ example.com {
     file_server
 
     # Custom error page for 404
-    handle_errors {
-        @404 expression {http.error.status_code} == 404
-        rewrite @404 /errors/404.html
+    handle_errors 404 {
+        rewrite /errors/404.html
         file_server
     }
 
     # Multiple error codes
     handle_errors {
-        rewrite * /errors/{http.error.status_code}.html
+        rewrite /errors/{err.status_code}.html
         file_server
     }
 }
@@ -343,14 +347,12 @@ example.com {
     root * /var/www/wordpress
 
     # PHP files through FPM
-    php_fastcgi unix//run/php/php8.2-fpm.sock
+    php_fastcgi unix//run/php/php8.2-fpm.sock {
+        try_files {path} {path}/index.php index.php
+    }
 
     # Serve static files directly
     file_server
-
-    # WordPress pretty permalinks
-    @notfound not file
-    rewrite @notfound /index.php{uri}
 
     encode gzip
 }
@@ -367,8 +369,8 @@ caddy validate --config /etc/caddy/Caddyfile
 # Format the file (Caddy has an opinionated style)
 caddy fmt --overwrite /etc/caddy/Caddyfile
 
-# Run in dry-run mode to see what Caddy would do
-caddy run --config /etc/caddy/Caddyfile --environ
+# Adapt to JSON and validate without starting Caddy
+caddy adapt --config /etc/caddy/Caddyfile --validate --pretty
 ```
 
 ## Environment Variables
@@ -377,9 +379,9 @@ Reference environment variables in the Caddyfile for secrets:
 
 ```caddyfile
 example.com {
-    basicauth {
+    basic_auth {
         # Use an environment variable for the hashed password
-        admin {env.ADMIN_PASSWORD_HASH}
+        admin {$ADMIN_PASSWORD_HASH}
     }
 
     tls {
@@ -398,7 +400,7 @@ sudo nano /etc/systemd/system/caddy.service.d/override.conf
 
 ```ini
 [Service]
-Environment="CF_API_TOKEN=your-cloudflare-token"
+Environment="CLOUDFLARE_API_TOKEN=your-cloudflare-token"
 Environment="ADMIN_PASSWORD_HASH=your-bcrypt-hash"
 ```
 
