@@ -114,7 +114,7 @@ sudo nano /etc/stubby/stubby.yml
 ```yaml
 # Stubby DNS-over-TLS configuration
 
-# Logging level (0=critical, 1=error, 2=warn, 3=info, 4=debug, 7=trace)
+# Stub resolver mode
 resolution_type: GETDNS_RESOLUTION_STUB
 dns_transport_list:
   - GETDNS_TRANSPORT_TLS
@@ -122,8 +122,8 @@ dns_transport_list:
 # Require TLS - if TLS fails, the query fails (no plaintext fallback)
 tls_authentication: GETDNS_AUTHENTICATION_REQUIRED
 
-# Validate DNSSEC
-dnssec: GETDNS_EXTENSION_TRUE
+# Request DNSSEC status
+dnssec_return_status: GETDNS_EXTENSION_TRUE
 
 # Listen on localhost only (systemd-resolved or other local resolver will forward to stubby)
 listen_addresses:
@@ -169,7 +169,7 @@ sudo systemctl status stubby
 
 ### Integrating Stubby with systemd-resolved
 
-Now configure `systemd-resolved` to forward queries to stubby (running on port 5353) rather than going directly to external servers. This gives you the full stub resolver stack on 127.0.0.53 while stubby handles the TLS encryption.
+If you want to keep `systemd-resolved` in front of Stubby, make Stubby listen on port 53 and configure `systemd-resolved` to use the local Stubby listener. Stubby handles the upstream TLS connection, so do not enable `DNSOverTLS` in `systemd-resolved` for this setup.
 
 ```bash
 sudo nano /etc/systemd/resolved.conf
@@ -177,14 +177,10 @@ sudo nano /etc/systemd/resolved.conf
 
 ```ini
 [Resolve]
-# Point to stubby running on localhost:5353
-# Note: systemd-resolved always uses port 53, so we need dnsmasq or similar
-# for the port 5353 workaround, OR use stubby on port 53 directly
-
-# Simpler: just use resolved's built-in DoT (Method 1) or
-# disable resolved and use stubby directly as the system resolver
+# Point to Stubby running on localhost:53
 DNS=127.0.0.1
 DNSStubListener=no
+DNSOverTLS=no
 ```
 
 If using Stubby directly (disabling resolved's stub listener):
@@ -243,8 +239,8 @@ Verify queries are actually encrypted:
 stubby -l -C /etc/stubby/stubby.yml &
 dig @127.0.0.1 -p 5353 example.com
 
-# Use the online Cloudflare DoT test
-curl -s https://1.1.1.1/help | grep -i "using dns over tls"
+# Cloudflare's browser diagnostic page runs client-side tests
+# Open https://1.1.1.1/help and check "Using DNS over TLS (DoT)"
 
 # Check if any plaintext DNS leaks exist
 sudo tcpdump -n 'udp port 53 and not src 127.0.0.1' -i any
