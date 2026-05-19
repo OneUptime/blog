@@ -58,7 +58,7 @@ sudo swapon /swapfile
 swapon --show
 ```
 
-### Using dd (compatible with all filesystems, including Btrfs)
+### Using dd (portable method)
 
 `fallocate` creates sparse files on some filesystems, which can cause problems with swap. Use `dd` when you need guaranteed physical allocation:
 
@@ -77,7 +77,7 @@ sudo mkswap /swapfile
 sudo swapon /swapfile
 ```
 
-Note: `dd` is slower than `fallocate` because it writes every byte, but it guarantees the file isn't sparse. For Btrfs filesystems, always use `dd` (Btrfs doesn't support swap on sparse files).
+Note: `dd` is slower than `fallocate` because it writes every byte, but it guarantees the file isn't sparse. For Btrfs filesystems, the swap file must be preallocated and NODATACOW; `dd` is a portable way to create the file after disabling copy-on-write.
 
 ## Making Swap Persistent Across Reboots
 
@@ -138,10 +138,10 @@ sudo chmod 600 /swapfile2
 sudo mkswap /swapfile2
 
 # Enable with lower priority than the primary swap
-sudo swapon --priority 5 /swapfile2
+sudo swapon --priority -3 /swapfile2
 
 # The primary swap (from fstab) has priority -2 by default
-# Lower priority number = higher priority (used first)
+# Higher priority number = higher priority (used first)
 swapon --show
 ```
 
@@ -150,10 +150,10 @@ Output:
 ```text
 NAME       TYPE  SIZE  USED PRIO
 /swapfile  file    8G    0B   -2
-/swapfile2 file    2G    0B    5
+/swapfile2 file    2G    0B   -3
 ```
 
-The kernel uses higher-priority swap first. The temporary `/swapfile2` will be used after `/swapfile` is full (it has lower priority due to higher number).
+The kernel uses higher-priority swap first. The temporary `/swapfile2` will be used after `/swapfile` is full (it has lower priority due to its lower priority number).
 
 When you no longer need the temporary swap:
 
@@ -164,12 +164,13 @@ sudo rm /swapfile2
 
 ## Tuning Swappiness
 
-`vm.swappiness` controls how aggressively the kernel uses swap. The value ranges from 0 to 100:
+`vm.swappiness` controls how aggressively the kernel uses swap. On modern Linux kernels, the value ranges from 0 to 200:
 
-- **0**: Don't swap until absolutely necessary (only when RAM is genuinely full)
+- **0**: Don't initiate swap until free and file-backed pages fall below the zone high watermark
 - **10**: Low swappiness - prefer keeping data in RAM
 - **60**: Default Ubuntu value - moderate use of swap
-- **100**: Aggressively swap - swap even when RAM is available
+- **100**: Treat swap and filesystem paging as having roughly equal I/O cost
+- **200**: Treat swap as cheaper than filesystem paging
 
 For a desktop or interactive server, lower swappiness reduces latency:
 
@@ -246,7 +247,7 @@ sudo nano /etc/fstab
 sudo rm /swapfile
 ```
 
-Note: Kubernetes cluster nodes sometimes require swap to be disabled, as the kubelet doesn't properly account for swap in its resource calculations.
+Note: By default, the kubelet on Linux does not start when swap is enabled unless it is configured to tolerate swap. Kubernetes can be configured for swap, but scheduling still does not account for swap memory usage.
 
 ## Swap on Btrfs Filesystems
 
@@ -257,7 +258,7 @@ Btrfs requires special handling for swap files:
 sudo btrfs subvolume create /swap
 sudo chattr +C /swap  # Disable copy-on-write for the swap subvolume
 
-# Create the swap file (must use dd, not fallocate, on Btrfs)
+# Create the swap file with a portable non-sparse allocation method
 sudo dd if=/dev/zero of=/swap/swapfile bs=1M count=4096 status=progress
 sudo chmod 600 /swap/swapfile
 sudo mkswap /swap/swapfile
