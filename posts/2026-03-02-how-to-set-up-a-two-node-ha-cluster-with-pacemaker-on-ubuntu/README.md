@@ -75,9 +75,9 @@ ping -c 2 node2
 
 ```bash
 # On both nodes: allow cluster traffic
-# Corosync uses UDP ports 5404-5406
-# Pacemaker uses TCP port 2224 (pcsd)
-sudo ufw allow from 192.168.10.0/24 to any port 5404:5406 proto udp
+# Corosync uses UDP ports 5404-5405 (5405 is the default mcastport; 5404 is mcastport-1)
+# pcsd uses TCP port 2224
+sudo ufw allow from 192.168.10.0/24 to any port 5404:5405 proto udp
 sudo ufw allow from 192.168.10.0/24 to any port 2224 proto tcp
 
 # Or more simply, allow all traffic on the cluster subnet
@@ -193,10 +193,22 @@ sudo pcs stonith create fence-node2 fence_ipmilan \
 ### Test Fencing
 
 ```bash
-# Test fencing node2 from node1
-sudo stonith_admin --test fence-node2
+# Validate the fence device configuration without touching the node
+sudo stonith_admin --validate --agent fence_virsh \
+  --option ipaddr=192.168.10.1 \
+  --option login=root \
+  --option identity_file=/root/.ssh/id_rsa \
+  --option plug=node2
 
-# The test should not actually reboot node2 (use --yes-really-reboot to do so)
+# Confirm the device is registered and view its targets
+sudo pcs stonith config fence-node2
+sudo pcs stonith status
+
+# Check status via the underlying agent (no reboot)
+sudo fence_virsh -a 192.168.10.1 -l root -k /root/.ssh/id_rsa -n node2 -o status
+
+# To actually fence (THIS WILL REBOOT node2):
+# sudo pcs stonith fence node2
 ```
 
 ## Step 8: Add a Virtual IP Resource
