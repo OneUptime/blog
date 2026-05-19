@@ -15,7 +15,7 @@ CPU C-states are idle power states that processors use when not actively executi
 C-states are numbered C0 through C10+ on modern Intel processors (AMD uses similar states with slightly different naming):
 
 - **C0** - Active, executing instructions. Full power.
-- **C1/C1E** - Clock stopped, internal caches preserved. Very fast to exit (sub-microsecond).
+- **C1/C1E** - Clock stopped, internal caches preserved. Very fast to exit compared with deeper states.
 - **C3** - Last-level cache can be flushed. Slower to exit.
 - **C6/C7** - Core voltage can be reduced. Core state saved to LLC.
 - **C8/C10** - Deep package sleep on modern CPUs. Significant latency to exit.
@@ -117,7 +117,7 @@ sudo nano /etc/default/grub
 Useful parameters:
 
 ```bash
-# Disable all C-states except C0 and C1 (use for minimum latency)
+# Poll in the idle loop instead of using CPUIdle states (use only when minimum wake-up latency matters more than power)
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash idle=poll"
 
 # Limit max C-state to C1 (processor-halt only)
@@ -147,7 +147,7 @@ The difference between `processor.max_cstate` and `intel_idle.max_cstate`:
 Check which idle driver is active:
 
 ```bash
-cat /sys/devices/system/cpu/cpu0/cpuidle/current_driver
+cat /sys/devices/system/cpu/cpuidle/current_driver
 # intel_idle or acpi_idle
 ```
 
@@ -157,14 +157,14 @@ cat /sys/devices/system/cpu/cpu0/cpuidle/current_driver
 # View all C-state info
 sudo cpupower idle-info
 
-# Set maximum C-state to C1 (latency limit)
-sudo cpupower idle-set -D 1
+# Disable idle states with exit latency of 100us or more
+sudo cpupower idle-set -D 100
 
 # Enable all C-states
 sudo cpupower idle-set -E
 
-# Disable all C-states deeper than 1 (latency threshold in microseconds)
-sudo cpupower idle-set -d 100   # disable states with latency > 100us
+# Disable a specific idle state by state number
+sudo cpupower idle-set -d 3
 ```
 
 ## CPU Power States and Latency Requirements
@@ -173,8 +173,9 @@ For different use cases, the appropriate C-state depth varies:
 
 **Maximum performance / minimum latency (real-time, HFT, gaming):**
 ```bash
-# Disable everything deeper than C1
-sudo cpupower idle-set -d 1
+# Disable states at or above a latency threshold
+# Choose a value higher than your C1 latency and lower than deeper states
+sudo cpupower idle-set -D 10
 
 # Or via kernel parameter:
 # intel_idle.max_cstate=1
@@ -184,7 +185,7 @@ sudo cpupower idle-set -d 1
 ```bash
 # Allow up to C3 or C6 for idle efficiency
 # while keeping reasonable wake-up latency
-sudo cpupower idle-set -d 1000  # disable states with latency > 1ms
+sudo cpupower idle-set -D 1000  # disable states with latency >= 1ms
 ```
 
 **Power saving (laptop, idle server):**
