@@ -8,13 +8,13 @@ Description: Learn how to install and configure OpenSearch on Ubuntu, the open-s
 
 ---
 
-OpenSearch is an open-source, community-driven fork of Elasticsearch and Kibana, maintained by Amazon and a growing community of contributors. It was created after Elastic changed the Elasticsearch license to a non-open-source license in 2021. OpenSearch remains under the Apache 2.0 license and is fully API-compatible with Elasticsearch 7.10.
+OpenSearch is an open-source, community-driven fork of Elasticsearch and Kibana, maintained by Amazon and a growing community of contributors. It was created after Elastic changed the Elasticsearch license to a non-open-source license in 2021. OpenSearch remains under the Apache 2.0 license and was derived from Elasticsearch 7.10.2 and Kibana 7.10.2.
 
-If you're looking for an Elasticsearch-compatible search engine without license restrictions, OpenSearch is the answer.
+If you're looking for an Elasticsearch-style search engine without license restrictions, OpenSearch is the answer.
 
 ## OpenSearch vs Elasticsearch
 
-The core functionality is essentially the same - both use Lucene under the hood and have nearly identical REST APIs. Key differences:
+The core functionality is similar - both use Lucene under the hood and provide REST APIs for search and indexing, though compatibility is version-dependent. Key differences:
 
 - OpenSearch is Apache 2.0 licensed
 - OpenSearch includes security (authentication, encryption, access control) for free without a paid tier
@@ -52,19 +52,20 @@ sudo sed -i '/\bswap\b/ s/^/#/' /etc/fstab
 
 ```bash
 # Add OpenSearch repository
-curl -fsSL https://artifacts.opensearch.org/publickeys/opensearch.pgp | \
-  sudo gpg --dearmor -o /usr/share/keyrings/opensearch-keyring.gpg
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://artifacts.opensearch.org/publickeys/opensearch-release.pgp | \
+  sudo gpg --dearmor --batch --yes -o /etc/apt/keyrings/opensearch-release-keyring
 
-echo "deb [signed-by=/usr/share/keyrings/opensearch-keyring.gpg] \
-  https://artifacts.opensearch.org/releases/bundle/opensearch/2.x/apt stable main" | \
-  sudo tee /etc/apt/sources.list.d/opensearch-2.x.list
+echo "deb [signed-by=/etc/apt/keyrings/opensearch-release-keyring] \
+  https://artifacts.opensearch.org/releases/bundle/opensearch/3.x/apt stable main" | \
+  sudo tee /etc/apt/sources.list.d/opensearch-3.x.list
 
 sudo apt update
 
 # Install OpenSearch
 # The OPENSEARCH_INITIAL_ADMIN_PASSWORD env variable sets the initial admin password
-sudo OPENSEARCH_INITIAL_ADMIN_PASSWORD=YourStrongPassword123! \
-  apt install -y opensearch
+sudo env OPENSEARCH_INITIAL_ADMIN_PASSWORD=YourStrongPassword123! \
+  apt-get install -y opensearch
 ```
 
 Enable and start the service:
@@ -119,22 +120,22 @@ discovery.type: single-node
 # cluster.initial_cluster_manager_nodes: ["os-node-01", "os-node-02"]
 
 # Security plugin configuration
-plugins.security.ssl.transport.pemcert_filepath: certs/node.pem
-plugins.security.ssl.transport.pemkey_filepath: certs/node-key.pem
-plugins.security.ssl.transport.pemtrustedcas_filepath: certs/root-ca.pem
+plugins.security.ssl.transport.pemcert_filepath: /etc/opensearch/node1.pem
+plugins.security.ssl.transport.pemkey_filepath: /etc/opensearch/node1-key.pem
+plugins.security.ssl.transport.pemtrustedcas_filepath: /etc/opensearch/root-ca.pem
 plugins.security.ssl.transport.enforce_hostname_verification: false
 
 plugins.security.ssl.http.enabled: true
-plugins.security.ssl.http.pemcert_filepath: certs/node.pem
-plugins.security.ssl.http.pemkey_filepath: certs/node-key.pem
-plugins.security.ssl.http.pemtrustedcas_filepath: certs/root-ca.pem
+plugins.security.ssl.http.pemcert_filepath: /etc/opensearch/node1.pem
+plugins.security.ssl.http.pemkey_filepath: /etc/opensearch/node1-key.pem
+plugins.security.ssl.http.pemtrustedcas_filepath: /etc/opensearch/root-ca.pem
 
 plugins.security.allow_default_init_securityindex: true
 plugins.security.authcz.admin_dn:
   - 'CN=A,OU=UNIT,O=ORG,L=TORONTO,ST=ONTARIO,C=CA'
 
 plugins.security.nodes_dn:
-  - 'CN=node.example.com,OU=UNIT,O=ORG,L=TORONTO,ST=ONTARIO,C=CA'
+  - 'CN=node1.dns.a-record,OU=UNIT,O=ORG,L=TORONTO,ST=ONTARIO,C=CA'
 
 plugins.security.audit.type: internal_opensearch
 plugins.security.enable_snapshot_restore_privilege: true
@@ -220,8 +221,7 @@ curl -k -u admin:YourStrongPassword123! \
     "template": {
       "settings": {
         "number_of_shards": 1,
-        "number_of_replicas": 1,
-        "index.lifecycle.name": "logs-policy"
+        "number_of_replicas": 1
       },
       "mappings": {
         "properties": {
@@ -284,12 +284,12 @@ OpenSearch Dashboards is the equivalent of Kibana:
 
 ```bash
 # Add OpenSearch Dashboards repository (same key as OpenSearch)
-echo "deb [signed-by=/usr/share/keyrings/opensearch-keyring.gpg] \
-  https://artifacts.opensearch.org/releases/bundle/opensearch-dashboards/2.x/apt stable main" | \
-  sudo tee /etc/apt/sources.list.d/opensearch-dashboards-2.x.list
+echo "deb [signed-by=/etc/apt/keyrings/opensearch-release-keyring] \
+  https://artifacts.opensearch.org/releases/bundle/opensearch-dashboards/3.x/apt stable main" | \
+  sudo tee /etc/apt/sources.list.d/opensearch-dashboards-3.x.list
 
 sudo apt update
-sudo apt install -y opensearch-dashboards
+sudo apt-get install -y opensearch-dashboards
 
 sudo systemctl enable opensearch-dashboards
 sudo systemctl start opensearch-dashboards
@@ -306,7 +306,7 @@ server.host: "0.0.0.0"
 opensearch.hosts: ["https://localhost:9200"]
 opensearch.ssl.verificationMode: none
 opensearch.username: "kibanaserver"
-opensearch.password: "YourStrongPassword123!"
+opensearch.password: "kibanaserver"
 ```
 
 Access OpenSearch Dashboards at `http://your-server:5601`.
@@ -324,6 +324,10 @@ curl -k -u admin:YourStrongPassword123! \
     "policy": {
       "description": "Rotate and delete old log indexes",
       "default_state": "hot",
+      "ism_template": {
+        "index_patterns": ["logs-*"],
+        "priority": 100
+      },
       "states": [
         {
           "name": "hot",
