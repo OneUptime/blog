@@ -58,13 +58,13 @@ CPU pinning prevents the container from using other cores, which is useful for l
 CPU shares set relative priority when there is CPU contention. Higher shares means the container gets proportionally more CPU time during contention:
 
 ```bash
-# Set high priority (default is 1024)
+# Set high priority (10 is the maximum and the default)
 lxc config set mycontainer limits.cpu.priority 10
 
 # Set low priority (background/batch container)
 lxc config set mycontainer limits.cpu.priority 1
 
-# Allowed values: 0-10 (LXD translates to cgroup shares 1-9999)
+# Allowed values: 0-10 (LXD maps these to underlying cgroup CPU shares)
 ```
 
 ### CPU Allowance (Hard Limit)
@@ -103,8 +103,8 @@ By default, containers can use swap if memory is exhausted. Disable this for con
 # Disable swap for this container
 lxc config set mycontainer limits.memory.swap false
 
-# Or limit the swap amount
-lxc config set mycontainer limits.memory.swap.priority 0  # lowest priority for swap
+# Or set swap priority (higher value = less likely to be swapped; range 0-10)
+lxc config set mycontainer limits.memory.swap.priority 0  # most likely to be swapped out first
 ```
 
 ### Memory Priority (Soft Limit)
@@ -124,10 +124,10 @@ lxc config set mycontainer limits.memory.priority 0
 Control what happens when a container hits its memory limit:
 
 ```bash
-# Kill the entire container when memory is exceeded (not just the OOM process)
+# Strictly enforce the limit - processes in the container are OOM-killed when it is exceeded (default)
 lxc config set mycontainer limits.memory.enforce hard
 
-# Allow temporary overcommit (soft limit)
+# Allow temporary overcommit when the host has spare memory available
 lxc config set mycontainer limits.memory.enforce soft
 ```
 
@@ -154,12 +154,15 @@ For LVM-backed storage, LXD can throttle disk I/O:
 # Limit read speed to 50MB/s
 lxc config set mycontainer limits.disk.priority 5
 
-# Note: granular I/O limits (IOPS, bandwidth) require LVM backend
-# and are set on the device level
+# Note: granular I/O limits (IOPS, bandwidth) require a supported backend
+# and are set on the device level. The value can be a byte rate or an IOPS
+# count using the "iops" suffix.
 lxc config device set mycontainer root limits.read 50MB
 lxc config device set mycontainer root limits.write 25MB
-lxc config device set mycontainer root limits.read.iops 1000
-lxc config device set mycontainer root limits.write.iops 500
+
+# Or limit by IOPS instead of bandwidth:
+lxc config device set mycontainer root limits.read 1000iops
+lxc config device set mycontainer root limits.write 500iops
 ```
 
 ## Viewing All Current Limits
@@ -246,8 +249,8 @@ done'
 lxc exec mycontainer -- bash -c "
   # Total memory limit vs current usage
   free -h
-  # OOM kill count
-  cat /proc/meminfo | grep -i oom
+  # OOM kill count (cgroup v2)
+  cat /sys/fs/cgroup/memory.events | grep oom
 "
 
 # Check CPU throttling (cgroup v2)
