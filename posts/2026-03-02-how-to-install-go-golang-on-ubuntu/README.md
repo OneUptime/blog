@@ -160,8 +160,8 @@ go install golang.org/x/tools/gopls@latest
 # Static analysis tool
 go install honnef.co/go/tools/cmd/staticcheck@latest
 
-# Code linter
-go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Code linter (v2 uses the /v2/ module path)
+go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 # Test coverage visualizer
 go install github.com/nikolaydubina/go-cover-treemap@latest
