@@ -60,7 +60,7 @@ ss -tlnp | grep mysql
 Unlike localhost users, remote users must be explicitly created with a specific host or IP address. You cannot just modify an existing `@localhost` user:
 
 ```bash
-sudo mysql -u root -p
+sudo mysql
 ```
 
 ```sql
@@ -94,13 +94,13 @@ If you need to allow access from any IP in a subnet (less secure, use with cauti
 
 ```sql
 -- Allow from any host in the 192.168.1.x subnet
-CREATE USER 'myapp_user'@'192.168.1.%'
+CREATE USER 'myapp_user'@'192.168.1.0/255.255.255.0'
     IDENTIFIED BY 'strong-password-here';
 GRANT SELECT, INSERT, UPDATE, DELETE ON myapp_db.*
-    TO 'myapp_user'@'192.168.1.%';
+    TO 'myapp_user'@'192.168.1.0/255.255.255.0';
 ```
 
-Avoid the wildcard `%` host unless you have firewall rules restricting which IPs can reach port 3306.
+Avoid the wildcard `%` host unless you have firewall rules restricting which IPs can reach port 3306. MySQL also supports host patterns such as `192.168.1.%`, but `%` and `_` host wildcards are deprecated in MySQL 8.0.35 and later.
 
 ## Step 3: Configure the Firewall
 
@@ -124,7 +124,7 @@ sudo ufw reload
 sudo ufw status verbose | grep 3306
 ```
 
-Never do this unless you are using MySQL's own access controls exclusively:
+Do not do this on an internet-facing server:
 
 ```bash
 # Do NOT do this - exposes MySQL to the entire internet
@@ -211,6 +211,8 @@ ssh -L 3307:127.0.0.1:3306 user@mysql-server.example.com -N
 # In another terminal, connect to the tunnel
 mysql -h 127.0.0.1 -P 3307 -u myapp_user -p myapp_db
 ```
+
+For SSH tunnels, MySQL sees the connection as local, so create or use a `myapp_user`@`localhost` account rather than a remote-IP account.
 
 For persistent tunnels, use autossh:
 
