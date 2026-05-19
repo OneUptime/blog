@@ -8,7 +8,7 @@ Description: Step-by-step guide to installing and configuring Fission serverless
 
 ---
 
-Fission is an open-source serverless function framework that runs on Kubernetes. Unlike AWS Lambda or Azure Functions, Fission runs entirely on your own Kubernetes cluster, giving you full control over the infrastructure. Functions are deployed as short-lived containers, and Fission handles pooling warm containers, routing HTTP traffic, and scaling. This is particularly useful for teams already running Kubernetes who want serverless-style deployment without vendor lock-in.
+Fission is an open-source serverless function framework that runs on Kubernetes. Unlike AWS Lambda or Azure Functions, Fission runs entirely on your own Kubernetes cluster, giving you full control over the infrastructure. Functions run in Kubernetes pods managed by Fission, and Fission handles pooling warm containers, routing HTTP traffic, and scaling. This is particularly useful for teams already running Kubernetes who want serverless-style deployment without vendor lock-in.
 
 ## Prerequisites
 
@@ -16,6 +16,7 @@ You need a running Kubernetes cluster. This guide assumes you have:
 - A Kubernetes cluster (kubeadm, k3s, or managed cloud Kubernetes)
 - `kubectl` configured with cluster access
 - `helm` installed for the Fission deployment
+- Kubernetes 1.27 or higher
 - At least 2GB of free memory in the cluster
 
 Verify your cluster is accessible:
@@ -36,11 +37,13 @@ helm repo update
 # Create a namespace for Fission
 kubectl create namespace fission
 
+# Install Fission CRDs
+kubectl create -k "github.com/fission/fission/crds/v1?ref=v1.23.0"
+
 # Install Fission
-helm install --version v1.19.0 \
+helm install --version 1.23.0 \
     --namespace fission \
-    --set serviceType=NodePort \
-    --set routerServiceType=NodePort \
+    --set serviceType=NodePort,routerServiceType=NodePort \
     fission \
     fission-charts/fission-all
 
@@ -58,7 +61,7 @@ kubectl wait --for=condition=ready pod --all -n fission --timeout=120s
 
 ```bash
 # Download the Fission CLI binary
-curl -Lo fission https://github.com/fission/fission/releases/download/v1.19.0/fission-v1.19.0-linux-amd64
+curl -Lo fission https://github.com/fission/fission/releases/download/v1.23.0/fission-v1.23.0-linux-amd64
 
 # Install to /usr/local/bin
 chmod +x fission
@@ -72,8 +75,9 @@ Set the Fission router endpoint:
 
 ```bash
 # Get the router's NodePort
-export FISSION_ROUTER=$(kubectl get svc router -n fission -o jsonpath='{.spec.ports[0].nodePort}')
-export FISSION_ROUTER_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[0].address}')
+export FISSION_ROUTER_PORT=$(kubectl get svc router -n fission -o jsonpath='{.spec.ports[0].nodePort}')
+export FISSION_ROUTER_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
+export FISSION_ROUTER="$FISSION_ROUTER_IP:$FISSION_ROUTER_PORT"
 
 # Or if using LoadBalancer
 export FISSION_ROUTER=$(kubectl get svc router -n fission -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
@@ -101,11 +105,11 @@ EOF
 Fission uses "environments" which are pre-built container images for each language:
 
 ```bash
-# Create a Python 3.9 environment
+# Create a Python environment
 fission environment create \
     --name python \
-    --image fission/python-env:1.9.0 \
-    --builder fission/python-builder:1.9.0
+    --image ghcr.io/fission/python-env \
+    --builder ghcr.io/fission/python-builder
 
 # List available environments
 fission environment list
@@ -128,8 +132,8 @@ fission httptrigger create \
     --method GET
 
 # Test the function
-curl http://$FISSION_ROUTER_IP:$FISSION_ROUTER/hello
-curl http://$FISSION_ROUTER_IP:$FISSION_ROUTER/hello?name=Ubuntu
+curl http://$FISSION_ROUTER/hello
+curl http://$FISSION_ROUTER/hello?name=Ubuntu
 ```
 
 ## Node.js Function Example
@@ -138,8 +142,11 @@ curl http://$FISSION_ROUTER_IP:$FISSION_ROUTER/hello?name=Ubuntu
 # Create a Node.js function
 cat > weather.js << 'EOF'
 // weather.js - Example Node.js Fission function
+const url = require('url');
+
 module.exports = async function(context) {
-    const city = context.request.query.city || 'London';
+    const query = url.parse(context.request.url, true).query;
+    const city = query.city || 'London';
 
     // In a real function, you'd call a weather API
     const response = {
@@ -160,8 +167,7 @@ EOF
 # Create Node.js environment
 fission environment create \
     --name nodejs \
-    --image fission/node-env:1.9.0 \
-    --builder fission/node-builder:1.9.0
+    --image ghcr.io/fission/node-env
 
 # Deploy the function
 fission function create \
@@ -177,7 +183,7 @@ fission httptrigger create \
     --method GET
 
 # Test
-curl "http://$FISSION_ROUTER_IP:$FISSION_ROUTER/weather?city=Ubuntu"
+curl "http://$FISSION_ROUTER/weather?city=Ubuntu"
 ```
 
 ## Functions with Dependencies
@@ -196,8 +202,8 @@ flask==3.0.0
 EOF
 
 # The function code
-cat > __init__.py << 'EOF'
-# __init__.py - Function with external dependencies
+cat > user.py << 'EOF'
+# user.py - Function with external dependencies
 import requests
 from flask import request, jsonify
 
@@ -215,18 +221,27 @@ def main():
         return jsonify({'error': str(e)}), 500
 EOF
 
+# Build script used by the Python builder
+cat > build.sh << 'EOF'
+#!/bin/sh
+pip3 install -r ${SRC_PKG}/requirements.txt -t ${SRC_PKG} && cp -r ${SRC_PKG} ${DEPLOY_PKG}
+EOF
+chmod +x build.sh
+
+zip -j my-api-pkg.zip requirements.txt user.py build.sh
+
 # Deploy as a package (directory with dependencies)
 fission package create \
     --name my-api-pkg \
     --env python \
-    --sourcearchive .
+    --sourcearchive my-api-pkg.zip \
+    --buildcmd "./build.sh"
 
 # Create function from package
 fission function create \
     --name api-fetcher \
-    --env python \
     --pkg my-api-pkg \
-    --entrypoint "__init__.main"
+    --entrypoint "user.main"
 
 cd ..
 ```
@@ -262,7 +277,7 @@ fission function create \
 fission timetrigger create \
     --name hourly-cleanup \
     --function cleanup-job \
-    --cron "0 * * * *"
+    --cron "@hourly"
 
 # List time triggers
 fission timetrigger list
@@ -272,19 +287,19 @@ fission timetrigger list
 
 ```bash
 # View function logs
-fission function logs --name hello-world
+fission function log --name hello-world
 
 # Follow logs in real time
-fission function logs --name hello-world --follow
+fission function log --name hello-world --follow
 
-# Get function execution statistics
+# Invoke the function from the CLI
 fission function test --name hello-world
 
 # List all functions
 fission function list
 
-# Check function pods
-kubectl get pods -n fission-function
+# Check pods used by the function
+fission function pods --name hello-world
 ```
 
 ## Updating Functions
@@ -304,7 +319,7 @@ EOF
 fission function update --name hello-world --code hello.py
 
 # Test the updated version
-curl http://$FISSION_ROUTER_IP:$FISSION_ROUTER/hello?name=test
+curl http://$FISSION_ROUTER/hello?name=test
 ```
 
 ## Configuring Function Resources
@@ -317,6 +332,7 @@ fission function create \
     --name resource-limited \
     --env python \
     --code hello.py \
+    --executortype newdeploy \
     --minscale 1 \
     --maxscale 10 \
     --minmemory 64 \
@@ -326,4 +342,4 @@ fission function create \
     --targetcpu 80       # Scale up when CPU exceeds 80%
 ```
 
-Fission's container pool mechanism means your functions have near-zero cold start times after the first invocation, making it much more suitable for latency-sensitive workloads than serverless platforms that start containers from scratch on each request.
+Fission's container pool mechanism keeps warm pods available for functions, reducing cold start latency for many workloads. For functions that need a constantly running replica, use the `newdeploy` executor with `--minscale 1`.
