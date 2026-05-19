@@ -12,13 +12,13 @@ Rundeck is an open-source runbook automation platform that lets you define jobs,
 
 ## Installing Rundeck on Ubuntu
 
-Rundeck requires Java 11 or newer.
+Rundeck requires a Java 11 or Java 17 runtime.
 
 ```bash
 # Install Java
 
 sudo apt update
-sudo apt install openjdk-11-jdk -y
+sudo apt install openjdk-11-jre-headless -y
 java -version
 
 # Add the Rundeck repository
@@ -63,7 +63,7 @@ grails.serverURL=http://your-server-ip:4440
 
 # Database configuration (default uses H2 embedded DB)
 # For production, switch to MySQL or PostgreSQL
-dataSource.url=jdbc:h2:file:/var/lib/rundeck/data/rundeckdb;MVCC=true
+dataSource.url=jdbc:h2:file:/var/lib/rundeck/data/rundeckdb;DB_CLOSE_ON_EXIT=FALSE;NON_KEYWORDS=MONTH,HOUR,MINUTE,YEAR,SECONDS
 
 # Increase job history retention
 rundeck.execution.logs.fileStoragePlugin=
@@ -83,8 +83,9 @@ Open a browser to `http://your-server-ip:4440`. Default credentials are `admin /
 sudo nano /etc/rundeck/realm.properties
 
 # Change this line to update the admin password
-# admin: MD5:YOUR_HASHED_PASSWORD,user,admin,architect,deploy,build
-# Generate hash: echo -n 'newpassword' | md5sum
+# admin: BCRYPT:YOUR_HASHED_PASSWORD,user,admin,architect,deploy,build
+# Generate a bcrypt hash with the Password Utility in the UI or:
+# java -jar rundeck-<version>.war --encryptpwd Jetty
 ```
 
 ## Creating Your First Project
@@ -103,7 +104,7 @@ export RD_USER=admin
 export RD_PASSWORD=admin
 
 # Create a project
-rd projects create --project myproject
+rd projects create -p myproject
 ```
 
 ## Defining Nodes
@@ -117,6 +118,8 @@ sudo mkdir -p /var/rundeck/projects/myproject/etc
 # Create a node inventory file
 sudo nano /var/rundeck/projects/myproject/etc/resources.yaml
 ```
+
+Then add the file under Project Settings > Edit Nodes > Sources as a File Node Source, using `/var/rundeck/projects/myproject/etc/resources.yaml` as the file path and `resourceyaml` as the format.
 
 ```yaml
 # resources.yaml - node definitions
@@ -180,9 +183,10 @@ sudo nano /tmp/deploy-job.yaml
 
   # Run on all nodes tagged 'web'
   nodefilters:
+    dispatch:
+      keepgoing: false
     filter: 'tags: web'
   nodesSelectedByDefault: true
-  nodeKeepgoing: false
 
   # Job options (parameters)
   options:
@@ -198,7 +202,7 @@ sudo nano /tmp/deploy-job.yaml
         - staging
         - production
       required: true
-      default: staging
+      value: staging
 
   sequence:
     keepgoing: false
@@ -248,7 +252,7 @@ sudo nano /tmp/deploy-job.yaml
 Import the job:
 
 ```bash
-rd jobs load --project myproject --file /tmp/deploy-job.yaml --format yaml
+rd jobs load --project myproject --file /tmp/deploy-job.yaml -F yaml
 ```
 
 ## Scheduling Jobs
@@ -270,14 +274,14 @@ Rundeck has a full REST API for triggering jobs from CI/CD pipelines.
 
 ```bash
 # Get the Job ID
-JOB_ID=$(rd jobs list --project myproject --format json | \
+JOB_ID=$(RD_FORMAT=json rd jobs list --project myproject | \
     python3 -c "import sys,json; jobs=json.load(sys.stdin); \
     print(next(j['id'] for j in jobs if j['name']=='Deploy Application'))")
 
 echo "Job ID: $JOB_ID"
 
 # Run the job with options
-rd run --job "$JOB_ID" \
+rd run --id "$JOB_ID" \
     -p myproject \
     -- -version 1.2.3 -environment staging
 
@@ -297,14 +301,17 @@ Generate an API token in the Rundeck UI under User Settings > User API Tokens.
 Rundeck stores complete execution logs for every job run.
 
 ```bash
-# List recent executions for a project
-rd executions list --project myproject --max 10
+# List recent completed executions for a project
+rd executions query --project myproject --max 10
 
 # View output of a specific execution
-rd executions output --id 42
+curl -H "X-Rundeck-Auth-Token: YOUR_API_TOKEN" \
+    http://localhost:4440/api/42/execution/42/output?format=text
 
-# Download execution log
-rd executions output --id 42 > /tmp/execution-42.log
+# Download execution log via the API
+curl -H "X-Rundeck-Auth-Token: YOUR_API_TOKEN" \
+    http://localhost:4440/api/42/execution/42/output?format=text \
+    > /tmp/execution-42.log
 ```
 
 In the web UI, go to Activity to see a full execution history with real-time streaming logs for running jobs.
