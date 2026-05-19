@@ -13,7 +13,7 @@ direnv is a shell extension that loads and unloads environment variables based o
 ## Prerequisites
 
 - Ubuntu 22.04 or newer
-- bash or zsh shell
+- bash, zsh, or fish shell
 - Root or sudo access
 
 ## Installation
@@ -46,7 +46,7 @@ direnv --version
 
 ## Shell Hook Setup
 
-direnv needs to be hooked into your shell so it can intercept directory changes. Add the hook to your shell's configuration file.
+direnv needs to be hooked into your shell so it can check the current directory before each prompt. Add the hook to your shell's configuration file.
 
 ### For bash
 
@@ -222,20 +222,8 @@ python --version  # Uses the project's Python
 ```bash
 cat > .envrc <<'EOF'
 # Load the Node version specified in .nvmrc
-use_nvm() {
-  local node_version
-  node_version=$(cat .nvmrc 2>/dev/null || echo "default")
-
-  if ! nvm_is_alias "$node_version" &>/dev/null; then
-    nvm install "$node_version"
-  fi
-
-  nvm use "$node_version"
-}
-
-# Or simpler: just load the correct NVM version
 source $HOME/.nvm/nvm.sh
-nvm use   # Uses version from .nvmrc
+nvm install   # Installs and uses the version from .nvmrc
 EOF
 
 echo "18.0.0" > .nvmrc
@@ -267,23 +255,19 @@ EOF
 ```bash
 cat > .envrc <<'EOF'
 # Use direnv's built-in go module support
-export GOPATH="$PWD/.gopath"
-PATH_add .gopath/bin
-
-# Or use a specific Go version via goenv
-# use goenv 1.21.0
+layout go
 EOF
 ```
 
-### Ruby via rbenv/asdf
+### Ruby via rbenv
 
 ```bash
 cat > .envrc <<'EOF'
-# Use asdf to manage Ruby version from .tool-versions
-use asdf
+# Use rbenv with the project's .ruby-version file
+use rbenv
 EOF
 
-echo "ruby 3.2.0" > .tool-versions
+echo "3.2.0" > .ruby-version
 direnv allow
 ```
 
@@ -385,8 +369,8 @@ direnv allow
 ### Variables Not Unloading When Leaving Directory
 
 ```bash
-# Check that the hook is correctly placed at the end of your shell config
-# The hook must be the last thing added to ensure it wraps the cd command
+# Check that the hook is correctly placed near the end of your shell config
+# It should appear after prompt-related shell extensions
 tail -5 ~/.bashrc
 ```
 
