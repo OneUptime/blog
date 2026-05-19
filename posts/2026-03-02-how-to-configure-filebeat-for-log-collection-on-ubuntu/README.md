@@ -62,7 +62,7 @@ sudo nano /etc/filebeat/filebeat.yml
 filebeat.inputs:
 
 # Read from log files
-- type: log
+- type: filestream
   id: nginx-access-logs
   enabled: true
 
@@ -80,12 +80,14 @@ filebeat.inputs:
 
   # Multiline settings - for logs that span multiple lines
   # (uncomment for Java stack traces, etc.)
-  # multiline.type: pattern
-  # multiline.pattern: '^\d{4}-\d{2}-\d{2}'
-  # multiline.negate: true
-  # multiline.match: after
+  # parsers:
+  #   - multiline:
+  #       type: pattern
+  #       pattern: '^\d{4}-\d{2}-\d{2}'
+  #       negate: true
+  #       match: after
 
-- type: log
+- type: filestream
   id: application-logs
   enabled: true
   paths:
@@ -93,7 +95,7 @@ filebeat.inputs:
   # Parse JSON log files
   parsers:
     - ndjson:
-        keys_under_root: true
+        target: ""
         add_error_key: true
         overwrite_keys: true
   fields:
@@ -161,8 +163,22 @@ logging.files:
 Rather than using the `elastic` superuser, create a dedicated Filebeat user:
 
 ```bash
-# On your Elasticsearch server, create the filebeat user
+# On your Elasticsearch server, create the filebeat writer role and user
 # (Run this from a machine with access to Elasticsearch)
+
+curl --cacert /etc/elasticsearch/certs/http_ca.crt \
+  -u elastic:your-elastic-password \
+  -X PUT https://localhost:9200/_security/role/filebeat_writer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cluster": ["monitor", "read_ilm", "read_pipeline"],
+    "indices": [
+      {
+        "names": ["filebeat-*"],
+        "privileges": ["auto_configure", "create_doc"]
+      }
+    ]
+  }'
 
 curl --cacert /etc/elasticsearch/certs/http_ca.crt \
   -u elastic:your-elastic-password \
@@ -227,18 +243,24 @@ sudo nano /etc/filebeat/modules.d/system.yml
     var.paths: ["/var/log/auth.log*"]
 ```
 
-## Enrolling Filebeat with Elasticsearch (Simplified Setup)
+## Configuring Filebeat TLS with Elasticsearch
 
-Elasticsearch 8.x supports an enrollment token workflow that simplifies TLS setup:
+Elasticsearch 8.x automatically enables TLS on first startup. Enrollment tokens are for Elasticsearch nodes and Kibana, so configure Filebeat with the Elasticsearch CA certificate or CA fingerprint instead:
 
 ```bash
-# On the Elasticsearch server, generate an enrollment token for Beats
-sudo /usr/share/elasticsearch/bin/elasticsearch-create-enrollment-token -s beats
+# On the Elasticsearch server, print the HTTP CA fingerprint
+sudo openssl x509 -fingerprint -sha256 \
+  -in /etc/elasticsearch/certs/http_ca.crt -noout | cut -d= -f2 | tr -d :
+```
 
-# On the Filebeat server, use the enrollment token
-sudo filebeat enroll https://elasticsearch-server:9200 ENROLLMENT_TOKEN
+Add the fingerprint to the Elasticsearch output:
 
-# This automatically configures SSL certificates and credentials
+```yaml
+output.elasticsearch:
+  hosts: ["https://elasticsearch-server:9200"]
+  username: "filebeat_writer"
+  password: "your-filebeat-user-password"
+  ssl.ca_trusted_fingerprint: "PASTE_HTTP_CA_SHA256_FINGERPRINT_HERE"
 ```
 
 ## Testing the Configuration
@@ -274,8 +296,8 @@ sudo filebeat --strict.perms=false export config | grep -A5 monitoring
 # View the log
 sudo tail -f /var/log/filebeat/filebeat
 
-# Check the registry to see which files are being tracked
-sudo cat /var/lib/filebeat/registry/filebeat/log.json | python3 -m json.tool | head -50
+# Check the registry directory to see the persisted state files
+sudo ls -l /var/lib/filebeat/registry/filebeat/
 ```
 
 ## Docker Container Log Collection
@@ -284,12 +306,14 @@ To collect logs from Docker containers:
 
 ```yaml
 # Add to filebeat.yml inputs section
-- type: container
+- type: filestream
   id: docker-logs
   enabled: true
   paths:
     - /var/lib/docker/containers/*/*.log
-  stream: all  # all, stdout, stderr
+  parsers:
+    - container:
+        stream: all  # all, stdout, stderr
 
   # Add container metadata from Docker
   processors:
@@ -297,10 +321,10 @@ To collect logs from Docker containers:
         host: "unix:///var/run/docker.sock"
 ```
 
-Filebeat needs read access to Docker socket:
+Filebeat needs access to Docker logs and the Docker socket. The DEB/RPM service runs as root by default; if you changed the service to run as a non-root user, add that user to the `docker` group:
 
 ```bash
-sudo usermod -aG docker filebeat
+sudo usermod -aG docker your-filebeat-service-user
 sudo systemctl restart filebeat
 ```
 
@@ -311,12 +335,13 @@ For high-volume environments, tune Filebeat's performance:
 ```yaml
 # In filebeat.yml
 filebeat.inputs:
-- type: log
+- type: filestream
+  id: high-volume-app-logs
   paths: ["/var/log/myapp/*.log"]
   # How often to check for new files
-  scan_frequency: 10s
+  prospector.scanner.check_interval: 10s
   # How long to keep a file handle open after EOF
-  close_inactive: 5m
+  close.on_state_change.inactive: 5m
 
 # Increase the queue size to handle bursts
 queue.mem:
