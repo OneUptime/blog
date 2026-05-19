@@ -14,7 +14,7 @@ Before touching any evidence, always work from a forensic image rather than the 
 
 ## Installing Autopsy on Ubuntu
 
-Autopsy's official packages target Windows and macOS. On Ubuntu, you have a couple of options: use the version from the Ubuntu repositories (older but simple) or download the latest release and run it manually.
+Autopsy's official downloads include a Windows installer and a ZIP file for Linux and macOS. On Ubuntu, you have a couple of options: use the version from the Ubuntu repositories (older but simple) or download the latest release and run it manually.
 
 ### Option 1: Ubuntu Repository (Older Version)
 
@@ -31,35 +31,69 @@ autopsy
 
 ### Option 2: Latest Autopsy from GitHub (Recommended)
 
-The Ubuntu repository version is often 3.x while current releases are 4.x with significantly better features.
+The Ubuntu repository version is still the older 2.x web interface on many supported releases, while current upstream releases are 4.x with significantly better features.
 
 ```bash
 # Install Java 17 (required for Autopsy 4.x)
-sudo apt install -y default-jdk
+sudo apt update
+sudo apt install -y openjdk-17-jdk unzip zip wget
 
 # Install required dependencies
 sudo apt install -y \
+    git \
+    build-essential \
+    autoconf \
+    libtool \
+    automake \
+    ant \
     testdisk \
     libafflib-dev \
     libewf-dev \
     libvhdi-dev \
     libvmdk-dev \
-    sleuthkit
+    libvslvm-dev \
+    libde265-dev \
+    libheif-dev \
+    libpq-dev \
+    libgstreamer1.0-0 \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-plugins-ugly \
+    gstreamer1.0-libav \
+    gstreamer1.0-tools \
+    gstreamer1.0-x \
+    gstreamer1.0-alsa \
+    gstreamer1.0-gl \
+    gstreamer1.0-gtk3 \
+    gstreamer1.0-qt5 \
+    gstreamer1.0-pulseaudio
+
+# Install The Sleuth Kit Java bindings required by Autopsy
+TSK_VERSION=4.15.0
+wget https://raw.githubusercontent.com/sleuthkit/autopsy/develop/linux_macos_install_scripts/install_tsk_from_src.sh
+chmod +x install_tsk_from_src.sh
+TSK_SRC_PARENT=$(mktemp -d)
+./install_tsk_from_src.sh -p "$TSK_SRC_PARENT/sleuthkit" -b "sleuthkit-${TSK_VERSION}"
 
 # Download the latest Autopsy release
 # Check https://github.com/sleuthkit/autopsy/releases for current version
-wget https://github.com/sleuthkit/autopsy/releases/download/autopsy-4.21.0/autopsy-4.21.0.zip
+AUTOPSY_VERSION=4.23.1
+wget "https://github.com/sleuthkit/autopsy/releases/download/autopsy-${AUTOPSY_VERSION}/autopsy-${AUTOPSY_VERSION}.zip"
 
-# Extract
-unzip autopsy-4.21.0.zip
-cd autopsy-4.21.0
+# Download the Linux/macOS install helper scripts
+wget https://raw.githubusercontent.com/sleuthkit/autopsy/develop/linux_macos_install_scripts/install_application.sh
 
-# Run the Unix setup script
-chmod +x unix_setup.sh
-./unix_setup.sh
+# Install Autopsy into ~/autopsy
+chmod +x install_application.sh
+JAVA_HOME_PATH=$(update-java-alternatives -l | awk '/java-1.17|java-17/ {print $3; exit}')
+./install_application.sh \
+    -z "autopsy-${AUTOPSY_VERSION}.zip" \
+    -i "$HOME/autopsy" \
+    -j "$JAVA_HOME_PATH"
 
 # Launch Autopsy
-./bin/autopsy
+"$HOME/autopsy/autopsy-${AUTOPSY_VERSION}/bin/autopsy"
 ```
 
 ## Preparing a Forensic Case
@@ -111,17 +145,17 @@ For a large image, ingestion can take hours. Run it overnight for multi-hundred-
 
 ### File Browser
 
-The left panel shows the directory tree from the disk image. Navigate files just like a regular file manager, but all files - including deleted ones - are visible.
+The left panel shows the directory tree from the disk image. Navigate files just like a regular file manager. Deleted file entries may also be visible when the file system metadata still exists.
 
 ```text
 # Deleted files appear with a red X icon
 # Unallocated space shows as "$Unalloc"
-# System directories like /proc are excluded from carved space
+# Pseudo-filesystems like /proc are usually not present in a static disk image unless they were captured as files
 ```
 
 ### Recovering Deleted Files
 
-Autopsy automatically flags deleted files that are still recoverable from unallocated space. Filter by:
+Autopsy can list deleted file entries and carved files, but successful recovery depends on whether the deleted content has been overwritten. Filter by:
 
 1. Click "Deleted Files" in the left tree
 2. Sort by file type, size, or date
@@ -147,8 +181,8 @@ Timeline analysis is one of Autopsy's most powerful features for reconstructing 
 ```
 
 In Autopsy:
-1. Go to "Tools" > "Run Ingest Modules" > "Keyword Search"
-2. Add custom keyword lists
+1. Enable the "Keyword Search" ingest module when adding the data source, or rerun ingest modules for the data source
+2. Use the Keyword Search configuration to add custom keyword lists
 3. Results appear in the "Keyword Hits" section
 
 ### Hash Set Matching
@@ -167,7 +201,7 @@ md5sum malware2.exe >> known_bad.txt
 
 After completing analysis, generate a formal report.
 
-1. Go to "Generate Report"
+1. Go to "Tools" > "Generate Report" or click "Generate Report" in the toolbar
 2. Choose report type:
    - **HTML Report** - Good for sharing with stakeholders
    - **Excel Report** - For further analysis in spreadsheets
