@@ -8,13 +8,13 @@ Description: A guide to configuring the Snap Store Proxy for air-gapped or restr
 
 ---
 
-Enterprise environments often have strict network controls that prevent direct access to the internet from production systems. Ubuntu's snap ecosystem supports these environments through the Snap Store Proxy - a self-hosted service that caches snap packages and provides a local mirror of the Snap Store. This guide covers setting up both a proxy and configuring systems to use it.
+Enterprise environments often have strict network controls that prevent direct access to the internet from production systems. Ubuntu's snap ecosystem supports these environments through the Snap Store Proxy - now called Enterprise Store - a self-hosted service that caches snap packages and can operate in an offline mode. This guide covers setting up both a proxy and configuring systems to use it.
 
 ## Understanding the Options
 
 There are two main approaches for air-gapped snap usage:
 
-1. **Snap Store Proxy** - A Canonical-supported product that runs an on-premises instance of the Snap Store, with caching, access control, and override capabilities. Requires a Canonical support contract for production use.
+1. **Snap Store Proxy** - A Canonical-supported product that runs an on-premises proxy for the Snap Store, with caching, offline mode, and override capabilities.
 
 2. **Manual snap sideloading** - Downloading snap files on a connected machine and transferring them manually to air-gapped systems.
 
@@ -60,15 +60,15 @@ The Snap Store Proxy is a full-featured solution for enterprise environments. It
 - Local caching of snap packages
 - Control over which snaps and revisions are available
 - Override support to pin specific revisions
-- Analytics and audit logs
+- Offline mode for disconnected environments
 
 ### Prerequisites
 
 The proxy runs as a snap itself and requires:
-- Ubuntu 18.04 or later
-- At least 50GB disk space for the cache
+- A currently supported Ubuntu LTS release on AMD64
+- Enough disk space for the snaps you expect to cache or import
 - PostgreSQL database (can be local or remote)
-- Network access from the proxy machine to snapcraft.io
+- Network access from the proxy machine to Canonical's Snap Store infrastructure, unless configured for offline mode
 - Network access from client machines to the proxy
 
 ```bash
@@ -85,15 +85,19 @@ sudo systemctl enable --now postgresql
 ```bash
 # Create the database and user
 sudo -u postgres psql << 'EOF'
-CREATE USER snapproxy WITH PASSWORD 'your-secure-password';
-CREATE DATABASE snapproxy OWNER snapproxy;
-GRANT ALL PRIVILEGES ON DATABASE snapproxy TO snapproxy;
+CREATE ROLE "snapproxy-user" LOGIN CREATEROLE PASSWORD 'your-secure-password';
+CREATE DATABASE "snapproxy-db" OWNER "snapproxy-user";
+\connect "snapproxy-db"
+CREATE EXTENSION "btree_gist";
 EOF
 ```
 
 ### Registering the Proxy with Canonical
 
 ```bash
+# Set the domain or IP address clients will use to reach the proxy
+sudo snap-proxy config proxy.domain="snap-proxy.internal.example.com"
+
 # Register your proxy with the Snap Store
 # This requires a Snap Store account (snapcraft.io)
 sudo snap-proxy register
@@ -104,34 +108,21 @@ sudo snap-proxy register
 # 3. Agree to terms of service
 ```
 
-After registration, you receive a proxy ID and secret that authenticate your proxy with the Snap Store.
+After registration, the proxy receives a Store ID that clients use when they are configured to connect through it.
 
 ### Configuring the Proxy
 
 ```bash
 # Configure the database connection
-sudo snap set snap-store-proxy db.host=localhost
-sudo snap set snap-store-proxy db.port=5432
-sudo snap set snap-store-proxy db.name=snapproxy
-sudo snap set snap-store-proxy db.user=snapproxy
-sudo snap set snap-store-proxy db.password=your-secure-password
+sudo snap-proxy config proxy.db.connection="postgresql://snapproxy-user@localhost:5432/snapproxy-db"
 
-# Set the external URL that clients will use to reach the proxy
-sudo snap set snap-store-proxy proxy.domain=snap-proxy.internal.example.com
-
-# Configure the port (default is 8080)
-sudo snap set snap-store-proxy proxy.port=8080
-
-# Initialize the proxy (runs database migrations)
-sudo snap-proxy init
+# Check that the proxy can reach the Snap Store services it needs
+snap-proxy check-connections
 ```
 
 ### Starting the Proxy Service
 
 ```bash
-# Start the proxy
-sudo snap start snap-store-proxy
-
 # Verify it's running
 sudo snap services snap-store-proxy
 
@@ -142,10 +133,11 @@ sudo snap logs snap-store-proxy
 ### Testing the Proxy
 
 ```bash
-# From the proxy server itself, test the API
-curl http://localhost:8080/v2/snaps/info/core
+# Check registration and service status
+snap-proxy status
 
-# Should return JSON with snap information
+# Check the API is reachable from the proxy server
+curl -I http://localhost/v2/auth/store/assertions
 ```
 
 ## Configuring Client Machines to Use the Proxy
@@ -153,26 +145,18 @@ curl http://localhost:8080/v2/snaps/info/core
 On each Ubuntu machine that should use the proxy instead of the public Snap Store:
 
 ```bash
-# Configure snapd to use your proxy
-sudo snap set core proxy.http=http://snap-proxy.internal.example.com:8080
-sudo snap set core proxy.https=http://snap-proxy.internal.example.com:8080
+# Import the signed store assertion so snapd trusts the proxy
+curl -sL http://snap-proxy.internal.example.com/v2/auth/store/assertions | sudo snap ack /dev/stdin
 
-# Or set the store URL directly (preferred method)
-sudo snap set core proxy.store=<your-proxy-id>
+# Configure snapd to use the proxy store
+sudo snap set core proxy.store=<your-store-id>
 ```
 
 To get the proxy store ID:
 
 ```bash
 # On the proxy server
-sudo snap-proxy config | grep store-id
-```
-
-On client machines, configure the store:
-
-```bash
-# Point snapd at your proxy store
-sudo snap set core store.url=http://snap-proxy.internal.example.com:8080
+snap-proxy status
 ```
 
 Restart snapd for changes to take effect:
@@ -194,22 +178,25 @@ The proxy lets you override which revision clients receive for a given snap and 
 sudo snap-proxy override firefox stable=4050
 
 # Allow any revision (remove the override)
-sudo snap-proxy override firefox stable=--
+sudo snap-proxy delete-override firefox stable
 
 # List current overrides
-sudo snap-proxy list-overrides
+sudo snap-proxy list-overrides firefox
 ```
 
-You can also restrict which snaps clients can install:
+For fully air-gapped deployments, export snaps on a connected machine and import them into the on-prem store:
 
 ```bash
-# Allow only specific snaps (deny all others)
-sudo snap-proxy allowlist add firefox
-sudo snap-proxy allowlist add core22
-sudo snap-proxy allowlist add snapd
+# On a connected machine
+sudo snap install store-admin
+store-admin export snaps firefox core22 snapd --channel=stable --arch=amd64 --export-dir .
 
-# Enable the allowlist (this blocks all non-listed snaps)
-sudo snap-proxy config set allowlist.enabled=true
+# On the air-gapped proxy host, after enabling offline mode
+sudo snap-proxy enable-airgap-mode
+sudo mv *.tar.gz /var/snap/snap-store-proxy/common/snaps-to-push/
+for bundle in /var/snap/snap-store-proxy/common/snaps-to-push/*.tar.gz; do
+  sudo snap-store-proxy push-snap "$bundle"
+done
 ```
 
 ## Firewall Configuration
@@ -218,24 +205,24 @@ Configure your firewall to allow client-to-proxy traffic:
 
 ```bash
 # On the proxy server, allow inbound from your network
-sudo ufw allow from 10.0.0.0/8 to any port 8080 proto tcp
+sudo ufw allow from 10.0.0.0/8 to any port 80 proto tcp
 
 # The proxy itself needs outbound to Canonical's infrastructure
-# Allow outbound to snapcraft.io, api.snapcraft.io, and snap CDN
-sudo ufw allow out to 91.189.0.0/16
+# Verify the required outbound destinations before locking down egress
+snap-proxy check-connections
 ```
 
 ## Monitoring Proxy Health
 
 ```bash
 # Check proxy status and statistics
-curl http://localhost:8080/v2/system-info | python3 -m json.tool
+snap-proxy status
 
 # View recent proxy logs
-sudo snap logs snap-store-proxy --num=100
+sudo snap logs snap-store-proxy -n=100
 
 # Check cache disk usage
-du -sh /var/snap/snap-store-proxy/current/
+du -sh /var/snap/snap-store-proxy/common/
 ```
 
 The Snap Store Proxy significantly simplifies snap management in regulated or air-gapped environments. Once deployed, client machines use snaps exactly as they would with internet access, but all traffic goes through your controlled infrastructure. Combined with override support to pin revisions, you gain the predictability that enterprise environments require while retaining the snap ecosystem's update and rollback capabilities.
