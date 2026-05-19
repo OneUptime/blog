@@ -41,10 +41,10 @@ WantedBy=multi-user.target
 ```
 
 Key points about this configuration:
-- `Type=notify` is required - the service must support sd_notify protocol
+- `Type=notify` is appropriate when the service sends `READY=1`; watchdog keepalives require the service to support the sd_notify protocol
 - `WatchdogSec=30s` means systemd expects a heartbeat at least every 30 seconds
 - `Restart=on-watchdog` tells systemd to restart the service when the watchdog fires
-- The effective timeout is `WatchdogSec * 2/3`, so systemd will kill the service if no keepalive arrives within that window
+- Send keepalives more frequently than `WatchdogSec`; systemd will fail the service if the time between keepalives is longer than the configured timeout
 
 ## Watchdog Restart Options
 
@@ -77,6 +77,7 @@ If you control the application code, you need to send watchdog notifications. Th
 
 # Get the watchdog interval from systemd
 WATCHDOG_INTERVAL_USEC=${WATCHDOG_USEC:-0}
+PING_INTERVAL=1
 
 if [ "$WATCHDOG_INTERVAL_USEC" -gt 0 ]; then
     # Calculate interval in seconds, keep it to half the watchdog timeout
@@ -169,30 +170,30 @@ sudo apt install python3-systemd
 ```
 
 ```python
-from systemd.daemon import notify, Notification
+from systemd.daemon import notify
 import os
 import time
 
 # Notify ready
-notify(Notification.READY)
+notify("READY=1")
 
 # Send watchdog pings in your main loop
 watchdog_usec = int(os.environ.get('WATCHDOG_USEC', 0))
-if watchdog_usec > 0:
-    ping_interval = watchdog_usec / 2_000_000  # Half the watchdog timeout
+ping_interval = watchdog_usec / 2_000_000 if watchdog_usec > 0 else 1
 
 while True:
     # Do work
     process_tasks()
 
     # Send watchdog notification
-    notify(Notification.WATCHDOG)
+    if watchdog_usec > 0:
+        notify("WATCHDOG=1")
     time.sleep(ping_interval)
 ```
 
 ## Using the Hardware Watchdog
 
-systemd also supports the kernel hardware watchdog through `systemd-watchdog`. This extends the concept to the entire system - if systemd itself becomes unresponsive, the hardware watchdog will trigger a system reset.
+systemd also supports the kernel hardware watchdog through manager watchdog settings. This extends the concept to the entire system - if systemd itself becomes unresponsive, the hardware watchdog will trigger a system reset.
 
 Check if a hardware watchdog device is available:
 
@@ -290,4 +291,4 @@ StartLimitBurst=5
 
 ## Summary
 
-The systemd watchdog is a powerful tool for building self-healing services. The key requirements are: set `Type=notify` in your service unit, configure `WatchdogSec` with an appropriate timeout, set `Restart=on-watchdog` or `Restart=on-failure`, and implement watchdog notifications in your application code. Services that support the sd_notify protocol gain robust health monitoring without any external tools. For most production services, combining the service-level watchdog with `StartLimitBurst` to cap restart attempts gives you both resilience and protection against restart loops.
+The systemd watchdog is a powerful tool for building self-healing services. The key requirements are: configure `WatchdogSec` with an appropriate timeout, set `Restart=on-watchdog` or `Restart=on-failure`, and implement watchdog notifications in your application code. Use `Type=notify` when the service also reports readiness with `READY=1`. Services that support the sd_notify protocol gain robust health monitoring without any external tools. For most production services, combining the service-level watchdog with `StartLimitBurst` to cap restart attempts gives you both resilience and protection against restart loops.
