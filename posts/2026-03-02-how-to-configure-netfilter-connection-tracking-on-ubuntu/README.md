@@ -19,10 +19,10 @@ When a new connection arrives (the SYN packet of a TCP handshake, or the first U
 - Source and destination IP addresses
 - Source and destination ports
 - Protocol
-- Connection state (NEW, ESTABLISHED, RELATED, INVALID)
+- Connection state/status used for firewall matching
 - A timeout value
 
-Subsequent packets matching this entry are classified as ESTABLISHED and (depending on your iptables rules) pass through without additional processing overhead.
+Once packets have been seen in both directions, subsequent packets matching this entry are classified as ESTABLISHED and (depending on your iptables rules) can pass through your stateful allow rules.
 
 ## Basic conntrack Commands
 
@@ -40,8 +40,8 @@ sudo conntrack -C
 # Show only TCP connections
 sudo conntrack -L -p tcp
 
-# Show connections to a specific host
-sudo conntrack -L --dst-nat 192.168.1.100
+# Show connections to a specific destination host
+sudo conntrack -L --dst 192.168.1.100
 
 # Watch new connections in real time
 sudo conntrack -E
@@ -64,7 +64,7 @@ echo "Used: $(cat /proc/sys/net/netfilter/nf_conntrack_count) / Max: $(sysctl -n
 # If count is approaching max, increase the limit
 sudo sysctl -w net.netfilter.nf_conntrack_max=524288
 
-# Increase the hash table size to match (should be about 1/4 of max)
+# Increase the hash table size if needed (writeable only in the initial network namespace)
 sudo sysctl -w net.netfilter.nf_conntrack_buckets=131072
 ```
 
@@ -74,8 +74,9 @@ sudo tee /etc/sysctl.d/99-conntrack.conf > /dev/null <<'EOF'
 # Maximum number of connection tracking entries
 net.netfilter.nf_conntrack_max = 524288
 
-# Conntrack hash table size (should be ~1/4 of max for efficiency)
-# Note: nf_conntrack_buckets may need to be set via module parameter on some kernels
+# Conntrack hash table size
+# Note: nf_conntrack_buckets is only writeable in the initial network namespace
+# and may need to be set via module parameter on some kernels
 net.netfilter.nf_conntrack_buckets = 131072
 EOF
 
@@ -99,7 +100,7 @@ sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_established=3600
 # TCP connections in TIME_WAIT state (default: 120 seconds)
 sudo sysctl -w net.netfilter.nf_conntrack_tcp_timeout_time_wait=30
 
-# UDP connections (default: 30 seconds for new, 180 for replied)
+# UDP connections (default: 30 seconds for new, 120 for replied/stream)
 sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout=10
 sudo sysctl -w net.netfilter.nf_conntrack_udp_timeout_stream=30
 
@@ -199,11 +200,11 @@ sudo conntrack -D --dst 192.168.1.100
 sudo conntrack -D -p tcp --dport 80
 
 # Delete all entries (flush the entire table)
-# WARNING: this drops all established connections
+# WARNING: this can disrupt established connections
 sudo conntrack -F
 
-# Delete entries in a specific state
-sudo conntrack -D -s INVALID
+# Delete entries in a specific TCP state
+sudo conntrack -D -p tcp --state TIME_WAIT
 ```
 
 ## Monitoring and Statistics
@@ -216,8 +217,8 @@ sudo conntrack -S
 # found=     entries found in the table
 # invalid=   invalid packets (often attack traffic)
 # insert=    new entries created
-# insert_failed= hash collisions or table full events
-# drop=      packets dropped because table was full
+# insert_failed= new entries that could not be inserted
+# drop=      packets dropped because conntrack could not process them
 # early_drop= entries dropped to make room for new ones
 
 # Watch conntrack events in real time (new/destroy/update)
@@ -228,7 +229,7 @@ sudo conntrack -E --src 192.168.1.50
 
 # Count connections per remote IP (useful for detecting connection flooding)
 sudo conntrack -L -o extended | \
-    awk '/^tcp/{print $7}' | \
+    awk '/^(tcp|udp)/{for (i=1; i<=NF; i++) if ($i ~ /^dst=/) {print substr($i,5); break}}' | \
     sort | uniq -c | sort -rn | head -20
 ```
 
@@ -243,12 +244,12 @@ watch -n 1 'echo "Used: $(cat /proc/sys/net/netfilter/nf_conntrack_count) / Max:
 # Check iptables rules for DROP on INVALID state
 sudo iptables -L -n -v | grep INVALID
 
-# Check for INVALID packets being received
-sudo conntrack -L -s INVALID | wc -l
+# Check conntrack statistics for INVALID packets
+sudo conntrack -S | grep invalid
 
 # Enable conntrack logging for dropped connections
 # (Use with care - extremely verbose on busy systems)
-sudo iptables -A INPUT -m state --state INVALID -j LOG --log-prefix "INVALID: "
+sudo iptables -A INPUT -m conntrack --ctstate INVALID -j LOG --log-prefix "INVALID: "
 
 # Check dmesg for conntrack-related messages
 sudo dmesg | grep conntrack
