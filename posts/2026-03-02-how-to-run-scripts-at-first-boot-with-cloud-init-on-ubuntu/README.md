@@ -239,7 +239,7 @@ cloud-init runs scripts at different frequencies depending on how they're provid
 
 ```bash
 # Scripts placed here run once per instance
-ls /var/lib/cloud/instance/scripts/
+ls /var/lib/cloud/scripts/per-instance/
 
 # Scripts placed here run every boot
 ls /var/lib/cloud/scripts/per-boot/
@@ -303,7 +303,7 @@ runcmd:
     set -e    # exit on first error
 
     # Verify prerequisites
-    if ! command -v docker &>/dev/null; then
+    if ! command -v docker >/dev/null 2>&1; then
         echo "ERROR: Docker not installed" >&2
         exit 1
     fi
