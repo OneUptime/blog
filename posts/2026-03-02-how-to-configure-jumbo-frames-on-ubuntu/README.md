@@ -117,7 +117,7 @@ Netplan propagates the MTU setting to the member interfaces automatically.
 
 ### MTU for VLAN Interfaces
 
-VLAN interfaces inherit the parent interface's MTU, but you can set it explicitly. Note that VLAN tagging adds 4 bytes, so a parent interface MTU of 9000 supports a VLAN MTU of 8996:
+VLAN interfaces inherit the parent interface's MTU, but you can set it explicitly. Note that VLAN tagging adds 4 bytes on the wire, so the switch ports and NIC must be able to carry the VLAN tag in addition to the configured IP MTU:
 
 ```yaml
 ethernets:
@@ -127,7 +127,7 @@ vlans:
   eth0.100:
     id: 100
     link: eth0
-    mtu: 9000    # Can be up to parent - 4 for VLAN tag
+    mtu: 9000
     addresses: [192.168.100.1/24]
 ```
 
@@ -153,15 +153,15 @@ Setting a large MTU locally is only the first step. Verify that jumbo frames can
 ### Test with ping and Large Packets
 
 ```bash
-# Ping with a 9000-byte packet (MTU 9000 = 8972 data + 28 IP/ICMP headers)
+# Ping with a 9000-byte IPv4 packet (MTU 9000 = 8972 data + 28 IP/ICMP headers)
 # -M do = don't fragment (causes error if path MTU is smaller)
 # -s 8972 = data payload size
 ping -M do -s 8972 192.168.1.200
 
 # Test with various packet sizes to find the actual path MTU
-ping -M do -s 8972 192.168.1.200   # 9000 byte frame
-ping -M do -s 8000 192.168.1.200   # 8028 byte frame
-ping -M do -s 1472 192.168.1.200   # 1500 byte frame (standard)
+ping -M do -s 8972 192.168.1.200   # 9000 byte IPv4 packet
+ping -M do -s 8000 192.168.1.200   # 8028 byte IPv4 packet
+ping -M do -s 1472 192.168.1.200   # 1500 byte IPv4 packet (standard)
 ```
 
 If the large ping succeeds, jumbo frames are working end-to-end. If it fails with "Message too long" or "Frag needed", something in the path does not support that MTU.
@@ -200,26 +200,23 @@ Compare the throughput numbers. For dedicated storage networks, jumbo frames can
 
 ## NFS with Jumbo Frames
 
-For NFS performance, configure jumbo frames on both the server and client, then tune the NFS mount options to use large read/write sizes:
+For NFS performance, configure jumbo frames on both the server and client, then verify that the NFS mount uses large read/write sizes. Modern Linux NFS clients usually negotiate large values automatically, but you can set them explicitly:
 
 ```bash
 # Mount NFS with large block sizes to take advantage of jumbo frames
-sudo mount -t nfs -o rsize=65536,wsize=65536 192.168.1.50:/data /mnt/nfs
+sudo mount -t nfs -o rsize=1048576,wsize=1048576 192.168.1.50:/data /mnt/nfs
 
 # Or add to /etc/fstab
-# 192.168.1.50:/data /mnt/nfs nfs rsize=65536,wsize=65536,timeo=14,_netdev 0 0
+# 192.168.1.50:/data /mnt/nfs nfs rsize=1048576,wsize=1048576,timeo=14,_netdev 0 0
 ```
 
 ## iSCSI with Jumbo Frames
 
-For iSCSI targets, configure the MTU in the initiator configuration:
+For iSCSI targets, configure the MTU on the network interface used by the initiator:
 
 ```bash
-# Edit open-iscsi settings
-sudo nano /etc/iscsi/iscsid.conf
-
-# Set the interface MTU (the iSCSI initiator uses the system network stack)
 # Ensure the network interface is configured for jumbo frames via Netplan
+ip link show eth0 | grep mtu
 ```
 
 The iSCSI initiator uses the network interface's MTU automatically.
