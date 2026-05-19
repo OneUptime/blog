@@ -146,16 +146,18 @@ sudo apt-mark showhold
 
 ```bash
 # Check for packages in abnormal state
-dpkg -l | grep -E "^[^hi]" | grep -v "^Desired"
+# (second char != 'i' means current status is not "installed")
+dpkg -l | grep -E "^[a-z][^i] " | grep -v "^Desired"
 
-# State codes:
+# State codes (first char = desired action, second char = current status):
 # ii = installed normally
-# rc = removed but config remains
-# Hn = half-installed
-# Un = unpacked but not configured
+# rc = removed but config files remain
+# iH = install desired, half-installed
+# iU = install desired, unpacked but not configured
+# iF = install desired, half-configured
 
-# List only problematic package states
-dpkg -l | awk '!/^[hi|ii|rc]/ && !/^Desired/'
+# Or use dpkg's built-in audit which lists packages needing attention
+sudo dpkg --audit
 ```
 
 ## Rolling Back a Problematic Package Update
