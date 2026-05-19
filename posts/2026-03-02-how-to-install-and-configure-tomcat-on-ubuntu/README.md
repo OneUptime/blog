@@ -27,7 +27,7 @@ Set JAVA_HOME:
 
 ```bash
 echo 'JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"' | sudo tee -a /etc/environment
-source /etc/environment
+export JAVA_HOME="/usr/lib/jvm/java-21-openjdk-amd64"
 ```
 
 ## Creating a Dedicated Tomcat User
@@ -46,11 +46,12 @@ Download Tomcat directly from Apache's official mirrors. Find the latest version
 
 ```bash
 # Download Tomcat 10.x (check for latest version on official site)
-TOMCAT_VERSION="10.1.20"
+TOMCAT_VERSION="10.1.55"
 wget https://downloads.apache.org/tomcat/tomcat-10/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz
+wget https://downloads.apache.org/tomcat/tomcat-10/v${TOMCAT_VERSION}/bin/apache-tomcat-${TOMCAT_VERSION}.tar.gz.sha512
 
-# Verify the download with SHA512 checksum (compare against Apache's published hash)
-sha512sum apache-tomcat-${TOMCAT_VERSION}.tar.gz
+# Verify the download with Apache's published SHA512 checksum
+sha512sum -c apache-tomcat-${TOMCAT_VERSION}.tar.gz.sha512
 ```
 
 ## Installing Tomcat
@@ -71,7 +72,8 @@ sudo chmod +x /opt/tomcat/bin/*.sh
 
 # Restrict access to sensitive directories
 sudo chmod 750 /opt/tomcat/conf
-sudo chmod 640 /opt/tomcat/conf/*
+sudo find /opt/tomcat/conf -type f -exec chmod 640 {} \;
+sudo find /opt/tomcat/conf -type d -exec chmod 750 {} \;
 ```
 
 ## Configuring Tomcat
@@ -329,18 +331,14 @@ sudo nano /etc/logrotate.d/tomcat
 ```
 
 ```text
-/opt/tomcat/logs/*.log
-/opt/tomcat/logs/*.txt {
+/opt/tomcat/logs/*.log /opt/tomcat/logs/*.txt /opt/tomcat/logs/catalina.out {
     daily
     rotate 14
     missingok
     notifempty
     compress
     delaycompress
-    sharedscripts
-    postrotate
-        systemctl reload tomcat 2>/dev/null || true
-    endscript
+    copytruncate
 }
 ```
 
