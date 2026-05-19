@@ -72,7 +72,7 @@ Make sure IBus is set as the active input method framework.
 im-config -n ibus
 
 # Verify the configuration
-cat ~/.config/im-config/70_user.conf
+cat ~/.xinputrc
 ```
 
 Log out and log back in for the changes to take effect.
@@ -95,8 +95,8 @@ On Wayland (default in Ubuntu 22.04+), GNOME handles input natively. If you enco
 Many users find Fcitx5 more responsive for CJK input, especially with large candidate dictionaries.
 
 ```bash
-# Install Fcitx5 and Chinese addons
-sudo apt install fcitx5 fcitx5-chinese-addons
+# Install Fcitx5, its configuration tool, and Chinese addons
+sudo apt install fcitx5 fcitx5-config-qt fcitx5-chinese-addons
 
 # Install Fcitx5 Japanese support (Mozc)
 sudo apt install fcitx5-mozc
@@ -145,7 +145,7 @@ Once multiple input sources are configured, use the keyboard shortcut to cycle t
 # Super + Shift + Space - switch to previous input source
 ```
 
-Most CJK IMEs also have an internal toggle between Latin (direct) input and phonetic input mode. For Mozc (Japanese), this is typically the `Henkan` key or pressing Ctrl+Space inside the application.
+Most CJK IMEs also have an internal toggle between Latin (direct) input and phonetic input mode. For Mozc (Japanese), this depends on the selected keymap and keyboard layout; common keys include `Hankaku/Zenkaku`, `Muhenkan`, and `Henkan`.
 
 ## Installing Fonts for CJK Display
 
