@@ -104,12 +104,13 @@ net.ipv4.ip_local_port_range = 10000 65535
 
 # ======== Memory Limits ========
 # TCP global memory limits (pages: min pressure max)
-# 4096 * 1048576 / 4096 = 1048576 pages = 4GB
+# 1048576 pages * 4096 bytes/page = 4GB
 net.ipv4.tcp_mem = 786432 1048576 1572864
 
 # ======== Receive Steering ========
 # Enable Receive Flow Steering
-# (set via ethtool rfs, not sysctl)
+# (configured via /proc/sys/net/core/rps_sock_flow_entries
+#  and /sys/class/net/*/queues/rx-*/rps_flow_cnt - see RSS/RFS section below)
 ```
 
 Apply the settings:
