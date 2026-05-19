@@ -58,7 +58,7 @@ ConsumerRecords<String, User> records = consumer.poll(Duration.ofSeconds(10));
 
 ## Strategy 1: ErrorHandlingDeserializer (Recommended)
 
-Kafka provides `ErrorHandlingDeserializer` that wraps your deserializer and catches errors.
+The Spring framework provides `ErrorHandlingDeserializer` that wraps your deserializer and catches errors.
 
 ```java
 import org.apache.kafka.common.serialization.Deserializer;
