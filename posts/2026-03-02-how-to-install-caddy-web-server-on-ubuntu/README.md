@@ -26,6 +26,8 @@ curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --d
 
 # Add the Caddy APT repository
 curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+sudo chmod o+r /etc/apt/sources.list.d/caddy-stable.list
 
 # Update package index and install Caddy
 sudo apt update
@@ -58,7 +60,7 @@ The default file just serves a placeholder page. The main configuration file loc
 - Binary: `/usr/bin/caddy`
 - Systemd service: `/lib/systemd/system/caddy.service`
 - Default webroot: `/var/www/html`
-- Logs: `/var/log/caddy/`
+- Service logs: `journalctl -u caddy`
 
 ## Serving Static Files
 
@@ -142,7 +144,7 @@ example.com {
     }
 }
 
-# API subdomain with rate limiting
+# API subdomain with active health checks
 api.example.com {
     reverse_proxy localhost:4000 {
         # Health check for the backend
@@ -172,7 +174,7 @@ site2.example.com {
 
 # Wildcard subdomain
 *.example.com {
-    # tls with wildcard requires DNS challenge
+    # tls with wildcard requires DNS challenge and a Caddy build with the Cloudflare DNS module
     tls {
         dns cloudflare {env.CF_API_TOKEN}
     }
@@ -198,9 +200,6 @@ sudo systemctl enable caddy
 # Check service status and logs
 sudo systemctl status caddy
 sudo journalctl -u caddy -f
-
-# View Caddy's access and error logs
-sudo tail -f /var/log/caddy/access.log
 ```
 
 ## Validating the Caddyfile
@@ -245,7 +244,7 @@ id caddy
 
 ## Using the Admin API
 
-Caddy exposes a REST API for dynamic configuration changes without reloading the process:
+Caddy exposes a REST API for dynamic configuration changes without restarting the process:
 
 ```bash
 # Check the admin endpoint (runs on localhost:2019 by default)
