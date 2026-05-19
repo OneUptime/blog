@@ -22,7 +22,7 @@ sudo apt-get install -y \
     bluetooth \
     pulseaudio-module-bluetooth  # if using PulseAudio
 
-# For PipeWire (Ubuntu 22.04+)
+# For PipeWire (default on Ubuntu Desktop 22.10+)
 sudo apt-get install -y libspa-0.2-bluetooth
 
 # Verify Bluetooth service is running
@@ -101,12 +101,14 @@ wpctl status | grep -i blue
 # List available sinks (audio outputs)
 pactl list sinks short
 
-# Set Bluetooth device as default output
-pactl set-default-sink bluez_sink.AA_BB_CC_DD_EE_FF.a2dp_sink
+# Set Bluetooth device as default output.
+# Replace this with the exact Bluetooth sink name from the previous command.
+BT_SINK="bluez_sink.AA_BB_CC_DD_EE_FF.a2dp_sink"
+pactl set-default-sink "$BT_SINK"
 
 # Move all current audio streams to Bluetooth
 pactl list sink-inputs short | awk '{print $1}' | while read id; do
-    pactl move-sink-input "$id" bluez_sink.AA_BB_CC_DD_EE_FF.a2dp_sink
+    pactl move-sink-input "$id" "$BT_SINK"
 done
 ```
 
@@ -122,7 +124,8 @@ pactl list cards | grep -A 30 "bluez"
 pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF a2dp_sink
 
 # If you need to use microphone on the headset (voice chat):
-pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF headset_head_unit_msbc
+# Use the headset profile name shown by "pactl list cards"
+pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF headset_head_unit
 
 # Switch back to A2DP when done with voice call
 pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF a2dp_sink
@@ -139,7 +142,7 @@ sudo nano /etc/pulse/default.pa
 # Find and comment out or modify this line:
 # load-module module-bluetooth-policy
 # Change to:
-load-module module-bluetooth-policy auto_switch=false
+load-module module-bluetooth-policy auto_switch=0
 
 # Restart PulseAudio
 pulseaudio -k && pulseaudio --start
@@ -148,12 +151,10 @@ pulseaudio -k && pulseaudio --start
 For PipeWire, configure via WirePlumber:
 
 ```bash
-mkdir -p ~/.config/wireplumber/bluetooth.lua.d/
+mkdir -p ~/.config/wireplumber/policy.lua.d/
 
-cat > ~/.config/wireplumber/bluetooth.lua.d/50-disable-autoswitch.lua << 'EOF'
-bluez_monitor.properties = {
-  ["bluez5.enable-autoswitch-profile"] = false,
-}
+cat > ~/.config/wireplumber/policy.lua.d/51-disable-headset-autoswitch.lua << 'EOF'
+bluetooth_policy.policy["media-role.use-headset-profile"] = false
 EOF
 
 systemctl --user restart wireplumber
@@ -176,13 +177,15 @@ Standard Bluetooth A2DP uses SBC codec, which sounds mediocre. Better codecs req
 
 ```bash
 # For PulseAudio with Bluetooth codec support
-sudo apt-get install -y pulseaudio-module-bluetooth-discover
+sudo apt-get install -y pulseaudio-module-bluetooth
 
 # For PipeWire (codecs are built into the spa-bluez5 plugin)
 # Check available codecs
 pactl list cards | grep -i codec
 
 # Enable SBC-XQ and other codecs via WirePlumber config
+mkdir -p ~/.config/wireplumber/bluetooth.lua.d/
+
 cat > ~/.config/wireplumber/bluetooth.lua.d/51-codecs.lua << 'EOF'
 bluez_monitor.properties = {
   ["bluez5.enable-sbc-xq"] = true,
@@ -201,11 +204,13 @@ systemctl --user restart wireplumber
 # PipeWire: view current codec
 pactl list cards | grep -i "Active Profile\|codec"
 
-# Switch to LDAC if supported
-pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF a2dp_sink-ldac
+# Switch to LDAC if supported.
+# Use the exact profile name shown by "pactl list cards";
+# common names include a2dp_sink_ldac and a2dp-sink-ldac.
+pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF a2dp_sink_ldac
 
 # Switch to aptX
-pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF a2dp_sink-aptx
+pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF a2dp_sink_aptx
 ```
 
 ## Auto-Connect on Boot
