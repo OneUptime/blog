@@ -32,10 +32,10 @@ lpstat -p -d
 lpoptions -p PrinterName -l
 
 # Look for duplex-related options in the output
-lpoptions -p PrinterName -l | grep -i "dup\|sided\|back"
+lpoptions -p PrinterName -l | grep -Ei "dup|sided|sides|back"
 ```
 
-The duplex option names vary by printer driver:
+The standard CUPS job option is `sides`, but legacy PPD-based driver option names vary by printer driver:
 - `Duplex` - Most PostScript printers
 - `KM-Duplex` - Some Konica Minolta models
 - `HPOption_DuplexUnit` - Some HP printers
@@ -45,8 +45,8 @@ The duplex option names vary by printer driver:
 
 ```bash
 # Get detailed info about a specific printer
-lpinfo -l -m | grep -i duplex
-lpoptions -l -p MyPrinter | grep -i duplex
+lpoptions -p MyPrinter -l | grep -Ei "duplex|sides"
+ipptool -tv ipp://printer-ip/ipp/print get-printer-attributes.test | grep -Ei "sides|duplex"
 
 # Example output:
 # Duplex/Two-Sided Printing: *None DuplexNoTumble DuplexTumble
@@ -103,29 +103,29 @@ The command-line approach is better for automation and scripting:
 ```bash
 # Set duplex as the default for a printer
 # Long-edge flip (standard duplex for portrait documents)
-lpadmin -p MyPrinter -o Duplex=DuplexNoTumble
+lpadmin -p MyPrinter -o sides-default=two-sided-long-edge
 
 # Short-edge flip (for landscape orientation or calendar-style)
-lpadmin -p MyPrinter -o Duplex=DuplexTumble
+lpadmin -p MyPrinter -o sides-default=two-sided-short-edge
 
 # Disable duplex (single-sided)
-lpadmin -p MyPrinter -o Duplex=None
+lpadmin -p MyPrinter -o sides-default=one-sided
 
 # Verify the change was applied
-lpoptions -p MyPrinter | grep Duplex
+lpoptions -p MyPrinter | grep sides
 ```
 
 For user-level defaults (applies only to your user, doesn't require root):
 
 ```bash
 # Set personal default (stored in ~/.cups/lpoptions)
-lpoptions -p MyPrinter -o Duplex=DuplexNoTumble
+lpoptions -p MyPrinter -o sides=two-sided-long-edge
 
 # Show current user defaults
 lpoptions -p MyPrinter
 
 # Reset to printer default
-lpoptions -p MyPrinter -r Duplex
+lpoptions -p MyPrinter -r sides
 ```
 
 ## Printing with Duplex Options from the Command Line
@@ -134,27 +134,27 @@ Override duplex settings per print job without changing defaults:
 
 ```bash
 # Print a file duplex (overrides default for this job)
-lp -d MyPrinter -o Duplex=DuplexNoTumble document.pdf
+lp -d MyPrinter -o sides=two-sided-long-edge document.pdf
 
 # Print single-sided even if duplex is the default
-lp -d MyPrinter -o Duplex=None report.pdf
+lp -d MyPrinter -o sides=one-sided report.pdf
 
 # Print duplex with specific paper size
 lp -d MyPrinter \
-    -o Duplex=DuplexNoTumble \
+    -o sides=two-sided-long-edge \
     -o media=A4 \
     -o landscape \
     document.pdf
 
 # Print multiple copies duplex
 lp -d MyPrinter \
-    -o Duplex=DuplexNoTumble \
+    -o sides=two-sided-long-edge \
     -n 3 \
     document.pdf
 
 # Print a range of pages duplex
 lp -d MyPrinter \
-    -o Duplex=DuplexNoTumble \
+    -o sides=two-sided-long-edge \
     -o page-ranges=1-10 \
     document.pdf
 ```
@@ -197,33 +197,30 @@ sudo systemctl restart cups
 
 ## Setting Duplex for All New Printers
 
-To ensure all newly added printers get duplex enabled automatically, create a CUPS policy:
+To ensure printers get duplex enabled after they are added, run a provisioning script against the CUPS queues. CUPS does not support System V interface scripts as printer-add hooks in current releases:
 
 ```bash
-# This script runs when new printers are added
-sudo tee /etc/cups/interfaces/auto-duplex.sh << 'SCRIPT'
+# Run this after adding or discovering printers
+sudo tee /usr/local/sbin/set-cups-duplex-defaults << 'SCRIPT'
 #!/bin/bash
-# Set duplex default when a printer is added via event
+# Set duplex default for printers that advertise duplex support
 
-PRINTER="$1"
-
-# Wait a moment for the printer to be fully initialized
-sleep 2
-
-# Check if the printer supports duplex
-if lpoptions -p "$PRINTER" -l 2>/dev/null | grep -qi "duplex"; then
-    lpadmin -p "$PRINTER" -o Duplex=DuplexNoTumble
-    echo "Duplex enabled for: $PRINTER"
-fi
+lpstat -e | while read -r PRINTER; do
+    if lpoptions -p "$PRINTER" -l 2>/dev/null | grep -Eqi "duplex|sides"; then
+        lpadmin -p "$PRINTER" -o sides-default=two-sided-long-edge
+        echo "Duplex enabled for: $PRINTER"
+    fi
+done
 SCRIPT
-sudo chmod +x /etc/cups/interfaces/auto-duplex.sh
+sudo chmod +x /usr/local/sbin/set-cups-duplex-defaults
+sudo /usr/local/sbin/set-cups-duplex-defaults
 ```
 
 ## Verifying Duplex Is Working
 
 ```bash
 # Print a test page and check for duplex
-lp -d MyPrinter -o Duplex=DuplexNoTumble /usr/share/cups/data/default-testpage.pdf
+lp -d MyPrinter -o sides=two-sided-long-edge /usr/share/cups/data/default-testpage.pdf
 
 # Or generate a multi-page PDF for testing
 # Install ghostscript if needed
@@ -239,7 +236,7 @@ gs -dBATCH -dNOPAUSE -sDEVICE=pdfwrite -sOutputFile=test4page.pdf \
    -c "(Page 4) show showpage"
 
 # Print the test document duplex
-lp -d MyPrinter -o Duplex=DuplexNoTumble test4page.pdf
+lp -d MyPrinter -o sides=two-sided-long-edge test4page.pdf
 ```
 
 ## Troubleshooting Duplex Issues
@@ -260,8 +257,8 @@ lpq -l -P MyPrinter
 # Check available PPDs
 lpinfo -m | grep -i "$(lshw -C printer 2>/dev/null | grep product | head -1 | awk '{print $2}')"
 
-# Manually check if printer supports duplex (via SNMP or IPP)
-ipptool -tv ipp://printer-ip/ipp/print get-printer-attributes.test | grep -i duplex
+# Manually check if printer supports duplex via IPP
+ipptool -tv ipp://printer-ip/ipp/print get-printer-attributes.test | grep -Ei "sides|duplex"
 ```
 
 ## Application-Specific Duplex Configuration
@@ -269,10 +266,8 @@ ipptool -tv ipp://printer-ip/ipp/print get-printer-attributes.test | grep -i dup
 Some applications override CUPS defaults with their own settings:
 
 ```bash
-# LibreOffice command-line printing with duplex
-libreoffice --headless --printer-name MyPrinter \
-    --print-to-file --outdir /tmp \
-    document.odt
+# LibreOffice command-line printing uses the printer's CUPS defaults
+libreoffice --headless --pt MyPrinter document.odt
 
 # For consistent results, configure defaults in CUPS rather than per-application
 
@@ -290,10 +285,10 @@ For a shared workstation or print server where you want all users to default to 
 
 ```bash
 # Set system-wide default via CUPS (affects all users)
-sudo lpadmin -p MyPrinter -o Duplex=DuplexNoTumble
+sudo lpadmin -p MyPrinter -o sides-default=two-sided-long-edge
 
 # Verify system-wide default
-lpoptions -d  # shows system default printer and options
+lpoptions -p MyPrinter | grep sides
 
 # Individual users can override with their own lpoptions
 # User settings in ~/.cups/lpoptions override system defaults
