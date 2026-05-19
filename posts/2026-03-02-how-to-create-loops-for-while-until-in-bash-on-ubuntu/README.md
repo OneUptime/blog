@@ -8,7 +8,7 @@ Description: Learn how to use for, while, and until loops in Bash on Ubuntu with
 
 ---
 
-Loops are the mechanism that makes scripts scale. Instead of writing the same command 100 times for 100 files, you write it once in a loop and let Bash handle the repetition. Ubuntu's Bash shell supports three loop types: `for`, `while`, and `until`, each suited for different iteration patterns.
+Loops are the mechanism that makes scripts scale. Instead of writing the same command 100 times for 100 files, you write it once in a loop and let Bash handle the repetition. This guide covers three common Bash loop types: `for`, `while`, and `until`, each suited for different iteration patterns.
 
 ## The for Loop
 
@@ -194,7 +194,7 @@ done
 echo "Service is up!"
 ```
 
-### Infinite Loops with break
+### Infinite Loops
 
 ```bash
 #!/bin/bash
@@ -287,11 +287,11 @@ done
 echo "After loops"
 ```
 
-## Looping Over CSV Data
+## Looping Over Simple CSV Data
 
 ```bash
 #!/bin/bash
-# Process a CSV file (no header row assumed)
+# Process a simple CSV file (no header row or quoted commas assumed)
 
 csv_file="/tmp/servers.csv"
 
