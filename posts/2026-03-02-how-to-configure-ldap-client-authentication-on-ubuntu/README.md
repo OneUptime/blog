@@ -45,6 +45,9 @@ auth_provider = ldap
 # LDAP server URI
 ldap_uri = ldap://ldap.example.com
 
+# Use StartTLS for LDAP identity lookups
+ldap_id_use_start_tls = true
+
 # Base DN for user searches
 ldap_search_base = dc=example,dc=com
 
@@ -57,7 +60,7 @@ ldap_default_bind_dn = cn=readonly,dc=example,dc=com
 ldap_default_authtok = ReadOnlyPassword123!
 
 # User and group object mappings for POSIX attributes
-ldap_user_object_class = inetOrgPerson
+ldap_user_object_class = posixAccount
 ldap_user_uid_number = uidNumber
 ldap_user_gid_number = gidNumber
 ldap_user_home_directory = homeDirectory
@@ -143,7 +146,7 @@ getent passwd jsmith
 getent group devops
 
 # Test authentication
-sudo -u jsmith ssh localhost
+ssh jsmith@localhost
 # or
 su - jsmith
 ```
@@ -206,7 +209,7 @@ sudo grep "UsePAM" /etc/ssh/sshd_config
 sudo nano /etc/ssh/sshd_config
 # Add: UsePAM yes
 
-sudo systemctl restart sshd
+sudo systemctl restart ssh
 ```
 
 ## Restricting Access to Specific Groups
