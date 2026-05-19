@@ -79,7 +79,7 @@ PasswordAuthentication no
 PubkeyAuthentication yes
 AllowGroups builders sudo
 MaxSessions 10
-# Limit concurrent SSH connections per user
+# Throttle concurrent unauthenticated connections (start:rate:full)
 MaxStartups 10:30:60
 ```
 
@@ -203,7 +203,7 @@ echo 'export NPM_CONFIG_CACHE=/opt/build-cache/npm' | sudo tee /etc/profile.d/np
 echo 'export PIP_CACHE_DIR=/opt/build-cache/pip' | sudo tee /etc/profile.d/pip.sh
 ```
 
-Resource Limits and cgroups
+## Resource Limits and cgroups
 
 Prevent runaway builds from consuming all server resources.
 
@@ -224,8 +224,8 @@ Add these limits:
 @builders   hard   nofile   65536
 @builders   soft   stack    65536
 @builders   hard   stack    unlimited
-# Prevent a single build from using more than 24 cores
-@builders   soft   cpu      1440     # 24 hours CPU time limit
+# Cap per-process CPU time (cgroups/CPUQuota below limit core usage)
+@builders   soft   cpu      1440     # 1440 minutes (24 hours) of CPU time
 ```
 
 ### Using systemd Slices for Resource Control
