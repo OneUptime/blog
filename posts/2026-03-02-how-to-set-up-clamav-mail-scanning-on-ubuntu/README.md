@@ -84,8 +84,8 @@ ScanMail yes
 # Scan PDF files
 ScanPDF yes
 
-# Log infected files
-LogViruses yes
+# Log clean files too (off by default to keep logs small)
+LogClean no
 
 # Syslog integration
 LogSyslog yes
@@ -157,8 +157,8 @@ ClamdSocket unix:/var/run/clamav/clamd.ctl
 LogInfected Basic
 LogClean Off
 
-# Report sender/recipient info when logging
-ReportHostname yes
+# Hostname reported in the X-Virus-Scanned header (defaults to system hostname)
+ReportHostname mail.example.com
 ```
 
 ```bash
@@ -278,8 +278,8 @@ sudo mkdir -p /var/lib/clamav/custom
 # First, get the SHA256 hash of a known malware file
 # sha256sum /path/to/malware.exe > malware.sha256
 
-# Add to a custom database file (HDB format for hashes)
-# echo "HASHVALUE:FILESIZE:MalwareName" >> /var/lib/clamav/custom/local.hdb
+# Add to a custom database file (.hsb for SHA1/SHA256, .hdb for MD5)
+# echo "HASHVALUE:FILESIZE:MalwareName" >> /var/lib/clamav/custom/local.hsb
 
 # Reload ClamAV to use new signatures
 sudo systemctl reload clamav-daemon
