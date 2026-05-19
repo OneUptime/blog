@@ -44,7 +44,7 @@ k9s version
 ### Method 2: Snap Package
 
 ```bash
-sudo snap install k9s
+sudo snap install k9s --devmode
 k9s version
 ```
 
@@ -52,7 +52,7 @@ k9s version
 
 ```bash
 # If you have Homebrew installed
-brew install k9s
+brew install derailed/k9s/k9s
 ```
 
 ## Basic Navigation
@@ -90,7 +90,7 @@ Resource actions (when a resource is selected):
   e              Edit the resource
   Ctrl+D         Delete the resource
   s              Open a shell in the container
-  f              Port-forward
+  Shift+F        Port-forward
   y              View YAML
   x              Decode base64 secrets
 
@@ -130,15 +130,15 @@ Navigation shortcuts:
 1. Navigate to a pod with `:pods`
 2. Use arrow keys to select the pod
 3. Press `l` to view logs
-4. Press `0` to see all namespaces
+4. Press `0` in the pods view first if you want to select pods across all namespaces
 
 In the log view:
 ```text
 Ctrl+S          Save logs to a file
-w               Toggle log timestamps
-t               Toggle log wrapping
+w               Toggle log wrapping
+t               Toggle log timestamps
 /               Search logs
-f               Filter logs
+f               Toggle fullscreen
 ```
 
 ### Opening a Shell
@@ -157,7 +157,7 @@ curl http://localhost:8080/health
 ## Port Forwarding
 
 1. Navigate to a service or pod
-2. Press `f` to start port forwarding
+2. Press `Shift+F` to start port forwarding
 3. k9s shows the forwarded port
 
 Or use the port-forward command mode:
@@ -205,12 +205,10 @@ k9s stores configuration at `~/.config/k9s/config.yaml`:
 
 ```yaml
 k9s:
-  # Refresh rate in milliseconds
+  # Refresh rate in seconds
   refreshRate: 2
-  # Start in this namespace by default
-  currentNamespace: default
-  # Show container images in pod view
-  showContainerImages: true
+  # Open this view by default
+  defaultView: pods
   # Log settings
   logger:
     tail: 200    # Number of log lines to show
@@ -263,18 +261,17 @@ EOF
 
 ```bash
 cat > ~/.config/k9s/hotkeys.yaml <<'EOF'
-hotkeys:
+hotKeys:
   # Shortcut to view resource usage
-  shift-u:
-    shortCut: Shift-U
+  shift-0:
+    shortCut: Shift-0
     description: View resource utilization
-    command: top
+    command: pulses
   # Jump directly to production namespace
-  shift-p:
-    shortCut: Shift-P
+  shift-1:
+    shortCut: Shift-1
     description: Go to production
-    command: pods
-    context: production-namespace
+    command: pods production-namespace
 EOF
 ```
 
@@ -286,8 +283,7 @@ EOF
 kubectl config get-contexts
 
 # Switch context within k9s:
-# Press Ctrl+A to see cluster context menu
-# Or use the :ctx command
+# Use the :ctx command
 ```
 
 ## Useful Views for Debugging
@@ -309,8 +305,9 @@ d               Describe a node (shows pod pressure, allocations)
 ### Viewing Resource Usage (Top)
 
 ```text
-:pu             Pod usage/metrics
-:nu             Node usage/metrics
+:pulses or :pu Cluster resource dashboard
+:nodes         Node list with resource columns
+:pods          Pod list with resource columns
 ```
 
 Note: This requires metrics-server to be running in your cluster.
@@ -349,9 +346,10 @@ k9s inherits kubectl's RBAC permissions. If you cannot see certain resources:
 # Check your permissions
 kubectl auth can-i list pods
 kubectl auth can-i delete deployments
+kubectl auth can-i --list
 
-# View your cluster role bindings
-kubectl get clusterrolebindings | grep $(kubectl config current-context)
+# View role bindings and cluster role bindings
+kubectl get rolebindings,clusterrolebindings -A
 ```
 
 k9s becomes second nature quickly. The combination of real-time updates, quick navigation, and in-context operations (logs, shell, port-forward) in a single terminal window replaces a significant portion of the kubectl commands most engineers type dozens of times per day.
