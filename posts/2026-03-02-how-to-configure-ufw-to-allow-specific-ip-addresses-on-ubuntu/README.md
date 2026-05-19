@@ -89,10 +89,10 @@ But if you need to deny a specific IP while allowing others:
 
 ```bash
 # This only works correctly if the deny is BEFORE the allow
-sudo ufw insert 1 deny from 203.0.113.50 to any port 22
+sudo ufw insert 1 deny from 203.0.113.50 to any port 22 proto tcp
 
 # The allow from your network (added later, has higher number)
-sudo ufw allow from 192.168.1.0/24 to any port 22
+sudo ufw allow from 192.168.1.0/24 to any port 22 proto tcp
 ```
 
 Check the rule order:
@@ -147,7 +147,7 @@ sudo ufw allow from 192.168.1.50 to 10.0.0.1 port 22 proto tcp
 sudo ufw allow from 10.0.1.0/24 to 10.0.0.1 port 5432 proto tcp
 ```
 
-This is useful when you want a rule to only apply to traffic coming in on a specific interface.
+This is useful when you want a rule to only apply to traffic addressed to a specific local IP. To match a specific interface, use `in on <interface>` in the rule.
 
 ## Managing IP Allowlists at Scale
 
@@ -232,7 +232,7 @@ If you need to allow access from IPs that change (like a home connection without
 
 HOSTNAME="myhome.example.dyndns.org"
 PORT="22"
-CURRENT_IP=$(dig +short "$HOSTNAME" | head -1)
+CURRENT_IP=$(dig +short A "$HOSTNAME" | tail -n1)
 
 # Read the previously stored IP
 STORED_IP_FILE="/var/run/dynamic-fw-ip"
