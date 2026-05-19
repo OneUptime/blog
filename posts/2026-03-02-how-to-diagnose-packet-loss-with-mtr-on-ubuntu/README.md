@@ -31,7 +31,7 @@ mtr --version
 # Basic interactive mode - launches a curses-based live view
 mtr google.com
 
-# Report mode - runs 100 cycles and prints a summary
+# Report mode - runs the default number of cycles and prints a summary
 mtr --report google.com
 
 # Shorter version
@@ -62,7 +62,7 @@ HOST: server                      Loss%   Snt   Last   Avg  Best  Wrst StDev
 
 ### Column Definitions
 
-- **Loss%**: Percentage of packets dropped at this hop
+- **Loss%**: Percentage of probes that did not receive a response from this hop
 - **Snt**: Number of packets sent
 - **Last**: Latency of the most recent packet (milliseconds)
 - **Avg**: Average latency across all packets
@@ -98,7 +98,7 @@ Hop 4 shows 50% loss, but all subsequent hops show 0% loss. This is a **false po
   6.|-- 142.250.80.10            50.0%    100   47.8  50.2  44.1  85.3  12.1
 ```
 
-Here, loss at hop 4 **propagates** through all subsequent hops at the same rate. This is real packet loss at hop 4. The problem is the link between hop 3 and hop 4.
+Here, loss at hop 4 **propagates** through all subsequent hops at the same rate. This is real packet loss beginning at hop 4. The problem is at or around hop 4, such as the link between hop 3 and hop 4.
 
 **Rule**: If loss appears at a hop and all subsequent hops show similar loss percentages, the problem is at or before the first hop showing loss.
 
@@ -115,7 +115,7 @@ Suddenly high latency at hop 4 that persists to the destination indicates conges
 
 ### TCP Mode
 
-ICMP packets are sometimes blocked or rate-limited differently than TCP. Using TCP mode tests the actual protocol:
+ICMP packets are sometimes blocked or rate-limited differently than TCP. Using TCP mode sends TCP SYN probes, which is useful when you want to test how the path behaves for TCP traffic:
 
 ```bash
 # Test using TCP (default to port 80)
