@@ -36,7 +36,7 @@ sudo usermod -aG docker $USER
 
 ## Docker Compose Setup
 
-Paperless-ngx Docker Compose requires three services: the web server, a worker for background tasks, and a broker (Redis) for task queuing.
+A typical Paperless-ngx Docker Compose deployment uses a Redis broker for task queuing, a PostgreSQL database, and the Paperless-ngx web server (which runs both the web UI and the background consumer/worker internally). Optionally, Gotenberg and Apache Tika are added for Office document support.
 
 ```bash
 # Create Paperless directory
@@ -135,7 +135,7 @@ services:
 
   # Gotenberg converts Office documents to PDF
   gotenberg:
-    image: docker.io/gotenberg/gotenberg:8.x
+    image: docker.io/gotenberg/gotenberg:8
     container_name: paperless-gotenberg
     restart: unless-stopped
     command:
