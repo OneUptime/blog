@@ -18,11 +18,11 @@ The trust chain on an Ubuntu system with Secure Boot:
 
 1. **UEFI firmware** checks the signature of the bootloader against keys in the Secure Boot database (db)
 2. **shim** (signed by Microsoft) is the first stage bootloader
-3. **shim** verifies GRUB's signature against Canonical's key (embedded in shim) or Machine Owner Keys (MOK)
+3. **shim** verifies GRUB's signature against Canonical's key (embedded in shim), or against a suitable enrolled MOK for custom boot components
 4. **GRUB** verifies the Linux kernel's signature
-5. **Linux kernel** verifies signed kernel modules (via `CONFIG_MODULE_SIG_FORCE` if enabled)
+5. **Linux kernel** verifies signed kernel modules when Secure Boot module enforcement is active
 
-Breaking any link in this chain causes a Secure Boot failure and prevents booting.
+Breaking any link before the kernel is loaded causes a Secure Boot failure and prevents booting. Unsigned or untrusted kernel modules fail to load after boot.
 
 ## Checking Secure Boot Status
 
@@ -36,12 +36,12 @@ sudo mokutil --sb-state
 sudo bootctl status | grep -i secure
 
 # Alternative: check via EFI variables
-cat /sys/firmware/efi/vars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c/data | \
+cat /sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c | \
   od -An -tu1 | awk '{print $NF}'
 # Output of 1 means Secure Boot is enabled
 
 # More readable check
-dmesg | grep -i 'secure boot\|secureboot'
+sudo dmesg | grep -i 'secure boot\|secureboot'
 ```
 
 ## The shim and MOK System
@@ -63,7 +63,7 @@ sudo mokutil --list-enrolled
 sudo mokutil --list-new
 
 # Check if a specific key is enrolled
-sudo mokutil --test-key /path/to/certificate.pem
+sudo mokutil --test-key /path/to/certificate.der
 ```
 
 ## Managing Secure Boot Keys for Custom Drivers
@@ -130,12 +130,12 @@ sudo mokutil --list-enrolled | grep -A 5 "Custom MOK"
 sudo /usr/src/linux-headers-$(uname -r)/scripts/sign-file \
   sha256 \
   /root/mok/mok.priv \
-  /root/mok/mok.pem \
+  /root/mok/mok.der \
   /path/to/your-module.ko
 
 # Verify the signature
 sudo /usr/src/linux-headers-$(uname -r)/scripts/extract-module-sig.pl \
-  -i /path/to/your-module.ko
+  -d /path/to/your-module.ko
 
 # Or using modinfo
 modinfo /path/to/your-module.ko | grep -i sig
@@ -150,8 +150,8 @@ For DKMS to automatically sign modules it builds with Secure Boot active:
 sudo tee /etc/dkms/framework.conf.d/signing.conf <<EOF
 # Use custom signing key for DKMS-built modules
 mok_signing_key=/root/mok/mok.priv
-mok_certificate=/root/mok/mok.pem
-sign_tool=/usr/lib/linux/dkms-sign-module
+mok_certificate=/root/mok/mok.der
+sign_file=/lib/modules/\${kernelver}/build/scripts/sign-file
 EOF
 ```
 
@@ -169,13 +169,13 @@ sudo apt-get install -y nvidia-driver-535
 
 ```bash
 # Check if the running kernel is signed
-sudo sbverify --cert /usr/share/shim-signed/shim.pem \
+sudo sbverify --cert /usr/share/grub/canonical-uefi-ca.crt \
   /boot/vmlinuz-$(uname -r)
 
 # Check module signing enforcement level
 cat /sys/module/module/parameters/sig_enforce
-# 0 = signing not enforced (but verified when sig present)
-# 1 = all modules must be signed
+# N = signing not enforced (but verified when sig present)
+# Y = all modules must be signed
 
 # List loaded modules and their signature status
 grep -r 'taint\|unsigned' /sys/module/*/taint 2>/dev/null | head -20
@@ -193,7 +193,7 @@ Beyond just verifying signatures, you can require all kernel modules to be signe
 cat /sys/module/module/parameters/sig_enforce
 
 # Enable enforcement temporarily (takes effect for the current boot)
-sudo sh -c 'echo 1 > /sys/module/module/parameters/sig_enforce'
+sudo sh -c 'echo Y > /sys/module/module/parameters/sig_enforce'
 
 # To make permanent, add kernel parameter in GRUB
 sudo nano /etc/default/grub
@@ -218,7 +218,7 @@ On some systems (development machines, systems with incompatible hardware), you 
 ```bash
 # Check if Secure Boot can be disabled from the OS
 sudo mokutil --disable-validation
-# This requires a reboot and confirmation in the MOK Manager
+# This disables validation at the shim level after a reboot and confirmation in the MOK Manager
 
 # For full disable, use your system's UEFI setup utility (typically F2 or DEL at boot)
 ```
@@ -234,7 +234,7 @@ Note that disabling Secure Boot is a security trade-off. On servers, Secure Boot
 # Or boot into recovery mode
 
 # Verify the new kernel is signed
-sbverify --cert /usr/share/shim-signed/shim.pem /boot/vmlinuz-X.Y.Z
+sbverify --cert /usr/share/grub/canonical-uefi-ca.crt /boot/vmlinuz-X.Y.Z
 
 # If signature verification fails, the kernel package may not have shipped with a signature
 # Reinstall the kernel package
@@ -263,7 +263,7 @@ sudo dkms autoinstall
 ls -la /boot/efi/EFI/ubuntu/
 
 # Verify grub is signed
-sbverify --cert /usr/share/shim-signed/shim.pem \
+sbverify --cert /usr/share/grub/canonical-uefi-ca.crt \
   /boot/efi/EFI/ubuntu/grubx64.efi
 
 # Check the UEFI boot order
@@ -283,8 +283,8 @@ lsblk -o NAME,TYPE,FSTYPE | grep crypt
 
 # With Secure Boot + LUKS, even if someone boots from external media,
 # they still cannot decrypt the drive without the key
-# Secure Boot ensures the decryption password is only requested
-# by a trusted, unmodified bootloader
+# Secure Boot verifies the bootloader and kernel; standard Ubuntu GRUB
+# does not validate initrd images, so protect /boot and the ESP as well
 ```
 
 For the strongest protection, enable both Secure Boot and LUKS encryption. Secure Boot prevents bootkit-level attacks, and LUKS protects data if the drive is physically removed.
