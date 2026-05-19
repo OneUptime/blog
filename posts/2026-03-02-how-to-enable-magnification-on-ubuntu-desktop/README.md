@@ -30,10 +30,10 @@ For more granular control, use `gsettings` from the terminal. This is especially
 gsettings set org.gnome.desktop.a11y.applications screen-magnifier-enabled true
 
 # Set the zoom factor (2.0 means 200% zoom)
-gsettings set org.gnome.desktop.magnifier mag-factor 2.0
+gsettings set org.gnome.desktop.a11y.magnifier mag-factor 2.0
 
 # Check the current zoom factor
-gsettings get org.gnome.desktop.magnifier mag-factor
+gsettings get org.gnome.desktop.a11y.magnifier mag-factor
 ```
 
 ### Magnifier Tracking Modes
@@ -42,13 +42,13 @@ GNOME's magnifier supports different modes for how the zoomed view follows your 
 
 ```bash
 # Set mouse tracking mode: 'centered', 'proportional', or 'push'
-gsettings set org.gnome.desktop.magnifier mouse-tracking centered
+gsettings set org.gnome.desktop.a11y.magnifier mouse-tracking centered
 
-# Enable screen position: 'full-screen', 'top-half', 'bottom-half', 'left-half', 'right-half'
-gsettings set org.gnome.desktop.magnifier screen-position full-screen
+# Set screen position: 'full-screen', 'top-half', 'bottom-half', 'left-half', 'right-half'
+gsettings set org.gnome.desktop.a11y.magnifier screen-position full-screen
 
-# Follow the keyboard focus (useful for keyboard-only navigation)
-gsettings set org.gnome.desktop.magnifier focus-tracking true
+# Set focus tracking mode: 'centered', 'proportional', or 'push'
+gsettings set org.gnome.desktop.a11y.magnifier focus-tracking centered
 ```
 
 The `centered` tracking mode keeps the mouse cursor in the center of the magnified view, which many users find most intuitive. The `push` mode only scrolls the view when the cursor reaches the edge.
@@ -59,16 +59,11 @@ Ubuntu 22.04 and later versions include an accessibility quick-toggle in the top
 
 If the accessibility icon is not visible, enable it from **Settings > Accessibility > Always Show Accessibility Menu**.
 
-## Configuring Magnification with GNOME Tweaks
+## Configuring Additional Zoom Options
 
-GNOME Tweaks gives you access to some additional options not exposed in the default Settings.
+GNOME Settings gives you access to additional options for the built-in magnifier.
 
-```bash
-# Install GNOME Tweaks if not already installed
-sudo apt install gnome-tweaks
-```
-
-Open GNOME Tweaks and navigate to the **Accessibility** tab. From here you can adjust color effects on the magnified view, which can help differentiate the zoomed area from the rest of the screen.
+Open **Settings > Accessibility > Zoom**. From here you can adjust magnifier behavior, crosshairs, and color filters for the magnified view, which can help differentiate the zoomed area from the rest of the screen.
 
 ## Cross-Hair and Color Enhancement Options
 
@@ -76,16 +71,16 @@ The magnifier includes optional visual aids that can make it easier to find the 
 
 ```bash
 # Enable the crosshair (a crosshair shows cursor position in zoomed view)
-gsettings set org.gnome.desktop.magnifier show-cross-hairs true
+gsettings set org.gnome.desktop.a11y.magnifier show-cross-hairs true
 
 # Set the crosshair color (format: RGBA hex)
-gsettings set org.gnome.desktop.magnifier cross-hairs-color '#ff0000ff'
+gsettings set org.gnome.desktop.a11y.magnifier cross-hairs-color '#ff0000ff'
 
 # Set crosshair thickness in pixels
-gsettings set org.gnome.desktop.magnifier cross-hairs-thickness 8
+gsettings set org.gnome.desktop.a11y.magnifier cross-hairs-thickness 8
 
 # Enable color inversion in the magnified area
-gsettings set org.gnome.desktop.magnifier invert-lightness true
+gsettings set org.gnome.desktop.a11y.magnifier invert-lightness true
 ```
 
 Color inversion is particularly useful in bright environments or for users with certain visual conditions. It inverts the lightness of colors while preserving hue, making white backgrounds dark and text bright.
@@ -96,14 +91,14 @@ GNOME's magnifier also allows you to adjust brightness and contrast in the zoome
 
 ```bash
 # Increase brightness slightly (range: -1.0 to 1.0, default 0.0)
-gsettings set org.gnome.desktop.magnifier brightness-red 0.1
-gsettings set org.gnome.desktop.magnifier brightness-green 0.1
-gsettings set org.gnome.desktop.magnifier brightness-blue 0.1
+gsettings set org.gnome.desktop.a11y.magnifier brightness-red 0.1
+gsettings set org.gnome.desktop.a11y.magnifier brightness-green 0.1
+gsettings set org.gnome.desktop.a11y.magnifier brightness-blue 0.1
 
 # Increase contrast (range: -1.0 to 1.0, default 0.0)
-gsettings set org.gnome.desktop.magnifier contrast-red 0.5
-gsettings set org.gnome.desktop.magnifier contrast-green 0.5
-gsettings set org.gnome.desktop.magnifier contrast-blue 0.5
+gsettings set org.gnome.desktop.a11y.magnifier contrast-red 0.5
+gsettings set org.gnome.desktop.a11y.magnifier contrast-green 0.5
+gsettings set org.gnome.desktop.a11y.magnifier contrast-blue 0.5
 ```
 
 ## Keyboard Shortcuts Summary
@@ -114,21 +109,21 @@ gsettings set org.gnome.desktop.magnifier contrast-blue 0.5
 | Zoom in | Super + Alt + = |
 | Zoom out | Super + Alt + - |
 
-These shortcuts are active whenever the magnifier is installed, regardless of whether zoom is currently active.
+These shortcuts are predefined in GNOME and can be changed from the Keyboard Shortcuts settings.
 
-## Using wmagnify for a Lightweight Alternative
+## Using vmg for a Lightweight Alternative
 
-For server environments with a desktop or minimal installs, `wmagnify` offers a simpler magnification tool.
+For server environments with a desktop or minimal installs, `vmg` offers a simpler magnification tool.
 
 ```bash
-# Install wmagnify
-sudo apt install wmagnify
+# Install vmg
+sudo apt install vmg
 
-# Launch it - it creates a magnification window you can position
-wmagnify &
+# Launch it - it creates a movable magnifying glass
+vmg &
 ```
 
-This is a standalone application that shows a magnified view of the area under your mouse. It does not integrate with the system zoom, but it works well on minimal desktop setups.
+This is a standalone application that magnifies part of the screen. It does not integrate with the system zoom, but it works well on minimal desktop setups.
 
 ## Scripting Magnification for Accessibility Profiles
 
@@ -142,16 +137,16 @@ If you manage multiple accessibility profiles for different users, you can scrip
 gsettings set org.gnome.desktop.a11y.applications screen-magnifier-enabled true
 
 # Set a comfortable zoom level
-gsettings set org.gnome.desktop.magnifier mag-factor 1.5
+gsettings set org.gnome.desktop.a11y.magnifier mag-factor 1.5
 
 # Center tracking for smooth experience
-gsettings set org.gnome.desktop.magnifier mouse-tracking centered
+gsettings set org.gnome.desktop.a11y.magnifier mouse-tracking centered
 
 # Full screen magnification
-gsettings set org.gnome.desktop.magnifier screen-position full-screen
+gsettings set org.gnome.desktop.a11y.magnifier screen-position full-screen
 
 # Enable crosshair for easier cursor tracking
-gsettings set org.gnome.desktop.magnifier show-cross-hairs true
+gsettings set org.gnome.desktop.a11y.magnifier show-cross-hairs true
 
 echo "Magnification configured successfully."
 ```
@@ -164,10 +159,10 @@ If the keyboard shortcuts do not respond, check that the accessibility features 
 
 ```bash
 # Verify the current state of magnifier settings
-gsettings list-recursively org.gnome.desktop.magnifier
+gsettings list-recursively org.gnome.desktop.a11y.magnifier
 
 # Reset magnifier settings to defaults if something seems wrong
-gsettings reset-recursively org.gnome.desktop.magnifier
+gsettings reset-recursively org.gnome.desktop.a11y.magnifier
 ```
 
 Ubuntu's built-in magnification tools are robust enough for most use cases and require no additional hardware or proprietary drivers. Combined with other accessibility features like high-contrast themes and large text, they provide a solid foundation for an accessible desktop environment.
