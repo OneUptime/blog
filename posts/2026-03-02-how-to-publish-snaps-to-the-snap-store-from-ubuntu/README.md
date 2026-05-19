@@ -38,12 +38,11 @@ For CI environments, use stored credentials:
 # Export credentials for CI use
 snapcraft export-login credentials.txt
 
-# In CI, use the credentials file
-snapcraft login --with credentials.txt
-
-# Or set as environment variable
+# In CI, expose the credentials via an environment variable
 export SNAPCRAFT_STORE_CREDENTIALS=$(cat credentials.txt)
 ```
+
+Since Snapcraft 7, authentication for non-interactive (CI) use is driven by the `SNAPCRAFT_STORE_CREDENTIALS` environment variable. The legacy `snapcraft login --with <file>` flag was deprecated and is no longer supported by the current Snapcraft CLI.
 
 ## Register Your Snap Name
 
@@ -186,16 +185,18 @@ This way the same tested revision moves through channels without rebuilding.
 For software with LTS or major version tracks:
 
 ```bash
-# Create a version track (requires snap store approval for non-default tracks)
-snapcraft create-track my-app-name --version=1.0
+# List existing tracks for your snap
+snapcraft list-tracks my-app-name
 
-# Release to a specific track
+# Release to a specific track (must already exist)
 snapcraft release my-app-name 5 1.0/stable
 snapcraft release my-app-name 8 2.0/stable
 
 # Users can then pin to a specific major version
 snap install my-app --channel=1.0/stable
 ```
+
+Snapcraft does not provide a CLI command to create new tracks. Non-default tracks must be requested from the Snap Store team by filing a request in the store-requests category of the Snapcraft forum (https://forum.snapcraft.io/c/store-requests/), where Canonical reviews and creates them manually.
 
 ## Store Page Configuration
 
