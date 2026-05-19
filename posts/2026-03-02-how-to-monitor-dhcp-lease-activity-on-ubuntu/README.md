@@ -171,7 +171,7 @@ Identify clients that are cycling through DHCP abnormally fast:
 # Count DHCPDISCOVER messages per MAC in the last hour
 sudo journalctl -u isc-dhcp-server --since "1 hour ago" \
     | grep DHCPDISCOVER \
-    | awk '{print $9}' \
+    | awk '{print $8}' \
     | sort | uniq -c | sort -rn \
     | head -20
 ```
@@ -246,9 +246,11 @@ print("DHCP Pool Utilization Report")
 print("=" * 50)
 
 for entry in stats[0].get("arguments", {}).get("result-set", {}).get("rows", []):
+    # Columns: subnet-id, total-addresses, cumulative-assigned-addresses,
+    # assigned-addresses, declined-addresses
     subnet_id = entry[0]
     total = entry[1]
-    assigned = entry[2]
+    assigned = entry[3]
 
     if total > 0:
         utilization = (assigned / total) * 100
