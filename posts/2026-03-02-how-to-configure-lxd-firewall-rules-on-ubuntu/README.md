@@ -31,14 +31,14 @@ sudo iptables -t nat -L -n -v | grep lxdbr0
 
 ## LXD's Built-in Firewall Control
 
-LXD's managed firewall rules can be toggled per-network:
+LXD's managed filtering firewall rules can be toggled per-network:
 
 ```bash
 # View firewall settings for the default bridge
 lxc network show lxdbr0 | grep firewall
 
-# Disable LXD-managed iptables rules for lxdbr0
-# (do this only if you manage iptables yourself)
+# Disable LXD-managed filtering rules for lxdbr0
+# (do this only if another firewall manages filtering)
 lxc network set lxdbr0 ipv4.firewall false
 lxc network set lxdbr0 ipv6.firewall false
 
@@ -56,16 +56,16 @@ By default, containers on `lxdbr0` can reach anything on the internet. To restri
 lxc network show lxdbr0 | grep ipv4.address
 # ipv4.address: 10.200.0.1/24
 
-# Allow DNS (port 53) to host
-sudo iptables -I FORWARD -i lxdbr0 -o lxdbr0 -d 10.200.0.1 -p udp --dport 53 -j ACCEPT
-sudo iptables -I FORWARD -i lxdbr0 -o lxdbr0 -d 10.200.0.1 -p tcp --dport 53 -j ACCEPT
+# Allow DNS (port 53) to the host bridge address
+sudo iptables -I INPUT -i lxdbr0 -d 10.200.0.1 -p udp --dport 53 -j ACCEPT
+sudo iptables -I INPUT -i lxdbr0 -d 10.200.0.1 -p tcp --dport 53 -j ACCEPT
 
 # Allow HTTP and HTTPS outbound
 sudo iptables -I FORWARD -i lxdbr0 -p tcp --dport 80 -j ACCEPT
 sudo iptables -I FORWARD -i lxdbr0 -p tcp --dport 443 -j ACCEPT
 
 # Allow established/related connections back
-sudo iptables -I FORWARD -i lxdbr0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+sudo iptables -I FORWARD -o lxdbr0 -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
 # Drop everything else outbound from containers
 sudo iptables -A FORWARD -i lxdbr0 -j DROP
@@ -134,55 +134,48 @@ lxc exec mycontainer -- ping -c 3 8.8.8.8
 ### Fix Option 1: Configure UFW to Allow LXD Forwarding
 
 ```bash
-# Edit UFW's before.rules to allow forwarding for the LXD subnet
-sudo nano /etc/ufw/before.rules
-
-# Add these lines before the "*filter" section:
-*nat
-:POSTROUTING ACCEPT [0:0]
--A POSTROUTING -s 10.200.0.0/24 ! -d 10.200.0.0/24 -j MASQUERADE
-COMMIT
-
-# After *filter, add:
--A ufw-before-forward -s 10.200.0.0/24 -j ACCEPT
--A ufw-before-forward -d 10.200.0.0/24 -j ACCEPT
+# Allow traffic to and from the LXD bridge
+sudo ufw allow in on lxdbr0
+sudo ufw route allow in on lxdbr0
+sudo ufw route allow out on lxdbr0
 ```
 
 Also allow IPv4 forwarding in UFW's sysctl settings:
 
 ```bash
 # Edit /etc/ufw/sysctl.conf
-sudo sed -i 's/#net.ipv4.ip_forward/net.ipv4.ip_forward/' /etc/ufw/sysctl.conf
+sudo sed -i 's|#net/ipv4/ip_forward=1|net/ipv4/ip_forward=1|' /etc/ufw/sysctl.conf
 
-# Reload UFW
-sudo ufw reload
+# Restart UFW so the sysctl setting is applied
+sudo ufw disable && sudo ufw enable
 ```
 
 ### Fix Option 2: Disable LXD-managed Firewall, Use UFW Exclusively
 
 ```bash
-# Tell LXD not to manage iptables for its bridge
+# Tell LXD not to manage filtering rules for its bridge
 lxc network set lxdbr0 ipv4.firewall false
+lxc network set lxdbr0 ipv6.firewall false
 
 # Manually add UFW rules for LXD traffic
 sudo ufw allow in on lxdbr0
-sudo ufw allow out on lxdbr0
 sudo ufw route allow in on lxdbr0
 sudo ufw route allow out on lxdbr0
 
-# Allow NAT for container internet access
-# (still needs before.rules edit above)
+# Keep ipv4.nat enabled if LXD should still provide masquerading
 ```
 
-### Fix Option 3: Use a Separate Network Namespace
+### Fix Option 3: Add a UFW Bridge Exception
 
-Create a dedicated bridge that UFW ignores:
+Add a bridge exception in UFW's `before.rules`:
 
 ```bash
-# Add an exception for the LXD bridge in UFW
-echo "-A ufw-before-forward -i lxdbr0 -j ACCEPT
--A ufw-before-forward -o lxdbr0 -j ACCEPT" | \
-  sudo tee -a /etc/ufw/before.rules
+# Edit UFW's before.rules
+sudo nano /etc/ufw/before.rules
+
+# Add these lines inside the "*filter" section, before the final COMMIT:
+-A ufw-before-forward -i lxdbr0 -j ACCEPT
+-A ufw-before-forward -o lxdbr0 -j ACCEPT
 
 sudo ufw reload
 ```
@@ -192,9 +185,8 @@ sudo ufw reload
 By default, containers on the same LXD bridge can communicate directly. To isolate them:
 
 ```bash
-# Disable inter-container communication on the bridge
-lxc network set lxdbr0 bridge.driver=native
-lxc network set lxdbr0 security.macfilter=true
+# Prevent MAC spoofing on a container's bridged NIC
+lxc config device override mycontainer eth0 security.mac_filtering=true
 
 # Block traffic between containers using iptables
 sudo iptables -I FORWARD -i lxdbr0 -o lxdbr0 -j DROP
