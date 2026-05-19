@@ -8,7 +8,7 @@ Description: Deploy a production Flask application on Ubuntu using uWSGI as the 
 
 ---
 
-Flask's built-in development server is single-threaded and not designed for production traffic. uWSGI is a high-performance application server that can host Flask applications via the WSGI interface. It supports multiple worker processes, thread control, request queuing, and health monitoring. Combined with Nginx as a reverse proxy, this stack handles production workloads reliably.
+Flask's built-in development server is intended for local development and not designed for production traffic. uWSGI is a high-performance application server that can host Flask applications via the WSGI interface. It supports multiple worker processes, thread control, request queuing, and health monitoring. Combined with Nginx as a reverse proxy, this stack handles production workloads reliably.
 
 ## Prerequisites
 
@@ -71,7 +71,7 @@ sudo -u flaskapp /opt/flaskapp/venv/bin/pip install -r /opt/flaskapp/myapp/requi
 
 # Create environment file
 sudo tee /opt/flaskapp/.env > /dev/null <<'EOF'
-FLASK_ENV=production
+FLASK_DEBUG=0
 FLASK_SECRET_KEY=your-random-secret-key-here
 DATABASE_URL=postgresql://dbuser:pass@localhost:5432/mydb
 EOF
@@ -226,10 +226,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable flaskapp.socket
 sudo systemctl start flaskapp.socket
 
-# Also enable the service so it persists across reboots
-sudo systemctl enable flaskapp.service
-
-# Verify status
+# Verify status (the service may remain inactive until the first request)
 sudo systemctl status flaskapp.socket
 sudo systemctl status flaskapp.service
 ```
@@ -243,23 +240,13 @@ sudo tee /etc/nginx/sites-available/flaskapp > /dev/null <<'EOF'
 server {
     listen 80;
     server_name yourdomain.com www.yourdomain.com;
-    return 301 https://$host$request_uri;
-}
 
-server {
-    listen 443 ssl http2;
-    server_name yourdomain.com www.yourdomain.com;
-
-    # TLS certificates
-    ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+    # Max upload size
+    client_max_body_size 16M;
 
     # Security headers
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options SAMEORIGIN;
-
-    # Max upload size
-    client_max_body_size 16M;
 
     # Static files served directly by Nginx
     location /static/ {
@@ -279,6 +266,8 @@ server {
         # Pass real client IP to the application
         uwsgi_param HTTP_X_REAL_IP $remote_addr;
         uwsgi_param HTTP_X_FORWARDED_FOR $proxy_add_x_forwarded_for;
+        uwsgi_param HTTP_X_FORWARDED_PROTO $scheme;
+        uwsgi_param HTTP_X_FORWARDED_HOST $host;
 
         # Timeout settings
         uwsgi_connect_timeout 60;
@@ -306,6 +295,8 @@ Note that Nginx communicates with uWSGI using the **uWSGI protocol** (`uwsgi_pas
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d yourdomain.com -d www.yourdomain.com
 ```
+
+Certbot will request the certificate, update the Nginx server block to listen on HTTPS, and add the HTTP-to-HTTPS redirect.
 
 ## Flask Application Configuration for Production
 
