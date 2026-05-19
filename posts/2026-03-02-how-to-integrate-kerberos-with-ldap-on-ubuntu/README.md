@@ -15,7 +15,7 @@ Running Kerberos and LDAP separately means maintaining two user stores. When a u
 In the standard MIT Kerberos setup, the KDC stores principals in its own Berkeley DB database. In the LDAP backend setup:
 
 - The KDC reads and writes principal data to OpenLDAP
-- POSIX account attributes (`uid`, `uidNumber`, etc.) and Kerberos attributes (`krb5Principal`, `krb5EncryptionType`, etc.) coexist on the same LDAP entry
+- POSIX account attributes (`uid`, `uidNumber`, etc.) and Kerberos attributes (`krbPrincipalName`, `krbPrincipalKey`, etc.) coexist on the same LDAP entry
 - SSSD can provide both identity (from POSIX attributes) and authentication (from Kerberos) using a single directory lookup
 
 ## Prerequisites
@@ -169,9 +169,8 @@ sudo nano /etc/krb5kdc/kdc.conf
 
         # Subtree where principals are stored
         ldap_kerberos_container_dn = cn=krbContainer,dc=example,dc=com
-        ldap_kdc_sasl_mech = EXTERNAL
 
-        # TLS settings
+        # Connection pooling
         ldap_conns_per_server = 5
     }
 ```
@@ -201,7 +200,7 @@ Use `kdb5_ldap_util` to initialize the realm in LDAP:
 ```bash
 sudo kdb5_ldap_util -D "cn=admin,dc=example,dc=com" \
   -H ldap://localhost \
-  create -r EXAMPLE.COM -s -P
+  create -r EXAMPLE.COM -s
 
 # Enter the LDAP admin password, then set the KDC master key
 ```
