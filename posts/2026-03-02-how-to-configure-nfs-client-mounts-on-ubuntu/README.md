@@ -21,13 +21,13 @@ sudo apt update
 sudo apt install nfs-common -y
 
 # Verify the installation
-nfsstat --version
+command -v mount.nfs nfsstat showmount
 ```
 
-The `nfs-common` package provides:
+Installing `nfs-common` provides or pulls in:
 - `mount.nfs` and `mount.nfs4` - mount helpers
 - `nfsstat` - NFS statistics tool
-- `rpcinfo` - RPC service information
+- `rpcinfo` - RPC service information (via the `rpcbind` dependency)
 - `showmount` - query NFS server exports
 
 ## Discovering Available NFS Exports
@@ -49,6 +49,7 @@ showmount -a 192.168.1.10
 ```
 
 If `showmount` fails with "clnt_create: RPC: Port mapper failure," the server's RPC portmapper may be blocked by a firewall, or rpcbind is not running on the server.
+NFSv4-only servers may also not expose the MNT service that `showmount` queries.
 
 ## Temporary NFS Mounts
 
@@ -59,7 +60,7 @@ For testing or one-off access, mount manually:
 sudo mkdir -p /mnt/nfs/data
 
 # Mount an NFSv4 export (recommended default)
-sudo mount -t nfs4 192.168.1.10:/data/shared /mnt/nfs/data
+sudo mount -t nfs -o vers=4 192.168.1.10:/data/shared /mnt/nfs/data
 
 # Or let mount auto-detect the NFS version
 sudo mount -t nfs 192.168.1.10:/data/shared /mnt/nfs/data
@@ -90,8 +91,8 @@ NFS mount options significantly affect performance and behavior:
 
 ```bash
 # Mount with performance-tuned options
-sudo mount -t nfs4 192.168.1.10:/data/shared /mnt/nfs/data \
-  -o rw,hard,intr,timeo=600,retrans=2,rsize=1048576,wsize=1048576,noatime
+sudo mount -t nfs -o vers=4,rw,hard,timeo=600,retrans=2,rsize=1048576,wsize=1048576,noatime \
+  192.168.1.10:/data/shared /mnt/nfs/data
 ```
 
 Key options explained:
@@ -101,9 +102,8 @@ Key options explained:
 | `rw` / `ro` | Read-write or read-only |
 | `hard` | Keep retrying if server unavailable (recommended) |
 | `soft` | Return error after timeout (faster failure, risk of data corruption) |
-| `intr` | Allow Ctrl+C to interrupt hung NFS operations |
 | `timeo=600` | Timeout in tenths of a second (60 seconds) before retry |
-| `retrans=2` | Number of retries before giving up |
+| `retrans=2` | Number of retries before timeout recovery; hard mounts keep retrying |
 | `rsize=1048576` | Read block size in bytes (1MB) |
 | `wsize=1048576` | Write block size in bytes (1MB) |
 | `noatime` | Do not update access time on reads (reduces write traffic) |
@@ -120,13 +120,13 @@ sudo nano /etc/fstab
 
 ```text
 # NFS mount - read-write with performance options
-192.168.1.10:/data/shared  /mnt/nfs/data  nfs4  rw,hard,intr,timeo=600,retrans=2,rsize=1048576,wsize=1048576,noatime,_netdev  0  0
+192.168.1.10:/data/shared  /mnt/nfs/data  nfs  rw,hard,vers=4,timeo=600,retrans=2,rsize=1048576,wsize=1048576,noatime,_netdev  0  0
 
 # NFS mount - read-only backup archive
-192.168.1.10:/backup  /mnt/nfs/backup  nfs4  ro,hard,intr,timeo=600,noatime,_netdev  0  0
+192.168.1.10:/backup  /mnt/nfs/backup  nfs  ro,hard,vers=4,timeo=600,noatime,_netdev  0  0
 
 # NFSv3 mount (older servers)
-192.168.1.10:/legacy/share  /mnt/nfs/legacy  nfs  vers=3,rw,hard,intr,noatime,_netdev  0  0
+192.168.1.10:/legacy/share  /mnt/nfs/legacy  nfs  vers=3,rw,hard,noatime,_netdev  0  0
 ```
 
 The last two fields (`0 0`) tell the system not to dump the filesystem and not to run `fsck` on it - both appropriate for NFS mounts.
@@ -164,7 +164,7 @@ Use NFSv4 unless you have a specific reason to use NFSv3:
 
 ```bash
 # Force NFSv4.1 (supports pNFS for parallel I/O)
-sudo mount -t nfs4 -o vers=4.1 192.168.1.10:/data/shared /mnt/nfs/data
+sudo mount -t nfs -o vers=4.1 192.168.1.10:/data/shared /mnt/nfs/data
 
 # Check which NFS version is in use
 nfsstat -m
@@ -193,13 +193,13 @@ A common problem is that NFS mounts in `/etc/fstab` cause long boot delays if th
 ```bash
 # Add x-systemd.mount-timeout to limit how long systemd waits
 # In /etc/fstab:
-192.168.1.10:/data/shared  /mnt/nfs/data  nfs4  rw,hard,noatime,_netdev,x-systemd.mount-timeout=30  0  0
+192.168.1.10:/data/shared  /mnt/nfs/data  nfs  rw,hard,vers=4,noatime,_netdev,x-systemd.mount-timeout=30  0  0
 ```
 
 Alternatively, use `noauto` and mount via a systemd service or after confirming the network is up:
 
 ```text
-192.168.1.10:/data/shared  /mnt/nfs/data  nfs4  rw,hard,noatime,_netdev,noauto  0  0
+192.168.1.10:/data/shared  /mnt/nfs/data  nfs  rw,hard,vers=4,noatime,_netdev,noauto  0  0
 ```
 
 ## Troubleshooting NFS Client Issues
@@ -267,8 +267,8 @@ Wants=network-online.target
 [Mount]
 What=192.168.1.10:/data/shared
 Where=/mnt/nfs/data
-Type=nfs4
-Options=rw,hard,intr,noatime
+Type=nfs
+Options=rw,hard,vers=4,noatime
 TimeoutSec=30
 
 [Install]
