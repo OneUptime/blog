@@ -43,7 +43,7 @@ sudo reboot
 ## Installing and Enabling systemd-oomd
 
 ```bash
-# Install systemd-oomd
+# Install systemd-oomd (Ubuntu 22.04 and newer)
 sudo apt update
 sudo apt install systemd-oomd
 
@@ -60,7 +60,7 @@ systemd-oomd monitors two metrics:
 - **Memory pressure**: How often processes are stalled waiting for memory (from `/proc/pressure/memory`)
 - **Swap usage**: How much of the swap space is consumed
 
-When thresholds are exceeded, oomd looks for the cgroup with the highest "badness score" under the root slice and kills it. It kills at the cgroup level - meaning it can kill an entire service (all processes in `myapp.service`) rather than just one process.
+When thresholds are exceeded, oomd selects an eligible descendant cgroup to kill. For swap pressure it starts with cgroups using the most swap; for memory pressure it starts with cgroups showing the most reclaim activity. It kills at the cgroup level - meaning it can kill an entire service (all processes in `myapp.service`) rather than just one process.
 
 ## Configuring systemd-oomd
 
@@ -72,21 +72,17 @@ sudo nano /etc/systemd/oomd.conf
 
 ```ini
 [OOM]
-# Swap utilization threshold to trigger OOM kills
+# System memory and swap utilization threshold to trigger swap-based OOM kills
 # Default: 90%
-SwapUsedLimitPercent=80
+SwapUsedLimit=80%
 
 # Memory pressure threshold (percentage of time in 10-second window)
-# Default: 100% (any pressure triggers)
-DefaultMemoryPressureLimitPercent=60
+# Default: 60%
+DefaultMemoryPressureLimit=60%
 
 # Duration the pressure must exceed the limit before acting
 # Default: 30s
 DefaultMemoryPressureDurationSec=20s
-
-# Don't kill any unit below this memory threshold
-# Prevents killing tiny processes
-# DefaultMemoryPressureTargetSeconds
 ```
 
 After editing:
@@ -97,24 +93,24 @@ sudo systemctl restart systemd-oomd
 
 ## Configuring Per-Service OOM Protection
 
-Services can opt into or out of oomd management through their unit files. Two relevant directives:
+Services can opt into oomd monitoring through their unit files. To make a service less likely to be killed, use `ManagedOOMPreference=avoid` or `ManagedOOMPreference=omit`.
 
 ### ManagedOOMSwap
 
-Controls whether oomd considers this service for killing based on swap pressure:
+Controls whether oomd monitors this unit's descendant cgroups based on swap pressure:
 
 ```ini
 [Service]
-# Allow oomd to kill this service to relieve swap pressure
+# Allow oomd to act on descendant cgroups to relieve swap pressure
 ManagedOOMSwap=kill
 
-# Don't kill this service for swap pressure
-ManagedOOMSwap=skip
+# Don't actively monitor this service for swap pressure
+ManagedOOMSwap=auto
 ```
 
 ### ManagedOOMMemoryPressure
 
-Controls whether oomd considers this service for killing based on memory pressure:
+Controls whether oomd monitors this unit's descendant cgroups based on memory pressure:
 
 ```ini
 [Service]
@@ -125,8 +121,8 @@ ManagedOOMMemoryPressure=kill
 ManagedOOMMemoryPressure=kill
 ManagedOOMMemoryPressureLimit=90%
 
-# Protect this service from oomd kills
-ManagedOOMMemoryPressure=skip
+# Don't actively monitor this service for memory pressure
+ManagedOOMMemoryPressure=auto
 ```
 
 ### Protecting Critical Services
@@ -138,9 +134,12 @@ sudo systemctl edit nginx.service
 
 ```ini
 [Service]
-# Don't let oomd kill nginx regardless of memory pressure
-ManagedOOMSwap=skip
-ManagedOOMMemoryPressure=skip
+# Don't actively monitor nginx for oomd actions
+ManagedOOMSwap=auto
+ManagedOOMMemoryPressure=auto
+
+# Ask oomd to ignore nginx as a kill candidate
+ManagedOOMPreference=omit
 ```
 
 Apply:
@@ -151,7 +150,7 @@ sudo systemctl daemon-reload
 
 ### Marking Non-Critical Services for Early Killing
 
-Services that can safely be killed and restarted should be marked for oomd management:
+Services that can safely be killed and restarted should be left eligible for oomd when an ancestor slice is monitored:
 
 ```bash
 sudo systemctl edit worker.service
@@ -159,16 +158,16 @@ sudo systemctl edit worker.service
 
 ```ini
 [Service]
-# Allow oomd to kill this service first during memory pressure
-ManagedOOMSwap=kill
-ManagedOOMMemoryPressure=kill
-# Lower preference value = higher chance of being killed
+# Do not deprioritize or omit this service as an oomd candidate
+ManagedOOMPreference=none
+
+# Kill the whole service cgroup if one of its processes is OOM-killed
 OOMPolicy=kill
 ```
 
 ## Setting Memory Limits on Services
 
-oomd works best when services have explicit memory limits, as it uses these for its badness score calculation:
+oomd works best when services have explicit memory limits and accounting enabled, so systemd and the kernel have accurate cgroup memory data to act on:
 
 ```ini
 # /etc/systemd/system/myapp.service
@@ -182,9 +181,9 @@ MemoryHigh=400M
 # Swap limit for this cgroup
 MemorySwapMax=256M
 
-# oomd settings
-ManagedOOMSwap=kill
-ManagedOOMMemoryPressure=kill
+# Keep the service eligible when an ancestor slice is monitored
+ManagedOOMPreference=none
+OOMPolicy=kill
 ```
 
 ```bash
@@ -278,7 +277,7 @@ sudo sysctl vm.swappiness=20
 echo 'vm.swappiness=20' | sudo tee -a /etc/sysctl.conf
 ```
 
-With lower swappiness, oomd triggers earlier (because swap fills up faster), making it more likely to act before the system becomes unresponsive.
+With lower swappiness, the kernel swaps anonymous memory less aggressively. That can reduce swap thrashing on some servers, but it also changes when swap-based oomd actions become possible, so test it under your workload.
 
 ## Comparing systemd-oomd and kernel OOM Killer
 
