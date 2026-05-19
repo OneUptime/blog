@@ -8,7 +8,7 @@ Description: Configure PIV-compatible smart cards on Ubuntu for certificate-base
 
 ---
 
-PIV (Personal Identity Verification) smart cards store X.509 certificates and private keys in tamper-resistant hardware. They're widely used in government and enterprise environments for strong authentication. YubiKey, smart card readers with physical cards, and similar hardware all speak the PIV standard. Ubuntu has solid support for PIV through the PCSC (PC/SC) subsystem and OpenSC.
+PIV (Personal Identity Verification) smart cards store X.509 certificates and private keys in tamper-resistant hardware. They're widely used in government and enterprise environments for strong authentication. YubiKeys with PIV support, PIV-compatible physical cards, and similar hardware all speak the PIV standard. Ubuntu has solid support for PIV through the PCSC (PC/SC) subsystem and OpenSC.
 
 ## Hardware Requirements
 
@@ -78,8 +78,8 @@ pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so \
 # For YubiKey PIV specifically
 ykman piv info
 
-# List certificates on YubiKey PIV
-ykman piv certificates list
+# Export a certificate from a specific YubiKey PIV slot
+ykman piv certificates export 9a - | openssl x509 -noout -subject -issuer
 ```
 
 ## Generating Keys on the PIV Card
@@ -146,12 +146,17 @@ use_pkcs11_module = opensc;
 pkcs11_module opensc {
     module = /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so;
     description = "OpenSC PKCS#11 module";
-    # Map certificate CN to username
     slot_num = 0;
 }
 
 # Certificate-to-user mapping method
-use_mappers = cn;   # Use CN field for username mapping
+use_mappers = subject;
+
+mapper subject {
+    module = internal;
+    ignorecase = false;
+    mapfile = file:///etc/pam_pkcs11/subject_mapping;
+}
 ```
 
 Configure the mapper:
@@ -164,18 +169,18 @@ sudo nano /etc/pam_pkcs11/subject_mapping
 Add a line mapping the certificate subject to your username:
 
 ```text
-# Format: certificate subject : unix username
+# Format: certificate subject -> unix username
 CN=John Doe, OU=IT, O=Company, C=US -> johndoe
 ```
 
 Or use digest mapping:
 
 ```bash
-# Generate the certificate digest for mapping
-pkcs11_inspect -c /etc/pam_pkcs11/pam_pkcs11.conf
+# Temporarily enable the digest mapper, then print certificate fields
+pkcs11_inspect config_file=/etc/pam_pkcs11/pam_pkcs11.conf
 
 # Copy the digest output to /etc/pam_pkcs11/digest_mapping
-# or use it in certificate_policy
+# when the digest mapper is enabled
 ```
 
 ## Add Smart Card to PAM
@@ -190,11 +195,8 @@ sudo nano /etc/pam.d/sudo
 Add:
 
 ```text
-# Smart card authentication (sufficient = card works without password)
+# Add before @include common-auth
 auth sufficient pam_pkcs11.so
-
-# Fallback to password
-auth required pam_unix.so use_first_pass
 ```
 
 Test with sudo in a new terminal - it should ask for your PIN instead of password.
@@ -206,11 +208,8 @@ sudo nano /etc/pam.d/common-auth
 ```
 
 ```text
-# Sufficient: smart card OR password works
+# Add before the existing pam_unix entry so smart card OR password works
 auth sufficient pam_pkcs11.so
-
-# Required fallback
-auth required pam_unix.so try_first_pass nullok_secure
 ```
 
 ## SSH with PIV Smart Cards
@@ -262,8 +261,8 @@ ykman piv access unblock-pin
 ## Troubleshooting
 
 ```bash
-# Verbose PAM debug output
-sudo pam_pkcs11_eventmgr &
+# Smart-card event manager debug output
+sudo pkcs11_eventmgr debug nodaemon &
 
 # Check if PKCS11 module sees the card
 pkcs11-tool --module /usr/lib/x86_64-linux-gnu/opensc-pkcs11.so \
