@@ -75,8 +75,7 @@ sudo nano /etc/audit/rules.d/30-file-access.rules
 ### Monitoring Directory Access
 
 ```bash
-# Watch a directory and all files in it (recursive is NOT supported by auditctl directly)
-# -w on a directory monitors the directory itself and immediate children
+# Watch a directory and files under it recursively, excluding mounted subdirectories
 -w /var/log -p rwa -k log-access
 -w /etc -p rwa -k etc-changes
 
@@ -87,7 +86,7 @@ sudo nano /etc/audit/rules.d/30-file-access.rules
 -w /opt/myapp/config -p rwa -k app-config
 ```
 
-Note: `auditctl -w` on a directory does not recursively watch subdirectories. For subdirectory monitoring, use `-a` rules with `path` fields (covered below).
+Note: Directory watches are recursive, but they stop at mount points. For more flexible directory-tree monitoring with filters such as `uid`, use `-a` rules with `dir` fields (covered below).
 
 ### Monitoring Specific Users
 
@@ -103,7 +102,7 @@ Watch for specific users reading sensitive files:
 -a always,exit -F path=/home/admin/.ssh/id_rsa -F perm=r -k ssh-key-read
 
 # Watch file access by a specific user (uid=1001)
--a always,exit -F path=/var/www/html -F uid=1001 -F perm=w -k specific-user-writes
+-a always,exit -F dir=/var/www/html -F uid=1001 -F perm=w -k specific-user-writes
 ```
 
 ### Monitoring Writes to Critical System Files
@@ -138,7 +137,7 @@ Watch for specific users reading sensitive files:
 # /etc/audit/rules.d/60-sensitive-reads.rules
 
 # Certificate and key files
--a always,exit -F path=/etc/ssl/private -F perm=r -k ssl-key-access
+-a always,exit -F dir=/etc/ssl/private -F perm=r -k ssl-key-access
 
 # Database password files
 -a always,exit -F path=/etc/mysql/debian.cnf -F perm=r -k db-creds
@@ -147,7 +146,7 @@ Watch for specific users reading sensitive files:
 -a always,exit -F path=/etc/myapp/secrets.conf -F perm=r -k app-secrets
 
 # Web server private keys
--a always,exit -F path=/etc/nginx/ssl -F perm=r -k nginx-ssl-access
+-a always,exit -F dir=/etc/nginx/ssl -F perm=r -k nginx-ssl-access
 ```
 
 ## Applying the Rules
