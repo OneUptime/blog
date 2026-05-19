@@ -41,7 +41,11 @@ sudo apt install -y \
   dwarves \
   zstd \
   rsync \
-  debhelper
+  debhelper \
+  fakeroot \
+  git \
+  wget \
+  patch
 ```
 
 Also ensure you have enough disk space - kernel source, build directory, and packages require 10-20GB:
@@ -58,8 +62,9 @@ Get Ubuntu's patched kernel (includes Ubuntu-specific patches):
 
 ```bash
 # Install source for current running kernel
+# Requires source repositories (deb-src) to be enabled
 
-sudo apt source linux-image-$(uname -r)
+apt source linux-image-$(uname -r)
 
 # Or install build environment
 sudo apt install linux-source
@@ -75,9 +80,11 @@ Get the latest stable kernel from kernel.org:
 ```bash
 # Download the latest stable kernel
 cd /usr/src
-KERNEL_VERSION="6.8.1"  # Check kernel.org for current stable
-sudo wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-${KERNEL_VERSION}.tar.xz
+KERNEL_VERSION="7.0.9"  # Check kernel.org for current stable
+KERNEL_MAJOR="${KERNEL_VERSION%%.*}"
+sudo wget https://cdn.kernel.org/pub/linux/kernel/v${KERNEL_MAJOR}.x/linux-${KERNEL_VERSION}.tar.xz
 sudo tar xf linux-${KERNEL_VERSION}.tar.xz
+sudo chown -R "$(id -u):$(id -g)" linux-${KERNEL_VERSION}
 cd linux-${KERNEL_VERSION}
 ```
 
@@ -149,7 +156,7 @@ Debug info doubles the build size and time. On a custom kernel for production us
 # Disable debug info to speed up build
 scripts/config --disable CONFIG_DEBUG_INFO
 scripts/config --disable CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT
-scripts/config --set-str CONFIG_DEBUG_INFO_NONE y
+scripts/config --enable CONFIG_DEBUG_INFO_NONE
 ```
 
 Or in menuconfig: Kernel hacking -> Compile-time checks and compiler options -> Compile the kernel with debug info -> None.
@@ -160,12 +167,8 @@ Ubuntu's kernel config requires a trusted key for module signing. When building 
 
 ```bash
 # Remove the key requirement
-scripts/config --disable SYSTEM_TRUSTED_KEYS
-scripts/config --disable SYSTEM_REVOCATION_KEYS
-
-# Or set to empty string
-sed -i 's/CONFIG_SYSTEM_TRUSTED_KEYS=".*"/CONFIG_SYSTEM_TRUSTED_KEYS=""/' .config
-sed -i 's/CONFIG_SYSTEM_REVOCATION_KEYS=".*"/CONFIG_SYSTEM_REVOCATION_KEYS=""/' .config
+scripts/config --set-str SYSTEM_TRUSTED_KEYS ""
+scripts/config --set-str SYSTEM_REVOCATION_KEYS ""
 ```
 
 ## Compiling the Kernel
@@ -206,7 +209,7 @@ make -j$(nproc) modules
 cd ..
 
 # Install all built packages
-sudo dpkg -i linux-image-*.deb linux-headers-*.deb
+sudo dpkg -i linux-image-*.deb linux-headers-*.deb linux-libc-dev_*.deb
 
 # Update GRUB
 sudo update-grub
@@ -215,16 +218,16 @@ sudo update-grub
 ### Installing Directly (from Method 2)
 
 ```bash
-cd /usr/src/linux-6.8.1
+cd /usr/src/linux-7.0.9
 
 # Install modules to /lib/modules/
 sudo make modules_install
 
-# Install kernel image and initrd
+# Install kernel image and run Ubuntu's kernel post-install hooks
 sudo make install
 
 # This copies vmlinuz, System.map, and config to /boot
-# Then calls update-grub
+# The post-install hooks normally create the initrd and update GRUB
 
 # Verify
 ls /boot/vmlinuz-*
@@ -253,7 +256,7 @@ Or use `grub-reboot` for a one-time test:
 
 ```bash
 # Boot new kernel once, return to old one if it fails to boot correctly
-sudo grub-reboot "Advanced options for Ubuntu>Ubuntu, with Linux 6.8.1-custom"
+sudo grub-reboot "Advanced options for Ubuntu>Ubuntu, with Linux 7.0.9-custom"
 sudo reboot
 ```
 
@@ -262,7 +265,7 @@ After booting:
 ```bash
 # Verify running kernel
 uname -r
-# Should show: 6.8.1-custom
+# Should show: 7.0.9-custom
 
 # Check kernel messages for errors
 dmesg | grep -i "error\|fail" | head -20
@@ -274,11 +277,13 @@ After verifying the custom kernel works:
 
 ```bash
 # Set as default
-sudo grub-set-default "Advanced options for Ubuntu>Ubuntu, with Linux 6.8.1-custom"
+sudo grub-set-default "Advanced options for Ubuntu>Ubuntu, with Linux 7.0.9-custom"
 
 # Or edit /etc/default/grub
 sudo nano /etc/default/grub
-# Set: GRUB_DEFAULT="Advanced options for Ubuntu>Ubuntu, with Linux 6.8.1-custom"
+# Set: GRUB_DEFAULT=saved
+# Then save the default entry:
+sudo grub-set-default "Advanced options for Ubuntu>Ubuntu, with Linux 7.0.9-custom"
 sudo update-grub
 ```
 
@@ -289,7 +294,7 @@ sudo update-grub
 wget https://example.com/my-patch.patch
 
 # Apply the patch in the kernel source directory
-cd linux-6.8.1
+cd linux-7.0.9
 patch -p1 < /path/to/my-patch.patch
 
 # Or for git trees
@@ -320,14 +325,14 @@ If the custom kernel is no longer needed:
 
 ```bash
 # Via dpkg (if installed as package)
-sudo dpkg --purge linux-image-6.8.1-custom
+sudo dpkg --purge linux-image-7.0.9-custom
 
 # Or manually
-sudo rm /boot/vmlinuz-6.8.1-custom
-sudo rm /boot/initrd.img-6.8.1-custom
-sudo rm /boot/System.map-6.8.1-custom
-sudo rm /boot/config-6.8.1-custom
-sudo rm -rf /lib/modules/6.8.1-custom
+sudo rm /boot/vmlinuz-7.0.9-custom
+sudo rm /boot/initrd.img-7.0.9-custom
+sudo rm /boot/System.map-7.0.9-custom
+sudo rm /boot/config-7.0.9-custom
+sudo rm -rf /lib/modules/7.0.9-custom
 sudo update-grub
 ```
 
