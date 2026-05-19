@@ -8,18 +8,18 @@ Description: Use the tc (traffic control) command on Ubuntu to configure Quality
 
 ---
 
-The `tc` (traffic control) command is the standard Linux tool for managing network queuing disciplines, shaping traffic, and enforcing policies. It is part of the `iproute2` package and is available on every Ubuntu installation. Understanding `tc` lets you control how traffic is scheduled and rate-limited on any Linux interface.
+The `tc` (traffic control) command is the standard Linux tool for managing network queuing disciplines, shaping traffic, and enforcing policies. It is part of the `iproute2` package and is available on standard Ubuntu installations. Understanding `tc` lets you control how traffic is scheduled and rate-limited on Linux network interfaces.
 
 ## Understanding Traffic Control Concepts
 
 Linux traffic control has a few key concepts:
 
-- **Queuing Discipline (qdisc)** - the algorithm that determines the order in which packets are sent. The default is `pfifo_fast` (a simple priority FIFO).
+- **Queuing Discipline (qdisc)** - the algorithm that determines the order in which packets are sent. The kernel fallback default is `pfifo_fast`, while many Ubuntu systems configure `fq_codel` as the default qdisc.
 - **Class** - a subdivision within a classful qdisc. Classes form a hierarchy.
 - **Filter** - rules that classify packets into classes based on fields like source IP, destination port, or DSCP marking.
 - **Handle** - a numeric identifier for qdiscs and classes in the format `major:minor`.
 
-Traffic control applies to **egress** (outgoing) traffic by default. Controlling ingress (incoming) traffic requires a virtual `ifb` device.
+Traffic shaping and scheduling apply to **egress** (outgoing) traffic. Ingress (incoming) traffic can be filtered or policed directly; shaping incoming traffic usually requires redirecting it through a virtual `ifb` device.
 
 ## Viewing Current Configuration
 
@@ -47,7 +47,7 @@ The simplest form of rate limiting uses the `tbf` qdisc to cap an interface's ou
 # Limit outbound traffic on eth0 to 10 Mbit/s
 tc qdisc add dev eth0 root tbf \
     rate 10mbit \
-    burst 32kbit \
+    burst 32kb \
     latency 400ms
 
 # Parameters:
@@ -65,12 +65,13 @@ tc qdisc del dev eth0 root
 ## Checking the Default Qdisc
 
 ```bash
-# Ubuntu 22.04 uses fq_codel as the default qdisc (good choice for most scenarios)
+# Check the default qdisc configured on this system
+sysctl net.core.default_qdisc
 tc qdisc show dev eth0
 # qdisc fq_codel 0: root refcnt 2 limit 10240p flows 1024 quantum 1514 target 5ms interval 100ms memory_limit 32Mb ecn drop_batch 64
 
 # fq_codel (Fair Queuing with Controlled Delay) reduces bufferbloat
-# It is the recommended default for most Ubuntu systems
+# It is a good default for most general-purpose Ubuntu systems
 ```
 
 ## Setting Up HTB for Traffic Shaping
@@ -115,17 +116,25 @@ IFACE=eth0
 
 # Classify SSH traffic (port 22) to high priority class 1:10
 tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 \
+    match ip protocol 6 0xff \
     match ip dport 22 0xffff flowid 1:10
 
 # Classify DNS traffic (port 53) to high priority
 tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 \
+    match ip protocol 17 0xff \
+    match ip dport 53 0xffff flowid 1:10
+
+tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 \
+    match ip protocol 6 0xff \
     match ip dport 53 0xffff flowid 1:10
 
 # Classify HTTP/HTTPS to medium priority class 1:20
 tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 \
+    match ip protocol 6 0xff \
     match ip dport 80 0xffff flowid 1:20
 
 tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 \
+    match ip protocol 6 0xff \
     match ip dport 443 0xffff flowid 1:20
 
 # Classify by source IP (e.g., bulk backup server)
@@ -156,7 +165,7 @@ tc rules are lost on reboot. Use a systemd service to restore them.
 
 ```bash
 # Save the tc commands to a script
-cat > /usr/local/bin/setup-qos.sh << 'SCRIPT'
+sudo tee /usr/local/bin/setup-qos.sh > /dev/null << 'SCRIPT'
 #!/bin/bash
 IFACE=eth0
 
@@ -180,17 +189,17 @@ tc qdisc add dev $IFACE parent 1:20 handle 20: fq_codel
 tc qdisc add dev $IFACE parent 1:30 handle 30: fq_codel
 
 # Filters
-tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 match ip dport 22 0xffff flowid 1:10
-tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip dport 80 0xffff flowid 1:20
-tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip dport 443 0xffff flowid 1:20
+tc filter add dev $IFACE parent 1: protocol ip prio 1 u32 match ip protocol 6 0xff match ip dport 22 0xffff flowid 1:10
+tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip protocol 6 0xff match ip dport 80 0xffff flowid 1:20
+tc filter add dev $IFACE parent 1: protocol ip prio 2 u32 match ip protocol 6 0xff match ip dport 443 0xffff flowid 1:20
 
 echo "QoS rules applied to $IFACE"
 SCRIPT
 
-chmod +x /usr/local/bin/setup-qos.sh
+sudo chmod +x /usr/local/bin/setup-qos.sh
 
 # Create systemd service
-cat > /etc/systemd/system/qos.service << 'EOF'
+sudo tee /etc/systemd/system/qos.service > /dev/null << 'EOF'
 [Unit]
 Description=Apply QoS Traffic Shaping Rules
 After=network.target
