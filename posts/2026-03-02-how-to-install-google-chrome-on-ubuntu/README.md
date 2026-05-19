@@ -142,11 +142,7 @@ Find the `Exec=` line and add `--ozone-platform=wayland`:
 Exec=/usr/bin/google-chrome-stable --ozone-platform=wayland %U
 ```
 
-Or set it persistently via environment variable:
-
-```bash
-echo 'CHROMIUM_FLAGS="--ozone-platform=wayland"' | sudo tee /etc/environment
-```
+You can also toggle this from inside Chrome at `chrome://flags/#ozone-platform-hint` by setting the Preferred Ozone platform to "Wayland" (or "Auto").
 
 ### Configuring Chrome for Enterprise/Managed Environments
 
@@ -236,13 +232,19 @@ sudo apt install libva-drm2 libva-x11-2 vainfo
 
 ### Certificate errors with corporate proxies
 
-If your organization uses SSL inspection:
+If your organization uses SSL inspection, Chrome on Linux uses its own NSS-based certificate store (not the system `/etc/ssl/certs` store), so you need to add the CA to the user's NSS database with `certutil`:
 
 ```bash
-# Import your organization's root CA into Chrome's certificate store
-# Chrome uses the system certificate store on Linux
-sudo cp /path/to/corporate-ca.crt /usr/local/share/ca-certificates/
-sudo update-ca-certificates
+# Install the NSS command-line tools
+sudo apt install libnss3-tools
+
+# Import the corporate root CA as trusted for SSL ("C,,")
+certutil -d sql:$HOME/.pki/nssdb -A -t "C,," -n "Corporate Root CA" -i /path/to/corporate-ca.crt
+
+# Verify it was added
+certutil -d sql:$HOME/.pki/nssdb -L
 ```
+
+For system-wide deployment across all users, pre-populate each user's NSS database via your configuration management tooling, or use p11-kit on distributions where Chrome reads from the shared p11-kit trust store.
 
 Chrome on Ubuntu works well as a daily driver and benefits from the familiar `apt upgrade` workflow for keeping it updated alongside the rest of the system.
