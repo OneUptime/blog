@@ -20,7 +20,7 @@ A portable service is essentially a disk image (or directory tree) that contains
 - One or more systemd unit files describing the service
 - Optional extension images for layered composition
 
-The `portablectl` command is used to attach, detach, and inspect these images. When attached, the service units are made available to the host's systemd instance, and the service runs in a lightweight namespace with its own filesystem root.
+The `portablectl` command is used to attach, detach, and inspect these images. When attached, the service units are made available to the host's systemd instance, and systemd adds `RootDirectory=` or `RootImage=` drop-ins so the service runs with the image as its filesystem root.
 
 Key differences from containers:
 - No separate container runtime needed
@@ -32,7 +32,7 @@ Key differences from containers:
 
 Before starting, make sure you have:
 
-- Ubuntu 20.04 or later (systemd 247+ recommended for full portable service support)
+- Ubuntu 20.04 or later for basic portable services; Ubuntu 24.04 or later is recommended if you want to use extension images
 - Root or sudo access
 - `systemd-container` package installed
 
@@ -97,6 +97,8 @@ The unit file must live inside the portable image at a path like `usr/lib/system
 
 ```bash
 # Create the unit file inside the portable image
+sudo mkdir -p /var/lib/portables/myapp/usr/lib/systemd/system
+
 sudo tee /var/lib/portables/myapp/usr/lib/systemd/system/myapp.service << 'EOF'
 [Unit]
 Description=My Portable Application
@@ -153,7 +155,7 @@ sudo portablectl attach /var/lib/portables/myapp.raw
 sudo portablectl attach --now /var/lib/portables/myapp.raw
 
 # Attach with specific profile (default, nonetwork, strict, trusted)
-# The 'default' profile allows access to most host resources
+# The 'default' profile is fairly restrictive but allows common service access
 sudo portablectl attach --profile=default /var/lib/portables/myapp.raw
 ```
 
@@ -179,8 +181,8 @@ journalctl -u myapp.service -f
 # See what's currently attached
 portablectl list
 
-# Get detailed info about an attached image
-portablectl inspect myapp
+# Get detailed info about an image
+portablectl inspect /var/lib/portables/myapp.raw
 
 # Check which unit files an image provides
 portablectl inspect /var/lib/portables/myapp.raw
@@ -196,23 +198,23 @@ Portable services use profiles to determine how much the service can access from
 
 ```bash
 # List available profiles
-ls /usr/lib/systemd/portable/
+ls /usr/lib/systemd/portable/profile/
 
 # The profiles directory contains drop-in configurations
-# default - allows basic host access
+# default - fairly restrictive, with common service access
 # nonetwork - no network access from inside the service
 # strict - maximum isolation
 # trusted - minimum restrictions, full host access
 ```
 
-You can create custom profiles by adding files to `/etc/systemd/portable/profiles/`:
+You can create custom profiles by adding files to `/etc/systemd/portable/profile/`:
 
 ```bash
 # Create a custom profile
-sudo mkdir -p /etc/systemd/portable/profiles/webservice
+sudo mkdir -p /etc/systemd/portable/profile/webservice
 
 # Add a drop-in that restricts network and filesystem access
-sudo tee /etc/systemd/portable/profiles/webservice/service.conf << 'EOF'
+sudo tee /etc/systemd/portable/profile/webservice/service.conf << 'EOF'
 [Service]
 # Only allow access to specific directories
 BindReadOnlyPaths=/etc/ssl/certs
@@ -232,6 +234,13 @@ Extension images let you layer additional content on top of a base image without
 # Create an extension image with configuration
 sudo mkdir -p /var/lib/portables/myapp-config/etc/myapp
 echo "setting=production" | sudo tee /var/lib/portables/myapp-config/etc/myapp/config.conf
+
+# Add extension metadata that matches the base Ubuntu image
+sudo mkdir -p /var/lib/portables/myapp-config/etc/extension-release.d
+sudo tee /var/lib/portables/myapp-config/etc/extension-release.d/extension-release.myapp-config << 'EOF'
+ID=ubuntu
+VERSION_ID=20.04
+EOF
 
 sudo mksquashfs /var/lib/portables/myapp-config /var/lib/portables/myapp-config.raw \
     -comp xz -noappend
@@ -265,8 +274,8 @@ sudo portablectl attach --now /var/lib/portables/myapp.raw
 # If attachment fails, check the journal for details
 journalctl -xe | grep portablectl
 
-# Verify the image contains valid unit files with correct prefixes
-systemd-analyze verify /var/lib/portables/myapp.raw
+# Verify the image contains metadata and unit files with correct prefixes
+portablectl inspect /var/lib/portables/myapp.raw
 
 # Check that the image can be mounted
 sudo mount -o loop,ro /var/lib/portables/myapp.raw /mnt
