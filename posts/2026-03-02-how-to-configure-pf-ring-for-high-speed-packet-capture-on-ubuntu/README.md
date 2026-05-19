@@ -75,10 +75,10 @@ cat /sys/module/pf_ring/parameters/min_num_slots
 Make it persistent:
 
 ```bash
-# Add to modules list
-echo 'pf_ring min_num_slots=65536' | sudo tee /etc/modules-load.d/pf_ring.conf
+# Add the module to the boot-time modules list
+echo 'pf_ring' | sudo tee /etc/modules-load.d/pf_ring.conf
 
-# Or configure via modprobe options
+# Configure the module parameter via modprobe options
 echo 'options pf_ring min_num_slots=65536' | sudo tee /etc/modprobe.d/pf_ring.conf
 ```
 
@@ -94,7 +94,7 @@ ip link show
 # (These cause packets to look different than what's on the wire)
 sudo ethtool -K eth1 rx off tx off sg off tso off gso off gro off lro off
 
-# Set the ring buffer size for the NIC to maximum
+# Set the NIC ring buffer size (adjust to a supported value for your NIC)
 sudo ethtool -G eth1 rx 4096 tx 4096
 
 # Enable promiscuous mode
@@ -117,13 +117,11 @@ For ZC mode, you need a supported Intel NIC (i350, i210, X520, X710, etc.):
 cd PF_RING/drivers/intel
 
 # Build the i40e ZC driver (for X710/XL710)
-cd i40e/i40e-*/src
-make -f Makefile.pf_ring
-sudo make -f Makefile.pf_ring install
+./configure && make
+cd i40e/i40e-*-zc/src
 
-# Load the ZC driver
-sudo rmmod i40e
-sudo modprobe i40e-zc
+# Load the ZC driver and configure huge pages
+sudo ./load_driver.sh
 
 # Verify ZC is available
 ls /proc/net/pf_ring/
@@ -135,7 +133,7 @@ cat /proc/net/pf_ring/dev/eth1/info
 Allocate huge pages for ZC operation:
 
 ```bash
-# Allocate 1GB huge pages
+# Allocate 1024 2MB huge pages (2GB total)
 echo 1024 | sudo tee /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages
 
 # Mount hugetlbfs
@@ -156,15 +154,15 @@ PF_RING comes with several capture utilities:
 # pfcount - basic packet counting/capture
 pfcount -i eth1
 
-# pfcount with statistics
-pfcount -i eth1 -s -v
+# pfcount with verbose packet metadata
+pfcount -i eth1 -v 1
 
 # Capture to pcap file using PF_RING
-pfcount -i eth1 -w /tmp/capture.pcap
+pfcount -i eth1 -o /tmp/capture
 
 # pfsend - replay packets from a pcap file
-pfsend -f /tmp/capture.pcap -i eth1 -r 1    # Replay at 1x speed
-pfsend -f /tmp/capture.pcap -i eth1 -r 10   # Replay at 10x speed
+pfsend -f /tmp/capture.1 -i eth1 -r -1  # Replay at the pcap capture rate
+pfsend -f /tmp/capture.1 -i eth1 -r 10  # Replay at 10 Gbit/s
 ```
 
 For ZC interfaces, prefix the interface name with `zc:`:
@@ -173,9 +171,9 @@ For ZC interfaces, prefix the interface name with `zc:`:
 # Capture using ZC mode
 pfcount -i zc:eth1
 
-# Distribute capture across CPU cores using ZC cluster
-pfcount -i zc:eth1@1    # Worker 1 of a ZC cluster
-pfcount -i zc:eth1@2    # Worker 2 of a ZC cluster
+# Read specific RSS queues on a multi-queue ZC interface
+pfcount -i zc:eth1@0    # Queue 0
+pfcount -i zc:eth1@1    # Queue 1
 ```
 
 ## Integrating with Suricata
@@ -184,6 +182,13 @@ Suricata supports PF_RING natively. Configure it to use PF_RING:
 
 ```bash
 sudo nano /etc/suricata/suricata.yaml
+```
+
+On Suricata 8.x, also make sure the PF_RING plugin is loaded in `suricata.yaml`:
+
+```yaml
+plugins:
+  - /usr/lib/suricata/pfring.so
 ```
 
 ```yaml
@@ -241,8 +246,8 @@ sudo sysctl -p /etc/sysctl.d/99-pf-ring.conf
 watch -n 1 cat /proc/net/pf_ring/info
 
 # Check for dropped packets per ring
-ls /proc/net/pf_ring/
-cat /proc/net/pf_ring/0/      # Ring 0 statistics
+ls /proc/net/pf_ring/stats/
+cat /proc/net/pf_ring/stats/12345-eth1.*      # Replace 12345 with the process ID
 ```
 
 PF_RING significantly increases the packet rates you can capture without dropping, especially when combined with ZC mode and proper NIC/CPU affinity. For monitoring networks above 10 Gbps, it is essentially a requirement for any serious network security monitoring deployment.
