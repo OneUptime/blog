@@ -45,26 +45,24 @@ snapcraft --use-lxd
 
 # Build on the host system directly (no isolation, faster)
 snapcraft --destructive-mode
-
-# Build on the host inside a managed container
-snapcraft --build-environment=lxd
 ```
 
 For local development, `--destructive-mode` is fastest since it skips VM setup. For CI and release builds, use a clean environment.
 
 ## Understanding the Build Lifecycle
 
-Snapcraft builds snap parts through these steps in order:
+Snapcraft processes parts and then packages the snap in this order:
 
 ```text
-pull -> build -> stage -> prime -> snap
+pull -> overlay -> build -> stage -> prime, then pack
 ```
 
 - **pull**: Download source code
+- **overlay**: Apply any overlay packages and overlay script
 - **build**: Run the plugin's build commands
 - **stage**: Copy build artifacts to staging area
 - **prime**: Filter down to only what goes in the final snap
-- **snap**: Package everything into the .snap file
+- **pack**: Package everything into the .snap file
 
 You can run individual steps to debug:
 
@@ -277,7 +275,7 @@ snapcraft --build-for arm64
 snapcraft --build-for armhf
 ```
 
-This requires LXD or Multipass - it won't work with `--destructive-mode` unless you're on the target architecture.
+For core22 and core24 snaps, `--build-for` selects a target architecture from the project's build plan. If you use `--destructive-mode`, narrow the build plan to a single target and make sure your project can cross-compile for that target.
 
 ## Build with Environment Variables
 
@@ -309,9 +307,6 @@ Or override completely in the build step:
 Repeated builds are much faster because snapcraft caches:
 
 ```bash
-# Check build state
-snapcraft state
-
 # Clean only specific parts
 snapcraft clean my-slow-dependency-part
 
@@ -341,7 +336,7 @@ Once the snap looks correct, install and test it locally:
 
 ```bash
 # Install the local snap in devmode for testing
-sudo snap install --devmode my-app_1.0_amd64.snap
+sudo snap install --devmode --dangerous my-app_1.0_amd64.snap
 
 # Test the app
 my-app --version
