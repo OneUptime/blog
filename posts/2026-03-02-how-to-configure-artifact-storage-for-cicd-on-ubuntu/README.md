@@ -27,30 +27,30 @@ A local Nexus instance provides:
 
 ## Installing Nexus Repository Manager
 
-Nexus requires Java 11 or 17 and at least 4GB RAM.
+Current Nexus Repository releases include a bundled Java runtime and require about 8GB RAM for a small deployment.
 
 ```bash
-# Install Java 17
+# Install required system tools
 
 sudo apt update
-sudo apt install -y openjdk-17-jdk
+sudo apt install -y wget
 
 # Create dedicated nexus user
 sudo useradd -r -m -s /bin/bash -d /opt/nexus-data nexus
 
 # Download Nexus (check https://help.sonatype.com for latest version)
-NEXUS_VERSION="3.76.1-01"
+NEXUS_VERSION="3.92.2-01"
 cd /tmp
-wget "https://download.sonatype.com/nexus/3/nexus-${NEXUS_VERSION}-unix.tar.gz"
+wget "https://download.sonatype.com/nexus/3/nexus-${NEXUS_VERSION}-linux-x86_64.tar.gz"
 
 # Extract to /opt
-sudo tar -xzf "nexus-${NEXUS_VERSION}-unix.tar.gz" -C /opt
+sudo tar -xzf "nexus-${NEXUS_VERSION}-linux-x86_64.tar.gz" -C /opt
 
 # Create symlink for easier upgrades
 sudo ln -s /opt/nexus-${NEXUS_VERSION} /opt/nexus
 
 # Create data directory
-sudo mkdir -p /opt/nexus-data
+sudo mkdir -p /opt/nexus-data/sonatype-work/nexus3
 sudo chown -R nexus:nexus /opt/nexus /opt/nexus-data
 
 # Set the run user
@@ -75,18 +75,18 @@ sudo nano /opt/nexus/bin/nexus.vmoptions
 -XX:MaxDirectMemorySize=2703m
 -XX:+UnlockDiagnosticVMOptions
 -XX:+LogVMOutput
--XX:LogFile=../sonatype-work/nexus3/log/jvm.log
+-XX:LogFile=/opt/nexus-data/sonatype-work/nexus3/log/jvm.log
 -XX:-OmitStackTraceInFastThrow
 -Djava.net.preferIPv4Stack=true
 -Dkaraf.home=.
 -Dkaraf.base=.
 -Dkaraf.etc=etc/karaf
 -Djava.util.logging.config.file=etc/karaf/java.util.logging.properties
--Dkaraf.data=../sonatype-work/nexus3
--Dkaraf.log=../sonatype-work/nexus3/log
--Djava.io.tmpdir=../sonatype-work/nexus3/tmp
+-Dkaraf.data=/opt/nexus-data/sonatype-work/nexus3
+-Dkaraf.log=/opt/nexus-data/sonatype-work/nexus3/log
+-Djava.io.tmpdir=/opt/nexus-data/sonatype-work/nexus3/tmp
 -XX:+HeapDumpOnOutOfMemoryError
--XX:HeapDumpPath=../sonatype-work/nexus3
+-XX:HeapDumpPath=/opt/nexus-data/sonatype-work/nexus3
 -Dkaraf.startLocalConsole=false
 ```
 
@@ -107,12 +107,9 @@ User=nexus
 Group=nexus
 ExecStart=/opt/nexus/bin/nexus start
 ExecStop=/opt/nexus/bin/nexus stop
-ExecReload=/opt/nexus/bin/nexus restart
-PIDFile=/opt/nexus/bin/nexus.pid
 Restart=on-failure
 RestartSec=10
-TimeoutStartSec=300
-TimeoutStopSec=120
+TimeoutSec=600
 LimitNOFILE=65536
 
 [Install]
@@ -130,7 +127,7 @@ sudo systemctl status nexus
 sudo tail -f /opt/nexus-data/sonatype-work/nexus3/log/nexus.log
 
 # Get initial admin password
-cat /opt/nexus-data/sonatype-work/nexus3/admin.password
+sudo cat /opt/nexus-data/sonatype-work/nexus3/admin.password
 ```
 
 Nexus UI is available at `http://your-server:8081`. Log in with admin and the initial password.
@@ -207,7 +204,7 @@ Log into the Nexus UI at `https://nexus.example.com`. Navigate to **Administrati
 
 ### Maven Repositories
 
-Create three repositories:
+Create four repositories:
 1. **maven-proxy** (type: maven2, proxy) - proxies Maven Central, stores downloaded JARs locally
 2. **maven-releases** (type: maven2, hosted) - for your released artifacts
 3. **maven-snapshots** (type: maven2, hosted) - for snapshot builds
@@ -266,8 +263,9 @@ Configure npm to use Nexus:
 npm config set registry https://nexus.example.com/repository/npm-proxy/
 
 # For authenticated operations (publishing private packages)
-npm config set always-auth true
-npm config set _auth $(echo -n 'deploy-user:deploy-password' | base64)
+npm adduser --auth-type=legacy --registry=https://nexus.example.com/repository/npm-hosted/
+# Or configure scoped basic auth for CI/user-token use:
+npm config set //nexus.example.com/repository/npm-hosted/:_auth=$(echo -n 'deploy-user:deploy-password' | openssl base64)
 
 # Publish a private package to Nexus
 npm publish --registry https://nexus.example.com/repository/npm-hosted/
@@ -347,7 +345,7 @@ pipeline {
 }
 ```
 
-### GitHub Actions Style (Woodpecker/Drone)
+### Woodpecker CI Pipeline
 
 ```yaml
 # .woodpecker.yml - publish artifacts to Nexus
@@ -356,14 +354,13 @@ steps:
     image: maven:3.9-eclipse-temurin-21
     environment:
       MAVEN_OPTS: "-Dmaven.repo.local=/cache/maven"
+      NEXUS_USER:
+        from_secret: nexus_username
+      NEXUS_PASS:
+        from_secret: nexus_password
     commands:
       - mvn clean package -DskipTests
       - mvn deploy -DskipTests
-    secrets:
-      - source: nexus_username
-        target: NEXUS_USER
-      - source: nexus_password
-        target: NEXUS_PASS
     volumes:
       - /opt/build-cache/maven:/cache/maven
 ```
@@ -373,7 +370,8 @@ steps:
 Without cleanup policies, Nexus fills your disk with old artifacts. Configure cleanup in **Administration > Cleanup Policies**.
 
 ```bash
-# Example: Remove snapshot artifacts older than 30 days via API
+# Example: Create a policy for snapshot artifacts older than 30 days via API
+# The cleanup-policies API is available in Nexus Repository Pro 3.70.0+.
 curl -X POST \
   -u admin:password \
   -H "Content-Type: application/json" \
@@ -381,11 +379,8 @@ curl -X POST \
   -d '{
     "name": "cleanup-old-snapshots",
     "format": "maven2",
-    "mode": "delete",
-    "criteria": {
-      "lastBlobUpdated": 30,
-      "isPrerelease": true
-    }
+    "criteriaLastBlobUpdated": 30,
+    "criteriaReleaseType": "PRELEASES"
   }'
 ```
 
