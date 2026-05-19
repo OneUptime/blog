@@ -43,14 +43,16 @@ The status command gives a quick overview:
 # Check overall status
 cloud-init status
 
-# Get detailed status with timing information
+# Get detailed status and error information
 cloud-init status --long
 
 # Sample output:
 # status: done
-# time: Mon, 02 Mar 2026 10:23:45 +0000
-# detail:
-# DataSourceEc2Local [seed=[None, None], dsmode=net]
+# extended_status: done
+# boot_status_code: enabled-by-generator
+# detail: DataSourceEc2Local [seed=[None, None], dsmode=net]
+# errors: []
+# recoverable_errors: {}
 ```
 
 If status shows `error`, check which module failed:
@@ -169,19 +171,21 @@ To make script failures visible, add error checking:
 ```yaml
 #cloud-config
 runcmd:
-  - |
-    set -euo pipefail
-    exec > >(tee /var/log/my-setup.log) 2>&1
-    echo "Starting setup at $(date)"
+  - - bash
+    - -lc
+    - |
+      set -euo pipefail
+      exec > >(tee /var/log/my-setup.log) 2>&1
+      echo "Starting setup at $(date)"
 
-    # Install dependencies
-    apt-get update
-    apt-get install -y mypackage
+      # Install dependencies
+      apt-get update
+      apt-get install -y mypackage
 
-    # Run application setup
-    /usr/local/bin/setup.sh
+      # Run application setup
+      /usr/local/bin/setup.sh
 
-    echo "Setup complete at $(date)"
+      echo "Setup complete at $(date)"
 ```
 
 Or use a separate script file that you write with `write_files`:
@@ -232,7 +236,7 @@ sudo cloud-init modules --mode=final
 sudo cloud-init clean --logs --reboot
 ```
 
-Be careful with `cloud-init clean` on production instances - it resets the instance ID and causes all per-instance modules to run again, which can create duplicate users or re-run destructive operations.
+Be careful with `cloud-init clean` on production instances - it removes cached cloud-init state so the next boot is treated like first boot, which can create duplicate users or re-run destructive operations.
 
 ## Debugging Specific Module Failures
 
@@ -246,7 +250,7 @@ sudo cloud-init single --name write-files --frequency always
 sudo cloud-init single --name package-update-upgrade-install --frequency always
 
 # Run with verbose output
-sudo cloud-init single --name users-groups --frequency always --debug
+sudo cloud-init --debug single --name users-groups --frequency always
 ```
 
 ## Network-Related Failures
