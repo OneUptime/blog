@@ -47,6 +47,7 @@ global
     user haproxy
     group haproxy
     daemon
+    stats socket /run/haproxy/admin.sock mode 660 level admin
 
 defaults
     mode http
@@ -106,7 +107,7 @@ frontend smart_rate_limit
 
     # Track login attempts separately (more restrictive)
     acl is_login  path_beg /login /auth/login /api/v1/login
-    http-request track-sc1 src table per_url_limits if is_login
+    http-request track-sc1 base32+src table per_url_limits if is_login
 
     # General rate limit: 200 requests per 10 seconds
     acl over_general_limit sc_http_req_rate(0) gt 200
@@ -133,16 +134,15 @@ frontend with_error_tracking
     # Track all requests
     http-request track-sc0 src table error_tracking
 
-    # Track responses - increment error counter for 4xx/5xx responses
-    acl is_client_error status 400:499
-    acl is_server_error status 500:599
+    # http_err_rate increments for request errors and 4xx responses
 
     # Block if more than 20 errors per minute
     acl too_many_errors sc_http_err_rate(0) gt 20
 
     # Also check error rate vs total request ratio
     # If error rate is more than 50% of request rate, probably a scanner
-    acl high_error_ratio sc_http_err_rate(0) gt sc_http_req_rate(0)/2
+    http-request set-var(txn.req_rate) sc_http_req_rate(0)
+    acl high_error_ratio sc_http_err_rate(0),mul(2),sub(txn.req_rate) gt 0
 
     http-request deny deny_status 429 if too_many_errors
     http-request deny deny_status 403 if high_error_ratio
@@ -156,14 +156,15 @@ For repeat offenders, add them to a ban list:
 
 ```text
 global
-    # Size of the ban table
+    # Optional: increases the number of sticky counters available per session
     tune.stick-counters 8
+    stats socket /run/haproxy/admin.sock mode 660 level admin
 
 defaults
     mode http
 
 backend ban_list
-    # Binary key for flexible matching
+    # IP key for matching client addresses
     stick-table type ip size 100k expire 24h store gpc0
 
 frontend with_banning
@@ -216,10 +217,9 @@ frontend friendly_rate_limit
 
     # Return a proper 429 with Retry-After header
     http-request return status 429 \
-        hdr "Retry-After" "60" \
-        hdr "Content-Type" "application/json" \
         content-type "application/json" \
         string '{"error":"rate_limited","message":"Too many requests. Please slow down.","retry_after":60}' \
+        hdr "Retry-After" "60" \
         if over_limit
 
     default_backend app_backend
@@ -271,6 +271,7 @@ global
     user haproxy
     group haproxy
     daemon
+    stats socket /run/haproxy/admin.sock mode 660 level admin
 
 defaults
     mode http
