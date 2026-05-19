@@ -93,8 +93,8 @@ Compiling nginx from source is a good practical example because you might want t
 sudo apt install libpcre3-dev libssl-dev zlib1g-dev
 
 # Download the source
-NGINX_VERSION="1.26.1"
-wget http://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
+NGINX_VERSION="1.30.1"
+wget https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz
 tar -xzf nginx-${NGINX_VERSION}.tar.gz
 cd nginx-${NGINX_VERSION}
 
@@ -128,7 +128,7 @@ For software that's already in Ubuntu's repositories (even if you're not using t
 ```bash
 # Enable source repositories if not already enabled
 sudo apt edit-sources
-# Add deb-src lines matching your deb lines
+# In .sources files, add deb-src to Types; in .list files, add deb-src lines matching your deb lines
 
 # Install build dependencies for a package
 sudo apt build-dep nginx
@@ -271,7 +271,7 @@ nproc
 make -j$(nproc)
 
 # Leave one core free for the system
-make -j$(($(nproc) - 1))
+make -j$(nproc --ignore=1)
 
 # For cmake
 cmake --build . -j$(nproc)
