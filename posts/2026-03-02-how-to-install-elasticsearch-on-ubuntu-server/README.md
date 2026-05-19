@@ -93,8 +93,9 @@ transport.port: 9300
 # For a single-node setup (no clustering)
 discovery.type: single-node
 
-# For a multi-node cluster:
+# For a multi-node cluster, remove discovery.type: single-node and configure discovery:
 # discovery.seed_hosts: ["10.0.0.10", "10.0.0.11", "10.0.0.12"]
+# Set cluster.initial_master_nodes only when bootstrapping a brand-new cluster:
 # cluster.initial_master_nodes: ["node-1", "node-2", "node-3"]
 
 # Security is enabled by default in Elasticsearch 8.x
@@ -124,20 +125,17 @@ sudo nano /etc/elasticsearch/jvm.options.d/custom.options
 
 ```text
 # Set heap size to approximately half of available RAM
-# Do NOT exceed 31GB (avoids compressed ordinary object pointer issues)
+# Keep heap below the compressed ordinary object pointer threshold
+# (26GB is safe on most systems; some systems can go up to 30GB)
 # Minimum: do not go below 2GB for production
 -Xms4g
 -Xmx4g
 
-# Enable G1 GC (recommended for Elasticsearch 8.x)
--XX:+UseG1GC
-
-# G1GC tuning
--XX:MaxGCPauseMillis=50
--XX:InitiatingHeapOccupancyPercent=75
+# Elasticsearch configures JVM GC defaults automatically.
+# Avoid custom GC tuning unless Elastic documentation or support recommends it.
 ```
 
-The rule of thumb: set heap to 50% of available RAM, up to a maximum of 31GB. Leave the other 50% for the OS page cache, which Elasticsearch uses heavily for Lucene index access.
+The rule of thumb: set heap to no more than 50% of available RAM and keep it below the compressed ordinary object pointer threshold (26GB is safe on most systems and can be as high as 30GB on some systems). Leave the other memory for off-heap use and the OS page cache, which Elasticsearch uses heavily for Lucene index access.
 
 ```bash
 # For a server with 16GB RAM, use 8GB heap:
@@ -151,8 +149,8 @@ Elasticsearch needs several kernel parameters adjusted:
 
 ```bash
 # Increase virtual memory limit (required by Elasticsearch)
-sudo sysctl -w vm.max_map_count=262144
-echo "vm.max_map_count=262144" | sudo tee -a /etc/sysctl.conf
+sudo sysctl -w vm.max_map_count=1048576
+echo "vm.max_map_count=1048576" | sudo tee -a /etc/sysctl.conf
 
 # Disable swap (Elasticsearch performs poorly with swap)
 sudo swapoff -a
@@ -163,7 +161,7 @@ sudo sed -i '/ swap / s/^/#/' /etc/fstab
 sudo sysctl -p
 ```
 
-Increase file descriptor limits:
+Debian packages already default the maximum number of file descriptors to 65535. If you need to override systemd limits, use:
 
 ```bash
 # Edit the systemd service override
@@ -178,7 +176,7 @@ LimitAS=infinity
 LimitFSIZE=infinity
 ```
 
-Or edit `/etc/security/limits.conf`:
+For `.tar.gz` or `.zip` installations, you can edit `/etc/security/limits.conf`:
 
 ```text
 elasticsearch soft nofile 65535
@@ -307,19 +305,29 @@ curl http://localhost:9200
 
 ```bash
 # Cluster health
-curl -u elastic:password http://localhost:9200/_cluster/health?pretty
+curl --cacert /etc/elasticsearch/certs/http_ca.crt \
+  -u elastic:password \
+  https://localhost:9200/_cluster/health?pretty
 
 # Node stats (JVM, memory, disk)
-curl -u elastic:password http://localhost:9200/_nodes/stats?pretty
+curl --cacert /etc/elasticsearch/certs/http_ca.crt \
+  -u elastic:password \
+  https://localhost:9200/_nodes/stats?pretty
 
 # Index statistics
-curl -u elastic:password http://localhost:9200/_stats?pretty
+curl --cacert /etc/elasticsearch/certs/http_ca.crt \
+  -u elastic:password \
+  https://localhost:9200/_stats?pretty
 
 # Pending tasks
-curl -u elastic:password http://localhost:9200/_cluster/pending_tasks
+curl --cacert /etc/elasticsearch/certs/http_ca.crt \
+  -u elastic:password \
+  https://localhost:9200/_cluster/pending_tasks
 
 # Hot threads (useful for debugging high CPU)
-curl -u elastic:password http://localhost:9200/_nodes/hot_threads
+curl --cacert /etc/elasticsearch/certs/http_ca.crt \
+  -u elastic:password \
+  https://localhost:9200/_nodes/hot_threads
 ```
 
 ## Log Files
