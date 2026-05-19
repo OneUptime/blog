@@ -65,7 +65,10 @@ sudo chmod 700 /etc/squid/ssl_cert
 sudo openssl req -new -newkey rsa:4096 -days 3650 -nodes -x509 \
   -keyout /etc/squid/ssl_cert/squid-ca.key \
   -out /etc/squid/ssl_cert/squid-ca.crt \
-  -subj "/C=US/ST=State/L=City/O=YourOrg/CN=Squid CA"
+  -subj "/C=US/ST=State/L=City/O=YourOrg/CN=Squid CA" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -addext "subjectKeyIdentifier=hash"
 
 # Set permissions
 sudo chown proxy:proxy /etc/squid/ssl_cert/squid-ca.key
@@ -125,12 +128,13 @@ acl step2 at_step SslBump2
 acl step3 at_step SslBump3
 
 # Define domains to never bump (banking, healthcare, etc.)
-acl nobump_domains dstdomain .bank.com
-acl nobump_domains dstdomain .healthcare.gov
-acl nobump_domains dstdomain .paypal.com
+acl nobump_domains ssl::server_name .bank.com
+acl nobump_domains ssl::server_name .healthcare.gov
+acl nobump_domains ssl::server_name .paypal.com
 
 # Define blocked categories (add more as needed)
-acl blocked_domains dstdomain "/etc/squid/blocked_domains.txt"
+acl blocked_http_domains dstdomain "/etc/squid/blocked_domains.txt"
+acl blocked_tls_domains ssl::server_name "/etc/squid/blocked_domains.txt"
 
 # ============================================
 # HTTP Access Rules
@@ -146,11 +150,12 @@ http_access deny CONNECT !SSL_ports
 http_access allow localhost manager
 http_access deny manager
 
+# Deny blocked domains
+http_access deny blocked_http_domains
+http_access deny blocked_tls_domains
+
 # Allow local clients
 http_access allow localnet
-
-# Deny blocked domains
-http_access deny blocked_domains
 
 # Deny everyone else
 http_access deny all
@@ -159,16 +164,20 @@ http_access deny all
 # Listening Ports
 # ============================================
 
-# Standard HTTP proxy port
-http_port 3128
+# Standard explicit proxy port with SSL bumping for CONNECT requests
+http_port 3128 ssl-bump \
+    generate-host-certificates=on \
+    dynamic_cert_mem_cache_size=16MB \
+    tls-cert=/etc/squid/ssl_cert/squid-ca.crt \
+    tls-key=/etc/squid/ssl_cert/squid-ca.key
 
 # Transparent interception port for HTTPS
 https_port 3129 intercept \
     ssl-bump \
     generate-host-certificates=on \
     dynamic_cert_mem_cache_size=16MB \
-    cert=/etc/squid/ssl_cert/squid-ca.crt \
-    key=/etc/squid/ssl_cert/squid-ca.key
+    tls-cert=/etc/squid/ssl_cert/squid-ca.crt \
+    tls-key=/etc/squid/ssl_cert/squid-ca.key
 
 # ============================================
 # SSL Bump Rules
