@@ -50,7 +50,7 @@ user   host=(runas_user)   NOPASSWD: command
 
 - `user` - username or `%groupname`
 - `host` - hostname or `ALL`
-- `(runas_user)` - who to run as, usually `(ALL)` for root
+- `(runas_user)` - who to run as; omitted defaults to root, while `(ALL)` allows any target user
 - `NOPASSWD:` - skip the password prompt
 - `command` - full path to command, or `ALL`
 
@@ -143,11 +143,6 @@ Ansible is a common reason to configure passwordless sudo. Ansible connects via 
 # Create a dedicated Ansible user
 sudo useradd -m -s /bin/bash ansibleadmin
 
-# Generate an SSH key for Ansible to use
-sudo su - ansibleadmin
-ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
-exit
-
 # Grant passwordless sudo
 sudo visudo -f /etc/sudoers.d/ansibleadmin
 
@@ -157,7 +152,16 @@ ansibleadmin ALL=(ALL) NOPASSWD: ALL
 
 On the Ansible control machine:
 
-```yaml
+```bash
+# Generate an SSH key for Ansible to use
+ssh-keygen -t ed25519 -f ~/.ssh/ansibleadmin_key -N ""
+
+# Install the public key for ansibleadmin on each managed server
+ssh-copy-id -i ~/.ssh/ansibleadmin_key.pub ansibleadmin@server1.example.com
+ssh-copy-id -i ~/.ssh/ansibleadmin_key.pub ansibleadmin@server2.example.com
+```
+
+```ini
 # inventory/hosts
 [webservers]
 server1.example.com
@@ -171,7 +175,8 @@ private_key_file = ~/.ssh/ansibleadmin_key
 [privilege_escalation]
 become = true
 become_method = sudo
-become_ask_pass = false  # No password prompt
+# No password prompt
+become_ask_pass = false
 ```
 
 ## For CI/CD Runners
@@ -229,8 +234,11 @@ sudo visudo -f /etc/sudoers.d/secure-automation
 # Restrict to specific commands (not ALL)
 deploy ALL=(ALL) NOPASSWD: /opt/scripts/deploy.sh
 
-# Prevent running interactive shells (important security measure)
-deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *, !/bin/sh, !/bin/bash
+# Avoid broad wildcards; allow exact commands instead
+deploy ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart nginx
+
+# For commands that support shell escapes, NOEXEC can block child commands when supported
+monitor ALL=(ALL) NOPASSWD:NOEXEC: /usr/bin/less /var/log/myapp.log
 
 # Log sudo usage even for NOPASSWD (enabled by default via syslog)
 # Check: /var/log/auth.log
@@ -246,6 +254,9 @@ PermitUserEnvironment no
 
 # Restrict the CI user to specific commands at the SSH level
 # (Combined with sudo restrictions, this provides defense in depth)
+Match User cirunner
+    DisableForwarding yes
+    ForceCommand /usr/local/bin/ci-command-wrapper
 ```
 
 ## Revoking Passwordless Access
