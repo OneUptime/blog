@@ -35,12 +35,11 @@ lxc snapshot mycontainer before-nginx-update
 # List snapshots for a container
 lxc info mycontainer
 
-# Create a snapshot including the container's memory state (stateful)
-# This pauses the container momentarily to capture RAM
-lxc snapshot --stateful mycontainer
+# Stateful snapshots capture VM running state; they are not supported for containers.
+# For containers, use normal snapshots and quiesce applications as needed.
 
 # Snapshot all running containers at once
-for container in $(lxc list --format csv --columns n); do
+for container in $(lxc list --format csv --columns n,s | awk -F, '$2=="RUNNING"{print $1}'); do
     echo "Snapshotting $container..."
     lxc snapshot "$container" "auto-$(date +%Y%m%d)"
 done
@@ -50,11 +49,11 @@ done
 
 ```bash
 # Restore a container to a specific snapshot
-# This stops the container, restores, and starts it again
+# This restores the container to the snapshot state
 lxc restore mycontainer snap-20260302-120000
 
-# Restore to snapshot without starting
-lxc restore mycontainer snap-20260302-120000 --stateful
+# Restore a stateful VM snapshot including its running state
+lxc restore myvm snap-20260302-120000 --stateful
 
 # Create a new container from a snapshot (non-destructive recovery)
 lxc copy mycontainer/snap-20260302-120000 mycontainer-restored
@@ -70,7 +69,8 @@ Old snapshots consume storage space. Set expiry times and clean up manually:
 
 ```bash
 # Set an expiry on a snapshot (it will auto-delete after 7 days)
-lxc config set mycontainer/snap-20260302 expires_at "2026-03-09T00:00:00Z"
+lxc query --request PATCH /1.0/instances/mycontainer/snapshots/snap-20260302 \
+    --data '{"expires_at": "2026-03-09T00:00:00Z"}'
 
 # Delete a specific snapshot
 lxc delete mycontainer/old-snapshot
@@ -81,7 +81,7 @@ RETENTION_DAYS=7
 CUTOFF=$(date -d "$RETENTION_DAYS days ago" +%s)
 
 for container in $(lxc list --format csv --columns n); do
-    lxc info "$container" | grep -A1 "Snapshots:" | grep "snap-" | while read snap_name rest; do
+    lxc info "$container" | awk '/^Snapshots:/{flag=1; next} flag && /^  / {print $1}' | grep "^snap-" | while read snap_name; do
         # Extract date from snapshot name
         snap_date=$(echo "$snap_name" | grep -oP '\d{8}')
         if [ -n "$snap_date" ]; then
@@ -97,7 +97,7 @@ done
 
 ## Full Container Export
 
-Exports create a self-contained image file that can be transferred to another host:
+Exports create a self-contained backup file that can be transferred to another host:
 
 ```bash
 # Export a stopped container to a compressed tarball
@@ -105,7 +105,7 @@ lxc stop mycontainer
 lxc export mycontainer /backups/mycontainer-$(date +%Y%m%d).tar.gz
 lxc start mycontainer
 
-# Export a running container (LXD handles the consistency)
+# Export only the current container, without its snapshots
 lxc export --instance-only mycontainer /backups/mycontainer-$(date +%Y%m%d).tar.gz
 
 # Export including all snapshots
@@ -115,17 +115,17 @@ lxc export mycontainer /backups/mycontainer-with-snaps-$(date +%Y%m%d).tar.gz
 ls -lh /backups/mycontainer-*.tar.gz
 ```
 
-The export file is a standard LXD image tarball. Import it on any LXD host:
+The export file is a standard LXD backup tarball. Import it on any LXD host:
 
 ```bash
-# Import the image to the local image store
-lxc image import /backups/mycontainer-20260302.tar.gz --alias mycontainer-backup
+# Import the backup as a new container
+lxc import /backups/mycontainer-20260302.tar.gz mycontainer-restored
 
-# Create a new container from the imported image
-lxc init mycontainer-backup mycontainer-restored
-
-# Or import directly as a container
+# Or import using the original container name from the backup
 lxc import /backups/mycontainer-20260302.tar.gz
+
+# Start the restored container
+lxc start mycontainer-restored
 ```
 
 ## Automated Backup Script
@@ -166,14 +166,14 @@ for container in $containers; do
 
     # Export the container to a backup file
     export_file="$BACKUP_DIR/${container}-${TIMESTAMP}.tar.gz"
-    if lxc export "$container" "$export_file" --optimized-storage; then
+    if lxc export "$container" "$export_file"; then
         log "Exported: $export_file ($(du -sh "$export_file" | cut -f1))"
     else
         log "ERROR: Export failed for $container"
     fi
 
     # Clean up old snapshots (keep last 3)
-    lxc info "$container" | grep "auto-" | sort | head -n -3 | awk '{print $1}' | while read old_snap; do
+    lxc info "$container" | awk '/^Snapshots:/{flag=1; next} flag && /^  / {print $1}' | grep "^auto-" | sort | head -n -3 | while read old_snap; do
         log "Removing old snapshot: $container/$old_snap"
         lxc delete "$container/$old_snap"
     done
@@ -215,7 +215,7 @@ sudo zfs send -i lxd-pool@20260301 lxd-pool@20260302 | \
 
 ## Copying Containers Between LXD Hosts
 
-For migration or recovery, copy a running container to another LXD host:
+For migration or recovery, copy a container to another LXD host:
 
 ```bash
 # First, set up trust between LXD instances
@@ -224,8 +224,9 @@ lxc remote add secondary-host https://secondary.example.com:8443
 # Copy a container to the remote host
 lxc copy mycontainer secondary-host:mycontainer
 
-# Copy with live migration (container stays running during transfer)
-lxc move --live mycontainer secondary-host:mycontainer
+# Move a container to the remote host (containers must be stopped first)
+lxc stop mycontainer
+lxc move mycontainer secondary-host:mycontainer
 
 # Copy a snapshot to a new container on the remote
 lxc copy mycontainer/snap-20260302 secondary-host:mycontainer-dr
