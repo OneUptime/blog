@@ -33,7 +33,7 @@ id jsmith
 # uid=1234567890(jsmith) gid=1234567890(domain users) groups=1234567890(domain users),1234567891(domain admins)
 ```
 
-If groups are not showing, check `sssd.conf` and run `sudo sss_cache -G "Group Name"` to flush the group cache.
+If groups are not showing, check `sssd.conf` and run `sudo sss_cache -g "Group Name"` to flush the group cache.
 
 ## Method 1: Direct sudoers Configuration
 
@@ -151,9 +151,9 @@ On your LDAP server, create sudo policy objects. First, load the sudo schema if 
 # Download the sudo LDAP schema
 sudo apt install -y sudo-ldap
 
-# Schema is at /usr/share/doc/sudo-ldap/schema.openldap
+# Schema is at /usr/share/doc/sudo-ldap/schema.OpenLDAP
 sudo ldapadd -Y EXTERNAL -H ldapi:/// \
-  -f /usr/share/doc/sudo-ldap/schema.openldap
+  -f /usr/share/doc/sudo-ldap/schema.OpenLDAP
 ```
 
 Create an OU for sudo rules:
@@ -302,7 +302,7 @@ Combined with sudoers rules, this creates a layered access model:
 
 **"not in the sudoers file"** - the group is not matching. Run `id username` to see group names as the system sees them, then match exactly in sudoers.
 
-**Groups not showing** - refresh SSSD cache: `sudo sss_cache -G "Group Name"` and `sudo systemctl restart sssd`.
+**Groups not showing** - refresh SSSD cache: `sudo sss_cache -g "Group Name"` and `sudo systemctl restart sssd`.
 
 **Syntax error in sudoers** - always use `visudo` or `visudo -c -f /etc/sudoers.d/file` to check syntax before saving.
 
