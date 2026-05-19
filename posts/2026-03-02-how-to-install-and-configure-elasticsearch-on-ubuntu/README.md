@@ -139,7 +139,7 @@ xpack.security.transport.ssl:
 
 ### JVM Heap Size
 
-Elasticsearch performs best with the heap set to no more than 50% of available RAM, and no more than 32 GB:
+Elasticsearch performs best with the heap set to no more than 50% of available RAM, and below the compressed ordinary object pointer threshold. 26 GB is safe on most systems, and the threshold can be as high as 30 GB on some systems:
 
 ```bash
 sudo nano /etc/elasticsearch/jvm.options.d/heap.options
@@ -251,6 +251,7 @@ curl --cacert /etc/elasticsearch/certs/http_ca.crt \
 
 ```bash
 # Full-text search
+# The ^2 suffix boosts matches in the name field
 curl --cacert /etc/elasticsearch/certs/http_ca.crt \
   -u elastic:YOUR_PASSWORD \
   -X GET https://localhost:9200/products/_search \
@@ -259,7 +260,7 @@ curl --cacert /etc/elasticsearch/certs/http_ca.crt \
     "query": {
       "multi_match": {
         "query": "mechanical keyboard",
-        "fields": ["name^2", "description"],  // ^2 = boost name field
+        "fields": ["name^2", "description"],
         "type": "best_fields"
       }
     },
@@ -324,7 +325,7 @@ sudo systemctl enable kibana
 sudo systemctl start kibana
 ```
 
-Configure Kibana to connect to Elasticsearch:
+Configure Kibana's server settings:
 
 ```bash
 sudo nano /etc/kibana/kibana.yml
@@ -333,10 +334,6 @@ sudo nano /etc/kibana/kibana.yml
 ```yaml
 server.port: 5601
 server.host: "0.0.0.0"
-
-# Elasticsearch connection
-elasticsearch.hosts: ["https://localhost:9200"]
-elasticsearch.ssl.certificateAuthorities: ["/etc/elasticsearch/certs/http_ca.crt"]
 ```
 
 Generate an enrollment token for Kibana:
@@ -345,6 +342,6 @@ Generate an enrollment token for Kibana:
 sudo /usr/share/elasticsearch/bin/elasticsearch-create-enrollment-token -s kibana
 ```
 
-Open `http://your-server:5601` in a browser and paste the enrollment token when prompted.
+Open `http://your-server:5601` in a browser and paste the enrollment token when prompted. The enrollment process writes the Elasticsearch connection and security settings to `kibana.yml`.
 
 Monitor your Elasticsearch cluster's health and index performance with [OneUptime](https://oneuptime.com) to ensure your search infrastructure remains available.
