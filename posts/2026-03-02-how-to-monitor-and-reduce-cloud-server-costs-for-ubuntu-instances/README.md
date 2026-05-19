@@ -161,7 +161,7 @@ aws compute-optimizer get-ec2-instance-recommendations \
         Finding:finding,
         CurrentType:currentInstanceType,
         RecommendedType:recommendationOptions[0].instanceType,
-        SavingsPercent:recommendationOptions[0].estimatedMonthlySavings.percentage
+        SavingsPercent:recommendationOptions[0].savingsOpportunity.savingsOpportunityPercentage
     }' \
     --output table
 ```
