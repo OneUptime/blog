@@ -20,30 +20,34 @@ Before starting any engagement, prepare your tools:
 sudo apt update
 sudo apt install nmap masscan netcat-openbsd nikto hydra john \
   smbclient enum4linux onesixtyone snmp sqlmap curl wget \
-  wireshark tcpdump traceroute whois dnsutils
+  wireshark tcpdump traceroute whois dnsutils python3-venv \
+  testssl.sh git
 
-# Install additional tools from repositories
-sudo apt install metasploit-framework  # Or use the official installer
+# Install Metasploit Framework using Rapid7's official Linux installer
+curl https://raw.githubusercontent.com/rapid7/metasploit-omnibus/master/config/templates/metasploit-framework-wrappers/msfupdate.erb \
+  > msfinstall
+chmod 755 msfinstall
+./msfinstall
 
 # Set up a virtual environment for Python tools
-python3 -m venv /opt/pentesting
-source /opt/pentesting/bin/activate
+python3 -m venv ~/pentesting
+source ~/pentesting/bin/activate
 pip install impacket requests scapy
 ```
 
 ## Phase 1: Reconnaissance
 
-Gather information about the target without directly interacting with the network:
+Gather initial information about the target before port scanning:
 
 ```bash
-# Passive DNS enumeration
+# DNS enumeration
 dig example.com ANY
 dig +short example.com MX
 dig +short example.com NS
 dig +axfr @ns1.example.com example.com  # Zone transfer attempt
 
 # Reverse DNS lookups
-nmap -sL 192.168.1.0/24  # List scan - reverse DNS only, no packets sent
+nmap -sL 192.168.1.0/24  # List scan - reverse DNS, no probes sent to target hosts
 
 # WHOIS information
 whois example.com
@@ -58,7 +62,7 @@ curl -s "https://crt.sh/?q=%.example.com&output=json" \
 # DNS brute forcing
 # Install dnsrecon or subfinder
 sudo apt install dnsrecon
-dnsrecon -d example.com -t brt -D /usr/share/wordlists/subdomains.txt
+dnsrecon -d example.com -t brt -D /usr/share/dnsrecon/dnsrecon/data/subdomains-top1mil-5000.txt
 ```
 
 ## Phase 2: Network Scanning
@@ -131,7 +135,7 @@ nmap -sV -p 111 --script rpcinfo 192.168.1.100
 nikto -h http://192.168.1.100 -o /tmp/${ENGAGEMENT}/scans/nikto_100.txt
 
 # Directory enumeration
-sudo apt install gobuster
+sudo apt install gobuster dirb
 gobuster dir \
   -u http://192.168.1.100 \
   -w /usr/share/wordlists/dirb/common.txt \
@@ -155,7 +159,7 @@ nmap -sV --script vuln 192.168.1.100 -oA /tmp/${ENGAGEMENT}/scans/vuln_scan
 # Check for EternalBlue (MS17-010)
 nmap -p 445 --script smb-vuln-ms17-010 192.168.1.100
 
-# Check for BlueKeep (CVE-2019-0708)
+# Check for MS12-020 RDP vulnerabilities
 nmap -p 3389 --script rdp-vuln-ms12-020 192.168.1.100
 
 # Check for Heartbleed
@@ -171,7 +175,8 @@ sqlmap -u "http://192.168.1.100/login.php?id=1" \
   --output-dir /tmp/${ENGAGEMENT}/scans/
 
 # Use searchsploit to find exploits for discovered services
-sudo apt install exploitdb
+git clone https://github.com/offensive-security/exploitdb.git ~/exploit-database
+sudo ln -sf ~/exploit-database/searchsploit /usr/local/bin/searchsploit
 searchsploit "OpenSSH 7.4"
 searchsploit "Apache 2.4.29"
 searchsploit "vsftpd 2.3.4"
@@ -215,19 +220,19 @@ Test for default and weak credentials:
 ```bash
 # Hydra for credential testing against multiple services
 # SSH
-hydra -l admin -P /usr/share/wordlists/rockyou.txt \
+hydra -l admin -P /tmp/passwords.txt \
   192.168.1.100 ssh \
   -t 4 \
   -o /tmp/${ENGAGEMENT}/exploits/ssh_creds.txt
 
 # HTTP login form
-hydra -l admin -P /usr/share/wordlists/rockyou.txt \
+hydra -l admin -P /tmp/passwords.txt \
   192.168.1.100 \
   http-post-form "/login.php:username=^USER^&password=^PASS^:Invalid credentials" \
   -t 4
 
 # MySQL
-hydra -l root -P /usr/share/wordlists/rockyou.txt \
+hydra -l root -P /tmp/passwords.txt \
   192.168.1.100 mysql
 
 # FTP
