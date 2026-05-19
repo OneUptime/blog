@@ -41,8 +41,15 @@ Example output showing a failed disk:
      Total Devices : 3
        Persistence : Superblock is persistent
 
-         Raid Level : 5
-       Chunk Size   : 512K
+       Update Time : Mon Jan 20 11:30:00 2026
+             State : clean, degraded
+    Active Devices : 3
+   Working Devices : 3
+    Failed Devices : 0
+     Spare Devices : 0
+
+            Layout : left-symmetric
+        Chunk Size : 512K
 
 Consistency Policy : resync
 
@@ -53,7 +60,7 @@ Consistency Policy : resync
     Number   Major   Minor   RaidDevice State
        0     253        1        0      active sync   /dev/sda1
        1     253       17        1      active sync   /dev/sdb1
-       4       0        0        2      removed
+       -       0        0        2      removed
        3     253       49        3      active sync   /dev/sdd1
 ```
 
@@ -173,11 +180,11 @@ The rebuild starts immediately:
 ```text
 Personalities : [raid5]
 md0 : active raid5 sdd1[3] sdb1[1] sda1[0] sdc1[4]
-      2929893888 blocks super 1.2 level 5, 512k chunk, algorithm 2 [4/3] [UUU_]
+      2929893888 blocks super 1.2 level 5, 512k chunk, algorithm 2 [4/3] [UU_U]
       [=>...................]  recovery = 8.5% (83221504/976631296) finish=68.4min speed=217520K/sec
 ```
 
-The `[UUU_]` shows 3 of 4 disks healthy, with recovery underway.
+The `[UU_U]` shows 3 of 4 disks healthy, with recovery underway on the slot being rebuilt.
 
 ## Monitoring the Rebuild
 
