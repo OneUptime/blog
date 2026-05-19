@@ -27,9 +27,9 @@ ffmpeg -decoders | head -30
 
 The Ubuntu repository version may lack some proprietary codecs (like libfdk-aac for high-quality AAC encoding) due to licensing.
 
-### Option 2: PPA (More Complete)
+### Option 2: PPA (Alternative Builds)
 
-The `ppa:savoury1/ffmpeg4` or `ppa:mc3man/mpv-tests` PPAs often have newer FFmpeg builds with more codecs:
+Third-party PPAs can provide different FFmpeg builds and codec combinations, but version support varies by Ubuntu release. Check the PPA details before using one:
 
 ```bash
 sudo add-apt-repository ppa:savoury1/ffmpeg4 -y
@@ -40,9 +40,9 @@ sudo apt-get install -y ffmpeg
 ffmpeg -encoders | grep aac  # check for more AAC encoder options
 ```
 
-### Option 3: Static Build (Most Codecs, No Compilation)
+### Option 3: Static Build (Many Codecs, No Compilation)
 
-FFmpeg static builds include almost all codecs in a single binary:
+FFmpeg static builds include many common codecs in a single binary:
 
 ```bash
 # Download from https://johnvansickle.com/ffmpeg/
@@ -61,7 +61,7 @@ For custom codec combinations or the latest version:
 ```bash
 # Install build dependencies
 sudo apt-get install -y \
-    build-essential nasm yasm cmake \
+    build-essential pkg-config nasm yasm cmake \
     libssl-dev libx264-dev libx265-dev libvpx-dev \
     libfdk-aac-dev libmp3lame-dev libopus-dev \
     libvorbis-dev libaom-dev libsvtav1-dev \
@@ -115,7 +115,7 @@ ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,heigh
 ### Convert Format
 
 ```bash
-# Convert MKV to MP4 (copy streams without re-encoding - fastest)
+# Convert MKV to MP4 when the streams are MP4-compatible (copy streams without re-encoding - fastest)
 ffmpeg -i input.mkv -c copy output.mp4
 
 # Convert AVI to H.264 MP4
@@ -177,7 +177,7 @@ ffmpeg -i input.mp4 -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pa
 ### Other Video Operations
 
 ```bash
-# Extract audio from video
+# Extract AAC audio from video without re-encoding
 ffmpeg -i video.mp4 -vn -c:a copy audio.aac
 
 # Remove audio from video
@@ -262,7 +262,7 @@ Use GPU hardware encoders for much faster encoding:
 # NVIDIA NVENC (requires CUDA/NVIDIA driver)
 ffmpeg -i input.mp4 -c:v h264_nvenc -preset slow -cq 23 output_nvenc.mp4
 
-# AMD AMF (requires AMD GPU driver)
+# AMD AMF (requires an FFmpeg build with AMF support and an AMD GPU driver)
 ffmpeg -i input.mp4 -c:v h264_amf -quality balanced output_amf.mp4
 
 # Intel QSV (Quick Sync Video)
