@@ -54,8 +54,8 @@ Add or modify the `GRUB_CMDLINE_LINUX_DEFAULT` line:
 # Reserve 512MB for the crash kernel (adjust based on your RAM)
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash crashkernel=512M"
 
-# For systems with more than 4GB RAM, use auto sizing
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash crashkernel=auto"
+# For RAM-dependent sizing, use Ubuntu's range syntax
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash crashkernel=2G-4G:320M,4G-32G:512M,32G-64G:1024M,64G-128G:2048M,128G-:4096M"
 
 # For memory-constrained systems, 256MB may be sufficient
 GRUB_CMDLINE_LINUX_DEFAULT="quiet splash crashkernel=256M"
@@ -80,8 +80,8 @@ After rebooting, verify the reserved memory:
 cat /proc/cmdline | grep crashkernel
 
 # Verify reserved memory region
-dmesg | grep -i crash
-# Look for: "Reserving 512MB of memory at ..."
+dmesg | grep -i crashkernel
+# Look for: "crashkernel reserved: ..."
 
 # Check kdump service is active
 systemctl status kdump-tools
@@ -89,26 +89,27 @@ systemctl status kdump-tools
 
 ## Configuring kdump-tools
 
-The main configuration file is `/etc/kdump-tools/kdump.conf` (or `/etc/default/kdump-tools` depending on Ubuntu version):
+The main configuration file is `/etc/default/kdump-tools`:
 
 ```bash
-sudo nano /etc/kdump-tools/kdump.conf
+sudo nano /etc/default/kdump-tools
 ```
 
 Key configuration options:
 
 ```bash
+# Enable kdump-tools
+USE_KDUMP=1
+
 # Where to save crash dumps
 KDUMP_COREDIR="/var/crash"
 
 # Compression (makedumpfile options)
-# -c = zlib compression, -l = lzo, -s = snappy
+# -c = zlib compression, -l = lzo, -p = snappy
 MAKEDUMP_ARGS="-c -d 31"
 
-# Dump level - what to include in dump
-# 0 = everything, 31 = exclude zero pages and cache (recommended)
-# Higher numbers = smaller dump but less information
-DUMP_LEVEL=31
+# Dump level is passed through MAKEDUMP_ARGS with -d
+# 0 = everything, 31 = exclude zero pages, cache, user data, and free pages
 
 # Keep only this many dumps (older ones are deleted)
 KDUMP_NUM_DUMPS=5
@@ -118,12 +119,11 @@ KDUMP_NUM_DUMPS=5
 KDUMP_FAIL_CMD="reboot -f"
 
 # SSH options for remote dump (optional)
-# KDUMP_SSH_USER="root"
-# KDUMP_SSH_HOST="backup-server.example.com"
-# KDUMP_SSH_PORT="22"
+# SSH="kdump@backup-server.example.com"
+# SSH_KEY="/root/.ssh/kdump_key"
 ```
 
-The `MAKEDUMP_ARGS="-c -d 31"` setting is important. Level 31 excludes zero pages and cache pages from the dump, significantly reducing dump size while preserving the information needed for crash analysis.
+The `MAKEDUMP_ARGS="-c -d 31"` setting is important. Level 31 excludes zero pages, cache pages, user data pages, and free pages from the dump, significantly reducing dump size while preserving the information usually needed for crash analysis.
 
 ## Setting Up the Capture Kernel
 
@@ -151,8 +151,8 @@ You can trigger a controlled kernel panic to verify kdump works. Warning: this w
 # Make sure you have a maintenance window and data is saved
 
 # Method 1: Via sysrq
-echo 1 > /proc/sys/kernel/sysrq
-echo c > /proc/sysrq-trigger
+sudo sysctl -w kernel.sysrq=1
+sudo sh -c 'echo c > /proc/sysrq-trigger'
 
 # Method 2: Via /proc (requires root)
 echo 1 > /proc/sys/kernel/panic_on_oops
@@ -169,8 +169,8 @@ ls -lh /var/crash/
 ls /var/crash/202603021045/
 
 # Typical contents:
-# dmesg.txt    - kernel messages from crash
-# dump.202603021045  - the actual crash dump
+# dmesg.202603021045    - kernel messages from crash
+# dump.202603021045     - the actual crash dump
 ```
 
 ## Analyzing a Crash Dump
@@ -219,15 +219,14 @@ crash> quit
 For critical servers, you may want crash dumps sent to a remote server over SSH:
 
 ```bash
-sudo nano /etc/kdump-tools/kdump.conf
+sudo nano /etc/default/kdump-tools
 ```
 
 ```bash
 # Remote SSH dump configuration
-KDUMP_SSH_USER="kdump"
-KDUMP_SSH_HOST="192.168.1.100"
-KDUMP_SSH_PORT="22"
-KDUMP_COREDIR="/mnt/dumps"
+SSH="kdump@192.168.1.100"
+SSH_KEY="/root/.ssh/kdump_key"
+HOSTTAG="hostname"
 
 # Set up SSH key for passwordless auth
 # The key must be generated and deployed before this works
@@ -240,7 +239,7 @@ Set up the SSH key:
 sudo ssh-keygen -t ed25519 -f /root/.ssh/kdump_key -N ""
 
 # Copy the public key to the remote server
-sudo ssh-copy-id -i /root/.ssh/kdump_key.pub kdump@192.168.1.100
+sudo kdump-config propagate
 
 # Test the connection
 sudo ssh -i /root/.ssh/kdump_key kdump@192.168.1.100 echo "Connection OK"
@@ -251,7 +250,7 @@ sudo ssh -i /root/.ssh/kdump_key kdump@192.168.1.100 echo "Connection OK"
 Alternatively, save dumps to an NFS share:
 
 ```bash
-# In kdump.conf
+# In /etc/default/kdump-tools
 NFS="nfs-server.example.com:/exports/crash-dumps"
 ```
 
@@ -262,12 +261,12 @@ The capture kernel will mount this NFS share to save the dump.
 Crash dumps can be very large. Several strategies to manage this:
 
 ```bash
-# More aggressive filtering (smaller dumps, less info)
+# Aggressive filtering (smaller dumps, less info)
 MAKEDUMP_ARGS="-c -d 31"
 # Level 31 = exclude zero pages, cache, user data, free pages
 
-# Even smaller - only kernel data
-MAKEDUMP_ARGS="-c -d 63"
+# Retry with the most aggressive supported level if a less filtered dump is too large
+MAKEDUMP_ARGS="-c -d 11,31"
 
 # Check dump size after creation
 du -sh /var/crash/*/dump.*
@@ -310,7 +309,7 @@ journalctl -u kdump-tools -b
 grep crashkernel /proc/cmdline
 
 # Check reserved memory
-dmesg | grep "Reserving"
+dmesg | grep -i crashkernel
 ```
 
 **Dump not created after crash:**
