@@ -8,7 +8,7 @@ Description: Configure autofs to use LDAP as the automount map source on Ubuntu,
 
 ---
 
-Static automount maps stored in files like `/etc/auto.master` and `/etc/auto.home` work fine for small setups, but as your infrastructure grows, managing these files on dozens of servers becomes tedious and error-prone. LDAP provides centralized storage for automount maps, so a change in LDAP takes effect on every server automatically.
+Static automount maps stored in files like `/etc/auto.master` and `/etc/auto.home` work fine for small setups, but as your infrastructure grows, managing these files on dozens of servers becomes tedious and error-prone. LDAP provides centralized storage for automount maps, so a change in LDAP can take effect on every server without editing local map files.
 
 ## How autofs with LDAP Works
 
@@ -30,31 +30,47 @@ sudo apt update
 sudo apt install -y autofs autofs-ldap ldap-utils
 
 # Verify installation
-autofs --version
+automount -V
 ```
 
 ## Loading the autofs LDAP Schema
 
-If you're using OpenLDAP and it doesn't have the autofs schema, load it first. Ubuntu's OpenLDAP installation typically includes it:
+If you're using OpenLDAP and it doesn't have the autofs schema, load it first. Ubuntu's `autofs-ldap` package includes the schema file:
 
 ```bash
 # On the LDAP server, check if the schema is already loaded
 ldapsearch -Y EXTERNAL -H ldapi:/// -b cn=schema,cn=config \
   "(cn=*autofs*)" dn
 
-# If not present, find and load the schema
-find /usr/share/doc/autofs -name "*.ldif" 2>/dev/null
-find /etc/ldap/schema -name "*autofs*" 2>/dev/null
+# If not present, find the schema provided by autofs-ldap
+find /etc/ldap/schema -name "autofs.schema" 2>/dev/null
 
-# Load the nisMap schema which includes autofs object classes
-# On Ubuntu with OpenLDAP:
+# Convert and load the autofs schema into cn=config
+sudo install -d /tmp/autofs-schema/schema /tmp/autofs-schema/slapd.d
+sudo cp /etc/ldap/schema/core.schema \
+  /etc/ldap/schema/cosine.schema \
+  /etc/ldap/schema/autofs.schema \
+  /tmp/autofs-schema/schema/
+
+printf 'include /tmp/autofs-schema/schema/core.schema\ninclude /tmp/autofs-schema/schema/cosine.schema\ninclude /tmp/autofs-schema/schema/autofs.schema\n' | \
+  sudo tee /tmp/autofs-schema/schema.conf
+
+sudo slaptest -f /tmp/autofs-schema/schema.conf \
+  -F /tmp/autofs-schema/slapd.d
+
+sudo cp /tmp/autofs-schema/slapd.d/cn=config/cn=schema/cn={2}autofs.ldif \
+  /tmp/autofs-schema/autofs.ldif
+
+sudo sed -i 's/cn={2}autofs/cn=autofs/g;/^structuralObjectClass:/d;/^entryUUID:/d;/^creatorsName:/d;/^createTimestamp:/d;/^entryCSN:/d;/^modifiersName:/d;/^modifyTimestamp:/d' \
+  /tmp/autofs-schema/autofs.ldif
+
 sudo ldapadd -Y EXTERNAL -H ldapi:/// \
-  -f /etc/ldap/schema/nis.ldif
+  -f /tmp/autofs-schema/autofs.ldif
 ```
 
 ## Creating Automount Entries in LDAP
 
-Automount maps in LDAP follow a specific structure. The `automountMapName` contains the map name, and entries within it have the mount key and options.
+Automount maps in LDAP follow a specific structure. With Ubuntu's autofs schema, the map entry uses `ou` for the map name, and child `automount` entries use `cn` for the mount key and `automountInformation` for the mount target and options.
 
 Here's an LDIF file to create a basic automount configuration:
 
@@ -149,8 +165,8 @@ Key settings in `/etc/autofs.conf`:
 # /etc/autofs.conf
 
 [ autofs ]
-# Use LDAP as the map source
-map_type = ldap
+# Use the local master map; entries in /etc/auto.master can point to LDAP maps
+master_map_name = /etc/auto.master
 
 # LDAP server URI
 ldap_uri = ldap://ldap.example.com
@@ -161,8 +177,8 @@ search_base = dc=example,dc=com
 # Authentication method (none for anonymous, simple for password)
 auth_conf_file = /etc/autofs_ldap_auth.conf
 
-# Log level (0=minimal, 7=debug)
-logging = notice
+# Log level (none, verbose, or debug)
+logging = verbose
 
 # How long to wait for LDAP responses
 ldap_timeout = 8
@@ -188,8 +204,7 @@ If your LDAP server requires authentication, configure `/etc/autofs_ldap_auth.co
 <autofs_ldap_sasl_conf
      usetls="no"
      tlsrequired="no"
-     authrequired="no"
-     authtype="SIMPLE"
+     authrequired="simple"
      user="cn=autofs-reader,dc=example,dc=com"
      secret="autofs-reader-password"
 />
@@ -231,9 +246,9 @@ sudo nano /etc/auto.master
 Alternatively, configure autofs to use the LDAP master map entirely:
 
 ```bash
-# In /etc/autofs.conf or /etc/default/autofs
+# In /etc/autofs.conf
 # Set the master map source to LDAP
-# MASTER_MAP_NAME="auto.master"
+# master_map_name = auto.master
 # The LDAP lookup will find ou=auto.master,dc=example,dc=com
 ```
 
@@ -279,7 +294,7 @@ ldapsearch -x -H ldap://ldap.example.com \
   "(ou=auto.home)"
 
 # Enable verbose LDAP debugging in autofs
-echo 'logging = debug' | sudo tee -a /etc/autofs.conf
+sudo sed -i 's/^logging = .*/logging = debug/' /etc/autofs.conf
 sudo systemctl restart autofs
 journalctl -u autofs -f
 
@@ -287,9 +302,7 @@ journalctl -u autofs -f
 ldapsearch -x -b "cn=subschema" -s base "(objectClass=subschema)" \
   automountMap automount
 
-# If automountMap is not in the schema, load nis.ldif
-sudo ldapadd -Y EXTERNAL -H ldapi:/// \
-  -f /etc/ldap/schema/nis.ldif
+# If automountMap is not in the schema, load the autofs schema
 ```
 
 ## Updating Mounts Centrally
@@ -306,8 +319,8 @@ cn: new-project
 automountInformation: -rw,soft nfsserver2.example.com:/projects/new
 EOF
 
-# autofs will see the new entry on next access
-# No restart needed on any client server
+# autofs will see the new entry on next access after its cache allows a new lookup
+# No local map file edits are needed on any client server
 ls /shared/new-project
 ```
 
