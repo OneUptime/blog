@@ -200,8 +200,10 @@ sudo sysctl -p
 # After editing /etc/redis/redis.conf
 sudo systemctl restart redis-server
 
-# Or reload for some settings (without interrupting connections)
-sudo systemctl reload redis-server
+# To change settings without restarting, use CONFIG SET via redis-cli
+# (and CONFIG REWRITE to persist them back to redis.conf)
+redis-cli -a "your_very_strong_password_here" CONFIG SET maxmemory 1gb
+redis-cli -a "your_very_strong_password_here" CONFIG REWRITE
 
 # Verify configuration was applied
 redis-cli -a "your_very_strong_password_here" CONFIG GET maxmemory
@@ -273,7 +275,7 @@ Restart=always
 RestartSec=5
 
 # Set memory limit at the systemd level (backup to maxmemory)
-MemoryLimit=2G
+MemoryMax=2G
 ```
 
 ```bash
