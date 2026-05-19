@@ -30,10 +30,10 @@ Tempo Loki Mimir
 
 ## Prerequisites
 
-- Ubuntu 20.04 or 22.04
+- Ubuntu 22.04 or 24.04 LTS
 - Docker Engine and Docker Compose v2
 - 8 GB RAM minimum
-- Ports 3000, 4317, 4318 available
+- Ports 3000, 3100, 3200, 4317, 4318, and 9009 available
 
 ## Installing Docker
 
@@ -54,8 +54,6 @@ mkdir -p ~/grafana-otel-stack && cd ~/grafana-otel-stack
 Create `docker-compose.yaml`:
 
 ```yaml
-version: '3.8'
-
 services:
   # OpenTelemetry Collector - entry point for all telemetry
   otel-collector:
@@ -83,7 +81,7 @@ services:
 
   # Loki - log aggregation backend
   loki:
-    image: grafana/loki:2.9.5
+    image: grafana/loki:3.0.0
     command: ["-config.file=/etc/loki/local-config.yaml"]
     volumes:
       - loki-data:/loki
@@ -156,12 +154,9 @@ exporters:
     tls:
       insecure: true
 
-  # Send logs to Loki
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    default_labels_enabled:
-      exporter: false
-      job: true
+  # Send logs to Loki using its native OTLP endpoint
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
 
   # Send metrics to Mimir via Prometheus remote write
   prometheusremotewrite:
@@ -177,7 +172,7 @@ service:
     logs:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 
     metrics:
       receivers: [otlp]
@@ -206,11 +201,13 @@ storage:
     local:
       path: /var/tempo/blocks
 
-# Enable trace search
+metrics_generator:
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      - url: http://mimir:9009/api/v1/push
 
-search_enabled: true
-
-# Link traces to logs via trace ID
+# Generate service graph and span metrics
 overrides:
   defaults:
     metrics_generator:
@@ -267,6 +264,7 @@ apiVersion: 1
 
 datasources:
   - name: Tempo
+    uid: tempo
     type: tempo
     access: proxy
     url: http://tempo:3200
@@ -276,16 +274,19 @@ datasources:
         datasourceUid: loki
         spanStartTimeShift: '-1h'
         spanEndTimeShift: '1h'
-        tags: [{key: 'service.name', value: 'service'}]
+        filterByTraceID: true
+        tags: [{key: 'service.name', value: 'service_name'}]
       serviceMap:
         datasourceUid: mimir
 
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
 
   - name: Mimir
+    uid: mimir
     type: prometheus
     access: proxy
     url: http://mimir:9009/prometheus
@@ -330,12 +331,15 @@ trace.set_tracer_provider(provider)
 ```go
 // main.go - initialize OpenTelemetry before starting your server
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func initTracer() func() {
+    ctx := context.Background()
     exporter, _ := otlptracegrpc.New(ctx,
         otlptracegrpc.WithEndpoint("your-server:4317"),
         otlptracegrpc.WithInsecure(),
@@ -372,8 +376,8 @@ class TraceIDFilter(logging.Filter):
 
 After sending some telemetry, explore each datasource:
 
-1. **Tempo** - Go to Explore, select Tempo, and run a TraceQL query: `{ .service.name = "my-service" && duration > 200ms }`
-2. **Loki** - In Explore, select Loki: `{service="my-service"} |= "error"`
+1. **Tempo** - Go to Explore, select Tempo, and run a TraceQL query: `{ resource.service.name = "my-service" && trace:duration > 200ms }`
+2. **Loki** - In Explore, select Loki: `{service_name="my-service"} |= "error"`
 3. **Mimir** - Use PromQL: `rate(http_server_requests_total[5m])`
 
 ## Configuring Alerting
@@ -386,14 +390,51 @@ apiVersion: 1
 groups:
   - name: app-alerts
     folder: MyApp
+    interval: 60s
     rules:
-      - title: High Error Rate
+      - uid: high_error_rate
+        title: High Error Rate
         condition: C
         data:
           - refId: A
             datasourceUid: mimir
+            relativeTimeRange:
+              from: 300
+              to: 0
             model:
               expr: 'rate(http_errors_total[5m]) > 0.05'
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
+          - refId: C
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 300
+              to: 0
+            model:
+              conditions:
+                - evaluator:
+                    params: [0]
+                    type: gt
+                  operator:
+                    type: and
+                  query:
+                    params: [C]
+                  reducer:
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: C
+              type: threshold
+        noDataState: NoData
+        execErrState: Error
+        for: 5m
 ```
 
-This stack gives you production-grade observability while keeping full control of your data. All backends can be scaled independently as your telemetry volume grows.
+This stack gives you a practical self-hosted observability setup while keeping full control of your data. For production use, add authentication, TLS, retention policies, backups, and external object storage before scaling the backends independently.
