@@ -46,7 +46,7 @@ sudo service kmod start
 sudo modprobe coretemp     # Intel CPU core temps
 sudo modprobe k10temp      # AMD CPU temps
 sudo modprobe nct6775      # Common motherboard sensor chip
-sudo modprobe drivetemp    # NVMe drive temperatures
+sudo modprobe drivetemp    # SATA/SCSI drive temperatures (NVMe drives report through their own hwmon interface)
 ```
 
 ## Reading Sensor Data
@@ -85,8 +85,8 @@ sensors -j
 # Filter specific chip output
 sensors coretemp-isa-0000
 
-# Show all chip names
-sensors -l
+# Generate bus statements (useful for sensors.conf)
+sensors --bus-list
 ```
 
 ## Continuous Monitoring
