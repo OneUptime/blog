@@ -19,7 +19,7 @@ This guide covers how to disable `systemd-resolved` and manage `/etc/resolv.conf
 - Corporate or government compliance rules prohibit the stub resolver
 - You are troubleshooting a DNS issue and want to eliminate `systemd-resolved` as a variable
 
-If none of these apply to you, keep `systemd-resolved` running - it provides useful features like per-interface routing, DNS caching, and DNS-over-TLS.
+If none of these apply to you, keep `systemd-resolved` running - it provides useful features like per-interface routing, DNS caching, DNSSEC support, and DNS-over-TLS.
 
 ## Understanding the Current State
 
@@ -50,9 +50,9 @@ nameserver 127.0.0.53
 options edns0 trust-ad
 ```
 
-## Option 1: Disable Stub Resolver but Keep systemd-resolved Running
+## Option 1: Bypass the Stub Resolver but Keep systemd-resolved Running
 
-This is a middle ground. `systemd-resolved` continues to function (providing DNSSEC, per-interface routing, caching) but `/etc/resolv.conf` contains real DNS server IPs rather than the stub address.
+This is a middle ground. `systemd-resolved` continues to run, but applications that read `/etc/resolv.conf` and send DNS queries directly will use the upstream DNS server IPs rather than the local stub address. Those direct DNS clients will bypass `systemd-resolved` features such as caching, DNSSEC validation, LLMNR/MulticastDNS, and per-interface DNS routing.
 
 Change the `resolv.conf` symlink to point to the resolved file without the stub:
 
@@ -73,7 +73,7 @@ cat /etc/resolv.conf
 # Should now show real DNS server IPs like 9.9.9.9 or 192.168.1.1
 ```
 
-This approach keeps `systemd-resolved` running but puts real DNS IPs in `resolv.conf`. Applications that cannot work with `127.0.0.53` will now work correctly.
+This approach keeps `systemd-resolved` running but puts real DNS IPs in `resolv.conf`. Applications that cannot work with `127.0.0.53` can now query those upstream servers directly.
 
 ## Option 2: Fully Disable systemd-resolved
 
@@ -192,34 +192,22 @@ The `supersede` directive overrides the DHCP-provided values with your static co
 
 ## Using Netplan Without systemd-resolved
 
-If you use Netplan with the `networkd` renderer, note that Netplan's networkd backend uses `systemd-resolved` for DNS. If you disable `systemd-resolved`, configure DNS at the `networkd` level via a network drop-in:
+If you use Netplan with the `networkd` renderer, note that Netplan's networkd backend normally passes DNS settings to `systemd-resolved`. The `DNS=` and `Domains=` settings in `.network` files are also read by `systemd-resolved`, so they will not populate `/etc/resolv.conf` if `systemd-resolved` is disabled.
 
 ```bash
-# Create a systemd-networkd drop-in that configures DNS without resolved
-sudo mkdir -p /etc/systemd/network/
-sudo tee /etc/systemd/network/20-eth0.network <<'EOF'
-[Match]
-Name=eth0
-
-[Network]
-Address=192.168.1.100/24
-Gateway=192.168.1.1
-# DNS for this interface
-DNS=9.9.9.9 149.112.112.112
-Domains=example.com
+# Keep /etc/resolv.conf as a regular file when resolved is disabled
+sudo rm -f /etc/resolv.conf
+sudo tee /etc/resolv.conf <<'EOF'
+nameserver 9.9.9.9
+nameserver 149.112.112.112
+search example.com
 EOF
 ```
 
-Then let networkd write `resolv.conf` directly:
+Then apply your Netplan configuration for addresses, routes, and links as usual:
 
 ```bash
-# Configure networkd to write resolv.conf
-sudo tee /etc/systemd/network/10-resolv.conf <<'EOF'
-# This is handled by networkd directly since resolved is disabled
-EOF
-
-# Ensure networkd is configured as the resolver
-sudo ln -sf /run/systemd/network/resolv.conf /etc/resolv.conf
+sudo netplan apply
 ```
 
 ## Reverting the Changes
