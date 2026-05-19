@@ -26,7 +26,7 @@ Install Apache and mod_wsgi:
 
 ```bash
 sudo apt update
-sudo apt install apache2 libapache2-mod-wsgi-py3 -y
+sudo apt install apache2 libapache2-mod-wsgi-py3 python3-venv -y
 
 # Enable required modules
 
@@ -51,7 +51,7 @@ cd /var/www/myapp
 
 # Create virtual environment
 sudo python3 -m venv venv
-sudo /var/www/myapp/venv/bin/pip install django gunicorn
+sudo /var/www/myapp/venv/bin/pip install django flask
 
 # Create a simple Django project
 sudo /var/www/myapp/venv/bin/django-admin startproject myproject /var/www/myapp
@@ -80,15 +80,11 @@ For a Flask application, create a wsgi.py:
 ```python
 # /var/www/myapp/wsgi.py
 import sys
-import os
 
 # Add the application directory to Python path
 sys.path.insert(0, '/var/www/myapp')
 
-# Set environment variables before importing the app
-os.environ['FLASK_ENV'] = 'production'
-
-from app import application  # import the WSGI application object
+from app import app as application  # import the Flask WSGI application object
 ```
 
 ## Basic Apache Virtual Host Configuration
@@ -198,36 +194,35 @@ Key daemon parameters explained:
 - `processes`: Number of Python worker processes. Scale with CPU cores.
 - `threads`: Threads per process. Increase for I/O-bound applications.
 - `maximum-requests`: Restart workers after this many requests (prevents memory leaks).
-- `request-timeout`: Kill requests that take longer than this.
+- `request-timeout`: Trigger recovery when a request blocks longer than this.
 - `inactivity-timeout`: Restart idle processes after this many seconds.
 
 ## Environment Variables in mod_wsgi
 
-Passing environment variables to the WSGI application:
+For settings that Django or your application reads from `os.environ`, set them before importing the WSGI application:
 
-```apache
-# Set environment variables for the daemon process
-WSGIDaemonProcess myapp \
-    python-home=/var/www/myapp/venv \
-    python-path=/var/www/myapp \
-    processes=4 \
-    threads=2
+```python
+# /var/www/myapp/myproject/wsgi.py
+import os
 
-# Pass environment variables to the process
-SetEnv DJANGO_SETTINGS_MODULE myproject.settings.production
-SetEnv SECRET_KEY "your-secret-key-here"
-SetEnv DATABASE_URL "postgresql://user:pass@localhost/mydb"
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings.production')
+os.environ.setdefault('SECRET_KEY', 'your-secret-key-here')
+os.environ.setdefault('DATABASE_URL', 'postgresql://user:pass@localhost/mydb')
+
+from django.core.wsgi import get_wsgi_application
+
+application = get_wsgi_application()
 ```
 
-Or load them from a file to keep secrets out of Apache configs:
+Apache's `SetEnv` and `PassEnv` directives add values to the WSGI request environment, not to Python's `os.environ`:
 
 ```apache
-# Source environment file
+# Add values to the WSGI environ passed to each request
+SetEnv APP_MODE production
 PassEnv DATABASE_URL
-PassEnv SECRET_KEY
 ```
 
-And set them in `/etc/environment` or the Apache systemd service override.
+For secrets, prefer setting process environment variables through the Apache systemd service override instead of hard-coding them in Apache configs or `wsgi.py`.
 
 ## Django-Specific Configuration
 
