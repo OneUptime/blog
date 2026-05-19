@@ -198,7 +198,9 @@ find / -name "core" -o -name "core.*" 2>/dev/null | xargs du -sh
 
 # Check systemd coredump storage
 du -sh /var/lib/systemd/coredump/
-sudo journalctl --list-boots | xargs -I{} sudo journalctl -b {} | grep coredump
+
+# List coredumps tracked by systemd-coredump
+coredumpctl list
 ```
 
 ## Disk Space Alerting
@@ -279,8 +281,8 @@ Within Docker containers:
 # Check each container's overlay filesystem size
 docker ps -s
 
-# Per-container disk usage
-docker inspect $(docker ps -q) | python3 -c "
+# Per-container disk usage (--size populates SizeRootFs/SizeRw)
+docker inspect --size $(docker ps -q) | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 for c in data:
