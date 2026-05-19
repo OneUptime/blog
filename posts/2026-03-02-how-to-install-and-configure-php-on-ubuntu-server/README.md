@@ -23,7 +23,7 @@ sudo add-apt-repository ppa:ondrej/php -y
 sudo apt update
 ```
 
-Now install PHP 8.3 (or whatever the current stable version is):
+The examples below use PHP 8.3; replace `8.3` with a newer supported version if you choose one:
 
 ```bash
 sudo apt install php8.3 php8.3-fpm php8.3-cli -y
@@ -118,11 +118,11 @@ date.timezone = "America/New_York"
 opcache.enable = 1
 ```
 
-After editing php.ini, always validate the syntax:
+After editing php.ini, always validate the PHP-FPM configuration and confirm which configuration files PHP loads:
 
 ```bash
+sudo php-fpm8.3 -t
 php --ini
-php -r "phpinfo();" | head -5
 ```
 
 ## Enabling OPcache
@@ -179,9 +179,12 @@ server {
     }
 
     # Pass PHP files to PHP-FPM
-    location ~ \.php$ {
-        # Prevent processing of PHP files in uploads directory
+    location ~ \.php(?:/|$) {
+        # Support PATH_INFO for applications that use it
         fastcgi_split_path_info ^(.+\.php)(/.+)$;
+
+        # Only pass existing PHP files to PHP-FPM
+        try_files $fastcgi_script_name =404;
 
         # Connect to PHP-FPM socket
         fastcgi_pass unix:/run/php/php8.3-fpm.sock;
@@ -210,7 +213,7 @@ sudo apt install libapache2-mod-php8.3 -y
 sudo a2enmod php8.3
 
 # Option 2: PHP-FPM with Apache (more flexible)
-sudo apt install libapache2-mod-fcgid -y
+sudo apt install php8.3-fpm -y
 sudo a2enmod proxy_fcgi setenvif
 sudo a2enconf php8.3-fpm
 ```
@@ -270,17 +273,19 @@ sudo rm /var/www/html/phpinfo.php
 
 ```bash
 # Common extensions for web applications
+# MySQL/MariaDB, PostgreSQL, Redis, HTTP client, image processing,
+# multibyte strings, XML, ZIP, internationalization, and math support
 sudo apt install \
-    php8.3-mysql \      # MySQL/MariaDB support
-    php8.3-pgsql \      # PostgreSQL support
-    php8.3-redis \      # Redis caching
-    php8.3-curl \       # HTTP client
-    php8.3-gd \         # Image processing
-    php8.3-mbstring \   # Multibyte string support
-    php8.3-xml \        # XML parsing
-    php8.3-zip \        # ZIP file support
-    php8.3-intl \       # Internationalization
-    php8.3-bcmath \     # Arbitrary precision math
+    php8.3-mysql \
+    php8.3-pgsql \
+    php8.3-redis \
+    php8.3-curl \
+    php8.3-gd \
+    php8.3-mbstring \
+    php8.3-xml \
+    php8.3-zip \
+    php8.3-intl \
+    php8.3-bcmath \
     -y
 
 # Reload PHP-FPM after installing extensions
