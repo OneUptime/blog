@@ -67,7 +67,7 @@ sudo vgs
 ```bash
 # Create the main data LV on the HDD
 # Use -l to specify extents or -L for size
-# Constrain it to the HDD device using --alloc
+# Constrain it to the HDD by specifying the PV path
 sudo lvcreate -n data_lv -L 1.8T data_vg /dev/sda
 
 # Verify
@@ -84,13 +84,12 @@ The cache pool is created on the SSD. It needs two components: the cache data LV
 sudo lvcreate -n cache_lv -L 400G data_vg /dev/sdb
 
 # Create a metadata LV on the SSD
-# Metadata needs about 8MB per 1GB of cache, plus some headroom
-# 400GB cache = ~3200MB metadata, round up to 4GB
-sudo lvcreate -n cache_meta_lv -L 4G data_vg /dev/sdb
+# Metadata should be about 1/1000 of the cache data LV, with a minimum of 8MiB
+# 400GB cache = about 400MB metadata, round up to 512MB
+sudo lvcreate -n cache_meta_lv -L 512M data_vg /dev/sdb
 
 # Convert the two LVs into a cache pool
 sudo lvconvert --type cache-pool \
-    --cachemode writethrough \
     --poolmetadata data_vg/cache_meta_lv \
     data_vg/cache_lv
 
@@ -103,6 +102,7 @@ sudo lvs -a data_vg
 ```bash
 # Attach the cache pool to the data LV
 sudo lvconvert --type cache \
+    --cachemode writethrough \
     --cachepool data_vg/cache_lv \
     data_vg/data_lv
 
@@ -139,7 +139,7 @@ sudo lvdisplay data_vg/data_lv | grep -A 20 "Cache"
 watch -n 5 'sudo lvs -o name,cache_read_hits,cache_read_misses,cache_write_hits,cache_write_misses data_vg'
 ```
 
-The output shows hit/miss ratios. A high read hit ratio (>70%) indicates the cache is effective for your workload. Low hit ratios suggest the cache is too small or the workload accesses data too randomly to benefit from caching.
+The output shows hit and miss counters that you can use to calculate ratios. A high read hit ratio (>70%) indicates the cache is effective for your workload. Low hit ratios suggest the cache is too small or the workload accesses data too randomly to benefit from caching.
 
 ## Calculating Hit Ratio
 
@@ -224,7 +224,7 @@ sudo lvconvert --type cache --cachepool data_vg/cache_lv data_vg/thin_pool
 
 **Poor cache performance:** Check that blocks are actually being cached. A completely cold cache shows all misses initially. Give it time to warm up. If the working set exceeds cache size, performance will be poor.
 
-**Cache full quickly:** Monitor with `sudo lvdisplay data_vg/data_lv | grep "Cache usage"`. If cache fills to 100%, consider increasing its size or using smc (sequential IO bypass) to skip caching large sequential reads.
+**Cache full quickly:** Monitor with `sudo lvdisplay data_vg/data_lv | grep "Cache usage"`. A cache reaching 100% usage is normal; if the hit ratio is still low, consider increasing its size or reviewing the cache policy and settings with `sudo lvs -o+cache_policy,cache_settings data_vg/data_lv`.
 
 **System cannot boot after configuration:** If the LV is in the root filesystem, ensure initramfs is configured for LVM caching. Run `sudo update-initramfs -u` after configuration changes.
 
