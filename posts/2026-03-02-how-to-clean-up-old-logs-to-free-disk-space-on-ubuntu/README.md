@@ -26,11 +26,10 @@ du -sh /* 2>/dev/null | sort -h | tail -20
 du -sh /var/log/* 2>/dev/null | sort -h | tail -20
 
 # Look deeper if /var/log is the culprit
-du -sh /var/log/**/* 2>/dev/null | sort -h | tail -30
+find /var/log -mindepth 2 -maxdepth 2 -exec du -sh {} + 2>/dev/null | sort -h | tail -30
 
 # Find the largest individual log files
-find /var/log -name "*.log" -o -name "*.log.*" | \
-    xargs ls -la 2>/dev/null | sort -k5 -n | tail -20
+find /var/log -type f \( -name "*.log" -o -name "*.log.*" \) -exec ls -la {} + 2>/dev/null | sort -k5 -n | tail -20
 
 # Find all files over 100MB in /var/log
 find /var/log -size +100M -type f -exec ls -lh {} \;
@@ -44,16 +43,16 @@ The systemd journal is often a significant disk consumer:
 # Check current journal disk usage
 journalctl --disk-usage
 
-# Remove journal entries older than 7 days
+# Remove archived journal files older than 7 days
 sudo journalctl --vacuum-time=7d
 
-# Keep only the last 500MB of journal data
+# Keep archived journal files below 500MB
 sudo journalctl --vacuum-size=500M
 
-# Keep only the last 10 journal archive files
+# Keep only the last 10 archived journal files
 sudo journalctl --vacuum-files=10
 
-# Combine: keep last 30 days but no more than 1GB
+# Combine: keep archived journal files from the last 30 days but no more than 1GB
 sudo journalctl --vacuum-time=30d --vacuum-size=1G
 
 # Verify the result
@@ -63,6 +62,7 @@ journalctl --disk-usage
 After vacuuming, configure journald to enforce limits automatically:
 
 ```bash
+sudo mkdir -p /etc/systemd/journald.conf.d
 sudo nano /etc/systemd/journald.conf.d/99-size-limits.conf
 ```
 
@@ -92,11 +92,10 @@ Rotated logs (`.log.1`, `.log.2.gz`) accumulate over time:
 
 ```bash
 # List all rotated log files
-find /var/log -name "*.gz" -o -name "*.1" -o -name "*.2" -o -name "*.old" | \
-    xargs ls -lh 2>/dev/null | sort -k5 -n
+find /var/log -type f \( -name "*.gz" -o -name "*.1" -o -name "*.2" -o -name "*.old" \) -exec ls -lh {} + 2>/dev/null | sort -k5 -n
 
 # Calculate how much space they use
-find /var/log -name "*.gz" | xargs du -ch 2>/dev/null | tail -1
+find /var/log -type f -name "*.gz" -exec du -ch {} + 2>/dev/null | tail -1
 
 # Remove all compressed log archives (keep current logs only)
 # WARNING: This permanently deletes old log data
@@ -183,7 +182,7 @@ find /var/lib/docker/containers -name "*-json.log" -exec ls -lh {} \;
 du -sh /var/lib/docker/containers/
 
 # Truncate all docker container logs
-truncate -s 0 /var/lib/docker/containers/*/*-json.log
+sudo truncate -s 0 /var/lib/docker/containers/*/*-json.log
 
 # Configure docker to limit log size (edit daemon config)
 sudo nano /etc/docker/daemon.json
@@ -200,7 +199,7 @@ sudo nano /etc/docker/daemon.json
 ```
 
 ```bash
-# Apply docker logging limits
+# Apply docker logging limits to newly created containers
 sudo systemctl restart docker
 ```
 
@@ -283,7 +282,7 @@ echo "$LOG_PREFIX Starting log cleanup"
 # Journal cleanup - keep last 30 days, max 1GB
 echo "$LOG_PREFIX Cleaning systemd journal..."
 journalctl --vacuum-time=30d --vacuum-size=1G
-echo "$LOG_PREFIX Journal disk usage: $(journalctl --disk-usage 2>&1 | grep -o '[0-9.]*[KMGTP]* archived')"
+echo "$LOG_PREFIX Journal disk usage: $(journalctl --disk-usage 2>&1)"
 
 # Remove compressed logs older than 30 days
 echo "$LOG_PREFIX Removing old compressed logs..."
