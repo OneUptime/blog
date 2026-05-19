@@ -35,43 +35,45 @@ sudo canonical-livepatch status --verbose
 A healthy system shows:
 
 ```text
-Machine ID:  a1b2c3d4e5f6...
-Machine token: [redacted]
-Status: active
-Tier:    updates
+last check: 52 seconds ago
+kernel: 5.4.0-216.236-generic
+server check-in: succeeded
+kernel state: ✓ kernel series 5.4 is covered by Livepatch
+patch state: ✓ all applicable livepatch kernel modules applied
+patch version: 113.1
+tier: updates (Free usage; This machine beta tests new patches.)
+machine id: a1b2c3d4e5f6...
 
-Kernel: 5.15.0-91-generic
-Fully patched: true
-Version: 102.1
-
-Patches:
-  CVE-2024-1086 (kpatch-5.15.0-91-generic__4-2): Applied
-  CVE-2024-0646 (kpatch-5.15.0-91-generic__4-2): Applied
-  CVE-2023-6931 (kpatch-5.15.0-91-generic__4-2): Applied
+Applied CVEs:
+  CVE-2024-1086
+  CVE-2024-0646
+  CVE-2023-6931
 ```
 
 Key fields explained:
 
-- **Status: active** - The daemon is running and communicating with Canonical's servers
-- **Tier: updates** - You are receiving patches when released (not beta, not stable-only)
-- **Kernel** - The running kernel version. Must match a supported version.
-- **Fully patched: true** - All available patches for this kernel are applied
-- **Version** - The livepatch package version installed
-- **Patches** - Each CVE addressed and its application status
+- **server check-in: succeeded** - The client was able to contact Canonical's Livepatch service
+- **kernel state** - Whether the running kernel is covered by Livepatch. Unsupported or expired kernels need a kernel update and reboot.
+- **patch state** - Whether Livepatch has applied all applicable livepatch modules, is applying them, has none available for this kernel, or has hit an error.
+- **patch version** - The applied Livepatch Security Notice (LSN) version. For example, `113.1` maps to `LSN-0113-1`.
+- **tier** - The Livepatch rollout tier. Canonical documents `updates` for free Ubuntu Pro users and `stable` for paid Ubuntu Pro users.
+- **Applied CVEs** - CVEs addressed by the applied livepatch modules, shown in verbose output when applicable.
 
-### Status Values
+### Kernel State Values
 
-- **active** - Working normally
-- **failed** - Something went wrong with patching
-- **disabled** - Livepatch is not running
-- **unknown** - Cannot determine status (connectivity issue, etc.)
+- **kernel series ... is covered by Livepatch** - The running kernel series is covered
+- **kernel ... is covered by Livepatch until ...** - The specific kernel is covered until the listed SRU coverage date
+- **kernel is not covered by Livepatch** - The running kernel is not covered
+- **kernel is no longer covered by Livepatch** - The running kernel has aged out of Livepatch coverage
 
-### Patch Status Values
+### Patch State Values
 
-- **Applied** - Patch is active in the running kernel
-- **NotApplied** - Available but not yet applied (may indicate an issue)
-- **Inapplicable** - Not relevant to this kernel version
-- **Waiting** - Queued but not yet applied
+- **all applicable livepatch kernel modules applied** - All available livepatch modules for this kernel are active
+- **no livepatches available for kernel ...** - No livepatch exists yet for this kernel
+- **patching the kernel** - A patch is currently being applied
+- **livepatches are downloaded, but the kernel module is not yet inserted** - A patch is downloaded but not fully inserted
+- **kernel ... contains a vulnerability that cannot be livepatched** - A kernel update and reboot are required
+- **unknown error occurred** - Check the Livepatch daemon logs for details
 
 ## Checking via Ubuntu Pro
 
@@ -91,48 +93,61 @@ When a CVE is disclosed and you need to verify your systems are protected:
 # View all patches and search for a specific CVE
 sudo canonical-livepatch status --verbose | grep CVE-2024-XXXX
 
-# Or in JSON format for reliable parsing
-sudo canonical-livepatch status --format json | \
+# Or in JSON format for machine-readable output
+sudo canonical-livepatch status --verbose --format json | \
     python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-status = data.get('status', [])
-for kernel_status in status:
-    patches = kernel_status.get('LivePatch', {}).get('patches', [])
-    for patch in patches:
-        if 'CVE-2024-XXXX' in patch.get('bugs', []):
-            print(f\"Patch: {patch['name']}, Status: {patch['patched']}\")
+
+def walk(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk(child)
+
+for item in walk(data):
+    if any('CVE-2024-XXXX' in str(v) for v in item.values()):
+        print(item)
 "
 ```
 
 ## JSON Output for Scripting
 
-The JSON format is the most reliable for automation:
+The JSON format is the best option for automation, but inspect the output from your installed client before depending on a particular field name:
 
 ```bash
 # Get full JSON status
-sudo canonical-livepatch status --format json | python3 -m json.tool
+sudo canonical-livepatch status --verbose --format json | python3 -m json.tool
 
 # Extract key information
-sudo canonical-livepatch status --format json | python3 -c "
+sudo canonical-livepatch status --verbose --format json | python3 -c "
 import json, sys
 
 data = json.load(sys.stdin)
 
-# Top-level machine info
-print(f\"Machine ID: {data.get('machine-id', 'unknown')}\")
+def walk(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk(child)
 
-# Status for each kernel (usually just one)
-for kernel_info in data.get('status', []):
-    lp = kernel_info.get('LivePatch', {})
-    print(f\"Kernel: {kernel_info.get('kernel', 'unknown')}\")
-    print(f\"Running: {kernel_info.get('running', False)}\")
-    print(f\"Status: {lp.get('state', 'unknown')}\")
-    print(f\"Version: {lp.get('version', 'unknown')}\")
+records = list(walk(data))
 
-    patches = lp.get('patches', [])
-    print(f\"Patches applied: {len([p for p in patches if p.get('patched')])}\")
-    print(f\"Patches total: {len(patches)}\")
+machine_id = data.get('machine-id') or data.get('Machine-Id') or data.get('machine id') or 'unknown'
+kernel = next((r.get('kernel') or r.get('Kernel') for r in records if r.get('kernel') or r.get('Kernel')), 'unknown')
+patch_state = next((r.get('patchState') or r.get('State') for r in records if r.get('patchState') or r.get('State')), 'unknown')
+patch_version = next((r.get('version') or r.get('Version') or r.get('Livepatch-Version') for r in records if r.get('version') or r.get('Version') or r.get('Livepatch-Version')), 'unknown')
+
+print(f\"Machine ID: {machine_id}\")
+print(f\"Kernel: {kernel}\")
+print(f\"Patch state: {patch_state}\")
+print(f\"Patch version: {patch_version}\")
 "
 ```
 
@@ -152,49 +167,56 @@ check_livepatch() {
 
     # Get JSON status
     local status_json
-    if ! status_json=$(sudo canonical-livepatch status --format json 2>&1); then
+    if ! status_json=$(sudo canonical-livepatch status --verbose --format json 2>&1); then
         echo "CRITICAL: Cannot get livepatch status: $status_json"
         return 2
     fi
 
     # Parse key fields
-    local fully_patched
-    fully_patched=$(echo "$status_json" | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for ks in data.get('status', []):
-    if ks.get('running', False):
-        lp = ks.get('LivePatch', {})
-        patches = lp.get('patches', [])
-        if all(p.get('patched', False) for p in patches if p.get('name')):
-            print('true')
-        else:
-            print('false')
-        break
-" 2>/dev/null)
-
     local lp_state
     lp_state=$(echo "$status_json" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-for ks in data.get('status', []):
-    if ks.get('running', False):
-        print(ks.get('LivePatch', {}).get('state', 'unknown'))
+
+def walk(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk(child)
+
+for item in walk(data):
+    state = item.get('patchState') or item.get('State')
+    if state:
+        print(state)
         break
 " 2>/dev/null)
 
-    if [ "$lp_state" = "applied" ] || [ "$fully_patched" = "true" ]; then
-        local patch_count
-        patch_count=$(echo "$status_json" | python3 -c "
+    local patch_version
+    patch_version=$(echo "$status_json" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-for ks in data.get('status', []):
-    if ks.get('running', False):
-        patches = ks.get('LivePatch', {}).get('patches', [])
-        print(len([p for p in patches if p.get('patched')]))
+
+def walk(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from walk(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from walk(child)
+
+for item in walk(data):
+    version = item.get('version') or item.get('Version') or item.get('Livepatch-Version')
+    if version:
+        print(version)
         break
 " 2>/dev/null)
-        echo "OK: Livepatch active, $patch_count patches applied"
+
+    if [ "$lp_state" = "applied" ]; then
+        echo "OK: Livepatch active, patch version ${patch_version:-unknown} applied"
         return 0
     elif [ "$lp_state" = "nothing-to-apply" ]; then
         echo "OK: Livepatch active, no patches needed for this kernel"
@@ -213,26 +235,26 @@ exit $?
 
 ```bash
 # Livepatch check-in history is logged
-sudo journalctl -u canonical-livepatchd --since "7 days ago" | \
+sudo journalctl -u snap.canonical-livepatch.canonical-livepatchd --since "7 days ago" | \
     grep -E "Applied|patch|CVE"
 
 # View the livepatch daemon logs
-sudo journalctl -u canonical-livepatchd -n 100 --no-pager
+sudo journalctl -u snap.canonical-livepatch.canonical-livepatchd -n 100 --no-pager
 ```
 
-## When "Fully patched: false"
+## When Patch State Is Not Healthy
 
-If the system reports `Fully patched: false`, investigate:
+If the system reports a failing `patch state`, investigate:
 
 ```bash
 # Get details on which patches are not applied
-sudo canonical-livepatch status --verbose | grep -v "Applied"
+sudo canonical-livepatch status --verbose | grep -i "patch state\|CVE\|LSN"
 
 # Check for errors
 sudo canonical-livepatch status --verbose | grep -i "error\|fail"
 
 # Restart the daemon to trigger a re-check
-sudo systemctl restart canonical-livepatchd
+sudo systemctl restart snap.canonical-livepatch.canonical-livepatchd
 
 # Wait a minute then check again
 sleep 60
