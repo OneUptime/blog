@@ -8,7 +8,7 @@ Description: Configure separate PHP-FPM pools for multiple websites on Ubuntu to
 
 ---
 
-PHP-FPM's pool system is one of its most useful features for multi-tenant servers. Instead of all PHP requests going through a single pool of worker processes, you can create dedicated pools for each site or application. This provides resource isolation (a traffic spike on one site does not steal workers from another), security isolation (each pool runs as a different system user), and the ability to tune settings per application.
+PHP-FPM's pool system is one of its most useful features for multi-tenant servers. Instead of all PHP requests going through a single pool of worker processes, you can create dedicated pools for each site or application. This provides resource isolation (a traffic spike on one site does not steal worker slots from another), filesystem isolation (each pool runs as a different system user), and the ability to tune settings per application.
 
 ## Understanding PHP-FPM Pools
 
@@ -20,7 +20,7 @@ A PHP-FPM pool is a group of PHP worker processes that listen on a socket and ha
 - Environment variables to pass to workers
 - PHP settings to override
 
-Pool configuration files live in `/etc/php/8.3/fpm/pool.d/`. The default pool is `www.conf`.
+On Ubuntu systems using PHP 8.3, pool configuration files live in `/etc/php/8.3/fpm/pool.d/`. The default pool is `www.conf`.
 
 ## Default Pool Structure
 
@@ -208,7 +208,7 @@ php_value[max_execution_time] = 120
 
 ## Disable the Default Pool
 
-If you are using dedicated pools, disable the default www pool to avoid having orphaned processes:
+If you are using dedicated pools, disable the default www pool to avoid keeping an unused shared pool:
 
 ```bash
 # Rename or remove the default pool
@@ -219,8 +219,20 @@ sudo mv /etc/php/8.3/fpm/pool.d/www.conf /etc/php/8.3/fpm/pool.d/www.conf.disabl
 
 ```bash
 sudo mkdir -p /var/log/php
-sudo chown root:www-data /var/log/php
-sudo chmod 775 /var/log/php
+sudo chown root:root /var/log/php
+sudo chmod 755 /var/log/php
+
+sudo touch /var/log/php/site1-error.log /var/log/php/site1-slow.log
+sudo touch /var/log/php/site2-error.log /var/log/php/site2-slow.log
+sudo touch /var/log/php/shop1-error.log
+
+sudo chown site1user:site1user /var/log/php/site1-error.log /var/log/php/site1-slow.log
+sudo chown site2user:site2user /var/log/php/site2-error.log /var/log/php/site2-slow.log
+sudo chown shop1user:shop1user /var/log/php/shop1-error.log
+
+sudo chmod 640 /var/log/php/site1-error.log /var/log/php/site1-slow.log
+sudo chmod 640 /var/log/php/site2-error.log /var/log/php/site2-slow.log
+sudo chmod 640 /var/log/php/shop1-error.log
 ```
 
 ## Configure Nginx to Use Each Pool
@@ -304,8 +316,8 @@ location ~ ^/fpm-status$ {
 
 ```bash
 # Check pool status
-curl http://site1.example.com/fpm-status
-curl http://site1.example.com/fpm-status?full
+curl -H "Host: site1.example.com" http://127.0.0.1/fpm-status
+curl -H "Host: site1.example.com" "http://127.0.0.1/fpm-status?full"
 ```
 
-Separate PHP-FPM pools are the right approach for any server hosting more than one application. The small overhead of managing separate configuration files pays off in stability, security, and the ability to troubleshoot issues per application.
+Separate PHP-FPM pools are often the right approach for a server hosting more than one application. The small overhead of managing separate configuration files pays off in stability, filesystem isolation, and the ability to troubleshoot issues per application.
