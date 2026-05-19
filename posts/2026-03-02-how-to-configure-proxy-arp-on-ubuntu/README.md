@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Networking, ARP, Proxy ARP, iproute2
 
-Description: Configure proxy ARP on Ubuntu to allow a Linux host to answer ARP requests on behalf of other machines, enabling transparent layer-2 bridging and VPN gateway scenarios.
+Description: Configure proxy ARP on Ubuntu to allow a Linux host to answer ARP requests on behalf of other machines, enabling transparent routing and VPN gateway scenarios.
 
 ---
 
@@ -55,7 +55,7 @@ A common real-world setup: VPN clients get IPs from the same subnet as the LAN (
 
 ```text
 LAN: 192.168.1.0/24
-  - LAN hosts: 192.168.1.1 to 192.168.1.100
+  - LAN hosts: 192.168.1.2 to 192.168.1.100
   - Ubuntu VPN gateway: eth0=192.168.1.1
 
 VPN clients get addresses: 192.168.1.200 to 192.168.1.254
@@ -82,7 +82,7 @@ sudo ip route add 192.168.1.200/32 dev tun0
 
 ## Proxy ARP with Specific Networks
 
-Linux can be configured to proxy ARP only for specific address ranges using the `proxy_arp_pvlan` setting or by controlling what routes exist:
+Linux can be configured to proxy ARP only for specific address ranges by controlling what routes exist:
 
 ```bash
 # The kernel only proxies ARP if there is a route for the address
@@ -108,31 +108,36 @@ In some cases you want to manually add a proxy ARP entry rather than relying on 
 ```bash
 # Add a static proxy ARP entry
 # This tells the system to respond to ARP for 192.168.1.200
-# with the MAC address of eth0 on behalf of tun0
-sudo arp -i eth0 -s 192.168.1.200 <MAC_of_eth0> pub
+# on eth0
+sudo ip neigh add proxy 192.168.1.200 dev eth0
+
+# Or, using the older arp command:
+sudo arp -i eth0 -Ds 192.168.1.200 eth0 pub
 
 # View the ARP table including proxy entries
 sudo arp -n
 
 # View using ip neigh (the modern way)
-ip neigh show
+ip neigh show proxy
 
 # Remove a proxy ARP entry
-sudo arp -i eth0 -d 192.168.1.200 pub
+sudo ip neigh del proxy 192.168.1.200 dev eth0
 ```
 
 ## Using arptables for Selective Proxy ARP
 
-For fine-grained control, `arptables` lets you control which ARP requests get proxied:
+For fine-grained control, `arptables` can filter locally generated ARP replies, including proxy ARP replies:
 
 ```bash
 # Install arptables
 sudo apt install -y arptables
 
-# Only proxy ARP for a specific destination IP range
-sudo arptables -A OUTPUT -o eth0 --opcode Request --dst-ip 192.168.1.200/32 -j ACCEPT
+# Allow ARP replies for a specific proxied IP
+sudo arptables -A OUTPUT -o eth0 --opcode Reply --source-ip 192.168.1.200/32 -j ACCEPT
 
-# Block proxy ARP for everything else
+# Drop ARP replies for a specific address you do not want to proxy
+sudo arptables -A OUTPUT -o eth0 --opcode Reply --source-ip 192.168.1.201/32 -j DROP
+
 # (This is advanced usage - consult arptables documentation for your specific scenario)
 ```
 
@@ -169,8 +174,7 @@ ip neigh show
 # Flush the ARP cache if you need to reset state
 sudo ip neigh flush dev eth0
 
-# Check how many ARP responses the interface has sent
-# (Relevant metric if you suspect ARP storms)
+# View the kernel ARP cache from /proc
 cat /proc/net/arp
 
 # Check sysctl settings for proxy ARP
@@ -186,11 +190,11 @@ sysctl -a | grep proxy_arp
 **Gratuitous ARP conflicts**: When a device moves from one network to another with proxy ARP in use, stale ARP cache entries can cause connectivity issues. Shorter ARP cache timeouts help:
 
 ```bash
-# View and adjust ARP cache timeout (in seconds, default 60)
+# View and adjust the neighbor reachable time (in milliseconds, default 30000)
 sysctl net.ipv4.neigh.eth0.base_reachable_time_ms
 sudo sysctl -w net.ipv4.neigh.eth0.base_reachable_time_ms=30000
 
-# Adjust garbage collection thresholds
+# Adjust how often stale neighbor entries are checked (in seconds)
 sudo sysctl -w net.ipv4.neigh.default.gc_stale_time=60
 ```
 
