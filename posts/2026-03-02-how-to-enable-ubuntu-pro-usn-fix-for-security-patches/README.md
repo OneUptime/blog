@@ -10,7 +10,7 @@ Description: Learn how to use the Ubuntu Pro USN fix feature to identify and rem
 
 Ubuntu Security Notices (USNs) are the official advisories Canonical publishes when security vulnerabilities are fixed in Ubuntu packages. Ubuntu Pro's `pro fix` command provides a targeted way to check whether a specific USN or CVE affects your system and, if it does, fix it in a single command.
 
-This is more precise than running `apt upgrade` blindly - you can fix a specific CVE without touching the rest of your packages, which is valuable when change control policies require minimizing the scope of modifications during patch cycles.
+This is more precise than running `apt upgrade` blindly - you can target the packages associated with a specific CVE instead of upgrading every available package, which is valuable when change control policies require minimizing the scope of modifications during patch cycles.
 
 ## Understanding USNs and CVEs
 
@@ -19,34 +19,34 @@ This is more precise than running `apt upgrade` blindly - you can fix a specific
 
 A single USN often covers multiple CVEs. The `pro fix` command works with both.
 
-## Installing and Updating ubuntu-advantage-tools
+## Installing and Updating ubuntu-pro-client
 
 ```bash
-# The pro fix command requires ubuntu-advantage-tools
+# The pro fix command requires the Ubuntu Pro Client
 
 sudo apt update
-sudo apt install --only-upgrade ubuntu-advantage-tools
+sudo apt install ubuntu-pro-client
 
 # Verify the version
 pro --version
-# Needs to be 27.x or later for full fix functionality
+# Use the latest available version for your Ubuntu release
 ```
 
 ## Checking if a CVE Affects Your System
 
 ```bash
 # Check a specific CVE
-sudo pro fix CVE-2024-1234
+pro fix --dry-run CVE-2024-1234
 
 # Check a specific USN
-sudo pro fix USN-6234-1
+pro fix --dry-run USN-6234-1
 ```
 
 When you run this command, `pro fix` does the following:
 1. Looks up the CVE/USN in Canonical's security database
 2. Checks which packages are affected
 3. Checks if those packages are installed on your system
-4. Reports what needs to be done to fix it (standard apt upgrade, ESM package, or Ubuntu Pro required)
+4. Reports what needs to be done to fix it (standard apt upgrade, ESM package, or Ubuntu Pro required). With `--dry-run`, it previews the actions without changing the system.
 
 ## Understanding pro fix Output
 
@@ -86,8 +86,8 @@ Do you want to try upgrading now? (y/N)
 
 **Scenario 3: Requires Ubuntu Pro (ESM)**
 ```text
-CVE-2024-XXXX: OpenSSL vulnerability
-https://ubuntu.com/security/CVE-2024-XXXX
+CVE-YYYY-NNNN: OpenSSL vulnerability
+https://ubuntu.com/security/CVE-YYYY-NNNN
 
 1 affected source package is installed: openssl
 (1/1) openssl:
@@ -104,9 +104,8 @@ Do you want to enable 'esm-apps' to apply the fix? (y/N)
 # Check and apply a specific CVE fix
 sudo pro fix CVE-2024-1234
 
-# Apply without interactive prompts (good for scripting)
-# Note: as of recent versions, --no-prompt is available
-sudo pro fix CVE-2024-1234 --no-prompt
+# Preview without making changes (good for reporting and scripting)
+pro fix --dry-run CVE-2024-1234
 
 # For a USN
 sudo pro fix USN-6234-1
@@ -132,16 +131,18 @@ echo "---"
 for cve in "${CVE_LIST[@]}"; do
     echo -n "$cve: "
 
-    result=$(sudo pro fix "$cve" --no-prompt 2>&1)
+    result=$(pro fix --dry-run "$cve" 2>&1)
 
-    if echo "$result" | grep -q "is resolved"; then
-        echo "RESOLVED"
-    elif echo "$result" | grep -q "not affected"; then
+    if echo "$result" | grep -q "does not affect your system"; then
         echo "NOT AFFECTED"
+    elif echo "$result" | grep -q "The update is already installed"; then
+        echo "RESOLVED"
     elif echo "$result" | grep -q "esm-apps\|esm-infra"; then
         echo "REQUIRES ESM"
-    elif echo "$result" | grep -q "upgrade"; then
+    elif echo "$result" | grep -q "A fix is available"; then
         echo "FIX AVAILABLE"
+    elif echo "$result" | grep -q "is not resolved"; then
+        echo "UNRESOLVED"
     else
         echo "UNKNOWN"
     fi
@@ -173,7 +174,7 @@ sudo pro security-status
 #
 # Universe/Multiverse packages:
 #  10 packages from Ubuntu Universe/Multiverse can be upgraded with
-#     ubuntu-security-status pro --format group
+#     pro security-status --esm-apps
 ```
 
 ```bash
@@ -183,10 +184,9 @@ import json, sys
 data = json.load(sys.stdin)
 
 packages = data.get('packages', [])
-needing_update = [p for p in packages if p.get('status') != 'up-to-date']
 
-for pkg in sorted(needing_update, key=lambda x: x.get('name', '')):
-    print(f\"{pkg['name']}: {pkg.get('status')} (via {pkg.get('service', 'standard')})\")
+for pkg in sorted(packages, key=lambda x: x.get('package', '')):
+    print(f\"{pkg['package']}: {pkg.get('status')} (via {pkg.get('service_name', 'standard')})\")
 "
 ```
 
@@ -259,9 +259,9 @@ pro_check_cve() {
     local cve="$1"
     local result
 
-    result=$(pro fix "$cve" --no-prompt 2>&1)
+    result=$(pro fix --dry-run "$cve" 2>&1)
 
-    if echo "$result" | grep -q "is resolved\|not affected"; then
+    if echo "$result" | grep -q "The update is already installed\|does not affect your system"; then
         return 0  # Fixed or not affected
     else
         echo "WARNING: $cve may not be resolved"
@@ -288,7 +288,7 @@ echo "All critical CVEs resolved, proceeding with deployment"
 Some CVEs may not have a fix available:
 
 ```bash
-sudo pro fix CVE-2024-XXXX
+sudo pro fix CVE-YYYY-NNNN
 # Output: "A fix is not yet available."
 ```
 
