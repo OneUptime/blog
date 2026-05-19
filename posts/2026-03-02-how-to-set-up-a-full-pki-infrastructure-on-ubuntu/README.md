@@ -31,7 +31,7 @@ The Root CA should be created on an offline system and never connected to a netw
 ```bash
 # Create directory structure for the Root CA
 
-mkdir -p /opt/root-ca/{certs,crl,newcerts,private}
+mkdir -p /opt/root-ca/{certs,crl,csr,newcerts,private}
 chmod 700 /opt/root-ca/private
 touch /opt/root-ca/index.txt
 echo 1000 > /opt/root-ca/serial
@@ -157,6 +157,7 @@ cert_opt          = ca_default
 default_days      = 375
 preserve          = no
 policy            = policy_loose
+copy_extensions   = copy
 
 [ policy_loose ]
 countryName             = optional
