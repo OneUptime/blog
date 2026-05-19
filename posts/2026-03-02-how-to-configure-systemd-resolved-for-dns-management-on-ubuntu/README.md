@@ -16,7 +16,7 @@ When an application makes a DNS query, it hits the stub resolver at `127.0.0.53:
 
 The stub resolver is accessible at two addresses:
 - `127.0.0.53` - the main stub resolver (recommended)
-- `127.0.0.54` - direct-query interface, bypasses some routing logic
+- `127.0.0.54` - proxy stub interface, which forwards most DNS messages to upstream DNS servers without local DNSSEC validation or LLMNR/mDNS handling
 
 `/etc/resolv.conf` on Ubuntu is typically a symlink to `systemd-resolved`'s generated file:
 
@@ -77,7 +77,7 @@ Verify:
 resolvectl status | head -20
 ```
 
-These system-wide DNS servers are used as fallback when no interface-specific DNS is configured.
+These system-wide DNS servers are used alongside suitable per-interface DNS servers. `FallbackDNS=` is only used when no other DNS server information is available.
 
 ## Enabling DNS-over-TLS
 
@@ -94,7 +94,7 @@ DNS=9.9.9.9#dns.quad9.net 149.112.112.112#dns.quad9.net
 DNSOverTLS=opportunistic
 ```
 
-The `#hostname` suffix tells `systemd-resolved` what hostname to expect in the TLS certificate for that server. Without it, resolved cannot verify the server's identity.
+The `#hostname` suffix tells `systemd-resolved` what hostname to expect in the TLS certificate for that server and enables SNI. Without it, resolved checks the certificate against the server IP address instead.
 
 Popular DoT-compatible servers:
 
@@ -112,7 +112,7 @@ DNS=8.8.8.8#dns.google 8.8.4.4#dns.google
 Verify DoT is working:
 
 ```bash
-resolvectl status | grep "DNS over TLS"
+resolvectl status | grep "DNSOverTLS"
 ```
 
 ## Enabling DNSSEC Validation
@@ -122,7 +122,7 @@ DNSSEC validates that DNS responses are authentic and have not been tampered wit
 ```ini
 # /etc/systemd/resolved.conf.d/dnssec.conf
 [Resolve]
-# yes = require DNSSEC, fail for unsigned zones
+# yes = require DNSSEC validation, fail on invalid data or unsupported servers
 # allow-downgrade = use DNSSEC when available, fall back if not
 # no = disable DNSSEC (default in some Ubuntu versions)
 DNSSEC=allow-downgrade
@@ -135,7 +135,7 @@ Test DNSSEC validation:
 resolvectl query --type=DNSKEY cloudflare.com
 
 # Check validation result
-resolvectl query --legend example.com
+resolvectl query --legend=yes example.com
 ```
 
 If DNSSEC is working, queries to signed domains will show `(authenticated)` in the output.
@@ -224,13 +224,14 @@ LLMNR=no
 ```ini
 # /etc/systemd/resolved.conf.d/cache.conf
 [Resolve]
-# Cache negative responses (NXDOMAIN) for a shorter time
-# Default is up to the NXDOMAIN's own TTL
+# Cache only positive responses
+# This is the default on current Ubuntu releases
+Cache=no-negative
 
 # Disable caching (not recommended for production)
 # Cache=no
 
-# Cache NXDOMAIN responses
+# Cache responses from localhost DNS servers
 CacheFromLocalhost=yes
 ```
 
@@ -243,11 +244,11 @@ resolvectl status
 # Just the global settings
 resolvectl status | head -30
 
-# Statistics including cache hit rate
+# Resolver statistics
 resolvectl statistics
 
 # Show which DNS server would be used for a query
-resolvectl query --legend google.com
+resolvectl query --legend=yes google.com
 ```
 
 ## Managing the Cache
@@ -331,7 +332,7 @@ Apply and verify:
 ```bash
 sudo systemctl restart systemd-resolved
 resolvectl status
-resolvectl query --legend example.com
+resolvectl query --legend=yes example.com
 ```
 
 `systemd-resolved` is a capable resolver that handles the vast majority of DNS requirements. The per-interface routing, DoT support, and DNSSEC validation make it well-suited for both development machines and production servers.
