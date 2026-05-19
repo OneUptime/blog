@@ -172,7 +172,10 @@ Error summary:    no errors found
 
 ### Schedule automatic scrubs
 
+The systemd scrub timers on Ubuntu are provided by the `btrfsmaintenance` package:
+
 ```bash
+sudo apt install btrfsmaintenance
 sudo systemctl enable --now btrfs-scrub@-.timer  # Root filesystem
 sudo systemctl enable --now btrfs-scrub@data.timer  # /data mount point
 ```
@@ -326,11 +329,14 @@ Btrfs RAID 5 and 6 have known reliability issues with recovery after power failu
 
 ### Metadata redundancy
 
-Always keep metadata at RAID 1 regardless of data RAID level:
+Always keep metadata replicated regardless of data RAID level. Use `dup` for single-disk setups and `raid1` for multi-device setups:
 
 ```bash
-# Even for a single-disk setup, keep metadata replicated
-# (the kernel does this automatically for multi-device setups)
+# Single-disk setup: keep two copies of metadata on the same disk
+sudo btrfs balance start -mconvert=dup /data
+
+# Multi-device setup: mirror metadata across devices
+# (this is the default for multi-device filesystems)
 sudo btrfs balance start -mconvert=raid1 /data
 ```
 
