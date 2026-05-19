@@ -234,8 +234,8 @@ groups alice
 # Find files owned by a specific group
 find /srv -group webdev
 
-# Find files a group can write to
-find /var -group myapp -writable
+# Find files where the group has write permission
+find /var -group myapp -perm -g+w
 
 # Check effective group during a process
 # After adding to a group, verify a new login session picks it up
@@ -272,11 +272,11 @@ cat /etc/group | column -t -s:
 # Check for groups with no members
 awk -F: '$4 == "" {print $1}' /etc/group
 
-# Check for orphaned groups (no users have them as primary)
-# Cross-reference /etc/passwd GIDs with /etc/group GIDs
+# Check for users whose primary GID has no matching group entry
+# (broken references between /etc/passwd and /etc/group)
 awk -F: '{print $4}' /etc/passwd | sort -u | while read gid; do
     if ! grep -q ":$gid:" /etc/group; then
-        echo "Orphaned GID: $gid"
+        echo "Missing group for primary GID: $gid"
     fi
 done 2>/dev/null
 ```
