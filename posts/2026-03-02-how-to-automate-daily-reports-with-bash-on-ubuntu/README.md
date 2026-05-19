@@ -35,7 +35,7 @@ A report that is too long gets skimmed. One that is too short misses important d
 set -euo pipefail
 
 # Configuration
-HOSTNAME="$(hostname -f)"
+HOSTNAME="$(hostname -f 2>/dev/null || hostname)"
 REPORT_DATE="$(date '+%Y-%m-%d')"
 REPORT_TIME="$(date '+%H:%M:%S')"
 RECIPIENT="ops-team@example.com"
@@ -99,15 +99,15 @@ report_cpu() {
 
     append ""
     append "Top CPU Consumers:"
-    ps aux --sort=-%cpu | head -6 | awk 'NR>1 {printf "  %-20s %5s%%\n", $11, $3}'
+    append "$(ps aux --sort=-%cpu | head -6 | awk 'NR>1 {printf "  %-20s %5s%%\n", $11, $3}')"
 }
 
 # Memory usage
 report_memory() {
     section "MEMORY"
-    free -h | while read -r line; do
+    while read -r line; do
         append "  $line"
-    done
+    done < <(free -h)
 
     # Alert on high memory usage
     local mem_used_percent
@@ -119,16 +119,16 @@ report_memory() {
 
     append ""
     append "Top Memory Consumers:"
-    ps aux --sort=-%mem | head -6 | awk 'NR>1 {printf "  %-20s %5s%%\n", $11, $4}'
+    append "$(ps aux --sort=-%mem | head -6 | awk 'NR>1 {printf "  %-20s %5s%%\n", $11, $4}')"
 }
 
 # Disk usage
 report_disk() {
     section "DISK USAGE"
 
-    df -h --output=target,size,used,avail,pcent | head -1 | while read -r line; do
+    while read -r line; do
         append "  $line"
-    done
+    done < <(df -h --output=target,size,used,avail,pcent | head -1)
 
     # Check each filesystem and warn if over threshold
     local warnings=""
@@ -141,7 +141,7 @@ report_disk() {
         append "  $line"
 
         if [ -n "$percent" ] && [ "$percent" -gt "$DISK_WARN_PERCENT" ]; then
-            warnings+="  WARNING: ${mount} is at ${percent}% capacity\n"
+            warnings+="  WARNING: ${mount} is at ${percent}% capacity"$'\n'
         fi
     done < <(df -h --output=target,size,used,avail,pcent | tail -n +2)
 
@@ -167,9 +167,9 @@ report_failed_services() {
     else
         append "ALERT: $failed failed service(s)!"
         append ""
-        systemctl list-units --state=failed --no-legend --no-pager 2>/dev/null | while read -r line; do
+        while read -r line; do
             append "  $line"
-        done
+        done < <(systemctl list-units --state=failed --no-legend --no-pager 2>/dev/null)
     fi
 }
 
@@ -182,18 +182,21 @@ report_auth_failures() {
     # Count failed SSH login attempts
     local fail_count
     fail_count=$(journalctl -u ssh -u sshd --since "$since" 2>/dev/null | \
-        grep -c "Failed password\|Invalid user\|authentication failure" || echo 0)
+        grep -c "Failed password\|Invalid user\|authentication failure" || true)
 
     append "Total failed SSH attempts: $fail_count"
 
     if [ "$fail_count" -gt 0 ]; then
         append ""
         append "Top attacking IPs:"
-        journalctl -u ssh -u sshd --since "$since" 2>/dev/null | \
+        local top_ips
+        top_ips=$(journalctl -u ssh -u sshd --since "$since" 2>/dev/null | \
             grep -oP 'from \K[\d.]+' | \
             sort | uniq -c | sort -rn | head -10 | \
-            awk '{printf "  %5d attempts from %s\n", $1, $2}' | \
-            while read -r line; do append "$line"; done
+            awk '{printf "  %5d attempts from %s\n", $1, $2}' || true)
+        if [ -n "$top_ips" ]; then
+            append "$top_ips"
+        fi
     fi
 }
 
@@ -203,20 +206,25 @@ report_sudo_activity() {
     local since
     since=$(date --date='24 hours ago' '+%Y-%m-%d %H:%M:%S')
 
-    journalctl --since "$since" 2>/dev/null | \
+    local sudo_lines
+    sudo_lines=$(journalctl --since "$since" 2>/dev/null | \
         grep "sudo:" | \
         grep -v "session opened\|session closed" | \
-        tail -20 | \
-        while read -r line; do append "$line"; done
+        tail -20 || true)
+    if [ -n "$sudo_lines" ]; then
+        append "$sudo_lines"
+    else
+        append "No sudo activity."
+    fi
 }
 
 # Available updates
 report_updates() {
     section "AVAILABLE UPDATES"
     local update_count
-    update_count=$(apt-get -s upgrade 2>/dev/null | grep -c "^Inst" || echo 0)
+    update_count=$(apt-get -s upgrade 2>/dev/null | grep -c "^Inst" || true)
     local security_count
-    security_count=$(apt-get -s upgrade 2>/dev/null | grep -c "^Inst.*security" || echo 0)
+    security_count=$(apt-get -s upgrade 2>/dev/null | grep -c "^Inst.*security" || true)
 
     append "Available updates:  $update_count"
     append "Security updates:   $security_count"
@@ -224,8 +232,7 @@ report_updates() {
     if [ "$security_count" -gt 0 ]; then
         append ""
         append "Security packages needing update:"
-        apt-get -s upgrade 2>/dev/null | grep "^Inst.*security" | head -10 | \
-            awk '{print "  " $2}' | while read -r line; do append "$line"; done
+        append "$(apt-get -s upgrade 2>/dev/null | grep "^Inst.*security" | head -10 | awk '{print "  " $2}')"
     fi
 }
 
@@ -236,14 +243,13 @@ report_cron() {
     since=$(date --date='24 hours ago' '+%Y-%m-%d %H:%M:%S')
 
     local cron_errors
-    cron_errors=$(journalctl -u cron --since "$since" 2>/dev/null | grep -i "error\|fail" | wc -l)
+    cron_errors=$(journalctl -u cron --since "$since" 2>/dev/null | grep -ci "error\|fail" || true)
 
     if [ "$cron_errors" -eq 0 ]; then
         append "No cron errors."
     else
         append "Cron errors found: $cron_errors"
-        journalctl -u cron --since "$since" 2>/dev/null | grep -i "error\|fail" | \
-            while read -r line; do append "$line"; done
+        append "$(journalctl -u cron --since "$since" 2>/dev/null | grep -i "error\|fail")"
     fi
 }
 ```
@@ -282,6 +288,7 @@ report_memory
 report_disk
 report_failed_services
 report_auth_failures
+report_sudo_activity
 report_updates
 report_cron
 
@@ -306,7 +313,7 @@ relayhost = [smtp.yourdomain.com]:587
 smtp_sasl_auth_enable = yes
 smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
 smtp_sasl_security_options = noanonymous
-smtp_use_tls = yes
+smtp_tls_security_level = encrypt
 EOF
 
 # Set credentials
