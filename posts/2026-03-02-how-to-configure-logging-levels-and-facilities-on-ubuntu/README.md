@@ -28,6 +28,10 @@ Facilities identify the source or type of the logging message. The original sysl
 | 9 | cron | Clock daemon |
 | 10 | authpriv | Security messages (private) |
 | 11 | ftp | FTP daemon |
+| 12 | ntp | NTP subsystem |
+| 13 | audit | Log audit |
+| 14 | alert | Log alert |
+| 15 | clock | Clock daemon |
 | 16-23 | local0-local7 | Local use - custom applications |
 
 The `local0` through `local7` facilities are particularly important for production systems - they're the facilities you assign to custom applications and services.
@@ -198,8 +202,11 @@ The systemd journal also supports priority-based filtering:
 # Show only errors and above
 journalctl -p err
 
-# Show only warnings
+# Show warnings and above
 journalctl -p warning
+
+# Show only warnings
+journalctl -p warning..warning
 
 # Show a priority range
 journalctl -p warning..err
@@ -228,7 +235,7 @@ sudo nano /etc/systemd/journald.conf
 # Values: emerg, alert, crit, err, warning, notice, info, debug
 MaxLevelStore=info
 
-# Level for storing to disk (when volatile storage overflows)
+# Maximum log level to forward to syslog, if syslog forwarding is enabled
 MaxLevelSyslog=warning
 
 # Level to forward to the kernel log buffer (for dmesg)
@@ -280,7 +287,7 @@ sudo nano /etc/nginx/nginx.conf
 error_log /var/log/nginx/error.log warn;
 ```
 
-### MySQL/MariaDB
+### MySQL
 
 ```bash
 sudo nano /etc/mysql/mysql.conf.d/mysqld.cnf
@@ -311,9 +318,11 @@ sudo nano /etc/rsyslog.d/20-multi-tier.conf
 ```
 
 ```bash
-# Tier 1: Critical alerts - write immediately and alert
+module(load="omprog")
+
+# Tier 1: Alert and emergency messages - write to a file and alert
 *.alert     /var/log/critical/alerts.log
-*.alert     |/usr/local/bin/send-alert.sh   # Named pipe to alert script
+*.alert     action(type="omprog" binary="/usr/local/bin/send-alert.sh")
 
 # Tier 2: Errors - standard error log
 *.err;*.!alert    /var/log/errors.log
@@ -336,10 +345,7 @@ auth,authpriv.*    /var/log/auth.log
 Track which facilities are generating the most messages:
 
 ```bash
-# Count messages by facility from syslog
-awk '{print $5}' /var/log/syslog | sort | uniq -c | sort -rn | head -20
-
-# Using journalctl to count by unit
+# Count messages by facility from the journal
 journalctl --since "1 hour ago" -o json | \
     python3 -c "
 import sys, json, collections
