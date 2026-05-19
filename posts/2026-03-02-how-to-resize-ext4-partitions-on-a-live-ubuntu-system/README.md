@@ -169,8 +169,11 @@ Inside parted:
 (parted) print
 # Note the current end of the partition
 
-(parted) resizepart 1 50G
-# Set the end of partition 1 to 50GB from start of disk
+(parted) resizepart 1 50GiB
+# Set the end of partition 1 at the 50 GiB mark from start of disk
+# Use an explicit "GiB" suffix - parted treats bare "G" or "GB" as decimal (10^9),
+# while resize2fs's "G" is binary (2^30 = GiB). Mixing the two can shrink the
+# partition below the filesystem size and destroy data.
 
 (parted) quit
 ```
