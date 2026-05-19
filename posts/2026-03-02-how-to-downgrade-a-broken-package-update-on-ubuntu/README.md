@@ -63,7 +63,7 @@ If the version you need is not shown, it is not in your current repositories and
 
 ## Method 3: Download and Install the Specific Version
 
-Older Ubuntu package versions are archived at packages.ubuntu.com or Launchpad.
+Ubuntu package pages and publishing history are available at packages.ubuntu.com and Launchpad. If the exact binary is no longer in the regular archive, use Launchpad publishing history or the Ubuntu snapshot service to find the version you need.
 
 ```bash
 # Navigate to the package history
@@ -85,15 +85,16 @@ sudo apt install -f
 
 ## Method 4: Using Snapshot Archives
 
-Ubuntu maintains a complete snapshot archive at `snapshot.debian.org` (for Debian packages) and there are unofficial Ubuntu snapshot services.
+Ubuntu maintains an official snapshot archive at `snapshot.ubuntu.com` for Ubuntu packages. Snapshots are available for Ubuntu archive states after March 1, 2023, and are supported by Ubuntu 23.10 and later, plus updated Ubuntu 20.04 LTS and 22.04 LTS systems with newer `apt` versions.
 
 ```bash
-# Find the package on the Debian snapshot archive (for packages in Ubuntu that originate from Debian)
-# https://snapshot.debian.org/binary/packagename/
+# Pick a snapshot timestamp in UTC format: YYYYMMDDTHHMMSSZ
+# https://snapshot.ubuntu.com/
 
-# Download and install the older version
-wget https://snapshot.debian.org/archive/debian/20240101T000000Z/pool/main/n/nginx/nginx_1.18.0-6.1_amd64.deb
-sudo dpkg -i nginx_1.18.0-6.1_amd64.deb
+# Query or install using the Ubuntu snapshot service
+sudo apt update --snapshot 20240301T030400Z
+apt policy packagename --snapshot 20240301T030400Z
+sudo apt install packagename=1.2.3-1ubuntu1 --snapshot 20240301T030400Z
 ```
 
 ## Preventing Automatic Re-upgrade After Downgrade
