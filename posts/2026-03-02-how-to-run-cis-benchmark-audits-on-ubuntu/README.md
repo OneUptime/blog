@@ -28,9 +28,10 @@ Lynis is an open-source security auditing tool that checks many CIS benchmark it
 
 ```bash
 # Install from the CISOfy repository for the latest version
-
-wget -O - https://packages.cisofy.com/keys/cisofy-software-public.key | sudo apt-key add -
-echo "deb https://packages.cisofy.com/community/lynis/deb/ stable main" | \
+sudo install -d -m 0755 /etc/apt/keyrings
+wget -O - https://packages.cisofy.com/keys/cisofy-software-public.key | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/cisofy-software-public.gpg
+echo "deb [signed-by=/etc/apt/keyrings/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | \
   sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
 sudo apt update
 sudo apt install lynis -y
@@ -121,7 +122,8 @@ cat /var/log/lynis-report.dat | grep -E "warning|suggestion" | head -30
 ### Section 1: Filesystem Configuration
 
 ```bash
-# 1.1.1 - Check that cramfs, freevxfs, jffs2, hfs, hfsplus, squashfs, udf are disabled
+# 1.1.1 - Check that cramfs, freevxfs, jffs2, hfs, hfsplus, udf are disabled
+# (squashfs is intentionally not disabled on Ubuntu because snap uses it)
 for module in cramfs freevxfs jffs2 hfs hfsplus udf; do
     result=$(modprobe -n -v $module 2>&1)
     if echo "$result" | grep -q "install /bin/true"; then
@@ -214,21 +216,28 @@ check_sshd() {
     fi
 }
 
-check_sshd "permittopening" "no" 2>/dev/null
 check_sshd "permitrootlogin" "no"
 check_sshd "passwordauthentication" "no"
 check_sshd "permitemptypasswords" "no"
 check_sshd "x11forwarding" "no"
 check_sshd "maxauthtries" "4"
 check_sshd "ignorerhosts" "yes"
-check_sshd "hostsbasedauthentication" "no"
+check_sshd "hostbasedauthentication" "no"
 
 # 5.3 - Password policy
-grep -q "^PASS_MAX_DAYS\s*90" /etc/login.defs && \
-    echo "PASS: Password max days <= 90" || echo "FAIL: Password max days not set to 90"
+max_days=$(awk '/^PASS_MAX_DAYS/ {print $2}' /etc/login.defs)
+if [ -n "$max_days" ] && [ "$max_days" -le 90 ]; then
+    echo "PASS: Password max days <= 90 (current: $max_days)"
+else
+    echo "FAIL: Password max days not <= 90 (current: ${max_days:-unset})"
+fi
 
-grep -q "^PASS_MIN_DAYS\s*[1-9]" /etc/login.defs && \
-    echo "PASS: Password min days >= 1" || echo "FAIL: Password min days not set"
+min_days=$(awk '/^PASS_MIN_DAYS/ {print $2}' /etc/login.defs)
+if [ -n "$min_days" ] && [ "$min_days" -ge 1 ]; then
+    echo "PASS: Password min days >= 1 (current: $min_days)"
+else
+    echo "FAIL: Password min days not >= 1 (current: ${min_days:-unset})"
+fi
 ```
 
 ## Creating a CIS Audit Script
