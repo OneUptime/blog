@@ -13,15 +13,17 @@ Sonatype Nexus Repository Manager is a widely-used artifact repository that supp
 ## System Requirements
 
 Nexus is a Java application with some specific requirements:
-- Java 11 or 17 (use OpenJDK)
-- At least 4GB RAM (8GB recommended for production)
+- Java 21 if you use an external JVM; current Sonatype archives bundle the recommended Java runtime
+- At least 8GB RAM for supported deployments
 - Sufficient disk space for your artifacts (Nexus stores blobs on the filesystem)
 
 ## Installing Java
 
+Current Nexus Repository archives include a bundled JVM, so you can skip this step unless you need to use a system Java installation:
+
 ```bash
 sudo apt update
-sudo apt install -y openjdk-17-jre-headless
+sudo apt install -y openjdk-21-jre-headless
 
 # Verify Java is installed correctly
 
@@ -31,19 +33,19 @@ java -version
 ## Downloading Nexus Repository
 
 ```bash
-# Download the latest Nexus OSS
-VERSION="3.63.0-01"
-wget https://download.sonatype.com/nexus/3/nexus-${VERSION}-unix.tar.gz
+# Download Nexus Repository Community Edition for Linux x86-64
+VERSION="3.92.2-01"
+wget https://download.sonatype.com/nexus/3/nexus-${VERSION}-linux-x86_64.tar.gz
 
 # Extract to /opt
-sudo tar xzf nexus-${VERSION}-unix.tar.gz -C /opt/
+sudo tar xzf nexus-${VERSION}-linux-x86_64.tar.gz -C /opt/ --keep-directory-symlink
 
 # Create a symlink for easier management
 sudo ln -s /opt/nexus-${VERSION} /opt/nexus
 
 # Create a dedicated service user
 sudo useradd --system --no-create-home --shell /bin/bash nexus
-sudo chown -R nexus:nexus /opt/nexus
+sudo chown -R nexus:nexus /opt/nexus-${VERSION}
 sudo chown -R nexus:nexus /opt/sonatype-work
 ```
 
@@ -57,8 +59,8 @@ sudo nano /opt/nexus/bin/nexus.vmoptions
 
 ```text
 # /opt/nexus/bin/nexus.vmoptions - JVM settings
--Xms2g
--Xmx2g
+-Xms4g
+-Xmx4g
 -XX:MaxDirectMemorySize=2g
 -XX:+UnlockDiagnosticVMOptions
 -XX:+LogVMOutput
@@ -72,6 +74,8 @@ sudo nano /opt/nexus/bin/nexus.vmoptions
 -Dkaraf.data=../sonatype-work/nexus3
 -Dkaraf.log=../sonatype-work/nexus3/log
 -Djava.io.tmpdir=../sonatype-work/nexus3/tmp
+-Dkaraf.startLocalConsole=false
+-Djava.endorsed.dirs=lib/endorsed
 ```
 
 ## Creating the Systemd Service
@@ -94,7 +98,7 @@ ExecStop=/opt/nexus/bin/nexus stop
 ExecReload=/opt/nexus/bin/nexus restart
 Restart=on-failure
 RestartSec=10
-TimeoutStopSec=60
+TimeoutSec=600
 LimitNOFILE=65536
 
 [Install]
@@ -258,6 +262,6 @@ Prevent disk from filling up with old images:
 
 Run cleanup manually:
 
-Via UI: **Administration** > **System** > **Tasks** > Run "Docker - Delete incomplete uploads" and "Admin - Compact blob store"
+Via UI: **Administration** > **System** > **Tasks** > Run "Admin - Cleanup repositories using their associated policies", "Docker - Delete unused manifests and images", and "Admin - Compact blob store"
 
 Nexus is a heavy but comprehensive solution that makes sense when you need one tool to manage Docker images alongside your Maven JARs, npm packages, and Helm charts. For a Docker-only registry, the lighter Zot or Harbor might be better choices.
