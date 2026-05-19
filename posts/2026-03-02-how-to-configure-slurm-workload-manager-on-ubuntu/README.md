@@ -8,7 +8,7 @@ Description: Install and configure Slurm Workload Manager on Ubuntu to schedule 
 
 ---
 
-Slurm (Simple Linux Utility for Resource Management) is the most widely deployed workload manager in high-performance computing. It manages job queuing, resource allocation, and execution across clusters ranging from a few nodes to tens of thousands. If you're building a compute cluster on Ubuntu, Slurm is the standard choice.
+Slurm Workload Manager is the most widely deployed workload manager in high-performance computing. It manages job queuing, resource allocation, and execution across clusters ranging from a few nodes to tens of thousands. If you're building a compute cluster on Ubuntu, Slurm is the standard choice.
 
 ## Architecture
 
@@ -28,19 +28,21 @@ All nodes in the cluster must have synchronized clocks (NTP), share a common use
 # On ALL nodes (controller and compute)
 
 sudo apt update
-sudo apt install -y slurm-wlm slurmd slurmctld munge
+sudo apt install -y munge slurm-client
 
-# On the controller node additionally
+# On the controller node
 sudo apt install -y slurmctld
 
 # On compute nodes only
 sudo apt install -y slurmd
 
 # For accounting (controller node)
-sudo apt install -y slurmdbd default-mysql-server
+sudo apt install -y slurmdbd default-mysql-server slurm-wlm-mysql-plugin
 
-# Verify installation
+# Verify installation on the controller
 slurmctld --version
+
+# Verify installation on compute nodes
 slurmd --version
 ```
 
@@ -81,17 +83,16 @@ sudo nano /etc/slurm/slurm.conf
 
 # === Cluster Identity ===
 ClusterName=mycluster
-ControlMachine=controller-hostname
-# ControlAddr=10.0.0.1  # Uncomment if DNS is not available
+SlurmUser=slurm
+SlurmctldHost=controller-hostname
+# SlurmctldHost=controller-hostname(10.0.0.1)  # Use this form if DNS is not available
 
 # === Authentication ===
 AuthType=auth/munge
-CryptoType=crypto/munge
 
 # === Communication ===
 SlurmctldPort=6817
 SlurmdPort=6818
-ReturnAddrBindTo=No
 
 # === Scheduler ===
 SchedulerType=sched/backfill
@@ -107,8 +108,7 @@ SlurmdDebug=info
 # === Accounting ===
 AccountingStorageType=accounting_storage/slurmdbd
 AccountingStorageHost=controller-hostname
-AccountingStorageTPort=6819
-JobCompType=jobcomp/none
+AccountingStoragePort=6819
 
 # === State Preservation ===
 StateSaveLocation=/var/spool/slurmctld
@@ -118,7 +118,7 @@ MpiDefault=none
 
 # === Resource Tracking ===
 ProctrackType=proctrack/cgroup
-TaskPlugin=task/cgroup
+TaskPlugin=task/cgroup,task/affinity
 
 # === Timeouts ===
 SlurmctldTimeout=120
@@ -161,12 +161,11 @@ Slurm's cgroup plugin for resource enforcement needs its own configuration:
 # On all nodes
 sudo tee /etc/slurm/cgroup.conf << 'EOF'
 # /etc/slurm/cgroup.conf
-CgroupMountpoint=/sys/fs/cgroup
-CgroupAutomount=yes
+CgroupPlugin=autodetect
 ConstrainCores=yes
 ConstrainRAMSpace=yes
 ConstrainSwapSpace=no
-MaxRAMPercent=98
+AllowedRAMSpace=100
 EOF
 ```
 
@@ -176,7 +175,8 @@ EOF
 # Create log and state directories
 sudo mkdir -p /var/log/slurm /var/spool/slurmctld /var/spool/slurmd
 sudo chown slurm:slurm /var/log/slurm /var/spool/slurmctld
-sudo chown slurm:slurm /var/spool/slurmd
+sudo chown root:root /var/spool/slurmd
+sudo chmod 755 /var/spool/slurmd
 
 # On the CONTROLLER node
 sudo systemctl enable slurmctld
@@ -285,6 +285,8 @@ sacctmgr add user alice Account=myproject
 sprio -l
 sshare -l
 ```
+
+Accounting requires a configured and running `slurmdbd` with a valid `/etc/slurm/slurmdbd.conf`; installing the package alone is not enough for `sacct` and `sacctmgr` to work.
 
 ## Setting Resource Limits
 
