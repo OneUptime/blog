@@ -31,11 +31,10 @@ The zombie state is indicated by a 'Z' in the process status column:
 
 ```bash
 # Show all processes in zombie state
-
-ps aux | grep '[Z]'
+ps -eo pid,ppid,stat,cmd | awk '$3 ~ /^Z/'
 
 # More targeted: show only zombies with parent PID
-ps -eo pid,ppid,stat,cmd | grep ^.*Z
+ps -eo pid,ppid,stat,cmd | awk '$3 ~ /^Z/'
 
 # Using the STAT column - 'Z' or 'Z+' indicates zombie
 ps -eo pid,ppid,stat,comm | awk '$3 ~ /^Z/ {print}'
@@ -53,13 +52,13 @@ You can also see them in the process list with 'Z' in the status column.
 
 ```bash
 # Get more information about zombie processes
-ps -eo pid,ppid,stat,cmd | grep 'Z'
+ps -eo pid,ppid,stat,cmd | awk '$3 ~ /^Z/'
 
 # Example output:
 # 12345 1234 Z    [defunct_script] <defunct>
 
-# Find the parent of a zombie process
-ps -p 1234 -o pid,ppid,cmd  # Replace 1234 with the zombie's PID
+# Find the parent process of a zombie
+ps -p 1234 -o pid,ppid,cmd  # Replace 1234 with the parent PID
 ```
 
 The parent PID (PPID column) is what you need. The zombie cannot be directly killed, but the parent can be persuaded to clean up.
@@ -133,7 +132,7 @@ A common source of zombies is web servers with PHP-FPM or similar process manage
 
 ```bash
 # Check for PHP-FPM zombies
-ps aux | grep '[Z]' | grep php
+ps -eo pid,ppid,stat,cmd | awk '$3 ~ /^Z/ && /php/'
 
 # Check the PHP-FPM status
 sudo systemctl status php8.1-fpm
@@ -147,7 +146,7 @@ For Apache with MPM prefork:
 
 ```bash
 # Apache zombies
-ps aux | grep '[Z]' | grep apache
+ps -eo pid,ppid,stat,cmd | awk '$3 ~ /^Z/ && /apache/'
 
 # Graceful restart
 sudo apache2ctl graceful
@@ -166,14 +165,14 @@ The real concern is if you have hundreds or thousands of zombies. Each zombie oc
 
 ```bash
 # Check total zombie count
-ps aux | grep -c '^.*Z'
+ps -eo stat= | awk '$1 ~ /^Z/ {count++} END {print count+0}'
 
 # Check the PID limit
 cat /proc/sys/kernel/pid_max
 # Typically 32768 or 4194304
 
 # Check current PID utilization
-ps aux | wc -l
+ps -eL --no-headers | wc -l
 ```
 
 If you have more than a handful of zombies, investigate the parent process for a bug.
@@ -214,30 +213,24 @@ worker_function() {
 launch_workers
 ```
 
-### Shell: Handle SIGCHLD
+### Bash: Reap Children as They Exit
 
 ```bash
 #!/bin/bash
-# Install a SIGCHLD handler
-
-cleanup_children() {
-    # Reap all available zombie children
-    while true; do
-        # wait -n returns immediately if a child has exited
-        wait -n 2>/dev/null || break
-    done
-}
-
-# Call cleanup_children when a child exits
-trap cleanup_children SIGCHLD
+# Reap background children as they exit
 
 # Start background processes
 for i in $(seq 1 5); do
     sleep $((RANDOM % 10)) &
 done
 
-# Wait for all remaining processes
-wait
+# wait -n waits for the next child to finish and collects its exit status
+while true; do
+    wait -n
+    status=$?
+    [ "$status" -eq 127 ] && break
+done
+
 echo "All children collected"
 ```
 
@@ -248,13 +241,13 @@ For a production system, track zombie count as a metric:
 ```bash
 # Log zombie count every minute
 while true; do
-    ZOMBIE_COUNT=$(ps aux | grep -c '^.*Z' || echo 0)
+    ZOMBIE_COUNT=$(ps -eo stat= | awk '$1 ~ /^Z/ {count++} END {print count+0}')
     echo "$(date '+%Y-%m-%d %H:%M:%S') zombies: $ZOMBIE_COUNT"
     sleep 60
 done >> /var/log/zombie-count.log
 
 # Check if zombie count is above threshold (for monitoring scripts)
-ZOMBIE_COUNT=$(ps aux | grep '^.*Z' | grep -v grep | wc -l)
+ZOMBIE_COUNT=$(ps -eo stat= | awk '$1 ~ /^Z/ {count++} END {print count+0}')
 if [ "$ZOMBIE_COUNT" -gt 10 ]; then
     echo "WARNING: $ZOMBIE_COUNT zombie processes found"
     ps -eo pid,ppid,stat,cmd | awk '$3 ~ /^Z/'
