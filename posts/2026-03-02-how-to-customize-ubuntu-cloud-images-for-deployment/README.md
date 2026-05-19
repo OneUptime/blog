@@ -31,8 +31,8 @@ sha256sum --check --ignore-missing SHA256SUMS
 
 Ubuntu cloud images come in several formats:
 - `.img` - QCOW2 format, usable with KVM/QEMU
-- `-disk.img` - raw disk format
-- `-uefi1.img` - UEFI-bootable variant
+- `-disk-kvm.img` - QCOW2 KVM-optimized variant
+- `-azure.vhd.tar.gz` - Azure VHD archive
 - `.vmdk` - VMware format
 
 ## Installing Customization Tools
@@ -41,10 +41,14 @@ Ubuntu cloud images come in several formats:
 # Install tools for image manipulation
 sudo apt update
 sudo apt install -y \
-    qemu-utils \          # qemu-img for image conversion
-    libguestfs-tools \    # guestfish, virt-customize, virt-sysprep
-    cloud-image-utils \   # cloud-localds for NoCloud datasource
-    cloud-init            # for testing
+    qemu-utils \
+    libguestfs-tools \
+    cloud-image-utils \
+    cloud-init
+
+# qemu-utils provides qemu-img for image conversion
+# libguestfs-tools provides guestfish, virt-customize, and virt-sysprep
+# cloud-image-utils provides cloud-localds for the NoCloud datasource
 
 # Verify libguestfs works
 sudo virt-filesystems --version
@@ -69,11 +73,13 @@ sudo virt-customize \
 # Copy files into the image
 sudo virt-customize \
     -a jammy-server-cloudimg-amd64.img \
+    --mkdir /etc/myapp \
     --copy-in /local/path/config.conf:/etc/myapp/
 
 # Write content directly to a file inside the image
 sudo virt-customize \
     -a jammy-server-cloudimg-amd64.img \
+    --mkdir /etc/myapp \
     --write '/etc/myapp/config.yaml:key: value\nother_key: other_value'
 
 # Create a systemd service
@@ -142,12 +148,12 @@ Before distributing a customized image, remove instance-specific artifacts:
 
 ```bash
 # Clean up the image for distribution
+sudo virt-customize -a myapp-image.img --run-command 'cloud-init clean --logs'
 sudo virt-sysprep -a myapp-image.img
 
 # virt-sysprep removes:
 # - SSH host keys (they'll be regenerated on first boot)
 # - Machine ID (/etc/machine-id)
-# - cloud-init state
 # - Temporary files
 # - Log files
 # - User shell history
@@ -207,6 +213,9 @@ sudo mv packer /usr/local/bin/
 
 # Install the QEMU plugin
 packer plugins install github.com/hashicorp/qemu
+
+# Create a temporary SSH key for Packer to use during provisioning
+ssh-keygen -t ed25519 -f packer_key -N ''
 ```
 
 A Packer template for building an Ubuntu image:
@@ -241,14 +250,23 @@ source "qemu" "ubuntu" {
   accelerator = "kvm"
 
   ssh_username = "ubuntu"
+  ssh_private_key_file = "packer_key"
   ssh_timeout  = "20m"
 
   # Use cloud-localds for the seed drive
   cd_content = {
-    "user-data" = file("user-data.yaml")
-    "meta-data" = ""
+    "user-data" = <<-EOF
+      #cloud-config
+      users:
+        - name: ubuntu
+          ssh_authorized_keys:
+            - ${file("packer_key.pub")}
+          sudo: ALL=(ALL) NOPASSWD:ALL
+          shell: /bin/bash
+    EOF
+    "meta-data" = "instance-id: iid-packer\nlocal-hostname: packer-ubuntu\n"
   }
-  cd_label = "cidata"
+  cd_label = "CIDATA"
 
   headless = true
 }
@@ -319,14 +337,16 @@ qemu-img info myapp-image.img
 
 ```bash
 # Upload to S3 and import as AMI
-aws s3 cp myapp-image.img s3://my-images-bucket/ubuntu-custom.img
+qemu-img convert -f qcow2 -O raw myapp-image.img ubuntu-custom.raw
+
+aws s3 cp ubuntu-custom.raw s3://my-images-bucket/ubuntu-custom.raw
 
 aws ec2 import-image \
     --description "Custom Ubuntu 22.04" \
     --disk-containers file://containers.json
 
 # containers.json:
-# [{"Description":"Custom Ubuntu","Format":"qcow2","UserBucket":{"S3Bucket":"my-images-bucket","S3Key":"ubuntu-custom.img"}}]
+# [{"Description":"Custom Ubuntu","Format":"RAW","UserBucket":{"S3Bucket":"my-images-bucket","S3Key":"ubuntu-custom.raw"}}]
 ```
 
 ### Azure
