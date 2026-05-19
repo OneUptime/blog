@@ -124,7 +124,7 @@ sudo ip rule add oif eth0 lookup isp1
 
 ## Making PBR Persistent
 
-`ip rule` and `ip route` changes are lost on reboot. The cleanest way to persist them on Ubuntu is using Netplan's routing hooks or a systemd service.
+`ip rule` and `ip route` changes are lost on reboot. The cleanest way to persist them on Ubuntu is using Netplan's `routes` and `routing-policy` settings or a systemd service.
 
 ### Using a systemd Service
 
@@ -196,15 +196,15 @@ ip route get 8.8.8.8 from 198.51.100.20 iif eth1
 # Check if marks are being applied correctly
 sudo iptables -t mangle -L OUTPUT -v -n
 
-# Monitor routing cache hits
-ip route show cache
+# Monitor route changes
+ip monitor route
 ```
 
 ## Common Pitfalls
 
 Asymmetric routing is the most common problem when PBR is misconfigured. If a packet arrives on eth1 but the reply is sent via eth0 (because the main table points there), stateful firewalls and some network equipment will drop it.
 
-The `rp_filter` sysctl can also cause issues. Ubuntu enables reverse path filtering by default, which drops packets when the source address is not reachable on the interface the packet arrived on. When using PBR with multiple ISPs, you may need to adjust this:
+The `rp_filter` sysctl can also cause issues. Some distributions enable reverse path filtering by default, which drops packets when the source address is not reachable on the interface the packet arrived on. When using PBR with multiple ISPs, you may need to adjust this:
 
 ```bash
 # Check current rp_filter settings
