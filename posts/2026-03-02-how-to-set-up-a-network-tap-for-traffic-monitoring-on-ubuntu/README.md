@@ -167,17 +167,12 @@ To mirror traffic from one interface to another (useful for sending traffic to a
 sudo modprobe sch_ingress
 sudo modprobe act_mirred
 
-# Mirror outgoing (egress) traffic from eth0 to eth1
-# Step 1: Add an ingress qdisc to eth0 for outgoing traffic (via IFB)
-sudo modprobe ifb
-sudo ip link set ifb0 up
-
-# Redirect ingress traffic from eth0 to ifb0
-sudo tc qdisc add dev eth0 ingress
+# Mirror incoming (ingress) traffic from eth0 to eth1
+sudo tc qdisc add dev eth0 handle ffff: ingress
 sudo tc filter add dev eth0 parent ffff: protocol all u32 \
-  match u32 0 0 action mirred egress redirect dev ifb0
+  match u32 0 0 action mirred egress mirror dev eth1
 
-# Mirror egress traffic from eth0 to eth1
+# Mirror outgoing (egress) traffic from eth0 to eth1
 sudo tc qdisc add dev eth0 root handle 1: prio
 sudo tc filter add dev eth0 parent 1: protocol all u32 \
   match u32 0 0 action mirred egress mirror dev eth1
@@ -187,10 +182,9 @@ A simpler approach for egress-only mirroring:
 
 ```bash
 # Mirror all outgoing traffic from eth0 to eth1
-sudo tc qdisc add dev eth0 root handle 1: prio priomap \
-  0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
-sudo tc filter add dev eth0 parent 1:0 protocol all u32 \
-  match u32 0 0 action mirred egress mirror dev eth1 pass
+sudo tc qdisc add dev eth0 root handle 1: prio
+sudo tc filter add dev eth0 parent 1: protocol all u32 \
+  match u32 0 0 action mirred egress mirror dev eth1
 ```
 
 The receiving interface (`eth1`) should be in promiscuous mode and have a packet capture running:
@@ -225,20 +219,26 @@ sudo tcpdump -i br0 -w /tmp/inline-capture.pcap 'not tcp port 22'
 
 All traffic passing between the two networks is visible on `br0` and can be captured.
 
-## Remote Traffic Analysis with TZSP
+## Remote Traffic Capture Forwarding
 
-TZSP (TaZmen Sniffer Protocol) encapsulates captured packets and sends them to a remote analyzer over UDP:
+To send captured traffic to a remote analyzer, you can pipe `tcpdump` output over the network. Use TCP (not UDP) so the pcap stream is delivered without packet loss that would corrupt the file:
 
 ```bash
-# Install tee-pipe for traffic redirection
-# Or use tcpdump to capture and netcat to forward
-sudo tcpdump -i eth0 -w - | nc -u analyzer.example.com 37008
+# On the analyzer machine, listen and write the incoming pcap stream
+nc -l 37008 > /tmp/remote-capture.pcap
 
-# On the analyzer machine, receive and capture
-nc -ul 37008 | sudo tcpdump -r - -w /tmp/remote-capture.pcap
+# On the capture host, send pcap data to the analyzer
+sudo tcpdump -i eth0 -w - 'not tcp port 37008' | nc analyzer.example.com 37008
 ```
 
-For production remote tap setups, consider `daemonlogger` or `barnyard2` for more robust capture forwarding.
+For lower-latency forwarding, an SSH tunnel works well and provides encryption:
+
+```bash
+sudo tcpdump -i eth0 -w - 'not tcp port 22' | \
+  ssh user@analyzer.example.com "cat > /tmp/remote-capture.pcap"
+```
+
+For production remote tap setups, consider `daemonlogger` for robust capture forwarding, or protocols like ERSPAN/TZSP (TaZmen Sniffer Protocol, UDP port 37008) supported by tools such as `ntopng` and many managed switches.
 
 ## Analyzing Captures with Wireshark
 
