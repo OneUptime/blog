@@ -311,10 +311,10 @@ Fix any errors before proceeding.
 If migrating from `ifupdown` to `networkd`:
 
 ```bash
-# Install systemd-networkd if not present
-sudo apt install systemd-networkd
+# Install netplan if not present (systemd-networkd is included with systemd)
+sudo apt install netplan.io
 
-# Enable it
+# Enable systemd-networkd
 sudo systemctl enable systemd-networkd
 ```
 
