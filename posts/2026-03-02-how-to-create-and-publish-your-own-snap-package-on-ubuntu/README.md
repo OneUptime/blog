@@ -23,11 +23,15 @@ sudo snap install snapcraft --classic
 snapcraft --version
 ```
 
-Snapcraft uses Multipass or LXD to build snaps in clean, isolated environments. Multipass is the default on Ubuntu and gets installed automatically when needed:
+Snapcraft uses LXD or Multipass to build snaps in clean, isolated environments. For `core22` and newer bases, LXD is the default build provider on Linux, while Multipass is the default on macOS and Windows:
 
 ```bash
-# Snapcraft will prompt to install Multipass on first build
-# Or install it manually
+# Install and initialize LXD manually if needed
+sudo snap install lxd
+sudo usermod -a -G lxd $USER
+sudo lxd init --auto
+
+# Or use Multipass instead
 sudo snap install multipass
 ```
 
@@ -58,6 +62,23 @@ if __name__ == "__main__":
 EOF
 ```
 
+Add minimal Python project metadata so the Python plugin can install the script as a command:
+
+```bash
+cat > pyproject.toml << 'EOF'
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "my-hello-app"
+version = "1.0"
+
+[project.scripts]
+my-hello-app = "myapp:main"
+EOF
+```
+
 ## Writing snapcraft.yaml
 
 The `snapcraft.yaml` file defines everything about your snap - its metadata, how to build it, and what it exposes to users:
@@ -81,17 +102,15 @@ grade: stable               # 'stable' or 'devel'
 # Application entry points
 apps:
   my-hello-app:
-    command: bin/myapp      # Path inside the snap
+    command: bin/my-hello-app  # Path inside the snap
     plugs:                  # Interfaces this app needs
-      - home                # Access to home directory
+      - home                # Access to non-hidden files in the user's home directory
 
 # Build instructions
 parts:
   my-hello-app:
     plugin: python          # Use the Python snapcraft plugin
     source: .               # Build from current directory
-    python-packages:        # Additional Python packages
-      - requests            # Example dependency
 ```
 
 ## Understanding Parts
@@ -134,10 +153,10 @@ From the project root directory, run:
 
 ```bash
 # Build the snap (creates an .snap file)
-snapcraft
+snapcraft pack
 
-# If using Multipass (default on desktop Ubuntu), this will:
-# 1. Launch a clean VM
+# This will:
+# 1. Launch a clean build environment
 # 2. Install build dependencies
 # 3. Run the build process
 # 4. Package everything into a .snap file
@@ -189,7 +208,7 @@ snapcraft login
 snapcraft register my-hello-app
 ```
 
-Name registration is permanent - choose carefully. Names must be lowercase letters, numbers, and hyphens.
+Name registration is permanent - choose carefully. Names must contain at least one letter, use only lowercase letters, numbers, and hyphens, and not start or end with a hyphen.
 
 ## Publishing Your Snap
 
@@ -241,11 +260,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build snap
-        uses: snapcore/action-build@v1
+        uses: canonical/action-build@v1
         id: build
 
       - name: Publish to edge
-        uses: snapcore/action-publish@v1
+        uses: canonical/action-publish@v1
         env:
           SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_TOKEN }}
         with:
