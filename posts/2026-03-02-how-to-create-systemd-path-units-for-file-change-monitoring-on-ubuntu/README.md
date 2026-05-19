@@ -8,7 +8,7 @@ Description: Learn how to use systemd path units to monitor files and directorie
 
 ---
 
-Systemd path units provide a native way to monitor files and directories for changes and trigger other units in response. Unlike shell scripts using `inotifywait`, path units are managed by systemd itself - they start at boot, restart on failure, and integrate with journald logging without any extra work.
+Systemd path units provide a native way to monitor files and directories for changes and trigger other units in response. Unlike shell scripts using `inotifywait`, path units are managed by systemd itself - they start at boot and integrate with journald logging without any extra work.
 
 Path units suit situations where you want to run a service in response to file system changes, especially when the response needs to be reliable and logged properly.
 
@@ -49,8 +49,8 @@ Systemd supports several conditions in the `[Path]` section:
 # Activate when path exists
 PathExists=/run/app.pid
 
-# Activate when path does NOT exist
-PathExistsGlob= (not a negation - use PathExists with a service that checks)
+# There is no "path does not exist" condition
+# Use a service-side check or a positive marker file instead
 
 # Activate when files appear matching a glob pattern
 PathExistsGlob=/var/spool/incoming/*.csv
@@ -58,7 +58,7 @@ PathExistsGlob=/var/spool/incoming/*.csv
 # Activate when path is modified
 PathModified=/etc/nginx/nginx.conf
 
-# Activate when directory is modified (files created/deleted in it)
+# Activate when directory contains at least one file
 DirectoryNotEmpty=/var/spool/incoming/
 
 # Multiple conditions can be listed - any match triggers activation
@@ -186,7 +186,7 @@ sudo systemctl enable --now nginx-auto-reload.path
 
 ## Example 3: Application Lock File Monitoring
 
-Watch for a lock file to disappear (indicating a process completed) and trigger cleanup:
+Suppose you want to watch for a lock file to disappear (indicating a process completed) and trigger cleanup. This path unit does not do that:
 
 ```ini
 # /etc/systemd/system/app-cleanup.path
@@ -194,7 +194,7 @@ Watch for a lock file to disappear (indicating a process completed) and trigger 
 Description=Trigger cleanup when application finishes
 
 [Path]
-# Activate when this file STOPS existing
+# This activates when the lock file exists, not when it disappears
 PathExists=/run/myapp/processing.lock
 Unit=app-cleanup.service
 
@@ -208,23 +208,21 @@ For cleanup-on-completion patterns, it is more reliable to have the application 
 
 ```ini
 # Watch for the done marker
-PathExistsGlob=/run/myapp/done.marker
+PathExists=/run/myapp/done.marker
 Unit=app-cleanup.service
 ```
 
 ## Controlling Service Restart Behavior
 
-By default, systemd will not start the service again if it is already running. This means if files arrive while the service is still processing, the new files are picked up on the next trigger or a polling loop in the service.
+By default, systemd will not start the service again if it is already running. When a service triggered by a path unit exits, systemd checks the path conditions again and starts the service again if they still match.
 
 ```ini
 # csv-processor.service with more options
 [Service]
 Type=oneshot
 
-# Allow the service to be activated even if already running
-# (each activation creates a new instance)
-# Use this carefully - can lead to parallel runs
-# RemainAfterExit=no (default for oneshot)
+# Leave RemainAfterExit unset so the oneshot service returns to inactive
+# after each run and can be triggered again
 
 # Restart if the service fails
 Restart=on-failure
@@ -261,7 +259,7 @@ cat /proc/sys/fs/inotify/max_user_watches
 |--------|-------------------|---------------------|
 | Boot startup | Automatic via WantedBy | Manual or cron |
 | Logging | Integrated with journald | Custom or syslog |
-| Restart on failure | Built-in with Restart= | Wrapper script needed |
+| Restart on failure | Built into the triggered service with Restart= | Wrapper script needed |
 | Dependencies | Expressed in unit files | Script logic |
 | Complexity | Two files needed | One script |
 | Flexibility | Limited to systemd capabilities | Full shell flexibility |
