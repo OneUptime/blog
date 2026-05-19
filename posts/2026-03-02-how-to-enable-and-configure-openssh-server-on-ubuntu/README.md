@@ -105,8 +105,7 @@ Key security settings:
 # Change the default port (optional but reduces automated attack noise)
 # Port 2222
 
-# Protocol version - OpenSSH only supports 2, but worth documenting
-# Protocol 2
+# Protocol 1 is obsolete; modern OpenSSH uses SSH protocol 2 only
 
 # Listen on specific interface (if server has multiple interfaces)
 # ListenAddress 192.168.1.10
@@ -124,8 +123,8 @@ PasswordAuthentication no
 # Disable empty passwords
 PermitEmptyPasswords no
 
-# Disable challenge-response (keyboard-interactive) auth
-ChallengeResponseAuthentication no
+# Disable keyboard-interactive auth
+KbdInteractiveAuthentication no
 
 # Disable PAM for password auth (when using key auth only)
 # UsePAM yes  # Keep this enabled for other PAM functions
@@ -146,8 +145,8 @@ MaxStartups 3:50:10
 # Maximum number of open sessions per connection
 MaxSessions 3
 
-# Idle timeout (in seconds)
-# Disconnect if no activity for 15 minutes
+# Client keepalive timeout (in seconds)
+# Disconnect if the client stops responding for about 15 minutes
 ClientAliveInterval 300
 ClientAliveCountMax 3
 
@@ -163,7 +162,7 @@ AllowAgentForwarding no
 # Disable printing of /etc/motd after login
 # PrintMotd no
 
-# Disable forwarding of the locale from the client
+# Allow forwarding of the locale from the client
 AcceptEnv LANG LC_*
 
 # SFTP subsystem
@@ -385,7 +384,7 @@ auth required pam_google_authenticator.so
 Update sshd_config:
 
 ```text
-ChallengeResponseAuthentication yes
+KbdInteractiveAuthentication yes
 AuthenticationMethods publickey,keyboard-interactive
 ```
 
