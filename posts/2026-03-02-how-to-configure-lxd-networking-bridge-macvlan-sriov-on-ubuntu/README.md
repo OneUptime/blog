@@ -56,16 +56,14 @@ lxc network show custombr0
 # Create a profile that uses the custom bridge
 lxc profile create custnet
 lxc profile device add custnet eth0 nic \
-  nictype=bridged \
-  parent=custombr0
+  network=custombr0
 
 # Launch a container using this profile
 lxc launch ubuntu:24.04 mycontainer --profile default --profile custnet
 
 # Or add the NIC directly to an existing container
 lxc config device add mycontainer eth0 nic \
-  nictype=bridged \
-  parent=custombr0
+  network=custombr0
 ```
 
 ### Static IP Assignment
@@ -85,17 +83,16 @@ For containers to appear directly on the physical network:
 
 ```bash
 # Create a bridge backed by a physical NIC
-# Note: this takes the NIC off the host's routing - you need another NIC for host access
+# Note: enp3s0 must be unconfigured before LXD can enslave it to the bridge.
 lxc network create physicalbr \
-  bridge.driver=native \
-  parent=enp3s0 \
+  --type=bridge \
+  bridge.external_interfaces=enp3s0 \
   ipv4.address=none \
   ipv6.address=none
 
 # Attach container
 lxc config device add mycontainer eth0 nic \
-  nictype=bridged \
-  parent=physicalbr
+  network=physicalbr
 ```
 
 ## Macvlan Networking
@@ -128,8 +125,7 @@ lxc network show macvlan0
 ```bash
 # Add macvlan NIC to a container
 lxc config device add mycontainer eth0 nic \
-  nictype=macvlan \
-  parent=enp3s0
+  network=macvlan0
 
 # Start the container - it will get an IP from your LAN DHCP
 lxc start mycontainer
@@ -201,7 +197,7 @@ ip link show enp5s0f0
 # You'll see VF entries in the output
 
 # Make VF count persistent
-cat > /etc/udev/rules.d/99-sriov.rules <<'EOF'
+sudo tee /etc/udev/rules.d/99-sriov.rules >/dev/null <<'EOF'
 ACTION=="add", KERNEL=="enp5s0f0", SUBSYSTEM=="net", RUN+="/bin/sh -c 'echo 4 > /sys/class/net/enp5s0f0/device/sriov_numvfs'"
 EOF
 ```
@@ -216,8 +212,7 @@ lxc network create sriov0 \
 
 # Attach a VF to a container
 lxc config device add mycontainer eth0 nic \
-  nictype=sriov \
-  parent=enp5s0f0
+  network=sriov0
 
 # LXD automatically assigns an available VF to the container
 lxc start mycontainer
@@ -229,7 +224,7 @@ lxc exec mycontainer -- ip link show
 ```bash
 # Inside the container, check the interface type
 lxc exec mycontainer -- ethtool -i eth0
-# driver: virtchnl (VF driver) indicates SR-IOV is working
+# A VF driver such as iavf, ixgbevf, or mlx5_core indicates SR-IOV is working
 
 # Test network throughput (requires iperf3 on both ends)
 # On another host:
@@ -246,8 +241,7 @@ Containers can have multiple network interfaces for different traffic types:
 ```bash
 # Add management NIC (bridge, NAT)
 lxc config device add mycontainer mgmt nic \
-  nictype=bridged \
-  parent=lxdbr0
+  network=lxdbr0
 
 # Add data NIC (macvlan, direct LAN access)
 lxc config device add mycontainer data nic \
@@ -282,7 +276,8 @@ lxc network set lxdbr0 dns.domain=mycontainers.local
 # Enable DNS lookups of container names
 lxc network set lxdbr0 dns.mode=managed
 
-# Containers are then reachable by name:
+# Containers are then reachable by name from instances using the bridge DNS,
+# or from the host after integrating the bridge with systemd-resolved:
 # mycontainer.mycontainers.local
 ping mycontainer.mycontainers.local
 ```
