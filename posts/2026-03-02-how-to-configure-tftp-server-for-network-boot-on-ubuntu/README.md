@@ -85,9 +85,9 @@ sudo ufw allow 69/udp
 
 # If using iptables directly
 sudo iptables -A INPUT -p udp --dport 69 -j ACCEPT
-sudo iptables -A INPUT -p udp --sport 69 -j ACCEPT
+sudo iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 
-# Save iptables rules
+# Save iptables rules if netfilter-persistent is installed
 sudo netfilter-persistent save
 ```
 
@@ -115,9 +115,12 @@ sudo cp /usr/lib/syslinux/modules/bios/ldlinux.c32 /var/lib/tftpboot/
 sudo cp /usr/lib/syslinux/modules/bios/libutil.c32 /var/lib/tftpboot/
 sudo cp /usr/lib/syslinux/modules/bios/menu.c32 /var/lib/tftpboot/
 
-# For UEFI systems, use the EFI version
-sudo cp /usr/lib/syslinux/efi64/syslinux.efi /var/lib/tftpboot/bootx64.efi
-sudo cp /usr/lib/syslinux/modules/efi64/ldlinux.e64 /var/lib/tftpboot/
+# For UEFI systems, keep the EFI version and modules separate
+sudo mkdir -p /var/lib/tftpboot/efi64
+sudo cp /usr/lib/SYSLINUX.EFI/efi64/syslinux.efi /var/lib/tftpboot/efi64/bootx64.efi
+sudo cp /usr/lib/syslinux/modules/efi64/ldlinux.e64 /var/lib/tftpboot/efi64/
+sudo cp /usr/lib/syslinux/modules/efi64/libutil.c32 /var/lib/tftpboot/efi64/
+sudo cp /usr/lib/syslinux/modules/efi64/menu.c32 /var/lib/tftpboot/efi64/
 
 # Fix permissions on all copied files
 sudo chown -R tftp:tftp /var/lib/tftpboot/
@@ -151,12 +154,13 @@ LABEL local
 LABEL ubuntu-install
   MENU LABEL Install Ubuntu 24.04 LTS
   KERNEL ubuntu/24.04/vmlinuz
-  APPEND initrd=ubuntu/24.04/initrd auto=true priority=critical --
+  INITRD ubuntu/24.04/initrd
+  APPEND root=/dev/ram0 ramdisk_size=1500000 cloud-config-url=/dev/null ip=dhcp url=http://192.168.1.10/iso/ubuntu-24.04-live-server-amd64.iso --
 ```
 
 ## Serving Ubuntu Installation Files
 
-For network installation, you need the kernel and initrd from the Ubuntu installer.
+For network installation, you need the kernel and initrd from the Ubuntu installer. The live-server ISO itself should also be reachable over HTTP at the URL used in the PXE menu.
 
 ```bash
 # Create a directory for Ubuntu files
@@ -187,6 +191,8 @@ sudo nano /etc/dhcp/dhcpd.conf
 
 ```bash
 # Add to your subnet declaration in dhcpd.conf
+option client-arch code 93 = unsigned integer 16;
+
 subnet 192.168.1.0 netmask 255.255.255.0 {
   range 192.168.1.100 192.168.1.200;
   option routers 192.168.1.1;
@@ -194,18 +200,13 @@ subnet 192.168.1.0 netmask 255.255.255.0 {
 
   # TFTP server configuration
   next-server 192.168.1.10;  # IP of your TFTP server
-  filename "pxelinux.0";     # Boot file for BIOS clients
 
-  # For UEFI clients, use class-based configuration
-  class "pxeclients" {
-    match if substring (option vendor-class-identifier, 0, 9) = "PXEClient";
-    if option arch = 00:07 {
-      # UEFI x86-64
-      filename "bootx64.efi";
-    } else {
-      # Legacy BIOS
-      filename "pxelinux.0";
-    }
+  if option client-arch = 00:07 {
+    # UEFI x86-64
+    filename "efi64/bootx64.efi";
+  } else {
+    # Legacy BIOS
+    filename "pxelinux.0";
   }
 }
 ```
