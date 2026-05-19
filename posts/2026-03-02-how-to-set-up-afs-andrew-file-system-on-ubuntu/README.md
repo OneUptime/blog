@@ -226,7 +226,7 @@ For workstations where users log in with their institution credentials, configur
 # Install the PAM AFS module
 sudo apt install -y libpam-afs-session
 
-# Add to /etc/pam.d/common-auth (or the appropriate PAM config)
+# Add to /etc/pam.d/common-session (pam_afs_session is a session module)
 # This runs after Kerberos authentication succeeds
 echo "session optional pam_afs_session.so" | \
   sudo tee -a /etc/pam.d/common-session
@@ -241,7 +241,7 @@ If you're creating a new AFS infrastructure rather than joining an existing one,
 
 ```bash
 # Install server components
-sudo apt install -y openafs-server openafs-fileserver openafs-dbserver
+sudo apt install -y openafs-fileserver openafs-dbserver
 
 # Initialize the AFS server configuration
 # This is a complex process - here's the high-level overview:
