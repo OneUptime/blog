@@ -94,7 +94,7 @@ sudo nano /opt/zeek/etc/zeekctl.cfg
 # /opt/zeek/etc/zeekctl.cfg
 MailTo = admin@example.com
 LogRotationInterval = 3600    # Rotate logs hourly
-LogExpireInterval = 30days    # Keep logs for 30 days
+LogExpireInterval = 30day     # Keep logs for 30 days
 StatusCmdShowAll = 0
 ```
 
@@ -147,7 +147,7 @@ The conn.log has connection summaries useful for threat hunting:
 ```bash
 # Find large outbound transfers (potential data exfiltration)
 zeek-cut id.orig_h id.resp_h orig_bytes resp_bytes service < /opt/zeek/logs/current/conn.log | \
-    awk '$4 > 100000000' | sort -k4 -rn | head -20
+    awk '$3 > 100000000' | sort -k3 -rn | head -20
 
 # Find connections to rare ports
 zeek-cut id.orig_h id.resp_h id.resp_p service < /opt/zeek/logs/current/conn.log | \
@@ -166,9 +166,12 @@ Zeek's scripting language allows custom detection logic. Scripts go in `/opt/zee
 @load policy/protocols/conn/known-hosts
 @load policy/protocols/conn/known-services
 
-# Detect SSH brute force
+# Enable SSH brute force detection
+@load policy/protocols/ssh/detect-bruteforcing
+
+# Define a custom notice for cleartext HTTP credential submission
 redef enum Notice::Type += {
-    SSH::Password_Guessing
+    HTTP::Sensitive_URI,
 };
 
 # Alert on cleartext HTTP POST with credentials
@@ -195,9 +198,9 @@ Zeek has a package manager called `zkg` with community scripts:
 zkg autoconfig
 
 # Install useful detection packages
-zkg install zeek/corelight/zeek-community-id    # Add community ID to logs
-zkg install zeek/sethhall/domain_tld             # Track TLD usage
-zkg install zeek/cve-2021-44228                  # Log4Shell detection
+zkg install corelight/zeek-community-id    # Add community ID to logs
+zkg install sethhall/domain-tld            # Track TLD usage
+zkg install corelight/cve-2021-44228       # Log4Shell detection
 
 # List installed packages
 zkg list installed
