@@ -111,8 +111,8 @@ fc-list :charset=0900-097F  # Devanagari block
 Fontconfig uses XML configuration files to define font priorities and fallback chains. The system-wide configuration is in `/etc/fonts/`, and per-user configuration is in `~/.config/fontconfig/`.
 
 ```bash
-# View the fontconfig include directories
-fc-config --list
+# View the fontconfig rule files loaded on the system
+fc-conflist
 
 # View effective configuration for a query
 fc-match --sort serif | head -20
@@ -169,9 +169,9 @@ After saving the file, rebuild the font cache.
 fc-cache -fv
 ```
 
-## Setting System-Wide Default Fonts
+## Setting GNOME Default Fonts
 
-GNOME uses a separate setting for the interface font. To change it for all users, modify the GSettings schema or use the GNOME Settings application.
+GNOME uses a separate setting for the interface font. To change it for the current user, use the GNOME Settings application or `gsettings`.
 
 ```bash
 # View current font settings
@@ -192,7 +192,7 @@ gsettings set org.gnome.desktop.interface monospace-font-name 'Noto Mono 11'
 # Install fonttools for font inspection
 sudo apt install fonttools
 
-# List Unicode blocks covered by a font file
+# Verify that the fonttools command-line utilities are installed
 pyftsubset --help  # shows fonttools is working
 
 # Use fc-query to inspect a font file
@@ -224,7 +224,7 @@ LibreOffice respects fontconfig for fallback but you can also set script-specifi
 # GNOME Terminal > Edit > Preferences > Profile > Text > Custom Font
 # Choose "Noto Mono" or "DejaVu Sans Mono" (both have good coverage)
 
-# For even wider coverage in terminal, use "Symbols Noto Color Emoji"
+# For emoji fallback in the terminal, install Noto Color Emoji
 sudo apt install fonts-noto-color-emoji
 ```
 
