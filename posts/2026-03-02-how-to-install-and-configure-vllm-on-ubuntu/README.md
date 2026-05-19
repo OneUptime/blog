@@ -8,22 +8,22 @@ Description: A complete guide to installing vLLM on Ubuntu for high-throughput L
 
 ---
 
-vLLM is a high-performance library for LLM (Large Language Model) inference. It implements PagedAttention - an efficient memory management algorithm for the KV cache - which significantly increases throughput compared to naive implementations. It also provides an OpenAI-compatible REST API, making it easy to swap in as a backend for applications that already use the OpenAI API.
+vLLM is a high-performance library for LLM (Large Language Model) inference. It implements PagedAttention - an efficient memory management algorithm for the KV cache - which significantly increases throughput compared to naive implementations. It also provides an OpenAI-compatible REST API server, making it easy to swap in as a backend for applications that already use the OpenAI API.
 
 ## What Makes vLLM Different
 
-Standard LLM inference allocates KV cache memory upfront for the maximum sequence length. vLLM's PagedAttention manages KV cache like virtual memory pages - allocating blocks on demand and sharing cache between concurrent requests. This allows:
+Standard LLM inference often allocates contiguous KV cache memory for each sequence. vLLM's PagedAttention manages KV cache like virtual memory pages - allocating fixed-size blocks on demand and enabling cache sharing where requests overlap. This allows:
 
-- 2-4x higher throughput than Hugging Face Transformers serving
+- Up to 24x higher throughput than Hugging Face Transformers in the original vLLM benchmarks
 - Efficient batching of requests with different sequence lengths
 - Continuous batching (new requests added to existing batches)
 
 ## Prerequisites
 
-- Ubuntu 20.04 or 22.04
+- Ubuntu 22.04 or 24.04
 - NVIDIA GPU with at least 16GB VRAM (24GB+ recommended for 7B models)
-- NVIDIA driver 525+ and CUDA 12.1+
-- Python 3.9-3.12
+- NVIDIA driver new enough for the CUDA backend selected by PyTorch/vLLM
+- Python 3.10-3.13
 - At least 32GB system RAM
 
 For smaller GPUs, quantized models (GPTQ, AWQ, bitsandbytes) reduce VRAM requirements significantly.
@@ -45,11 +45,13 @@ nvidia-smi --query-gpu=memory.total,memory.free --format=csv
 ## Step 2: Create Python Environment
 
 ```bash
-# Install Python and venv
-sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv
+# Install Python, venv, curl, and uv
+sudo apt-get update && sudo apt-get install -y python3 python3-pip python3-venv curl
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source "$HOME/.local/bin/env"
 
 # Create a dedicated venv
-python3 -m venv ~/vllm-env
+uv venv --python 3.12 --seed --managed-python ~/vllm-env
 source ~/vllm-env/bin/activate
 
 # Upgrade pip
@@ -59,8 +61,8 @@ pip install --upgrade pip
 ## Step 3: Install vLLM
 
 ```bash
-# Install vLLM with CUDA support
-pip install vllm
+# Install vLLM with a PyTorch backend selected for your CUDA driver
+uv pip install vllm --torch-backend=auto
 
 # This installs PyTorch with CUDA, vLLM, and all dependencies
 # Installation can take 10-20 minutes due to large CUDA packages
@@ -95,14 +97,13 @@ snapshot_download(
 
 ```bash
 # Start the server with a small model
-python3 -m vllm.entrypoints.openai.api_server \
-  --model meta-llama/Llama-3.2-1B-Instruct \
+vllm serve meta-llama/Llama-3.2-1B-Instruct \
   --host 0.0.0.0 \
-  --port 8000
+  --port 8000 \
+  --served-model-name "llama-3.2-1b"
 
 # Or use a locally downloaded model
-python3 -m vllm.entrypoints.openai.api_server \
-  --model /opt/models/llama-3.2-1b-instruct \
+vllm serve /opt/models/llama-3.2-1b-instruct \
   --host 0.0.0.0 \
   --port 8000 \
   --served-model-name "llama-3.2-1b"  # Name used in API requests
@@ -111,18 +112,19 @@ python3 -m vllm.entrypoints.openai.api_server \
 ### Server Options
 
 ```bash
-python3 -m vllm.entrypoints.openai.api_server \
-  --model meta-llama/Llama-3-8B-Instruct \
+vllm serve meta-llama/Meta-Llama-3-8B-Instruct \
   --host 0.0.0.0 \
   --port 8000 \
-  --tensor-parallel-size 2 \      # Use 2 GPUs (must divide num attention heads evenly)
-  --max-model-len 4096 \          # Max context length (reduces VRAM usage)
-  --gpu-memory-utilization 0.90 \ # Use 90% of GPU memory for model + KV cache
-  --dtype bfloat16 \              # Use bfloat16 for A100/H100, float16 for RTX series
-  --max-num-seqs 256 \            # Max concurrent sequences
-  --enable-chunked-prefill \      # Improve throughput for long prompts
-  --api-key "your-secret-key"     # Optional: require API key
+  --tensor-parallel-size 2 \
+  --max-model-len 4096 \
+  --gpu-memory-utilization 0.90 \
+  --dtype bfloat16 \
+  --max-num-seqs 256 \
+  --enable-chunked-prefill \
+  --api-key "your-secret-key"
 ```
+
+`--tensor-parallel-size 2` uses 2 GPUs, `--max-model-len` limits context length to reduce VRAM usage, `--gpu-memory-utilization 0.90` reserves 90% of GPU memory for the vLLM instance, `--dtype bfloat16` is suitable for GPUs with BF16 support, `--max-num-seqs` controls concurrent sequences, `--enable-chunked-prefill` can improve scheduling for long prompts, and `--api-key` makes the server require an API key.
 
 ## Querying the Server
 
@@ -204,19 +206,16 @@ For GPUs with less VRAM, quantized models reduce memory requirements:
 
 ```bash
 # AWQ quantized model (very fast inference)
-python3 -m vllm.entrypoints.openai.api_server \
-  --model TheBloke/Llama-2-13B-chat-AWQ \
+vllm serve TheBloke/Llama-2-13B-chat-AWQ \
   --quantization awq \
   --max-model-len 4096
 
 # GPTQ quantized model
-python3 -m vllm.entrypoints.openai.api_server \
-  --model TheBloke/Llama-2-13B-chat-GPTQ \
+vllm serve TheBloke/Llama-2-13B-chat-GPTQ \
   --quantization gptq
 
 # bitsandbytes (4-bit, slower than AWQ/GPTQ but more models available)
-python3 -m vllm.entrypoints.openai.api_server \
-  --model meta-llama/Llama-3-70B-Instruct \
+vllm serve meta-llama/Meta-Llama-3-70B-Instruct \
   --quantization bitsandbytes \
   --load-format bitsandbytes \
   --tensor-parallel-size 4
@@ -237,13 +236,13 @@ User=ubuntu
 Group=ubuntu
 
 Environment="PATH=/home/ubuntu/vllm-env/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
-Environment="HF_HOME=/opt/models"  # Cache models here
+# Cache models here
+Environment="HF_HOME=/opt/models"
 
-ExecStart=/home/ubuntu/vllm-env/bin/python3 \
-  -m vllm.entrypoints.openai.api_server \
-  --model meta-llama/Llama-3.2-1B-Instruct \
+ExecStart=/home/ubuntu/vllm-env/bin/vllm serve meta-llama/Llama-3.2-1B-Instruct \
   --host 0.0.0.0 \
   --port 8000 \
+  --served-model-name llama-3.2-1b \
   --max-model-len 4096 \
   --gpu-memory-utilization 0.90
 
@@ -272,20 +271,21 @@ vLLM includes a benchmarking tool:
 # Install benchmark dependencies
 pip install aiohttp
 
-# Run throughput benchmark
-python3 benchmarks/benchmark_throughput.py \
+# Run offline throughput benchmark
+vllm bench throughput \
   --backend vllm \
   --model meta-llama/Llama-3.2-1B-Instruct \
-  --dataset ShareGPT_V3_unfiltered_cleaned_split.json \
-  --num-prompts 1000 \
-  --request-rate 10  # requests per second
+  --dataset-name sharegpt \
+  --dataset-path ShareGPT_V3_unfiltered_cleaned_split.json \
+  --num-prompts 1000
 
 # Online serving benchmark (requires server to be running)
-python3 benchmarks/benchmark_serving.py \
+vllm bench serve \
   --backend openai-chat \
   --model llama-3.2-1b \
   --base-url http://localhost:8000 \
-  --num-prompts 100
+  --num-prompts 100 \
+  --request-rate 10  # requests per second
 ```
 
 ## Troubleshooting
