@@ -8,7 +8,7 @@ Description: Configure the Intel P-State CPU driver on Ubuntu to control frequen
 
 ---
 
-The Intel P-State driver is a CPU frequency scaling driver specifically designed for Intel Core processors (Sandy Bridge and newer). Unlike the older `acpi-cpufreq` driver, P-State communicates directly with the processor's built-in frequency control, allowing finer-grained and more responsive frequency management. Understanding how to configure it lets you tune the balance between power consumption and performance.
+The Intel P-State driver is a CPU frequency scaling driver specifically designed for Intel Core processors (Sandy Bridge and newer), though some processors in that range may not be supported. Unlike the older `acpi-cpufreq` driver, P-State communicates directly with the processor's built-in frequency control, allowing finer-grained and more responsive frequency management. Understanding how to configure it lets you tune the balance between power consumption and performance.
 
 ## Checking if Intel P-State is Active
 
@@ -31,22 +31,22 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
 # Typically: performance powersave
 ```
 
-With Intel P-State active, only `performance` and `powersave` governors are available by default - not `ondemand`, `schedutil`, etc. Those are available only under `acpi-cpufreq`.
+With Intel P-State active, only the `performance` and `powersave` P-state selection algorithms are available by default - not generic governors such as `ondemand` or `schedutil`. Those generic governors are available when Intel P-State runs in passive mode, or when another CPUFreq driver such as `acpi-cpufreq` is used.
 
 ## Intel P-State Operating Modes
 
 Intel P-State has two operating modes:
 
-**Active mode** (default): The driver fully manages frequency scaling. The `powersave` governor in this mode uses `schedutil`-like behavior internally, dynamically adjusting based on load.
+**Active mode** (default on many modern HWP-capable Intel systems): The driver fully manages frequency scaling. The `powersave` governor in this mode uses `schedutil`-like behavior internally, dynamically adjusting based on load.
 
-**Passive mode**: The driver hands frequency control to the Linux CPUFreq framework, enabling governors like `schedutil` and `ondemand`.
+**Passive mode**: The driver hands frequency control to the Linux CPUFreq framework, enabling available generic governors like `schedutil` and `ondemand`. In this mode, `scaling_driver` reports `intel_cpufreq` instead of `intel_pstate`.
 
 ```bash
 # Check current mode
 cat /sys/devices/system/cpu/intel_pstate/status
 # Outputs: active, passive, or off
 
-# Switch to passive mode (enables all CPUFreq governors)
+# Switch to passive mode (enables available generic CPUFreq governors)
 echo passive | sudo tee /sys/devices/system/cpu/intel_pstate/status
 
 # Switch back to active mode
@@ -60,13 +60,13 @@ echo active | sudo tee /sys/devices/system/cpu/intel_pstate/status
 ls /sys/devices/system/cpu/intel_pstate/
 
 # Files you'll typically see:
-# max_perf_pct         - maximum frequency as percentage of max
-# min_perf_pct         - minimum frequency as percentage of max
+# max_perf_pct         - maximum performance level as percentage of max
+# min_perf_pct         - minimum performance level as percentage of max
 # no_turbo             - disable/enable turbo boost (0=enabled, 1=disabled)
 # status               - active/passive/off
 # turbo_pct            - percentage of frequencies that are turbo
 # num_pstates          - total number of P-states available
-# hwp_dynamic_boost    - hardware-controlled dynamic boost
+# hwp_dynamic_boost    - hardware-controlled dynamic boost (HWP active mode only)
 
 # View current settings
 cat /sys/devices/system/cpu/intel_pstate/max_perf_pct
@@ -77,11 +77,12 @@ cat /sys/devices/system/cpu/intel_pstate/no_turbo
 ### Capping Maximum Frequency
 
 ```bash
-# Limit CPU to 80% of max frequency (reduces heat and power)
+# Limit CPU to 80% of the maximum supported performance level
 echo 80 | sudo tee /sys/devices/system/cpu/intel_pstate/max_perf_pct
 
-# Example: 3.0 GHz max CPU, setting 80% = 2.4 GHz cap
-# This prevents turbo boost and limits sustained frequency
+# This reduces the allowed top P-state, which can reduce heat and power.
+# It does not necessarily disable all turbo P-states unless the cap falls
+# below the turbo range for that CPU.
 
 # View actual frequency range
 cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_min_freq
@@ -130,13 +131,13 @@ echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governo
 
 Despite being named `powersave`, the Intel P-State powersave governor is dynamic - it ramps up when needed. The difference from `performance` is how aggressively it ramps up and how quickly it drops back down.
 
-In passive mode, you can use any governor:
+In passive mode, you can use any generic governor listed by `scaling_available_governors`:
 
 ```bash
 # Switch to passive mode first
 echo passive | sudo tee /sys/devices/system/cpu/intel_pstate/status
 
-# Now all governors are available
+# Now available generic governors are listed
 cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
 # conservative ondemand userspace powersave performance schedutil
 
@@ -151,7 +152,7 @@ Modern Intel CPUs support Hardware-Controlled P-States (HWP), where the CPU hard
 ```bash
 # Check if HWP is available
 cat /sys/devices/system/cpu/cpu0/cpufreq/energy_performance_available_preferences
-# Outputs: default performance balance_performance balance_power power
+# Example output: default performance balance_performance balance_power power
 
 # Set HWP preference (affects how hardware makes frequency decisions)
 # Apply to all CPUs
@@ -166,7 +167,7 @@ echo balance_power | sudo tee \
 # power            - maximize power saving
 ```
 
-HWP works in conjunction with the software governor - the governor sets the general policy, HWP handles microsecond-level decisions.
+With HWP enabled, the processor selects P-states by itself while Intel P-State and the selected policy provide performance and energy-efficiency hints.
 
 ## Persistent Configuration
 
@@ -181,7 +182,6 @@ sudo nano /etc/default/grub
 # Examples of boot parameters:
 # intel_pstate=passive                    - start in passive mode
 # intel_pstate=disable                    - disable P-State driver entirely
-# intel_pstate=no_turbo                   - disable turbo at boot
 
 # Apply the change
 sudo update-grub
@@ -204,8 +204,12 @@ echo 30 > /sys/devices/system/cpu/intel_pstate/min_perf_pct
 echo 0 > /sys/devices/system/cpu/intel_pstate/no_turbo
 
 # Set powersave governor with balanced_power HWP preference
-echo powersave > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+for governor in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
+    [ -e "$governor" ] || continue
+    echo powersave > "$governor"
+done
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference; do
+    [ -e "$cpu" ] || continue
     echo balance_power > "$cpu"
 done
 EOF
@@ -256,26 +260,26 @@ grep MHz /proc/cpuinfo | sort -t: -k2 -n | tail -5
 
 **Laptop - Battery Life Priority:**
 ```bash
-echo 60 > /sys/devices/system/cpu/intel_pstate/max_perf_pct
-echo power > /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference
+echo 60 | sudo tee /sys/devices/system/cpu/intel_pstate/max_perf_pct
+echo power | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference
 ```
 
 **Server - Balanced:**
 ```bash
-echo powersave > /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
-echo balance_power > /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference
+echo powersave | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+echo balance_power | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference
 ```
 
 **Workstation - Performance:**
 ```bash
-echo performance > /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
-echo performance > /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/energy_performance_preference
 ```
 
 **Real-time / Low Latency:**
 ```bash
-echo 100 > /sys/devices/system/cpu/intel_pstate/min_perf_pct
-echo performance > /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+echo 100 | sudo tee /sys/devices/system/cpu/intel_pstate/min_perf_pct
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 ```
 
 The Intel P-State driver provides more responsive and accurate frequency control than generic ACPI power management. Taking time to tune it for your specific workload pays off in both performance and power efficiency.
