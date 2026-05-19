@@ -106,8 +106,8 @@ WAL archiving copies completed WAL segments to an archive location, enabling poi
 archive_mode = on
 
 # Command to archive each WAL segment
-# %p = full path to WAL file, %f = filename only
-archive_command = 'cp %p /var/lib/postgresql/wal_archive/%f'
+# %p = path to WAL file relative to the data directory, %f = filename only
+archive_command = 'test ! -f /var/lib/postgresql/wal_archive/%f && cp %p /var/lib/postgresql/wal_archive/%f'
 
 # For archiving to S3 (using aws-cli or WAL-G)
 # archive_command = 'wal-g wal-push %p'
@@ -164,29 +164,35 @@ FROM pg_replication_slots;
 `synchronous_commit` controls whether a transaction waits for WAL to be flushed before returning success to the client:
 
 ```ini
-# on = wait for WAL flush to local disk (default, safe)
+# on = wait for WAL flush locally and, with synchronous replication configured, on synchronous standbys (default, safe)
 # off = don't wait, risk losing last few transactions on crash
 # local = wait for local flush only (useful if you don't need remote sync)
 # remote_write = wait for standby to receive and write (not flush)
-# remote_apply = wait for standby to apply (highest durability)
+# remote_apply = wait for standby to apply (highest consistency, highest latency)
 synchronous_commit = on
 ```
 
 For applications that can tolerate minor data loss in exchange for better write throughput:
 
 ```sql
--- Set per-transaction (session level)
-SET synchronous_commit = off;
-INSERT INTO events ...;
+-- Set for one transaction
+BEGIN;
+SET LOCAL synchronous_commit = off;
+INSERT INTO events(message) VALUES ('example event');
+COMMIT;
 ```
 
 ## WAL Compression
 
-WAL compression reduces disk space and network bandwidth for replication, with a small CPU overhead:
+WAL compression can reduce WAL volume and network bandwidth for replication by compressing full page images, with a small CPU overhead:
 
 ```ini
-# Compress WAL using lz4 (fast) or zstd (better ratio, PostgreSQL 15+)
+# Compress WAL using lz4 (fast) or zstd (better ratio) on PostgreSQL 15+,
+# if PostgreSQL was built with support for the selected method
 wal_compression = lz4
+
+# PostgreSQL 14 uses a boolean value instead
+# wal_compression = on
 ```
 
 Check current compression:
@@ -206,8 +212,8 @@ SELECT count(*) AS wal_files,
        sum(size) / 1024 / 1024 AS total_mb
 FROM pg_ls_waldir();
 
--- WAL generation rate per second
-SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0') / 1024 / 1024 AS total_wal_mb;
+-- Current WAL position expressed in MB (not a rate)
+SELECT pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0') / 1024 / 1024 AS current_wal_mb;
 ```
 
 For ongoing WAL throughput monitoring, use `pg_stat_wal` (PostgreSQL 14+):
