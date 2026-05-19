@@ -44,7 +44,7 @@ For single-node clusters or development environments, the local path provisioner
 
 ```bash
 # Install the local path provisioner
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.36/deploy/local-path-storage.yaml
 
 # Verify the provisioner pod is running
 kubectl get pods -n local-path-storage
@@ -86,7 +86,7 @@ kubectl delete pvc test-pvc
 
 ## NFS Storage Class
 
-NFS is commonly used for shared storage that supports `ReadWriteMany` access mode - multiple pods can mount the same volume simultaneously. This is essential for workloads like shared file servers or media processing pipelines.
+NFS is commonly used for shared storage that supports `ReadWriteMany` access mode - multiple pods on multiple nodes can mount the same volume simultaneously. This is essential for workloads like shared file servers or media processing pipelines.
 
 ### Setting Up an NFS Server on Ubuntu
 
@@ -153,7 +153,6 @@ metadata:
 provisioner: rancher.io/local-path
 reclaimPolicy: Delete        # Delete PV when PVC is deleted
 volumeBindingMode: WaitForFirstConsumer  # Wait until pod is scheduled before provisioning
-allowVolumeExpansion: true   # Allow PVCs to be resized after creation
 ```
 
 ```bash
@@ -243,7 +242,7 @@ kubectl get pvc --watch
 
 ### Removing the Default Storage Class
 
-If multiple storage classes are marked as default, PVC requests without an explicit class will fail:
+If multiple storage classes are marked as default, PVC requests without an explicit class use the most recently created default Storage Class. It is still best to keep only one default:
 
 ```bash
 # Remove the default annotation from a storage class
