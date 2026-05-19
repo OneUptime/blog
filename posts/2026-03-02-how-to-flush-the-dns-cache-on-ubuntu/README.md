@@ -8,7 +8,7 @@ Description: How to flush the DNS cache on Ubuntu using systemd-resolved, nscd, 
 
 ---
 
-When DNS records change - after migrating a service to a new server, for example - cached records can cause connections to continue going to the old IP for a period of time. Flushing the DNS cache forces your system to fetch fresh records from authoritative servers immediately.
+When DNS records change - after migrating a service to a new server, for example - cached records can cause connections to continue going to the old IP for a period of time. Flushing the DNS cache forces your system to fetch fresh records from its configured DNS resolver instead of using locally cached answers.
 
 The right method for flushing the DNS cache on Ubuntu depends on which DNS resolver is running. Modern Ubuntu uses `systemd-resolved` by default, but some setups use `nscd` or `dnsmasq`.
 
@@ -35,11 +35,17 @@ If `resolv.conf` is a symlink to `/run/systemd/resolve/stub-resolv.conf` or `/ru
 
 ## Flushing the Cache with systemd-resolved
 
-This is the method for most Ubuntu 18.04+ systems:
+This is the method for most current Ubuntu systems:
 
 ```bash
 # Flush all DNS caches in systemd-resolved
 sudo resolvectl flush-caches
+```
+
+On Ubuntu 18.04, use the older `systemd-resolve` command:
+
+```bash
+sudo systemd-resolve --flush-caches
 ```
 
 Verify the flush worked by checking statistics before and after:
@@ -51,7 +57,7 @@ resolvectl statistics
 # Flush
 sudo resolvectl flush-caches
 
-# Check again - CurrentCacheSize should be 0 or lower
+# Check again - Current Cache Size should be 0
 resolvectl statistics
 ```
 
@@ -91,7 +97,7 @@ However, restarting briefly interrupts DNS resolution for any queries in flight,
 `nscd` (Name Service Caching Daemon) is an older caching daemon sometimes used on Ubuntu:
 
 ```bash
-# Flush nscd caches (all databases)
+# Flush the nscd hosts cache
 sudo nscd --invalidate=hosts
 
 # Or restart nscd to clear everything
@@ -133,7 +139,7 @@ resolvectl statistics | grep "Cache Misses"
 You can also use `dig` with a direct query to bypass the local resolver entirely:
 
 ```bash
-# Query the authoritative DNS server directly, bypassing local cache
+# Query a public recursive resolver directly, bypassing local cache
 dig example.com @8.8.8.8
 ```
 
@@ -193,8 +199,12 @@ For automation or deployment scripts where DNS changes are made and you need fre
 echo "Flushing DNS cache..."
 
 if systemctl is-active --quiet systemd-resolved; then
-    # systemd-resolved is running - use resolvectl
-    sudo resolvectl flush-caches
+    # systemd-resolved is running
+    if command -v resolvectl >/dev/null 2>&1; then
+        sudo resolvectl flush-caches
+    else
+        sudo systemd-resolve --flush-caches
+    fi
     echo "Flushed systemd-resolved cache"
 elif systemctl is-active --quiet nscd; then
     # nscd is running
@@ -217,7 +227,7 @@ dig +short example.com
 
 ### After Updating /etc/hosts
 
-Changes to `/etc/hosts` take effect immediately without any cache flush needed - the file is read on each lookup, not cached.
+On a typical Ubuntu system using systemd-resolved and the standard `files` NSS source, changes to `/etc/hosts` take effect immediately without any cache flush needed. If you use `nscd` or `dnsmasq` to cache hosts data, invalidate or reload that cache after changing `/etc/hosts`.
 
 ### After a DNS Migration
 
@@ -239,13 +249,11 @@ dig @8.8.8.8 example.com
 
 ### In Containerized Environments
 
-Container DNS caches are independent of the host. If running applications in Docker or LXC, flush DNS inside the container:
+Container DNS behavior depends on how the container is configured. Docker containers normally use the host's DNS settings or Docker's embedded DNS server, not a systemd-resolved service inside the container. If the application or container image runs its own cache, clear that cache or restart the application/container:
 
 ```bash
-# Inside a Docker container
-docker exec mycontainer resolvectl flush-caches
-# or
-docker exec mycontainer systemctl restart systemd-resolved
+# Restart a Docker container to clear application-level resolver state
+docker restart mycontainer
 ```
 
-DNS cache management is a basic but important skill. The most common mistake is flushing only the local cache without checking whether upstream resolvers are also holding stale records - always verify with a direct query to a public resolver to confirm what the rest of the world sees.
+DNS cache management is a basic but important skill. The most common mistake is flushing only the local cache without checking whether upstream resolvers are also holding stale records - always verify with a direct query to a public resolver or authoritative nameserver to confirm what other resolvers see.
