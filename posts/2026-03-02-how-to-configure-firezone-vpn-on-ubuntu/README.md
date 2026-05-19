@@ -8,63 +8,57 @@ Description: Step-by-step guide to deploying and configuring Firezone VPN on Ubu
 
 ---
 
-Firezone is a WireGuard-based VPN management platform that combines a web portal for user self-service with enterprise-grade authentication options. Users log in through the portal with their existing SSO credentials (Google Workspace, Okta, Azure AD) and self-provision their own VPN configuration. IT teams get a central view of who has access and can revoke it instantly.
+Firezone's legacy 0.7 release is a WireGuard-based VPN management platform that combines a web portal for user self-service with enterprise-grade authentication options. Users log in through the portal with their existing SSO credentials (Google Workspace, Okta, Azure AD) and self-provision their own VPN configuration. IT teams get a central view of who has access and can revoke it instantly.
 
-This guide installs Firezone on Ubuntu using the official installer, configures authentication, and walks through daily operations.
+This guide installs the legacy Firezone 0.7 server on Ubuntu using the official legacy installer, configures authentication, and walks through daily operations. The legacy branch is end-of-life; Firezone's current product uses a managed control plane and self-hosted gateways instead of this self-hosted portal.
 
 ## Prerequisites
 
-- Ubuntu 20.04 or 22.04
+- Ubuntu 20.04 or 22.04 with Docker Engine and Docker Compose v2
 - 1 CPU core, 1 GB RAM minimum (2 GB recommended)
 - A domain name pointing to your server
 - Ports 80, 443, and 51820 (UDP) open
-- Root access
+- A user with permission to run Docker commands
 
 ## Installing Firezone
 
-Firezone uses an omnibus package (similar to GitLab's approach - all dependencies bundled):
+Legacy Firezone 0.7 uses Docker Compose by default. The legacy installer prompts for an administrator email, install directory, and external URL, then creates a `.env` file and a Docker Compose deployment:
 
 ```bash
 # Download and run the installer
 
-sudo bash -c "$(curl -fsSL https://raw.githubusercontent.com/firezone/firezone/legacy/scripts/install.sh)"
+bash <(curl -fsSL https://github.com/firezone/firezone/raw/legacy/scripts/install.sh)
 ```
 
 The installer will:
-- Install WireGuard
-- Configure PostgreSQL for Firezone's data
-- Set up Nginx with a self-signed certificate
-- Generate random secrets and admin credentials
-- Start the Firezone systemd service
+- Download a Docker Compose template
+- Generate Firezone secrets and admin credentials in `$HOME/.firezone/.env`
+- Start PostgreSQL, Firezone, and Caddy containers
+- Run database migrations
+- Create the initial administrator account
 
 At the end, the installer displays the admin email and password - save these.
 
 ## Configuring SSL with Let's Encrypt
 
-Replace the self-signed certificate with a real one:
+For Docker deployments, the default production Compose file uses Caddy to obtain and renew certificates automatically when `EXTERNAL_URL` is a public HTTPS URL and port 80 is reachable.
 
 ```bash
-# Edit the Firezone configuration
-sudo nano /etc/firezone/firezone.rb
+# Edit the Firezone environment file
+nano $HOME/.firezone/.env
 ```
 
-Update these settings:
+Set your actual domain:
 
-```ruby
-# Set your actual domain
-default['firezone']['fqdn'] = 'vpn.yourdomain.com'
-
-# Enable ACME (Let's Encrypt)
-default['firezone']['ssl']['certificate_file'] = nil
-default['firezone']['ssl']['certificate_key_file'] = nil
-default['firezone']['ssl']['acme']['enabled'] = true
-default['firezone']['ssl']['acme']['email'] = 'admin@yourdomain.com'
+```env
+EXTERNAL_URL=https://vpn.yourdomain.com
 ```
 
 Apply the configuration:
 
 ```bash
-sudo firezone-ctl reconfigure
+cd $HOME/.firezone
+docker compose up -d
 ```
 
 ## Firewall Setup
@@ -77,6 +71,9 @@ sudo ufw allow 80/tcp
 # Allow WireGuard
 sudo ufw allow 51820/udp
 
+# Allow routed VPN traffic through the host
+sudo ufw default allow routed
+
 sudo ufw enable
 ```
 
@@ -86,7 +83,7 @@ Access the portal at `https://vpn.yourdomain.com` and log in with the credential
 
 Navigate to Settings > Security to:
 1. Change the admin password
-2. Configure allowed CIDR ranges
+2. Configure authentication providers
 3. Set session timeout
 
 Under Devices, you see all registered VPN configurations.
@@ -97,53 +94,29 @@ Firezone supports OpenID Connect providers. Here is the setup for Google Workspa
 
 **In Google Cloud Console:**
 1. Create an OAuth 2.0 Client ID (Web application type)
-2. Add `https://vpn.yourdomain.com/auth/oidc/google/callback` as an authorized redirect URI
+2. Add `https://vpn.yourdomain.com/auth/oidc/google/callback/` as an authorized redirect URI
 3. Note the Client ID and Client Secret
 
-**In Firezone configuration:**
+**In Firezone:**
 
-```bash
-sudo nano /etc/firezone/firezone.rb
-```
+Navigate to `/settings/security`, click "Add OpenID Connect Provider", and enter:
 
-```ruby
-# Google Workspace OIDC configuration
-default['firezone']['authentication']['oidc'] = {
-  google: {
-    discovery_document_uri: 'https://accounts.google.com/.well-known/openid-configuration',
-    client_id: 'your-client-id.apps.googleusercontent.com',
-    client_secret: 'your-client-secret',
-    redirect_uri: 'https://vpn.yourdomain.com/auth/oidc/google/callback',
-    response_type: 'code',
-    scope: 'openid email profile',
-    label: 'Google Workspace'
-  }
-}
-```
+- Config ID: `google`
+- Label: `Google Workspace`
+- Discovery Document URI: `https://accounts.google.com/.well-known/openid-configuration`
+- Client ID: `your-client-id.apps.googleusercontent.com`
+- Client Secret: `your-client-secret`
+- Redirect URI: `https://vpn.yourdomain.com/auth/oidc/google/callback/`
+- Response type: `code`
+- Scope: `openid email profile`
 
-Apply changes:
-
-```bash
-sudo firezone-ctl reconfigure
-```
-
-Users can now sign in with their Google account. On first login, Firezone creates a user account and they can self-provision a VPN device.
+Users can now sign in with their Google account. If Auto create users is enabled for the provider, Firezone creates a user account on first login and they can self-provision a VPN device.
 
 ## Configuring Okta OIDC
 
-```ruby
-default['firezone']['authentication']['oidc'] = {
-  okta: {
-    discovery_document_uri: 'https://your-org.okta.com/.well-known/openid-configuration',
-    client_id: 'your-okta-client-id',
-    client_secret: 'your-okta-client-secret',
-    redirect_uri: 'https://vpn.yourdomain.com/auth/oidc/okta/callback',
-    response_type: 'code',
-    scope: 'openid email profile',
-    label: 'Okta'
-  }
-}
-```
+In the Okta Admin Console, create an OIDC web application. Set the sign-in redirect URI to `https://vpn.yourdomain.com/auth/oidc/okta/callback/`, enable the Authorization Code flow, and enable refresh tokens if you want Firezone to revoke VPN sessions when OIDC refresh fails.
+
+In Firezone, navigate to `/settings/security`, click "Add OpenID Connect Provider", and enter the Okta provider details. Use `openid email profile offline_access` for the scope when refresh tokens are enabled.
 
 ## User Self-Service Provisioning
 
@@ -156,7 +129,7 @@ This self-service model means IT does not need to generate configs manually for 
 
 ## Managing Split Tunneling
 
-By default, Firezone routes all traffic through the VPN. To configure split tunneling, go to Settings > Default Client Config and modify the "Allowed IPs":
+By default, Firezone routes all traffic through the VPN. To configure split tunneling, go to Settings > Defaults and modify the "Allowed IPs":
 
 For full tunnel:
 ```text
@@ -172,31 +145,44 @@ Users who already have devices registered will need to regenerate their configur
 
 ## Enforcing Periodic Authentication
 
-Firezone can require users to re-authenticate periodically, which syncs with your identity provider to verify the user's account is still active:
+Firezone can require users to re-authenticate periodically, which syncs with your identity provider to verify the user's account is still active. Set the VPN session duration in seconds:
 
 ```bash
-sudo nano /etc/firezone/firezone.rb
+nano $HOME/.firezone/.env
 ```
 
-```ruby
+```env
 # Require re-authentication every 7 days
-default['firezone']['authentication']['local_enabled'] = true
-default['firezone']['max_session_lifetime_hours'] = 168
+VPN_SESSION_DURATION=604800
 ```
 
-When a user's session expires, their VPN connection drops and they must log back into the portal. This ensures terminated employees lose access promptly.
+Apply the configuration:
+
+```bash
+cd $HOME/.firezone
+docker compose up -d
+```
+
+When a user's VPN session expires, their VPN connection is disabled and they must log back into the portal. This helps terminated employees lose access promptly.
 
 ## DNS Configuration
 
 Configure the DNS pushed to clients:
 
 ```bash
-sudo nano /etc/firezone/firezone.rb
+nano $HOME/.firezone/.env
 ```
 
-```ruby
+```env
 # Push internal DNS to VPN clients
-default['firezone']['wireguard']['dns'] = '10.0.0.53'
+DEFAULT_CLIENT_DNS=10.0.0.53
+```
+
+Apply the configuration:
+
+```bash
+cd $HOME/.firezone
+docker compose up -d
 ```
 
 ## Egress Rules
@@ -209,46 +195,50 @@ Firezone can restrict what VPN clients can access via egress filtering. In the w
 ## Backup and Recovery
 
 ```bash
-# Backup the Firezone database
-sudo firezone-ctl backup create
+# Stop Firezone before backing up
+cd $HOME/.firezone
+docker compose down
 
-# Backups are stored in /var/opt/firezone/backups/
-ls -la /var/opt/firezone/backups/
+# Back up the installation directory and Docker PostgreSQL volume
+sudo tar -zcvfp $HOME/firezone-back-$(date +'%F-%H-%M').tgz \
+  $HOME/.firezone \
+  /var/lib/docker/volumes/firezone_postgres-data
 
 # Restore from backup
-sudo firezone-ctl backup restore /var/opt/firezone/backups/firezone-20260302.tar.gz
+sudo tar -zxvfp /path/to/firezone-back.tgz -C / --numeric-owner
 ```
 
-Also back up `/etc/firezone/firezone.rb` separately:
+Also back up any Docker daemon changes, such as `/etc/docker/daemon.json`, if you customized Docker networking:
 
 ```bash
-sudo cp /etc/firezone/firezone.rb /backup/firezone.rb.$(date +%Y%m%d)
+sudo cp /etc/docker/daemon.json /backup/daemon.json.$(date +%Y%m%d)
 ```
 
 ## Monitoring and Logs
 
 ```bash
 # View all Firezone service logs
-sudo firezone-ctl tail
+cd $HOME/.firezone
+docker compose logs -f
 
 # Check specific service
-sudo firezone-ctl tail phoenix  # web app
-sudo firezone-ctl tail nginx
-sudo firezone-ctl tail postgresql
+docker compose logs -f firezone  # web app
+docker compose logs -f caddy
+docker compose logs -f postgres
 
 # Service status
-sudo firezone-ctl status
+docker compose ps
 ```
 
 ## Upgrading Firezone
 
 ```bash
-# Download the latest version
-curl -fsSL https://raw.githubusercontent.com/firezone/firezone/legacy/scripts/install.sh | sudo bash
+# Change to the Firezone installation directory
+cd $HOME/.firezone
 
-# Or if using apt (after adding the repository)
-sudo apt update && sudo apt upgrade firezone
-sudo firezone-ctl reconfigure
+# Pull updated images and restart services
+docker compose pull
+docker compose up -d
 ```
 
 ## Troubleshooting
@@ -256,8 +246,9 @@ sudo firezone-ctl reconfigure
 **Portal returns 502 Bad Gateway:**
 ```bash
 # Check if Phoenix app is running
-sudo firezone-ctl status phoenix
-sudo firezone-ctl tail phoenix
+cd $HOME/.firezone
+docker compose ps firezone
+docker compose logs -f firezone
 ```
 
 **WireGuard peers not receiving traffic:**
@@ -270,6 +261,9 @@ sysctl net.ipv4.ip_forward
 
 # Check iptables rules
 sudo iptables -L FORWARD -n -v
+
+# If using ufw, verify routed traffic is allowed
+sudo ufw status verbose
 ```
 
 **OIDC login failing:**
