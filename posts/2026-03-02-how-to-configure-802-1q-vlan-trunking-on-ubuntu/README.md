@@ -180,6 +180,9 @@ sudo ip link set br0 type bridge vlan_filtering 1
 # Add the physical interface as a trunk port
 sudo ip link set eth0 master br0
 
+# Add a VM's tap interface as a bridge port
+sudo ip link set tap0 master br0
+
 # Allow VLANs 10 and 20 on the trunk port
 sudo bridge vlan add dev eth0 vid 10
 sudo bridge vlan add dev eth0 vid 20
