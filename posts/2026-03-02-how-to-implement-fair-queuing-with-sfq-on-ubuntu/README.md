@@ -10,7 +10,7 @@ Description: Configure Stochastic Fair Queuing (SFQ) on Ubuntu to distribute net
 
 Stochastic Fair Queuing (SFQ) is a queuing discipline that prevents any single network flow from monopolizing a shared network link. It hashes flows (based on source/destination IP and port) into buckets and round-robins between them, giving each active flow a roughly equal share of the available bandwidth.
 
-The "stochastic" part means it uses a hash function to assign flows to buckets, which means multiple flows can collide into the same bucket. To avoid any flow exploiting a stable bucket assignment, SFQ periodically changes its hash function (every 10 seconds by default), so no flow can permanently benefit from a favorable assignment.
+The "stochastic" part means it uses a hash function to assign flows to buckets, which means multiple flows can collide into the same bucket. To avoid any flow exploiting a stable bucket assignment, SFQ can periodically change its hash function when you set a non-zero `perturb` interval. Many examples use 10 seconds, while the default is 0, which disables perturbation.
 
 ## When SFQ Is the Right Choice
 
@@ -133,7 +133,7 @@ Key SFQ parameters:
 - **quantum** - how many bytes to send per flow before moving to the next (default = one MTU, 1514 bytes). Larger quantum increases throughput but reduces fairness.
 - **depth** - queue depth per bucket (default 127). Reduce this to limit per-flow buffering.
 - **divisor** - number of hash buckets (default 1024). More buckets = fewer collisions but more memory.
-- **perturb** - seconds before rehashing (default 10). Setting it to 0 disables rehashing.
+- **perturb** - seconds before rehashing (default 0, which disables rehashing). A value such as 10 enables periodic rehashing.
 
 ## Tuning SFQ for Different Scenarios
 
@@ -199,8 +199,8 @@ iperf3 -c remote-server -p 5202 -t 30 &
 iperf3 -c remote-server -p 5203 -t 30 &
 wait
 
-# Each flow should get approximately equal bandwidth
-# Without SFQ, whichever flow started first would dominate
+# Each flow should get approximately equal bandwidth when SFQ owns the bottleneck queue
+# Without a fair queuing qdisc at the bottleneck, flows may get uneven shares
 ```
 
 ## Monitoring SFQ
@@ -229,7 +229,7 @@ get_sfq_stats eth0
 
 ```bash
 # Create a systemd service to restore tc rules at boot
-cat > /etc/systemd/system/traffic-shaping.service << 'EOF'
+sudo tee /etc/systemd/system/traffic-shaping.service > /dev/null << 'EOF'
 [Unit]
 Description=Network Traffic Shaping (HTB + SFQ)
 After=network.target
@@ -237,7 +237,7 @@ After=network.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/setup-htb-sfq.sh
-ExecStop=/sbin/tc qdisc del dev eth0 root
+ExecStop=-/sbin/tc qdisc del dev eth0 root
 RemainAfterExit=yes
 
 [Install]
