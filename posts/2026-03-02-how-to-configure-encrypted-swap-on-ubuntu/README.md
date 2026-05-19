@@ -86,16 +86,17 @@ Add a line in this format:
 ```text
 # Format: name  device  key  options
 # For a swap partition (/dev/sda2):
-swap   /dev/sda2   /dev/urandom   swap,cipher=aes-xts-plain64,size=256,hash=sha256
+swap   /dev/sda2   /dev/urandom   plain,swap,cipher=aes-xts-plain64,size=256,hash=sha256
 
 # For a swap file, you need a slightly different approach (see Method 2)
 ```
 
 The options explained:
-- `swap` - tells cryptsetup this is a swap device
+- `plain` - uses plain dm-crypt rather than persistent LUKS metadata
+- `swap` - runs `mkswap` on the mapped encrypted device
 - `cipher=aes-xts-plain64` - the encryption cipher
 - `size=256` - key size in bits
-- `hash=sha256` - hash for key derivation (not really used with random key but required)
+- `hash=sha256` - hash used for plain-mode passphrase processing
 
 ### Step 3: Update fstab to Use the Encrypted Device
 
@@ -133,9 +134,9 @@ You should see `/dev/mapper/swap` listed as an active swap device.
 
 ## Method 2: Encrypted Swap File with Random Key
 
-If you're using a swap file rather than a dedicated partition, the approach is slightly different because `crypttab` works with block devices, not files directly.
+If you're using a swap file rather than a dedicated partition, the approach is similar, but make sure the file is created without holes and that `/etc/fstab` points to the mapped encrypted device rather than the raw swap file.
 
-### Create a Fixed-Size File as a Loop Device
+### Create a Fixed-Size File
 
 ```bash
 # Create a 4GB swap file (adjust size as needed)
@@ -143,23 +144,26 @@ sudo dd if=/dev/zero of=/swapfile bs=1M count=4096 status=progress
 
 # Set permissions
 sudo chmod 600 /swapfile
-
-# Set up as a loop device
-sudo losetup /dev/loop0 /swapfile
 ```
 
-### Configure crypttab for the Loop Device
+### Configure crypttab for the Swap File
 
 ```bash
 sudo nano /etc/crypttab
 ```
 
 ```text
-# Use the loop device as the underlying block device
-swap   /dev/loop0   /dev/urandom   swap,cipher=aes-xts-plain64,size=256
+# Use the swap file as the underlying encrypted source
+swap   /swapfile   /dev/urandom   plain,swap,cipher=aes-xts-plain64,size=256,hash=sha256
 ```
 
-For persistent loop device setup at boot, you need a systemd unit or an `/etc/rc.local` entry to set up the loop device before `crypttab` is processed. This complexity is one reason a dedicated swap partition is generally simpler.
+Then remove or comment out the raw `/swapfile` entry in `/etc/fstab` and use the mapped encrypted device:
+
+```text
+/dev/mapper/swap   none   swap   sw   0   0
+```
+
+A dedicated swap partition is still generally simpler because it avoids filesystem-specific swap-file limitations.
 
 ## Method 3: LUKS-Encrypted Swap Partition (Persistent Key)
 
