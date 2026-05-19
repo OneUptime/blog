@@ -15,7 +15,7 @@ EnhanceIO is a Linux kernel module that implements SSD caching by intercepting b
 EnhanceIO operates in the Linux block layer:
 
 1. You specify a slow source device (HDD) and a fast cache device (SSD)
-2. EnhanceIO creates a virtual device that transparently intercepts I/O to the source
+2. EnhanceIO attaches to the source device and transparently intercepts I/O to it
 3. Read requests check the SSD cache first; hits are served from SSD, misses fall through to HDD and populate the cache
 4. Write requests can be handled in read-only, write-through, or write-back mode
 
@@ -26,13 +26,13 @@ EnhanceIO supports three cache modes:
 
 ## Checking Kernel and Ubuntu Compatibility
 
-EnhanceIO works on Ubuntu 20.04 and older kernels. It has compatibility issues with newer kernel versions (5.x and above in some configurations). Before proceeding, check your kernel version:
+EnhanceIO is legacy software. The upstream project was archived in 2024, and its original documentation targets older Linux kernels rather than current Ubuntu releases. It has compatibility issues with newer kernel versions (5.x and above in some configurations). Before proceeding, check your kernel version:
 
 ```bash
 uname -r
 ```
 
-If you are running Ubuntu 22.04 with kernel 5.15+, consider using lvmcache or dm-writecache instead, as they are integrated into the mainline kernel and have better long-term support.
+If you are running Ubuntu 22.04 with kernel 5.15+ or a newer Ubuntu release, consider using lvmcache or dm-writecache instead, as they are integrated into the mainline kernel and have better long-term support.
 
 ## Installing Build Dependencies
 
@@ -69,6 +69,7 @@ sudo make install
 sudo modprobe enhanceio
 sudo modprobe enhanceio_lru   # LRU cache policy module
 sudo modprobe enhanceio_fifo  # FIFO cache policy module
+sudo modprobe enhanceio_rand  # Random cache policy module
 
 # Verify the module loaded
 lsmod | grep enhanceio
@@ -79,6 +80,8 @@ Make the module load at boot:
 ```bash
 echo "enhanceio" | sudo tee -a /etc/modules
 echo "enhanceio_lru" | sudo tee -a /etc/modules
+echo "enhanceio_fifo" | sudo tee -a /etc/modules
+echo "enhanceio_rand" | sudo tee -a /etc/modules
 ```
 
 ## Installing the EnhanceIO CLI Tool
@@ -87,12 +90,16 @@ The `eio_cli` utility manages EnhanceIO caches:
 
 ```bash
 # Install eio_cli from the repository
-cd EnhanceIO/CLI
-sudo python3 setup.py install
+cd ../..
+sudo install -m 700 CLI/eio_cli /sbin/eio_cli
+sudo install -m 644 CLI/eio_cli.8 /usr/share/man/man8/eio_cli.8
+sudo mandb
 
 # Verify
 sudo eio_cli --help
 ```
+
+The upstream `eio_cli` script is written for Python 2 syntax. On modern Ubuntu systems, use a distro-patched package if available or ensure `/usr/bin/python` points to a Python 2-compatible interpreter before running the upstream script.
 
 ## Identifying Your Devices
 
@@ -110,12 +117,11 @@ lsblk
 sudo fdisk -l /dev/sda
 sudo fdisk -l /dev/sdb
 
-# Ensure the HDD filesystem is unmounted before creating the cache
-# (EnhanceIO works on the block device level)
+# Check whether the source device is currently mounted
 mount | grep sda
 ```
 
-**Important**: If you are caching an existing filesystem, unmount it before creating the EnhanceIO cache. The filesystem can be remounted after the cache is created.
+**Important**: EnhanceIO is designed to create and delete caches while a source volume is mounted. For a cautious first setup, especially on non-production data, you can unmount the filesystem before creating the cache and remount it afterward.
 
 ## Creating an EnhanceIO Cache
 
@@ -125,13 +131,13 @@ sudo umount /mnt/data  # If currently mounted
 
 # Create a read-only cache (safest option to start with)
 sudo eio_cli create \
-  --diskname /dev/sda \
-  --ssdname /dev/sdb \
-  --cachename data-cache \
-  --mode ro
+  -d /dev/sda \
+  -s /dev/sdb \
+  -c data_cache \
+  -m ro
 
 # Check the cache was created
-sudo eio_cli info --cachename data-cache
+sudo eio_cli info
 ```
 
 ### Cache Creation Options
@@ -139,33 +145,33 @@ sudo eio_cli info --cachename data-cache
 ```bash
 # Write-through cache (safe for all workloads)
 sudo eio_cli create \
-  --diskname /dev/sda \
-  --ssdname /dev/sdb \
-  --cachename data-cache \
-  --mode wt
+  -d /dev/sda \
+  -s /dev/sdb \
+  -c data_cache \
+  -m wt
 
 # Write-back cache (best write performance)
 sudo eio_cli create \
-  --diskname /dev/sda \
-  --ssdname /dev/sdb \
-  --cachename data-cache \
-  --mode wb
+  -d /dev/sda \
+  -s /dev/sdb \
+  -c data_cache \
+  -m wb
 
-# Specify cache policy (lru is default, fifo is alternative)
+# Specify cache policy (upstream eio_cli defaults to lru; fifo and rand are alternatives)
 sudo eio_cli create \
-  --diskname /dev/sda \
-  --ssdname /dev/sdb \
-  --cachename data-cache \
-  --mode wt \
-  --policy lru
+  -d /dev/sda \
+  -s /dev/sdb \
+  -c data_cache \
+  -m wt \
+  -p lru
 
-# Specify block size (default 4096 bytes, must be power of 2)
+# Specify block size (supported values are 2048, 4096, and 8192 bytes; default is 4096)
 sudo eio_cli create \
-  --diskname /dev/sda \
-  --ssdname /dev/sdb \
-  --cachename data-cache \
-  --mode wt \
-  --blksize 4096
+  -d /dev/sda \
+  -s /dev/sdb \
+  -c data_cache \
+  -m wt \
+  -b 4096
 ```
 
 ## Remounting the Filesystem
@@ -186,36 +192,31 @@ df -h /mnt/data
 
 ```bash
 # View cache status and statistics
-sudo eio_cli info --cachename data-cache
+sudo eio_cli info
 
 # Sample output:
-# Cache Name: data-cache
-# Source Device: /dev/sda
-# SSD Device: /dev/sdb
-# Cache Mode: Write Through
-# Cache State: Active
-# Cache Size: 200.00 GB
-# Source Size: 1862.89 GB
-# Cache Block Size: 4096 bytes
-# Reads: 12345
-# Writes: 6789
-# Read Hits: 8543
-# Read Hit Pct: 69.2%
-# Write Hits: 3210
+# Cache Name       : data_cache
+# Source Device    : /dev/sda
+# SSD Device       : /dev/sdb
+# Policy           : lru
+# Mode             : Write Through
+# Block Size       : 4096
+# Associativity    : 256
+# State            : normal
 ```
 
 ## Monitoring Cache Performance
 
 ```bash
 # Watch statistics update in real time
-watch -n 2 'sudo eio_cli info --cachename data-cache | grep -E "Hit|Miss|Read|Write"'
+watch -n 2 'cat /proc/enhanceio/data_cache/stats | grep -E "hit|read|write|dirty"'
 
-# View detailed statistics from sysfs
-cat /sys/bus/enhanceio/devices/data-cache/stats
+# View detailed statistics from procfs
+cat /proc/enhanceio/data_cache/stats
 
 # Read hit percentage
 awk '/read_hits/ {hits=$2} /reads/ {reads=$2} END {printf "Hit rate: %.1f%%\n", (hits/reads)*100}' \
-  /sys/bus/enhanceio/devices/data-cache/stats
+  /proc/enhanceio/data_cache/stats
 ```
 
 ## Benchmarking Before and After
@@ -225,6 +226,9 @@ Test the performance difference with and without caching:
 ```bash
 # Install fio
 sudo apt install -y fio
+
+# Create the test file first
+sudo dd if=/dev/urandom of=/mnt/data/testfile bs=1M count=4096
 
 # Test random read IOPS (most impacted by caching)
 # After cache warms up, reads should come from SSD
@@ -240,8 +244,6 @@ sudo fio --name=random-read \
   --ioengine=libaio \
   --group_reporting
 
-# Write the test file first to populate the cache
-sudo dd if=/dev/urandom of=/mnt/data/testfile bs=1M count=4096
 ```
 
 After the cache warms up (run the fio read test twice - the second run should show higher IOPS from the SSD cache), you should see significantly improved random read performance.
@@ -251,58 +253,39 @@ After the cache warms up (run the fio read test twice - the second run should sh
 ```bash
 # Switch from read-only to write-through
 sudo eio_cli edit \
-  --cachename data-cache \
-  --mode wt
+  -c data_cache \
+  -m wt
 
 # Verify the change
-sudo eio_cli info --cachename data-cache | grep "Cache Mode"
+sudo eio_cli info | grep "Mode"
 ```
 
 ## Persisting Cache Configuration Across Reboots
 
-EnhanceIO does not automatically restore caches after reboot. You need to recreate the cache at boot time.
-
-For write-back mode, the cache metadata is stored on the SSD. When recreating after reboot, EnhanceIO detects the existing cache:
+EnhanceIO creates a udev rule for persistence when a cache is created. It is important that the cache is enabled before applications or filesystems write to the source volume during boot; otherwise stale cached data may be used. For write-back mode, persistence is mandatory because dirty blocks may exist only on the SSD after a crash or power failure.
 
 ```bash
-# Create a systemd service to restore the cache at boot
-sudo nano /etc/systemd/system/enhanceio-data-cache.service
+# Check the generated udev rule
+sudo ls /etc/udev/rules.d/94-enhanceio-data_cache.rules
+sudo udevadm control --reload-rules
 ```
 
-```ini
-[Unit]
-Description=EnhanceIO SSD Cache for data volume
-After=local-fs.target
-Before=remote-fs.target
-
-[Service]
-Type=oneshot
-RemainAfterExit=yes
-ExecStart=/usr/local/bin/eio_cli create --diskname /dev/sda --ssdname /dev/sdb --cachename data-cache --mode wt
-ExecStop=/usr/local/bin/eio_cli delete --cachename data-cache --retain
-
-[Install]
-WantedBy=multi-user.target
-```
-
-```bash
-sudo systemctl enable enhanceio-data-cache
-```
+The upstream persistence documentation notes that write-back caching on the root device is not supported, and that udev rules may not be generated for some device types such as loop devices.
 
 ## Removing a Cache
 
 ```bash
 # Flush the cache (write all dirty blocks back to HDD)
 # For write-back mode - important for data safety
-sudo eio_cli edit --cachename data-cache --mode ro  # Switch to read-only first
+sudo eio_cli clean -c data_cache
 # Wait for dirty blocks to flush
-sudo eio_cli info --cachename data-cache | grep "dirty"
+grep "nr_dirty" /proc/enhanceio/data_cache/stats
 
 # Delete the cache
-sudo eio_cli delete --cachename data-cache
+sudo eio_cli delete -c data_cache
 
 # Verify
-sudo eio_cli list
+sudo eio_cli info
 ```
 
 ## Troubleshooting
@@ -314,7 +297,7 @@ If the module fails to load:
 sudo dmesg | grep -i enhanceio
 
 # Verify the module was built for the current kernel
-ls /lib/modules/$(uname -r)/extra/enhanceio*.ko
+ls /lib/modules/$(uname -r)/extra/enhanceio/enhanceio*.ko
 ```
 
 If cache creation fails with "device busy":
