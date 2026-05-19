@@ -128,6 +128,7 @@ services:
   woodpecker-agent:
     image: woodpeckerci/woodpecker-agent:latest
     container_name: woodpecker-agent
+    command: agent
     restart: unless-stopped
     depends_on:
       - woodpecker-server
@@ -177,7 +178,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name ci.example.com;
 
     ssl_certificate     /etc/letsencrypt/live/ci.example.com/fullchain.pem;
@@ -197,11 +199,12 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_redirect off;
 
         # Server-Sent Events support for live log streaming
-        proxy_set_header Connection '';
         proxy_http_version 1.1;
-        chunked_transfer_encoding on;
+        proxy_buffering off;
+        chunked_transfer_encoding off;
     }
 }
 ```
@@ -256,7 +259,7 @@ steps:
       - npm run build
     # Only build on the main branch, not on feature branches
     when:
-      branch: main
+      - branch: main
 ```
 
 ### Pipeline with Secrets and Environment Variables
@@ -278,22 +281,21 @@ steps:
 
   - name: deploy-staging
     image: alpine:latest
-    secrets:
+    environment:
       # Reference secrets stored in Woodpecker
-      - source: deploy_ssh_key
-        target: DEPLOY_SSH_KEY
-      - source: staging_host
-        target: DEPLOY_HOST
+      DEPLOY_SSH_KEY:
+        from_secret: deploy_ssh_key
+      DEPLOY_HOST:
+        from_secret: staging_host
     commands:
       - apk add --no-cache openssh-client
       - mkdir -p ~/.ssh
-      - echo "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+      - echo "$${DEPLOY_SSH_KEY}" > ~/.ssh/deploy_key
       - chmod 600 ~/.ssh/deploy_key
-      - ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
-          deploy@$DEPLOY_HOST "cd /app && ./deploy.sh"
+      - ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no deploy@$${DEPLOY_HOST} "cd /app && ./deploy.sh"
     when:
-      branch: main
-      event: push
+      - branch: main
+        event: push
 ```
 
 ### Pipeline with Multiple Parallel Steps
@@ -337,7 +339,7 @@ steps:
       - echo "All checks passed"
       - ./scripts/deploy.sh
     when:
-      branch: main
+      - branch: main
 ```
 
 ### Pipeline with a Service Container
@@ -388,12 +390,12 @@ export WOODPECKER_SERVER=https://ci.example.com
 export WOODPECKER_TOKEN=your-personal-token  # From Profile > API Tokens
 
 # Add a secret
-woodpecker-cli secret add --repository org/myapp \
+woodpecker-cli repo secret add --repository org/myapp \
   --name deploy_api_key \
   --value "the-secret-value"
 
 # List secrets (values hidden)
-woodpecker-cli secret list --repository org/myapp
+woodpecker-cli repo secret ls --repository org/myapp
 ```
 
 ## Monitoring and Maintenance
