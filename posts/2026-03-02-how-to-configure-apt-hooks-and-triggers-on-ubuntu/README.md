@@ -1,30 +1,31 @@
-# How to Configure APT Hooks and Triggers on Ubuntu
+# How to Configure APT Hooks on Ubuntu
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, APT, Package Management, Automation, Linux
 
-Description: Learn how to configure APT hooks and dpkg triggers on Ubuntu to automate tasks before and after package installations, upgrades, and removals.
+Description: Learn how to configure APT hooks on Ubuntu to automate tasks before and after package installations, upgrades, and removals.
 
 ---
 
-APT and dpkg provide hook mechanisms that let you run custom scripts at specific points in the package management lifecycle. These hooks are useful for automating post-install configuration, enforcing policies (like blocking installation of specific packages), sending notifications when packages are updated, and triggering configuration management runs after package changes. This guide covers the main hook types available on Ubuntu and practical examples of each.
+APT provides hook mechanisms that let you run custom scripts at specific points in the package management lifecycle before it invokes dpkg. These hooks are useful for automating post-install configuration, enforcing policies (like blocking installation of specific packages), sending notifications when packages are updated, and triggering configuration management runs after package changes. This guide covers the main hook types available on Ubuntu and practical examples of each.
 
 ## Types of Hooks
 
 Ubuntu's package management pipeline has several hook points:
 
-- **APT Pre-Invoke** - Runs before APT does any package operations
-- **APT Post-Invoke** - Runs after APT completes all operations
-- **APT Post-Invoke-Success** - Runs after successful operations only
-- **DPkg Pre-Install-Pkgs** - Runs before dpkg installs packages, receives package info on stdin
+- **APT Update Pre-Invoke** - Runs before APT updates package indexes
+- **APT Update Post-Invoke** - Runs after APT updates package indexes
+- **APT Update Post-Invoke-Success** - Runs after successful package index updates only
+- **DPkg Pre-Invoke** - Runs before APT invokes dpkg
+- **DPkg Pre-Install-Pkgs** - Runs before dpkg installs packages, receives `.deb` filenames on stdin by default
 - **DPkg Post-Invoke** - Runs after dpkg operations complete
 
 These are configured in `/etc/apt/apt.conf.d/` files using APT's configuration syntax.
 
-## APT Post-Invoke Hooks
+## DPkg Post-Invoke Hooks
 
-Post-invoke hooks run after every APT operation. They're suitable for tasks like notifying monitoring systems, running configuration management, or logging package changes.
+Post-invoke hooks run after APT invokes dpkg for package install, upgrade, and removal operations. They're suitable for tasks like notifying monitoring systems, running configuration management, or logging package changes.
 
 ### Basic Configuration
 
@@ -32,12 +33,12 @@ Post-invoke hooks run after every APT operation. They're suitable for tasks like
 # Create an APT configuration file for hooks
 
 sudo tee /etc/apt/apt.conf.d/99local-hooks << 'EOF'
-// Run after every apt-get operation completes
+// Run after apt-get invokes dpkg for package operations
 DPkg::Post-Invoke {
     "if [ -x /usr/local/bin/apt-post-hook.sh ]; then /usr/local/bin/apt-post-hook.sh; fi";
 };
 
-// Run after successful apt-get operations only
+// Run after successful apt-get update operations only
 APT::Update::Post-Invoke-Success {
     "if [ -x /usr/local/bin/after-apt-update.sh ]; then /usr/local/bin/after-apt-update.sh; fi";
 };
@@ -90,10 +91,12 @@ SECURITY_UPDATES=$(grep "upgrade" /var/log/dpkg.log | \
 
 if [[ -n "$SECURITY_UPDATES" ]]; then
     MESSAGE="Security package updates on *${HOSTNAME}*:\n```${SECURITY_UPDATES}```"
+    PAYLOAD=$(printf '%s' "$MESSAGE" | \
+        python3 -c 'import json, sys; print(json.dumps({"text": sys.stdin.read()}))')
 
     curl -s -X POST "$SLACK_WEBHOOK" \
         -H "Content-Type: application/json" \
-        -d "{\"text\": \"$MESSAGE\"}"
+        -d "$PAYLOAD"
 fi
 ```
 
@@ -104,16 +107,16 @@ DPkg::Post-Invoke {
 };
 ```
 
-## APT Pre-Invoke Hooks for Policy Enforcement
+## DPkg Pre-Install-Pkgs Hooks for Policy Enforcement
 
-Pre-invoke hooks run before any APT operations. Use them to enforce policies.
+Pre-install hooks run after APT has resolved and downloaded packages but before it invokes dpkg. Use them to enforce policies based on the packages that are about to be installed or upgraded.
 
 ### Blocking Package Installation
 
 ```bash
 # /etc/apt/apt.conf.d/99blocked-packages
-// Run before apt operations to check for blocked packages
-APT::Get::Pre-Invoke {
+// Run before dpkg installs packages to check for blocked packages
+DPkg::Pre-Install-Pkgs {
     "if [ -x /usr/local/bin/check-package-policy.sh ]; then /usr/local/bin/check-package-policy.sh; fi";
 };
 ```
@@ -130,12 +133,15 @@ BLOCKED_PACKAGES=(
     "talk"        # Obsolete
 )
 
-# Get packages about to be installed from apt's environment variables
-# APT passes planned actions via environment
-PENDING=$(env | grep "^APT_PACKAGE_" 2>/dev/null)
+# Get package names from the .deb filenames APT passes on stdin
+PENDING_PACKAGES=$(
+    while read -r deb_path; do
+        dpkg-deb -f "$deb_path" Package 2>/dev/null
+    done
+)
 
 for PKG in "${BLOCKED_PACKAGES[@]}"; do
-    if echo "$PENDING" | grep -q "$PKG"; then
+    if echo "$PENDING_PACKAGES" | grep -Fxq "$PKG"; then
         echo "ERROR: Installation of '$PKG' is blocked by company policy." >&2
         echo "Use an approved alternative instead." >&2
         exit 1
@@ -145,7 +151,7 @@ done
 
 ## DPkg Pre-Install-Pkgs Hook
 
-This hook receives information about packages being installed/upgraded/removed on stdin before dpkg processes them. It's powerful for logging, auditing, or making decisions based on what's being changed.
+This hook receives the `.deb` filenames for packages being installed or upgraded on stdin before dpkg processes them. It's powerful for logging, auditing, or making decisions based on what's being changed. APT also supports newer `Pre-Install-Pkgs` protocol versions for more detailed package action data, but the default protocol sends one `.deb` path per line.
 
 ```bash
 # /etc/apt/apt.conf.d/99dpkg-pre-hook
@@ -157,23 +163,22 @@ DPkg::Pre-Install-Pkgs {
 ```bash
 #!/bin/bash
 # /usr/local/bin/dpkg-pre-install.sh
-# Receives package info on stdin before installation
-# Input format: "operation package version"
+# Receives .deb filenames on stdin before installation
+# Default input format: one .deb path per line
 
 LOG_FILE="/var/log/dpkg-pre-install.log"
 
 echo "=== Pre-install check at $(date) ===" >> "$LOG_FILE"
 
-while read -r line; do
-    OPERATION=$(echo "$line" | awk '{print $1}')
-    PACKAGE=$(echo "$line" | awk '{print $2}')
-    VERSION=$(echo "$line" | awk '{print $3}')
+while read -r deb_path; do
+    PACKAGE=$(dpkg-deb -f "$deb_path" Package 2>/dev/null)
+    VERSION=$(dpkg-deb -f "$deb_path" Version 2>/dev/null)
 
-    echo "$OPERATION $PACKAGE $VERSION" >> "$LOG_FILE"
+    echo "install-or-upgrade $PACKAGE $VERSION ($deb_path)" >> "$LOG_FILE"
 
     # Example: Alert when kernel packages are being upgraded
     if echo "$PACKAGE" | grep -q "linux-image"; then
-        echo "$(date): Kernel package being modified: $OPERATION $PACKAGE $VERSION" | \
+        echo "$(date): Kernel package being installed or upgraded: $PACKAGE $VERSION" | \
             logger -t dpkg-hook
     fi
 done
@@ -197,23 +202,14 @@ A common and valuable use case is triggering a Puppet, Ansible, or Salt run afte
 # /usr/local/bin/apt-trigger-config-management.sh
 # Triggers a configuration management run after package changes
 
-LOCK_FILE="/var/run/apt-config-management.lock"
+LOCK_FILE="/var/lock/apt-config-management.lock"
 LOG_FILE="/var/log/apt-config-management.log"
-
-# Prevent multiple simultaneous runs
-if [[ -f "$LOCK_FILE" ]]; then
-    echo "$(date): Config management already triggered, skipping" >> "$LOG_FILE"
-    exit 0
-fi
-
-touch "$LOCK_FILE"
-trap "rm -f $LOCK_FILE" EXIT
 
 echo "$(date): Package change detected, triggering config management" >> "$LOG_FILE"
 
 # Run Ansible in the background to avoid blocking apt
 if command -v ansible-pull &>/dev/null; then
-    nohup ansible-pull \
+    nohup flock -n "$LOCK_FILE" ansible-pull \
         -U https://git.example.com/infra/ansible.git \
         --limit "$(hostname)" \
         >> "$LOG_FILE" 2>&1 &
@@ -279,6 +275,10 @@ CALLER_CMD=$(cat /proc/$PPID/cmdline 2>/dev/null | tr '\0' ' ' | head -c 100)
 CALLER_USER=$(stat -c %U /proc/$PPID 2>/dev/null || echo "unknown")
 SUDO_USER="${SUDO_USER:-$USER}"
 
+json_escape() {
+    python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()), end="")'
+}
+
 # Extract recent dpkg operations
 RECENT_OPS=$(grep "$(date '+%Y-%m-%d')" /var/log/dpkg.log 2>/dev/null | \
     grep -E "(install |upgrade |remove |purge )" | \
@@ -290,7 +290,7 @@ RECENT_OPS=$(grep "$(date '+%Y-%m-%d')" /var/log/dpkg.log 2>/dev/null | \
 
 # Write JSON audit entry
 cat >> "$AUDIT_LOG" << EOF
-{"timestamp":"$(date -Iseconds)","host":"$HOSTNAME","user":"$SUDO_USER","caller":"$CALLER_CMD","operations":[$RECENT_OPS]}
+{"timestamp":"$(date -Iseconds)","host":$(printf '%s' "$HOSTNAME" | json_escape),"user":$(printf '%s' "$SUDO_USER" | json_escape),"caller":$(printf '%s' "$CALLER_CMD" | json_escape),"operations":[$RECENT_OPS]}
 EOF
 ```
 
