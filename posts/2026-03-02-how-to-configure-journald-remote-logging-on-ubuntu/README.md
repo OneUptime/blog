@@ -33,7 +33,7 @@ sudo apt install systemd-journal-remote
 
 ```bash
 # Edit the configuration for the remote receiver
-sudo nano /lib/systemd/system/systemd-journal-remote.service
+sudo systemctl edit systemd-journal-remote.service
 ```
 
 Or create a drop-in override:
@@ -93,7 +93,8 @@ sudo openssl req -newkey rsa:4096 \
   -keyout /etc/systemd/journal-remote-certs/server.key \
   -out /etc/systemd/journal-remote-certs/server.csr \
   -nodes \
-  -subj "/CN=logserver.example.com"
+  -subj "/CN=logserver.example.com" \
+  -addext "subjectAltName = DNS:logserver.example.com"
 
 # Sign the server certificate
 sudo openssl x509 -req -days 3650 \
@@ -101,12 +102,15 @@ sudo openssl x509 -req -days 3650 \
   -CA /etc/systemd/journal-remote-certs/ca.crt \
   -CAkey /etc/systemd/journal-remote-certs/ca.key \
   -CAcreateserial \
+  -copy_extensions copy \
   -out /etc/systemd/journal-remote-certs/server.crt
 
 # Set permissions
 sudo chown -R systemd-journal-remote:systemd-journal-remote \
   /etc/systemd/journal-remote-certs/
 sudo chmod 640 /etc/systemd/journal-remote-certs/server.key
+sudo chmod 644 /etc/systemd/journal-remote-certs/ca.crt \
+  /etc/systemd/journal-remote-certs/server.crt
 ```
 
 ### Configure the Server for HTTPS
@@ -118,13 +122,13 @@ ExecStart=
 ExecStart=/lib/systemd/systemd-journal-remote \
   --listen-https=-3 \
   --output=/var/log/journal/remote \
-  --server-key=/etc/systemd/journal-remote-certs/server.key \
-  --server-cert=/etc/systemd/journal-remote-certs/server.crt \
+  --key=/etc/systemd/journal-remote-certs/server.key \
+  --cert=/etc/systemd/journal-remote-certs/server.crt \
   --trust=/etc/systemd/journal-remote-certs/ca.crt
 EOF
 
 sudo systemctl daemon-reload
-sudo systemctl restart systemd-journal-remote.socket
+sudo systemctl restart systemd-journal-remote.socket systemd-journal-remote.service
 ```
 
 ## Setting Up Clients (journal-upload)
@@ -134,7 +138,7 @@ sudo systemctl restart systemd-journal-remote.socket
 ```bash
 # Install on each client machine
 sudo apt update
-sudo apt install systemd-journal-upload
+sudo apt install systemd-journal-remote
 ```
 
 ### Configure the Upload Service
@@ -193,12 +197,19 @@ sudo openssl x509 -req -days 3650 \
   -out /etc/systemd/journal-remote-certs/client-${CLIENT_NAME}.crt
 
 # Copy the client certificate files to the client machine
-scp /etc/systemd/journal-remote-certs/client-${CLIENT_NAME}.key admin@${CLIENT_NAME}:/etc/ssl/journal/
-scp /etc/systemd/journal-remote-certs/client-${CLIENT_NAME}.crt admin@${CLIENT_NAME}:/etc/ssl/journal/
-scp /etc/systemd/journal-remote-certs/ca.crt admin@${CLIENT_NAME}:/etc/ssl/journal/
+scp /etc/systemd/journal-remote-certs/client-${CLIENT_NAME}.key admin@${CLIENT_NAME}:/tmp/
+scp /etc/systemd/journal-remote-certs/client-${CLIENT_NAME}.crt admin@${CLIENT_NAME}:/tmp/
+scp /etc/systemd/journal-remote-certs/ca.crt admin@${CLIENT_NAME}:/tmp/
 ```
 
 On the client:
+
+```bash
+sudo mkdir -p /etc/ssl/journal
+sudo install -m 600 /tmp/client-webserver01.key /etc/ssl/journal/
+sudo install -m 644 /tmp/client-webserver01.crt /etc/ssl/journal/
+sudo install -m 644 /tmp/ca.crt /etc/ssl/journal/
+```
 
 ```ini
 # /etc/systemd/journal-upload.conf
@@ -275,21 +286,20 @@ sudo systemctl start systemd-journal-upload
 ## Configuring Log Retention on the Server
 
 ```bash
-# Set retention for remote journals in /etc/systemd/journald.conf
-sudo nano /etc/systemd/journald.conf
+# Set retention for remote journals in /etc/systemd/journal-remote.conf
+sudo nano /etc/systemd/journal-remote.conf
 ```
 
 ```ini
-[Journal]
-# These settings apply to the system journal; for remote journals
-# manage retention manually or with a cron job
-SystemMaxUse=50G
-SystemKeepFree=10G
-SystemMaxFiles=100
+[Remote]
+MaxUse=50G
+KeepFree=10G
+MaxFiles=100
 ```
 
 ```bash
-# Create a cron job to vacuum remote journals
+# On older Ubuntu releases without journal-remote.conf retention settings,
+# create a cron job to vacuum remote journals
 sudo tee /etc/cron.daily/vacuum-remote-journals << 'EOF'
 #!/bin/bash
 # Keep last 30 days of remote journal data
