@@ -14,8 +14,8 @@ Conda is the package and environment manager that ships with both Anaconda and M
 
 Before downloading anything, decide which distribution fits your needs:
 
-- **Anaconda** - ships with 250+ pre-installed packages (NumPy, pandas, scikit-learn, Jupyter, etc.). The installer is around 800 MB.
-- **Miniconda** - bare minimum: conda, Python, and a handful of dependencies. Installer is around 80 MB. You install only what you need.
+- **Anaconda** - ships with hundreds of pre-installed packages (NumPy, pandas, scikit-learn, Jupyter, etc.). The Linux x86_64 installer is around 1.2 GB.
+- **Miniconda** - bare minimum: conda, Python, and a handful of dependencies. The Linux x86_64 installer is around 155 MB. You install only what you need.
 
 For production servers or CI environments, Miniconda is almost always the right call. For local data science workstations, Anaconda saves time on initial setup.
 
@@ -29,7 +29,7 @@ Find the latest installers at the official conda documentation pages. Use `wget`
 wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
 
 # Or download Anaconda (larger download)
-wget https://repo.anaconda.com/archive/Anaconda3-2024.10-1-Linux-x86_64.sh -O ~/anaconda.sh
+wget https://repo.anaconda.com/archive/Anaconda3-2025.12-2-Linux-x86_64.sh -O ~/anaconda.sh
 ```
 
 Verify the SHA-256 checksum against the value listed on the download page:
@@ -127,7 +127,7 @@ conda remove --name myproject --all
 
 ## Exporting and Reproducing Environments
 
-One of the most useful features is exporting an environment definition so others (or your CI system) can reproduce it exactly.
+One of the most useful features is exporting an environment definition so others (or your CI system) can reproduce it.
 
 ```bash
 # Export the active environment to a file
