@@ -69,7 +69,7 @@ Choosing the right eviction policy matters:
 | volatile-lru | Evicts LRU keys with TTL set | Mixed TTL/no-TTL keys |
 | allkeys-random | Evicts random keys | Uniform access pattern |
 | volatile-random | Evicts random keys with TTL | When LRU is too expensive |
-| volatile-ttl | Evicts keys with shortest TTL | When you want oldest data evicted |
+| volatile-ttl | Evicts keys with shortest remaining TTL | When you want soonest-expiring data evicted |
 | allkeys-lfu | Evicts least frequently used | Skewed access patterns |
 | volatile-lfu | Evicts LFU keys with TTL | Mixed with skewed access |
 
@@ -91,10 +91,10 @@ SET session:abc "session_data" EX 86400      # Expires in 24 hours
 SET rate_limit:ip:1.2.3.4 "10" PX 60000    # Expires in 60 seconds
 
 # SET with EXAT (Unix timestamp)
-SET promo:summer2026 "20% off" EXAT 1751328000
+SET promo:summer2026 "20% off" EXAT 1782864000
 
-# SETEX - set value and expiry atomically (older syntax)
-SETEX mykey 3600 "value"
+# SET with EX is the preferred replacement for deprecated SETEX
+SET mykey "value" EX 3600
 
 # EXPIRE - set TTL on existing key
 SET mykey "value"
@@ -144,7 +144,7 @@ def get_user(user_id: int) -> dict:
 
     if user:
         # Store in cache with 1 hour TTL
-        r.setex(cache_key, 3600, json.dumps(user))
+        r.set(cache_key, json.dumps(user), ex=3600)
 
     return user
 
@@ -172,7 +172,7 @@ r = redis.Redis(host='localhost', port=6379, password='strong_cache_password',
                 decode_responses=True)
 
 def cache_query(query: str, params: tuple, ttl: int = 300):
-    """Decorator-style function to cache SQL query results."""
+    """Helper function to cache SQL query results."""
     # Create a cache key from the query and parameters
     cache_key = "query:" + hashlib.md5(
         f"{query}:{params}".encode()
@@ -187,7 +187,7 @@ def cache_query(query: str, params: tuple, ttl: int = 300):
     rows = execute_database_query(query, params)  # Your DB function
 
     # Cache the result
-    r.setex(cache_key, ttl, json.dumps(rows))
+    r.set(cache_key, json.dumps(rows), ex=ttl)
 
     return rows
 
@@ -225,7 +225,7 @@ def fetch_api_with_cache(url: str, ttl: int = 300) -> dict:
     data = response.json()
 
     # Cache the response
-    r.setex(cache_key, ttl, json.dumps(data))
+    r.set(cache_key, json.dumps(data), ex=ttl)
 
     return data
 
@@ -244,16 +244,16 @@ For caches that serve high-traffic after a restart, pre-populate them:
 # Script to warm the cache on startup
 cat << 'EOF' > /usr/local/bin/warm-redis-cache.sh
 #!/bin/bash
-REDIS_CLI="redis-cli -a strong_cache_password"
+REDIS_CLI=(redis-cli -a strong_cache_password)
 
 echo "Warming Redis cache..."
 
 # Pre-load commonly accessed configuration
 while IFS=',' read -r key value ttl; do
-    $REDIS_CLI SETEX "$key" "$ttl" "$value"
+    "${REDIS_CLI[@]}" SET "$key" "$value" EX "$ttl"
 done < /etc/app/cache-seed.csv
 
-echo "Cache warming complete. Keys loaded: $($REDIS_CLI DBSIZE)"
+echo "Cache warming complete. Keys loaded: $("${REDIS_CLI[@]}" DBSIZE)"
 EOF
 
 chmod +x /usr/local/bin/warm-redis-cache.sh
@@ -269,7 +269,7 @@ redis-cli -a "strong_cache_password" INFO stats | grep -E "keyspace_hits|keyspac
 
 # Calculate hit rate:
 # hit_rate = keyspace_hits / (keyspace_hits + keyspace_misses) * 100
-# A healthy cache should have >80% hit rate
+# Many web application caches target >80% hit rate, but healthy depends on the workload
 
 # Check evictions
 redis-cli -a "strong_cache_password" INFO stats | grep evicted_keys
@@ -290,16 +290,17 @@ Sometimes you need to update TTL for many keys at once:
 
 ```bash
 # Extend TTL for all keys matching a pattern
-redis-cli -a "strong_cache_password" --scan --pattern "user:*" | while read key; do
+redis-cli -a "strong_cache_password" --scan --pattern "user:*" | while IFS= read -r key; do
     redis-cli -a "strong_cache_password" EXPIRE "$key" 7200
 done
 
-# Delete all expired keys immediately (Redis handles this lazily, but you can force it)
-redis-cli -a "strong_cache_password" DEBUG SLEEP 0
+# Redis removes expired keys automatically; check how many have expired
+redis-cli -a "strong_cache_password" INFO stats | grep expired_keys
 
 # Delete all keys matching a pattern (use with extreme caution in production)
-redis-cli -a "strong_cache_password" --scan --pattern "session:*" | \
-  xargs redis-cli -a "strong_cache_password" DEL
+redis-cli -a "strong_cache_password" --scan --pattern "session:*" | while IFS= read -r key; do
+    redis-cli -a "strong_cache_password" DEL "$key"
+done
 ```
 
 ## Cache Stampede Prevention
@@ -329,14 +330,14 @@ def get_with_xfetch(key: str, ttl: int, recompute_fn, beta: float = 1.0):
         expiry = data.get('_expiry', 0)
 
         # Probabilistic early recomputation
-        if time.time() - beta * delta * math.log(random.random()) >= expiry:
+        if time.time() - beta * delta * math.log(1.0 - random.random()) >= expiry:
             # Recompute before expiry to avoid stampede
             start = time.time()
             value = recompute_fn()
             delta = time.time() - start
 
             payload = {'value': value, '_delta': delta, '_expiry': time.time() + ttl}
-            r.setex(key, ttl, json.dumps(payload))
+            r.set(key, json.dumps(payload), ex=ttl)
             return value
 
         return data['value']
@@ -347,7 +348,7 @@ def get_with_xfetch(key: str, ttl: int, recompute_fn, beta: float = 1.0):
     delta = time.time() - start
 
     payload = {'value': value, '_delta': delta, '_expiry': time.time() + ttl}
-    r.setex(key, ttl, json.dumps(payload))
+    r.set(key, json.dumps(payload), ex=ttl)
     return value
 ```
 
