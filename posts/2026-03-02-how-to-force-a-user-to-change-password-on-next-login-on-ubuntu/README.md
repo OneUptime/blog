@@ -31,7 +31,7 @@ sudo passwd -S username
 Output:
 
 ```text
-username P 03/02/2026 0 99999 7 -1
+username P 01/01/1970 0 99999 7 -1
 ```
 
 The `P` means the password is set. The first date is when the password was last changed. A date far in the past or the epoch date indicates immediate expiry.
@@ -169,17 +169,17 @@ done
 Find users with passwords that never expire:
 
 ```bash
-# Users where password max age is 99999 (never expires)
-sudo awk -F: '$5 == 99999 {print $1}' /etc/shadow
+# Users where password max age is unset or the Ubuntu default 99999 (effectively never expires)
+sudo awk -F: '$5 == "" || $5 == 99999 {print $1}' /etc/shadow
 ```
 
 Find users with expired passwords right now:
 
 ```bash
-# This leverages chage's exit codes
-for user in $(cut -d: -f1 /etc/shadow | grep -v '^#'); do
-    sudo chage -l "$user" 2>/dev/null | grep -q "password must be changed" && echo "$user: PASSWORD EXPIRED"
-done
+# Compare the last password change day plus max age against today's day count
+sudo awk -F: -v today="$(($(date +%s) / 86400))" \
+    '$3 == 0 || ($3 != "" && $5 != "" && $5 > 0 && ($3 + $5) < today) {print $1 ": PASSWORD EXPIRED"}' \
+    /etc/shadow
 ```
 
 ## Account Expiration vs Password Expiration
