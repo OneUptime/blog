@@ -111,7 +111,7 @@ dm-writecache supports several optional features:
 # writeback_jobs N - maximum concurrent writeback I/Os
 
 sudo dmsetup create wc-data \
-  --table "0 $ORIGIN_SIZE writecache s /dev/sda /dev/sdb 4096 4 high_watermark 80 low_watermark 60 writeback_jobs 64"
+  --table "0 $ORIGIN_SIZE writecache s /dev/sda /dev/sdb 4096 6 high_watermark 80 low_watermark 60 writeback_jobs 64"
 ```
 
 ## Using dm-writecache with LVM
@@ -189,17 +189,19 @@ sudo dmsetup status wc-data
 sudo dmsetup status vg--storage-lv--data
 ```
 
-The status output shows:
+The status output is a series of space-separated numeric fields:
 
 ```text
-0 1879048192 writecache stats: reads=1234 read_cache_hits=0 writes=5678 write_cache_hits=0 committed_blocks=0
-  total_blocks=20480 free_blocks=20480 uncommitted_blocks=0
+0 1879048192 writecache 0 20480 20480 0 1234 0 5678 0 0 0 0 0 0
 ```
 
-Key fields:
-- `committed_blocks`: Blocks written to the SSD cache waiting to be flushed to HDD
-- `free_blocks`: Available cache blocks
-- `write_cache_hits`: Writes served from cache (overwrites of cached data)
+After the standard `<start> <length> <target>` prefix, the fields are, in order:
+
+- Error indicator (0 = no error)
+- Total cache blocks (`20480`)
+- Free cache blocks (`20480`)
+- Blocks currently under writeback (`0`)
+- Read requests, reads that hit the cache, write requests, writes that hit uncommitted blocks, writes that hit committed blocks, writes that bypass the cache, writes allocated in the cache, writes blocked on the freelist, flush requests, discards
 
 ```bash
 # Monitor continuously
@@ -292,12 +294,12 @@ echo "UUID=your-uuid-here /mnt/cached-data ext4 defaults,noatime 0 2" | \
 # Unmount first
 sudo umount /mnt/cached-data
 
-# Flush all dirty writes from the cache to the backing device
-# Then remove the device
-sudo dmsetup suspend wc-data
-sudo dmsetup resume wc-data --table "0 $ORIGIN_SIZE writecache s /dev/sda /dev/sdb 4096 1 cleaner"
+# Put the cache into cleaner mode so all dirty writes are flushed
+# to the backing device and no new writes are accepted into the cache
+sudo dmsetup message wc-data 0 cleaner
 
-# Wait for the cache to clean (dirty blocks = 0)
+# Wait for the cache to clean (the writeback field in dmsetup status
+# should drop to 0)
 sudo dmsetup status wc-data
 
 # Remove the device
