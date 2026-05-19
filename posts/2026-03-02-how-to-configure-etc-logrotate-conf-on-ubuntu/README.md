@@ -12,7 +12,7 @@ Logs left unchecked will fill your disk. On a busy server, `/var/log/` can grow 
 
 ## How Logrotate Works
 
-Logrotate is typically called once a day by a cron job in `/etc/cron.daily/logrotate`. When it runs, it reads the global configuration from `/etc/logrotate.conf` and all drop-in files from `/etc/logrotate.d/`. For each configured log file, it checks whether rotation criteria are met (size, age, etc.), and if so, it renames the current log, optionally compresses old logs, runs pre/post-rotation scripts, and deletes logs that exceed the retention limit.
+Logrotate is typically called once a day by a cron job in `/etc/cron.daily/logrotate` or by the `logrotate.timer` systemd timer. When it runs, it reads the global configuration from `/etc/logrotate.conf` and all drop-in files from `/etc/logrotate.d/`. For each configured log file, it checks whether rotation criteria are met (size, age, etc.), and if so, it renames the current log, optionally compresses old logs, runs pre/post-rotation scripts, and deletes logs that exceed the retention limit.
 
 ## The Main Configuration File
 
@@ -62,9 +62,9 @@ daily       # Rotate every day
 weekly      # Rotate once a week (default)
 monthly     # Rotate once a month
 yearly      # Rotate once a year
-size 100M   # Rotate when file exceeds 100MB (overrides schedule-based rotation)
-minsize 1M  # Only rotate if file is at least 1MB, regardless of schedule
-maxsize 500M # Rotate if file exceeds 500MB even if not at schedule time
+size 100M   # Rotate when file exceeds 100MB (mutually exclusive with time intervals; last option wins)
+minsize 1M  # Rotate only when both the time interval is due and the file is at least 1MB
+maxsize 500M # Rotate if file exceeds 500MB even before the time interval is due
 ```
 
 ### Retention
@@ -179,7 +179,7 @@ sudo nano /etc/logrotate.d/myapp
 
 ### Config for a Python/Gunicorn Application
 
-Many Python web applications need a `copytruncate` approach because they don't support log file reopening:
+Some Python web applications need a `copytruncate` approach because they don't support log file reopening. Gunicorn itself can reopen log files when it receives `USR1`, so prefer a signal-based `postrotate` when you are rotating Gunicorn-managed logs:
 
 ```text
 /var/log/gunicorn/*.log {
@@ -189,9 +189,13 @@ Many Python web applications need a `copytruncate` approach because they don't s
     delaycompress
     missingok
     notifempty
-    # Use copytruncate to avoid issues with apps that don't reopen log files
-    copytruncate
     su www-data www-data
+    sharedscripts
+    postrotate
+        if [ -f /var/run/gunicorn.pid ]; then
+            kill -USR1 $(cat /var/run/gunicorn.pid) 2>/dev/null || true
+        fi
+    endscript
 }
 ```
 
@@ -199,11 +203,9 @@ Many Python web applications need a `copytruncate` approach because they don't s
 
 ```text
 /var/log/highvolume-app/access.log {
-    # Rotate when file hits 100MB
-    size 100M
-
-    # But also check daily so we don't accumulate too much
+    # Rotate daily, but rotate sooner if the file grows beyond 100MB
     daily
+    maxsize 100M
 
     # Keep 7 rotated files
     rotate 7
@@ -250,8 +252,8 @@ Logrotate supports four script hooks:
 
 - `prerotate` / `endscript` - Runs before rotation (one log at a time unless `sharedscripts` is set)
 - `postrotate` / `endscript` - Runs after rotation
-- `firstaction` / `endscript` - Runs once before any logs are rotated (requires `sharedscripts`)
-- `lastaction` / `endscript` - Runs once after all logs are rotated (requires `sharedscripts`)
+- `firstaction` / `endscript` - Runs once before any logs are rotated
+- `lastaction` / `endscript` - Runs once after all logs are rotated
 
 ```text
 /var/log/myapp/*.log {
