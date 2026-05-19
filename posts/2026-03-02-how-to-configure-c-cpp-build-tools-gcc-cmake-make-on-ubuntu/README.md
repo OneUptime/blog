@@ -48,7 +48,7 @@ sudo apt install -y gcc-11 g++-11
 sudo apt install -y gcc-12 g++-12
 sudo apt install -y gcc-13 g++-13
 
-# For newer versions not yet in standard repos, add the toolchain PPA
+# For versions not available in your standard repos, add the toolchain PPA
 sudo add-apt-repository ppa:ubuntu-toolchain-r/test
 sudo apt update
 sudo apt install -y gcc-14 g++-14
@@ -78,7 +78,7 @@ gcc --version
 
 ## Installing CMake
 
-The CMake version in Ubuntu's repositories is often outdated. Projects using modern CMake features (target-based configuration, generator expressions, etc.) need a recent version.
+The CMake version in Ubuntu's repositories can lag behind upstream releases. Projects using newer CMake features, policies, or modules may need a recent version.
 
 ### Method 1: APT (simple but potentially outdated)
 
@@ -91,7 +91,10 @@ cmake --version
 
 ```bash
 # Install the signing key
-wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc \
+sudo apt install -y ca-certificates gpg wget
+
+test -f /usr/share/doc/kitware-archive-keyring/copyright || \
+    wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc \
     | gpg --dearmor - \
     | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg > /dev/null
 
@@ -101,6 +104,9 @@ echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] \
     | sudo tee /etc/apt/sources.list.d/kitware.list
 
 sudo apt update
+test -f /usr/share/doc/kitware-archive-keyring/copyright || \
+    sudo rm /usr/share/keyrings/kitware-archive-keyring.gpg
+sudo apt install -y kitware-archive-keyring
 sudo apt install -y cmake
 
 cmake --version
@@ -135,6 +141,7 @@ myproject/
   include/
     mylib.h
   tests/
+    CMakeLists.txt
     test_mylib.cpp
   build/         # created during build, not tracked in git
 ```
@@ -172,14 +179,14 @@ The standard out-of-source build workflow:
 mkdir build && cd build
 
 # Configure the project
-# -DCMAKE_BUILD_TYPE controls optimization level
+# -DCMAKE_BUILD_TYPE controls optimization level for single-config generators
 cmake -DCMAKE_BUILD_TYPE=Release ..
 
 # Build using all available CPU cores
 cmake --build . --parallel $(nproc)
 
 # Install (if the project supports it)
-cmake --install . --prefix /usr/local
+sudo cmake --install . --prefix /usr/local
 
 # Run tests
 ctest --output-on-failure
@@ -265,14 +272,23 @@ Most C/C++ projects depend on system libraries. Install their development header
 ```bash
 # Common development libraries
 sudo apt install -y \
-    libssl-dev \        # OpenSSL
-    libcurl4-openssl-dev \  # libcurl
-    libboost-all-dev \  # Boost libraries
-    libjsoncpp-dev \    # JSON parsing
-    libsqlite3-dev \    # SQLite
-    libpq-dev \         # PostgreSQL client
-    zlib1g-dev \        # zlib compression
-    libfmt-dev          # fmtlib formatting
+    libssl-dev \
+    libcurl4-openssl-dev \
+    libboost-all-dev \
+    libjsoncpp-dev \
+    libsqlite3-dev \
+    libpq-dev \
+    zlib1g-dev \
+    libfmt-dev
+
+# libssl-dev: OpenSSL
+# libcurl4-openssl-dev: libcurl
+# libboost-all-dev: Boost libraries
+# libjsoncpp-dev: JSON parsing
+# libsqlite3-dev: SQLite
+# libpq-dev: PostgreSQL client
+# zlib1g-dev: zlib compression
+# libfmt-dev: fmtlib formatting
 ```
 
 ## Compiler Warnings and Sanitizers
