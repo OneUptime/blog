@@ -113,7 +113,7 @@ killall -9 nginx
 killall -KILL nginx
 
 # Kill processes matching a name, case-insensitive
-killall -i NGINX
+killall -I NGINX
 
 # Kill only processes owned by a specific user
 killall -u www-data nginx
@@ -125,7 +125,7 @@ killall -i nginx
 killall -o 1h nginx  # Kill nginx processes older than 1 hour
 killall -y 30m nginx # Kill only nginx processes younger than 30 minutes
 
-# Verify without actually killing (dry run)
+# Verbose - report if the signal was successfully sent
 killall -v nginx
 ```
 
@@ -153,8 +153,8 @@ pkill -f "python3 /home/user/script.py"
 pkill -o nginx  # Oldest
 pkill -n nginx  # Newest
 
-# Show what would be killed without actually killing
-pkill --dry-run -f "my-script"
+# Preview what would be killed (pkill has no dry-run; use pgrep instead)
+pgrep -af "my-script"
 
 # Kill processes in a specific process group
 pkill -g 1234
@@ -199,8 +199,9 @@ fi
 # Kill all of a user's processes (use with caution)
 pkill -u username
 
-# Kill all of a user's processes except their login shell
-pkill -u username -v -x bash  # -v inverts, -x exact match
+# Kill all of a user's processes except their login shell.
+# pkill disables -v (inverse), so use pgrep -v with xargs to invert the match.
+pgrep -u username -v -x bash | xargs -r kill -TERM
 
 # Kill a user's specific application
 pkill -u www-data php-fpm
