@@ -91,7 +91,8 @@ id nfsanon  # Note the UID/GID to use in exports
 ```
 
 ```text
-/srv/nfs/public  *(ro,sync,no_subtree_check,all_squash,anonuid=999,anongid=999)
+# Replace 12345 with the UID/GID shown by id nfsanon
+/srv/nfs/public  *(ro,sync,no_subtree_check,all_squash,anonuid=12345,anongid=12345)
 ```
 
 ## Synchronization Options
@@ -132,7 +133,7 @@ Use `no_subtree_check` as the default. The `subtree_check` option was historical
 /srv/nfs/shared  192.168.1.0/24(rw,sync,no_subtree_check,secure)
 ```
 
-## Locking Options
+## Write Delay Options
 
 ```text
 # no_wdelay: Disable write delay (write immediately, don't batch)
@@ -154,20 +155,11 @@ A powerful feature of `/etc/exports` is specifying different options for differe
                *(ro,sync,no_subtree_check)
 ```
 
-Note: More specific client specs take precedence over more general ones. Always put the most specific entries first.
+Note: If a client matches multiple specs of the same type, the first one on the line takes precedence. Across different spec types, `/etc/exports` uses its documented precedence order, regardless of where the specs appear on the line.
 
 ## NFSv4 Cross-Mounts and Pseudo Filesystems
 
-With NFSv4, clients typically mount the "export root" - a pseudo-filesystem that organizes all exports under a single tree. Configure the NFSv4 root in `/etc/default/nfs-kernel-server`:
-
-```bash
-sudo nano /etc/default/nfs-kernel-server
-```
-
-```text
-# The NFSv4 pseudo-root (all exports bind-mount under here)
-RPCNFSDARGS="--nfs-version 4.1 --syslog"
-```
+With NFSv4, clients can mount an "export root" - a pseudo-filesystem that organizes exports under a single tree. The NFSv4 root is marked in `/etc/exports` with `fsid=0` or `fsid=root`; it is not configured with `RPCNFSDARGS`.
 
 Set up bind mounts for the NFSv4 pseudo-root:
 
