@@ -93,7 +93,9 @@ http {
         use_temp_path=off;
 
     # Cache key format - include host and URI
-    proxy_cache_key "$scheme$proxy_host$request_uri";
+    # Use $host (client-facing hostname) instead of the default $proxy_host,
+    # which would resolve to the upstream block name when proxy_pass targets a named upstream.
+    proxy_cache_key "$scheme$host$request_uri";
 
     # Lock prevents multiple simultaneous requests from hitting origin
     # for the same uncached resource (cache stampede protection)
@@ -217,7 +219,7 @@ server {
 
 ## Enabling Compression at the CDN Layer
 
-Enable gzip and Brotli compression to reduce transfer sizes:
+Enable gzip compression to reduce transfer sizes (Brotli is also a great option but requires the third-party `ngx_brotli` module, available via the `nginx-extras` package on Ubuntu):
 
 ```nginx
 # Add to the server block or http block
@@ -250,11 +252,11 @@ Or manually purge by removing cached files:
 
 ```bash
 # Find and remove cached files for a specific URL
-# The cache key format matters here - it matches proxy_cache_key
-CACHE_KEY="httpscache.example.com/path/to/file.css"
+# The cache key format matters here - it must match proxy_cache_key exactly
+CACHE_KEY="httpscdn.example.com/path/to/file.css"
 CACHE_HASH=$(echo -n "$CACHE_KEY" | md5sum | cut -d' ' -f1)
 
-# The file is stored based on the last 2 characters and next 1 character of the hash
+# With levels=1:2, the file is stored at <cache_dir>/<last 1 char of hash>/<next 2 chars before it>/<full hash>
 echo "Cache key hash: $CACHE_HASH"
 
 # You can find the file like this:
