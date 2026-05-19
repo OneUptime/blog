@@ -56,7 +56,7 @@ Banner /etc/ssh/banner
 Restart SSH to apply:
 
 ```bash
-sudo systemctl restart sshd
+sudo systemctl restart ssh.service
 ```
 
 Test by connecting from another terminal:
@@ -94,7 +94,7 @@ Common escape sequences for `/etc/issue`:
 | `\s` | OS name |
 | `\v` | OS version |
 
-The network-accessible version (shown for remote TCP connections) is `/etc/issue.net`. This is what SSH uses if you don't specify a custom `Banner` path:
+The network-accessible version used by telnet-style services is `/etc/issue.net`. SSH does not read it automatically; to use that file for SSH, set `Banner /etc/issue.net` in `sshd_config` instead of another banner path:
 
 ```bash
 sudo nano /etc/issue.net
@@ -102,7 +102,7 @@ sudo nano /etc/issue.net
 
 ## Configuring the Post-Login MOTD
 
-Ubuntu uses a dynamic MOTD system through `/etc/update-motd.d/`. The MOTD is assembled by running all executable scripts in that directory in numerical order.
+Ubuntu uses a dynamic MOTD system through `/etc/update-motd.d/`. The MOTD is assembled by running all executable scripts in that directory in lexical order, so numeric prefixes control the display order.
 
 ### View the current MOTD scripts
 
@@ -196,39 +196,43 @@ sudo chmod +x /etc/update-motd.d/99-custom-info
 Test by running MOTD directly:
 
 ```bash
-run-parts /etc/update-motd.d/
+run-parts --lsbsysinit /etc/update-motd.d/
 ```
 
 Or just log in fresh and observe the output.
 
 ## Static MOTD Fallback
 
-If you want a simple static MOTD without the dynamic scripting system, write directly to `/etc/motd`:
+If you want a simple static MOTD without the dynamic scripting system, write directly to `/etc/motd`. On Ubuntu, `/etc/motd` is often a symbolic link to `/run/motd.dynamic`, so replace it with a regular file first if necessary:
 
 ```bash
+ls -l /etc/motd
+if [ -L /etc/motd ]; then
+    sudo unlink /etc/motd
+fi
 sudo nano /etc/motd
 ```
 
-However, on Ubuntu the dynamic system in `/etc/update-motd.d/` overwrites `/etc/motd` on each login. To use a purely static MOTD, disable the PAM MOTD module by editing `/etc/pam.d/sshd`:
+The dynamic system writes its generated output to `/run/motd.dynamic` on each login. To use a purely static MOTD for SSH logins, disable the dynamic PAM MOTD entry by editing `/etc/pam.d/sshd`:
 
 ```bash
 sudo nano /etc/pam.d/sshd
 ```
 
-Comment out the dynamic MOTD lines:
+Comment out the dynamic MOTD line and leave the static MOTD line enabled:
 
 ```text
 # session    optional     pam_motd.so  motd=/run/motd.dynamic
-# session    optional     pam_motd.so noupdate
+session    optional     pam_motd.so noupdate
 ```
 
-Uncomment or add:
+To ensure only `/etc/motd` is shown, use an explicit static MOTD path:
 
 ```text
 session    optional     pam_motd.so motd=/etc/motd
 ```
 
-Now only the static `/etc/motd` is shown.
+Now the dynamic MOTD is skipped, and only the static `/etc/motd` is shown.
 
 ## Disabling the MOTD Entirely
 
