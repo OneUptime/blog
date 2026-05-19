@@ -54,7 +54,7 @@ sudo apt-get install -y libc6:i386
 # Install 32-bit development libraries (for compiling 32-bit code)
 sudo apt-get install -y \
   libc6:i386 \
-  libncurses5:i386 \
+  libncurses6:i386 \
   libstdc++6:i386 \
   lib32gcc-s1 \
   lib32stdc++6
@@ -73,7 +73,7 @@ file /path/to/32bit-application  # Should show "32-bit" or "ELF 32-bit LSB"
 ldd /path/to/32bit-application   # Shows required shared libraries
 
 # Install the required 32-bit libraries
-sudo apt-get install -y libc6:i386 libGL:i386
+sudo apt-get install -y libc6:i386 libgl1:i386
 ```
 
 ## Configuring Sources for Multiple Architectures
@@ -82,7 +82,7 @@ By default, when you add an architecture, all existing apt sources serve package
 
 ### Modern Sources Format (DEB822)
 
-Ubuntu 22.04 and later use the DEB822 format for apt sources:
+APT supports the DEB822 format for apt sources, and Ubuntu 24.04 and later use it by default for Ubuntu's own repositories:
 
 ```text
 # /etc/apt/sources.list.d/ubuntu.sources
@@ -110,7 +110,7 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 
 ### Legacy sources.list Format
 
-For Ubuntu 20.04 and older, the traditional format uses `[arch=...]` notation:
+For Ubuntu 22.04 and older, and any system still using the traditional format, use `[arch=...]` notation:
 
 ```bash
 # /etc/apt/sources.list - Restrict main repos to amd64
@@ -119,11 +119,12 @@ For Ubuntu 20.04 and older, the traditional format uses `[arch=...]` notation:
 
 deb [arch=amd64] http://archive.ubuntu.com/ubuntu focal main restricted universe multiverse
 deb [arch=amd64] http://archive.ubuntu.com/ubuntu focal-updates main restricted universe multiverse
-deb [arch=amd64] http://archive.ubuntu.com/ubuntu focal-security main restricted universe multiverse
+deb [arch=amd64] http://security.ubuntu.com/ubuntu focal-security main restricted universe multiverse
 
 # Add i386 packages from the same repos
 deb [arch=i386] http://archive.ubuntu.com/ubuntu focal main restricted universe multiverse
 deb [arch=i386] http://archive.ubuntu.com/ubuntu focal-updates main restricted universe multiverse
+deb [arch=i386] http://security.ubuntu.com/ubuntu focal-security main restricted universe multiverse
 ```
 
 For third-party repositories, always specify the architecture to prevent APT from requesting packages for architectures the repository doesn't have:
@@ -147,6 +148,8 @@ Multi-arch is essential for cross-compiling software for different target archit
 sudo dpkg --add-architecture arm64
 
 # Add the ARM64 package source (Ubuntu ports repository)
+# Also restrict your existing archive.ubuntu.com sources to amd64 (and i386
+# if needed), so APT does not request arm64 packages from the wrong mirror.
 sudo tee /etc/apt/sources.list.d/arm64-cross.sources << 'EOF'
 Types: deb
 URIs: http://ports.ubuntu.com/ubuntu-ports
@@ -159,11 +162,15 @@ EOF
 sudo apt-get update
 
 # Install cross-compilation toolchain
+# C compiler for arm64
+# C++ compiler for arm64
+# C standard library dev headers for arm64
+# Kernel headers for arm64
 sudo apt-get install -y \
-  gcc-aarch64-linux-gnu \     # C compiler for arm64
-  g++-aarch64-linux-gnu \     # C++ compiler for arm64
-  libc6-dev:arm64 \           # C standard library dev headers for arm64
-  linux-libc-dev:arm64        # Kernel headers for arm64
+  gcc-aarch64-linux-gnu \
+  g++-aarch64-linux-gnu \
+  libc6-dev:arm64 \
+  linux-libc-dev:arm64
 
 # Verify the cross-compiler is available
 aarch64-linux-gnu-gcc --version
@@ -190,7 +197,7 @@ file hello-arm64
 
 # Run on arm64 hardware or emulate with qemu
 sudo apt-get install -y qemu-user-static
-qemu-aarch64-static hello-arm64
+qemu-aarch64-static -L /usr/aarch64-linux-gnu ./hello-arm64
 ```
 
 ### Cross-Compiling with CMake
@@ -246,14 +253,14 @@ sudo dpkg --remove-architecture i386
 
 ```bash
 # Search for packages available for a specific architecture
-apt-cache search --names-only . | xargs -I {} \
+apt-cache search --names-only . | cut -d ' ' -f 1 | xargs -r -I {} \
   apt-cache show {}:i386 2>/dev/null | grep "^Package:" | head -20
 
 # Check if a specific package has an i386 version
 apt-cache show libssl-dev:i386 2>/dev/null | grep -E "Package:|Architecture:|Version:"
 
 # Show all available architectures for a package
-apt-cache showpkg libssl-dev | grep "^  " | head -5
+apt-cache policy libssl-dev:amd64 libssl-dev:i386
 ```
 
 ## Docker Multi-Architecture Builds
