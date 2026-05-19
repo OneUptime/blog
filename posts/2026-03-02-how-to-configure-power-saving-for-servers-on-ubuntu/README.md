@@ -36,7 +36,7 @@ cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors
 
 # Set governor for all CPUs
 for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do
-    echo "schedutil" | sudo tee $cpu
+    echo "schedutil" | sudo tee "$cpu"
 done
 
 # Or use cpupower (install if needed)
@@ -58,8 +58,10 @@ For servers that need good throughput but also save power at idle:
 echo "schedutil" | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
 # Optionally set rate limits
-# More aggressive frequency reduction when idle
+# Increase the minimum time between schedutil frequency updates
 echo 500000 | sudo tee /sys/devices/system/cpu/cpufreq/schedutil/rate_limit_us
+# On some systems this tunable is per-policy instead:
+# echo 500000 | sudo tee /sys/devices/system/cpu/cpufreq/policy*/schedutil/rate_limit_us
 ```
 
 ## Making Governor Changes Persistent
@@ -71,10 +73,26 @@ sudo apt install cpufrequtils
 # Set the default governor
 echo 'GOVERNOR="schedutil"' | sudo tee /etc/default/cpufrequtils
 
-# Or use the cpupower service
-sudo systemctl enable cpupower
-sudo nano /etc/default/cpupower
-# Set: START_OPTS="--governor schedutil"
+# Or create a small systemd service that runs cpupower at boot
+sudo nano /etc/systemd/system/cpupower-governor.service
+```
+
+```ini
+[Unit]
+Description=Set CPU frequency governor
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/cpupower frequency-set -g schedutil
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now cpupower-governor.service
 ```
 
 ## Disk Power Management
@@ -121,14 +139,14 @@ sudo nano /etc/hdparm.conf
 }
 ```
 
-For NVMe drives, spin-down isn't applicable, but ASPM (Active State Power Management) can help:
+For NVMe drives, spin-down isn't applicable, but Autonomous Power State Transitions (APST) can help:
 
 ```bash
-# Check ASPM status for NVMe
-cat /sys/module/nvme/parameters/max_power_saving
+# Check the default APST latency limit for new NVMe devices (microseconds)
+cat /sys/module/nvme_core/parameters/default_ps_max_latency_us
 
-# Enable ASPM
-sudo bash -c 'echo 1 > /sys/module/nvme/parameters/max_power_saving'
+# Allow APST states with up to 25 ms exit latency for newly probed devices
+echo 25000 | sudo tee /sys/module/nvme_core/parameters/default_ps_max_latency_us
 ```
 
 ## Network Interface Power Management
@@ -136,8 +154,11 @@ sudo bash -c 'echo 1 > /sys/module/nvme/parameters/max_power_saving'
 By default, server NICs don't use power management (it causes latency spikes). But for less latency-sensitive setups:
 
 ```bash
-# Check current power management state
-sudo ethtool -s eth0
+# Check current wired Ethernet settings
+sudo ethtool eth0
+
+# Check Energy Efficient Ethernet support/state, if the driver supports it
+sudo ethtool --show-eee eth0
 
 # Enable power management via iwconfig (wireless, if present)
 sudo iwconfig wlan0 power on
@@ -166,7 +187,8 @@ cat /sys/module/pcie_aspm/parameters/policy
 # Enable ASPM powersave
 echo powersave | sudo tee /sys/module/pcie_aspm/parameters/policy
 
-# Or set in GRUB for boot-time enabling
+# Or set in GRUB for boot-time enabling when firmware has disabled ASPM.
+# Test carefully: forcing ASPM can cause problems on some hardware.
 sudo nano /etc/default/grub
 # Add to GRUB_CMDLINE_LINUX_DEFAULT:
 # pcie_aspm=force
@@ -197,7 +219,7 @@ sudo tuned-adm profile powersave
 # Apply balanced profile (good default for servers)
 sudo tuned-adm profile balanced
 
-# Apply performance profile (disables all power saving)
+# Apply performance profile (disables TuneD's additional power-saving tunings)
 sudo tuned-adm profile throughput-performance
 
 # Check active profile
@@ -247,10 +269,10 @@ For servers with predictable idle periods:
 ```bash
 # Schedule CPU governor changes
 # Low power at night
-echo '0 22 * * * root echo powersave > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor' | sudo tee -a /etc/crontab
+echo '0 22 * * * root for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo powersave > "$cpu"; done' | sudo tee -a /etc/crontab
 
 # High performance during business hours
-echo '0 8 * * 1-5 root echo schedutil > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor' | sudo tee -a /etc/crontab
+echo '0 8 * * 1-5 root for cpu in /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor; do echo schedutil > "$cpu"; done' | sudo tee -a /etc/crontab
 ```
 
 Or use `at` for one-time scheduling.
@@ -264,7 +286,7 @@ Software power management is most effective when combined with BIOS settings:
 - Enable fan speed control based on temperature
 - Configure DRAM power management
 
-These settings vary by hardware and BIOS vendor but can reduce server idle power by 20-40%.
+These settings vary by hardware and BIOS vendor but can significantly reduce server idle power.
 
 ## Quick Baseline: What to Enable on Most Servers
 
@@ -285,4 +307,4 @@ sudo ethtool -s eth0 wol d
 echo powersave | sudo tee /sys/module/pcie_aspm/parameters/policy
 ```
 
-These changes typically reduce idle server power by 10-25% without meaningfully impacting performance under load.
+These changes can reduce idle server power without meaningfully impacting performance under load, but measure your own workload before applying them broadly.
