@@ -22,11 +22,11 @@ After a Livepatch is applied:
 ## Requirements and Pricing
 
 Canonical Livepatch is:
-- **Free** for personal use (up to 3 machines with an Ubuntu One account)
 - Included with **Ubuntu Pro** subscriptions
-- Available for Ubuntu LTS releases on the generic and aws/azure/gcp kernels
+- **Free** for personal use through Ubuntu Pro (up to 5 physical machines, or 50 for official Ubuntu Community members)
+- Available for Ubuntu LTS releases on supported Canonical kernel variants, including generic and major public-cloud kernels
 
-Ubuntu Pro is free for personal and small commercial use (up to 5 machines). Larger deployments require a paid subscription.
+Larger deployments require a paid subscription.
 
 ## Setting Up Ubuntu Pro and Livepatch
 
@@ -39,9 +39,10 @@ Ubuntu Pro is free for personal and small commercial use (up to 5 machines). Lar
 ### Attaching Ubuntu Pro
 
 ```bash
-# Install the ubuntu-advantage-tools package (likely already installed)
+# Install or update the Ubuntu Pro client (likely already installed)
 
-sudo apt install ubuntu-advantage-tools -y
+sudo apt update
+sudo apt install ubuntu-pro-client -y
 
 # Attach to Ubuntu Pro with your token
 sudo pro attach <your-token>
@@ -90,7 +91,8 @@ Status output:
 last check: 2 minutes ago
 kernel: 5.15.0-91-generic
 server check-in: succeeded
-patch state: nothing to apply
+kernel state: kernel series 5.15 is covered by Livepatch
+patch state: no livepatches available for kernel 5.15.0-91-generic
 ```
 
 When a patch is available and applied:
@@ -99,10 +101,9 @@ When a patch is available and applied:
 last check: 5 minutes ago
 kernel: 5.15.0-91-generic
 server check-in: succeeded
-patch state: applied
-patches:
-  CVE-2024-0001: Applied
-  CVE-2024-0002: Applied
+kernel state: kernel series 5.15 is covered by Livepatch
+patch state: all applicable livepatch kernel modules applied
+patch version: 113.1
 ```
 
 Check through Ubuntu Pro tools:
@@ -123,7 +124,7 @@ When a security vulnerability is identified:
 2. The patch is compiled into a kernel module
 3. The module is signed with Canonical's key
 4. The Livepatch daemon on your system downloads the module
-5. The module is loaded and modifies the running kernel's code in memory using kernel function patching (`ftrace` hooks)
+5. The module is loaded and modifies the running kernel's code in memory using the kernel livepatching infrastructure
 
 Check which patches have been applied:
 
@@ -183,9 +184,9 @@ For servers managed via configuration management (Ansible, Puppet, etc.):
   hosts: ubuntu_servers
   become: yes
   tasks:
-    - name: Install ubuntu-advantage-tools
+    - name: Install Ubuntu Pro client
       apt:
-        name: ubuntu-advantage-tools
+        name: ubuntu-pro-client
         state: present
         update_cache: yes
 
@@ -223,7 +224,7 @@ fi
 
 # Ensure package is installed
 apt-get update -qq
-apt-get install -y ubuntu-advantage-tools
+apt-get install -y ubuntu-pro-client
 
 # Attach Pro
 pro attach "$UBUNTU_PRO_TOKEN"
@@ -239,7 +240,7 @@ canonical-livepatch status
 
 Livepatch does not cover everything:
 
-- It patches **high-priority security vulnerabilities** in the running kernel
+- It patches **high and critical security vulnerabilities** in the running kernel
 - It does **not** provide all kernel bug fixes
 - It does **not** add new features
 - It works only for the **exact kernel version** that Canonical has built a patch for
@@ -251,8 +252,8 @@ Check which kernel versions are supported:
 # The running kernel version
 uname -r
 
-# Livepatch supports Ubuntu LTS generic kernels
-# For cloud VMs: AWS, Azure, GCP kernels are also supported
+# Livepatch supports specific Canonical kernel variants on Ubuntu LTS
+# Check the supported-kernel matrix for your Ubuntu release and architecture
 ```
 
 ## Monitoring Livepatch Across Multiple Systems
@@ -275,8 +276,8 @@ done
 ## Understanding the Reboot-Free Window
 
 Even with Livepatch, plan for regular kernel reboots. The typical recommendation:
-- Livepatch covers the **current LTS kernel** for critical CVEs
-- Schedule reboots quarterly or semi-annually to apply full kernel updates
+- Livepatch covers supported Ubuntu LTS kernels for high and critical CVEs
+- Install kernel updates and reboot within Canonical's 9-13 month kernel livepatch coverage window
 - Use Livepatch to safely defer emergency reboots until the next maintenance window
 
 ```bash
