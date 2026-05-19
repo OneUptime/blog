@@ -64,7 +64,7 @@ PRAGMA synchronous = NORMAL;
 
 ### Page Cache Size
 
-The default cache is 2000 pages at 4KB each = ~8MB. Increasing this reduces disk I/O for working sets that fit in memory.
+The default cache size is `-2000`, meaning 2000 KiB (~2MB). Increasing this reduces disk I/O for working sets that fit in memory.
 
 ```sql
 -- Set cache size to 64MB (negative value = kilobytes)
