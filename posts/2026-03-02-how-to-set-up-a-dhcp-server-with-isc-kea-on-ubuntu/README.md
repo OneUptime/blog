@@ -129,7 +129,7 @@ Here is a working configuration for a simple network:
     "loggers": [
       {
         "name": "kea-dhcp4",
-        "output_options": [
+        "output-options": [
           {
             "output": "/var/log/kea/kea-dhcp4.log"
           }
@@ -271,11 +271,15 @@ cat /var/lib/kea/kea-leases4.csv | column -t -s,
 
 The CSV columns are: address, hwaddr, client_id, valid_lft, expire, subnet_id, fqdn_fwd, fqdn_rev, hostname, state, user_context, pool_id.
 
-### Using kea-admin to Inspect Leases
+### Inspecting Leases Live
+
+Because memfile is already a CSV, you don't need a separate dump step (the `kea-admin lease-dump` command only supports the MySQL and PostgreSQL backends). For live, formatted queries against the running server, use the control agent's REST API (see the "Enabling the REST API" section below):
 
 ```bash
-# List all leases in the memfile
-sudo kea-admin lease-dump v4 --output - memfile -l /var/lib/kea/kea-leases4.csv
+# Get all current DHCPv4 leases via the REST API
+curl -s -X POST http://127.0.0.1:8080 \
+  -H "Content-Type: application/json" \
+  -d '{"command": "lease4-get-all", "service": ["dhcp4"]}'
 ```
 
 ### Removing a Specific Lease
