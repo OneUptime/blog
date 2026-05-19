@@ -170,8 +170,8 @@ proc  /proc  proc  defaults,hidepid=2,gid=proc  0 0
 The `hidepid=2` option hides process information from users who do not own those processes. The `gid=proc` option allows members of the `proc` group to see all processes (useful for monitoring tools):
 
 ```bash
-# Create the proc group if it doesn't exist
-sudo groupadd -g 1000 proc 2>/dev/null || true
+# Create the proc group as a system group if it doesn't exist
+sudo groupadd --system proc 2>/dev/null || true
 
 # Add monitoring users to the proc group
 sudo usermod -aG proc prometheus-user
@@ -236,15 +236,19 @@ chmod +x /tmp/exec-test.sh
 /tmp/exec-test.sh
 # Expected: Permission denied
 
-# Test nosuid - copy a setuid binary
-cp /bin/bash /tmp/bash-copy
-chmod +s /tmp/bash-copy
-ls -la /tmp/bash-copy  # Shows setuid bit set
-/tmp/bash-copy -p -c 'echo $EUID'
+# Test nosuid - copy a setuid binary to a mount that has nosuid but allows
+# execution (noexec on /tmp would block this test before nosuid is reached,
+# so run it from /home which has nosuid,nodev but not noexec in the example fstab)
+cp /bin/bash ~/bash-copy
+sudo chown root:root ~/bash-copy
+sudo chmod u+s ~/bash-copy
+ls -la ~/bash-copy  # Shows setuid bit set
+~/bash-copy -p -c 'echo $EUID'
 # With nosuid: EUID should be your user ID, not 0
 
 # Clean up
-rm -f /tmp/exec-test.sh /tmp/bash-copy
+rm -f /tmp/exec-test.sh
+sudo rm -f ~/bash-copy
 ```
 
 ## CIS Benchmark Compliance
@@ -262,7 +266,7 @@ Running a CIS benchmark scanner against your system will flag missing options:
 ```bash
 # OpenSCAP can check CIS compliance
 sudo apt-get install -y libopenscap8 scap-security-guide
-sudo oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_cis \
+sudo oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_cis_level1_server \
   /usr/share/xml/scap/ssg/content/ssg-ubuntu2204-ds.xml 2>/dev/null | \
   grep -E 'FAIL.*mount|PASS.*mount'
 ```
