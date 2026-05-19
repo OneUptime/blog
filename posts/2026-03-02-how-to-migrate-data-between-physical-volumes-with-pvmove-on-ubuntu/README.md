@@ -252,7 +252,7 @@ Check that the LVM mirror helper is running:
 
 ```bash
 sudo lvs -a | grep pvmove
-sudo dmeventd -d  # Check dmeventd is active
+pgrep -a dmeventd  # Check dmeventd process is running
 ```
 
 Sometimes a system load spike can slow pvmove significantly. Check `iostat` and wait for load to drop.
