@@ -29,7 +29,7 @@ Before blacklisting anything, it helps to understand how modules get loaded. Ubu
 The key configuration directories are:
 
 - `/etc/modprobe.d/` - modprobe configuration files
-- `/lib/modprobe.d/` - distro-provided configuration (don't edit these)
+- `/usr/lib/modprobe.d/` or `/lib/modprobe.d/` - distro-provided configuration (don't edit these)
 - `/etc/modules` - modules to load at boot explicitly
 - `/etc/modules-load.d/` - additional module loading configuration
 
@@ -58,8 +58,8 @@ To see what modules are available but not necessarily loaded:
 # Find module files on the system
 find /lib/modules/$(uname -r) -name "*.ko*" | grep nouveau
 
-# Check what's loading at boot via udev
-cat /etc/udev/rules.d/*.rules | grep -i module
+# Check udev rules that may trigger module loading
+grep -R -i "module" /etc/udev/rules.d/ /lib/udev/rules.d/ 2>/dev/null
 ```
 
 ## Blacklisting a Module via modprobe.d
@@ -78,14 +78,14 @@ Add the following content:
 # This prevents it from loading before the proprietary driver
 blacklist nouveau
 
-# Also prevent any modules that depend on nouveau from loading
-blacklist lbm-nouveau
+# Disable kernel mode setting for nouveau
 options nouveau modeset=0
-alias nouveau off
-alias lbm-nouveau off
+
+# Optional: block explicit modprobe attempts too
+install nouveau /bin/false
 ```
 
-The `blacklist` directive alone is sometimes not enough. If another module depends on or aliases to the blacklisted module, the kernel may still load it. The `alias` approach with `off` handles this case.
+The `blacklist` directive alone is sometimes not enough. It tells `modprobe` to ignore the module's internal aliases, which prevents many automatic loads, but an explicit `modprobe nouveau` command can still try to load it. The `install` directive with `/bin/false` handles that stricter case.
 
 ## Blacklisting Multiple Modules
 
@@ -140,14 +140,15 @@ cat /sys/module/nouveau/initstate 2>/dev/null || echo "Module not loaded"
 # View what blacklists are active
 cat /etc/modprobe.d/*.conf | grep blacklist
 
-# Use modprobe to test (won't load blacklisted module)
+# Use modprobe to test the blacklist behavior for automatic loads
+sudo modprobe -b nouveau
+# With the install rule above, an explicit load should also fail:
 sudo modprobe nouveau
-# Should output: modprobe: ERROR: could not insert 'nouveau': Operation not permitted
 ```
 
 ## Temporarily Preventing a Module from Loading
 
-If you want to test without permanently blacklisting, you can use kernel boot parameters. Edit your GRUB configuration:
+If you want to test without creating a modprobe.d file, you can use kernel boot parameters. Edit your GRUB configuration:
 
 ```bash
 # Edit GRUB config
@@ -167,6 +168,7 @@ sudo update-grub
 ```
 
 This approach is useful for troubleshooting before committing to a permanent blacklist.
+Remove the parameter and run `sudo update-grub` again when you want to stop using it.
 
 ## Manually Removing a Loaded Module
 
@@ -179,8 +181,8 @@ sudo modprobe -r nouveau
 # Force removal (use carefully - can cause instability)
 sudo rmmod -f nouveau
 
-# Remove module and its dependencies
-sudo modprobe -r --remove-dependencies nouveau
+# Remove a module and modules that depend on it
+sudo modprobe -r --remove-holders nouveau
 ```
 
 ## Troubleshooting Blacklist Issues
@@ -220,7 +222,7 @@ lsinitramfs /boot/initrd.img-$(uname -r) | grep nouveau
 Blacklisting modules for security purposes (like disabling USB storage or Bluetooth) is a defense-in-depth measure. Keep in mind:
 
 - A user with sudo access can still manually load blacklisted modules
-- For stronger enforcement, combine blacklisting with kernel lockdown mode
+- For stronger enforcement, combine blacklisting with kernel lockdown, module-signing policies, or `kernel.modules_disabled` when appropriate
 - Consider using `install /bin/false` directive instead of just `blacklist` for modules you want to absolutely prevent:
 
 ```bash
