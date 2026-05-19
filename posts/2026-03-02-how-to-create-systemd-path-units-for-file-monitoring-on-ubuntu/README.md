@@ -8,7 +8,7 @@ Description: Use systemd path units on Ubuntu to monitor filesystem changes and 
 
 ---
 
-systemd path units provide a built-in mechanism for watching filesystem events and triggering actions in response. This is the systemd equivalent of using `inotifywait` in a shell script loop, but with proper lifecycle management, automatic restart on failure, and integration with the rest of the systemd service infrastructure.
+systemd path units provide a built-in mechanism for watching filesystem events and triggering actions in response. This is the systemd equivalent of using `inotifywait` in a shell script loop, but with proper lifecycle management, start rate limiting, and integration with the rest of the systemd service infrastructure.
 
 Path units work by pairing a `.path` unit with a `.service` unit. The path unit watches for changes and activates the service unit when a match occurs. The service unit does the actual work.
 
@@ -18,11 +18,11 @@ When a path unit detects a filesystem event, it activates its associated service
 
 Events that can be watched:
 
-- `PathExists`: Activates when a path appears (file or directory created)
-- `PathExistsGlob`: Like PathExists but with glob matching
-- `PathChanged`: Activates when a file is created, written to, or deleted
-- `PathModified`: Like PathChanged but also triggers on `utimes()` calls
-- `DirectoryNotEmpty`: Activates when a directory goes from empty to having content
+- `PathExists`: Activates when a file or directory exists
+- `PathExistsGlob`: Activates when at least one path matches the glob
+- `PathChanged`: Activates when a watched file that was open for writing is closed, or when a watched directory changes
+- `PathModified`: Like PathChanged but also triggers on simple writes
+- `DirectoryNotEmpty`: Activates when a directory contains at least one file
 
 ## Basic Example: Watch for Uploaded Files
 
@@ -93,6 +93,8 @@ echo "$(date): Processing complete" >> "$LOG_FILE"
 sudo chmod +x /usr/local/bin/process-uploads.sh
 sudo mkdir -p /var/uploads/incoming /var/uploads/processed
 sudo chown -R www-data:www-data /var/uploads/
+sudo touch /var/log/upload-processor.log
+sudo chown www-data:www-data /var/log/upload-processor.log
 ```
 
 ### Create the Path Unit
@@ -122,9 +124,8 @@ WantedBy=multi-user.target
 # Reload systemd to recognize new units
 sudo systemctl daemon-reload
 
-# Enable both units to start at boot
+# Enable the path unit to start at boot
 sudo systemctl enable process-uploads.path
-sudo systemctl enable process-uploads.service
 
 # Start the path monitor
 sudo systemctl start process-uploads.path
@@ -264,7 +265,7 @@ Unit=import-reports.service
 WantedBy=multi-user.target
 ```
 
-Note: `PathExistsGlob` only activates when a path matching the glob appears, not when files are modified.
+Note: `PathExistsGlob` activates when at least one path matching the glob exists, not when existing matching files are modified.
 
 ## Rate Limiting Service Activation
 
@@ -273,13 +274,14 @@ If many files arrive simultaneously, the path unit may trigger the service many 
 For services that need cooldown time, use systemd's rate limiting:
 
 ```ini
+[Unit]
+# Rate limit - don't start more than 5 times in 10 seconds
+StartLimitIntervalSec=10
+StartLimitBurst=5
+
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/process-uploads.sh
-
-# Rate limit - don't restart more than 5 times in 10 seconds
-StartLimitIntervalSec=10
-StartLimitBurst=5
 ```
 
 ## Verifying Path Unit Behavior
