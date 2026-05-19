@@ -145,16 +145,14 @@ user www-data;
 # Set worker count to number of CPU cores
 worker_processes auto;
 
-# Maximum connections per worker (2 * worker_rlimit_nofile / workers)
-# worker_processes * worker_connections = max connections
-worker_connections 65535;
-
 # Set to match the file descriptor limit
 worker_rlimit_nofile 200000;
 
 pid /run/nginx.pid;
 
 events {
+    # Maximum connections per worker
+    # worker_processes * worker_connections = max connections
     worker_connections 65535;
 
     # Use epoll for efficient event processing on Linux
@@ -268,9 +266,8 @@ sudo systemctl edit nginx
 ```ini
 [Service]
 ExecStart=
-ExecStart=/usr/sbin/nginx -g "daemon off;"
 # Pin nginx to NUMA node 0
-ExecStartPre=/bin/bash -c 'numactl --cpunodebind=0 --membind=0 nginx -t'
+ExecStart=/usr/bin/numactl --cpunodebind=0 --membind=0 /usr/sbin/nginx -g "daemon off;"
 ```
 
 ## IRQ Affinity for High-Bandwidth Servers
