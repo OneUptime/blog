@@ -122,7 +122,7 @@ RestartSec=10
 TimeoutStopSec=30
 
 # Resource limits
-MemoryLimit=512M
+MemoryMax=512M
 
 # Security hardening
 NoNewPrivileges=yes
@@ -239,6 +239,14 @@ sudo apt install nginx
 
 ```nginx
 # /etc/nginx/sites-available/myapp
+
+# Map the client Connection header so WebSocket upgrades pass through
+# while regular HTTP/1.1 keep-alive still works.
+map $http_connection $connection_upgrade {
+    "~*Upgrade" $http_connection;
+    default keep-alive;
+}
+
 server {
     listen 80;
     server_name myapp.example.com;
@@ -262,7 +270,7 @@ server {
 
         # WebSocket support (for SignalR)
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection $http_connection;
+        proxy_set_header Connection $connection_upgrade;
 
         # Standard proxy headers
         proxy_set_header Host $host;
@@ -362,15 +370,20 @@ fi
 # In the systemd unit Environment or .env file
 
 # Server GC mode - better throughput, higher memory usage
-DOTNET_GCConserveMemory=0
+DOTNET_gcServer=1
 
 # Workstation GC mode - lower memory, lower throughput
-# DOTNET_GCConserveMemory=9
+# DOTNET_gcServer=0
 
-# Limit the .NET heap size
-DOTNET_GCHeapHardLimit=400000000  # 400MB in bytes
+# Conserve memory at the expense of more frequent GCs (valid values: 0-9)
+# DOTNET_GCConserveMemory=5
 
-# Use tiered compilation for faster startup
+# Limit the .NET heap size - value is parsed as hexadecimal when set
+# via an environment variable. 0x19000000 = ~400MB.
+DOTNET_GCHeapHardLimit=0x19000000
+
+# Tiered compilation improves startup time and is enabled by default
+# since .NET Core 3.0; setting it explicitly is optional.
 DOTNET_TieredCompilation=1
 ```
 
