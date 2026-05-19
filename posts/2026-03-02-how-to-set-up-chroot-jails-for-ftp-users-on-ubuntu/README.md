@@ -75,8 +75,10 @@ Instead of the home directory, you can chroot to a completely different path:
 # In vsftpd.conf
 chroot_local_user=YES
 
-# Chroot to the local_root path instead of the home directory
-local_root=/srv/ftp/%n  # %n = username
+# Define the substitution token, then reference it in local_root.
+# Without user_sub_token, vsftpd treats %n as a literal directory name.
+user_sub_token=%n
+local_root=/srv/ftp/%n
 ```
 
 ```bash
