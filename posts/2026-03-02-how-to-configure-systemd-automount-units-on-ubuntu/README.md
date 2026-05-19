@@ -80,7 +80,6 @@ sudo nano /etc/systemd/system/mnt-nas.automount
 ```ini
 [Unit]
 Description=Automount for NAS NFS share
-After=network-online.target
 
 [Automount]
 # Must match Where= in the .mount unit
@@ -172,7 +171,6 @@ sudo nano /etc/systemd/system/mnt-windows-share.automount
 ```ini
 [Unit]
 Description=Automount for Windows file share
-After=network-online.target
 
 [Automount]
 Where=/mnt/windows-share
@@ -192,7 +190,7 @@ sudo systemctl start mnt-windows-share.automount
 
 ## Example 3: USB Drive Automount
 
-For portable storage, combine automount with udev rules:
+For portable storage, use a stable device symlink such as a filesystem label:
 
 ```bash
 sudo nano /etc/systemd/system/mnt-usb.mount
@@ -267,20 +265,20 @@ A timeout of `0` effectively turns the automount into a regular persistent mount
 
 ## Handling Network-Dependent Mounts
 
-For network mounts, ensure the automount only activates after the network is online:
+For network mounts, put network ordering on the paired mount unit, not the automount unit:
 
 ```ini
 [Unit]
-Description=NFS Share Automount
+Description=NFS Share Mount
 After=network-online.target
-Requires=network-online.target
+Wants=network-online.target
 
-[Automount]
+[Mount]
+What=192.168.1.100:/export/data
 Where=/mnt/nas
-TimeoutIdleSec=300
-
-[Install]
-WantedBy=multi-user.target
+Type=nfs
+Options=rw,relatime,vers=4.1,hard,proto=tcp
+TimeoutSec=30
 ```
 
 If the network is unavailable when a mount is triggered, the mount unit will fail. Configure the paired mount unit with `TimeoutSec=` to avoid hanging:
@@ -294,7 +292,7 @@ Options=soft,timeo=10,retrans=3
 TimeoutSec=30
 ```
 
-The `soft` NFS mount option allows the mount to fail quickly rather than retrying forever.
+The `soft` NFS mount option makes NFS requests fail after the configured retransmissions instead of retrying indefinitely, but it can cause data corruption in some cases. Use it only when client responsiveness is more important than data integrity.
 
 ## Generating Units with systemd-escape
 
@@ -320,7 +318,7 @@ systemd-escape --path "/mnt/192.168.1.100:/share"
 
 **Filesystem mounts but unmounts too quickly:** Increase `TimeoutIdleSec=` in the automount unit. Some applications keep the mount busy - check with `fuser -m /mnt/nas` to see processes using the mount.
 
-**Mount fails on boot, works after reboot:** Network may not be ready when the automount triggers. Add `After=network-online.target` to both units and ensure `systemd-networkd-wait-online.service` or equivalent is running.
+**Mount fails on boot, works after reboot:** Network may not be ready when the mount triggers. Add `After=network-online.target` and `Wants=network-online.target` to the mount unit and ensure `systemd-networkd-wait-online.service` or equivalent is running.
 
 **Unit name mismatch:** The `.mount` and `.automount` unit names must match exactly, and the `Where=` in both must be identical. Use `systemd-escape --path /your/path` to verify the expected unit name.
 
