@@ -37,7 +37,7 @@ cargo --version
 rustup --version
 ```
 
-The installer adds `~/.cargo/bin` to your PATH in `~/.profile` and `~/.bashrc`. If you're using zsh, you may need to add it manually:
+The installer attempts to add `~/.cargo/bin` to your PATH by updating the appropriate shell startup files. If it does not take effect for zsh, you can add it manually:
 
 ```bash
 # Add to ~/.zshrc if using zsh
@@ -156,7 +156,7 @@ jobs = 4
 retry = 3
 
 [http]
-# Check for revoked certificates
+# Check for revoked certificates where supported (Windows only)
 check-revoke = true
 
 [registry]
@@ -195,8 +195,8 @@ registry = "https://mirrors.example.com/crates.io-index"
 The default Rust linker works fine, but on Linux you can speed up compile times significantly by switching to `lld` or `mold`:
 
 ```bash
-# Install lld
-sudo apt install -y lld
+# Install clang and lld
+sudo apt install -y clang lld
 
 # Install mold (faster alternative)
 sudo apt install -y mold
@@ -246,14 +246,14 @@ Install the `rust-analyzer` extension from the VS Code marketplace. Then configu
 ```json
 {
     "rust-analyzer.cargo.features": "all",
-    "rust-analyzer.checkOnSave.command": "clippy",
-    "rust-analyzer.inlayHints.enable": true
+    "rust-analyzer.check.command": "clippy",
+    "editor.inlayHints.enabled": "on"
 }
 ```
 
 ### Neovim
 
-Use `rust-tools.nvim` or configure `rust-analyzer` through your LSP client. Ensure `rust-analyzer` is in your PATH (it's installed as a rustup component).
+Use `nvim-lspconfig` or configure `rust-analyzer` through your LSP client. Ensure `rust-analyzer` is in your PATH (it's installed as a rustup component).
 
 ## Keeping Everything Updated
 
