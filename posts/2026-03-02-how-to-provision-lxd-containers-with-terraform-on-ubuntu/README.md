@@ -101,11 +101,9 @@ provider "lxd" {
 # Remote LXD instance
 # provider "lxd" {
 #   remote {
-#     name     = "my-server"
-#     scheme   = "https"
-#     address  = "lxd-host.internal"
-#     port     = "8443"
-#     password = var.lxd_trust_password
+#     name        = "my-server"
+#     address     = "https://lxd-host.internal:8443"
+#     trust_token = var.lxd_trust_token
 #   }
 # }
 ```
@@ -236,16 +234,19 @@ resource "lxd_instance" "web_server" {
     type = "nic"
 
     properties = {
-      network  = "lxdbr0"
-      ipv4.address = "10.0.0.101"
+      network        = "lxdbr0"
+      "ipv4.address" = "10.0.0.101"
     }
   }
 
   # Start on creation
   running = true
 
-  # Wait for network before completing
-  wait_for_network = true
+  # Wait for the instance to receive an IPv4 address before completing
+  wait_for {
+    type = "ipv4"
+    nic  = "eth0"
+  }
 
   # Provisioning via file upload
   file {
@@ -302,8 +303,8 @@ resource "lxd_instance" "app" {
     name = "eth0"
     type = "nic"
     properties = {
-      network      = "lxdbr0"
-      ipv4.address = each.value.ip
+      network        = "lxdbr0"
+      "ipv4.address" = each.value.ip
     }
   }
 
@@ -360,8 +361,8 @@ resource "lxd_instance" "on_custom_net" {
     type = "nic"
 
     properties = {
-      network      = lxd_network.app_network.name
-      ipv4.address = "10.100.0.101"
+      network        = lxd_network.app_network.name
+      "ipv4.address" = "10.100.0.101"
     }
   }
 }
