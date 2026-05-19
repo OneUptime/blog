@@ -178,8 +178,8 @@ max_size = 20G
 compression = true
 compression_level = 6
 
-# Keep extended statistics
-statistics_update_interval = 0
+# Log statistics updates to a file (optional)
+# stats_log = /tmp/ccache-stats.log
 
 # Log file for debugging
 # log_file = /tmp/ccache.log
