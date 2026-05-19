@@ -25,7 +25,7 @@ OpenSCAP implements the Security Content Automation Protocol (SCAP) and can eval
 # Install OpenSCAP scanner and security content
 
 sudo apt update
-sudo apt install openscap-scanner scap-security-guide -y
+sudo apt install openscap-scanner ssg-debderived mailutils -y
 
 # Verify installation
 oscap --version
@@ -94,12 +94,12 @@ oscap xccdf eval \
     "$CONTENT" 2>&1 || true  # oscap exits non-zero on failures, we handle that
 
 # Calculate pass rate
-PASS=$(grep -c "result>pass" "$REPORT_DIR/results-$DATE.xml" || echo 0)
-FAIL=$(grep -c "result>fail" "$REPORT_DIR/results-$DATE.xml" || echo 0)
+PASS=$(grep -c "result>pass" "$REPORT_DIR/results-$DATE.xml" || true)
+FAIL=$(grep -c "result>fail" "$REPORT_DIR/results-$DATE.xml" || true)
 TOTAL=$((PASS + FAIL))
 
 if [ "$TOTAL" -gt 0 ]; then
-    PASS_RATE=$(echo "scale=1; $PASS * 100 / $TOTAL" | bc)
+    PASS_RATE=$((PASS * 100 / TOTAL))
 else
     PASS_RATE=0
 fi
@@ -107,7 +107,7 @@ fi
 echo "[$(date)] Results: $PASS passed, $FAIL failed ($PASS_RATE% pass rate)"
 
 # Alert if pass rate below threshold
-if [ "$(echo "$PASS_RATE < $ALERT_THRESHOLD" | bc)" -eq 1 ]; then
+if [ "$PASS_RATE" -lt "$ALERT_THRESHOLD" ]; then
     echo "Compliance scan alert on $(hostname): Pass rate $PASS_RATE% (threshold: $ALERT_THRESHOLD%)" | \
         mail -s "COMPLIANCE ALERT - $(hostname)" "$ALERT_EMAIL"
 fi
@@ -164,11 +164,11 @@ check "critical" "Root password locked" \
     "Root account should have a locked password"
 
 check "critical" "SSH root login disabled" \
-    "grep -rq 'PermitRootLogin no' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/" \
+    "sshd -T | grep -qi '^permitrootlogin no$'" \
     "PermitRootLogin no must be set in SSH config"
 
 check "high" "SSH password authentication disabled" \
-    "grep -rq 'PasswordAuthentication no' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/" \
+    "sshd -T | grep -qi '^passwordauthentication no$'" \
     "Key-based auth only"
 
 check "high" "No accounts with empty passwords" \
@@ -216,7 +216,7 @@ check "medium" "IP forwarding disabled (unless router)" \
 
 # Audit Rules
 check "high" "Audit rules are immutable" \
-    "auditctl -l | grep -q '\-e 2'" \
+    "auditctl -s | grep -q '^enabled 2'" \
     "Audit rules must be set immutable"
 
 # Logging
@@ -246,10 +246,10 @@ sudo lynis audit system --quick
 sudo cat /var/log/lynis.log | grep "Suggestion\|Warning" | head -30
 
 # Run and save report
-sudo lynis audit system --report-file /var/log/compliance/lynis-$(date +%Y%m%d).log
+sudo lynis audit system --report-file /var/log/compliance/lynis-$(date +%Y%m%d).dat
 
 # Extract hardening index score
-sudo grep "Hardening index" /var/log/lynis.log
+sudo grep "^hardening_index=" /var/log/compliance/lynis-$(date +%Y%m%d).dat
 ```
 
 Automate Lynis and alert on score drops:
@@ -259,11 +259,11 @@ sudo tee /usr/local/bin/lynis-check.sh << 'SCRIPT'
 #!/bin/bash
 
 PREV_SCORE_FILE="/var/log/compliance/lynis-prev-score.txt"
-REPORT="/var/log/compliance/lynis-$(date +%Y%m%d).log"
+REPORT="/var/log/compliance/lynis-$(date +%Y%m%d).dat"
 
 sudo lynis audit system --quiet --report-file "$REPORT"
 
-CURRENT_SCORE=$(grep "Hardening index" "$REPORT" | awk '{print $NF}' | tr -d '[]')
+CURRENT_SCORE=$(grep "^hardening_index=" "$REPORT" | cut -d= -f2)
 
 echo "Current Lynis hardening index: $CURRENT_SCORE"
 
@@ -293,9 +293,9 @@ sudo tee /usr/local/bin/compliance-status-api.sh << 'SCRIPT'
 /usr/local/bin/custom-compliance-check.sh > /tmp/compliance-status.txt 2>&1
 EXIT_CODE=$?
 
-FAIL_COUNT=$(grep -c "^\[FAIL\]" /tmp/compliance-status.txt || echo 0)
-PASS_COUNT=$(grep -c "^\[PASS\]" /tmp/compliance-status.txt || echo 0)
-CRITICAL=$(grep -c "^\[FAIL\].*\[critical\]" /tmp/compliance-status.txt || echo 0)
+FAIL_COUNT=$(grep -c "^\[FAIL\]" /tmp/compliance-status.txt || true)
+PASS_COUNT=$(grep -c "^\[PASS\]" /tmp/compliance-status.txt || true)
+CRITICAL=$(grep -c "^\[FAIL\].*\[critical\]" /tmp/compliance-status.txt || true)
 
 STATUS="compliant"
 [ "$FAIL_COUNT" -gt 0 ] && STATUS="non_compliant"
