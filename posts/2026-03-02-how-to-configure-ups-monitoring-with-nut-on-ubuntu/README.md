@@ -15,7 +15,7 @@ A UPS (Uninterruptible Power Supply) is only useful if your server knows it's ru
 NUT has a client-server architecture:
 - **upsd** - the UPS network daemon, reads UPS data from drivers and serves it over the network
 - **upsmon** - the monitoring daemon, watches UPS status and takes action on events
-- **UPS drivers** - communicate with specific UPS hardware (hidups for USB, snmp-ups for network UPS, etc.)
+- **UPS drivers** - communicate with specific UPS hardware (usbhid-ups for USB HID, snmp-ups for network UPS, etc.)
 
 A single NUT server can monitor multiple UPS units and serve multiple client machines. Clients on remote machines can monitor the same UPS and shut down in sequence based on priority.
 
@@ -141,12 +141,19 @@ sudo tee /etc/nut/upsd.users << 'EOF'
     # Password for this user
     password = secure-local-password
     # This user is a monitoring client
-    upsmon master
+    upsmon primary
 
 [upsmon_remote]
     # Remote monitoring clients use this account
     password = secure-remote-password
-    upsmon slave
+    upsmon secondary
+
+[admin]
+    # Use this account for administrative commands like upscmd
+    password = secure-admin-password
+    actions = set
+    actions = fsd
+    instcmds = all
 EOF
 
 # Set restrictive permissions
@@ -161,10 +168,10 @@ sudo chown root:nut /etc/nut/upsd.users
 sudo tee /etc/nut/upsmon.conf << 'EOF'
 # UPS monitoring configuration
 
-# Monitor the UPS: <name>@<host>[:<port>] <slaves> <user> <password> <type>
-# slaves = 1 means this is the master (connected to UPS)
-# slaves = 0 would mean this is a slave (network client)
-MONITOR myups@localhost 1 upsmon_local secure-local-password master
+# Monitor the UPS: <name>@<host>[:<port>] <power value> <user> <password> <type>
+# power value = number of power supplies on this system fed by this UPS
+# type = primary for the UPS-connected host, secondary for network clients
+MONITOR myups@localhost 1 upsmon_local secure-local-password primary
 
 # How many power supplies this system has
 # (usually 1 for servers without dual PSU redundancy)
@@ -182,7 +189,7 @@ POLLFREQ 5
 # How long to wait before declaring communications lost
 DEADTIME 15
 
-# Where to write the PID file
+# Flag file used during emergency shutdown
 POWERDOWNFLAG /etc/killpower
 
 # Notification messages for different events
@@ -206,13 +213,13 @@ NOTIFYFLAG COMMBAD  SYSLOG+WALL
 NOTIFYFLAG SHUTDOWN SYSLOG+WALL+EXEC
 NOTIFYFLAG REPLBATT SYSLOG+WALL
 
-# Battery charge level to trigger shutdown
+# Interval between replacement-battery warnings, in seconds
 RBWARNTIME 43200
 
-# Remaining runtime (seconds) at which to initiate shutdown
+# How long the primary waits for secondary systems to disconnect
 HOSTSYNC 15
 
-# Force shutdown after this many seconds if slaves don't respond
+# Delay before running SHUTDOWNCMD after shutdown is requested
 FINALDELAY 5
 EOF
 
@@ -282,10 +289,8 @@ sudo systemctl start nut-server
 # Start UPS monitoring
 sudo systemctl start nut-client
 
-# Enable all services on boot
-sudo systemctl enable nut-driver.service
-sudo systemctl enable nut-server.service
-sudo systemctl enable nut-client.service
+# Enable NUT on boot
+sudo systemctl enable nut.target
 
 # Check status
 systemctl status nut-server nut-client
@@ -332,7 +337,7 @@ upsc myups@localhost ups.status
 
 # Simulate a power event for testing (without actual shutdown)
 # Check that notifications work
-upscmd -u admin -p password myups beeper.enable  # if supported
+upscmd -u admin -p secure-admin-password myups beeper.enable  # if supported
 ```
 
 ## Monitoring Multiple Servers
@@ -347,10 +352,10 @@ LISTEN 0.0.0.0 3493
 On **client servers**, set `nut.conf` to `MODE=netclient` and configure `upsmon.conf`:
 
 ```text
-MONITOR myups@192.168.1.10 0 upsmon_remote secure-remote-password slave
+MONITOR myups@192.168.1.10 1 upsmon_remote secure-remote-password secondary
 ```
 
-Client servers have `0` power supplies connected to the UPS, making them slaves. They shut down before the master server, which shuts down last.
+Client servers use a nonzero power value for the power supplies fed by the UPS and the `secondary` role. They shut down before the primary server, which shuts down last.
 
 ## Common Issues
 
