@@ -197,7 +197,7 @@ lsusb
 # Common wireless driver packages
 sudo apt install rtl8812au-dkms      # Realtek 802.11ac USB adapters
 sudo apt install rtl8821ce-dkms      # Realtek 8821CE PCIe
-sudo apt install mt7921u-firmware    # MediaTek 7921
+sudo apt install linux-firmware      # MediaTek 7921 firmware ships in linux-firmware
 
 # For Broadcom wireless (common in laptops)
 sudo apt install bcmwl-kernel-source
