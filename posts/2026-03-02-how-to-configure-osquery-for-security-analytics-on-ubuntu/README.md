@@ -15,8 +15,9 @@ Osquery turns the operating system into a relational database. Instead of memori
 ```bash
 # Add the Osquery GPG key and repository
 
-curl -L https://pkg.osquery.io/deb/pubkey.gpg | sudo apt-key add -
-sudo add-apt-repository 'deb [arch=amd64] https://pkg.osquery.io/deb deb main'
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -L https://pkg.osquery.io/deb/pubkey.gpg | sudo tee /etc/apt/keyrings/osquery.asc >/dev/null
+echo 'deb [arch=amd64 signed-by=/etc/apt/keyrings/osquery.asc] https://pkg.osquery.io/deb deb main' | sudo tee /etc/apt/sources.list.d/osquery.list
 
 # Update and install
 sudo apt update
@@ -30,7 +31,7 @@ Alternatively, download the `.deb` package directly:
 
 ```bash
 # Get the latest version number from GitHub releases
-OSQUERY_VERSION="5.12.1"
+OSQUERY_VERSION="5.23.0"
 wget https://github.com/osquery/osquery/releases/download/${OSQUERY_VERSION}/osquery_${OSQUERY_VERSION}-1.linux_amd64.deb
 sudo dpkg -i osquery_${OSQUERY_VERSION}-1.linux_amd64.deb
 ```
@@ -117,10 +118,8 @@ SELECT username, tty, host, time FROM logged_in_users;
 ### File System and Integrity
 
 ```sql
--- Check for SUID/SGID binaries (potential privilege escalation)
-SELECT path, permissions, uid, gid FROM file
-WHERE (permissions LIKE '%s%' OR permissions LIKE '%S%')
-AND path NOT LIKE '/proc/%';
+-- Check for SUID binaries in common locations (potential privilege escalation)
+SELECT path, permissions, username, groupname FROM suid_bin;
 
 -- Files modified in /etc in the last 24 hours
 SELECT path, mtime, size FROM file
@@ -131,11 +130,11 @@ AND mtime > (strftime('%s', 'now') - 86400);
 SELECT * FROM authorized_keys;
 
 -- Check for world-writable directories
-SELECT path, permissions FROM file
-WHERE type = 'directory'
-AND permissions LIKE '%7'
-AND path NOT LIKE '/proc/%'
-AND path NOT LIKE '/sys/%';
+SELECT path, mode FROM file
+WHERE (path LIKE '/tmp/%' OR path LIKE '/var/tmp/%' OR path LIKE '/dev/shm/%')
+AND type = 'directory'
+AND mode LIKE '________w%'
+AND path NOT LIKE '/proc/%';
 ```
 
 ### Package and Software Inventory
@@ -144,10 +143,8 @@ AND path NOT LIKE '/sys/%';
 -- List installed packages
 SELECT name, version, arch, revision FROM deb_packages ORDER BY name;
 
--- Find packages installed recently
-SELECT name, version, install_time FROM deb_packages
-WHERE install_time > (strftime('%s', 'now') - 604800)  -- Last 7 days
-ORDER BY install_time DESC;
+-- List package details and status
+SELECT name, version, arch, status FROM deb_packages ORDER BY name;
 
 -- Find specific package
 SELECT name, version FROM deb_packages WHERE name LIKE '%ssh%';
@@ -179,7 +176,8 @@ sudo nano /etc/osquery/osquery.conf
     "verbose": "false",
     "worker_threads": "2",
     "enable_monitor": "true",
-    "disable_events": "false"
+    "disable_events": "false",
+    "enable_file_events": "true"
   },
 
   "schedule": {
@@ -208,11 +206,11 @@ sudo nano /etc/osquery/osquery.conf
       "interval": 3600
     },
     "installed_packages": {
-      "query": "SELECT name, version, install_time FROM deb_packages ORDER BY install_time DESC;",
+      "query": "SELECT name, version, arch, status FROM deb_packages ORDER BY name;",
       "interval": 3600
     },
     "suid_binaries": {
-      "query": "SELECT path, permissions, uid, gid FROM suid_bin;",
+      "query": "SELECT path, permissions, username, groupname FROM suid_bin;",
       "interval": 3600
     }
   },
