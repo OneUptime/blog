@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Btrfs, Storage, Linux, File System
 
-Description: Create and manage Btrfs subvolumes on Ubuntu to organize storage with flexible mount points, per-subvolume snapshot policies, and independent space management.
+Description: Create and manage Btrfs subvolumes on Ubuntu to organize storage with flexible mount points, per-subvolume snapshot policies, and quota-based space management.
 
 ---
 
@@ -15,7 +15,7 @@ Btrfs subvolumes are a core organizational concept that goes beyond simple direc
 A Btrfs subvolume looks like a directory but behaves more like a separate filesystem:
 
 - Snapshots are taken per-subvolume, not of the entire Btrfs volume
-- Subvolumes can be mounted independently with different mount options
+- Subvolumes can be mounted independently at different paths
 - Subvolumes can be sent/received (replicated) to other Btrfs volumes
 - Each subvolume has its own inode namespace
 
@@ -23,7 +23,7 @@ Contrast with a regular directory: a directory is just a path within a subvolume
 
 ## How Ubuntu Uses Btrfs Subvolumes
 
-Ubuntu's Btrfs installation layout (if you chose Btrfs during install) uses a conventional layout:
+A common Ubuntu-style Btrfs installation layout uses subvolumes such as:
 
 ```text
 Btrfs volume (on /dev/sda1)
@@ -50,7 +50,7 @@ ID 258 gen 67  top level 256 path @/var/lib/portables
 
 Each subvolume has:
 - **ID**: Unique numeric identifier
-- **gen**: Generation number (increments on each change)
+- **gen**: Generation number (updated on filesystem transactions)
 - **top level**: ID of the parent subvolume (5 = top-level volume)
 - **path**: Path relative to the top-level Btrfs volume
 
@@ -94,7 +94,7 @@ When you snapshot `/data/databases`, the nested subvolumes (`postgresql`, `mysql
 
 ## Mounting Subvolumes Independently
 
-One of the primary uses for subvolumes is mounting them at specific paths with specific options.
+One of the primary uses for subvolumes is mounting them at specific paths.
 
 ### Mount a specific subvolume by name
 
@@ -113,7 +113,7 @@ sudo mount -o subvol=databases /dev/sdb /var/lib/db
 sudo btrfs subvolume list /data | grep postgresql
 
 # Mount by ID
-sudo mount -o subvolid=258 /dev/sdb /var/lib/postgresql
+sudo mount -o subvolid=<POSTGRESQL_ID> /dev/sdb /var/lib/postgresql
 ```
 
 ### Mounting from the top-level volume
@@ -140,16 +140,16 @@ Add entries to `/etc/fstab`:
 ```text
 # /etc/fstab
 # Main Btrfs device - mount the 'web' subvolume at /var/www
-UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /var/www          btrfs  subvol=web,compress=zstd:3,noatime      0  0
+UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /var/www          btrfs  subvol=web,noatime      0  0
 
-# Mount 'databases' subvolume with specific options for DB workload
-UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /var/lib/db       btrfs  subvol=databases,noatime,nodatacow       0  0
+# Mount 'databases' subvolume
+UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /var/lib/db       btrfs  subvol=databases,noatime       0  0
 
 # Mount 'backups' subvolume
-UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /backup           btrfs  subvol=backups,compress=zstd:9,noatime   0  0
+UUID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  /backup           btrfs  subvol=backups,noatime   0  0
 ```
 
-Note that all entries use the same UUID (same device) but mount different subvolumes. Each can have different mount options.
+Note that all entries use the same UUID (same device) but mount different subvolumes. Most Btrfs-specific mount options, including `compress` and `nodatacow`, apply to the whole filesystem and only the first mounted subvolume's options take effect.
 
 Test:
 
@@ -162,17 +162,16 @@ df -h
 
 Btrfs's copy-on-write behavior is great for most files but conflicts with database write patterns. Databases do their own internal journaling and checksumming; Btrfs CoW adds overhead without benefit.
 
-Disable CoW for database subvolumes:
+Disable CoW for new database files by setting the No_COW attribute on an empty database directory or subvolume:
 
 ```bash
-# The nodatacow option must be set when the directory is empty
-# (or when the subvolume is first created)
-sudo mount -o nodatacow /dev/sdb /var/lib/db
+# The No_COW attribute should be set before database files are created
+sudo chattr +C /var/lib/db
 ```
 
-Or in fstab: `subvol=databases,nodatacow,noatime`
+Use `lsattr -d /var/lib/db` to verify the attribute on the directory itself.
 
-When `nodatacow` is set, checksumming is also disabled for that subvolume (checksumming requires CoW). This is the accepted tradeoff for database workloads where the database itself handles integrity.
+When No_COW is set on files, data checksumming is also disabled for those files. This is the accepted tradeoff for database workloads where the database itself handles integrity.
 
 ## Subvolume Properties
 
@@ -231,20 +230,20 @@ sudo btrfs subvolume delete /data/web
 Delete subvolume (no-commit): '/data/web'
 ```
 
-A subvolume must be empty of snapshots before deletion, unless you use the recursive delete option:
+A subvolume must be empty of nested subvolumes before deletion, unless you use the recursive delete option:
 
 ```bash
-# Delete subvolume and all its snapshots
-sudo btrfs subvolume delete /data/web_old
+# Delete subvolume and nested subvolumes below it
+sudo btrfs subvolume delete --recursive /data/web_old
 ```
 
-If deletion fails because of dependent snapshots:
+If deletion fails because of nested subvolumes or snapshots you want to remove manually:
 
 ```bash
 # List snapshots of the subvolume
 sudo btrfs subvolume list / | grep "web_old"
 
-# Delete snapshots first
+# Delete nested subvolumes or snapshots first
 sudo btrfs subvolume delete /data/snapshots/web_old_snap1
 sudo btrfs subvolume delete /data/web_old
 ```
@@ -302,16 +301,18 @@ sudo btrfs subvolume create /mnt/btrfs/@snapshots    # snapshot storage location
 
 ```text
 # /etc/fstab entries
-UUID=xxxx  /var/www           btrfs  subvol=@web,compress=zstd:3,noatime     0 0
-UUID=xxxx  /var/lib/postgresql btrfs subvol=@databases,nodatacow,noatime     0 0
-UUID=xxxx  /var/log           btrfs  subvol=@logs,compress=zstd:3,noatime    0 0
-UUID=xxxx  /backup            btrfs  subvol=@backups,compress=zstd:9,noatime 0 0
+UUID=xxxx  /var/www           btrfs  subvol=@web,noatime     0 0
+UUID=xxxx  /var/lib/postgresql btrfs subvol=@databases,noatime     0 0
+UUID=xxxx  /var/log           btrfs  subvol=@logs,noatime    0 0
+UUID=xxxx  /backup            btrfs  subvol=@backups,noatime 0 0
 UUID=xxxx  /mnt/snapshots     btrfs  subvol=@snapshots,noatime               0 0
 ```
 
+For the database subvolume, set `chattr +C /var/lib/postgresql` while it is empty if you want new database files to be created without CoW.
+
 This structure supports:
 - Independent snapshots per service
-- Different mount options per workload
+- Separate mount points per workload
 - Clear organization for backup and restore operations
 
 Subvolumes are the building block for Btrfs snapshots. Once your subvolume layout is established, taking snapshots and rolling back is straightforward - see the companion guide on Btrfs snapshots.
