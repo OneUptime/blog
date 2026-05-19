@@ -38,7 +38,7 @@ Download the reference implementation from the Nginx GitHub repository:
 ```bash
 # Download the nginx-ldap-auth daemon
 sudo curl -o /usr/local/bin/nginx-ldap-auth-daemon.py \
-  https://raw.githubusercontent.com/nginxinc/nginx-ldap-auth/main/nginx-ldap-auth-daemon.py
+  https://raw.githubusercontent.com/nginxinc/nginx-ldap-auth/master/nginx-ldap-auth-daemon.py
 
 sudo chmod +x /usr/local/bin/nginx-ldap-auth-daemon.py
 ```
@@ -90,18 +90,8 @@ sudo nano /etc/nginx/sites-available/ldap-protected
 ```
 
 ```nginx
-# Internal authentication endpoint
-server {
-    listen 8888;           # ldap-auth daemon listens here
-    internal;              # not accessible from outside
-
-    location / {
-        proxy_pass http://127.0.0.1:8888;
-        proxy_pass_request_body off;
-        proxy_set_header Content-Length "";
-        proxy_set_header X-Original-URI $request_uri;
-    }
-}
+# The ldap-auth daemon already listens on 127.0.0.1:8888, so the
+# auth_request location below proxies to it directly.
 
 # The actual site with LDAP protection
 server {
@@ -211,15 +201,15 @@ For a modern solution, Vouch-Proxy integrates with identity providers that authe
 
 ### Install Vouch-Proxy
 
-```bash
-# Download the latest Vouch-Proxy binary
-VOUCH_VERSION=0.40.0
-wget https://github.com/vouch/vouch-proxy/releases/download/v${VOUCH_VERSION}/vouch-proxy-linux-amd64.gz
-gunzip vouch-proxy-linux-amd64.gz
-sudo mv vouch-proxy-linux-amd64 /usr/local/bin/vouch-proxy
-sudo chmod +x /usr/local/bin/vouch-proxy
+Vouch-Proxy is distributed as a container image (recommended) or built from
+source — there are no prebuilt binary releases on GitHub. The Docker approach
+is simplest:
 
-# Create config directory
+```bash
+# Pull the latest image from Quay.io
+sudo docker pull quay.io/vouch/vouch-proxy:latest
+
+# Create config directory on the host
 sudo mkdir -p /etc/vouch
 
 # Create configuration file
@@ -258,10 +248,16 @@ server {
 
     # Validate the Vouch auth cookie
     auth_request /vouch-validate;
+
+    # Capture the headers Vouch sends back so we can forward them on redirect
+    auth_request_set $auth_resp_jwt $upstream_http_x_vouch_jwt;
+    auth_request_set $auth_resp_err $upstream_http_x_vouch_err;
+    auth_request_set $auth_resp_failcount $upstream_http_x_vouch_failcount;
+
     error_page 401 = @error401;
 
     location @error401 {
-        return 302 https://vouch.example.com/login?url=$scheme://$http_host$request_uri&vouch-failcount=$auth_resp_x_vouch_failcount&X-Vouch-Token=$auth_resp_x_vouch_jwt&error=$auth_resp_err;
+        return 302 https://vouch.example.com/login?url=$scheme://$http_host$request_uri&vouch-failcount=$auth_resp_failcount&X-Vouch-Token=$auth_resp_jwt&error=$auth_resp_err;
     }
 
     location = /vouch-validate {
