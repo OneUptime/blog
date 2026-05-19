@@ -65,9 +65,10 @@ sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-postfix.sh
 
 ```bash
 # Generate a self-signed certificate (for testing or internal use)
-sudo openssl req -new -x509 -days 3650 -nodes \
+sudo openssl req -new -x509 -days 3650 -noenc \
     -out /etc/ssl/certs/mail.example.com.pem \
     -keyout /etc/ssl/private/mail.example.com.key \
+    -addext "subjectAltName = DNS:mail.example.com" \
     -subj "/C=US/ST=State/L=City/O=Organization/CN=mail.example.com"
 
 sudo chmod 600 /etc/ssl/private/mail.example.com.key
@@ -90,9 +91,9 @@ sudo postconf -e "smtpd_tls_security_level = may"
 # Log TLS connection details for auditing
 sudo postconf -e "smtpd_tls_loglevel = 1"
 
-# Enable session caching for performance
-sudo postconf -e "smtpd_tls_session_cache_database = btree:\${data_directory}/smtpd_scache"
-sudo postconf -e "smtpd_tls_session_cache_timeout = 3600s"
+# Postfix 2.11 and later normally use TLS session tickets; database caching is optional
+# sudo postconf -e "smtpd_tls_session_cache_database = btree:\${data_directory}/smtpd_scache"
+# sudo postconf -e "smtpd_tls_session_cache_timeout = 3600s"
 
 # Request but don't require client certificates (for mutual TLS scenarios)
 # sudo postconf -e "smtpd_tls_ask_ccert = yes"
@@ -101,8 +102,8 @@ sudo postconf -e "smtpd_tls_session_cache_timeout = 3600s"
 sudo postconf -e "smtpd_tls_received_header = yes"
 
 # Set minimum TLS protocol version (TLS 1.2 minimum is strongly recommended)
-sudo postconf -e "smtpd_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1"
-sudo postconf -e "smtpd_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1"
+sudo postconf -e "smtpd_tls_protocols = >=TLSv1.2"
+sudo postconf -e "smtpd_tls_mandatory_protocols = >=TLSv1.2"
 ```
 
 ### Outgoing TLS (smtp)
@@ -116,13 +117,13 @@ sudo postconf -e "smtp_tls_security_level = may"
 # Log TLS details for outgoing connections
 sudo postconf -e "smtp_tls_loglevel = 1"
 
-# Cache outgoing TLS sessions
-sudo postconf -e "smtp_tls_session_cache_database = btree:\${data_directory}/smtp_scache"
-sudo postconf -e "smtp_tls_session_cache_timeout = 3600s"
+# Postfix 2.11 and later normally use TLS session tickets; database caching is optional
+# sudo postconf -e "smtp_tls_session_cache_database = btree:\${data_directory}/smtp_scache"
+# sudo postconf -e "smtp_tls_session_cache_timeout = 3600s"
 
 # Exclude weak protocols
-sudo postconf -e "smtp_tls_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1"
-sudo postconf -e "smtp_tls_mandatory_protocols = !SSLv2, !SSLv3, !TLSv1, !TLSv1.1"
+sudo postconf -e "smtp_tls_protocols = >=TLSv1.2"
+sudo postconf -e "smtp_tls_mandatory_protocols = >=TLSv1.2"
 
 # Use a proper CA certificate bundle for verifying remote servers
 sudo postconf -e "smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt"
@@ -130,11 +131,11 @@ sudo postconf -e "smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt"
 
 ## Enabling SMTPS and SMTP Submission Ports
 
-Edit `/etc/postfix/master.cf` to enable port 465 (SMTPS) and port 587 (submission):
+Edit `/etc/postfix/master.cf` to enable port 465 (submissions, formerly called SMTPS) and port 587 (submission):
 
 ```bash
 # View the current master.cf
-grep -E "^smtps|^submission" /etc/postfix/master.cf
+grep -E "^submissions|^smtps|^submission" /etc/postfix/master.cf
 
 # If not present, add them
 sudo tee -a /etc/postfix/master.cf > /dev/null <<'EOF'
@@ -150,9 +151,9 @@ submission inet n       -       y       -       -       smtpd
   -o smtpd_client_restrictions=permit_sasl_authenticated,reject
   -o smtpd_relay_restrictions=permit_sasl_authenticated,reject
 
-# SMTPS port 465 - Implicit TLS for email clients
-smtps     inet  n       -       y       -       -       smtpd
-  -o syslog_name=postfix/smtps
+# Submissions port 465 - Implicit TLS for email clients
+submissions inet n      -       y       -       -       smtpd
+  -o syslog_name=postfix/submissions
   -o smtpd_tls_wrappermode=yes
   -o smtpd_sasl_auth_enable=yes
   -o smtpd_sasl_type=dovecot
@@ -171,8 +172,9 @@ Choosing strong cipher suites is important. Exclude export ciphers, null ciphers
 sudo postconf -e "smtpd_tls_ciphers = high"
 sudo postconf -e "smtpd_tls_mandatory_ciphers = high"
 
-# Exclude specific weak ciphers
-sudo postconf -e "tls_high_cipherlist = ECDHE+AESGCM:ECDHE+AES256:DHE+AESGCM:DHE+AES256:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!3DES:!MD5:!PSK"
+# Exclude specific weak cipher families without redefining Postfix's high-grade cipher list
+sudo postconf -e "smtpd_tls_exclude_ciphers = aNULL, eNULL, EXPORT, DES, RC4, 3DES, MD5, PSK"
+sudo postconf -e "smtpd_tls_mandatory_exclude_ciphers = aNULL, eNULL, EXPORT, DES, RC4, 3DES, MD5, PSK"
 
 # Use the server's cipher preference order (not the client's)
 sudo postconf -e "tls_preempt_cipherlist = yes"
@@ -195,7 +197,8 @@ sudo tee /etc/postfix/tls_policy > /dev/null <<'EOF'
 # Format: domain  policy
 # encrypt = require TLS but accept any certificate
 # verify  = require TLS and verify certificate
-# secure  = require TLS, verified cert, and DANE if available
+# secure  = require TLS and verify the certificate against the nexthop name
+# dane    = use DANE TLSA records when DNSSEC-validated records are available
 
 # Require TLS for Gmail
 gmail.com               encrypt
@@ -214,8 +217,8 @@ sudo postconf -e "smtp_tls_policy_maps = hash:/etc/postfix/tls_policy"
 DANE uses TLSA DNS records to publish certificate fingerprints, enabling verification without relying on CAs:
 
 ```bash
-# Enable DANE verification for outgoing mail
-# Requires DNSSEC on the remote domain's DNS
+# Enable opportunistic DANE verification for outgoing mail
+# Requires a validating DNSSEC resolver and signed remote zones with TLSA records
 sudo postconf -e "smtp_tls_security_level = dane"
 sudo postconf -e "smtp_dns_support_level = dnssec"
 ```
@@ -276,18 +279,20 @@ grep "TLSv1\|TLSv1.2\|TLSv1.3" /var/log/mail.log | tail -20
 # If clients report certificate errors:
 # Verify the certificate chain is complete
 openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt \
-    /etc/letsencrypt/live/mail.example.com/fullchain.pem
+    -untrusted /etc/letsencrypt/live/mail.example.com/chain.pem \
+    -purpose sslserver \
+    /etc/letsencrypt/live/mail.example.com/cert.pem
 
 # Check certificate expiry
 openssl x509 -in /etc/letsencrypt/live/mail.example.com/cert.pem -noout -dates
 
-# If Postfix can't read the certificate:
-# Check that postfix user has read access
-sudo -u postfix cat /etc/letsencrypt/live/mail.example.com/fullchain.pem
+# If Postfix can't read the private key:
+# Check the resolved key path and keep it readable only by root
+sudo ls -l "$(readlink -f /etc/letsencrypt/live/mail.example.com/privkey.pem)"
 
-# Fix permissions if needed (Let's Encrypt certs need group read at minimum)
-sudo chmod 640 /etc/letsencrypt/live/mail.example.com/privkey.pem
-sudo chgrp postfix /etc/letsencrypt/live/mail.example.com/privkey.pem
+# Fix permissions if needed
+sudo chown root:root "$(readlink -f /etc/letsencrypt/live/mail.example.com/privkey.pem)"
+sudo chmod 600 "$(readlink -f /etc/letsencrypt/live/mail.example.com/privkey.pem)"
 ```
 
 Properly configured TLS protects your users' email from passive eavesdropping and contributes to your domain's trust reputation with major mail providers like Google and Microsoft.
