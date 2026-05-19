@@ -196,7 +196,7 @@ cat /sys/block/bcache0/bcache/stats_total/cache_bypass_hits
 cat /sys/fs/bcache/*/bdev[0-9]*/stats_total/cache_hit_ratio 2>/dev/null
 
 # How full the cache is
-cat /sys/block/sdc/bcache/cache/cache_available_percent
+cat /sys/fs/bcache/*/cache_available_percent
 ```
 
 A hit ratio below 80% in writeback mode suggests the working set is larger than the cache. Either increase cache size or accept that some I/O hits the spinning disk.
@@ -217,7 +217,7 @@ echo 1048576 | sudo tee /sys/block/bcache0/bcache/readahead
 # cat /sys/fs/bcache/<uuid>/io_error_limit
 
 # Writeback delay (seconds between writeback flushes)
-echo 30 | sudo tee /sys/fs/bcache/*/internal/writeback_delay 2>/dev/null
+echo 30 | sudo tee /sys/block/bcache0/bcache/writeback_delay
 ```
 
 ## Detaching and Removing bcache
