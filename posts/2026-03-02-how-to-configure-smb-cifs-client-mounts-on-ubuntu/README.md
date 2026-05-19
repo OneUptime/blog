@@ -8,12 +8,12 @@ Description: Mount Windows shares and Samba servers on Ubuntu using CIFS, includ
 
 ---
 
-Ubuntu handles SMB/CIFS mounts through the `cifs-utils` package, which provides the `mount.cifs` driver. Whether you're connecting to Windows file shares, a Samba server on Linux, or a NAS device, the process is the same. Getting it right means understanding credential management, mount options, and how to handle the differences between interactive and service mounts.
+Ubuntu handles SMB/CIFS mounts through the kernel CIFS filesystem and the `cifs-utils` package, which provides the `mount.cifs` helper. Whether you're connecting to Windows file shares, a Samba server on Linux, or a NAS device, the process is the same. Getting it right means understanding credential management, mount options, and how to handle the differences between interactive and service mounts.
 
 ## Installing the CIFS Client
 
 ```bash
-# Install the CIFS kernel module and utilities
+# Install the CIFS mount utilities
 
 sudo apt update
 sudo apt install -y cifs-utils
@@ -117,7 +117,7 @@ Add entries like these:
 //fileserver/data /mnt/data cifs credentials=/etc/samba/credentials-data,vers=3.0,cache=loose,rsize=130048,wsize=130048 0 0
 
 # Share that should not be mounted at boot (noauto)
-# Mount manually with: sudo mount /mnt/optional
+# Mount manually with: sudo mount /mnt/media
 //nas.local/media /mnt/media cifs credentials=/etc/samba/credentials-nas,vers=3.0,noauto,user 0 0
 ```
 
@@ -167,8 +167,8 @@ file_mode=0644,dir_mode=0755
 # Allow setuid execution (risky, avoid unless needed)
 # suid
 
-# Map file modes from server (only works with Unix extension servers)
-# nounix  # Disable Unix extensions
+# Disable Unix extensions if a server advertises problematic Unix metadata
+# nounix
 ```
 
 ### Performance Options
@@ -183,7 +183,7 @@ cache=strict  # Default - respects server cache hints
 rsize=130048  # Read buffer size
 wsize=130048  # Write buffer size
 
-# Close connections on last use (good for infrequent access)
+# Ignore any unrecognized mount options that follow this option
 sloppy
 ```
 
@@ -256,6 +256,7 @@ ls /mnt/cifs/documents
 nc -zv 192.168.1.100 445
 
 # Try connecting with smbclient to test credentials and list shares
+sudo apt install -y smbclient
 smbclient -L //192.168.1.100 -U username
 smbclient //192.168.1.100/sharename -U username
 
