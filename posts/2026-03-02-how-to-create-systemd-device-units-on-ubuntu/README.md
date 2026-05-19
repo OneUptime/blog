@@ -10,7 +10,7 @@ Description: Understand and create systemd device units on Ubuntu to trigger ser
 
 systemd device units represent hardware devices in the systemd dependency graph. When a device appears (or disappears), systemd can use that event as a dependency trigger for other units. This lets you start services automatically when specific hardware is plugged in, or prevent services from starting until required hardware is available.
 
-Device units are unusual compared to other unit types because they are not created by writing unit files. Instead, udev creates them dynamically based on device properties, and you control their behavior by setting `SYSTEMD_WANTS` and similar tags in udev rules.
+Device units are unusual compared to other unit types because they are usually created dynamically from the udev database, not by writing unit files. You can still add limited `.device` unit files for dependencies and installation metadata, but device-specific behavior is normally controlled by setting `SYSTEMD_WANTS` and similar properties in udev rules.
 
 ## How Device Units Work
 
@@ -127,8 +127,8 @@ Apply the rule:
 sudo udevadm control --reload-rules
 sudo udevadm trigger
 
-# Test the rule without a real device
-udevadm test /sys/bus/usb/devices/1-1.2 2>&1 | grep -E "SYSTEMD|WANT"
+# Test the rule without unplugging and replugging the device
+udevadm test $(udevadm info -q path /dev/ttyUSB0) 2>&1 | grep -E "SYSTEMD|WANT"
 ```
 
 ## Setting a Custom Unit Name for a Device
@@ -181,8 +181,8 @@ RemainAfterExit=yes
 Automatically start a backup when a specific USB drive is plugged in:
 
 ```bash
-# First, identify the drive's unique ID
-udevadm info /dev/sdb | grep -E "ID_SERIAL|ID_FS_LABEL|ID_FS_UUID"
+# First, identify the filesystem's unique ID
+udevadm info /dev/sdb1 | grep -E "ID_SERIAL|ID_FS_LABEL|ID_FS_UUID"
 # Example: ID_FS_UUID=abc123-def456
 ```
 
@@ -210,18 +210,18 @@ sudo nano /etc/systemd/system/run-backup.service
 ```ini
 [Unit]
 Description=Run backup to USB drive
-After=media.mount
+BindsTo=dev-disk-by\x2duuid-abc123\x2ddef456.device
+After=dev-disk-by\x2duuid-abc123\x2ddef456.device
 
 [Service]
 Type=oneshot
-User=backup-user
 ExecStart=/usr/local/bin/run-backup.sh
 
 # Don't restart - backup is a one-shot operation
 Restart=no
 
-# Notify when done
-ExecStartPost=/usr/bin/notify-send "Backup complete"
+# Log when done
+ExecStartPost=/usr/bin/logger "USB backup complete"
 ```
 
 ```bash
@@ -266,10 +266,10 @@ sudo udevadm control --reload-rules
 udevadm monitor --kernel --udev --property
 
 # Simulate a device event to test rules
-udevadm test $(udevadm info -q path /dev/sdb)
+udevadm test $(udevadm info -q path /dev/sdb1)
 
 # Check what systemd knows about a device
-systemctl show dev-sdb.device
+systemctl show dev-sdb1.device
 
 # List all devices with SYSTEMD_WANTS set
 udevadm info --export-db | grep -A 5 "SYSTEMD_WANTS"
