@@ -108,8 +108,8 @@ The aggregate reports are compressed XML files. A report parser makes them reada
 sudo apt install -y libxml-libxml-perl cpanminus
 sudo cpanm Mail::DMARC::PurePerl
 
-# Or use the Python dmarc-report-analyzer
-sudo pip3 install dmarc-report-analyzer
+# Or use the Python parsedmarc tool
+sudo pip3 install parsedmarc
 
 # For a simple XML viewer
 sudo apt install -y libxml2-utils
@@ -137,14 +137,16 @@ sudo tee /usr/local/bin/parse-dmarc-reports.sh > /dev/null <<'EOF'
 
 REPORT_DIR="/var/mail/dmarc-reports"
 
-for report in "$REPORT_DIR"/*.xml.gz 2>/dev/null; do
+shopt -s nullglob
+
+for report in "$REPORT_DIR"/*.xml.gz; do
     [ -f "$report" ] || continue
     echo "=== Report: $report ==="
     zcat "$report" | xmllint --format - | grep -E "source_ip|count|disposition|dkim|spf"
     echo ""
 done
 
-for report in "$REPORT_DIR"/*.xml.zip 2>/dev/null; do
+for report in "$REPORT_DIR"/*.xml.zip; do
     [ -f "$report" ] || continue
     echo "=== Report: $report ==="
     unzip -p "$report" | xmllint --format - | grep -E "source_ip|count|disposition|dkim|spf"
@@ -214,14 +216,20 @@ v=DMARC1; p=reject; sp=quarantine; rua=mailto:dmarc-reports@example.com
 
 DMARC failures on forwarded email are a known problem. When someone forwards your email, the forwarding server re-sends it, and the original DKIM signature may break (due to header modification), and SPF fails (because the forwarder's IP is not in your SPF record).
 
-The DMARC community has developed ARC (Authenticated Received Chain) to address this. OpenDKIM and Google support ARC.
+The DMARC community has developed ARC (Authenticated Received Chain) to address this. Gmail and other major receivers honor valid ARC chains when evaluating forwarded mail.
 
 ```bash
-# Install ARC support for OpenDKIM
-sudo apt install -y libarc-perl
+# OpenARC is the reference ARC milter, maintained as a sibling project to
+# OpenDKIM by the Trusted Domain Project. It is not packaged in the Ubuntu
+# repositories at present, so the typical path is to build it from source:
+# https://github.com/trusteddomainproject/OpenARC
 
-# Add ARC signing to /etc/opendkim.conf:
-# ArcSign yes
+# An alternative for ARC signing on Ubuntu is the arcsign filter shipped
+# with the dkimpy tools:
+sudo apt install -y python3-dkim
+
+# Then use arcsign(1) to ARC-sign a message on stdin:
+# arcsign selector domain /path/to/private.key < message.eml
 ```
 
 ## Testing DMARC
