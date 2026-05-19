@@ -8,7 +8,7 @@ Description: Install and configure WildFly (formerly JBoss) application server o
 
 ---
 
-WildFly is the open-source Java application server that was previously known as JBoss AS. It implements the full Jakarta EE specification and is the upstream project for Red Hat JBoss EAP. If you're running Java EE or Jakarta EE applications - EJBs, JPA with full container management, JMS, JAX-RS, or CDI - WildFly handles all of it out of the box.
+WildFly is the open-source Java application server that was previously known as JBoss AS. It implements the Jakarta EE Platform and is the upstream project for Red Hat JBoss EAP. If you're running Java EE or Jakarta EE applications - EJBs, JPA with full container management, JMS, JAX-RS, or CDI - WildFly handles all of it out of the box.
 
 ## Prerequisites
 
@@ -40,7 +40,7 @@ Check the WildFly releases page for the current version. The download is a ZIP o
 
 ```bash
 # Set version variable
-WILDFLY_VERSION="31.0.0.Final"
+WILDFLY_VERSION="39.0.1.Final"
 
 # Download WildFly
 wget https://github.com/wildfly/wildfly/releases/download/${WILDFLY_VERSION}/wildfly-${WILDFLY_VERSION}.tar.gz
@@ -70,31 +70,34 @@ For standalone mode, the configuration lives in `/opt/wildfly/standalone/configu
 ### Create WildFly Configuration Directory
 
 ```bash
-sudo mkdir -p /etc/wildfly
+sudo mkdir -p /etc/sysconfig
 ```
 
 ### WildFly Configuration File
 
 ```bash
-sudo nano /etc/wildfly/wildfly.conf
+sudo nano /etc/sysconfig/wildfly-standalone.conf
 ```
 
 ```bash
-# /etc/wildfly/wildfly.conf
+# /etc/sysconfig/wildfly-standalone.conf
 # WildFly configuration
 
-# The mode to run WildFly in (standalone or domain)
-WILDFLY_MODE=standalone
+# Java location
+JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+
+# Standalone configuration file
+WILDFLY_SERVER_CONFIG=standalone.xml
 
 # Bind address for the HTTP/HTTPS connectors
 WILDFLY_BIND=0.0.0.0
 
 # Bind address for the management interface
 # Keep this on loopback for security
-WILDFLY_CONSOLE_BIND=127.0.0.1
+WILDFLY_OPTS="-bmanagement=127.0.0.1"
 
-# Additional startup options
-WILDFLY_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC"
+# JVM options
+JAVA_OPTS="-Xms512m -Xmx1024m -XX:+UseG1GC"
 ```
 
 ### Security: Configuring the Management Interface
@@ -111,107 +114,42 @@ sudo /opt/wildfly/bin/add-user.sh -u admin -p 'StrongPassword123!' -s
 
 ## Creating the systemd Service
 
-WildFly provides sample systemd files in its docs directory. Use them as a base:
+WildFly provides systemd files in its `bin/systemd` directory. Generate a unit for the `wildfly` user and group:
 
 ```bash
-# Check if launch.sh exists
-ls /opt/wildfly/bin/launch.sh
+cd /opt/wildfly/bin/systemd
+sudo ./generate_systemd_unit.sh standalone wildfly wildfly
 ```
 
-If it doesn't exist, create it:
+Copy the environment file into the generated systemd directory:
 
 ```bash
-sudo nano /opt/wildfly/bin/launch.sh
+sudo cp /etc/sysconfig/wildfly-standalone.conf /opt/wildfly/bin/systemd/wildfly-standalone.conf
 ```
+
+Copy the generated files into place:
 
 ```bash
-#!/bin/bash
-# /opt/wildfly/bin/launch.sh
-
-WILDFLY_HOME="/opt/wildfly"
-
-if [ "x$WILDFLY_MODE" = "xstandalone" ]; then
-    $WILDFLY_HOME/bin/standalone.sh -c $WILDFLY_CONFIG \
-        -b $WILDFLY_BIND \
-        -bmanagement $WILDFLY_CONSOLE_BIND
-else
-    $WILDFLY_HOME/bin/domain.sh \
-        -b $WILDFLY_BIND \
-        -bmanagement $WILDFLY_CONSOLE_BIND
-fi
-```
-
-```bash
-sudo chmod +x /opt/wildfly/bin/launch.sh
-sudo chown wildfly:wildfly /opt/wildfly/bin/launch.sh
-```
-
-Create the systemd unit file:
-
-```bash
-sudo nano /etc/systemd/system/wildfly.service
-```
-
-```ini
-[Unit]
-Description=WildFly Application Server
-After=network.target
-
-[Service]
-User=wildfly
-Group=wildfly
-
-# Load WildFly configuration
-EnvironmentFile=/etc/wildfly/wildfly.conf
-
-# Set Java and WildFly environment
-Environment=JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-Environment=JBOSS_HOME=/opt/wildfly
-Environment=WILDFLY_CONFIG=standalone.xml
-Environment=LAUNCH_JBOSS_IN_BACKGROUND=1
-Environment=JBOSS_PIDFILE=/opt/wildfly/wildfly.pid
-
-# Start and stop commands
-ExecStart=/opt/wildfly/bin/launch.sh
-ExecStop=/opt/wildfly/bin/jboss-cli.sh --connect command=:shutdown
-
-# Process type - WildFly forks itself
-Type=simple
-
-# Restart policy
-Restart=on-failure
-RestartSec=30
-
-# Give WildFly time to start (it can be slow on first boot)
-TimeoutStartSec=120
-
-# Resource limits
-LimitNOFILE=102642
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
+sudo cp /opt/wildfly/bin/systemd/wildfly-standalone.service /etc/systemd/system/
+sudo cp /opt/wildfly/bin/systemd/wildfly-standalone.conf /etc/sysconfig/
 ```
 
 Start WildFly:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable wildfly
-sudo systemctl start wildfly
+sudo systemctl enable wildfly-standalone
+sudo systemctl start wildfly-standalone
 
 # Monitor startup (can take 30-60 seconds)
-journalctl -u wildfly.service -f
+journalctl -u wildfly-standalone.service -f
 ```
 
 ## Verifying WildFly is Running
 
 ```bash
 # Check service status
-sudo systemctl status wildfly.service
+sudo systemctl status wildfly-standalone.service
 
 # Check if ports are open
 ss -tlnp | grep -E '8080|9990'
@@ -293,8 +231,10 @@ Add SSL using the CLI:
 
 ```bash
 sudo -u wildfly /opt/wildfly/bin/jboss-cli.sh --connect << 'EOF'
-# Create a keystore (in production, use a proper certificate)
-/subsystem=elytron/key-store=MyKeyStore:add(path=/opt/wildfly/conf/myapp.keystore.jks, credential-reference={clear-text="keystore-password"}, type=JKS)
+# Create a keystore resource and generate a test key pair (in production, use a proper certificate)
+/subsystem=elytron/key-store=MyKeyStore:add(path=myapp.keystore.pkcs12, relative-to=jboss.server.config.dir, credential-reference={clear-text="keystore-password"}, type=PKCS12)
+/subsystem=elytron/key-store=MyKeyStore:generate-key-pair(alias=localhost, algorithm=RSA, key-size=2048, validity=365, credential-reference={clear-text="keystore-password"}, distinguished-name="CN=localhost")
+/subsystem=elytron/key-store=MyKeyStore:store()
 
 # Add a key manager
 /subsystem=elytron/key-manager=MyKeyManager:add(key-store=MyKeyStore, credential-reference={clear-text="keystore-password"})
@@ -303,7 +243,7 @@ sudo -u wildfly /opt/wildfly/bin/jboss-cli.sh --connect << 'EOF'
 /subsystem=elytron/server-ssl-context=MySSLContext:add(key-manager=MyKeyManager, protocols=["TLSv1.3","TLSv1.2"])
 
 # Configure the HTTPS listener
-/subsystem=undertow/server=default-server/https-listener=https:add(socket-binding=https, ssl-context=MySSLContext, enable-http2=true)
+/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=ssl-context, value=MySSLContext)
 
 :reload
 EOF
