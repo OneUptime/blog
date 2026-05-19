@@ -90,11 +90,6 @@ SyslogSuccess           yes
 LogWhy                  yes
 
 # Signing configuration
-Domain                  example.com
-KeyFile                 /etc/opendkim/keys/example.com.private
-Selector                mail
-
-# Key table (for multiple domains)
 KeyTable                refile:/etc/opendkim/key.table
 SigningTable            refile:/etc/opendkim/signing.table
 ExternalIgnoreList      refile:/etc/opendkim/trusted.hosts
@@ -197,12 +192,16 @@ TrustedAuthservIDs      mail.example.com
 
 # History file for report generation
 HistoryFile             /var/run/opendmarc/opendmarc.dat
+UMask                   002
 
 # Reject messages that fail DMARC with p=reject policy
 RejectFailures          false   # Set true to enforce rejection
 ```
 
 ```bash
+# Add postfix user to opendmarc group (socket permissions)
+sudo usermod -aG opendmarc postfix
+
 sudo systemctl enable --now opendmarc
 ```
 
@@ -215,7 +214,7 @@ sudo nano /etc/postfix/main.cf
 ```ini
 # Add OpenDMARC to the milter list (chain multiple milters)
 smtpd_milters = local:/run/opendkim/opendkim.sock,local:/run/opendmarc/opendmarc.sock
-non_smtpd_milters = local:/run/opendkim/opendkim.sock,local:/run/opendmarc/opendmarc.sock
+non_smtpd_milters = local:/run/opendkim/opendkim.sock
 ```
 
 ```bash
@@ -243,10 +242,6 @@ upstream "local" {
 }
 milter = yes;
 timeout = 120s;
-upstream "local" {
-    default = yes;
-    self_scan = yes;
-}
 ```
 
 ```bash
@@ -295,7 +290,7 @@ echo "Test message" | mail -s "DKIM Test" your@gmail.com
 sudo grep "opendkim\|milter" /var/log/mail.log | tail -20
 
 # Check if DKIM signature was added
-# Sent messages should have an X-DKIM header or DKIM-Signature header
+# Sent messages should have a DKIM-Signature header
 ```
 
 ```bash
@@ -330,7 +325,7 @@ The `milter_default_action` determines what happens if a milter is unreachable:
 milter_default_action = accept
 
 # reject = reject all mail if milter is down (safe but disruptive)
-# milter_default_action = reject 451 4.7.1 Service unavailable
+# milter_default_action = reject
 
 # tempfail = tell sender to try again later
 # milter_default_action = tempfail
