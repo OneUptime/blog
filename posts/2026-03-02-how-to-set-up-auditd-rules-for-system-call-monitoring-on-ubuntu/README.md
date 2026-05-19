@@ -21,7 +21,7 @@ auditctl -a action,filter -S syscall -F field=value -k key
 ```
 
 - **action:** `always` (always audit) or `never` (never audit - used to exclude)
-- **filter:** `exit` (after system call), `entry` (before), `user` (user-space), `task` (on fork)
+- **filter:** `exit` (after system call), `user` (user-space messages), `task` (on fork), `exclude` (event type exclusion)
 - **-S syscall:** Syscall name or number
 - **-F field=value:** Filter on process attributes (uid, gid, exe, etc.)
 - **-k key:** Label for searching
@@ -102,7 +102,7 @@ Unauthorized mounts can be used to introduce malicious filesystems:
 ```bash
 # Audit mount and unmount operations
 -a always,exit -F arch=b64 -S mount -S umount2 -k mount-operations
--a always,exit -F arch=b32 -S mount -S umount -k mount-operations
+-a always,exit -F arch=b32 -S mount -S umount -S umount2 -k mount-operations
 ```
 
 ### Kernel Module Loading
@@ -127,7 +127,7 @@ Detect unexpected network configuration changes:
 # Network configuration changes
 -a always,exit -F arch=b64 -S setsockopt -k socket-options
 
-# Detect bind to privileged ports (requires root normally)
+# Detect bind syscalls by root processes (port number is not directly filterable)
 -a always,exit -F arch=b64 -S bind -F euid=0 -k privileged-bind
 ```
 
@@ -235,7 +235,7 @@ sudo ausearch -k process-execution -c bash
 sudo ausearch -k process-execution -ua 1001
 
 # Format output for human reading
-sudo ausearch -k privilege-escalation -i
+sudo ausearch -k setuid-execution -i
 ```
 
 ## Interpreting Syscall Events
