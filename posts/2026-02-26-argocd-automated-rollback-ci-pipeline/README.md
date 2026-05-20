@@ -78,7 +78,7 @@ curl -X POST \
 
 ## Automated Rollback Script
 
-Here is a complete rollback script that monitors a deployment and automatically rolls back if it fails:
+Here is a rollback script that monitors a deployment and automatically rolls back if it fails:
 
 ```bash
 #!/bin/bash
@@ -153,7 +153,7 @@ perform_rollback "$APP_NAME" "$CURRENT_REVISION"
 exit 1
 ```
 
-The rollback function:
+Add the rollback function near the top of the script before it is first called:
 
 ```bash
 perform_rollback() {
@@ -208,15 +208,14 @@ APP_PATH="$2"
 
 git clone "https://$GITHUB_TOKEN@github.com/$MANIFEST_REPO.git" /tmp/manifests
 cd /tmp/manifests
+git config user.email "ci-rollback@example.com"
+git config user.name "Rollback Bot"
 
 # Find the last commit that modified the app path
 LAST_COMMIT=$(git log -1 --format="%H" -- "$APP_PATH")
 
 echo "Reverting commit: $LAST_COMMIT"
 git revert "$LAST_COMMIT" --no-edit
-
-git config user.email "ci-rollback@example.com"
-git config user.name "Rollback Bot"
 git push origin main
 
 echo "Git revert pushed. ArgoCD will auto-sync the reverted state."
@@ -233,6 +232,9 @@ on:
     paths:
       - 'overlays/production/**'
 
+permissions:
+  contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -243,9 +245,9 @@ jobs:
 
       - name: Install ArgoCD CLI
         run: |
-          curl -sSL -o /usr/local/bin/argocd \
+          curl -sSL -o argocd \
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x /usr/local/bin/argocd
+          sudo install -m 0755 argocd /usr/local/bin/argocd
 
       - name: Deploy and monitor
         id: deploy
@@ -313,12 +315,16 @@ RESPONSE=$(curl -sf \
   "https://$ARGOCD_SERVER/api/v1/applications/$APP_NAME")
 
 HEALTH=$(echo "$RESPONSE" | jq -r '.status.health.status')
-DEGRADED_RESOURCES=$(echo "$RESPONSE" | jq '[.status.resources[] | select(.health.status == "Degraded")] | length')
-TOTAL_RESOURCES=$(echo "$RESPONSE" | jq '.status.resources | length')
+DEGRADED_RESOURCES=$(echo "$RESPONSE" | jq '[(.status.resources // [])[] | select(.health.status == "Degraded")] | length')
+TOTAL_RESOURCES=$(echo "$RESPONSE" | jq '.status.resources // [] | length')
 
 # Calculate health percentage
-HEALTHY_RESOURCES=$(echo "$RESPONSE" | jq '[.status.resources[] | select(.health.status == "Healthy")] | length')
-HEALTH_PERCENT=$((HEALTHY_RESOURCES * 100 / TOTAL_RESOURCES))
+HEALTHY_RESOURCES=$(echo "$RESPONSE" | jq '[(.status.resources // [])[] | select(.health.status == "Healthy")] | length')
+if [ "$TOTAL_RESOURCES" -gt 0 ]; then
+  HEALTH_PERCENT=$((HEALTHY_RESOURCES * 100 / TOTAL_RESOURCES))
+else
+  HEALTH_PERCENT=0
+fi
 
 echo "Health: $HEALTH"
 echo "Healthy resources: $HEALTHY_RESOURCES / $TOTAL_RESOURCES ($HEALTH_PERCENT%)"
