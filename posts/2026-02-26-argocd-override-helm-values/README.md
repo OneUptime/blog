@@ -14,16 +14,17 @@ In this guide, we will cover every method for overriding Helm values in ArgoCD, 
 
 ## Override Methods
 
-ArgoCD supports four primary ways to override Helm values:
+ArgoCD supports five primary ways to override Helm values:
 
 1. **Value files** (`valueFiles`) - YAML files containing value overrides
-2. **Inline values** (`values`) - YAML values embedded directly in the Application spec
-3. **Parameters** (`parameters`) - Individual key-value pairs
-4. **File parameters** (`fileParameters`) - Values loaded from files
+2. **Inline structured values** (`valuesObject`) - YAML values embedded as an object in the Application spec
+3. **Inline values** (`values`) - YAML values embedded as a block string in the Application spec
+4. **Parameters** (`parameters`) - Individual key-value pairs
+5. **File parameters** (`fileParameters`) - Values loaded from files
 
 ## Method 1: Inline Values
 
-The most straightforward override method is inline values. You embed the YAML directly in your Application spec:
+The most straightforward override method is inline values. In current ArgoCD versions, prefer `valuesObject` for structured YAML directly in your Application spec:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -38,7 +39,7 @@ spec:
     path: charts/my-app
     helm:
       # Inline values override the chart's default values.yaml
-      values: |
+      valuesObject:
         replicaCount: 3
         image:
           tag: v2.0.0
@@ -54,14 +55,26 @@ spec:
     namespace: production
 ```
 
+You can also use `values` when you want to embed the values as a YAML block string:
+
+```yaml
+helm:
+  values: |
+    replicaCount: 3
+    image:
+      tag: v2.0.0
+```
+
 Using the CLI:
 
 ```bash
-argocd app set my-app --values '
+cat > overrides.yaml <<'EOF'
 replicaCount: 3
 image:
   tag: v2.0.0
-'
+EOF
+
+argocd app set my-app --values-literal-file overrides.yaml
 ```
 
 ## Method 2: Helm Parameters
@@ -106,7 +119,7 @@ argocd app set my-app -p image.tag=v2.0.0
 argocd app set my-app -p ingress.enabled=true
 
 # Force string type (useful for values that look like numbers or booleans)
-argocd app set my-app -p image.tag=1.0 --helm-set-string image.tag=1.0
+argocd app set my-app --helm-set-string image.tag=1.0
 ```
 
 Parameters are particularly useful for CI/CD pipelines where you need to set a single value (like an image tag) without managing a full values file.
@@ -138,26 +151,30 @@ This maps to Helm's `--set-file` flag.
 
 ## Precedence Order
 
-When you use multiple override methods, they are applied in a specific order. Later overrides win:
+When you use value files, inline values, `valuesObject`, and parameters together, ArgoCD applies them in a specific order. Later overrides win:
 
 ```mermaid
 graph TD
     A["Chart's default values.yaml"] --> B["valueFiles (in order listed)"]
     B --> C["Inline values"]
-    C --> D["parameters"]
-    D --> E["Final effective values"]
+    C --> D["valuesObject"]
+    D --> E["parameters"]
+    E --> F["Final effective values"]
 
-    style E fill:#44bb44
+    style F fill:#44bb44
 ```
 
-The full precedence from lowest to highest:
+The documented precedence from lowest to highest:
 
 1. **Chart's default `values.yaml`** (lowest priority)
 2. **`valueFiles`** (applied in the order listed)
 3. **Inline `values`**
-4. **`parameters`** (highest priority)
+4. **Inline `valuesObject`**
+5. **`parameters`** (highest priority)
 
-This means a parameter will always override an inline value, and an inline value will always override a values file.
+This means a parameter will always override `valuesObject`, `valuesObject` will override an inline `values` block, and inline values will always override a values file.
+
+File parameters are passed to Helm as `--set-file`, so they are parameter-style overrides rather than values files.
 
 ### Example Demonstrating Precedence
 
@@ -182,7 +199,11 @@ spec:
       values: |
         replicaCount: 5
 
-      # Step 4: Parameter sets replicaCount: 10 (THIS WINS)
+      # Step 4: valuesObject sets replicaCount: 7
+      valuesObject:
+        replicaCount: 7
+
+      # Step 5: Parameter sets replicaCount: 10 (THIS WINS)
       parameters:
         - name: replicaCount
           value: "10"
@@ -260,7 +281,7 @@ spec:
                       storage: 100Gi
         grafana:
           enabled: true
-          adminPassword: "${GRAFANA_PASSWORD}"
+          adminPassword: "change-me"
           persistence:
             enabled: true
             size: 10Gi
@@ -311,7 +332,7 @@ argocd app diff my-app
 argocd app unset my-app -p replicaCount
 
 # Remove inline values
-argocd app set my-app --values ''
+argocd app unset my-app --values-literal
 
 # Remove all value files
 argocd app unset my-app --values
@@ -319,4 +340,4 @@ argocd app unset my-app --values
 
 ## Summary
 
-ArgoCD gives you four ways to override Helm values: value files, inline values, parameters, and file parameters. They follow a clear precedence order where parameters win over inline values, which win over value files, which win over chart defaults. Use value files for bulk environment configuration, inline values for moderate customization, and parameters for CI/CD automation where you need to set specific values like image tags. For managing values across multiple environments, see our guide on [using multiple Helm values files](https://oneuptime.com/blog/post/2026-02-26-argocd-multiple-helm-values-files/view).
+ArgoCD gives you five ways to override Helm values: value files, inline `values`, inline `valuesObject`, parameters, and file parameters. For value files, inline `values`, `valuesObject`, and parameters, ArgoCD follows a clear precedence order where parameters win over `valuesObject`, which wins over inline `values`, which wins over value files, which win over chart defaults. Use value files for bulk environment configuration, inline values for moderate customization, and parameters for CI/CD automation where you need to set specific values like image tags. For managing values across multiple environments, see our guide on [using multiple Helm values files](https://oneuptime.com/blog/post/2026-02-26-argocd-multiple-helm-values-files/view).
