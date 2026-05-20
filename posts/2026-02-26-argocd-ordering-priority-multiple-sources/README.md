@@ -42,28 +42,36 @@ Even without sync waves, ArgoCD applies resources in a specific order based on t
 3. ResourceQuota
 4. LimitRange
 5. PodSecurityPolicy
-6. ServiceAccount
-7. Secret
-8. SecretList
-9. ConfigMap
-10. StorageClass
-11. PersistentVolume
-12. PersistentVolumeClaim
-13. CustomResourceDefinition
-14. ClusterRole
-15. ClusterRoleBinding
-16. Role
-17. RoleBinding
-18. Service
-19. DaemonSet
-20. Pod
-21. ReplicaSet
-22. Deployment
-23. StatefulSet
-24. Job
-25. CronJob
-26. Ingress
-27. APIService
+6. PodDisruptionBudget
+7. ServiceAccount
+8. Secret
+9. SecretList
+10. ConfigMap
+11. StorageClass
+12. PersistentVolume
+13. PersistentVolumeClaim
+14. CustomResourceDefinition
+15. ClusterRole
+16. ClusterRoleList
+17. ClusterRoleBinding
+18. ClusterRoleBindingList
+19. Role
+20. RoleList
+21. RoleBinding
+22. RoleBindingList
+23. Service
+24. DaemonSet
+25. Pod
+26. ReplicationController
+27. ReplicaSet
+28. Deployment
+29. HorizontalPodAutoscaler
+30. StatefulSet
+31. Job
+32. CronJob
+33. IngressClass
+34. Ingress
+35. APIService
 
 This ordering applies regardless of which source the resource came from.
 
@@ -91,6 +99,12 @@ metadata:
   namespace: payments
   annotations:
     argocd.argoproj.io/sync-wave: "-4"
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
 ```
 
 ```yaml
@@ -102,6 +116,14 @@ metadata:
   namespace: payments
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
+subjects:
+  - kind: ServiceAccount
+    name: payment-service
+    namespace: payments
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: payment-service
 ```
 
 ```yaml
@@ -147,6 +169,13 @@ metadata:
   namespace: payments
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+spec:
+  selector:
+    matchLabels:
+      app: payment-api
+  endpoints:
+    - port: http
+      path: /metrics
 ```
 
 The resulting apply order is:
@@ -221,9 +250,9 @@ The sync phases execute in order: PreSync hooks from all sources, then Sync (mai
 
 ## Within the Same Wave
 
-Resources in the same sync wave are applied in the default resource type order (Namespaces before Services before Deployments). If two resources have the same kind and the same wave, the order between them is not guaranteed.
+Resources in the same sync wave are applied in the default resource type order (Namespaces before Services before Deployments), and then by resource name.
 
-For resources that must be applied in a specific order within the same resource type, use different wave numbers:
+For resources that must be applied in a specific logical order within the same resource type, use different wave numbers instead of relying on names:
 
 ```yaml
 # Both are ConfigMaps, but this one must be first
@@ -287,8 +316,8 @@ argocd app resources my-app
 # View the manifest with sync-wave annotations
 argocd app manifests my-app | grep -B5 "sync-wave"
 
-# Watch the sync in real-time
-argocd app sync my-app --watch
+# Run a sync and wait for it to finish
+argocd app sync my-app
 ```
 
 For more on multi-source applications, see [using multiple sources in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-multiple-sources-single-application/view) and [combining multiple Git repos](https://oneuptime.com/blog/post/2026-02-26-argocd-combine-multiple-git-repos-sources/view).
