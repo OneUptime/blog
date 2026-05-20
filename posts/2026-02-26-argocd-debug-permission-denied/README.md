@@ -134,8 +134,9 @@ If SSO groups are not working, decode the OIDC token to see what claims are incl
 # The token is stored in ~/.config/argocd/config or ~/.argocd/config
 
 # Decode the JWT (base64 decode the payload)
-cat ~/.config/argocd/config | grep auth-token | awk '{print $2}' | \
-  cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+awk '/auth-token:/ {print $2; exit}' ~/.config/argocd/config ~/.argocd/config 2>/dev/null | \
+  cut -d. -f2 | python3 -c 'import base64,sys; s=sys.stdin.read().strip(); print(base64.urlsafe_b64decode(s + "=" * (-len(s) % 4)).decode())' | \
+  python3 -m json.tool
 ```
 
 Look for:
@@ -146,13 +147,16 @@ Look for:
 If the `groups` claim is missing, check your OIDC configuration in `argocd-cm`:
 
 ```yaml
-# Ensure groups scope is requested
+# If you override requestedScopes, ensure groups is requested
 oidc.config: |
   requestedScopes:
     - openid
     - profile
     - email
-    - groups  # This must be present
+    - groups
+  requestedIDTokenClaims:
+    groups:
+      essential: true
 ```
 
 ## Step 7: Check ArgoCD Server Logs
@@ -254,6 +258,7 @@ kubectl get configmap argocd-cm -n argocd -o yaml | grep accounts
 **Fix:** Ensure the account exists and has the correct capabilities:
 ```yaml
 accounts.ci-bot: apiKey
+accounts.ci-bot.enabled: "true"
 ```
 
 ## Quick Diagnostic Checklist
