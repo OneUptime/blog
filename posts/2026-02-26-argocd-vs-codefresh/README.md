@@ -8,7 +8,7 @@ Description: Compare ArgoCD open source with Codefresh GitOps platform, covering
 
 ---
 
-The relationship between ArgoCD and Codefresh is unique in the GitOps landscape. Codefresh was founded by the creators of the Argo project, and the Codefresh GitOps platform is built directly on top of ArgoCD. This means you are not really comparing two different GitOps engines - you are comparing running ArgoCD yourself versus using a managed platform that enhances ArgoCD with additional capabilities. Understanding this relationship is key to making the right decision.
+The relationship between ArgoCD and Codefresh is unique in the GitOps landscape. Codefresh has long been a major contributor to the Argo project, and the Codefresh GitOps platform is built directly on top of ArgoCD. This means you are not really comparing two different GitOps engines - you are comparing running ArgoCD yourself versus using a managed platform that enhances ArgoCD with additional capabilities. Understanding this relationship is key to making the right decision.
 
 ## The ArgoCD and Codefresh Connection
 
@@ -66,16 +66,22 @@ Codefresh deploys a "GitOps Runtime" in your cluster that connects to the Codefr
 
 ```bash
 # Codefresh runtime installation
-# Install the Codefresh CLI
-brew install codefresh
+# Install the Codefresh GitOps CLI
+brew tap codefresh-io/cli
+brew install cf2
 
 # Install the GitOps runtime in your cluster
-cf runtime install my-runtime \
-  --cluster-context production-cluster \
-  --ingress-host https://gitops.mycompany.com
+helm upgrade --install cf-gitops-runtime \
+  --create-namespace \
+  --namespace codefresh \
+  --set global.codefresh.accountId=<codefresh-account-id> \
+  --set global.codefresh.userToken.token=<codefresh-api-key> \
+  --set global.runtime.name=my-runtime \
+  oci://quay.io/codefresh/gitops-runtime \
+  --wait
 ```
 
-The runtime installs ArgoCD along with additional Codefresh components for event handling, CI pipeline execution, and reporting.
+Depending on the installation mode, the runtime can connect to an existing ArgoCD instance or install ArgoCD along with additional Codefresh components for event handling, GitOps integration, and reporting.
 
 ## User Interface Comparison
 
@@ -120,8 +126,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - run: docker build -t myapp:${{ github.sha }} .
+      - uses: actions/checkout@v6
+      - run: docker build -t registry.example.com/myapp:${{ github.sha }} .
       - run: docker push registry.example.com/myapp:${{ github.sha }}
       # Update GitOps repo to trigger ArgoCD
       - run: |
@@ -162,14 +168,17 @@ steps:
     type: codefresh-report-image
     stage: deploy
     arguments:
+      CF_API_KEY: '${{CF_API_KEY}}'
       CF_IMAGE: 'registry.example.com/myapp:${{CF_SHORT_REVISION}}'
       CF_GIT_REPO: 'org/gitops-repo'
       CF_GIT_BRANCH: main
-      # Codefresh automatically updates the GitOps repo
-      # and triggers ArgoCD sync
+      CF_GIT_REVISION: '${{CF_REVISION}}'
+      CF_RUNTIME_NAME: my-runtime
+      # Reports image metadata for GitOps visibility.
+      # A separate promotion/update step changes the GitOps repo.
 ```
 
-The key advantage of Codefresh CI is its deep integration with the GitOps layer. It automatically tracks which commit triggered which build, which image was deployed, and which ArgoCD application consumed it.
+The key advantage of Codefresh CI is its deep integration with the GitOps layer. With image reporting and GitOps promotions configured, it tracks which commit triggered which build, which image was deployed, and which ArgoCD application consumed it.
 
 ## Progressive Delivery
 
@@ -224,16 +233,15 @@ Hidden costs:
 ### Codefresh
 
 ```text
-Free tier:
-  - Limited builds and deployments
-  - 1 runtime
-  - Community support
+Free trial:
+  - 45-day trial of the GitOps Professional plan
+  - No credit card required
 
-Pro tier (~$75/user/month):
-  - Unlimited builds
-  - Multiple runtimes
-  - RBAC and SSO
-  - Email support
+GitOps Cloud:
+  - Public pricing starts at $4,170/year
+  - Includes up to 5 destination clusters
+  - Includes up to 200 ArgoCD applications
+  - Email support on weekdays
 
 Enterprise tier (custom):
   - Advanced governance
@@ -261,13 +269,15 @@ kubectl logs -n argocd deployment/argocd-server
 kubectl scale deployment argocd-repo-server -n argocd --replicas=3
 
 # 4. Manage certificates and secrets
-kubectl create secret tls argocd-server-tls -n argocd
+kubectl create secret tls argocd-server-tls -n argocd \
+  --cert=path/to/tls.crt \
+  --key=path/to/tls.key
 
 # 5. Backup and disaster recovery
 kubectl get applications -n argocd -o yaml > backup.yaml
 ```
 
-**Codefresh** handles much of this operational burden through the managed runtime. You still need to maintain the runtime in your cluster, but Codefresh manages updates, monitoring, and many operational concerns.
+**Codefresh** reduces some of this operational burden through its control plane and runtime management features. You still need to maintain a hybrid runtime in your cluster, but Codefresh provides centralized visibility, guided runtime management, and lifecycle support for Codefresh-managed ArgoCD runtimes. Hosted runtimes, where available, are maintained by Codefresh.
 
 ## When to Choose Self-Managed ArgoCD
 
