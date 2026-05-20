@@ -16,12 +16,12 @@ This guide covers configuring ArgoCD behind the most common reverse proxies, han
 
 ArgoCD's CLI communicates with the server using gRPC, which runs over HTTP/2. The web UI uses standard HTTPS. Both go to the same port. This creates a challenge for reverse proxies because:
 
-1. **TLS termination breaks gRPC**: If the proxy terminates TLS and forwards plain HTTP to ArgoCD, gRPC may not work because it needs HTTP/2 end-to-end
+1. **TLS termination can break native gRPC**: If the proxy terminates TLS and forwards HTTP/1.1 to ArgoCD, native gRPC will not work. The proxy must forward HTTP/2/h2c to ArgoCD, or the CLI must use gRPC-Web.
 2. **TLS passthrough fixes gRPC but prevents routing**: If the proxy passes TLS through without terminating, it cannot inspect the request to do path-based routing
 
 ArgoCD offers two solutions:
 
-- **gRPC-Web**: A browser-compatible variant of gRPC that works over HTTP/1.1 (the CLI supports this with `--grpc-web`)
+- **gRPC-Web**: A proxy-friendly variant of gRPC that works through HTTP/1.1 reverse proxies (the CLI supports this with `--grpc-web`)
 - **Run ArgoCD in insecure mode**: Let the proxy handle TLS, and run ArgoCD on plain HTTP internally
 
 ```mermaid
@@ -92,7 +92,7 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
     # Force HTTPS
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    # Enable gRPC-Web support
+    # Use HTTP to the backend; the CLI uses ArgoCD's gRPC-Web mode
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
 spec:
   ingressClassName: nginx
@@ -119,6 +119,8 @@ With this setup, the CLI needs to use gRPC-Web:
 argocd login argocd.yourdomain.com --grpc-web
 ```
 
+If you need native gRPC without `--grpc-web` while terminating TLS at ingress-nginx, use a separate gRPC hostname and Ingress with `nginx.ingress.kubernetes.io/backend-protocol: "GRPC"`, or use TLS passthrough.
+
 #### Option B: TLS Passthrough
 
 ArgoCD handles its own TLS, NGINX passes through encrypted traffic.
@@ -131,6 +133,7 @@ metadata:
   name: argocd-server-ingress
   namespace: argocd
   annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 spec:
   ingressClassName: nginx
@@ -147,7 +150,13 @@ spec:
               number: 443
 ```
 
-With passthrough, the CLI works normally:
+SSL passthrough must also be enabled on the ingress-nginx controller with the `--enable-ssl-passthrough` flag. With a trusted certificate, the CLI works normally:
+
+```bash
+argocd login argocd.yourdomain.com
+```
+
+If ArgoCD is using a self-signed certificate, add `--insecure`:
 
 ```bash
 argocd login argocd.yourdomain.com --insecure
@@ -201,13 +210,13 @@ server {
         client_max_body_size 0;
     }
 
-    # gRPC support (for CLI without --grpc-web)
-    location /argocd. {
-        grpc_pass grpc://argocd;
-        grpc_read_timeout 600s;
-        grpc_send_timeout 600s;
-    }
 }
+```
+
+With this HTTP/1.1 proxy setup, use the CLI in gRPC-Web mode:
+
+```bash
+argocd login argocd.yourdomain.com --grpc-web
 ```
 
 ## Traefik Configuration
@@ -217,27 +226,30 @@ server {
 #### TLS Termination
 
 ```yaml
-# argocd-ingress-traefik.yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+# argocd-ingressroute-traefik.yaml
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
 metadata:
-  name: argocd-server-ingress
+  name: argocd-server
   namespace: argocd
-  annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
-  rules:
-  - host: argocd.yourdomain.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: argocd-server
-            port:
-              number: 80
+  entryPoints:
+    - websecure
+  routes:
+    - kind: Rule
+      match: Host(`argocd.yourdomain.com`)
+      priority: 10
+      services:
+        - name: argocd-server
+          port: 80
+    - kind: Rule
+      match: Host(`argocd.yourdomain.com`) && Header(`Content-Type`, `application/grpc`)
+      priority: 11
+      services:
+        - name: argocd-server
+          port: 80
+          scheme: h2c
+  tls: {}
 ```
 
 #### TLS Passthrough with IngressRoute
@@ -267,12 +279,12 @@ spec:
 # /etc/haproxy/haproxy.cfg
 
 frontend argocd_front
-    bind *:443 ssl crt /etc/ssl/argocd.pem
+    bind *:443 ssl crt /etc/ssl/argocd.pem alpn h2,http/1.1
     mode http
     option httplog
 
     # Route based on content type
-    acl is_grpc hdr(content-type) -i application/grpc
+    acl is_grpc hdr_beg(content-type) -i application/grpc
 
     use_backend argocd_grpc if is_grpc
     default_backend argocd_http
@@ -292,7 +304,7 @@ backend argocd_grpc
 
 ### AWS Application Load Balancer
 
-AWS ALB supports both HTTPS and gRPC natively.
+AWS ALB can support both HTTPS and native gRPC, but native gRPC requires a separate target group using `alb.ingress.kubernetes.io/backend-protocol-version: GRPC` and header-based routing for `Content-Type: application/grpc`. The simpler single-service setup below uses HTTP to ArgoCD and expects the CLI to use gRPC-Web.
 
 ```yaml
 # argocd-ingress-alb.yaml
@@ -308,7 +320,6 @@ metadata:
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
     alb.ingress.kubernetes.io/backend-protocol: HTTP
     alb.ingress.kubernetes.io/target-type: ip
-    # Enable HTTP/2 for gRPC support
     alb.ingress.kubernetes.io/load-balancer-attributes: routing.http2.enabled=true
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
 spec:
@@ -323,6 +334,10 @@ spec:
             name: argocd-server
             port:
               number: 80
+```
+
+```bash
+argocd login argocd.yourdomain.com --grpc-web
 ```
 
 ### Google Cloud Load Balancer
@@ -365,6 +380,7 @@ metadata:
   namespace: argocd
 data:
   server.insecure: "true"
+  server.basehref: "/argocd"
   server.rootpath: "/argocd"
 ```
 
@@ -383,19 +399,24 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   rules:
   - host: yourdomain.com
     http:
       paths:
-      - path: /argocd(/|$)(.*)
-        pathType: ImplementationSpecific
+      - path: /argocd
+        pathType: Prefix
         backend:
           service:
             name: argocd-server
             port:
               number: 80
+```
+
+For CLI access through a subpath, include the root path:
+
+```bash
+argocd login yourdomain.com --grpc-web-root-path /argocd
 ```
 
 ## Troubleshooting
