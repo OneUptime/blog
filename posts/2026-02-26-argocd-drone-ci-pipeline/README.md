@@ -195,6 +195,7 @@ steps:
 
   - name: build-and-push
     image: plugins/docker
+    privileged: true
     settings:
       repo: ghcr.io/myorg/api-service
       tags:
@@ -313,6 +314,7 @@ steps:
 
   - name: build-and-push
     image: plugins/docker
+    privileged: true
     settings:
       repo: ghcr.io/myorg/api-service
       tags:
@@ -339,7 +341,7 @@ steps:
         git clone git@github.com:myorg/k8s-deployments.git /tmp/deploy
         cd /tmp/deploy
 
-        sed -i "s|image: ghcr.io/myorg/api-service:.*|image: ghcr.io/myorg/api-service:${SHORT_SHA}|" \
+        sed -i "s|newTag: .*|newTag: \"${SHORT_SHA}\"|" \
             apps/api-service/overlays/staging/kustomization.yaml
 
         git config user.name "Drone CI"
@@ -376,7 +378,7 @@ steps:
         git clone git@github.com:myorg/k8s-deployments.git /tmp/deploy
         cd /tmp/deploy
 
-        sed -i "s|image: ghcr.io/myorg/api-service:.*|image: ghcr.io/myorg/api-service:${SHORT_SHA}|" \
+        sed -i "s|newTag: .*|newTag: \"${SHORT_SHA}\"|" \
             apps/api-service/overlays/production/kustomization.yaml
 
         git config user.name "Drone CI"
@@ -395,7 +397,7 @@ drone build promote myorg/api-service 42 production
 
 ## Drone Secrets Management
 
-Drone secrets integrate with Kubernetes secrets. Configure them through the Drone UI or CLI:
+Drone secrets can be stored per repository or per organization. Configure them through the Drone UI or CLI:
 
 ```bash
 # Add secrets via Drone CLI
@@ -416,13 +418,13 @@ drone orgsecret add myorg docker_username "myuser"
 drone orgsecret add myorg docker_password "mytoken"
 ```
 
-## Drone Plugins for ArgoCD
+## Triggering ArgoCD from Drone
 
-Use the ArgoCD Drone plugin to trigger syncs directly:
+Use the ArgoCD CLI image in a Drone step to trigger syncs directly:
 
 ```yaml
   - name: argocd-sync
-    image: argoproj/argocd:v2.10.0
+    image: argoproj/argocd:v3.4.2
     environment:
       ARGOCD_SERVER: argocd.example.com
       ARGOCD_AUTH_TOKEN:
