@@ -40,14 +40,14 @@ If your ArgoCD cluster does not already have Workload Identity enabled:
 # Enable Workload Identity on the cluster
 
 gcloud container clusters update argocd-cluster \
-  --zone us-central1-a \
+  --location us-central1-a \
   --project argocd-project \
   --workload-pool=argocd-project.svc.id.goog
 
 # Enable Workload Identity on the node pool
 gcloud container node-pools update default-pool \
   --cluster argocd-cluster \
-  --zone us-central1-a \
+  --location us-central1-a \
   --project argocd-project \
   --workload-metadata=GKE_METADATA
 ```
@@ -104,7 +104,7 @@ gcloud iam service-accounts add-iam-policy-binding \
   --member="serviceAccount:${PROJECT_ID}.svc.id.goog[argocd/argocd-application-controller]" \
   --project=$PROJECT_ID
 
-# Also bind the argocd-server SA (for UI-triggered syncs)
+# Also bind the argocd-server SA (for UI features such as viewing pod logs)
 gcloud iam service-accounts add-iam-policy-binding \
   argocd-controller@${PROJECT_ID}.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
@@ -187,13 +187,13 @@ Get the cluster details:
 ```bash
 # Get cluster endpoint
 ENDPOINT=$(gcloud container clusters describe target-cluster \
-  --zone us-central1-a \
+  --location us-central1-a \
   --project $TARGET_PROJECT \
   --format='get(endpoint)')
 
 # Get CA certificate (already base64 encoded)
 CA_CERT=$(gcloud container clusters describe target-cluster \
-  --zone us-central1-a \
+  --location us-central1-a \
   --project $TARGET_PROJECT \
   --format='get(masterAuth.clusterCaCertificate)')
 ```
@@ -210,7 +210,7 @@ metadata:
     argocd.argoproj.io/secret-type: cluster
     provider: gcp
     environment: production
-    zone: us-central1-a
+    location: us-central1-a
 type: Opaque
 stringData:
   name: gke-production
@@ -242,9 +242,9 @@ Automate registration for all GKE clusters in a project:
 PROJECT_ID="${1:-$PROJECT_ID}"
 
 gcloud container clusters list --project=$PROJECT_ID \
-  --format='csv[no-heading](name,zone,endpoint,masterAuth.clusterCaCertificate)' | \
-while IFS=, read -r name zone endpoint ca_cert; do
-  echo "Registering: $name ($zone)"
+  --format='csv[no-heading](name,location,endpoint,masterAuth.clusterCaCertificate)' | \
+while IFS=, read -r name location endpoint ca_cert; do
+  echo "Registering: $name ($location)"
 
   cat <<EOF | kubectl apply -f -
 apiVersion: v1
@@ -256,7 +256,7 @@ metadata:
     argocd.argoproj.io/secret-type: cluster
     provider: gcp
     project: ${PROJECT_ID}
-    zone: ${zone}
+    location: ${location}
 type: Opaque
 stringData:
   name: "${name}"
@@ -286,14 +286,14 @@ kubectl get sa argocd-application-controller -n argocd \
   -o jsonpath='{.metadata.annotations.iam\.gke\.io/gcp-service-account}'
 
 # Verify Workload Identity is working from inside the pod
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
   curl -sH "Metadata-Flavor: Google" \
   "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/email"
 
 # Expected output: argocd-controller@argocd-project.iam.gserviceaccount.com
 
 # Test token generation
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
   curl -sH "Metadata-Flavor: Google" \
   "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/token" | \
   python3 -c "import sys,json; print(json.load(sys.stdin)['token_type'])"
@@ -313,18 +313,18 @@ argocd cluster get https://${ENDPOINT}
 # Check if node pool has Workload Identity metadata enabled
 gcloud container node-pools describe default-pool \
   --cluster argocd-cluster \
-  --zone us-central1-a \
+  --location us-central1-a \
   --format='get(config.workloadMetadataConfig)'
 
 # Should show: GKE_METADATA
 
 # Check pod metadata
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
   curl -sH "Metadata-Flavor: Google" \
   "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/"
 
-# If it shows default compute SA instead of the GCP SA,
-# the Workload Identity binding is not configured correctly
+# With this IAM service account impersonation setup, the email endpoint
+# should show the annotated GCP service account.
 ```
 
 ### Permission denied errors
