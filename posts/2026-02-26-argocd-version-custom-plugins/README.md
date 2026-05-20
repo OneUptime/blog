@@ -34,10 +34,10 @@ spec:
     command: [sh, -c]
     args:
       - |
-        sops --decrypt .
+        sops --decrypt secrets.enc.yaml
 ```
 
-However, this version field is currently informational only - ArgoCD does not use it for plugin selection or compatibility checking. It is still worth setting because it shows up in logs and can be used for tracking.
+ArgoCD does not use this field for compatibility checking, but it does affect the plugin name you reference from an Application. When `spec.version` is set, the explicit Application plugin name must be `<metadata.name>-<spec.version>`, such as `sops-decrypt-v1.2.0`. It is still worth setting because it can be used for tracking.
 
 ## Container Image Versioning
 
@@ -95,7 +95,11 @@ spec:
       containers:
         # Current stable version
         - name: sops-plugin-v1
+          command: [/var/run/argocd/argocd-cmp-server]
           image: my-registry/argocd-cmp-sops:v1.2.0
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
           volumeMounts:
             - name: var-files
               mountPath: /var/run/argocd
@@ -106,7 +110,11 @@ spec:
 
         # New version being tested
         - name: sops-plugin-v2
+          command: [/var/run/argocd/argocd-cmp-server]
           image: my-registry/argocd-cmp-sops:v2.0.0
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
           volumeMounts:
             - name: var-files
               mountPath: /var/run/argocd
@@ -132,7 +140,7 @@ spec:
   generate:
     command: [sh, -c]
     args:
-      - sops --decrypt .
+      - sops --decrypt secrets.enc.yaml
 ---
 # v2 plugin.yaml
 apiVersion: argoproj.io/v1alpha1
@@ -146,7 +154,7 @@ spec:
     args:
       - |
         # v2 uses different decryption approach
-        sops --decrypt --output-type yaml .
+        sops --decrypt --output-type yaml secrets.enc.yaml
 ```
 
 Applications can then reference whichever version they need:
@@ -156,13 +164,13 @@ Applications can then reference whichever version they need:
 spec:
   source:
     plugin:
-      name: sops-decrypt-v1
+      name: sops-decrypt-v1-v1.2.0
 
 # Application testing v2 (canary)
 spec:
   source:
     plugin:
-      name: sops-decrypt-v2
+      name: sops-decrypt-v2-v2.0.0
 ```
 
 ## Version Migration Strategy
@@ -193,20 +201,26 @@ kubectl patch deployment argocd-repo-server -n argocd \
     "path": "/spec/template/spec/containers/-",
     "value": {
       "name": "sops-plugin-v2",
+      "command": ["/var/run/argocd/argocd-cmp-server"],
       "image": "my-registry/argocd-cmp-sops:v2.0.0",
       "securityContext": {"runAsNonRoot": true, "runAsUser": 999},
       "volumeMounts": [
         {"name": "var-files", "mountPath": "/var/run/argocd"},
         {"name": "plugins", "mountPath": "/home/argocd/cmp-server/plugins"},
-        {"name": "cmp-tmp", "mountPath": "/tmp"}
+        {"name": "cmp-tmp-v2", "mountPath": "/tmp"}
       ]
     }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/volumes/-",
+    "value": {"name": "cmp-tmp-v2", "emptyDir": {}}
   }]'
 
 # Step 2: Update one test application to use v2
 kubectl patch application test-app -n argocd \
   --type merge \
-  -p '{"spec":{"source":{"plugin":{"name":"sops-decrypt-v2"}}}}'
+  -p '{"spec":{"source":{"plugin":{"name":"sops-decrypt-v2-v2.0.0"}}}}'
 
 # Step 3: Verify the test application works
 argocd app get test-app --refresh
@@ -216,7 +230,7 @@ argocd app diff test-app
 for app in app1 app2 app3; do
   kubectl patch application $app -n argocd \
     --type merge \
-    -p '{"spec":{"source":{"plugin":{"name":"sops-decrypt-v2"}}}}'
+    -p '{"spec":{"source":{"plugin":{"name":"sops-decrypt-v2-v2.0.0"}}}}'
 done
 
 # Step 5: Remove the old version sidecar
@@ -236,7 +250,7 @@ generate:
       SOPS_VERSION=$(sops --version 2>&1 | head -1)
 
       # Generate manifests
-      OUTPUT=$(sops --decrypt . 2>/dev/null)
+      OUTPUT=$(sops --decrypt secrets.enc.yaml 2>/dev/null)
 
       # Inject version annotation using sed
       echo "$OUTPUT" | sed "s/metadata:/metadata:\n  annotations:\n    cmp.argocd.io\/plugin-version: \"$PLUGIN_VERSION\"/g"
@@ -250,9 +264,9 @@ Maintain a changelog for your plugins just like you would for application code:
 
 ```text
 ## v2.0.0 (2026-02-26) - BREAKING
-- Upgraded SOPS to v4.0.0 (new encryption format)
+- Upgraded SOPS to v3.13.1
 - Changed output format to multi-document YAML
-- Requires re-encryption of all secrets with new format
+- Requires testing all encrypted manifests with the new SOPS release
 
 ## v1.2.0 (2026-02-15)
 - Added support for age encryption keys
@@ -280,14 +294,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Extract version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/sops-plugin-}" >> $GITHUB_OUTPUT
 
+      - name: Log in to registry
+        uses: docker/login-action@v4
+        with:
+          registry: my-registry
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: plugins/sops
           push: true
