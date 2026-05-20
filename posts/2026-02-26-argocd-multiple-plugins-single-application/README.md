@@ -82,6 +82,7 @@ spec:
           > /tmp/helm-output/all.yaml
 
         # Step 4: Apply Kustomize patches (if kustomization exists)
+        # The kustomization.yaml should include all.yaml as a resource.
         if [ -f "kustomization.yaml" ]; then
           echo "Applying Kustomize patches..." >&2
           cp kustomization.yaml /tmp/helm-output/
@@ -244,9 +245,12 @@ spec:
         fi
 
         # Stage 3: Kustomize (if kustomization.yaml exists)
+        # The kustomization.yaml should include helm-output.yaml as a resource.
         if grep -q "kustomize" .argocd-pipeline.yaml && [ -f "kustomization.yaml" ]; then
           if [ -f "$OUTPUT_DIR/helm-output.yaml" ]; then
-            cp "$OUTPUT_DIR/helm-output.yaml" .
+            cp kustomization.yaml "$OUTPUT_DIR/"
+            [ -d "patches" ] && cp -r patches/ "$OUTPUT_DIR/"
+            cd "$OUTPUT_DIR"
             kustomize build .
           else
             kustomize build .
@@ -300,7 +304,9 @@ helm dependency build .
 helm template my-app . -f values.yaml > /tmp/all.yaml
 
 # Step 3: Kustomize
+# The kustomization.yaml should include all.yaml as a resource.
 cp kustomization.yaml /tmp/
+[ -d patches ] && cp -r patches/ /tmp/
 cd /tmp
 kustomize build .
 
