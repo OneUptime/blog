@@ -76,7 +76,7 @@ spec:
 
 ## Strategy 2: Separate Applications for CRDs and CRs
 
-A more robust approach is to split CRDs and their custom resources into separate ArgoCD Applications. This keeps the CRD lifecycle independent:
+A more robust approach is to split CRDs and their custom resources into separate ArgoCD Applications. This keeps the CRD lifecycle independent. If you manage these Applications from a parent "app of apps", the sync waves below order the Application resources themselves:
 
 ```yaml
 # Application for CRDs
@@ -152,8 +152,8 @@ metadata:
 ArgoCD checks if CRDs are healthy by verifying they are in the `Established` condition. You can see this in the ArgoCD UI. A CRD is considered:
 
 - **Healthy**: When `Established` condition is True
-- **Progressing**: While being created
-- **Degraded**: If `NamesAccepted` condition is False (name conflict)
+- **Progressing**: While status conditions are not available yet or the CRD is terminating
+- **Degraded**: If `NamesAccepted` is False, `NonStructuralSchema` is True, or the CRD is not established after conditions are reported
 
 For custom resources, ArgoCD has built-in health checks for common CRDs (cert-manager, Argo Rollouts, etc.). For your own CRDs, define custom health checks:
 
@@ -223,11 +223,8 @@ kind: CustomResourceDefinition
 metadata:
   name: certificates.cert-manager.io
   annotations:
-    # Prevent ArgoCD from deleting this CRD
-    argocd.argoproj.io/sync-options: Prune=false
-  # Add a finalizer as extra protection
-  finalizers:
-    - customresourcecleanup.apiextensions.k8s.io
+    # Prevent ArgoCD from pruning this CRD or deleting it during app deletion
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 ```
 
 You can also configure this at the Application level:
@@ -294,7 +291,7 @@ spec:
 
 ## Ignoring CRD Differences
 
-CRDs often have fields added by Kubernetes that are not in your Git manifests. Tell ArgoCD to ignore these:
+CRDs can have status fields reported by Kubernetes that are not part of your desired Git state. Tell ArgoCD to ignore these:
 
 ```yaml
 spec:
@@ -302,7 +299,6 @@ spec:
     - group: apiextensions.k8s.io
       kind: CustomResourceDefinition
       jqPathExpressions:
-        - .spec.versions[].schema.openAPIV3Schema
         - .status
 ```
 
