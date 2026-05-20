@@ -29,7 +29,7 @@ The trade-off is that ALB has specific requirements for gRPC and HTTP/2 that nee
 - An ACM certificate for your domain
 - A Route53 hosted zone (or other DNS) for your domain
 
-Install the AWS Load Balancer Controller if you have not already:
+Install the AWS Load Balancer Controller if you have not already. This command assumes you have already created the `aws-load-balancer-controller` service account with the required IAM role:
 
 ```bash
 # Add the EKS Helm chart repo
@@ -88,8 +88,8 @@ metadata:
     # TLS certificate from ACM
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/your-cert-id
 
-    # Listen on HTTPS
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+    # Listen on HTTP and HTTPS
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
 
     # Redirect HTTP to HTTPS
     alb.ingress.kubernetes.io/ssl-redirect: "443"
@@ -135,11 +135,12 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/your-cert-id
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
     # Use gRPC backend protocol
     alb.ingress.kubernetes.io/backend-protocol-version: GRPC
-    alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
-    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # gRPC target groups use gRPC health check paths and status codes
+    alb.ingress.kubernetes.io/healthcheck-path: /grpc.health.v1.Health/Check
+    alb.ingress.kubernetes.io/success-codes: "0"
     # Same ALB group as the HTTP ingress
     alb.ingress.kubernetes.io/group.name: argocd
     # Higher priority number means lower precedence
@@ -271,7 +272,7 @@ argocd login argocd.example.com --grpc-web
 
 **ALB Not Created**: Check the AWS Load Balancer Controller logs. Common issues are missing IAM permissions or subnet tags.
 
-**Unhealthy Targets**: Verify that ArgoCD server pods are running and the health check path `/healthz` returns 200.
+**Unhealthy Targets**: Verify that ArgoCD server pods are running and that the HTTP target group health check path `/healthz` returns 200. For the gRPC target group, use a gRPC health check path such as `/grpc.health.v1.Health/Check` with success code `0`.
 
 **Timeout Errors**: ALB has a default idle timeout of 60 seconds. For large sync operations, increase it:
 
