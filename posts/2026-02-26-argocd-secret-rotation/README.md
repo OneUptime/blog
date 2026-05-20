@@ -26,7 +26,7 @@ In a traditional setup, you might rotate a database password by updating it in y
 The simplest rotation strategy uses ESO's built-in refresh mechanism. ESO periodically polls the external secret store and updates the Kubernetes Secret when values change:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -44,11 +44,11 @@ spec:
   data:
     - secretKey: username
       remoteRef:
-        key: secret/data/production/db
+        key: production/db
         property: username
     - secretKey: password
       remoteRef:
-        key: secret/data/production/db
+        key: production/db
         property: password
 ```
 
@@ -56,7 +56,7 @@ When the secret changes in Vault, ESO picks it up within 15 minutes and updates 
 
 ## Approach 2: Vault Dynamic Secrets with TTLs
 
-HashiCorp Vault can generate short-lived database credentials automatically. This means credentials rotate themselves:
+HashiCorp Vault can generate short-lived database credentials automatically. This means Vault issues short-lived credentials on request:
 
 ```bash
 # Enable the database secrets engine
@@ -79,25 +79,44 @@ vault write database/roles/myapp-role \
   max_ttl="24h"
 ```
 
-Configure ESO to use Vault's dynamic secrets:
+Configure ESO to use Vault's dynamic secrets through the VaultDynamicSecret generator:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: dynamic-db-creds
+  namespace: production
+spec:
+  path: "/database/creds/myapp-role"
+  method: "GET"
+  provider:
+    server: "https://vault.example.com"
+    auth:
+      kubernetes:
+        mountPath: "kubernetes"
+        role: "external-secrets"
+        serviceAccountRef:
+          name: external-secrets
+          namespace: external-secrets
+
+---
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: dynamic-db-creds
   namespace: production
 spec:
   refreshInterval: 30m
-  secretStoreRef:
-    name: vault-store
-    kind: ClusterSecretStore
   target:
     name: dynamic-db-creds
     creationPolicy: Owner
   dataFrom:
-    - extract:
-        key: database/creds/myapp-role
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: dynamic-db-creds
 ```
 
 ## Approach 3: Reloader for Automatic Pod Restarts
@@ -107,7 +126,8 @@ When a Kubernetes Secret changes, pods using it do not automatically restart. Th
 ```bash
 # Install Reloader
 helm repo add stakater https://stakater.github.io/stakater-charts
-helm install reloader stakater/reloader --namespace kube-system
+helm repo update
+helm install reloader stakater/reloader --namespace reloader --create-namespace
 ```
 
 Annotate your Deployment to watch for secret changes:
@@ -119,7 +139,7 @@ metadata:
   name: myapp
   namespace: production
   annotations:
-    # Reloader watches this specific secret
+    # Reloader watches referenced Secrets and ConfigMaps
     reloader.stakater.com/auto: "true"
 spec:
   replicas: 3
@@ -149,9 +169,9 @@ Sealed Secrets uses encryption keys that should also be rotated. The controller 
 # Check current sealing keys
 kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key
 
-# Force key rotation
-kubectl annotate secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key \
-  sealedsecrets.bitnami.com/sealed-secrets-key- --overwrite
+# Force early key renewal
+kubectl set env deployment/sealed-secrets-controller -n kube-system \
+  SEALED_SECRETS_KEY_CUTOFF_TIME="$(date -R)"
 
 # Re-encrypt all sealed secrets with the new key
 kubeseal --re-encrypt < sealed-secret.yaml > re-encrypted-sealed-secret.yaml
@@ -206,7 +226,7 @@ The infrastructure setup for this pipeline:
 
 ```yaml
 # 1. ClusterSecretStore connecting to Vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-store
@@ -226,7 +246,7 @@ spec:
 
 ---
 # 2. ExternalSecret with aggressive refresh
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-credentials
@@ -242,15 +262,15 @@ spec:
   data:
     - secretKey: DB_HOST
       remoteRef:
-        key: secret/data/production/app
+        key: production/app
         property: db_host
     - secretKey: DB_PASSWORD
       remoteRef:
-        key: secret/data/production/app
+        key: production/app
         property: db_password
     - secretKey: API_KEY
       remoteRef:
-        key: secret/data/production/app
+        key: production/app
         property: api_key
 
 ---
@@ -292,22 +312,25 @@ spec:
 
 ## Handling Dual-Credential Rotation
 
-For database passwords, you often need a dual-credential approach to avoid downtime. Both old and new credentials work during the transition:
+For database passwords, you often need a dual-credential approach to avoid downtime. In PostgreSQL, one role has one active password, so use two application roles if both old and new credentials must work during the transition:
 
 ```bash
 # Vault rotation script
 #!/bin/bash
-# Step 1: Generate new password
+# Step 1: Generate a new user and password
+OLD_USER="app_user"
+NEW_USER="app_user_$(date +%s)"
 NEW_PASSWORD=$(openssl rand -base64 32)
 
-# Step 2: Update database to accept both old and new passwords
-# (Using PostgreSQL ALTER ROLE)
-PGPASSWORD=$OLD_PASSWORD psql -h db.example.com -U admin -c \
-  "ALTER ROLE app_user WITH PASSWORD '$NEW_PASSWORD';"
+# Step 2: Create the new role while the old role continues to work
+psql -h db.example.com -U admin <<SQL
+CREATE ROLE ${NEW_USER} WITH LOGIN PASSWORD '${NEW_PASSWORD}';
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ${NEW_USER};
+SQL
 
-# Step 3: Update Vault with new password
+# Step 3: Update Vault with the new credentials
 vault kv put secret/production/db \
-  username=app_user \
+  username=$NEW_USER \
   password=$NEW_PASSWORD
 
 # Step 4: Wait for ESO refresh + pod rollout
@@ -316,6 +339,9 @@ sleep 600
 # Step 5: Verify all pods are using new credentials
 # (Check pod restart timestamps)
 kubectl get pods -n production -l app=myapp -o wide
+
+# Step 6: Revoke and drop the old role after verification
+psql -h db.example.com -U admin -c "DROP ROLE ${OLD_USER};"
 ```
 
 ## Monitoring Rotation Health
@@ -345,7 +371,7 @@ spec:
 
         - alert: SecretNotRefreshed
           expr: |
-            time() - externalsecret_status_sync_time > 7200
+            increase(externalsecret_sync_calls_total[2h]) == 0
           for: 5m
           labels:
             severity: warning
@@ -359,7 +385,7 @@ For comprehensive monitoring of your ArgoCD deployment health alongside secret r
 
 ArgoCD will detect the ExternalSecret as OutOfSync when you change the refresh interval or other spec fields. But it should not interfere with ESO updating the target Secret, because ArgoCD does not manage the Secret directly - ESO does.
 
-Make sure to configure ignoreDifferences for any fields that change during rotation:
+If Reloader patches workload pod templates, configure `ignoreDifferences` for the Reloader-managed annotation so ArgoCD does not report that rollout metadata as drift:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -369,10 +395,12 @@ metadata:
   namespace: argocd
 spec:
   ignoreDifferences:
-    - group: ""
-      kind: Secret
+    - group: apps
+      kind: Deployment
+      name: production-app
+      namespace: production
       jsonPointers:
-        - /data
+        - /spec/template/metadata/annotations/reloader.stakater.com~1last-reloaded-from
   # ... rest of the spec
 ```
 
