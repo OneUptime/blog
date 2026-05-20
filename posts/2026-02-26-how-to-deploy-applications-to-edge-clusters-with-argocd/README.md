@@ -131,6 +131,8 @@ metadata:
   name: edge-pos-system
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -138,18 +140,18 @@ spec:
             edge-type: retail
   template:
     metadata:
-      name: 'pos-{{name}}'
+      name: 'pos-{{.nameNormalized}}'
       labels:
         app-type: point-of-sale
-        edge-site: '{{name}}'
+        edge-site: '{{.nameNormalized}}'
     spec:
       project: edge-retail
       source:
         repoURL: https://github.com/company/edge-deployments
         targetRevision: main
-        path: 'site-configs/{{name}}'
+        path: 'site-configs/{{.name}}'
       destination:
-        server: '{{server}}'
+        server: '{{.server}}'
         namespace: pos-system
       syncPolicy:
         automated:
@@ -198,25 +200,26 @@ spec:
           operator: "Exists"
           effect: "NoSchedule"
       # Prefer nodes with SSD storage
-      nodeAffinity:
-        preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            preference:
-              matchExpressions:
-                - key: storage-type
-                  operator: In
-                  values:
-                    - ssd
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: storage-type
+                    operator: In
+                    values:
+                      - ssd
 ```
 
 ## Handling Image Distribution
 
 One of the biggest challenges with edge deployments is getting container images to edge locations efficiently. You do not want every edge site pulling large images directly from a central registry.
 
-Consider these strategies. First, use an image pull-through cache at each regional hub to reduce bandwidth to edge sites. Second, pre-load images as part of device provisioning. Third, use image digest pinning in your deployments so ArgoCD can detect drift.
+Consider these strategies. First, use an image pull-through cache at each regional hub to reduce bandwidth to edge sites. Second, pre-load images as part of device provisioning. Third, use image digest pinning in your deployments so the desired image reference is immutable and drift is unambiguous when manifests change.
 
 ```yaml
-# In your ArgoCD project, restrict allowed image sources
+# In your ArgoCD project, restrict allowed Git sources and cluster-scoped resources
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -224,17 +227,19 @@ metadata:
   namespace: argocd
 spec:
   description: "Edge retail applications"
-  # Only allow images from approved registries
+  # Only allow manifests from approved Git repositories
   sourceRepos:
     - 'https://github.com/company/edge-deployments'
   destinations:
     - namespace: '*'
       server: '*'
-  # Restrict which registries edge apps can use
+  # Restrict which cluster-scoped resources edge apps can create
   clusterResourceWhitelist:
     - group: ''
       kind: Namespace
 ```
+
+Use Kubernetes admission policy or a policy engine such as Kyverno or Gatekeeper if you also need to enforce approved container registries.
 
 ## Sync Windows for Edge Deployments
 
@@ -303,4 +308,4 @@ spec:
 
 Deploying to edge clusters with ArgoCD follows the same GitOps principles as cloud deployments, but with extra attention to resource constraints, network reliability, and maintenance windows. The combination of cluster secrets for registration, ApplicationSets for fleet-wide deployment, Kustomize overlays for site-specific config, and sync windows for controlled rollouts gives you a production-ready edge deployment pipeline.
 
-The key insight is that ArgoCD's pull-based model works well even when edge connectivity is unreliable. ArgoCD will keep retrying until the edge cluster is reachable and in sync, which is exactly what you need for distributed edge infrastructure.
+The key insight is that ArgoCD's Git-driven reconciliation model works well when the hub can periodically reach each edge cluster's Kubernetes API. With automated sync retry, ArgoCD can keep trying during the configured retry window and converge the application once the edge cluster is reachable again, which is exactly what you need for distributed edge infrastructure.
