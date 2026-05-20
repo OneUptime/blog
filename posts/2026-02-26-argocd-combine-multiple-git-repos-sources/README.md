@@ -16,10 +16,10 @@ Consider a typical enterprise setup:
 
 - **Platform repo** (`platform-infra`): NetworkPolicies, ResourceQuotas, PriorityClasses
 - **App repo** (`payment-service`): Deployment, Service, ConfigMap, HPA
-- **Security repo** (`security-policies`): OPA policies, PodSecurityPolicies, RBAC rules
+- **Security repo** (`security-policies`): OPA policies, Pod Security Admission labels, RBAC rules
 - **Monitoring repo** (`observability-config`): ServiceMonitors, PrometheusRules, dashboards
 
-Each team manages their repository independently with their own release cadence. Before multi-source, you needed four separate ArgoCD Applications and had to coordinate their syncs. Now, you can combine them.
+Each team manages their repository independently with their own release cadence. Before multi-source, you often needed four separate ArgoCD Applications and had to coordinate their syncs. Now, you can combine them.
 
 ## Basic Multi-Git Configuration
 
@@ -233,20 +233,20 @@ ArgoCD merges all resources and applies them in wave order regardless of which s
 
 ## Authentication for Multiple Repos
 
-Each repository in a multi-source Application must be registered with ArgoCD. Add repository credentials for each:
+Each private repository in a multi-source Application must be accessible to ArgoCD. Add repository credentials for each:
 
 ```bash
 # Add each repository to ArgoCD
-argocd repo add https://github.com/your-org/platform-infra.git \
+argocd repo add git@github.com:your-org/platform-infra.git \
   --ssh-private-key-path ~/.ssh/id_rsa
 
-argocd repo add https://github.com/your-org/payment-service.git \
+argocd repo add git@github.com:your-org/payment-service.git \
   --ssh-private-key-path ~/.ssh/id_rsa
 
-argocd repo add https://github.com/your-org/security-policies.git \
+argocd repo add git@github.com:your-org/security-policies.git \
   --ssh-private-key-path ~/.ssh/id_rsa
 
-argocd repo add https://github.com/your-org/observability-config.git \
+argocd repo add git@github.com:your-org/observability-config.git \
   --ssh-private-key-path ~/.ssh/id_rsa
 ```
 
@@ -275,10 +275,10 @@ stringData:
 # Check overall application health
 argocd app get payment-service
 
-# View all resources grouped by source
+# View application resources
 argocd app resources payment-service
 
-# Check which source caused an OutOfSync
+# Inspect live vs desired differences
 argocd app diff payment-service
 
 # Force a refresh when a source repo change is not detected
