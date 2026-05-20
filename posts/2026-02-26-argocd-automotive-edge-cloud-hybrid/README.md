@@ -150,7 +150,7 @@ spec:
 
 ## OTA Update Service Deployment
 
-Over-the-air update services are safety-critical. Deploy them with careful sync wave ordering:
+Over-the-air update services are safety-critical. Deploy them with explicit review and controlled pruning behavior:
 
 ```yaml
 # ota-platform/application.yaml
@@ -266,26 +266,34 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Increase timeouts for edge clusters with slow connections
+  # Poll Git less aggressively for environments with slow links
   timeout.reconciliation: 300s
 
-  # Longer connection timeout for edge clusters
-  server.connection.timeout: 60
-
-  # Resource exclusions to reduce sync payload size
+  # Resource exclusions to reduce discovery and sync payload size
   resource.exclusions: |
     - apiGroups:
       - "metrics.k8s.io"
       kinds:
       - "*"
       clusters:
-      - "factory-*"
+      - "https://k3s.*.auto-corp.internal"
     - apiGroups:
       - "events.k8s.io"
       kinds:
       - Event
       clusters:
-      - "factory-*"
+      - "https://k3s.*.auto-corp.internal"
+---
+# argocd-cmd-params-cm adjustments for Kubernetes API connections
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Longer TCP and TLS timeouts for remote edge cluster API servers
+  controller.k8s.tcp.timeout: "60s"
+  controller.k8s.tls.handshake.timeout: "20s"
 ```
 
 For sites with very unreliable connectivity, deploy a lightweight ArgoCD instance locally and use a pull-based sync model:
@@ -309,14 +317,19 @@ spec:
   syncPolicy:
     automated:
       selfHeal: true
-    # Sync every 5 minutes when connectivity is available
-    syncOptions:
-    - Retry=true
+    # Retry failed syncs when connectivity returns
+    retry:
+      limit: 10
+      refresh: true
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m
 ```
 
 ## Regulatory Compliance for Automotive
 
-Automotive deployments must comply with ISO 26262 (functional safety), UNECE WP.29 (cybersecurity), and various regional regulations. Track compliance through ArgoCD annotations:
+Automotive deployments must comply with ISO 26262 (functional safety), UNECE WP.29 (cybersecurity), and various regional regulations. Track compliance through Kubernetes labels and annotations managed by ArgoCD:
 
 ```yaml
 # compliance-labels.yaml
@@ -345,7 +358,6 @@ kind: ClusterPolicy
 metadata:
   name: require-automotive-compliance-labels
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: require-safety-classification
     match:
@@ -358,6 +370,7 @@ spec:
           - "ota-*"
           - "vehicle-*"
     validate:
+      failureAction: Enforce
       message: "Safety-critical deployments must have ISO 26262 ASIL classification"
       pattern:
         metadata:
