@@ -21,14 +21,14 @@ sequenceDiagram
     participant ArgoCD
     participant K8s API
 
-    ArgoCD->>K8s API: Create Certificate CR (wave 0)
+    ArgoCD->>K8s API: Dry-run or create Certificate CR
     K8s API-->>ArgoCD: Error: certificates.cert-manager.io not found
-    ArgoCD->>K8s API: Create CRD certificates.cert-manager.io (wave 0)
+    ArgoCD->>K8s API: CRD is applied later or by another sync
     K8s API-->>ArgoCD: CRD created
-    Note over ArgoCD: Sync fails because CR was attempted first
+    Note over ArgoCD: Sync fails because the CRD was not available when the CR was processed
 ```
 
-When ArgoCD applies resources in the same wave, the order within that wave is not guaranteed. If the CR reaches the API server before the CRD, the sync fails.
+ArgoCD has a deterministic order within one sync: phase, wave, kind, and name. CRDs in the same sync are normally applied before custom resources, and ArgoCD can automatically skip dry-run for those CRs. Sync waves are still useful because they create an explicit boundary when you need CRDs to be handled before later resources, especially across app-of-apps layouts, Helm chart splits, or operator installation flows.
 
 ## Basic CRD-Before-CR Ordering
 
@@ -80,11 +80,11 @@ spec:
     - app.example.com
 ```
 
-ArgoCD will install the CRD at wave -3, wait for it to be established, and then create the Certificate CR at wave 1.
+ArgoCD will install the CRD at wave -3, wait for that wave to complete, and then create the Certificate CR at wave 1. ArgoCD also adds a short delay between waves so controllers and the API server have time to react before the next wave starts.
 
 ## The SkipDryRunOnMissingResource Option
 
-ArgoCD performs a dry-run validation before applying resources. If the CRD does not exist yet, the dry-run fails for any CR of that type. ArgoCD provides a sync option to skip dry-run for resources whose types are not yet registered.
+ArgoCD performs a dry-run validation before applying resources. If a CRD and its CR are part of the same sync, ArgoCD automatically skips the dry-run for that CR until the CRD is applied. If the CRD is not part of the same sync, ArgoCD provides a sync option to skip dry-run for resources whose types are not yet registered.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -107,7 +107,7 @@ spec:
       - SkipDryRunOnMissingResource=true
 ```
 
-Even with this option, you still need sync waves. The option prevents the dry-run failure but does not guarantee ordering. Without sync waves, the CR might still be applied before the CRD.
+Even with this option, you still need sync waves when ArgoCD is responsible for both the CRD and the CR. The option prevents the dry-run failure but does not create a separate ordering boundary between the CRD and the CR.
 
 ## Pattern: Operator CRDs Then Application CRs
 
@@ -116,7 +116,7 @@ A common real-world scenario is deploying an operator (which includes CRDs) and 
 ```yaml
 # wave-hierarchy.yaml
 # Wave -3: CRDs
-# Wave -2: Operator namespace and RBAC
+# Wave -2: Operator namespace
 # Wave -1: Operator deployment
 # Wave 0: Operator-managed resources (CRs)
 
@@ -191,9 +191,9 @@ This four-wave structure ensures proper ordering: CRDs register first, the opera
 
 ## Handling CRDs from Helm Charts
 
-When using Helm charts, CRDs can be tricky. Helm has a special `crds/` directory that installs CRDs before the rest of the chart, but this does not work with ArgoCD's sync wave mechanism because ArgoCD treats Helm chart rendering differently.
+When using Helm charts, CRDs can be tricky. Helm has a special `crds/` directory, and ArgoCD includes those CRDs when it renders the chart unless `skipCrds` is enabled. Since ArgoCD uses Helm to render manifests and then manages the apply lifecycle itself, splitting CRDs into a separate ArgoCD Application often gives you clearer ownership and ordering.
 
-The recommended approach is to split your CRDs into a separate ArgoCD Application.
+The recommended approach is to split your CRDs into a separate ArgoCD Application. The sync-wave annotations on these Application resources are honored when they are managed by a parent Application in an app-of-apps setup.
 
 ```yaml
 # Application 1: CRDs only
@@ -228,6 +228,7 @@ spec:
     chart: kube-prometheus-stack
     targetRevision: 55.0.0
     helm:
+      skipCrds: true
       values: |
         prometheus:
           prometheusSpec:
@@ -241,13 +242,13 @@ spec:
       - SkipDryRunOnMissingResource=true
 ```
 
-By splitting CRDs into their own application with a lower sync wave, you guarantee they are registered before the main chart tries to create CRs.
+By splitting CRDs into their own application with a lower sync wave in the parent app, you make ArgoCD sync the CRD application before the main chart application. Setting `skipCrds: true` on the main chart also prevents the main chart from trying to manage the same CRDs.
 
 ## Handling CRD Updates
 
 CRD updates require care. When you update a CRD, the API server needs time to process the schema changes. If a CR is applied with new fields immediately after the CRD update, validation might fail.
 
-Add a health check to your CRD resource to make ArgoCD wait until the CRD is fully established.
+If you need ArgoCD to wait for CRD-specific status during updates, add a custom health check for CRDs in `argocd-cm`.
 
 ```yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -256,11 +257,9 @@ metadata:
   name: certificates.cert-manager.io
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
-    # ArgoCD checks the Established condition on CRDs by default
-    # No additional health check annotation is needed
 ```
 
-ArgoCD includes a built-in health check for CRDs that monitors the `Established` condition. It will not proceed to the next wave until the CRD reports `Established: True`. This means you get ordering safety out of the box with sync waves.
+ArgoCD does not list CRDs among its built-in health-checked resource types, so a sync wave by itself should not be treated as a CRD `Established` health gate. Sync waves still give you ordering and the normal inter-wave delay; use a custom health check if you need ArgoCD to block on CRD conditions such as `Established`.
 
 ## Debugging CRD Ordering Failures
 
@@ -281,9 +280,9 @@ Second, check if the CRD reached the Established state.
 kubectl get crd certificates.cert-manager.io -o jsonpath='{.status.conditions[?(@.type=="Established")].status}'
 ```
 
-If the CRD never becomes Established, the sync will hang at that wave forever. Look at the CRD spec for schema validation errors that would prevent establishment.
+If the CRD never becomes Established, look at the CRD spec for schema validation errors that would prevent establishment.
 
-Third, make sure `SkipDryRunOnMissingResource` is set on the application if this is the first deployment. Without it, ArgoCD cannot even start the sync because the dry-run phase rejects unknown resource types.
+Third, make sure `SkipDryRunOnMissingResource` is set on the application if the CRD is not part of the same sync. Without it, ArgoCD cannot even start the sync because the dry-run phase rejects unknown resource types.
 
 ## Recommended Wave Assignment for CRD-Heavy Deployments
 
