@@ -29,13 +29,13 @@ metadata:
   name: web-v2
 ```
 
-Without PruneLast, ArgoCD might delete `web-legacy` and create `web-v2` at the same time. If `web-v2` takes time to become healthy (pulling images, running init containers), you have a window where no pods are serving traffic.
+Without PruneLast, ArgoCD might prune `web-legacy` before `web-v2` is healthy. If `web-v2` takes time to become healthy (pulling images, running init containers), you can have a window where no pods are serving traffic.
 
 With PruneLast, ArgoCD:
 1. First creates `web-v2` and waits for it to be healthy
 2. Then deletes `web-legacy`
 
-This ensures zero downtime during the transition.
+This helps avoid downtime during the transition, assuming your Service or traffic routing can send requests to the new Deployment once it is healthy.
 
 ## How PruneLast Works
 
@@ -97,7 +97,7 @@ spec:
   # ...
 ```
 
-This is useful when you only want certain resources to be pruned last, while others can be pruned normally.
+This is useful when you only want certain resources to be pruned last, while others can be pruned normally. For resources that will later be removed from Git, make sure the annotation has already been applied to the live resource before removing it from the desired manifests.
 
 ### Via CLI
 
@@ -138,7 +138,7 @@ spec:
     - port: 80
 ```
 
-With PruneLast, the new service is created and functional before the old one is deleted. Any clients using the old service name have time to switch over.
+With PruneLast, the new service is created before the old one is deleted during the sync. Clients using the old service name still need to be migrated before the old Service is removed from Git, or you need to keep a compatibility Service in place.
 
 ### Scenario 2: ConfigMap Replacement
 
@@ -276,7 +276,7 @@ If resources that should be pruned are not being deleted:
 
 2. **Check if the sync failed** - PruneLast skips pruning if any non-prune operation fails. Check the sync status and error messages.
 
-3. **Check if the resource is protected** - Resources with the `argocd.argoproj.io/compare-options: IgnoreExtraneous` annotation will not be pruned.
+3. **Check if the resource is protected** - Resources with the `argocd.argoproj.io/sync-options: Prune=false` annotation will not be pruned. The `argocd.argoproj.io/compare-options: IgnoreExtraneous` annotation only affects sync status; it does not prevent pruning by itself.
 
 ### Sync Takes Longer
 
