@@ -15,7 +15,7 @@ Auto-sync is what makes ArgoCD a true continuous delivery tool. When enabled, Ar
 When auto-sync is enabled, ArgoCD continuously compares the desired state (from Git) with the live state (in the cluster). If they differ, ArgoCD automatically triggers a sync to bring the cluster in line with Git.
 
 The comparison loop runs:
-- Every 3 minutes (default polling interval)
+- On the reconciliation interval configured by `timeout.reconciliation` (default `120s` plus up to `60s` of jitter, for a maximum of 3 minutes)
 - Immediately after a webhook notification from Git
 - After a manual refresh
 
@@ -180,7 +180,7 @@ syncPolicy:
 
 With this configuration, retries happen at: 5s, 10s, 20s, 40s, 80s (capped at 3m).
 
-Without a retry policy, failed auto-syncs are not retried automatically. ArgoCD will only try again on the next Git poll cycle (every 3 minutes).
+If retries are exhausted, ArgoCD will not reattempt the same failed commit and application parameters automatically. A new revision, a manual sync, or retry refresh behavior can trigger another attempt.
 
 ## Webhook Configuration for Faster Syncs
 
@@ -226,8 +226,8 @@ argocd app get my-app
 ### Watch Auto-Sync in Action
 
 ```bash
-# Watch the application for changes
-argocd app get my-app -w
+# Wait for the application to become synced and healthy
+argocd app wait my-app --sync --health
 
 # Or watch with kubectl
 kubectl get application my-app -n argocd -w
@@ -242,10 +242,10 @@ ArgoCD exposes Prometheus metrics for monitoring auto-sync:
 argocd_app_sync_total
 
 # Sync duration
-argocd_app_reconcile_duration_seconds
+argocd_app_sync_duration_seconds_total
 
-# Application health status
-argocd_app_health_status
+# Application sync and health status labels
+argocd_app_info
 ```
 
 ## Common Auto-Sync Pitfalls
