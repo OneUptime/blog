@@ -31,9 +31,9 @@ graph TD
 
 There are three strategies for automated rollback:
 
-1. **PostSync hook chain** - A rollback Job that runs when tests fail
-2. **Argo Rollouts analysis** - Built-in automated rollback
-3. **External automation** - A controller or webhook that watches for failed syncs
+1. **SyncFail hook** - A rollback Job that runs when tests fail
+2. **Git-based rollback** - A Job that reverts the GitOps commit
+3. **Argo Rollouts analysis** - Built-in automated rollback
 
 ## Strategy 1: Rollback Job with SyncFail Hook
 
@@ -57,7 +57,8 @@ spec:
       serviceAccountName: argocd-rollback
       containers:
         - name: rollback
-          image: bitnami/kubectl:1.29
+          # Use an image that contains the argocd CLI and curl.
+          image: myorg/argocd-rollback-tools:argocd-v2.14
           command:
             - sh
             - -c
@@ -67,54 +68,39 @@ spec:
               APP_NAME=${APP_NAME:-my-app}
               ARGOCD_SERVER="argocd-server.argocd.svc:443"
 
-              # Log in to ArgoCD
-              argocd login "$ARGOCD_SERVER" \
-                --username admin \
-                --password "$ARGOCD_PASSWORD" \
+              # ArgoCD does not allow rollback while automated sync is enabled.
+              argocd app set "$APP_NAME" \
+                --server "$ARGOCD_SERVER" \
+                --auth-token "$ARGOCD_AUTH_TOKEN" \
                 --insecure \
-                --grpc-web
+                --grpc-web \
+                --sync-policy none
 
-              # Get the previous successful revision
-              HISTORY=$(argocd app history "$APP_NAME" -o json)
-              PREV_REVISION=$(echo "$HISTORY" | python3 -c "
-              import json, sys
-              history = json.load(sys.stdin)
-              # Find the last successful sync
-              for entry in reversed(history):
-                if entry.get('status') == 'Succeeded':
-                  print(entry['revision'])
-                  break
-              ")
+              # Roll back to the previous deployment history entry.
+              argocd app rollback "$APP_NAME" \
+                --server "$ARGOCD_SERVER" \
+                --auth-token "$ARGOCD_AUTH_TOKEN" \
+                --insecure \
+                --grpc-web \
+                --prune \
+                --timeout 120
 
-              if [ -z "$PREV_REVISION" ]; then
-                echo "ERROR: No previous successful revision found"
-                exit 1
-              fi
-
-              echo "Rolling back to revision: $PREV_REVISION"
-
-              # Perform rollback
-              argocd app sync "$APP_NAME" \
-                --revision "$PREV_REVISION" \
-                --force \
-                --grpc-web
-
-              echo "Rollback initiated"
+              echo "Rollback completed"
 
               # Send notification
               curl -X POST "$SLACK_WEBHOOK" \
                 -H "Content-Type: application/json" \
                 -d "{
-                  \"text\": \"Automatic rollback triggered for $APP_NAME. Rolled back to $PREV_REVISION.\"
+                  \"text\": \"Automatic rollback triggered for $APP_NAME.\"
                 }"
           env:
             - name: APP_NAME
               value: "my-application"
-            - name: ARGOCD_PASSWORD
+            - name: ARGOCD_AUTH_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: argocd-admin
-                  key: password
+                  name: argocd-rollback-token
+                  key: token
             - name: SLACK_WEBHOOK
               valueFrom:
                 secretKeyRef:
@@ -122,7 +108,7 @@ spec:
                   key: url
 ```
 
-The ServiceAccount needs permissions to interact with ArgoCD:
+The Kubernetes ServiceAccount used by the Job must exist, and the token used by the Job needs ArgoCD RBAC permissions to read, update, and sync the Application:
 
 ```yaml
 apiVersion: v1
@@ -131,27 +117,17 @@ metadata:
   name: argocd-rollback
   namespace: default
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-rollback
-rules:
-  - apiGroups: ["argoproj.io"]
-    resources: ["applications"]
-    verbs: ["get", "list", "patch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: argocd-rollback
-subjects:
-  - kind: ServiceAccount
-    name: argocd-rollback
-    namespace: default
-roleRef:
-  kind: ClusterRole
-  name: argocd-rollback
-  apiGroup: rbac.authorization.k8s.io
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.csv: |
+    p, role:rollback, applications, get, default/my-application, allow
+    p, role:rollback, applications, update, default/my-application, allow
+    p, role:rollback, applications, sync, default/my-application, allow
+    g, rollback-bot, role:rollback
 ```
 
 ## Strategy 2: Git-Based Rollback
@@ -180,6 +156,8 @@ spec:
             - -c
             - |
               echo "Sync failed - initiating Git revert"
+
+              apk add --no-cache curl
 
               # Clone the repo
               git clone "https://oauth2:${GIT_TOKEN}@github.com/myorg/gitops-repo.git" /repo
@@ -231,6 +209,8 @@ metadata:
   name: api-service
 spec:
   replicas: 3
+  rollbackWindow:
+    revisions: 1
   selector:
     matchLabels:
       app: api-service
@@ -246,6 +226,8 @@ spec:
             - containerPort: 8080
   strategy:
     canary:
+      canaryService: api-service-canary
+      stableService: api-service-stable
       steps:
         - setWeight: 10
         - analysis:
@@ -256,9 +238,6 @@ spec:
             templates:
               - templateName: post-deploy-tests
         - setWeight: 100
-      # Automatic rollback configuration
-      rollbackWindow:
-        revisions: 1
       # Anti-affinity for rollback safety
       antiAffinity:
         requiredDuringSchedulingIgnoredDuringExecution: {}
@@ -341,7 +320,6 @@ spec:
   template:
     spec:
       restartPolicy: Never
-      serviceAccountName: compliance-checker
       containers:
         - name: notify
           image: curlimages/curl:8.5.0
@@ -362,11 +340,12 @@ spec:
               MESSAGE="$MESSAGE\n*Reason:* PostSync tests failed"
               MESSAGE="$MESSAGE\n*Action:* Automatic rollback initiated"
               MESSAGE="$MESSAGE\n\nPlease review the failed test logs."
+              JSON_TEXT=$(printf "%b" "$MESSAGE" | sed ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\n/\\n/g')
 
               # Slack notification
               curl -X POST "$SLACK_WEBHOOK" \
                 -H "Content-Type: application/json" \
-                -d "{\"text\": \"$(echo -e "$MESSAGE")\"}"
+                -d "{\"text\": \"$JSON_TEXT\"}"
 
               # PagerDuty incident
               curl -X POST "https://events.pagerduty.com/v2/enqueue" \
@@ -430,8 +409,10 @@ command:
       --from-literal=count="$new_count" \
       --dry-run=client -o yaml | kubectl apply -f -
 
-    # Perform rollback
-    argocd app rollback "$APP_NAME" 1
+    # Perform rollback. Disable auto-sync first because ArgoCD blocks
+    # rollback while automated sync is enabled.
+    argocd app set "$APP_NAME" --sync-policy none
+    argocd app rollback "$APP_NAME" --prune
 ```
 
 For more detailed information on ArgoCD rollback strategies, see our [comprehensive rollback guide](https://oneuptime.com/blog/post/2026-01-25-rollback-strategies-argocd/view). You can also monitor your rollback success rates with OneUptime to identify applications that frequently need rollbacks.
