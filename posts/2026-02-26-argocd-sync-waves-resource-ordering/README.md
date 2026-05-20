@@ -8,7 +8,7 @@ Description: Learn how to use ArgoCD sync waves to control the order in which Ku
 
 ---
 
-When ArgoCD syncs an application, it applies all resources in the Sync phase together by default. But many real-world applications have ordering requirements - the database needs to be running before the application connects to it, CRDs need to exist before custom resources are created, and ConfigMaps need to be available before Deployments that reference them start.
+When ArgoCD syncs an application, resources without explicit waves are assigned to wave 0 by default. But many real-world applications have ordering requirements - the database needs to be running before the application connects to it, CRDs need to exist before custom resources are created, and ConfigMaps need to be available before Deployments that reference them start.
 
 Sync waves solve this by letting you assign a numerical wave to each resource. ArgoCD applies resources in wave order, waiting for each wave to be healthy before moving to the next.
 
@@ -58,6 +58,19 @@ data:
   cache_host: "redis.my-app.svc"
 ---
 # Wave 1: Database
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: my-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -79,6 +92,9 @@ spec:
       containers:
         - name: postgres
           image: postgres:15
+          env:
+            - name: POSTGRES_PASSWORD
+              value: change-me
           ports:
             - containerPort: 5432
 ---
@@ -117,9 +133,9 @@ ArgoCD follows these rules when processing waves:
 
 1. **All resources in a wave must be applied before moving to the next wave.** If a resource fails to apply, ArgoCD stops and does not proceed to later waves.
 
-2. **All resources in a wave must be healthy before moving to the next wave.** ArgoCD waits for health checks to pass. A Deployment must have its Pods running, a Job must complete, a Service must exist.
+2. **All resources in a wave must be healthy before moving to the next wave.** ArgoCD waits for health checks to pass. A Deployment must satisfy ArgoCD's built-in Deployment health check, a Job must complete, and a LoadBalancer Service must have an ingress hostname or IP.
 
-3. **Resources within the same wave are applied in parallel.** There is no guaranteed ordering within a single wave.
+3. **Resources within the same wave are processed together.** ArgoCD still orders them by kind and then by name, but you should use separate waves for application-level dependencies.
 
 4. **Negative waves are processed before wave 0.** This is useful for foundational resources that must exist before anything else.
 
@@ -208,6 +224,19 @@ spec:
             - name: REDIS_HOST
               value: "redis:6379"
 ---
+# API Service - wave 2
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  selector:
+    app: api
+  ports:
+    - port: 8080
+---
 # Frontend that depends on API - wave 3
 apiVersion: apps/v1
 kind: Deployment
@@ -277,11 +306,11 @@ spec:
 
 ArgoCD waits for resources to be "healthy" before progressing to the next wave. What "healthy" means depends on the resource type:
 
-- **Deployment**: All desired Pods are running and ready
-- **StatefulSet**: All desired Pods are running and ready
+- **Deployment**: The controller has observed the latest generation, and the updated replicas match the desired replicas
+- **StatefulSet**: The controller has observed the latest generation, and the updated replicas match the desired replicas
 - **Job**: The Job has completed successfully
-- **Service**: The Service exists (no health check needed)
-- **ConfigMap/Secret**: The resource exists (no health check needed)
+- **Service**: ClusterIP Services are considered healthy once created; LoadBalancer Services also need an ingress hostname or IP
+- **ConfigMap/Secret**: No built-in readiness check is needed after the resource is created
 - **Pod**: The Pod is running and ready
 - **PVC**: The PVC is bound
 
@@ -347,11 +376,11 @@ The backup runs first (wave 0), and only after it completes does the migration r
 If resources are not deploying in the expected order:
 
 ```bash
-# Check which wave each resource is in
-argocd app resources my-app -o wide
+# Check the generated manifests for sync-wave annotations
+argocd app manifests my-app
 
-# Watch the sync progress
-argocd app sync my-app --watch
+# Start a sync and wait for it to finish
+argocd app sync my-app
 
 # Check for resources stuck in earlier waves
 argocd app get my-app --show-operation
@@ -359,8 +388,8 @@ argocd app get my-app --show-operation
 
 Common issues:
 - Resources stuck as "Progressing" prevent later waves from running
-- Missing health check support for custom resources causes indefinite waiting
-- Resources in the same wave have inter-dependencies (not supported)
+- Missing health check support for custom resources can leave resources stuck as "Progressing"
+- Resources in the same wave have inter-dependencies that should be represented as separate waves
 
 ## Summary
 
