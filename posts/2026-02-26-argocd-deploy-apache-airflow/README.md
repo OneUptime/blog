@@ -18,7 +18,7 @@ This guide covers deploying Airflow using the official Helm chart managed by Arg
 graph TD
     A[ArgoCD] --> B[Airflow Webserver]
     A --> C[Airflow Scheduler]
-    A --> D[Airflow Workers / KubernetesExecutor]
+    A --> D[KubernetesExecutor Task Pods]
     A --> E[PostgreSQL]
     A --> F[Redis]
     C --> G[DAG Git Sync]
@@ -81,6 +81,14 @@ spec:
             limits:
               cpu: "4"
               memory: "8Gi"
+          extraVolumes:
+            - name: pod-templates
+              configMap:
+                name: airflow-pod-templates
+          extraVolumeMounts:
+            - name: pod-templates
+              mountPath: /opt/airflow/pod_templates
+              readOnly: true
 
         # Triggerer for deferrable operators
         triggerer:
@@ -178,8 +186,12 @@ spec:
         # Create initial connections and variables
         createUserJob:
           useHelmHooks: false
+          applyCustomEnv: false
         migrateDatabaseJob:
           useHelmHooks: false
+          applyCustomEnv: false
+          jobAnnotations:
+            "argocd.argoproj.io/hook": Sync
   destination:
     server: https://kubernetes.default.svc
     namespace: airflow
@@ -200,9 +212,9 @@ spec:
 
 Key configuration decisions:
 
-- **KubernetesExecutor** creates a pod for each task, providing perfect isolation and autoscaling. No worker pool to manage.
+- **KubernetesExecutor** creates a pod for each task, providing strong isolation and working well with Kubernetes cluster autoscaling. No worker pool to manage.
 - **Git-sync** pulls DAGs from a separate Git repository. This decouples DAG development from infrastructure changes.
-- **Disabled Helm hooks** for database migration and user creation jobs to avoid conflicts with ArgoCD sync.
+- **Disabled Helm hooks** for database migration and user creation jobs to avoid conflicts with ArgoCD sync. The migration job is annotated as an ArgoCD sync hook so migrations can run during syncs and upgrades.
 
 ## Step 2: Configure Ingress
 
@@ -237,7 +249,7 @@ spec:
 
 ## Step 3: Custom Worker Pod Templates
 
-For tasks that need specific resources (like GPU or extra libraries), define pod templates:
+For tasks that need specific resources (like GPU or extra libraries), define pod templates. The Helm values above mount this ConfigMap into the scheduler at `/opt/airflow/pod_templates`, where `KubernetesPodOperator` can read it:
 
 ```yaml
 # ConfigMap with pod template
@@ -365,7 +377,7 @@ helm:
 
 ArgoCD will:
 
-1. Run the database migration job
+1. Run the database migration job via the ArgoCD sync hook
 2. Rolling update the webserver
 3. Rolling update the scheduler
 4. New KubernetesExecutor pods will use the new image automatically
@@ -393,17 +405,17 @@ spec:
     matchLabels:
       component: statsd
   endpoints:
-    - port: statsd-metrics
+    - port: statsd-scrape
       interval: 30s
 ```
 
 ## Best Practices
 
-1. **Use KubernetesExecutor** for dynamic workloads - each task gets its own pod, so a failing task cannot affect others.
+1. **Use KubernetesExecutor** for dynamic workloads - each task gets its own pod, so task failures are isolated from other task pods.
 
 2. **Separate DAGs from infrastructure** - Use git-sync for DAGs so data engineers can work independently.
 
-3. **Disable Helm hooks** - Set `useHelmHooks: false` for migration jobs to let ArgoCD manage them as regular resources.
+3. **Disable Helm hooks** - Set `useHelmHooks: false` and `applyCustomEnv: false` for the migration and user creation jobs to let ArgoCD manage them as regular resources.
 
 4. **Remote logging** - Always configure remote logging to S3 or GCS. Local logs are lost when worker pods are deleted.
 
