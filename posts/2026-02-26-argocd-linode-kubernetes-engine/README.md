@@ -29,7 +29,7 @@ If you have not already created an LKE cluster, you can do so with the Linode CL
 linode-cli lke cluster-create \
   --label my-argocd-cluster \
   --region us-east \
-  --k8s_version 1.29 \
+  --k8s_version 1.33 \
   --node_pools.type g6-standard-2 \
   --node_pools.count 3
 
@@ -81,8 +81,7 @@ metadata:
     service.beta.kubernetes.io/linode-loadbalancer-default-protocol: "tcp"
     service.beta.kubernetes.io/linode-loadbalancer-port-443: |
       {
-        "tls-secret-name": "argocd-tls",
-        "protocol": "https"
+        "protocol": "tcp"
       }
     service.beta.kubernetes.io/linode-loadbalancer-check-type: "connection"
     service.beta.kubernetes.io/linode-loadbalancer-check-interval: "10"
@@ -120,8 +119,12 @@ spec:
           service:
             annotations:
               service.beta.kubernetes.io/linode-loadbalancer-default-protocol: "tcp"
-              service.beta.kubernetes.io/linode-loadbalancer-proxy-protocol: "v2"
+              service.beta.kubernetes.io/linode-loadbalancer-default-proxy-protocol: "v2"
             externalTrafficPolicy: Local
+          extraArgs:
+            enable-ssl-passthrough: "true"
+          config:
+            use-proxy-protocol: "true"
   destination:
     server: https://kubernetes.default.svc
     namespace: ingress-nginx
@@ -234,7 +237,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ## Step 6: Connect a Private Git Repository
