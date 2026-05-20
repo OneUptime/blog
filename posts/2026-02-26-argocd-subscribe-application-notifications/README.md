@@ -8,7 +8,7 @@ Description: Learn how to subscribe to specific ArgoCD application notifications
 
 ---
 
-ArgoCD Notifications is the built-in notification engine that sends alerts about application events to external services like Slack, Microsoft Teams, email, and webhooks. While you can set up blanket notifications for all applications, the real power comes from subscribing to notifications on specific applications. This lets you route deployment alerts for the payment service to the payments team channel, while infrastructure alerts go to the platform team.
+ArgoCD Notifications is the built-in notification engine that sends alerts about application events to external services like Slack, Microsoft Teams Workflows, email, and webhooks. While you can set up blanket notifications for all applications, the real power comes from subscribing to notifications on specific applications. This lets you route deployment alerts for the payment service to the payments team channel, while infrastructure alerts go to the platform team.
 
 ## How ArgoCD Notification Subscriptions Work
 
@@ -63,16 +63,16 @@ And configure the triggers and templates:
 data:
   # Trigger definitions
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [sync-succeeded]
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [sync-failed]
   trigger.on-health-degraded: |
     - when: app.status.health.status == 'Degraded'
       send: [health-degraded]
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       send: [app-deployed]
 
   # Template definitions
@@ -155,8 +155,8 @@ notifications.argoproj.io/subscribe.<trigger-name>.<service-name>: <recipient>
 
 Where:
 - `<trigger-name>` is the name from your trigger configuration (without the `trigger.` prefix)
-- `<service-name>` is the notification service type (slack, email, webhook, teams, etc.)
-- `<recipient>` is the destination (channel name, email address, or empty for webhooks)
+- `<service-name>` is the notification service name (for example, `slack`, `email`, `teams-workflows`, or a custom service name like `deployment-tracker`)
+- `<recipient>` is the destination (channel name, email address, or empty for named webhooks)
 
 ## Subscribing to Multiple Triggers
 
@@ -170,13 +170,13 @@ metadata:
     notifications.argoproj.io/subscribe.on-sync-failed.slack: team-alerts
     notifications.argoproj.io/subscribe.on-sync-running.slack: team-deployments
 
-    # Health events to PagerDuty
+    # Health events to the team alert channel
     notifications.argoproj.io/subscribe.on-health-degraded.slack: team-alerts
 
     # All events to a webhook for audit logging
-    notifications.argoproj.io/subscribe.on-sync-succeeded.webhook.audit-log: ""
-    notifications.argoproj.io/subscribe.on-sync-failed.webhook.audit-log: ""
-    notifications.argoproj.io/subscribe.on-health-degraded.webhook.audit-log: ""
+    notifications.argoproj.io/subscribe.on-sync-succeeded.audit-log: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.audit-log: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.audit-log: ""
 ```
 
 ## Subscribing to Multiple Channels
