@@ -31,7 +31,7 @@ The tree makes it immediately obvious that:
 - The Application manages a Deployment, Service, and ConfigMap
 - The Deployment created a ReplicaSet
 - The ReplicaSet created three Pods
-- All six resources (plus the three child resources) are part of this application
+- All seven resources shown in the graph are part of this application view
 
 ## Accessing the Resource Tree
 
@@ -46,20 +46,21 @@ When you click on any application in the ArgoCD UI, the resource tree is the def
 
 Each node in the tree displays several pieces of information:
 
-### Health Status Icons
+### Health Status
 
-- Green heart - Healthy
-- Red heart - Degraded
-- Yellow heart - Suspended
-- Blue spinning icon - Progressing
-- Gray question mark - Unknown health
+- Healthy
+- Degraded
+- Suspended
+- Progressing
+- Missing
+- Unknown health
 - No icon - Health status not applicable for this resource type
 
 ### Sync Status
 
 - Green checkmark - Synced (matches Git)
 - Yellow exclamation - OutOfSync (differs from Git)
-- No indicator - Resource was created by Kubernetes, not directly managed by ArgoCD
+- No sync indicator - Resource is not directly tracked as a desired resource for comparison
 
 Resource Details on Each Node
 
@@ -68,7 +69,7 @@ Each tree node shows:
 - Resource kind abbreviation
 - Resource name
 - Health and sync status icons
-- Creation timestamp (on hover)
+- Age and other resource details when available
 
 ## Interacting with Resource Nodes
 
@@ -112,12 +113,12 @@ When you click a Pod node (or a resource that owns Pods), you get a logs viewer:
 
 ### Right-Click Context Menu
 
-Right-clicking a resource node (or clicking the three-dot menu) shows actions:
+Clicking a resource node's three-dot menu shows actions:
 
-- **Details** - Open the full resource detail panel
-- **Logs** - Jump directly to logs (for Pod-owning resources)
+- **Logs** - Jump directly to logs when logs are available for the resource
 - **Delete** - Remove this specific resource from the cluster
 - **Sync** - Sync only this resource
+- Additional resource actions, when configured for that resource type
 
 ## Filtering and Grouping
 
@@ -149,30 +150,15 @@ The kind filter lets you focus on specific resource types:
 All | Deployment | Service | ConfigMap | Pod | ReplicaSet | ...
 ```
 
-### Group By Options
+### Group Nodes Option
 
-You can group the tree by:
+You can enable the group nodes option in the tree view. This collapses repeated sibling resources of the same kind, which is useful when a parent resource owns many similar children.
 
-- **None** - Default flat tree
-- **Kind** - Groups resources by their Kubernetes kind
-- **Health** - Groups resources by health status
-- **Sync** - Groups resources by sync status
-
-Grouping by health status is particularly useful for large applications:
+For example, several sibling Pods under the same ReplicaSet can be collapsed into a grouped node:
 
 ```text
-Healthy (15 resources)
-  Deployment/web
-  Service/web
-  ConfigMap/web-config
-  ...
-
-Degraded (1 resource)
-  Pod/web-abc123-x7k9l
-
-Progressing (2 resources)
-  Deployment/worker
-  ReplicaSet/worker-def456
+ReplicaSet/web-abc123
+  Pod (3 resources)
 ```
 
 ## Understanding Resource Relationships
@@ -233,9 +219,9 @@ Resource Tree for Complex Applications
 
 For applications with many resources (StatefulSets, CronJobs, PVCs, ServiceAccounts, Roles), the tree can get large. Use these strategies to manage complexity:
 
-1. **Use the compact view** - Reduces whitespace and makes more resources visible at once
+1. **Use the group nodes option** - Collapses repeated sibling resources of the same kind
 2. **Collapse healthy branches** - Click on a healthy parent to collapse its children and focus on problem areas
-3. **Use the search/filter** - Type a resource name in the filter to highlight it in the tree
+3. **Use the search/filter** - Type a resource name in the filter to narrow the tree
 4. **Switch to list view** - When you need to sort by kind, health, or sync status rather than viewing hierarchies
 
 ## CLI Equivalent
@@ -245,10 +231,10 @@ If you prefer the command line, you can get similar information:
 ```bash
 # View the resource tree in text format
 
-argocd app resources my-app
+argocd app resources my-app --output tree
 
-# Get detailed resource info
-argocd app resources my-app --kind Deployment --name web
+# View the tree with age, health, and reason columns
+argocd app resources my-app --output tree=detailed
 
 # View the tree with health and sync status
 argocd app get my-app
