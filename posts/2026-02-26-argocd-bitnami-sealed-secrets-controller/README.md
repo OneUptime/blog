@@ -47,7 +47,7 @@ spec:
   source:
     repoURL: https://bitnami-labs.github.io/sealed-secrets
     chart: sealed-secrets
-    targetRevision: 2.14.0
+    targetRevision: 2.18.5
     helm:
       releaseName: sealed-secrets
       values: |
@@ -269,16 +269,13 @@ kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-ke
 #!/bin/bash
 # re-encrypt-all.sh
 
-# Fetch the latest certificate
-kubeseal --fetch-cert \
-  --controller-name=sealed-secrets-controller \
-  --controller-namespace=kube-system \
-  > /tmp/new-cert.pem
-
 # Re-encrypt all sealed secrets in the repo
 find . -name 'sealed-*.yaml' -o -name '*sealed*.yaml' | while read f; do
   echo "Re-encrypting: $f"
-  kubeseal --re-encrypt --cert /tmp/new-cert.pem < "$f" > "$f.tmp"
+  kubeseal --re-encrypt \
+    --controller-name=sealed-secrets-controller \
+    --controller-namespace=kube-system \
+    < "$f" > "$f.tmp"
   mv "$f.tmp" "$f"
 done
 
@@ -311,7 +308,7 @@ spec:
       source:
         repoURL: https://bitnami-labs.github.io/sealed-secrets
         chart: sealed-secrets
-        targetRevision: 2.14.0
+        targetRevision: 2.18.5
         helm:
           releaseName: sealed-secrets
       destination:
