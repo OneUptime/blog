@@ -97,6 +97,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Build and push Docker image
         run: |
           docker build -t myorg/backend-api:${{ github.sha }} .
@@ -141,12 +147,6 @@ kind: Application
 metadata:
   name: backend-api-dev
   namespace: argocd
-  annotations:
-    # Tell Image Updater to watch this image
-    argocd-image-updater.argoproj.io/image-list: backend=myorg/backend-api
-    argocd-image-updater.argoproj.io/backend.update-strategy: latest
-    argocd-image-updater.argoproj.io/write-back-method: git
-    argocd-image-updater.argoproj.io/git-branch: main
 spec:
   project: default
   source:
@@ -156,6 +156,24 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: backend-api-dev
+---
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: backend-api-dev-updater
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: backend-api-dev
+      images:
+        - alias: backend
+          imageName: myorg/backend-api
+          commonUpdateSettings:
+            updateStrategy: newest-build
+  writeBackConfig:
+    method: git
+    gitConfig:
+      branch: main
 ```
 
 This removes the need for your CI pipeline to know about the config repo at all. The CI pipeline just builds and pushes the image, and Image Updater handles the rest.
@@ -205,7 +223,7 @@ spec:
   source:
     repoURL: https://github.com/myorg/my-app.git
     targetRevision: main
-    path: deploy/overlays/dev    # Only watch this subdirectory
+    path: deploy/overlays/dev    # Use manifests from this subdirectory
   destination:
     server: https://kubernetes.default.svc
     namespace: my-prototype
