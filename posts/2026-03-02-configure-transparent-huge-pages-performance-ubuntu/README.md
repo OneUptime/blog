@@ -15,7 +15,7 @@ Transparent Huge Pages (THP) is a Linux kernel feature that automatically manage
 Standard Linux pages are 4KB. For processes using gigabytes of memory, the kernel's page table becomes enormous, and the TLB (hardware cache for page table entries) gets overwhelmed. Huge pages - 2MB each - reduce the number of page table entries by 512x, dramatically reducing TLB pressure.
 
 There are two approaches:
-- **Explicit huge pages**: Applications specifically request huge pages via `mmap()` or `shmget()` with `MAP_HUGETLB`. Requires application changes.
+- **Explicit huge pages**: Applications specifically request huge pages via `mmap()` with `MAP_HUGETLB` or `shmget()` with `SHM_HUGETLB`. Requires application changes.
 - **Transparent Huge Pages (THP)**: The kernel automatically promotes regular pages to huge pages behind the scenes. No application changes needed.
 
 ## Checking Current THP Status
@@ -37,10 +37,10 @@ cat /sys/kernel/mm/transparent_hugepage/khugepaged/scan_sleep_millisecs
 cat /sys/kernel/mm/transparent_hugepage/khugepaged/alloc_sleep_millisecs
 ```
 
-THP has three modes:
+The top-level anonymous THP control has three modes:
 - **always**: THP is enabled for all eligible memory regions
 - **madvise**: THP only applies to regions where the application explicitly calls `madvise(MADV_HUGEPAGE)`
-- **never**: THP is completely disabled
+- **never**: THP is disabled for normal fault-time allocation and background collapse (on newer kernels, `madvise(MADV_COLLAPSE)` can still request collapse)
 
 ## When THP Helps
 
@@ -64,7 +64,7 @@ echo always | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
 THP causes problems for:
 - **Redis**: THP causes copy-on-write overhead during background saves (BGSAVE), leading to high latency spikes. Redis explicitly warns about this.
-- **MongoDB**: Similar copy-on-write problems; MongoDB documentation recommends disabling THP.
+- **MongoDB 7.0 and earlier**: Database workloads often perform poorly with THP enabled; MongoDB documentation recommends disabling THP for these versions. MongoDB 8.0 and later uses an upgraded TCMalloc and has different THP guidance.
 - **MySQL/MariaDB**: THP fragmentation can cause unpredictable latency.
 - **Any real-time or low-latency application**: The khugepaged daemon and defragmentation process can cause latency spikes.
 
@@ -131,7 +131,7 @@ echo madvise | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 # madvise(addr, size, MADV_NOHUGEPAGE) - to opt out
 ```
 
-This is increasingly the recommended approach - Java 14+, PostgreSQL 16+, and other modern applications properly use madvise to opt into THP where beneficial.
+This is increasingly the recommended approach for mixed-use hosts: applications that know they benefit from THP can opt in. For example, JVMs can request THP with `-XX:+UseTransparentHugePages`, but that option is disabled by default in Oracle JDK documentation and should be benchmarked for your workload. PostgreSQL documentation currently discourages transparent huge pages and recommends explicit huge pages instead.
 
 ## Tuning khugepaged
 
@@ -182,9 +182,9 @@ grep AnonHugePages /proc/$PID/smaps | awk '{sum += $2} END {print sum/1024 " MB 
 cat /proc/$PID/smaps_rollup | grep -E "AnonHugePages|Private"
 ```
 
-## Making Settings Persistent via sysctl
+## Making Settings Persistent via a Startup Script
 
-For the khugepaged tuning parameters, you can add them to sysctl configuration:
+For THP and khugepaged tuning parameters, use a boot-time script or systemd unit rather than sysctl:
 
 ```bash
 # Note: not all THP settings are sysctl-accessible
@@ -209,10 +209,11 @@ sudo chmod +x /etc/rc.local
 | Workload | THP Setting | Reason |
 |----------|-------------|--------|
 | Redis | never | Avoids copy-on-write latency during BGSAVE |
-| MongoDB | never | Reduces fragmentation-related latency |
-| MySQL | madvise | Let the DB decide per-region |
-| PostgreSQL 16+ | madvise | Modern PostgreSQL uses madvise properly |
-| Java (large heap) | always or madvise | Reduces TLB pressure significantly |
+| MongoDB 7.0 and earlier | never | Reduces fragmentation-related latency |
+| MongoDB 8.0 and later | always with defer+madvise defrag, or vendor guidance | Upgraded TCMalloc is designed to work better with THP |
+| MySQL/MariaDB | never or benchmark carefully | MySQL supports explicit HugeTLB large pages; avoid blanket THP for latency-sensitive database workloads |
+| PostgreSQL | never | PostgreSQL documentation discourages THP; use explicit `huge_pages` instead |
+| Java (large heap) | madvise with JVM THP options, or benchmark always | Reduces TLB pressure for some heaps, but JVM THP support is opt-in and workload-dependent |
 | Scientific computing | always | Large sequential memory access patterns |
 | General-purpose server | madvise | Safe default, apps opt in as needed |
 
