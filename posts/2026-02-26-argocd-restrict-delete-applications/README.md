@@ -33,13 +33,12 @@ metadata:
   namespace: argocd
 data:
   policy.csv: |
-    # Deployer role - can do everything EXCEPT delete
+    # Deployer role - can manage applications EXCEPT delete
     p, role:deployer, applications, get, */*, allow
     p, role:deployer, applications, create, */*, allow
     p, role:deployer, applications, update, */*, allow
     p, role:deployer, applications, sync, */*, allow
-    p, role:deployer, applications, action, */*, allow
-    p, role:deployer, applications, override, */*, allow
+    p, role:deployer, applications, action/*, */*, allow
     p, role:deployer, logs, get, */*, allow
 
     # Note: delete is simply not listed, so it is denied by default
@@ -82,7 +81,7 @@ policy.csv: |
   # Production access WITHOUT delete
   p, role:developer, applications, get, production/*, allow
   p, role:developer, applications, sync, production/*, allow
-  p, role:developer, applications, action, production/*, allow
+  p, role:developer, applications, action/*, production/*, allow
   p, role:developer, logs, get, production/*, allow
 
   # Only production leads can delete production apps
@@ -95,9 +94,9 @@ policy.csv: |
 
 This setup lets developers freely manage staging applications (including deletion) but prevents them from deleting anything in production.
 
-## Application Finalizer Protection
+## Application Finalizer Behavior
 
-In addition to RBAC, you can use Kubernetes finalizers to add another layer of delete protection:
+RBAC controls who can delete ArgoCD applications. The ArgoCD resources finalizer is not a delete lock - it is the mechanism ArgoCD uses to perform cascading deletion of an application's managed resources:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -106,12 +105,9 @@ metadata:
   name: critical-payment-service
   namespace: argocd
   finalizers:
-    # This finalizer ensures cascade delete happens
-    # Remove it to make the app "undeleable" unless the finalizer is explicitly removed
+    # Add this finalizer only when you want application deletion to cascade
+    # and delete the resources managed by this Application.
     - resources-finalizer.argocd.argoproj.io
-  annotations:
-    # Add a warning annotation
-    argocd.argoproj.io/sync-options: "Delete=false"
 spec:
   project: production
   source:
@@ -123,7 +119,7 @@ spec:
     namespace: payments
 ```
 
-Even if someone bypasses RBAC (for example, using kubectl directly), the finalizer prevents immediate resource deletion.
+If someone bypasses ArgoCD RBAC and deletes the Application with `kubectl`, this finalizer lets the ArgoCD application controller delete the managed resources too. Use Kubernetes RBAC or admission policy to restrict direct `kubectl delete application` access. For resources that should be retained even when an Application is deleted, add `argocd.argoproj.io/sync-options: Delete=false` to those resource manifests.
 
 ## Restricting Delete Through the UI
 
@@ -210,7 +206,7 @@ policy.csv: |
   # Standard roles without delete
   p, role:deployer, applications, get, */*, allow
   p, role:deployer, applications, sync, */*, allow
-  p, role:deployer, applications, action, */*, allow
+  p, role:deployer, applications, action/*, */*, allow
 
   # Emergency role with time-limited tokens
   p, role:emergency-admin, applications, *, */*, allow
@@ -249,8 +245,7 @@ data:
     p, role:team-deployer, applications, create, */*, allow
     p, role:team-deployer, applications, update, */*, allow
     p, role:team-deployer, applications, sync, */*, allow
-    p, role:team-deployer, applications, action, */*, allow
-    p, role:team-deployer, applications, override, */*, allow
+    p, role:team-deployer, applications, action/*, */*, allow
     p, role:team-deployer, logs, get, */*, allow
     p, role:team-deployer, repositories, get, *, allow
 
@@ -264,4 +259,4 @@ data:
 
 ## Summary
 
-Restricting application deletion in ArgoCD is essential for production safety. The simplest approach is to never include the `delete` action in non-admin roles. Use explicit deny rules when wildcard permissions are in play, and layer RBAC with finalizer protection for critical applications. Always test your policies and maintain an emergency access path for legitimate delete operations.
+Restricting application deletion in ArgoCD is essential for production safety. The simplest approach is to never include the `delete` action in non-admin roles. Use explicit deny rules when wildcard permissions are in play, and layer ArgoCD RBAC with Kubernetes RBAC or admission controls for direct cluster access. Always test your policies and maintain an emergency access path for legitimate delete operations.
