@@ -69,7 +69,7 @@ spec:
     namespace: payment-platform
 ```
 
-ArgoCD clones the repository once and reads from multiple paths, so there is no performance penalty for referencing the same repo multiple times.
+ArgoCD generates manifests for each source separately and combines the results, so keep repeated entries focused on related components.
 
 ## Targeting Nested Paths
 
@@ -103,7 +103,7 @@ sources:
 
 ## Paths with Different Source Types
 
-Each path can use a different source type. ArgoCD auto-detects the type based on the directory contents:
+Each path can use a different source type. ArgoCD auto-detects Helm and Kustomize based on the directory contents, and treats plain YAML and Jsonnet as directory sources:
 
 ```yaml
 sources:
@@ -126,7 +126,7 @@ sources:
       valueFiles:
         - values-production.yaml
 
-  # Jsonnet directory (has .jsonnet files)
+  # Directory source with Jsonnet files
   - repoURL: https://github.com/your-org/jsonnet-configs.git
     targetRevision: main
     path: apps/dashboards  # Contains main.jsonnet
@@ -254,11 +254,13 @@ git checkout <targetRevision>
 ls -la <path>
 
 # Check for source type detection
-# ArgoCD checks for these files:
+# ArgoCD checks for these files when auto-detecting tools:
 ls <path>/Chart.yaml          # Helm
 ls <path>/kustomization.yaml  # Kustomize
-ls <path>/*.jsonnet            # Jsonnet
-# If none found, it uses directory (plain YAML) type
+ls <path>/kustomization.yml   # Kustomize
+ls <path>/Kustomization       # Kustomize
+# If no Helm or Kustomize marker is found, it uses a directory source.
+# Directory sources load .yml, .yaml, .json, and evaluate matching .jsonnet files.
 
 # View what ArgoCD renders from this path
 argocd app manifests my-app
