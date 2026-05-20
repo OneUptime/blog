@@ -31,7 +31,8 @@ Before migrating, verify the destination project can accept the application:
 ```bash
 # Get the application's source repo
 
-argocd app get my-app -o json | jq -r '.spec.source.repoURL'
+argocd app get my-app -o json | \
+  jq -r '[.spec.source.repoURL?] + ((.spec.sources // []) | map(.repoURL)) | map(select(. != null)) | unique[]'
 # Output: https://github.com/my-org/my-service.git
 
 # Check if the destination project allows this repo
@@ -67,14 +68,16 @@ argocd proj add-destination destination-project \
 
 ```bash
 # List resource types the application creates
-argocd app resources my-app -o json | jq '.[].group + "/" + .[].kind' | sort -u
+argocd app get my-app -o json | \
+  jq -r '.status.resources[] | "\(.group // "")/\(.kind)"' | sort -u
 
-# Compare with destination project's whitelists
+# Compare with destination project's allow and deny lists
 argocd proj get destination-project -o json | jq '.spec.namespaceResourceWhitelist'
+argocd proj get destination-project -o json | jq '.spec.namespaceResourceBlacklist'
 argocd proj get destination-project -o json | jq '.spec.clusterResourceWhitelist'
 ```
 
-Make sure every resource type the application uses is allowed in the destination project.
+Make sure every cluster-scoped resource type the application uses is allowed, and every namespaced resource type is either allowed by the namespace whitelist or not blocked by the namespace blacklist.
 
 ### Step 4: Check Sync Windows
 
@@ -138,8 +141,10 @@ If you need to change multiple fields along with the project, or if the in-place
 ### Step 1: Export the Application
 
 ```bash
-# Save the application spec
-argocd app get my-app -o yaml > my-app-backup.yaml
+# Save a clean application manifest without status or server-generated metadata
+argocd app get my-app -o json | \
+  jq 'del(.status, .metadata.uid, .metadata.resourceVersion, .metadata.generation, .metadata.creationTimestamp, .metadata.managedFields)' \
+  > my-app-backup.json
 ```
 
 ### Step 2: Delete Without Cascading
@@ -162,7 +167,7 @@ kubectl get services -n my-namespace
 # Change spec.project to the new project name
 
 # Recreate the application
-kubectl apply -f my-app-backup.yaml
+kubectl apply -f my-app-backup.json
 ```
 
 ### Step 4: Verify
@@ -186,11 +191,11 @@ When migrating many applications at once, such as moving everything out of the `
 # migrate-project.sh
 # Usage: ./migrate-project.sh <source-project> <destination-project>
 
-SOURCE_PROJECT=$1
-DEST_PROJECT=$2
+SOURCE_PROJECT="$1"
+DEST_PROJECT="$2"
 
 # Get all applications in the source project
-APPS=$(argocd app list --project $SOURCE_PROJECT -o name)
+APPS=$(argocd app list --project "$SOURCE_PROJECT" -o name)
 
 echo "Applications to migrate:"
 echo "$APPS"
@@ -203,11 +208,11 @@ for APP in $APPS; do
   echo "Migrating $APP..."
 
   # Check if source repo is allowed
-  REPO=$(argocd app get $APP -o json | jq -r '.spec.source.repoURL // .spec.sources[0].repoURL')
+  REPO=$(argocd app get "$APP" -o json | jq -r '.spec.source.repoURL // .spec.sources[0].repoURL')
   echo "  Source repo: $REPO"
 
   # Attempt migration
-  if argocd app set $APP --project $DEST_PROJECT 2>&1; then
+  if argocd app set "$APP" --project "$DEST_PROJECT" 2>&1; then
     echo "  SUCCESS: $APP migrated to $DEST_PROJECT"
   else
     echo "  FAILED: $APP could not be migrated. Check project restrictions."
@@ -271,7 +276,7 @@ If you used the delete-and-recreate method:
 argocd app delete my-app --cascade=false
 
 # Recreate from the backup
-kubectl apply -f my-app-backup.yaml
+kubectl apply -f my-app-backup.json
 ```
 
 ## Migrating ApplicationSets
@@ -309,11 +314,11 @@ argocd app list --project destination-project
 
 # Verify sync status of all migrated apps
 argocd app list --project destination-project -o json | \
-  jq '.items[] | {name: .metadata.name, sync: .status.sync.status, health: .status.health.status}'
+  jq '.[] | {name: .metadata.name, sync: .status.sync.status, health: .status.health.status}'
 
 # Check for any sync errors
 argocd app list --project destination-project -o json | \
-  jq '.items[] | select(.status.sync.status != "Synced") | .metadata.name'
+  jq '.[] | select(.status.sync.status != "Synced") | .metadata.name'
 
 # Verify no apps remain in the source project (if migrating all)
 argocd app list --project source-project
@@ -328,8 +333,9 @@ After migrating all applications, if you want to lock or delete the source proje
 argocd app list --project source-project
 
 # Lock the project by removing all sources and destinations
-argocd proj set source-project --src ""
-argocd proj remove-destination source-project https://kubernetes.default.svc "*"
+kubectl patch appproject source-project -n argocd \
+  --type merge \
+  -p '{"spec": {"sourceRepos": [], "destinations": []}}'
 
 # Or delete the project entirely (only if no apps reference it)
 argocd proj delete source-project
