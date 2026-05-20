@@ -8,13 +8,13 @@ Description: Learn how to configure automatic plugin discovery in ArgoCD so CMP 
 
 ---
 
-When you have multiple Config Management Plugins installed as sidecars on the ArgoCD repo-server, you need a way for ArgoCD to know which plugin should handle which application. Plugin discovery automates this by letting plugins declare what types of repositories they can handle. Instead of manually specifying a plugin name in every Application spec, ArgoCD examines the repository contents and automatically routes to the right plugin.
+When you have multiple Config Management Plugins installed as sidecars on the ArgoCD repo-server, you need a way for ArgoCD to know which plugin should handle which application. Plugin discovery automates this by letting plugins declare what types of repositories they can handle. Instead of manually specifying a plugin name in every Application spec, you can set an empty `plugin` section and let ArgoCD examine the repository contents and automatically route to the right plugin.
 
 This guide covers how discovery works, how to configure it correctly, and how to handle conflicts when multiple plugins match the same repository.
 
 ## How Plugin Discovery Works
 
-Every CMP plugin can include a `discover` section in its `plugin.yaml` configuration. When ArgoCD encounters an application that does not explicitly specify a plugin name, it checks each installed plugin's discovery rules against the repository content:
+Every CMP plugin can include a `discover` section in its `plugin.yaml` configuration. When ArgoCD encounters an application with a `plugin` section that does not explicitly specify a plugin name, it checks each installed plugin's discovery rules against the repository content:
 
 ```mermaid
 sequenceDiagram
@@ -81,7 +81,7 @@ glob: "{*.cue,cue.mod/**}"
 
 ### Command-Based Discovery
 
-For more complex matching logic, use a command that returns a non-empty string when the plugin should be used:
+For more complex matching logic, use a command that exits successfully and returns a non-empty string when the plugin should be used:
 
 ```yaml
 # plugin.yaml
@@ -110,7 +110,7 @@ spec:
         kustomize build .
 ```
 
-The rule is simple: if the command outputs anything to stdout, the plugin matches. If it outputs nothing (empty string), it does not match. The exit code does not matter for discovery - only the output.
+The rule is simple: if the command exits with status code `0` and outputs anything to stdout, the plugin matches. If it outputs nothing (empty string), or exits with a non-zero status code, it does not match.
 
 ```yaml
 # More discovery examples
@@ -137,7 +137,7 @@ discover:
           echo "helm-v2-chart"
         fi
 
-# Match based on environment variable or annotation
+# Match based on an environment variable
 discover:
   find:
     command: [sh, -c]
@@ -242,11 +242,11 @@ When to use each approach:
 | Explicit | You need precise control over which plugin handles each app |
 | Both | Discovery for defaults, explicit override for special cases |
 
-If an Application spec includes `plugin.name`, discovery is skipped entirely and ArgoCD uses the named plugin directly.
+If an Application spec includes `plugin.name`, ArgoCD considers only the named plugin. If that plugin has discovery configured, its discovery rule still has to match the repository; if discovery is omitted, the named plugin can still be invoked explicitly.
 
 ## Handling Discovery Conflicts
 
-When multiple plugins match the same repository, ArgoCD uses the first one it finds. The order depends on how the sidecars are registered, which is typically the order they appear in the pod spec.
+When multiple plugins match the same repository, ArgoCD uses the first positive match it finds while listing the available plugin sockets in the shared plugins directory.
 
 To avoid conflicts:
 
@@ -289,9 +289,9 @@ fi
 '
 ```
 
-## Disabling Discovery for Built-in Tools
+## Using Plugins Instead of Built-in Tools
 
-If you have a custom plugin that should handle Helm charts instead of ArgoCD's built-in Helm support, you need to be careful. ArgoCD checks built-in tools before CMP plugins. To force your plugin to handle Helm charts, use explicit plugin selection in the Application spec rather than relying on discovery.
+If you have a custom plugin that should handle Helm charts instead of ArgoCD's built-in Helm support, you need to be explicit about selecting a plugin for that Application. Set a `plugin` section for plugin discovery, or use a plugin name when you want to force one specific plugin.
 
 ```yaml
 # Force custom Helm handling with explicit plugin name
