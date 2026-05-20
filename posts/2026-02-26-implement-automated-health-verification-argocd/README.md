@@ -8,11 +8,11 @@ Description: Learn how to set up automated health verification in ArgoCD that co
 
 ---
 
-Health verification in ArgoCD is not a one-time check after deployment. It is a continuous process where ArgoCD monitors the health of every resource in your applications and reports when things degrade. Setting up automated health verification means configuring ArgoCD to understand what "healthy" means for each resource type and building automation around health state changes.
+Health verification in ArgoCD is not a one-time check after deployment. It is a continuous process where ArgoCD monitors the health of the resources represented in your applications and reports when things degrade. Setting up automated health verification means configuring ArgoCD to understand what "healthy" means for each resource type and building automation around health state changes.
 
 ## How ArgoCD Health Assessment Works
 
-ArgoCD runs health assessments on a continuous loop. The application controller checks every resource in every Application against its health check definition. The default check interval is controlled by the `timeout.reconciliation` setting (default 180 seconds).
+ArgoCD runs health assessments as part of application reconciliation and when tracked resources change. The application controller checks the immediate child resources represented in an Application's source against their health check definitions. The periodic reconciliation interval for checking Git or Helm sources is controlled by the `timeout.reconciliation` setting, which defaults to 120 seconds plus up to 60 seconds of jitter in current ArgoCD versions.
 
 ```mermaid
 graph TD
@@ -27,7 +27,7 @@ graph TD
     H --> A
 ```
 
-The application-level health is the worst status among all its resources. If one Pod is Degraded and everything else is Healthy, the Application shows as Degraded.
+The application-level health is the worst status among its immediate child resources. If a Pod is managed directly by the Application and is Degraded while everything else is Healthy, the Application shows as Degraded. If the Pod is only a child of a Deployment, the Deployment's health check must expose that problem because resource health is not inherited from child resources automatically.
 
 ## Configuring Health Checks for Common Resources
 
@@ -85,11 +85,12 @@ data:
 
     if updated == desired and available == desired and ready == desired then
       hs.status = "Healthy"
-      hs.message = string.format("All %d replicas ready", desired)
+      hs.message = "All " .. desired .. " replicas ready"
     else
       hs.status = "Progressing"
-      hs.message = string.format("%d/%d updated, %d/%d available, %d/%d ready",
-        updated, desired, available, desired, ready, desired)
+      hs.message = updated .. "/" .. desired .. " updated, " ..
+        available .. "/" .. desired .. " available, " ..
+        ready .. "/" .. desired .. " ready"
     end
     return hs
 ```
@@ -113,15 +114,15 @@ data:
 
     local desired = obj.spec.replicas or 1
     local ready = obj.status.readyReplicas or 0
-    local current = obj.status.currentReplicas or 0
+    local updated = obj.status.updatedReplicas or 0
 
-    if ready == desired and current == desired then
+    if ready == desired and updated == desired then
       hs.status = "Healthy"
-      hs.message = string.format("All %d replicas ready", desired)
+      hs.message = "All " .. desired .. " replicas ready"
     else
       hs.status = "Progressing"
-      hs.message = string.format("%d/%d ready, %d/%d current",
-        ready, desired, current, desired)
+      hs.message = ready .. "/" .. desired .. " ready, " ..
+        updated .. "/" .. desired .. " updated"
     end
     return hs
 ```
@@ -133,9 +134,13 @@ data:
     hs = {}
     if obj.status ~= nil and obj.status.loadBalancer ~= nil then
       if obj.status.loadBalancer.ingress ~= nil and #obj.status.loadBalancer.ingress > 0 then
-        hs.status = "Healthy"
-        hs.message = "Load balancer assigned"
-        return hs
+        for _, ingress in ipairs(obj.status.loadBalancer.ingress) do
+          if ingress.hostname ~= nil or ingress.ip ~= nil then
+            hs.status = "Healthy"
+            hs.message = "Load balancer assigned"
+            return hs
+          end
+        end
       end
     end
     hs.status = "Progressing"
@@ -163,12 +168,14 @@ data:
   # Trigger when app recovers
   trigger.on-health-recovered: |
     - when: app.status.health.status == 'Healthy' and
+            app.status?.operationState?.finishedAt != nil and
             time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() < 10
       send: [health-recovered-alert]
 
   # Trigger when app is stuck progressing
   trigger.on-health-stuck: |
     - when: app.status.health.status == 'Progressing' and
+            app.status?.operationState?.startedAt != nil and
             time.Now().Sub(time.Parse(app.status.operationState.startedAt)).Minutes() > 15
       send: [health-stuck-alert]
 
@@ -247,16 +254,15 @@ spec:
                 - -c
                 - |
                   # Get all degraded applications
-                  DEGRADED=$(kubectl get applications -n argocd -o json | \
-                    jq -r '.items[] | select(.status.health.status == "Degraded") | .metadata.name')
+                  DEGRADED=$(kubectl get applications -n argocd \
+                    -o jsonpath='{range .items[?(@.status.health.status=="Degraded")]}{.metadata.name}{"\n"}{end}')
 
                   for app in $DEGRADED; do
                     echo "Application $app is degraded"
 
-                    # Check how long it has been degraded
-                    # If degraded for more than 30 minutes, try a refresh
-                    LAST_SYNC=$(kubectl get application "$app" -n argocd -o json | \
-                      jq -r '.status.operationState.finishedAt')
+                    # Record the last completed sync before triggering a refresh
+                    LAST_SYNC=$(kubectl get application "$app" -n argocd \
+                      -o jsonpath='{.status.operationState.finishedAt}')
 
                     echo "Last sync: $LAST_SYNC"
                     echo "Triggering hard refresh for $app"
@@ -337,11 +343,11 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Global reconciliation interval (default: 180s)
-  timeout.reconciliation: "60"
+  # Global reconciliation interval (current default is 120s plus up to 60s of jitter)
+  timeout.reconciliation: 60s
 ```
 
-For individual applications, force more frequent checks:
+For individual applications, you can force an immediate refresh:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -349,11 +355,11 @@ kind: Application
 metadata:
   name: critical-service
   annotations:
-    # Override reconciliation interval for this app
-    argocd.argoproj.io/refresh: "30"
+    # Request a one-time refresh; use "hard" to invalidate the manifest and cluster state caches
+    argocd.argoproj.io/refresh: "normal"
 ```
 
-Be careful with aggressive intervals. Each reconciliation cycle uses API server resources. For clusters with hundreds of Applications, setting the interval too low can overload the Kubernetes API server.
+Be careful with aggressive global intervals. Each reconciliation cycle uses API server resources. For clusters with hundreds of Applications, setting the interval too low can overload the Kubernetes API server.
 
 ## Summary
 
