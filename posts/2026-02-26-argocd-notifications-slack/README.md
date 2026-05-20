@@ -49,7 +49,6 @@ data:
   # Slack service configuration
   service.slack: |
     token: $slack-token
-    signingSecret: $slack-signing-secret
 ```
 
 The `$slack-token` reference is resolved from the `argocd-notifications-secret` automatically.
@@ -162,20 +161,16 @@ Define when notifications fire:
 ```yaml
   # Trigger definitions
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       send: [app-deployed]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-failed]
 
   trigger.on-health-degraded: |
     - when: app.status.health.status == 'Degraded'
       send: [app-health-degraded]
-
-  trigger.on-sync-running: |
-    - when: app.status.operationState.phase in ['Running']
-      send: [app-sync-running]
 ```
 
 ## Subscribing Applications
