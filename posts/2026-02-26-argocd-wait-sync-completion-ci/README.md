@@ -46,11 +46,12 @@ argocd app wait my-app \
   --server $ARGOCD_SERVER \
   --auth-token $ARGOCD_TOKEN \
   --grpc-web \
+  --sync \
   --health \
   --timeout 300
 ```
 
-The `--health` flag tells ArgoCD to wait not just for the sync operation to complete, but also for the application to become healthy. Without it, the command returns as soon as resources are applied, even if pods are still starting.
+The `--sync` and `--health` flags tell ArgoCD to wait for the application to be synced and healthy. Without `--health`, the command can return as soon as resources are applied, even if pods are still starting.
 
 ### Wait Options Explained
 
@@ -88,6 +89,7 @@ argocd app wait my-app \
   --server $ARGOCD_SERVER \
   --auth-token $ARGOCD_TOKEN \
   --grpc-web \
+  --sync \
   --health \
   --timeout 300
 ```
@@ -129,7 +131,8 @@ while [ $ELAPSED -lt $TIMEOUT ]; do
   echo "  [${ELAPSED}s] Sync=$SYNC_STATUS Health=$HEALTH_STATUS Operation=$OP_PHASE"
 
   # Success condition
-  if [ "$SYNC_STATUS" = "Synced" ] && [ "$HEALTH_STATUS" = "Healthy" ]; then
+  if [ "$SYNC_STATUS" = "Synced" ] && [ "$HEALTH_STATUS" = "Healthy" ] && \
+     [ "$OP_PHASE" != "Running" ] && [ "$OP_PHASE" != "Terminating" ]; then
     echo "Application $APP_NAME is synced and healthy!"
     exit 0
   fi
@@ -184,13 +187,14 @@ This approach bypasses ArgoCD entirely and watches the actual Kubernetes state. 
     ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
   run: |
     # Install CLI
-    curl -sSL -o /usr/local/bin/argocd \
+    curl -sSL -o argocd-linux-amd64 \
       https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-    chmod +x /usr/local/bin/argocd
+    sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+    rm argocd-linux-amd64
 
     # Sync and wait
     argocd app sync my-app --grpc-web --retry-limit 3
-    argocd app wait my-app --grpc-web --health --timeout 300
+    argocd app wait my-app --grpc-web --sync --health --timeout 300
 
 - name: Run integration tests
   if: success()
@@ -204,7 +208,7 @@ This approach bypasses ArgoCD entirely and watches the actual Kubernetes state. 
 ```yaml
 deploy:
   stage: deploy
-  image: argoproj/argocd:v2.10.0
+  image: argoproj/argocd:v3.4.1
   script:
     - argocd app sync my-app
         --auth-token $ARGOCD_TOKEN
@@ -214,6 +218,7 @@ deploy:
         --auth-token $ARGOCD_TOKEN
         --server $ARGOCD_SERVER
         --grpc-web
+        --sync
         --health
         --timeout 300
   after_script:
@@ -250,7 +255,7 @@ argocd app wait my-app --operation --grpc-web --timeout 60 2>/dev/null || true
 
 # Now trigger our sync
 argocd app sync my-app --grpc-web
-argocd app wait my-app --grpc-web --health --timeout 300
+argocd app wait my-app --grpc-web --sync --health --timeout 300
 ```
 
 ### Multiple Applications
@@ -264,7 +269,7 @@ APPS="app-frontend app-backend app-worker"
 PIDS=""
 
 for app in $APPS; do
-  argocd app wait $app --grpc-web --health --timeout 300 &
+  argocd app wait $app --grpc-web --sync --health --timeout 300 &
   PIDS="$PIDS $!"
 done
 
