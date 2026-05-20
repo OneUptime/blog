@@ -14,7 +14,7 @@ This guide covers every common Prometheus deployment pattern and how to configur
 
 ## Understanding What Gets Scraped
 
-ArgoCD exposes metrics from three components. Each provides different categories of metrics:
+This guide focuses on scraping metrics from three common ArgoCD components. Each provides different categories of metrics:
 
 **Application Controller (port 8082):**
 - Application sync status and health
@@ -30,7 +30,7 @@ ArgoCD exposes metrics from three components. Each provides different categories
 **Repo Server (port 8084):**
 - Git request duration and status
 - Manifest generation time
-- Cache hit rates
+- Pending repository requests
 
 ```mermaid
 flowchart TD
@@ -56,7 +56,7 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-        - argocd-application-controller-metrics.argocd.svc.cluster.local:8082
+        - argocd-metrics.argocd.svc.cluster.local:8082
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
@@ -78,7 +78,7 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets:
-        - argocd-repo-server-metrics.argocd.svc.cluster.local:8084
+        - argocd-repo-server.argocd.svc.cluster.local:8084
     relabel_configs:
       - source_labels: [__address__]
         target_label: instance
@@ -117,11 +117,11 @@ scrape_configs:
         action: keep
         regex: true
       # Use the annotated port
-      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_port]
+      - source_labels: [__address__, __meta_kubernetes_service_annotation_prometheus_io_port]
         action: replace
         target_label: __address__
-        regex: (.+)
-        replacement: $1
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
       # Use the annotated path
       - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
         action: replace
@@ -306,7 +306,7 @@ curl -s "http://prometheus:9090/api/v1/targets" | \
 ```bash
 # Verify the metrics endpoint is accessible
 kubectl exec -n monitoring deployment/prometheus -- \
-  wget -qO- http://argocd-application-controller-metrics.argocd.svc:8082/metrics | head -5
+  wget -qO- http://argocd-metrics.argocd.svc:8082/metrics | head -5
 ```
 
 **ServiceMonitor not appearing in Prometheus targets:**
@@ -316,7 +316,7 @@ kubectl exec -n monitoring deployment/prometheus -- \
 kubectl get prometheus -n monitoring -o jsonpath='{.items[0].spec.serviceMonitorSelector.matchLabels}'
 
 # Verify the ServiceMonitor has the correct labels
-kubectl get servicemonitor -n argocd -o yaml | grep -A2 labels
+kubectl get servicemonitor -n monitoring -o yaml | grep -A2 labels
 ```
 
 **Metrics exist but some are missing:**
@@ -346,19 +346,19 @@ spec:
     rules:
     - record: argocd:app_sync_failure_rate:5m
       expr: |
-        rate(argocd_app_sync_total{phase="Failed"}[5m])
-        / on() rate(argocd_app_sync_total[5m])
+        sum(rate(argocd_app_sync_total{phase="Failed"}[5m]))
+        / sum(rate(argocd_app_sync_total[5m]))
 
     - record: argocd:git_request_latency_p99:5m
       expr: |
         histogram_quantile(0.99,
-          rate(argocd_git_request_duration_seconds_bucket[5m])
+          sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
         )
 
     - record: argocd:reconciliation_latency_p95:5m
       expr: |
         histogram_quantile(0.95,
-          rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+          sum by (le) (rate(argocd_app_reconcile_bucket[5m]))
         )
 ```
 
