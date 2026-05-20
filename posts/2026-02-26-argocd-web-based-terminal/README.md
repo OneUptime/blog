@@ -78,7 +78,7 @@ data:
     # Grant exec (terminal) access to the admin role
     p, role:admin, exec, create, */*, allow
 
-    # Grant exec access to a specific group for a specific project
+    # Grant exec access to a specific role for a specific project
     p, role:developer, exec, create, my-project/*, allow
   policy.default: role:readonly
 ```
@@ -86,19 +86,19 @@ data:
 The RBAC policy format for exec permissions follows this pattern:
 
 ```text
-p, <role>, exec, create, <project>/<namespace>/<app>, <allow|deny>
+p, <role/user/group>, exec, create, <project>/<application>, <allow|deny>
 ```
 
 Here is a breakdown of the fields:
 
-- **role**: The ArgoCD role or group
+- **role/user/group**: The ArgoCD role, local user, or SSO group
 - **exec**: The resource type for terminal access
 - **create**: The action (always "create" for exec)
-- **project/namespace/app**: The scope, supporting wildcards
+- **project/application**: The application scope, supporting wildcards. If you enable ArgoCD's "applications in any namespace" mode, use `<project>/<application-namespace>/<application>` instead.
 
 ## Step 3: Configure the Kubernetes RBAC
 
-ArgoCD's API server needs Kubernetes-level permissions to exec into pods. If you installed ArgoCD with the default manifests, these permissions are usually already included. However, if you use a restricted installation, you may need to verify the ClusterRole.
+ArgoCD's API server needs Kubernetes-level permissions to exec into pods on Kubernetes versions before 1.31. Starting with Kubernetes 1.31, ArgoCD can use the `get` privilege it already needs for managed pods. If you use Kubernetes 1.30 or earlier with a restricted ArgoCD installation, verify the Role or ClusterRole used by `argocd-server`.
 
 ```yaml
 # Ensure the ArgoCD API server has exec permissions
@@ -113,9 +113,9 @@ rules:
     verbs: ["create"]
 ```
 
-## Step 4: Configure Default Shell
+## Step 4: Configure Allowed Shells
 
-By default, ArgoCD uses `/bin/bash` as the shell. If your containers use minimal images that only have `/bin/sh`, you can configure the default shell:
+By default, ArgoCD tries `bash`, `sh`, `powershell`, and `cmd` in that order. If you want to restrict or reorder the shells that can be used, configure the allowed shell list:
 
 ```yaml
 apiVersion: v1
@@ -129,7 +129,7 @@ data:
   exec.shells: "bash,sh,powershell,cmd"
 ```
 
-The terminal will try each shell in order and use the first one available in the container.
+The terminal will try each configured shell in order and use the first one available in the container.
 
 ## Step 5: Restart the ArgoCD API Server
 
@@ -186,19 +186,7 @@ Enabling the web terminal has significant security implications:
 
 **Network security**: Make sure your ArgoCD API server is not publicly exposed without authentication. The terminal provides direct shell access to your containers.
 
-**Audit logging**: Enable ArgoCD audit logging to track who uses the terminal and when:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  exec.enabled: "true"
-  # Enable audit logging for all operations
-  server.audit.enabled: "true"
-```
+**Audit logging**: Review ArgoCD API server logs and Kubernetes audit logs to track terminal usage. ArgoCD logs most API requests except sensitive ones, and Kubernetes audit logging can record `pods/exec` requests. These logs track that an exec session was started, but they do not record every command typed inside the shell session.
 
 **Container security**: If your containers run as root, anyone with terminal access effectively has root access inside the container. Use securityContext settings to run containers as non-root users.
 
@@ -223,10 +211,8 @@ If you see "permission denied" when trying to connect:
 
 ```bash
 # Test RBAC policies with the argocd CLI
-argocd admin settings rbac validate \
-  --policy-file policy.csv \
-  --action create \
-  --resource exec
+argocd admin settings rbac can role:developer create exec 'my-project/*' \
+  --policy-file policy.csv
 ```
 
 ### WebSocket Connection Failures
@@ -255,11 +241,11 @@ If you deployed ArgoCD with Helm, you can enable the terminal through values:
 
 ```yaml
 # values.yaml for ArgoCD Helm chart
-server:
-  config:
+configs:
+  cm:
     exec.enabled: "true"
     exec.shells: "bash,sh"
-  rbacConfig:
+  rbac:
     policy.csv: |
       p, role:admin, exec, create, */*, allow
 ```
@@ -268,4 +254,4 @@ server:
 
 The web-based terminal in ArgoCD is a valuable debugging tool that brings interactive shell access directly into your GitOps workflow. By enabling it with proper RBAC controls and security considerations, you can give your team fast access to troubleshoot running pods without requiring local kubectl configuration.
 
-Remember to keep terminal access restricted to those who need it, and always monitor usage through ArgoCD's audit logging capabilities. For more on ArgoCD RBAC configuration, check out our guide on [configuring RBAC policies in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-restrict-terminal-access-rbac/view).
+Remember to keep terminal access restricted to those who need it, and monitor usage through ArgoCD API server logs and Kubernetes audit logs. For more on ArgoCD RBAC configuration, check out our guide on [configuring RBAC policies in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-restrict-terminal-access-rbac/view).
