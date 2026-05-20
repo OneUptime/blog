@@ -8,7 +8,7 @@ Description: Learn how to safely delete an ArgoCD project without disrupting run
 
 ---
 
-Deleting an ArgoCD project might sound simple, but if you just run `argocd proj delete my-project`, you could orphan applications or even trigger cascading deletions. ArgoCD projects have a finalizer that prevents deletion while applications still reference them, but understanding the full deletion workflow helps you avoid surprises.
+Deleting an ArgoCD project might sound simple, but if you just run `argocd proj delete my-project`, you could leave applications referencing a missing project. ArgoCD projects can use a finalizer that prevents deletion while applications still reference them, but understanding the full deletion workflow helps you avoid surprises.
 
 This guide covers the safe process for decommissioning an ArgoCD project.
 
@@ -20,7 +20,7 @@ When you attempt to delete an ArgoCD project:
 2. If applications exist, the deletion is blocked (if the finalizer is present)
 3. If no applications reference it, the project is deleted
 
-The project finalizer `resources-finalizer.argocd.argoproj.io` is what provides this safety net:
+The project finalizer `resources-finalizer.argocd.argoproj.io` is what provides this safety net when it is present:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -50,7 +50,7 @@ argocd app list --project old-project -o name | wc -l
 
 # Get detailed information
 argocd app list --project old-project -o json | \
-  jq '.items[] | {name: .metadata.name, sync: .status.sync.status, health: .status.health.status}'
+  jq '.[] | {name: .metadata.name, sync: .status.sync.status, health: .status.health.status}'
 ```
 
 ### Step 2: Check for ApplicationSets
@@ -187,7 +187,7 @@ for APP in $(argocd app list --project old-project -o name); do
   echo "Deleting $APP and all its resources..."
   argocd app delete $APP --yes
   # Wait for deletion to complete
-  argocd app wait $APP --deleted --timeout 120 2>/dev/null
+  argocd app wait $APP --delete --timeout 120 2>/dev/null
 done
 
 # Delete the project
@@ -202,11 +202,15 @@ If you cannot delete the project immediately but want to prevent new application
 
 ```bash
 # Remove all source repos (no new applications can be created)
-argocd proj set old-project --src ""
+kubectl patch appproject old-project -n argocd \
+  --type merge \
+  -p '{"spec": {"sourceRepos": []}}'
 
 # Remove all destinations
 # This will prevent existing applications from syncing
-argocd proj remove-destination old-project https://kubernetes.default.svc "*"
+kubectl patch appproject old-project -n argocd \
+  --type merge \
+  -p '{"spec": {"destinations": []}}'
 
 # Add a description warning
 argocd proj set old-project --description "DEPRECATED - do not use. Migrate to new-project."
