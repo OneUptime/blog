@@ -123,7 +123,7 @@ This script automatically reconnects if the port-forward drops, which happens fr
 
 ## Port-Forward with Address Binding
 
-By default, port-forward only listens on localhost (127.0.0.1). To make it accessible from other machines on your network:
+By default, port-forward listens on localhost (127.0.0.1 and ::1 when available). To make it accessible from other machines on your network:
 
 ```bash
 # Listen on all interfaces
@@ -176,7 +176,7 @@ lsof -i :8080
 kubectl port-forward svc/argocd-server -n argocd 9090:443
 ```
 
-**Connection drops frequently**: This is a known kubectl limitation. The connection drops after a period of inactivity or when the pod restarts.
+**Connection drops frequently**: The forwarding session ends when the selected pod terminates, and it can also drop after network interruptions or API server timeouts.
 
 ```bash
 # Use the auto-restart script shown above, or try:
