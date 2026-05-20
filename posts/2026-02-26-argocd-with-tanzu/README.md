@@ -67,24 +67,24 @@ kubectl get pods -n argocd
 
 ## TKG Networking and Load Balancers
 
-### vSphere with NSX-T
+### vSphere with NSX Advanced Load Balancer
 
-If your TKG runs on vSphere with NSX-T, you get native LoadBalancer support.
+If your TKG runs on vSphere with NSX Advanced Load Balancer, or another configured LoadBalancer provider, you get native LoadBalancer support.
 
 ```bash
 # Change ArgoCD server to LoadBalancer
 kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}'
 
-# NSX-T will assign an external IP automatically
+# The configured load balancer will assign an external IP
 kubectl get svc argocd-server -n argocd
 ```
 
-### vSphere without NSX-T
+### vSphere without a LoadBalancer Provider
 
-Without NSX-T, use MetalLB or HAProxy load balancer (which TKG can install).
+Without a configured LoadBalancer provider, use NodePort or install a supported load balancer such as MetalLB.
 
 ```bash
-# Check if the HAProxy load balancer is configured
+# Check whether an external IP is assigned
 kubectl get svc argocd-server -n argocd
 
 # If no external IP is assigned, use NodePort or install MetalLB
@@ -105,15 +105,30 @@ kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "LoadBalancer"}}
 TKG ships with Contour as its recommended ingress controller. You can install it via TKG packages.
 
 ```bash
+# Find the package name and version available in your TKG package repository
+tanzu package available list -A | grep contour
+
+# Set these from the package list output
+CONTOUR_PACKAGE_NAME=your-contour-package-name
+CONTOUR_VERSION=your-contour-package-version
+
 # Install Contour via TKG package
 tanzu package install contour \
-  --package contour.tanzu.vmware.com \
-  --version 1.24.4+vmware.1-tkg.1 \
+  --package-name "$CONTOUR_PACKAGE_NAME" \
+  --version "$CONTOUR_VERSION" \
   --namespace tkg-system \
   --values-file contour-values.yaml
 ```
 
-Create an HTTPProxy for ArgoCD (Contour's custom resource).
+For a TLS-terminating Contour configuration, disable TLS on the ArgoCD API server and create an HTTPProxy for ArgoCD (Contour's custom resource).
+
+```bash
+kubectl patch configmap argocd-cmd-params-cm -n argocd \
+  --type merge \
+  -p '{"data":{"server.insecure":"true"}}'
+
+kubectl rollout restart deployment argocd-server -n argocd
+```
 
 ```yaml
 # ArgoCD HTTPProxy for Contour
@@ -126,23 +141,39 @@ spec:
   virtualhost:
     fqdn: argocd.example.com
     tls:
-      passthrough: true
-  tcpproxy:
-    services:
-      - name: argocd-server
-        port: 443
+      secretName: argocd-tls
+  routes:
+    - conditions:
+        - prefix: /
+        - header:
+            name: Content-Type
+            contains: application/grpc
+      services:
+        - name: argocd-server
+          port: 80
+          protocol: h2c
+      timeoutPolicy:
+        response: 1h
+        idle: 600s
+        idleConnection: 600s
+    - conditions:
+        - prefix: /
+      services:
+        - name: argocd-server
+          port: 80
 ```
 
-Or use a standard Ingress resource that Contour will handle.
+Or use standard Ingress resources that Contour will handle. Contour supports one backend protocol per Ingress object, so use a separate Ingress for the HTTP UI/API path and another for gRPC if you need full CLI support.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: argocd-server
+  name: argocd-server-http
   namespace: argocd
   annotations:
-    projectcontour.io/tls-passthrough: "true"
+    kubernetes.io/ingress.class: contour
+    ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   rules:
     - host: argocd.example.com
@@ -154,7 +185,11 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: http
+  tls:
+    - hosts:
+        - argocd.example.com
+      secretName: argocd-tls
 ```
 
 ## TKG Storage Classes
@@ -366,4 +401,4 @@ spec:
 
 ## Summary
 
-ArgoCD on TKG integrates well once you understand the networking model (Contour for ingress, NSX-T or cloud LBs for services), storage provisioning (vSphere CSI), and the TKG package system. Install ArgoCD on a dedicated workload cluster and use it to manage all your other TKG clusters. Add custom health checks for TKG-specific resources like PackageInstall, configure Dex for vSphere SSO integration, and set up retry policies to handle TKG cluster lifecycle events gracefully.
+ArgoCD on TKG integrates well once you understand the networking model (Contour for ingress, NSX Advanced Load Balancer or cloud LBs for services), storage provisioning (vSphere CSI), and the TKG package system. Install ArgoCD on a dedicated workload cluster and use it to manage all your other TKG clusters. Add custom health checks for TKG-specific resources like PackageInstall, configure Dex for vSphere SSO integration, and set up retry policies to handle TKG cluster lifecycle events gracefully.
