@@ -12,7 +12,7 @@ Understanding how ArgoCD works internally makes you better at operating, debuggi
 
 ## The Big Picture
 
-ArgoCD runs as a set of Kubernetes deployments inside your cluster, typically in the `argocd` namespace. The core components are:
+ArgoCD runs as a set of Kubernetes workloads inside your cluster, typically in the `argocd` namespace. The core components are:
 
 1. **API Server** - handles all external requests (UI, CLI, API)
 2. **Repo Server** - clones Git repos and generates Kubernetes manifests
@@ -50,10 +50,10 @@ graph TB
 The API server (`argocd-server`) is the front door to ArgoCD. It exposes three interfaces:
 
 - A gRPC API (used by the ArgoCD CLI)
-- A REST API (used by the web UI and integrations)
+- HTTP/HTTPS endpoints for the web UI and integrations
 - The web UI itself (served as static files)
 
-When you run `argocd app sync my-app` from the CLI, the request hits the API server over gRPC. When you click "Sync" in the web UI, it hits the REST API. Both end up in the same backend code.
+When you run `argocd app sync my-app` from the CLI, the request hits the API server over gRPC. When you click "Sync" in the web UI, it goes through the server's HTTP/HTTPS endpoint. Both end up in the same backend code.
 
 The API server handles authentication and authorization. It validates JWT tokens, checks RBAC policies, and proxies requests to the appropriate backend. It does not do the heavy lifting of syncing or manifest generation - it delegates those tasks to other components.
 
@@ -67,7 +67,7 @@ kubectl get deployment argocd-server -n argocd
 # View API server logs
 kubectl logs -l app.kubernetes.io/name=argocd-server -n argocd
 
-# The API server exposes port 443 (HTTPS) by default
+# The API server service exposes port 443 for gRPC/HTTPS and port 80 for HTTP redirects by default
 kubectl get svc argocd-server -n argocd
 ```
 
@@ -108,7 +108,7 @@ The application controller (`argocd-application-controller`) is the brain of Arg
 4. **Executes syncs** - applies manifests to bring the cluster to the desired state
 5. **Monitors health** - checks the health of all managed resources
 
-The controller operates on a reconciliation loop. Every few seconds, it checks each Application to see if the live state matches the desired state. If there is a difference and the Application has automated sync enabled, the controller triggers a sync.
+The controller operates on a reconciliation loop. By default, ArgoCD checks applications for Git changes about every three minutes, with shorter retries for self-healing live-state drift. If there is a difference and the Application has automated sync enabled, the controller triggers a sync.
 
 ```bash
 # The controller runs as a StatefulSet
@@ -128,11 +128,10 @@ The controller can be sharded for large-scale deployments. Sharding distributes 
 Redis serves as the caching layer between components. It caches:
 
 - **Application state** - the last known state of each Application
-- **Manifest cache** - generated manifests from the repo server
-- **Cluster cache** - the live state of resources in managed clusters
-- **Git revision cache** - the latest commit SHA for each tracked branch
+- **Repository cache entries** - generated manifests, application metadata, and revision metadata from the repo server
+- **Git revision cache** - resolved revision information for tracked branches, tags, and commits
 
-Without Redis, every reconciliation loop would require cloning Git repos and querying the Kubernetes API from scratch. Redis dramatically reduces the load on both Git servers and the Kubernetes API server.
+ArgoCD treats Redis as a disposable cache, so it can be rebuilt if it is lost. The cache still matters because it reduces repeated work and load on Git servers, repo-server manifest generation, and the Kubernetes API server.
 
 ```bash
 # Check Redis deployment
@@ -151,7 +150,7 @@ In high-availability setups, Redis can be deployed as a Redis Sentinel cluster o
 
 Let us walk through the complete flow when you update a manifest in Git and ArgoCD syncs it:
 
-1. **Change detection** - The application controller periodically polls Git (default: 3 minutes) or receives a webhook notification. It asks the repo server for the latest commit SHA.
+1. **Change detection** - The application controller periodically polls Git (default: about 3 minutes) or reacts after a webhook notification reaches the API server. It asks the repo server for the latest commit SHA.
 
 2. **Manifest generation** - The controller requests manifests from the repo server for the new commit. The repo server clones or updates the repo, checks out the commit, and generates manifests using Helm, Kustomize, or plain YAML.
 
@@ -163,9 +162,9 @@ Let us walk through the complete flow when you update a manifest in Git and Argo
 
 6. **Sync wave execution** - Resources are applied in order of their sync wave annotations. Wave 0 first, then wave 1, and so on. Within a wave, resources are applied in a specific order (namespaces before deployments, for example).
 
-7. **Resource application** - The controller applies each resource to the cluster using `kubectl apply` (or server-side apply if configured).
+7. **Resource application** - The controller applies each resource to the cluster using kubectl-style apply semantics (or server-side apply if configured).
 
-8. **Health assessment** - After applying, the controller monitors the health of each resource. Deployments need to have all replicas ready, Services need endpoints, and so on.
+8. **Health assessment** - After applying, the controller monitors the health of each resource. Deployments, ReplicaSets, StatefulSets, and DaemonSets are checked against their observed generation and updated replica counts; LoadBalancer Services are checked for load balancer ingress, and so on.
 
 9. **Post-sync hooks** - Resources with `argocd.argoproj.io/hook: PostSync` annotations run after all resources are healthy. Smoke tests and notifications are common post-sync hooks.
 
@@ -198,8 +197,8 @@ Resource Tracking
 
 ArgoCD needs to know which resources in the cluster belong to which Application. It uses one of three tracking methods:
 
-- **Label-based tracking** (default in older versions) - adds `app.kubernetes.io/instance` label to resources
-- **Annotation-based tracking** - stores tracking info in annotations, avoiding label conflicts
+- **Label-based tracking** - adds `app.kubernetes.io/instance` label to resources
+- **Annotation-based tracking** (current default) - stores tracking info in annotations, avoiding label conflicts
 - **Annotation+label tracking** - hybrid approach
 
 The tracking method matters when you have other tools (like Helm or operators) that also set labels on resources.
@@ -224,7 +223,7 @@ The three components that typically need tuning are:
 
 - **Repo server** - add replicas if manifest generation is slow. Each Helm template or Kustomize build runs in a separate process, so CPU matters.
 - **Application controller** - increase status and operation processors for more concurrent syncs. Sharding helps with many Applications.
-- **Redis** - increase memory if you manage many Applications. The cluster cache grows with the number of managed resources.
+- **Redis** - increase memory if you manage many Applications and generate many cached manifest or revision entries.
 
 ```yaml
 # Example: scaling repo server for better performance
