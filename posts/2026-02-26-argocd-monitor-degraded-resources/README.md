@@ -14,13 +14,14 @@ This guide covers every method available for monitoring degraded resources, from
 
 ## Understanding Degraded Status
 
-In ArgoCD's health model, "Degraded" is one of five possible health statuses:
+In ArgoCD's health model, "Degraded" is one of the possible health statuses:
 
 - **Healthy** - Resource is operating normally
 - **Progressing** - Resource is being created or updated
 - **Degraded** - Resource has a problem that needs attention
 - **Suspended** - Resource is intentionally paused
 - **Missing** - Resource is expected but does not exist
+- **Unknown** - Health assessment failed or ArgoCD cannot determine the current health
 
 A resource becomes degraded when ArgoCD's health check (built-in or custom) determines that the resource is in a failed state. For standard Kubernetes resources, this happens when:
 
@@ -62,10 +63,10 @@ argocd app list -o wide
 argocd app get my-app -o json | jq '.status.health'
 
 # List all resources in an app with their health
-argocd app resources my-app
+argocd app resources my-app --output tree=detailed
 
 # Filter to only degraded resources
-argocd app resources my-app -o json | jq '.[] | select(.health.status == "Degraded")'
+argocd app get my-app -o json | jq '.status.resources[] | select(.health.status == "Degraded")'
 ```
 
 You can script this into a monitoring check:
@@ -82,7 +83,7 @@ if [ -n "$DEGRADED_APPS" ]; then
   for app in $DEGRADED_APPS; do
     echo ""
     echo "=== $app ==="
-    argocd app resources "$app" -o json | jq '.[] | select(.health.status == "Degraded") | {name: .name, kind: .kind, message: .health.message}'
+    argocd app get "$app" -o json | jq '.status.resources[] | select(.health.status == "Degraded") | {name: .name, kind: .kind, message: .health.message}'
   done
   exit 2
 else
