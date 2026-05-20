@@ -75,13 +75,6 @@ kyverno:
       limits:
         memory: 768Mi
 
-    # Failure policy - what happens when Kyverno is unavailable
-    # "Fail" blocks all requests, "Ignore" allows them through
-    container:
-      args:
-        # Start with Ignore for safety, switch to Fail once stable
-        - --webhookFailurePolicy=Ignore
-
   # Background controller for generate and mutate existing
   backgroundController:
     replicas: 2
@@ -124,13 +117,16 @@ kyverno:
       - system:serviceaccounts:argocd
     resourceFilters:
       - '[Event,*,*]'
-      - '[*,kube-system,*]'
-      - '[*,kube-public,*]'
-      - '[*,kube-node-lease,*]'
-      - '[*,argocd,*]'
+      - '[*/*,kube-system,*]'
+      - '[*/*,kube-public,*]'
+      - '[*/*,kube-node-lease,*]'
+      - '[*/*,argocd,*]'
 
-  # Install policy reporter for Grafana integration
+  # Features
   features:
+    # Start with Ignore for safety, switch to Fail once stable
+    forceFailurePolicyIgnore:
+      enabled: true
     policyExceptions:
       enabled: true
       namespace: "kyverno"
@@ -219,7 +215,6 @@ metadata:
       Privileged containers can access all Linux capabilities and devices.
       This policy ensures containers cannot run in privileged mode.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: privileged-containers
@@ -235,18 +230,19 @@ spec:
                 - kube-system
                 - security
       validate:
+        failureAction: Enforce
         message: "Privileged mode is not allowed. Set securityContext.privileged to false."
         pattern:
           spec:
             containers:
-              - securityContext:
-                  privileged: "false"
+              - "=(securityContext)":
+                  "=(privileged)": "false"
             =(initContainers):
-              - securityContext:
-                  privileged: "false"
+              - "=(securityContext)":
+                  "=(privileged)": "false"
             =(ephemeralContainers):
-              - securityContext:
-                  privileged: "false"
+              - "=(securityContext)":
+                  "=(privileged)": "false"
 ```
 
 ```yaml
@@ -260,7 +256,6 @@ metadata:
     policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Audit
   background: true
   rules:
     - name: require-team-label
@@ -272,6 +267,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Audit
         message: "The label 'team' is required."
         pattern:
           metadata:
@@ -286,6 +282,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Audit
         message: "The label 'app.kubernetes.io/name' is required."
         pattern:
           metadata:
@@ -353,6 +350,8 @@ spec:
     repoURL: https://github.com/your-org/gitops-repo.git
     targetRevision: main
     path: security/kyverno-policies
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -368,7 +367,7 @@ A common issue is that Kyverno's mutating webhook modifies resources that ArgoCD
 There are two solutions:
 
 1. Use `ignoreDifferences` in your ArgoCD Applications for fields Kyverno mutates
-2. Apply Kyverno mutations in Audit mode first, then update your Git manifests to include the expected mutations before switching to Enforce
+2. Update your Git manifests to include the expected mutations before enabling mutating policies for ArgoCD-managed resources
 
 ```yaml
 # In ArgoCD Application
