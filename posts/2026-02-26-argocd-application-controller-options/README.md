@@ -14,7 +14,7 @@ This guide covers the most important argocd-application-controller options, how 
 
 ## How the Application Controller Works
 
-The application controller runs as a StatefulSet (or Deployment in newer versions). It:
+The application controller runs as a StatefulSet in standard upstream installs. It:
 
 1. Watches ArgoCD Application resources
 2. Connects to target clusters via the Kubernetes API
@@ -37,7 +37,7 @@ flowchart TD
 
 ## Setting Controller Options
 
-Like the server, you modify controller options in the deployment spec.
+Like the server, you modify controller options in the workload spec.
 
 ### Using Kustomize
 
@@ -73,7 +73,7 @@ controller:
 
 ### --app-resync
 
-Controls how often (in seconds) the controller re-evaluates each application, even if nothing has changed. Default is 180 seconds (3 minutes).
+Controls how often (in seconds) the controller re-evaluates each application, even if nothing has changed. The command-line default is 120 seconds, with a default jitter of up to 60 seconds.
 
 ```yaml
 command:
@@ -86,7 +86,7 @@ command:
 Trade-offs:
 - **Lower values** (60-120s): Faster drift detection, higher API server load
 - **Higher values** (300-600s): Less API load, slower drift detection
-- **Default** (180s): Good balance for most deployments
+- **Default** (120s plus jitter): Good balance for most deployments
 
 ### --app-hard-resync
 
@@ -100,7 +100,7 @@ command:
 
 ### --self-heal-timeout-seconds
 
-Maximum time allowed for self-healing sync operations. Default is 5 seconds.
+Specifies the timeout between application self-heal attempts.
 
 ```yaml
 command:
@@ -159,19 +159,19 @@ command:
 
 For very large deployments, you can run multiple controller instances, each responsible for a subset of applications.
 
-### --controller-sharding-algorithm
+### --sharding-method
 
-Specifies the sharding algorithm. Options are `legacy` and `round-robin`.
+Specifies the sharding algorithm. Supported values are `legacy`, `round-robin`, and `consistent-hashing`.
 
 ```yaml
 command:
   - argocd-application-controller
-  - --controller-sharding-algorithm=round-robin
+  - --sharding-method=round-robin
 ```
 
-### --sharding-method
+### controller.sharding.algorithm
 
-Method used for distributing applications. Can be `legacy` or `consistent-hashing`.
+The same sharding algorithm can also be configured with `controller.sharding.algorithm` in `argocd-cmd-params-cm` or the `ARGOCD_CONTROLLER_SHARDING_ALGORITHM` environment variable.
 
 ### Configuring Sharding
 
@@ -200,16 +200,16 @@ spec:
 
 Each controller instance automatically picks up its shard based on its ordinal index in the StatefulSet.
 
-Resource Tracking Options
+## Resource Tracking Options
 
-### --resource-parallelism-limit
+### --persist-resource-health
 
-Limits concurrent resource operations per application. This prevents a single large application from monopolizing the controller.
+Stores managed resource health in the Application CRD. This can make resource health available in Application status, but increases CR updates and controller load.
 
 ```yaml
 command:
   - argocd-application-controller
-  - --resource-parallelism-limit=50
+  - --persist-resource-health
 ```
 
 ### --default-cache-expiration
@@ -266,7 +266,7 @@ command:
 
 ### --redis-compress
 
-Enables compression for Redis data. Useful for large deployments to reduce Redis memory usage.
+Configures compression for Redis data. Supported values are `gzip` and `none`; the default is `gzip`.
 
 ```yaml
 command:
@@ -288,7 +288,7 @@ spec:
     spec:
       containers:
         - name: argocd-application-controller
-          image: quay.io/argoproj/argocd:v2.10.0
+          image: quay.io/argoproj/argocd:v3.4.1
           command:
             - argocd-application-controller
             # Reconciliation
@@ -325,13 +325,13 @@ The controller exposes Prometheus metrics on port 8082.
 
 ```bash
 # Check controller metrics
-kubectl port-forward -n argocd statefulset/argocd-application-controller 8082:8082
+kubectl port-forward -n argocd svc/argocd-metrics 8082:8082
 curl localhost:8082/metrics | grep argocd_app_reconcile
 ```
 
 Important metrics to watch:
-- `argocd_app_reconcile_count` - Number of reconciliation cycles
-- `argocd_app_reconcile_bucket` - Reconciliation duration histogram
+- `argocd_app_reconcile` - Application reconciliation duration histogram
+- `argocd_app_k8s_request_total` - Kubernetes requests executed during reconciliation
 - `argocd_kubectl_exec_total` - kubectl execution count
 - `argocd_app_sync_total` - Total sync operations
 
@@ -347,20 +347,21 @@ kubectl logs -n argocd statefulset/argocd-application-controller | grep -i "slow
 kubectl logs -n argocd statefulset/argocd-application-controller | grep "queue"
 ```
 
-## Environment Variables
+## Configuration Parameters
 
-Some options can be set via environment variables.
+Many command-line options can also be set through `argocd-cmd-params-cm` keys. For controller options, use the `controller.` prefix.
 
 ```yaml
-env:
-  - name: ARGOCD_RECONCILIATION_TIMEOUT
-    value: "180s"
-  - name: ARGOCD_CONTROLLER_REPLICAS
-    value: "1"
-  - name: ARGOCD_APPLICATION_CONTROLLER_REPO_SERVER
-    value: "argocd-repo-server:8081"
-  - name: HOME
-    value: "/home/argocd"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  controller.status.processors: "50"
+  controller.operation.processors: "25"
+  controller.repo.server.timeout.seconds: "120"
+  controller.sharding.algorithm: "round-robin"
 ```
 
 ## Common Tuning Mistakes
