@@ -55,13 +55,13 @@ After migration, Jenkins handles CI (build and test) and ArgoCD handles CD (depl
 
 ```mermaid
 flowchart LR
-    subgraph CI - Jenkins
+    subgraph CI["CI - Jenkins"]
         A[Code Push] --> B[Build]
         B --> C[Test]
         C --> D[Push Image]
         D --> E[Update GitOps Repo]
     end
-    subgraph CD - ArgoCD
+    subgraph CD["CD - ArgoCD"]
         E --> F[Detect Change]
         F --> G[Sync to Staging]
         G --> H[Health Check]
@@ -149,11 +149,11 @@ Extract current manifests from whatever Jenkins uses.
 ```bash
 # If Jenkins uses raw YAML files, copy them
 # If Jenkins uses Helm, export the values
-helm get values api-release -n production > api-values.yaml
-helm get manifest api-release -n production | kubectl neat > api-manifests.yaml
+helm get values api-release -n production -o yaml > api-values.yaml
+helm get manifest api-release -n production > api-manifests.yaml
 
 # If Jenkins uses kubectl set image, get the deployment spec
-kubectl get deployment api -n production -o yaml | kubectl neat > api-deployment.yaml
+kubectl get deployment api -n production -o yaml > api-deployment.yaml
 ```
 
 ## Step 3: Modify Jenkins to Update Git Instead of Kubectl
@@ -220,7 +220,7 @@ metadata:
   name: api-staging
   namespace: argocd
 spec:
-  project: staging
+  project: default
   source:
     repoURL: https://github.com/myorg/gitops-repo.git
     path: overlays/staging/api
@@ -240,7 +240,7 @@ metadata:
   name: api-production
   namespace: argocd
 spec:
-  project: production
+  project: default
   source:
     repoURL: https://github.com/myorg/gitops-repo.git
     path: overlays/production/api
@@ -264,9 +264,7 @@ Replace Jenkins's "Deploy to Production" stage with a Git-based promotion workfl
 # Called manually or via a separate Jenkins job
 
 APP=$1
-# Get the image tag currently deployed to staging
-STAGING_IMAGE=$(kubectl get deployment "$APP" -n staging \
-  -o jsonpath='{.spec.template.spec.containers[0].image}')
+STAGING_IMAGE=$2
 
 echo "Promoting $APP with image $STAGING_IMAGE to production"
 
@@ -288,17 +286,21 @@ pipeline {
     agent any
     parameters {
         string(name: 'APP', description: 'Application to promote')
+        string(name: 'IMAGE', description: 'Image that was validated in staging')
     }
     stages {
         stage('Approve') {
-            input { message "Promote ${params.APP} to production?" }
+            input {
+                message "Promote ${params.APP} to production?"
+                submitterParameter "APPROVED_BY"
+            }
             steps {
-                echo "Approved by ${currentBuild.rawBuild.getCause(Cause.UserIdCause)?.getUserId()}"
+                echo "Approved by ${env.APPROVED_BY}"
             }
         }
         stage('Promote') {
             steps {
-                sh "./promote-to-production.sh ${params.APP}"
+                sh "./promote-to-production.sh ${params.APP} ${params.IMAGE}"
             }
         }
         stage('Sync ArgoCD') {
