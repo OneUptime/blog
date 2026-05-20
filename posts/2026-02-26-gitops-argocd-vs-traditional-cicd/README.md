@@ -28,7 +28,7 @@ graph LR
     style C fill:#f96
 ```
 
-```yaml
+```groovy
 # Traditional CI/CD: Jenkins pipeline example
 
 pipeline {
@@ -36,24 +36,24 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'docker build -t myapp:${BUILD_NUMBER} .'
+                sh 'docker build -t registry.example.com/myapp:${BUILD_NUMBER} .'
                 sh 'docker push registry.example.com/myapp:${BUILD_NUMBER}'
             }
         }
         stage('Test') {
             steps {
-                sh 'docker run myapp:${BUILD_NUMBER} npm test'
+                sh 'docker run registry.example.com/myapp:${BUILD_NUMBER} npm test'
             }
         }
         stage('Deploy Staging') {
             steps {
-                sh 'kubectl set image deployment/myapp myapp=myapp:${BUILD_NUMBER} -n staging'
+                sh 'kubectl set image deployment/myapp myapp=registry.example.com/myapp:${BUILD_NUMBER} -n staging'
             }
         }
         stage('Deploy Production') {
             when { branch 'main' }
             steps {
-                sh 'kubectl set image deployment/myapp myapp=myapp:${BUILD_NUMBER} -n production'
+                sh 'kubectl set image deployment/myapp myapp=registry.example.com/myapp:${BUILD_NUMBER} -n production'
             }
         }
     }
@@ -89,12 +89,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t myapp:${{ github.sha }} .
+      - run: docker build -t registry.example.com/myapp:${{ github.sha }} .
       - run: docker push registry.example.com/myapp:${{ github.sha }}
       - name: Update GitOps repo
         run: |
           git clone https://github.com/org/gitops-repo
           cd gitops-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           yq e ".image.tag = \"${{ github.sha }}\"" -i apps/myapp/values.yaml
           git commit -am "Update myapp to ${{ github.sha }}"
           git push
@@ -127,7 +129,7 @@ kubectl exec -it ...   # Shell access to pods
 
 # GitOps: CI server only has Git access
 # If GitHub Actions is compromised, attacker can:
-git push  # Push code, which still goes through PR review
+git push  # Push to Git, where branch protection and PR review can still gate promotion
 # They CANNOT directly access the cluster
 ```
 
@@ -135,7 +137,7 @@ git push  # Push code, which still goes through PR review
 
 **Traditional CI/CD:** Audit depends on CI server logging. Pipeline logs can be modified or deleted. There is no guarantee of immutable history.
 
-**GitOps with ArgoCD:** Git provides an immutable audit trail. Every deployment change is a Git commit with author, timestamp, and content. Reverting means reverting a commit.
+**GitOps with ArgoCD:** Git provides a durable audit trail when history rewriting is restricted. Every deployment change is a Git commit with author, timestamp, and content. Reverting means reverting a commit.
 
 ```bash
 # GitOps audit trail
@@ -145,7 +147,7 @@ git log --oneline apps/production/
 # g7h8i9j Update resource limits (Bob, 2024-01-13)
 
 # Every change is traceable, reviewable, and revertable
-git revert a1b2c3d  # Instant rollback
+git revert a1b2c3d  # Roll back by creating a new commit
 ```
 
 ## Reliability Comparison
@@ -231,7 +233,7 @@ git push
 
 **Traditional CI/CD:** Lower initial setup. Write a pipeline, give it cluster credentials, done. Most teams can set this up in a day.
 
-**GitOps:** Higher initial setup. You need ArgoCD installed, a GitOps repository structure, webhook configuration, and team training on the new workflow. Initial setup typically takes a week.
+**GitOps:** Higher initial setup. You need ArgoCD installed, a GitOps repository structure, optional webhook configuration for faster change detection, and team training on the new workflow. Initial setup typically takes a week.
 
 ### Ongoing Maintenance
 
