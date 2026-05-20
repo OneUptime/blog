@@ -86,9 +86,11 @@ resources:
   - configmap.yaml
   - hpa.yaml
 
-commonLabels:
-  app.kubernetes.io/name: backend-api
-  app.kubernetes.io/part-of: my-platform
+labels:
+  - pairs:
+      app.kubernetes.io/name: backend-api
+      app.kubernetes.io/part-of: my-platform
+    includeSelectors: true
 ```
 
 ```yaml
@@ -141,7 +143,7 @@ patches:
       kind: Deployment
       name: backend-api
     patch: |
-      - op: replace
+      - op: add
         path: /spec/replicas
         value: 3
       - op: replace
