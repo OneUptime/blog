@@ -97,8 +97,7 @@ sudo nano /etc/apache2/sites-available/yourdomain.com.conf
     SSLCertificateFile      /etc/letsencrypt/live/yourdomain.com/fullchain.pem
     SSLCertificateKeyFile   /etc/letsencrypt/live/yourdomain.com/privkey.pem
 
-    # Include TLS hardening settings
-    Include /etc/apache2/conf-available/ssl-params.conf
+    # TLS hardening settings are enabled globally with a2enconf ssl-params
 
     # Logging
     ErrorLog ${APACHE_LOG_DIR}/yourdomain.com-error.log
@@ -122,7 +121,7 @@ sudo nano /etc/apache2/conf-available/ssl-params.conf
 # TLS Protocol versions - only allow TLS 1.2 and 1.3
 SSLProtocol all -SSLv3 -TLSv1 -TLSv1.1
 
-# Cipher suite - strong modern ciphers only
+# TLS 1.2 cipher suite - strong modern ciphers only
 SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256
 
 # Honor server cipher order
@@ -137,7 +136,7 @@ SSLCompression off
 
 # Enable OCSP Stapling
 SSLUseStapling on
-SSLStaplingCache "shmcb:logs/ssl_stapling(32768)"
+SSLStaplingCache shmcb:/run/apache2/ssl_stapling(32768)
 SSLStaplingResponderTimeout 5
 SSLStaplingReturnResponderErrors off
 
@@ -159,10 +158,8 @@ Generate the DH parameters file:
 # Generate 2048-bit DH parameters (takes a few minutes)
 sudo openssl dhparam -out /etc/apache2/dhparam.pem 2048
 
-# Enable OCSP Stapling (must be set at server level, not virtual host)
-sudo nano /etc/apache2/apache2.conf
-# Add: SSLUseStapling On
-# Add: SSLStaplingCache shmcb:/var/run/apache2/stapling_cache(128000)
+# OCSP Stapling cache directives must be set at server level, which
+# ssl-params.conf provides when enabled with a2enconf
 ```
 
 ## Enabling the Site
@@ -194,21 +191,23 @@ sudo chmod 700 /etc/apache2/ssl
 sudo cp yourdomain.crt /etc/apache2/ssl/
 sudo cp yourdomain.key /etc/apache2/ssl/
 sudo cp ca_bundle.crt /etc/apache2/ssl/
+sudo sh -c 'cat /etc/apache2/ssl/yourdomain.crt /etc/apache2/ssl/ca_bundle.crt > /etc/apache2/ssl/yourdomain-fullchain.crt'
 
 # Set permissions
 sudo chmod 600 /etc/apache2/ssl/yourdomain.key
 sudo chmod 644 /etc/apache2/ssl/yourdomain.crt
 sudo chmod 644 /etc/apache2/ssl/ca_bundle.crt
+sudo chmod 644 /etc/apache2/ssl/yourdomain-fullchain.crt
 ```
 
 In your virtual host config:
 
 ```apache
-SSLCertificateFile    /etc/apache2/ssl/yourdomain.crt
+SSLCertificateFile    /etc/apache2/ssl/yourdomain-fullchain.crt
 SSLCertificateKeyFile /etc/apache2/ssl/yourdomain.key
-# For Apache 2.4.8+, fullchain goes in SSLCertificateFile
-# For older versions, use SSLCertificateChainFile
-SSLCertificateChainFile /etc/apache2/ssl/ca_bundle.crt
+# For Apache versions older than 2.4.8, use SSLCertificateChainFile
+# instead of placing the intermediate certificates in SSLCertificateFile.
+# SSLCertificateChainFile /etc/apache2/ssl/ca_bundle.crt
 ```
 
 ## Enabling HTTP/2
