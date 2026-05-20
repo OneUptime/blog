@@ -260,7 +260,7 @@ jobs:
           chmod +x /usr/local/bin/argocd
           argocd app get myapp-staging --refresh --grpc-web \
             --server ${{ secrets.ARGOCD_SERVER }}
-          argocd app wait myapp-staging --grpc-web --health --timeout 300 \
+          argocd app wait myapp-staging --grpc-web --sync --health --timeout 300 \
             --server ${{ secrets.ARGOCD_SERVER }}
 
   integration-tests:
@@ -300,7 +300,7 @@ jobs:
           chmod +x /usr/local/bin/argocd
           argocd app sync myapp-production --grpc-web \
             --server ${{ secrets.ARGOCD_SERVER }}
-          argocd app wait myapp-production --grpc-web --health --timeout 300 \
+          argocd app wait myapp-production --grpc-web --sync --health --timeout 300 \
             --server ${{ secrets.ARGOCD_SERVER }}
 ```
 
