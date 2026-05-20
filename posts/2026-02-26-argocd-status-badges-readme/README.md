@@ -106,14 +106,14 @@ For projects deployed across multiple environments and regions:
 
 GitHub proxies all external images through `camo.githubusercontent.com`. This proxy caches images aggressively, which means badge updates can be delayed by several minutes.
 
-To work around this:
+Keep this in mind when reviewing badge changes:
 
 ```markdown
 <!-- GitHub may cache this image for several minutes -->
 ![Status](https://argocd.example.com/api/badge?name=my-app)
 ```
 
-There is no reliable way to force GitHub to refresh cached images. The proxy respects standard HTTP cache headers, so configuring your ArgoCD server to send short cache headers helps:
+For routine badge updates, do not rely on manually forcing GitHub to refresh cached images. The proxy respects standard HTTP cache headers, so configuring your ArgoCD server to send short cache headers helps:
 
 ```yaml
 # If using Nginx Ingress in front of ArgoCD
@@ -145,7 +145,7 @@ Combine CI and CD badges for a complete picture:
 
 ## GitLab-Specific Considerations
 
-GitLab also proxies external images but with different caching behavior. GitLab generally refreshes images faster than GitHub.
+GitLab installations can proxy external images through an asset proxy, so caching behavior depends on the GitLab instance configuration.
 
 For GitLab README files, the syntax is the same standard Markdown:
 
@@ -169,7 +169,7 @@ Bitbucket's README rendering supports standard Markdown image syntax:
 [![ArgoCD Status](https://argocd.example.com/api/badge?name=my-app)](https://argocd.example.com/applications/my-app)
 ```
 
-Bitbucket may have stricter Content Security Policy rules. Ensure your ArgoCD server sends proper CORS headers if badges do not render.
+Bitbucket may have stricter Content Security Policy rules. Ensure your ArgoCD server returns the badge with an image content type such as `image/svg+xml` if badges do not render.
 
 ## Automating Badge Generation
 
@@ -210,10 +210,13 @@ Set up a small proxy service that fetches badge data from your internal ArgoCD a
 
 ```python
 # Simple badge proxy (Flask example)
-from flask import Flask, redirect
+import os
+
+from flask import Flask, Response
 import requests
 
 app = Flask(__name__)
+ARGOCD_TOKEN = os.environ["ARGOCD_TOKEN"]
 
 @app.route('/badge/<app_name>')
 def badge(app_name):
@@ -221,17 +224,19 @@ def badge(app_name):
     response = requests.get(
         f'https://argocd.internal.example.com/api/badge?name={app_name}&revision=true',
         headers={'Authorization': f'Bearer {ARGOCD_TOKEN}'},
-        verify=True
+        verify=True,
+        timeout=10,
     )
-    return response.content, 200, {'Content-Type': 'image/svg+xml'}
+    response.raise_for_status()
+    return Response(response.content, mimetype='image/svg+xml')
 ```
 
 **Option 2: Use shields.io with a custom endpoint**
 
-Create a custom shields.io badge that queries ArgoCD:
+Create a custom endpoint that queries ArgoCD and returns Shields endpoint JSON:
 
 ```markdown
-![ArgoCD Status](https://img.shields.io/endpoint?url=https://badge-api.example.com/argocd/my-app)
+![ArgoCD Status](https://img.shields.io/endpoint?url=https%3A%2F%2Fbadge-api.example.com%2Fargocd%2Fmy-app)
 ```
 
 **Option 3: Use static badges updated by CI**
@@ -241,7 +246,6 @@ Generate static SVG badges in your CI pipeline and commit them to the repository
 ```bash
 # In your CI pipeline
 STATUS=$(argocd app get my-app -o json | jq -r '.status.sync.status')
-HEALTH=$(argocd app get my-app -o json | jq -r '.status.health.status')
 
 # Generate a shields.io badge URL and download it
 curl -o badges/deploy-status.svg \
@@ -256,7 +260,7 @@ curl -o badges/deploy-status.svg \
 
 **Badge is stale**: Image proxy caching. Wait a few minutes or configure cache headers on the ArgoCD server.
 
-**Badge does not render at all**: Check browser console for CORS or Content Security Policy errors. Ensure the ArgoCD server allows cross-origin image requests.
+**Badge does not render at all**: Check that the ArgoCD server is reachable and returns the badge with an image content type such as `image/svg+xml`. Also check the browser console for Content Security Policy errors.
 
 ## Conclusion
 
