@@ -42,7 +42,7 @@ When you run `helm dependency update`, Helm downloads the dependency charts into
 
 ## ArgoCD's Dependency Resolution
 
-ArgoCD runs `helm dependency build` automatically when rendering Helm charts. This means ArgoCD downloads and resolves dependencies at sync time. For this to work, ArgoCD must be able to access all dependency repositories.
+ArgoCD runs `helm dependency build` automatically during manifest generation when Helm reports missing dependencies. This means ArgoCD can download and resolve dependencies while rendering the chart. For this to work, ArgoCD must be able to access all dependency repositories.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -51,11 +51,12 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/my-charts.git
     targetRevision: main
     path: charts/my-app
-    # ArgoCD automatically runs helm dependency build for this chart
+    # ArgoCD can automatically run helm dependency build for this chart
   destination:
     server: https://kubernetes.default.svc
     namespace: production
@@ -63,9 +64,9 @@ spec:
 
 ## Registering Dependency Repositories
 
-The most common issue with Helm dependencies in ArgoCD is that the dependency repositories are not registered. ArgoCD needs access to every repository referenced in your `Chart.yaml` dependencies.
+The most common issue with Helm dependencies in ArgoCD is that ArgoCD cannot access the dependency repositories. Public HTTPS repository URLs in `Chart.yaml` can be used directly, but register dependency repositories when they require authentication or when your chart uses repository aliases such as `@bitnami` or `alias:bitnami`.
 
-Register each dependency repository:
+Register dependency repositories when needed:
 
 ```bash
 # Add Bitnami repository (used by many charts)
@@ -108,7 +109,7 @@ stringData:
 
 ## Pre-built Dependencies (charts/ Directory)
 
-An alternative to letting ArgoCD resolve dependencies at sync time is to check in the pre-built dependency charts:
+An alternative to letting ArgoCD resolve dependencies during manifest generation is to check in the pre-built dependency charts:
 
 ```bash
 # Build dependencies locally
@@ -128,7 +129,7 @@ git push
 
 When ArgoCD finds pre-built dependencies in the `charts/` directory, it uses them directly without needing to download from remote repositories. This approach:
 
-- Eliminates dependency on external repositories at sync time
+- Eliminates dependency on external repositories during manifest generation
 - Makes syncs faster and more reliable
 - Provides a deterministic build (the exact versions are committed)
 - But increases Git repository size
@@ -144,6 +145,7 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/my-charts.git
     path: charts/my-app
@@ -201,7 +203,9 @@ postgresql:
   enabled: false
 redis:
   enabled: true
+```
 
+```yaml
 # values-prod.yaml for production (includes database)
 postgresql:
   enabled: true
@@ -289,10 +293,10 @@ git push
 ### Error: repository not found
 
 ```text
-Error: repository "https://charts.bitnami.com/bitnami" not found
+Error: no repository definition for @bitnami
 ```
 
-Solution: Register the repository in ArgoCD:
+Solution: Register the aliased repository in ArgoCD:
 
 ```bash
 argocd repo add https://charts.bitnami.com/bitnami --type helm --name bitnami
@@ -320,17 +324,17 @@ If a dependency is not appearing in rendered output:
 # Check if the dependency's condition evaluates to true
 argocd app manifests my-app | grep postgresql
 
-# Check the rendered values
+# Check the configured Helm values in the Application spec
 argocd app get my-app -o json | jq '.spec.source.helm'
 ```
 
 ### Slow sync due to dependency download
 
-If syncs are slow because ArgoCD downloads dependencies every time:
+If manifest generation is slow because ArgoCD has to download dependencies:
 
 1. Pre-build dependencies and commit the `charts/` directory
 2. Or use a local chart museum cache
 
 ## Summary
 
-Helm chart dependencies in ArgoCD work through automatic `helm dependency build` during sync. Register all dependency repositories in ArgoCD, use `Chart.lock` for reproducible builds, and consider pre-building dependencies for faster syncs. Use conditional dependencies to vary your deployment stack across environments. For dependency repository authentication, see our guide on [private Helm repositories](https://oneuptime.com/blog/post/2026-02-26-argocd-private-helm-repositories/view).
+Helm chart dependencies in ArgoCD work through automatic `helm dependency build` during manifest generation when dependencies are missing. Make sure ArgoCD can access dependency repositories, register repositories when credentials or aliases are needed, use `Chart.lock` for reproducible builds, and consider pre-building dependencies for faster syncs. Use conditional dependencies to vary your deployment stack across environments. For dependency repository authentication, see our guide on [private Helm repositories](https://oneuptime.com/blog/post/2026-02-26-argocd-private-helm-repositories/view).
