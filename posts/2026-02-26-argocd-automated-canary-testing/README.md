@@ -88,7 +88,7 @@ spec:
       failureCondition: result[0] < 95.0
 ```
 
-This template checks that the canary maintains a 99% success rate. If it drops below 95%, the canary fails immediately. Between 95% and 99%, it is considered inconclusive and the analysis continues.
+This template checks that the canary maintains a 99% success rate. If it drops below 95%, the canary fails immediately. Between 95% and 99%, the measurement is considered inconclusive. If the analysis finishes with inconclusive measurements, the rollout does not automatically promote.
 
 ## Building the Rollout Spec
 
@@ -102,6 +102,9 @@ metadata:
 spec:
   replicas: 5
   revisionHistoryLimit: 3
+  # Fast-track rollbacks to recent ReplicaSets
+  rollbackWindow:
+    revisions: 1
   selector:
     matchLabels:
       app: api-service
@@ -184,9 +187,6 @@ spec:
                 valueFrom:
                   fieldRef:
                     fieldPath: metadata.namespace
-      # Automatic rollback on failure
-      rollbackWindow:
-        revisions: 1
 ```
 
 ## Adding Latency Analysis
