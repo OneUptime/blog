@@ -162,7 +162,7 @@ spec:
 
 ## Step 5: Update SSO Configuration
 
-If you use SSO (OIDC, SAML, or Dex), update the callback URLs to use the new domain:
+If you use SSO, update the callback URLs to use the new domain. Direct OIDC integrations use ArgoCD's `/auth/callback` endpoint; Dex-backed connectors such as GitHub, SAML, LDAP, or OIDC through Dex use `/api/dex/callback`.
 
 ### OIDC Configuration
 
@@ -184,7 +184,7 @@ data:
     # Okta/your IDP must have this URL registered
 ```
 
-Update your identity provider (Okta, Azure AD, Google, etc.) with the new callback URL:
+Update your identity provider (Okta, Azure AD, Google, etc.) with the new direct OIDC callback URL:
 
 ```text
 https://argocd.yourcompany.com/auth/callback
@@ -211,6 +211,12 @@ data:
           orgs:
             - name: your-org
     # Dex automatically uses the ArgoCD URL for callbacks
+```
+
+Update the OAuth application used by the Dex connector with the Dex callback URL:
+
+```text
+https://argocd.yourcompany.com/api/dex/callback
 ```
 
 ## Step 6: Configure CLI
@@ -257,11 +263,12 @@ If you need both a UI domain and a gRPC domain:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: argocd-server-ingress
+  name: argocd-server-http-ingress
   namespace: argocd
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   rules:
@@ -274,12 +281,37 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 80
+                  name: http
   tls:
     - hosts:
         - argocd.yourcompany.com
+      secretName: argocd-server-http-tls
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-grpc-ingress
+  namespace: argocd
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: grpc.argocd.yourcompany.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  name: https
+  tls:
+    - hosts:
         - grpc.argocd.yourcompany.com
-      secretName: argocd-server-tls
+      secretName: argocd-server-grpc-tls
 ```
 
 ## Verifying the Setup
@@ -308,7 +340,7 @@ argocd login argocd.yourcompany.com --sso --grpc-web
 
 **Redirect Loop**: The `url` in argocd-cm does not match the actual URL, or `server.insecure` is not set when using TLS termination.
 
-**SSO Callback Fails**: The callback URL in your identity provider does not match the custom domain. Update it to `https://argocd.yourcompany.com/auth/callback`.
+**SSO Callback Fails**: The callback URL in your identity provider does not match the custom domain. Use `https://argocd.yourcompany.com/auth/callback` for direct OIDC or `https://argocd.yourcompany.com/api/dex/callback` for Dex connectors.
 
 **DNS Not Resolving**: DNS propagation takes time (up to 48 hours for new domains, usually minutes for updates). Use `dig` to check propagation.
 
