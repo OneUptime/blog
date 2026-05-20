@@ -26,8 +26,8 @@ ip link show | grep -E "^[0-9]+: w"
 sudo apt install iw -y
 iw dev
 
-# List available wireless interfaces
-iwconfig 2>/dev/null | grep -v "^$" | grep -v "no wireless"
+# List available wireless interfaces from iw output
+iw dev | awk '/Interface/ {print $2}'
 ```
 
 Modern Ubuntu uses predictable interface names like `wlan0`, `wlp2s0`, or `wlx001c101234ab`. The `wlp2s0` format indicates a wireless device on PCI bus 2, slot 0.
@@ -165,7 +165,7 @@ network={
 
 ```bash
 # Create the wpa_supplicant configuration file
-sudo tee /etc/wpa_supplicant/wpa_supplicant.conf << 'EOF'
+sudo tee /etc/wpa_supplicant/wpa_supplicant-wlan0.conf << 'EOF'
 country=US
 ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 update_config=1
@@ -189,7 +189,7 @@ EOF
 
 ```bash
 # Start wpa_supplicant manually to test
-sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant.conf
+sudo wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant/wpa_supplicant-wlan0.conf
 
 # Request an IP address via DHCP
 sudo dhclient wlan0
@@ -212,7 +212,7 @@ sudo systemctl status wpa_supplicant@wlan0
 
 ## Method 3: NetworkManager (nmcli)
 
-If your Ubuntu Server installation uses NetworkManager (common with Ubuntu 20.04+ server installations):
+If your Ubuntu Server installation uses NetworkManager:
 
 ```bash
 # Check if NetworkManager is running
