@@ -88,7 +88,7 @@ build-image:
   variables:
     DOCKER_TLS_CERTDIR: "/certs"
   before_script:
-    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
   script:
     - |
       docker build \
@@ -229,7 +229,7 @@ stringData:
   type: git
 ```
 
-For GitLab's container registry, ArgoCD Image Updater needs credentials:
+For GitLab's container registry, ArgoCD Image Updater needs registry configuration and credentials:
 
 ```yaml
 apiVersion: v1
@@ -237,14 +237,22 @@ kind: Secret
 metadata:
   name: gitlab-registry
   namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
 type: Opaque
 stringData:
-  url: registry.gitlab.com
-  username: gitlab-deploy-token
-  password: <deploy-token-value>
-  type: helm
+  creds: gitlab-deploy-token:<deploy-token-value>
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-cm
+  namespace: argocd
+data:
+  registries.conf: |
+    registries:
+      - name: GitLab Container Registry
+        api_url: https://registry.gitlab.com
+        prefix: registry.gitlab.com
+        credentials: secret:argocd/gitlab-registry#creds
 ```
 
 ## Multi-Environment Pipeline
@@ -281,7 +289,7 @@ deploy-production:
 .deploy-template:
   image: alpine:3.19
   before_script:
-    - apk add --no-cache git openssh-client
+    - apk add --no-cache git openssh-client kustomize
     - eval $(ssh-agent -s)
     - echo "$DEPLOY_SSH_KEY" | ssh-add -
     - mkdir -p ~/.ssh
@@ -296,7 +304,7 @@ deploy-production:
       kustomize edit set image \
         "registry.gitlab.com/${IMAGE_NAME}=registry.gitlab.com/${IMAGE_NAME}:${CI_COMMIT_SHORT_SHA}"
 
-      cd /builds/deployment-repo
+      cd "${CI_PROJECT_DIR}/deployment-repo"
       git config user.name "GitLab CI"
       git config user.email "ci@gitlab.com"
       git add .
@@ -313,6 +321,8 @@ Create preview environments for merge requests:
 deploy-review:
   stage: deploy
   image: alpine:3.19
+  before_script:
+    - apk add --no-cache kubectl
   script:
     - |
       # Create a temporary ArgoCD Application for this MR
@@ -335,6 +345,12 @@ deploy-review:
         destination:
           server: https://kubernetes.default.svc
           namespace: review-${CI_MERGE_REQUEST_IID}
+        syncPolicy:
+          automated:
+            prune: true
+            selfHeal: true
+          syncOptions:
+            - CreateNamespace=true
       EOF
 
       kubectl apply -f /tmp/mr-app.yaml
@@ -348,6 +364,8 @@ deploy-review:
 stop-review:
   stage: deploy
   image: alpine:3.19
+  before_script:
+    - apk add --no-cache kubectl
   script:
     - kubectl delete application api-service-mr-${CI_MERGE_REQUEST_IID} -n argocd
     - kubectl delete namespace review-${CI_MERGE_REQUEST_IID} --ignore-not-found
@@ -368,6 +386,9 @@ Configure a webhook so ArgoCD syncs immediately when the deployment repo is upda
 # URL: https://argocd.example.com/api/webhook
 # Secret: <argocd webhook secret>
 # Trigger: Push events
+
+# Configure the same value in ArgoCD:
+# argocd-secret stringData key: webhook.gitlab.secret
 ```
 
 ## Pipeline Status in ArgoCD
@@ -391,6 +412,8 @@ template.gitlab-deployment-status: |
         {
           "status": "{{if eq .app.status.operationState.phase "Succeeded"}}success{{else}}failed{{end}}",
           "environment": "production",
+          "ref": "main",
+          "tag": false,
           "sha": "{{.app.status.operationState.syncResult.revision}}"
         }
 ```
