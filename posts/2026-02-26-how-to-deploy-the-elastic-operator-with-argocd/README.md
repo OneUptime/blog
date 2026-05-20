@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Elasticsearch, ECK
 
-Description: Learn how to deploy the Elastic Cloud on Kubernetes (ECK) Operator with ArgoCD for GitOps-managed Elasticsearch, Kibana, and Fleet Server deployments.
+Description: Learn how to deploy the Elastic Cloud on Kubernetes (ECK) Operator with ArgoCD for GitOps-managed Elasticsearch, Kibana, and Filebeat deployments.
 
 ---
 
@@ -51,7 +51,6 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      - Replace=true
       - Prune=false
 ```
 
@@ -118,7 +117,7 @@ spec:
 
 ## Step 3: Deploy an Elasticsearch Cluster
 
-Here is a production-ready Elasticsearch cluster with dedicated node roles:
+Here is a production-oriented Elasticsearch cluster with dedicated node roles:
 
 ```yaml
 apiVersion: v1
@@ -214,7 +213,7 @@ spec:
     - name: coordinating
       count: 2
       config:
-        node.roles: ["remote_cluster_client"]
+        node.roles: []
       podTemplate:
         spec:
           containers:
@@ -291,6 +290,54 @@ spec:
 ## Step 5: Deploy Filebeat for Log Collection
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: filebeat
+  namespace: elastic
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: filebeat
+rules:
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+    verbs:
+      - get
+      - watch
+      - list
+  - apiGroups: ["apps"]
+    resources:
+      - replicasets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: filebeat
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: elastic
+roleRef:
+  kind: ClusterRole
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: beat.k8s.elastic.co/v1beta1
 kind: Beat
 metadata:
@@ -329,12 +376,19 @@ spec:
         hostNetwork: true
         containers:
           - name: filebeat
+            securityContext:
+              runAsUser: 0
             resources:
               requests:
                 cpu: 100m
                 memory: 200Mi
               limits:
                 memory: 500Mi
+            env:
+              - name: NODE_NAME
+                valueFrom:
+                  fieldRef:
+                    fieldPath: spec.nodeName
             volumeMounts:
               - name: varlogcontainers
                 mountPath: /var/log/containers
@@ -410,9 +464,9 @@ data:
 
 ## Handling Elasticsearch Upgrades
 
-ECK handles rolling upgrades automatically. When you change the `version` field in the Elasticsearch CR, the operator performs a rolling restart respecting shard allocation and cluster health.
+ECK handles rolling upgrades automatically. When you change the `version` field in the Elasticsearch CR, the operator starts the upgrade process and orchestrates the rollout according to the Elastic Stack upgrade rules.
 
-Important: Always upgrade one minor version at a time. Do not jump from 7.x to 8.x directly.
+Important: Follow the Elasticsearch upgrade path before changing the `version` field. For major upgrades to 8.x, upgrade to the latest 7.17 patch release first; do not upgrade to 8.x directly from 7.16 or earlier.
 
 ```yaml
 # Update version in Git - ArgoCD syncs automatically
