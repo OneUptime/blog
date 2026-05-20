@@ -27,8 +27,15 @@ The trade-off is cost and management complexity. You need to manage multiple clu
 First, register each environment's cluster with ArgoCD. ArgoCD needs credentials to deploy to external clusters:
 
 ```bash
-# Add staging cluster
+# Add development cluster if ArgoCD runs in the development cluster
 
+argocd cluster add development-context \
+  --name development \
+  --in-cluster \
+  --label env=development \
+  --label region=us-east-1
+
+# Add staging cluster
 argocd cluster add staging-context \
   --name staging \
   --label env=staging \
@@ -251,6 +258,8 @@ metadata:
   name: myapp-per-cluster
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -263,16 +272,16 @@ spec:
                 - production
   template:
     metadata:
-      name: 'myapp-{{metadata.labels.env}}'
+      name: 'myapp-{{.metadata.labels.env}}'
     spec:
-      project: '{{metadata.labels.env}}'
+      project: '{{.metadata.labels.env}}'
       source:
         repoURL: https://github.com/org/gitops-config.git
         targetRevision: main
-        path: 'overlays/{{metadata.labels.env}}'
+        path: 'overlays/{{.metadata.labels.env}}'
       destination:
-        server: '{{server}}'
-        namespace: '{{metadata.labels.env}}'
+        server: '{{.server}}'
+        namespace: '{{.metadata.labels.env}}'
       syncPolicy:
         automated:
           selfHeal: true
@@ -306,6 +315,10 @@ spec:
   namespaceResourceWhitelist:
     - group: apps
       kind: Deployment
+    - group: apps
+      kind: StatefulSet
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
     - group: ""
       kind: Service
     - group: ""
@@ -314,8 +327,10 @@ spec:
       kind: Secret
     - group: networking.k8s.io
       kind: Ingress
-  # Deny cluster-scoped resources
-  clusterResourceWhitelist: []
+  # Deny cluster-scoped resources except Namespace for CreateNamespace=true
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
   roles:
     - name: deployer
       description: Can sync production apps
@@ -372,17 +387,12 @@ spec:
     - kind: allow
       schedule: "0 9 * * 1-5"
       duration: 8h
+      manualSync: true
       applications:
         - "*"
-    # Block syncs during weekends
+    # Block syncs during weekends, but allow an explicit manual override
     - kind: deny
       schedule: "0 0 * * 0,6"
-      duration: 24h
-      applications:
-        - "*"
-    # Allow emergency syncs with manual override
-    - kind: allow
-      schedule: "* * * * *"
       duration: 24h
       manualSync: true
       applications:
