@@ -43,17 +43,17 @@ metadata:
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: certificates.cert-manager.io
+  name: clusterissuers.cert-manager.io
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   group: cert-manager.io
   names:
-    kind: Certificate
-    listKind: CertificateList
-    plural: certificates
-    singular: certificate
-  scope: Namespaced
+    kind: ClusterIssuer
+    listKind: ClusterIssuerList
+    plural: clusterissuers
+    singular: clusterissuer
+  scope: Cluster
   versions:
     - name: v1
       served: true
@@ -107,34 +107,9 @@ ArgoCD processes waves sequentially. All resources in wave 0 must be healthy bef
 
 ## Technique 2: Sync Phases with Resource Hooks
 
-For more granular control, ArgoCD supports sync phases. There are three phases: PreSync, Sync, and PostSync.
+For more granular control, ArgoCD supports sync phases. The main phases are PreSync, Sync, and PostSync, with additional hook types such as SyncFail, PreDelete, PostDelete, and Skip.
 
-```yaml
-# PreSync: Apply CRDs before anything else
-apiVersion: apiextensions.k8s.io/v1
-kind: CustomResourceDefinition
-metadata:
-  name: myresources.example.com
-  annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
-spec:
-  group: example.com
-  versions:
-    - name: v1
-      served: true
-      storage: true
-      schema:
-        openAPIV3Schema:
-          type: object
-  scope: Namespaced
-  names:
-    plural: myresources
-    singular: myresource
-    kind: MyResource
-```
-
-Wait - do not use `hook-delete-policy: HookSucceeded` on CRDs. That would delete the CRD after the sync completes, which is not what you want. Use hooks without a delete policy for CRDs, or better yet, manage CRDs separately.
+Do not use resource hooks for persistent CRDs. A `hook-delete-policy: HookSucceeded` annotation would delete the CRD after the hook succeeds, and omitting the delete policy on a named hook makes ArgoCD use `BeforeHookCreation`, which can also be dangerous for persistent API definitions. Manage CRDs as regular synced resources with waves, or better yet, manage CRDs separately.
 
 A more practical use of hooks is to run a Job that waits for the operator to be ready:
 
@@ -145,7 +120,7 @@ metadata:
   name: wait-for-operator
   annotations:
     argocd.argoproj.io/hook: Sync
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "2"
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   template:
@@ -190,7 +165,6 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      - Replace=true
 ---
 # Application 2: Operator deployment
 apiVersion: argoproj.io/v1alpha1
@@ -239,11 +213,11 @@ spec:
       selfHeal: true
 ```
 
-When these applications are managed by an App of Apps or an ApplicationSet, the sync waves on the Application resources themselves control the ordering.
+When these applications are managed by an App of Apps, the sync waves on the Application resources themselves control the order in which the child Application resources are applied. In modern ArgoCD versions, you may need to restore the `Application` health check so the parent waits for each child Application to become healthy before moving to the next wave. For ApplicationSet-generated Applications, use ApplicationSet Progressive Syncs when you need ordered rollout behavior.
 
 ## Technique 4: SkipDryRunOnMissingResource
 
-ArgoCD has a sync option specifically for the CRD ordering problem:
+ArgoCD has a sync option for cases where a custom resource type may not exist during dry-run validation:
 
 ```yaml
 syncPolicy:
@@ -251,11 +225,11 @@ syncPolicy:
     - SkipDryRunOnMissingResource=true
 ```
 
-This tells ArgoCD to skip the dry-run validation for resources whose types are not yet registered in the cluster. Combined with sync waves, this prevents the "unable to recognize" error during the dry-run phase.
+This tells ArgoCD to skip the dry-run validation for resources whose types are not yet registered in the cluster. If the CRD is part of the same sync, ArgoCD automatically skips the dry-run for that custom resource. Use this option when the CRD is created outside the same sync, such as by another controller or another Application.
 
-## Technique 5: Replace Policy for CRD Updates
+## Technique 5: Server-Side Apply for CRD Updates
 
-When updating CRDs, standard `kubectl apply` can fail if the CRD is too large (due to the `last-applied-configuration` annotation). Use the Replace sync option:
+When updating CRDs, standard `kubectl apply` can fail if the CRD is too large (due to the `last-applied-configuration` annotation). Use the ServerSideApply sync option to avoid the client-side apply annotation limit:
 
 ```yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -263,10 +237,10 @@ kind: CustomResourceDefinition
 metadata:
   name: certificates.cert-manager.io
   annotations:
-    argocd.argoproj.io/sync-options: Replace=true,ServerSideApply=true
+    argocd.argoproj.io/sync-options: ServerSideApply=true
 ```
 
-You can set sync options per-resource using annotations, which is useful when only CRDs need special handling.
+You can set sync options per-resource using annotations, which is useful when only CRDs need special handling. `Replace=true` is another option for oversized resources, but it takes precedence over `ServerSideApply=true` and can be more disruptive because ArgoCD uses `kubectl replace` or `kubectl create`.
 
 ## Handling CRD Deletion Safely
 
@@ -309,7 +283,7 @@ After working with many operator deployments, this is the pattern I recommend:
 1. **CRDs in a separate Application** with `Prune=false` and `ServerSideApply=true`
 2. **Operator in its own Application** with sync wave 1
 3. **Custom Resources in a third Application** with sync wave 2
-4. **All three managed by an App of Apps** that enforces ordering
+4. **All three managed by an App of Apps** that enforces ordering, with an `Application` health check configured if you need the parent to wait for child Applications to become healthy
 
 This gives you independent lifecycle management for each component, safe CRD handling, and clear separation of concerns. It is more Applications to manage, but the reliability improvement is worth it.
 
