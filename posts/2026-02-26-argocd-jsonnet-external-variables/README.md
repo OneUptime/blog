@@ -56,7 +56,7 @@ spec:
       selfHeal: true
 ```
 
-Each extVar entry has a `name` and a `value`. Both must be strings. If you need to pass numeric or boolean values, pass them as strings and convert them inside your Jsonnet code.
+Each extVar entry has a `name` and a `value`. By default, the value is passed as a string. If you need to pass numeric or boolean values, either pass them as strings and convert them inside your Jsonnet code, or set `code: true` on the extVar so ArgoCD evaluates the value as Jsonnet code.
 
 ## Using ExtVars in Your Jsonnet Code
 
@@ -250,7 +250,7 @@ spec:
 
 ## Passing Complex Data Through ExtVars
 
-Sometimes you need to pass structured data, not just simple strings. Since extVars are always strings in ArgoCD, the pattern is to pass JSON-encoded strings and parse them inside Jsonnet:
+Sometimes you need to pass structured data, not just simple strings. One common pattern is to pass JSON-encoded strings and parse them inside Jsonnet:
 
 ```yaml
 # Pass JSON-encoded complex data as an extVar
@@ -337,10 +337,10 @@ Common issues include missing extVars (Jsonnet will throw an error if `std.extVa
 
 **Keep extVars minimal** - Only externalize values that truly change between environments. Configuration that is the same everywhere should be defined in the Jsonnet code itself.
 
-**Use defaults** - Provide sensible defaults in your Jsonnet code so the application works even if an extVar is not provided:
+**Use defaults** - Provide sensible defaults for empty or sentinel values, but remember that `std.extVar()` still requires the variable to be provided:
 
 ```jsonnet
-// Safe default handling for optional extVars
+// Default handling when the extVar is provided as an empty string
 local env = if std.extVar('environment') != '' then std.extVar('environment') else 'staging';
 ```
 
