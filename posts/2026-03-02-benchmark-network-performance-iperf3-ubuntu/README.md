@@ -8,7 +8,7 @@ Description: Use iperf3 on Ubuntu to measure network throughput, UDP packet loss
 
 ---
 
-iperf3 is the standard tool for measuring network bandwidth between two hosts. It runs a client on one machine and a server on another, streams data between them in both directions, and reports throughput, jitter, packet loss, and other metrics. Whether you are testing a new network switch, troubleshooting slow file transfers, or validating your internet connection speed, iperf3 gives you actual measured data.
+iperf3 is the standard tool for measuring network bandwidth between two hosts. It runs a client on one machine and a server on another, streams data in the configured direction, and reports throughput, jitter, packet loss, and other metrics. Whether you are testing a new network switch, troubleshooting slow file transfers, or validating your internet connection speed, iperf3 gives you actual measured data.
 
 ## Installing iperf3
 
@@ -90,7 +90,7 @@ TCP by default tests upload (client to server). Test download too:
 # Test download (server to client) using reverse mode
 iperf3 -c SERVER_IP -R
 
-# Test both directions sequentially
+# Test both directions simultaneously
 iperf3 -c SERVER_IP --bidir
 ```
 
@@ -106,7 +106,7 @@ iperf3 -c SERVER_IP -P 8
 iperf3 -c SERVER_IP -P 4 -t 30
 ```
 
-Multi-stream tests are essential for 10GbE and above, where a single stream can hit CPU limits long before the network is saturated.
+Multi-stream tests are often useful for 10GbE and above, where a single stream may be limited by CPU, TCP window size, or other path characteristics before the network is saturated.
 
 ## UDP Tests
 
@@ -133,7 +133,7 @@ UDP output includes:
 [  5]   0.00-10.00  sec   119 MBytes   100 Mbits/sec   0.098 ms  0/86088 (0%)
 ```
 
-- `Jitter`: Variance in packet arrival time (ms) - should be under 1ms for voice quality
+- `Jitter`: Variance in packet arrival time (ms) - lower is better, and acceptable values depend on the application
 - `Lost/Total`: Packet loss percentage - even 1% loss is significant for applications
 
 ## Changing the TCP Buffer Size
@@ -160,7 +160,7 @@ iperf3 -c SERVER_IP -B 192.168.2.50  # Bind to this local IP
 # Test using IPv6
 iperf3 -c SERVER_IPV6 -6
 
-# Test through a specific port range (for NAT traversal testing)
+# Use a specific client-side source port (for firewall or NAT traversal testing)
 iperf3 -c SERVER_IP --cport 5300
 ```
 
@@ -275,8 +275,8 @@ sudo ufw allow 5201/udp
 
 **10GbE not reaching 10Gbps:**
 - A single TCP stream rarely saturates 10GbE due to CPU limits. Use `-P 8` or more.
-- Enable hardware offloads: `sudo ethtool -K eth0 tso on gso on gro on`.
-- Check MTU settings - jumbo frames (9000 MTU) significantly improve 10GbE throughput.
+- Enable hardware offloads on the test interface: `sudo ethtool -K eth0 tso on gso on gro on`.
+- Check MTU settings - jumbo frames (9000 MTU) can improve 10GbE throughput when they are configured end to end.
 
 **Results vary run to run:**
 - Run tests for 30+ seconds and average multiple runs.
