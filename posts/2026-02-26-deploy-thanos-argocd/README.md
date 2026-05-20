@@ -51,7 +51,8 @@ metrics/
     Chart.yaml
     values.yaml
     values-production.yaml
-    objstore-secret.yaml
+    templates/
+      objstore-secret.yaml
 ```
 
 ## Creating the Wrapper Chart
@@ -75,7 +76,7 @@ dependencies:
 Thanos needs access to an object store. Create a secret with the configuration.
 
 ```yaml
-# metrics/thanos/objstore-secret.yaml
+# metrics/thanos/templates/objstore-secret.yaml
 apiVersion: v1
 kind: Secret
 metadata:
@@ -89,9 +90,23 @@ stringData:
       bucket: thanos-metrics
       endpoint: s3.us-east-1.amazonaws.com
       region: us-east-1
-      # When using IRSA, leave access_key and secret_key empty
-      access_key: ""
-      secret_key: ""
+      # When using IRSA, use the AWS SDK credential chain
+      aws_sdk_auth: true
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: thanos-objstore-config
+  namespace: monitoring
+type: Opaque
+stringData:
+  objstore.yml: |
+    type: S3
+    config:
+      bucket: thanos-metrics
+      endpoint: s3.us-east-1.amazonaws.com
+      region: us-east-1
+      aws_sdk_auth: true
 ```
 
 For production, use Sealed Secrets or an external secrets operator instead of plain Secrets.
@@ -162,7 +177,7 @@ thanos:
       config:
         max_size: 256MB
 
-  # Compactor - deduplicates and downsamples
+  # Compactor - compacts and downsamples
   compactor:
     enabled: true
     persistence:
