@@ -16,7 +16,7 @@ Default subscriptions are notification rules defined in the `argocd-notification
 
 ## Configuring Global Default Subscriptions
 
-Define default subscriptions in the `argocd-notifications-cm` ConfigMap using the `defaultTriggers` and `subscriptions` fields:
+Define default subscriptions in the `argocd-notifications-cm` ConfigMap using the `subscriptions` field. You can also define `defaultTriggers` for subscriptions that do not list triggers explicitly:
 
 ```yaml
 apiVersion: v1
@@ -25,7 +25,7 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  # Define which triggers fire by default for all subscriptions
+  # Define which triggers fire when a subscription does not list triggers explicitly
   defaultTriggers: |
     - on-sync-succeeded
     - on-sync-failed
@@ -45,7 +45,7 @@ data:
         - on-sync-failed
         - on-health-degraded
     - recipients:
-        - webhook:audit-log
+        - audit-log
       triggers:
         - on-sync-succeeded
         - on-sync-failed
@@ -56,7 +56,7 @@ data:
 With this configuration, every application in ArgoCD will:
 - Send sync success and failure notifications to `#global-deployments` on Slack
 - Send sync failures and health degradation alerts to both `#global-alerts` on Slack and the SRE team email
-- Send all events to the audit-log webhook
+- Send the listed events to the audit-log webhook
 
 ## Scoping Default Subscriptions with Selectors
 
@@ -87,7 +87,7 @@ data:
         - on-sync-failed
       selector: environment=staging
 
-    # Critical applications get PagerDuty alerts
+    # Critical applications get dedicated alerts
     - recipients:
         - slack:critical-alerts
       triggers:
@@ -97,7 +97,7 @@ data:
 
     # All applications get audit logging
     - recipients:
-        - webhook:audit-log
+        - audit-log
       triggers:
         - on-sync-succeeded
         - on-sync-failed
@@ -152,7 +152,7 @@ subscriptions: |
 
   # Existence check
   - recipients:
-      - webhook:monitoring
+      - monitoring
     triggers:
       - on-health-degraded
     selector: monitoring-enabled
@@ -225,11 +225,11 @@ data:
 
   # Triggers
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [sync-succeeded-template]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [sync-failed-template]
 
   trigger.on-health-degraded: |
@@ -240,7 +240,7 @@ data:
   subscriptions: |
     # Tier 1: All applications - audit log
     - recipients:
-        - webhook:datadog
+        - datadog
       triggers:
         - on-sync-succeeded
         - on-sync-failed
@@ -319,7 +319,7 @@ kubectl logs -n argocd deployment/argocd-notifications-controller \
 1. **Use labels consistently** across all Application resources to enable selector-based routing.
 2. **Layer your subscriptions** from broad (audit) to narrow (team-specific, criticality-based).
 3. **Keep global subscriptions minimal** - send only critical events globally to avoid alert fatigue.
-4. **Use webhooks for audit logging** - capture all events without spamming human-facing channels.
+4. **Use webhooks for audit logging** - capture operational events without spamming human-facing channels.
 5. **Document your label taxonomy** so teams know which labels to apply for proper notification routing.
 6. **Test selector changes** before applying them - a wrong selector can silence important alerts.
 
