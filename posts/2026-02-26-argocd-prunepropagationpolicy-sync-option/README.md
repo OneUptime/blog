@@ -20,7 +20,7 @@ Before diving into ArgoCD configuration, you need to understand how Kubernetes h
 
 **Background**: Kubernetes deletes the owner resource immediately and then garbage collects the dependents in the background. This is the default Kubernetes behavior and the fastest option.
 
-**Orphan**: Kubernetes deletes the owner resource but leaves all dependents running. The dependents lose their `ownerReference` and become standalone resources.
+**Orphan**: Kubernetes deletes the owner resource but leaves its direct dependents running. Those direct dependents lose the `ownerReference` that pointed to the deleted owner.
 
 ## Default ArgoCD Behavior
 
@@ -101,7 +101,7 @@ syncOptions:
 
 This is useful in specific scenarios:
 
-**Migration between resource types.** If you are migrating from a Deployment to a StatefulSet, you might want to delete the Deployment but keep the Pods running while the new StatefulSet takes over.
+**Migration between resource types.** If you are migrating from a Deployment to another workload type, you might want to delete the Deployment but keep its ReplicaSets and Pods running temporarily while you introduce the replacement.
 
 **Transitioning ownership.** When moving a resource from one ArgoCD application to another, orphaning prevents the dependents from being deleted during the transition.
 
@@ -109,17 +109,17 @@ This is useful in specific scenarios:
 
 ## Setting via CLI
 
-You can also set the propagation policy during a manual sync:
+You can also set the propagation policy on the Application from the CLI:
 
 ```bash
-# Sync with background propagation
-argocd app sync my-app --sync-option PrunePropagationPolicy=background
+# Configure background propagation
+argocd app set my-app --sync-option PrunePropagationPolicy=background
 
-# Sync with orphan propagation
-argocd app sync my-app --sync-option PrunePropagationPolicy=orphan
+# Configure orphan propagation
+argocd app set my-app --sync-option PrunePropagationPolicy=orphan
 ```
 
-This is useful for one-off operations where you want different behavior from the default.
+This updates the Application's sync options, so later manual or automated syncs use the configured behavior.
 
 ## Practical Example: Cleaning Up a Microservice
 
@@ -145,8 +145,8 @@ Imagine you have a microservices application and you need to remove one of the s
 
 # With orphan:
 # 1. ArgoCD deletes the notification-service Deployment
-# 2. ReplicaSet and Pods continue running without an owner
-# 3. They remain running until manually cleaned up
+# 2. ReplicaSet continues running without the Deployment as its owner
+# 3. Pods continue running under the ReplicaSet until manually cleaned up
 ```
 
 ## Combining with Other Sync Options
@@ -180,35 +180,6 @@ spec:
 ```
 
 The combination of `PruneLast=true` and `PrunePropagationPolicy=background` is particularly useful. `PruneLast` ensures that pruning happens after all other resources are applied (so new resources are up before old ones are removed), and `background` ensures the pruning itself completes quickly.
-
-## Per-Resource Annotation
-
-You can also set the propagation policy on individual resources using annotations:
-
-```yaml
-# Set propagation policy on a specific resource
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: legacy-service
-  annotations:
-    argocd.argoproj.io/sync-options: PrunePropagationPolicy=orphan
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: legacy-service
-  template:
-    metadata:
-      labels:
-        app: legacy-service
-    spec:
-      containers:
-        - name: legacy
-          image: myorg/legacy:1.0
-```
-
-This gives you fine-grained control. You might want most resources to use background propagation for speed, but specific critical resources to use foreground or orphan.
 
 ## Debugging Prune Issues
 
