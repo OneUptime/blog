@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Linkerd, Service Mesh
 
-Description: Learn how to manage Linkerd service mesh configuration with ArgoCD, including traffic policies, retry budgets, timeouts, service profiles, and multi-cluster mesh management.
+Description: Learn how to manage Linkerd service mesh configuration with ArgoCD, including traffic policies, retry budgets, timeouts, service profiles, and authorization policies.
 
 ---
 
@@ -16,18 +16,18 @@ This guide covers the day-to-day Linkerd configuration management with ArgoCD.
 
 Linkerd uses several Custom Resources for configuration:
 
-- **ServiceProfile**: Per-service routes, retries, and timeouts
+- **ServiceProfile**: Per-service routes, retries, and timeouts for older configurations
 - **Server**: Defines a port on a pod that accepts traffic
 - **ServerAuthorization**: Controls which clients can access a Server
 - **AuthorizationPolicy**: Fine-grained access control (newer API)
-- **HTTPRoute**: Route-level traffic policies
-- **TrafficSplit**: Traffic splitting for canary deployments
+- **HTTPRoute**: Route-level traffic policies, including the preferred way to configure retries and timeouts in current Linkerd versions
+- **TrafficSplit**: Traffic splitting for canary deployments when using the deprecated Linkerd SMI extension
 
 All of these are Kubernetes resources, which means ArgoCD can manage them natively.
 
 ## Managing Service Profiles
 
-Service Profiles are the primary way to configure per-route behavior in Linkerd. They define routes, retries, and timeouts for a service.
+Service Profiles are a supported way to configure per-route behavior in older Linkerd configurations. They define routes, retries, and timeouts for a service. As of Linkerd 2.16, Gateway API resources have supplanted ServiceProfiles for new per-route metrics, retries, and timeouts, but ServiceProfiles remain supported for backwards compatibility.
 
 ```yaml
 apiVersion: linkerd.io/v1alpha2
@@ -133,19 +133,12 @@ Linkerd's authorization policies control which services can communicate with eac
 Start with a default-deny policy for the namespace:
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
-kind: Server
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: default-deny
-  namespace: api
-spec:
-  podSelector:
-    matchLabels: {}  # Matches all pods
-  port: 8080
-  proxyProtocol: HTTP/2
----
-# No ServerAuthorization = deny all by default
-
+  name: api
+  annotations:
+    config.linkerd.io/default-inbound-policy: deny
 ```
 
 ### Allow Specific Communication
@@ -154,7 +147,7 @@ Then explicitly allow the communications you want:
 
 ```yaml
 # Allow the web frontend to call the API service
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: Server
 metadata:
   name: api-http
@@ -166,7 +159,7 @@ spec:
   port: http
   proxyProtocol: HTTP/2
 ---
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: ServerAuthorization
 metadata:
   name: web-to-api
@@ -181,7 +174,7 @@ spec:
           namespace: web
 ---
 # Allow the batch processor to call the API service
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: ServerAuthorization
 metadata:
   name: batch-to-api
@@ -233,7 +226,7 @@ spec:
 
 ## Traffic Splitting for Canary Deployments
 
-Linkerd integrates with the SMI TrafficSplit API for canary deployments:
+Linkerd can use the SMI TrafficSplit API for canary deployments through the Linkerd SMI extension. TrafficSplit and the `linkerd-smi` extension are deprecated, so use HTTPRoute-based dynamic request routing for new deployments when possible.
 
 ```yaml
 apiVersion: split.smi-spec.io/v1alpha2
@@ -280,7 +273,7 @@ backends:
 Use HTTPRoute for fine-grained traffic management:
 
 ```yaml
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
   name: api-routes
@@ -331,7 +324,7 @@ spec:
     app: api-service
 ```
 
-For per-route configuration, use ServiceProfiles as shown earlier.
+For per-route configuration in current Linkerd versions, put these annotations on HTTPRoute or GRPCRoute resources. If a ServiceProfile exists for a service, Linkerd uses the ServiceProfile retry and timeout configuration and ignores retry and timeout annotations for that service.
 
 ## Managing Configuration Across Environments
 
@@ -406,15 +399,15 @@ spec:
   groups:
     - name: linkerd.rules
       rules:
-        - alert: LinkerdHighRetryRate
+        - alert: LinkerdHighFailureRate
           expr: |
-            sum(rate(response_total{classification="retry"}[5m])) by (deployment)
+            sum(rate(response_total{classification="failure"}[5m])) by (deployment)
             / sum(rate(response_total[5m])) by (deployment) > 0.1
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "High retry rate for {{ $labels.deployment }}"
+            summary: "High failure rate for {{ $labels.deployment }}"
         - alert: LinkerdHighLatency
           expr: |
             histogram_quantile(0.99,
@@ -456,4 +449,4 @@ data:
 
 ## Summary
 
-Managing Linkerd configuration with ArgoCD gives you auditable, reviewable mesh policies. Service Profiles control per-route behavior, authorization policies enforce communication rules, and traffic splits enable canary deployments. Store all mesh configuration alongside application manifests in Git, use Kustomize overlays for environment differences, and monitor policy effectiveness with Linkerd's metrics. For deploying Linkerd itself, see our guide on [deploying Linkerd with ArgoCD](https://oneuptime.com/blog/post/2026-02-26-how-to-deploy-linkerd-with-argocd/view).
+Managing Linkerd configuration with ArgoCD gives you auditable, reviewable mesh policies. HTTPRoutes and ServiceProfiles control per-route behavior, authorization policies enforce communication rules, and traffic shifting enables canary deployments. Store all mesh configuration alongside application manifests in Git, use Kustomize overlays for environment differences, and monitor policy effectiveness with Linkerd's metrics. For deploying Linkerd itself, see our guide on [deploying Linkerd with ArgoCD](https://oneuptime.com/blog/post/2026-02-26-how-to-deploy-linkerd-with-argocd/view).
