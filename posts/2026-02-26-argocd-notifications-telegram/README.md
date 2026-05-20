@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD to send deployment notifications to T
 
 ---
 
-Telegram is a popular choice for DevOps notifications, especially for teams that prefer its speed and reliability over Slack. ArgoCD does not have a built-in Telegram service, but the webhook notification system makes it straightforward to send messages through the Telegram Bot API. This guide covers bot creation, ArgoCD configuration, and message formatting.
+Telegram is a popular choice for DevOps notifications, especially for teams that prefer its speed and reliability over Slack. ArgoCD includes a Telegram notification service, and the webhook notification system also makes it straightforward to send messages directly through the Telegram Bot API when you want full control over the payload. This guide covers bot creation, ArgoCD configuration, and message formatting.
 
 ## Creating a Telegram Bot
 
@@ -75,7 +75,7 @@ data:
 
 ### Formatted Messages with Emoji
 
-Telegram supports HTML and Markdown formatting:
+Telegram supports HTML, MarkdownV2, and legacy Markdown formatting:
 
 ```yaml
   template.telegram-sync-failed: |
@@ -86,7 +86,7 @@ Telegram supports HTML and Markdown formatting:
           {
             "chat_id": "-1001234567890",
             "parse_mode": "HTML",
-            "disable_web_page_preview": true,
+            "link_preview_options": {"is_disabled": true},
             "text": "SYNC FAILED\n\n<b>Application:</b> {{ .app.metadata.name }}\n<b>Project:</b> {{ .app.spec.project }}\n<b>Revision:</b> <code>{{ .app.status.sync.revision | trunc 7 }}</code>\n<b>Namespace:</b> {{ .app.spec.destination.namespace }}\n\n<b>Error:</b>\n<pre>{{ .app.status.operationState.message }}</pre>\n\n<a href=\"https://argocd.example.com/applications/{{ .app.metadata.name }}\">Investigate in ArgoCD</a>"
           }
 
