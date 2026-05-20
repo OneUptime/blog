@@ -122,11 +122,12 @@ GitHub Apps provide better security than personal access tokens:
 # GitHub Actions - Using a GitHub App for Git operations
 - name: Generate token from GitHub App
   id: app-token
-  uses: actions/create-github-app-token@v1
+  uses: actions/create-github-app-token@v3
   with:
-    app-id: ${{ vars.APP_ID }}
+    client-id: ${{ vars.APP_CLIENT_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
     repositories: k8s-manifests
+    permission-contents: write
 
 - name: Update manifests
   run: |
@@ -138,13 +139,14 @@ GitHub Apps provide better security than personal access tokens:
 
 ```yaml
 # GitLab CI - Using deploy keys
-variables:
-  GIT_SSH_COMMAND: "ssh -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY_FILE"
+# Store the private key as a GitLab CI/CD File variable named MANIFEST_REPO_SSH_KEY
 
 deploy:
   script:
-    - eval $(ssh-agent -s)
-    - echo "$MANIFEST_REPO_SSH_KEY" | ssh-add -
+    - chmod 400 "$MANIFEST_REPO_SSH_KEY"
+    - mkdir -p ~/.ssh
+    - ssh-keyscan gitlab.com >> ~/.ssh/known_hosts
+    - export GIT_SSH_COMMAND="ssh -i $MANIFEST_REPO_SSH_KEY -o IdentitiesOnly=yes"
     - git clone git@gitlab.com:my-org/k8s-manifests.git
     # ... update manifests and push
 ```
@@ -224,7 +226,7 @@ For enhanced security, pull CI/CD secrets from external secret managers instead 
   uses: aws-actions/aws-secretsmanager-get-secrets@v2
   with:
     secret-ids: |
-      ARGOCD_TOKEN,arn:aws:secretsmanager:us-east-1:123456789012:secret:argocd/ci-token
+      ARGOCD_AUTH_TOKEN,arn:aws:secretsmanager:us-east-1:123456789012:secret:argocd/ci-token
 
 - name: Deploy
   run: |
@@ -264,8 +266,9 @@ argocd app sync my-app --auth-token $ARGOCD_TOKEN
 export ARGOCD_AUTH_TOKEN="$TOKEN"
 argocd app sync my-app
 
-# Always redirect sensitive output
-argocd account generate-token --account ci > /dev/null 2>&1
+# Capture generated tokens and pass them directly to your secret store
+TOKEN=$(argocd account generate-token --account ci-deploy)
+gh secret set ARGOCD_TOKEN --body "$TOKEN" --repo my-org/my-app
 ```
 
 ### Use .gitignore for Local Development
@@ -286,7 +289,7 @@ kubeconfig
 - name: Scan for secrets
   uses: trufflesecurity/trufflehog@v3
   with:
-    extra_args: --only-verified --fail
+    extra_args: --results=verified --fail
 ```
 
 ## Secret Architecture Diagram
