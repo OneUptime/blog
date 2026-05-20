@@ -29,6 +29,8 @@ sequenceDiagram
     IdP->>User: Show login page
     User->>IdP: Enter credentials
     IdP->>Dex: Return auth code
+    Dex->>ArgoCD Server: Redirect with auth code
+    ArgoCD Server->>Dex: Exchange auth code for token
     Dex->>ArgoCD Server: Return token
     ArgoCD Server->>ArgoCD UI: Set session cookie
 ```
@@ -37,7 +39,7 @@ When any link in this chain breaks, authentication fails. Let us look at the mos
 
 ## Error 1: "Failed to authenticate: no session information"
 
-This typically happens when the Dex server is not reachable from the ArgoCD server.
+This can happen when the Dex server is not reachable from the ArgoCD server, or when the browser loses the OAuth session cookie during the redirect flow.
 
 First, check if the Dex pod is running:
 
@@ -50,12 +52,12 @@ kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-dex-server
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-dex-server --tail=100
 ```
 
-If the pod is running but authentication still fails, verify the Dex gRPC connection:
+If the pod is running but authentication still fails, verify the Dex HTTPS endpoint from the ArgoCD server pod:
 
 ```bash
 # Test Dex connectivity from argocd-server pod
 kubectl exec -n argocd deploy/argocd-server -- \
-  curl -s http://argocd-dex-server:5557/healthz
+  curl -ks https://argocd-dex-server:5556/api/dex/.well-known/openid-configuration
 ```
 
 If the connection fails, check the service:
@@ -77,7 +79,7 @@ Check your current ArgoCD URL configuration:
 kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.url}'
 ```
 
-The redirect URI must follow this pattern: `https://<your-argocd-url>/auth/callback`
+For bundled Dex connectors, the redirect URI must follow this pattern: `https://<your-argocd-url>/api/dex/callback`
 
 Update the ArgoCD ConfigMap if the URL is wrong:
 
@@ -104,7 +106,7 @@ data:
 
 Make sure the redirect URI in your identity provider is set to exactly:
 ```text
-https://argocd.example.com/auth/callback
+https://argocd.example.com/api/dex/callback
 ```
 
 ## Error 3: "Dex: failed to query connector"
@@ -126,7 +128,7 @@ kubectl run -n argocd curl-test --rm -it --image=curlimages/curl -- \
 
 ## Error 4: "Token validation failed" or "Invalid token"
 
-Token issues usually come from clock skew between your Dex server and the ArgoCD server, or from an expired signing key.
+Token issues usually come from clock skew between your Dex server and the ArgoCD server, or from stale tokens after Dex restarts and regenerates its in-memory signing keys.
 
 ```bash
 # Check if there is clock skew between pods
@@ -136,11 +138,11 @@ kubectl exec -n argocd deploy/argocd-server -- date
 
 If the clocks are off by more than a few seconds, you have a clock skew problem. Fix it at the node level with NTP synchronization.
 
-For signing key issues, restart Dex to regenerate keys:
+If token validation started failing after a Dex restart, ask users to sign in again so they receive tokens signed by the current key. If the ArgoCD server continues to reject new tokens, restart the ArgoCD server so it refreshes its OIDC provider metadata:
 
 ```bash
-# Restart the Dex server to regenerate signing keys
-kubectl rollout restart deployment argocd-dex-server -n argocd
+# Restart the ArgoCD server to refresh OIDC provider metadata
+kubectl rollout restart deployment argocd-server -n argocd
 ```
 
 ## Error 5: "Connector not found" or "Unknown connector"
