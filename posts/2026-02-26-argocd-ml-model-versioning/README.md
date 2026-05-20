@@ -63,7 +63,7 @@ data:
   MODEL_NAME: "recommendation-v3"
   MODEL_VERSION: "3.2.1"
   MODEL_ARTIFACT_URI: "s3://ml-models/recommendation/v3.2.1/model.tar.gz"
-  MODEL_CHECKSUM: "sha256:a1b2c3d4e5f6..."
+  MODEL_CHECKSUM: "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0"
   FEATURE_SCHEMA_VERSION: "2.1.0"
   PREPROCESSING_VERSION: "1.4.0"
   MIN_BATCH_SIZE: "8"
@@ -71,7 +71,7 @@ data:
   BATCH_TIMEOUT_MS: "100"
 ```
 
-When you want to deploy a new model version, you update this ConfigMap in Git. ArgoCD detects the change and rolls out the new configuration.
+When you want to deploy a new model version, you update this ConfigMap in Git. ArgoCD detects the change and applies the new ConfigMap. Because environment variables from ConfigMaps are read when Pods start, make sure the model version or checksum is also reflected in the Deployment's Pod template so Kubernetes creates new Pods for the new model.
 
 ## Model Serving Deployment
 
@@ -98,6 +98,8 @@ spec:
     metadata:
       labels:
         app: model-serving
+      annotations:
+        model.ml/version: "3.2.1"
     spec:
       initContainers:
         # Download model artifacts before the serving container starts
@@ -177,7 +179,7 @@ metadata:
     team: ml-platform
     model: recommendation
 spec:
-  project: ml-models
+  project: ml-models-prod
   source:
     repoURL: https://github.com/myorg/model-serving.git
     targetRevision: main
@@ -210,7 +212,7 @@ git revert abc123
 git push origin main
 ```
 
-For faster rollbacks, you can use ArgoCD's sync to a specific revision:
+For a faster manual rollback, especially if automated sync is paused, you can sync to a specific revision:
 
 ```bash
 argocd app sync recommendation-model --revision HEAD~1
@@ -261,6 +263,25 @@ kind: Rollout
 metadata:
   name: recommendation-model-rollout
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: model-serving
+  template:
+    metadata:
+      labels:
+        app: model-serving
+      annotations:
+        model.ml/version: "3.3.0"
+    spec:
+      containers:
+        - name: serving
+          image: myregistry/model-server:v2.1.0
+          env:
+            - name: MODEL_ARTIFACT_URI
+              value: "s3://ml-models/recommendation/v3.3.0/model.tar.gz"
+            - name: MODEL_VERSION
+              value: "3.3.0"
   strategy:
     canary:
       canaryService: model-serving-canary
@@ -280,9 +301,9 @@ spec:
         - pause: { duration: 4h }
 ```
 
-## Model Version Governance with AppProjects
+## Model Deployment Governance with AppProjects
 
-Use ArgoCD Projects to enforce which model versions can be deployed to production:
+Use ArgoCD Projects to control which repositories, destinations, and Kubernetes resource kinds can be used for production model deployments:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -309,6 +330,8 @@ spec:
       kind: Service
 ```
 
+For version-specific approval rules, keep using CI checks, pull request review, or an admission policy before the ArgoCD sync.
+
 ## Automating Model Version Updates
 
 When your training pipeline produces a new model, automate the Git update:
@@ -318,7 +341,7 @@ When your training pipeline produces a new model, automate the Git update:
 # Called by the training pipeline after model validation passes
 MODEL_VERSION=$1
 MODEL_URI=$2
-MODEL_CHECKSUM=$3
+MODEL_CHECKSUM=$3  # Raw SHA-256 digest, without a "sha256:" prefix
 
 # Clone the deployment repo
 git clone https://github.com/myorg/model-serving.git
@@ -328,6 +351,7 @@ cd model-serving
 yq eval ".data.MODEL_VERSION = \"$MODEL_VERSION\"" -i models/recommendation-model/model-config.yaml
 yq eval ".data.MODEL_ARTIFACT_URI = \"$MODEL_URI\"" -i models/recommendation-model/model-config.yaml
 yq eval ".data.MODEL_CHECKSUM = \"$MODEL_CHECKSUM\"" -i models/recommendation-model/model-config.yaml
+yq eval ".spec.template.metadata.annotations.\"model.ml/version\" = \"$MODEL_VERSION\"" -i base/serving-deployment.yaml
 
 # Commit and push
 git add .
@@ -335,7 +359,7 @@ git commit -m "Update recommendation model to $MODEL_VERSION"
 git push origin main
 ```
 
-This script bridges your training pipeline with your GitOps deployment pipeline. ArgoCD picks up the change and rolls out the new model version.
+This script bridges your training pipeline with your GitOps deployment pipeline. ArgoCD picks up the change and rolls out the new model version because the Pod template annotation changes in the same commit.
 
 ## Summary
 
