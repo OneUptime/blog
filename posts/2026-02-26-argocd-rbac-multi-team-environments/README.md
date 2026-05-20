@@ -121,7 +121,7 @@ data:
     p, role:frontend-deployer, applications, create, frontend/*, allow
     p, role:frontend-deployer, applications, update, frontend/*, allow
     p, role:frontend-deployer, applications, sync, frontend/*, allow
-    p, role:frontend-deployer, applications, action, frontend/*, allow
+    p, role:frontend-deployer, applications, action/*, frontend/*, allow
     p, role:frontend-deployer, applications, override, frontend/*, allow
     p, role:frontend-deployer, logs, get, frontend/*, allow
     p, role:frontend-deployer, exec, create, frontend/*, allow
@@ -132,7 +132,7 @@ data:
     p, role:backend-deployer, applications, create, backend/*, allow
     p, role:backend-deployer, applications, update, backend/*, allow
     p, role:backend-deployer, applications, sync, backend/*, allow
-    p, role:backend-deployer, applications, action, backend/*, allow
+    p, role:backend-deployer, applications, action/*, backend/*, allow
     p, role:backend-deployer, applications, override, backend/*, allow
     p, role:backend-deployer, logs, get, backend/*, allow
     p, role:backend-deployer, exec, create, backend/*, allow
@@ -143,7 +143,7 @@ data:
     p, role:data-deployer, applications, create, data/*, allow
     p, role:data-deployer, applications, update, data/*, allow
     p, role:data-deployer, applications, sync, data/*, allow
-    p, role:data-deployer, applications, action, data/*, allow
+    p, role:data-deployer, applications, action/*, data/*, allow
     p, role:data-deployer, applications, override, data/*, allow
     p, role:data-deployer, logs, get, data/*, allow
     p, role:data-deployer, exec, create, data/*, allow
@@ -268,7 +268,7 @@ policy.csv: |
   # Incident responders need broad sync access during outages
   p, role:incident-responder, applications, get, */*, allow
   p, role:incident-responder, applications, sync, */*, allow
-  p, role:incident-responder, applications, action, */*, allow
+  p, role:incident-responder, applications, action/*, */*, allow
   p, role:incident-responder, logs, get, */*, allow
   g, on-call-team, role:incident-responder
 ```
