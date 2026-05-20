@@ -41,7 +41,8 @@ The standard ArgoCD manifests work without modifications on OKE.
 ```bash
 # Create namespace and install ArgoCD
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for pods to become ready
 kubectl wait --for=condition=Ready pod --all -n argocd --timeout=300s
@@ -145,7 +146,7 @@ For image pull secrets:
 kubectl create secret docker-registry ocir-secret \
   --namespace my-app \
   --docker-server=iad.ocir.io \
-  --docker-username="<TENANCY>/<USERNAME>" \
+  --docker-username="<TENANCY_NAMESPACE>/<USERNAME>" \
   --docker-password="<AUTH_TOKEN>" \
   --docker-email="user@example.com"
 ```
@@ -168,7 +169,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.9.x
+    targetRevision: 2.4.x
     helm:
       values: |
         installCRDs: true
@@ -187,7 +188,7 @@ spec:
 
 ```yaml
 # oci-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: oci-vault
@@ -196,25 +197,26 @@ spec:
     oracle:
       vault: ocid1.vault.oc1.iad.xxxx
       region: us-ashburn-1
+      principalType: UserPrincipal
       auth:
+        user: ocid1.user.oc1..xxxx
+        tenancy: ocid1.tenancy.oc1..xxxx
         secretRef:
           privatekey:
             name: oci-creds
             namespace: external-secrets
-            key: private-key
+            key: privateKey
           fingerprint:
             name: oci-creds
             namespace: external-secrets
             key: fingerprint
-          tenancy: ocid1.tenancy.oc1..xxxx
-          user: ocid1.user.oc1..xxxx
 ```
 
 ### Create ExternalSecrets
 
 ```yaml
 # app-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -255,16 +257,31 @@ spec:
       storage: 50Gi
 ```
 
-For high-performance workloads, use the ultra-high performance tier:
+For high-performance workloads, create a StorageClass with the appropriate volume performance units (VPUs) per GB, then reference that StorageClass from the PVC:
 
 ```yaml
-storageClassName: oci-bv
-resources:
-  requests:
-    storage: 50Gi
-# Annotations for performance tier
-annotations:
-  volume.beta.kubernetes.io/oci-volume-source-ocid: ""
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: oci-bv-uhp
+provisioner: blockvolume.csi.oraclecloud.com
+parameters:
+  attachment-type: "paravirtualized"
+  vpusPerGB: "30"
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: app-data-uhp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: oci-bv-uhp
+  resources:
+    requests:
+      storage: 50Gi
 ```
 
 ## Architecture on Oracle Cloud
@@ -285,8 +302,8 @@ flowchart TD
 ### Free Tier Optimization
 
 Oracle Cloud's Always Free tier includes:
-- OKE control plane at no cost
-- A generous amount of compute hours
+- OKE Basic Cluster control plane at no cost
+- Always Free Ampere A1 compute hours
 - 10 TB of outbound data transfer per month
 
 To maximize the free tier with ArgoCD, use ARM-based (Ampere) worker nodes.
