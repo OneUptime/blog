@@ -19,7 +19,7 @@ This guide covers the best practices for a production ArgoCD deployment on AKS.
 
 global:
   image:
-    tag: v2.10.0
+    tag: v3.4.1
 
 controller:
   replicas: 2
@@ -230,10 +230,9 @@ type: Opaque
 stringData:
   type: helm
   name: my-acr
-  url: myacr.azurecr.io
+  url: myacr.azurecr.io/helm
   enableOCI: "true"
-  username: "00000000-0000-0000-0000-000000000000"  # Service principal or managed identity
-  password: ""  # Token
+  useAzureWorkloadIdentity: "true"
 ```
 
 For managed identity authentication, use Azure Workload Identity.
@@ -275,18 +274,17 @@ az identity federated-credential create \
   --audience api://AzureADTokenExchange
 ```
 
-Annotate the service account:
+Configure the repo server service account and pod label:
 
 ```yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-  annotations:
-    azure.workload.identity/client-id: "CLIENT_ID_HERE"
-  labels:
+repoServer:
+  podLabels:
     azure.workload.identity/use: "true"
+  serviceAccount:
+    create: true
+    name: argocd-repo-server
+    annotations:
+      azure.workload.identity/client-id: "CLIENT_ID_HERE"
 ```
 
 ## Azure Key Vault Integration
@@ -294,7 +292,7 @@ metadata:
 Use External Secrets Operator with Azure Key Vault:
 
 ```bash
-# Grant the managed identity access to Key Vault
+# Grant the managed identity access to Key Vault when using the access policy permission model
 az keyvault set-policy \
   --name my-keyvault \
   --object-id $(az identity show --name argocd-identity --resource-group my-rg --query "principalId" -o tsv) \
@@ -303,7 +301,7 @@ az keyvault set-policy \
 
 ```yaml
 # ClusterSecretStore for Azure Key Vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-key-vault
@@ -318,7 +316,7 @@ spec:
 
 ---
 # ExternalSecret pulling from Key Vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -411,6 +409,7 @@ metadata:
     kubernetes.io/ingress.class: azure/application-gateway
     appgw.ingress.kubernetes.io/ssl-redirect: "true"
     appgw.ingress.kubernetes.io/backend-protocol: "https"
+    appgw.ingress.kubernetes.io/appgw-trusted-root-certificate: "argocd-backend-root"
     appgw.ingress.kubernetes.io/appgw-ssl-certificate: "argocd-cert"
 spec:
   rules:
@@ -447,11 +446,12 @@ argocd cluster add aks-prod --name aks-prod
 Dedicate a node pool for ArgoCD:
 
 ```bash
-# Create a system node pool for ArgoCD
+# Create a dedicated user node pool for ArgoCD
 az aks nodepool add \
   --cluster-name my-aks-cluster \
   --resource-group my-rg \
   --name platform \
+  --mode User \
   --node-count 3 \
   --node-vm-size Standard_D4s_v3 \
   --labels role=platform \
@@ -523,6 +523,7 @@ spec:
                 - -c
                 - |
                   DATE=$(date +%Y%m%d)
+                  az aks install-cli
                   kubectl get applications -n argocd -o yaml > /tmp/apps.yaml
                   kubectl get appprojects -n argocd -o yaml > /tmp/projects.yaml
                   az storage blob upload \
