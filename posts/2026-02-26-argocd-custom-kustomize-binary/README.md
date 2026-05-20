@@ -225,10 +225,10 @@ RUN curl -sL "https://github.com/kubernetes-sigs/kustomize/releases/download/kus
     tar xz -C /usr/local/bin/
 
 # Install SopsSecretGenerator plugin
-RUN curl -sL "https://github.com/goabout/kustomize-sopssecretgenerator/releases/download/v1.6.0/SopsSecretGenerator_1.6.0_linux_amd64.tar.gz" | \
-    tar xz -C /tmp/ && \
-    mkdir -p /home/argocd/.config/kustomize/plugin/goabout.com/v1beta1/sopssecretgenerator/ && \
-    mv /tmp/SopsSecretGenerator /home/argocd/.config/kustomize/plugin/goabout.com/v1beta1/sopssecretgenerator/
+RUN mkdir -p /home/argocd/.config/kustomize/plugin/goabout.com/v1beta1/sopssecretgenerator/ && \
+    curl -sL -o /home/argocd/.config/kustomize/plugin/goabout.com/v1beta1/sopssecretgenerator/SopsSecretGenerator \
+      "https://github.com/goabout/kustomize-sopssecretgenerator/releases/download/v1.6.0/SopsSecretGenerator_1.6.0_linux_amd64" && \
+    chmod +x /home/argocd/.config/kustomize/plugin/goabout.com/v1beta1/sopssecretgenerator/SopsSecretGenerator
 
 USER argocd
 ```
