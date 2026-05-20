@@ -251,25 +251,29 @@ Do not commit the `charts/` directory if you are using remote dependencies. Argo
 
 ## Sync Waves for Ordered Deployment
 
-Umbrella charts deploy all sub-charts simultaneously by default. To order them, add sync wave annotations in a shared template:
+Umbrella charts render all sub-charts as one set of manifests. To order resources, add sync wave annotations to the resources that need ordering in the sub-chart templates:
 
 ```yaml
-# templates/sync-waves.yaml
-# This ConfigMap exists solely to set sync ordering
-# PostgreSQL and Redis should deploy before the app
----
-apiVersion: v1
-kind: ConfigMap
+# postgresql/templates/statefulset.yaml
+apiVersion: apps/v1
+kind: StatefulSet
 metadata:
-  name: sync-ordering
+  name: {{ include "postgresql.fullname" . }}
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
-    helm.sh/hook-weight: "-1"
-data:
-  note: "Infrastructure components sync first"
 ```
 
-Alternatively, use Helm hook weights in the sub-charts themselves, though this requires modifying the sub-chart templates.
+```yaml
+# backend-api/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "backend-api.fullname" . }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+```
+
+Alternatively, use Helm hook weights in the sub-charts themselves for hook resources, though this requires modifying the sub-chart templates.
 
 ## Monitoring Umbrella Chart Health
 
@@ -292,7 +296,7 @@ argocd app resources my-platform --kind Deployment
 
 **Values not applying to sub-charts**: Ensure values are nested under the sub-chart's name exactly as it appears in `Chart.yaml`. A dependency named `backend-api` requires values under the `backend-api` key.
 
-**CRD conflicts**: If two sub-charts try to install the same CRDs, use the `skipCrds` option on one of them:
+**CRD conflicts**: If two sub-charts try to install the same CRDs from their `crds/` directories, use the `skipCrds` option to skip Helm CRD installation for the whole ArgoCD Helm source and manage those CRDs separately. If a chart installs CRDs from templates, use that chart's values to disable CRD installation when it supports that option:
 
 ```yaml
 source:
