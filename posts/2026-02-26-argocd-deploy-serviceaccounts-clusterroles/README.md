@@ -8,7 +8,7 @@ Description: Learn how to deploy ServiceAccounts, Roles, ClusterRoles, and RoleB
 
 ---
 
-ServiceAccounts and RBAC resources (Roles, ClusterRoles, RoleBindings, ClusterRoleBindings) control who can do what in your Kubernetes cluster. Every pod runs as a ServiceAccount, and every ServiceAccount has permissions defined by RBAC rules. Managing these through ArgoCD ensures your access control is declarative, auditable, and consistently applied.
+ServiceAccounts and RBAC resources (Roles, ClusterRoles, RoleBindings, ClusterRoleBindings) control who can do what in your Kubernetes cluster. Every pod runs as a ServiceAccount, and a ServiceAccount gets Kubernetes API permissions when RBAC rules are bound to it. Managing these through ArgoCD ensures your access control is declarative, auditable, and consistently applied.
 
 ## Why RBAC in GitOps Matters
 
@@ -16,7 +16,7 @@ RBAC configuration is often the most security-sensitive part of your cluster. Wh
 
 - Every permission change goes through code review
 - You have a complete Git history of who had what access and when
-- Self-healing prevents unauthorized permission escalation
+- Self-healing can revert unauthorized drift in managed resources
 - Rollback is a Git revert away
 
 ## ServiceAccount Basics
@@ -45,7 +45,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       serviceAccountName: myapp
       automountServiceAccountToken: false  # Unless the app needs API access
@@ -287,10 +293,6 @@ rules:
   - apiGroups: [""]
     resources: ["services", "configmaps"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-  # Read only for cluster info
-  - apiGroups: [""]
-    resources: ["namespaces", "nodes"]
-    verbs: ["get", "list", "watch"]
 ---
 # Bind to specific namespaces only
 apiVersion: rbac.authorization.k8s.io/v1
@@ -320,11 +322,34 @@ roleRef:
   kind: ClusterRole
   name: ci-deployer-role
   apiGroup: rbac.authorization.k8s.io
+---
+# Optional read-only access for cluster-scoped information
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ci-deployer-cluster-info
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ci-deployer-cluster-info
+subjects:
+  - kind: ServiceAccount
+    name: ci-deployer
+    namespace: cicd
+roleRef:
+  kind: ClusterRole
+  name: ci-deployer-cluster-info
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 ## ServiceAccount Token for External Access
 
-For external systems that need cluster access, create a long-lived token:
+For external systems that need cluster access, prefer short-lived tokens from the TokenRequest API. If you need a long-lived token, create a ServiceAccount token Secret explicitly:
 
 ```yaml
 apiVersion: v1
@@ -379,13 +404,11 @@ metadata:
   namespace: production
   annotations:
     azure.workload.identity/client-id: "12345678-1234-1234-1234-123456789012"
-  labels:
-    azure.workload.identity/use: "true"
 ```
 
 ## Auditing RBAC Through ArgoCD
 
-ArgoCD's self-heal feature acts as a continuous audit mechanism. Any manual RBAC change is automatically reverted and logged:
+ArgoCD's self-heal feature acts as a continuous audit mechanism for resources managed by the Application. Manual RBAC changes are reverted on the next self-heal sync and recorded in ArgoCD:
 
 ```bash
 # Check ArgoCD events for RBAC drift
@@ -423,4 +446,4 @@ metadata:
 
 ## Summary
 
-ServiceAccounts and RBAC resources managed through ArgoCD provide declarative, auditable access control for your Kubernetes cluster. Every permission is defined in Git, every change goes through review, and ArgoCD's self-healing prevents unauthorized privilege escalation. Use namespace-scoped Roles for application permissions, ClusterRoles for infrastructure components, and always follow the principle of least privilege. Pair ServiceAccounts with cloud IAM integration for secure access to cloud resources without static credentials.
+ServiceAccounts and RBAC resources managed through ArgoCD provide declarative, auditable access control for your Kubernetes cluster. Every managed permission is defined in Git, every change goes through review, and ArgoCD's self-healing can revert unauthorized drift. Use namespace-scoped Roles for application permissions, ClusterRoles for infrastructure components, and always follow the principle of least privilege. Pair ServiceAccounts with cloud IAM integration for secure access to cloud resources without static credentials.
