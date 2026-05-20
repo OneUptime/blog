@@ -181,8 +181,8 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - replica-count.yaml
+patches:
+  - path: replica-count.yaml
 images:
   - name: myorg/web-app
     newTag: staging-latest
@@ -192,9 +192,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - replica-count.yaml
-  - resource-limits.yaml
+patches:
+  - path: replica-count.yaml
+  - path: resource-limits.yaml
 images:
   - name: myorg/web-app
     newTag: v1.2.3
@@ -222,11 +222,11 @@ data:
 
   trigger.on-sync-succeeded: |
     - send: [sync-succeeded]
-      when: app.status.operationState.phase in ['Succeeded']
+      when: app.status?.operationState.phase in ['Succeeded']
 
   trigger.on-sync-failed: |
     - send: [sync-failed]
-      when: app.status.operationState.phase in ['Error', 'Failed']
+      when: app.status?.operationState.phase in ['Error', 'Failed']
 
   trigger.on-health-degraded: |
     - send: [health-degraded]
@@ -300,18 +300,24 @@ Sealed Secrets can be safely stored in Git because they can only be decrypted by
 Set up ArgoCD Image Updater so you do not have to manually update image tags after every build:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
   name: web-app
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: web=myorg/web-app
-    argocd-image-updater.argoproj.io/web.update-strategy: semver
-    argocd-image-updater.argoproj.io/web.semver-constraint: ">=1.0.0"
-    argocd-image-updater.argoproj.io/write-back-method: git
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: web-app
+      images:
+        - alias: web
+          imageName: myorg/web-app:>=1.0.0
+          commonUpdateSettings:
+            updateStrategy: semver
+  writeBackConfig:
+    method: git
 ```
 
-This means your CI pipeline builds and pushes images, and ArgoCD Image Updater automatically detects new versions and updates the deployment. No manual steps needed.
+This means your CI pipeline builds and pushes images, and ArgoCD Image Updater automatically detects new versions and commits image parameter updates to Git. No manual steps needed.
 
 ## Do not over-engineer from the start
 
