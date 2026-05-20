@@ -73,7 +73,7 @@ gitops-config/
 
 ## Setting Up Namespaces
 
-First, create the namespaces with proper labels and annotations:
+First, create the namespaces with proper labels:
 
 ```yaml
 # cluster-config/namespaces.yaml
@@ -261,6 +261,8 @@ kind: Application
 metadata:
   name: myapp-dev
   namespace: argocd
+  labels:
+    env: dev
 spec:
   project: development
   source:
@@ -285,6 +287,8 @@ kind: Application
 metadata:
   name: myapp-production
   namespace: argocd
+  labels:
+    env: production
 spec:
   project: production
   source:
@@ -311,39 +315,43 @@ metadata:
   name: myapp-environments
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - list:
         elements:
           - env: dev
             project: development
-            autoSync: "true"
             prune: "true"
           - env: staging
             project: staging
-            autoSync: "true"
             prune: "true"
           - env: production
             project: production
-            autoSync: "true"
             prune: "false"
   template:
     metadata:
-      name: 'myapp-{{env}}'
+      name: 'myapp-{{.env}}'
+      labels:
+        env: '{{.env}}'
     spec:
-      project: '{{project}}'
+      project: '{{.project}}'
       source:
         repoURL: https://github.com/org/gitops-config.git
         targetRevision: main
-        path: 'overlays/{{env}}'
+        path: 'overlays/{{.env}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{env}}'
+        namespace: '{{.env}}'
       syncPolicy:
         automated:
           selfHeal: true
-          prune: '{{prune}}'
         syncOptions:
           - CreateNamespace=true
+  templatePatch: |
+    spec:
+      syncPolicy:
+        automated:
+          prune: {{ .prune }}
 ```
 
 ## AppProject Configuration
@@ -420,7 +428,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               env: staging
-        - podSelector:
+          podSelector:
             matchLabels:
               app: backend
       ports:
