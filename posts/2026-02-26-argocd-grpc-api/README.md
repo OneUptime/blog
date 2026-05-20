@@ -17,7 +17,7 @@ The gRPC API offers several advantages:
 1. **Streaming** - gRPC supports server-side streaming, letting you watch for changes in real-time without polling
 2. **Performance** - Protocol Buffers (protobuf) encoding is more compact and faster to serialize than JSON
 3. **Type Safety** - Generated client libraries provide compile-time type checking
-4. **Bidirectional Communication** - More efficient than HTTP request/response for frequent interactions
+4. **Streaming RPCs** - ArgoCD uses server-side streaming for watches and logs instead of repeated HTTP request/response polling
 
 ```mermaid
 graph LR
@@ -63,6 +63,7 @@ First, authenticate to get a token:
 ```bash
 # Get a session token via REST (easiest approach)
 ARGOCD_TOKEN=$(curl -s -k https://argocd.example.com/api/v1/session \
+  -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"your-password"}' | jq -r '.token')
 ```
 
@@ -118,7 +119,7 @@ grpcurl -insecure \
 # List with a project filter
 grpcurl -insecure \
   -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  -d '{"project": ["production"]}' \
+  -d '{"projects": ["production"]}' \
   argocd.example.com:443 \
   application.ApplicationService/List
 ```
@@ -182,9 +183,9 @@ grpcurl -insecure \
   application.ApplicationService/Watch | \
   while read -r line; do
     # Each line is a JSON event
-    APP=$(echo "$line" | jq -r '.result.application.metadata.name // empty')
-    HEALTH=$(echo "$line" | jq -r '.result.application.status.health.status // empty')
-    SYNC=$(echo "$line" | jq -r '.result.application.status.sync.status // empty')
+    APP=$(echo "$line" | jq -r '.application.metadata.name // empty')
+    HEALTH=$(echo "$line" | jq -r '.application.status.health.status // empty')
+    SYNC=$(echo "$line" | jq -r '.application.status.sync.status // empty')
 
     if [ -n "$APP" ]; then
       echo "[$(date +%H:%M:%S)] $APP - Health: $HEALTH, Sync: $SYNC"
@@ -204,8 +205,8 @@ import (
     "fmt"
     "log"
 
-    "github.com/argoproj/argo-cd/v2/pkg/apiclient"
-    "github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
+    "github.com/argoproj/argo-cd/v3/pkg/apiclient"
+    "github.com/argoproj/argo-cd/v3/pkg/apiclient/application"
 )
 
 func main() {
@@ -257,22 +258,14 @@ func main() {
 
 ## Python gRPC Client
 
-Use the `grpcio` library for Python:
+If you do not generate Python stubs from the ArgoCD proto files, a simple Python wrapper around `grpcurl` is often easier:
 
 ```python
-import grpc
-from google.protobuf import json_format
-
-# You need to generate Python stubs from ArgoCD proto files
-# or use grpclib for dynamic invocation
-
-# Using the requests library for gRPC-Web (simpler approach)
-import requests
+import json
+import subprocess
 
 class ArgoCDGRPCClient:
     """Simplified gRPC client using grpcurl subprocess."""
-    import subprocess
-    import json
 
     def __init__(self, server, token):
         self.server = server
@@ -295,7 +288,7 @@ class ArgoCDGRPCClient:
         return json.loads(result.stdout) if result.stdout else {}
 
     def list_apps(self, project=None):
-        data = {"project": [project]} if project else {}
+        data = {"projects": [project]} if project else {}
         return self._call("application.ApplicationService", "List", data)
 
     def sync_app(self, name, prune=True):
