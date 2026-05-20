@@ -18,7 +18,7 @@ A useful baseline security script covers:
 - User account and authentication policies
 - SSH configuration
 - Firewall setup
-- File permission hardening
+- Automatic security updates
 - Kernel parameter tuning
 - Basic audit logging
 
@@ -77,10 +77,9 @@ update_system() {
         return
     fi
 
-    # Apply security updates only (safer for production systems)
+    # Apply available upgrades without removing packages
     if apt-get upgrade -y -o Dpkg::Options::="--force-confdef" \
-       -o Dpkg::Options::="--force-confold" \
-       --only-upgrade 2>/dev/null; then
+       -o Dpkg::Options::="--force-confold" 2>/dev/null; then
         ok "System packages updated"
     else
         warn "Some packages could not be updated"
@@ -139,8 +138,6 @@ harden_ssh() {
 
     cat > "$sshd_config" << 'EOF'
 # Baseline security SSH settings
-Protocol 2
-
 # Disable root login
 PermitRootLogin no
 
@@ -151,9 +148,9 @@ PermitRootLogin no
 # Limit authentication attempts
 MaxAuthTries 4
 
-# Disconnect idle sessions after 10 minutes
+# Disconnect unresponsive sessions after about 10 minutes
 ClientAliveInterval 600
-ClientAliveCountMax 0
+ClientAliveCountMax 1
 
 # Disable dangerous features
 PermitEmptyPasswords no
@@ -242,12 +239,21 @@ EOF
 
     ok "Password quality policy configured"
 
-    # Set login.defs password aging
+    # Ensure PAM uses pam_pwquality for password changes
+    if grep -q "pam_pwquality.so" /etc/pam.d/common-password; then
+        ok "PAM password quality module already enabled"
+    elif pam-auth-update --enable pwquality --force >> "$LOG" 2>&1; then
+        ok "PAM password quality module enabled"
+    else
+        fail "Could not enable PAM password quality module"
+    fi
+
+    # Set login.defs password aging defaults for newly created accounts
     sed -i 's/^PASS_MAX_DAYS.*/PASS_MAX_DAYS   90/' /etc/login.defs
     sed -i 's/^PASS_MIN_DAYS.*/PASS_MIN_DAYS   7/' /etc/login.defs
     sed -i 's/^PASS_WARN_AGE.*/PASS_WARN_AGE   14/' /etc/login.defs
 
-    ok "Password aging policy configured"
+    ok "Default password aging policy configured for new accounts"
 }
 ```
 
