@@ -206,8 +206,8 @@ spec:
 ArgoCD detects the change and syncs it. Argo Rollouts then:
 
 1. Creates a new ReplicaSet with the updated image (green)
-2. Waits for the new pods to become ready
-3. Points the preview Service to the new ReplicaSet
+2. Points the preview Service to the new ReplicaSet
+3. Scales the new ReplicaSet and waits for the new pods to become ready
 4. Waits for manual promotion (if `autoPromotionEnabled: false`)
 
 ## Validating and Promoting
@@ -306,7 +306,7 @@ spec:
 
 ArgoCD has built-in support for Argo Rollouts health checks. It understands the Rollout resource and will show the correct health status in the ArgoCD UI. If you see the Rollout resource showing as "Progressing," it means the blue-green swap is in progress.
 
-Make sure your ArgoCD version supports Rollout health checks (ArgoCD 2.0+ includes this by default).
+Make sure your ArgoCD version includes the bundled Rollout health check, or configure the Rollout health check in `argocd-cm`.
 
 ## Summary
 
