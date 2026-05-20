@@ -12,14 +12,14 @@ After generating an SSH key pair, the next step is getting your public key onto 
 
 ## How ssh-copy-id Works
 
-`ssh-copy-id` connects to the remote server using password authentication, then appends your public key to `~/.ssh/authorized_keys` on that server. It also ensures the `~/.ssh` directory and `authorized_keys` file have the correct permissions. Once the key is in place, future connections can use key-based authentication instead of a password.
+`ssh-copy-id` typically connects to the remote server using password authentication, then appends your public key to `~/.ssh/authorized_keys` on that server. It also ensures the `~/.ssh` directory and `authorized_keys` file have the correct permissions. Once the key is in place, future connections can use key-based authentication instead of a password.
 
 ## Basic Usage
 
 The simplest form of the command:
 
 ```bash
-# Copy your default public key to a remote server
+# Copy your available public key or keys to a remote server
 
 # You'll be prompted for the remote user's password
 ssh-copy-id user@remote-server.example.com
@@ -35,7 +35,7 @@ ssh-copy-id -i ~/.ssh/id_ed25519.pub user@remote-server.example.com
 ssh-copy-id -i ~/.ssh/id_rsa.pub user@192.168.1.50
 ```
 
-The `-i` flag points to the public key file. Note that it should end in `.pub` - you're copying the public key, not the private key.
+The `-i` flag points to the identity file. If the filename does not end in `.pub`, `ssh-copy-id` adds `.pub` and copies the matching public key, not the private key.
 
 ## Handling Non-Standard SSH Ports
 
@@ -43,11 +43,10 @@ If the remote server runs SSH on a port other than 22:
 
 ```bash
 # Connect to a server using a non-standard port
-# The -p flag must be passed through using -o Port=
 ssh-copy-id -i ~/.ssh/id_ed25519.pub -p 2222 user@remote-server.example.com
 
 # Alternative syntax with -o flag
-ssh-copy-id -i ~/.ssh/id_ed25519.pub "-p 2222 user@remote-server.example.com"
+ssh-copy-id -i ~/.ssh/id_ed25519.pub -o Port=2222 user@remote-server.example.com
 ```
 
 ## Copying Keys When Password Authentication Is Restricted
@@ -215,7 +214,7 @@ sudo nano /etc/ssh/sshd_config
 
 # Set these options:
 # PasswordAuthentication no
-# ChallengeResponseAuthentication no
+# KbdInteractiveAuthentication no
 # UsePAM no  (optional, consult your distro docs before changing)
 
 # Reload the SSH service
