@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, Environment Variable, /etc/environment, PAM, Shell
 
-Description: Learn how to configure /etc/environment on Ubuntu to set system-wide environment variables for all users and services, and understand when to use it versus other methods.
+Description: Learn how to configure /etc/environment on Ubuntu to set system-wide environment variables for users, and understand when to use it versus other methods for services.
 
 ---
 
-Setting environment variables correctly on Linux is more nuanced than it appears. There are multiple files and mechanisms for setting environment variables, each with different scopes and behaviors. `/etc/environment` is the simplest: it sets variables for all users, all shells, and is read very early in the login process. Knowing when to use it and what its limitations are prevents configuration surprises.
+Setting environment variables correctly on Linux is more nuanced than it appears. There are multiple files and mechanisms for setting environment variables, each with different scopes and behaviors. `/etc/environment` is the simplest for PAM-authenticated sessions: it sets variables independently of the user's shell and is read very early in the login process. Knowing when to use it and what its limitations are prevents configuration surprises.
 
 ## What /etc/environment Does
 
@@ -22,8 +22,10 @@ Variables set here are available to:
 
 Variables set here are NOT available to:
 - System daemons started by systemd (unless the daemon's unit file reads it)
-- Cron jobs (use `/etc/profile.d/` or the crontab `SHELL` and environment variables)
+- Processes started outside a PAM login/session path
 - Container processes
+
+Cron on Ubuntu is commonly configured through PAM and may read `/etc/environment`, but set important job-specific variables directly in the crontab or wrapper script if you need portability or precise per-job behavior.
 
 ## The Format
 
@@ -227,10 +229,10 @@ Ubuntu uses locale settings from `/etc/environment` (and `/etc/default/locale`):
 # Check current locale
 locale
 
-# Set system locale
-sudo localectl set-locale LANG=en_US.UTF-8
+# Set system locale on Ubuntu
+sudo update-locale LANG=en_US.UTF-8
 
-# This updates /etc/locale.gen and /etc/default/locale
+# This updates /etc/default/locale
 # View the result:
 cat /etc/default/locale
 ```
@@ -243,7 +245,7 @@ LANG="en_US.UTF-8"
 LC_ALL="en_US.UTF-8"
 ```
 
-Or use `localectl` which updates the right files automatically.
+Or use `localectl set-locale LANG=en_US.UTF-8` on systemd-based systems where `systemd-localed` manages the locale files.
 
 ## Debugging Environment Variable Issues
 
@@ -255,9 +257,8 @@ printenv
 # Try tracing through login files
 bash --login -c "printenv VARIABLE_NAME"
 
-# Check if PAM is reading /etc/environment
-sudo strace -e trace=open,openat,read -p $(pgrep -o sshd) 2>&1 | \
-    grep environment
+# Check which PAM stacks load pam_env
+grep -R pam_env.so /etc/pam.d/
 
 # Manual check of variable visibility for a user
 sudo -u username bash -l -c "printenv JAVA_HOME"
@@ -268,9 +269,9 @@ sudo -u username bash -l -c "printenv JAVA_HOME"
 Ubuntu uses both files. They're both read by PAM:
 
 - `/etc/environment`: General-purpose KEY=VALUE variables
-- `/etc/default/locale`: Locale-specific variables, managed by `localectl`
+- `/etc/default/locale`: Locale-specific variables, managed by `update-locale` on Ubuntu
 
-If the same variable appears in both, `/etc/default/locale` typically takes precedence (it's loaded later). Stick to `localectl` for locale settings to avoid conflicts.
+If the same variable appears in both, the file loaded later by that PAM stack takes precedence. Stick to `update-locale` for locale settings on Ubuntu to avoid conflicts.
 
 ## Checking PAM Configuration for Environment Loading
 
@@ -279,15 +280,17 @@ Verify that PAM is configured to load environment variables:
 ```bash
 grep pam_env /etc/pam.d/common-session
 grep pam_env /etc/pam.d/sshd
+grep pam_env /etc/pam.d/cron
 ```
 
 Look for:
 
 ```text
-session required pam_env.so user_readenv=1 envfile=/etc/environment
+session required pam_env.so
+session required pam_env.so envfile=/etc/default/locale
 ```
 
-If this line is missing, `/etc/environment` won't be loaded for that login path.
+If a PAM stack does not include `pam_env.so`, `/etc/environment` will not be loaded for that path. Avoid enabling `user_readenv=1` unless you have a specific reason; reading user-controlled `.pam_environment` files is disabled by default and deprecated in current Linux-PAM.
 
 ## /etc/environment.d/ Drop-In Files
 
@@ -297,7 +300,7 @@ For organized, modular configuration, Ubuntu supports `/etc/environment.d/` (via
 ls /etc/environment.d/
 ```
 
-These files use the same `KEY=VALUE` format and are processed by systemd's environment generator. They affect systemd service sessions, making them useful for variables that should apply to both user sessions and system services:
+These files use a `KEY=VALUE` format and are processed by systemd's user environment generator. They affect services started by the per-user systemd manager, and may be inherited by some graphical terminal sessions depending on how the desktop starts them:
 
 ```bash
 sudo nano /etc/environment.d/90-java.conf
@@ -307,7 +310,7 @@ sudo nano /etc/environment.d/90-java.conf
 JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ```
 
-Note: `/etc/environment.d/` is read by systemd, while `/etc/environment` is read by PAM. For comprehensive coverage across both interactive sessions and services, set important variables in both places.
+Note: `/etc/environment.d/` is read for the systemd user manager, while `/etc/environment` is read by PAM and may also be parsed by systemd's user environment generator for compatibility. For system services, use `Environment=`, `EnvironmentFile=`, or `DefaultEnvironment=` instead of relying on `/etc/environment.d/`.
 
 ## Summary
 
