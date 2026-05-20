@@ -19,7 +19,7 @@ When an SSO user logs into ArgoCD, here is what happens:
 1. The user authenticates through the OIDC/SAML provider
 2. ArgoCD receives a token containing the user's identity and group memberships
 3. ArgoCD matches the user's groups against the RBAC policies in the `argocd-rbac-cm` ConfigMap
-4. If no policy matches, the user gets the default role (which is usually no access at all)
+4. The user also gets the default role from `policy.default`; if no matching policy or default role grants access, the request is denied
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,7 @@ flowchart LR
     E -->|No| G[Default Role / Denied]
 ```
 
-The permission denied error means step 4 failed - either the groups are not making it through, or the policies do not match.
+The permission denied error means step 4 did not grant the requested access - either the groups are not making it through, the policies do not match, or the default role is too restrictive.
 
 ## Step 1: Check What Groups ArgoCD Sees
 
@@ -101,7 +101,7 @@ p, role:dev-team, applications, sync, */*, allow
 g, "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx", role:dev-team
 ```
 
-Second, configure Azure AD to send group names instead of IDs by adding an optional claim for the groups in your App Registration token configuration.
+Second, use app roles or configure a different group claim source in Microsoft Entra ID if that fits your setup. For OIDC App Registrations, the documented Argo CD path is to use the group Object IDs that Entra ID emits in the token.
 
 ## Step 4: Configure RBAC Policies
 
@@ -114,7 +114,7 @@ metadata:
   name: argocd-rbac-cm
   namespace: argocd
 data:
-  # Default policy for authenticated users with no matching group
+  # Baseline policy granted to authenticated users
   policy.default: role:readonly
 
   # Scopes to check for group membership
@@ -161,7 +161,7 @@ data:
   scopes: '[groups, email]'
 ```
 
-If your identity provider sends groups under a non-standard claim name, you need to include that claim in the scopes list. For example, if Auth0 sends groups as `https://myapp.com/groups`, you need to configure the OIDC settings to map that to a standard claim.
+If your identity provider sends groups under a non-standard claim name, include that claim in the scopes list if Argo CD can read it directly, or configure the identity provider to emit a simpler claim. For example, if Auth0 sends groups as `https://myapp.com/groups`, either include that exact claim in `scopes` or map it to a standard `groups` claim in Auth0.
 
 ## Step 6: Debug with ArgoCD Logs
 
@@ -179,7 +179,7 @@ kubectl -n argocd rollout restart deployment argocd-server
 kubectl -n argocd logs -f deployment/argocd-server | grep -i "rbac\|denied\|enforce"
 ```
 
-The debug logs show exactly what groups the user has and which policy rules are being evaluated. This is the fastest way to find mismatches.
+The debug logs can help show which subjects and policy rules are involved in RBAC checks. Combined with the user info output, this is the fastest way to find mismatches.
 
 ## Step 7: Test Policies with the CLI
 
@@ -226,6 +226,6 @@ spec:
       server: https://kubernetes.default.svc
 ```
 
-**SSO session caching**: After changing RBAC policies, users may need to log out and log back in for the changes to take effect. ArgoCD caches the token information, and old tokens may not have the updated group memberships.
+**SSO session caching**: After changing group memberships or token claims in the identity provider, users may need to log out and log back in for the changes to appear in Argo CD. Old tokens may not have the updated group memberships.
 
 Getting RBAC right with SSO takes some trial and error, but the systematic approach of verifying groups first, then checking policies, and finally examining logs will get you to the root cause every time. Once configured correctly, the combination of SSO and RBAC gives you fine-grained access control that scales with your organization.
