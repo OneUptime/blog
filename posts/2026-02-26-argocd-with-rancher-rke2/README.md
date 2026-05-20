@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure ArgoCD on Rancher RKE2 clusters, 
 
 ---
 
-RKE2 (also called RKE Government) is Rancher's next-generation Kubernetes distribution focused on security and compliance. It is FIPS 140-2 compliant, CIS hardened by default, and designed for government and regulated industry workloads. Running ArgoCD on RKE2 requires understanding its security posture, how it integrates with the Rancher management platform, and how to coexist with Rancher Fleet.
+RKE2 (also called RKE Government) is Rancher's next-generation Kubernetes distribution focused on security and compliance. It is FIPS 140-2 compliant, designed to pass many CIS controls by default, and can be configured with the CIS profile for stricter hardening. Running ArgoCD on RKE2 requires understanding its security posture, how it integrates with the Rancher management platform, and how to coexist with Rancher Fleet.
 
 ## RKE2 vs RKE1 vs K3s
 
@@ -30,9 +30,9 @@ Key RKE2 characteristics:
 
 - Containerd as the container runtime (no Docker dependency)
 - Embedded etcd (not dqlite like K3s)
-- CIS Benchmark hardened by default
+- CIS profile available for stricter benchmark hardening
 - FIPS 140-2 validated cryptographic modules
-- No Traefik or ServiceLB by default (unlike K3s)
+- Bundled ingress controller by default, and optional ServiceLB
 
 ## Installing ArgoCD on RKE2
 
@@ -111,16 +111,27 @@ spec:
 
 ## Exposing ArgoCD on RKE2
 
-RKE2 does not include an ingress controller by default. You need to install one.
+RKE2 includes a bundled ingress controller by default. Existing releases use ingress-nginx, while new RKE2 v1.36 clusters use Traefik by default.
 
-### Option 1: Install Nginx Ingress Controller
+### Option 1: Use the Bundled Ingress Controller
 
 ```bash
-# Install Nginx ingress controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.4/deploy/static/provider/cloud/deploy.yaml
+# Verify the bundled ingress controller
+kubectl get pods -n kube-system -l app.kubernetes.io/name=rke2-ingress-nginx
 
-# Wait for it to be ready
-kubectl wait --for=condition=Ready pods -l app.kubernetes.io/component=controller -n ingress-nginx --timeout=120s
+# Enable SSL passthrough for the bundled ingress-nginx controller if needed
+sudo tee /var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx-config.yaml >/dev/null <<'EOF'
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: rke2-ingress-nginx
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    controller:
+      extraArgs:
+        enable-ssl-passthrough: true
+EOF
 ```
 
 Then create an Ingress for ArgoCD.
@@ -146,7 +157,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
 ### Option 2: NodePort for Simpler Access
@@ -172,23 +183,18 @@ graph LR
     C -->|manages| G[App ConfigMaps/Secrets]
 ```
 
-### Strategy 2: Disable Fleet, Use ArgoCD for Everything
+### Strategy 2: Disable Fleet GitOps, Use ArgoCD for Everything
 
 ```bash
-# Disable Fleet on the downstream cluster
-# In the Rancher UI: Cluster Management > Fleet > Disable
-
-# Or via kubectl on the management cluster
-kubectl patch clusters.fleet.cattle.io <cluster-name> \
-  -n fleet-default \
-  --type merge \
-  -p '{"spec":{"agentDeploymentCustomization":{"appendTolerations":null}}}'
+# Fleet is part of Rancher and cannot be fully removed without uninstalling Rancher.
+# Disable the GitOps continuous-delivery feature flag instead:
+# Rancher UI: Global Settings > Feature Flags > continuous-delivery > Deactivate
 ```
 
 ### Strategy 3: Use Both with Clear Namespace Boundaries
 
 ```yaml
-# ArgoCD project that excludes Fleet-managed namespaces
+# ArgoCD project that restricts deployments to application namespaces
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -200,7 +206,7 @@ spec:
     # Only deploy to application namespaces
     - namespace: 'app-*'
       server: https://kubernetes.default.svc
-  # Explicitly exclude Fleet namespaces
+  # Explicitly exclude Fleet cluster-scoped resources
   clusterResourceBlacklist:
     - group: fleet.cattle.io
       kind: '*'
@@ -212,22 +218,7 @@ spec:
 
 RKE2 in FIPS mode uses FIPS-validated cryptographic modules. ArgoCD needs to be compatible.
 
-```bash
-# Check if RKE2 is running in FIPS mode
-cat /etc/rancher/rke2/config.yaml | grep fips
-# profile: cis-1.6
-```
-
-ArgoCD's Go runtime uses FIPS-compliant crypto when built with BoringCrypto. The standard ArgoCD images may not be FIPS-compliant. For strict FIPS environments, build custom ArgoCD images.
-
-```dockerfile
-# Dockerfile for FIPS-compliant ArgoCD (simplified example)
-FROM golang:1.21-fips as builder
-# ... build ArgoCD with FIPS crypto ...
-
-FROM registry.access.redhat.com/ubi9/ubi-minimal:9.3
-COPY --from=builder /go/bin/argocd /usr/local/bin/argocd
-```
+RKE2 components are built with FIPS-compatible cryptographic libraries. The standard upstream ArgoCD images are not documented as FIPS-compliant, so strict FIPS environments should use vendor-supported FIPS-compliant images or an internally validated ArgoCD build process.
 
 ## Network Policies for RKE2
 
@@ -253,7 +244,10 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              app.kubernetes.io/name: ingress-nginx
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: rke2-ingress-nginx
   egress:
     # Allow DNS
     - to:
@@ -329,21 +323,20 @@ spec:
 
 ## Audit Logging
 
-RKE2 has built-in audit logging. Configure ArgoCD's audit logging to complement it.
+RKE2 can configure Kubernetes API server audit logging when the CIS profile is used. Configure ArgoCD server logs in JSON format and use ArgoCD's Kubernetes Events to complement it.
 
 ```yaml
-# ArgoCD ConfigMap for audit logging
+# ArgoCD command parameters for structured server logs
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable detailed audit logging
-  server.audit.enabled: "true"
-  server.audit.logformat: json
+  server.log.format: "json"
+  server.log.level: "info"
 ```
 
 ## Summary
 
-ArgoCD on RKE2 requires attention to the security-hardened environment - Pod Security Admission labels, network policies, and potentially FIPS-compliant container images. When Rancher manages the RKE2 clusters, decide early how ArgoCD coexists with Fleet. The cleanest approach is to use Fleet for cluster infrastructure and ArgoCD for application workloads, with clear namespace boundaries. Install an ingress controller since RKE2 does not include one, and leverage RKE2's built-in CIS hardening rather than fighting against it.
+ArgoCD on RKE2 requires attention to the security-hardened environment - Pod Security Admission labels, network policies, and potentially FIPS-compliant container images. When Rancher manages the RKE2 clusters, decide early how ArgoCD coexists with Fleet. The cleanest approach is to use Fleet for cluster infrastructure and ArgoCD for application workloads, with clear namespace boundaries. Use RKE2's bundled ingress controller or your chosen replacement, and leverage RKE2's CIS profile rather than fighting against it.
