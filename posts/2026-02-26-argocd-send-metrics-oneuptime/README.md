@@ -62,7 +62,7 @@ Add the remote write configuration to your Prometheus setup:
 remote_write:
   - url: "https://oneuptime.com/api/telemetry/metrics/v1/remote-write"
     headers:
-      "x-oneuptime-service-token": "<your-oneuptime-telemetry-token>"
+      "x-oneuptime-token": "<your-oneuptime-telemetry-ingestion-token>"
     write_relabel_configs:
       # Only send ArgoCD metrics to reduce volume
       - source_labels: [__name__]
@@ -82,7 +82,7 @@ spec:
   remoteWrite:
   - url: "https://oneuptime.com/api/telemetry/metrics/v1/remote-write"
     headers:
-      x-oneuptime-service-token: "<your-oneuptime-telemetry-token>"
+      x-oneuptime-token: "<your-oneuptime-telemetry-ingestion-token>"
     writeRelabelConfigs:
     - sourceLabels: [__name__]
       regex: 'argocd_.*|workqueue_.*|grpc_server_.*'
@@ -111,7 +111,7 @@ data:
               scrape_interval: 30s
               static_configs:
                 - targets:
-                  - argocd-application-controller-metrics.argocd.svc:8082
+                  - argocd-metrics.argocd.svc:8082
 
             - job_name: 'argocd-server'
               scrape_interval: 30s
@@ -123,7 +123,7 @@ data:
               scrape_interval: 30s
               static_configs:
                 - targets:
-                  - argocd-repo-server-metrics.argocd.svc:8084
+                  - argocd-repo-server.argocd.svc:8084
 
     processors:
       filter:
@@ -141,9 +141,11 @@ data:
 
     exporters:
       otlphttp:
-        endpoint: "https://oneuptime.com/api/telemetry/metrics/v1/otlp"
+        endpoint: "https://oneuptime.com/otlp"
+        encoding: json
         headers:
-          "x-oneuptime-service-token": "${ONEUPTIME_TOKEN}"
+          "Content-Type": "application/json"
+          "x-oneuptime-token": "${ONEUPTIME_TOKEN}"
 
     service:
       pipelines:
@@ -205,7 +207,7 @@ Create a service in OneUptime to represent your ArgoCD installation:
 1. Navigate to your OneUptime project
 2. Go to Telemetry > Services
 3. Create a new service named "ArgoCD"
-4. Note the service token for the metrics pipeline configuration
+4. Note the telemetry ingestion token for the metrics pipeline configuration
 
 ### Creating Dashboards
 
@@ -217,15 +219,15 @@ In OneUptime, create a custom dashboard for ArgoCD:
 - Visualization: Pie chart
 
 **Sync Success Rate Panel:**
-- Query: `rate(argocd_app_sync_total{phase="Succeeded"}[5m]) / rate(argocd_app_sync_total[5m]) * 100`
+- Query: `sum(rate(argocd_app_sync_total{phase="Succeeded"}[5m])) / sum(rate(argocd_app_sync_total[5m])) * 100`
 - Visualization: Gauge with thresholds (green > 95%, yellow > 80%, red < 80%)
 
 **Git Operation Latency Panel:**
-- Query: `histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))`
+- Query: `histogram_quantile(0.95, sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le))`
 - Visualization: Time series
 
 **Reconciliation Duration Panel:**
-- Query: `histogram_quantile(0.95, rate(argocd_app_reconcile_duration_seconds_bucket[5m]))`
+- Query: `histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))`
 - Visualization: Time series
 
 ### Configuring Alerts in OneUptime
@@ -245,8 +247,8 @@ Set up alerts in OneUptime that create incidents and notify your team:
 - Assign to on-call team
 
 **Git Operations Alert:**
-- Metric: `argocd_git_request_total{grpc_code!="OK"}`
-- Condition: Error rate > 10% for 10 minutes
+- Metric: `argocd_git_fetch_fail_total`
+- Condition: Rate increase > 0 for 10 minutes
 - Severity: Warning
 
 ## Filtering Metrics for Cost Optimization
@@ -260,10 +262,10 @@ write_relabel_configs:
     regex: |
       argocd_app_info|
       argocd_app_sync_total|
-      argocd_app_reconcile_duration_seconds_bucket|
-      argocd_app_reconcile_count|
+      argocd_app_reconcile_bucket|
       argocd_git_request_total|
       argocd_git_request_duration_seconds_bucket|
+      argocd_git_fetch_fail_total|
       workqueue_depth|
       workqueue_queue_duration_seconds_bucket
     action: keep
