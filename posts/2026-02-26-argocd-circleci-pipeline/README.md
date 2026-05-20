@@ -91,6 +91,10 @@ jobs:
       - restore_cache:
           keys:
             - npm-deps-{{ checksum "package-lock.json" }}
+            - npm-deps-
+      - run:
+          name: Install dependencies
+          command: npm ci
       - run:
           name: Run linter
           command: npm run lint
@@ -124,9 +128,6 @@ jobs:
 
             docker push << pipeline.parameters.image-name >>:${SHORT_SHA}
             docker push << pipeline.parameters.image-name >>:latest
-
-            # Save the tag for downstream jobs
-            echo "export IMAGE_TAG=${SHORT_SHA}" >> $BASH_ENV
 
   update-deployment:
     executor: docker-executor
@@ -174,6 +175,7 @@ workflows:
           requires:
             - test
             - lint
+            - security-scan
           filters:
             branches:
               only: main
@@ -233,6 +235,7 @@ workflows:
           requires:
             - test
             - lint
+            - security-scan
           filters:
             branches:
               only: main
@@ -273,6 +276,17 @@ Parameterize the update-deployment job for environments:
           command: |
             SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
 
+            # Install Git and Kustomize
+            sudo apt-get update && sudo apt-get install -y git curl
+            curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+            sudo mv kustomize /usr/local/bin/
+
+            # Configure SSH for deployment repo access
+            mkdir -p ~/.ssh
+            echo "$DEPLOY_SSH_KEY" | base64 -d > ~/.ssh/id_rsa
+            chmod 600 ~/.ssh/id_rsa
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+
             git clone git@github.com:myorg/k8s-deployments.git
             cd k8s-deployments
 
@@ -282,6 +296,8 @@ Parameterize the update-deployment job for environments:
               "<< pipeline.parameters.image-name >>=<< pipeline.parameters.image-name >>:${SHORT_SHA}"
 
             cd /home/circleci/project/k8s-deployments
+            git config user.name "CircleCI"
+            git config user.email "ci@circleci.com"
             git add .
             git commit -m "Deploy api-service ${SHORT_SHA} to << parameters.environment >>"
             git push origin main
@@ -368,19 +384,22 @@ jobs:
           version: 24.0
           docker_layer_caching: true
 
-      # Cache intermediate build layers
-      - restore_cache:
-          keys:
-            - docker-layers-{{ checksum "Dockerfile" }}
-
       - run:
           name: Build with cache
           command: |
+            SHORT_SHA=$(echo $CIRCLE_SHA1 | cut -c1-7)
+
+            docker pull << pipeline.parameters.image-name >>:latest || true
+
             docker build \
               --cache-from << pipeline.parameters.image-name >>:latest \
               --build-arg BUILDKIT_INLINE_CACHE=1 \
-              -t << pipeline.parameters.image-name >>:$(echo $CIRCLE_SHA1 | cut -c1-7) \
+              -t << pipeline.parameters.image-name >>:${SHORT_SHA} \
+              -t << pipeline.parameters.image-name >>:latest \
               .
+
+            docker push << pipeline.parameters.image-name >>:${SHORT_SHA}
+            docker push << pipeline.parameters.image-name >>:latest
 ```
 
 ## Notifications
