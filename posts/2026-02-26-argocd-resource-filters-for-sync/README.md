@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Resource Filtering, Sync Operations
 
-Description: Learn how to use resource filters in ArgoCD to control which resources are included in sync operations, using labels, annotations, groups, and kind-based filtering.
+Description: Learn how to use resource filters in ArgoCD to control which resources are included in sync operations, using global settings, projects, directory patterns, and CLI resource selectors.
 
 ---
 
-ArgoCD resource filters let you control which Kubernetes resources participate in sync operations. Instead of syncing everything or manually selecting individual resources, filters give you a rule-based approach. You can filter by API group, resource kind, name patterns, labels, and more. This guide covers every filtering mechanism available in ArgoCD.
+ArgoCD resource filters let you control which Kubernetes resources participate in sync operations. Instead of syncing everything or manually selecting individual resources, filters give you a rule-based approach. You can filter by API group, resource kind, name patterns, directory patterns, and more. This guide covers several common filtering mechanisms available in ArgoCD.
 
 ## Global Resource Exclusions
 
@@ -186,9 +186,9 @@ directory:
   exclude: "{test/*,staging/*,*.test.yaml}"
 ```
 
-## Label-Based Filtering with ApplicationSets
+## Path-Based Filtering with ApplicationSets
 
-ApplicationSets support label-based filtering through generators.
+ApplicationSets support path-based filtering through generators.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -224,16 +224,16 @@ spec:
 The CLI provides filtering capabilities during sync.
 
 ```bash
-# Sync only resources of a specific kind by listing them
+# List resources of a specific kind
 argocd app resources my-app --output json | \
-  jq -r '.[] | select(.kind == "Deployment") | "\(.group):\(.kind):\(.name)"' | \
+  jq -r '.[] | select(.kind == "Deployment") | "\((.group // "")):\(.kind):\(.name)"' | \
   while read resource; do
-    echo "Syncing: $resource"
+    echo "Found: $resource"
   done
 
 # Build a sync command targeting only Deployments
 DEPLOY_RESOURCES=$(argocd app resources my-app --output json | \
-  jq -r '.[] | select(.kind == "Deployment") | "--resource \(.group):\(.kind):\(.name)"' | \
+  jq -r '.[] | select(.kind == "Deployment") | "--resource \((.group // "")):\(.kind):\(.name)"' | \
   tr '\n' ' ')
 
 eval argocd app sync my-app $DEPLOY_RESOURCES
@@ -246,7 +246,7 @@ You can filter resources by health status to sync only degraded or progressing r
 ```bash
 # Find and sync only degraded resources
 DEGRADED=$(argocd app resources my-app --output json | \
-  jq -r '.[] | select(.health.status == "Degraded") | "\(.group):\(.kind):\(.name)"')
+  jq -r '.[] | select(.health.status == "Degraded") | "\((.group // "")):\(.kind):\(.name)"')
 
 if [ -n "$DEGRADED" ]; then
   RESOURCE_FLAGS=$(echo "$DEGRADED" | sed 's/^/--resource /' | tr '\n' ' ')
@@ -263,9 +263,9 @@ Similarly, filter by sync status to find resources that need attention.
 argocd app resources my-app --output json | \
   jq '.[] | select(.status == "OutOfSync") | {group, kind, name, namespace}'
 
-# List only Missing resources (exist in Git but not in cluster)
+# List only resources with Missing health status (exist in Git but not in cluster)
 argocd app resources my-app --output json | \
-  jq '.[] | select(.status == "Missing") | {group, kind, name, namespace}'
+  jq '.[] | select(.health.status == "Missing") | {group, kind, name, namespace}'
 ```
 
 ## Combining Filters
@@ -283,7 +283,7 @@ TARGET_STATUS="OutOfSync"
 # Get resources matching both kind and status filters
 TARGETS=$(argocd app resources "$APP_NAME" --output json | \
   jq -r --arg kind "$TARGET_KIND" --arg status "$TARGET_STATUS" \
-  '.[] | select(.kind == $kind and .status == $status) | "\(.group):\(.kind):\(.name)"')
+  '.[] | select(.kind == $kind and .status == $status) | "\((.group // "")):\(.kind):\(.name)"')
 
 if [ -z "$TARGETS" ]; then
   echo "No $TARGET_KIND resources with status $TARGET_STATUS"
@@ -324,7 +324,7 @@ spec:
         - .status
 ```
 
-This is useful when external tools (like HPAs, external-dns, or operators) modify resources that ArgoCD also manages. Without ignoreDifferences, ArgoCD would constantly report these resources as OutOfSync and try to revert the changes.
+This is useful when external tools (like HPAs, external-dns, or operators) modify resources that ArgoCD also manages. Without ignoreDifferences, ArgoCD would constantly report these resources as OutOfSync. These settings are not used during sync unless the `RespectIgnoreDifferences=true` sync option is enabled.
 
 ## Best Practices for Resource Filtering
 
