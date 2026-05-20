@@ -8,7 +8,7 @@ Description: Set up a secure SFTP server on Ubuntu with chroot jail, user isolat
 
 ---
 
-SFTP (SSH File Transfer Protocol) is a secure alternative to FTP that runs over SSH. Ubuntu's OpenSSH server includes SFTP support out of the box - you just need to configure it properly. A good SFTP setup isolates users in their home directories through a chroot jail, restricts them from accessing the rest of the filesystem, and optionally enforces key-based authentication instead of passwords.
+SFTP (SSH File Transfer Protocol) is a secure alternative to FTP that runs over SSH. Ubuntu's OpenSSH server includes SFTP support out of the box - you just need to configure it properly. A good SFTP setup isolates users in assigned directories through a chroot jail, restricts them from accessing the rest of the filesystem, and optionally enforces key-based authentication instead of passwords.
 
 ## How SFTP Differs from FTP
 
@@ -99,9 +99,14 @@ The `%u` in `ChrootDirectory` expands to the username, giving each user their ow
 
 ## Setting Up the Chroot Directory Structure
 
-The chroot directory has strict ownership requirements: **the root of the chroot must be owned by root with no write permission for anyone else**. This is an OpenSSH security requirement.
+The chroot directory has strict ownership requirements: **the root of the chroot, and every directory above it in the path, must be owned by root with no write permission for anyone else**. This is an OpenSSH security requirement.
 
 ```bash
+# Create the parent directory and keep it root-owned
+sudo mkdir -p /var/sftp
+sudo chown root:root /var/sftp
+sudo chmod 755 /var/sftp
+
 # Create the per-user chroot root (owned by root, not writable by the user)
 sudo mkdir -p /var/sftp/alice
 
@@ -187,6 +192,8 @@ echo "$USERNAME:$TEMP_PASS" | sudo chpasswd
 
 # Create chroot directory structure
 sudo mkdir -p "/var/sftp/${USERNAME}/files"
+sudo chown root:root /var/sftp
+sudo chmod 755 /var/sftp
 sudo chown root:root "/var/sftp/${USERNAME}"
 sudo chmod 755 "/var/sftp/${USERNAME}"
 sudo chown "${USERNAME}:sftpusers" "/var/sftp/${USERNAME}/files"
@@ -207,12 +214,7 @@ sudo ./add_sftp_user.sh bob
 Password authentication is acceptable for internal networks, but key-based authentication is more secure for internet-facing servers:
 
 ```bash
-# Create the .ssh directory inside the chroot structure
-# Note: This goes inside the chroot but at the home directory
-# The actual home is outside the chroot for key auth to work
-
-# For key-based auth with chroot, the authorized_keys must be placed correctly
-# Create .ssh in the user's actual home dir (not chroot dir)
+# Create .ssh in the user's actual home dir, outside the chroot
 sudo mkdir -p /home/alice/.ssh
 sudo touch /home/alice/.ssh/authorized_keys
 sudo chown -R alice:alice /home/alice/.ssh
@@ -221,7 +223,7 @@ sudo chmod 600 /home/alice/.ssh/authorized_keys
 
 # Add the user's public key
 # (replace with actual public key content)
-echo "ssh-rsa AAAAB3NzaC1yc2E... user@client" | sudo tee -a /home/alice/.ssh/authorized_keys
+echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI... user@client" | sudo tee -a /home/alice/.ssh/authorized_keys
 ```
 
 Add this to the `sshd_config` Match block to specify the authorized keys path:
@@ -236,7 +238,7 @@ Match Group sftpusers
     AuthorizedKeysFile /home/%u/.ssh/authorized_keys
 ```
 
-## Setting Upload Quotas with du
+## Setting Upload Quotas with Filesystem Quotas
 
 SFTP does not have built-in quota enforcement, but you can set filesystem quotas:
 
@@ -249,11 +251,14 @@ sudo apt install quota -y
 sudo nano /etc/fstab
 # Example: /dev/sdb1 /var/sftp ext4 defaults,usrquota 0 2
 
-# Remount to apply
+# Remount to apply (replace /var/sftp with the actual mount point if needed)
 sudo mount -o remount /var/sftp
 
 # Initialize quota database
 sudo quotacheck -cum /var/sftp
+
+# Enable quotas on the filesystem
+sudo quotaon /var/sftp
 
 # Set quota for a user (soft and hard limits in KB)
 sudo setquota -u alice 1048576 2097152 0 0 /var/sftp
@@ -270,15 +275,15 @@ sudo repquota /var/sftp
 # Monitor SSH/SFTP connections in real time
 sudo journalctl -f -u ssh
 
-# List currently logged-in SFTP users
-who | grep sftp
+# List currently active internal-sftp sessions
+ps -eo user,pid,cmd | grep '[s]shd: .*@internal-sftp'
 
 # View SFTP session history
-sudo grep "subsystem request for sftp" /var/log/auth.log
+sudo journalctl -u ssh --grep="subsystem request for sftp"
 
 # Count connections by user
-sudo grep "subsystem request" /var/log/auth.log | \
-    awk '{print $9}' | sort | uniq -c | sort -rn
+sudo journalctl -u ssh --grep="subsystem request for sftp" | \
+    awk '{print $NF}' | sort | uniq -c | sort -rn
 ```
 
 ## Firewall Configuration
