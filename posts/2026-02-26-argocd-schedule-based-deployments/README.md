@@ -43,33 +43,17 @@ spec:
   - kind: allow
     schedule: "0 2 * * 2,4"  # 2 AM on Tue and Thu
     duration: 2h
-    applications:
-    - "*"
-    clusters:
-    - "*"
-
-  # Deny all automated syncs outside maintenance windows
-  - kind: deny
-    schedule: "0 0 * * *"  # Every day at midnight
-    duration: 24h
-    applications:
-    - "*"
-    clusters:
-    - "*"
-
-  # Always allow manual syncs (for emergencies)
-  - kind: allow
-    schedule: "0 0 * * *"
-    duration: 24h
     manualSync: true
     applications:
+    - "*"
+    clusters:
     - "*"
 ```
 
 With this configuration:
 - Automated syncs only run between 2:00 AM and 4:00 AM on Tuesdays and Thursdays
-- Merges at other times queue up and deploy during the next window
-- Manual syncs (emergency deployments) are always allowed
+- Merges at other times leave applications OutOfSync until ArgoCD can auto-sync during the next window
+- Manual syncs (emergency deployments) are allowed because `manualSync` is enabled on the window
 
 ### Per-Application Sync Windows
 
@@ -125,7 +109,7 @@ spec:
           serviceAccountName: argocd-deploy-trigger
           containers:
           - name: sync-trigger
-            image: argoproj/argocd:v2.13.0
+            image: argoproj/argocd:v3.4.2
             command:
             - /bin/sh
             - -c
@@ -163,9 +147,13 @@ spec:
           restartPolicy: OnFailure
 ```
 
-Create the service account and token:
+Create the Kubernetes service account, ArgoCD account, and token secret:
 
 ```bash
+# Create the Kubernetes service account used by the CronJob Pod
+kubectl create serviceaccount argocd-deploy-trigger -n argocd \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 # Create ArgoCD account for scheduled deployments
 kubectl patch configmap argocd-cm -n argocd \
   --type merge \
@@ -176,8 +164,11 @@ kubectl patch configmap argocd-rbac-cm -n argocd \
   --type merge \
   -p '{"data": {"policy.csv": "p, role:scheduler, applications, sync, */*, allow\np, role:scheduler, applications, get, */*, allow\ng, scheduler, role:scheduler"}}'
 
-# Generate token
-argocd account generate-token --account scheduler
+# Generate token and store it in the Secret referenced by the CronJob
+ARGOCD_TOKEN=$(argocd account generate-token --account scheduler)
+kubectl create secret generic argocd-deploy-token -n argocd \
+  --from-literal=token="$ARGOCD_TOKEN" \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Pattern 3: Pre-Stage and Deploy
@@ -188,7 +179,7 @@ Merge changes anytime, but deploy them at a scheduled time. This uses a two-bran
 graph LR
     A[Developers] --> B[Merge to next-release branch]
     B --> C[Changes accumulate]
-    C --> D[Scheduled job cherry-picks to release branch]
+    C --> D[Scheduled job merges to release branch]
     D --> E[ArgoCD syncs release branch]
 ```
 
@@ -240,10 +231,14 @@ kind: Application
 metadata:
   name: myapp-production
 spec:
+  project: production
   source:
     repoURL: https://github.com/org/config-repo.git
     targetRevision: release  # Only deploys when release branch updates
     path: environments/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: myapp
   syncPolicy:
     automated:
       prune: true
@@ -261,14 +256,15 @@ kind: CronJob
 metadata:
   name: deploy-us-east
 spec:
-  schedule: "0 4 * * 2"  # 4 AM UTC (11 PM EST Monday)
+  schedule: "0 23 * * 1"  # 11 PM Monday local time
+  timeZone: America/New_York
   jobTemplate:
     spec:
       template:
         spec:
           containers:
           - name: deploy
-            image: argoproj/argocd:v2.13.0
+            image: argoproj/argocd:v3.4.2
             command: ["/bin/sh", "-c"]
             args:
             - |
@@ -281,20 +277,22 @@ spec:
                 secretKeyRef:
                   name: argocd-deploy-token
                   key: token
+          restartPolicy: OnFailure
 ---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: deploy-eu-west
 spec:
-  schedule: "0 2 * * 2"  # 2 AM UTC (2 AM GMT)
+  schedule: "0 2 * * 2"  # 2 AM Tuesday local time
+  timeZone: Europe/London
   jobTemplate:
     spec:
       template:
         spec:
           containers:
           - name: deploy
-            image: argoproj/argocd:v2.13.0
+            image: argoproj/argocd:v3.4.2
             command: ["/bin/sh", "-c"]
             args:
             - |
@@ -307,20 +305,22 @@ spec:
                 secretKeyRef:
                   name: argocd-deploy-token
                   key: token
+          restartPolicy: OnFailure
 ---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: deploy-ap-southeast
 spec:
-  schedule: "0 17 * * 1"  # 5 PM UTC (1 AM SGT Tuesday)
+  schedule: "0 1 * * 2"  # 1 AM Tuesday local time
+  timeZone: Asia/Singapore
   jobTemplate:
     spec:
       template:
         spec:
           containers:
           - name: deploy
-            image: argoproj/argocd:v2.13.0
+            image: argoproj/argocd:v3.4.2
             command: ["/bin/sh", "-c"]
             args:
             - |
@@ -333,6 +333,7 @@ spec:
                 secretKeyRef:
                   name: argocd-deploy-token
                   key: token
+          restartPolicy: OnFailure
 ```
 
 ## Monitoring Scheduled Deployments
