@@ -12,7 +12,7 @@ The `argocd-notifications-cm` ConfigMap is the configuration hub for ArgoCD's no
 
 ## ConfigMap Structure
 
-The notifications ConfigMap has three categories of keys:
+The notifications ConfigMap has three main categories of keys, plus shared context:
 
 ```yaml
 apiVersion: v1
@@ -88,11 +88,11 @@ data:
     insecureSkipVerify: false
 ```
 
-### Microsoft Teams Service
+### Microsoft Teams Workflows Service
 
 ```yaml
 data:
-  service.teams: |
+  service.teams-workflows: |
     recipientUrls:
       my-channel: $teams-webhook-url
 ```
@@ -107,11 +107,11 @@ data:
       default: $opsgenie-api-key
 ```
 
-### PagerDuty Service
+### PagerDuty V2 Service
 
 ```yaml
 data:
-  service.pagerduty: |
+  service.pagerdutyv2: |
     serviceKeys:
       my-service: $pagerduty-service-key
 ```
@@ -267,7 +267,7 @@ data:
   template.app-github-status: |
     github:
       repoURLPath: "{{.app.spec.source.repoURL}}"
-      revisionPath: "{{.app.status.sync.revision}}"
+      revisionPath: "{{.app.status.operationState.syncResult.revision}}"
       status:
         state: "{{if eq .app.status.operationState.phase \"Succeeded\"}}success{{else}}failure{{end}}"
         label: "argocd/{{.app.metadata.name}}"
@@ -284,12 +284,12 @@ Triggers define when to send notifications based on application state changes.
 data:
   # Sync succeeded
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [app-sync-succeeded]
 
   # Sync failed
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-failed]
 
   # Health degraded
@@ -310,7 +310,7 @@ Prevent duplicate notifications:
 ```yaml
 data:
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [app-deployed]
 ```
@@ -325,9 +325,9 @@ Combine multiple conditions:
 data:
   trigger.on-production-deploy: |
     - when: >
-        app.status.operationState.phase in ['Succeeded'] and
+        app.status?.operationState.phase in ['Succeeded'] and
         app.status.health.status == 'Healthy' and
-        app.metadata.labels.environment == 'production'
+        app.metadata.labels['environment'] == 'production'
       oncePer: app.status.sync.revision
       send: [production-deploy-notification]
 ```
@@ -364,10 +364,10 @@ These are accessed in templates as `{{.context.argocdUrl}}`, `{{.context.environ
 Templates have access to several built-in functions:
 
 - `trunc N` - truncate string to N characters
-- `toUpper` - convert to uppercase
-- `toLower` - convert to lowercase
+- `upper` - convert to uppercase
+- `lower` - convert to lowercase
 - `replace "old" "new"` - string replacement
-- `now` - current time
+- `now` - current time (from Sprig)
 - `index .app.metadata.labels "key"` - access map values
 
 ## Subscribing Applications
