@@ -40,39 +40,23 @@ spec:
 ### Viewing the Report via CLI
 
 ```bash
-# Get the project details including orphaned resources
+# List orphaned resources shown for an application in the project
 
-argocd proj get production -o json | jq '.status.orphanedResources'
+argocd app resources my-production-app --orphaned
 ```
 
 Sample output:
 
-```json
-[
-  {
-    "group": "",
-    "kind": "ConfigMap",
-    "name": "debug-config",
-    "namespace": "production"
-  },
-  {
-    "group": "apps",
-    "kind": "Deployment",
-    "name": "test-app",
-    "namespace": "production"
-  },
-  {
-    "group": "",
-    "kind": "Secret",
-    "name": "old-api-key",
-    "namespace": "production"
-  }
-]
+```text
+GROUP  KIND        NAMESPACE   NAME
+       ConfigMap   production  debug-config
+apps   Deployment  production  test-app
+       Secret      production  old-api-key
 ```
 
 ### Viewing in the ArgoCD UI
 
-Navigate to Settings > Projects > [Your Project]. The orphaned resources section shows a list of all untracked resources. Click on any resource to see its details.
+Navigate to the application details page and enable the "Show Orphaned" filter. The orphaned resources section shows a list of untracked resources in the application's target namespace. Click on any resource to see its details.
 
 ## Method 2: Comparing Namespace Contents to ArgoCD Applications
 
@@ -105,9 +89,9 @@ echo "=== Orphaned Resources (in cluster but not in ArgoCD) ==="
 comm -23 /tmp/cluster-resources.txt /tmp/argocd-resources.txt
 ```
 
-## Method 3: Using kubectl with ArgoCD Labels
+## Method 3: Using kubectl with ArgoCD Tracking Metadata
 
-ArgoCD labels managed resources with tracking labels. Resources without these labels in ArgoCD-managed namespaces are potentially orphaned:
+Depending on the configured resource tracking method, ArgoCD tracks managed resources with an annotation, a label, or both. Resources without the configured tracking metadata in ArgoCD-managed namespaces are potentially orphaned:
 
 ```bash
 # Find resources WITHOUT the ArgoCD tracking label
@@ -180,9 +164,9 @@ kubectl get pvc -n production -o json | jq -r '
   .items[] |
   select(.status.phase == "Bound") |
   .metadata.name' | while read pvc; do
-    pods=$(kubectl get pods -n production -o json | jq -r ".items[].spec.volumes[]? | select(.persistentVolumeClaim.claimName == \"$pvc\") | .name" 2>/dev/null)
+    pods=$(kubectl get pods -n production -o json | jq -r ".items[] | select(.status.phase == \"Running\") | .spec.volumes[]? | select(.persistentVolumeClaim.claimName == \"$pvc\") | .name" 2>/dev/null)
     if [ -z "$pods" ]; then
-      echo "Orphaned PVC: $pvc (not mounted by any pod)"
+      echo "Orphaned PVC: $pvc (not mounted by any running pod)"
     fi
   done
 ```
@@ -190,14 +174,16 @@ kubectl get pvc -n production -o json | jq -r '
 ### Orphaned Services
 
 ```bash
-# Services with no matching endpoints
+# Services with no ready EndpointSlices
 kubectl get services -n production -o json | jq -r '
   .items[] |
   select(.spec.type != "ExternalName") |
   .metadata.name' | while read svc; do
-    endpoints=$(kubectl get endpoints $svc -n production -o jsonpath='{.subsets[*].addresses[*].ip}' 2>/dev/null)
+    endpoints=$(kubectl get endpointslices.discovery.k8s.io -n production \
+      -l kubernetes.io/service-name=$svc \
+      -o jsonpath='{.items[*].endpoints[?(@.conditions.ready==true)].addresses[*]}' 2>/dev/null)
     if [ -z "$endpoints" ]; then
-      echo "Service with no endpoints: $svc"
+      echo "Service with no ready endpoints: $svc"
     fi
   done
 ```
@@ -228,7 +214,7 @@ echo ""
 
 # Get all namespaces that ArgoCD applications deploy to
 NAMESPACES=$(argocd app list -o json | \
-  jq -r '.[].spec.destination.namespace' | sort -u)
+  jq -r '.[].spec.destination.namespace | select(. != null and . != "")' | sort -u)
 
 for ns in $NAMESPACES; do
   echo "--- Namespace: $ns ---"
@@ -262,7 +248,7 @@ graph TD
     A[ArgoCD Metrics] --> B[Prometheus]
     B --> C[Grafana Dashboard]
     C --> D[Orphaned Count per Project]
-    C --> E[Orphaned Count per Namespace]
+    C --> E[Orphaned Count per Application]
     C --> F[Orphaned Resource Types]
     C --> G[Trend Over Time]
 ```
@@ -270,14 +256,14 @@ graph TD
 Key Prometheus queries:
 
 ```promql
-# Total orphaned resources across all projects
+# Total orphaned resources across all applications
 sum(argocd_app_orphaned_resources_count)
 
 # Orphaned resources by project
-argocd_app_orphaned_resources_count{project=~".*"}
+sum by (project) (argocd_app_orphaned_resources_count)
 
-# Rate of orphaned resource growth
-rate(argocd_app_orphaned_resources_count[7d])
+# Change in orphaned resources over 7 days
+delta(argocd_app_orphaned_resources_count[7d])
 ```
 
 ## Automated Orphan Reporting
@@ -314,7 +300,7 @@ spec:
 
 ## Best Practices
 
-1. **Enable orphaned resource monitoring on every project** - It has minimal overhead and provides valuable visibility
+1. **Enable orphaned resource monitoring on well-scoped projects** - It provides valuable visibility, but projects that monitor namespaces with many unmanaged resources can add significant overhead
 2. **Build a comprehensive ignore list** - Auto-generated Kubernetes resources create noise if not filtered
 3. **Automate regular scanning** - Weekly or monthly scans catch orphans before they accumulate
 4. **Track PVCs specifically** - They consume storage and cost money
