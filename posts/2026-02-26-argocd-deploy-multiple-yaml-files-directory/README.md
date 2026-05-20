@@ -375,10 +375,10 @@ The `argocd-apps/platform/` directory contains Application resources that each p
 argocd app resources payment-service
 
 # View the resource tree (shows parent-child relationships)
-argocd app get payment-service --show-operation
+argocd app resources payment-service --output tree
 
 # View specific resource details
-argocd app resources payment-service --kind Deployment
+argocd app get-resource payment-service --kind Deployment --resource-name payment-api
 
 # Sync specific resources only
 argocd app sync payment-service --resource ':Deployment:payment-api'
@@ -391,7 +391,7 @@ In the ArgoCD UI, the resource tree view shows all resources from all files orga
 
 ## Pruning and Deletion
 
-When you remove a YAML file from the directory, ArgoCD detects that the resources defined in that file are no longer in the desired state. With `prune: true` in the sync policy, ArgoCD deletes those resources automatically. Without pruning, they show as "orphaned" in the UI.
+When you remove a YAML file from the directory, ArgoCD detects that the resources defined in that file are no longer in the desired state. With `prune: true` in the sync policy, ArgoCD deletes those resources automatically. Without pruning, the application remains out of sync because ArgoCD expects those resources to be pruned.
 
 ```yaml
 # Enable pruning to automatically delete removed resources
@@ -406,7 +406,7 @@ Be cautious with pruning in directories containing many files - removing or rena
 
 **Keep files focused** - Each file should contain a single resource or a tightly related group of resources.
 
-**Use consistent labeling** - Apply the same labels across all files so ArgoCD can track them properly:
+**Use consistent labeling** - Apply the same labels across all files so your team can query and group related resources consistently:
 
 ```yaml
 metadata:
