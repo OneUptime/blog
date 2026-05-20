@@ -198,6 +198,7 @@ resources:
 configMapGenerator:
   - name: seed-data
     files:
+      - common.sql=seed-data/common.sql
       - seed.sql=seed-data/common.sql
 ```
 
@@ -272,6 +273,19 @@ spec:
               else
                 echo "Database already has data ($COUNT roles) - skipping seed"
               fi
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
+          volumeMounts:
+            - name: seed-data
+              mountPath: /seed
+      volumes:
+        - name: seed-data
+          configMap:
+            name: seed-data
       restartPolicy: Never
 ```
 
@@ -393,6 +407,12 @@ spec:
               fi
 
               echo "Seed verification passed"
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: password
       restartPolicy: Never
 ```
 
