@@ -35,16 +35,16 @@ Before setting up the integration:
 
 1. **ArgoCD CLI or API access** from Jenkins nodes
 2. **Git credentials** for the deployment repository
-3. **ArgoCD service account** with appropriate permissions
+3. **ArgoCD account or project role token** with appropriate permissions
 
 ### Setting Up ArgoCD Credentials in Jenkins
 
 Add the following credentials to Jenkins:
 
 1. Go to **Manage Jenkins > Manage Credentials**
-2. Add a **Secret text** credential for `ARGOCD_TOKEN` (ArgoCD API token)
-3. Add a **Secret text** credential for `ARGOCD_SERVER` (ArgoCD server address)
-4. Add a **Username with password** credential for `GIT_DEPLOY_CREDS` (Git deploy token)
+2. Add a **Secret text** credential with ID `argocd-token` (ArgoCD API token)
+3. Add a **Secret text** credential with ID `argocd-server` (ArgoCD server address)
+4. Add a **Username with password** credential with ID `git-deploy-creds` (Git deploy token)
 
 ## Pattern 1: Basic Image Tag Update Pipeline
 
@@ -94,8 +94,9 @@ pipeline {
                     passwordVariable: 'GIT_PASS'
                 )]) {
                     sh """
+                        set +x
                         # Clone the deployment repository
-                        git clone https://${GIT_USER}:${GIT_PASS}@github.com/myorg/k8s-manifests.git deploy-repo
+                        git clone https://\${GIT_USER}:\${GIT_PASS}@github.com/myorg/k8s-manifests.git deploy-repo
                         cd deploy-repo/${APP_PATH}
 
                         # Install kustomize if not available
@@ -167,8 +168,9 @@ pipeline {
         stage('Trigger ArgoCD Sync') {
             steps {
                 sh """
-                    ./argocd login ${ARGOCD_SERVER} \\
-                        --auth-token ${ARGOCD_TOKEN} \\
+                    set +x
+                    ./argocd login \${ARGOCD_SERVER} \\
+                        --auth-token \${ARGOCD_TOKEN} \\
                         --grpc-web \\
                         --insecure
 
@@ -271,7 +273,8 @@ pipeline {
                     passwordVariable: 'GIT_PASS'
                 )]) {
                     sh """
-                        git clone https://${GIT_USER}:${GIT_PASS}@github.com/myorg/k8s-manifests.git deploy-repo
+                        set +x
+                        git clone https://\${GIT_USER}:\${GIT_PASS}@github.com/myorg/k8s-manifests.git deploy-repo
                         cd deploy-repo/apps/my-app/${params.TARGET_ENV}
 
                         curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | tar xz
@@ -292,7 +295,8 @@ pipeline {
                 sh """
                     curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
                     chmod +x argocd
-                    ./argocd login ${ARGOCD_SERVER} --auth-token ${ARGOCD_TOKEN} --grpc-web --insecure
+                    set +x
+                    ./argocd login \${ARGOCD_SERVER} --auth-token \${ARGOCD_TOKEN} --grpc-web --insecure
 
                     APP_NAME="my-app-${params.TARGET_ENV}"
                     ./argocd app sync \${APP_NAME} --grpc-web
@@ -321,15 +325,16 @@ Create a Jenkins Shared Library for reusable ArgoCD operations:
 
 ```groovy
 // vars/argocd.groovy (in your shared library)
-def login(Map config) {
-    sh """
+def login() {
+    sh '''
+        set +x
         curl -sSL -o /tmp/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
         chmod +x /tmp/argocd
-        /tmp/argocd login ${config.server} \\
-            --auth-token ${config.token} \\
-            --grpc-web \\
+        /tmp/argocd login "$ARGOCD_SERVER" \
+            --auth-token "$ARGOCD_TOKEN" \
+            --grpc-web \
             --insecure
-    """
+    '''
 }
 
 def sync(String appName, Integer timeout = 300) {
@@ -370,7 +375,7 @@ pipeline {
                     string(credentialsId: 'argocd-token', variable: 'ARGOCD_TOKEN')
                 ]) {
                     script {
-                        argocd.login(server: env.ARGOCD_SERVER, token: env.ARGOCD_TOKEN)
+                        argocd.login()
                         argocd.sync('my-app')
 
                         if (!argocd.isHealthy('my-app')) {
@@ -395,28 +400,29 @@ stage('Sync via API') {
             string(credentialsId: 'argocd-server', variable: 'ARGOCD_SERVER'),
             string(credentialsId: 'argocd-token', variable: 'ARGOCD_TOKEN')
         ]) {
-            sh """
+            sh '''
+                set +x
                 # Trigger sync via REST API
-                curl -s -X POST \\
-                    "https://${ARGOCD_SERVER}/api/v1/applications/my-app/sync" \\
-                    -H "Authorization: Bearer ${ARGOCD_TOKEN}" \\
-                    -H "Content-Type: application/json" \\
+                curl -s -X POST \
+                    "https://${ARGOCD_SERVER}/api/v1/applications/my-app/sync" \
+                    -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
+                    -H "Content-Type: application/json" \
                     -d '{}'
 
                 # Poll for sync completion
-                for i in \$(seq 1 60); do
-                    STATUS=\$(curl -s \\
-                        "https://${ARGOCD_SERVER}/api/v1/applications/my-app" \\
-                        -H "Authorization: Bearer ${ARGOCD_TOKEN}" | \\
+                for i in $(seq 1 60); do
+                    STATUS=$(curl -s \
+                        "https://${ARGOCD_SERVER}/api/v1/applications/my-app" \
+                        -H "Authorization: Bearer ${ARGOCD_TOKEN}" | \
                         jq -r '.status.sync.status')
-                    HEALTH=\$(curl -s \\
-                        "https://${ARGOCD_SERVER}/api/v1/applications/my-app" \\
-                        -H "Authorization: Bearer ${ARGOCD_TOKEN}" | \\
+                    HEALTH=$(curl -s \
+                        "https://${ARGOCD_SERVER}/api/v1/applications/my-app" \
+                        -H "Authorization: Bearer ${ARGOCD_TOKEN}" | \
                         jq -r '.status.health.status')
 
-                    echo "Sync: \${STATUS}, Health: \${HEALTH}"
+                    echo "Sync: ${STATUS}, Health: ${HEALTH}"
 
-                    if [ "\${STATUS}" = "Synced" ] && [ "\${HEALTH}" = "Healthy" ]; then
+                    if [ "${STATUS}" = "Synced" ] && [ "${HEALTH}" = "Healthy" ]; then
                         echo "Deployment complete!"
                         exit 0
                     fi
@@ -424,7 +430,7 @@ stage('Sync via API') {
                 done
                 echo "Timeout waiting for deployment"
                 exit 1
-            """
+            '''
         }
     }
 }
