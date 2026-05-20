@@ -8,13 +8,13 @@ Description: Configure SSH idle timeout and keep-alive settings on Ubuntu to dis
 
 ---
 
-SSH sessions can die in two frustrating ways: either they stay open forever after you walk away (a security risk), or they drop prematurely when your network goes quiet for a few minutes (an annoyance). Both issues are controlled by keep-alive and timeout settings, configured on both the server side and the client side.
+SSH sessions can die in two frustrating ways: either they stay open forever after you walk away (a security risk), or they drop prematurely when your network goes quiet for a few minutes (an annoyance). These issues are handled by different keep-alive and timeout settings, configured on both the server side and the client side.
 
 Understanding which side controls what helps you choose the right fix for your situation.
 
 ## How SSH Keep-Alive Works
 
-SSH uses a heartbeat mechanism to detect stale connections. The server can send periodic "alive" messages to the client, and the client can do the same to the server. If one side sends a message and gets no response after a set number of tries, it terminates the connection.
+SSH uses a heartbeat mechanism to detect stale network connections. The server can send periodic "alive" messages to the client, and the client can do the same to the server. If one side sends a message and gets no response after a set number of tries, it terminates the connection.
 
 - **ServerAliveInterval / ServerAliveCountMax** - Client-side settings. The client sends keep-alive packets to the server.
 - **ClientAliveInterval / ClientAliveCountMax** - Server-side settings. The server sends keep-alive packets to the client.
@@ -27,38 +27,38 @@ Edit `/etc/ssh/sshd_config` to control how the SSH server handles idle connectio
 sudo nano /etc/ssh/sshd_config
 ```
 
-### Disconnecting Idle Sessions
+### Disconnecting Unresponsive Sessions
 
-These settings cause the server to probe idle clients and disconnect them if they do not respond:
+These settings cause the server to probe clients after a period with no incoming SSH traffic and disconnect them if they do not respond:
 
 ```text
 # Send a keep-alive message to the client every 300 seconds (5 minutes)
 
 ClientAliveInterval 300
 
-# Disconnect after 3 unanswered messages (15 minutes total of silence)
+# Disconnect after 3 unanswered messages (about 15 minutes for an unresponsive client)
 ClientAliveCountMax 3
 ```
 
-With these settings, if a client is silent for 15 minutes (300 seconds * 3 attempts), the server closes the connection. This cleans up zombie sessions where someone's terminal was closed without properly exiting.
+With these settings, if a client becomes unreachable and does not answer the server's probes, the server closes the connection after about 15 minutes (300 seconds * 3 attempts). This cleans up zombie sessions where someone's terminal was closed without properly exiting. A connected but inactive user will normally answer these probes automatically, so use `TMOUT` if you need a true interactive idle timeout.
 
-To disconnect idle sessions more aggressively:
+To detect unresponsive sessions more aggressively:
 
 ```text
-# More aggressive: disconnect after 10 minutes of silence
+# More aggressive: disconnect unresponsive clients after about 6 minutes
 ClientAliveInterval 120
 ClientAliveCountMax 3
 ```
 
-To keep sessions alive indefinitely (useful for automated scripts):
+To disable disconnection based on unanswered client-alive probes:
 
 ```text
-# Keep sessions alive regardless of inactivity
+# Do not terminate sessions because of unanswered client-alive probes
 ClientAliveInterval 60
 ClientAliveCountMax 0
 ```
 
-Setting `ClientAliveCountMax 0` means the server never disconnects, but still sends keep-alive messages.
+Setting `ClientAliveCountMax 0` disables connection termination from the client-alive mechanism.
 
 ### Applying the Changes
 
@@ -123,7 +123,7 @@ export TMOUT
 EOF
 
 # Set correct permissions
-sudo chmod +x /etc/profile.d/timeout.sh
+sudo chmod 644 /etc/profile.d/timeout.sh
 ```
 
 This approach affects all interactive shell sessions, not just SSH. It works independently of SSH's keep-alive settings.
@@ -134,9 +134,9 @@ These are related but distinct concepts:
 
 | Setting | Purpose | Where Configured |
 |---|---|---|
-| `ClientAliveInterval` | Server sends probes to detect dead clients | sshd_config (server) |
+| `ClientAliveInterval` | Server sends probes to detect unresponsive clients | sshd_config (server) |
 | `ClientAliveCountMax` | Max unanswered probes before disconnect | sshd_config (server) |
-| `ServerAliveInterval` | Client sends probes to keep connection alive | ssh_config or ~/.ssh/config (client) |
+| `ServerAliveInterval` | Client sends probes to detect unresponsive servers and keep NAT/firewall state active | ssh_config or ~/.ssh/config (client) |
 | `ServerAliveCountMax` | Max unanswered server probes before client exits | ssh_config or ~/.ssh/config (client) |
 | `TMOUT` | Shell exits after inactivity | Shell profile |
 
@@ -169,7 +169,7 @@ Host *
     TCPKeepAlive yes
 ```
 
-`TCPKeepAlive yes` enables TCP-level keepalives, which operate at the network layer. This is separate from SSH-level keep-alives and can help with some firewall configurations. The downside is that TCP keepalives can be lost if routing changes, while SSH-level keep-alives are more reliable.
+`TCPKeepAlive yes` enables TCP-level keepalives, which operate at the network layer. This is separate from SSH-level keep-alives and can help with some firewall configurations. The downside is that TCP keepalives are spoofable, depend on operating-system TCP behavior, and can cause connections to die if the route is down temporarily.
 
 ## System-Wide SSH Client Configuration
 
@@ -191,4 +191,4 @@ This applies to all outbound SSH connections made from that system.
 
 ## Summary
 
-SSH idle timeouts and keep-alives are a balance between security and usability. Server-side settings (`ClientAliveInterval` and `ClientAliveCountMax` in `sshd_config`) control when the server disconnects idle clients. Client-side settings (`ServerAliveInterval` and `ServerAliveCountMax` in `~/.ssh/config`) keep connections alive through firewalls and NAT. For shell-level enforcement, the `TMOUT` variable terminates inactive sessions at the shell layer. Start with `ClientAliveInterval 300` and `ClientAliveCountMax 3` on the server for reasonable security, and `ServerAliveInterval 60` on the client to maintain connections through typical firewalls.
+SSH idle timeouts and keep-alives are a balance between security and usability. Server-side settings (`ClientAliveInterval` and `ClientAliveCountMax` in `sshd_config`) control when the server disconnects unresponsive clients. Client-side settings (`ServerAliveInterval` and `ServerAliveCountMax` in `~/.ssh/config`) keep connections alive through firewalls and NAT and detect unresponsive servers. For shell-level idle enforcement, the `TMOUT` variable terminates inactive sessions at the shell layer. Start with `ClientAliveInterval 300` and `ClientAliveCountMax 3` on the server to clean up dead connections, and `ServerAliveInterval 60` on the client to maintain connections through typical firewalls.
