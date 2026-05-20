@@ -12,7 +12,7 @@ Apache's built-in authentication is a simple way to protect specific directories
 
 ## Understanding the Two Methods
 
-**Basic Authentication** sends the username and password base64-encoded in the HTTP header. It's not encrypted on its own - you must use HTTPS or the credentials travel in plaintext. That said, over HTTPS it's perfectly secure and the simplest option to implement.
+**Basic Authentication** sends the username and password base64-encoded in the HTTP header. It's not encrypted on its own - you must use HTTPS or the credentials travel in plaintext. That said, over HTTPS the credentials are protected in transit and it's the simplest option to implement.
 
 **Digest Authentication** uses an MD5 hash of the credentials instead of sending them directly. It provides more protection on HTTP connections than Basic, but MD5 is considered weak by modern standards. For new setups, Basic over HTTPS is generally preferred over Digest.
 
@@ -22,12 +22,13 @@ Apache's built-in authentication is a simple way to protect specific directories
 
 ```bash
 # mod_auth_basic is usually enabled by default on Ubuntu
+# mod_authn_file and mod_authz_user are also needed for AuthUserFile and Require user/valid-user
 
 # Verify it's active
-sudo apache2ctl -M | grep auth_basic
+sudo apache2ctl -M | grep -E 'auth_basic|authn_file|authz_user'
 
 # If not loaded:
-sudo a2enmod auth_basic
+sudo a2enmod auth_basic authn_file authz_user
 sudo systemctl reload apache2
 ```
 
@@ -225,7 +226,8 @@ cat /etc/apache2/.htdigest
 ```apache
 <Directory /var/www/example.com/public_html/private>
     AuthType Digest
-    AuthName "Protected Area"     # Must match realm in password file exactly
+    # AuthName must match the realm in the password file exactly
+    AuthName "Protected Area"
     AuthDigestDomain /private/
     AuthDigestProvider file
     AuthUserFile /etc/apache2/.htdigest
@@ -261,15 +263,13 @@ sudo htpasswd -D /etc/apache2/.htpasswd alice
 # List users (no password hashes shown in a convenient format)
 sudo cut -d: -f1 /etc/apache2/.htpasswd
 
-# Verify a password without changing it (no standard htpasswd option)
-# Test by actually making a request:
-curl -u alice:password https://example.com/protected/ -o /dev/null -w "%{http_code}"
-# 200 = correct, 401 = wrong credentials
+# Verify a password without changing it
+sudo htpasswd -v /etc/apache2/.htpasswd alice
 ```
 
 ## Using bcrypt for Password Hashing
 
-By default, `htpasswd` uses bcrypt on modern Ubuntu systems, which is good. Verify:
+By default, `htpasswd` uses Apache MD5 (`apr1`) on Ubuntu systems. For stronger password hashing, create or update entries with bcrypt:
 
 ```bash
 # Check the hash format in the password file
@@ -284,7 +284,7 @@ sudo htpasswd -B /etc/apache2/.htpasswd alice
 
 ## Rate Limiting Login Attempts
 
-Apache's built-in auth doesn't include rate limiting. Add it with `mod_ratelimit` or a firewall rule:
+Apache's built-in auth doesn't include login attempt rate limiting. Add brute-force protection with Fail2ban or a firewall rule:
 
 ```bash
 # Install fail2ban to block brute force attempts
@@ -346,4 +346,4 @@ When Apache is a reverse proxy, you can add authentication at the proxy layer wi
 
 This protects any backend application without requiring the application to implement its own authentication.
 
-For most use cases, Basic auth over HTTPS is the right choice. It's simple, widely supported, and perfectly secure when TLS is in place. Save Digest auth for legacy systems or environments where you genuinely cannot use HTTPS.
+For most use cases, Basic auth over HTTPS is the right choice. It's simple, widely supported, and secure in transit when TLS is in place. Save Digest auth for legacy systems or environments where you genuinely cannot use HTTPS.
