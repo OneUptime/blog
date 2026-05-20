@@ -171,7 +171,7 @@ syncWindows:
     # No timeZone field = UTC
 ```
 
-2 AM UTC is 9 PM Eastern (EST) or 10 PM Eastern (EDT). The window is 7 hours off from what you intended.
+2 AM UTC is 9 PM Eastern (EST) or 10 PM Eastern (EDT), so the window starts 4 or 5 hours earlier than what you intended.
 
 Fix: Either add the `timeZone` field (ArgoCD 2.7+) or convert to UTC manually.
 
