@@ -17,7 +17,7 @@ Azure DevOps service hooks have a few unique characteristics:
 - They are configured at the project level, not the repository level
 - They use a different event payload format than GitHub/GitLab
 - They support filtering by repository, branch, and other criteria
-- Authentication uses a basic auth username/password or webhook secret
+- Authentication uses optional basic auth username/password credentials
 
 ArgoCD's API server handles the Azure DevOps payload format and extracts the repository URL and branch information for matching against applications.
 
@@ -32,7 +32,7 @@ echo "Your webhook secret: $WEBHOOK_SECRET"
 
 ## Step 2: Configure ArgoCD for Azure DevOps Webhooks
 
-Azure DevOps webhooks are processed by ArgoCD's generic webhook handler. Configure the secret:
+Azure DevOps webhooks are processed by ArgoCD's webhook handler. Configure the basic auth credentials:
 
 ```yaml
 apiVersion: v1
@@ -42,17 +42,15 @@ metadata:
   namespace: argocd
 type: Opaque
 stringData:
-  # Azure DevOps uses the generic webhook secret or
-  # can authenticate via basic auth header
+  # Azure DevOps authenticates webhook requests with basic auth
   webhook.azuredevops.username: "argocd"
   webhook.azuredevops.password: "your-generated-secret"
 ```
 
-Apply and restart:
+Apply the secret. ArgoCD should pick up the change automatically; restart the server only if it does not:
 
 ```bash
 kubectl apply -f argocd-secret.yaml
-kubectl rollout restart deployment argocd-server -n argocd
 ```
 
 ## Step 3: Create a Service Hook in Azure DevOps
@@ -92,11 +90,11 @@ Detailed messages to send: All
 ```bash
 # Get your Azure DevOps organization URL and PAT token
 AZDO_ORG="https://dev.azure.com/your-org"
-AZDO_PROJECT="your-project"
+AZDO_PROJECT_ID="your-project-guid"
 AZDO_PAT="your-personal-access-token"
 
 # Create a service hook subscription
-curl -X POST "$AZDO_ORG/_apis/hooks/subscriptions?api-version=7.0" \
+curl -X POST "$AZDO_ORG/_apis/hooks/subscriptions?api-version=7.1" \
   -u ":$AZDO_PAT" \
   -H "Content-Type: application/json" \
   -d "{
@@ -106,14 +104,13 @@ curl -X POST "$AZDO_ORG/_apis/hooks/subscriptions?api-version=7.0" \
     \"consumerId\": \"webHooks\",
     \"consumerActionId\": \"httpRequest\",
     \"publisherInputs\": {
-      \"projectId\": \"$AZDO_PROJECT\",
+      \"projectId\": \"$AZDO_PROJECT_ID\",
       \"repository\": \"\",
       \"branch\": \"\"
     },
     \"consumerInputs\": {
       \"url\": \"https://argocd.example.com/api/webhook\",
-      \"basicAuthUsername\": \"argocd\",
-      \"basicAuthPassword\": \"$WEBHOOK_SECRET\",
+      \"basicAuthCredentials\": \"argocd:$WEBHOOK_SECRET\",
       \"httpHeaders\": \"Content-Type: application/json\"
     }
   }"
@@ -190,7 +187,7 @@ If your Azure DevOps project has many repositories but you only want webhooks fo
 
 ```bash
 # Create a service hook for a specific repository
-curl -X POST "$AZDO_ORG/_apis/hooks/subscriptions?api-version=7.0" \
+curl -X POST "$AZDO_ORG/_apis/hooks/subscriptions?api-version=7.1" \
   -u ":$AZDO_PAT" \
   -H "Content-Type: application/json" \
   -d "{
@@ -200,14 +197,13 @@ curl -X POST "$AZDO_ORG/_apis/hooks/subscriptions?api-version=7.0" \
     \"consumerId\": \"webHooks\",
     \"consumerActionId\": \"httpRequest\",
     \"publisherInputs\": {
-      \"projectId\": \"$AZDO_PROJECT\",
+      \"projectId\": \"$AZDO_PROJECT_ID\",
       \"repository\": \"REPO_ID\",
       \"branch\": \"refs/heads/main\"
     },
     \"consumerInputs\": {
       \"url\": \"https://argocd.example.com/api/webhook\",
-      \"basicAuthUsername\": \"argocd\",
-      \"basicAuthPassword\": \"$WEBHOOK_SECRET\"
+      \"basicAuthCredentials\": \"argocd:$WEBHOOK_SECRET\"
     }
   }"
 ```
@@ -216,7 +212,7 @@ Get the repository ID:
 
 ```bash
 # List repositories in a project
-curl "$AZDO_ORG/$AZDO_PROJECT/_apis/git/repositories?api-version=7.0" \
+curl "$AZDO_ORG/$AZDO_PROJECT_ID/_apis/git/repositories?api-version=7.1" \
   -u ":$AZDO_PAT" | jq '.value[] | {name, id}'
 ```
 
@@ -250,7 +246,7 @@ metadata:
   namespace: argocd
 data:
   # Increase polling interval
-  timeout.reconciliation: "600"
+  timeout.reconciliation: "10m"
 ```
 
 ## Troubleshooting
@@ -293,7 +289,7 @@ argocd app get my-app -o json | jq '.spec.source.repoURL'
 
 ### Service Hook Shows "Disabled" Status
 
-Azure DevOps automatically disables service hooks after consecutive failures (usually 5):
+Azure DevOps can put service hooks on probation or disable them after repeated failures:
 
 1. Go to Project Settings > Service hooks
 2. Find the disabled hook
@@ -301,11 +297,16 @@ Azure DevOps automatically disables service hooks after consecutive failures (us
 4. Re-enable the hook
 
 ```bash
-# Re-enable via API
-curl -X PATCH "$AZDO_ORG/_apis/hooks/subscriptions/SUBSCRIPTION_ID?api-version=7.0" \
+# Re-enable via API by replacing the subscription document
+curl "$AZDO_ORG/_apis/hooks/subscriptions/SUBSCRIPTION_ID?api-version=7.1" \
+  -u ":$AZDO_PAT" > subscription.json
+
+jq '.status = "enabled"' subscription.json > subscription-enabled.json
+
+curl -X PUT "$AZDO_ORG/_apis/hooks/subscriptions/SUBSCRIPTION_ID?api-version=7.1" \
   -u ":$AZDO_PAT" \
   -H "Content-Type: application/json" \
-  -d '{"status": "enabled"}'
+  -d @subscription-enabled.json
 ```
 
 For monitoring your Azure DevOps to ArgoCD webhook pipeline and overall deployment health, [OneUptime](https://oneuptime.com) provides end-to-end observability for your GitOps workflow.
@@ -316,6 +317,6 @@ For monitoring your Azure DevOps to ArgoCD webhook pipeline and overall deployme
 - Configure at the project level with optional repository and branch filters
 - ArgoCD uses basic auth credentials for Azure DevOps webhook verification
 - Match repository URL formats between ArgoCD applications and Azure DevOps
-- Azure DevOps auto-disables hooks after repeated failures, so monitor delivery status
+- Azure DevOps can put hooks on probation or disable them after repeated failures, so monitor delivery status
 - Use the Azure DevOps REST API for automated hook management across projects
 - Increase polling interval after confirming webhook reliability
