@@ -116,8 +116,6 @@ metadata:
   namespace: argocd
   annotations:
     azure.workload.identity/client-id: "<YOUR_IDENTITY_CLIENT_ID>"
-  labels:
-    azure.workload.identity/use: "true"
 ```
 
 Apply the patch.
@@ -126,16 +124,22 @@ Apply the patch.
 # Apply the service account annotation
 kubectl apply -f argocd-repo-server-sa-patch.yaml
 
+# Label the repo-server pod template so the workload identity webhook mutates the pods
+kubectl patch deployment argocd-repo-server \
+  --namespace argocd \
+  --type merge \
+  --patch '{"spec":{"template":{"metadata":{"labels":{"azure.workload.identity/use":"true"}}}}}'
+
 # Repeat for the application controller if needed
 kubectl annotate serviceaccount argocd-application-controller \
   --namespace argocd \
   azure.workload.identity/client-id="$IDENTITY_CLIENT_ID" \
   --overwrite
 
-kubectl label serviceaccount argocd-application-controller \
+kubectl patch statefulset argocd-application-controller \
   --namespace argocd \
-  azure.workload.identity/use=true \
-  --overwrite
+  --type merge \
+  --patch '{"spec":{"template":{"metadata":{"labels":{"azure.workload.identity/use":"true"}}}}}'
 ```
 
 ## Step 5: Restart ArgoCD Pods
@@ -144,9 +148,11 @@ After updating the service accounts, restart the ArgoCD pods so they pick up the
 
 ```bash
 # Restart ArgoCD deployments to pick up the new identity
+kubectl set env deployment argocd-repo-server -n argocd \
+  AZURE_ARM_TOKEN_RESOURCE=https://containerregistry.azure.net
+
 kubectl rollout restart deployment argocd-repo-server -n argocd
 kubectl rollout restart statefulset argocd-application-controller -n argocd
-kubectl rollout restart deployment argocd-server -n argocd
 ```
 
 ## Step 6: Grant the Managed Identity Access to Azure Resources
@@ -161,7 +167,7 @@ az role assignment create \
   --scope /subscriptions/<SUB_ID>/resourceGroups/<RG>/providers/Microsoft.ContainerRegistry/registries/<ACR_NAME>
 ```
 
-For Azure Key Vault access (if using External Secrets Operator with ArgoCD):
+For Azure Key Vault access, grant this role to the managed identity used by the pod that reads Key Vault secrets. If you use External Secrets Operator, this is usually the External Secrets Operator service account identity, not the ArgoCD repo-server identity.
 
 ```bash
 # Grant Key Vault Secrets User role
@@ -173,7 +179,7 @@ az role assignment create \
 
 ## Step 7: Configure ArgoCD to Use the Identity for ACR
 
-To pull Helm charts or images from Azure Container Registry using the managed identity, configure the repository in ArgoCD.
+To pull OCI Helm charts from Azure Container Registry using the managed identity, configure the repository in ArgoCD.
 
 ```yaml
 # acr-repository-secret.yaml
@@ -187,11 +193,12 @@ metadata:
 stringData:
   type: helm
   name: my-acr
-  url: https://myacr.azurecr.io/helm/v1/repo
+  url: myacr.azurecr.io/charts
   enableOCI: "true"
+  useAzureWorkloadIdentity: "true"
 ```
 
-With workload identity configured, ArgoCD can authenticate to ACR automatically without needing a username and password in the secret.
+With workload identity configured, ArgoCD can authenticate to ACR without needing a username and password in the secret.
 
 ## Architecture Overview
 
@@ -205,10 +212,10 @@ sequenceDiagram
     participant ACR as Azure Container Registry
     participant AKV as Azure Key Vault
 
-    ArgoCD->>WI: Request token via projected service account
-    WI->>AAD: Exchange federated token
+    WI-->>ArgoCD: Inject projected service account token and Azure environment variables
+    ArgoCD->>AAD: Exchange federated token for access token
     AAD-->>ArgoCD: Return access token
-    ArgoCD->>ACR: Pull charts/images with token
+    ArgoCD->>ACR: Pull charts/artifacts with token
     ArgoCD->>AKV: Read secrets with token
 ```
 
@@ -219,8 +226,11 @@ sequenceDiagram
 If the pods are not receiving the managed identity token, check the labels and annotations.
 
 ```bash
-# Verify the service account has the correct labels
+# Verify the service account has the correct annotation
 kubectl get serviceaccount argocd-repo-server -n argocd -o yaml
+
+# Verify the repo-server pod template has the workload identity label
+kubectl get deployment argocd-repo-server -n argocd -o yaml
 
 # Check that the pod has the projected token volume
 kubectl get pod -n argocd -l app.kubernetes.io/name=argocd-repo-server -o yaml | grep -A 5 "azure-identity-token"
