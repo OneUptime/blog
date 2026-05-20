@@ -302,7 +302,7 @@ This keeps all budget changes in Git with full audit history. No more ad-hoc `ku
 
 ## Handling Budget Overruns
 
-When a team hits their budget limit, new pods cannot be scheduled. ArgoCD will show the application as Degraded because replicas cannot be created.
+When a team hits their budget limit, new pods or other quota-tracked objects that would exceed the quota cannot be created. For workload controllers such as Deployments, the controller object may be accepted, but it will not be able to create all managed Pods. ArgoCD may show the application as Progressing or Degraded because the desired replicas are unavailable.
 
 Configure notifications to alert teams when they approach their limits.
 
