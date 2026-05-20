@@ -78,10 +78,12 @@ spec:
     path: {{ $app.path }}
     {{- if $app.helm }}
     helm:
+      {{- if $app.helm.valueFiles }}
       valueFiles:
         {{- range $app.helm.valueFiles }}
         - {{ . }}
         {{- end }}
+      {{- end }}
       {{- if $app.helm.parameters }}
       parameters:
         {{- range $app.helm.parameters }}
@@ -95,8 +97,8 @@ spec:
     namespace: {{ $app.namespace }}
   syncPolicy:
     automated:
-      prune: {{ $app.prune | default true }}
-      selfHeal: {{ $app.selfHeal | default true }}
+      prune: {{- if hasKey $app "prune" }} {{ $app.prune }}{{- else }} true{{- end }}
+      selfHeal: {{- if hasKey $app "selfHeal" }} {{ $app.selfHeal }}{{- else }} true{{- end }}
     syncOptions:
       - CreateNamespace=true
 {{- end }}
@@ -292,6 +294,10 @@ kind: Application
 metadata:
   name: {{ $app.name }}
   namespace: argocd
+  {{- if hasKey $app "syncWave" }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "{{ $app.syncWave }}"
+  {{- end }}
 spec:
   project: {{ $app.project | default "default" }}
   source:
