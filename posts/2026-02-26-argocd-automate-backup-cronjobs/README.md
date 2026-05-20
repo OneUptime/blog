@@ -96,9 +96,9 @@ spec:
 
                   # Log summary
                   APP_COUNT=$(grep -c "kind: Application$" \
-                    "$BACKUP_DIR/applications.yaml" || echo 0)
+                    "$BACKUP_DIR/applications.yaml" || true)
                   PROJ_COUNT=$(grep -c "kind: AppProject" \
-                    "$BACKUP_DIR/projects.yaml" || echo 0)
+                    "$BACKUP_DIR/projects.yaml" || true)
 
                   echo ""
                   echo "Backup complete!"
@@ -221,7 +221,7 @@ spec:
 
                   # Create inventory
                   APP_COUNT=$(grep -c "kind: Application$" \
-                    "$BACKUP_DIR/applications.yaml" || echo 0)
+                    "$BACKUP_DIR/applications.yaml" || true)
                   echo "{\"timestamp\":\"$TIMESTAMP\",\"applications\":$APP_COUNT}" \
                     > "$BACKUP_DIR/inventory.json"
 
@@ -309,7 +309,8 @@ spec:
                   mkdir -p "$BACKUP_DIR"
 
                   # Install kubectl
-                  apt-get update -qq && apt-get install -y -qq kubectl > /dev/null 2>&1
+                  curl -sLO "https://dl.k8s.io/release/v1.28.0/bin/linux/amd64/kubectl"
+                  chmod +x kubectl && mv kubectl /usr/local/bin/
 
                   # Export resources
                   kubectl get applications.argoproj.io -n argocd -o yaml > "$BACKUP_DIR/apps.yaml"
@@ -343,7 +344,7 @@ CRONJOB_NAME="argocd-backup-s3"
 
 LAST_JOB=$(kubectl get jobs -n "$NAMESPACE" \
   --sort-by=.metadata.creationTimestamp \
-  -l job-name -o json | \
+  -o json | \
   jq -r "[.items[] | select(.metadata.ownerReferences[]?.name == \"$CRONJOB_NAME\")] | last")
 
 if [ "$LAST_JOB" = "null" ] || [ -z "$LAST_JOB" ]; then
@@ -352,6 +353,7 @@ if [ "$LAST_JOB" = "null" ] || [ -z "$LAST_JOB" ]; then
 fi
 
 STATUS=$(echo "$LAST_JOB" | jq -r '.status.conditions[-1].type // "Running"')
+JOB_NAME=$(echo "$LAST_JOB" | jq -r '.metadata.name')
 COMPLETION=$(echo "$LAST_JOB" | jq -r '.status.completionTime // "N/A"')
 START=$(echo "$LAST_JOB" | jq -r '.status.startTime // "N/A"')
 
@@ -367,7 +369,7 @@ else
   # Get pod logs for debugging
   POD=$(kubectl get pods -n "$NAMESPACE" \
     --sort-by=.metadata.creationTimestamp \
-    -l job-name -o name | tail -1)
+    -l batch.kubernetes.io/job-name="$JOB_NAME" -o name | tail -1)
   echo "  Logs:"
   kubectl logs "$POD" -n "$NAMESPACE" --tail=20 | sed 's/^/    /'
 fi
@@ -415,7 +417,7 @@ Add notifications to your backup job:
 # Add to the backup CronJob container command
 # After the backup upload succeeds:
 SLACK_WEBHOOK="${SLACK_WEBHOOK_URL}"
-APP_COUNT=$(grep -c "kind: Application$" "$BACKUP_DIR/applications.yaml" || echo 0)
+APP_COUNT=$(grep -c "kind: Application$" "$BACKUP_DIR/applications.yaml" || true)
 BACKUP_SIZE=$(du -h "$BACKUP_FILE" | cut -f1)
 
 curl -s -X POST "$SLACK_WEBHOOK" \
