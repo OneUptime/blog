@@ -4,23 +4,23 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Loki, Logging
 
-Description: Learn how to deploy Grafana Loki for log aggregation using ArgoCD with production-ready configuration, storage backends, and retention policies.
+Description: Learn how to deploy Grafana Loki for log aggregation using ArgoCD with scalable configuration, storage backends, and retention policies.
 
 ---
 
 Grafana Loki is a horizontally scalable, highly available log aggregation system designed to be cost-effective and easy to operate. Unlike Elasticsearch, Loki indexes only metadata (labels) rather than the full text of log lines, which makes it significantly cheaper to run. Deploying Loki with ArgoCD gives you a GitOps-managed logging pipeline that is reproducible and self-healing.
 
-This guide covers deploying Loki in both single-binary mode for smaller environments and microservices mode for production workloads.
+This guide focuses on deploying Loki in Simple Scalable mode, with notes on when to choose monolithic or microservices mode instead.
 
 ## Understanding Loki Deployment Modes
 
 Loki has three deployment modes:
 
 - **Monolithic (single binary)**: All components run in a single process. Good for development and small clusters.
-- **Simple Scalable**: Read and write paths are separated into two targets. Good for medium workloads.
+- **Simple Scalable**: Read, write, and backend paths are separated into three targets. Good for medium workloads, but being deprecated before Loki 4.0.
 - **Microservices**: Each component runs independently. Best for large-scale production deployments.
 
-For most ArgoCD-managed deployments, the Simple Scalable mode provides the best balance of scalability and operational simplicity.
+For medium ArgoCD-managed deployments, the Simple Scalable mode provides a balance of scalability and operational simplicity. For new large production workloads, Grafana recommends microservices mode.
 
 ## Repository Structure
 
@@ -30,7 +30,7 @@ logging/
     Chart.yaml
     values.yaml
     values-production.yaml
-  promtail/
+  alloy/
     Chart.yaml
     values.yaml
 ```
@@ -49,8 +49,8 @@ type: application
 version: 1.0.0
 dependencies:
   - name: loki
-    version: "6.16.0"
-    repository: "https://grafana.github.io/helm-charts"
+    version: "16.0.1"
+    repository: "https://grafana-community.github.io/helm-charts"
 ```
 
 ## Configuring Loki for Simple Scalable Mode
@@ -163,10 +163,9 @@ loki:
       enabled: true
       labels:
         release: kube-prometheus-stack
-    selfMonitoring:
-      enabled: false
-    lokiCanary:
-      enabled: true
+
+  lokiCanary:
+    enabled: true
 ```
 
 ## Creating the ArgoCD Application for Loki
@@ -207,75 +206,85 @@ spec:
         maxDuration: 3m
 ```
 
-## Deploying Promtail as the Log Collector
+## Deploying Grafana Alloy as the Log Collector
 
-Loki needs a log shipper to send logs from your nodes. Promtail is the most common choice for Kubernetes.
+Loki needs a log shipper to send logs from your cluster. Grafana Alloy is the supported successor to Promtail for Kubernetes log collection.
 
 ```yaml
-# logging/promtail/Chart.yaml
+# logging/alloy/Chart.yaml
 apiVersion: v2
-name: promtail
-description: Wrapper chart for Grafana Promtail
+name: alloy
+description: Wrapper chart for Grafana Alloy
 type: application
 version: 1.0.0
 dependencies:
-  - name: promtail
-    version: "6.16.6"
+  - name: alloy
+    version: "1.8.1"
     repository: "https://grafana.github.io/helm-charts"
 ```
 
 ```yaml
-# logging/promtail/values.yaml
-promtail:
-  config:
-    clients:
-      - url: http://loki-gateway.logging.svc.cluster.local/loki/api/v1/push
-        tenant_id: ""
+# logging/alloy/values.yaml
+alloy:
+  alloy:
+    mounts:
+      varlog: true
+    configMap:
+      content: |
+        logging {
+          level  = "info"
+          format = "logfmt"
+        }
 
-    snippets:
-      # Add Kubernetes metadata to logs
-      pipelineStages:
-        - cri: {}
-        - multiline:
-            firstline: '^\d{4}-\d{2}-\d{2}'
-            max_wait_time: 3s
-        - labeldrop:
-            - filename
-            - stream
+        discovery.kubernetes "pods" {
+          role = "pod"
+        }
 
-  # DaemonSet resources
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      memory: 256Mi
+        loki.source.kubernetes "pods" {
+          targets    = discovery.kubernetes.pods.targets
+          forward_to = [loki.write.endpoint.receiver]
+        }
 
-  # Tolerations to run on all nodes
-  tolerations:
-    - effect: NoSchedule
-      operator: Exists
+        loki.write "endpoint" {
+          endpoint {
+            url = "http://loki-gateway.logging.svc.cluster.local:80/loki/api/v1/push"
+          }
+        }
+
+    # DaemonSet resources
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        memory: 256Mi
+
+  controller:
+    # Tolerations to run on all nodes
+    tolerations:
+      - effect: NoSchedule
+        operator: Exists
 
   serviceMonitor:
     enabled: true
-    labels:
+    additionalLabels:
       release: kube-prometheus-stack
 ```
 
-Create a separate ArgoCD Application for Promtail.
+Create a separate ArgoCD Application for Alloy.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: promtail
+  name: alloy
   namespace: argocd
 spec:
   project: logging
   source:
     repoURL: https://github.com/your-org/gitops-repo.git
     targetRevision: main
-    path: logging/promtail
+    path: logging/alloy
     helm:
       valueFiles:
         - values.yaml
@@ -331,12 +340,12 @@ After ArgoCD syncs both applications, verify the logging pipeline.
 # Check Loki pods
 kubectl get pods -n logging -l app.kubernetes.io/name=loki
 
-# Check Promtail DaemonSet
-kubectl get ds -n logging
+# Check Alloy DaemonSet
+kubectl get ds -n logging -l app.kubernetes.io/name=alloy
 
 # Test log ingestion using logcli
 kubectl port-forward -n logging svc/loki-gateway 3100:80
-logcli query '{namespace="default"}' --addr=http://localhost:3100
+logcli --addr=http://localhost:3100 query '{namespace="default"}'
 
 # Verify through Grafana Explore
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
@@ -347,9 +356,9 @@ kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 ```mermaid
 graph TB
     subgraph Nodes
-        P1[Promtail] --> GW[Loki Gateway]
-        P2[Promtail] --> GW
-        P3[Promtail] --> GW
+        P1[Alloy] --> GW[Loki Gateway]
+        P2[Alloy] --> GW
+        P3[Alloy] --> GW
     end
     subgraph Loki
         GW --> W[Write Path]
@@ -369,4 +378,4 @@ graph TB
 
 ## Summary
 
-Deploying Loki with ArgoCD gives you a GitOps-managed logging pipeline where configuration changes are tracked, reviewed, and automatically applied. Use the Simple Scalable mode for most production environments, configure S3-compatible object storage for durability, and pair Loki with Promtail for comprehensive log collection. The combination of Loki, Promtail, Grafana, and ArgoCD provides a modern, cost-effective logging stack that is fully declarative and self-healing.
+Deploying Loki with ArgoCD gives you a GitOps-managed logging pipeline where configuration changes are tracked, reviewed, and automatically applied. Use the Simple Scalable mode for medium environments, choose microservices mode for new large production environments, configure S3-compatible object storage for durability, and pair Loki with Grafana Alloy for comprehensive log collection. The combination of Loki, Alloy, Grafana, and ArgoCD provides a modern, cost-effective logging stack that is fully declarative and self-healing.
