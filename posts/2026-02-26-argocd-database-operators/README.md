@@ -12,7 +12,7 @@ Database operators automate the management of databases on Kubernetes, handling 
 
 ## Why Operators with ArgoCD
 
-Database operators extend the Kubernetes API with custom resources like `PostgresCluster`, `MySQLCluster`, or `MongoDBCommunity`. When managed through ArgoCD:
+Database operators extend the Kubernetes API with custom resources like CloudNativePG's `Cluster`, MySQL Operator's `InnoDBCluster`, or `MongoDBCommunity`. When managed through ArgoCD:
 
 - Operator upgrades go through code review
 - Database instance definitions are version-controlled
@@ -25,12 +25,12 @@ graph TD
     A --> C[Database Instance Application]
     B --> D[Operator Deployment]
     D --> E[CRDs Installed]
-    C --> F[Custom Resource: PostgresCluster]
+    C --> F[Custom Resource: Cluster]
     D --> F
     F --> G[StatefulSet]
     F --> H[Services]
     F --> I[Secrets]
-    F --> J[Backup CronJob]
+    F --> J[Backup or ScheduledBackup Resource]
 ```
 
 ## Deploying CloudNativePG (PostgreSQL)
@@ -371,8 +371,9 @@ spec:
     targetRevision: 0.21.0  # New version
     helm:
       values: |
-        # Ensure rolling upgrade strategy
-        upgradeStrategy: "rolling"
+        # Ensure rolling update strategy
+        updateStrategy:
+          type: RollingUpdate
 ```
 
 Before upgrading, check the operator's upgrade notes and test in staging first.
