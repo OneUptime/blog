@@ -277,16 +277,15 @@ Verify that deny windows are working correctly.
 
 argocd proj windows list production
 
-# Try to sync during a deny window (should fail for auto-sync)
+# Check the application sync window state
+argocd app get my-app
+
+# Try a manual sync during a deny window with manualSync: false
 argocd app sync my-app
 # Expected: error about sync window blocking the operation
-
-# Check the application for sync window conditions
-argocd app get my-app --output json | \
-  jq '.status.conditions[] | select(.type | contains("SyncWindow"))'
 ```
 
-If the sync succeeds when it should be blocked, check that your application matches the window's application, namespace, or cluster patterns. A common mistake is having a pattern like `production-*` when the application is named `prod-payment-api`.
+If the manual sync succeeds when it should be blocked, check that `manualSync` is set to `false` and that your application matches the window's application, namespace, or cluster patterns. A common mistake is having a pattern like `production-*` when the application is named `prod-payment-api`.
 
 ## Managing Deny Windows at Scale
 
