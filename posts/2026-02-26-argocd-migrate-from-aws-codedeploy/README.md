@@ -8,18 +8,18 @@ Description: A complete guide to migrating your Kubernetes deployments from AWS 
 
 ---
 
-AWS CodeDeploy is Amazon's deployment service that works across EC2, Lambda, and ECS. If your team has moved to Kubernetes and is still using CodeDeploy through its ECS or EC2 integration, switching to ArgoCD gives you a Kubernetes-native GitOps workflow that is simpler, more transparent, and not locked to AWS.
+AWS CodeDeploy is Amazon's deployment service that works across EC2, Lambda, and ECS. If your team has moved to Kubernetes and is still using CodeDeploy through EC2 scripts, ECS services, or a CodePipeline stage, switching to ArgoCD gives you a Kubernetes-native GitOps workflow that is simpler, more transparent, and not locked to AWS.
 
 This guide walks you through replacing CodeDeploy with ArgoCD for Kubernetes workloads.
 
 ## Why Move from CodeDeploy to ArgoCD
 
-CodeDeploy was not designed for Kubernetes. Even with ECS support, it adds complexity when you are running on EKS:
+CodeDeploy does not natively deploy Kubernetes resources. Even with ECS support, it adds complexity when you are moving workloads to EKS:
 
 - CodeDeploy requires an agent on EC2 or tight ECS integration - neither is natural for Kubernetes
 - AppSpec files are CodeDeploy-specific and do not translate to other platforms
-- Deployment visibility is limited to the AWS Console
-- No drift detection - CodeDeploy does not know if someone changed your cluster manually
+- Deployment visibility is centered around AWS deployment records rather than live Kubernetes resources
+- No continuous drift detection - CodeDeploy does not reconcile the cluster if someone changes it manually
 - ArgoCD is Kubernetes-native - it understands Deployments, StatefulSets, CRDs, and everything else natively
 
 ## Architecture Comparison
@@ -30,15 +30,15 @@ graph TB
         A[Git Push] --> B[CodePipeline]
         B --> C[CodeBuild]
         C --> D[CodeDeploy]
-        D --> E[EKS Cluster]
+        D --> E[EC2 or ECS targets]
     end
     subgraph ArgoCD Flow
         F[Git Push] --> G[ArgoCD detects change]
-        G --> H[ArgoCD syncs to cluster]
+        G --> H[ArgoCD syncs to EKS cluster]
     end
 ```
 
-The ArgoCD flow is simpler because it cuts out the pipeline middleman. Your Git repository IS the pipeline.
+The ArgoCD flow is simpler because it cuts CodeDeploy out of the deployment path. Your Git repository becomes the desired state, while CI still builds artifacts and updates manifests.
 
 ## Step 1: Understand What CodeDeploy Is Doing
 
@@ -75,16 +75,16 @@ Resources:
           ContainerName: "my-app"
           ContainerPort: 8080
 Hooks:
-  - BeforeInstall: "scripts/before_install.sh"
-  - AfterInstall: "scripts/after_install.sh"
-  - AfterAllowTestTraffic: "scripts/test_traffic.sh"
-  - BeforeAllowTraffic: "scripts/before_traffic.sh"
-  - AfterAllowTraffic: "scripts/after_traffic.sh"
+  - BeforeInstall: "BeforeInstallHookFunctionName"
+  - AfterInstall: "AfterInstallHookFunctionName"
+  - AfterAllowTestTraffic: "AfterAllowTestTrafficHookFunctionName"
+  - BeforeAllowTraffic: "BeforeAllowTrafficHookFunctionName"
+  - AfterAllowTraffic: "AfterAllowTrafficHookFunctionName"
 ```
 
 ## Step 2: Convert Your Manifests to Kubernetes-Native Format
 
-If you are on ECS, you need to convert task definitions to Kubernetes manifests. If you are already on EKS with CodeDeploy just doing the deployment part, your manifests may already exist.
+If you are on ECS, you need to convert task definitions to Kubernetes manifests. If you are already on EKS and CodeDeploy or CodeBuild is running scripts that apply manifests, your manifests may already exist.
 
 ```yaml
 # Kubernetes Deployment equivalent
@@ -209,17 +209,17 @@ For production, use an Ingress with TLS instead of a LoadBalancer. See our post 
 
 ## Step 5: Map CodeDeploy Hooks to ArgoCD Hooks
 
-CodeDeploy hooks translate to ArgoCD sync phases:
+CodeDeploy hooks translate approximately to ArgoCD sync phases and, for progressive delivery, Argo Rollouts analysis:
 
 | CodeDeploy Hook | ArgoCD Equivalent |
 |---|---|
 | BeforeInstall | PreSync hook |
-| AfterInstall | Sync wave (higher number) |
-| AfterAllowTestTraffic | PostSync hook |
-| BeforeAllowTraffic | Part of Sync phase |
-| AfterAllowTraffic | PostSync hook |
+| AfterInstall | Sync hook or sync wave |
+| AfterAllowTestTraffic | AnalysisRun or PostSync hook |
+| BeforeAllowTraffic | Argo Rollouts pre-promotion analysis or manual promotion gate |
+| AfterAllowTraffic | Argo Rollouts post-promotion analysis or PostSync hook |
 
-Convert your CodeDeploy hook scripts to Kubernetes Jobs:
+Convert your CodeDeploy Lambda hook logic or EC2 hook scripts to Kubernetes Jobs:
 
 ```yaml
 # Before-install script becomes a PreSync Job
@@ -275,7 +275,7 @@ spec:
 
 ## Step 6: Map Deployment Strategies
 
-CodeDeploy supports in-place, blue-green, and canary deployments. Here is how each maps:
+CodeDeploy supports in-place deployments for EC2/on-premises and blue-green deployments with all-at-once, linear, or canary traffic shifting for ECS and Lambda. Here is how each pattern maps:
 
 **Rolling (In-Place)** - Use a standard Kubernetes Deployment:
 
@@ -288,7 +288,7 @@ spec:
       maxUnavailable: 25%
 ```
 
-**Blue-Green** - Use Argo Rollouts:
+**Blue-Green** - Use Argo Rollouts after installing the Rollouts controller and CRDs:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -318,7 +318,7 @@ spec:
           image: 123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:v1.5.0
 ```
 
-**Canary** - Also use Argo Rollouts:
+**Canary** - Also use Argo Rollouts after installing the Rollouts controller and CRDs:
 
 ```yaml
 spec:
