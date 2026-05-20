@@ -50,7 +50,7 @@ type: application
 version: 1.0.0
 dependencies:
   - name: falco
-    version: "4.12.0"
+    version: "8.0.5"
     repository: "https://falcosecurity.github.io/charts"
 ```
 
@@ -84,15 +84,15 @@ falco:
     priority: notice
 
     # Rules files
-    rules_file:
+    rules_files:
       - /etc/falco/falco_rules.yaml
       - /etc/falco/falco_rules.local.yaml
       - /etc/falco/rules.d
 
     # Buffered outputs
     buffered_outputs: true
-    outputs_rate: 0
-    outputs_max_burst: 200
+    outputs_queue:
+      capacity: 0
 
   # Falcoctl for rules auto-update
   falcoctl:
@@ -127,7 +127,7 @@ falco:
 
   # ServiceMonitor for metrics
   serviceMonitor:
-    enabled: true
+    create: true
     labels:
       release: kube-prometheus-stack
 
@@ -167,20 +167,19 @@ falco:
         priority: CRITICAL
         tags: [shell, reverse_shell, security]
 
-      # Detect kubectl exec
-      - rule: Kubectl Exec to Pod
-        desc: Alert when kubectl exec is used on pods in production namespaces
+      # Detect interactive shell
+      - rule: Interactive Shell in Container
+        desc: Detect interactive shells spawned inside containers
         condition: >
-          kevt and pod and
-          ka.verb = "create" and
-          ka.target.subresource = "exec" and
-          not ka.target.namespace in (kube-system, monitoring)
+          spawned_process and container and shell_procs and proc.tty != 0 and
+          not k8s.ns.name in (kube-system, monitoring)
         output: >
-          Kubectl exec detected
-          (user=%ka.user.name pod=%ka.target.name
-          namespace=%ka.target.namespace)
+          Interactive shell detected
+          (user=%user.name container=%container.name
+          image=%container.image.repository command=%proc.cmdline
+          terminal=%proc.tty pod=%k8s.pod.name namespace=%k8s.ns.name)
         priority: WARNING
-        tags: [exec, audit, security]
+        tags: [shell, interactive, security]
 
       # Detect sensitive file access
       - rule: Read Sensitive Files in Container
@@ -245,7 +244,7 @@ type: application
 version: 1.0.0
 dependencies:
   - name: falcosidekick
-    version: "0.8.5"
+    version: "0.13.1"
     repository: "https://falcosecurity.github.io/charts"
 ```
 
@@ -274,7 +273,7 @@ falcosidekick:
       hostport: http://loki-gateway.logging.svc.cluster.local
       minimumpriority: "notice"
 
-    # Forward to Prometheus via push gateway
+    # Add labels to Falcosidekick Prometheus metrics
     prometheus:
       extralabels: "source:falco"
 
@@ -287,7 +286,7 @@ falcosidekick:
 
   serviceMonitor:
     enabled: true
-    labels:
+    additionalLabels:
       release: kube-prometheus-stack
 ```
 
