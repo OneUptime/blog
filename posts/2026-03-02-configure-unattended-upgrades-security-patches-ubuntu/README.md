@@ -8,7 +8,7 @@ Description: Learn how to configure Ubuntu's unattended-upgrades to automaticall
 
 ---
 
-Keeping servers patched against security vulnerabilities is a fundamental operational responsibility, but manually running `apt upgrade` on every machine is impractical at scale. Ubuntu ships with `unattended-upgrades`, a daemon that applies security updates automatically while leaving you in control of what gets updated, when, and how the system handles situations that require a reboot.
+Keeping servers patched against security vulnerabilities is a fundamental operational responsibility, but manually running `apt upgrade` on every machine is impractical at scale. Ubuntu ships with `unattended-upgrades`, a tool that applies security updates automatically while leaving you in control of what gets updated, when, and how the system handles situations that require a reboot.
 
 ## Installing unattended-upgrades
 
@@ -26,7 +26,7 @@ sudo apt install unattended-upgrades
 sudo dpkg-reconfigure --priority=low unattended-upgrades
 ```
 
-The `dpkg-reconfigure` command asks whether to enable automatic updates and sets up the necessary systemd timers.
+The `dpkg-reconfigure` command asks whether to enable automatic updates and sets up the necessary APT periodic configuration used by the systemd timers.
 
 ## Understanding the Configuration Files
 
@@ -67,11 +67,13 @@ The key section is `Unattended-Upgrade::Allowed-Origins`:
 
 ```text
 Unattended-Upgrade::Allowed-Origins {
-    // Only apply Ubuntu security updates (safe default)
+    // Base release pocket, needed when security updates pull new dependencies
+    "${distro_id}:${distro_codename}";
+
+    // Apply Ubuntu security updates
     "${distro_id}:${distro_codename}-security";
 
-    // Uncomment to also apply general updates (more aggressive)
-    // "${distro_id}:${distro_codename}";
+    // Uncomment to also apply general stable release updates (more aggressive)
     // "${distro_id}:${distro_codename}-updates";
 
     // ESM Infrastructure updates for Ubuntu Pro subscribers
@@ -82,13 +84,13 @@ Unattended-Upgrade::Allowed-Origins {
 
 The `${distro_id}` and `${distro_codename}` are expanded at runtime. On Ubuntu 22.04 (Jammy), `${distro_id}` becomes `Ubuntu` and `${distro_codename}` becomes `jammy`.
 
-For a production server, staying with only `-security` updates is the conservative and recommended approach. Enabling `-updates` means you'll get all bug fixes and improvements, which can occasionally cause unexpected behavior changes.
+For a production server, staying with the base release and `-security` pockets is the conservative and recommended approach. Enabling `-updates` means you'll get all bug fixes and improvements, which can occasionally cause unexpected behavior changes.
 
 ## Blocking Specific Packages from Auto-Update
 
 Some packages you never want auto-updated - perhaps a database or web server you control manually:
 
-```bash
+```text
 Unattended-Upgrade::Package-Blacklist {
     // Exact package names
     "postgresql-14";
@@ -102,7 +104,7 @@ Unattended-Upgrade::Package-Blacklist {
 
 Or the inverse - only allow specific packages to update:
 
-```bash
+```text
 // Only packages matching these patterns will be updated
 Unattended-Upgrade::Package-Whitelist {
     "openssl";
@@ -115,7 +117,7 @@ Unattended-Upgrade::Package-Whitelist {
 
 Set up email alerts for automatic updates:
 
-```bash
+```text
 # Install a mail transfer agent if not present
 sudo apt install mailutils postfix
 
@@ -123,17 +125,17 @@ sudo apt install mailutils postfix
 Unattended-Upgrade::Mail "admin@example.com";
 
 // Send email only when there's an error (reduces noise)
-Unattended-Upgrade::MailOnlyOnError "true";
+Unattended-Upgrade::MailReport "only-on-error";
 
-// Or send on every successful upgrade
-Unattended-Upgrade::MailOnlyOnError "false";
+// Or send whenever packages are upgraded or errors occur
+Unattended-Upgrade::MailReport "on-change";
 ```
 
 ## Handling Automatic Reboots
 
 Some security patches - particularly kernel updates or glibc updates - require a reboot to take effect. Configure how unattended-upgrades handles this:
 
-```bash
+```text
 // Automatically reboot when required
 Unattended-Upgrade::Automatic-Reboot "true";
 
@@ -148,11 +150,11 @@ For production servers, it's common to enable automatic reboots but schedule the
 
 A middle ground is to enable the flag but send notifications so you know a reboot happened:
 
-```bash
+```text
 Unattended-Upgrade::Automatic-Reboot "true";
 Unattended-Upgrade::Automatic-Reboot-Time "now";
 Unattended-Upgrade::Mail "ops-team@example.com";
-Unattended-Upgrade::MailOnlyOnError "false";
+Unattended-Upgrade::MailReport "on-change";
 ```
 
 ## Checking If a Reboot Is Needed
@@ -222,7 +224,7 @@ Two timers work together:
 - `apt-daily.timer` - Fetches package lists and downloads upgrades
 - `apt-daily-upgrade.timer` - Applies the downloaded upgrades
 
-By default, `apt-daily-upgrade` runs 6-8 minutes after daily boot and then at 6 AM, with a randomization window to prevent all servers from hitting the mirror simultaneously.
+By default, `apt-daily.timer` is scheduled at 6 AM and 6 PM with a randomized delay, while `apt-daily-upgrade.timer` is scheduled at 6 AM with its own randomized delay. Both timers are persistent, so a missed scheduled run can be triggered after the next boot, still subject to the randomized delay.
 
 ## Adjusting Timing to Avoid Peak Hours
 
@@ -237,9 +239,8 @@ Add a custom configuration:
 
 ```ini
 [Timer]
-# Clear the default values
+# Clear the default calendar values
 OnCalendar=
-OnBootSec=
 
 # Run at 3 AM daily
 OnCalendar=*-*-* 03:00:00
@@ -260,6 +261,7 @@ Here's a production-ready 50unattended-upgrades configuration:
 
 ```text
 Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
     "${distro_id}:${distro_codename}-security";
 };
 
@@ -272,7 +274,7 @@ Unattended-Upgrade::DevRelease "false";
 Unattended-Upgrade::AutoFixInterruptedDpkg "true";
 Unattended-Upgrade::MinimalSteps "true";
 Unattended-Upgrade::Mail "sysadmin@example.com";
-Unattended-Upgrade::MailOnlyOnError "false";
+Unattended-Upgrade::MailReport "on-change";
 Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
 Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
 Unattended-Upgrade::Remove-Unused-Dependencies "false";
@@ -285,4 +287,4 @@ Unattended-Upgrade::SyslogFacility "daemon";
 
 ## Summary
 
-Unattended-upgrades provides a well-tested, configurable mechanism for keeping Ubuntu systems patched without manual intervention. The default configuration - applying only security updates from the `-security` pocket - is conservative and appropriate for most production systems. Adjust the package blacklist to protect packages you manage manually, configure notifications, and decide on your reboot policy based on your maintenance window constraints. Pair this with monitoring of the upgrade logs to stay aware of what's being changed automatically.
+Unattended-upgrades provides a well-tested, configurable mechanism for keeping Ubuntu systems patched without manual intervention. The default configuration - applying security updates from the `-security` pocket while allowing the base release pocket for required dependencies - is conservative and appropriate for most production systems. Adjust the package blacklist to protect packages you manage manually, configure notifications, and decide on your reboot policy based on your maintenance window constraints. Pair this with monitoring of the upgrade logs to stay aware of what's being changed automatically.
