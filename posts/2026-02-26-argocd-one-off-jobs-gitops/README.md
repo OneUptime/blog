@@ -104,11 +104,11 @@ spec:
   backoffLimit: 1
 ```
 
-When ArgoCD syncs, it creates the Job if it does not exist. Since the Job name includes a version, a completed Job with the same name will not be recreated. When you need a new migration, change the name to `migrate-user-emails-v4`.
+When ArgoCD syncs, it creates the Job if it does not exist. Since the Job name includes a version, a completed Job with the same name will not be recreated as long as the completed Job remains in the cluster. When you need a new migration, change the name to `migrate-user-emails-v4`.
 
 ### Cleaning Up Old Jobs
 
-Over time, completed Jobs accumulate. Add a TTL to auto-clean them:
+Over time, completed Jobs accumulate. Add a TTL to auto-clean them, but remove the manifest from Git before the TTL expires. If the Job is deleted by the TTL controller while the manifest is still in Git, ArgoCD will see the Job as missing and can recreate it on a later sync:
 
 ```yaml
 apiVersion: batch/v1
