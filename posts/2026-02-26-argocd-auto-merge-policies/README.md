@@ -33,14 +33,14 @@ Renovate can automatically update image tags and Helm chart versions:
 ```json
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "kubernetes": {
     "fileMatch": ["(^|/).*\\.yaml$"]
   },
   "packageRules": [
     {
       "description": "Auto-merge patch version updates in dev",
-      "matchPaths": ["services/*/overlays/dev/**"],
+      "matchFileNames": ["services/*/overlays/dev/**"],
       "matchUpdateTypes": ["patch", "digest"],
       "automerge": true,
       "automergeType": "pr",
@@ -49,25 +49,24 @@ Renovate can automatically update image tags and Helm chart versions:
     },
     {
       "description": "Auto-merge minor updates in dev after CI passes",
-      "matchPaths": ["services/*/overlays/dev/**"],
+      "matchFileNames": ["services/*/overlays/dev/**"],
       "matchUpdateTypes": ["minor"],
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash",
-      "stabilityDays": 1
+      "minimumReleaseAge": "1 day"
     },
     {
       "description": "Never auto-merge production changes",
-      "matchPaths": ["services/*/overlays/production/**"],
-      "automerge": false,
-      "requiredStatusChecks": ["validate-manifests", "security-scan", "argocd-diff"]
+      "matchFileNames": ["services/*/overlays/production/**"],
+      "automerge": false
     },
     {
       "description": "Auto-merge platform tool patch updates in staging",
-      "matchPaths": ["platform/**"],
+      "matchFileNames": ["platform/**"],
       "matchUpdateTypes": ["patch"],
       "automerge": true,
-      "stabilityDays": 3
+      "minimumReleaseAge": "3 days"
     }
   ]
 }
@@ -83,13 +82,12 @@ Create a workflow that enables auto-merge for qualifying PRs:
 name: Auto-Merge Low Risk Changes
 on:
   pull_request:
-    types: [opened, synchronize, labeled]
-  check_suite:
-    types: [completed]
+    types: [opened, synchronize, reopened, labeled]
 
 permissions:
   pull-requests: write
-  contents: write
+  contents: read
+  issues: write
 
 jobs:
   evaluate-risk:
@@ -104,100 +102,115 @@ jobs:
       - name: Evaluate change risk
         id: check
         run: |
-          auto_merge="true"
-          changed_files=$(git diff --name-only origin/main)
+          auto_merge="false"
+          blocked="false"
+          base_ref="${{ github.base_ref }}"
+          git fetch origin "$base_ref"
+          changed_files=$(git diff --name-only "origin/$base_ref...HEAD")
+          diff_output=$(git diff --unified=0 "origin/$base_ref...HEAD")
 
           # Block auto-merge for production changes
           if echo "$changed_files" | grep -q "/production/"; then
             echo "Production changes detected - blocking auto-merge"
-            auto_merge="false"
+            blocked="true"
           fi
 
           # Block for RBAC changes
           if echo "$changed_files" | grep -qi "rbac\|role\|rolebinding"; then
             echo "RBAC changes detected - blocking auto-merge"
-            auto_merge="false"
+            blocked="true"
           fi
 
           # Block for network policy changes
           if echo "$changed_files" | grep -qi "networkpolic"; then
             echo "Network policy changes detected - blocking auto-merge"
-            auto_merge="false"
+            blocked="true"
           fi
 
           # Block for new application definitions
           if echo "$changed_files" | grep -q "^apps/"; then
             echo "Application definition changes detected - blocking auto-merge"
-            auto_merge="false"
+            blocked="true"
           fi
 
           # Block for namespace or cluster-scoped resource changes
-          if git diff origin/main | grep -q "kind: Namespace\|kind: ClusterRole"; then
+          if echo "$diff_output" | grep -q "kind: Namespace\|kind: ClusterRole"; then
             echo "Cluster-scoped changes detected - blocking auto-merge"
-            auto_merge="false"
+            blocked="true"
           fi
 
           # Allow: image tag only changes in dev/staging
-          if echo "$changed_files" | grep -qE "/(dev|staging)/" && \
-             git diff origin/main | grep -qE "^[+-].*image:|^[+-].*newTag:" && \
-             ! git diff origin/main | grep -qvE "^[+-].*image:|^[+-].*newTag:|^[+-]{3}|^@@|^diff"; then
+          non_image_changes=$(echo "$diff_output" | grep -E "^[+-]" | grep -vE "^(\+\+\+|---)" | grep -vE "^[+-].*(image:|newTag:)" || true)
+          if [ "$blocked" = "false" ] && \
+             echo "$changed_files" | grep -qE "/(dev|staging)/" && \
+             echo "$diff_output" | grep -qE "^[+-].*(image:|newTag:)" && \
+             [ -z "$non_image_changes" ]; then
             echo "Image-only change in non-production - eligible for auto-merge"
+            auto_merge="true"
           fi
 
           echo "auto-mergeable=$auto_merge" >> $GITHUB_OUTPUT
 
   auto-merge:
     needs: evaluate-risk
-    if: needs.evaluate-risk.outputs.auto-mergeable == 'true'
+    if: needs.evaluate-risk.outputs.auto-mergeable == 'true' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Enable auto-merge
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Wait for all required checks to pass
-            await github.rest.pulls.merge({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: context.issue.number,
-              merge_method: 'squash'
-            });
+        run: |
+          gh pr merge "$PR_NUMBER" --auto --squash --match-head-commit "$HEAD_SHA"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
       - name: Add auto-merge label
         run: |
-          gh pr edit ${{ github.event.pull_request.number }} --add-label "auto-merged"
+          gh label create "auto-merge-enabled" --color "0E8A16" --description "Auto-merge has been enabled by policy" --force
+          gh pr edit "$PR_NUMBER" --add-label "auto-merge-enabled"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
 ```
 
 ## Image Updater Auto-Merge
 
-When using ArgoCD Image Updater, configure it to write back to Git and auto-merge:
+When using ArgoCD Image Updater, configure an `ImageUpdater` resource to write back to Git:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
   name: my-app-dev
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: app=org/my-app
-    argocd-image-updater.argoproj.io/app.update-strategy: latest
-    argocd-image-updater.argoproj.io/write-back-method: git
-    argocd-image-updater.argoproj.io/write-back-target: kustomization
-    argocd-image-updater.argoproj.io/git-branch: main
+  namespace: argocd
 spec:
-  source:
-    path: overlays/dev
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      branch: "main"
+      writeBackTarget: "kustomization"
+  applicationRefs:
+    - namePattern: "my-app-dev"
+      images:
+        - alias: "app"
+          imageName: "org/my-app"
+          commonUpdateSettings:
+            updateStrategy: "latest"
+          manifestTargets:
+            kustomize:
+              name: "org/my-app"
 ```
 
 For dev environments, Image Updater can write directly to the main branch (if branch protection allows it for the bot account). For production, configure it to create PRs instead:
 
 ```yaml
-annotations:
-  argocd-image-updater.argoproj.io/write-back-method: git:repocreds
-  argocd-image-updater.argoproj.io/git-branch: "image-update-{{.SHA}}"
-  # This creates a branch, not a PR directly
-  # Use a GitHub Action to create the PR from the branch
+spec:
+  writeBackConfig:
+    method: "git:secret:argocd-image-updater/git-creds"
+    gitConfig:
+      branch: "main"
+      pullRequest:
+        github: {}
 ```
 
 ## Policy Enforcement
@@ -250,6 +263,10 @@ on:
     paths:
       - 'services/*/overlays/dev/**'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   # Stage 1: Dev deploys automatically via ArgoCD auto-sync
   wait-for-dev:
@@ -281,22 +298,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/download/v4.45.1/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
       - name: Create staging promotion PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Copy dev image tags to staging
           git checkout -b auto-promote/staging-$(date +%Y%m%d%H%M)
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           # Extract image tags from dev overlays and apply to staging
           for service_dir in services/*/overlays/dev; do
             service=$(echo "$service_dir" | cut -d/ -f2)
             staging_dir="services/$service/overlays/staging"
 
-            if [ -f "$service_dir/kustomization.yaml" ] && [ -d "$staging_dir" ]; then
-              # Copy image section from dev to staging kustomization
-              # This is simplified - real implementation would use yq
+            if [ -f "$service_dir/kustomization.yaml" ] && [ -f "$staging_dir/kustomization.yaml" ]; then
+              # Copy image section from dev to staging kustomization.
+              if yq -e '.images' "$service_dir/kustomization.yaml" >/dev/null; then
+                images_file=$(mktemp)
+                yq '.images' "$service_dir/kustomization.yaml" > "$images_file"
+                IMAGES_FILE="$images_file" yq -i '.images = load(strenv(IMAGES_FILE))' "$staging_dir/kustomization.yaml"
+                rm -f "$images_file"
+              fi
               echo "Promoting $service to staging"
             fi
           done
+
+          if git diff --quiet; then
+            echo "No staging changes to promote"
+            exit 0
+          fi
 
           git add .
           git commit -m "Auto-promote dev images to staging"
@@ -312,7 +348,7 @@ jobs:
 Even with auto-merge, maintain safety:
 
 1. **All CI checks must pass** - Never auto-merge if validation fails
-2. **Time delays for stability** - Wait for `stabilityDays` before merging dependency updates
+2. **Time delays for stability** - Wait for `minimumReleaseAge` before merging dependency updates
 3. **Blast radius limits** - Only auto-merge changes affecting a single service
 4. **Rollback readiness** - Ensure the previous version can be restored quickly
 5. **Monitoring hooks** - Auto-merge should trigger deployment monitoring
