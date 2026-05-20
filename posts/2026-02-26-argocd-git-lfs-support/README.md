@@ -22,44 +22,24 @@ LFS is relevant for ArgoCD in several scenarios:
 
 If your repository uses Git LFS and you do not enable LFS support in ArgoCD, the repo-server will clone the repository but only get the LFS pointer files instead of the actual content. This causes manifest generation to fail with cryptic errors because ArgoCD tries to parse pointer files as YAML.
 
-## Enabling Git LFS Globally
+## Enabling Git LFS with the ArgoCD CLI
 
-To enable LFS support for all repositories, set the environment variable on the ArgoCD repo-server:
-
-```yaml
-# argocd-repo-server-patch.yaml
-
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          env:
-            - name: ARGOCD_GIT_LFS_ENABLED
-              value: "true"
-```
-
-Apply the patch:
+To enable LFS support when adding a repository with the ArgoCD CLI, use the `--enable-lfs` flag:
 
 ```bash
-kubectl patch deployment argocd-repo-server -n argocd --type json -p '[
-  {
-    "op": "add",
-    "path": "/spec/template/spec/containers/0/env/-",
-    "value": {
-      "name": "ARGOCD_GIT_LFS_ENABLED",
-      "value": "true"
-    }
-  }
-]'
+argocd repo add https://github.com/my-org/config-repo-with-lfs.git \
+  --username argocd \
+  --password ghp_your_token \
+  --enable-lfs
 ```
 
-After applying this, the repo-server pod will restart and begin pulling LFS objects during repository clones.
+You can also update an existing repository entry:
+
+```bash
+argocd repo add https://github.com/my-org/config-repo-with-lfs.git --enable-lfs --upsert
+```
+
+After applying this, ArgoCD will begin pulling LFS objects for that repository during repository operations.
 
 ## Enabling LFS Per Repository
 
@@ -109,7 +89,7 @@ The LFS server is usually the same as the Git hosting provider (GitHub, GitLab, 
 
 ## LFS Authentication
 
-LFS uses the same credentials as the Git repository for authentication. If you have configured HTTPS credentials or SSH keys for your repository, LFS will use those same credentials to download large files.
+For HTTPS repositories, LFS uses the same repository credentials to download large files. For SSH repositories, behavior depends on the Git provider: some providers support LFS over SSH, while others still perform LFS transfers over HTTPS and may require HTTPS credentials for LFS.
 
 However, some LFS servers require separate authentication. In those cases, you need to ensure the credentials have access to both Git and LFS endpoints:
 
@@ -248,7 +228,7 @@ spec:
 
 ### Cache Configuration
 
-ArgoCD caches repository content. For LFS repositories, the cache helps avoid repeated downloads:
+ArgoCD caches repository content, and the reconciliation timeout also controls the repo-server's cached Git revision expiration. For LFS repositories, increasing it can reduce how often ArgoCD checks repositories for changes:
 
 ```yaml
 apiVersion: v1
@@ -257,7 +237,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Increase cache time for repos with large LFS objects
+  # Reduce repository polling frequency and cached Git revision expiration
   timeout.reconciliation: 600s
 ```
 
@@ -276,10 +256,7 @@ size 52428800
 This means LFS is not enabled. Check:
 
 ```bash
-# Verify LFS is enabled globally
-kubectl get deployment argocd-repo-server -n argocd -o yaml | grep LFS
-
-# Or check the repository secret
+# Check the repository secret
 kubectl get secret repo-with-lfs -n argocd -o yaml | grep enableLfs
 ```
 
@@ -296,7 +273,7 @@ kubectl exec -n argocd deployment/argocd-repo-server -- \
 
 ### Bandwidth Limits
 
-Git hosting providers impose bandwidth limits on LFS downloads. GitHub offers 1 GB per month on free plans. If you hit limits, consider hosting your own LFS server or using a Git provider with higher limits for your usage pattern.
+Git hosting providers impose bandwidth limits on LFS downloads. GitHub Free includes 10 GiB of Git LFS bandwidth per billing cycle. If you hit limits, consider hosting your own LFS server or using a Git provider with higher limits for your usage pattern.
 
 ## Alternatives to LFS
 
