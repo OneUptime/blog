@@ -33,24 +33,24 @@ Start by creating a GitHub issue using the feature request template. The quality
 
 The most common mistake in feature requests is jumping straight to a solution without explaining the problem. Maintainers need to understand why this matters.
 
-```markdown
+````markdown
 ## Problem Statement
 
 When managing 200+ Applications across 15 clusters, there is no way to
-bulk-sync applications that share a common label. Currently, operators must
-either sync each application individually through the UI/CLI or write custom
-scripts that call the ArgoCD API.
+bulk-refresh applications that share a common label. Currently, operators must
+either hard-refresh each application individually through the UI/CLI or write
+custom scripts that call the ArgoCD CLI or API.
 
 This is particularly painful during cluster upgrades when we need to re-sync
-all applications targeting a specific cluster after the upgrade completes.
+ArgoCD's cached application state for all applications targeting a specific
+cluster after the upgrade completes.
 
 ### Who is affected?
 - Platform teams managing large-scale multi-cluster deployments
 - Organizations with 100+ ArgoCD Applications
 
 ### Current workaround
-We wrote a bash script that calls the ArgoCD API in a loop:
-```
+We wrote a bash script that calls the ArgoCD CLI in a loop:
 
 ```bash
 #!/bin/bash
@@ -58,52 +58,51 @@ We wrote a bash script that calls the ArgoCD API in a loop:
 
 APPS=$(argocd app list -l cluster=production -o name)
 for app in $APPS; do
-    argocd app sync "$app" --async
-    echo "Triggered sync for $app"
+    argocd app get "$app" --hard-refresh >/dev/null
+    echo "Triggered hard refresh for $app"
 done
 ```
+````
 
 ### Propose a Solution
 
 After establishing the problem, describe your proposed solution. Be specific but leave room for the maintainers to suggest alternatives.
 
-```markdown
+````markdown
 ## Proposed Solution
 
-Add a `--selector` flag to `argocd app sync` that allows bulk-syncing
+Add an `argocd app refresh` command that allows bulk-refreshing
 applications matching a label selector:
 
 ```bash
-## Sync all apps with the cluster=production label
-argocd app sync --selector cluster=production
+## Hard-refresh all apps with the cluster=production label
+argocd app refresh --selector cluster=production --hard
 
-## Sync all apps in a specific project
-argocd app sync --selector project=payments
+## Refresh all apps in a specific project
+argocd app refresh --project payments
 
-## Combine with existing sync options
-argocd app sync --selector cluster=production --prune --force
-```bash
+## Combine selector and project filters
+argocd app refresh --selector cluster=production --project payments --hard
+```
 
 ### API Changes
 
-Add a new endpoint or extend the existing sync endpoint:
+Add a new endpoint or extend the existing application query endpoint:
 
 ```text
-POST /api/v1/applications/bulk-sync
+POST /api/v1/applications/refresh
 {
   "selector": "cluster=production",
-  "syncOptions": {
-    "prune": true,
-    "dryRun": false
-  }
+  "project": "payments",
+  "hard": true
 }
-```bash
+```
 
 ### UI Changes
 
-Add a "Sync Selected" button to the Applications list view when
+Add a "Refresh Selected" button to the Applications list view when
 applications are selected via checkboxes.
-```text
+````
 
 ### Explain the Impact
 
@@ -112,7 +111,7 @@ Help maintainers understand the scope and value.
 ```markdown
 ## Impact
 
-- **User impact:** Reduces time to re-sync a cluster's applications from
+- **User impact:** Reduces time to hard-refresh a cluster's applications from
   30+ minutes of manual work to a single command
 - **Complexity:** Medium - requires changes to CLI, API, and UI
 - **Breaking changes:** None - this is purely additive
@@ -126,20 +125,20 @@ For significant features, maintainers will ask for a design document. ArgoCD use
 Create a proposal document in the `docs/proposals` directory of the ArgoCD repo.
 
 ```markdown
-# Bulk Application Sync
+# Bulk Application Refresh
 
 ## Summary
-Add the ability to sync multiple ArgoCD Applications simultaneously
+Add the ability to refresh multiple ArgoCD Applications simultaneously
 using label selectors, both via CLI and API.
 
 ## Motivation
 [Expand on the problem statement from the issue]
 
 ## Goals
-- Allow syncing multiple applications via label selector
-- Support all existing sync options (prune, dry-run, force, etc.)
+- Allow refreshing multiple applications via label selector
+- Support both normal refresh and hard refresh
 - Provide progress tracking for bulk operations
-- Rate-limit concurrent syncs to prevent API server overload
+- Rate-limit concurrent refreshes to prevent API server overload
 
 ## Non-Goals
 - This proposal does not cover bulk delete or bulk update operations
@@ -154,14 +153,14 @@ using label selectors, both via CLI and API.
 [Detailed API specification with request/response schemas]
 
 ### Controller Changes
-[How the controller will handle bulk sync requests]
+[How the controller will handle bulk refresh requests]
 
 ### Rate Limiting
 [Strategy for preventing resource exhaustion]
 
 ## Alternatives Considered
 
-### Alternative 1: ApplicationSet-based bulk sync
+### Alternative 1: ApplicationSet-based refresh
 [Why this was rejected]
 
 ### Alternative 2: External controller approach
@@ -196,8 +195,8 @@ Numbers make your case stronger. If you can quantify the impact, do it.
 - This issue has been referenced in 15 separate bug reports
 - Survey of our 200-person platform engineering team:
   87% said bulk operations are a top-3 missing feature
-- Similar functionality exists in FluxCD (flux reconcile --selector)
-  and is heavily used
+- Similar label-selector workflows exist in Kubernetes tools and are
+  heavily used by operators
 ```
 
 ### Offer to Implement
@@ -241,25 +240,26 @@ Not every feature request will be accepted, and that is okay. Common reasons for
 - It conflicts with the project's architecture or direction
 - It is better suited as an external plugin or extension
 
-If your request is rejected, ask for feedback and consider whether the feature could be implemented as a Config Management Plugin, a custom controller, or an external tool that integrates with the ArgoCD API.
+If your request is rejected, ask for feedback and consider whether the feature could be implemented as a custom controller, an external tool that integrates with the ArgoCD API, or, for manifest-generation use cases, a Config Management Plugin.
 
 ```yaml
-# Example: Implementing a rejected feature as a CMP
+# Example: Implementing a rejected manifest-generation feature as a CMP.
+# This ConfigMap must be mounted into the repo-server sidecar plugin container.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: custom-bulk-sync-plugin
+  name: custom-render-plugin
   namespace: argocd
 data:
   plugin.yaml: |
     apiVersion: argoproj.io/v1alpha1
     kind: ConfigManagementPlugin
     metadata:
-      name: bulk-sync-helper
+      name: custom-render-helper
     spec:
       generate:
-        command: ["/bin/bash", "-c"]
-        args: ["python3 /scripts/bulk-sync.py"]
+        command: ["sh", "-c"]
+        args: ["python3 /scripts/render.py"]
 ```
 
 ## After Your Feature Is Accepted
