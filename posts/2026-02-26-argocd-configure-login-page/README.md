@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, UI Customization, Security
 
-Description: Learn how to customize the ArgoCD login page with company branding, custom messages, SSO button labels, and background styles to create a professional and informative authentication experience.
+Description: Learn how to customize the ArgoCD login page with company branding, custom messages, SSO button styling, and background styles to create a professional and informative authentication experience.
 
 ---
 
@@ -19,8 +19,8 @@ The standard ArgoCD login page contains:
 - ArgoCD logo
 - "Let's get stuff deployed!" tagline
 - Username and password fields (for local accounts)
-- SSO login button (if configured)
-- ArgoCD version number
+- SSO login button with the configured provider name (if SSO is configured)
+- Argo project logo footer
 
 ```mermaid
 flowchart TD
@@ -31,7 +31,7 @@ flowchart TD
     B --> B2[Tagline Text]
     C --> C1[Username/Password Fields]
     C --> C2[SSO Login Button]
-    D --> D1[Version Number]
+    D --> D1[Argo Project Logo]
 ```
 
 ## Customizing the Logo
@@ -47,6 +47,8 @@ metadata:
 data:
   ui.cssurl: "./custom/custom.css"
 ```
+
+For this relative URL, mount `custom.css` under `/shared/app/custom/custom.css` in the `argocd-server` container.
 
 ```css
 /* Replace the login page logo */
@@ -147,7 +149,7 @@ You can add additional text below the tagline:
 
 ### Customizing the SSO Button
 
-When SSO is configured, the login page shows a "Log In via SSO" button. You can customize its appearance:
+When SSO is configured, the login page shows an SSO button using the configured OIDC or Dex connector name. You can customize its appearance:
 
 ```css
 /* Style the SSO login button */
@@ -182,12 +184,12 @@ If your organization uses SSO exclusively, you can hide the username/password fo
 }
 
 /* Keep the SSO button visible */
-.login__box .login__sso-button {
+.login__box_saml {
   display: block !important;
 }
 ```
 
-Note: This is cosmetic only. For actual security, disable local accounts in ArgoCD configuration:
+Note: This is cosmetic only. For actual security, disable the built-in admin account and remove the `login` capability from any other local accounts in ArgoCD configuration:
 
 ```yaml
 apiVersion: v1
@@ -198,6 +200,8 @@ metadata:
 data:
   # Disable admin account
   admin.enabled: "false"
+  # Example local automation account without UI login capability
+  accounts.ci-bot: apiKey
 ```
 
 ## Customizing the Background
@@ -413,7 +417,7 @@ Here is a full CSS configuration that creates a branded login experience:
   font-size: 11px !important;
 }
 
-/* Hide ArgoCD version for cleaner look */
+/* Hide the Argo project logo footer for cleaner look */
 .login__footer {
   display: none !important;
 }
@@ -428,11 +432,15 @@ kubectl create configmap argocd-custom-css \
   --from-file=custom.css=./login-custom.css \
   -n argocd --dry-run=client -o yaml | kubectl apply -f -
 
+# Mount the ConfigMap under /shared/app/custom in the argocd-server container
+kubectl patch deployment argocd-server -n argocd --type strategic \
+  -p '{"spec":{"template":{"spec":{"volumes":[{"name":"custom-css","configMap":{"name":"argocd-custom-css"}}],"containers":[{"name":"argocd-server","volumeMounts":[{"name":"custom-css","mountPath":"/shared/app/custom"}]}]}}}}'
+
 # Update argocd-cm to reference the CSS
 kubectl patch configmap argocd-cm -n argocd --type merge \
   -p '{"data":{"ui.cssurl":"./custom/custom.css"}}'
 
-# If volume mounts were changed, restart the server
+# Restart the server after changing the volume mount or CSS reference
 kubectl rollout restart deployment argocd-server -n argocd
 ```
 
