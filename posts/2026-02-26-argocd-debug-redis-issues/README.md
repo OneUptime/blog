@@ -8,7 +8,7 @@ Description: Learn how to debug ArgoCD Redis issues including connection failure
 
 ---
 
-Redis is the caching layer that ArgoCD depends on for session management, application state caching, and inter-component communication. When Redis has problems, you will see slow UI loading, failed logins, and degraded performance across all ArgoCD operations. This guide covers how to diagnose and fix every common Redis issue.
+Redis is the caching layer that ArgoCD depends on for application state caching, manifest caching, revoked-token state, and some UI operations. When Redis has problems, you will see slow UI loading, failed logins, and degraded performance across ArgoCD operations. This guide covers how to diagnose and fix every common Redis issue.
 
 ## How ArgoCD Uses Redis
 
@@ -21,10 +21,10 @@ flowchart TD
 ```
 
 ArgoCD uses Redis for:
-- User session storage (login tokens)
+- Revoked session token state
 - Application state caching (reduces Kubernetes API calls)
 - Manifest cache (avoids re-generating manifests)
-- Rate limiting data
+- UI operation cache data
 - Cache for repository information
 
 ## Step 1: Check Redis Pod Health
@@ -66,13 +66,12 @@ kubectl get svc argocd-redis -n argocd
 # Check Redis endpoints
 kubectl get endpoints argocd-redis -n argocd
 
-# Test Redis connectivity from the API server
-kubectl exec -n argocd deploy/argocd-server -- \
-  sh -c 'redis-cli -h argocd-redis -p 6379 ping' 2>/dev/null
-
-# Test from the controller
-kubectl exec -n argocd deploy/argocd-application-controller -- \
-  sh -c 'redis-cli -h argocd-redis -p 6379 ping' 2>/dev/null
+# Test Redis service connectivity with a temporary Redis client pod
+REDIS_PASSWORD=$(kubectl get secret argocd-redis -n argocd \
+  -o jsonpath='{.data.auth}' | base64 -d)
+kubectl run argocd-redis-client -n argocd --rm -i --restart=Never \
+  --image=redis:8-alpine --env="REDISCLI_AUTH=$REDIS_PASSWORD" -- \
+  redis-cli -h argocd-redis -p 6379 ping
 ```
 
 If Redis is unreachable, check:
@@ -80,13 +79,14 @@ If Redis is unreachable, check:
 ```bash
 # Check if Redis is listening on the expected port
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli ping
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping'
 
 # Check network policies that might block traffic
 kubectl get networkpolicies -n argocd
 
 # Check if DNS resolution works
-kubectl exec -n argocd deploy/argocd-server -- \
+kubectl run argocd-dns-test -n argocd --rm -i --restart=Never \
+  --image=busybox:1.36 -- \
   nslookup argocd-redis.argocd.svc.cluster.local
 ```
 
@@ -95,7 +95,7 @@ kubectl exec -n argocd deploy/argocd-server -- \
 ```bash
 # Check Redis memory usage
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli info memory
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info memory'
 
 # Key metrics from the output:
 # used_memory_human - Current memory usage
@@ -105,7 +105,7 @@ kubectl exec -n argocd deploy/argocd-redis -- \
 
 # Get detailed memory stats
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli memory stats
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli memory stats'
 ```
 
 Fix high memory usage:
@@ -113,19 +113,19 @@ Fix high memory usage:
 ```bash
 # Check what is using the most memory
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli --bigkeys
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli --bigkeys'
 
 # Flush the cache if needed (will cause temporary performance degradation)
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli flushall
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli flushall'
 
 # Set a memory limit in the Redis configuration
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli config set maxmemory 256mb
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli config set maxmemory 256mb'
 
 # Set eviction policy
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli config set maxmemory-policy allkeys-lru
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli config set maxmemory-policy allkeys-lru'
 ```
 
 For a permanent fix, update the Redis deployment:
@@ -149,6 +149,12 @@ spec:
               cpu: 500m
               memory: 512Mi
           args:
+            - --save
+            - ""
+            - --appendonly
+            - "no"
+            - --requirepass
+            - $(REDIS_PASSWORD)
             - --maxmemory
             - 256mb
             - --maxmemory-policy
@@ -184,15 +190,15 @@ In HA mode, ArgoCD uses Redis Sentinel for failover:
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis-ha
 
 # Check Sentinel logs
-kubectl logs -n argocd -l app.kubernetes.io/name=argocd-redis-ha-haproxy --tail=100
+kubectl logs -n argocd sts/argocd-redis-ha-server -c sentinel --tail=100
 
 # Check the Sentinel configuration
-kubectl exec -n argocd deploy/argocd-redis-ha -- \
-  redis-cli -p 26379 sentinel masters
+kubectl exec -n argocd sts/argocd-redis-ha-server -c sentinel -- \
+  sh -c 'REDISCLI_AUTH="$AUTH" redis-cli -p 26379 sentinel masters'
 
 # Check which Redis instance is the master
-kubectl exec -n argocd deploy/argocd-redis-ha -- \
-  redis-cli -p 26379 sentinel get-master-addr-by-name argocd
+kubectl exec -n argocd sts/argocd-redis-ha-server -c sentinel -- \
+  sh -c 'REDISCLI_AUTH="$AUTH" redis-cli -p 26379 sentinel get-master-addr-by-name argocd'
 ```
 
 Common Sentinel issues:
@@ -200,44 +206,44 @@ Common Sentinel issues:
 - Failover loops: Master keeps changing
 - Quorum not met: Not enough Sentinels are reachable
 
-## Issue: Session Loss (Users Logged Out)
+## Issue: Session State Problems
 
-If users keep getting logged out, Redis is likely losing session data:
+ArgoCD login sessions are JWT-based, but Redis stores revoked-token state used for session invalidation:
 
 ```bash
-# Check if sessions exist in Redis
+# Check if revoked token entries exist in Redis
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli keys 'session:*' | head -20
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli keys "revoked-token|*"' | head -20
 
-# Check session TTL
+# Check revoked token TTL
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli ttl 'session:some-session-key'
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ttl "revoked-token|some-token-id"'
 
 # Check if Redis is evicting keys
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli info stats | grep evicted_keys
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info stats' | grep evicted_keys
 ```
 
-If `evicted_keys` is non-zero, Redis is running out of memory and evicting session keys. Increase the memory limit or reduce the session duration.
+If `evicted_keys` is non-zero, Redis is running out of memory and evicting cached data or user state. Increase the memory limit or reduce cache pressure.
 
 ## Issue: Slow Redis Performance
 
 ```bash
 # Check Redis latency
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli --latency
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli --latency'
 
 # Check slow log (commands that took too long)
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli slowlog get 10
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli slowlog get 10'
 
 # Check connected clients
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli info clients
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info clients'
 
 # Check command stats
 kubectl exec -n argocd deploy/argocd-redis -- \
-  redis-cli info commandstats
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info commandstats'
 ```
 
 ## Issue: Redis Data Persistence
@@ -264,6 +270,8 @@ spec:
             - "1000"
             - --appendonly
             - "yes"
+            - --requirepass
+            - $(REDIS_PASSWORD)
           volumeMounts:
             - mountPath: /data
               name: redis-data
@@ -286,15 +294,16 @@ kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
 }'
 
 # If Redis requires authentication
-kubectl patch secret argocd-secret -n argocd --type merge -p '{
+kubectl patch secret argocd-redis -n argocd --type merge -p '{
   "stringData": {
-    "redis.password": "your-redis-password"
+    "auth": "your-redis-password"
   }
 }'
 
 # Restart all components that use Redis
 kubectl rollout restart deployment -n argocd \
-  argocd-server argocd-application-controller argocd-repo-server
+  argocd-server argocd-repo-server
+kubectl rollout restart statefulset -n argocd argocd-application-controller
 ```
 
 ## Complete Debug Script
@@ -313,28 +322,36 @@ echo -e "\n--- Resource Usage ---"
 kubectl top pods -n $NS -l app.kubernetes.io/name=argocd-redis 2>/dev/null
 
 echo -e "\n--- Redis Info ---"
-kubectl exec -n $NS deploy/argocd-redis -- redis-cli info server 2>/dev/null | head -10
+kubectl exec -n $NS deploy/argocd-redis -- \
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info server' 2>/dev/null | head -10
 
 echo -e "\n--- Memory Stats ---"
-kubectl exec -n $NS deploy/argocd-redis -- redis-cli info memory 2>/dev/null | \
+kubectl exec -n $NS deploy/argocd-redis -- \
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info memory' 2>/dev/null | \
   grep -E "used_memory_human|maxmemory_human|maxmemory_policy"
 
 echo -e "\n--- Key Count ---"
-kubectl exec -n $NS deploy/argocd-redis -- redis-cli dbsize 2>/dev/null
+kubectl exec -n $NS deploy/argocd-redis -- \
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli dbsize' 2>/dev/null
 
 echo -e "\n--- Client Connections ---"
-kubectl exec -n $NS deploy/argocd-redis -- redis-cli info clients 2>/dev/null | \
+kubectl exec -n $NS deploy/argocd-redis -- \
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info clients' 2>/dev/null | \
   grep "connected_clients"
 
 echo -e "\n--- Evicted Keys ---"
-kubectl exec -n $NS deploy/argocd-redis -- redis-cli info stats 2>/dev/null | \
+kubectl exec -n $NS deploy/argocd-redis -- \
+  sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli info stats' 2>/dev/null | \
   grep "evicted_keys"
 
 echo -e "\n--- Connectivity Test ---"
-kubectl exec -n $NS deploy/argocd-server -- \
-  sh -c 'redis-cli -h argocd-redis ping' 2>/dev/null || echo "Cannot reach Redis from API server"
+REDIS_PASSWORD=$(kubectl get secret argocd-redis -n $NS \
+  -o jsonpath='{.data.auth}' | base64 -d)
+kubectl run argocd-redis-client -n $NS --rm -i --restart=Never \
+  --image=redis:8-alpine --env="REDISCLI_AUTH=$REDIS_PASSWORD" -- \
+  redis-cli -h argocd-redis -p 6379 ping 2>/dev/null || echo "Cannot reach Redis service"
 ```
 
 ## Summary
 
-ArgoCD Redis issues manifest as slow UI, lost sessions, and degraded performance across all components. Start debugging by checking Redis pod health, then examine memory usage and eviction stats. For production environments, use an external managed Redis with proper memory limits and monitoring. Most Redis issues in ArgoCD come down to insufficient memory - the cache grows with the number of applications and repositories, so plan accordingly. Monitor Redis metrics through [OneUptime](https://oneuptime.com) to catch memory pressure before it causes outages.
+ArgoCD Redis issues manifest as slow UI, session state problems, and degraded performance across all components. Start debugging by checking Redis pod health, then examine memory usage and eviction stats. For production environments, use an external managed Redis with proper memory limits and monitoring. Most Redis issues in ArgoCD come down to insufficient memory - the cache grows with the number of applications and repositories, so plan accordingly. Monitor Redis metrics through [OneUptime](https://oneuptime.com) to catch memory pressure before it causes outages.
