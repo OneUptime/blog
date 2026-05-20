@@ -8,7 +8,7 @@ Description: Learn how to configure reconciliation jitter in ArgoCD to spread re
 
 ---
 
-When ArgoCD manages hundreds or thousands of applications, all applications tend to reconcile at roughly the same time. This creates a "thundering herd" effect where the application controller, repo server, and target cluster APIs all experience sudden load spikes every reconciliation interval. Reconciliation jitter solves this by adding a random delay to each application's reconciliation schedule, spreading the load evenly over time. This guide explains how jitter works, how to configure it, and how to choose the right settings.
+When ArgoCD manages hundreds or thousands of applications, disabling jitter or setting it too low can cause many applications to reconcile at roughly the same time. This creates a "thundering herd" effect where the application controller, repo server, and target cluster APIs all experience sudden load spikes every reconciliation interval. Reconciliation jitter solves this by adding a random delay to each application's reconciliation schedule, spreading the load evenly over time. This guide explains how jitter works, how to configure it, and how to choose the right settings.
 
 ## The Thundering Herd Problem
 
@@ -46,26 +46,27 @@ gantt
 
 ## Configuring Reconciliation Jitter
 
-Jitter is configured in the `argocd-cmd-params-cm` ConfigMap:
+Jitter is configured in the `argocd-cm` ConfigMap:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-cm
   namespace: argocd
 data:
   # Add random jitter of 0 to 60 seconds to each reconciliation
-  controller.reconciliation.jitter: "60"
+  timeout.reconciliation.jitter: "60s"
 ```
 
 This means each application's reconciliation will be delayed by a random amount between 0 and 60 seconds. An application with a 180-second reconciliation interval will actually reconcile somewhere between 180 and 240 seconds after its last reconciliation.
 
-Apply the change and restart the controller:
+Apply the change and restart the application controller and repo server:
 
 ```bash
-kubectl apply -f argocd-cmd-params-cm.yaml
+kubectl apply -f argocd-cm.yaml
 kubectl rollout restart statefulset argocd-application-controller -n argocd
+kubectl rollout restart deployment argocd-repo-server -n argocd
 ```
 
 ## Choosing the Right Jitter Value
@@ -77,7 +78,7 @@ The ideal jitter value depends on your application count and reconciliation inte
 A good rule of thumb is:
 
 ```text
-Optimal Jitter = Reconciliation Interval * (Number of Apps / Target Concurrent Reconciliations) / Number of Apps
+Minimum Jitter = Number of Apps / Target App Refreshes Per Second
 ```
 
 Or simplified - set jitter to roughly 30-50% of your reconciliation interval:
@@ -96,10 +97,10 @@ Or simplified - set jitter to roughly 30-50% of your reconciliation interval:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-cm
   namespace: argocd
 data:
-  controller.reconciliation.jitter: "120"
+  timeout.reconciliation.jitter: "120s"
 ```
 
 ```yaml
@@ -109,7 +110,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  timeout.reconciliation: "300"
+  timeout.reconciliation: "300s"
 ```
 
 With these settings, 500 applications will reconcile within a 300 to 420-second window, spreading the load over approximately 7 minutes instead of all hitting simultaneously.
@@ -139,23 +140,23 @@ This is the ideal behavior because:
 
 ## Jitter and Application Priority
 
-Jitter applies equally to all applications. If you have critical applications that need faster reconciliation, use per-application overrides rather than reducing the global jitter:
+Jitter applies equally to all applications. If you have critical applications that need faster reconciliation, use Git webhooks or trigger a manual refresh rather than reducing the global jitter. The `argocd.argoproj.io/refresh` annotation requests a one-time refresh; it does not configure a per-application interval:
 
 ```yaml
-# Critical application with short reconciliation interval
+# Critical application with a one-time refresh request
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: payment-service
   annotations:
-    # Override the global interval for this app
-    argocd.argoproj.io/refresh: "60"
+    # Request a one-time normal refresh for this app
+    argocd.argoproj.io/refresh: "normal"
 spec:
   # ...
 ```
 
-The per-application refresh interval is also subject to jitter, but since the interval is shorter, the absolute jitter impact is smaller.
+The application controller removes this annotation after the application is refreshed.
 
 ## Monitoring Jitter Effectiveness
 
@@ -163,7 +164,7 @@ After configuring jitter, verify that the load is actually spread out:
 
 ```bash
 # Check reconciliation metrics over time
-kubectl port-forward svc/argocd-application-controller-metrics -n argocd 8082:8082
+kubectl port-forward svc/argocd-metrics -n argocd 8082:8082
 
 # Look at the rate of reconciliations over time
 curl -s http://localhost:8082/metrics | grep argocd_app_reconcile
@@ -180,6 +181,10 @@ Without jitter, this graph shows sharp spikes every reconciliation interval. Wit
 
 You can also monitor the Git fetch rate:
 
+```bash
+kubectl port-forward svc/argocd-repo-server -n argocd 8084:8084
+```
+
 ```text
 # PromQL: Rate of Git requests per second
 rate(argocd_git_request_total[1m])
@@ -187,7 +192,7 @@ rate(argocd_git_request_total[1m])
 
 ## Jitter in High Availability Setups
 
-In HA configurations with multiple application controller replicas, jitter is applied per-shard. Each controller replica manages a subset of applications and applies jitter independently.
+In HA configurations with multiple application controller replicas, ArgoCD shards managed clusters across replicas. Applications are processed by the shard responsible for their target cluster, and jitter applies to periodic refreshes on each shard.
 
 ```yaml
 # HA setup with sharding and jitter
@@ -198,9 +203,16 @@ metadata:
   namespace: argocd
 spec:
   replicas: 3  # Three controller shards
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_CONTROLLER_REPLICAS
+              value: "3"
 ```
 
-With 3 shards and 600 applications, each shard manages approximately 200 applications. The jitter is applied within each shard, so the overall distribution is even more uniform.
+With 3 shards, the controller divides managed clusters across the replicas. Applications are then handled by the shard responsible for their target cluster, and jitter is applied as each application is periodically refreshed.
 
 ## Common Mistakes with Jitter
 
@@ -208,8 +220,8 @@ With 3 shards and 600 applications, each shard manages approximately 200 applica
 
 ```yaml
 # BAD: Jitter larger than interval
-timeout.reconciliation: "180"
-controller.reconciliation.jitter: "300"
+timeout.reconciliation: "180s"
+timeout.reconciliation.jitter: "300s"
 ```
 
 This causes some applications to reconcile between 180 and 480 seconds, which is highly variable and unpredictable. Keep jitter to at most 50% of the interval.
@@ -218,7 +230,7 @@ This causes some applications to reconcile between 180 and 480 seconds, which is
 
 ```yaml
 # BAD for 500+ applications
-controller.reconciliation.jitter: "0"
+timeout.reconciliation.jitter: "0s"
 ```
 
 This guarantees thundering herd behavior. Always enable jitter for deployments with more than 50 applications.
@@ -226,8 +238,8 @@ This guarantees thundering herd behavior. Always enable jitter for deployments w
 ### Forgetting to Apply After ConfigMap Change
 
 ```bash
-# The controller does not automatically pick up cmd-params-cm changes
-# You must restart the controller
+# The controller and repo server do not automatically pick up argocd-cm timeout changes
+kubectl rollout restart deployment argocd-repo-server -n argocd
 kubectl rollout restart statefulset argocd-application-controller -n argocd
 ```
 
@@ -244,7 +256,10 @@ metadata:
   namespace: argocd
 data:
   # Increase polling interval (webhooks handle immediate detection)
-  timeout.reconciliation: "600"
+  timeout.reconciliation: "600s"
+
+  # Add 120s of jitter to spread the load
+  timeout.reconciliation.jitter: "120s"
 
 ---
 # argocd-cmd-params-cm ConfigMap
@@ -254,14 +269,24 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Add 120s of jitter to spread the load
-  controller.reconciliation.jitter: "120"
-
   # Limit concurrent manifest generation
   reposerver.parallelism.limit: "5"
+```
 
-  # Enable shallow Git clones
-  reposerver.git.shallow.clone: "true"
+Enable shallow Git clones per repository:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: "git"
+  url: "https://github.com/example/example.git"
+  depth: "1"
 ```
 
 For monitoring your ArgoCD reconciliation performance and verifying that jitter is effectively distributing load, [OneUptime](https://oneuptime.com) provides dashboards and alerts that track reconciliation patterns over time.
@@ -273,5 +298,5 @@ For monitoring your ArgoCD reconciliation performance and verifying that jitter 
 - Jitter does NOT affect webhook-triggered reconciliations (they remain immediate)
 - Always enable jitter for deployments with more than 50 applications
 - Monitor reconciliation rate graphs to verify jitter is effective
-- Restart the application controller after changing jitter settings
+- Restart the application controller and repo server after changing jitter settings
 - Combine jitter with webhooks, longer polling intervals, and repo server scaling for best results
