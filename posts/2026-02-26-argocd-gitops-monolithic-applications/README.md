@@ -361,7 +361,7 @@ spec:
   maxReplicas: 10
   behavior:
     scaleUp:
-      stabilizationWindowSeconds: 120   # Wait before scaling up (monoliths are slow to start)
+      stabilizationWindowSeconds: 120   # Smooth brief spikes before scaling up
       policies:
         - type: Pods
           value: 1                       # Add one pod at a time
