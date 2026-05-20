@@ -62,19 +62,19 @@ Reason: Production incident - see incident channel"
 
 # Push and create PR (auto-merge)
 git push origin "emergency/$SERVICE-$TICKET"
-gh pr create --title "EMERGENCY: $SERVICE to $IMAGE_TAG ($TICKET)" \
+PR_URL=$(gh pr create --title "EMERGENCY: $SERVICE to $IMAGE_TAG ($TICKET)" \
   --body "Emergency deployment during active incident. Post-incident review required." \
-  --label emergency
+  --label emergency)
 
 # Auto-merge the PR (requires repo settings to allow)
-gh pr merge --auto --squash
+gh pr merge "$PR_URL" --auto --squash
 
-echo "Emergency PR created. ArgoCD will sync within $(argocd app get $SERVICE --output json | jq -r '.spec.source.targetRevision') seconds"
+echo "Emergency PR created and queued for merge. ArgoCD will sync after the change reaches the tracked branch."
 ```
 
 ## Strategy 2: Direct Sync to a Specific Image
 
-ArgoCD allows parameter overrides during sync without modifying Git:
+ArgoCD allows parameter overrides before sync without modifying Git:
 
 ```bash
 # Override the image tag for an immediate deployment
@@ -88,7 +88,7 @@ argocd app sync api-server
 argocd app wait api-server --health
 ```
 
-This deploys the fix immediately. The application will show as "OutOfSync" because Git does not match the live state. After the incident, you update Git to match:
+This deploys the fix immediately by storing an ArgoCD parameter override on the Application. After the sync completes, the application can show as "Synced" because ArgoCD's desired state is now the union of Git and the override. After the incident, update Git to match and remove the temporary override so Git becomes the only source of truth again:
 
 ```bash
 # Post-incident: update Git to match the live state
@@ -96,6 +96,9 @@ cd deployments
 # Update the image tag in the deployment manifest
 git add . && git commit -m "Post-incident: match emergency deployment of api-server hotfix-v1.2.3"
 git push origin main
+
+# Remove the temporary Kustomize image override from the ArgoCD Application
+argocd app unset api-server --kustomize-image=myregistry/api
 ```
 
 ## Strategy 3: Emergency ArgoCD Project
@@ -219,7 +222,7 @@ data:
     #!/bin/bash
     APP=$1
     # Roll back to previous revision
-    PREV_REV=$(argocd app history $APP --output json | jq -r '.[1].revision')
+    PREV_REV=$(argocd app get $APP --output json | jq -r '.status.history | sort_by(.id) | .[-2].revision')
     argocd app sync $APP --revision $PREV_REV
     echo "Rolled back $APP to revision $PREV_REV"
 
