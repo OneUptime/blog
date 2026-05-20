@@ -60,10 +60,9 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     # Force strong TLS
     nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.3"
-    nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256"
 spec:
   tls:
     - hosts:
@@ -79,7 +78,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  number: 80
 ```
 
 When using TLS termination at the ingress, set ArgoCD to insecure mode (TLS is handled upstream):
@@ -97,19 +96,22 @@ data:
 
 ### Internal TLS Between Components
 
-Enable TLS for communication between ArgoCD components:
+Argo CD uses TLS for repository server communication by default, but does not strictly validate the internal certificate unless configured. After installing trusted internal certificates, enable strict validation for communication between ArgoCD components:
 
 ```yaml
-# Helm values for internal TLS
-server:
-  env:
-    - name: ARGOCD_SERVER_REPO_SERVER_TLS_INSECURE_SKIP_VERIFY
-      value: "false"
+# argocd-cmd-params-cm ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Keep TLS enabled on the repo-server gRPC endpoint
+  reposerver.disable.tls: "false"
 
-repoServer:
-  env:
-    - name: ARGOCD_REPO_SERVER_TLS_ENABLED
-      value: "true"
+  # Use TLS and strictly validate the repo-server certificate
+  server.repo.server.plaintext: "false"
+  server.repo.server.strict.tls: "true"
 ```
 
 ## Authentication Hardening
@@ -157,10 +159,7 @@ data:
 # argocd-cm ConfigMap
 data:
   # Short session timeout
-  server.session.maxDuration: "12h"
-
-  # Limit concurrent sessions
-  server.session.maxCacheSize: "1000"
+  users.session.duration: "12h"
 ```
 
 ### API Token Best Practices
@@ -219,8 +218,18 @@ metadata:
     nginx.ingress.kubernetes.io/limit-connections: "5"
     # Burst allowance
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
-    # Return 429 when rate limited
-    nginx.ingress.kubernetes.io/limit-rate-after: "100"
+```
+
+To return 429 for rejected requests instead of the ingress-nginx default 503, configure the ingress-nginx controller ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  limit-req-status-code: "429"
 ```
 
 ### Webhook-Specific Rate Limiting
@@ -235,6 +244,7 @@ metadata:
   name: argocd-webhooks
   namespace: argocd
   annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     nginx.ingress.kubernetes.io/limit-rps: "5"
     nginx.ingress.kubernetes.io/limit-connections: "2"
 spec:
@@ -252,7 +262,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  number: 80
 ```
 
 ## Network Restrictions
@@ -351,8 +361,6 @@ metadata:
   namespace: argocd
 data:
   server.x.frame.options: "DENY"
-  server.content.security.policy: "frame-ancestors 'none'"
-  server.strict.transport.security: "max-age=31536000; includeSubDomains"
 ```
 
 Or via ingress annotations:
