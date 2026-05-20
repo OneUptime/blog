@@ -42,7 +42,7 @@ metadata:
   name: postgres-data
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
-    argocd.argoproj.io/sync-options: Prune=false
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
     - ReadWriteOnce
@@ -127,7 +127,7 @@ spec:
       targetPort: 5432
 ```
 
-Note the `strategy: Recreate` - this is critical for single-instance databases with PVCs. A rolling update would try to attach the same PVC to two pods simultaneously, which fails with ReadWriteOnce volumes.
+Note the `strategy: Recreate` - this is critical for single-instance databases with PVCs. A rolling update can briefly run two pods against the same database volume, which can fail with multi-attach errors or risk data corruption.
 
 ## ArgoCD Application Configuration
 
@@ -158,7 +158,8 @@ spec:
 Key settings for database deployments:
 
 - `prune: false` - Prevents accidental deletion of the database
-- `PrunePropagationPolicy=orphan` - Keeps PVCs if the parent resource is deleted
+- `PrunePropagationPolicy=orphan` - Orphans dependent resources when ArgoCD prunes their owner
+- `Prune=false,Delete=false` on critical PVCs - Keeps the volume from being pruned or deleted with the ArgoCD Application
 
 ## PostgreSQL with Helm Chart
 
@@ -196,13 +197,12 @@ spec:
             limits:
               cpu: "2"
               memory: 4Gi
-
-        # PostgreSQL configuration
-        postgresql:
-          maxConnections: 200
-          sharedBuffers: 1024MB
-          effectiveCacheSize: 3072MB
-          workMem: 16MB
+          # PostgreSQL configuration
+          extendedConfiguration: |
+            max_connections = 200
+            shared_buffers = 1024MB
+            effective_cache_size = 3072MB
+            work_mem = 16MB
 
         metrics:
           enabled: true
@@ -306,12 +306,6 @@ spec:
         compression: gzip
     retentionPolicy: "30d"
 
-  # Scheduled backups
-  scheduledBackups:
-    - name: daily-backup
-      schedule: "0 0 2 * * *"  # 2 AM daily
-      backupOwnerReference: self
-
   # Monitoring
   monitoring:
     enablePodMonitor: true
@@ -319,6 +313,17 @@ spec:
   # Affinity - spread across nodes
   affinity:
     topologyKey: kubernetes.io/hostname
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: postgres-ha-daily-backup
+  namespace: databases
+spec:
+  schedule: "0 0 2 * * *"  # 2 AM daily; CloudNativePG uses six fields, including seconds
+  backupOwnerReference: self
+  cluster:
+    name: postgres-ha
 ```
 
 ## Database Migrations with PreSync Hooks
@@ -352,7 +357,7 @@ spec:
 
 ## Custom PostgreSQL Configuration
 
-Mount a custom configuration file:
+Define a custom configuration file:
 
 ```yaml
 apiVersion: v1
@@ -454,7 +459,7 @@ spec:
         spec:
           containers:
             - name: backup
-              image: postgres:16
+              image: myorg/postgres16-awscli:latest  # Must include pg_dump and aws CLI
               command: [sh, -c]
               args:
                 - |
