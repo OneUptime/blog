@@ -59,7 +59,7 @@ spec:
       source:
         repoURL: https://charts.external-secrets.io
         chart: external-secrets
-        targetRevision: 0.9.12
+        targetRevision: 2.5.0
       destination:
         server: "{{server}}"
         namespace: external-secrets
@@ -108,7 +108,7 @@ Each cluster's secret store configuration:
 
 ```yaml
 # secret-stores/us-east-1/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -127,7 +127,7 @@ spec:
             namespace: external-secrets
 ---
 # secret-stores/eu-west-1/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -196,7 +196,7 @@ The ExternalSecret in each overlay references the cluster-specific path:
 
 ```yaml
 # k8s/overlays/prod-us/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -221,10 +221,10 @@ spec:
 
 ## Pattern 3: Secret Replication Across Clusters
 
-Some secrets need to exist in multiple clusters. Use ESO's PushSecret to replicate secrets from a source cluster:
+Some secrets need to exist in multiple clusters. Use ESO's PushSecret to push a source cluster secret into an external provider that other clusters can read:
 
 ```yaml
-# PushSecret - replicate a secret from hub to managed clusters
+# PushSecret - push a secret from the hub cluster to a shared provider
 apiVersion: external-secrets.io/v1alpha1
 kind: PushSecret
 metadata:
@@ -235,6 +235,10 @@ spec:
   deletionPolicy: Delete
   # Refresh interval
   refreshInterval: 1h
+  # External provider to push to
+  secretStoreRefs:
+    - name: vault-backend
+      kind: ClusterSecretStore
   # Source secret in the hub cluster
   selector:
     secret:
@@ -271,16 +275,19 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  # Read shared secret from hub cluster
-                  SECRET=$(kubectl get secret shared-api-key -n shared-secrets -o json)
-
                   # List of managed cluster contexts
                   CLUSTERS="prod-us prod-eu staging"
 
                   for cluster in $CLUSTERS; do
                     echo "Syncing to $cluster"
-                    echo "$SECRET" | \
-                      jq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp)' | \
+                    kubectl get secret shared-api-key -n shared-secrets -o go-template='apiVersion: v1
+                  kind: Secret
+                  metadata:
+                    name: {{ .metadata.name }}
+                  type: {{ .type }}
+                  data:
+                  {{ range $key, $value := .data }}  {{ $key }}: {{ $value }}
+                  {{ end }}' | \
                       kubectl apply --context="$cluster" -n shared-secrets -f -
                   done
           restartPolicy: OnFailure
@@ -317,7 +324,7 @@ Manage cluster credentials through ESO to avoid storing tokens in Git:
 
 ```yaml
 # ExternalSecret for ArgoCD cluster credentials
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: prod-us-cluster
@@ -365,7 +372,7 @@ spec:
 
 For GDPR or data residency requirements, ensure secrets stay within their region:
 
-```yaml
+```hcl
 # Vault policy restricting EU secrets to EU clusters
 path "secret/data/clusters/prod-eu/*" {
   capabilities = ["read"]
@@ -381,14 +388,14 @@ Configure separate Vault auth roles per cluster:
 
 ```bash
 # EU cluster role can only access EU secrets
-vault write auth/kubernetes/role/eso-prod-eu \
+vault write auth/kubernetes-prod-eu/role/external-secrets-prod-eu \
   bound_service_account_names=external-secrets \
   bound_service_account_namespaces=external-secrets \
   policies=eu-secrets-read \
   ttl=1h
 
 # US cluster role can only access US secrets
-vault write auth/kubernetes/role/eso-prod-us \
+vault write auth/kubernetes-prod-us/role/external-secrets-prod-us \
   bound_service_account_names=external-secrets \
   bound_service_account_namespaces=external-secrets \
   policies=us-secrets-read \
@@ -411,7 +418,7 @@ spec:
       rules:
         - alert: ExternalSecretSyncFailed
           expr: |
-            external_secrets_status_condition{condition="Ready", status="False"} == 1
+            externalsecret_status_condition{condition="Ready", status="False"} == 1
           for: 15m
           labels:
             severity: critical
@@ -420,7 +427,7 @@ spec:
 
         - alert: SecretStoreUnhealthy
           expr: |
-            external_secrets_provider_status{status="unhealthy"} == 1
+            clustersecretstore_status_condition{condition="Ready", status="False"} == 1
           for: 5m
           labels:
             severity: critical
