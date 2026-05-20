@@ -16,7 +16,7 @@ Before configuring the Azure DevOps SCM provider generator, you need:
 
 - An Azure DevOps organization and project
 - A personal access token (PAT) with Code (Read) scope
-- ArgoCD v2.6 or later (Azure DevOps SCM provider support was added in v2.6)
+- ArgoCD v2.7 or later (Azure DevOps SCM provider support is documented in v2.7 and later)
 
 ### Creating a Personal Access Token
 
@@ -78,7 +78,7 @@ The Azure DevOps SCM provider generator produces these parameters for each disco
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `repository` | Repository name | `api-gateway` |
-| `organization` | Organization/project | `my-org/platform-services` |
+| `organization` | Organization name | `my-org` |
 | `url` | Clone URL (HTTPS) | `https://dev.azure.com/my-org/platform-services/_git/api-gateway` |
 | `branch` | Default branch | `main` |
 | `sha` | HEAD commit SHA | `abc1234...` |
@@ -158,7 +158,7 @@ spec:
           - repositoryMatch: ".*"
   template:
     metadata:
-      # Include project name to avoid collisions
+      # Ensure repository names are unique across the scanned projects
       name: '{{organization}}-{{repository}}'
       labels:
         source: azure-devops
@@ -331,6 +331,11 @@ kubectl create secret generic azure-devops-repo-creds \
   --from-literal=username=argocd \
   --from-literal=password="$NEW_TOKEN" \
   --dry-run=client -o yaml | kubectl apply -f -
+
+kubectl label secret azure-devops-repo-creds \
+  -n argocd \
+  argocd.argoproj.io/secret-type=repo-creds \
+  --overwrite
 
 echo "Token rotated successfully"
 ```
