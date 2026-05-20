@@ -8,11 +8,11 @@ Description: Learn how to diagnose and fix ArgoCD webhook issues where Git pushe
 
 ---
 
-You push a commit to your Git repository, but ArgoCD does not react. The application stays OutOfSync until you manually refresh it, or you wait for the default 3-minute polling interval. This means your webhook is broken. Here is how to find and fix the problem.
+You push a commit to your Git repository, but ArgoCD does not react. The application stays unchanged until you manually refresh it, or you wait for the default polling interval. This means your webhook is broken. Here is how to find and fix the problem.
 
 ## How ArgoCD Webhooks Work
 
-ArgoCD supports webhooks from GitHub, GitLab, Bitbucket, and generic Git providers. When configured correctly, a push event hits the ArgoCD API server, which immediately triggers a refresh of any application that references the changed repository.
+ArgoCD supports webhooks from GitHub, GitLab, Bitbucket, Bitbucket Server, Azure DevOps, and Gogs. When configured correctly, a push event hits the ArgoCD API server, which immediately triggers a refresh of any application that references the changed repository. If automated sync is enabled for that application, the refresh can then lead to a sync.
 
 ```mermaid
 sequenceDiagram
@@ -26,7 +26,7 @@ sequenceDiagram
     ArgoCD->>ArgoCD: Match repo URL to applications
     ArgoCD->>Controller: Trigger refresh for matched apps
     Controller->>Git: Fetch latest manifests
-    Controller->>Controller: Compare and sync
+    Controller->>Controller: Compare and sync if automated sync is enabled
 ```
 
 ## Step 1: Verify the Webhook Is Configured in Your Git Provider
@@ -36,12 +36,12 @@ First, make sure the webhook actually exists on the Git provider side.
 For GitHub, navigate to your repository Settings > Webhooks and verify:
 - **Payload URL**: `https://argocd.example.com/api/webhook`
 - **Content type**: `application/json`
-- **Secret**: Must match what is in ArgoCD
+- **Secret**: Optional, but recommended for public ArgoCD instances. If configured, it must match what is in ArgoCD
 - **Events**: At minimum, "Just the push event"
 
 For GitLab, go to Settings > Webhooks:
 - **URL**: `https://argocd.example.com/api/webhook`
-- **Secret token**: Must match ArgoCD configuration
+- **Secret token**: Optional, but recommended for public ArgoCD instances. If configured, it must match ArgoCD configuration
 - **Trigger**: Push events
 
 ## Step 2: Check Webhook Delivery History
@@ -84,7 +84,7 @@ For clusters behind firewalls, consider:
 
 ## Step 4: Verify the Webhook Secret
 
-ArgoCD validates webhook payloads using a shared secret. If the secret does not match, the webhook is silently rejected.
+ArgoCD can validate webhook payloads using a shared secret. The secret is optional, but if you configure one in ArgoCD and the Git provider sends a different value, the webhook is rejected.
 
 Check the current webhook secret in ArgoCD:
 
@@ -92,10 +92,11 @@ Check the current webhook secret in ArgoCD:
 # Check if webhook secrets are configured
 kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.webhook\.github\.secret}' | base64 -d
 kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.webhook\.gitlab\.secret}' | base64 -d
-kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.webhook\.bitbucket\.secret}' | base64 -d
+kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.webhook\.bitbucket\.uuid}' | base64 -d
+kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.webhook\.bitbucketserver\.secret}' | base64 -d
 ```
 
-If the secret is empty or wrong, update it:
+If you want to configure a secret, or the configured value is wrong, update it:
 
 ```bash
 # Set the webhook secret for GitHub
@@ -105,7 +106,8 @@ kubectl patch secret argocd-secret -n argocd --type merge -p '{
   }
 }'
 
-# Restart the API server to pick up the new secret
+# Changes normally take effect automatically. If your deployment does not pick up
+# the new value, restart the API server.
 kubectl rollout restart deployment argocd-server -n argocd
 ```
 
@@ -137,11 +139,11 @@ level=info msg="Ignoring webhook event" reason="no matching applications"
 
 ## Step 6: Verify Repository URL Matching
 
-ArgoCD matches the webhook payload's repository URL against application source URLs. If they do not match exactly, the webhook is ignored.
+ArgoCD matches the webhook payload's repository URL against application source URLs. ArgoCD normalizes common URL differences, but if it cannot match the repository, the webhook is ignored.
 
 ```bash
-# List all application source repos
-kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.source.repoURL}{"\n"}{end}'
+# List single-source and multi-source application repos
+kubectl get applications -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.source.repoURL}{range .spec.sources[*]}{.repoURL}{" "}{end}{"\n"}{end}'
 ```
 
 Common mismatches:
@@ -151,20 +153,23 @@ Common mismatches:
 
 ArgoCD normalizes URLs, but edge cases can still cause mismatches. Make sure the repo URL in your Application spec matches the format your Git provider sends in webhook payloads.
 
-## Step 7: Check If Webhooks Are Disabled
+## Step 7: Check Webhook Payload Size Limits
 
-Webhooks can be globally disabled in ArgoCD configuration:
+Large webhook payloads can be rejected by ArgoCD. The default maximum payload size is 50 MB, and it can be configured in `argocd-cm`:
 
 ```bash
-# Check if webhooks are disabled
-kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.webhook\.disable}'
+# Check the configured webhook payload limit
+kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.webhook\.maxPayloadSizeMB}'
 ```
 
-If the output is `"true"`, webhooks are disabled. Remove the setting:
+If the Git provider delivery history shows that ArgoCD rejected an oversized payload, raise the limit carefully:
 
 ```bash
-kubectl patch configmap argocd-cm -n argocd --type json \
-  -p '[{"op": "remove", "path": "/data/webhook.disable"}]'
+kubectl patch configmap argocd-cm -n argocd --type merge -p '{
+  "data": {
+    "webhook.maxPayloadSizeMB": "100"
+  }
+}'
 ```
 
 ## Step 8: Handle Ingress and TLS Issues
