@@ -102,6 +102,8 @@ backend:
 
 This makes the ingress send HTTPS to ArgoCD, so ArgoCD sees HTTPS and does not redirect. The downside is that the ingress needs to handle the TLS certificate verification with the backend (or skip it).
 
+For ingress-nginx, backend certificate verification is off by default unless you enable `nginx.ingress.kubernetes.io/proxy-ssl-verify`.
+
 ## Fix 3: Use TLS Passthrough
 
 With passthrough, the ingress does not terminate TLS at all. Traffic goes encrypted directly to ArgoCD:
@@ -109,22 +111,23 @@ With passthrough, the ingress does not terminate TLS at all. Traffic goes encryp
 ```yaml
 annotations:
   nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+  nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 ```
 
-No redirect loop because ArgoCD handles the original HTTPS request directly. See our [TLS passthrough guide](https://oneuptime.com/blog/post/2026-02-26-argocd-tls-passthrough/view) for details.
+The ingress-nginx controller must also be started with `--enable-ssl-passthrough`, and the backend should point to the ArgoCD HTTPS service port. No redirect loop because ArgoCD handles the original HTTPS request directly. See our [TLS passthrough guide](https://oneuptime.com/blog/post/2026-02-26-argocd-tls-passthrough/view) for details.
 
 ## Fix 4: Configure X-Forwarded-Proto Header
 
 Some ingress controllers send an `X-Forwarded-Proto` header that tells the backend what protocol the original request used. If ArgoCD respects this header, it will not redirect when it sees `X-Forwarded-Proto: https`.
 
-For Nginx Ingress:
+For ingress-nginx this is a controller ConfigMap setting, not an Ingress annotation:
 
 ```yaml
-annotations:
-  nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+data:
+  use-forwarded-headers: "true"
 ```
 
-Check if this resolves the issue before trying insecure mode. Not all ArgoCD versions handle this header consistently.
+Check if this resolves the issue before trying insecure mode. This setting is mainly useful when ingress-nginx is behind another proxy that already sets `X-Forwarded-*` headers. The standard ArgoCD ingress documentation still recommends `server.insecure: "true"` when TLS is terminated before ArgoCD.
 
 ## Fixing for Specific Ingress Controllers
 
@@ -170,11 +173,12 @@ With ArgoCD in insecure mode and Traefik serving on the `websecure` entrypoint, 
 ```yaml
 annotations:
   alb.ingress.kubernetes.io/backend-protocol: HTTP
-  alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+  alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:REGION:ACCOUNT_ID:certificate/CERTIFICATE_ID
+  alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
   alb.ingress.kubernetes.io/ssl-redirect: "443"
 ```
 
-ALB handles HTTP to HTTPS redirect at the load balancer level, and always sends HTTP to the backend. ArgoCD must be in insecure mode.
+ALB handles HTTP to HTTPS redirect at the load balancer level, and sends HTTP to the backend when `backend-protocol: HTTP` is set. ArgoCD must be in insecure mode for that setup.
 
 ### GCE Ingress
 
@@ -190,7 +194,7 @@ spec:
     enabled: true
 ```
 
-GCE always sends HTTP to the backend. ArgoCD must be in insecure mode.
+Attach the `FrontendConfig` to the Ingress with the `networking.gke.io/v1beta1.FrontendConfig` annotation. GKE Ingress uses HTTP to the backend by default; if you keep that default, ArgoCD must be in insecure mode.
 
 ## Debugging the Redirect Loop
 
