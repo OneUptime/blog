@@ -8,7 +8,7 @@ Description: A comprehensive guide to safely upgrading ArgoCD from version 2.x t
 
 ---
 
-Major version upgrades in ArgoCD introduce breaking changes that need careful planning. The jump from v2.x to v3.x is significant - it includes API changes, deprecated feature removals, new default behaviors, and configuration format updates. Rushing this upgrade can break your GitOps pipeline and leave applications out of sync.
+Major version upgrades in ArgoCD introduce breaking changes that need careful planning. The jump from v2.x to v3.x includes RBAC changes, deprecated feature removals, new default behaviors, and configuration updates. Rushing this upgrade can break your GitOps pipeline and leave applications out of sync.
 
 This guide walks through the complete upgrade process: understanding what changed, preparing your environment, performing the upgrade, and rolling back if something goes wrong.
 
@@ -16,29 +16,30 @@ This guide walks through the complete upgrade process: understanding what change
 
 Before upgrading, understand the key breaking changes.
 
-### API Changes
+### RBAC and API Behavior Changes
 
-- The `argoproj.io/v1alpha1` API is still supported but some fields have changed
-- The `spec.source` field now requires explicit `chart` or `path` specification for Helm applications
-- The `sync-option` annotation format has been standardized
+- The `argoproj.io/v1alpha1` API is still supported, but ApplicationSet nested selectors now always behave as if `applyNestedSelectors` is enabled
+- Fine-grained RBAC for application `update` and `delete` no longer automatically applies to sub-resources
+- Pod logs access now requires explicit `logs, get` RBAC permissions
+- If you use Dex SSO, RBAC subjects based on the Dex `sub` claim may need to be updated
 
 ### Deprecated Features Removed
 
-- Legacy repository credential format is removed - use `argocd.argoproj.io/secret-type: repository` labels
-- The `--app` flag in `argocd repo add` is removed
-- Manifest generation via the `argocd-cm` ConfigMap `configManagementPlugins` field is removed - use sidecar plugins instead
+- Legacy repository configuration in the `argocd-cm` ConfigMap is removed - use repository Secrets instead
+- Legacy controller metrics such as `argocd_app_sync_status`, `argocd_app_health_status`, and `argocd_app_created_time` are removed
+- Manifest generation via the `argocd-cm` ConfigMap `configManagementPlugins` field was removed before v3.0 - use sidecar plugins instead
 
 ### New Default Behaviors
 
-- Server-side diff is enabled by default
 - Resource tracking uses annotation-based tracking by default instead of label-based
-- Improved health checks for common resource types
+- Default `resource.exclusions` and `resource.customizations.ignoreResourceUpdates` settings ignore high-churn resources and status updates
+- Application resource health is stored externally instead of being persisted in `.status.resources[].health` by default
 
 ### Configuration Changes
 
-- Some ConfigMap keys have been renamed or moved
-- RBAC policy format has minor syntax changes
-- Notification trigger conditions use a new syntax
+- RBAC policies that relied on inherited `update` or `delete` access must add explicit `update/*` or `delete/*` permissions
+- Helm was upgraded to 3.17.1, which can change rendering behavior for `null` values in subchart `values.yaml` files
+- ApplicationSets with nested selectors behave as if `applyNestedSelectors` is always enabled
 
 ## Pre-Upgrade Checklist
 
@@ -50,6 +51,12 @@ Before starting the upgrade, complete this checklist.
 # Record current ArgoCD version
 
 kubectl -n argocd exec deployment/argocd-server -- argocd version
+
+# Record the currently installed manifest version for rollback
+CURRENT_VERSION=$(kubectl -n argocd get deployment argocd-server \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="argocd-server")].image}' | sed 's/.*://')
+curl -sSL -o backup-argocd-install.yaml \
+  "https://raw.githubusercontent.com/argoproj/argo-cd/${CURRENT_VERSION}/manifests/install.yaml"
 
 # Export current configuration
 kubectl get configmap argocd-cm -n argocd -o yaml > backup-argocd-cm.yaml
@@ -74,11 +81,16 @@ Scan your configuration for deprecated features that will break in v3.x.
 # Check for legacy config management plugins in argocd-cm
 kubectl get configmap argocd-cm -n argocd -o yaml | grep configManagementPlugins
 
-# Check for legacy repository format
-kubectl get secrets -n argocd -o yaml | grep -c "argocd.argoproj.io/secret-type"
+# Check for legacy repository configuration in argocd-cm
+kubectl get cm argocd-cm -n argocd \
+  -o=jsonpath="[{.data.repositories}, {.data['repository\.credentials']}, {.data['helm\.repositories']}]"
 
 # Check resource tracking method
-kubectl get configmap argocd-cm -n argocd -o yaml | grep tracking.method
+kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.application\.resourceTrackingMethod}'
+
+# Check for Applications that use ApplyOutOfSyncOnly with label-based tracking
+kubectl get applications.argoproj.io -A -o json | \
+  jq -r '.items[] | select(.spec.syncPolicy.syncOptions[]? == "ApplyOutOfSyncOnly=true") | .metadata.name'
 ```
 
 ### 3. Verify All Applications Are Healthy
@@ -98,7 +110,8 @@ Always read the official release notes for every minor version between your curr
 
 ```bash
 # If you're on v2.10, you should read notes for:
-# v2.11, v2.12, v2.13, and v3.0
+# v2.10 to v2.11, v2.11 to v2.12, v2.12 to v2.13,
+# v2.13 to v2.14, and v2.14 to v3.0
 ```
 
 ## Step 1: Upgrade to the Latest v2.x First
@@ -107,8 +120,8 @@ Do not jump directly from an old v2.x to v3.x. Upgrade to the latest v2.x releas
 
 ```bash
 # Find the latest v2.x release
-LATEST_V2=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases | \
-  jq -r '[.[] | select(.tag_name | startswith("v2.")) | .tag_name][0]')
+LATEST_V2=$(curl -s "https://api.github.com/repos/argoproj/argo-cd/releases?per_page=100" | \
+  jq -r '[.[] | select(.tag_name | startswith("v2.14.")) | .tag_name][0]')
 echo "Latest v2.x: ${LATEST_V2}"
 
 # Apply the latest v2.x manifests
@@ -136,7 +149,7 @@ Before upgrading to v3.x, fix all deprecated configurations while still on v2.x.
 
 ### Migrate Config Management Plugins
 
-If you use `configManagementPlugins` in argocd-cm, migrate to sidecar plugins.
+If you are upgrading from an older v2.x release and still use `configManagementPlugins` in argocd-cm, migrate to sidecar plugins before moving past the version where inline plugins were removed.
 
 Old format (in argocd-cm):
 
@@ -152,6 +165,21 @@ New format (sidecar container in repo-server):
 
 ```yaml
 # argocd-repo-server-patch.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: my-plugin-config
+  namespace: argocd
+data:
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: my-plugin
+    spec:
+      generate:
+        command: ["my-plugin", "generate"]
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -175,6 +203,14 @@ spec:
         - name: my-plugin-config
           mountPath: /home/argocd/cmp-server/config/plugin.yaml
           subPath: plugin.yaml
+        - name: cmp-tmp
+          mountPath: /tmp
+      volumes:
+      - name: my-plugin-config
+        configMap:
+          name: my-plugin-config
+      - name: cmp-tmp
+        emptyDir: {}
 ```
 
 ### Migrate Resource Tracking
@@ -188,6 +224,9 @@ kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.application\.resou
 # Switch to annotation-based tracking while still on v2.x
 kubectl patch configmap argocd-cm -n argocd --type merge \
   -p '{"data":{"application.resourceTrackingMethod":"annotation"}}'
+
+# Sync applications after switching so tracking annotations are applied
+argocd app list -o name | xargs -r -n1 argocd app sync
 ```
 
 ## Step 3: Perform the v3.x Upgrade
@@ -266,7 +305,7 @@ kubectl apply -n argocd -f backup-argocd-install.yaml
 
 # If you don't have the backup manifest, use the version URL
 kubectl apply -n argocd -f \
-  https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.3/manifests/install.yaml
+  https://raw.githubusercontent.com/argoproj/argo-cd/${PREVIOUS_ARGOCD_VERSION}/manifests/install.yaml
 
 # Restore ConfigMaps if they were modified
 kubectl apply -f backup-argocd-cm.yaml
@@ -283,12 +322,12 @@ kubectl rollout status deployment/argocd-server -n argocd
 graph TD
     A[Current v2.x] -->|Step 1| B[Latest v2.x]
     B -->|Step 2| C[Fix Deprecations]
-    C -->|Step 3| D[Backup Everything]
-    D -->|Step 4| E[Upgrade to v3.x]
-    E -->|Step 5| F[Verify & Test]
+    C -->|Step 3| D[Upgrade to v3.x]
+    D -->|Step 4| E[Verify & Test]
+    E -->|Step 5| F[Update CLI & Docs]
     F -->|Issues?| G{Roll Back?}
     G -->|Yes| H[Restore v2.x]
-    G -->|No| I[Update CLI & Docs]
+    G -->|No| I[Done]
 ```
 
 ## Troubleshooting
@@ -307,7 +346,7 @@ kubectl apply -f \
 
 ### RBAC Policies Not Working
 
-v3.x may have slightly different RBAC syntax. Check the logs.
+v3.x changes some RBAC behavior, especially inherited application `update` and `delete` permissions and pod log access. Check the logs.
 
 ```bash
 kubectl logs deployment/argocd-server -n argocd | grep -i rbac
