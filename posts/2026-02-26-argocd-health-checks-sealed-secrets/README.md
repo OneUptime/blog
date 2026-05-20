@@ -113,7 +113,7 @@ The SealedSecret was encrypted with a key that the controller does not have:
 kubectl logs -n kube-system deployment/sealed-secrets-controller | grep "error\|unseal"
 
 # List available sealing keys
-kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key
+kubectl get secret -n kube-system -l sealedsecrets.bitnami.com/sealed-secrets-key=active
 
 # Common causes:
 # - SealedSecret created with a key from a different cluster
@@ -140,7 +140,7 @@ If the encrypted data is corrupted (bad base64, truncated, etc.):
 
 ```bash
 # Validate the SealedSecret locally
-kubeseal --validate --controller-name sealed-secrets \
+kubeseal --validate --controller-name sealed-secrets-controller \
   --controller-namespace kube-system < sealed-secret.yaml
 ```
 
@@ -177,7 +177,7 @@ A more sophisticated health check that also verifies the controller has processe
         if condition.status == "True" then
           hs.status = "Healthy"
           hs.message = "Decrypted and synced"
-        else
+        elseif condition.status == "False" then
           hs.status = "Degraded"
           if condition.reason == "UnsealFailed" then
             hs.message = "Decryption failed: " .. (condition.message or "no matching key")
@@ -186,6 +186,9 @@ A more sophisticated health check that also verifies the controller has processe
           else
             hs.message = condition.message or "Sync failed"
           end
+        else
+          hs.status = "Progressing"
+          hs.message = condition.message or "Sync status unknown"
         end
         return hs
       end
@@ -252,8 +255,7 @@ spec:
     - name: sealed-secrets
       rules:
         - alert: SealedSecretUnsealFailed
-          expr: sealed_secrets_controller_unseal_errors_total > 0
-          for: 5m
+          expr: increase(sealed_secrets_controller_unseal_errors_total[5m]) > 0
           labels:
             severity: critical
           annotations:
@@ -265,17 +267,12 @@ spec:
 When keys are rotated, re-encrypt all SealedSecrets:
 
 ```bash
-# Fetch the latest public key
-kubeseal --fetch-cert \
-  --controller-name sealed-secrets \
-  --controller-namespace kube-system > pub-cert.pem
-
-# Re-encrypt each secret
+# Re-encrypt each SealedSecret with the latest cluster key
 for file in sealed-secrets/*.yaml; do
-  # Extract the original secret data
-  kubectl get sealedsecret $(basename $file .yaml) -n production -o json | \
-    kubeseal --recovery-unseal --recovery-private-key backup-key.pem | \
-    kubeseal --cert pub-cert.pem -o yaml > "$file"
+  kubeseal --re-encrypt \
+    --controller-name sealed-secrets-controller \
+    --controller-namespace kube-system \
+    --format yaml < "$file" > "$file.tmp" && mv "$file.tmp" "$file"
 done
 
 # Commit and push
