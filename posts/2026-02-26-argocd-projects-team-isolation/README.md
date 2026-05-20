@@ -58,7 +58,7 @@ kind: AppProject
 metadata:
   name: payments
   namespace: argocd
-  # Finalizer prevents accidental deletion
+  # Finalizer prevents deletion while applications still reference this project
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -147,6 +147,8 @@ spec:
     - "https://github.com/my-org/infrastructure.git"
 
   destinations:
+    - server: "https://kubernetes.default.svc"
+      namespace: "argocd"
     - server: "https://kubernetes.default.svc"
       namespace: "platform-system"
     - server: "https://kubernetes.default.svc"
