@@ -27,7 +27,7 @@ MaxScale monitors all database servers continuously, detects failures, and adjus
 ## Prerequisites
 
 - Ubuntu 20.04 or newer
-- A MySQL or MariaDB primary-replica replication setup
+- A MySQL or MariaDB primary-replica replication setup (automatic failover with `mariadbmon` requires MariaDB GTID-based replication)
 - At least one primary server and one or more replicas
 - A MaxScale monitoring user on the databases
 
@@ -62,7 +62,13 @@ MaxScale needs a database user to monitor server health. Run these on the **prim
 -- Connect to primary MySQL/MariaDB
 -- Create the MaxScale monitoring user
 CREATE USER 'maxscale_monitor'@'192.168.1.100' IDENTIFIED BY 'strong-monitor-password';
-GRANT REPLICATION CLIENT, REPLICATION SLAVE ON *.* TO 'maxscale_monitor'@'192.168.1.100';
+GRANT REPLICA MONITOR, SUPER, RELOAD, PROCESS, SHOW DATABASES, EVENT ON *.* TO 'maxscale_monitor'@'192.168.1.100';
+GRANT SELECT ON mysql.user TO 'maxscale_monitor'@'192.168.1.100';
+GRANT SELECT ON mysql.global_priv TO 'maxscale_monitor'@'192.168.1.100';
+
+-- Create the replication user used by MaxScale when it rewires replication
+CREATE USER 'replicator'@'192.168.1.%' IDENTIFIED BY 'replication-password';
+GRANT REPLICATION SLAVE ON *.* TO 'replicator'@'192.168.1.%';
 
 -- Create the MaxScale routing user (used for connection authentication)
 CREATE USER 'maxscale_router'@'192.168.1.100' IDENTIFIED BY 'strong-router-password';
@@ -70,7 +76,10 @@ GRANT SELECT ON mysql.user TO 'maxscale_router'@'192.168.1.100';
 GRANT SELECT ON mysql.db TO 'maxscale_router'@'192.168.1.100';
 GRANT SELECT ON mysql.tables_priv TO 'maxscale_router'@'192.168.1.100';
 GRANT SELECT ON mysql.columns_priv TO 'maxscale_router'@'192.168.1.100';
+GRANT SELECT ON mysql.procs_priv TO 'maxscale_router'@'192.168.1.100';
 GRANT SELECT ON mysql.proxies_priv TO 'maxscale_router'@'192.168.1.100';
+GRANT SELECT ON mysql.global_priv TO 'maxscale_router'@'192.168.1.100';
+GRANT SELECT ON mysql.roles_mapping TO 'maxscale_router'@'192.168.1.100';
 GRANT SHOW DATABASES ON *.* TO 'maxscale_router'@'192.168.1.100';
 
 FLUSH PRIVILEGES;
@@ -100,16 +109,10 @@ datadir = /var/lib/maxscale/
 # PID file location
 piddir = /var/run/maxscale/
 
-# Admin interface for management
-[MaxAdmin]
-type = service
-router = cli
-
-[MaxAdmin Listener]
-type = listener
-service = MaxAdmin
-protocol = maxscaled
-socket = default
+# REST API for maxctrl and management
+admin_host = 127.0.0.1
+admin_port = 8989
+admin_secure_gui = false
 
 
 ## Database Server Definitions
@@ -118,19 +121,16 @@ socket = default
 type = server
 address = 192.168.1.10
 port = 3306
-protocol = MariaDBBackend
 
 [replica-1]
 type = server
 address = 192.168.1.11
 port = 3306
-protocol = MariaDBBackend
 
 [replica-2]
 type = server
 address = 192.168.1.12
 port = 3306
-protocol = MariaDBBackend
 
 
 ## Monitor: Tracks server health and replication topology
@@ -167,16 +167,16 @@ password = strong-router-password
 # Send reads to replicas, writes to primary
 use_sql_variables_in = master
 
-# If all replicas are down, allow reads from primary
-master_failure_mode = error_on_write
+# Allow sessions to reconnect if a replica is promoted to primary
+master_failure_mode = fail_on_write
 
 # Connection pool settings
 connection_keepalive = 300s
-max_slave_connections = 100%
+max_slave_connections = 255
 
 # Retry failed transactions on failover
 transaction_replay = true
-transaction_replay_max_size = 1Mi
+transaction_replay_max_size = 1MiB
 
 
 ## Read Connection Load Balancer (optional - for pure read workloads)
@@ -281,7 +281,7 @@ sudo maxctrl show service ReadWrite-Service
 sudo maxctrl show server primary-server
 
 # Drain a server (stop new connections, let existing finish)
-sudo maxctrl drain server replica-1
+sudo maxctrl set server replica-1 drain
 
 # Set a server to maintenance mode
 sudo maxctrl set server primary-server maintenance
@@ -296,7 +296,7 @@ Test automatic failover by stopping the primary:
 
 ```bash
 # On the primary database server
-sudo systemctl stop mysql
+sudo systemctl stop mysql    # or: sudo systemctl stop mariadb
 
 # On the MaxScale server, watch the monitor
 sudo maxctrl list servers
@@ -317,23 +317,11 @@ After failover:
 
 ## Configuring MaxScale REST API
 
-The REST API is useful for monitoring and automation:
+The REST API is useful for monitoring and automation. It listens on `127.0.0.1:8989` by default; configure it in the `[maxscale]` section if you need to change the host, port, or GUI security settings:
 
 ```bash
 sudo nano /etc/maxscale.cnf
 ```
-
-Add:
-
-```ini
-[REST API]
-type = listener
-service = MaxAdmin
-protocol = HTTPD
-port = 8989
-```
-
-Or configure via the newer `[maxscale]` section:
 
 ```ini
 [maxscale]
@@ -359,11 +347,11 @@ curl -u admin:mariadb http://localhost:8989/v1/services/ReadWrite-Service
 # View MaxScale logs
 sudo tail -f /var/log/maxscale/maxscale.log
 
-# Enable debug logging (temporarily)
-sudo maxctrl alter maxscale log_debug true
+# Enable more verbose info logging (temporarily)
+sudo maxctrl enable log-priority info
 
 # Disable after troubleshooting
-sudo maxctrl alter maxscale log_debug false
+sudo maxctrl disable log-priority info
 
 # Check for configuration errors
 sudo maxscale --config-check /etc/maxscale.cnf
@@ -378,7 +366,7 @@ Verify the monitoring user has the right privileges and the host matches the Max
 Check network connectivity and verify MySQL is running on the backend servers:
 
 ```bash
-mysql -h 192.168.1.10 -u maxscale_monitor -p -e "SHOW SLAVE HOSTS"
+mysql -h 192.168.1.10 -u maxscale_monitor -p -e "SELECT 1"
 ```
 
 **Failover not triggering:**
