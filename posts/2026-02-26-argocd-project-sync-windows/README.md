@@ -90,7 +90,7 @@ Each sync window entry has these fields:
 | `applications` | List of app name patterns | `["*"]`, `["api-*"]` |
 | `namespaces` | List of namespace patterns | `["prod-*"]` |
 | `clusters` | List of cluster patterns | `["https://prod.k8s.example.com"]` |
-| `manualSync` | Whether manual syncs are also blocked | `true` or `false` |
+| `manualSync` | Whether manual syncs are allowed to bypass the window | `true` or `false` |
 | `timeZone` | Time zone for the schedule | `America/New_York` |
 
 ## Cron Schedule Reference
@@ -117,8 +117,8 @@ schedule: "0 0 * * *"
 # Weekdays at 9 AM
 schedule: "0 9 * * 1-5"
 
-# First Monday of each month at 2 AM
-schedule: "0 2 1-7 * 1"
+# First day of each month at 2 AM
+schedule: "0 2 1 * *"
 
 # Every 4 hours
 schedule: "0 */4 * * *"
@@ -215,7 +215,7 @@ spec:
       duration: 120h    # 5 days
       applications:
         - "*"
-      manualSync: true  # Also block manual syncs
+      manualSync: false  # Also block manual syncs
 
     # Year-end freeze (December 20 to January 2)
     - kind: deny
@@ -223,12 +223,12 @@ spec:
       duration: 312h    # 13 days
       applications:
         - "*"
-      manualSync: true
+      manualSync: false
 ```
 
 ## Controlling Manual Syncs
 
-By default, sync windows only affect automated (auto-sync) operations. Manual syncs can still proceed. To block manual syncs too:
+By default, sync windows affect both automated and manual sync operations. To let operators manually sync during a window, enable manual sync for that window:
 
 ```yaml
 syncWindows:
@@ -237,11 +237,11 @@ syncWindows:
     duration: 24h
     applications:
       - "*"
-    # When true, even clicking "Sync" in the UI is blocked
+    # When true, clicking "Sync" in the UI is still allowed
     manualSync: true
 ```
 
-When `manualSync` is `false` (the default), users can still manually trigger syncs even during deny windows. This is useful for emergency fixes while still preventing automated syncs from running.
+When `manualSync` is `false` (the default), manual syncs are blocked when the window blocks syncing. Setting `manualSync` to `true` is useful for emergency fixes while still preventing automated syncs from running during a deny window.
 
 ## Time Zone Support
 
@@ -286,7 +286,7 @@ syncWindows:
     applications:
       - "*"
 
-  # And deny during month-end processing (last day of month)
+  # And deny during month-end processing (28th-31st)
   - kind: deny
     schedule: "0 0 28-31 * *"
     duration: 24h
@@ -320,13 +320,13 @@ spec:
       applications:
         - "*"
 
-    # Emergency window: always allow critical services
+    # Emergency window: allow critical services outside deny freezes
     - kind: allow
       schedule: "0 0 * * *"
       duration: 24h
       applications:
         - "hotfix-*"
-      manualSync: false
+      manualSync: true
 
     # Holiday freeze: December 15 to January 5
     - kind: deny
@@ -334,7 +334,7 @@ spec:
       duration: 504h   # 21 days
       applications:
         - "*"
-      manualSync: true
+      manualSync: false
 
   clusterResourceWhitelist: []
   namespaceResourceWhitelist:
@@ -356,18 +356,24 @@ argocd proj windows list production-apps
 
 ## Overriding Sync Windows in Emergencies
 
-When you need to deploy during a deny window:
+When you need to deploy during a deny window, the window must allow manual syncs. You can enable manual sync for the relevant window, then run a normal sync:
 
 ```bash
-# Force sync ignores sync windows (requires admin permissions)
-argocd app sync my-critical-app --force
+# Find the sync window ID
+argocd proj windows list production-apps
+
+# Allow manual syncs for that window
+argocd proj windows enable-manual-sync production-apps 0
+
+# Run the emergency sync
+argocd app sync my-critical-app
 ```
 
-The `--force` flag requires the user to have `override` permission on the application:
+The user still needs `sync` permission on the application:
 
 ```yaml
-# RBAC policy to allow override
-p, role:emergency-deployer, applications, override, production-apps/*, allow
+# RBAC policy to allow sync
+p, role:emergency-deployer, applications, sync, production-apps/*, allow
 ```
 
 ## Troubleshooting
@@ -378,7 +384,7 @@ p, role:emergency-deployer, applications, override, production-apps/*, allow
 argocd proj windows list production-apps
 ```
 
-**Sync allowed when it should be blocked**: Verify the cron schedule is correct. Use an online cron calculator to double check. Also check if `manualSync` is set to `true` if you want to block manual syncs.
+**Sync allowed when it should be blocked**: Verify the cron schedule is correct. Use an online cron calculator to double check. Also check if `manualSync` is set to `false` or omitted if you want to block manual syncs.
 
 **Time zone confusion**: If sync windows seem to trigger at the wrong time, verify the `timeZone` field. Default is UTC.
 
