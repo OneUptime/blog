@@ -174,7 +174,7 @@ spec:
     tags:
       ManagedBy: crossplane
 ---
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.upbound.io/v1beta2
 kind: Instance
 metadata:
   name: app-database
@@ -184,7 +184,7 @@ spec:
   forProvider:
     region: us-east-1
     engine: postgres
-    engineVersion: "15.4"
+    engineVersion: "15.17"
     instanceClass: db.t3.medium
     allocatedStorage: 50
     maxAllocatedStorage: 200
@@ -287,6 +287,13 @@ Crossplane Compositions let you create higher-level abstractions. Define a "Data
 
 ```yaml
 # crossplane/compositions/database-composition.yaml
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+---
 apiVersion: apiextensions.crossplane.io/v1
 kind: CompositeResourceDefinition
 metadata:
@@ -331,31 +338,46 @@ spec:
   compositeTypeRef:
     apiVersion: myorg.io/v1alpha1
     kind: XDatabase
-  resources:
-    - name: rds-instance
-      base:
-        apiVersion: rds.aws.upbound.io/v1beta1
-        kind: Instance
-        spec:
-          forProvider:
-            region: us-east-1
-            storageEncrypted: true
-            publiclyAccessible: false
-            multiAz: true
-            backupRetentionPeriod: 7
-      patches:
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.engine
-          toFieldPath: spec.forProvider.engine
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.size
-          toFieldPath: spec.forProvider.instanceClass
-          transforms:
-            - type: map
-              map:
-                small: db.t3.small
-                medium: db.t3.medium
-                large: db.r5.large
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          - name: rds-instance
+            base:
+              apiVersion: rds.aws.upbound.io/v1beta2
+              kind: Instance
+              spec:
+                forProvider:
+                  region: us-east-1
+                  allocatedStorage: 20
+                  storageType: gp3
+                  storageEncrypted: true
+                  username: admin
+                  passwordSecretRef:
+                    name: rds-master-password
+                    namespace: crossplane-system
+                    key: password
+                  publiclyAccessible: false
+                  multiAz: true
+                  backupRetentionPeriod: 7
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.engine
+                toFieldPath: spec.forProvider.engine
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.size
+                toFieldPath: spec.forProvider.instanceClass
+                transforms:
+                  - type: map
+                    map:
+                      small: db.t3.small
+                      medium: db.t3.medium
+                      large: db.r5.large
 ```
 
 Now teams can request a database with a simple claim:
@@ -430,7 +452,7 @@ metadata:
 
 ---
 # Wave 2: RDS (depends on subnets and security groups)
-apiVersion: rds.aws.upbound.io/v1beta1
+apiVersion: rds.aws.upbound.io/v1beta2
 kind: Instance
 metadata:
   name: app-database
@@ -444,7 +466,7 @@ For a broader overview of using Crossplane with ArgoCD, see our guide on [GitOps
 ## Best Practices
 
 1. **Use IRSA for authentication** - Avoid static AWS credentials. Use IAM Roles for Service Accounts.
-2. **Enable deletion protection** - Set `deletionProtection: true` on critical resources like RDS and S3.
+2. **Enable deletion protection** - Set `deletionProtection: true` on critical resources like RDS, and use `deletionPolicy: Orphan` where you want Crossplane to stop managing a resource without deleting it.
 3. **Use Compositions** - Abstract complex resource combinations into simple claims.
 4. **Manage sync waves carefully** - AWS resource creation order matters. Use sync waves.
 5. **Monitor Crossplane health** - Track Crossplane provider health and resource readiness.
