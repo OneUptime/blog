@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, MongoDB, Database
 
-Description: Learn how to deploy the MongoDB Community Operator using ArgoCD to manage MongoDB replica sets on Kubernetes with a full GitOps workflow.
+Description: Learn how to deploy MongoDB Community resources using ArgoCD and the MongoDB Controllers for Kubernetes Operator to manage MongoDB replica sets on Kubernetes with a full GitOps workflow.
 
 ---
 
-The MongoDB Community Operator allows you to run MongoDB replica sets on Kubernetes with automated provisioning, scaling, and failover. When paired with ArgoCD, every MongoDB deployment becomes a Git commit - reviewable, auditable, and automatically reconciled against the live state of your cluster.
+The MongoDB Controllers for Kubernetes Operator allows you to run MongoDB Community replica sets on Kubernetes with automated provisioning, scaling, and failover. When paired with ArgoCD, every MongoDB deployment becomes a Git commit - reviewable, auditable, and automatically reconciled against the live state of your cluster.
 
 This post covers the full lifecycle: installing the operator, creating replica sets, handling credentials, configuring health checks, and managing upgrades, all through ArgoCD.
 
@@ -19,9 +19,9 @@ This post covers the full lifecycle: installing the operator, creating replica s
 - A Git repository for your Kubernetes manifests
 - A storage class with dynamic provisioning support
 
-## Step 1: Install the MongoDB Community Operator
+## Step 1: Install the MongoDB Controllers for Kubernetes Operator
 
-The Community Operator is available through a Helm chart maintained by MongoDB. Create an ArgoCD Application to install it.
+MongoDB Community resources are supported by the MongoDB Controllers for Kubernetes Operator. Create an ArgoCD Application to install it from the Helm chart maintained by MongoDB.
 
 ```yaml
 # argocd/mongodb-operator.yaml
@@ -29,18 +29,18 @@ The Community Operator is available through a Helm chart maintained by MongoDB. 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: mongodb-community-operator
+  name: mongodb-kubernetes-operator
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    chart: community-operator
+    chart: mongodb-kubernetes
     repoURL: https://mongodb.github.io/helm-charts
-    targetRevision: 0.10.0
+    targetRevision: 1.8.0
     helm:
-      releaseName: mongodb-community-operator
+      releaseName: mongodb-kubernetes-operator
       values: |
         operator:
           resources:
@@ -106,7 +106,7 @@ metadata:
 spec:
   members: 3
   type: ReplicaSet
-  version: "7.0.14"
+  version: "7.0.32"
 
   # Security configuration
   security:
@@ -312,15 +312,15 @@ MongoDB version upgrades work the same way. Update the version field:
 
 ```yaml
 spec:
-  version: "8.0.0"  # was 7.0.14
+  version: "8.0.23"  # was 7.0.32
 ```
 
-The operator performs a rolling upgrade, one member at a time, stepping down the primary when its turn comes and waiting for elections to complete before proceeding.
+The operator performs the version change in an always-up manner. For major upgrades, follow MongoDB's upgrade path and compatibility checklist before changing the version field.
 
 ## Monitoring Integration
 
-The MongoDB Community Operator exposes metrics compatible with the Prometheus MongoDB exporter. You can deploy it alongside your replica set and monitor everything through [OneUptime](https://oneuptime.com) for unified observability.
+MongoDBCommunity resources support a `spec.prometheus` configuration that exposes a Prometheus metrics endpoint. You can deploy Prometheus scraping alongside your replica set and monitor everything through [OneUptime](https://oneuptime.com) for unified observability.
 
 ## Conclusion
 
-Managing MongoDB Community Operator through ArgoCD creates a clean separation between operator lifecycle and database instance management. Your database configurations live in Git, changes go through pull requests, and ArgoCD ensures the cluster state always matches your declarations. Remember to disable auto-pruning for database resources, use sync waves for dependency ordering, and add custom health checks for accurate status reporting in the ArgoCD dashboard.
+Managing MongoDB Community resources through ArgoCD creates a clean separation between operator lifecycle and database instance management. Your database configurations live in Git, changes go through pull requests, and ArgoCD ensures the cluster state always matches your declarations. Remember to disable auto-pruning for database resources, use sync waves for dependency ordering, and add custom health checks for accurate status reporting in the ArgoCD dashboard.
