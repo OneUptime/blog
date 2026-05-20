@@ -157,6 +157,7 @@ argocd login localhost:8080 \
 # Or use environment variables
 export ARGOCD_SERVER=localhost:8080
 export ARGOCD_AUTH_TOKEN=$(argocd account generate-token)
+export ARGOCD_OPTS='--insecure'
 
 # Now commands work without explicit login
 argocd app list
@@ -193,7 +194,7 @@ argocd login localhost:8080 --insecure --username admin --password '<password>'
 
 # Or import the ArgoCD CA cert
 kubectl -n argocd get secret argocd-server-tls -o jsonpath='{.data.tls\.crt}' | base64 -d > argocd-ca.crt
-argocd login localhost:8080 --certificate-authority argocd-ca.crt --username admin --password '<password>'
+argocd login localhost:8080 --server-crt argocd-ca.crt --username admin --password '<password>'
 ```
 
 ### Error: "rpc error: code = Unavailable"
@@ -241,7 +242,7 @@ The initial secret has been deleted. Reset the admin password manually.
 ```bash
 # Generate a bcrypt hash of your new password
 # You can use Python
-HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'new-password', bcrypt.gensalt()).decode())")
+NEW_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'new-password', bcrypt.gensalt()).decode())")
 
 # Or use the argocd binary
 NEW_HASH=$(argocd account bcrypt --password 'new-password')
