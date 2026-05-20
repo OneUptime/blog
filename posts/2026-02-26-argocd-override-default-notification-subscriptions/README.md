@@ -94,13 +94,13 @@ metadata:
 data:
   # Standard trigger - fires for all apps
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [sync-failed-template]
 
   # Smart trigger - skips noisy apps
   trigger.on-sync-failed-filtered: |
     - when: >
-        app.status.operationState.phase in ['Error', 'Failed'] and
+        app.status?.operationState.phase in ['Error', 'Failed'] and
         app.metadata.labels['noise-level'] != 'high'
       send: [sync-failed-template]
 
@@ -119,7 +119,7 @@ data:
   # Only fire for production apps
   trigger.on-sync-failed-prod: |
     - when: >
-        app.status.operationState.phase in ['Error', 'Failed'] and
+        app.status?.operationState.phase in ['Error', 'Failed'] and
         app.spec.destination.namespace != 'staging' and
         app.spec.destination.namespace != 'dev'
       send: [sync-failed-template]
@@ -127,14 +127,14 @@ data:
   # Only fire during business hours (using oncall label)
   trigger.on-sync-failed-business: |
     - when: >
-        app.status.operationState.phase in ['Error', 'Failed'] and
+        app.status?.operationState.phase in ['Error', 'Failed'] and
         app.metadata.labels['alert-schedule'] == 'business-hours'
       send: [sync-failed-business-template]
 ```
 
 ## Strategy 3: Template-Level Routing
 
-Use conditional logic in notification templates to route messages differently based on application attributes:
+Use conditional logic in notification templates to customize messages differently based on application attributes:
 
 ```yaml
 apiVersion: v1
@@ -147,14 +147,15 @@ data:
     message: |
       Application {{.app.metadata.name}} sync failed in {{.app.spec.destination.namespace}}
     slack:
-      # Dynamic channel based on application label
-      {{- if eq (index .app.metadata.labels "team") "payments" }}
-      channel: payments-alerts
-      {{- else if eq (index .app.metadata.labels "team") "platform" }}
-      channel: platform-alerts
-      {{- else }}
-      channel: general-alerts
-      {{- end }}
+      # Dynamic message content based on application label
+      username: |
+        {{- if eq (index .app.metadata.labels "team") "payments" -}}
+        payments-deploy-bot
+        {{- else if eq (index .app.metadata.labels "team") "platform" -}}
+        platform-deploy-bot
+        {{- else -}}
+        argocd-deploy-bot
+        {{- end -}}
       attachments: |
         [{
           "color": "#E96D76",
@@ -163,7 +164,44 @@ data:
         }]
 ```
 
-However, note that channel routing in templates has limitations. Not all notification services support dynamic routing within templates. For Slack, this approach works well.
+Route to different Slack channels by using separate subscriptions with selectors:
+
+```yaml
+data:
+  subscriptions: |
+    - recipients:
+        - slack:payments-alerts
+      triggers:
+        - on-sync-failed
+      selector: team=payments
+    - recipients:
+        - slack:platform-alerts
+      triggers:
+        - on-sync-failed
+      selector: team=platform
+    - recipients:
+        - slack:general-alerts
+      triggers:
+        - on-sync-failed
+      selector: '!team'
+```
+
+However, note that routing in templates has limitations. Notification recipients come from annotations or subscriptions; templates customize the notification payload for services such as Slack, but they do not replace the configured recipient.
+
+For example, you can use conditional template logic for different message text:
+
+```yaml
+data:
+  template.smart-sync-failed-text: |
+    message: |
+      {{- if eq (index .app.metadata.labels "team") "payments" }}
+      Payments application {{.app.metadata.name}} sync failed
+      {{- else if eq (index .app.metadata.labels "team") "platform" }}
+      Platform application {{.app.metadata.name}} sync failed
+      {{- else }}
+      Application {{.app.metadata.name}} sync failed
+      {{- end }}
+```
 
 ## Strategy 4: Multiple Notification Controller Instances
 
@@ -177,15 +215,21 @@ metadata:
   name: argocd-notifications-controller-prod
   namespace: argocd
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-notifications-controller-prod
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-notifications-controller-prod
     spec:
       containers:
         - name: notifications-controller
           args:
             - /usr/local/bin/argocd-notifications
-            - --config-map=argocd-notifications-cm-prod
-            - --secret=argocd-notifications-secret-prod
-            - --application-label-selector=environment=production
+            - --config-map-name=argocd-notifications-cm-prod
+            - --secret-name=argocd-notifications-secret-prod
+            - --app-label-selector=environment=production
 
 ---
 # Controller 2: Handles staging notifications
@@ -195,18 +239,24 @@ metadata:
   name: argocd-notifications-controller-staging
   namespace: argocd
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-notifications-controller-staging
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-notifications-controller-staging
     spec:
       containers:
         - name: notifications-controller
           args:
             - /usr/local/bin/argocd-notifications
-            - --config-map=argocd-notifications-cm-staging
-            - --secret=argocd-notifications-secret-staging
-            - --application-label-selector=environment=staging
+            - --config-map-name=argocd-notifications-cm-staging
+            - --secret-name=argocd-notifications-secret-staging
+            - --app-label-selector=environment=staging
 ```
 
-Each controller instance has its own ConfigMap with its own default subscriptions, triggers, and templates. The `--application-label-selector` flag ensures each controller only processes relevant applications.
+Each controller instance has its own ConfigMap with its own default subscriptions, triggers, and templates. The `--app-label-selector` flag ensures each controller only processes relevant applications.
 
 ## Strategy 5: Per-Application Trigger Override
 
@@ -230,8 +280,9 @@ With a corresponding trigger that only fires on the final sync attempt:
 ```yaml
 trigger.on-sync-failed-only-final: |
   - when: >
-      app.status.operationState.phase in ['Error', 'Failed'] and
-      app.status.operationState.retryCount >= app.status.operationState.syncResult.retryLimit
+      app.status?.operationState.phase in ['Error', 'Failed'] and
+      app.status?.operationState.operation.retry.limit > 0 and
+      app.status?.operationState.retryCount >= app.status?.operationState.operation.retry.limit
     send: [sync-failed-final-template]
 ```
 
@@ -260,12 +311,12 @@ data:
   # Triggers with built-in filtering
   trigger.on-sync-failed-global: |
     - when: >
-        app.status.operationState.phase in ['Error', 'Failed'] and
+        app.status?.operationState.phase in ['Error', 'Failed'] and
         app.metadata.labels['notifications-global'] != 'disabled'
       send: [sync-failed-global]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [sync-failed-team]
 
   trigger.on-health-degraded-global: |
