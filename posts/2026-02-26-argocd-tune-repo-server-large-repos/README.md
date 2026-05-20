@@ -8,7 +8,7 @@ Description: Learn how to optimize the ArgoCD repo server for large Git reposito
 
 ---
 
-The ArgoCD repo server is responsible for cloning Git repositories, generating Kubernetes manifests, and caching the results. For small repositories with a few YAML files, the defaults work fine. But when your repository grows to hundreds of megabytes or contains complex Helm charts with many dependencies, the repo server becomes the primary bottleneck. This guide covers every tuning option available for the repo server.
+The ArgoCD repo server is responsible for cloning Git repositories, generating Kubernetes manifests, and caching the results. For small repositories with a few YAML files, the defaults work fine. But when your repository grows to hundreds of megabytes or contains complex Helm charts with many dependencies, the repo server becomes the primary bottleneck. This guide covers the main tuning options available for the repo server.
 
 ## Understanding the Repo Server Workload
 
@@ -81,7 +81,7 @@ spec:
         env:
         # Increase manifest generation timeout (default: 90s)
         - name: ARGOCD_EXEC_TIMEOUT
-          value: "300"
+          value: "5m"
 ```
 
 If you see errors like "rpc error: context deadline exceeded" in the repo server logs, this is the setting to increase.
@@ -92,23 +92,23 @@ Large repositories take a long time to clone. Several approaches help.
 
 ### Using Shallow Clones
 
-ArgoCD performs shallow clones by default, but ensure your Application specs support this.
+ArgoCD can perform shallow clones when you enable them on the repository configuration.
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: v1
+kind: Secret
 metadata:
-  name: my-app
-spec:
-  source:
-    repoURL: https://github.com/org/large-repo.git
-    # Use branch reference, not commit SHA
-    # Branch refs support shallow cloning
-    targetRevision: main
-    path: kubernetes/production
+  name: large-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/org/large-repo.git
+  depth: "1"
 ```
 
-When you reference a specific commit SHA, ArgoCD may need to fetch more history to find it. Branch names and tags are faster because shallow clones can resolve them directly.
+You can also enable this with `argocd repo add <repo-url> --depth 1`. Fully qualified branch and tag references such as `refs/heads/main` or `refs/tags/v1.2.3` are still useful because they avoid ambiguous revision resolution.
 
 ### Splitting Monorepos
 
@@ -141,8 +141,8 @@ Configure Git to use more efficient protocols and compression.
 env:
 # Use Git protocol v2 for better performance
 - name: GIT_PROTOCOL
-  value: "2"
-# Increase buffer size for large repos
+  value: "version=2"
+# Allow slow Git HTTP transfers to run longer before Git aborts them
 - name: GIT_HTTP_LOW_SPEED_LIMIT
   value: "1000"
 - name: GIT_HTTP_LOW_SPEED_TIME
@@ -154,36 +154,36 @@ env:
 The repo server caches generated manifests in Redis. Proper cache configuration prevents unnecessary regeneration.
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-cmd-params-cm ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
   # How long repo cache entries live (default: 24h)
-  reposerver.repo.cache.expiration: "48h"
+  reposerver.repo.cache.expiration: "48h0m0s"
 ```
 
-Increasing the cache expiration means manifests are regenerated less frequently. This is safe when you use webhooks to trigger refreshes on actual changes, because the cache is invalidated when a new commit is detected.
+Increasing the cache expiration means manifests are regenerated less frequently. This is safest when manifests only change when the Git revision changes and you use webhooks to trigger refreshes on actual changes. If your manifests depend on external inputs such as Kustomize remote bases or Helm chart versions that can change without a Git revision change, avoid setting this too high.
 
 ## Controlling Parallelism
 
-The repo server can process multiple requests concurrently. The `--parallelism-limit` flag controls this.
+The repo server can process multiple requests concurrently. The `--parallelismlimit` flag controls this.
 
 ```yaml
 args:
 - /usr/local/bin/argocd-repo-server
 # 0 means unlimited parallelism (default)
 # Set a limit if you need to control resource usage
-- --parallelism-limit=10
+- --parallelismlimit=10
 ```
 
 Setting this to 0 (unlimited) is fine if you have sufficient CPU and memory. If the repo server is on a constrained node, set a limit to prevent it from consuming all resources. A value of 10-20 per replica is reasonable for most workloads.
 
 ## Handling Helm Dependency Updates
 
-Helm charts with many dependencies are particularly slow because `helm dependency update` downloads charts from remote registries on every manifest generation.
+Helm charts with many dependencies are particularly slow because `helm dependency build` may download charts from remote registries during manifest generation when dependencies are missing from `charts/`.
 
 ### Pre-building Helm Dependencies
 
@@ -204,17 +204,18 @@ This way the repo server does not need to download dependencies during manifest 
 Configure ArgoCD to pull Helm dependencies from a local registry or mirror, reducing network latency.
 
 ```yaml
-# argocd-cm ConfigMap
+# Repository Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: internal-helm
   namespace: argocd
-data:
-  helm.repositories: |
-    - url: https://charts.internal.example.com
-      name: internal
-      type: helm
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: https://charts.internal.example.com
+  name: internal
+  type: helm
 ```
 
 ## Memory Optimization
@@ -266,19 +267,23 @@ Track these metrics to identify bottlenecks.
 ```promql
 # Request duration by repo and method
 histogram_quantile(0.95,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
+  sum by (le, repo, request_type) (
+    rate(argocd_git_request_duration_seconds_bucket[5m])
+  )
 )
 
 # Number of pending git requests
-argocd_git_request_total - argocd_git_request_duration_seconds_count
+argocd_repo_pending_request_total
 
-# Cache hit rate
-rate(argocd_repo_server_cache_hit_total[5m]) /
-(rate(argocd_repo_server_cache_hit_total[5m]) +
- rate(argocd_repo_server_cache_miss_total[5m]))
+# Redis request duration for repo-server cache operations
+histogram_quantile(0.95,
+  sum by (le) (
+    rate(argocd_redis_request_duration_seconds_bucket{initiator="argocd-repo-server"}[5m])
+  )
+)
 ```
 
-A high cache hit rate (above 90%) means your cache settings are working well. If the hit rate is low, check that webhooks are not triggering too many cache invalidations.
+If pending requests stay high, add repo server replicas or reduce per-replica parallelism to fit the available CPU and memory. If Redis request duration is high, investigate Redis latency because repo-server cache operations depend on it.
 
 ## Summary
 
@@ -288,6 +293,6 @@ The most impactful repo server optimizations in order are:
 2. **Use RAM-backed tmpfs** - eliminates disk I/O for cloning
 3. **Pre-build Helm dependencies** - avoids network calls during manifest generation
 4. **Increase cache duration** - reduces redundant manifest generation
-5. **Use branch references** - enables efficient shallow clones
+5. **Enable shallow clones** - reduces Git history downloaded for repositories with large histories
 
 For a holistic view of ArgoCD performance tuning, see our guide on [tuning ArgoCD for fastest sync times](https://oneuptime.com/blog/post/2026-02-26-argocd-tune-fastest-sync-times/view).
