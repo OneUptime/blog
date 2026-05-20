@@ -106,7 +106,7 @@ data:
 
 If your LDAP server uses a private CA, mount the certificate into the Dex container:
 
-```yaml
+```bash
 # Create a ConfigMap with the CA certificate
 
 kubectl -n argocd create configmap ldap-ca-cert \
@@ -189,7 +189,7 @@ OpenLDAP uses different attribute names and object classes than Active Directory
 
 ## Nested Groups (Active Directory)
 
-Active Directory supports nested groups (group A is a member of group B). By default, Dex only looks at direct group membership. To search nested groups, use the AD-specific LDAP_MATCHING_RULE_IN_CHAIN filter:
+Active Directory supports nested groups (group A is a member of group B). By default, Dex only looks at direct group membership. To search nested groups, configure `recursionGroupAttr` so Dex follows parent group memberships:
 
 ```yaml
           groupSearch:
@@ -197,11 +197,12 @@ Active Directory supports nested groups (group A is a member of group B). By def
             filter: "(objectClass=group)"
             userMatchers:
               - userAttr: DN
-                groupAttr: "member:1.2.840.113556.1.4.1941:"
+                groupAttr: member
+                recursionGroupAttr: member
             nameAttr: cn
 ```
 
-The `1.2.840.113556.1.4.1941` OID tells Active Directory to recursively resolve group memberships.
+The `recursionGroupAttr` setting tells Dex which group attribute to follow when resolving nested group memberships.
 
 ## Configuring RBAC with LDAP Groups
 
