@@ -8,16 +8,16 @@ Description: Master the ArgoCD sync-wave annotation to control resource deployme
 
 ---
 
-The `argocd.argoproj.io/sync-wave` annotation controls the order in which ArgoCD applies Kubernetes resources during a sync operation. Without sync waves, ArgoCD applies all resources simultaneously. With sync waves, you can enforce sequential ordering - ensuring namespaces exist before deployments, ConfigMaps are created before pods that reference them, and database migrations run before application code.
+The `argocd.argoproj.io/sync-wave` annotation controls the order in which ArgoCD applies Kubernetes resources during a sync operation. Without explicit sync waves, resources are assigned to the default wave and ordered by phase, kind, and name. With sync waves, you can enforce sequential ordering - ensuring namespaces exist before deployments, ConfigMaps are created before pods that reference them, and database migrations run before application code.
 
 ## How sync waves work
 
 Sync waves assign a numerical value to resources. ArgoCD processes waves in ascending order:
 
 1. All resources in wave -5 are applied first
-2. ArgoCD waits for them to become healthy
+2. ArgoCD waits for that wave to become in-sync and healthy
 3. All resources in wave -4 are applied
-4. ArgoCD waits for health
+4. ArgoCD waits for that wave to become in-sync and healthy
 5. This continues until all waves are processed
 
 ```yaml
@@ -150,6 +150,20 @@ metadata:
     argocd.argoproj.io/sync-wave: "-4"
 
 ---
+# Wave -3: Database prerequisites
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: ecommerce
+  annotations:
+    argocd.argoproj.io/sync-wave: "-3"
+type: Opaque
+stringData:
+  password: "change-me"
+  url: "postgres://postgres:change-me@postgres:5432/ecommerce"
+
+---
 # Wave -3: Persistent storage for database
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -188,6 +202,14 @@ spec:
       containers:
         - name: postgres
           image: postgres:16
+          env:
+            - name: POSTGRES_DB
+              value: ecommerce
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
           ports:
             - containerPort: 5432
           volumeMounts:
@@ -232,7 +254,10 @@ spec:
           image: myorg/ecommerce-migrate:v1.0.0
           env:
             - name: DATABASE_URL
-              value: postgres://postgres:5432/ecommerce
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: url
       restartPolicy: Never
   backoffLimit: 3
 
@@ -267,6 +292,25 @@ spec:
             initialDelaySeconds: 10
 
 ---
+# Wave 0: Backend API service
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-server
+  namespace: ecommerce
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    app: api-server
+spec:
+  selector:
+    app: api-server
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+---
 # Wave 1: Frontend (after API is healthy)
 apiVersion: apps/v1
 kind: Deployment
@@ -288,9 +332,28 @@ spec:
       containers:
         - name: frontend
           image: myorg/ecommerce-frontend:v1.0.0
+          ports:
+            - containerPort: 8080
           env:
             - name: API_URL
               value: http://api-server:8080
+
+---
+# Wave 1: Frontend service
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-frontend
+  namespace: ecommerce
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  selector:
+    app: web-frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
 
 ---
 # Wave 2: Ingress (after frontend is healthy)
@@ -335,7 +398,7 @@ spec:
     matchLabels:
       app: api-server
   endpoints:
-    - port: metrics
+    - port: http
 ```
 
 ## Wave numbering conventions
@@ -359,11 +422,11 @@ Establish a team-wide convention. Here is a recommended scheme:
 
 ArgoCD uses health checks to determine when a wave is complete:
 
-- **Deployment** - Healthy when all replicas are available and the rollout is complete
-- **StatefulSet** - Healthy when all replicas are ready
-- **Job** - Healthy when completed successfully
-- **Service** - Always considered healthy
-- **ConfigMap/Secret** - Always considered healthy
+- **Deployment** - Healthy when the controller has observed the latest generation and updated the desired replicas
+- **StatefulSet** - Healthy when the controller has observed the latest generation and updated the desired replicas
+- **Job** - Healthy when completed successfully, suspended when `.spec.suspended` is true
+- **Service** - Healthy when LoadBalancer services have an ingress address; ClusterIP services do not have a built-in health gate
+- **ConfigMap/Secret** - No built-in health check
 - **PVC** - Healthy when bound to a PV
 
 If a resource in a wave does not become healthy within the sync timeout, the entire sync fails and subsequent waves are not processed.
@@ -425,8 +488,8 @@ metadata:
 
 ```bash
 # Check sync wave assignments
-argocd app resources my-app --output json | \
-  jq '.[] | {kind: .kind, name: .name, syncWave: .syncWave}'
+argocd app get my-app --output json | \
+  jq '.status.resources[] | {kind: .kind, name: .name, syncWave: .syncWave}'
 
 # Watch sync progress
 argocd app sync my-app --watch
