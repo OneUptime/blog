@@ -43,7 +43,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.10.0
+    targetRevision: 2.5.0
     helm:
       values: |
         installCRDs: true
@@ -76,10 +76,10 @@ kubectl create secret generic aws-secret \
   --from-literal=secret-access-key=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```
 
-Then create a SecretStore:
+Then create a ClusterSecretStore:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -103,7 +103,7 @@ spec:
 For EKS clusters, use IRSA (IAM Roles for Service Accounts) instead of static credentials:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -122,7 +122,7 @@ spec:
 ### HashiCorp Vault
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -144,7 +144,7 @@ spec:
 ### Azure Key Vault
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-key-vault
@@ -162,7 +162,7 @@ spec:
 ### Google Secret Manager
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -185,7 +185,7 @@ spec:
 Now create ExternalSecret resources that ArgoCD will sync:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -232,10 +232,10 @@ my-app/
 
 ### ArgoCD Application with Sync Ordering
 
-Use sync waves to ensure secrets are fetched before the application starts:
+Use sync waves to apply the ExternalSecret before the application starts. The health check below lets ArgoCD wait until ESO reports the ExternalSecret as ready:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -263,10 +263,17 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"  # Deploy after secrets are ready
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
+          image: ghcr.io/your-org/my-app:1.0.0
           envFrom:
             - secretRef:
                 name: my-app-secrets
@@ -308,7 +315,7 @@ data:
 
 ## Handling Secret Diff in ArgoCD
 
-ArgoCD might show the generated Kubernetes Secret as "OutOfSync" because it was not in Git. Ignore the generated secrets:
+If a Kubernetes Secret is also declared in Git and ESO updates its data, ArgoCD might show it as "OutOfSync". Ignore the managed Secret data:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -320,6 +327,8 @@ spec:
   ignoreDifferences:
     - group: ""
       kind: Secret
+      name: my-app-secrets
+      namespace: app
       jsonPointers:
         - /data
   source:
@@ -335,7 +344,7 @@ spec:
 ### Using dataFrom for All Properties
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-all-secrets
@@ -356,7 +365,7 @@ spec:
 ### Using Find to Discover Secrets
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-discover
@@ -392,6 +401,6 @@ kubectl get secret my-app-secrets -n app -o yaml
 
 ## Conclusion
 
-External Secrets Operator is the best choice when you already have a centralized secret management system like AWS Secrets Manager, HashiCorp Vault, or Azure Key Vault. It keeps actual secret values out of Git entirely, centralizes secret management, and supports automatic rotation through the `refreshInterval`. Combined with ArgoCD's sync waves and custom health checks, you get a fully GitOps-driven workflow where only secret references live in Git.
+External Secrets Operator is the best choice when you already have a centralized secret management system like AWS Secrets Manager, HashiCorp Vault, or Azure Key Vault. It keeps actual secret values out of Git entirely, centralizes secret management, and uses the `refreshInterval` to synchronize rotated secret values. Combined with ArgoCD's sync waves and custom health checks, you get a fully GitOps-driven workflow where only secret references live in Git.
 
 For alternative approaches, see our guides on [using Sealed Secrets with ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-sealed-secrets-management/view) and [using SOPS with ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-sops-secrets/view).
