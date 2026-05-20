@@ -8,7 +8,7 @@ Description: Learn how to configure retry backoff settings in ArgoCD to handle t
 
 ---
 
-Kubernetes deployments fail for many transient reasons: a node is temporarily unavailable, the API server is under load, a dependency is not ready yet, or a webhook times out. ArgoCD provides retry mechanisms to handle these failures automatically, but the default settings are either too aggressive or not configured at all. This guide explains how to set up retry backoff properly so your deployments recover from transient failures without overwhelming the cluster.
+Kubernetes deployments fail for many transient reasons: a node is temporarily unavailable, the API server is under load, a dependency is not ready yet, or a webhook times out. ArgoCD provides retry mechanisms to handle these failures automatically, and automated sync retries use default backoff settings unless you configure them explicitly. This guide explains how to set up retry backoff properly so your deployments recover from transient failures without overwhelming the cluster.
 
 ## Understanding ArgoCD Retry Behavior
 
@@ -54,7 +54,7 @@ spec:
       prune: true
       selfHeal: true
     retry:
-      limit: 5           # Maximum number of retry attempts
+      limit: 5           # Maximum number of retries after a failed sync
       backoff:
         duration: 5s      # Initial backoff duration
         factor: 2          # Multiply duration by this factor each retry
@@ -66,7 +66,8 @@ With these settings, the retry intervals are:
 - Attempt 2 fails, wait 10 seconds
 - Attempt 3 fails, wait 20 seconds
 - Attempt 4 fails, wait 40 seconds
-- Attempt 5 fails, mark as failed (total wait: 75 seconds)
+- Attempt 5 fails, wait 80 seconds
+- Attempt 6 fails, mark as failed (total wait: 155 seconds)
 
 ## Choosing the Right Duration
 
@@ -114,10 +115,10 @@ backoff:
   duration: 5s
   factor: 2
 
-# Factor 1.5 (gentler growth): 5s, 7.5s, 11.25s, 16.8s, 25.3s
+# Factor 1 (constant backoff): 5s, 5s, 5s, 5s, 5s
 backoff:
   duration: 5s
-  factor: 1.5
+  factor: 1
 
 # Factor 3 (aggressive growth): 5s, 15s, 45s, 135s (capped by maxDuration)
 backoff:
@@ -125,11 +126,11 @@ backoff:
   factor: 3
 ```
 
-Use factor 2 for most cases. Use factor 1.5 if you want more retry attempts within a shorter time window. Use factor 3 if you want to back off quickly to reduce load on a struggling system.
+Use factor 2 for most cases. Use factor 1 if you want fixed retry spacing within a shorter time window. Use factor 3 if you want to back off quickly to reduce load on a struggling system.
 
 ## Setting the Retry Limit
 
-The retry limit determines how many times ArgoCD will attempt the sync before giving up. Setting this too high means broken deployments take a long time to report failure. Setting it too low means transient issues cause unnecessary failures.
+The retry limit determines how many times ArgoCD will retry a failed sync before giving up. Setting this too high means broken deployments take a long time to report failure. Setting it too low means transient issues cause unnecessary failures.
 
 ```yaml
 # Conservative: fail fast, alert humans
@@ -183,10 +184,10 @@ Set maxDuration to the longest reasonable wait between individual retry attempts
 
 ### Application with CRD Dependencies
 
-When an application creates CRDs that other resources depend on, the first sync often fails because the CRDs are not yet registered.
+When custom resources depend on CRDs that are registered by another application or controller, the first sync can fail because the CRDs are not yet known to the cluster.
 
 ```yaml
-# App that installs CRDs + resources that use them
+# App that applies resources whose CRDs may be registered separately
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -198,6 +199,7 @@ spec:
       selfHeal: true
     syncOptions:
     - CreateNamespace=true
+    - SkipDryRunOnMissingResource=true
     retry:
       limit: 10
       backoff:
@@ -298,13 +300,13 @@ Track retries to identify applications that frequently fail and need attention.
 # Total sync failures (retried or not)
 rate(argocd_app_sync_total{phase="Failed"}[1h])
 
-# Applications currently retrying
+# Applications to inspect for failed or retrying syncs
 argocd_app_info{sync_status="OutOfSync", health_status!="Healthy"}
 
-# Sync operation duration (long durations indicate retries)
-histogram_quantile(0.95,
-  rate(argocd_app_sync_duration_seconds_bucket[5m])
-)
+# Average sync operation duration (long durations can indicate retries)
+sum by (name, namespace) (rate(argocd_app_sync_duration_seconds_total[5m]))
+/
+sum by (name, namespace) (rate(argocd_app_sync_total[5m]))
 ```
 
 If an application consistently hits the retry limit, the issue is likely not transient. Investigate the root cause rather than increasing the retry limit.
