@@ -85,7 +85,7 @@ spec:
       selfHeal: true
 ```
 
-The Helm values file for each regional instance configures its cluster assignments:
+The Helm values file for each regional instance configures its resource sizing and runtime parameters:
 
 ```yaml
 # values-us-east.yaml
@@ -115,8 +115,9 @@ redis:
       memory: "4Gi"
 
 configs:
-  cm:
-    cluster.cache.resync.duration: "5m"
+  params:
+    controller.cluster.cache.batch.events.processing: "true"
+    controller.cluster.cache.events.processing.interval: "100ms"
     controller.status.processors: "40"
     controller.operation.processors: "20"
 ```
@@ -194,6 +195,8 @@ metadata:
   name: platform-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - git:
       repoURL: https://github.com/org/gitops-repo
@@ -203,14 +206,15 @@ spec:
       - path: 'overlays/us-east/*'
   template:
     metadata:
-      name: '{{path.basename}}-platform'
+      name: '{{.path.basename}}-platform'
     spec:
+      project: default
       source:
         repoURL: https://github.com/org/gitops-repo
         targetRevision: HEAD
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
-        server: '{{path.basename}}.example.com'
+        server: 'https://{{.path.basename}}.example.com'
         namespace: platform
 ```
 
@@ -234,7 +238,7 @@ data:
   # Limit concurrent manifest generation
   reposerver.parallelism.limit: "10"
 
-  # Enable repo server request deduplication
+  # Disable Git submodule processing if your repositories do not use submodules
   reposerver.enable.git.submodule: "false"
 ```
 
@@ -303,10 +307,12 @@ At 100+ clusters, your ArgoCD infrastructure itself needs a disaster recovery pl
 
 ```bash
 # Export all applications from an ArgoCD instance
-argocd app list -o json > backup/applications-$(date +%Y%m%d).json
+kubectl get applications.argoproj.io -n argocd \
+  -o yaml > backup/applications-$(date +%Y%m%d).yaml
 
 # Export all projects
-argocd proj list -o json > backup/projects-$(date +%Y%m%d).json
+kubectl get appprojects.argoproj.io -n argocd \
+  -o yaml > backup/projects-$(date +%Y%m%d).yaml
 
 # Export cluster connections
 kubectl get secrets -n argocd \
