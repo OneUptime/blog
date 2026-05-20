@@ -14,7 +14,7 @@ This guide covers glob pattern syntax, common patterns, edge cases, and debuggin
 
 ## Glob Pattern Basics
 
-The Git file generator's `path` field uses Go's `filepath.Match` style globbing with an extension for recursive directory matching (`**`). Here are the fundamental patterns.
+The Git file generator's new globbing mode uses the Go `doublestar` package for recursive directory matching (`**`). In current Argo CD releases, this newer behavior is still documented as opt-in. Enable it with `--enable-new-git-file-globbing`, `ARGOCD_APPLICATIONSET_CONTROLLER_ENABLE_NEW_GIT_FILE_GLOBBING=true`, or `applicationsetcontroller.enable.new.git.file.globbing: "true"` before relying on the non-recursive `*` examples below. Here are the fundamental patterns.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -329,10 +329,11 @@ spec:
     metadata:
       # The file parameters include path info
       # For environments/production/apps/frontend.json:
-      # .path = environments/production/apps
+      # .path.path = environments/production/apps
       # .path.filename = frontend.json
-      # .path.basename = frontend (without extension)
-      # .path.basenameNormalized = frontend (DNS-safe)
+      # .path.filenameNormalized = frontend.json (DNS-safe)
+      # .path.basename = apps (right-most directory name)
+      # .path.basenameNormalized = apps (DNS-safe)
       name: '{{.app_name}}-{{.env}}'
     spec:
       project: default
