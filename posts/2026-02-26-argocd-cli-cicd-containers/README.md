@@ -40,7 +40,7 @@ Many CI systems let you specify a container image for your job. The official Arg
 ```yaml
 # GitLab CI
 deploy:
-  image: argoproj/argocd:v2.10.0
+  image: quay.io/argoproj/argocd:v2.10.0
   script:
     - argocd app sync my-app --grpc-web
 ```
@@ -126,7 +126,7 @@ jobs:
 
 ```yaml
 deploy:
-  image: argoproj/argocd:v2.10.0
+  image: quay.io/argoproj/argocd:v2.10.0
   variables:
     ARGOCD_SERVER: argocd.example.com
     ARGOCD_OPTS: "--grpc-web"
