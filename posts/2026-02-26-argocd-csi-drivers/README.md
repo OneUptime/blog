@@ -87,7 +87,7 @@ spec:
             parameters:
               type: gp3
               encrypted: "true"
-              fsType: ext4
+              csi.storage.k8s.io/fstype: ext4
             reclaimPolicy: Delete
             volumeBindingMode: WaitForFirstConsumer
             allowVolumeExpansion: true
@@ -157,11 +157,17 @@ parameters:
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: topology.gke.io/zone
+        values:
+          - us-central1-a
+          - us-central1-b
 ```
 
 ## Managing Multiple CSI Drivers
 
-In real environments, you often need multiple CSI drivers for different storage types. Use an ApplicationSet to manage them:
+In real environments, you often need multiple CSI drivers for different storage types. Use an ApplicationSet to manage them. If you keep values files in your own Git repository instead of inside the Helm chart repository, use ArgoCD multi-source Applications with a `$values` reference:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -177,29 +183,35 @@ spec:
             chart: aws-ebs-csi-driver
             repoURL: https://kubernetes-sigs.github.io/aws-ebs-csi-driver
             version: 2.28.1
+            valuesFile: values/ebs-csi.yaml
             namespace: kube-system
           - name: efs-csi
             chart: aws-efs-csi-driver
             repoURL: https://kubernetes-sigs.github.io/aws-efs-csi-driver
             version: 2.5.7
+            valuesFile: values/efs-csi.yaml
             namespace: kube-system
           - name: secrets-store-csi
             chart: secrets-store-csi-driver
             repoURL: https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
             version: 1.4.1
+            valuesFile: values/secrets-store-csi.yaml
             namespace: kube-system
   template:
     metadata:
       name: "csi-{{name}}"
     spec:
       project: infrastructure
-      source:
-        repoURL: "{{repoURL}}"
-        chart: "{{chart}}"
-        targetRevision: "{{version}}"
-        helm:
-          valueFiles:
-            - values/{{name}}.yaml
+      sources:
+        - repoURL: "{{repoURL}}"
+          chart: "{{chart}}"
+          targetRevision: "{{version}}"
+          helm:
+            valueFiles:
+              - $values/{{valuesFile}}
+        - repoURL: https://github.com/your-org/k8s-configs.git
+          targetRevision: main
+          ref: values
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{namespace}}"
@@ -219,7 +231,6 @@ spec:
     syncOptions:
       - ServerSideApply=true      # Required for large CRDs
       - CreateNamespace=true
-      - Replace=true               # For CRD updates
   ignoreDifferences:
     - group: apiextensions.k8s.io
       kind: CustomResourceDefinition
@@ -244,7 +255,7 @@ spec:
       values: |
         controller:
           # Add rolling update strategy
-          strategy:
+          updateStrategy:
             type: RollingUpdate
             rollingUpdate:
               maxUnavailable: 0
@@ -358,6 +369,8 @@ spec:
       path: /metrics
 ```
 
+For the AWS EBS CSI driver Helm chart, set `controller.enableMetrics: true` so the metrics Service is created before applying a standalone ServiceMonitor.
+
 You can use [OneUptime](https://oneuptime.com) to set up alerts on CSI driver health metrics, such as failed provision operations or slow attach times.
 
 ## Troubleshooting CSI Drivers with ArgoCD
@@ -370,10 +383,11 @@ Common issues when managing CSI drivers with ArgoCD:
 4. **RBAC issues**: CSI drivers need specific ClusterRoles. Ensure ArgoCD has permission to create them.
 
 ```yaml
-# For StorageClass updates, use the Replace sync option
+# For StorageClass updates that require deletion and recreation, use Force with Replace
 spec:
   syncPolicy:
     syncOptions:
+      - Force=true
       - Replace=true
 ```
 
