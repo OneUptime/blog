@@ -85,7 +85,7 @@ Someone ran `kubectl delete applications --all -n argocd` or deleted individual 
 
 ```bash
 # Restore from argocd admin export
-argocd admin import --namespace argocd < argocd-export-latest.yaml
+argocd admin import - --namespace argocd < argocd-export-latest.yaml
 
 # Or restore specific applications from backup
 kubectl apply -f applications-backup.yaml
@@ -190,29 +190,21 @@ kubectl rollout restart deployment -n argocd \
 
 ## Scenario 3: ArgoCD Secrets Deleted
 
-The `argocd-secret` contains encryption keys, admin password, webhook secrets, and Dex credentials. Losing this requires regeneration.
+The `argocd-secret` contains the server signature key, admin password, webhook secrets, and SSO client secrets. Losing this requires regeneration.
 
 ```bash
 # ArgoCD will regenerate the secret on restart if it is missing
 # But you will lose:
 # - The admin password (a new one will be generated)
-# - Dex client secrets (need to re-add)
+# - SSO client secrets stored in argocd-secret (need to re-add)
 # - Webhook secrets (need to re-configure)
-# - Repository credentials (need to re-add)
+# Repository and cluster credentials are stored in separate Secrets
 
 # Restart ArgoCD to regenerate the base secret
 kubectl rollout restart deployment argocd-server -n argocd
 
 # Get the new admin password
 argocd admin initial-password -n argocd
-
-# Re-add repository credentials
-argocd repo add https://github.com/your-org/your-repo.git \
-  --username your-username \
-  --password your-token
-
-# Re-add cluster credentials
-argocd cluster add your-context-name
 ```
 
 ## Scenario 4: Repository Credential Secrets Deleted
@@ -251,7 +243,7 @@ kubectl apply -f argocd-cm-backup.yaml
 kubectl apply -f argocd-rbac-cm-backup.yaml
 
 # Step 5: Restore from export if available
-argocd admin import --namespace argocd < argocd-export-backup.yaml
+argocd admin import - --namespace argocd < argocd-export-backup.yaml
 
 # Step 6: If no export backup, re-add repositories
 argocd repo add https://github.com/your-org/your-repo.git \
