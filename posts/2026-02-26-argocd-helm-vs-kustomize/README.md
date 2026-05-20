@@ -8,7 +8,7 @@ Description: A practical guide to choosing between Helm and Kustomize in ArgoCD,
 
 ---
 
-When configuring ArgoCD applications, you inevitably face the Helm vs Kustomize question. Both are first-class citizens in ArgoCD. Both can template and customize Kubernetes manifests. Both have large communities and extensive documentation. The choice depends on your use case, team preferences, and the complexity of your configuration needs. This article provides a practical framework for deciding, with real examples from production deployments.
+When configuring ArgoCD applications, you inevitably face the Helm vs Kustomize question. Both are first-class citizens in ArgoCD. Helm templates Kubernetes manifests, while Kustomize customizes existing manifests. Both have large communities and extensive documentation. The choice depends on your use case, team preferences, and the complexity of your configuration needs. This article provides a practical framework for deciding, with real examples from production deployments.
 
 ## How ArgoCD Handles Each Tool
 
@@ -27,6 +27,7 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://charts.example.com
     chart: my-app
@@ -49,6 +50,9 @@ spec:
       parameters:
         - name: service.type
           value: ClusterIP
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 ### Kustomize in ArgoCD
@@ -63,6 +67,7 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/gitops-repo.git
     path: apps/my-app/overlays/production
@@ -76,6 +81,9 @@ spec:
         environment: production
       # Add a name prefix
       namePrefix: prod-
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 ## Helm: Strengths and Weaknesses
@@ -84,7 +92,7 @@ spec:
 
 **Third-party applications.** Helm's biggest advantage is the massive ecosystem of pre-built charts. When deploying Prometheus, Nginx, PostgreSQL, or any popular application, there is almost certainly a well-maintained Helm chart available.
 
-```bash
+```yaml
 # Deploying third-party software with Helm is straightforward
 # ArgoCD Application for Prometheus Stack
 apiVersion: argoproj.io/v1alpha1
@@ -92,6 +100,7 @@ kind: Application
 metadata:
   name: prometheus-stack
 spec:
+  project: default
   source:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: kube-prometheus-stack
@@ -110,6 +119,9 @@ spec:
         grafana:
           enabled: true
           adminPassword: use-external-secret
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
 ```
 
 **Complex templating.** Helm's Go templating engine supports conditionals, loops, functions, and complex logic.
@@ -193,6 +205,7 @@ resources:
   - service.yaml
   - configmap.yaml
 
+---
 # overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -220,7 +233,7 @@ spec:
   replicas: 5
 ```
 
-This patch is valid Kubernetes YAML. There is no special syntax to learn.
+This patch uses the same Kubernetes resource structure as the base manifest. There is no template syntax to learn.
 
 **Strategic merge patches.** Kustomize can surgically modify specific fields without replacing entire resources.
 
@@ -265,11 +278,11 @@ Use this framework to decide which tool fits each use case:
 
 ## Combining Helm and Kustomize
 
-ArgoCD supports using both tools together. This is often the best approach.
+ArgoCD supports using both tools together, and it also supports multi-source applications for pairing Helm charts with Git-hosted configuration. This is often the best approach.
 
-### Kustomize Post-Rendering of Helm Charts
+### Helm Charts with External Values
 
-Use Helm for the base chart and Kustomize to apply environment-specific patches.
+Use Helm for the base chart and keep environment-specific values in a separate Git repository.
 
 ```yaml
 # ArgoCD multi-source Application
@@ -278,6 +291,10 @@ kind: Application
 metadata:
   name: my-app
 spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
   sources:
     - repoURL: https://charts.example.com
       chart: my-app
@@ -291,6 +308,8 @@ spec:
 ```
 
 ### Kustomize with Helm Chart Inflator
+
+In ArgoCD, this requires enabling Helm support for Kustomize by using a custom config management plugin or setting `kustomize.buildOptions: --enable-helm` in `argocd-cm`.
 
 ```yaml
 # kustomization.yaml that uses a Helm chart as a base
