@@ -44,7 +44,8 @@ Create the CSS file:
 
 ```css
 /* Replace the ArgoCD logo in the navigation sidebar */
-.nav-bar__logo img {
+.sidebar__logo__text-logo,
+.sidebar__logo__character {
   content: url('https://cdn.example.com/company-logo-white.svg') !important;
   max-height: 32px !important;
   width: auto !important;
@@ -57,17 +58,12 @@ Create the CSS file:
   width: auto !important;
 }
 
-/* Hide the "Argo CD" text next to the logo if desired */
-.nav-bar__logo span {
-  display: none !important;
-}
-
 /* Or replace the text */
-.nav-bar__logo span {
-  font-size: 0 !important;  /* Hide original text */
+.sidebar__logo__text-logo {
+  display: none !important;  /* Hide original text logo */
 }
 
-.nav-bar__logo span::after {
+.sidebar__logo-container::after {
   content: "MyCompany DevOps";
   font-size: 16px !important;
   font-weight: 600 !important;
@@ -83,7 +79,7 @@ For best results, your logo should meet these specifications:
 |----------|-------------------|------------------|------------|
 | Sidebar | SVG or PNG | 32px height | Transparent (white logo for dark sidebar) |
 | Login page | SVG or PNG | 48px height | Transparent (dark logo for light background) |
-| Favicon | ICO or PNG | 32x32px or 16x16px | Transparent |
+| Favicon | PNG | 32x32px and 16x16px | Transparent |
 
 SVG is preferred because it scales cleanly at any resolution.
 
@@ -138,13 +134,14 @@ spec:
 
 ```css
 /* Reference the mounted logo in your CSS */
-.nav-bar__logo img {
-  content: url('./custom/logo/logo.svg') !important;
+.sidebar__logo__text-logo,
+.sidebar__logo__character {
+  content: url('../logo/logo.svg') !important;
   max-height: 32px !important;
 }
 
 .login__logo img {
-  content: url('./custom/logo/logo.svg') !important;
+  content: url('../logo/logo.svg') !important;
   max-height: 48px !important;
 }
 ```
@@ -155,10 +152,11 @@ For Helm-based deployments:
 
 ```yaml
 # values.yaml
-server:
-  config:
+configs:
+  cm:
     ui.cssurl: "./custom/css/custom.css"
 
+server:
   volumes:
     - name: custom-logo
       configMap:
@@ -174,7 +172,7 @@ server:
       mountPath: /shared/app/custom/css
 ```
 
-## Method 3: Replace the Logo Using the ArgoCD Custom Styles Extension
+## Method 3: Copy Custom Static Files with an Init Container
 
 For a cleaner approach, you can use ArgoCD's support for custom static files:
 
@@ -216,7 +214,7 @@ The browser tab favicon requires a different approach since it is referenced in 
 
 ### Using CSS to Override the Favicon
 
-While you cannot directly change the favicon with CSS, you can use a JavaScript approach via an extension, or simply host the favicon and configure it through custom CSS that injects it:
+While you cannot directly change the favicon with CSS, you can use a JavaScript approach via a UI extension. Custom CSS alone cannot inject or modify favicon link tags:
 
 ```css
 /* This is a workaround - inject favicon using CSS */
@@ -226,7 +224,7 @@ head link[rel="icon"] {
 }
 ```
 
-For the favicon, the most reliable approach is to mount a custom `favicon.ico` and replace the default:
+For the favicon, the most reliable approach is to mount custom 16x16 and 32x32 PNG files and replace the default ArgoCD favicon files:
 
 ```yaml
 # Create ConfigMap with favicon
@@ -236,18 +234,25 @@ metadata:
   name: argocd-custom-favicon
   namespace: argocd
 binaryData:
-  favicon.ico: <base64-encoded-ico-content>
+  favicon-16x16.png: <base64-encoded-png-content>
+  favicon-32x32.png: <base64-encoded-png-content>
 ```
 
 Mount it to override the default favicon path:
 
 ```yaml
 volumeMounts:
-  - name: custom-favicon
-    mountPath: /shared/app/favicon.ico
-    subPath: favicon.ico
+  - name: custom-favicon-16
+    mountPath: /shared/app/assets/favicon/favicon-16x16.png
+    subPath: favicon-16x16.png
+  - name: custom-favicon-32
+    mountPath: /shared/app/assets/favicon/favicon-32x32.png
+    subPath: favicon-32x32.png
 volumes:
-  - name: custom-favicon
+  - name: custom-favicon-16
+    configMap:
+      name: argocd-custom-favicon
+  - name: custom-favicon-32
     configMap:
       name: argocd-custom-favicon
 ```
@@ -258,24 +263,25 @@ A common pattern is to show both a logo and company name in the sidebar:
 
 ```css
 /* Logo and company name in sidebar */
-.nav-bar__logo {
+.sidebar__logo-container {
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
   padding: 12px 16px !important;
 }
 
-.nav-bar__logo img {
+.sidebar__logo__text-logo,
+.sidebar__logo__character {
   content: url('https://cdn.example.com/company-icon-white.svg') !important;
   max-height: 28px !important;
   width: 28px !important;
 }
 
-.nav-bar__logo span {
-  font-size: 0 !important;
+.sidebar__logo__text-logo {
+  display: none !important;
 }
 
-.nav-bar__logo span::after {
+.sidebar__logo-container::after {
   content: "Acme Corp\A DevOps Portal";
   white-space: pre-line;
   font-size: 13px !important;
@@ -290,20 +296,21 @@ Here is a full example that replaces the logo, changes the sidebar color, and up
 
 ```css
 /* === Navigation Sidebar === */
-.nav-bar {
+.sidebar {
   background-color: #0a1929 !important;
 }
 
-.nav-bar__logo img {
+.sidebar__logo__text-logo,
+.sidebar__logo__character {
   content: url('https://cdn.example.com/logo-white.svg') !important;
   max-height: 30px !important;
 }
 
-.nav-bar__logo span {
-  font-size: 0 !important;
+.sidebar__logo__text-logo {
+  display: none !important;
 }
 
-.nav-bar__logo span::after {
+.sidebar__logo-container::after {
   content: "MyCompany";
   font-size: 16px !important;
   font-weight: 700 !important;
@@ -368,12 +375,14 @@ Open the ArgoCD UI in a browser and perform a hard refresh (Ctrl+Shift+R or Cmd+
 
 ```css
 /* Light theme logo */
-.nav-bar__logo img {
+.sidebar__logo__text-logo,
+.sidebar__logo__character {
   content: url('https://cdn.example.com/logo-dark.svg') !important;
 }
 
 /* Dark theme logo */
-body.theme-dark .nav-bar__logo img {
+body.theme-dark .sidebar__logo__text-logo,
+body.theme-dark .sidebar__logo__character {
   content: url('https://cdn.example.com/logo-white.svg') !important;
 }
 ```
