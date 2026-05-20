@@ -8,7 +8,7 @@ Description: Learn how to handle Kubernetes cluster certificate rotation in Argo
 
 ---
 
-Kubernetes clusters use TLS certificates for API server authentication, and these certificates expire. When they rotate, ArgoCD loses the ability to connect to managed clusters unless you update the stored credentials. Certificate rotation is one of the most common causes of unexpected ArgoCD cluster disconnections, and handling it properly is essential for production stability.
+Kubernetes clusters use TLS certificates for API server identity and, in some cases, client authentication, and these certificates expire. When the cluster CA changes, or when client certificates stored by ArgoCD expire, ArgoCD loses the ability to connect to managed clusters unless you update the stored credentials. Certificate rotation is one of the common causes of unexpected ArgoCD cluster disconnections, and handling it properly is essential for production stability.
 
 ## How ArgoCD Stores Cluster Credentials
 
@@ -41,7 +41,7 @@ data:
   config: eyJ0bHNDbGllbnRDb25maWciOnsiY2FEYXRhIjoiLi4uIn19
 ```
 
-The `config` field contains the CA certificate (caData) and authentication credentials. When the cluster's CA certificate rotates, the caData in this secret becomes invalid.
+The `config` field contains the CA certificate (`caData`) and authentication credentials. A normal API server serving certificate renewal should continue to work when it is signed by the same CA. When the cluster's CA certificate rotates, the `caData` in this secret becomes invalid.
 
 ## What Happens During Certificate Rotation
 
@@ -51,7 +51,7 @@ sequenceDiagram
     participant Secret as Cluster Secret
     participant API as Remote K8s API
 
-    Note over API: Certificate rotates
+    Note over API: Cluster CA rotates
     ArgoCD->>Secret: Read cluster config
     Secret-->>ArgoCD: Old CA cert + credentials
     ArgoCD->>API: Connect with old CA cert
@@ -93,6 +93,8 @@ When you detect a certificate rotation, update the cluster secret manually:
 # Step 1: Get the new CA certificate from the target cluster
 # From the target cluster's kubeconfig
 kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' \
+  --minify \
+  --context target-cluster-context \
   --kubeconfig=/path/to/target-kubeconfig
 
 # Step 2: Update the ArgoCD cluster secret
@@ -125,7 +127,7 @@ argocd cluster add target-cluster-context \
 
 ### Approach 1: CronJob to Update Cluster Credentials
 
-Create a CronJob that periodically fetches fresh certificates and updates ArgoCD:
+Create a CronJob that periodically checks the configured CA data and updates ArgoCD from a trusted source of fresh kubeconfigs:
 
 ```yaml
 apiVersion: batch/v1
@@ -143,7 +145,8 @@ spec:
           serviceAccountName: argocd-cert-updater
           containers:
             - name: cert-updater
-              image: bitnami/kubectl:latest
+              # Use a custom image that includes kubectl, bash, curl, jq, and openssl.
+              image: your-registry.example.com/argocd-cert-updater:latest
               command:
                 - /bin/bash
                 - -c
@@ -156,11 +159,26 @@ spec:
                     -l argocd.argoproj.io/secret-type=cluster \
                     -o jsonpath='{.items[*].metadata.name}')
 
+                  get_ca_from_kubeconfig() {
+                    cluster_name="$1"
+                    kubeconfig="/kubeconfigs/${cluster_name}.yaml"
+
+                    if [ ! -f "$kubeconfig" ]; then
+                      return 1
+                    fi
+
+                    kubectl config view --raw --kubeconfig="$kubeconfig" \
+                      -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'
+                  }
+
                   for SECRET in $SECRETS; do
                     SERVER=$(kubectl get secret "$SECRET" -n argocd \
                       -o jsonpath='{.data.server}' | base64 -d)
 
-                    echo "Checking cluster: $SERVER"
+                    CLUSTER_NAME=$(kubectl get secret "$SECRET" -n argocd \
+                      -o jsonpath='{.data.name}' | base64 -d)
+
+                    echo "Checking cluster: $CLUSTER_NAME ($SERVER)"
 
                     # Get current config
                     CONFIG=$(kubectl get secret "$SECRET" -n argocd \
@@ -170,15 +188,12 @@ spec:
                     CA_DATA=$(echo "$CONFIG" | jq -r '.tlsClientConfig.caData // empty')
 
                     if [ -n "$CA_DATA" ]; then
-                      echo "$CA_DATA" | base64 -d > /tmp/ca.crt
-                      if ! curl -s --cacert /tmp/ca.crt "$SERVER/healthz" > /dev/null 2>&1; then
+                      echo "$CA_DATA" | base64 -d > "/tmp/${SECRET}-ca.crt"
+                      if ! curl -sS --connect-timeout 10 --cacert "/tmp/${SECRET}-ca.crt" "$SERVER/readyz" > /dev/null 2>&1; then
                         echo "Certificate validation failed for $SERVER"
-                        echo "Fetching new certificate..."
+                        echo "Loading updated CA data from trusted kubeconfig..."
 
-                        # Fetch the actual server certificate
-                        NEW_CA=$(echo | openssl s_client -connect "${SERVER#https://}" \
-                          -servername "${SERVER#https://}" 2>/dev/null | \
-                          openssl x509 -outform PEM | base64 -w0)
+                        NEW_CA=$(get_ca_from_kubeconfig "$CLUSTER_NAME")
 
                         if [ -n "$NEW_CA" ]; then
                           # Update the config with new CA
@@ -190,13 +205,21 @@ spec:
                             --type='json' \
                             -p="[{\"op\":\"replace\",\"path\":\"/data/config\",\"value\":\"$(echo "$NEW_CONFIG" | base64 -w0)\"}]"
 
-                          echo "Updated certificate for $SERVER"
+                          echo "Updated CA data for $SERVER"
                         fi
                       else
                         echo "Certificate valid for $SERVER"
                       fi
                     fi
                   done
+              volumeMounts:
+                - name: target-cluster-kubeconfigs
+                  mountPath: /kubeconfigs
+                  readOnly: true
+          volumes:
+            - name: target-cluster-kubeconfigs
+              secret:
+                secretName: target-cluster-kubeconfigs
           restartPolicy: OnFailure
 ```
 
@@ -218,7 +241,6 @@ rules:
   - apiGroups: [""]
     resources: ["secrets"]
     verbs: ["get", "list", "patch"]
-    resourceNames: []  # Allow access to all secrets in argocd namespace
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -235,9 +257,9 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-### Approach 2: Use Token-Based Auth Instead of Certificates
+### Approach 2: Use Token-Based Auth Instead of Client Certificates
 
-Avoid the certificate rotation problem entirely by using service account tokens instead of client certificates:
+Avoid client certificate rotation by using service account tokens instead of client certificates:
 
 ```yaml
 apiVersion: v1
@@ -260,11 +282,11 @@ stringData:
     }
 ```
 
-You still need the CA certificate, but service account tokens are easier to rotate than client certificates.
+You still need the CA certificate, and projected service account tokens can also expire, but tokens are often easier to refresh than client certificates.
 
 ### Approach 3: IAM-Based Authentication (Cloud Providers)
 
-For EKS, GKE, and AKS, use cloud IAM instead of certificates. These never expire in the same way:
+For managed clusters that support external cloud authentication, use cloud IAM instead of static client certificates. These credentials are refreshed through the provider integration instead of being stored as long-lived client certificates:
 
 ```yaml
 # EKS with IRSA (IAM Roles for Service Accounts)
@@ -291,7 +313,7 @@ stringData:
     }
 ```
 
-With IAM-based auth, ArgoCD generates temporary credentials automatically, so there is nothing to rotate on the authentication side. You still need the CA certificate, but EKS CA certificates have a 10-year validity period.
+With IAM-based auth, ArgoCD uses the provider integration to obtain temporary credentials, so there is no static client certificate to rotate on the authentication side. You still need the CA certificate and must update `caData` if the cluster CA changes.
 
 ## Monitoring Certificate Expiry
 
@@ -311,7 +333,11 @@ for SECRET in $SECRETS; do
     -o jsonpath='{.data.server}' | base64 -d)
 
   # Get the server certificate expiry
-  EXPIRY=$(echo | openssl s_client -connect "${SERVER#https://}" 2>/dev/null | \
+  HOSTPORT="${SERVER#https://}"
+  HOSTPORT="${HOSTPORT%%/*}"
+  HOST="${HOSTPORT%%:*}"
+
+  EXPIRY=$(echo | openssl s_client -connect "$HOSTPORT" -servername "$HOST" 2>/dev/null | \
     openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)
 
   if [ -n "$EXPIRY" ]; then
