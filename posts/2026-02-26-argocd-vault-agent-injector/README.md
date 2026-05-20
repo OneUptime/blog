@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Vault, Secret Injection
 
-Description: Learn how to use the HashiCorp Vault Agent Injector with ArgoCD to automatically inject secrets into pods as files or environment variables at runtime.
+Description: Learn how to use the HashiCorp Vault Agent Injector with ArgoCD to automatically inject secrets into pods as files and load them into your application environment at startup.
 
 ---
 
@@ -47,7 +47,7 @@ spec:
   source:
     repoURL: https://helm.releases.hashicorp.com
     chart: vault
-    targetRevision: 0.28.0
+    targetRevision: 0.32.0
     helm:
       values: |
         # We only need the injector, not the full Vault server
@@ -79,6 +79,8 @@ helm:
       ha:
         enabled: true
         replicas: 3
+        raft:
+          enabled: true
     injector:
       enabled: true
 ```
@@ -90,9 +92,13 @@ helm:
 
 vault auth enable kubernetes
 
-# Configure with the cluster's details
+# Configure with the cluster's details.
+# If Vault runs outside the Kubernetes cluster, provide a reviewer token
+# and CA certificate that let Vault call the Kubernetes TokenReview API.
 vault write auth/kubernetes/config \
-  kubernetes_host="https://kubernetes.default.svc:443"
+  kubernetes_host="https://kubernetes.default.svc:443" \
+  token_reviewer_jwt="<reviewer-service-account-jwt>" \
+  kubernetes_ca_cert=@ca.crt
 
 # Create a policy for the application
 vault policy write my-app - <<EOF
@@ -156,7 +162,7 @@ The secrets are written as files to `/vault/secrets/` by default. The filename m
 
 ### Custom Templates for Secret Formatting
 
-By default, Vault writes the raw JSON response. Use templates to format the output:
+By default, Vault Agent renders a generic key/value template. Use templates to control the output format:
 
 ```yaml
 metadata:
@@ -178,7 +184,7 @@ This writes a `.env` style file to `/vault/secrets/config` that your application
 
 ### Injecting as Environment Variables
 
-While Vault Agent writes files, you can use an init container pattern to load them as environment variables:
+While Vault Agent writes files, you can source a rendered file from the container entrypoint to load values as environment variables:
 
 ```yaml
 metadata:
@@ -196,7 +202,7 @@ spec:
     - name: app
       command: ["/bin/sh", "-c"]
       args:
-        - source /vault/secrets/env && exec /app/start
+        - . /vault/secrets/env && exec /app/start
 ```
 
 ### Multiple Secret Paths
@@ -265,7 +271,7 @@ metadata:
 
 ### Handling ArgoCD Diff Detection
 
-The Vault Agent modifies the pod spec by injecting the sidecar. ArgoCD might show this as a diff. Configure ignore differences:
+The Vault Agent Injector mutates Pod objects, not the Deployment template, so ArgoCD usually does not show a Deployment diff for the injected sidecar. If you manage Pod manifests directly and ArgoCD reports differences from injected fields, configure ignore differences:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -275,14 +281,13 @@ metadata:
   namespace: argocd
 spec:
   ignoreDifferences:
-    - group: apps
-      kind: Deployment
-      jsonPointers:
-        - /spec/template/metadata/annotations/vault.hashicorp.com~1agent-inject-status
     - group: ""
-      kind: Secret
-      jsonPointers:
-        - /data
+      kind: Pod
+      jqPathExpressions:
+        - .metadata.annotations["vault.hashicorp.com/agent-inject-status"]
+        - .spec.initContainers[]? | select(.name == "vault-agent-init")
+        - .spec.containers[]? | select(.name == "vault-agent")
+        - .spec.volumes[]? | select(.name == "vault-secrets")
 ```
 
 ### Health Check for Vault-Injected Pods
@@ -346,7 +351,7 @@ spec:
           image: my-app:1.0.0
           command: ["/bin/sh", "-c"]
           args:
-            - source /vault/secrets/config && exec /app/start
+            - set -a; . /vault/secrets/config; set +a; exec /app/start
           ports:
             - containerPort: 8080
           readinessProbe:
