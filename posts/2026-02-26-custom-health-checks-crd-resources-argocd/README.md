@@ -8,11 +8,11 @@ Description: Learn how to write custom Lua health checks in ArgoCD so it correct
 
 ---
 
-ArgoCD knows how to check the health of built-in Kubernetes resources like Deployments, Services, and StatefulSets. But when you deploy Custom Resource Definitions, ArgoCD has no idea what "healthy" means for your custom resources. Without custom health checks, ArgoCD will either always show your CRs as healthy (when they might be broken) or always show them as progressing (blocking your sync waves). Writing custom health checks in Lua fixes this.
+ArgoCD knows how to check the health of built-in Kubernetes resources like Deployments, Services, and StatefulSets. But when you deploy Custom Resource Definitions, ArgoCD has no idea what "healthy" means for your custom resources unless that type has a built-in or configured health check. Without custom health checks, ArgoCD cannot reliably use your CRs' readiness to report application health or gate later sync waves. Writing custom health checks in Lua fixes this.
 
 ## Why Default Health Checks Fall Short
 
-By default, ArgoCD applies a generic health check to unknown resource types. It looks for a `.status.conditions` field and tries to interpret it. If your custom resource does not follow that convention, or uses a different status structure, ArgoCD either marks it as "Missing" or "Healthy" regardless of its actual state.
+ArgoCD has built-in health checks for selected resource types. For unsupported custom resource types, it does not know how to interpret fields like `.status.phase`, `.status.ready`, or `.status.conditions` unless you configure a health check. If your custom resource exists but has no supported health assessment, ArgoCD cannot tell whether it is actually ready.
 
 Consider a custom database resource:
 
@@ -30,7 +30,7 @@ status:
       reason: "DatabaseStarting"
 ```
 
-ArgoCD might show this as Healthy because the resource exists, even though the database is still starting up. That is a problem when you have sync waves that depend on the database being ready.
+ArgoCD cannot infer that this database is still starting up from these custom fields. That is a problem when you have sync waves that depend on the database being ready.
 
 ## Where to Define Custom Health Checks
 
@@ -71,9 +71,9 @@ data:
 
 ## Understanding the Lua Health Check API
 
-The Lua script receives `obj`, which is the full Kubernetes resource object. You must return a table with these fields:
+The Lua script receives `obj`, which is the full Kubernetes resource object. You must return a table with a status field and, optionally, a message field:
 
-- `hs.status` - One of: `Healthy`, `Progressing`, `Degraded`, `Suspended`, `Missing`
+- `hs.status` - One of: `Healthy`, `Progressing`, `Degraded`, `Suspended`
 - `hs.message` - A human-readable message explaining the status
 
 Here is what each status means:
@@ -91,7 +91,7 @@ graph LR
 - **Progressing** - Resource is still reconciling. ArgoCD waits in sync waves.
 - **Degraded** - Resource has a problem. Shown as a warning.
 - **Suspended** - Resource is intentionally paused.
-- **Missing** - Resource does not exist.
+- **Missing** - ArgoCD uses this when a resource does not exist.
 
 ## Real-World Examples
 
@@ -255,37 +255,45 @@ resource.customizations.health.kustomize.toolkit.fluxcd.io_Kustomization: |
 You can test your Lua health checks without deploying them to ArgoCD. Use the `argocd admin` CLI tool:
 
 ```bash
-# Save your Lua script to a file
+# Save the health check in an argocd-cm file
 
-cat > health.lua << 'EOF'
-hs = {}
-if obj.status ~= nil then
-  if obj.status.phase == "Running" then
-    hs.status = "Healthy"
-    hs.message = "Running"
-  else
-    hs.status = "Progressing"
-    hs.message = obj.status.phase or "Unknown"
-  end
-else
-  hs.status = "Progressing"
-  hs.message = "No status"
-end
-return hs
+cat > argocd-cm.yaml << 'EOF'
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  resource.customizations.health.databases.example.com_PostgresCluster: |
+    hs = {}
+    if obj.status ~= nil then
+      if obj.status.phase == "Running" then
+        hs.status = "Healthy"
+        hs.message = "Running"
+      else
+        hs.status = "Progressing"
+        hs.message = obj.status.phase or "Unknown"
+      end
+    else
+      hs.status = "Progressing"
+      hs.message = "No status"
+    end
+    return hs
 EOF
 
 # Test with a sample resource
-cat > resource.json << 'EOF'
-{
-  "apiVersion": "databases.example.com/v1",
-  "kind": "PostgresCluster",
-  "metadata": {"name": "test"},
-  "status": {"phase": "Running", "ready": true}
-}
+cat > resource.yaml << 'EOF'
+apiVersion: databases.example.com/v1
+kind: PostgresCluster
+metadata:
+  name: test
+status:
+  phase: Running
+  ready: true
 EOF
 
 # Run the health check
-argocd admin settings resource-overrides health resource.json \
+argocd admin settings resource-overrides health resource.yaml \
   --argocd-cm-path argocd-cm.yaml
 ```
 
