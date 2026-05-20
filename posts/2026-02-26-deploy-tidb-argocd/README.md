@@ -42,7 +42,7 @@ graph TD
 
 ## Step 1: Deploy TiDB Operator CRDs
 
-TiDB Operator CRDs are large and should be deployed separately with server-side apply.
+TiDB Operator CRDs are large and should be deployed separately with server-side apply. Commit the TiDB Operator CRD manifest for your operator version to your Git repository, for example from `https://raw.githubusercontent.com/pingcap/tidb-operator/v1.6.0/manifests/crd.yaml`.
 
 ```yaml
 # argocd/tidb-crds.yaml
@@ -57,14 +57,9 @@ metadata:
 spec:
   project: default
   source:
-    chart: tidb-operator
-    repoURL: https://charts.pingcap.org
-    targetRevision: v1.6.0
-    helm:
-      releaseName: tidb-operator-crds
-      values: |
-        # Only install CRDs
-        operatorMode: "crd-only"
+    repoURL: https://github.com/your-org/k8s-manifests.git
+    targetRevision: main
+    path: vendor/tidb-operator/crds
   destination:
     server: https://kubernetes.default.svc
     namespace: tidb-admin
@@ -75,7 +70,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-      - Replace=true
 ```
 
 ## Step 2: Deploy TiDB Operator
@@ -108,15 +102,6 @@ spec:
             limits:
               cpu: 250m
               memory: 512Mi
-        scheduler:
-          replicas: 2
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 250m
-              memory: 256Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: tidb-admin
@@ -210,8 +195,8 @@ spec:
       performance:
         max-procs: 0
         tcp-keep-alive: true
-      log:
-        slow-threshold: 300
+      instance:
+        tidb_slow_log_threshold: 300
     service:
       type: ClusterIP
     affinity:
@@ -274,32 +259,40 @@ metadata:
 spec:
   clusters:
     - name: production-tidb
+  persistent: true
+  storage: 50Gi
+  storageClassName: gp3
   prometheus:
     baseImage: prom/prometheus
     version: v2.53.0
     service:
       type: ClusterIP
-    resources:
-      requests:
-        cpu: 100m
-        memory: 512Mi
-      limits:
-        cpu: "1"
-        memory: 2Gi
-    storage: 50Gi
-    storageClassName: gp3
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
   grafana:
     baseImage: grafana/grafana
     version: "10.4.0"
     service:
       type: ClusterIP
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  initializer:
+    baseImage: pingcap/tidb-monitor-initializer
+    version: v8.1.0
+  reloader:
+    baseImage: pingcap/tidb-monitor-reloader
+    version: v1.0.1
+  prometheusReloader:
+    baseImage: quay.io/prometheus-operator/prometheus-config-reloader
+    version: v0.49.0
 ```
 
 ## Step 6: Custom Health Check for ArgoCD
