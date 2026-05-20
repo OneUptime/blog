@@ -10,6 +10,8 @@ Description: A visual walkthrough of using the ArgoCD web UI to selectively sync
 
 The ArgoCD web UI provides an intuitive way to sync specific resources without touching the rest of your application. While the CLI is more scriptable, the UI gives you a visual overview of what is out of sync and lets you pick exactly what to deploy. This guide walks through every method for selective sync available in the ArgoCD UI.
 
+Keep in mind that ArgoCD does not record partial synchronization operations in the application history, and sync hooks do not run during selective sync.
+
 ## Method 1: Sync from the Resource Tree
 
 The most common way to selectively sync a resource is through the application's resource tree view.
@@ -40,7 +42,7 @@ For syncing multiple specific resources at once, use the application-level sync 
 
 Click the "Sync" button at the top of the application page. The sync dialog opens with a list of all resources in the application.
 
-At the top of the resource list, there is a checkbox labeled "All" or "Select All". Uncheck this to deselect all resources. Then manually check only the resources you want to sync.
+At the top of the resource list, there are quick selection links such as "all", "out of sync", and "none". Use "none" to deselect all resources, or "out of sync" to select only resources whose sync status is OutOfSync. Then manually check only the resources you want to sync.
 
 The resource list shows each resource with its kind, name, namespace, and current sync status. Resources that are out of sync are typically highlighted. Check the boxes next to the resources you want to include in the sync.
 
@@ -48,7 +50,7 @@ You can also use the sync options in this dialog. Common options include:
 
 - **Prune**: Delete resources that no longer exist in Git
 - **Dry Run**: Preview what would change without applying
-- **Apply Only**: Skip any pre/post sync hooks
+- **Apply Only**: Use the apply sync strategy instead of the hook sync strategy
 - **Force**: Delete and recreate resources instead of patching
 
 After selecting your resources and options, click "Synchronize" to start the selective sync.
