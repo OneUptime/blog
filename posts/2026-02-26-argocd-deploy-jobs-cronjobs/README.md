@@ -142,16 +142,17 @@ spec:
 
 When a CronJob creates Jobs, those Jobs are not in Git. ArgoCD handles this correctly - it does not try to prune Jobs created by CronJobs because they are owned by the CronJob resource.
 
-However, ArgoCD might show these child Jobs in the application tree. You can control this with resource tracking:
+However, ArgoCD might show these child Jobs in the application tree. Most teams leave them visible. If you want ArgoCD to ignore Jobs entirely, configure a resource exclusion in the `argocd-cm` ConfigMap, but only do this in clusters where ArgoCD does not need to manage Job resources:
 
 ```yaml
-spec:
-  ignoreDifferences:
-    - group: batch
-      kind: Job
-      jqPathExpressions:
-        - .spec.selector
-        - .spec.template.metadata.labels
+data:
+  resource.exclusions: |
+    - apiGroups:
+        - batch
+      kinds:
+        - Job
+      clusters:
+        - "*"
 ```
 
 ## Running Jobs on Every Sync
@@ -261,7 +262,7 @@ ArgoCD has built-in health checks for Jobs. A Job is considered:
 - **Healthy** - When the Job completes successfully
 - **Degraded** - When the Job fails (exceeds backoffLimit)
 
-For CronJobs, health is determined by whether the CronJob spec is valid and the last scheduled Job succeeded.
+For CronJobs, health is determined from the CronJob status. ArgoCD can mark a CronJob as degraded when the last scheduled Job failed and progressing when the last scheduled Job is still running.
 
 You can customize the health check:
 
@@ -270,6 +271,8 @@ You can customize the health check:
 data:
   resource.customizations.health.batch_CronJob: |
     hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for CronJob status"
     if obj.status ~= nil then
       if obj.status.lastScheduleTime ~= nil then
         hs.status = "Healthy"
@@ -341,7 +344,7 @@ Track Job execution through ArgoCD and Kubernetes:
 
 ```bash
 # Check Job status in ArgoCD
-argocd app get myapp --resource batch:Job:batch-jobs/daily-report
+argocd app get-resource myapp --group batch --kind Job --resource-name <job-name>
 
 # Watch Job pods
 kubectl get jobs -n batch-jobs -w
@@ -350,7 +353,7 @@ kubectl get jobs -n batch-jobs -w
 kubectl get cronjobs -n batch-jobs
 
 # View Job logs
-kubectl logs job/daily-report -n batch-jobs
+kubectl logs job/<job-name> -n batch-jobs
 ```
 
 ## Summary
