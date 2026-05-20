@@ -42,31 +42,37 @@ data:
   reposerver.repo.cache.expiration: "48h"
 ```
 
-Verify caching is working by checking cache hit rates:
+Verify repo-server metrics are exposed and watch whether Git requests and pending work drop after the cache warms up:
 
 ```bash
 # Port-forward the repo server metrics
 kubectl port-forward svc/argocd-repo-server -n argocd 8084:8084 &
 
-# Check cache metrics
-curl -s http://localhost:8084/metrics | grep cache
+# Check repo-server Git and lock metrics
+curl -s http://localhost:8084/metrics | grep -E 'argocd_git_request|argocd_repo_pending_request'
 ```
 
-A low cache hit rate means manifests are being regenerated unnecessarily.
+If Git request volume and pending repository-lock requests stay high for unchanged applications, manifests may be getting regenerated more often than expected.
 
 ## Technique 2: Enable Shallow Git Clones
 
-Full Git clones download the entire history. Shallow clones only get the latest commit:
+Full Git clones download the entire history. Shallow clones only get the required commit. Configure this per repository with `depth: "1"`:
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cmd-params-cm
+  name: my-repo
   namespace: argocd
-data:
-  reposerver.git.shallow.clone: "true"
+  labels:
+    argocd.argoproj.io/secret-type: repository
+  annotations:
+    managed-by: argocd.argoproj.io
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/example/platform-manifests.git
+  depth: "1"
 ```
 
 This reduces both CPU and I/O on the repo server. For a repository with 10,000 commits and 500MB of history, a shallow clone might only transfer 50MB.
@@ -251,7 +257,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  timeout.reconciliation: "600"  # 10 minutes
+  timeout.reconciliation: "10m"
 ```
 
 Combined with Git webhooks for immediate change detection, this can reduce repo server CPU by 3x or more.
@@ -264,7 +270,7 @@ Track CPU usage and identify optimization opportunities:
 # Check current CPU usage
 kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-repo-server
 
-# Check for queued requests (indicates CPU bottleneck)
+# Check for requests waiting on a repository lock
 curl -s http://localhost:8084/metrics | grep argocd_repo_pending_request_total
 
 # Check Git operation duration
@@ -289,14 +295,14 @@ groups:
         annotations:
           summary: "ArgoCD repo server CPU usage is above 90%"
 
-      - alert: ArgocdRepoServerQueueBacklog
+      - alert: ArgocdRepoServerRepositoryLockBacklog
         expr: |
           argocd_repo_pending_request_total > 10
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "ArgoCD repo server has queued manifest generation requests"
+          summary: "ArgoCD repo server has requests waiting on repository locks"
 ```
 
 ## CPU Optimization Summary
@@ -323,4 +329,4 @@ For end-to-end monitoring of your ArgoCD repo server performance and CPU optimiz
 - Scale the repo server horizontally when single-instance optimization is not enough
 - Use persistent volumes to preserve the Git clone cache across restarts
 - Increase the reconciliation interval and rely on webhooks for change detection
-- Monitor pending request count as the primary indicator of CPU saturation
+- Monitor pending repository-lock requests and Git request duration as indicators of repo-server contention
