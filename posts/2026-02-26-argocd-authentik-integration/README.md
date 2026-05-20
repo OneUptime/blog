@@ -63,7 +63,7 @@ In the Authentik admin interface:
      - Expression:
        ```python
        return {
-           "groups": [group.name for group in request.user.ak_groups.all()]
+           "groups": [group.name for group in request.user.groups.all()]
        }
        ```
    - Assign this mapping to your ArgoCD provider
@@ -108,12 +108,10 @@ data:
 
         # Enable group claims
         insecureEnableGroups: true
-        groupsKey: groups
 
         # Claim mapping
         userIDKey: sub
         userNameKey: preferred_username
-        emailKey: email
 ```
 
 Note the issuer URL format for Authentik: `https://authentik.example.com/application/o/<slug>/`. This is Authentik's OIDC discovery endpoint path.
@@ -206,7 +204,7 @@ Create a policy in Authentik to restrict ArgoCD access by IP:
 ```python
 # Authentik Expression Policy
 # Only allow access from corporate network
-from ipaddress import ip_address, ip_network
+from ipaddress import ip_network
 
 ALLOWED_NETWORKS = [
     ip_network("10.0.0.0/8"),
@@ -214,10 +212,8 @@ ALLOWED_NETWORKS = [
     ip_network("192.168.0.0/16"),
 ]
 
-client_ip = ip_address(request.http_request.META.get("REMOTE_ADDR", "0.0.0.0"))
-
 for network in ALLOWED_NETWORKS:
-    if client_ip in network:
+    if ak_client_ip in network:
         return True
 
 # Deny access from outside corporate network
@@ -301,13 +297,19 @@ Use that exact URL in your Dex config.
 
 1. Verify the custom scope mapping is assigned to the provider
 2. Check that the `groups` scope is requested in Dex config
-3. Test the token directly:
+3. Decode the ID token issued during an SSO login and verify that it contains a `groups` claim:
 
 ```bash
-# Get a token from Authentik and decode it
-curl -s -X POST https://authentik.example.com/application/o/token/ \
-  -d "grant_type=client_credentials&client_id=argocd&client_secret=your-secret&scope=openid+groups" | \
-  jq -r '.access_token' | cut -d. -f2 | base64 -d | jq .
+# Replace ID_TOKEN with an ID token from a real ArgoCD SSO login
+python3 - <<'PY'
+import base64
+import json
+import os
+
+payload = os.environ["ID_TOKEN"].split(".")[1]
+payload += "=" * (-len(payload) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))
+PY
 ```
 
 ### Redirect URI Mismatch
