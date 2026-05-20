@@ -252,7 +252,7 @@ spec:
 
 ## Inline Value Overrides
 
-For quick overrides or sensitive values that should not live in Git, ArgoCD supports inline parameter values:
+For quick overrides or non-secret values managed outside values files, ArgoCD supports inline parameter values:
 
 ```yaml
 source:
@@ -323,10 +323,10 @@ This layering pattern works well for organizations that deploy the same applicat
 
 ## Debugging Values Resolution
 
-When values are not resolving as expected, use the ArgoCD CLI to see the final merged values:
+When values are not resolving as expected, use the ArgoCD CLI to inspect parameters, overrides, and rendered manifests:
 
 ```bash
-# Show the computed parameters for an application
+# Show configured parameters and overrides for an application
 argocd app get my-app-production --show-params
 
 # Preview the rendered manifests
@@ -342,7 +342,7 @@ helm template my-app chart/ \
 
 Keep your environment values files small. They should only contain the differences, not a copy of the entire base values file. This makes it easy to see at a glance what is different about each environment during code review.
 
-Use explicit types in your values files. A common gotcha is YAML interpreting `"true"` as a boolean when you intended a string. Use quotes for string values and explicit typing when ambiguous.
+Use explicit types in your values files. A common gotcha is YAML interpreting `true` as a boolean when you intended a string. Use quotes for string values and explicit typing when ambiguous.
 
 Pin your chart versions in production. While dev might track `main`, production should reference a specific Git tag or commit SHA to ensure reproducibility.
 
