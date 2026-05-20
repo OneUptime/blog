@@ -14,16 +14,16 @@ When you manage hundreds of ArgoCD applications, notification volume can become 
 
 Rate limiting in ArgoCD notifications happens at multiple levels:
 
-1. **ArgoCD reconciliation loop** - the controller evaluates triggers every reconciliation cycle (default 3 minutes)
+1. **ArgoCD reconciliation loop** - the controller evaluates triggers as application status changes during reconciliation (default polling is 120 seconds plus up to 60 seconds of jitter)
 2. **oncePer deduplication** - ArgoCD's built-in mechanism to prevent duplicate notifications
 3. **Service-side rate limits** - Slack, PagerDuty, email providers, and webhooks all have their own rate limits
 
 ### Common Service Rate Limits
 
-- **Slack**: 1 message per second per channel, 50 messages per minute for web API
+- **Slack**: generally 1 message per second per channel for posted messages; Web API limits are tiered per method, per app, per workspace
 - **PagerDuty**: 120 events per minute per integration key
 - **Email (SMTP)**: varies by provider, Gmail limits to 500/day for free accounts
-- **Microsoft Teams**: 4 messages per second per connector
+- **Microsoft Teams**: legacy Office 365 Connectors documented connector throttles such as 4 requests per second, but they are deprecated; use Teams Workflows for new integrations and check the current workflow limits
 - **Webhooks**: depends entirely on the receiving service
 
 ## Using oncePer to Control Volume
@@ -82,7 +82,7 @@ The expression you use for `oncePer` determines how aggressively deduplication w
 
 ## Adjusting Reconciliation Interval
 
-ArgoCD reconciles applications on a fixed interval. Reducing the frequency reduces how often triggers are evaluated:
+ArgoCD polls repositories on a configurable interval. Reducing the polling frequency reduces how often repository-driven status changes can trigger notifications:
 
 ```bash
 # Check current reconciliation timeout
@@ -90,7 +90,7 @@ ArgoCD reconciles applications on a fixed interval. Reducing the frequency reduc
 kubectl get configmap argocd-cm -n argocd -o json | \
   jq -r '.data["timeout.reconciliation"]'
 
-# Set reconciliation to 5 minutes (default is 180 seconds / 3 minutes)
+# Set reconciliation to 5 minutes (default polling is 120s plus up to 60s jitter)
 kubectl patch configmap argocd-cm -n argocd --type merge -p '{"data":{"timeout.reconciliation":"300s"}}'
 ```
 
@@ -177,7 +177,13 @@ metadata:
   namespace: argocd
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: notification-rate-limiter
   template:
+    metadata:
+      labels:
+        app: notification-rate-limiter
     spec:
       containers:
         - name: rate-limiter
