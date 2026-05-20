@@ -8,7 +8,7 @@ Description: Learn how to monitor ArgoCD Git operations using Prometheus metrics
 
 ---
 
-Git operations are the foundation of ArgoCD's entire workflow. Every reconciliation cycle starts with a Git fetch to check for changes. Every sync starts with pulling the latest manifests from Git. When Git operations are slow or failing, the entire GitOps pipeline is compromised. Applications take longer to sync, drift detection is delayed, and your team loses confidence that the cluster reflects what is in Git.
+Git operations are the foundation of ArgoCD's entire workflow. Every reconciliation cycle needs to resolve Git revisions and may fetch updates when the repo-server cache does not already have the required revision. Every sync starts with pulling the latest manifests from Git. When Git operations are slow or failing, the entire GitOps pipeline is compromised. Applications take longer to sync, drift detection is delayed, and your team loses confidence that the cluster reflects what is in Git.
 
 Monitoring Git operations gives you visibility into this critical dependency and helps you catch problems before they cascade.
 
@@ -30,7 +30,7 @@ flowchart TD
 - **fetch** - Download new commits and objects from the remote
 - **checkout** - Switch the working directory to the target revision
 
-Each of these operations has associated metrics that tell you their frequency, duration, and success rate.
+ArgoCD's repo-server Git request metrics track `ls-remote` and `fetch` operations. Checkout failures are surfaced through repo-server errors and logs rather than a separate `checkout` request type.
 
 ## Key Git Metrics
 
@@ -42,41 +42,41 @@ Each of these operations has associated metrics that tell you their frequency, d
 argocd_git_request_total
 
 # Request rate by type
-rate(argocd_git_request_total[5m]) by (request_type)
+sum by (request_type) (rate(argocd_git_request_total[5m]))
 
-# Request rate by status code
-rate(argocd_git_request_total[5m]) by (grpc_code)
+# Request rate by repository
+sum by (repo) (rate(argocd_git_request_total[5m]))
 ```
 
-The `request_type` label can be `ls-remote`, `fetch`, or `checkout`. The `grpc_code` label indicates success (`OK`) or the type of failure.
+The `request_type` label can be `ls-remote` or `fetch`. The metric also includes a `repo` label for the Git repository URL.
 
 ### Request Duration
 
 ```promql
 # Average Git request duration
-rate(argocd_git_request_duration_seconds_sum[5m])
-/ rate(argocd_git_request_duration_seconds_count[5m])
+sum(rate(argocd_git_request_duration_seconds_sum[5m]))
+/ sum(rate(argocd_git_request_duration_seconds_count[5m]))
 
 # 95th percentile duration
 histogram_quantile(0.95,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
+  sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
 )
 
 # Duration by request type
 histogram_quantile(0.95,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
-) by (request_type)
+  sum by (le, request_type) (rate(argocd_git_request_duration_seconds_bucket[5m]))
+)
 ```
 
 ### Error Rate
 
 ```promql
-# Git error rate
-sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m]))
-/ sum(rate(argocd_git_request_total[5m]))
+# Git fetch failure rate
+sum(rate(argocd_git_fetch_fail_total[5m]))
+/ clamp_min(sum(rate(argocd_git_request_total[5m])), 1e-9)
 
-# Error count by error code
-sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m])) by (grpc_code)
+# Fetch failures by repository
+sum by (repo) (rate(argocd_git_fetch_fail_total[5m]))
 ```
 
 ## Building a Git Operations Dashboard
@@ -92,13 +92,13 @@ sum(rate(argocd_git_request_total[5m]))
 
 Git error rate percentage:
 ```promql
-sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m]))
-/ sum(rate(argocd_git_request_total[5m])) * 100
+sum(rate(argocd_git_fetch_fail_total[5m]))
+/ clamp_min(sum(rate(argocd_git_request_total[5m])), 1e-9) * 100
 ```
 
 P95 Git latency:
 ```promql
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
 ```
 
 **Row 2: Request Duration**
@@ -106,30 +106,30 @@ histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
 Time series showing latency percentiles:
 ```promql
 # P50
-histogram_quantile(0.50, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.50, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
 # P95
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
 # P99
-histogram_quantile(0.99, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
 ```
 
 Time series showing duration by request type:
 ```promql
 histogram_quantile(0.95,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
-) by (request_type)
+  sum by (le, request_type) (rate(argocd_git_request_duration_seconds_bucket[5m]))
+)
 ```
 
 **Row 3: Request Volume**
 
 Stacked area chart of request rate by type:
 ```promql
-sum(rate(argocd_git_request_total[5m])) by (request_type)
+sum by (request_type) (rate(argocd_git_request_total[5m]))
 ```
 
-Bar chart of error breakdown:
+Bar chart of fetch failures by repository:
 ```promql
-sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m])) by (grpc_code)
+sum by (repo) (rate(argocd_git_fetch_fail_total[5m]))
 ```
 
 **Row 4: Repo Server Context**
@@ -158,7 +158,7 @@ spec:
     - alert: ArgocdGitOperationsSlow
       expr: |
         histogram_quantile(0.95,
-          rate(argocd_git_request_duration_seconds_bucket[10m])
+          sum by (le) (rate(argocd_git_request_duration_seconds_bucket[10m]))
         ) > 30
       for: 15m
       labels:
@@ -167,34 +167,34 @@ spec:
         summary: "ArgoCD Git operations are slow"
         description: "P95 Git request duration is {{ $value }}s (normal: under 10s). This affects sync speed for all applications."
 
-    # Git error rate is elevated
+    # Git fetch failure rate is elevated
     - alert: ArgocdGitErrorsHigh
       expr: |
-        sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m]))
-        / sum(rate(argocd_git_request_total[5m])) > 0.1
+        sum(rate(argocd_git_fetch_fail_total[5m]))
+        / clamp_min(sum(rate(argocd_git_request_total[5m])), 1e-9) > 0.1
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "ArgoCD Git error rate is above 10%"
-        description: "{{ $value | humanizePercentage }} of Git operations are failing."
+        summary: "ArgoCD Git fetch failure rate is above 10%"
+        description: "{{ $value | humanizePercentage }} of Git fetch operations are failing."
 
-    # Git operations completely failing
+    # Git fetch operations mostly failing
     - alert: ArgocdGitOperationsFailing
       expr: |
-        sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m]))
-        / sum(rate(argocd_git_request_total[5m])) > 0.5
+        sum(rate(argocd_git_fetch_fail_total[5m]))
+        / clamp_min(sum(rate(argocd_git_request_total[5m])), 1e-9) > 0.5
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "ArgoCD Git operations are mostly failing"
-        description: "More than 50% of Git operations are failing. Applications cannot sync."
+        summary: "ArgoCD Git fetch operations are mostly failing"
+        description: "More than 50% of Git fetch operations are failing. Applications cannot sync."
 
     # No Git requests at all (repo server might be down)
     - alert: ArgocdNoGitRequests
       expr: |
-        sum(rate(argocd_git_request_total[10m])) == 0
+        (sum(rate(argocd_git_request_total[10m])) or vector(0)) == 0
       for: 10m
       labels:
         severity: critical
@@ -206,11 +206,11 @@ spec:
     - alert: ArgocdGitLatencySpike
       expr: |
         histogram_quantile(0.95,
-          rate(argocd_git_request_duration_seconds_bucket[5m])
+          sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
         )
         > 3 *
         histogram_quantile(0.95,
-          rate(argocd_git_request_duration_seconds_bucket[5m] offset 1h)
+          sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m] offset 1h))
         )
       for: 10m
       labels:
@@ -228,7 +228,7 @@ When Git operations fail, applications stop reconciling and may show as OutOfSyn
 # Are OutOfSync counts rising while Git errors are high?
 count(argocd_app_info{sync_status="OutOfSync"})
 # with
-sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m]))
+sum(rate(argocd_git_fetch_fail_total[5m]))
 ```
 
 Plot these on the same Grafana panel (dual Y-axis) to visually confirm correlation.
@@ -271,7 +271,7 @@ Self-hosted Git servers can become slow under load. Monitor server-side metrics 
 Intermittent connectivity problems between the cluster and the Git server. Check for proxy, firewall, or DNS issues.
 
 **Credential expiration:**
-GitHub App tokens, OAuth tokens, and SSH keys can expire. Monitor for authentication-related error codes.
+GitHub App tokens, OAuth tokens, and SSH keys can expire. Monitor fetch failures and repo-server logs for authentication-related errors.
 
 ## Recording Rules
 
@@ -284,19 +284,19 @@ groups:
 
   - record: argocd:git_error_rate:5m
     expr: |
-      sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m]))
-      / sum(rate(argocd_git_request_total[5m]))
+      sum(rate(argocd_git_fetch_fail_total[5m]))
+      / clamp_min(sum(rate(argocd_git_request_total[5m])), 1e-9)
 
   - record: argocd:git_latency_p95:5m
     expr: |
       histogram_quantile(0.95,
-        rate(argocd_git_request_duration_seconds_bucket[5m])
+        sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
       )
 
   - record: argocd:git_latency_p99:5m
     expr: |
       histogram_quantile(0.99,
-        rate(argocd_git_request_duration_seconds_bucket[5m])
+        sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
       )
 ```
 
