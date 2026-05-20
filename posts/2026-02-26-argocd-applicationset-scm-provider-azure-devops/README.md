@@ -14,7 +14,7 @@ This guide covers the complete setup process, authentication configuration, filt
 
 ## How the Azure DevOps SCM Provider Works
 
-The generator queries the Azure DevOps REST API to list repositories within a specified organization and project (or all projects). For each matching repository, it produces template parameters that ApplicationSet uses to create Application resources.
+The generator queries the Azure DevOps REST API to list repositories within a specified organization and team project. For each matching repository, it produces template parameters that ApplicationSet uses to create Application resources.
 
 ```mermaid
 graph TD
@@ -50,7 +50,7 @@ For Azure DevOps Server (on-premises), you might also need to configure TLS cert
 
 ## Basic Azure DevOps SCM Provider
 
-Discover all repositories in an Azure DevOps organization.
+Discover matching repositories in an Azure DevOps team project.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -64,14 +64,14 @@ spec:
       azureDevOps:
         # Azure DevOps organization name
         organization: myorg
-        # Specify a single project or leave empty for all projects
+        # Azure DevOps team project to scan
         teamProject: platform-services
         # Authentication
         accessTokenRef:
           secretName: azure-devops-token
           key: token
         # For Azure DevOps Server (on-premises)
-        # api: https://dev.azure.com/
+        # api: https://azure-devops.internal.mycompany.com
         allBranches: false
       filters:
       - repositoryMatch: "^svc-.*"
@@ -99,13 +99,17 @@ spec:
 
 ## Available Template Parameters
 
-The Azure DevOps SCM Provider provides these parameters:
+The Azure DevOps SCM Provider provides these commonly used parameters:
 
 - `organization` - the Azure DevOps organization
 - `repository` - the repository name
+- `repository_id` - the repository ID
 - `url` - the clone URL (HTTPS)
-- `branch` - the default branch
-- `sha` - the latest commit SHA
+- `branch` - the default branch, or the matched branch when `allBranches` is enabled
+- `sha` - the Git commit SHA for the branch
+- `short_sha` - the abbreviated Git commit SHA
+- `short_sha_7` - the 7-character abbreviated Git commit SHA
+- `branchNormalized` - the branch name normalized for use in Kubernetes resource names
 
 ```yaml
 template:
@@ -214,10 +218,17 @@ filters:
   pathsExist:
   - deploy/kustomization.yaml
 
-# Multiple paths (ANY match)
+# Multiple required paths (all must exist)
 - pathsExist:
   - deploy/
+  - deploy/kustomization.yaml
+
+# Any of several paths: use separate filters
+- pathsExist:
+  - deploy/
+- pathsExist:
   - k8s/
+- pathsExist:
   - manifests/
 ```
 
@@ -293,7 +304,7 @@ Ensure network connectivity between the ArgoCD ApplicationSet controller and the
 # Test connectivity from the controller pod
 kubectl exec -n argocd deployment/argocd-applicationset-controller -- \
   curl -s -H "Authorization: Basic $(echo -n :your-pat | base64)" \
-  "https://azure-devops.internal.mycompany.com/myorg/_apis/git/repositories?api-version=7.0"
+  "https://azure-devops.internal.mycompany.com/myorg/_apis/git/repositories?api-version=7.1"
 ```
 
 ## Handling Azure DevOps SSH URLs
@@ -336,7 +347,7 @@ kubectl get secret azure-devops-token -n argocd -o jsonpath='{.data.token}' | ba
 
 # Test the Azure DevOps API directly
 curl -s -H "Authorization: Basic $(echo -n :your-pat | base64)" \
-  "https://dev.azure.com/myorg/services/_apis/git/repositories?api-version=7.0" | jq '.value[].name'
+  "https://dev.azure.com/myorg/services/_apis/git/repositories?api-version=7.1" | jq '.value[].name'
 
 # Check ApplicationSet status
 kubectl describe applicationset azure-devops-services -n argocd
