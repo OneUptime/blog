@@ -17,8 +17,9 @@ PDBs guard against voluntary disruptions:
 - Node drains during maintenance (`kubectl drain`)
 - Cluster autoscaler removing underutilized nodes
 - Kubernetes version upgrades
-- Spot/preemptible instance evictions
-- Manual pod deletions
+- Eviction API based pod removals
+
+PDBs do not block every voluntary action. Directly deleting a pod, deleting a Deployment, or a Deployment rolling update can bypass the PDB, although pods that become unavailable still count against the disruption budget.
 
 PDBs do not protect against involuntary disruptions like node crashes, OOM kills, or hardware failures. For those, you need sufficient replicas and proper resource requests.
 
@@ -279,9 +280,9 @@ spec:
 
 PDBs can affect ArgoCD operations in a few ways:
 
-1. **Rolling updates**: When ArgoCD triggers a Deployment update, the rolling update respects the PDB. If `maxUnavailable: 1` and the PDB is already at its limit (due to a concurrent node drain), the rolling update pauses.
+1. **Rolling updates**: When ArgoCD applies a Deployment update, the Deployment controller uses the Deployment's rolling update settings such as `maxUnavailable` and `maxSurge`. Pods unavailable during the rollout count against the PDB, but the Deployment controller is not limited by the PDB when it replaces pods.
 
-2. **Sync timeouts**: If a PDB prevents pods from being evicted during a rolling update, the sync may appear stuck. Increase the sync timeout:
+2. **Concurrent node operations**: If a node drain or autoscaler action is already using the allowed disruption, additional evictions can be blocked until replacement pods become Ready. Automatic sync retries can help with transient failures:
 
 ```yaml
 spec:
@@ -294,7 +295,7 @@ spec:
         maxDuration: 10m
 ```
 
-3. **Health checks**: ArgoCD considers PDBs healthy as long as they are created. It does not check if the PDB is currently being violated.
+3. **Health checks**: ArgoCD does not include a built-in health check for PDB status. If you want PDB health to affect Application health, add a custom health check that evaluates fields such as `status.disruptionsAllowed`.
 
 ## Monitoring PDB Status
 
@@ -370,7 +371,7 @@ Always create PDBs for production workloads with 2 or more replicas.
 
 ## PDBs with Unhealthy Pod Eviction
 
-Kubernetes 1.27 introduced the `unhealthyPodEvictionPolicy` field. By default, unhealthy pods count toward the PDB. This means a pod stuck in CrashLoopBackOff blocks node drains even though it is not serving traffic:
+Kubernetes 1.26 introduced the `unhealthyPodEvictionPolicy` field as alpha. It became enabled by default as beta in Kubernetes 1.27 and stable in Kubernetes 1.31. By default, unhealthy pods count toward the PDB. This means a pod stuck in CrashLoopBackOff can block node drains even though it is not serving traffic:
 
 ```yaml
 apiVersion: policy/v1
@@ -388,4 +389,4 @@ spec:
 
 ## Summary
 
-PodDisruptionBudgets are essential for production workloads managed through ArgoCD. They ensure that node maintenance, cluster upgrades, and autoscaler operations do not take down your services. Use `maxUnavailable` with percentages for scalable protection, create PDBs in earlier sync waves than their associated Deployments, and always test that your PDBs allow at least one disruption to avoid blocking cluster operations. Combined with topology spread constraints and proper replica counts, PDBs give you strong availability guarantees that are enforced through GitOps.
+PodDisruptionBudgets are essential for production workloads managed through ArgoCD. They reduce the risk that node maintenance, cluster upgrades, and autoscaler operations take down your services. Use `maxUnavailable` with percentages for scalable protection, create PDBs in earlier sync waves than their associated Deployments, and test that PDBs allow at least one disruption for workloads that need to tolerate node drains. Combined with topology spread constraints and proper replica counts, PDBs give you strong availability guarantees that are enforced through GitOps.
