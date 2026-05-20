@@ -8,7 +8,7 @@ Description: Learn how to build a complete CI/CD pipeline using Buildkite for sc
 
 ---
 
-Buildkite is a CI platform that runs builds on your own infrastructure while providing a hosted orchestration layer. This hybrid model gives you full control over build agents, secrets, and network access while keeping pipeline management simple. Combined with ArgoCD for GitOps deployment, you get a scalable CI/CD pipeline that runs entirely on your infrastructure.
+Buildkite is a CI platform that runs builds on your own infrastructure while providing a hosted orchestration layer. This hybrid model gives you full control over build agents, secrets, and network access while keeping pipeline management simple. Combined with ArgoCD for GitOps deployment, you get a scalable CI/CD pipeline where build execution and deployments run on your infrastructure.
 
 This guide covers building a production Buildkite + ArgoCD pipeline with Kubernetes-based agents.
 
@@ -55,7 +55,7 @@ spec:
       - CreateNamespace=true
 ```
 
-Buildkite agent deployment with Docker-in-Docker support:
+Buildkite agent deployment with host Docker socket support:
 
 ```yaml
 # buildkite/agents/deployment.yaml
@@ -78,6 +78,7 @@ spec:
       containers:
         - name: agent
           image: buildkite/agent:3
+          args: ["start"]
           env:
             - name: BUILDKITE_AGENT_TOKEN
               valueFrom:
@@ -87,7 +88,7 @@ spec:
             - name: BUILDKITE_AGENT_TAGS
               value: "queue=default,os=linux"
             - name: BUILDKITE_BUILD_PATH
-              value: /workspace
+              value: /var/lib/buildkite/builds
           resources:
             requests:
               cpu: 500m
@@ -97,12 +98,14 @@ spec:
               memory: 4Gi
           volumeMounts:
             - name: workspace
-              mountPath: /workspace
+              mountPath: /var/lib/buildkite/builds
             - name: docker-socket
               mountPath: /var/run/docker.sock
       volumes:
         - name: workspace
-          emptyDir: {}
+          hostPath:
+            path: /var/lib/buildkite/builds
+            type: DirectoryOrCreate
         - name: docker-socket
           hostPath:
             path: /var/run/docker.sock
@@ -130,12 +133,15 @@ spec:
       containers:
         - name: agent
           image: buildkite/agent:3
+          args: ["start"]
           env:
             - name: BUILDKITE_AGENT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: buildkite-secrets
                   key: agent-token
+            - name: BUILDKITE_BUILD_PATH
+              value: /workspace
             - name: DOCKER_HOST
               value: tcp://localhost:2376
             - name: DOCKER_TLS_CERTDIR
@@ -162,6 +168,8 @@ spec:
               mountPath: /certs
             - name: docker-data
               mountPath: /var/lib/docker
+            - name: workspace
+              mountPath: /workspace
       volumes:
         - name: workspace
           emptyDir: {}
@@ -363,7 +371,7 @@ ssh-keyscan github.com >> ~/.ssh/known_hosts
 git clone git@github.com:myorg/k8s-deployments.git /tmp/deploy
 cd /tmp/deploy
 
-sed -i "s|image: ghcr.io/myorg/api-service:.*|image: ghcr.io/myorg/api-service:${SHORT_SHA}|" \
+sed -i "s|newTag: .*|newTag: ${SHORT_SHA}|" \
     "apps/api-service/overlays/${ENVIRONMENT}/kustomization.yaml"
 
 git config user.name "Buildkite"
@@ -401,37 +409,35 @@ spec:
 
 ## Agent Autoscaling
 
-Use Buildkite's agent scaler to automatically scale agents based on queue depth:
+Use Buildkite's Agent Stack for Kubernetes to automatically schedule agent pods for queued jobs:
 
 ```yaml
-# buildkite/autoscaler/deployment.yaml
-apiVersion: apps/v1
-kind: Deployment
+# buildkite/agent-stack-app.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: buildkite-agent-scaler
-  namespace: buildkite
+  name: buildkite-agent-stack
+  namespace: argocd
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: buildkite-agent-scaler
-  template:
-    spec:
-      containers:
-        - name: scaler
-          image: buildkite/agent-scaler:latest
-          env:
-            - name: BUILDKITE_AGENT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: buildkite-secrets
-                  key: agent-token
-            - name: BUILDKITE_QUEUE
-              value: default
-            - name: MIN_AGENTS
-              value: "2"
-            - name: MAX_AGENTS
-              value: "20"
+  project: platform
+  source:
+    repoURL: ghcr.io/buildkite/helm
+    chart: agent-stack-k8s
+    targetRevision: 0.35.0
+    helm:
+      values: |
+        agentStackSecret: buildkite-secrets
+        config:
+          tags:
+            - queue=default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: buildkite
+  syncPolicy:
+    automated:
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
 ```
 
 ## Summary
