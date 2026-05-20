@@ -16,7 +16,7 @@ Before generating anything, it helps to understand what you're working with.
 
 **RSA** is the older, widely-supported algorithm. Keys are typically 2048 or 4096 bits. Nearly every SSH client and server in existence supports RSA, making it the safe choice for compatibility with legacy systems.
 
-**Ed25519** is based on elliptic curve cryptography. Keys are much shorter (256 bits) but provide equivalent or better security than 4096-bit RSA. Ed25519 is faster to generate, faster during authentication, and produces smaller key files. It requires OpenSSH 6.5+ on both the client and server, which is a non-issue on any modern Ubuntu system.
+**Ed25519** is based on elliptic curve cryptography. Keys are much shorter (256 bits) but provide strong security comparable to large RSA keys. Ed25519 is faster to generate, faster during authentication, and produces smaller key files. It requires OpenSSH 6.5+ on both the client and server, which is a non-issue on any modern Ubuntu system.
 
 For new setups, Ed25519 is the recommended choice. If you need to connect to older systems or hardware that does not support it, generate RSA as well.
 
@@ -123,7 +123,7 @@ ssh-add -l
 ssh-add -t 4h ~/.ssh/id_ed25519_prod
 ```
 
-To make this persistent across sessions, add the following to your `~/.bashrc` or `~/.zshrc`:
+To auto-start an agent and load the key for new shell sessions, add the following to your `~/.bashrc` or `~/.zshrc`:
 
 ```bash
 # Auto-start SSH agent and load default key
