@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, SOPS, Encryption
 
-Description: A practical guide to using Mozilla SOPS with ArgoCD for encrypting secrets in Git repositories using AGE, PGP, or cloud KMS keys for GitOps workflows.
+Description: A practical guide to using SOPS with ArgoCD for encrypting secrets in Git repositories using AGE, PGP, or cloud KMS keys for GitOps workflows.
 
 ---
 
-SOPS (Secrets OPerationS) by Mozilla is a tool for encrypting and decrypting files. Unlike Sealed Secrets which is Kubernetes-specific, SOPS works with any file format - YAML, JSON, ENV, or INI. It encrypts individual values while keeping the keys in plaintext, making diffs readable and merge conflicts manageable. This guide covers how to integrate SOPS with ArgoCD for encrypted secret management in Git.
+SOPS (Secrets OPerationS), originally created at Mozilla and now a CNCF Sandbox project, is a tool for encrypting and decrypting files. Unlike Sealed Secrets which is Kubernetes-specific, SOPS works with any file format - YAML, JSON, ENV, or INI. It encrypts individual values while keeping the keys in plaintext, making diffs readable and merge conflicts manageable. This guide covers how to integrate SOPS with ArgoCD for encrypted secret management in Git.
 
 ## How SOPS Works
 
@@ -42,10 +42,11 @@ sops:
         ...
         -----END AGE ENCRYPTED FILE-----
   lastmodified: "2026-02-26T00:00:00Z"
-  version: 3.9.0
+  version: 3.13.1
 ```
 
 The structure remains readable for code reviews, but the values are encrypted.
+For Kubernetes Secret manifests like this, the `.sops.yaml` examples below use `encrypted_regex` to encrypt only `data` and `stringData` values.
 
 ## Installing SOPS
 
@@ -54,10 +55,10 @@ The structure remains readable for code reviews, but the values are encrypted.
 brew install sops
 
 # Linux
-VERSION=3.9.0
+VERSION=3.13.1
 curl -LO https://github.com/getsops/sops/releases/download/v${VERSION}/sops-v${VERSION}.linux.amd64
-chmod +x sops-v${VERSION}.linux.amd64
 sudo mv sops-v${VERSION}.linux.amd64 /usr/local/bin/sops
+sudo chmod +x /usr/local/bin/sops
 ```
 
 ## Choosing an Encryption Backend
@@ -116,18 +117,22 @@ Create a `.sops.yaml` file in your repository root to define encryption rules:
 creation_rules:
   # Encrypt secrets in production with AGE
   - path_regex: overlays/production/.*secret.*\.yaml$
+    encrypted_regex: "^(data|stringData)$"
     age: "age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw..."
 
   # Encrypt secrets in staging with a different key
   - path_regex: overlays/staging/.*secret.*\.yaml$
+    encrypted_regex: "^(data|stringData)$"
     age: "age1abc123..."
 
   # Use AWS KMS for AWS-hosted environments
   - path_regex: aws/.*secret.*\.yaml$
+    encrypted_regex: "^(data|stringData)$"
     kms: "arn:aws:kms:us-east-1:123456789:key/abc-123-def"
 
   # Use GCP KMS for GCP environments
   - path_regex: gcp/.*secret.*\.yaml$
+    encrypted_regex: "^(data|stringData)$"
     gcp_kms: "projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys/sops-key"
 
   # Only encrypt specific fields
@@ -142,7 +147,8 @@ creation_rules:
 
 ```bash
 # Create a plaintext secret
-cat > secret.yaml <<EOF
+mkdir -p overlays/production
+cat > overlays/production/secret.yaml <<EOF
 apiVersion: v1
 kind: Secret
 metadata:
@@ -154,27 +160,27 @@ stringData:
 EOF
 
 # Encrypt it with SOPS
-sops --encrypt secret.yaml > secret.enc.yaml
+sops --encrypt overlays/production/secret.yaml > overlays/production/secret.enc.yaml
 
 # Or encrypt in-place
-sops --encrypt --in-place secret.yaml
+sops --encrypt --in-place overlays/production/secret.yaml
 ```
 
 ### Decrypt a File
 
 ```bash
 # Decrypt to stdout
-sops --decrypt secret.enc.yaml
+sops --decrypt overlays/production/secret.enc.yaml
 
 # Decrypt in-place
-sops --decrypt --in-place secret.enc.yaml
+sops --decrypt --in-place overlays/production/secret.enc.yaml
 ```
 
 ### Edit an Encrypted File
 
 ```bash
 # Opens in your editor with decrypted values, re-encrypts on save
-sops secret.enc.yaml
+sops overlays/production/secret.enc.yaml
 ```
 
 ## Integrating SOPS with ArgoCD
@@ -188,6 +194,16 @@ KSOPS is a Kustomize plugin that decrypts SOPS-encrypted files during Kustomize 
 Install KSOPS in the ArgoCD repo-server:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+```
+
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -198,12 +214,8 @@ spec:
     spec:
       initContainers:
         - name: install-ksops
-          image: viaductoss/ksops:v4.3.2
-          command: ["/bin/sh", "-c"]
-          args:
-            - echo "Installing KSOPS...";
-              mv /usr/local/bin/ksops /custom-tools/;
-              mv /usr/local/bin/kustomize /custom-tools/;
+          image: viaductoss/ksops:v4.5.1
+          command: ["/usr/local/bin/ksops", "install", "--with-kustomize", "/custom-tools"]
           volumeMounts:
             - name: custom-tools
               mountPath: /custom-tools
@@ -218,6 +230,9 @@ spec:
             - name: KUSTOMIZE_PLUGIN_HOME
               value: /home/argocd/.config/kustomize/plugin
           volumeMounts:
+            - name: custom-tools
+              mountPath: /usr/local/bin/kustomize
+              subPath: kustomize
             - name: custom-tools
               mountPath: /usr/local/bin/ksops
               subPath: ksops
@@ -278,6 +293,22 @@ db:
   password: ENC[AES256_GCM,data:abc...,iv:...,tag:...,type:str]
 api:
   key: ENC[AES256_GCM,data:def...,iv:...,tag:...,type:str]
+```
+
+Install the helm-secrets plugin and SOPS in the ArgoCD repo-server, then allow the helm-secrets value file schemes:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  helm.valuesFileSchemes: >-
+    secrets+gpg-import, secrets+gpg-import-kubernetes,
+    secrets+age-import, secrets+age-import-kubernetes,
+    secrets, secrets+literal,
+    https
 ```
 
 Configure the ArgoCD application to use helm-secrets:
