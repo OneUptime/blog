@@ -170,6 +170,7 @@ type: Opaque
 stringData:
   config.env: |
     export MINIO_BROWSER="on"
+    export MINIO_PROMETHEUS_AUTH_TYPE="public"
     export MINIO_STORAGE_CLASS_STANDARD="EC:2"
     export MINIO_STORAGE_CLASS_RRS="EC:1"
 ```
@@ -239,18 +240,18 @@ spec:
                 $ACCESS_KEY $SECRET_KEY --insecure
 
               # Create buckets with specific policies
-              mc mb --ignore-existing myminio/application-data
-              mc mb --ignore-existing myminio/logs
-              mc mb --ignore-existing myminio/backups
+              mc mb --ignore-existing myminio/application-data --insecure
+              mc mb --ignore-existing myminio/logs --insecure
+              mc mb --ignore-existing myminio/backups --insecure
 
               # Set lifecycle rules for log bucket - expire after 90 days
-              mc ilm rule add --expire-days 90 myminio/logs
+              mc ilm rule add --expire-days 90 myminio/logs --insecure
 
               # Set versioning on application-data bucket
-              mc version enable myminio/application-data
+              mc version enable myminio/application-data --insecure
 
               # Set quota on backups bucket (500GB)
-              mc quota set myminio/backups --size 500GiB
+              mc admin bucket quota myminio/backups --hard 500GiB --insecure
 
               echo "Bucket setup complete"
           env:
@@ -280,6 +281,7 @@ metadata:
   name: minio-api
   namespace: minio-tenant
   annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
     nginx.ingress.kubernetes.io/proxy-buffering: "off"
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
@@ -300,7 +302,7 @@ spec:
               service:
                 name: minio
                 port:
-                  number: 443
+                  name: https-minio
 ```
 
 The `proxy-body-size: "0"` annotation disables upload size limits, which is essential for an object storage endpoint.
@@ -323,12 +325,12 @@ spec:
     matchLabels:
       v1.min.io/tenant: production-storage
   endpoints:
-    - port: http-minio
+    - port: https-minio
+      scheme: https
       path: /minio/v2/metrics/cluster
       interval: 30s
-      bearerTokenSecret:
-        name: minio-tenant-creds
-        key: accesskey
+      tlsConfig:
+        insecureSkipVerify: true
 ```
 
 ## Scaling MinIO Through Git
