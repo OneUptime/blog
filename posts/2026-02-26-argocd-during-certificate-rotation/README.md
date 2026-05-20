@@ -82,9 +82,10 @@ kubectl create secret tls argocd-server-tls \
   -n argocd \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart ArgoCD server to pick up the new certificate
-kubectl rollout restart deployment/argocd-server -n argocd
-kubectl rollout status deployment/argocd-server -n argocd
+# ArgoCD server picks up argocd-server-tls changes automatically
+# A restart is optional if you want to force a reload immediately
+# kubectl rollout restart deployment/argocd-server -n argocd
+# kubectl rollout status deployment/argocd-server -n argocd
 ```
 
 For more on TLS certificate management, see [ArgoCD external certificate managers](https://oneuptime.com/blog/post/2026-02-26-argocd-external-certificate-managers/view).
@@ -235,18 +236,23 @@ stringData:
 
 ## Rotating ArgoCD Internal Certificates
 
-ArgoCD components communicate internally using TLS. These certificates are managed by ArgoCD itself.
+ArgoCD components communicate internally using TLS. The repo server and Dex server use their own TLS endpoints. If you do not provide persistent TLS secrets, these components generate self-signed certificates on startup. If you do provide persistent TLS secrets, update the relevant Secret and restart the affected workload.
 
 ```bash
-# Check the ArgoCD internal certificate
-kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.tls\.crt}' | \
+# Check the repo server certificate, if you manage it with a Secret
+kubectl get secret argocd-repo-server-tls -n argocd -o jsonpath='{.data.tls\.crt}' | \
   base64 -d | openssl x509 -noout -enddate
 
-# ArgoCD generates these on startup if they do not exist
-# To force rotation, delete the secret and restart
-kubectl delete secret argocd-secret -n argocd
-kubectl rollout restart deployment -n argocd
-kubectl rollout restart statefulset -n argocd
+# Update the Secret with a new certificate and key
+kubectl create secret tls argocd-repo-server-tls \
+  --cert=new-repo-server.crt \
+  --key=new-repo-server.key \
+  -n argocd \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+# Repo server does not hot reload this Secret
+kubectl rollout restart deployment/argocd-repo-server -n argocd
+kubectl rollout status deployment/argocd-repo-server -n argocd
 ```
 
 ## Rotating Dex Server Certificates
@@ -258,7 +264,7 @@ If you use Dex for SSO, its TLS certificate also needs rotation.
 kubectl get secret argocd-dex-server-tls -n argocd -o jsonpath='{.data.tls\.crt}' | \
   base64 -d | openssl x509 -noout -enddate 2>/dev/null
 
-# If Dex uses ArgoCD's built-in TLS, rotating argocd-secret handles it
+# If Dex uses the default generated certificate, restarting Dex regenerates it
 # If Dex has its own certificate, update it separately
 kubectl create secret tls argocd-dex-server-tls \
   --cert=new-dex.crt \
@@ -377,9 +383,12 @@ spec:
     name: internal-ca
     kind: ClusterIssuer
   dnsNames:
+    - argocd-repo-server
     - argocd-repo-server.argocd.svc
   renewBefore: 720h
 ```
+
+Remember that ArgoCD server hot reloads `argocd-server-tls`, but repo server and Dex server do not hot reload their TLS Secrets. If cert-manager renews `argocd-repo-server-tls` or `argocd-dex-server-tls`, use a restart controller such as Stakater Reloader or restart the affected Deployment after renewal.
 
 ## Summary
 
