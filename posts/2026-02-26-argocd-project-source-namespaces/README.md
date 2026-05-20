@@ -79,8 +79,10 @@ After changing this, restart the ArgoCD components:
 
 ```bash
 kubectl rollout restart deployment/argocd-server -n argocd
-kubectl rollout restart deployment/argocd-application-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 ```
+
+If users will manage these Applications through the ArgoCD API, CLI, or UI, also make sure the `argocd-server` ServiceAccount has Kubernetes RBAC permissions to work with `Application` resources in the allowed namespaces.
 
 ### Step 2: Configure Project Source Namespaces
 
@@ -265,7 +267,19 @@ This means the `payments-team` group can only create Application resources in th
 
 ## ApplicationSets with Source Namespaces
 
-ApplicationSets can also be created in team namespaces:
+ApplicationSets can also be created in team namespaces, but they must be enabled separately for the ApplicationSet controller. The list of namespaces should match the namespaces enabled for Applications:
+
+```yaml
+data:
+  application.namespaces: "payments, frontend, platform"
+  applicationsetcontroller.namespaces: "payments, frontend, platform"
+```
+
+After changing this setting, restart the ApplicationSet controller:
+
+```bash
+kubectl rollout restart deployment/argocd-applicationset-controller -n argocd
+```
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -300,11 +314,11 @@ spec:
 
 ## Important Limitations
 
-### Application Names Must Be Unique Cluster-Wide
+### Application Names Are Namespaced
 
-Even though applications can live in different namespaces, ArgoCD still requires application names to be globally unique. Two applications in different namespaces cannot have the same name.
+Applications in different namespaces are referred to in the ArgoCD CLI and UI as `<namespace>/<name>`. For example, an Application named `api` in the `payments` namespace is referenced as `payments/api`.
 
-Use a naming convention that includes the team or project:
+Application names still need to be unique within the same namespace. For clarity, use a naming convention that includes the team or project:
 
 ```text
 payments-api-dev        # In payments namespace
@@ -313,7 +327,7 @@ frontend-web-dev        # In frontend namespace
 
 ### The ArgoCD Namespace Still Hosts Core Resources
 
-AppProjects, repository Secrets, and ArgoCD configuration resources still live in the `argocd` namespace. Source namespaces only affect where Application (and ApplicationSet) resources can be created.
+AppProjects, repository Secrets, and ArgoCD configuration resources still live in the `argocd` namespace. Source namespaces affect where Application resources can be created; ApplicationSets in other namespaces require the separate ApplicationSet controller setting shown above.
 
 ### CLI Behavior
 
