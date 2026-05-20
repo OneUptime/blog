@@ -18,7 +18,7 @@ Before diving into the configuration, it helps to understand how Auth0 maps to A
 
 - **Auth0 Tenant** - Your Auth0 instance (e.g., `your-company.auth0.com`)
 - **Auth0 Application** - The OAuth client that ArgoCD uses to authenticate users
-- **Auth0 API** - Used for defining permissions and scopes
+- **Auth0 API** - Optional resource server used for defining API permissions and scopes
 - **Auth0 Rules/Actions** - Custom logic that runs during authentication to add claims to tokens
 - **Auth0 Organizations** - Multi-tenant isolation (useful if managing multiple ArgoCD teams)
 
@@ -119,7 +119,7 @@ data:
       - profile
       - email
     requestedIDTokenClaims:
-      https://argocd.example.com/groups:
+      "https://argocd.example.com/groups":
         essential: true
 ```
 
@@ -177,21 +177,21 @@ Test the login:
 If you use Auth0 Organizations for multi-tenant isolation:
 
 ```yaml
-  oidc.config: |
-    name: Auth0
-    issuer: https://your-company.auth0.com/
-    clientID: abc123def456
-    clientSecret: $oidc.auth0.clientSecret
-    requestedScopes:
-      - openid
-      - profile
-      - email
-    requestedIDTokenClaims:
-      https://argocd.example.com/groups:
-        essential: true
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.csv: |
+    g, org_abc123, role:developer
+    g, argocd-admin, role:admin
+    p, role:developer, applications, get, */*, allow
+    p, role:developer, applications, sync, staging/*, allow
+  scopes: '[org_id, https://argocd.example.com/groups]'
 ```
 
-Auth0 Organizations allow different user groups to log into the same application with different identity providers and settings. This is useful if you run ArgoCD for multiple teams or customers.
+Auth0 Organizations allow different user groups to log into the same application with different identity providers and settings. Configure the ArgoCD application in Auth0 to use Organizations, and validate the `org_id` claim in ArgoCD RBAC (or restrict access in Auth0) if you need organization-level isolation. This is useful if you run ArgoCD for multiple teams or customers.
 
 ## Using Auth0 Social Connections
 
@@ -256,7 +256,7 @@ data:
       - profile
       - email
     requestedIDTokenClaims:
-      https://argocd.example.com/groups:
+      "https://argocd.example.com/groups":
         essential: true
 ---
 apiVersion: v1
