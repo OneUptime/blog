@@ -8,7 +8,7 @@ Description: Learn how to install a specific version of ArgoCD on Kubernetes ins
 
 ---
 
-When you run `kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml`, you get whatever ArgoCD version is currently tagged as stable. That is fine for a first try, but in production you want to pin to a specific version. Version pinning ensures reproducible deployments, avoids surprise breaking changes, and lets you test upgrades before rolling them out.
+When you run `kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml`, you get whatever ArgoCD version is currently tagged as stable. That is fine for a first try, but in production you want to pin to a specific version. Version pinning ensures reproducible deployments, avoids surprise breaking changes, and lets you test upgrades before rolling them out.
 
 This guide covers how to install a specific ArgoCD version, how to find which version is right for your cluster, and how to pin versions across different installation methods.
 
@@ -27,23 +27,23 @@ curl -s https://api.github.com/repos/argoproj/argo-cd/releases | \
 
 ### Check Kubernetes Compatibility
 
-Each ArgoCD version supports specific Kubernetes versions. Check the compatibility matrix before picking a version.
+Each ArgoCD version is tested against specific Kubernetes versions. Check the compatibility matrix before picking a version.
 
 | ArgoCD Version | Minimum Kubernetes | Maximum Kubernetes |
 |---|---|---|
-| v2.13.x | 1.27 | 1.31 |
-| v2.12.x | 1.26 | 1.30 |
+| v2.13.x | 1.27 | 1.30 |
+| v2.12.x | 1.26 | 1.29 |
 | v2.11.x | 1.25 | 1.29 |
-| v2.10.x | 1.24 | 1.28 |
+| v2.10.x | 1.25 | 1.28 |
 
 Check your cluster version.
 
 ```bash
 # Get your Kubernetes version
-kubectl version --short
+kubectl version
 ```
 
-Pick an ArgoCD version that supports your cluster version.
+Pick an ArgoCD version that is tested with your cluster version.
 
 ## Method 1: kubectl with Version-Pinned URL
 
@@ -55,7 +55,7 @@ ARGOCD_VERSION=v2.13.3
 
 kubectl create namespace argocd
 
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml
 ```
 
@@ -63,7 +63,7 @@ For high availability mode:
 
 ```bash
 # Install ArgoCD v2.13.3 in HA mode
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/ha/install.yaml
 ```
 
@@ -71,7 +71,7 @@ For core-only installation (no UI):
 
 ```bash
 # Install ArgoCD v2.13.3 core only
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/core-install.yaml
 ```
 
@@ -125,7 +125,7 @@ global:
 # Pin the Dex image version
 dex:
   image:
-    tag: v2.38.0
+    tag: v2.41.1
 
 # Pin the Redis image version
 redis:
@@ -160,7 +160,7 @@ resources:
 Apply with Kustomize.
 
 ```bash
-kubectl apply -k .
+kubectl apply --server-side --force-conflicts -k .
 ```
 
 For more on this approach, see [Install ArgoCD using Kustomize](https://oneuptime.com/blog/post/2026-02-26-install-argocd-using-kustomize/view).
@@ -179,10 +179,12 @@ resource "helm_release" "argocd" {
   namespace        = "argocd"
   create_namespace = true
 
-  set {
-    name  = "global.image.tag"
-    value = "v2.13.3"  # ArgoCD app version
-  }
+  set = [
+    {
+      name  = "global.image.tag"
+      value = "v2.13.3"  # ArgoCD app version
+    }
+  ]
 }
 ```
 
@@ -198,7 +200,7 @@ kubectl -n argocd exec deployment/argocd-server -- argocd version --short
 kubectl get pods -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[*].image}{"\n"}{end}'
 ```
 
-You should see the version you pinned in all image tags.
+You should see the version you pinned in the ArgoCD component image tags. Dex and Redis use their own image tags unless you pin them separately.
 
 ## Pinning the CLI Version
 
@@ -253,7 +255,7 @@ Example version file:
 # argocd-versions.yaml
 environments:
   dev:
-    argocd: v2.14.0  # Testing new version
+    argocd: v2.14.1  # Testing new version
     chart: 7.8.0
   staging:
     argocd: v2.13.3  # Proven stable
