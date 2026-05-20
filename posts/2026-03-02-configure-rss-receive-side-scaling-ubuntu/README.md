@@ -123,7 +123,7 @@ Alternatively, with Netplan (Ubuntu 20.04+):
 sudo nano /etc/netplan/01-netcfg.yaml
 ```
 
-Some drivers expose queue configuration through netplan's `driver-settings` extension, but ethtool via a service is more universally supported.
+Netplan exposes some ethtool-style interface settings, such as offloads, but it does not provide a portable way to set RSS queue counts. Using ethtool via a service is more universally supported.
 
 ## Configuring IRQ Affinity for RSS
 
@@ -141,7 +141,7 @@ CPU=0
 for IRQ in $IRQS; do
     # Create bitmask for this CPU (CPU 0 = 1, CPU 1 = 2, CPU 2 = 4, etc.)
     MASK=$(printf '%x' $((1 << CPU)))
-    echo $MASK > /proc/irq/$IRQ/smp_affinity
+    echo "$MASK" | sudo tee /proc/irq/$IRQ/smp_affinity > /dev/null
     echo "IRQ $IRQ -> CPU $CPU (mask $MASK)"
     CPU=$((CPU + 1))
 done
@@ -160,11 +160,11 @@ irqbalance dynamically rebalances based on load, which works well for general-pu
 
 ### Using set_irq_affinity Script
 
-The kernel source includes a helper script for NIC IRQ affinity:
+Some NIC driver packages include a helper script for NIC IRQ affinity:
 
 ```bash
-# Download from kernel source or use the version in your driver package
-# Many NIC drivers ship this script
+# Download from your NIC driver package if it provides this script
+# Some NIC drivers ship this script
 
 # Example usage (sets IRQs to local NUMA node CPUs)
 sudo ./set_irq_affinity local eth0
@@ -181,7 +181,7 @@ If your NIC doesn't support hardware RSS (or has only one queue), RPS (Receive P
 # Enable RPS on all queues for eth0
 # The mask 'ff' enables all 8 CPUs (adjust based on CPU count)
 for QUEUE in /sys/class/net/eth0/queues/rx-*; do
-    echo ff > $QUEUE/rps_cpus
+    echo ff | sudo tee "$QUEUE/rps_cpus" > /dev/null
 done
 ```
 
@@ -189,7 +189,7 @@ For a 16-CPU system:
 
 ```bash
 # ffff = 16 CPUs (bitmask with 16 bits set)
-echo ffff > /sys/class/net/eth0/queues/rx-0/rps_cpus
+echo ffff | sudo tee /sys/class/net/eth0/queues/rx-0/rps_cpus > /dev/null
 ```
 
 ### Enable RFS (Receive Flow Steering) Alongside RPS
@@ -198,11 +198,11 @@ RFS extends RPS by directing packets to the CPU where the application consuming 
 
 ```bash
 # Set global RFS table size
-echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
+echo 32768 | sudo tee /proc/sys/net/core/rps_sock_flow_entries > /dev/null
 
 # Set per-queue flow table size
 for QUEUE in /sys/class/net/eth0/queues/rx-*; do
-    echo 2048 > $QUEUE/rps_flow_cnt
+    echo 2048 | sudo tee "$QUEUE/rps_flow_cnt" > /dev/null
 done
 ```
 
@@ -256,10 +256,10 @@ With RSS working correctly, you should see interrupt counts increasing across mu
 sudo apt install sysstat
 
 # Monitor per-CPU interrupt activity
-mpstat -I SUM -P ALL 1
+mpstat -P ALL 1
 ```
 
-Look for the `%irq` column. With RSS working, you should see nonzero values across multiple CPUs rather than all activity on CPU 0.
+Look for the `%irq` and `%soft` columns. With RSS working, you should see activity across multiple CPUs rather than all activity on CPU 0.
 
 ## Tuning Considerations
 
