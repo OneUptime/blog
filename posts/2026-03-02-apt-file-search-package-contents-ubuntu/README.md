@@ -22,15 +22,15 @@ sudo apt install apt-file
 sudo apt-file update
 ```
 
-The database update downloads compressed content lists from each configured repository. These are stored locally at `/var/cache/apt/apt-file/`. The database is separate from the regular APT package lists, so you need to update it independently.
+The database update downloads compressed Contents indexes from each configured repository. On current Ubuntu releases, `apt-file` 3.x uses APT's index cache, so those files are stored under `/var/lib/apt/lists/` alongside other APT indexes. After `apt-file` is installed, `apt update` also refreshes the Contents indexes; `apt-file update` is a convenient wrapper that runs the appropriate APT update command.
 
 ```bash
 # The database update can be run periodically
 # Add to cron or run manually after adding new repositories
 sudo apt-file update
 
-# Check when the database was last updated
-ls -la /var/cache/apt/apt-file/
+# Check the available Contents indexes and their status
+apt-file list-indices
 ```
 
 ## Basic Searching
@@ -49,7 +49,7 @@ apt-file search /usr/bin/curl
 # Search for a library
 apt-file search libssl.so.3
 # Output:
-# libssl3: /usr/lib/x86_64-linux-gnu/libssl.so.3
+# libssl3t64: /usr/lib/x86_64-linux-gnu/libssl.so.3
 
 # Search for a header file
 apt-file search openssl/ssl.h
@@ -171,8 +171,11 @@ On systems with multiple architectures enabled (common on desktop Ubuntu with i3
 # Search for a package in a specific architecture
 apt-file search --architecture i386 libfoo.so.1
 
-# Search all available architectures
-apt-file search libfoo.so.1  # Returns results for all enabled architectures
+# Search multiple architectures
+apt-file search --architecture amd64,i386 libfoo.so.1
+
+# Without --architecture, apt-file searches the native architecture and arch:all packages
+apt-file search libfoo.so.1
 ```
 
 ## Filtering Search Results
@@ -227,8 +230,7 @@ When you add a new PPA or repository, update apt-file to index its package conte
 
 ```bash
 # After adding a new repository
-sudo apt update
-sudo apt-file update  # Update apt-file's database separately
+sudo apt update       # Refresh package and Contents indexes
 
 # Now you can search the new repo's contents
 apt-file search some-file-from-new-repo
@@ -240,7 +242,7 @@ For systems where you can't install apt-file (minimal containers, restricted env
 
 ```bash
 # Check current database size
-du -sh /var/cache/apt/apt-file/
+du -sh /var/lib/apt/lists/*Contents* 2>/dev/null
 # Typically 10-50 MB depending on repositories enabled
 ```
 
