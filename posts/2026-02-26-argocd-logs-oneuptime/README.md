@@ -30,7 +30,7 @@ graph TD
 Before setting up log shipping, you need:
 
 1. A OneUptime account with log ingestion enabled
-2. A OneUptime API key or service token
+2. A OneUptime telemetry ingestion token
 3. ArgoCD configured with JSON log format
 
 Configure ArgoCD for JSON logging:
@@ -47,6 +47,8 @@ data:
   server.log.format: "json"
   controller.log.format: "json"
   reposerver.log.format: "json"
+  applicationsetcontroller.log.format: "json"
+  notificationscontroller.log.format: "json"
 ```
 
 ## Setting Up the OneUptime Log Ingestion Endpoint
@@ -62,7 +64,7 @@ metadata:
   namespace: logging
 type: Opaque
 stringData:
-  api-key: "your-oneuptime-api-key-here"
+  token: "your-oneuptime-token-here"
   endpoint: "https://oneuptime.com/otlp"
 ```
 
@@ -82,33 +84,26 @@ metadata:
 data:
   collector.yaml: |
     receivers:
-      # Receive logs from Fluent Bit
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-
-      # Alternatively, collect directly from files
+      # Collect directly from Kubernetes log files
       filelog:
+        include_file_path: true
         include:
           - /var/log/pods/argocd_argocd-server-*/argocd-server/*.log
           - /var/log/pods/argocd_argocd-application-controller-*/argocd-application-controller/*.log
           - /var/log/pods/argocd_argocd-repo-server-*/argocd-repo-server/*.log
+          - /var/log/pods/argocd_argocd-applicationset-controller-*/argocd-applicationset-controller/*.log
+          - /var/log/pods/argocd_argocd-notifications-controller-*/argocd-notifications-controller/*.log
         operators:
-          # Parse container runtime format
-          - type: regex_parser
-            regex: '^(?P<time>[^ ]+) (?P<stream>stdout|stderr) (?P<flags>[^ ]*) (?P<log>.*)$'
-            timestamp:
-              parse_from: attributes.time
-              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+          # Parse Kubernetes container log formats and extract Kubernetes metadata
+          - type: container
           # Parse the JSON log body
           - type: json_parser
-            parse_from: attributes.log
+            parse_from: body
             timestamp:
-              parse_from: attributes.time
+              parse_from: body.time
               layout: '%Y-%m-%dT%H:%M:%SZ'
+            severity:
+              parse_from: body.level
 
     processors:
       batch:
@@ -126,23 +121,24 @@ data:
             action: upsert
 
       # Add ArgoCD component identification
-      attributes:
-        actions:
-          - key: argocd.component
-            from_attribute: component
-            action: upsert
+      transform/argocd:
+        error_mode: ignore
+        log_statements:
+          - context: log
+            statements:
+              - set(attributes["argocd.component"], resource.attributes["k8s.container.name"])
 
     exporters:
       otlphttp:
         endpoint: "https://oneuptime.com/otlp"
         headers:
-          x-oneuptime-token: "${ONEUPTIME_API_KEY}"
+          x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
     service:
       pipelines:
         logs:
           receivers: [filelog]
-          processors: [resource, attributes, batch]
+          processors: [resource, transform/argocd, batch]
           exporters: [otlphttp]
 ```
 
@@ -167,15 +163,15 @@ spec:
       serviceAccountName: otel-collector
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.92.0
+          image: otel/opentelemetry-collector-contrib:0.152.1
           args:
             - --config=/etc/otel/collector.yaml
           env:
-            - name: ONEUPTIME_API_KEY
+            - name: ONEUPTIME_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: oneuptime-credentials
-                  key: api-key
+                  key: token
           volumeMounts:
             - name: config
               mountPath: /etc/otel
@@ -241,7 +237,7 @@ data:
         Match                argocd.*
         Host                 oneuptime.com
         Port                 443
-        Header               x-oneuptime-token ${ONEUPTIME_API_KEY}
+        Header               x-oneuptime-token ${ONEUPTIME_TOKEN}
         Logs_uri             /otlp/v1/logs
         Tls                  On
         Tls.verify           On
