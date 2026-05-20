@@ -16,7 +16,7 @@ UFW and firewalld take fundamentally different approaches:
 
 **UFW** uses a simple rule model: you add explicit allow/deny rules, and UFW applies them in order. Rules are primarily defined around ports and protocols.
 
-**firewalld** uses a zone-based model. Each network interface is assigned to a zone, and each zone has a predefined trust level. You add services or ports to zones, and the zone's rules apply to traffic on that interface.
+**firewalld** uses a zone-based model. Network connections, interfaces, or sources can be assigned to zones, and unassigned interfaces use the default zone. You add services or ports to zones, and the zone's rules apply to traffic in that zone.
 
 Zones like `public` (default for untrusted interfaces), `trusted` (allow everything), `home` (trust LAN), and `internal` provide sensible defaults you can build on.
 
@@ -62,6 +62,8 @@ Default zones and their trust levels:
 - `block`: reject incoming with ICMP unreachable, only outgoing allowed
 - `public`: untrusted public networks, allow selected services
 - `external`: for external masquerading interfaces (NAT/router)
+- `dmz`: for publicly accessible systems with limited internal access
+- `work`: work networks where you mostly trust other systems
 - `home`: home LAN, trust other systems
 - `internal`: internal LAN, higher trust
 - `trusted`: trust all connections
@@ -75,8 +77,8 @@ sudo firewall-cmd --get-default-zone
 # Change default zone
 sudo firewall-cmd --set-default-zone=public
 
-# Assign an interface to a specific zone
-sudo firewall-cmd --zone=public --change-interface=eth0 --permanent
+# Assign an interface to a specific zone for the current runtime
+sudo firewall-cmd --zone=public --change-interface=eth0
 
 # Make zone assignment permanent (survives reboot)
 sudo firewall-cmd --permanent --zone=internal --change-interface=eth1
@@ -220,9 +222,9 @@ sudo firewall-cmd --permanent --zone=public --add-service=myapp
 sudo firewall-cmd --reload
 ```
 
-## Direct Rules (iptables-Compatible)
+## Direct Rules (Deprecated iptables-Compatible Interface)
 
-For complex scenarios that rich rules do not cover, firewalld has direct rules that work like iptables:
+For older complex scenarios that rich rules or policies do not cover, firewalld still has direct rules that work like iptables. The direct interface is deprecated and should only be used as a last resort:
 
 ```bash
 # Add an iptables-compatible direct rule
