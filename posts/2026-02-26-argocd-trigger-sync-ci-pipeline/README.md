@@ -85,6 +85,8 @@ jobs:
           # Update image tag in manifest repo
           git clone https://${{ secrets.GH_TOKEN }}@github.com/org/k8s-manifests.git
           cd k8s-manifests
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           sed -i "s|image: myregistry.com/app:.*|image: myregistry.com/app:${GITHUB_SHA::7}|" apps/myapp/deployment.yaml
           git add . && git commit -m "Update app to ${GITHUB_SHA::7}" && git push
 
@@ -126,7 +128,7 @@ build:
 
 deploy:
   stage: deploy
-  image: argoproj/argocd:v2.10.0
+  image: argoproj/argocd:v3.4.2
   variables:
     ARGOCD_SERVER: argocd.example.com
   script:
@@ -158,8 +160,9 @@ pipeline {
         stage('Build') {
             steps {
                 sh '''
-                    docker build -t myregistry.com/app:${GIT_COMMIT[0..6]} .
-                    docker push myregistry.com/app:${GIT_COMMIT[0..6]}
+                    IMAGE_TAG="$(git rev-parse --short=7 HEAD)"
+                    docker build -t myregistry.com/app:${IMAGE_TAG} .
+                    docker push myregistry.com/app:${IMAGE_TAG}
                 '''
             }
         }
@@ -240,13 +243,14 @@ Webhooks are the recommended approach for most setups. Instead of your CI pipeli
 Configure ArgoCD to accept webhooks:
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-secret Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   webhook.github.secret: "my-webhook-secret"
 ```
 
@@ -259,13 +263,14 @@ Then add a webhook in your GitHub repository settings:
 ### GitLab Webhook Setup
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-secret Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   webhook.gitlab.secret: "my-gitlab-secret"
 ```
 
@@ -289,8 +294,11 @@ curl -s -H "Authorization: Bearer $ARGOCD_TOKEN" \
 # Small delay to let the refresh complete
 sleep 5
 
-curl -X POST -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://$ARGOCD_SERVER/api/v1/applications/my-app/sync"
+curl -X POST \
+  -H "Authorization: Bearer $ARGOCD_TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://$ARGOCD_SERVER/api/v1/applications/my-app/sync" \
+  -d '{}'
 ```
 
 ## Handling Sync Failures in CI
@@ -335,7 +343,7 @@ echo "Deployment successful!"
 
 ## Best Practices
 
-1. **Always use `--grpc-web` flag** when calling ArgoCD from CI containers, as many network setups do not support native gRPC.
+1. **Use `--grpc-web` when needed** if your ArgoCD server is behind a proxy or ingress that does not support HTTP/2 gRPC.
 
 2. **Set appropriate timeouts** - Do not let your CI pipeline hang forever waiting for a sync. Use `--timeout` with reasonable values.
 
