@@ -71,7 +71,7 @@ data:
         Name              tail
         Tag               kube.*
         Path              /var/log/containers/argocd-*.log
-        Parser            docker
+        Parser            cri
         DB                /var/log/flb_argocd.db
         Mem_Buf_Limit     10MB
         Skip_Long_Lines   On
@@ -83,7 +83,6 @@ data:
         Kube_URL            https://kubernetes.default.svc:443
         Kube_Tag_Prefix     kube.var.log.containers.
         Merge_Log           On
-        Merge_Log_Key       log_processed
         K8S-Logging.Parser  On
         K8S-Logging.Exclude Off
         Labels              On
@@ -95,9 +94,9 @@ data:
         # Add a field to identify ArgoCD logs
         Add     source argocd
         # Rename fields for consistency
-        Rename  kubernetes.container_name component
-        Rename  kubernetes.pod_name pod
-        Rename  kubernetes.namespace_name namespace
+        Rename  $kubernetes['container_name'] component
+        Rename  $kubernetes['pod_name'] pod
+        Rename  $kubernetes['namespace_name'] namespace
 
     [OUTPUT]
         Name            es
@@ -121,10 +120,12 @@ data:
         Time_Keep   On
 
     [PARSER]
-        Name        argocd-json
-        Format      json
+        Name        cri
+        Format      regex
+        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
         Time_Key    time
-        Time_Format %Y-%m-%dT%H:%M:%SZ
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+        Time_Keep   On
 ```
 
 Deploy Fluent Bit as a DaemonSet:
@@ -192,11 +193,16 @@ data:
       tag argocd.*
       read_from_head true
       <parse>
-        @type json
-        time_key time
-        time_format %Y-%m-%dT%H:%M:%S.%NZ
+        @type regexp
+        expression /^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$/
+        time_format %iso8601
       </parse>
     </source>
+
+    # Add Kubernetes metadata from the container log filename
+    <filter argocd.**>
+      @type kubernetes_metadata
+    </filter>
 
     # Parse the nested JSON log message
     <filter argocd.**>
@@ -211,6 +217,7 @@ data:
     # Add metadata fields
     <filter argocd.**>
       @type record_transformer
+      enable_ruby true
       <record>
         cluster_name ${ENV['CLUSTER_NAME'] || 'default'}
         component ${record.dig("kubernetes", "container_name") || 'unknown'}
@@ -251,9 +258,7 @@ curl -X PUT "http://elasticsearch:9200/_index_template/argocd-logs" \
   "template": {
     "settings": {
       "number_of_shards": 2,
-      "number_of_replicas": 1,
-      "index.lifecycle.name": "argocd-logs-policy",
-      "index.lifecycle.rollover_alias": "argocd-logs"
+      "number_of_replicas": 1
     },
     "mappings": {
       "properties": {
@@ -274,7 +279,7 @@ curl -X PUT "http://elasticsearch:9200/_index_template/argocd-logs" \
 
 ## Setting Up Index Lifecycle Management
 
-Configure ILM to manage log retention:
+For Elasticsearch, configure ILM to manage log retention:
 
 ```bash
 # Create an ILM policy for ArgoCD logs
@@ -283,14 +288,6 @@ curl -X PUT "http://elasticsearch:9200/_ilm/policy/argocd-logs-policy" \
   -d '{
   "policy": {
     "phases": {
-      "hot": {
-        "actions": {
-          "rollover": {
-            "max_size": "10gb",
-            "max_age": "1d"
-          }
-        }
-      },
       "warm": {
         "min_age": "7d",
         "actions": {
@@ -304,6 +301,43 @@ curl -X PUT "http://elasticsearch:9200/_ilm/policy/argocd-logs-policy" \
           "delete": {}
         }
       }
+    }
+  }
+}'
+```
+
+To apply this Elasticsearch policy to new indices, add `"index.lifecycle.name": "argocd-logs-policy"` to the index template settings. For OpenSearch templates, use the ISM template in the policy below instead.
+
+For OpenSearch, use Index State Management (ISM) instead:
+
+```bash
+# Create an ISM policy for ArgoCD logs
+curl -X PUT "http://opensearch:9200/_plugins/_ism/policies/argocd-logs-policy" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "policy": {
+    "description": "Retain ArgoCD logs for 30 days",
+    "default_state": "hot",
+    "states": [
+      {
+        "name": "hot",
+        "actions": [],
+        "transitions": [
+          {
+            "state_name": "delete",
+            "conditions": { "min_index_age": "30d" }
+          }
+        ]
+      },
+      {
+        "name": "delete",
+        "actions": [{ "delete": {} }],
+        "transitions": []
+      }
+    ],
+    "ism_template": {
+      "index_patterns": ["argocd-logs-*"],
+      "priority": 100
     }
   }
 }'
