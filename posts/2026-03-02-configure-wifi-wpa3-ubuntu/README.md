@@ -8,11 +8,11 @@ Description: Learn how to configure WPA3 WiFi connections on Ubuntu, including S
 
 ---
 
-WPA3 is the latest WiFi security standard, replacing WPA2 with stronger authentication and forward secrecy. It uses Simultaneous Authentication of Equals (SAE) instead of the Pre-Shared Key (PSK) handshake used in WPA2, which eliminates offline dictionary attacks even if an attacker captures the handshake. Ubuntu 20.04 and newer support WPA3 with sufficiently modern hardware and drivers.
+WPA3 is the latest WiFi security standard, replacing WPA2 with stronger authentication and forward secrecy. It uses Simultaneous Authentication of Equals (SAE) instead of the Pre-Shared Key (PSK) handshake used in WPA2, which prevents passive offline dictionary attacks against captured handshakes. Ubuntu 20.04 and newer support WPA3 with sufficiently modern hardware and drivers.
 
 ## WPA3 Modes
 
-There are two main WPA3 operating modes:
+For home and small-office networks, there are two main WPA3 operating modes:
 
 - **WPA3-Personal (SAE)**: Pure WPA3 mode, requires all clients to support WPA3
 - **WPA3-Transition (WPA2/WPA3 mixed)**: The access point accepts both WPA2 and WPA3 clients simultaneously - this is the most practical choice for networks with mixed devices
@@ -22,10 +22,10 @@ There are two main WPA3 operating modes:
 Before configuring WPA3, verify your hardware and driver support it:
 
 ```bash
-# Check if your WiFi adapter supports WPA3 (SAE)
+# Check if your WiFi adapter/driver advertises SAE support
 
 iw phy phy0 info | grep -A 30 "Supported interface modes"
-iw phy phy0 info | grep -i "sae\|wpa3"
+iw phy phy0 info | grep -i "sae"
 
 # Check kernel version (WPA3 support improved significantly in 5.x)
 uname -r
@@ -33,8 +33,8 @@ uname -r
 # Check wpa_supplicant version (2.9+ for stable WPA3)
 wpa_supplicant -v 2>&1 | head -1
 
-# Check if SAE is compiled into wpa_supplicant
-wpa_supplicant -h 2>&1 | grep -i "CONFIG_SAE"
+# Check whether the installed binary includes SAE-related support strings
+strings "$(command -v wpa_supplicant)" | grep -i "SAE" | head
 ```
 
 If your `wpa_supplicant` doesn't show SAE support, install a newer version:
@@ -85,7 +85,7 @@ nmcli connection add \
     ssid "MixedNetwork" \
     wifi-sec.key-mgmt wpa-psk \
     wifi-sec.psk "password"
-# nmcli will use WPA3 SAE when available, WPA2 PSK as fallback
+# NetworkManager treats wpa-psk as the WPA2/WPA3 personal transition setting
 ```
 
 Check the security protocol in use after connecting:
@@ -96,6 +96,9 @@ nmcli connection show "WPA3Office" | grep -E "key-mgmt|psk|pairwise|group"
 
 # Check the active connection details
 nmcli -f GENERAL.STATE,GENERAL.CONNECTION,IP4.ADDRESS device show wlan0
+
+# Confirm the negotiated key management method from wpa_supplicant
+sudo wpa_cli -i wlan0 status | grep key_mgmt
 ```
 
 ## Configuring WPA3 with wpa_supplicant
@@ -207,7 +210,7 @@ ctrl_interface=DIR=/var/run/wpa_supplicant GROUP=netdev
 network={
     ssid="EnterpriseWPA3"
 
-    # WPA3-Enterprise uses SUITE-B or EAP-based authentication
+    # WPA3-Enterprise uses 802.1X/EAP with PMF required
     key_mgmt=WPA-EAP
 
     # PEAP with MS-CHAPv2 (common in enterprise environments)
@@ -217,18 +220,20 @@ network={
     phase2="auth=MSCHAPV2"
     ca_cert="/etc/ssl/certs/ca-certificates.crt"
 
-    # Protected Management Frames required for WPA3
+    # Protected Management Frames required for WPA3-Enterprise
     ieee80211w=2
 }
 EOF
 ```
+
+For WPA3-Enterprise 192-bit mode, use `key_mgmt=WPA-EAP-SUITE-B-192` and an EAP/certificate configuration that meets the 192-bit security requirements.
 
 ## Troubleshooting WPA3 Connection Issues
 
 ```bash
 # Check for WPA3 support errors in wpa_supplicant
 sudo journalctl -u wpa_supplicant -f
-# Look for: "CTRL-EVENT-ASSOC-REJECT" or "SAE-HASH-TO-ELEMENT"
+# Look for: "CTRL-EVENT-ASSOC-REJECT", SAE authentication failures, or PMF/MFP messages
 
 # Common error: PMF (Protected Management Frames) mismatch
 # Fix: check your AP's PMF setting and match in client config
@@ -274,9 +279,9 @@ sudo wpa_cli -i wlan0 status | grep key_mgmt
 # Check connection via nmcli
 nmcli device show wlan0 | grep -i "802-11-wireless"
 
-# View the active security suite using iw
+# View the current WiFi link status using iw
 iw dev wlan0 link
-# The "tx bitrates" and association data appears here
+# The SSID, signal, and tx bitrate appear here; use wpa_cli for key_mgmt
 
 # Check NetworkManager's view
 nmcli connection show "WPA3Office" | grep -i "key-mgmt"
