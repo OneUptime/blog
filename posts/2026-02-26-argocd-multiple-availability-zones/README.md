@@ -61,9 +61,6 @@ global:
     - maxSkew: 1
       topologyKey: topology.kubernetes.io/zone
       whenUnsatisfiable: DoNotSchedule
-      labelSelector:
-        matchLabels:
-          app.kubernetes.io/part-of: argocd
 ```
 
 ### Per-Component Configuration
@@ -145,22 +142,13 @@ redis-ha:
   enabled: true
   replicas: 3
   topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: DoNotSchedule
-      labelSelector:
-        matchLabels:
-          app.kubernetes.io/name: argocd-redis-ha
+    enabled: true
+    maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
 
   haproxy:
     replicas: 3
-    topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: topology.kubernetes.io/zone
-        whenUnsatisfiable: DoNotSchedule
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/name: argocd-redis-ha-haproxy
 ```
 
 With 3 Redis replicas across 3 zones, losing one zone still leaves 2 Sentinels - enough for quorum to elect a new master.
@@ -182,7 +170,7 @@ volumeBindingMode: WaitForFirstConsumer  # Critical for multi-AZ
 reclaimPolicy: Retain
 allowedTopologies:
   - matchLabelExpressions:
-      - key: topology.kubernetes.io/zone
+      - key: topology.ebs.csi.aws.com/zone
         values:
           - us-east-1a
           - us-east-1b
@@ -197,7 +185,7 @@ If a Redis pod fails over to a different zone, it cannot access its PV in the or
 redis-ha:
   redis:
     config:
-      save: ""
+      save: '""'
       appendonly: "no"
   persistentVolume:
     enabled: false
@@ -264,9 +252,10 @@ redis-ha:
   persistentVolume:
     enabled: false
   topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: topology.kubernetes.io/zone
-      whenUnsatisfiable: DoNotSchedule
+    enabled: true
+    maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
   haproxy:
     replicas: 3
 
@@ -304,9 +293,8 @@ kubectl get pods -n argocd -o wide | \
 
 # Simpler: group pods by zone
 kubectl get pods -n argocd -o json | \
-  jq -r '.items[] |
-    .metadata.name + " -> " + .spec.nodeName' | \
-  while IFS=' -> ' read pod node; do
+  jq -r '.items[] | [.metadata.name, .spec.nodeName] | @tsv' | \
+  while IFS=$'\t' read -r pod node; do
     zone=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}' 2>/dev/null)
     echo "$pod | $zone"
   done | sort -t'|' -k2
@@ -314,7 +302,7 @@ kubectl get pods -n argocd -o json | \
 
 ## Testing Zone Failure
 
-Simulate a zone failure by cordoning all nodes in one zone:
+In a non-production test cluster, simulate a zone failure by cordoning and draining all nodes in one zone. Cordoning alone only prevents new pods from scheduling; draining evicts existing pods so you can verify that ArgoCD remains available from the other zones:
 
 ```bash
 # Get nodes in zone us-east-1a
@@ -323,6 +311,11 @@ NODES=$(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o name)
 # Cordon all nodes in the zone
 for NODE in $NODES; do
   kubectl cordon "$NODE"
+done
+
+# Drain pods from those nodes
+for NODE in $NODES; do
+  kubectl drain "$NODE" --ignore-daemonsets --delete-emptydir-data
 done
 
 # Verify ArgoCD still works
