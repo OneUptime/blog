@@ -148,7 +148,7 @@ metadata:
   name: logging
 ```
 
-### Ingress Controller (Sync Wave 1)
+### Ingress Controller (Sync Wave 2)
 
 ```yaml
 # apps/02-ingress-nginx.yaml
@@ -158,19 +158,11 @@ metadata:
   name: ingress-nginx
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "2"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
-  source:
-    repoURL: https://kubernetes.github.io/ingress-nginx
-    chart: ingress-nginx
-    targetRevision: 4.9.1
-    helm:
-      releaseName: ingress-nginx
-      valueFiles:
-        - $values/values/ingress-values.yaml
   sources:
     - repoURL: https://kubernetes.github.io/ingress-nginx
       chart: ingress-nginx
@@ -193,7 +185,7 @@ spec:
       - CreateNamespace=true
 ```
 
-### Monitoring Stack (Sync Wave 3)
+### Monitoring Stack (Sync Wave 4)
 
 ```yaml
 # apps/04-monitoring.yaml
@@ -203,7 +195,7 @@ metadata:
   name: monitoring
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "3"
+    argocd.argoproj.io/sync-wave: "4"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
