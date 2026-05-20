@@ -53,27 +53,28 @@ The three backoff parameters control timing:
 With the configuration above (`duration: 5s`, `factor: 2`, `maxDuration: 3m`), the retry timing looks like:
 
 ```text
-Attempt 1: Sync fails
+Initial sync attempt: Sync fails
 Wait 5s
-Attempt 2: Sync fails
+Retry 1: Sync fails
 Wait 10s (5s * 2)
-Attempt 3: Sync fails
+Retry 2: Sync fails
 Wait 20s (10s * 2)
-Attempt 4: Sync fails
+Retry 3: Sync fails
 Wait 40s (20s * 2)
-Attempt 5: Sync fails
+Retry 4: Sync fails
 Wait 80s (40s * 2)
+Retry 5: Sync fails
 No more retries (limit of 5 reached)
 ```
 
 If `maxDuration` were set to `30s`, the timing would cap:
 
 ```text
-Attempt 1: Wait 5s
-Attempt 2: Wait 10s
-Attempt 3: Wait 20s
-Attempt 4: Wait 30s (capped by maxDuration)
-Attempt 5: Wait 30s (capped by maxDuration)
+Retry 1: Wait 5s
+Retry 2: Wait 10s
+Retry 3: Wait 20s
+Retry 4: Wait 30s (capped by maxDuration)
+Retry 5: Wait 30s (capped by maxDuration)
 ```
 
 ## Basic Configuration Examples
@@ -106,6 +107,7 @@ syncPolicy:
     prune: true
   retry:
     limit: 10
+    refresh: true
     backoff:
       duration: 2s
       factor: 1.5
@@ -257,6 +259,8 @@ metadata:
   name: microservices
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/services.git
@@ -265,16 +269,16 @@ spec:
           - path: services/*
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/services.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
       syncPolicy:
         automated:
           prune: true
