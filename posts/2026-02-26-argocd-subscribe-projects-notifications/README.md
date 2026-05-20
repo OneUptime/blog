@@ -68,8 +68,8 @@ metadata:
     # Email notifications for failures
     notifications.argoproj.io/subscribe.on-sync-failed.email: prod-oncall@company.com
     # PagerDuty for critical alerts
-    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ""
-    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerdutyv2: production-service
+    notifications.argoproj.io/subscribe.on-health-degraded.pagerdutyv2: production-service
 ```
 
 ## Different Projects, Different Channels
@@ -86,9 +86,9 @@ metadata:
   namespace: argocd
   annotations:
     notifications.argoproj.io/subscribe.on-sync-failed.slack: prod-alerts-critical
-    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerdutyv2: production-service
     notifications.argoproj.io/subscribe.on-health-degraded.slack: prod-alerts-critical
-    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.pagerdutyv2: production-service
     notifications.argoproj.io/subscribe.on-deployed.slack: prod-deployments
 spec:
   description: Production applications
@@ -156,7 +156,7 @@ metadata:
   annotations:
     # This is in ADDITION to the project subscription
     notifications.argoproj.io/subscribe.on-sync-failed.slack: team-payments-alerts
-    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerdutyv2: payment-service
 spec:
   project: production
 ```
@@ -196,10 +196,10 @@ kubectl annotate appproject production \
   -n argocd \
   notifications.argoproj.io/subscribe.on-sync-failed.slack=prod-alerts
 
-# Add a PagerDuty subscription
+# Add a PagerDuty V2 subscription
 kubectl annotate appproject production \
   -n argocd \
-  notifications.argoproj.io/subscribe.on-sync-failed.pagerduty=""
+  notifications.argoproj.io/subscribe.on-sync-failed.pagerdutyv2=production-service
 
 # Update an existing subscription
 kubectl annotate appproject production \
@@ -274,12 +274,12 @@ kubectl get appprojects -n argocd -o json | \
 
 ## Common Pitfalls
 
-**Duplicate notifications**: If both the project and the application subscribe to the same trigger and channel, you will get duplicate messages. ArgoCD does not deduplicate across project and application subscriptions.
+**Overlapping subscriptions**: If both the project and the application subscribe to the same trigger but different channels, each configured channel receives a notification. Identical service and recipient destinations are deduplicated by the notifications engine.
 
 **Default project limitations**: The `default` project is created automatically and any application without a specified project goes into it. Be careful about adding broad subscriptions to the default project because it catches everything.
 
 **Trigger must exist**: The trigger name in the annotation must be defined in `argocd-notifications-cm`. A missing trigger definition means the subscription silently does nothing.
 
-**Service must be configured**: Just like application subscriptions, the service (slack, email, pagerduty, etc.) must be configured in the notifications ConfigMap with valid credentials.
+**Service must be configured**: Just like application subscriptions, the service (slack, email, pagerdutyv2, etc.) must be configured in the notifications ConfigMap with valid credentials.
 
 Project subscriptions are the most efficient way to manage notifications at scale. For more granular control at the application level, see [how to subscribe individual applications to notification channels](https://oneuptime.com/blog/post/2026-02-26-argocd-subscribe-applications-notifications/view). For annotation-based subscription patterns, check out [using notification subscriptions with annotations](https://oneuptime.com/blog/post/2026-02-26-argocd-notification-subscriptions-annotations/view).
