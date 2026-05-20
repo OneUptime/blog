@@ -17,7 +17,7 @@ This guide covers a systematic approach to cleaning up everything that gets left
 Even after a successful cascade delete, some resources might survive:
 
 1. **Resources excluded from pruning** - Resources with `argocd.argoproj.io/sync-options: Prune=false`
-2. **PersistentVolumeClaims** - If managed by StatefulSets (PVCs from StatefulSets are not automatically deleted)
+2. **PersistentVolumeClaims** - If managed by StatefulSets (PVCs from StatefulSets are retained by default unless a StatefulSet PVC retention policy deletes them)
 3. **PersistentVolumes** - With `Retain` reclaim policy
 4. **Namespace** - ArgoCD does not delete namespaces by default
 5. **Cluster-scoped resources** - ClusterRoles, ClusterRoleBindings that were not tracked
@@ -51,7 +51,7 @@ kubectl get secret -n $NAMESPACE | grep -v default-token
 kubectl get ingress -n $NAMESPACE
 
 # Check for ServiceAccounts
-kubectl get serviceaccount -n $NAMESPACE | grep -v default
+kubectl get serviceaccount -n $NAMESPACE | grep -v '^default'
 
 # Check for NetworkPolicies
 kubectl get networkpolicy -n $NAMESPACE
@@ -77,8 +77,8 @@ kubectl delete services --all -n $NAMESPACE
 
 # Delete ConfigMaps (except system ones)
 kubectl get configmap -n $NAMESPACE -o name | \
-  grep -v kube-root-ca | \
-  xargs kubectl delete -n $NAMESPACE
+  grep -v '^configmap/kube-root-ca.crt$' | \
+  xargs -I {} kubectl delete {} -n $NAMESPACE
 
 # Delete Secrets (except service account tokens)
 kubectl get secret -n $NAMESPACE -o json | \
@@ -99,8 +99,8 @@ kubectl delete hpa --all -n $NAMESPACE
 
 # Delete ServiceAccounts (except default)
 kubectl get sa -n $NAMESPACE -o name | \
-  grep -v default | \
-  xargs kubectl delete -n $NAMESPACE
+  grep -v '^serviceaccount/default$' | \
+  xargs -I {} kubectl delete {} -n $NAMESPACE
 ```
 
 ## Step 3: Handle PersistentVolumeClaims
@@ -119,7 +119,7 @@ NAME:.metadata.name,STATUS:.status.phase,VOLUME:.spec.volumeName,SIZE:.spec.reso
 
 # Before deleting, check the PV reclaim policy
 kubectl get pv -o custom-columns=\
-NAME:.metadata.name,RECLAIM:.spec.persistentVolumeReclaimPolicy,CLAIM:.spec.claimRef.name | \
+NAME:.metadata.name,RECLAIM:.spec.persistentVolumeReclaimPolicy,CLAIM_NAMESPACE:.spec.claimRef.namespace,CLAIM:.spec.claimRef.name | \
   grep $NAMESPACE
 ```
 
@@ -167,23 +167,23 @@ APP_NAME="my-app"
 
 # Find and delete ClusterRoles
 kubectl get clusterrole -l app.kubernetes.io/instance=$APP_NAME -o name | \
-  xargs kubectl delete
+  xargs -I {} kubectl delete {}
 
 # Find and delete ClusterRoleBindings
 kubectl get clusterrolebinding -l app.kubernetes.io/instance=$APP_NAME -o name | \
-  xargs kubectl delete
+  xargs -I {} kubectl delete {}
 
 # Check for custom resource definitions if the app installed CRDs
 kubectl get crd -l app.kubernetes.io/instance=$APP_NAME -o name | \
-  xargs kubectl delete
+  xargs -I {} kubectl delete {}
 
 # Check for MutatingWebhookConfigurations
 kubectl get mutatingwebhookconfiguration -l app.kubernetes.io/instance=$APP_NAME -o name | \
-  xargs kubectl delete
+  xargs -I {} kubectl delete {}
 
 # Check for ValidatingWebhookConfigurations
 kubectl get validatingwebhookconfiguration -l app.kubernetes.io/instance=$APP_NAME -o name | \
-  xargs kubectl delete
+  xargs -I {} kubectl delete {}
 ```
 
 ## Step 5: Remove ArgoCD tracking metadata
@@ -196,7 +196,7 @@ NAMESPACE="my-app"
 # Remove ArgoCD tracking annotations
 kubectl get all -n $NAMESPACE -o name | xargs -I {} kubectl annotate {} -n $NAMESPACE \
   argocd.argoproj.io/tracking-id- \
-  argocd.argoproj.io/managed-by- \
+  argocd.argoproj.io/installation-id- \
   kubectl.kubernetes.io/last-applied-configuration-
 
 # Remove ArgoCD instance labels
@@ -284,7 +284,12 @@ if kubectl get namespace $NAMESPACE 2>/dev/null; then
   if [ "$confirm" = "y" ]; then
     kubectl delete all --all -n $NAMESPACE --timeout=60s
     kubectl delete pvc --all -n $NAMESPACE --timeout=60s
-    kubectl delete configmap --all -n $NAMESPACE --timeout=60s
+    kubectl get configmap -n $NAMESPACE -o name | \
+      grep -v '^configmap/kube-root-ca.crt$' | \
+      xargs -I {} kubectl delete {} -n $NAMESPACE --timeout=60s
+    kubectl get secret -n $NAMESPACE -o json | \
+      jq -r '.items[] | select(.type != "kubernetes.io/service-account-token") | .metadata.name' | \
+      xargs -I {} kubectl delete secret {} -n $NAMESPACE --timeout=60s
     kubectl delete ingress --all -n $NAMESPACE --timeout=60s
 
     read -p "Delete namespace $NAMESPACE? (y/N): " confirm_ns
