@@ -33,7 +33,7 @@ graph LR
 
 ## Registering Clusters with ArgoCD
 
-Before using the Cluster generator, you need clusters registered in ArgoCD. The built-in cluster (where ArgoCD runs) is always available.
+Before using the Cluster generator, you need clusters registered in ArgoCD. The built-in cluster (where ArgoCD runs) is available by default unless it has been disabled.
 
 ```bash
 # Add a cluster to ArgoCD
@@ -61,8 +61,11 @@ argocd cluster list
 You can also label clusters directly on the secret.
 
 ```bash
-# Add labels to an existing cluster secret
-kubectl label secret -n argocd -l argocd.argoproj.io/secret-type=cluster \
+# Find cluster secret names
+kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=cluster
+
+# Add labels to a specific existing cluster secret
+kubectl label secret -n argocd <cluster-secret-name> \
   environment=production --overwrite
 ```
 
