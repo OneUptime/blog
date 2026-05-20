@@ -39,19 +39,19 @@ metadata:
 data:
   application.links: |
     # Link to GitHub Actions runs for the source repository
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/actions?query=branch:{{.spec.source.targetRevision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/actions?query=branch:{{.app.spec.source.targetRevision}}'
       title: GitHub Actions
       description: View CI pipeline runs for this branch
       icon.class: "fa fa-cogs"
 
     # Link to the specific commit in GitHub
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/commit/{{.status.sync.revision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/commit/{{.app.status.sync.revision}}'
       title: View Commit
       description: View the deployed commit in GitHub
       icon.class: "fa fa-code-branch"
 
     # Link to pull requests for the branch
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/pulls?q=is:pr+head:{{.spec.source.targetRevision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/pulls?q=is:pr+head:{{.app.spec.source.targetRevision}}'
       title: Pull Requests
       description: View related pull requests
       icon.class: "fa fa-code-branch"
@@ -64,7 +64,7 @@ If you have a specific workflow file name, you can link directly to it:
 ```yaml
   application.links: |
     # Link to a specific GitHub Actions workflow
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/actions/workflows/deploy.yml?query=branch:{{.spec.source.targetRevision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/actions/workflows/deploy.yml?query=branch:{{.app.spec.source.targetRevision}}'
       title: Deploy Pipeline
       description: View deployment pipeline runs
       icon.class: "fa fa-rocket"
@@ -77,19 +77,19 @@ GitLab CI uses a different URL structure:
 ```yaml
   application.links: |
     # Link to GitLab CI/CD pipelines for the branch
-    - url: {{.spec.source.repoURL | replace ".git" ""}}/pipelines?ref={{.spec.source.targetRevision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@gitlab.com:" "https://gitlab.com/"}}/-/pipelines?ref={{.app.spec.source.targetRevision}}'
       title: GitLab Pipelines
       description: View CI/CD pipelines for this branch
       icon.class: "fa fa-cogs"
 
     # Link to the specific commit in GitLab
-    - url: {{.spec.source.repoURL | replace ".git" ""}}/commit/{{.status.sync.revision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@gitlab.com:" "https://gitlab.com/"}}/-/commit/{{.app.status.sync.revision}}'
       title: View Commit
       description: View the deployed commit in GitLab
       icon.class: "fa fa-code-branch"
 
     # Link to merge requests
-    - url: {{.spec.source.repoURL | replace ".git" ""}}/merge_requests?scope=all&state=all&search={{.spec.source.targetRevision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@gitlab.com:" "https://gitlab.com/"}}/-/merge_requests?scope=all&state=all&search={{.app.spec.source.targetRevision}}'
       title: Merge Requests
       description: View related merge requests
       icon.class: "fa fa-code-branch"
@@ -101,7 +101,7 @@ GitLab supports environments natively, so you can link to the environment page:
 
 ```yaml
     # Link to GitLab environment
-    - url: {{.spec.source.repoURL | replace ".git" ""}}/environments?search={{.spec.destination.namespace}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@gitlab.com:" "https://gitlab.com/"}}/-/environments?search={{.app.spec.destination.namespace}}'
       title: GitLab Environment
       description: View environment deployments
       icon.class: "fa fa-server"
@@ -114,13 +114,13 @@ Jenkins URLs depend on your Jenkins setup. For multibranch pipelines:
 ```yaml
   application.links: |
     # Link to Jenkins multibranch pipeline for the branch
-    - url: https://jenkins.example.com/job/my-org/job/my-repo/job/{{.spec.source.targetRevision}}/
+    - url: https://jenkins.example.com/job/my-org/job/my-repo/job/{{.app.spec.source.targetRevision}}/
       title: Jenkins Pipeline
       description: View Jenkins builds for this branch
       icon.class: "fa fa-cogs"
 
     # Link to Jenkins Blue Ocean view
-    - url: https://jenkins.example.com/blue/organizations/jenkins/my-org%2Fmy-repo/activity?branch={{.spec.source.targetRevision}}
+    - url: https://jenkins.example.com/blue/organizations/jenkins/my-org%2Fmy-repo/activity?branch={{.app.spec.source.targetRevision}}
       title: Jenkins (Blue Ocean)
       description: View pipeline in Blue Ocean
       icon.class: "fa fa-water"
@@ -131,11 +131,11 @@ For applications that use annotations to store the Jenkins job URL:
 ```yaml
   resource.links: |
     # Link using annotation from the deployed resource
-    - url: {{.metadata.annotations.jenkins-build-url}}
+    - url: '{{index .resource.metadata.annotations "jenkins-build-url"}}'
       title: Jenkins Build
       description: View the Jenkins build that produced this deployment
       icon.class: "fa fa-cogs"
-      if: metadata.annotations.jenkins-build-url != nil
+      if: resource.metadata.annotations != nil && resource.metadata.annotations["jenkins-build-url"] != nil
 ```
 
 This approach requires your CI pipeline to add the build URL as an annotation to the Kubernetes manifest before committing it to Git.
@@ -145,7 +145,7 @@ This approach requires your CI pipeline to add the build URL as an annotation to
 ```yaml
   application.links: |
     # Link to CircleCI pipeline runs
-    - url: https://app.circleci.com/pipelines/github/my-org/my-repo?branch={{.spec.source.targetRevision}}
+    - url: https://app.circleci.com/pipelines/github/my-org/my-repo?branch={{.app.spec.source.targetRevision}}
       title: CircleCI Pipeline
       description: View CircleCI pipeline runs
       icon.class: "fa fa-circle"
@@ -156,13 +156,13 @@ This approach requires your CI pipeline to add the build URL as an annotation to
 ```yaml
   application.links: |
     # Link to Azure DevOps pipeline runs
-    - url: https://dev.azure.com/my-org/my-project/_build?definitionId=1&branchFilter={{.spec.source.targetRevision}}
+    - url: https://dev.azure.com/my-org/my-project/_build?definitionId=1&branchFilter={{.app.spec.source.targetRevision}}
       title: Azure DevOps Pipeline
       description: View Azure DevOps builds
       icon.class: "fa fa-cogs"
 
     # Link to the Azure DevOps repository
-    - url: https://dev.azure.com/my-org/my-project/_git/my-repo?version=GB{{.spec.source.targetRevision}}
+    - url: https://dev.azure.com/my-org/my-project/_git/my-repo?version=GB{{.app.spec.source.targetRevision}}
       title: Azure Repos
       description: View source in Azure Repos
       icon.class: "fa fa-code"
@@ -176,18 +176,18 @@ You can add deep links to individual resources that link back to the container i
   resource.links: |
     # Link to the container image in a registry
     # This assumes the image tag is used as the pod label or annotation
-    - url: https://hub.docker.com/r/{{.spec.containers[0].image | replace ":" "/tags?name="}}
+    - url: https://hub.docker.com/r/{{(index .resource.spec.containers 0).image | replace ":" "/tags?name="}}
       title: Docker Hub Image
       description: View the container image on Docker Hub
       icon.class: "fa fa-docker"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
     # Link to GitHub Container Registry
-    - url: https://github.com/orgs/my-org/packages?query={{.metadata.labels.app}}
+    - url: https://github.com/orgs/my-org/packages?query={{.resource.metadata.labels.app}}
       title: Container Image
       description: View container image in GHCR
       icon.class: "fa fa-box"
-      if: kind == "Deployment"
+      if: resource.kind == "Deployment"
 ```
 
 ## Using Annotations for Dynamic CI Links
@@ -217,18 +217,18 @@ The most flexible approach is to have your CI pipeline inject the build URL into
 ```yaml
   resource.links: |
     # Dynamic CI link from annotation
-    - url: "{{.metadata.annotations.ci/build-url}}"
-      title: "CI Build #{{.metadata.annotations.ci/build-number}}"
+    - url: '{{index .resource.metadata.annotations "ci/build-url"}}'
+      title: 'CI Build #{{index .resource.metadata.annotations "ci/build-number"}}'
       description: View the CI build that produced this deployment
       icon.class: "fa fa-cogs"
-      if: metadata.annotations.ci/build-url != nil
+      if: resource.metadata.annotations != nil && resource.metadata.annotations["ci/build-url"] != nil
 
     # Link to the specific commit
-    - url: https://github.com/my-org/my-repo/commit/{{.metadata.annotations.ci/commit-sha}}
+    - url: 'https://github.com/my-org/my-repo/commit/{{index .resource.metadata.annotations "ci/commit-sha"}}'
       title: Source Commit
       description: View the source commit
       icon.class: "fa fa-code"
-      if: metadata.annotations.ci/commit-sha != nil
+      if: resource.metadata.annotations != nil && resource.metadata.annotations["ci/commit-sha"] != nil
 ```
 
 This approach has the advantage of being CI-system agnostic. The deep link configuration stays the same regardless of whether you use GitHub Actions, GitLab CI, or Jenkins.
@@ -246,26 +246,26 @@ metadata:
 data:
   application.links: |
     # Source code links
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/tree/{{.spec.source.targetRevision}}/{{.spec.source.path}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/tree/{{.app.spec.source.targetRevision}}/{{.app.spec.source.path}}'
       title: Source Code
       icon.class: "fa fa-code"
 
     # CI/CD pipeline link
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/actions?query=branch:{{.spec.source.targetRevision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/actions?query=branch:{{.app.spec.source.targetRevision}}'
       title: CI Pipeline
       icon.class: "fa fa-cogs"
 
     # Deployed commit
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/commit/{{.status.sync.revision}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/commit/{{.app.status.sync.revision}}'
       title: Deployed Commit
       icon.class: "fa fa-code-branch"
 
   resource.links: |
     # Annotation-based CI link (works with any CI system)
-    - url: "{{.metadata.annotations.ci/build-url}}"
+    - url: '{{index .resource.metadata.annotations "ci/build-url"}}'
       title: CI Build
       icon.class: "fa fa-cogs"
-      if: metadata.annotations.ci/build-url != nil
+      if: resource.metadata.annotations != nil && resource.metadata.annotations["ci/build-url"] != nil
 ```
 
 ## Conclusion
