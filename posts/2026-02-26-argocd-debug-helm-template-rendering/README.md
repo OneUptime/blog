@@ -115,7 +115,8 @@ image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
 
 ```yaml
 # Safe template with defaults
-image: {{ .Values.image.repository | default "myorg/my-app" }}:{{ .Values.image.tag | default "latest" }}
+{{- $image := .Values.image | default dict }}
+image: {{ $image.repository | default "myorg/my-app" }}:{{ $image.tag | default "latest" }}
 
 # Or use 'with' for optional blocks
 {{- with .Values.image }}
@@ -143,7 +144,7 @@ helm:
 # Bad template - indentation is wrong
 spec:
   containers:
-{{ toYaml .Values.containers | indent 4 }}  # Should be indent 4, not indent 2
+{{ toYaml .Values.containers | indent 2 }}  # Should be indent 4
 ```
 
 **Solution**: Fix the `indent` or `nindent` value in the template, or if you are overriding values, make sure your YAML is properly formatted:
@@ -163,16 +164,16 @@ helm:
 
 **Error**: `error calling eq: incompatible types for comparison`
 
-**Cause**: Helm parameter values are always strings, but the template expects a different type.
+**Cause**: ArgoCD Helm parameter values are specified as strings in the Application spec. By default ArgoCD passes them to Helm like `--set`, so Helm may coerce values that look like numbers or booleans unless `forceString: true` is used. Type mismatches happen when the rendered value's type does not match what the template compares against.
 
 ```yaml
 # Template expects a number
 replicas: {{ .Values.replicaCount }}
 
-# But the parameter passes a string
+# The parameter is written as a string in the Application spec
 parameters:
   - name: replicaCount
-    value: "3"  # This is a string
+    value: "3"
 ```
 
 **Solution**: Use `int` or `float64` conversion in templates:
@@ -181,7 +182,7 @@ parameters:
 replicas: {{ int .Values.replicaCount }}
 ```
 
-Or use `forceString: false` (the default) and pass numeric values without quotes in the ArgoCD spec.
+Or use `values`/`valuesObject` for strongly typed YAML values, and reserve `forceString: true` for values that must remain strings.
 
 ### Issue 4: Chart Dependency Resolution Failure
 
@@ -294,7 +295,7 @@ ArgoCD caches rendered manifests. If you have fixed an issue but ArgoCD still sh
 # Hard refresh to clear the cache
 argocd app get my-app --hard-refresh
 
-# Or delete the app from the ArgoCD cache
+# Or refresh application data without clearing the target manifests cache
 argocd app get my-app --refresh
 ```
 
