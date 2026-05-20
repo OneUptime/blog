@@ -30,7 +30,7 @@ Avoid over-provisioning. Start with a t3.medium or t3.large for most application
 
 ## Selecting the Right Ubuntu AMI
 
-AWS maintains official Ubuntu AMIs. Always use these rather than community AMIs to ensure you have verified builds with security patches.
+Canonical publishes official Ubuntu AMIs on AWS. Always use these rather than community AMIs to ensure you have verified builds with security patches.
 
 Finding the latest official AMI via CLI:
 
@@ -53,7 +53,7 @@ The owner ID `099720109477` is Canonical's official AWS account. Using this filt
 
 ### Choosing Between gp2 and gp3
 
-Always choose **gp3** over gp2 for new instances. gp3 provides 3,000 IOPS and 125 MB/s throughput baseline at a lower cost than gp2, with the ability to provision up to 16,000 IOPS independently of volume size.
+Always choose **gp3** over gp2 for new instances. gp3 provides 3,000 IOPS and 125 MiB/s throughput baseline at a lower cost than gp2, with the ability to provision up to 80,000 IOPS on sufficiently large volumes.
 
 ### Root Volume Sizing
 
@@ -140,6 +140,11 @@ aws iam attach-role-policy \
   --role-name ec2-web-server-role \
   --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
 
+# Attach CloudWatch agent policy so the instance can publish metrics
+aws iam attach-role-policy \
+  --role-name ec2-web-server-role \
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
 # Create instance profile and attach role
 aws iam create-instance-profile --instance-profile-name ec2-web-server-profile
 aws iam add-role-to-instance-profile \
@@ -164,9 +169,13 @@ apt-get install -y \
   unattended-upgrades \
   fail2ban \
   awscli \
-  amazon-cloudwatch-agent \
   curl \
+  wget \
   jq
+
+# Install the CloudWatch agent
+wget https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+dpkg -i -E ./amazon-cloudwatch-agent.deb
 
 # Configure unattended security upgrades
 cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'EOF'
@@ -182,7 +191,7 @@ dpkg-reconfigure -f noninteractive unattended-upgrades
 # Harden SSH
 sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin no/' /etc/ssh/sshd_config
-systemctl restart sshd
+systemctl restart ssh
 
 # Configure fail2ban
 systemctl enable fail2ban
@@ -220,6 +229,7 @@ sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow 443/tcp
 sudo ufw allow 80/tcp
+sudo ufw allow from 203.0.113.0/24 to any port 22 proto tcp
 sudo ufw enable
 
 # Configure automatic security updates
@@ -233,7 +243,9 @@ Install and configure the CloudWatch agent to collect system metrics:
 
 ```bash
 # Install CloudWatch agent
-sudo apt install amazon-cloudwatch-agent -y
+sudo apt install wget -y
+wget https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+sudo dpkg -i -E ./amazon-cloudwatch-agent.deb
 
 # Create configuration
 sudo tee /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'EOF'
@@ -261,8 +273,11 @@ sudo tee /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'E
 EOF
 
 # Start the agent
-sudo systemctl enable amazon-cloudwatch-agent
-sudo systemctl start amazon-cloudwatch-agent
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config \
+  -m ec2 \
+  -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
 ```
 
 ## Elastic IP and DNS
@@ -285,7 +300,7 @@ Point your domain's A record to this Elastic IP using Route 53 or your DNS provi
 
 - Use Reserved Instances or Savings Plans for instances that run continuously - savings of 40-60% over On-Demand pricing
 - Enable detailed monitoring only when needed (costs extra per metric)
-- Set up AWS Cost Explorer alerts for budget thresholds
+- Set up AWS Budgets alerts for budget thresholds
 - Stop non-production instances outside business hours using AWS Instance Scheduler
 
 ## Summary
