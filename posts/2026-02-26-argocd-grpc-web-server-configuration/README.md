@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, gRPC, Networking
 
-Description: Learn how to configure ArgoCD's API server for gRPC-Web to enable browser-based clients and work through load balancers that do not support HTTP/2.
+Description: Learn how to use ArgoCD's gRPC-Web support to enable browser-based clients and work through proxies configured for HTTP/1.1.
 
 ---
 
@@ -14,10 +14,10 @@ gRPC-Web is a protocol that adapts gRPC calls to work over HTTP/1.1, making them
 
 ## Why You Need gRPC-Web with ArgoCD
 
-Several common scenarios require gRPC-Web configuration:
+Several common scenarios require gRPC-Web configuration on the client or proxy path:
 
-- Your load balancer (like AWS ALB or classic ELB) does not support HTTP/2 end-to-end
-- You are deploying ArgoCD behind a CDN like CloudFront that needs HTTP/1.1
+- Your load balancer, CDN, or reverse proxy path is configured for HTTP/1.1 to backends
+- You are deploying ArgoCD behind infrastructure where native gRPC routing is not enabled
 - Corporate proxies strip HTTP/2 upgrade headers
 - Browser-based tools need to communicate directly with the ArgoCD API
 - You want a single port for both the web UI and API traffic
@@ -29,7 +29,7 @@ By default, ArgoCD's API server listens on two ports:
 - Port 8080: Serves both the web UI (HTTP) and the API (gRPC)
 - Port 8083: Serves metrics
 
-The server uses content-type negotiation to determine whether an incoming request is a gRPC call or a regular HTTP request. When gRPC-Web is enabled, the server also accepts `application/grpc-web` content types and translates them into native gRPC calls internally.
+The server uses content-type negotiation to determine whether an incoming request is a gRPC call or a regular HTTP request. ArgoCD's API server includes gRPC-Web handling, so clients can use `application/grpc-web` or `application/grpc-web+proto` content types when the proxy path supports them.
 
 ```mermaid
 graph LR
@@ -40,16 +40,13 @@ graph LR
     C -->|Internal gRPC| F[Application Controller]
 ```
 
-## Enabling gRPC-Web on the ArgoCD Server
+## Confirming gRPC-Web Support on the ArgoCD Server
 
-ArgoCD supports gRPC-Web out of the box. The key configuration flag is `--grpc-web`. You can set this in the argocd-server deployment.
+ArgoCD supports gRPC-Web out of the box. There is no `--grpc-web` flag for `argocd-server`; `--grpc-web` is an ArgoCD CLI option. In most deployments, the server-side work is to make sure your ingress or load balancer forwards gRPC-Web requests to the ArgoCD API server.
 
-Here is how to configure it via the deployment manifest:
+Here is a typical server deployment shape with TLS enabled by default:
 
 ```yaml
-# argocd-server-deployment-patch.yaml
-
-# Patch to enable gRPC-Web on the ArgoCD API server
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,23 +59,20 @@ spec:
         - name: argocd-server
           command:
             - argocd-server
-            - --grpc-web
 ```
 
-If you are using Helm to deploy ArgoCD, set the value in your values file:
+If you are using Helm to deploy ArgoCD, you usually do not need a gRPC-Web-specific server value:
 
 ```yaml
 # values.yaml for ArgoCD Helm chart
-# Enable gRPC-Web support on the server
 server:
-  extraArgs:
-    - --grpc-web
+  extraArgs: []
 ```
 
 Apply the Helm upgrade:
 
 ```bash
-# Upgrade ArgoCD with gRPC-Web enabled
+# Upgrade ArgoCD with your server values
 helm upgrade argocd argo/argo-cd \
   --namespace argocd \
   -f values.yaml
@@ -86,13 +80,12 @@ helm upgrade argocd argo/argo-cd \
 
 ## Configuring gRPC-Web with a Root Path
 
-If you are serving ArgoCD under a subpath (for example, `/argocd`), you need to set the root path alongside gRPC-Web:
+If you are serving ArgoCD under a subpath (for example, `/argocd`), you need to set the server root path and use the matching gRPC-Web root path from the CLI:
 
 ```yaml
-# Enable gRPC-Web with a custom root path
+# Configure ArgoCD with a custom root path
 server:
   extraArgs:
-    - --grpc-web
     - --rootpath=/argocd
 ```
 
@@ -138,7 +131,7 @@ spec:
                   number: 443
 ```
 
-For AWS ALB Ingress (which does not support HTTP/2 to backends), gRPC-Web is particularly useful:
+For AWS ALB Ingress, gRPC-Web is particularly useful when you want the target group to use its default HTTP/1.1 protocol version instead of configuring separate HTTP/2 or gRPC target groups:
 
 ```yaml
 # AWS ALB Ingress for ArgoCD with gRPC-Web
@@ -152,7 +145,7 @@ metadata:
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/abc-123
-    # Backend protocol is HTTP since gRPC-Web runs over HTTP/1.1
+    # Backend protocol is HTTPS because ArgoCD terminates TLS by default
     alb.ingress.kubernetes.io/backend-protocol: HTTPS
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
 spec:
@@ -182,11 +175,11 @@ argocd login argocd.example.com --grpc-web
 argocd login argocd.example.com --grpc-web --grpc-web-root-path /argocd
 ```
 
-To make gRPC-Web the default for all CLI operations, set the environment variable:
+To make gRPC-Web the default for all CLI operations, set the `ARGOCD_OPTS` environment variable:
 
 ```bash
 # Set gRPC-Web as the default transport for all ArgoCD CLI commands
-export ARGOCD_GRPC_WEB=true
+export ARGOCD_OPTS="--grpc-web"
 
 # Now all commands automatically use gRPC-Web
 argocd app list
@@ -201,7 +194,6 @@ If your load balancer handles TLS termination, you should disable TLS on the Arg
 # Disable TLS on ArgoCD server when proxy handles termination
 server:
   extraArgs:
-    - --grpc-web
     - --insecure
 ```
 
@@ -227,10 +219,10 @@ curl -v -H "Content-Type: application/grpc-web+proto" \
 
 **Mixed content errors in the browser**: Ensure your ArgoCD server URL uses HTTPS. The web UI will not make gRPC-Web calls over plain HTTP if the page was loaded over HTTPS.
 
-**404 errors on gRPC-Web endpoints**: Verify that the `--grpc-web` flag is actually set on the server. Check the running arguments:
+**404 errors on gRPC-Web endpoints**: Verify that your ingress routes gRPC-Web requests to the ArgoCD server service and that any subpath configuration matches the server `--rootpath` and CLI `--grpc-web-root-path` values. Check the running server arguments:
 
 ```bash
-# Check if gRPC-Web is enabled on the running server
+# Check the running server arguments
 kubectl get deploy argocd-server -n argocd -o jsonpath='{.spec.template.spec.containers[0].command}'
 ```
 
@@ -238,14 +230,14 @@ kubectl get deploy argocd-server -n argocd -o jsonpath='{.spec.template.spec.con
 
 ## Performance Considerations
 
-gRPC-Web adds minimal overhead compared to native gRPC. The main difference is that binary gRPC frames are base64-encoded for HTTP/1.1 compatibility, which adds roughly 33% to the payload size. For most ArgoCD operations, this overhead is negligible.
+gRPC-Web adds some overhead compared to native gRPC. In `grpcwebtext` mode, payloads are base64-encoded, which adds roughly 33% to the payload size. In binary `grpcweb` mode, protobuf payloads are not base64-encoded, but browser streaming support is more limited. For most ArgoCD operations, this overhead is negligible.
 
-However, server-side streaming (used for live application watching) works differently with gRPC-Web. Instead of true bidirectional streaming, gRPC-Web uses server-sent events or chunked transfer encoding. This means watch operations may have slightly higher latency compared to native gRPC connections.
+However, streaming works differently with gRPC-Web. Browser gRPC-Web clients support unary calls and, in text mode, server-side streaming, but they do not support client-side or bidirectional streaming in the same way native gRPC over HTTP/2 does. This means watch operations may have slightly higher latency compared to native gRPC connections.
 
 For environments where performance is critical and HTTP/2 is available end-to-end, consider using native gRPC instead of gRPC-Web. But for the vast majority of deployments, gRPC-Web provides the right balance of compatibility and performance.
 
 ## Summary
 
-Configuring ArgoCD for gRPC-Web is straightforward and solves real-world networking challenges. Enable the `--grpc-web` flag on the server, configure your ingress to pass HTTP/1.1 traffic, and optionally configure the CLI to use gRPC-Web transport. This approach works well with AWS ALB, CloudFront, corporate proxies, and any infrastructure that does not support HTTP/2 end-to-end.
+Configuring ArgoCD for gRPC-Web is straightforward and solves real-world networking challenges. ArgoCD's server supports gRPC-Web, so configure your ingress to pass the traffic correctly and configure the CLI with `--grpc-web` when needed. This approach works well with AWS ALB, CDN or proxy paths configured for HTTP/1.1, corporate proxies, and any infrastructure where native gRPC over HTTP/2 is not available end-to-end.
 
 For more on ArgoCD networking topics, check out our guide on [configuring ArgoCD with HTTP/2](https://oneuptime.com/blog/post/2026-02-26-argocd-http2-configuration/view) and [setting up proxy configurations](https://oneuptime.com/blog/post/2026-02-26-argocd-proxy-settings/view).
