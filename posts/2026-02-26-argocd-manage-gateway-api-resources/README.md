@@ -49,11 +49,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-3"
 spec:
-  project: infrastructure
+  project: gateway-infra
   source:
     repoURL: https://github.com/kubernetes-sigs/gateway-api
     path: config/crd/standard
-    targetRevision: v1.1.0
+    targetRevision: v1.5.0
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -76,11 +76,11 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
 spec:
-  project: infrastructure
+  project: gateway-infra
   source:
     repoURL: oci://docker.io/envoyproxy
     chart: gateway-helm
-    targetRevision: v1.0.0
+    targetRevision: v1.8.0
     helm:
       releaseName: envoy-gateway
       valuesObject:
@@ -148,6 +148,23 @@ spec:
           selector:
             matchLabels:
               gateway-access: "true"
+
+---
+# reference-grant.yaml
+# Required because the Gateway in gateway-system references a Secret in cert-manager.
+apiVersion: gateway.networking.k8s.io/v1
+kind: ReferenceGrant
+metadata:
+  name: allow-gateway-system-tls
+  namespace: cert-manager
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: gateway-system
+  to:
+    - group: ""
+      kind: Secret
 ```
 
 ## Step 4: ArgoCD Project Separation
@@ -155,7 +172,7 @@ spec:
 Separate infrastructure and application routing into different ArgoCD projects:
 
 ```yaml
-# Infrastructure project - manages GatewayClass and Gateway
+# Infrastructure project - manages Gateway API CRDs, the controller, GatewayClass, and Gateway
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -164,17 +181,23 @@ metadata:
 spec:
   sourceRepos:
     - https://github.com/your-org/platform-config
+    - https://github.com/kubernetes-sigs/gateway-api
+    - oci://docker.io/envoyproxy
   destinations:
+    - namespace: '*'
+      server: https://kubernetes.default.svc
     - namespace: gateway-system
       server: https://kubernetes.default.svc
     - namespace: envoy-gateway-system
       server: https://kubernetes.default.svc
+    - namespace: cert-manager
+      server: https://kubernetes.default.svc
   clusterResourceWhitelist:
-    - group: gateway.networking.k8s.io
-      kind: GatewayClass
+    - group: '*'
+      kind: '*'
   namespaceResourceWhitelist:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
+    - group: '*'
+      kind: '*'
 
 ---
 # Application project - manages HTTPRoutes
