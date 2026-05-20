@@ -12,7 +12,7 @@ When ArgoCD manages multiple Kubernetes clusters, the networking between the Arg
 
 ## Understanding ArgoCD Cross-Cluster Communication
 
-ArgoCD communicates with remote clusters exclusively through the Kubernetes API server. It does not need direct network access to worker nodes, pods, or services in managed clusters. The only requirement is that the ArgoCD application controller and repo server can reach the remote cluster's API server endpoint.
+ArgoCD communicates with remote clusters through the Kubernetes API server. It does not need direct network access to worker nodes, pods, or services in managed clusters. The main requirement is that the ArgoCD application controller can reach the remote cluster's API server endpoint; the API server component also needs that access for interactive operations and cluster status checks.
 
 ```mermaid
 flowchart LR
@@ -131,7 +131,7 @@ gcloud compute networks peerings create target-to-argocd \
   --peer-network=management-vpc
 ```
 
-For private GKE clusters, ensure the master authorized networks include the ArgoCD cluster's pod CIDR:
+For private GKE clusters, ensure the control plane authorized networks include the source CIDR that the GKE control plane sees from the ArgoCD cluster, such as the management cluster node subnet, VPC CIDR, VPN range, or NAT egress range:
 
 ```bash
 gcloud container clusters update target-cluster \
@@ -178,7 +178,7 @@ az network vnet peering create \
 When target clusters use private API endpoints, ArgoCD needs to resolve private DNS names. Configure CoreDNS or use conditional forwarding:
 
 ```yaml
-# coredns-custom ConfigMap in the ArgoCD cluster
+# coredns-custom ConfigMap in an AKS-based ArgoCD cluster
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -214,11 +214,14 @@ stringData:
     {
       "tlsClientConfig": {
         "insecure": false,
-        "caData": "base64-encoded-ca-cert"
+        "caData": "base64-encoded-ca-cert",
+        "serverName": "target-api-server.example.com"
       },
       "bearerToken": "service-account-token"
     }
 ```
+
+When using an IP address in `server`, set `tlsClientConfig.serverName` to the hostname on the API server certificate. Otherwise TLS verification can fail because the certificate usually does not contain the raw private IP address as a valid name.
 
 ## Firewall and Security Group Configuration
 
@@ -232,12 +235,11 @@ aws ec2 authorize-security-group-ingress \
   --port 443 \
   --source-group sg-argocd-pods
 
-# GCP - Create firewall rule
-gcloud compute firewall-rules create allow-argocd-to-gke \
-  --network=target-vpc \
-  --allow=tcp:443 \
-  --source-ranges=10.0.0.0/16 \
-  --target-tags=gke-target-cluster
+# GCP/GKE - allow the ArgoCD source CIDR to reach the GKE control plane
+gcloud container clusters update target-cluster \
+  --enable-master-authorized-networks \
+  --master-authorized-networks=10.0.0.0/16 \
+  --project=target-project
 ```
 
 ## Network Policies for ArgoCD Egress
@@ -314,13 +316,12 @@ After confirming connectivity, add the cluster:
 
 ```bash
 argocd cluster add target-cluster-context \
-  --name target-production \
-  --server https://target-api-server:443
+  --name target-production
 ```
 
 ## Handling High Latency Connections
 
-For clusters in distant regions, adjust ArgoCD timeouts:
+For clusters in distant regions, adjust ArgoCD Kubernetes client transport timeouts if connections are timing out:
 
 ```yaml
 apiVersion: v1
@@ -329,12 +330,12 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Increase timeout for slow connections
-  controller.k8s.client.config.qps: "50"
-  controller.k8s.client.config.burst: "100"
-  # Increase status cache timeout
-  controller.status.processors: "20"
-  controller.operation.processors: "10"
+  # TCP timeout duration when communicating with Kubernetes API servers
+  controller.k8s.tcp.timeout: "60s"
+  # TLS handshake timeout when establishing connections to Kubernetes API servers
+  controller.k8s.tls.handshake.timeout: "20s"
+  # Idle TCP connection timeout to Kubernetes API servers
+  controller.k8s.tcp.idle.timeout: "10m"
 ```
 
 Cross-cluster networking is the foundation of multi-cluster ArgoCD. Get the networking right first, then layer on authentication and authorization. For monitoring the health of these cross-cluster connections, consider setting up [ArgoCD component monitoring](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-component-health/view) to detect connectivity issues before they impact deployments.
