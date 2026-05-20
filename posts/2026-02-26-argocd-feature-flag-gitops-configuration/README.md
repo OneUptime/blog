@@ -26,7 +26,7 @@ GitOps solves all of these problems.
 
 ## Feature Flags as Kubernetes Resources
 
-The OpenFeature standard defines Kubernetes custom resources for feature flags. These are perfect for GitOps management:
+The OpenFeature Operator defines Kubernetes custom resources for feature flags. These are perfect for GitOps management:
 
 ```yaml
 # flags/production/checkout-flags.yaml
@@ -47,15 +47,10 @@ spec:
         defaultVariant: "off"
         targeting:
           # Enable for 10% of users
-          if:
-            - in:
-                - var:
-                    - $flagd.timestamp
-                    - "%"
-                    - 100
-                - [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
-            - "on"
-            - "off"
+          fractional:
+            - var: targetingKey
+            - ["on", 10]
+            - ["off", 90]
 
       express-checkout:
         state: ENABLED
@@ -66,7 +61,7 @@ spec:
         targeting:
           # Enable for premium users only
           if:
-            - "=="
+            - "==":
               - var: subscription-tier
               - "premium"
             - "on"
@@ -179,15 +174,10 @@ spec:
         defaultVariant: "off"
         targeting:
           # 50% rollout in staging
-          if:
-            - in:
-                - var:
-                    - $flagd.timestamp
-                    - "%"
-                    - 100
-                - [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49]
-            - "on"
-            - "off"
+          fractional:
+            - var: targetingKey
+            - ["on", 50]
+            - ["off", 50]
 ```
 
 The Kustomize setup:
@@ -257,7 +247,7 @@ data:
     }
 ```
 
-Your application watches this ConfigMap and reacts to changes:
+Mount the ConfigMap as files. Kubernetes updates mounted ConfigMaps automatically, except when they are mounted with `subPath`. If your application cannot reload changed files, a Helm-rendered checksum annotation can trigger a rollout:
 
 ```yaml
 # Application deployment referencing the flag ConfigMap
@@ -267,10 +257,15 @@ metadata:
   name: web-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
     metadata:
+      labels:
+        app: web-app
       annotations:
-        # Trigger restart when flags change
+        # If rendered with Helm, trigger a restart when flags change
         checksum/flags: "{{ include (print $.Template.BasePath '/flags-cm.yaml') . | sha256sum }}"
     spec:
       containers:
@@ -297,11 +292,17 @@ kind: Deployment
 metadata:
   name: web-app
   namespace: production
-  annotations:
-    openfeature.dev/enabled: "true"
-    openfeature.dev/featureflagsource: "flagd-source"
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
+      annotations:
+        openfeature.dev/enabled: "true"
+        openfeature.dev/featureflagsource: "flagd-source"
     spec:
       containers:
         - name: web-app
@@ -324,9 +325,9 @@ metadata:
   namespace: production
 spec:
   sources:
-    - source: checkout-flags
+    - source: production/checkout-flags
       provider: kubernetes
-    - source: user-flags
+    - source: production/user-flags
       provider: kubernetes
   port: 8013
 ```
@@ -347,17 +348,13 @@ A typical flag change PR looks like this:
        new-checkout-flow:
          state: ENABLED
 -        defaultVariant: "off"
-+        defaultVariant: "on"
-         targeting:
+-        targeting:
 -          # 10% rollout
--          if:
--            - in:
--                - var: user-id-hash
--                - [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
--            - "on"
--            - "off"
-+          # 100% rollout - flag fully enabled
-+          {}
+-          fractional:
+-            - var: targetingKey
+-            - ["on", 10]
+-            - ["off", 90]
++        defaultVariant: "on"
 ```
 
 This PR clearly shows what changed, who approved it, and when it was merged.
@@ -370,12 +367,13 @@ For quick rollbacks, create a standardized emergency process:
 # Emergency: disable a flag immediately
 git checkout -b emergency/disable-new-checkout
 # Edit the flag file to disable
+git add flags/production/checkout-flags.yaml
 git commit -m "EMERGENCY: Disable new-checkout-flow due to payment errors"
 git push origin emergency/disable-new-checkout
 
-# Fast-track merge (skip normal review process if needed)
+# Fast-track merge with admin privileges if your emergency policy allows it
 gh pr create --title "EMERGENCY: Disable new-checkout-flow" --body "Payment error rate spiked"
-gh pr merge --auto --squash
+gh pr merge --squash --admin
 ```
 
 ArgoCD picks up the change within its sync interval (default 3 minutes, or immediate with a webhook).
