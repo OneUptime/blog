@@ -8,23 +8,22 @@ Description: Configure multi-touch touchpad gestures on Ubuntu for workspace swi
 
 ---
 
-Modern Ubuntu versions include multi-touch gesture support through libinput and GNOME Shell. Three-finger and four-finger swipes for workspace switching, application overview, and window management are available with minimal configuration. For more complex or custom gestures, tools like libinput-gestures extend what is possible.
+Modern Ubuntu versions include multi-touch gesture support through libinput and GNOME Shell. Three-finger swipes for workspace switching and the Activities Overview are available with minimal configuration on Wayland. For more complex or custom gestures, tools like libinput-gestures extend what is possible.
 
 This guide covers enabling and configuring touchpad gestures on Ubuntu, from GNOME's built-in gestures to custom gesture bindings.
 
 ## Built-in GNOME Gestures (Ubuntu 22.04 and Later)
 
-Ubuntu 22.04 (GNOME 42) and later versions include native multi-touch gesture support. These work on Wayland and X11:
+Ubuntu 22.04 (GNOME 42) and later versions include native multi-touch gesture support on the default Wayland session. GNOME on Xorg does not provide the same built-in system gestures:
 
 ### Default Gestures
 
 | Gesture | Action |
 |---------|--------|
 | Three-finger swipe up | Open GNOME Activities Overview |
-| Three-finger swipe down | Close Activities Overview |
+| Three-finger swipe up again | Open the Applications View |
 | Three-finger swipe left/right | Switch between workspaces |
-| Four-finger swipe left/right | Switch between open applications |
-| Pinch to zoom | Zoom in overview (two-finger) |
+| Two-finger pinch/stretch | Zoom in supported applications |
 
 These work out of the box on most laptops. If they are not working, check the following:
 
@@ -41,7 +40,7 @@ libinput list-devices | grep "Gesture"
 
 Open Settings > Mouse & Touchpad to adjust:
 
-- Scrolling speed
+- Pointer speed
 - Natural scrolling (reverse direction)
 - Tap to click
 - Two-finger secondary click
@@ -77,7 +76,7 @@ For gestures beyond what GNOME provides natively, `libinput-gestures` reads raw 
 ```bash
 # Install dependencies
 sudo apt update
-sudo apt install libinput-tools wmctrl xdotool -y
+sudo apt install libinput-tools python3 wmctrl xdotool -y
 
 # Add your user to the input group to read touch events without sudo
 sudo gpasswd -a $USER input
@@ -87,27 +86,25 @@ sudo gpasswd -a $USER input
 newgrp input
 ```
 
-Install libinput-gestures:
+Install libinput-gestures from source:
 
 ```bash
-# Install from apt (Ubuntu 22.04+)
-sudo apt install libinput-gestures -y
-
-# Or install from source for the latest version
 git clone https://github.com/bulletmark/libinput-gestures.git
 cd libinput-gestures
-sudo make install
+sudo ./libinput-gestures-setup install
 ```
 
 ### Basic Configuration
 
-The configuration file is at `~/.config/libinput-gestures.conf`. Create it:
+The default configuration is at `/etc/libinput-gestures.conf`. Copy it before customizing:
 
 ```bash
+mkdir -p ~/.config
+cp /etc/libinput-gestures.conf ~/.config/libinput-gestures.conf
 nano ~/.config/libinput-gestures.conf
 ```
 
-A comprehensive example configuration:
+A comprehensive example configuration for X11 sessions:
 
 ```ini
 # ~/.config/libinput-gestures.conf
@@ -125,43 +122,45 @@ device auto
 # ============================================
 
 # Swipe up: Show Activities Overview
-gesture swipe up 3 xdotool key super
+gesture swipe up 3 /usr/bin/xdotool key super
 
 # Swipe down: Hide Overview / Show Desktop
-gesture swipe down 3 xdotool key super+d
+gesture swipe down 3 /usr/bin/xdotool key super+d
 
 # Swipe left: Switch to previous workspace
-gesture swipe left 3 xdotool key ctrl+alt+Right
+gesture swipe left 3 /usr/bin/xdotool key ctrl+alt+Right
 
 # Swipe right: Switch to next workspace
-gesture swipe right 3 xdotool key ctrl+alt+Left
+gesture swipe right 3 /usr/bin/xdotool key ctrl+alt+Left
 
 # ============================================
 # FOUR FINGER GESTURES
 # ============================================
 
 # Swipe left: Switch to next application (Alt+Tab)
-gesture swipe left 4 xdotool key alt+Tab
+gesture swipe left 4 /usr/bin/xdotool key alt+Tab
 
 # Swipe right: Switch to previous application (Alt+Shift+Tab)
-gesture swipe right 4 xdotool key alt+shift+Tab
+gesture swipe right 4 /usr/bin/xdotool key alt+shift+Tab
 
 # Swipe up: Maximize current window
-gesture swipe up 4 xdotool key super+Up
+gesture swipe up 4 /usr/bin/xdotool key super+Up
 
 # Swipe down: Restore/minimize current window
-gesture swipe down 4 xdotool key super+Down
+gesture swipe down 4 /usr/bin/xdotool key super+Down
 
 # ============================================
 # PINCH GESTURES
 # ============================================
 
 # Pinch in: Zoom out (Ctrl+-)
-gesture pinch in 2 xdotool key ctrl+minus
+gesture pinch in 2 /usr/bin/xdotool key ctrl+minus
 
 # Pinch out: Zoom in (Ctrl++)
-gesture pinch out 2 xdotool key ctrl+plus
+gesture pinch out 2 /usr/bin/xdotool key ctrl+plus
 ```
+
+On GNOME Wayland, many `xdotool` shortcuts only work with XWayland applications and will not reliably control GNOME Shell itself. Use GNOME's built-in gestures where possible, or use the `_internal` workspace commands documented in `/etc/libinput-gestures.conf` for workspace switching.
 
 ### Starting libinput-gestures
 
@@ -187,7 +186,7 @@ libinput-gestures -d
 
 ## Using Gesture-Based Application Switching with Touchegg
 
-Touchegg is an alternative gesture daemon with a more advanced feature set, including support for GTK and Qt applications:
+Touchegg is an alternative X11 gesture daemon with a more advanced feature set, including support for GTK and Qt applications. On GNOME, the Touchégg project recommends using its GNOME Shell X11 Gestures extension as well:
 
 ```bash
 # Add the PPA for Touchegg
@@ -208,14 +207,21 @@ sudo systemctl start touchegg
 Touche provides a graphical interface for configuring Touchegg gestures:
 
 ```bash
-sudo apt install touche -y
+flatpak install flathub com.github.joseexposito.touche
 ```
 
 Open Touche from the application menu to configure gestures visually.
 
 ### Touchegg Configuration File
 
-The configuration file is at `~/.config/touchegg/touchegg.conf`:
+The configuration file is at `~/.config/touchegg/touchegg.conf`. Start by copying the default configuration:
+
+```bash
+mkdir -p ~/.config/touchegg
+cp -n /usr/share/touchegg/touchegg.conf ~/.config/touchegg/touchegg.conf
+```
+
+Then edit it as needed:
 
 ```xml
 <touchégg>
@@ -270,19 +276,17 @@ sudo libinput debug-events --show-keycodes 2>&1 | grep -i gesture
 
 Move your fingers on the touchpad and watch what libinput detects. If gestures are not being picked up here, the issue is at the driver level rather than in libinput-gestures or GNOME.
 
-## Configuring Workspace Switching Direction
+## Configuring Workspaces on Multiple Monitors
 
-By default, GNOME workspaces stack vertically. Three-finger up/down swipes switch workspaces. To use horizontal workspace layout:
+GNOME 40 and later uses horizontal workspaces by default. To choose whether workspaces are only on the primary display or span all monitors:
 
 ```bash
-# Check current workspace orientation
-gsettings get org.gnome.shell.overrides workspaces-only-on-primary
+# Check current setting
+gsettings get org.gnome.mutter workspaces-only-on-primary
 
-# Set workspaces to span all monitors or primary only
+# Set workspaces to span all monitors
 gsettings set org.gnome.mutter workspaces-only-on-primary false
 ```
-
-With horizontal workspaces, left/right swipes navigate workspaces naturally.
 
 ## Troubleshooting
 
@@ -302,8 +306,8 @@ libinput list-devices | grep -i touch
 # Check service status
 libinput-gestures-setup status
 
-# View logs
-journalctl -u libinput-gestures --since today
+# View logs if using the systemd user service
+journalctl --user -u libinput-gestures --since today
 ```
 
 **Gestures work in debug mode but not in normal use:**
