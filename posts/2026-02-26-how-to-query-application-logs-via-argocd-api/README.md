@@ -19,18 +19,18 @@ ArgoCD exposes logs through the application resource endpoint. You query logs fo
 ```bash
 # Basic log query for a pod in an ArgoCD application
 
-curl -s -k "$ARGOCD_URL/api/v1/applications/my-web-app/logs" \
+curl -s -k -G "$ARGOCD_URL/api/v1/applications/my-web-app/logs" \
   -H "$AUTH_HEADER" \
   --data-urlencode "namespace=web-app" \
   --data-urlencode "podName=web-frontend-7d8f9c6b4-xk2pn" \
   --data-urlencode "container=web-frontend"
 ```
 
-The logs endpoint supports several query parameters. Here is a complete reference.
+The logs endpoint supports several query parameters. Here are the most common ones.
 
 ```bash
-# Full parameter reference
-curl -s -k "$ARGOCD_URL/api/v1/applications/{app-name}/logs" \
+# Common parameter reference
+curl -s -k -G "$ARGOCD_URL/api/v1/applications/{app-name}/logs" \
   -H "$AUTH_HEADER" \
   --data-urlencode "namespace=<namespace>" \
   --data-urlencode "podName=<pod-name>" \
@@ -106,7 +106,7 @@ echo "$UNHEALTHY_PODS" | while IFS='|' read -r ns pod; do
   echo "=== Logs for $ns/$pod ==="
 
   # Get the last 50 lines of logs
-  curl -s -k "$ARGOCD_URL/api/v1/applications/$APP_NAME/logs" \
+  curl -s -k -G "$ARGOCD_URL/api/v1/applications/$APP_NAME/logs" \
     -H "$AUTH_HEADER" \
     --data-urlencode "namespace=$ns" \
     --data-urlencode "podName=$pod" \
@@ -122,7 +122,7 @@ For real-time log streaming during a deployment, use the `follow=true` parameter
 
 ```bash
 # Stream logs in real-time (similar to kubectl logs -f)
-curl -s -k -N "$ARGOCD_URL/api/v1/applications/my-web-app/logs" \
+curl -s -k -N -G "$ARGOCD_URL/api/v1/applications/my-web-app/logs" \
   -H "$AUTH_HEADER" \
   --data-urlencode "namespace=web-app" \
   --data-urlencode "podName=web-frontend-7d8f9c6b4-xk2pn" \
@@ -145,7 +145,6 @@ import sys
 import json
 import requests
 from datetime import datetime
-from urllib.parse import urlencode
 
 ARGOCD_URL = os.environ.get('ARGOCD_URL', 'https://argocd.company.com')
 ARGOCD_TOKEN = os.environ['ARGOCD_AUTH_TOKEN']
@@ -199,7 +198,27 @@ def get_pod_logs(app_name, namespace, pod_name, container=None,
         timeout=60
     )
     resp.raise_for_status()
-    return resp.text
+    return extract_log_content(resp.text)
+
+
+def extract_log_content(response_text):
+    """Extract log lines from ArgoCD's streaming JSON response."""
+    lines = []
+    for line in response_text.splitlines():
+        if not line.strip():
+            continue
+
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            lines.append(line)
+            continue
+
+        content = entry.get('result', {}).get('content')
+        if content:
+            lines.append(content.rstrip('\n'))
+
+    return '\n'.join(lines)
 
 
 def aggregate_logs(app_name, tail_lines=50, since_seconds=3600):
@@ -305,7 +324,7 @@ When a container crashes and restarts, you often need the logs from the previous
 
 ```bash
 # Get logs from the previous container instance (crash logs)
-curl -s -k "$ARGOCD_URL/api/v1/applications/my-web-app/logs" \
+curl -s -k -G "$ARGOCD_URL/api/v1/applications/my-web-app/logs" \
   -H "$AUTH_HEADER" \
   --data-urlencode "namespace=web-app" \
   --data-urlencode "podName=web-frontend-7d8f9c6b4-xk2pn" \
