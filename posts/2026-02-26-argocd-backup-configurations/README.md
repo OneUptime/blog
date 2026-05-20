@@ -36,12 +36,12 @@ spec:
   source:
     repoURL: https://vmware-tanzu.github.io/helm-charts
     chart: velero
-    targetRevision: 6.0.0
+    targetRevision: 12.0.1
     helm:
       values: |
         initContainers:
           - name: velero-plugin-for-aws
-            image: velero/velero-plugin-for-aws:v1.9.0
+            image: velero/velero-plugin-for-aws:v1.13.1
             volumeMounts:
               - mountPath: /target
                 name: plugins
@@ -201,9 +201,11 @@ spec:
     snapshotVolumes: true
     hooks:
       resources:
-        - name: freeze-database
+        - name: checkpoint-database
           includedNamespaces:
             - production
+          includedResources:
+            - pods
           labelSelector:
             matchLabels:
               app: postgres
@@ -213,21 +215,12 @@ spec:
                 command:
                   - /bin/sh
                   - -c
-                  - "psql -U postgres -c 'SELECT pg_start_backup($$velero$$, true);'"
+                  - "psql -U postgres -c 'CHECKPOINT;'"
                 onError: Fail
-                timeout: 30s
-          post:
-            - exec:
-                container: postgres
-                command:
-                  - /bin/sh
-                  - -c
-                  - "psql -U postgres -c 'SELECT pg_stop_backup();'"
-                onError: Continue
                 timeout: 30s
 ```
 
-This schedule includes backup hooks that freeze the PostgreSQL database before and after the backup to ensure consistency.
+This schedule includes a backup hook that asks PostgreSQL to checkpoint before the backup. For production databases, pair Velero snapshots with database-native backup and WAL archiving to meet your consistency and recovery requirements.
 
 ## Backup Storage Location Management
 
@@ -279,6 +272,8 @@ metadata:
   name: cluster-backups
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -286,15 +281,15 @@ spec:
             backup-enabled: "true"
   template:
     metadata:
-      name: "backups-{{name}}"
+      name: "backups-{{.nameNormalized}}"
     spec:
       project: infrastructure
       source:
         repoURL: https://github.com/your-org/k8s-configs.git
         targetRevision: main
-        path: "backups/{{metadata.labels.environment}}"
+        path: "backups/{{.metadata.labels.environment}}"
       destination:
-        server: "{{server}}"
+        server: "{{.server}}"
         namespace: velero
       syncPolicy:
         automated:
@@ -353,7 +348,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  # Check for failed backups in the last 2 hours
+                  # Check for failed backups among the most recent backup objects
                   FAILED=$(kubectl get backups -n velero \
                     --sort-by=.metadata.creationTimestamp \
                     -o jsonpath='{range .items[*]}{.status.phase}{"\n"}{end}' | \
