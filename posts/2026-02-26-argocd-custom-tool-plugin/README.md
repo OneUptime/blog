@@ -48,7 +48,7 @@ Start by defining what the plugin does:
 apiVersion: argoproj.io/v1alpha1
 kind: ConfigManagementPlugin
 metadata:
-  # This name is what you reference in Application specs
+  # With spec.version set, reference this as cue-manifests-v1.0 in Application specs
   name: cue-manifests
 spec:
   version: v1.0
@@ -69,7 +69,7 @@ spec:
         # The -e flag specifies the expression to export
         # Adjust the expression based on your CUE structure
         cue export . \
-          --out yaml \
+          --out text \
           --expression objects \
           --force
   discover:
@@ -85,12 +85,12 @@ spec:
 Build a container image with CUE and the ArgoCD CMP server:
 
 ```dockerfile
-FROM golang:1.21-alpine AS builder
+FROM golang:alpine AS builder
 
 # Install CUE from source for the latest version
 RUN go install cuelang.org/go/cmd/cue@latest
 
-FROM alpine:3.19
+FROM alpine:3.22
 
 # Install runtime dependencies
 RUN apk add --no-cache git bash
@@ -99,7 +99,8 @@ RUN apk add --no-cache git bash
 COPY --from=builder /go/bin/cue /usr/local/bin/cue
 
 # Copy the ArgoCD CMP server binary
-COPY --from=quay.io/argoproj/argocd:v2.10.0 \
+# Use the same Argo CD version that is deployed in your cluster
+COPY --from=quay.io/argoproj/argocd:v3.4.1 \
     /usr/local/bin/argocd-cmp-server \
     /usr/local/bin/argocd-cmp-server
 
@@ -166,6 +167,23 @@ deployment: {
     }
 }
 
+// Define the service
+service: {
+    apiVersion: "v1"
+    kind:       "Service"
+    metadata: {
+        name:      "my-app"
+        namespace: "default"
+    }
+    spec: {
+        selector: app: "my-app"
+        ports: [{
+            port:       80
+            targetPort: 8080
+        }]
+    }
+}
+
 // Collect all objects for export
 objects: yaml.MarshalStream([deployment, service])
 ```
@@ -223,12 +241,10 @@ spec:
     args:
       - |
         # Render ytt templates
-        # Pass any data values files found in the directory
-        ytt -f . \
-          $(find . -name '*-values.yaml' -exec echo '-f {}' \;)
+        ytt -f .
   discover:
     find:
-      glob: "**/#ytt"
+      command: [sh, -c, "find . \\( -name '*.yml' -o -name '*.yaml' \\) -exec grep -l '^#@' {} +"]
 ```
 
 ### Dhall Plugin
@@ -284,7 +300,7 @@ Your plugin can accept parameters from the Application spec through environment 
 spec:
   source:
     plugin:
-      name: cue-manifests
+      name: cue-manifests-v1.0
       env:
         - name: ENVIRONMENT
           value: "production"
@@ -301,10 +317,10 @@ generate:
     - |
       # Use environment variables in generation
       cue export . \
-        --out yaml \
+        --out text \
         --expression objects \
-        --inject env=${ENVIRONMENT:-staging} \
-        --inject replicas=${REPLICA_COUNT:-3}
+        --inject "env=${ARGOCD_ENV_ENVIRONMENT:-staging}" \
+        --inject "replicas=${ARGOCD_ENV_REPLICA_COUNT:-3}"
 ```
 
 ## Testing Your Plugin Locally
@@ -323,10 +339,10 @@ if [ -d "cue.mod" ]; then
 fi
 
 # Generate step - should output valid YAML
-cue export . --out yaml --expression objects --force
+cue export . --out text --expression objects --force
 
 # Validate the output is valid Kubernetes YAML
-cue export . --out yaml --expression objects --force | kubectl apply --dry-run=client -f -
+cue export . --out text --expression objects --force | kubectl apply --dry-run=client -f -
 ```
 
 ## Error Handling in Plugins
@@ -338,22 +354,22 @@ generate:
   command: [sh, -c]
   args:
     - |
-      set -euo pipefail
+      set -eu
 
       # Validate inputs before generating
-      if [ ! -f "main.cue" ] && [ ! -f "cue.mod/module.cue" ]; then
+      if ! find . -name '*.cue' -not -path './cue.mod/*' | grep -q .; then
         echo "Error: No CUE files found in source directory" >&2
         exit 1
       fi
 
       # Run generation with error capture
-      output=$(cue export . --out yaml --expression objects 2>&1) || {
+      output=$(cue export . --out text --expression objects 2>&1) || {
         echo "CUE export failed: $output" >&2
         exit 1
       }
 
       # Output the manifests to stdout
-      echo "$output"
+      printf '%s\n' "$output"
 ```
 
 Errors written to stderr appear in the ArgoCD UI and logs, while stdout is treated as the generated manifests.
