@@ -10,11 +10,11 @@ Description: Learn how to use Helm parameter overrides in ArgoCD applications, i
 
 Helm is the most popular package manager for Kubernetes, and ArgoCD has deep integration with it. One of the key features of this integration is the ability to override Helm values at the ArgoCD Application level. This lets you customize chart behavior per environment, per cluster, or per deployment without forking the chart.
 
-This guide covers every method of overriding Helm parameters in ArgoCD with practical examples.
+This guide covers common methods of overriding Helm parameters in ArgoCD with practical examples.
 
-## The Three Override Methods
+## Common Override Methods
 
-ArgoCD provides three ways to override Helm values:
+ArgoCD provides several ways to override Helm values. This guide focuses on three common methods:
 
 1. **Individual parameters** - dot-notation key-value pairs
 2. **Inline values block** - a YAML block that merges with default values
@@ -173,14 +173,7 @@ The inline values block is easier to read than individual parameters for complex
 ### Setting Values via CLI
 
 ```bash
-argocd app set backend-api-staging --values '
-replicaCount: 3
-image:
-  tag: v2.1.0
-resources:
-  limits:
-    memory: 512Mi
-'
+argocd app set backend-api-staging --values-literal-file values-staging.yaml
 ```
 
 ## Method 3: External Values Files
@@ -209,7 +202,7 @@ spec:
 
 ### Values Files from a Different Repository
 
-Using multi-source applications, you can pull values from a separate repo:
+Using multi-source applications in ArgoCD v2.6 and later, you can pull values from a separate repo:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -245,7 +238,8 @@ You can use all three methods together. The priority order from lowest to highes
 1. Chart's default `values.yaml`
 2. Files listed in `valueFiles` (in order)
 3. Inline `values` block
-4. Individual `parameters`
+4. Inline `valuesObject`, if used
+5. Individual `parameters`
 
 Example combining all methods:
 
@@ -310,13 +304,15 @@ Remove individual parameter overrides:
 
 ```bash
 # Remove a specific parameter override
-argocd app unset backend-api-production --helm-set replicaCount
+argocd app unset backend-api-production -p replicaCount
 
-# Remove all parameter overrides
-argocd app unset backend-api-production --helm-set-all
+# Remove multiple parameter overrides
+argocd app unset backend-api-production \
+  -p replicaCount \
+  -p image.tag
 
 # Remove the values block
-argocd app unset backend-api-production --values
+argocd app unset backend-api-production --values-literal
 ```
 
 ## Common Pitfalls
