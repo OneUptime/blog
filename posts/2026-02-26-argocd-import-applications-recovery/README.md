@@ -32,7 +32,7 @@ The simplest approach for a full restore:
 ```bash
 # Import from a backup created with argocd admin export
 
-argocd admin import -n argocd < argocd-backup.yaml
+argocd admin import - -n argocd < argocd-backup.yaml
 ```
 
 This command handles the ordering automatically - it imports projects before applications, and resolves dependencies correctly.
@@ -158,11 +158,11 @@ done
 If the backup was from a different ArgoCD version:
 
 ```bash
-# Check the API version in the backup
-grep "apiVersion" applications.yaml | sort -u
+# Check the API versions in the backup
+grep "^apiVersion:" applications.yaml | sort -u
 
-# If necessary, update the API version
-sed -i 's|apiVersion: argoproj.io/v1alpha1|apiVersion: argoproj.io/v1alpha1|' applications.yaml
+# Verify the ArgoCD CRDs are installed before applying Application manifests
+kubectl api-resources --api-group=argoproj.io
 ```
 
 ## Selective Import
@@ -302,8 +302,9 @@ echo "Applications: $APP_COUNT"
 echo ""
 echo "Checking repository connectivity..."
 REPO_ERRORS=$(kubectl get applications.argoproj.io -n "$NAMESPACE" -o json | \
-  jq -r '.items[] | select(.status.conditions[]? | .type == "ComparisonError") |
-    "\(.metadata.name): \(.status.conditions[0].message)"')
+  jq -r '.items[] as $app | $app.status.conditions[]? |
+    select(.type == "ComparisonError") |
+    "\($app.metadata.name): \(.message)"')
 
 if [ -n "$REPO_ERRORS" ]; then
   echo "Applications with repository errors:"
@@ -316,21 +317,21 @@ fi
 echo ""
 echo "Sync status distribution:"
 kubectl get applications.argoproj.io -n "$NAMESPACE" -o json | \
-  jq -r '.items[].status.sync.status' | sort | uniq -c | sort -rn
+  jq -r '.items[] | (.status.sync.status // "Unknown")' | sort | uniq -c | sort -rn
 
 # Check health status
 echo ""
 echo "Health status distribution:"
 kubectl get applications.argoproj.io -n "$NAMESPACE" -o json | \
-  jq -r '.items[].status.health.status' | sort | uniq -c | sort -rn
+  jq -r '.items[] | (.status.health.status // "Unknown")' | sort | uniq -c | sort -rn
 
 # List applications that need attention
 echo ""
 echo "Applications needing attention:"
 kubectl get applications.argoproj.io -n "$NAMESPACE" -o json | \
   jq -r '.items[] |
-    select(.status.health.status != "Healthy" or .status.sync.status != "Synced") |
-    "  \(.metadata.name): sync=\(.status.sync.status), health=\(.status.health.status)"'
+    select((.status.health.status // "Unknown") != "Healthy" or (.status.sync.status // "Unknown") != "Synced") |
+    "  \(.metadata.name): sync=\(.status.sync.status // "Unknown"), health=\(.status.health.status // "Unknown")"'
 ```
 
 ## Triggering Initial Sync After Import
