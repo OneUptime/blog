@@ -17,13 +17,13 @@ In this guide, I will show you multiple strategies for automatically cleaning up
 Start by understanding the scope of namespace sprawl in your cluster.
 
 ```bash
-# List all namespaces with their age and resource usage
+# List all namespaces with their creation time and phase
 
 kubectl get namespaces -o json | jq -r '.items[] |
   "\(.metadata.name)\t\(.metadata.creationTimestamp)\t\(.status.phase)"' | \
   sort -k2
 
-# Count resources per namespace
+# Count pods per namespace
 for ns in $(kubectl get ns --no-headers -o custom-columns=":metadata.name"); do
   POD_COUNT=$(kubectl get pods -n "$ns" --no-headers 2>/dev/null | wc -l)
   echo "$ns: $POD_COUNT pods"
@@ -95,32 +95,35 @@ metadata:
     managed-by: argocd
 ```
 
-## Strategy 2: Kyverno Cleanup Policies
+## Strategy 2: Kyverno Deleting Policies
 
-Kyverno's cleanup policies can automatically delete namespaces based on age or conditions.
+Kyverno's DeletingPolicy can automatically delete namespaces based on age or conditions.
 
 ```yaml
 # cleanup-old-preview-namespaces.yaml
-apiVersion: kyverno.io/v2beta1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-preview-namespaces
 spec:
-  match:
-    any:
-      - resources:
-          kinds:
-            - Namespace
-          selector:
-            matchLabels:
-              type: preview
-  conditions:
-    any:
-      - key: "{{ time_since('', '{{target.metadata.creationTimestamp}}', '') }}"
-        operator: GreaterThan
-        value: "168h"  # 7 days
   schedule: "0 3 * * *"  # Daily at 3 AM
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["*"]
+        resources: ["namespaces"]
+        scope: "Cluster"
+  conditions:
+    - name: old-preview-namespace
+      expression: >-
+        has(object.metadata.labels) &&
+        'type' in object.metadata.labels &&
+        object.metadata.labels['type'] == 'preview' &&
+        time.now() - timestamp(object.metadata.creationTimestamp) > duration('168h')
 ```
+
+Make sure the Kyverno cleanup controller has `get`, `list`, `watch`, and `delete` permissions for namespaces before applying the policy.
 
 Deploy this policy through ArgoCD so it is managed as code.
 
@@ -164,7 +167,8 @@ spec:
           serviceAccountName: namespace-cleaner
           containers:
             - name: cleaner
-              image: bitnami/kubectl:latest
+              # Use an image that includes kubectl, jq, and curl.
+              image: alpine/k8s:1.34.1
               command:
                 - /bin/sh
                 - -c
