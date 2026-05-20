@@ -27,6 +27,9 @@ spec:
     repoURL: https://github.com/my-org/my-repo.git
     targetRevision: main
     path: manifests/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 With this configuration, ArgoCD reads every `.yaml`, `.yml`, and `.json` file in `manifests/production/`. When you add a new file to this directory and push to the `main` branch, ArgoCD should detect it on the next refresh cycle.
@@ -69,6 +72,9 @@ spec:
     path: manifests/production
     directory:
       recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 The `directory.recurse: true` setting tells ArgoCD to scan all subdirectories as well. This is especially important if you organize manifests into subdirectories like `manifests/production/networking/`, `manifests/production/apps/`, etc.
@@ -129,14 +135,13 @@ kubectl -n argocd get application my-app -o jsonpath='{.spec.source.path}'
 git ls-tree -r --name-only origin/main | grep manifests/production/
 ```
 
-## Common Reason 6: ArgoCD Allow and Deny Files
+## Common Reason 6: Skip File Rendering Directive
 
-ArgoCD supports `.argocd-allow` and `.argocd-deny` files in the application source directory. These files control which resources ArgoCD manages, and they might be filtering out your new file.
+ArgoCD supports the `# +argocd:skip-file-rendering` comment directive inside YAML files. If this directive is present in the new file, ArgoCD will ignore that file during manifest processing.
 
 ```bash
-# Check for ArgoCD allow/deny files
-git show origin/main:manifests/production/.argocd-allow 2>/dev/null
-git show origin/main:manifests/production/.argocd-deny 2>/dev/null
+# Check whether files are marked to be skipped
+grep -R "+argocd:skip-file-rendering" manifests/production/
 ```
 
 ## Debugging: See What ArgoCD Detects
@@ -185,6 +190,9 @@ spec:
     directory:
       recurse: true
       include: '{*.yaml,*.yml,*.json}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
   syncPolicy:
     automated:
       prune: true
