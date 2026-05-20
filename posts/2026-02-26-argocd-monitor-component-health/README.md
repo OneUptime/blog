@@ -8,11 +8,11 @@ Description: Learn how to set up comprehensive monitoring for ArgoCD components 
 
 ---
 
-ArgoCD is your deployment pipeline. If it goes down or degrades, deployments stop. Monitoring ArgoCD components proactively means you detect and fix issues before developers notice slow syncs or broken dashboards. This guide covers setting up complete monitoring for every ArgoCD component.
+ArgoCD is your deployment pipeline. If it goes down or degrades, deployments stop. Monitoring ArgoCD components proactively means you detect and fix issues before developers notice slow syncs or broken dashboards. This guide covers setting up complete monitoring for the core ArgoCD components.
 
 ## ArgoCD Metrics Architecture
 
-Every ArgoCD component exposes Prometheus metrics on dedicated ports:
+Core ArgoCD components expose Prometheus metrics on dedicated ports:
 
 | Component | Metrics Port | Endpoint |
 |---|---|---|
@@ -60,7 +60,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: argocd
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -76,7 +76,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: argocd-server
+      app.kubernetes.io/name: argocd-server-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -92,6 +92,36 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: argocd-repo-server
+  endpoints:
+    - port: metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-applicationset-controller-metrics
+  namespace: argocd
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-applicationset-controller
+  endpoints:
+    - port: metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-notifications-controller
+  namespace: argocd
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-notifications-controller-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -178,13 +208,13 @@ Critical metrics:
 argocd_app_info{sync_status="OutOfSync"}
 
 # Reconciliation performance (how long each app takes to reconcile)
-histogram_quantile(0.95, rate(argocd_app_reconcile_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_app_reconcile_bucket[5m])))
 
 # Sync operation count and duration
 rate(argocd_app_sync_total[5m])
 
 # Kubernetes API calls (detect excessive API usage)
-rate(argocd_cluster_api_resource_actions_total[5m])
+sum(rate(argocd_kubectl_requests_total[5m])) by (verb, code)
 
 # Pending Kubernetes API requests (indicates overload)
 argocd_kubectl_exec_pending
@@ -198,7 +228,7 @@ argocd_app_info{health_status="Missing"}
 
 ```promql
 # Git operations performance
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
 
 # Total Git requests by type
 rate(argocd_git_request_total[5m])
@@ -208,6 +238,8 @@ argocd_repo_pending_request_total
 ```
 
 ### API Server Metrics
+
+Set `ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true` on the API server if you want the gRPC handling duration histogram.
 
 ```promql
 # gRPC request rate by method
@@ -219,7 +251,7 @@ sum(rate(grpc_server_handled_total{grpc_code!="OK",namespace="argocd"}[5m]))
 sum(rate(grpc_server_handled_total{namespace="argocd"}[5m]))
 
 # Request latency
-histogram_quantile(0.95, rate(grpc_server_handling_seconds_bucket{namespace="argocd"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(grpc_server_handling_seconds_bucket{namespace="argocd"}[5m])))
 ```
 
 ## Alerting Rules
@@ -293,7 +325,7 @@ spec:
     - name: argocd-performance
       rules:
         - alert: ArgocdReconciliationSlow
-          expr: histogram_quantile(0.95, rate(argocd_app_reconcile_bucket[10m])) > 30
+          expr: histogram_quantile(0.95, sum by (le) (rate(argocd_app_reconcile_bucket[10m]))) > 30
           for: 15m
           labels:
             severity: warning
@@ -301,7 +333,7 @@ spec:
             summary: "ArgoCD reconciliation is slow (p95 > 30s)"
 
         - alert: ArgocdGitRequestSlow
-          expr: histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[10m])) > 30
+          expr: histogram_quantile(0.95, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[10m]))) > 30
           for: 15m
           labels:
             severity: warning
@@ -329,7 +361,7 @@ spec:
     - name: argocd-cluster-health
       rules:
         - alert: ArgocdClusterConnectionFailed
-          expr: argocd_cluster_info{connection_status!="Successful"} == 1
+          expr: argocd_cluster_connection_status == 0
           for: 5m
           labels:
             severity: critical
@@ -366,7 +398,7 @@ Create a comprehensive Grafana dashboard. Here is a JSON model for key panels:
         "title": "Reconciliation Duration (p95)",
         "type": "timeseries",
         "targets": [
-          {"expr": "histogram_quantile(0.95, rate(argocd_app_reconcile_bucket[5m]))"}
+          {"expr": "histogram_quantile(0.95, sum by (le) (rate(argocd_app_reconcile_bucket[5m])))"}
         ]
       },
       {
@@ -417,7 +449,12 @@ echo "=== ArgoCD Component Health ==="
 
 # Check pods
 echo -e "\nPod Status:"
-kubectl get pods -n argocd -o wide | grep -v "Running\|Completed" || echo "All pods healthy"
+unhealthy_pods=$(kubectl get pods -n argocd --no-headers | awk '$3 != "Running" && $3 != "Completed"')
+if [ -n "$unhealthy_pods" ]; then
+  echo "$unhealthy_pods"
+else
+  echo "All pods healthy"
+fi
 
 # Check restarts
 echo -e "\nRecent Restarts:"
