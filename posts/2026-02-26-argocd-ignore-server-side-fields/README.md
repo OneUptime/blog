@@ -14,7 +14,7 @@ One of the most common frustrations with ArgoCD is seeing applications perpetual
 
 Kubernetes is not a static system. After you apply a resource, multiple components can modify it:
 
-- **Kubernetes controllers** add fields like `metadata.managedFields`, status subresources, and `metadata.generation`
+- **Kubernetes API server and controllers** record metadata like `metadata.managedFields` and `metadata.generation`, and controllers update status subresources
 - **Admission webhooks** inject sidecar containers (Istio, Linkerd), add annotations, or modify resource specs
 - **Operators** update fields on custom resources they manage
 - **Server-side apply** tracks field ownership through `managedFields` entries
@@ -31,7 +31,7 @@ Before configuring ignore rules, you need to identify which fields are causing t
 
 argocd app diff my-app
 
-# Show detailed diff with more context
+# Compare the live app to local manifests
 argocd app diff my-app --local /path/to/manifests
 ```
 
@@ -42,7 +42,7 @@ You can also use `kubectl` to compare directly:
 kubectl get deployment my-app -n production -o yaml | less
 
 # Check which field managers own which fields
-kubectl get deployment my-app -n production -o json | \
+kubectl get deployment my-app -n production -o json --show-managed-fields | \
   jq '.metadata.managedFields[] | {manager: .manager, fields: .fieldsV1}'
 ```
 
@@ -52,7 +52,7 @@ Look for patterns in the diff output. Common server-side additions include:
 - `metadata.annotations["deployment.kubernetes.io/revision"]`
 - `metadata.managedFields`
 - `spec.template.metadata.annotations` added by webhooks
-- `status` fields on CRDs
+- `status` fields on resources when status diffing is not ignored
 
 ## System-Level Configuration for Common Fields
 
@@ -134,9 +134,9 @@ spec:
         - kube-controller-manager
 ```
 
-## Handling Webhook-Injected Fields
+## Handling Webhook and Controller-Injected Fields
 
-Mutating admission webhooks are one of the biggest sources of server-side field injection. Here are patterns for common webhooks:
+Mutating admission webhooks and controllers are common sources of server-side field injection. Here are patterns for common integrations:
 
 ### Istio Sidecar Injection
 
@@ -163,7 +163,7 @@ ignoreDifferences:
   - group: networking.k8s.io
     kind: Ingress
     jqPathExpressions:
-      - .metadata.annotations | to_entries[] | select(.key | startswith("alb.ingress.kubernetes.io"))
+      - (.metadata.annotations // {}) | to_entries[] | select(.key | startswith("alb.ingress.kubernetes.io"))
 ```
 
 ### Cert-Manager
@@ -182,13 +182,13 @@ ignoreDifferences:
 
 ## Using Server-Side Diff Mode
 
-ArgoCD 2.5 and later offers a server-side diff mode that delegates comparison to the Kubernetes API server itself. This automatically handles many server-side field issues because the API server understands field ownership natively:
+ArgoCD 2.10 and later offers a server-side diff mode that performs Server-Side Apply in dry-run mode through the Kubernetes API server and compares the predicted live state with the actual live state:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
   # Enable server-side diff globally
@@ -210,7 +210,7 @@ spec:
   # ... rest of spec
 ```
 
-Server-side diff mode has trade-offs. It is more accurate for field ownership but can be slower because it makes API calls for each comparison. It also requires ArgoCD to have dry-run permissions.
+After enabling server-side diff globally, restart the `argocd-application-controller`. Server-side diff mode has trade-offs. It can be more accurate because it asks the API server to calculate the predicted object, but it can be slower because it makes API calls for comparisons. It also requires ArgoCD to have dry-run permissions. Mutation webhooks are not included by default; add `IncludeMutationWebhook=true` to the `argocd.argoproj.io/compare-options` annotation if you need them to participate in server-side diff.
 
 ## Debugging Server-Side Field Issues
 
@@ -241,7 +241,7 @@ Common pitfalls:
 ## Best Practices for Managing Server-Side Fields
 
 1. **Prefer managedFieldsManagers over jsonPointers** when the field injection comes from a known controller.
-2. **Consider server-side diff mode** if you are running ArgoCD 2.5+ and have many server-side field issues.
+2. **Consider server-side diff mode** if you are running ArgoCD 2.10+ and have many server-side field issues.
 3. **Document every ignore rule** - six months from now, someone will wonder why certain drift is being suppressed.
 4. **Audit ignore rules quarterly** - remove rules for controllers or webhooks that are no longer in use.
 5. **Use system-level rules for cluster-wide patterns** and per-application rules for app-specific exceptions.
