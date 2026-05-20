@@ -31,13 +31,14 @@ graph TD
     AS3 --> Redis
 ```
 
-The UI is particularly expensive because it opens a WebSocket connection that receives real-time updates about application state. Each connected browser tab maintains an active WebSocket, and each WebSocket causes the API server to watch Kubernetes resources.
+The UI is particularly expensive because it opens a long-lived connection that receives real-time updates about application state. Each connected browser tab maintains an active update stream, which consumes API server connection and memory resources.
 
 ## Scaling API Server Replicas
 
 The first and most effective optimization is running multiple API server replicas.
 
 ```yaml
+# Strategic merge patch for the existing argocd-server Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -49,6 +50,9 @@ spec:
     spec:
       containers:
       - name: argocd-server
+        env:
+        - name: ARGOCD_API_SERVER_REPLICAS
+          value: "3"
         resources:
           requests:
             cpu: "1"
@@ -58,7 +62,7 @@ spec:
             memory: "2Gi"
 ```
 
-Each API server replica is stateless - it relies on Redis for session data and the Kubernetes API for application state. This means you can scale horizontally without any special configuration. Use a Horizontal Pod Autoscaler for dynamic scaling.
+Each API server replica is stateless - Argo CD persists data as Kubernetes objects and uses Redis as a disposable cache. This means you can scale horizontally, but set `ARGOCD_API_SERVER_REPLICAS` to match the replica count so login throttling is divided correctly between replicas. Use a Horizontal Pod Autoscaler for dynamic scaling.
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -90,9 +94,10 @@ spec:
 
 ## Configuring gRPC and HTTP Limits
 
-The API server uses gRPC internally and serves both gRPC and HTTP externally. You can tune connection limits and timeouts.
+The API server is a gRPC/REST server consumed by the Web UI, CLI, and CI/CD systems. You can tune large gRPC responses and proxy timeouts.
 
 ```yaml
+# Strategic merge patch for the existing argocd-server Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -103,10 +108,10 @@ spec:
     spec:
       containers:
       - name: argocd-server
-        args:
-        - /usr/local/bin/argocd-server
-        # Maximum number of gRPC connections
-        - --server.max-concurrent-streams=100
+        env:
+        # Maximum gRPC response size in MiB
+        - name: ARGOCD_GRPC_MAX_SIZE_MB
+          value: "200"
 ```
 
 On the Ingress or load balancer side, configure appropriate timeouts for WebSocket connections.
@@ -120,8 +125,6 @@ metadata:
   name: argocd-server
   namespace: argocd
   annotations:
-    # WebSocket support
-    nginx.ingress.kubernetes.io/websocket-services: "argocd-server"
     # Increase timeouts for long-lived connections
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
@@ -171,7 +174,7 @@ data:
   policy.default: role:readonly
 ```
 
-Group-based policies are faster to evaluate than per-user policies because ArgoCD can resolve permissions in a single lookup rather than iterating through many rules.
+Group-based policies keep the RBAC policy smaller and easier to manage than per-user policies. ArgoCD evaluates the default policy first, then the user and each configured group, so broad role mappings also reduce the number of subject-specific rules you need to maintain.
 
 ## Reducing UI Resource Consumption
 
@@ -185,8 +188,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Disable the built-in UI if using ArgoCD CLI only
-  # server.disable.auth: "false"
+  # Keep client authentication enabled
+  server.disable.auth: "false"
 
   # Enable gzip compression for UI assets
   server.enable.gzip: "true"
@@ -205,7 +208,7 @@ kind: Ingress
 metadata:
   name: argocd-server
   annotations:
-    nginx.ingress.kubernetes.io/configuration-snippet: |
+    nginx.ingress.kubernetes.io/server-snippet: |
       location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
         expires 7d;
         add_header Cache-Control "public, immutable";
@@ -214,7 +217,7 @@ metadata:
 
 ## Session Management
 
-When running multiple API server replicas, session management needs to work correctly. ArgoCD stores sessions in Redis, so sessions are shared across replicas by default.
+When running multiple API server replicas, session management needs to work correctly. ArgoCD signs user session tokens using the server secret, so all replicas must use the same `argocd-secret`.
 
 ```yaml
 # argocd-cm ConfigMap
@@ -225,11 +228,10 @@ metadata:
   namespace: argocd
 data:
   # Session token expiration (default: 24h)
-  # Shorter sessions reduce the session store size
-  server.session.maxAge: "12h"
+  users.session.duration: "12h"
 ```
 
-If users report being randomly logged out after you scale up the API server, verify that all replicas can reach Redis and that the `argocd-secret` is consistent across replicas.
+If users report being randomly logged out after you scale up the API server, verify that the `argocd-secret` is consistent across replicas.
 
 ## Rate Limiting API Requests
 
@@ -257,19 +259,21 @@ For more granular control, consider putting an API gateway like Kong or Ambassad
 Track these metrics to understand API server health.
 
 ```promql
-# Request latency by endpoint
+# gRPC handling latency, if ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true is set
 histogram_quantile(0.95,
-  rate(argocd_server_request_duration_seconds_bucket[5m])
+  sum(rate(grpc_server_handling_seconds_bucket[5m])) by (le)
 )
 
-# Active gRPC streams (WebSocket connections)
-grpc_server_started_total - grpc_server_handled_total
+# Completed gRPC calls by service, method, and status
+rate(grpc_server_handled_total[5m])
 
-# Request error rate
-rate(argocd_server_request_total{code=~"5.."}[5m])
+# Kubernetes client request latency from the API server
+histogram_quantile(0.95,
+  sum(rate(argocd_kubectl_request_duration_seconds_bucket[5m])) by (le)
+)
 
-# Number of connected users (approximate)
-argocd_server_active_sessions
+# Kubernetes client request errors from the API server
+rate(argocd_kubectl_requests_total{code=~"5.."}[5m])
 ```
 
 If the 95th percentile request latency exceeds 2 seconds, the API server is under pressure. Add more replicas or investigate which endpoints are slow.
