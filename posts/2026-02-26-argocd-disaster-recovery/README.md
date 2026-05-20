@@ -114,9 +114,16 @@ Install ArgoCD in the DR cluster with the same configuration:
 
 kubectl config use-context dr-cluster
 kubectl create namespace argocd
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update argo
 helm install argocd argo/argo-cd \
   --namespace argocd \
   --values argocd-ha-values.yaml
+
+# Keep the standby from reconciling workloads until DR activation
+kubectl scale statefulset argocd-application-controller \
+  --namespace argocd \
+  --replicas=0
 ```
 
 ### Step 2: Continuous Configuration Sync
@@ -138,12 +145,10 @@ spec:
           serviceAccountName: argocd-dr-sync
           containers:
             - name: sync
-              image: bitnami/kubectl:latest
+              image: quay.io/argoproj/argocd:v3.3.9
               env:
                 - name: PRIMARY_KUBECONFIG
                   value: /etc/kubeconfig/primary
-                - name: AWS_REGION
-                  value: us-east-1
               command:
                 - /bin/bash
                 - -c
@@ -152,49 +157,17 @@ spec:
 
                   # Export from primary
                   echo "Exporting from primary cluster..."
-                  kubectl --kubeconfig="$PRIMARY_KUBECONFIG" \
-                    get applications.argoproj.io -n argocd -o yaml > /tmp/apps.yaml
-                  kubectl --kubeconfig="$PRIMARY_KUBECONFIG" \
-                    get appprojects.argoproj.io -n argocd -o yaml > /tmp/projects.yaml
-                  kubectl --kubeconfig="$PRIMARY_KUBECONFIG" \
-                    get applicationsets.argoproj.io -n argocd -o yaml > /tmp/appsets.yaml
-                  kubectl --kubeconfig="$PRIMARY_KUBECONFIG" \
-                    get secrets -n argocd \
-                    -l argocd.argoproj.io/secret-type=repository -o yaml > /tmp/repos.yaml
-                  kubectl --kubeconfig="$PRIMARY_KUBECONFIG" \
-                    get secrets -n argocd \
-                    -l argocd.argoproj.io/secret-type=cluster -o yaml > /tmp/clusters.yaml
-                  kubectl --kubeconfig="$PRIMARY_KUBECONFIG" \
-                    get configmap argocd-cm -n argocd -o yaml > /tmp/argocd-cm.yaml
-                  kubectl --kubeconfig="$PRIMARY_KUBECONFIG" \
-                    get configmap argocd-rbac-cm -n argocd -o yaml > /tmp/argocd-rbac-cm.yaml
+                  argocd admin export \
+                    --kubeconfig "$PRIMARY_KUBECONFIG" \
+                    --namespace argocd \
+                    --out /tmp/argocd-backup.yaml
 
-                  # Import to standby (this cluster)
+                  # Import to standby (this cluster). The application controller
+                  # stays scaled to zero, so the standby will not reconcile workloads.
                   echo "Importing to standby cluster..."
-                  kubectl apply -f /tmp/argocd-cm.yaml
-                  kubectl apply -f /tmp/argocd-rbac-cm.yaml
-                  kubectl apply -f /tmp/repos.yaml
-                  kubectl apply -f /tmp/clusters.yaml
-                  kubectl apply -f /tmp/projects.yaml
-                  kubectl apply -f /tmp/appsets.yaml
-
-                  # Import applications but disable auto-sync
-                  # (standby should not actively manage clusters)
-                  cat /tmp/apps.yaml | \
-                    python3 -c "
-                  import sys, yaml
-                  docs = yaml.safe_load_all(sys.stdin)
-                  for doc in docs:
-                    if doc and doc.get('kind') == 'ApplicationList':
-                      for item in doc.get('items', []):
-                        sp = item.get('spec', {}).get('syncPolicy', {})
-                        sp.pop('automated', None)
-                        item['spec']['syncPolicy'] = sp
-                        # Remove status and resourceVersion
-                        item.get('metadata', {}).pop('resourceVersion', None)
-                        item.pop('status', None)
-                      yaml.dump(doc, sys.stdout)
-                  " | kubectl apply -f -
+                  argocd admin import /tmp/argocd-backup.yaml \
+                    --namespace argocd \
+                    --stop-operation
 
                   echo "DR sync complete at $(date)"
               volumeMounts:
@@ -226,36 +199,26 @@ if [ "$confirm" != "yes" ]; then
   exit 1
 fi
 
-# Step 1: Enable auto-sync on all applications
-echo "Enabling auto-sync on applications..."
-for APP in $(kubectl get applications.argoproj.io -n argocd -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl patch application "$APP" -n argocd --type merge -p '{
-    "spec": {
-      "syncPolicy": {
-        "automated": {
-          "prune": true,
-          "selfHeal": true
-        }
-      }
-    }
-  }'
-  echo "Enabled auto-sync for $APP"
-done
+# Step 1: Start the application controller
+echo "Starting application controller..."
+kubectl scale statefulset argocd-application-controller \
+  --namespace argocd \
+  --replicas=1
 
 # Step 2: Verify cluster connections
 echo "Verifying cluster connections..."
-argocd cluster list
+argocd --core cluster list
 
 # Step 3: Trigger sync for all applications
 echo "Triggering sync for all applications..."
-for APP in $(argocd app list -o name); do
-  argocd app sync "$APP" --async
+for APP in $(argocd --core app list -o name); do
+  argocd --core app sync "$APP" --async
 done
 
 # Step 4: Monitor sync status
 echo "Monitoring sync status..."
 sleep 30
-argocd app list
+argocd --core app list
 
 echo "=== DR Activation Complete ==="
 echo "ArgoCD DR instance is now actively managing clusters"
@@ -338,13 +301,13 @@ for CLUSTER in $(kubectl get secrets -n argocd \
   -o jsonpath='{.items[*].data.server}'); do
   SERVER=$(echo "$CLUSTER" | base64 -d)
   echo "Testing connection to $SERVER..."
-  argocd cluster get "$SERVER" 2>/dev/null && echo "OK" || echo "FAIL"
+  argocd --core cluster get "$SERVER" 2>/dev/null && echo "OK" || echo "FAIL"
 done
 
 # 3. Test single app sync (non-destructively)
 echo "Testing single application sync..."
 TEST_APP=$(kubectl get applications.argoproj.io -n argocd -o jsonpath='{.items[0].metadata.name}')
-argocd app diff "$TEST_APP" 2>/dev/null && echo "Diff successful" || echo "Diff failed"
+argocd --core app diff "$TEST_APP" --exit-code=false 2>/dev/null && echo "Diff successful" || echo "Diff failed"
 
 echo "=== DR Test Complete ==="
 ```
@@ -362,20 +325,24 @@ echo "=== ArgoCD Failback to Primary ==="
 # 1. Sync configuration from DR to primary
 echo "Syncing DR state to primary..."
 # Export from DR
-kubectl get applications.argoproj.io -n argocd -o yaml > /tmp/dr-apps.yaml
+argocd admin export --namespace argocd --out /tmp/dr-backup.yaml
 # Import to primary
-kubectl --kubeconfig primary-kubeconfig apply -f /tmp/dr-apps.yaml
+argocd admin import /tmp/dr-backup.yaml \
+  --kubeconfig primary-kubeconfig \
+  --namespace argocd \
+  --stop-operation
 
-# 2. Enable auto-sync on primary
+# 2. Enable primary
 echo "Enabling primary..."
-# (same as activation script but targeting primary)
+kubectl --kubeconfig primary-kubeconfig scale statefulset argocd-application-controller \
+  --namespace argocd \
+  --replicas=1
 
-# 3. Disable auto-sync on DR
+# 3. Deactivate DR
 echo "Deactivating DR..."
-for APP in $(kubectl get applications.argoproj.io -n argocd -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl patch application "$APP" -n argocd --type json \
-    -p '[{"op": "remove", "path": "/spec/syncPolicy/automated"}]' 2>/dev/null
-done
+kubectl scale statefulset argocd-application-controller \
+  --namespace argocd \
+  --replicas=0
 
 # 4. Update DNS back to primary
 echo "Update DNS to point back to primary"
