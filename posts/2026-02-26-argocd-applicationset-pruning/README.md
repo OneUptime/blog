@@ -95,7 +95,7 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{namespace}}'
-  # Never delete Applications
+  # Never delete Applications due to generator changes
   syncPolicy:
     applicationsSync: create-update
 ```
@@ -104,7 +104,7 @@ If you remove `database` from the elements list, the database Application contin
 
 ## Controlling Resource Deletion with Finalizers
 
-The Application-level finalizer determines whether deleting an Application also deletes its deployed Kubernetes resources. This interacts with ApplicationSet pruning in a critical way.
+The Application-level finalizer determines whether deleting an Application also deletes its deployed Kubernetes resources. ApplicationSet adds this finalizer by default unless you set `preserveResourcesOnDeletion: true`. This interacts with ApplicationSet pruning in a critical way.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -139,15 +139,18 @@ spec:
 
 With the `resources-finalizer.argocd.argoproj.io` finalizer, pruning an Application triggers a cascade delete - the Application AND all its Kubernetes resources (Deployments, Services, ConfigMaps, etc.) are removed.
 
-Without the finalizer, pruning only removes the ArgoCD Application resource. The deployed workloads remain running in the cluster as orphaned resources.
+With `preserveResourcesOnDeletion: true`, ApplicationSet does not add the finalizer. Pruning only removes the ArgoCD Application resource, and the deployed workloads remain running in the cluster as orphaned resources.
 
 ```yaml
-# Safe option: No finalizer = no cascade delete
+# Safe option: preserveResourcesOnDeletion = no cascade delete
 
+syncPolicy:
+  preserveResourcesOnDeletion: true
 template:
   metadata:
     name: '{{path.basename}}'
-    # No finalizers - only the Application resource is deleted
+    # No finalizer is added to generated Applications
+    # Only the Application resource is deleted
     # Kubernetes resources are left intact
   spec:
     # ...
@@ -159,7 +162,7 @@ For production environments, consider these patterns.
 
 ### Strategy 1: No Prune with Manual Cleanup
 
-The safest approach - never auto-delete, always manually clean up.
+The safest approach - never auto-delete due to generator changes, always manually clean up.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -200,6 +203,8 @@ metadata:
   name: cleanup-safe-apps
   namespace: argocd
 spec:
+  syncPolicy:
+    preserveResourcesOnDeletion: true
   generators:
     - git:
         repoURL: https://github.com/myorg/services.git
@@ -209,7 +214,7 @@ spec:
   template:
     metadata:
       name: '{{path.basename}}'
-      # No finalizer = Application deleted but resources preserved
+      # preserveResourcesOnDeletion = Application deleted but resources preserved
     spec:
       project: default
       source:
@@ -224,7 +229,7 @@ spec:
 
 ### Strategy 3: Full Prune with Progressive Rollout
 
-Use progressive sync to stage deletions across environments.
+When progressive syncs are enabled, use `deletionOrder: Reverse` with RollingSync to stage deletions across environments.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -235,6 +240,7 @@ metadata:
 spec:
   strategy:
     type: RollingSync
+    deletionOrder: Reverse
     rollingSync:
       steps:
         - matchExpressions:
@@ -303,11 +309,11 @@ kubectl get pvc -n my-app
 
 ## Monitoring Pruning Events
 
-Track pruning activity with kubectl events and ArgoCD logs.
+Track pruning activity with kubectl and ArgoCD logs.
 
 ```bash
-# Watch for Application deletions
-kubectl get events -n argocd --field-selector reason=ResourceDeleted
+# Watch for Application additions and deletions
+kubectl get applications.argoproj.io -n argocd --watch
 
 # Check ApplicationSet controller logs for pruning decisions
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-applicationset-controller \
