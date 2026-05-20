@@ -43,7 +43,7 @@ Each of these stages can be measured and optimized independently.
 ArgoCD exposes several metrics that help measure lead time components:
 
 - `argocd_app_sync_total` - counts sync operations with status labels
-- `argocd_app_reconcile_duration` - time spent reconciling application state
+- `argocd_app_reconcile` - time spent reconciling application state
 - `argocd_git_request_duration_seconds` - time to fetch Git changes
 - `argocd_app_info` - application state including sync status and revision
 
@@ -62,19 +62,29 @@ Create a script that queries ArgoCD and Git:
 # Calculates lead time for the most recent deployment
 
 APP_NAME=$1
-ARGOCD_SERVER="argocd-server.argocd.svc.cluster.local"
+
+to_epoch() {
+  python3 - "$1" <<'PY'
+from datetime import datetime
+import sys
+
+value = sys.argv[1].replace("Z", "+00:00")
+print(int(datetime.fromisoformat(value).timestamp()))
+PY
+}
+
+APP_JSON=$(argocd app get "$APP_NAME" -o json)
 
 # Get the current deployed revision
-REVISION=$(argocd app get "$APP_NAME" -o json | jq -r '.status.sync.revision')
+REVISION=$(echo "$APP_JSON" | jq -r '.status.sync.revision')
 
 # Get the commit timestamp from Git
-COMMIT_TIME=$(git log -1 --format=%cI "$REVISION")
-COMMIT_EPOCH=$(date -d "$COMMIT_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$COMMIT_TIME" +%s)
+COMMIT_TIME=$(git show -s --format=%cI "$REVISION")
+COMMIT_EPOCH=$(to_epoch "$COMMIT_TIME")
 
 # Get the sync completion time from ArgoCD history
-SYNC_TIME=$(argocd app get "$APP_NAME" -o json | \
-  jq -r '.status.history[-1].deployedAt')
-SYNC_EPOCH=$(date -d "$SYNC_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "$SYNC_TIME" +%s)
+SYNC_TIME=$(echo "$APP_JSON" | jq -r '.status.history[-1].deployedAt')
+SYNC_EPOCH=$(to_epoch "$SYNC_TIME")
 
 # Calculate lead time in seconds
 LEAD_TIME=$((SYNC_EPOCH - COMMIT_EPOCH))
@@ -86,9 +96,9 @@ echo "Sync Time: $SYNC_TIME"
 echo "Lead Time: ${LEAD_TIME}s ($((LEAD_TIME / 60)) minutes)"
 ```
 
-## Approach 2: Custom Prometheus Metrics with a Sidecar
+## Approach 2: Custom Prometheus Metrics with an Exporter
 
-For continuous monitoring, build a sidecar that calculates lead time and exposes it as a Prometheus metric.
+For continuous monitoring, build an exporter that calculates lead time and exposes it as a Prometheus metric. Use an image that includes Python, Git, and the ArgoCD CLI.
 
 ```yaml
 # lead-time-exporter deployment
@@ -113,7 +123,7 @@ spec:
       serviceAccountName: argocd-server
       containers:
         - name: exporter
-          image: python:3.12-slim
+          image: your-registry/argocd-lead-time-exporter:latest
           command: ["python", "/app/exporter.py"]
           ports:
             - containerPort: 8080
@@ -140,20 +150,64 @@ The Python exporter logic:
 # exporter.py
 import time
 import json
+import os
+import re
+import threading
 import subprocess
+from pathlib import Path
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from datetime import datetime, timezone
+from datetime import datetime
 
 # Store lead time per application
 lead_times = {}
+repo_cache_dir = Path(os.environ.get("REPO_CACHE_DIR", "/tmp/repos"))
+repo_cache_dir.mkdir(parents=True, exist_ok=True)
 
 def get_argocd_apps():
     """Fetch all ArgoCD applications and their sync history."""
     result = subprocess.run(
         ["argocd", "app", "list", "-o", "json"],
-        capture_output=True, text=True
+        check=True, capture_output=True, text=True
     )
-    return json.loads(result.stdout)
+    apps = json.loads(result.stdout)
+
+    details = []
+    for app in apps:
+        detail = subprocess.run(
+            ["argocd", "app", "get", app["metadata"]["name"], "-o", "json"],
+            check=True, capture_output=True, text=True
+        )
+        details.append(json.loads(detail.stdout))
+
+    return details
+
+def prom_label(value):
+    """Escape a string for use as a Prometheus label value."""
+    return re.sub(r'(["\\\n])', r"\\\1", value)
+
+def get_commit_time(repo_url, revision):
+    """Fetch commit metadata from Git and return the commit timestamp."""
+    repo_path = repo_cache_dir / str(abs(hash(repo_url)))
+
+    if repo_path.exists():
+        subprocess.run(
+            ["git", "-C", str(repo_path), "fetch", "--all", "--prune"],
+            check=True, capture_output=True, text=True
+        )
+    else:
+        subprocess.run(
+            ["git", "clone", "--mirror", repo_url, str(repo_path)],
+            check=True, capture_output=True, text=True
+        )
+
+    result = subprocess.run(
+        ["git", "-C", str(repo_path), "show", "-s",
+         "--format=%cI", revision],
+        check=True, capture_output=True, text=True
+    )
+    return datetime.fromisoformat(
+        result.stdout.strip().replace("Z", "+00:00")
+    )
 
 def calculate_lead_time(app):
     """Calculate lead time from commit to deploy for an app."""
@@ -176,31 +230,35 @@ def calculate_lead_time(app):
     # Get commit time from the source repo
     source = app.get("spec", {}).get("source", {})
     repo_url = source.get("repoURL", "")
+    if not repo_url:
+        return None
 
-    # Use ArgoCD API to get commit info
-    result = subprocess.run(
-        ["argocd", "app", "get", app["metadata"]["name"],
-         "-o", "json"],
-        capture_output=True, text=True
-    )
-    app_detail = json.loads(result.stdout)
-
-    # Extract commit metadata
-    commit_metadata = app_detail.get("status", {}).get(
-        "sourceStatus", {}
-    )
+    commit_time = get_commit_time(repo_url, revision)
 
     # Calculate difference in seconds
-    # This is simplified - in practice you would query
-    # the Git provider API for the exact commit timestamp
     return {
         "app": app["metadata"]["name"],
         "revision": revision[:8],
         "deployed_at": deployed_at,
         "lead_time_seconds": (
-            deploy_time - datetime.now(timezone.utc)
+            deploy_time - commit_time
         ).total_seconds()
     }
+
+def refresh_metrics():
+    """Refresh lead time values from ArgoCD and Git."""
+    while True:
+        try:
+            apps = get_argocd_apps()
+            for app in apps:
+                lead_time = calculate_lead_time(app)
+                if lead_time:
+                    lead_times[lead_time["app"]] = lead_time[
+                        "lead_time_seconds"
+                    ]
+        except Exception as exc:
+            print(f"failed to refresh lead time metrics: {exc}")
+        time.sleep(60)
 
 def collect_metrics():
     """Build Prometheus metrics output."""
@@ -215,7 +273,7 @@ def collect_metrics():
 
     for app_name, lt in lead_times.items():
         lines.append(
-            f'argocd_lead_time_seconds{{app="{app_name}"}} {lt}'
+            f'argocd_lead_time_seconds{{app="{prom_label(app_name)}"}} {lt}'
         )
 
     return "\n".join(lines) + "\n"
@@ -228,8 +286,12 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
 
 if __name__ == "__main__":
+    threading.Thread(target=refresh_metrics, daemon=True).start()
     server = HTTPServer(("0.0.0.0", 8080), MetricsHandler)
     print("Lead time exporter running on :8080")
     server.serve_forever()
@@ -247,8 +309,15 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  subscriptions: |
+    - recipients:
+      - metrics-collector
+      triggers:
+      - on-sync-succeeded
+
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
+      oncePer: app.status?.operationState.syncResult.revision
       send: [lead-time-webhook]
 
   template.lead-time-webhook: |
