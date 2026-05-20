@@ -10,7 +10,7 @@ Description: Learn how to configure ArgoCD health checks for External Secrets Op
 
 The External Secrets Operator (ESO) synchronizes secrets from external providers like AWS Secrets Manager, HashiCorp Vault, Azure Key Vault, and Google Secret Manager into Kubernetes Secrets. When an ExternalSecret fails to sync, your applications may start with stale or missing credentials. Without a proper health check, ArgoCD shows the ExternalSecret as healthy while your pods crash because the secret they reference does not exist or contains outdated data.
 
-This guide provides health check configurations for all External Secrets Operator resource types.
+This guide provides health check configurations for the common External Secrets Operator resource types.
 
 ## External Secrets Resource Types
 
@@ -26,7 +26,7 @@ flowchart TD
 The key resources to monitor:
 - **SecretStore / ClusterSecretStore**: Connection to the external secrets provider
 - **ExternalSecret**: Individual secret sync configuration
-- **ClusterExternalSecret**: Cluster-wide external secret syncing to multiple namespaces
+- **ClusterExternalSecret**: Cluster-wide provisioning of ExternalSecret resources to multiple namespaces
 
 ## ExternalSecret Health Check
 
@@ -149,7 +149,7 @@ Identical logic to SecretStore but for the cluster-scoped version:
 
 ## ClusterExternalSecret Health Check
 
-ClusterExternalSecrets create ExternalSecrets across multiple namespaces:
+ClusterExternalSecrets create ExternalSecrets across multiple namespaces. Their status reports whether the ExternalSecret resources were provisioned, not whether each generated ExternalSecret successfully synced with the provider:
 
 ```yaml
   resource.customizations.health.external-secrets.io_ClusterExternalSecret: |
@@ -160,36 +160,37 @@ ClusterExternalSecrets create ExternalSecrets across multiple namespaces:
       return hs
     end
 
+    local failed = obj.status.failedNamespaces or {}
+    local provisioned = obj.status.provisionedNamespaces or {}
+
     if obj.status.conditions ~= nil then
       for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Ready" then
-          if condition.status == "True" then
+        if condition.status == "True" then
+          if condition.type == "Ready" then
             hs.status = "Healthy"
-            hs.message = "All namespaced ExternalSecrets are synced"
+            hs.message = #provisioned .. " ExternalSecrets provisioned"
             return hs
-          else
+          elseif condition.type == "PartiallyReady" then
             hs.status = "Degraded"
-            hs.message = condition.message or "Some ExternalSecrets failed"
+            hs.message = #provisioned .. " provisioned, " .. #failed .. " failed"
+            return hs
+          elseif condition.type == "NotReady" then
+            hs.status = "Degraded"
+            hs.message = condition.message or "No ExternalSecrets could be provisioned"
             return hs
           end
         end
       end
     end
 
-    -- Check provisioned vs failed status
-    if obj.status.provisionedCount ~= nil then
-      local provisioned = obj.status.provisionedCount or 0
-      local failed = obj.status.failedCount or 0
-      if failed > 0 then
-        hs.status = "Degraded"
-        hs.message = provisioned .. " provisioned, " .. failed .. " failed"
-      elseif provisioned > 0 then
-        hs.status = "Healthy"
-        hs.message = provisioned .. " ExternalSecrets provisioned"
-      else
-        hs.status = "Progressing"
-        hs.message = "No ExternalSecrets provisioned yet"
-      end
+    -- Fallback for older or incomplete status without conditions
+    if #failed > 0 then
+      hs.status = "Degraded"
+      hs.message = #provisioned .. " provisioned, " .. #failed .. " failed"
+      return hs
+    elseif #provisioned > 0 then
+      hs.status = "Healthy"
+      hs.message = #provisioned .. " ExternalSecrets provisioned"
       return hs
     end
 
@@ -265,10 +266,10 @@ kubectl events -n production --for externalsecret/my-secret
 
 ### Refresh Interval Issues
 
-ExternalSecrets refresh on a schedule. If the refresh fails, the health degrades:
+With the default `Periodic` refresh policy, ExternalSecrets refresh on a schedule. If the refresh fails, the health degrades:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-secret
@@ -310,12 +311,12 @@ spec:
     - name: external-secrets
       rules:
         - alert: ExternalSecretSyncFailed
-          expr: externalsecret_sync_calls_total{status="error"} > 0
+          expr: increase(externalsecret_sync_calls_error[5m]) > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "ExternalSecret sync failed for {{ $labels.name }}"
+            summary: "ExternalSecret sync failures detected"
 ```
 
 ## Debugging ExternalSecret Health
