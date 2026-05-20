@@ -35,7 +35,7 @@ The default upgrade method works well for most scenarios. Kubernetes replaces ol
 
 ARGOCD_NEW_VERSION=v2.14.0
 
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_NEW_VERSION}/manifests/install.yaml
 ```
 
@@ -54,7 +54,7 @@ echo "All components upgraded"
 
 ### Minimize Interruption with PodDisruptionBudgets
 
-Add PodDisruptionBudgets to prevent too many pods from being down at once.
+Add PodDisruptionBudgets to protect availability during voluntary disruptions such as node drains. Rolling upgrades for Deployments and StatefulSets are controlled by their own update strategies, but PDBs are still useful operational guardrails around the upgrade window.
 
 ```yaml
 # argocd-server-pdb.yaml
@@ -96,7 +96,7 @@ If you are not already running HA, switch to the HA manifests first (while on th
 ```bash
 # Install HA manifests for your current version
 CURRENT_VERSION=v2.13.3
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/${CURRENT_VERSION}/manifests/ha/install.yaml
 ```
 
@@ -104,16 +104,20 @@ This gives you multiple replicas of the API server and repo server.
 
 ```bash
 # Verify HA is running
-kubectl get deployment -n argocd
+kubectl get deployment argocd-server argocd-repo-server argocd-redis-ha-haproxy -n argocd
+kubectl get statefulset argocd-redis-ha-server -n argocd
 ```
 
 You should see multiple replicas:
 
 ```text
-NAME                 READY   UP-TO-DATE   AVAILABLE
-argocd-server        2/2     2            2
-argocd-repo-server   2/2     2            2
-argocd-redis-ha      3/3     3            3
+NAME                                      READY   UP-TO-DATE   AVAILABLE
+deployment.apps/argocd-server            2/2     2            2
+deployment.apps/argocd-repo-server       2/2     2            2
+deployment.apps/argocd-redis-ha-haproxy  3/3     3            3
+
+NAME                                      READY
+statefulset.apps/argocd-redis-ha-server  3/3
 ```
 
 ### Perform the HA Upgrade
@@ -121,11 +125,11 @@ argocd-redis-ha      3/3     3            3
 ```bash
 # Apply the new version's HA manifests
 ARGOCD_NEW_VERSION=v2.14.0
-kubectl apply -n argocd -f \
+kubectl apply -n argocd --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_NEW_VERSION}/manifests/ha/install.yaml
 ```
 
-With multiple replicas, Kubernetes replaces pods one at a time while the remaining pods handle traffic. Users will not notice any interruption.
+With multiple replicas, Kubernetes replaces pods one at a time while the remaining pods handle traffic. Users should not notice an interruption if readiness probes, capacity, and load balancing are healthy.
 
 ## Strategy 3: Blue-Green with a Second ArgoCD Instance
 
@@ -137,9 +141,11 @@ For the most cautious approach, run a second ArgoCD instance alongside the first
 # Create a namespace for the new version
 kubectl create namespace argocd-v2
 
-# Install the new ArgoCD version
-kubectl apply -n argocd-v2 -f \
-  https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.0/manifests/install.yaml
+# Install the namespace-scoped manifest for the new ArgoCD version.
+# The default install.yaml contains cluster-scoped RBAC with fixed names,
+# so it is not isolated from the existing argocd installation.
+kubectl apply -n argocd-v2 --server-side --force-conflicts -f \
+  https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.0/manifests/namespace-install.yaml
 ```
 
 ### Copy Configuration
@@ -148,17 +154,17 @@ Copy your configuration to the new instance.
 
 ```bash
 # Export configuration from the old instance
-kubectl get configmap argocd-cm -n argocd -o yaml | \
-  sed 's/namespace: argocd/namespace: argocd-v2/' | \
+kubectl get configmap argocd-cm -n argocd -o json | \
+  jq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.managedFields) | .metadata.namespace = "argocd-v2"' | \
   kubectl apply -f -
 
-kubectl get configmap argocd-rbac-cm -n argocd -o yaml | \
-  sed 's/namespace: argocd/namespace: argocd-v2/' | \
+kubectl get configmap argocd-rbac-cm -n argocd -o json | \
+  jq 'del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.managedFields) | .metadata.namespace = "argocd-v2"' | \
   kubectl apply -f -
 
 # Copy repository secrets
-kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository -o yaml | \
-  sed 's/namespace: argocd/namespace: argocd-v2/' | \
+kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository -o json | \
+  jq 'del(.metadata.resourceVersion) | .items[] |= (del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.managedFields) | .metadata.namespace = "argocd-v2")' | \
   kubectl apply -f -
 ```
 
@@ -172,7 +178,10 @@ kubectl port-forward svc/argocd-server -n argocd-v2 8081:443 &
 argocd login localhost:8081 --insecure --username admin \
   --password $(kubectl -n argocd-v2 get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
 
-# Create a test application
+# Create a test application. With namespace-install.yaml, first add
+# credentials for any target cluster/namespace you want this instance to manage.
+kubectl create namespace test-upgrade
+
 argocd app create test-app \
   --repo https://github.com/argoproj/argocd-example-apps.git \
   --path guestbook \
@@ -184,21 +193,22 @@ argocd app sync test-app
 
 ### Switch Traffic
 
-Once verified, move your Application CRDs to the new namespace and update your Ingress/Route to point to the new ArgoCD server.
+Once verified, move your Application custom resources to the new namespace and update your Ingress/Route to point to the new ArgoCD server.
 
 ```bash
 # Move applications to the new namespace
-kubectl get applications -n argocd -o yaml | \
-  sed 's/namespace: argocd/namespace: argocd-v2/' | \
+kubectl get applications -n argocd -o json | \
+  jq 'del(.metadata.resourceVersion) | .items[] |= (del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.managedFields, .status) | .metadata.namespace = "argocd-v2")' | \
   kubectl apply -f -
 
-# Update your ingress to point to the new namespace
-kubectl patch ingress argocd-server -n argocd \
-  --type='json' -p='[{"op": "replace", "path": "/spec/rules/0/http/paths/0/backend/service/name", "value":"argocd-server"}]'
+# Recreate or update your Ingress/Route in argocd-v2 so it targets
+# svc/argocd-server in the same namespace, then switch DNS or your
+# external load balancer to that endpoint.
 
-# Delete the old instance after confirming everything works
+# Delete the old instance after confirming everything works. Kubernetes
+# namespaces cannot be renamed, so keep argocd-v2 or recreate the final
+# argocd namespace and reapply the tested manifests there.
 kubectl delete namespace argocd
-kubectl rename namespace argocd-v2 argocd
 ```
 
 ## Strategy 4: Canary Upgrade with Sync Windows
@@ -314,7 +324,11 @@ kubectl logs -n argocd deployment/argocd-server --previous
 Redis cache is rebuilt on upgrade. Errors should resolve within a minute.
 
 ```bash
+# Non-HA install
 kubectl logs -n argocd deployment/argocd-redis
+
+# HA install
+kubectl logs -n argocd statefulset/argocd-redis-ha-server
 ```
 
 ### CRD Conflicts
@@ -322,9 +336,9 @@ kubectl logs -n argocd deployment/argocd-redis
 If CRDs fail to update, apply them manually.
 
 ```bash
-kubectl apply -f \
+kubectl apply --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.0/manifests/crds/application-crd.yaml
-kubectl apply -f \
+kubectl apply --server-side --force-conflicts -f \
   https://raw.githubusercontent.com/argoproj/argo-cd/v2.14.0/manifests/crds/appproject-crd.yaml
 ```
 
