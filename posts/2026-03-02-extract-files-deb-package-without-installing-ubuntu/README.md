@@ -15,8 +15,8 @@ There are valid reasons to extract files from a `.deb` package without going thr
 A `.deb` file is actually an `ar` archive containing three components:
 
 - `debian-binary` - A text file indicating the package format version (usually "2.0")
-- `control.tar.xz` (or `.gz`) - Contains package metadata, scripts, and dependency information
-- `data.tar.xz` (or other compression) - Contains the actual files to be installed
+- `control.tar.xz` (or `.gz`, `.zst`, or uncompressed `control.tar`) - Contains package metadata, scripts, and dependency information
+- `data.tar.xz` (or `.gz`, `.zst`, `.bz2`, `.lzma`, or uncompressed `data.tar`) - Contains the actual files to be installed
 
 Knowing this structure informs which method to use depending on what you need.
 
@@ -125,7 +125,7 @@ ls *.deb
 dpkg-deb --extract nginx_*.deb /tmp/nginx-contents/
 ```
 
-For older or unavailable versions, specify the exact version:
+For older versions that are still available from your configured repositories, specify the exact version:
 
 ```bash
 # Download a specific version
