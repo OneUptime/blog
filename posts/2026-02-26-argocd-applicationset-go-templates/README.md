@@ -8,7 +8,7 @@ Description: Learn how to use Go template syntax in ArgoCD ApplicationSets for a
 
 ---
 
-ArgoCD ApplicationSets support two templating approaches: the default string substitution with `{{parameter}}` syntax, and the more powerful Go template engine. Go templates unlock conditionals, loops, string functions, and complex logic that the basic substitution simply cannot handle.
+ArgoCD ApplicationSets support two templating approaches: the default string substitution with `{{parameter}}` syntax, and the more powerful Go template engine. Go templates unlock conditionals, string functions, and more complex logic within individual string fields that the basic substitution simply cannot handle.
 
 This guide walks you through enabling Go templates, understanding the syntax differences, and applying practical patterns that solve real-world problems.
 
@@ -87,7 +87,7 @@ spec:
         namespace: '{{.env | lower}}'
 ```
 
-The `normalize` function is particularly useful. It converts strings to a DNS-compatible format by lowercasing and replacing non-alphanumeric characters with hyphens.
+The `normalize` function is particularly useful. It converts strings to a DNS-compatible format by lowercasing, replacing invalid characters with hyphens, and truncating the result to 253 characters.
 
 ## Conditionals with if/else
 
@@ -129,8 +129,10 @@ spec:
       syncPolicy:
         automated:
           prune: true
-          # Only enable self-heal in production
-          selfHeal: {{if eq .ha "true"}}true{{else}}false{{end}}
+          selfHeal: true
+        syncOptions:
+          # Use a different string option for HA deployments
+          - '{{if eq .ha "true"}}ServerSideApply=true{{else}}CreateNamespace=true{{end}}'
 ```
 
 Conditionals help you maintain a single ApplicationSet while varying behavior across environments. Without Go templates, you would need separate ApplicationSets for each variation.
@@ -148,13 +150,13 @@ Go templates support several comparison operators.
 '{{if ne .env "development"}}non-dev{{end}}'
 
 # AND condition
-'{{if and (eq .env "production") (eq .region "us-east-1")}}'
+'{{if and (eq .env "production") (eq .region "us-east-1")}}prod-use1{{end}}'
 
 # OR condition
-'{{if or (eq .env "production") (eq .env "staging")}}'
+'{{if or (eq .env "production") (eq .env "staging")}}non-dev{{end}}'
 
 # NOT condition
-'{{if not (eq .env "development")}}'
+'{{if not (eq .env "development")}}non-dev{{end}}'
 ```
 
 Here is a practical example combining multiple conditions.
@@ -177,16 +179,14 @@ spec:
     metadata:
       name: 'ingress-{{.name}}'
       annotations:
-        # Only add PagerDuty annotation for production clusters
-        {{- if and (eq .metadata.labels.environment "production") (eq .metadata.labels.tier "critical") }}
-        notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: critical-team
-        {{- end }}
+        # Route PagerDuty notifications based on cluster labels
+        notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: '{{if and (eq (index .metadata.labels "environment") "production") (eq (index .metadata.labels "tier") "critical")}}critical-team{{else}}platform-team{{end}}'
     spec:
       project: infrastructure
       source:
         repoURL: https://github.com/myorg/infra.git
         targetRevision: HEAD
-        path: 'ingress/{{if eq .metadata.labels.cloud "aws"}}aws{{else if eq .metadata.labels.cloud "gcp"}}gcp{{else}}generic{{end}}'
+        path: 'ingress/{{if eq (index .metadata.labels "cloud") "aws"}}aws{{else if eq (index .metadata.labels "cloud") "gcp"}}gcp{{else}}generic{{end}}'
       destination:
         server: '{{.server}}'
         namespace: ingress-nginx
@@ -206,7 +206,7 @@ name: '{{default "unknown" (index .metadata.labels "team")}}'
 
 ## Default Values
 
-The `default` function prevents empty values when a parameter might be missing.
+With `missingkey=error`, use `dig` when a parameter might be missing. The `default` function is still useful when a parameter exists but is empty.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -228,14 +228,14 @@ spec:
       # Use a default namespace if not specified in config
       name: '{{.name}}'
     spec:
-      project: '{{default "default" .project}}'
+      project: '{{dig "project" "default" .}}'
       source:
         repoURL: https://github.com/myorg/services.git
-        targetRevision: '{{default "HEAD" .revision}}'
+        targetRevision: '{{dig "revision" "HEAD" .}}'
         path: 'services/{{.name}}/manifests'
       destination:
-        server: '{{default "https://kubernetes.default.svc" .cluster_url}}'
-        namespace: '{{default .name .namespace}}'
+        server: '{{dig "cluster_url" "https://kubernetes.default.svc" .}}'
+        namespace: '{{dig "namespace" .name .}}'
 ```
 
 ## String Manipulation Functions
@@ -324,10 +324,10 @@ spec:
         namespace: '{{.path.basename}}'
       syncPolicy:
         automated:
-          prune: {{if eq .env "production"}}false{{else}}true{{end}}
+          prune: false
           selfHeal: true
         syncOptions:
-          - CreateNamespace=true
+          - '{{if eq .env "production"}}PruneLast=true{{else}}CreateNamespace=true{{end}}'
 ```
 
 ## Debugging Go Templates
@@ -336,10 +336,10 @@ When Go templates produce unexpected results, check these common issues.
 
 First, make sure `goTemplate: true` is set. If you use `{{.name}}` without enabling Go templates, the ApplicationSet controller treats it as literal text.
 
-Second, check your template with the ArgoCD CLI.
+Second, check your template with `kubectl`.
 
 ```bash
-# View the generated applications
+# View the ApplicationSet status
 kubectl get applicationset platform-services -n argocd -o yaml
 
 # Check the status conditions for template errors
