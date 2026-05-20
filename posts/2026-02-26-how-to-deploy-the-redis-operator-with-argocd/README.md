@@ -37,7 +37,7 @@ spec:
   source:
     repoURL: https://ot-container-kit.github.io/helm-charts/
     chart: redis-operator
-    targetRevision: 0.18.0
+    targetRevision: 0.24.0
     helm:
       values: |
         # Operator resources
@@ -48,12 +48,12 @@ spec:
           limits:
             memory: 256Mi
 
-        # Watch all namespaces
-        watchNamespace: ""
+        # Run two replicas; the chart starts the operator with leader election enabled
+        replicas: 2
 
-        # Enable leader election for HA operator
-        leaderElection:
-          enabled: true
+        redisOperator:
+          # Watch all namespaces
+          watchNamespace: ""
   destination:
     server: https://kubernetes.default.svc
     namespace: redis-operator
@@ -87,7 +87,7 @@ metadata:
 spec:
   clusterSize: 3
   kubernetesConfig:
-    image: redis:7.2-alpine
+    image: quay.io/opstree/redis:v7.2.13
     imagePullPolicy: IfNotPresent
     resources:
       requests:
@@ -98,7 +98,7 @@ spec:
         memory: 1Gi
   redisExporter:
     enabled: true
-    image: oliver006/redis_exporter:v1.58.0
+    image: quay.io/opstree/redis-exporter:v1.83.0
     resources:
       requests:
         cpu: 50m
@@ -134,7 +134,7 @@ metadata:
 spec:
   clusterSize: 3
   kubernetesConfig:
-    image: redis:7.2-alpine
+    image: quay.io/opstree/redis-sentinel:v7.2.13
     imagePullPolicy: IfNotPresent
     resources:
       requests:
@@ -169,7 +169,7 @@ spec:
   clusterVersion: v7
   persistenceEnabled: true
   kubernetesConfig:
-    image: redis:7.2-alpine
+    image: quay.io/opstree/redis:v7.2.13
     imagePullPolicy: IfNotPresent
     resources:
       requests:
@@ -180,7 +180,7 @@ spec:
         memory: 2Gi
   redisExporter:
     enabled: true
-    image: oliver006/redis_exporter:v1.58.0
+    image: quay.io/opstree/redis-exporter:v1.83.0
   storage:
     volumeClaimTemplate:
       spec:
@@ -275,10 +275,10 @@ data:
   resource.customizations.health.redis.redis.opstreelabs.in_RedisCluster: |
     hs = {}
     if obj.status ~= nil then
-      if obj.status.state == "ready" then
+      if obj.status.state == "Ready" then
         hs.status = "Healthy"
         hs.message = "Redis cluster is ready"
-      elseif obj.status.state == "error" then
+      elseif obj.status.state == "Failed" then
         hs.status = "Degraded"
         hs.message = "Redis cluster error"
       else
@@ -370,10 +370,17 @@ metadata:
   name: web-app
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: app
+          image: ghcr.io/example/web-app:latest
           env:
             # For Sentinel mode
             - name: REDIS_SENTINEL_HOST
@@ -384,7 +391,7 @@ spec:
               value: "mymaster"
             # For Cluster mode
             # - name: REDIS_CLUSTER_NODES
-            #   value: "redis-cluster-leader-0.redis.svc:6379,redis-cluster-leader-1.redis.svc:6379,redis-cluster-leader-2.redis.svc:6379"
+            #   value: "redis-cluster-leader-0.redis-cluster-leader-headless.redis.svc.cluster.local:6379,redis-cluster-leader-1.redis-cluster-leader-headless.redis.svc.cluster.local:6379,redis-cluster-leader-2.redis-cluster-leader-headless.redis.svc.cluster.local:6379"
 ```
 
 ## Multi-Environment Setup
@@ -400,7 +407,7 @@ metadata:
 spec:
   clusterSize: 3
   kubernetesConfig:
-    image: redis:7.2-alpine
+    image: quay.io/opstree/redis:v7.2.13
 ```
 
 ```yaml
