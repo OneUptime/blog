@@ -97,7 +97,7 @@ Understanding the status codes in `dpkg -l`:
 # Show full information about an installed package
 dpkg -s nginx
 
-# Output includes: version, dependencies, description, installed files
+# Output includes: version, dependencies, status, maintainer, and description
 ```
 
 ### List Files Installed by a Package
@@ -179,7 +179,7 @@ sudo dpkg -V
 
 # Output format (only shows problems):
 # ??5?????? /usr/bin/changed-file
-# Flags: 5=checksum changed, M=permissions changed, T=timestamp changed
+# Flags: 5=digest/content changed, M=file mode check failed, ?=check unsupported or could not be done
 ```
 
 The `dpkg -V` command is useful for detecting if package files have been modified after installation.
@@ -199,8 +199,8 @@ echo "package-name hold" | sudo dpkg --set-selections
 # View current selection states
 dpkg --get-selections
 
-# Apply selections
-sudo dpkg --configure -a
+# Apply install/remove selections
+sudo apt-get dselect-upgrade
 ```
 
 ## Forcing Operations
@@ -235,12 +235,12 @@ Sometimes an installation fails midway, leaving a package in a broken state:
 
 ```bash
 # Check for packages in broken states
-dpkg -l | grep -E "^[^ii]"
+dpkg -l | awk 'NR>5 && $1 !~ /^ii/ {print}'
 
 # Specific broken states:
 dpkg -l | grep "^iU"  # Unpacked but not configured
-dpkg -l | grep "^iF"  # Half-installed (failed)
-dpkg -l | grep "^iH"  # Half-configured
+dpkg -l | grep "^iF"  # Half-configured
+dpkg -l | grep "^iH"  # Half-installed
 
 # Fix all half-configured packages
 sudo dpkg --configure -a
