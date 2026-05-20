@@ -28,7 +28,7 @@ qcow2 is the native QEMU format and the best choice for most scenarios:
 Raw format is a flat binary representation of the disk:
 - **Performance:** Slightly faster I/O than qcow2 for heavy workloads
 - **Compatibility:** Works with any tool that can read block devices
-- **No features:** No snapshots, no thin provisioning, no compression
+- **Few image-level features:** No internal snapshots or compression; sparse files can still provide thin provisioning on filesystems that support holes
 
 Use raw format when maximum I/O performance matters and you do not need snapshot capabilities.
 
@@ -39,10 +39,13 @@ Use raw format when maximum I/O performance matters and you do not need snapshot
 
 qemu-img create -f qcow2 /var/lib/libvirt/images/myvm-data.qcow2 20G
 
-# Create a 20GB raw image (preallocated)
+# Create a 20GB raw image (sparse on filesystems that support holes)
 qemu-img create -f raw /var/lib/libvirt/images/myvm-data.raw 20G
 
-# Create a preallocated qcow2 (better performance, uses full space immediately)
+# Create a 20GB raw image with space preallocated
+qemu-img create -f raw -o preallocation=full /var/lib/libvirt/images/myvm-data.raw 20G
+
+# Create a qcow2 with preallocated metadata (better performance, data still grows as written)
 qemu-img create -f qcow2 -o preallocation=metadata /var/lib/libvirt/images/myvm-data.qcow2 20G
 
 # Create qcow2 with a backing file (overlay/template)
@@ -110,7 +113,7 @@ virsh attach-disk myvm \
   --driver qemu \
   --subdriver qcow2 \
   --live \
-  --persistent
+  --config
 
 # Verify the disk appeared in the VM
 virsh domblklist myvm
@@ -262,9 +265,9 @@ Optimize the disk section:
 ```xml
 <disk type='file' device='disk'>
   <driver name='qemu' type='qcow2'
-          cache='writeback'      <!-- writeback: good balance of safety/performance -->
-          io='native'            <!-- native: use kernel's async I/O -->
-          discard='unmap'        <!-- enable TRIM/discard support -->
+          cache='writeback'
+          io='native'
+          discard='unmap'
   />
   <source file='/var/lib/libvirt/images/myvm.qcow2'/>
   <target dev='vda' bus='virtio'/>
