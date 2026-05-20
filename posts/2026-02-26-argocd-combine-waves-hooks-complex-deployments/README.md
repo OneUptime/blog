@@ -34,7 +34,9 @@ graph TD
     C1 --> C2["Wave 1: Integration Tests"]
     C2 --> C3["Wave 2: Notifications"]
 
-    B -->|"On Failure"| D["SyncFail Phase"]
+    A -->|"On Failure"| D["SyncFail Phase"]
+    B -->|"On Failure"| D
+    C -->|"On Failure"| D
     D --> D1["Wave 0: Collect Debug Info"]
     D1 --> D2["Wave 1: Alert Team"]
 ```
@@ -326,6 +328,19 @@ spec:
             - name: API_URL
               value: "http://api:8080"
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: my-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  selector:
+    app: frontend
+  ports:
+    - port: 3000
+---
 # Sync Wave 3: Ingress (after services are ready)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -515,7 +530,7 @@ Here is the complete execution order for a successful deployment:
 9. **PostSync Wave 0**: Smoke tests run and pass
 10. **PostSync Wave 1**: Slack notification is sent
 
-If any step fails, execution stops at that point. If it fails during or after step 4, the SyncFail hooks run.
+If any step fails, execution stops at that point. When the sync operation is marked failed, the SyncFail hooks run.
 
 ## Design Principles
 
@@ -545,8 +560,8 @@ Before deploying to production, test your complete wave and hook setup in a stag
 # Dry run to see the sync plan
 argocd app sync my-app --dry-run
 
-# Sync with verbose output
-argocd app sync my-app --watch
+# Sync and wait for completion
+argocd app sync my-app
 ```
 
 ## Common Pitfalls
@@ -555,7 +570,7 @@ argocd app sync my-app --watch
 
 **Wave deadlocks**: If two resources in different waves depend on each other, the deployment will hang. Resource A in wave 1 waits for Resource B in wave 2, but wave 2 never starts because wave 1 is not healthy.
 
-**Hook resource naming**: Use static names with `BeforeHookCreation` or unique names with `HookSucceeded`. Do not use static names without a delete policy - the second sync will fail with a naming conflict.
+**Hook resource naming**: Use static names with `BeforeHookCreation` or unique names with `HookSucceeded`. Current ArgoCD versions default to `BeforeHookCreation` when no hook delete policy is set, but setting the policy explicitly makes the behavior clear.
 
 ## Summary
 
