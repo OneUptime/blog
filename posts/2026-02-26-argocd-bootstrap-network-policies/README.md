@@ -48,10 +48,10 @@ Network policies require a CNI plugin that supports them. Not all do. Verify you
 | Cilium | Full (plus extended) |
 | Weave Net | Full |
 | Flannel | None |
-| AWS VPC CNI | With Calico addon |
+| AWS VPC CNI | Native support when network policy is enabled |
 | Azure CNI | With Network Policy engine |
 
-If you are on EKS with the default VPC CNI, you need to install Calico alongside it for network policy enforcement.
+If you are on EKS with the default VPC CNI, enable the VPC CNI network policy feature or install a policy engine like Calico for advanced policy features.
 
 ## Default Deny All Policy
 
@@ -127,7 +127,7 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: argocd
-    # Allow ingress controller to reach the API server
+    # Allow ingress controller to reach the ArgoCD server
     - from:
         - namespaceSelector:
             matchLabels:
@@ -157,9 +157,11 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow Prometheus to scrape from any namespace
+    # Allow the ingress controller to reach Prometheus and Grafana
     - from:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
       ports:
         - protocol: TCP
           port: 9090
@@ -229,7 +231,7 @@ Each team's overlay inherits the default deny and DNS allowance, then adds team-
 
 ## ApplicationSet for Multi-Namespace Deployment
 
-For dynamic namespace creation, use an ApplicationSet to generate network policy applications for each namespace.
+For managing policies across multiple namespaces, use an ApplicationSet to generate network policy applications for each namespace.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
