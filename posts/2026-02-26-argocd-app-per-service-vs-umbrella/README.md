@@ -165,7 +165,7 @@ dependencies:
 
 **Advantages**:
 
-**Coordinated deployments**: All services in the umbrella are synced together. If you need to deploy a breaking API change that affects both user-service and order-service, the umbrella ensures they deploy atomically.
+**Coordinated deployments**: All services in the umbrella are synced as part of the same ArgoCD sync operation. If you need to deploy a breaking API change that affects both user-service and order-service, the umbrella helps you roll out those changes together, though it is not a transactional or atomic deployment.
 
 **Simpler management**: One Application to manage instead of many. The ArgoCD UI shows one "platform" app instead of dozens of individual services.
 
@@ -195,9 +195,9 @@ metadata:
 
 **Blast radius**: A bad manifest in one service can block the sync of all services in the umbrella. If user-service has a syntax error, order-service also does not deploy.
 
-**Slower syncs**: The umbrella syncs everything, even if only one service changed. For large umbrellas, this can be slow.
+**Slower syncs**: By default, ArgoCD applies every object in the Application during auto-sync, even if only one service changed. For large umbrellas, this can be slow.
 
-**No independent deployment**: You cannot deploy just the order-service without syncing the entire umbrella.
+**No independent deployment**: The order-service is not reconciled as its own Application. You can selectively sync individual resources, but selective syncs do not run hooks, and they do not provide the same independent deployment lifecycle as a separate Application.
 
 **Harder to reason about**: When the umbrella shows OutOfSync, you need to dig into the diff to find which specific service has the change.
 
@@ -287,6 +287,8 @@ metadata:
   name: all-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/my-org/config.git
@@ -295,15 +297,15 @@ spec:
           - path: services/*/production
   template:
     metadata:
-      name: '{{path[1]}}'
+      name: '{{index .path.segments 1}}'
     spec:
       source:
         repoURL: https://github.com/my-org/config.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path[1]}}'
+        namespace: '{{index .path.segments 1}}'
       syncPolicy:
         automated:
           prune: true
