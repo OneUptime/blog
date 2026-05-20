@@ -253,7 +253,8 @@ argocd app get payment-api
 git revert HEAD
 git push origin main
 
-# Emergency - manual sync:
+# Emergency - disable auto-sync before syncing an older revision:
+argocd app set payment-api --sync-policy none
 argocd app sync payment-api --revision <previous-sha>
 ```
 
