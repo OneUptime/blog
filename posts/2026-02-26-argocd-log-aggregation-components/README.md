@@ -66,123 +66,134 @@ kubectl rollout restart statefulset -n argocd \
   argocd-application-controller
 ```
 
-## Option 1: Loki with Promtail
+## Option 1: Loki with Grafana Alloy
 
-Loki is lightweight and integrates perfectly with Grafana. Deploy Promtail as a DaemonSet to tail ArgoCD logs.
+Loki is lightweight and integrates perfectly with Grafana. Deploy Grafana Alloy as a DaemonSet to tail ArgoCD logs and send them to Loki.
 
-### Promtail Configuration
+### Alloy Configuration
 
 ```yaml
-# promtail-config.yaml
+# alloy-config.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-argocd-config
+  name: alloy-argocd-config
   namespace: argocd
 data:
-  promtail.yaml: |
-    server:
-      http_listen_port: 3101
+  config.alloy: |
+    discovery.kubernetes "argocd" {
+      role = "pod"
 
-    positions:
-      filename: /tmp/positions.yaml
+      namespaces {
+        names = ["argocd"]
+      }
 
-    clients:
-      - url: http://loki.observability:3100/loki/api/v1/push
+      selectors {
+        role  = "pod"
+        label = "app.kubernetes.io/part-of=argocd"
+      }
+    }
 
-    scrape_configs:
-      - job_name: argocd-pods
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names: [argocd]
+    discovery.relabel "argocd" {
+      targets = discovery.kubernetes.argocd.targets
 
-        relabel_configs:
-          # Only scrape ArgoCD pods
-          - source_labels:
-              - __meta_kubernetes_pod_label_app_kubernetes_io_part_of
-            regex: argocd
-            action: keep
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
 
-          # Set the component label
-          - source_labels:
-              - __meta_kubernetes_pod_label_app_kubernetes_io_name
-            target_label: component
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        target_label  = "component"
+      }
 
-          # Set the pod name
-          - source_labels:
-              - __meta_kubernetes_pod_name
-            target_label: pod
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+    }
 
-        pipeline_stages:
-          # Parse JSON logs
-          - json:
-              expressions:
-                level: level
-                msg: msg
-                timestamp: time
-                application: application
-                sync_status: sync_status
-                health_status: health_status
+    loki.source.kubernetes "argocd" {
+      targets    = discovery.relabel.argocd.output
+      forward_to = [loki.process.argocd.receiver]
+    }
 
-          # Use the log level as a label
-          - labels:
-              level:
-              application:
+    loki.process "argocd" {
+      # Parse JSON logs
+      stage.json {
+        expressions = {
+          level         = "level",
+          msg           = "msg",
+          timestamp     = "time",
+          application   = "application",
+          sync_status   = "sync_status",
+          health_status = "health_status",
+        }
+      }
 
-          # Parse timestamps
-          - timestamp:
-              source: timestamp
-              format: RFC3339Nano
+      # Use the log level as a label
+      stage.labels {
+        values = {
+          level       = "",
+          application = "",
+        }
+      }
 
-          # Drop debug logs in production
-          - match:
-              selector: '{level="debug"}'
-              action: drop
-              drop_counter_reason: debug_logs
+      # Parse timestamps
+      stage.timestamp {
+        source = "timestamp"
+        format = "RFC3339Nano"
+      }
+
+      # Drop debug logs in production
+      stage.match {
+        selector            = "{level=\"debug\"}"
+        action              = "drop"
+        drop_counter_reason = "debug_logs"
+      }
+
+      forward_to = [loki.write.default.receiver]
+    }
+
+    loki.write "default" {
+      endpoint {
+        url = "http://loki.observability:3100/loki/api/v1/push"
+      }
+    }
 ```
 
-### Deploy Promtail
+### Deploy Alloy
 
 ```yaml
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: promtail-argocd
+  name: alloy-argocd
   namespace: argocd
 spec:
   selector:
     matchLabels:
-      app: promtail-argocd
+      app: alloy-argocd
   template:
     metadata:
       labels:
-        app: promtail-argocd
+        app: alloy-argocd
     spec:
+      serviceAccountName: alloy
       containers:
-        - name: promtail
-          image: grafana/promtail:2.9.0
+        - name: alloy
+          image: grafana/alloy:latest
           args:
-            - -config.file=/etc/promtail/promtail.yaml
+            - run
+            - /etc/alloy/config.alloy
+            - --server.http.listen-addr=0.0.0.0:12345
           volumeMounts:
             - name: config
-              mountPath: /etc/promtail
-            - name: pods-logs
-              mountPath: /var/log/pods
-              readOnly: true
-            - name: docker-logs
-              mountPath: /var/lib/docker/containers
-              readOnly: true
+              mountPath: /etc/alloy
       volumes:
         - name: config
           configMap:
-            name: promtail-argocd-config
-        - name: pods-logs
-          hostPath:
-            path: /var/log/pods
-        - name: docker-logs
-          hostPath:
-            path: /var/lib/docker/containers
+            name: alloy-argocd-config
 ```
 
 ## Option 2: Fluentd to Elasticsearch
@@ -201,22 +212,35 @@ data:
     <source>
       @type tail
       path /var/log/pods/argocd_*/*/*.log
+      path_key log_path
       pos_file /var/log/fluentd-argocd.pos
       tag argocd.*
       <parse>
-        @type json
+        @type regexp
+        expression /^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$/
         time_key time
-        time_format %Y-%m-%dT%H:%M:%S.%NZ
+        time_format %Y-%m-%dT%H:%M:%S.%N%z
       </parse>
     </source>
+
+    # Parse the JSON payload emitted by ArgoCD after the Kubernetes CRI log wrapper
+    <filter argocd.**>
+      @type parser
+      key_name log
+      reserve_data true
+      <parse>
+        @type json
+      </parse>
+    </filter>
 
     # Add component metadata
     <filter argocd.**>
       @type record_transformer
+      enable_ruby
       <record>
         cluster "#{ENV['CLUSTER_NAME']}"
         namespace argocd
-        component ${tag_parts[1]}
+        component ${record["log_path"].split("/")[-2]}
       </record>
     </filter>
 
@@ -288,21 +312,20 @@ namespace: "argocd" AND level: "error"
 
 ## Structured Log Enrichment
 
-Add custom fields to ArgoCD logs for better searchability. Use an init container or sidecar:
+Add custom fields to ArgoCD logs for better searchability in the log shipper:
 
 ```yaml
-# Log enrichment sidecar
-containers:
-  - name: log-enricher
-    image: fluent/fluent-bit:2.2
-    volumeMounts:
-      - name: shared-logs
-        mountPath: /var/log/argocd
-    env:
-      - name: CLUSTER_NAME
-        value: "production-us-east-1"
-      - name: ENVIRONMENT
-        value: "production"
+# Alloy log enrichment
+loki.process "argocd" {
+  stage.static_labels {
+    values = {
+      cluster     = "production-us-east-1",
+      environment = "production",
+    }
+  }
+
+  forward_to = [loki.write.default.receiver]
+}
 ```
 
 ## Log Retention and Rotation
@@ -311,18 +334,23 @@ Set appropriate retention for ArgoCD logs:
 
 ```yaml
 # Loki retention config
+compactor:
+  retention_enabled: true
+  delete_request_store: s3
+
 limits_config:
   retention_period: 30d
   max_streams_per_user: 10000
 
-# Per-stream retention
-overrides:
-  argocd:
-    retention_period: 90d  # Keep ArgoCD logs longer for audit
+  # Per-stream retention
+  retention_stream:
+    - selector: '{namespace="argocd"}'
+      priority: 1
+      period: 90d  # Keep ArgoCD logs longer for audit
 ```
 
 ## Summary
 
-Centralized log aggregation for ArgoCD is essential for debugging sync failures, auditing access, and understanding component behavior. Use JSON log format across all components, deploy a log shipper like Promtail or Fluentd, and build queries for your most common debugging scenarios. Whether you choose Loki or Elasticsearch, the key is making ArgoCD logs searchable and correlated with metrics and traces for full observability.
+Centralized log aggregation for ArgoCD is essential for debugging sync failures, auditing access, and understanding component behavior. Use JSON log format across all components, deploy a log shipper like Alloy or Fluentd, and build queries for your most common debugging scenarios. Whether you choose Loki or Elasticsearch, the key is making ArgoCD logs searchable and correlated with metrics and traces for full observability.
 
 For a complete observability setup, see our guide on [full observability for ArgoCD with OpenTelemetry](https://oneuptime.com/blog/post/2026-02-26-argocd-full-observability-opentelemetry/view).
