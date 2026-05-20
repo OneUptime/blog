@@ -32,14 +32,19 @@ Here is a comprehensive onboarding script that handles local account creation an
 
 set -euo pipefail
 
-USERNAME="${1:?Usage: $0 <username> <role> <team>}"
+USERNAME="${1:?Usage: $0 <username> <role> [team]}"
 ROLE="${2:?Specify role: developer, lead, or admin}"
-TEAM="${3:?Specify team name}"
+TEAM="${3:-}"
 NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
+
+if [[ "${ROLE}" != "admin" && -z "${TEAM}" ]]; then
+  echo "ERROR: Specify team name for ${ROLE} users"
+  exit 1
+fi
 
 echo "Onboarding user: ${USERNAME}"
 echo "  Role: ${ROLE}"
-echo "  Team: ${TEAM}"
+echo "  Team: ${TEAM:-n/a}"
 
 # Step 1: Add user account to argocd-cm
 echo "Adding user account..."
@@ -100,7 +105,7 @@ p, ${username}, projects, get, ${team}, allow"
   esac
 
   # Check if user already has policies
-  if echo "${CURRENT_POLICY}" | grep -q "${username}"; then
+  if echo "${CURRENT_POLICY}" | grep -Fq "${username}"; then
     echo "  WARNING: User ${username} already has RBAC policies. Skipping to avoid duplicates."
     return
   fi
@@ -121,7 +126,9 @@ configure_rbac "${USERNAME}" "${ROLE}" "${TEAM}"
 
 # Step 4: Ensure the team project exists
 echo "Checking team project..."
-if ! kubectl get appproject "${TEAM}" -n "${NAMESPACE}" &>/dev/null; then
+if [[ "${ROLE}" == "admin" ]]; then
+  echo "  Admin users are not tied to a team project"
+elif ! kubectl get appproject "${TEAM}" -n "${NAMESPACE}" &>/dev/null; then
   echo "  Creating project for team: ${TEAM}"
   cat <<EOF | kubectl apply -f -
 apiVersion: argoproj.io/v1alpha1
@@ -159,7 +166,7 @@ echo "ArgoCD URL:       https://argocd.example.com"
 echo "Username:         ${USERNAME}"
 echo "Temporary Password: ${TEMP_PASSWORD}"
 echo "Role:             ${ROLE}"
-echo "Project:          ${TEAM}"
+echo "Project:          ${TEAM:-n/a}"
 echo ""
 echo "The user should change their password on first login."
 echo "=========================================="
@@ -186,9 +193,9 @@ CURRENT_POLICY=$(kubectl get configmap argocd-rbac-cm -n "${NAMESPACE}" \
   -o jsonpath='{.data.policy\.csv}' 2>/dev/null || echo "")
 
 # Check for existing mapping
-if echo "${CURRENT_POLICY}" | grep -q "g, ${SSO_GROUP}"; then
+if echo "${CURRENT_POLICY}" | grep -Fq "g, ${SSO_GROUP}"; then
   echo "WARNING: Group ${SSO_GROUP} already has mappings:"
-  echo "${CURRENT_POLICY}" | grep "${SSO_GROUP}"
+  echo "${CURRENT_POLICY}" | grep -F "${SSO_GROUP}"
   echo ""
   read -p "Continue anyway? (y/N) " -n 1 -r
   echo
@@ -242,7 +249,7 @@ SUCCESS=0
 FAILED=0
 
 # CSV format: username,role,team,email
-tail -n +2 "${USERS_FILE}" | while IFS=',' read -r username role team email; do
+while IFS=',' read -r username role team email; do
   TOTAL=$((TOTAL + 1))
   echo "Processing ${username} (${role} in ${team})..."
 
@@ -258,7 +265,7 @@ tail -n +2 "${USERS_FILE}" | while IFS=',' read -r username role team email; do
     echo "  FAILED: ${username}"
   fi
   echo ""
-done
+done < <(tail -n +2 "${USERS_FILE}")
 
 echo "Batch onboarding complete"
 echo "  Total:   ${TOTAL}"
@@ -330,10 +337,13 @@ kubectl patch configmap argocd-rbac-cm -n "${NAMESPACE}" --type merge -p "{
   }
 }"
 
-# Delete any API tokens
-argocd account delete-token "${USERNAME}" --all 2>/dev/null || true
+# Remove local account token metadata and password hash if present.
+kubectl patch configmap argocd-cm -n "${NAMESPACE}" --type='json' \
+  -p="[{\"op\": \"remove\", \"path\": \"/data/accounts.${USERNAME}.tokens\"}]" 2>/dev/null || true
+kubectl patch secret argocd-secret -n "${NAMESPACE}" --type='json' \
+  -p="[{\"op\": \"remove\", \"path\": \"/data/accounts.${USERNAME}.password\"}]" 2>/dev/null || true
 
-echo "User ${USERNAME} has been disabled and their access revoked"
+echo "User ${USERNAME} has been disabled and local credentials have been removed"
 ```
 
 ## Summary
