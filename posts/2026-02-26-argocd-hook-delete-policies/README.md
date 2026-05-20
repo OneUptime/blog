@@ -8,7 +8,7 @@ Description: Learn how to configure hook delete policies in ArgoCD to control wh
 
 ---
 
-When ArgoCD runs sync hooks (PreSync, PostSync, SyncFail), it creates Kubernetes resources like Jobs and Pods. After these hooks complete, the resources remain in the cluster by default. Over time, this leads to hundreds of completed Jobs cluttering your namespaces. Hook delete policies tell ArgoCD when to clean up these resources automatically.
+When ArgoCD runs sync hooks (PreSync, Sync, PostSync, SyncFail), it applies Kubernetes resources like Jobs and Pods. After these hooks complete, the resources can remain in the cluster until ArgoCD or Kubernetes cleans them up. Over time, this can lead to hundreds of completed Jobs cluttering your namespaces. Hook delete policies tell ArgoCD when to clean up these resources automatically.
 
 ArgoCD supports three hook delete policies: `HookSucceeded`, `HookFailed`, and `BeforeHookCreation`. Each controls a different cleanup scenario, and you can combine them for comprehensive lifecycle management.
 
@@ -29,7 +29,7 @@ metadata:
 ```
 
 **Behavior:**
-- Hook succeeds: Resource is deleted immediately
+- Hook succeeds: Resource is deleted after ArgoCD observes the successful completion
 - Hook fails: Resource remains in the cluster
 
 This is the most common policy. It keeps your cluster clean while preserving failed hooks for investigation.
@@ -50,7 +50,7 @@ metadata:
 
 **Behavior:**
 - Hook succeeds: Resource remains in the cluster
-- Hook fails: Resource is deleted immediately
+- Hook fails: Resource is deleted after ArgoCD observes the failure
 
 This is less common. You might use it when you want to keep successful hook results for auditing but do not care about failed attempts.
 
@@ -84,31 +84,31 @@ annotations:
 ```
 
 This means:
-- If the hook succeeds, delete it immediately
+- If the hook succeeds, delete it after ArgoCD observes the successful completion
 - If it fails, keep it until the next sync (when BeforeHookCreation cleans it up)
 
 This combination is arguably the best general-purpose policy. Successful hooks are cleaned up right away, and failed hooks stick around for debugging but are automatically cleaned up before the next sync attempt.
 
 ## Default Behavior (No Delete Policy)
 
-If you do not specify a hook delete policy, the hook resource is never automatically deleted by ArgoCD. It stays in the cluster until you manually delete it or until namespace cleanup.
+If you do not specify a hook delete policy, ArgoCD assumes `BeforeHookCreation`. The hook resource stays in the cluster after it finishes, then ArgoCD deletes the existing hook resource before creating a new one with the same name on a later sync.
 
 ```yaml
-# No delete policy - hook resources accumulate
+# No delete policy - ArgoCD assumes BeforeHookCreation
 
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migrate-v42
+  name: db-migrate
   annotations:
     argocd.argoproj.io/hook: PreSync
     # No hook-delete-policy annotation
 ```
 
-This is rarely what you want. Without a delete policy, you will end up with dozens of completed Jobs:
+This is useful when you want to inspect the most recent run. If you use unique names or generated names for each hook run and do not delete completed hooks another way, you can still end up with dozens of completed Jobs:
 
 ```bash
-# After many syncs without delete policy
+# After many syncs with unique hook names and no completion-based cleanup
 kubectl get jobs -n my-app
 # NAME              COMPLETIONS   DURATION   AGE
 # db-migrate-v39    1/1           12s        7d
@@ -119,11 +119,11 @@ kubectl get jobs -n my-app
 
 ## Policy Comparison Table
 
-| Scenario | HookSucceeded | HookFailed | BeforeHookCreation | None |
+| Scenario | HookSucceeded | HookFailed | BeforeHookCreation | None (defaults to BeforeHookCreation) |
 |----------|:---:|:---:|:---:|:---:|
-| Hook succeeds | Deleted | Kept | Kept until next sync | Kept forever |
-| Hook fails | Kept | Deleted | Kept until next sync | Kept forever |
-| Before next sync | N/A | N/A | Deleted | N/A |
+| Hook succeeds | Deleted | Kept | Kept until next sync | Kept until next sync |
+| Hook fails | Kept | Deleted | Kept until next sync | Kept until next sync |
+| Before next sync | N/A | N/A | Deleted | Deleted if recreated with the same name |
 
 ## Practical Examples
 
@@ -205,7 +205,7 @@ spec:
   backoffLimit: 1
 ```
 
-When keeping hooks for audit purposes, use unique names (with version numbers) to prevent naming conflicts across syncs.
+When keeping hooks for audit purposes, use unique names (with version numbers) to prevent naming conflicts across syncs. Because ArgoCD assumes `BeforeHookCreation` when no delete policy is set, previous hook resources with different names are not deleted by that default policy.
 
 ### Smoke Test Hook (Keep Only Latest)
 
@@ -232,7 +232,7 @@ spec:
 
 ## Cleanup Timing Details
 
-**HookSucceeded/HookFailed**: Deletion happens immediately after ArgoCD detects the hook's completion status. This is typically within seconds of the Job completing.
+**HookSucceeded/HookFailed**: Deletion happens after ArgoCD detects the hook's completion status.
 
 **BeforeHookCreation**: Deletion happens at the beginning of the sync operation, before the hook is created. ArgoCD deletes the existing resource, waits for it to be gone, and then creates the new one.
 
@@ -292,6 +292,6 @@ Set `activeDeadlineSeconds` on your Jobs to prevent them from running forever.
 
 ## Summary
 
-Hook delete policies keep your cluster clean by automatically removing completed hook resources. Use `HookSucceeded` for the most common case of cleaning up after success, `BeforeHookCreation` to ensure only one instance exists, and combine them for comprehensive lifecycle management. Always specify a delete policy on your hooks - the default of keeping everything forever leads to resource accumulation that becomes a maintenance burden.
+Hook delete policies keep your cluster clean by automatically removing completed hook resources. Use `HookSucceeded` for the most common case of cleaning up after success, `BeforeHookCreation` to ensure only one instance exists, and combine them for comprehensive lifecycle management. Always specify a delete policy on your hooks so the intended cleanup behavior is explicit.
 
 For details on specific delete policies, see our guides on [HookSucceeded](https://oneuptime.com/blog/post/2026-02-26-argocd-hooksucceeded-delete-policy/view), [HookFailed](https://oneuptime.com/blog/post/2026-02-26-argocd-hookfailed-delete-policy/view), and [BeforeHookCreation](https://oneuptime.com/blog/post/2026-02-26-argocd-beforehookcreation-delete-policy/view).
