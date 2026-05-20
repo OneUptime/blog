@@ -8,7 +8,7 @@ Description: Learn how to deploy vLLM for high-performance large language model 
 
 ---
 
-vLLM is the fastest open-source engine for serving large language models. It uses PagedAttention to deliver up to 24x higher throughput than naive HuggingFace serving, making it practical to serve models like Llama, Mistral, and Qwen on GPU infrastructure. Deploying vLLM through ArgoCD gives you GitOps-managed LLM serving - model versions tracked in Git, GPU resources properly scheduled, and rollbacks available at a commit.
+vLLM is a high-throughput open-source engine for serving large language models. It uses PagedAttention to deliver up to 24x higher throughput than naive HuggingFace serving, making it practical to serve models like Llama, Mistral, and Qwen on GPU infrastructure. Deploying vLLM through ArgoCD gives you GitOps-managed LLM serving - model versions tracked in Git, GPU resources properly scheduled, and rollbacks available at a commit.
 
 This guide walks through deploying vLLM on Kubernetes with ArgoCD, covering GPU node configuration, model downloads, autoscaling, and production-ready settings.
 
@@ -49,12 +49,19 @@ spec:
     targetRevision: v23.9.1
     helm:
       values: |
-        operator:
-          defaultRuntime: containerd
         driver:
           enabled: true
         toolkit:
           enabled: true
+          env:
+            - name: CONTAINERD_CONFIG
+              value: /etc/containerd/config.toml
+            - name: CONTAINERD_SOCKET
+              value: /run/containerd/containerd.sock
+            - name: CONTAINERD_RUNTIME_CLASS
+              value: nvidia
+            - name: CONTAINERD_SET_AS_DEFAULT
+              value: "true"
   destination:
     server: https://kubernetes.default.svc
     namespace: gpu-operator
@@ -111,7 +118,7 @@ spec:
             - auto
             - --enforce-eager
           env:
-            - name: HUGGING_FACE_HUB_TOKEN
+            - name: HF_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: hf-token
@@ -253,6 +260,10 @@ spec:
     matchLabels:
       app: vllm-70b
   template:
+    metadata:
+      labels:
+        app: vllm-70b
+        model: llama-70b
     spec:
       containers:
         - name: vllm
@@ -344,7 +355,7 @@ git push
 
 ## Autoscaling LLM Serving
 
-Scale based on pending requests and GPU utilization:
+With a Prometheus Adapter rule that maps vLLM's `vllm:num_requests_waiting` metric to a Kubernetes custom metric, scale based on pending requests:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -362,7 +373,7 @@ spec:
     - type: Pods
       pods:
         metric:
-          name: vllm_pending_requests
+          name: vllm_num_requests_waiting
         target:
           type: AverageValue
           averageValue: "10"
@@ -459,11 +470,11 @@ Key vLLM metrics to monitor:
 
 - `vllm:num_requests_running` - Active requests
 - `vllm:num_requests_waiting` - Queued requests
-- `vllm:gpu_cache_usage_perc` - GPU KV cache utilization
-- `vllm:avg_prompt_throughput_toks_per_s` - Input token throughput
-- `vllm:avg_generation_throughput_toks_per_s` - Output token throughput
+- `vllm:kv_cache_usage_perc` - KV cache utilization
+- `vllm:prompt_tokens` - Input tokens processed
+- `vllm:generation_tokens` - Output tokens processed
 
-Use OneUptime to monitor vLLM endpoints, track inference latency per model, and set up alerts when GPU cache utilization reaches critical levels or request queues grow too long.
+Use OneUptime to monitor vLLM endpoints, track inference latency per model, and set up alerts when KV cache utilization reaches critical levels or request queues grow too long.
 
 ## ArgoCD Application
 
