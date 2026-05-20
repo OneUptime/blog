@@ -142,17 +142,19 @@ metadata:
     argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: ssh://git-codecommit.us-east-1.amazonaws.com/v1/repos
+  url: ssh://APKAEIBAERJR2EXAMPLE@git-codecommit.us-east-1.amazonaws.com/v1/repos
   sshPrivateKey: |
-    -----BEGIN RSA PRIVATE KEY-----
-    MIIEpAIBAAKCAQEA...
-    -----END RSA PRIVATE KEY-----
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    b3BlbnNzaC1rZXktdjE...
+    -----END OPENSSH PRIVATE KEY-----
 ```
 
 The SSH URL format for CodeCommit is:
 ```text
 ssh://APKAEIBAERJR2EXAMPLE@git-codecommit.us-east-1.amazonaws.com/v1/repos/repo-name
 ```
+
+Use the `SSHPublicKeyId` from IAM in both the repository URL and the credential template URL so ArgoCD's prefix matching can find the credentials.
 
 Add the CodeCommit SSH host key:
 
@@ -169,6 +171,8 @@ kind: ConfigMap
 metadata:
   name: argocd-ssh-known-hosts-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   ssh_known_hosts: |
     git-codecommit.us-east-1.amazonaws.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC...
@@ -217,6 +221,8 @@ eksctl create iamserviceaccount \
 ### Step 2: Configure the Credential Helper
 
 The AWS credential helper generates temporary credentials. You need to configure ArgoCD's repo-server to use it:
+
+The repo-server container must also have the AWS CLI installed, either through a custom ArgoCD image or by mounting the binary as custom tooling.
 
 ```yaml
 # argocd-repo-server patch
