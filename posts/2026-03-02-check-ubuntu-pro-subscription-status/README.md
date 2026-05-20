@@ -69,7 +69,7 @@ import json, sys
 data = json.load(sys.stdin)
 expires = data.get('expires', 'unknown')
 account = data.get('account', {}).get('name', 'unknown')
-subscription = data.get('subscription', {}).get('name', 'unknown')
+subscription = data.get('contract', {}).get('name', 'unknown')
 print(f'Account: {account}')
 print(f'Subscription: {subscription}')
 print(f'Expires: {expires}')
@@ -80,13 +80,13 @@ print(f'Expires: {expires}')
 
 ```bash
 # Show attached account details
-pro accounts
+pro status
 
 # Output includes:
 # - Account name
 # - Subscription type
 # - Expiration date
-# - Contact information
+# - Technical support level
 ```
 
 ## Verifying Each Service Status
@@ -148,8 +148,8 @@ For free personal subscriptions, the expiration is typically set far in the futu
 ## Checking for Subscription Issues
 
 ```bash
-# Run diagnostics on the Pro attachment
-pro diagnose
+# Collect logs and debug information for troubleshooting
+pro collect-logs
 
 # Check the systemd service status
 systemctl status ubuntu-advantage
@@ -158,7 +158,7 @@ systemctl status ubuntu-advantage
 sudo journalctl -u ubuntu-advantage -n 50
 
 # Check if Pro can reach Canonical's servers
-pro status --debug 2>&1 | grep -E "contract|network|error"
+pro --debug status 2>&1 | grep -E "contract|network|error"
 ```
 
 ## Status When Not Attached
@@ -269,8 +269,8 @@ sudo grep -i "ubuntu_advantage\|ubuntu-advantage\|pro attach" /var/log/cloud-ini
 # Check cloud-init status
 cloud-init status --long
 
-# View cloud-init final module output
-sudo cloud-init single --name final
+# View cloud-init module output
+sudo less /var/log/cloud-init-output.log
 ```
 
 ## Setting Up Expiration Alerts
