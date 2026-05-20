@@ -114,8 +114,6 @@ spec:
           selfHeal: true
         syncOptions:
           - CreateNamespace=true
-          # Retry on failure - critical for edge devices
-          - Retry=true
         retry:
           limit: 5
           backoff:
@@ -128,7 +126,7 @@ spec:
 
 You do not want to push updates to every edge device simultaneously. A bad update could take down your entire fleet. Instead, use a canary or tiered rollout strategy.
 
-Label your clusters by tier and use multiple ApplicationSets or a matrix generator to control rollout order.
+Label your clusters by tier and use multiple ApplicationSets or a matrix generator to control rollout order. If you use RollingSync, enable ApplicationSet progressive syncs and make sure the generated Applications have labels that RollingSync can match.
 
 ```yaml
 # appset-tiered-rollout.yaml
@@ -145,10 +143,12 @@ spec:
           # First dimension: select clusters by rollout tier
           - clusters:
               selector:
-                matchLabels:
-                  edge-tier: canary
-              values:
-                wave: "1"
+                matchExpressions:
+                  - key: edge-tier
+                    operator: In
+                    values:
+                      - canary
+                      - standard
           # Second dimension: the apps to deploy
           - git:
               repoURL: https://github.com/company/edge-configs
@@ -165,7 +165,7 @@ spec:
               operator: In
               values:
                 - canary
-          # Wait for manual approval before proceeding
+          # Waits for canary Applications to become Healthy before proceeding
           maxUpdate: 100%
         # Then roll out to standard tier
         - matchExpressions:
@@ -177,6 +177,8 @@ spec:
   template:
     metadata:
       name: '{{path.basename}}-{{name}}'
+      labels:
+        edge-tier: '{{metadata.labels.edge-tier}}'
     spec:
       project: edge-fleet
       source:
@@ -187,9 +189,8 @@ spec:
         server: '{{server}}'
         namespace: '{{path.basename}}'
       syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
 ```
 
 ## Managing Cluster-Specific Configurations
@@ -234,7 +235,7 @@ Key metrics to watch include:
 
 - `argocd_app_info` with labels for sync status and health status per application
 - `argocd_app_sync_total` to track sync attempts and failures
-- `argocd_cluster_api_server_requests_total` to detect unreachable edge clusters
+- `argocd_cluster_connection_status` to detect unreachable edge clusters
 
 You can build a Grafana dashboard that shows the overall fleet health at a glance and lets you drill into individual sites. For alerting, set up rules that fire when a cluster has been out of sync for more than a threshold - maybe 30 minutes for standard updates or 5 minutes for critical security patches.
 
@@ -244,9 +245,19 @@ If you are looking for an integrated monitoring solution that works well with Ar
 
 ArgoCD can comfortably manage several hundred clusters from a single instance, but at true fleet scale (thousands of devices), you will need to tune it.
 
-Key scaling considerations include increasing the application controller's `--status-processors` and `--operation-processors` flags, sharding the application controller across multiple replicas, increasing Redis memory limits for the larger cache footprint, and setting longer reconciliation intervals for edge clusters since they do not need the same 3-minute default as development clusters.
+Key scaling considerations include increasing the application controller's `--status-processors` and `--operation-processors` flags, sharding the application controller across multiple replicas, increasing Redis memory limits for the larger cache footprint, and setting longer reconciliation intervals since edge environments often do not need the same default polling frequency as development clusters.
 
 ```yaml
+# argocd-cm ConfigMap tuning for fleet scale
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Check Git less often than the default 120s plus jitter
+  timeout.reconciliation: "5m"
+---
 # argocd-cmd-params-cm ConfigMap tuning for fleet scale
 apiVersion: v1
 kind: ConfigMap
@@ -254,12 +265,10 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Increase reconciliation timeout for edge clusters
-  timeout.reconciliation: "300"
   # Increase controller processors for parallel sync
   controller.status.processors: "50"
   controller.operation.processors: "25"
-  # Enable sharding for large fleet
+  # Choose a sharding algorithm when running multiple controller replicas
   controller.sharding.algorithm: "round-robin"
 ```
 
