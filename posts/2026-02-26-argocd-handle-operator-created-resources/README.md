@@ -75,24 +75,32 @@ metadata:
 data:
   resource.customizations.health.postgres-operator.crunchydata.com_PostgresCluster: |
     hs = {}
-    if obj.status ~= nil then
-      if obj.status.conditions ~= nil then
-        for i, condition in ipairs(obj.status.conditions) do
-          if condition.type == "PostgresClusterProgressing" and condition.status == "True" then
-            hs.status = "Progressing"
-            hs.message = condition.message or "Cluster is being set up"
-            return hs
-          end
-          if condition.type == "PostgresClusterProgressing" and condition.status == "False" and condition.reason == "PostgresClusterHealthy" then
-            hs.status = "Healthy"
-            hs.message = "PostgreSQL cluster is healthy"
-            return hs
-          end
+    if obj.status == nil then
+      hs.status = "Progressing"
+      hs.message = "Waiting for status"
+      return hs
+    end
+    if obj.status.observedGeneration ~= nil and obj.metadata.generation ~= nil and obj.status.observedGeneration < obj.metadata.generation then
+      hs.status = "Progressing"
+      hs.message = "Waiting for the operator to observe the latest generation"
+      return hs
+    end
+    if obj.status.instances ~= nil then
+      for i, instance in ipairs(obj.status.instances) do
+        if instance.replicas ~= nil and instance.readyReplicas ~= nil and instance.readyReplicas < instance.replicas then
+          hs.status = "Progressing"
+          hs.message = "Waiting for PostgreSQL instances to become ready"
+          return hs
+        end
+        if instance.replicas ~= nil and instance.updatedReplicas ~= nil and instance.updatedReplicas < instance.replicas then
+          hs.status = "Progressing"
+          hs.message = "Waiting for PostgreSQL instances to finish updating"
+          return hs
         end
       end
     end
-    hs.status = "Progressing"
-    hs.message = "Waiting for status"
+    hs.status = "Healthy"
+    hs.message = "PostgreSQL cluster is reconciled"
     return hs
 ```
 
@@ -196,9 +204,9 @@ data:
         - "*"
 ```
 
-## Strategy 5: Handling HPA and VPA Operator Conflicts
+## Strategy 5: Handling HPA and VPA Controller Conflicts
 
-The Horizontal Pod Autoscaler (HPA) and Vertical Pod Autoscaler (VPA) are built-in Kubernetes operators that modify replica counts and resource requests. This is one of the most common operator conflicts with ArgoCD.
+The Horizontal Pod Autoscaler (HPA) is a built-in Kubernetes controller that modifies replica counts. The Vertical Pod Autoscaler (VPA), when installed, can also change pod resource requests through its admission and update components. This is one of the most common controller conflicts with ArgoCD.
 
 ```yaml
 # Deploy the HPA through ArgoCD
@@ -328,12 +336,13 @@ data:
       - name: trigger-backup
         action.lua: |
           obj.metadata.annotations = obj.metadata.annotations or {}
-          obj.metadata.annotations["postgres-operator.crunchydata.com/pgbackrest-backup"] = "trigger"
+          obj.metadata.annotations["postgres-operator.crunchydata.com/pgbackrest-backup"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
           return obj
       - name: restart-cluster
         action.lua: |
-          obj.metadata.annotations = obj.metadata.annotations or {}
-          obj.metadata.annotations["postgres-operator.crunchydata.com/restart"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
+          obj.spec.metadata = obj.spec.metadata or {}
+          obj.spec.metadata.annotations = obj.spec.metadata.annotations or {}
+          obj.spec.metadata.annotations["restarted"] = os.date("!%Y-%m-%dT%H:%M:%SZ")
           return obj
 ```
 
