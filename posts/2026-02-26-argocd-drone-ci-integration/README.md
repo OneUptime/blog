@@ -142,7 +142,7 @@ Instead of waiting for ArgoCD to poll for changes, you can trigger a sync direct
 ```yaml
   # Step 3: Trigger ArgoCD sync
   - name: sync-argocd
-    image: argoproj/argocd:v2.10.0
+    image: quay.io/argoproj/argocd:v3.4.1
     environment:
       ARGOCD_SERVER:
         from_secret: argocd_server
@@ -154,14 +154,14 @@ Instead of waiting for ArgoCD to poll for changes, you can trigger a sync direct
       - argocd app wait my-app --health --grpc-web --timeout 300
 ```
 
-## Using Drone Plugins for ArgoCD
+## Running the ArgoCD CLI from Drone
 
-The community has created Drone plugins specifically for ArgoCD integration. These simplify the configuration.
+You can also run the ArgoCD CLI from an ArgoCD container image to keep the deployment step simple.
 
 ```yaml
-  # Using the ArgoCD Drone plugin
+  # Using the ArgoCD CLI container
   - name: deploy
-    image: quay.io/argoproj/argocd
+    image: quay.io/argoproj/argocd:v3.4.1
     environment:
       ARGOCD_SERVER:
         from_secret: argocd_server
@@ -233,7 +233,7 @@ steps:
       GITHUB_TOKEN:
         from_secret: github_token
     commands:
-      - export IMAGE_TAG=${DRONE_DEPLOY_TO}
+      - export IMAGE_TAG=${DRONE_COMMIT_SHA:0:7}
       - git clone https://$GITHUB_TOKEN@github.com/my-org/k8s-manifests.git
       - cd k8s-manifests/overlays/production
       - sed -i "s|image: registry.example.com/my-app:.*|image: registry.example.com/my-app:$IMAGE_TAG|g" deployment.yaml
