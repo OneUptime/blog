@@ -35,8 +35,8 @@ metadata:
   annotations:
     # Run before the main sync
     argocd.argoproj.io/hook: PreSync
-    # Delete the job after it succeeds
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    # Delete successful jobs, and delete any previous named job before rerunning
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 spec:
   template:
     spec:
@@ -59,13 +59,13 @@ When ArgoCD syncs, it runs this job first. If the migration fails, the sync fail
 
 ### Important Considerations
 
-The hook-delete-policy matters. Use `HookSucceeded` to clean up successful jobs, but keep failed jobs for debugging:
+The hook-delete-policy matters. Use `HookSucceeded` to clean up successful jobs, but keep failed jobs for debugging. If you use a fixed `metadata.name` for the hook, also use `BeforeHookCreation` so ArgoCD can delete the old named job before creating a new one on a later sync:
 
 ```yaml
 annotations:
   argocd.argoproj.io/hook: PreSync
-  # Only delete on success - keep failed jobs for investigation
-  argocd.argoproj.io/hook-delete-policy: HookSucceeded
+  # Delete on success, keep failed jobs until the next sync reruns the hook
+  argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 ```
 
 Available delete policies:
@@ -90,7 +90,13 @@ metadata:
   name: myapp
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       initContainers:
         - name: db-migrate
@@ -117,7 +123,7 @@ initContainers:
       - sh
       - -c
       - |
-        # Use advisory lock to ensure only one pod runs migrations
+        # Use only with a migration framework that handles concurrent starts safely
         python manage.py migrate --noinput 2>&1
         echo "Migration complete"
 ```
@@ -126,7 +132,7 @@ This pattern is simpler than hooks but has the replica issue. It works well for 
 
 ## Pattern 3: Separate Migration Application
 
-Create a dedicated ArgoCD Application for database migrations that syncs before the main application using sync waves:
+Create dedicated child ArgoCD Applications for database migrations and the main application, then have a parent app-of-apps Application sync those child Application resources in order using sync waves:
 
 ```yaml
 # Migration Application - runs first (wave -1)
@@ -139,15 +145,17 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/repo.git
+    targetRevision: HEAD
     path: migrations/myapp
   destination:
     server: https://kubernetes.default.svc
     namespace: myapp
   syncPolicy:
     automated:
-      selfHeal: false  # Don't auto-heal - migrations should only run once
+      selfHeal: false  # Don't rerun just because live state drifts
 ---
 # Main Application - runs after migrations (wave 0)
 apiVersion: argoproj.io/v1alpha1
@@ -158,8 +166,10 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/repo.git
+    targetRevision: HEAD
     path: manifests/myapp
   destination:
     server: https://kubernetes.default.svc
@@ -253,8 +263,8 @@ To investigate and fix:
 # Check the migration job logs
 kubectl logs job/db-migrate -n myapp
 
-# The job is kept because of HookSucceeded delete policy
-# (it only deletes on success)
+# The job is kept because the delete policy only deletes it on success
+# or before the next hook creation
 
 # After fixing the migration, trigger a new sync
 argocd app sync myapp
