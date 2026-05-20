@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Testing, Deployment
 
-Description: Learn how to configure ArgoCD PostSync hooks to run smoke tests automatically after every deployment, catching critical failures before they reach users.
+Description: Learn how to configure ArgoCD PostSync hooks to run smoke tests automatically after successful deployments, catching critical failures before they reach users.
 
 ---
 
-A smoke test answers one simple question: does the thing we just deployed actually work? Not whether every edge case is covered, not whether performance is optimal, but whether the core functionality is alive and responding. In a GitOps workflow with ArgoCD, PostSync hooks give you the perfect mechanism to answer that question automatically after every sync.
+A smoke test answers one simple question: does the thing we just deployed actually work? Not whether every edge case is covered, not whether performance is optimal, but whether the core functionality is alive and responding. In a GitOps workflow with ArgoCD, PostSync hooks give you the perfect mechanism to answer that question automatically after every successful full sync.
 
 This guide covers how to build effective smoke tests as ArgoCD PostSync hooks, from simple HTTP checks to multi-service validation suites.
 
@@ -25,7 +25,7 @@ A smoke test is not the place for comprehensive validation. It is the quick sani
 
 ```mermaid
 graph TD
-    A[ArgoCD Sync Complete] --> B[PostSync Hook Triggered]
+    A[ArgoCD Sync Applied and Healthy] --> B[PostSync Hook Triggered]
     B --> C[Smoke Test Job Starts]
     C --> D{Health Checks Pass?}
     D -->|Yes| E{Core APIs Respond?}
@@ -51,7 +51,6 @@ metadata:
 spec:
   backoffLimit: 0
   activeDeadlineSeconds: 120
-  ttlSecondsAfterFinished: 300
   template:
     spec:
       restartPolicy: Never
@@ -73,7 +72,7 @@ spec:
                 local expected_code=$3
 
                 code=$(curl -s -o /dev/null -w "%{http_code}" \
-                  --connect-timeout 5 --max-time 10 "$url")
+                  --connect-timeout 5 --max-time 10 "$url" || true)
                 if [ "$code" = "$expected_code" ]; then
                   echo "PASS: $name (HTTP $code)"
                   PASS=$((PASS + 1))
@@ -154,7 +153,7 @@ spec:
 
               # Test 1: API health returns healthy status
               echo "Test 1: API health check"
-              health=$(curl -sf http://api.default.svc:8080/health)
+              health=$(curl -sf http://api.default.svc:8080/health || true)
               if echo "$health" | grep -q '"status":"healthy"'; then
                 echo "  PASS"
               else
@@ -164,7 +163,7 @@ spec:
 
               # Test 2: Version endpoint returns current version
               echo "Test 2: Version endpoint"
-              version=$(curl -sf http://api.default.svc:8080/version)
+              version=$(curl -sf http://api.default.svc:8080/version || true)
               if echo "$version" | grep -q '"version"'; then
                 echo "  PASS: $version"
               else
@@ -174,7 +173,7 @@ spec:
 
               # Test 3: Database connectivity
               echo "Test 3: Database connectivity"
-              db_status=$(curl -sf http://api.default.svc:8080/health/db)
+              db_status=$(curl -sf http://api.default.svc:8080/health/db || true)
               if echo "$db_status" | grep -q '"connected":true'; then
                 echo "  PASS"
               else
@@ -184,7 +183,7 @@ spec:
 
               # Test 4: Cache connectivity
               echo "Test 4: Redis cache connectivity"
-              cache_status=$(curl -sf http://api.default.svc:8080/health/cache)
+              cache_status=$(curl -sf http://api.default.svc:8080/health/cache || true)
               if echo "$cache_status" | grep -q '"connected":true'; then
                 echo "  PASS"
               else
@@ -197,7 +196,7 @@ spec:
               create_resp=$(curl -s -w "\n%{http_code}" \
                 -X POST http://api.default.svc:8080/api/v1/smoke-test \
                 -H "Content-Type: application/json" \
-                -d '{"test": true}')
+                -d '{"test": true}' || true)
               code=$(echo "$create_resp" | tail -1)
               if [ "$code" = "201" ] || [ "$code" = "200" ]; then
                 echo "  PASS"
@@ -350,12 +349,13 @@ containers:
         failed=0
 
         check() {
-          local name=$1 url=$2
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url")
+          local name=$1
+          local url=$2
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$url" || true)
           if [ "$code" = "200" ]; then
-            results="$results\n:white_check_mark: $name"
+            results="${results}\\n:white_check_mark: $name"
           else
-            results="$results\n:x: $name (HTTP $code)"
+            results="${results}\\n:x: $name (HTTP $code)"
             failed=$((failed + 1))
           fi
         }
@@ -379,7 +379,7 @@ containers:
             \"attachments\": [{
               \"color\": \"$color\",
               \"title\": \"Smoke Tests $status - $NAMESPACE\",
-              \"text\": \"$(echo -e "$results")\"
+              \"text\": \"$results\"
             }]
           }"
 
