@@ -49,7 +49,7 @@ spec:
   source:
     repoURL: https://kubernetes.github.io/ingress-nginx
     chart: ingress-nginx
-    targetRevision: 4.9.1
+    targetRevision: 4.15.1
     helm:
       releaseName: ingress-nginx
       values: |
@@ -150,7 +150,7 @@ spec:
   source:
     repoURL: https://traefik.github.io/charts
     chart: traefik
-    targetRevision: 26.0.0
+    targetRevision: 40.2.0
     helm:
       releaseName: traefik
       values: |
@@ -167,11 +167,15 @@ spec:
           type: LoadBalancer
         ports:
           web:
-            redirectTo:
-              port: websecure
+            http:
+              redirections:
+                entryPoint:
+                  to: websecure
+                  scheme: https
           websecure:
-            tls:
-              enabled: true
+            http:
+              tls:
+                enabled: true
         metrics:
           prometheus:
             service:
@@ -181,7 +185,9 @@ spec:
         ingressRoute:
           dashboard:
             enabled: true
-            matchRule: Host(`traefik.example.com`)
+            matchRule: Host(`traefik.example.com`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))
+            entryPoints:
+              - websecure
   destination:
     server: https://kubernetes.default.svc
     namespace: traefik
@@ -193,7 +199,7 @@ spec:
       - CreateNamespace=true
 ```
 
-## Bootstrapping AWS ALB Ingress Controller
+## Bootstrapping AWS Load Balancer Controller
 
 For AWS environments using Application Load Balancers:
 
@@ -213,7 +219,7 @@ spec:
   source:
     repoURL: https://aws.github.io/eks-charts
     chart: aws-load-balancer-controller
-    targetRevision: 1.7.1
+    targetRevision: 3.3.0
     helm:
       releaseName: aws-load-balancer-controller
       values: |
@@ -221,7 +227,7 @@ spec:
         serviceAccount:
           create: true
           annotations:
-            eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/aws-lb-controller
+            eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/aws-lb-controller
         replicaCount: 2
         resources:
           requests:
@@ -258,7 +264,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 Then use it in your ingress resources:
@@ -307,7 +313,7 @@ spec:
   source:
     repoURL: https://kubernetes.github.io/ingress-nginx
     chart: ingress-nginx
-    targetRevision: 4.9.1
+    targetRevision: 4.15.1
     helm:
       releaseName: ingress-nginx
       # Values will be overridden per environment
@@ -424,12 +430,12 @@ Since ArgoCD manages the ingress controller, upgrades are a Git commit:
 
 ```bash
 # Update the chart version in your application YAML
-# Change: targetRevision: 4.9.1
-# To:     targetRevision: 4.10.0
+# Change: targetRevision: 4.15.0
+# To:     targetRevision: 4.15.1
 
 # Commit and push
 git add infrastructure/ingress-nginx/application.yaml
-git commit -m "Upgrade ingress-nginx to 4.10.0"
+git commit -m "Upgrade ingress-nginx to 4.15.1"
 git push
 
 # ArgoCD will detect the change and sync automatically
@@ -437,7 +443,7 @@ git push
 kubectl get pods -n ingress-nginx -w
 ```
 
-For zero-downtime upgrades, the ingress controller Helm chart handles rolling updates. With multiple replicas and a PodDisruptionBudget, traffic is never interrupted.
+For zero-downtime upgrades, the ingress controller Helm chart handles rolling updates. With multiple replicas and a PodDisruptionBudget, planned disruptions are reduced and traffic can usually continue during the rollout.
 
 ## Verification Script
 
