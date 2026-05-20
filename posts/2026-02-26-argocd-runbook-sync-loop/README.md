@@ -8,7 +8,7 @@ Description: A step-by-step operational runbook for diagnosing and fixing ArgoCD
 
 ---
 
-An ArgoCD application stuck in a sync loop is one of the most common and frustrating problems you will encounter. The application continuously syncs, reports success, immediately detects drift, and syncs again. This creates unnecessary load on the cluster, floods notification channels, and masks real changes. This runbook provides a systematic approach to diagnose and fix the problem.
+An ArgoCD application stuck in a sync loop is one of the most common and frustrating problems you will encounter. The application continuously syncs, reports success, immediately detects drift, and syncs again when automatic self-healing is enabled. This creates unnecessary load on the cluster, floods notification channels, and masks real changes. This runbook provides a systematic approach to diagnose and fix the problem.
 
 ## Symptoms
 
@@ -24,7 +24,7 @@ You will observe one or more of the following.
 
 **Severity:** P3 (individual app) to P2 (if it affects controller performance for all apps)
 
-**Impact:** The stuck application consumes controller and repo server resources, potentially slowing down other applications. If auto-sync with prune is enabled, resources may be continuously deleted and recreated.
+**Impact:** The stuck application consumes controller and repo server resources, potentially slowing down other applications. If auto-sync with self-heal and prune is enabled, resources may be continuously deleted and recreated.
 
 ## Diagnostic Steps
 
@@ -41,7 +41,7 @@ argocd app diff my-app
 argocd app diff my-app > /tmp/app-diff.txt
 
 # Check which resources are out of sync
-argocd app get my-app --show-resources | grep OutOfSync
+argocd app get my-app -o tree | grep OutOfSync
 ```
 
 The diff output shows exactly which fields are different between the desired and live state. Look for fields that ArgoCD sets during sync but something else modifies immediately after.
@@ -156,7 +156,7 @@ data:
 
 ### Solution 2: Use Server-Side Diff
 
-Server-side diff uses the Kubernetes API server to compute the diff, which correctly handles defaulting and admission webhook modifications.
+Server-side diff uses the Kubernetes API server to compute the diff, which correctly handles defaulting. To include mutation webhook modifications in the diff, enable the mutation webhook compare option as well.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -164,8 +164,8 @@ kind: Application
 metadata:
   name: my-app
   annotations:
-    # Enable server-side diff for this app
-    argocd.argoproj.io/compare-option: ServerSideDiff=true
+    # Enable server-side diff and include mutation webhook changes for this app
+    argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
 spec:
   # ... rest of spec
 ```
@@ -173,17 +173,17 @@ spec:
 Or enable it globally.
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-cmd-params-cm ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
   controller.diff.server.side: "true"
 ```
 
-Server-side diff resolves most sync loop issues caused by defaulting and mutations because it compares what the API server would actually create rather than a naive text diff.
+Server-side diff resolves most sync loop issues caused by defaulting because it compares what the API server would actually create rather than a naive text diff. With `IncludeMutationWebhook=true`, mutation webhook changes are also included in the diff calculation.
 
 ### Solution 3: Include the Defaulted Values
 
@@ -273,7 +273,7 @@ argocd app diff my-app
 
 To prevent future sync loops, establish these practices.
 
-1. Always enable server-side diff for applications that use mutating webhooks
+1. Always enable server-side diff with `IncludeMutationWebhook=true` for applications that use mutating webhooks
 2. Configure `ignoreDifferences` proactively for known external controllers (HPA, VPA, cert-manager)
 3. Include Kubernetes default values in your manifests
 4. Test new applications in a staging environment before enabling auto-sync in production
