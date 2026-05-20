@@ -48,58 +48,58 @@ metadata:
   namespace: argocd
 data:
   resource.links: |
-    - url: https://grafana.example.com/d/k8s-pods?var-namespace={{.metadata.namespace}}&var-pod={{.metadata.name}}
+    - url: https://grafana.example.com/d/k8s-pods?var-namespace={{.resource.metadata.namespace}}&var-pod={{.resource.metadata.name}}
       title: Grafana Pod Dashboard
       description: View pod metrics in Grafana
       icon.class: "fa fa-chart-line"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
-    - url: https://grafana.example.com/d/k8s-deployments?var-namespace={{.metadata.namespace}}&var-deployment={{.metadata.name}}
+    - url: https://grafana.example.com/d/k8s-deployments?var-namespace={{.resource.metadata.namespace}}&var-deployment={{.resource.metadata.name}}
       title: Grafana Deployment Dashboard
       description: View deployment metrics in Grafana
       icon.class: "fa fa-chart-bar"
-      if: kind == "Deployment"
+      if: resource.kind == "Deployment"
 
-    - url: https://kibana.example.com/app/discover#/?_a=(query:(query_string:(query:'kubernetes.namespace:"{{.metadata.namespace}}" AND kubernetes.pod_name:"{{.metadata.name}}"')))
+    - url: https://kibana.example.com/app/discover#/?_a=(query:(query_string:(query:'kubernetes.namespace:"{{.resource.metadata.namespace}}" AND kubernetes.pod_name:"{{.resource.metadata.name}}"')))
       title: View Logs in Kibana
       description: View pod logs in Kibana
       icon.class: "fa fa-file-alt"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 ```
 
 ### Template Variables
 
-Deep link URLs support Go template syntax. The available variables depend on the link type:
+Deep link URLs support Go `text/template` syntax with Sprig template functions. The available variables depend on the link type:
 
-**For resource links**, you have access to the full resource manifest:
+**For resource links**, you have access to the full resource manifest under `.resource`, plus the related application, cluster, and project objects:
 
-- `{{.metadata.name}}` - Resource name
-- `{{.metadata.namespace}}` - Resource namespace
-- `{{.metadata.labels.app}}` - Any label value
-- `{{.metadata.annotations.team}}` - Any annotation value
-- `{{.kind}}` - Resource kind (Pod, Deployment, etc.)
-- `{{.spec.replicas}}` - Any spec field
+- `{{.resource.metadata.name}}` - Resource name
+- `{{.resource.metadata.namespace}}` - Resource namespace
+- `{{.resource.metadata.labels.app}}` - Any label value
+- `{{.resource.metadata.annotations.team}}` - Any annotation value
+- `{{.resource.kind}}` - Resource kind (Pod, Deployment, etc.)
+- `{{.resource.spec.replicas}}` - Any spec field
 
 ### Conditional Display
 
-The `if` field uses CEL (Common Expression Language) to control when a link is displayed:
+The `if` field uses `expr-lang/expr` expressions to control when a link is displayed:
 
 ```yaml
 resource.links: |
   # Only show for Deployments
-  - url: https://example.com/deploy/{{.metadata.name}}
+  - url: https://example.com/deploy/{{.resource.metadata.name}}
     title: Deploy Dashboard
-    if: kind == "Deployment"
+    if: resource.kind == "Deployment"
 
   # Only show for resources in production namespace
-  - url: https://example.com/prod/{{.metadata.name}}
+  - url: https://example.com/prod/{{.resource.metadata.name}}
     title: Production Monitor
-    if: metadata.namespace == "production"
+    if: resource.metadata.namespace == "production"
 
   # Only show for resources with a specific label
-  - url: https://example.com/team/{{.metadata.labels.team}}
+  - url: https://example.com/team/{{.resource.metadata.labels.team}}
     title: Team Dashboard
-    if: metadata.labels.team != nil
+    if: resource.metadata.labels.team != nil
 ```
 
 ## Configuring Application-Level Deep Links
@@ -114,31 +114,31 @@ metadata:
   namespace: argocd
 data:
   application.links: |
-    - url: https://grafana.example.com/d/argocd-app?var-app={{.metadata.name}}
+    - url: https://grafana.example.com/d/argocd-app?var-app={{.app.metadata.name}}
       title: Application Dashboard
       description: View application metrics
       icon.class: "fa fa-chart-area"
 
-    - url: https://github.com/my-org/{{.spec.source.repoURL | call .regex "([^/]+)\\.git$" | index 0}}/tree/{{.spec.source.targetRevision}}/{{.spec.source.path}}
+    - url: '{{ .app.spec.source.repoURL | trimSuffix ".git" | replace "git@github.com:" "https://github.com/" }}/tree/{{ .app.spec.source.targetRevision }}/{{ .app.spec.source.path }}'
       title: View Source in GitHub
       description: Open the Git source for this application
       icon.class: "fa fa-code-branch"
 
-    - url: https://argocd.example.com/applications/{{.metadata.name}}?resource=
+    - url: https://argocd.example.com/applications/{{.app.metadata.name}}?resource=
       title: Resource List
       description: View all resources
       icon.class: "fa fa-list"
 ```
 
-For application links, the template context includes the full Application resource spec:
+For application links, the template context includes the full Application resource under `.app` or `.application`, plus the related cluster object:
 
-- `{{.metadata.name}}` - Application name
-- `{{.spec.source.repoURL}}` - Git repository URL
-- `{{.spec.source.path}}` - Path within the repository
-- `{{.spec.source.targetRevision}}` - Branch, tag, or commit
-- `{{.spec.destination.server}}` - Target cluster
-- `{{.spec.destination.namespace}}` - Target namespace
-- `{{.spec.project}}` - ArgoCD project name
+- `{{.app.metadata.name}}` - Application name
+- `{{.app.spec.source.repoURL}}` - Git repository URL
+- `{{.app.spec.source.path}}` - Path within the repository
+- `{{.app.spec.source.targetRevision}}` - Branch, tag, or commit
+- `{{.app.spec.destination.server}}` - Target cluster
+- `{{.app.spec.destination.namespace}}` - Target namespace
+- `{{.app.spec.project}}` - ArgoCD project name
 
 ## Configuring Project-Level Deep Links
 
@@ -152,12 +152,12 @@ metadata:
   namespace: argocd
 data:
   project.links: |
-    - url: https://confluence.example.com/spaces/devops/pages?label=project-{{.metadata.name}}
+    - url: https://confluence.example.com/spaces/devops/pages?label=project-{{.project.metadata.name}}
       title: Project Documentation
       description: View project docs in Confluence
       icon.class: "fa fa-book"
 
-    - url: https://jira.example.com/projects/{{.metadata.name | upper}}/board
+    - url: https://jira.example.com/projects/{{.project.metadata.name | upper}}/board
       title: Jira Board
       description: View project Jira board
       icon.class: "fa fa-tasks"
@@ -174,52 +174,50 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  exec.enabled: "true"
-
   resource.links: |
     # Grafana - Pod metrics
-    - url: https://grafana.example.com/d/pod-metrics?var-namespace={{.metadata.namespace}}&var-pod={{.metadata.name}}
+    - url: https://grafana.example.com/d/pod-metrics?var-namespace={{.resource.metadata.namespace}}&var-pod={{.resource.metadata.name}}
       title: Pod Metrics
       icon.class: "fa fa-chart-line"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
     # Grafana - Deployment metrics
-    - url: https://grafana.example.com/d/deployment-metrics?var-namespace={{.metadata.namespace}}&var-deployment={{.metadata.name}}
+    - url: https://grafana.example.com/d/deployment-metrics?var-namespace={{.resource.metadata.namespace}}&var-deployment={{.resource.metadata.name}}
       title: Deployment Metrics
       icon.class: "fa fa-chart-bar"
-      if: kind == "Deployment"
+      if: resource.kind == "Deployment"
 
     # Loki - Pod logs
-    - url: https://grafana.example.com/explore?left={"queries":[{"expr":"{namespace=\"{{.metadata.namespace}}\",pod=\"{{.metadata.name}}\"}"}]}
+    - url: https://grafana.example.com/explore?left={"queries":[{"expr":"{namespace=\"{{.resource.metadata.namespace}}\",pod=\"{{.resource.metadata.name}}\"}"}]}
       title: View Logs
       icon.class: "fa fa-scroll"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
     # Kubernetes Dashboard
-    - url: https://k8s-dashboard.example.com/#/pod/{{.metadata.namespace}}/{{.metadata.name}}
+    - url: https://k8s-dashboard.example.com/#/pod/{{.resource.metadata.namespace}}/{{.resource.metadata.name}}
       title: K8s Dashboard
       icon.class: "fa fa-server"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
   application.links: |
     # GitHub repository
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/tree/{{.spec.source.targetRevision}}/{{.spec.source.path}}
+    - url: '{{ .app.spec.source.repoURL | trimSuffix ".git" | replace "git@github.com:" "https://github.com/" }}/tree/{{ .app.spec.source.targetRevision }}/{{ .app.spec.source.path }}'
       title: Git Source
       icon.class: "fa fa-code-branch"
 
     # CI/CD Pipeline
-    - url: https://github.com/my-org/my-repo/actions?query=workflow:deploy+branch:{{.spec.source.targetRevision}}
+    - url: https://github.com/my-org/my-repo/actions?query=workflow:deploy+branch:{{.app.spec.source.targetRevision}}
       title: CI Pipeline
       icon.class: "fa fa-cogs"
 
     # OneUptime monitoring
-    - url: https://oneuptime.com/dashboard/project/monitors?search={{.metadata.name}}
+    - url: https://oneuptime.com/dashboard/project/monitors?search={{.app.metadata.name}}
       title: OneUptime Status
       icon.class: "fa fa-heartbeat"
 
   project.links: |
     # Team documentation
-    - url: https://wiki.example.com/projects/{{.metadata.name}}
+    - url: https://wiki.example.com/projects/{{.project.metadata.name}}
       title: Documentation
       icon.class: "fa fa-book"
 ```
