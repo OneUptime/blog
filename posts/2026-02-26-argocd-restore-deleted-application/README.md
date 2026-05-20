@@ -115,13 +115,13 @@ If the application YAML was also removed from Git (e.g., in a declarative setup)
 git log --diff-filter=D --summary -- apps/my-app.yaml
 
 # Recover the file from the commit before deletion
-git show HEAD~1:apps/my-app.yaml > my-app-recovered.yaml
+git show HEAD~1:apps/my-app.yaml > apps/my-app.yaml
 
-# Or from a specific commit
-git show abc123:apps/my-app.yaml > my-app-recovered.yaml
+# Or from a specific commit where the file still existed
+git show abc123:apps/my-app.yaml > apps/my-app.yaml
 
 # Apply the recovered manifest
-kubectl apply -f my-app-recovered.yaml
+kubectl apply -f apps/my-app.yaml
 
 # Re-add it to Git
 git add apps/my-app.yaml
@@ -134,14 +134,14 @@ git push
 If you have been taking ArgoCD backups (you should be), restore from the backup:
 
 ```bash
-# ArgoCD export includes all application definitions
+# ArgoCD export includes application definitions from the ArgoCD namespace,
+# plus any configured application namespaces
 # If you used argocd admin export:
 argocd admin export > argocd-backup.yaml
 
 # To restore a specific application from the backup:
-# Extract just the application you need
-kubectl get -f argocd-backup.yaml -o json | \
-  jq '.items[] | select(.kind == "Application" and .metadata.name == "my-app")' | \
+# Extract just the application you need from the exported YAML
+yq 'select(.kind == "Application" and .metadata.name == "my-app")' argocd-backup.yaml | \
   kubectl apply -f -
 ```
 
@@ -151,12 +151,20 @@ If you use Velero for cluster backups:
 # List available backups
 velero backup get
 
-# Restore just the ArgoCD application
-velero restore create my-app-restore \
+# Restore ArgoCD applications from the argocd namespace
+velero restore create argocd-apps-restore \
+  --from-backup daily-backup-20260225 \
+  --include-namespaces argocd \
+  --include-resources applications.argoproj.io
+
+# To restore only one Application, add a label selector if the Application
+# had a matching label in the backup. Velero selectors are label selectors,
+# not field selectors:
+velero restore create my-app-labeled-restore \
   --from-backup daily-backup-20260225 \
   --include-namespaces argocd \
   --include-resources applications.argoproj.io \
-  --selector metadata.name=my-app
+  --selector app.kubernetes.io/name=my-app
 ```
 
 ## Scenario 5: Reconstructing from running resources
@@ -255,7 +263,7 @@ echo "Step 2: Looking for application manifest..."
 if [ -f "apps/$APP_NAME.yaml" ]; then
   echo "Found in current Git: apps/$APP_NAME.yaml"
   MANIFEST="apps/$APP_NAME.yaml"
-elif git show HEAD~1:apps/$APP_NAME.yaml 2>/dev/null; then
+elif git show HEAD~1:apps/$APP_NAME.yaml >/dev/null 2>&1; then
   echo "Found in Git history"
   git show HEAD~1:apps/$APP_NAME.yaml > /tmp/$APP_NAME-recovered.yaml
   MANIFEST="/tmp/$APP_NAME-recovered.yaml"
@@ -306,7 +314,7 @@ metadata:
 
 ### Set up regular ArgoCD backups
 
-```bash
+```yaml
 # Cron job to backup ArgoCD state
 # Add to your cluster's CronJob resources
 apiVersion: batch/v1
@@ -320,9 +328,11 @@ spec:
     spec:
       template:
         spec:
+          serviceAccountName: argocd-backup
           containers:
             - name: backup
-              image: argoproj/argocd:v2.13.0
+              # Match this image tag to your installed Argo CD version.
+              image: argoproj/argocd:v3.4.2
               command:
                 - /bin/sh
                 - -c
