@@ -18,7 +18,7 @@ When ArgoCD syncs an application, it applies resources to the target namespace s
 FATA[0001] ComparisonError: namespace "production" not found
 ```
 
-You could create the namespace manually, but that defeats the purpose of GitOps. You could include a Namespace resource in your manifests, but ArgoCD might try to apply other resources before the Namespace is created.
+You could create the namespace manually, but that defeats the purpose of GitOps. You could include a Namespace resource in your manifests; ArgoCD normally orders Namespace resources before most other resources, but you still need to make sure the namespace name matches your application destination.
 
 ## The Solution: CreateNamespace Sync Option
 
@@ -81,7 +81,7 @@ spec:
         owner: backend-team@example.com
 ```
 
-The `managedNamespaceMetadata` field was introduced in ArgoCD 2.5. It only applies to auto-created namespaces. If the namespace already exists, ArgoCD will still update its labels and annotations to match the specified metadata.
+The `managedNamespaceMetadata` field was introduced in ArgoCD 2.6. It requires `CreateNamespace=true` and applies to the namespace named in `spec.destination.namespace`. If the namespace already exists, ArgoCD can update its labels and annotations, but you should follow ArgoCD's server-side apply guidance before adopting an existing namespace that already has metadata.
 
 ## Using CreateNamespace with Helm
 
@@ -202,7 +202,7 @@ kubectl get namespace my-app-production
 # Still there
 ```
 
-If you want the namespace to be deleted when the application is deleted, include the namespace as a resource in your manifests and enable pruning.
+If you want the namespace to be deleted when the application is deleted, include the namespace as a resource in your manifests and delete the application with cascading deletion, which is the default for `argocd app delete`.
 
 ```yaml
 # Include namespace in your manifests
@@ -214,14 +214,12 @@ metadata:
     app.kubernetes.io/instance: my-app
 ```
 
-```yaml
-# Enable pruning in the sync policy
-syncPolicy:
-  automated:
-    prune: true
+```bash
+# Or delete explicitly with cascading deletion
+argocd app delete my-app --cascade
 ```
 
-With this setup, deleting the ArgoCD Application will also delete the namespace (and everything in it).
+With this setup, deleting the ArgoCD Application with cascading deletion will also delete the namespace (and everything in it).
 
 ## Alternative: Managing Namespaces as Separate Applications
 
@@ -277,7 +275,7 @@ This approach lets you manage namespaces, resource quotas, limit ranges, and net
 
 ## Using Sync Waves with Namespaces
 
-If you include the Namespace resource in the same application as the workloads, use sync waves to ensure the namespace is created first.
+If you include the Namespace resource in the same application as the workloads, ArgoCD's default kind ordering already applies Namespaces early. You can use sync waves when you want to make the ordering explicit or coordinate additional setup resources.
 
 ```yaml
 # namespace.yaml
