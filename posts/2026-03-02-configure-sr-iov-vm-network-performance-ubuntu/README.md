@@ -44,7 +44,7 @@ GRUB_CMDLINE_LINUX_DEFAULT="quiet splash intel_iommu=on iommu=pt"
 For AMD CPUs:
 
 ```bash
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash amd_iommu=on iommu=pt"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash iommu=pt"
 ```
 
 The `iommu=pt` option enables "pass-through mode" which improves performance for devices not being passed through.
@@ -152,10 +152,17 @@ for i in {1..10}; do
     sleep 1
 done
 
-# Create virtual functions
-echo "$NUM_VFS" > "/sys/class/net/$PF_INTERFACE/device/sriov_numvfs"
+# Create virtual functions. If a different VF count is already active,
+# disable VFs before changing sriov_numvfs.
+CURRENT_VFS=$(cat "/sys/class/net/$PF_INTERFACE/device/sriov_numvfs")
+if [ "$CURRENT_VFS" -ne "$NUM_VFS" ]; then
+    if [ "$CURRENT_VFS" -ne 0 ]; then
+        echo 0 > "/sys/class/net/$PF_INTERFACE/device/sriov_numvfs"
+    fi
+    echo "$NUM_VFS" > "/sys/class/net/$PF_INTERFACE/device/sriov_numvfs"
+fi
 
-# Set VF trust mode for better performance
+# Set VF trust mode if the guest needs trusted VF features
 for vf_num in $(seq 0 $((NUM_VFS-1))); do
     ip link set "$PF_INTERFACE" vf "$vf_num" trust on 2>/dev/null || true
     ip link set "$PF_INTERFACE" vf "$vf_num" spoofchk off 2>/dev/null || true
@@ -198,7 +205,7 @@ You need the PCIe address of each VF to assign them to VMs:
 
 ```bash
 # List VF PCIe addresses
-ls /sys/class/net/enp4s0f0/device/virtfn*
+ls -l /sys/class/net/enp4s0f0/device/virtfn*
 # Output: virtfn0 -> ../0000:04:10.0
 #         virtfn1 -> ../0000:04:10.2
 #         virtfn2 -> ../0000:04:10.4
@@ -288,7 +295,7 @@ iperf3 -s
 iperf3 -c <server-ip> -t 30 -P 4
 
 # With SR-IOV, expect near line-rate throughput
-# Without SR-IOV (virtio), expect ~10-20% overhead
+# With virtio, overhead depends on workload, vhost settings, and host CPU capacity
 ```
 
 ## Comparing SR-IOV vs virtio Performance
