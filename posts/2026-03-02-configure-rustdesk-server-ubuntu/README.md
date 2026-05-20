@@ -8,7 +8,7 @@ Description: Set up a self-hosted RustDesk relay and ID server on Ubuntu to enab
 
 ---
 
-RustDesk is an open-source remote desktop application written in Rust. Unlike TeamViewer or AnyDesk, you can run your own relay and ID server infrastructure. This means your remote desktop traffic stays within your own network or VPS - nothing passes through third-party servers. The server components are small, efficient, and straightforward to deploy on Ubuntu.
+RustDesk is an open-source remote desktop application written in Rust. Unlike TeamViewer or AnyDesk, you can run your own relay and ID server infrastructure. This means peer discovery and relayed remote desktop traffic use your own network or VPS - nothing passes through third-party relay servers. The server components are small, efficient, and straightforward to deploy on Ubuntu.
 
 ## RustDesk Server Architecture
 
@@ -32,24 +32,27 @@ sudo chown rustdesk:rustdesk /opt/rustdesk
 
 # Download the latest server binaries
 # Check https://github.com/rustdesk/rustdesk-server/releases for latest version
-RDVER="1.1.10-3"
+RDVER="1.1.15"
 ARCH=$(uname -m)
 
 # Map arch names
 case "$ARCH" in
-    x86_64)  RDARCH="x86_64-unknown-linux-musl" ;;
-    aarch64) RDARCH="aarch64-unknown-linux-musl" ;;
+    x86_64)  RDARCH="amd64" ;;
+    aarch64) RDARCH="arm64v8" ;;
+    *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;;
 esac
 
 cd /tmp
 wget "https://github.com/rustdesk/rustdesk-server/releases/download/${RDVER}/rustdesk-server-linux-${RDARCH}.zip" \
     -O rustdesk-server.zip
 
-unzip rustdesk-server.zip
+rm -rf rustdesk-server
+mkdir rustdesk-server
+unzip -j rustdesk-server.zip '*/hbbs' '*/hbbr' -d rustdesk-server
 
 # Install binaries
 sudo install -o rustdesk -g rustdesk -m 0755 \
-    hbbs hbbr /opt/rustdesk/
+    rustdesk-server/hbbs rustdesk-server/hbbr /opt/rustdesk/
 ```
 
 ### Verify the Binaries
@@ -212,7 +215,7 @@ Clients will now register with your self-hosted infrastructure.
 If you prefer containers:
 
 ```bash
-sudo apt install docker.io docker-compose
+sudo apt install docker.io docker-compose-v2
 
 sudo mkdir -p /opt/rustdesk
 cd /opt/rustdesk
@@ -221,7 +224,6 @@ sudo nano docker-compose.yml
 ```
 
 ```yaml
-version: "3"
 services:
   hbbs:
     container_name: hbbs
@@ -245,10 +247,10 @@ services:
 ```
 
 ```bash
-sudo docker-compose up -d
+sudo docker compose up -d
 
 # View logs
-sudo docker-compose logs -f
+sudo docker compose logs -f
 ```
 
 ## Monitoring and Logs
@@ -268,11 +270,11 @@ sudo journalctl -u rustdesk-hbbr --since "1 hour ago" | \
     grep -c "connected"
 ```
 
-## Enabling Encrypted Relay
+## Enabling Encrypted Connections
 
-For additional security, enable TLS for relay connections. The pro version has built-in TLS, but the community version supports encryption through the key exchange mechanism when clients use the server key.
+For additional security, configure clients with the server public key. The community version uses this key for encrypted connections to your self-hosted server.
 
-Ensure all clients are configured with the correct public key - this validates server identity and ensures end-to-end encryption of sessions.
+Ensure all clients are configured with the correct public key - this validates server identity and enables encrypted sessions.
 
 ## Setting Up Behind a Domain Name
 
@@ -338,7 +340,7 @@ iftop -i eth0
 
 **Logs showing connection refused:**
 
-Ensure hbbr is running before hbbs, or use the `depends_on` directive in Docker Compose. hbbs needs to reach hbbr to register relay address.
+Ensure hbbr is running and that clients can reach the relay address configured with `hbbs -r` on TCP port 21117. If you use Docker Compose, the `depends_on` directive starts hbbr before hbbs.
 
 ## Summary
 
