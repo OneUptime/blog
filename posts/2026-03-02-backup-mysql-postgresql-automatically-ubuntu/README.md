@@ -104,8 +104,8 @@ for DB in $DATABASES; do
     log "Saved: $FILENAME ($(du -sh "$FILENAME" | cut -f1))"
 done
 
-# Dump global MySQL settings (grants, plugins)
-log "Backing up MySQL grants"
+# Record grants for the account used by this script
+log "Recording MySQL grants for backup account"
 mysql -e "SHOW GRANTS;" > "$BACKUP_DIR/mysql-grants_${DATE}.sql" 2>/dev/null || true
 
 # Remove old backups
@@ -154,11 +154,11 @@ sudo -u postgres pg_dump -Fd myapp -f /backup/myapp-dir/
 sudo -u postgres pg_dumpall > /backup/postgresql-all.sql
 ```
 
-Set up password-less authentication using a `.pgpass` file:
+If you run backups over TCP as a dedicated PostgreSQL role instead of using `sudo -u postgres`, set up password-less authentication using a `.pgpass` file:
 
 ```bash
-# Create .pgpass for root
-sudo -u postgres nano ~/.pgpass
+# Create .pgpass for the postgres operating-system user
+sudo -u postgres nano /var/lib/postgresql/.pgpass
 ```
 
 ```text
@@ -315,7 +315,7 @@ check_backup() {
     local service=$3
 
     # Find newest file matching pattern
-    newest=$(find "$dir" -name "$pattern" -newer /tmp -printf '%T@\n' 2>/dev/null | sort -n | tail -1)
+    newest=$(find "$dir" -name "$pattern" -printf '%T@\n' 2>/dev/null | sort -n | tail -1)
 
     if [ -z "$newest" ]; then
         echo "WARNING: No recent $service backups found in $dir"
