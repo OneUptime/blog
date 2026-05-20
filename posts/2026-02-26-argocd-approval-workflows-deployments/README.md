@@ -115,7 +115,7 @@ The workflow becomes:
 
 ## Pattern 3: Sync Windows as Approval Gates
 
-Sync windows restrict when deployments can happen. Use deny windows to block production deployments, then override them for approved releases.
+Sync windows restrict when deployments can happen. Use allow windows to restrict automated production deployments to approved release windows, with manual syncs available as an override.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -125,13 +125,6 @@ metadata:
   namespace: argocd
 spec:
   syncWindows:
-    # Deny all syncs to production by default
-    - kind: deny
-      schedule: "* * * * *"
-      duration: 24h
-      namespaces:
-        - "team-alpha-prod"
-      manualSync: false
     # Allow syncs only during maintenance window
     - kind: allow
       schedule: "0 14 * * 1-5"  # Weekdays at 2 PM UTC
@@ -185,10 +178,8 @@ jobs:
 
       - name: Record approval
         run: |
-          # Add annotation recording the approval
-          argocd app set ${{ inputs.application }} \
-            --annotations "deployment.myorg.io/approved-by=${{ inputs.approver }}" \
-            --annotations "deployment.myorg.io/approved-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          APPROVED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          argocd app patch ${{ inputs.application }} --type merge --patch "{\"metadata\":{\"annotations\":{\"deployment.myorg.io/approved-by\":\"${{ inputs.approver }}\",\"deployment.myorg.io/approved-at\":\"${APPROVED_AT}\"}}}"
 
       - name: Sync application
         run: |
@@ -206,7 +197,7 @@ Use ArgoCD's resource hooks to call an external approval service before proceedi
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: deployment-approval
+  generateName: deployment-approval-
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
@@ -221,13 +212,13 @@ spec:
             - -c
             - |
               # Check with external approval service
-              RESPONSE=$(curl -s -w "%{http_code}" \
+              HTTP_CODE=$(curl -s -o /tmp/approval-response -w "%{http_code}" \
                 -H "Authorization: Bearer ${APPROVAL_TOKEN}" \
                 "https://approvals.internal/api/check?app=${APP_NAME}&env=production")
 
-              HTTP_CODE=$(echo "$RESPONSE" | tail -c 4)
               if [ "$HTTP_CODE" != "200" ]; then
                 echo "Deployment not approved. HTTP $HTTP_CODE"
+                cat /tmp/approval-response
                 exit 1
               fi
               echo "Deployment approved"
@@ -307,12 +298,10 @@ Record approval metadata on the Application resource for audit purposes:
 
 ```bash
 # After approval, annotate the application
-argocd app set my-app \
-  --annotations "audit.myorg.io/approved-by=jane.doe" \
-  --annotations "audit.myorg.io/approved-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --annotations "audit.myorg.io/ticket=DEPLOY-1234"
+APPROVED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+argocd app patch my-app --type merge --patch "{\"metadata\":{\"annotations\":{\"audit.myorg.io/approved-by\":\"jane.doe\",\"audit.myorg.io/approved-at\":\"${APPROVED_AT}\",\"audit.myorg.io/ticket\":\"DEPLOY-1234\"}}}"
 ```
 
-These annotations persist in the Application resource and are visible in Git history, providing the audit trail compliance teams need.
+These annotations persist in the Application resource. If you need the audit trail in Git history, commit the approval metadata to the repository instead of only patching the live Application resource.
 
 Approval workflows in ArgoCD are about choosing the right level of friction for each environment. Development should be fast and automatic. Production should have the checks your organization requires. The patterns in this guide let you build exactly the workflow you need, from simple manual sync gates to fully automated metric-based approvals.
