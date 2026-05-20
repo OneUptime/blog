@@ -14,9 +14,9 @@ The Git directory generator is one of the most powerful ApplicationSet generator
 
 The Git directory generator scans a Git repository for directories matching a specified glob pattern. For each matching directory, it produces a parameter set containing:
 
-- `path` - the full path to the matched directory
-- `path.basename` - the last component of the path (the directory name)
-- `path[n]` - individual path segments (path[0], path[1], etc.)
+- `.path.path` - the full path to the matched directory
+- `.path.basename` - the last component of the path (the directory name)
+- `.path.segments` - individual path segments, accessed with `index .path.segments n` in Go templates
 
 These parameters feed into the ApplicationSet template to create Applications.
 
@@ -31,6 +31,8 @@ metadata:
   name: microservices
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/company/k8s-manifests.git
@@ -39,16 +41,16 @@ spec:
           - path: 'services/*'
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/company/k8s-manifests.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
 ```
 
 If your repo has this structure:
@@ -74,10 +76,10 @@ Each matched directory produces these parameters:
 
 ```text
 Directory: services/api-gateway
-  path          = "services/api-gateway"
-  path.basename = "api-gateway"
-  path[0]       = "services"
-  path[1]       = "api-gateway"
+  path.path         = "services/api-gateway"
+  path.basename     = "api-gateway"
+  path.segments[0]  = "services"
+  path.segments[1]  = "api-gateway"
 ```
 
 Use these in your template:
@@ -85,14 +87,14 @@ Use these in your template:
 ```yaml
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
       labels:
-        category: '{{path[0]}}'
+        category: '{{index .path.segments 0}}'
     spec:
       source:
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
 ```
 
 ## Excluding Directories
@@ -154,7 +156,7 @@ teams/
 
 The generator produces:
 
-| path | path.basename | path[0] | path[1] | path[2] | path[3] |
+| path.path | path.basename | segment 0 | segment 1 | segment 2 | segment 3 |
 |------|--------------|---------|---------|---------|---------|
 | teams/backend/services/api | api | teams | backend | services | api |
 | teams/backend/services/auth | auth | teams | backend | services | auth |
@@ -166,14 +168,14 @@ Use path segments to add context:
 ```yaml
   template:
     metadata:
-      name: '{{path[1]}}-{{path.basename}}'
+      name: '{{index .path.segments 1}}-{{.path.basename}}'
       labels:
-        team: '{{path[1]}}'
+        team: '{{index .path.segments 1}}'
     spec:
       source:
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
-        namespace: '{{path[1]}}-{{path.basename}}'
+        namespace: '{{index .path.segments 1}}-{{.path.basename}}'
 ```
 
 This generates Applications named `backend-api`, `backend-auth`, `frontend-web`, and `frontend-mobile-bff`.
@@ -204,6 +206,8 @@ metadata:
   name: production-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/company/k8s-manifests.git
@@ -212,7 +216,7 @@ spec:
           - path: 'envs/production/*'
   template:
     metadata:
-      name: 'prod-{{path.basename}}'
+      name: 'prod-{{.path.basename}}'
       labels:
         environment: production
     spec:
@@ -220,10 +224,10 @@ spec:
       source:
         repoURL: https://github.com/company/k8s-manifests.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://production-cluster.example.com
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
       syncPolicy:
         automated:
           prune: true
@@ -239,6 +243,8 @@ metadata:
   name: all-envs
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - matrix:
         generators:
@@ -254,16 +260,19 @@ spec:
               repoURL: https://github.com/company/k8s-manifests.git
               revision: main
               directories:
-                - path: 'envs/{{env}}/*'
+                - path: 'envs/{{.env}}/*'
   template:
     metadata:
-      name: '{{env}}-{{path.basename}}'
+      name: '{{.env}}-{{.path.basename}}'
     spec:
+      project: default
       source:
-        path: '{{path}}'
+        repoURL: https://github.com/company/k8s-manifests.git
+        targetRevision: main
+        path: '{{.path.path}}'
       destination:
-        server: '{{cluster}}'
-        namespace: '{{path.basename}}'
+        server: '{{.cluster}}'
+        namespace: '{{.path.basename}}'
 ```
 
 ## Using with Kustomize Overlays
@@ -296,15 +305,15 @@ overlays/
           - path: 'overlays/production/*'
   template:
     metadata:
-      name: 'prod-{{path.basename}}'
+      name: 'prod-{{.path.basename}}'
     spec:
       source:
         repoURL: https://github.com/company/k8s-manifests.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
 ```
 
 ArgoCD automatically detects the `kustomization.yaml` and uses Kustomize to render the manifests.
@@ -320,6 +329,8 @@ metadata:
   name: monorepo-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/company/monorepo.git
@@ -330,7 +341,7 @@ spec:
             exclude: true
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
       annotations:
         notifications.argoproj.io/subscribe.on-sync-failed.slack: deployments
     spec:
@@ -338,10 +349,10 @@ spec:
       source:
         repoURL: https://github.com/company/monorepo.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
 ```
 
 ## Automatic Discovery Flow
