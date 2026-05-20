@@ -61,8 +61,8 @@ data:
           # Restrict to specific GitHub organizations
           orgs:
             - name: your-organization
-          # Load all teams for RBAC mapping
-          loadAllGroups: true
+          # Emit team slugs for RBAC mappings such as your-organization:platform-team
+          teamNameField: slug
           # Use login name for user identification
           useLoginAsID: true
 ```
@@ -112,7 +112,7 @@ This means only members of those specific teams in `your-organization` can log i
 
 ## Step 4: Configure RBAC with GitHub Teams
 
-GitHub teams are passed as groups in the format `org-name:team-name`. Map them to ArgoCD roles:
+GitHub teams are passed as groups in the format `org-name:team-name`. With `teamNameField: slug`, the team portion uses the GitHub team slug. Map them to ArgoCD roles:
 
 ```yaml
 apiVersion: v1
@@ -279,7 +279,7 @@ kubectl -n argocd rollout restart deployment argocd-dex-server
 
 ### Teams Not Showing Up
 
-1. Make sure `loadAllGroups: true` is set in the Dex configuration
+1. Make sure `teamNameField` matches the team identifiers used in your RBAC policies. The examples above use `teamNameField: slug`.
 2. Check that the OAuth app has the `read:org` scope (Dex requests this automatically)
 3. Verify team membership in GitHub
 4. Check Dex logs:
