@@ -48,9 +48,8 @@ spec:
       releaseName: kong
       valuesObject:
         ingressController:
-          installCRDs: false
           env:
-            kong_admin_api_uri: "http://kong-admin:8001"
+            kong_admin_url: "http://kong-admin:8001"
         proxy:
           type: LoadBalancer
           annotations:
@@ -60,7 +59,6 @@ spec:
           type: ClusterIP
         env:
           database: "off"
-          declarative_config: /opt/kong/config.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: kong
@@ -209,40 +207,39 @@ spec:
   retry_policy:
     retry_on: "5xx"
     num_retries: 3
+  labels:
+    ambassador:
+      - request_label_group:
+        - api-route:
+            generic_key:
+              key: route
+              value: product-api
 
 ---
-# Rate limit configuration
+# Rate limit service
 apiVersion: getambassador.io/v3alpha1
-kind: RateLimit
+kind: RateLimitService
 metadata:
-  name: api-rate-limit
+  name: api-rate-limit-service
   namespace: production
 spec:
   domain: ambassador
-  limits:
-    - pattern:
-        - generic_key: "default"
-      rate: 100
-      unit: minute
+  service: rate-limit-service.production:5000
+  protocol_version: v3
+  failure_mode_deny: true
 
 ---
-# Authentication filter
+# Authentication service
 apiVersion: getambassador.io/v3alpha1
-kind: FilterPolicy
+kind: AuthService
 metadata:
-  name: auth-policy
+  name: authentication
   namespace: production
 spec:
-  rules:
-    - host: api.example.com
-      path: /v1/*
-      filters:
-        - name: jwt-filter
-          namespace: emissary
-          arguments:
-            scope:
-              - "api:read"
-              - "api:write"
+  auth_service: auth-service.production:3000
+  proto: http
+  path_prefix: /extauth
+  timeout_ms: 5000
 ```
 
 ## Deploying APISIX with ArgoCD
@@ -264,7 +261,7 @@ spec:
     helm:
       releaseName: apisix
       valuesObject:
-        gateway:
+        service:
           type: LoadBalancer
         ingress-controller:
           enabled: true
