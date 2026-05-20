@@ -12,7 +12,7 @@ If you started with ArgoCD by creating applications through the UI or CLI, you a
 
 ## Understanding the Current State
 
-Before migrating, you need to understand what you have. ArgoCD stores Application and AppProject resources as Kubernetes custom resources in the argocd namespace. Whether you created them through the UI, CLI, or YAML, they all exist as the same type of resource.
+Before migrating, you need to understand what you have. ArgoCD stores Application and AppProject resources as Kubernetes custom resources in the argocd namespace. Whether you created them through the UI, CLI, or YAML, they all exist as the same Kubernetes resources for their kind.
 
 ```bash
 # List all current applications
@@ -86,10 +86,10 @@ def clean_application(input_path, output_path):
             if not k.startswith('kubectl.kubernetes.io/')
         }
 
-    # Add finalizer for resource cleanup
-    cleaned['metadata']['finalizers'] = [
-        'resources-finalizer.argocd.argoproj.io'
-    ]
+    # Preserve existing finalizers. Add resources-finalizer.argocd.argoproj.io
+    # only if you want deleting the Application to cascade-delete its resources.
+    if 'finalizers' in app['metadata']:
+        cleaned['metadata']['finalizers'] = app['metadata']['finalizers']
 
     # Remove status (runtime field)
     cleaned.pop('status', None)
@@ -102,7 +102,7 @@ def clean_application(input_path, output_path):
 
 # Process all exported files
 input_dir = 'migration/applications'
-output_dir = 'argocd-config/applications'
+output_dir = 'migration/cleaned-apps'
 os.makedirs(output_dir, exist_ok=True)
 
 for filename in os.listdir(input_dir):
@@ -127,7 +127,7 @@ for proj in $(kubectl get appprojects -n argocd -o jsonpath='{.items[*].metadata
 done
 ```
 
-Clean the project manifests similarly, removing `managedFields`, `resourceVersion`, `uid`, `creationTimestamp`, and `status` fields.
+Clean the project manifests similarly into `migration/cleaned-projects`, removing `managedFields`, `resourceVersion`, `uid`, `creationTimestamp`, and `status` fields.
 
 A cleaned project looks like:
 
@@ -166,6 +166,7 @@ mv migration/cleaned-projects/* argocd-config/projects/
 # Initialize Git repo
 cd argocd-config
 git init
+git branch -M main
 git add .
 git commit -m "Initial declarative ArgoCD configuration"
 git remote add origin https://github.com/myorg/argocd-config.git
