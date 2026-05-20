@@ -14,7 +14,7 @@ This guide covers the ApplicationSet policy settings, how to configure them for 
 
 ## Understanding the Update Policy
 
-When an ApplicationSet reconciles, it compares the generated Application spec with the existing Application resource in the cluster. The `policy` field in the ApplicationSet spec controls what happens when differences are found.
+When an ApplicationSet reconciles, it compares the generated Application spec with the existing Application resource in the cluster. The `syncPolicy.applicationsSync` field in the ApplicationSet spec controls what happens when differences are found.
 
 ```mermaid
 flowchart TD
@@ -40,6 +40,8 @@ metadata:
 spec:
   # Policy controls what the ApplicationSet can do
   # to generated Applications
+  syncPolicy:
+    applicationsSync: create-update
   strategy:
     type: RollingSync
   generators:
@@ -63,7 +65,7 @@ spec:
 
 ## The create-only Policy
 
-The `create-only` policy is the safest option. The ApplicationSet creates Applications but never modifies or deletes them afterward. This is useful when teams want initial bootstrapping but full manual control afterward.
+The `create-only` policy is the safest option. The ApplicationSet creates Applications but never modifies or deletes them afterward as part of normal generator reconciliation. This is useful when teams want initial bootstrapping but full manual control afterward.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -98,7 +100,7 @@ spec:
     applicationsSync: create-only
 ```
 
-After creation, teams can freely modify sync policies, add annotations, change target revisions, or adjust any setting without worrying about the ApplicationSet reverting their changes.
+After creation, teams can freely modify sync policies, add annotations, change target revisions, or adjust any setting without worrying about the ApplicationSet reverting their changes. Note that this policy does not protect Applications from owner-reference deletion if the ApplicationSet itself is deleted.
 
 ## The create-update Policy
 
@@ -220,8 +222,8 @@ spec:
     # Preserve annotations added by notification controllers
     # or manual operations
     annotations:
-      - notifications.argoproj.io/*
-      - custom.company.io/*
+      - notifications.argoproj.io/subscribe.on-sync-succeeded.slack
+      - custom.company.io/owner
     # Preserve labels added externally
     labels:
       - custom-label
@@ -246,7 +248,7 @@ spec:
         namespace: '{{name}}'
 ```
 
-The `preservedFields` configuration ensures that when the ApplicationSet reconciles and updates Applications, it does not remove annotations matching the specified patterns. This is critical for notification subscriptions that are often added via annotation.
+The `preservedFields` configuration ensures that when the ApplicationSet reconciles and updates Applications, it does not remove the specified annotations and labels. This is critical for notification subscriptions that are often added via annotation.
 
 ## Ignoring ApplicationSet-Managed Fields
 
@@ -367,7 +369,7 @@ You can check how the ApplicationSet controller is handling your Applications.
 kubectl get applicationset managed-apps -n argocd -o yaml | \
   yq '.status'
 
-# View the generated applications and their status
+# View ApplicationSet details
 argocd appset get managed-apps
 
 # Check for any policy-related events
