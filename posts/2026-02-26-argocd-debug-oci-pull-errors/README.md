@@ -51,7 +51,7 @@ argocd repo get <registry-url>
 If the repository is not listed or shows an error status, re-add it:
 
 ```bash
-argocd repo add myregistry.example.com \
+argocd repo add myregistry.example.com/charts \
   --type helm \
   --name my-oci-registry \
   --enable-oci \
@@ -73,7 +73,7 @@ kubectl get secret -n argocd <secret-name> -o jsonpath='{.data}' | \
 Common issues with secrets:
 
 - `enableOCI` must be the string `"true"`, not a boolean
-- URL should not include `oci://` prefix (just `myregistry.example.com`)
+- URL should not include the `oci://` prefix; for Helm OCI repositories, include the registry namespace/path used by the ArgoCD application, such as `myregistry.example.com/charts`
 - Type must be `helm` for OCI Helm charts
 
 ### Step 3: Test from Inside the Cluster
@@ -97,7 +97,9 @@ This means ArgoCD reached the registry but failed to authenticate.
 
 ```bash
 # Test credentials manually using curl
-# Step 1: Get an auth token
+# Step 1: Check the registry's WWW-Authenticate header, then use its realm, service, and scope values to get a token
+curl -I https://myregistry.example.com/v2/my-chart/tags/list
+
 TOKEN=$(curl -s -u "username:password" \
   "https://myregistry.example.com/v2/token?service=myregistry&scope=repository:my-chart:pull" | \
   jq -r '.token')
@@ -145,7 +147,7 @@ This means authentication succeeded but the specified chart or version does not 
 ### Verify the Artifact Exists
 
 ```bash
-# For Helm charts, check available tags
+# For Helm charts, verify a specific chart version
 helm show chart oci://myregistry.example.com/my-chart --version 1.0.0
 
 # Using crane (a lightweight OCI tool)
@@ -158,7 +160,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 ### Check the Chart Path
 
-A frequent mistake is getting the chart path wrong. The `chart` field in ArgoCD's application spec must match the repository path exactly:
+A frequent mistake is splitting the chart path incorrectly. For Helm OCI charts, put the registry namespace/path in `repoURL` and the chart name in `chart`:
 
 ```yaml
 # If you pushed with:
@@ -166,19 +168,19 @@ A frequent mistake is getting the chart path wrong. The `chart` field in ArgoCD'
 
 # Then the ArgoCD application needs:
 source:
-  chart: charts/my-chart      # Include the full path
-  repoURL: myregistry.example.com
+  chart: my-chart
+  repoURL: myregistry.example.com/charts
   targetRevision: 1.0.0
 ```
 
 ### Check Version Format
 
-ArgoCD expects the `targetRevision` to match an OCI tag exactly:
+For a fixed Helm OCI chart version, ArgoCD expects the `targetRevision` to resolve to the chart's OCI tag:
 
 ```yaml
-# These are different tags:
-targetRevision: "1.0.0"     # Matches tag: 1.0.0
-targetRevision: "v1.0.0"    # Matches tag: v1.0.0
+# Helm OCI chart tags are based on the chart's SemVer version:
+targetRevision: "1.0.0"     # Matches chart version/tag: 1.0.0
+targetRevision: "v1.0.0"    # Does not match 1.0.0
 
 # They are NOT interchangeable
 ```
@@ -223,7 +225,7 @@ metadata:
 type: Opaque
 stringData:
   type: helm
-  url: myregistry.example.com
+  url: myregistry.example.com/charts
   enableOCI: "true"
   username: "myuser"
   password: "mypassword"
@@ -277,8 +279,8 @@ ArgoCD could not resolve the specified version constraint against available tags
 # List available tags to see what versions exist
 crane ls myregistry.example.com/my-chart
 
-# Or using Helm
-helm search repo my-chart --versions
+# Or verify a specific version with Helm
+helm show chart oci://myregistry.example.com/my-chart --version 1.0.0
 ```
 
 Make sure your `targetRevision` matches an existing tag. If you are using semver constraints, ensure tags follow semantic versioning.
@@ -324,7 +326,7 @@ Harbor requires the project name in the chart path: `project/chart-name`.
 
 ### ACR
 
-When using managed identity, ensure the `--attach-acr` command was run or the identity has `AcrPull` role.
+When using Azure Workload Identity, ensure the repo-server pods and service account are configured for workload identity, the repository was added with `--use-azure-workload-identity`, `AZURE_ARM_TOKEN_RESOURCE` is set to `https://containerregistry.azure.net`, and the workload identity has ACR pull permissions.
 
 ## Systematic Debugging Checklist
 
