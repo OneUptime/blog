@@ -27,7 +27,7 @@ GSConnect is available through the GNOME Extensions website or via the command l
 ```bash
 # Install the GNOME Shell browser extension connector
 
-sudo apt install gnome-shell-extension-manager -y
+sudo apt install gnome-browser-connector -y
 # or
 sudo apt install chrome-gnome-shell -y
 ```
@@ -60,8 +60,8 @@ git clone https://github.com/GSConnect/gnome-shell-extension-gsconnect.git
 cd gnome-shell-extension-gsconnect
 
 # Build and install to user directory
-meson build --prefix=$HOME/.local
-ninja -C build install
+meson setup _build --prefix=$HOME/.local
+ninja -C _build install-zip
 
 # Enable the extension
 gnome-extensions enable gsconnect@andyholmes.github.io
@@ -71,12 +71,12 @@ After installation, log out and back in to your GNOME session for the extension 
 
 ## Configuring Firewall Rules
 
-GSConnect uses the same port range as KDE Connect:
+GSConnect uses the KDE Connect protocol port range:
 
 ```bash
 # Open required ports for device discovery and communication
-sudo ufw allow 1714:1764/tcp
-sudo ufw allow 1714:1764/udp
+sudo ufw allow 1716:1764/tcp
+sudo ufw allow 1716:1764/udp
 
 # Apply the rules
 sudo ufw reload
@@ -199,19 +199,19 @@ gdbus call \
     --object-path /org/gnome/Shell/Extensions/GSConnect \
     --method org.freedesktop.DBus.ObjectManager.GetManagedObjects
 
-# Send a ping to a device (replace DEVICE_ID)
+# Read a device property (replace DEVICE_ID)
 gdbus call \
     --session \
     --dest org.gnome.Shell.Extensions.GSConnect \
     --object-path /org/gnome/Shell/Extensions/GSConnect/Device/DEVICE_ID \
-    --method ca.andyholmes.KDEConnect.Plugin.Ping.sendPing \
-    "Hello"
+    --method org.freedesktop.DBus.Properties.Get \
+    org.gnome.Shell.Extensions.GSConnect.Device Name
 ```
 
-For simpler scripting, use the `kdeconnect-cli` tool if KDE Connect is also installed:
+GSConnect does not depend on the KDE Connect desktop application, and the two desktop services can conflict if they try to use the same ports. If you prefer `kdeconnect-cli`, use the standalone KDE Connect desktop application instead of GSConnect:
 
 ```bash
-# Install the CLI tool separately (works alongside GSConnect)
+# Install the KDE Connect desktop application instead of GSConnect
 sudo apt install kdeconnect -y
 
 # Send a file
