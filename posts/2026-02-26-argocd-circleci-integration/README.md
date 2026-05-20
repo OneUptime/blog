@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, CircleCI, CI/CD
 
-Description: Learn how to integrate ArgoCD with CircleCI for automated GitOps deployments, including image tag updates, sync verification, and reusable orb configurations for Kubernetes environments.
+Description: Learn how to integrate ArgoCD with CircleCI for automated GitOps deployments, including image tag updates, sync verification, and reusable command configurations for Kubernetes environments.
 
 ---
 
-CircleCI is a popular cloud-native CI/CD platform that pairs well with ArgoCD for GitOps workflows. CircleCI handles building, testing, and publishing artifacts, while ArgoCD manages the deployment to Kubernetes. This guide covers how to set up the integration, from basic image tag updates to advanced patterns using CircleCI orbs and approval workflows.
+CircleCI is a popular cloud-native CI/CD platform that pairs well with ArgoCD for GitOps workflows. CircleCI handles building, testing, and publishing artifacts, while ArgoCD manages the deployment to Kubernetes. This guide covers how to set up the integration, from basic image tag updates to advanced patterns using reusable CircleCI commands and approval workflows.
 
 ## CircleCI and ArgoCD Architecture
 
@@ -24,7 +24,7 @@ flowchart LR
     F --> G[Kubernetes Updated]
 ```
 
-CircleCI never talks directly to the Kubernetes cluster. It updates Git, and ArgoCD reconciles the desired state.
+In the GitOps deployment path, CircleCI never talks directly to the Kubernetes cluster. It updates Git, and ArgoCD reconciles the desired state. If you add the optional sync and verification steps below, CircleCI talks to the ArgoCD API server, not directly to Kubernetes.
 
 ## Setting Up CircleCI Environment Variables
 
@@ -80,7 +80,7 @@ jobs:
             IMAGE_TAG="${CIRCLE_SHA1:0:7}"
 
             # Install tools
-            curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+            curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | sudo tar xz -C /usr/local/bin
 
             # Clone deployment repo
             git clone https://deploy-bot:${DEPLOY_TOKEN}@github.com/myorg/k8s-manifests.git
@@ -125,9 +125,9 @@ commands:
       - run:
           name: Install ArgoCD CLI
           command: |
-            curl -sSL -o /usr/local/bin/argocd \
+            sudo curl -sSL -o /usr/local/bin/argocd \
               https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-            chmod +x /usr/local/bin/argocd
+            sudo chmod +x /usr/local/bin/argocd
 
   argocd-login:
     description: Login to ArgoCD
@@ -161,7 +161,7 @@ jobs:
           name: Update deployment manifests
           command: |
             IMAGE_TAG="${CIRCLE_SHA1:0:7}"
-            curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+            curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | sudo tar xz -C /usr/local/bin
             git clone https://deploy-bot:${DEPLOY_TOKEN}@github.com/myorg/k8s-manifests.git
             cd k8s-manifests/apps/my-app/production
             kustomize edit set image ${DOCKER_REGISTRY}/my-app=${DOCKER_REGISTRY}/my-app:${IMAGE_TAG}
@@ -341,9 +341,9 @@ commands:
       - run:
           name: Install ArgoCD CLI
           command: |
-            curl -sSL -o /usr/local/bin/argocd \
+            sudo curl -sSL -o /usr/local/bin/argocd \
               https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-            chmod +x /usr/local/bin/argocd
+            sudo chmod +x /usr/local/bin/argocd
 
   argocd-login:
     steps:
@@ -427,9 +427,9 @@ commands:
           name: Install ArgoCD CLI (if not cached)
           command: |
             if [ ! -f /usr/local/bin/argocd ]; then
-              curl -sSL -o /usr/local/bin/argocd \
+              sudo curl -sSL -o /usr/local/bin/argocd \
                 https://github.com/argoproj/argo-cd/releases/download/v2.10.0/argocd-linux-amd64
-              chmod +x /usr/local/bin/argocd
+              sudo chmod +x /usr/local/bin/argocd
             fi
       - save_cache:
           key: argocd-cli-v2.10
