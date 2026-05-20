@@ -54,7 +54,7 @@ If etcd data is corrupted or lost, all Kubernetes resources including ArgoCD sta
 ```bash
 # Option A: Restore etcd from etcd backup
 # This restores ALL Kubernetes state, including ArgoCD
-ETCDCTL_API=3 etcdctl snapshot restore /path/to/snapshot.db \
+etcdutl snapshot restore /path/to/snapshot.db \
   --data-dir=/var/lib/etcd-restored
 
 # Option B: Rebuild ArgoCD from backup (if etcd is rebuilt empty)
@@ -74,7 +74,7 @@ This is the worst case - the entire cluster is gone. Here is the full recovery p
 eksctl create cluster \
   --name production-v2 \
   --region us-east-1 \
-  --version 1.28 \
+  --version 1.35 \
   --nodegroup-name workers \
   --node-type m5.xlarge \
   --nodes 3
@@ -83,7 +83,8 @@ eksctl create cluster \
 gcloud container clusters create production-v2 \
   --zone us-central1-a \
   --num-nodes 3 \
-  --machine-type e2-standard-4
+  --machine-type e2-standard-4 \
+  --release-channel regular
 ```
 
 ### Step 2: Install ArgoCD
@@ -95,10 +96,12 @@ Install the same version of ArgoCD that was running before the failure:
 kubectl create namespace argocd
 
 # Install ArgoCD (pin the version to match your backup)
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.0/manifests/ha/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.2/manifests/ha/install.yaml
 
 # Wait for all components to be ready
 kubectl wait --for=condition=available deployment --all -n argocd --timeout=180s
+kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=180s
+kubectl rollout status statefulset/argocd-redis-ha-server -n argocd --timeout=180s
 
 echo "ArgoCD installed. Proceeding with restoration..."
 ```
@@ -134,7 +137,17 @@ for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm \
            argocd-notifications-cm argocd-ssh-known-hosts-cm \
            argocd-tls-certs-cm; do
   if [ -f "$BACKUP_DIR/cm-${cm}.yaml" ]; then
-    kubectl apply -f "$BACKUP_DIR/cm-${cm}.yaml" -n "$NAMESPACE"
+    python3 -c "
+import yaml, sys
+for doc in yaml.safe_load_all(open('$BACKUP_DIR/cm-${cm}.yaml')):
+    if doc is None:
+        continue
+    meta = doc.get('metadata', {})
+    for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
+        meta.pop(f, None)
+    print('---')
+    print(yaml.dump(doc, default_flow_style=False))
+" | kubectl apply -n "$NAMESPACE" -f -
     echo "  Restored: $cm"
   fi
 done
@@ -166,6 +179,8 @@ echo "Restarting ArgoCD..."
 kubectl rollout restart deployment -n "$NAMESPACE"
 kubectl rollout restart statefulset -n "$NAMESPACE"
 kubectl wait --for=condition=available deployment --all -n "$NAMESPACE" --timeout=120s
+kubectl rollout status statefulset/argocd-application-controller -n "$NAMESPACE" --timeout=120s
+kubectl rollout status statefulset/argocd-redis-ha-server -n "$NAMESPACE" --timeout=120s
 
 echo "Configuration restored successfully"
 ```
