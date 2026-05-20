@@ -12,7 +12,7 @@ When something goes wrong in production, the first question is always "who chang
 
 ## What Gets Audited
 
-ArgoCD logs API activity at the server level. Every request to the API server is logged, including:
+ArgoCD logs API activity at the server level. API server logs include gRPC method metadata for requests, while sensitive request payloads such as session creation and cluster creation are excluded from payload logging. Useful audit events include:
 
 - Authentication events (login, logout, failed attempts)
 - Application operations (create, update, delete, sync)
@@ -64,8 +64,7 @@ ArgoCD API logs contain structured information about each request. Here is what 
   "grpc.code": "OK",
   "grpc.time_ms": 12.5,
   "caller": "grpc_zap/server_interceptors.go:42",
-  "user": "admin",
-  "ip": "10.0.1.50"
+  "user": "admin"
 }
 ```
 
@@ -132,54 +131,77 @@ data:
     </match>
 ```
 
-### Using Promtail/Loki
+### Using Grafana Alloy/Loki
 
-If you use the Grafana stack, configure Promtail to collect ArgoCD logs:
+If you use the Grafana stack, configure Grafana Alloy to collect ArgoCD logs:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: alloy-argocd-config
   namespace: monitoring
 data:
-  promtail.yaml: |
-    server:
-      http_listen_port: 3101
-    positions:
-      filename: /tmp/positions.yaml
-    clients:
-      - url: http://loki:3100/loki/api/v1/push
-    scrape_configs:
-      - job_name: argocd-audit
-        kubernetes_sd_configs:
-          - role: pod
-            namespaces:
-              names:
-                - argocd
-        relabel_configs:
-          - source_labels:
-              - __meta_kubernetes_pod_label_app_kubernetes_io_name
-            regex: argocd-server
-            action: keep
-          - source_labels:
-              - __meta_kubernetes_namespace
-            target_label: namespace
-          - source_labels:
-              - __meta_kubernetes_pod_name
-            target_label: pod
-        pipeline_stages:
-          - json:
-              expressions:
-                user: user
-                method: grpc.method
-                service: grpc.service
-                code: grpc.code
-          - labels:
-              user:
-              method:
-              service:
-              code:
+  config.alloy: |
+    loki.write "default" {
+      endpoint {
+        url = "http://loki:3100/loki/api/v1/push"
+      }
+    }
+
+    discovery.kubernetes "argocd_pods" {
+      role = "pod"
+      namespaces {
+        names = ["argocd"]
+      }
+    }
+
+    discovery.relabel "argocd_server" {
+      targets = discovery.kubernetes.argocd_pods.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        regex         = "argocd-server"
+        action        = "keep"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+    }
+
+    loki.source.kubernetes "argocd_server" {
+      targets    = discovery.relabel.argocd_server.output
+      forward_to = [loki.process.argocd_audit.receiver]
+    }
+
+    loki.process "argocd_audit" {
+      stage.json {
+        expressions = {
+          user    = "user"
+          method  = "\"grpc.method\""
+          service = "\"grpc.service\""
+          code    = "\"grpc.code\""
+        }
+      }
+
+      stage.labels {
+        values = {
+          user    = ""
+          method  = ""
+          service = ""
+          code    = ""
+        }
+      }
+
+      forward_to = [loki.write.default.receiver]
+    }
 ```
 
 ## Kubernetes Audit Logging for ArgoCD
@@ -237,7 +259,7 @@ If you use Loki, create a Grafana dashboard to visualize audit activity:
 {namespace="argocd", pod=~"argocd-server.*"} |= "delete" |= "application"
 
 # All write operations by user
-{namespace="argocd", pod=~"argocd-server.*"} | json | method=~"Create|Update|Delete|Sync"
+{namespace="argocd", pod=~"argocd-server.*"} | json method="[\"grpc.method\"]" | method=~"Create|Update|Delete|Sync"
 ```
 
 ### Useful Log Queries
@@ -253,7 +275,7 @@ kubectl logs deployment/argocd-server -n argocd --since=24h | \
 
 # Find all application deletions
 kubectl logs deployment/argocd-server -n argocd --since=24h | \
-  jq 'select(.grpc_method == "Delete" and .grpc_service == "application.ApplicationService")'
+  jq 'select(.["grpc.method"] == "Delete" and .["grpc.service"] == "application.ApplicationService")'
 
 # Find all operations by a specific user
 kubectl logs deployment/argocd-server -n argocd --since=24h | \
@@ -272,11 +294,11 @@ metadata:
   namespace: argocd
 data:
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [audit-sync-succeeded]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [audit-sync-failed]
 
   trigger.on-deleted: |
@@ -326,7 +348,7 @@ kubectl logs deployment/argocd-server -n argocd --since=168h | \
 echo "" >> $REPORT_FILE
 echo "=== Application Changes ===" >> $REPORT_FILE
 kubectl logs deployment/argocd-server -n argocd --since=168h | \
-  jq -r 'select(.grpc_method | test("Create|Update|Delete"; "i") // false) | "\(.time) - \(.user // "unknown") - \(.grpc_method) \(.grpc_service)"' >> $REPORT_FILE
+  jq -r 'select(.["grpc.method"] | test("Create|Update|Delete"; "i") // false) | "\(.time) - \(.user // "unknown") - \(.["grpc.method"]) \(.["grpc.service"])"' >> $REPORT_FILE
 
 echo "Report saved to $REPORT_FILE"
 ```
