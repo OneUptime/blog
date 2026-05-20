@@ -24,9 +24,9 @@ Each application stores a history of sync operations. Query it through the API.
 # Get the deployment history for an application
 
 curl -s -k "$ARGOCD_URL/api/v1/applications/web-app-production" \
-  -H "$AUTH_HEADER" | jq '[.status.history[] | {
+  -H "$AUTH_HEADER" | jq '[(.status.history // [])[] | {
     id: .id,
-    revision: .revision[0:7],
+    revision: (.revision // "")[0:7],
     deployedAt: .deployedAt,
     source: {
       repo: .source.repoURL,
@@ -76,8 +76,8 @@ curl -s -k "$ARGOCD_URL/api/v1/applications/web-app-production" \
     startedAt: .status.operationState.startedAt,
     finishedAt: .status.operationState.finishedAt,
     syncResult: {
-      revision: .status.operationState.syncResult.revision[0:7],
-      resources: [.status.operationState.syncResult.resources[] | {
+      revision: (.status.operationState.syncResult.revision // "")[0:7],
+      resources: [(.status.operationState.syncResult.resources // [])[] | {
         kind: .kind,
         name: .name,
         status: .status,
@@ -87,7 +87,7 @@ curl -s -k "$ARGOCD_URL/api/v1/applications/web-app-production" \
   }'
 ```
 
-The operation phases are: `Running`, `Succeeded`, `Failed`, and `Error`. For deployment tracking, you care about transitions between these phases.
+The operation phases are: `Running`, `Terminating`, `Succeeded`, `Failed`, and `Error`. For deployment tracking, you care about transitions between these phases.
 
 ## Building a Deployment Tracker Service
 
@@ -153,15 +153,15 @@ class DeploymentTracker:
 
             # Check if this is a new completed operation
             if phase in ('Succeeded', 'Failed', 'Error'):
-                if op_key not in self.last_operation:
+                if self.last_operation.get(op_key) != phase:
                     self.record_deployment(app, op_state)
                     self.last_operation[op_key] = phase
 
             # Track in-progress deployments
-            elif phase == 'Running':
+            elif phase in ('Running', 'Terminating'):
                 if op_key not in self.last_operation:
                     logger.info(f'Deployment in progress: {name}')
-                    self.last_operation[op_key] = 'Running'
+                    self.last_operation[op_key] = phase
 
     def record_deployment(self, app, op_state):
         """Record a completed deployment event."""
@@ -219,8 +219,10 @@ class DeploymentTracker:
     def get_deployment_stats(self, hours=24):
         """Calculate deployment statistics for the given time window."""
         now = datetime.now(timezone.utc)
+        cutoff = now.timestamp() - (hours * 3600)
         recent = [d for d in self.deployments
-                  if d.get('finished_at')]
+                  if d.get('finished_at') and
+                  datetime.fromisoformat(d['finished_at'].replace('Z', '+00:00')).timestamp() >= cutoff]
 
         total = len(recent)
         succeeded = len([d for d in recent if d['phase'] == 'Succeeded'])
@@ -272,16 +274,14 @@ ArgoCD's Prometheus metrics provide aggregate deployment data that is perfect fo
 sum by (name) (rate(argocd_app_sync_total[1h])) * 3600
 
 # Success rate over the last 24 hours
-sum(argocd_app_sync_total{phase="Succeeded"}) by (name)
+sum by (name) (increase(argocd_app_sync_total{phase="Succeeded"}[24h]))
 /
-sum(argocd_app_sync_total) by (name)
+sum by (name) (increase(argocd_app_sync_total[24h]))
 
-# Average sync duration by application
-avg by (name) (
-  argocd_app_sync_duration_seconds_sum
+# Average successful sync duration by application over the last 24 hours
+sum by (name) (increase(argocd_app_sync_duration_seconds_total{phase="Succeeded"}[24h]))
   /
-  argocd_app_sync_duration_seconds_count
-)
+sum by (name) (increase(argocd_app_sync_total{phase="Succeeded"}[24h]))
 
 # Deployment frequency trend (daily deployments over time)
 sum(increase(argocd_app_sync_total[1d]))
@@ -302,7 +302,7 @@ HISTORY=$(curl -s -k "$ARGOCD_URL/api/v1/applications/$APP_NAME" \
 # Step 2: For each deployment, enrich with Git commit info
 echo "$HISTORY" | jq -r '.[].revision' | while read rev; do
   # Get Git commit details from the repo
-  COMMIT_INFO=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+  COMMIT_INFO=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" \
     "https://api.github.com/repos/company/k8s-configs/commits/$rev" | \
     jq '{sha: .sha[0:7], author: .commit.author.name, message: .commit.message, date: .commit.author.date}')
 
