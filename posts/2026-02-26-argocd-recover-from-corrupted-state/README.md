@@ -55,9 +55,9 @@ kubectl patch application my-app -n argocd --type merge -p '{
 If the patch fails due to validation:
 
 ```bash
-# Force patch using strategic merge
+# Force patch using JSON merge
 kubectl patch application my-app -n argocd --type merge \
-  --subresource status -p '{
+  -p '{
     "status": {
       "operationState": {
         "phase": "Failed",
@@ -154,11 +154,14 @@ Nuclear option - flush the entire Redis cache:
 
 ```bash
 # Flush Redis cache (causes temporary performance hit)
-kubectl exec -n argocd deploy/argocd-redis -- redis-cli flushall
+kubectl exec -n argocd deploy/argocd-redis -- \
+  sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning flushall'
 
 # Restart all components to rebuild cache
 kubectl rollout restart deployment -n argocd \
-  argocd-server argocd-application-controller argocd-repo-server
+  argocd-server argocd-repo-server
+kubectl rollout restart statefulset -n argocd \
+  argocd-application-controller
 ```
 
 ## Corruption Type 5: Controller Cannot Process Any Applications
@@ -167,12 +170,12 @@ If the controller is in a crash loop or all applications show "Unknown" health:
 
 ```bash
 # Check controller logs for the root cause
-kubectl logs -n argocd deploy/argocd-application-controller --tail=200 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 | \
   grep -E 'level=(error|fatal|panic)'
 
 # Check if a specific application is causing the controller to crash
 # Look for the application name in error logs
-kubectl logs -n argocd deploy/argocd-application-controller --tail=500 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | \
   grep "error" | grep -oP 'application.*?[,}\s]' | sort | uniq -c | sort -rn | head -10
 ```
 
@@ -184,10 +187,10 @@ If one poisoned application is crashing the controller:
 kubectl delete application problematic-app -n argocd --cascade=orphan
 
 # Restart the controller
-kubectl rollout restart deployment argocd-application-controller -n argocd
+kubectl rollout restart statefulset argocd-application-controller -n argocd
 
 # Wait for controller to stabilize
-kubectl rollout status deployment argocd-application-controller -n argocd
+kubectl rollout status statefulset argocd-application-controller -n argocd
 
 # Recreate the application with fixed spec
 kubectl apply -f fixed-application.yaml
@@ -199,7 +202,7 @@ ArgoCD tracks resources using labels or annotations. If these are manually modif
 
 ```bash
 # Check resource tracking labels on managed resources
-kubectl get deployment my-deployment -n my-namespace -o jsonpath='{.metadata.labels}' | python3 -m json.tool
+kubectl get deployment my-deployment -n my-namespace -o json | jq '.metadata.labels'
 
 # Look for the ArgoCD tracking label
 # app.kubernetes.io/instance: my-argocd-app
@@ -274,18 +277,21 @@ echo "Applications being deleted: $(kubectl get applications -n $NS -o json | jq
 
 # Step 2: Flush cache
 echo -e "\n--- Step 2: Flushing cache ---"
-kubectl exec -n $NS deploy/argocd-redis -- redis-cli flushall 2>/dev/null
+kubectl exec -n $NS deploy/argocd-redis -- \
+  sh -c 'redis-cli -a "$REDIS_PASSWORD" --no-auth-warning flushall' 2>/dev/null
 
 # Step 3: Restart all components
 echo -e "\n--- Step 3: Restarting components ---"
 kubectl rollout restart deployment -n $NS \
-  argocd-server argocd-application-controller argocd-repo-server argocd-dex-server
+  argocd-server argocd-repo-server argocd-dex-server
+kubectl rollout restart statefulset -n $NS \
+  argocd-application-controller
 
 # Step 4: Wait for components to be ready
 echo -e "\n--- Step 4: Waiting for components ---"
 kubectl rollout status deployment argocd-server -n $NS --timeout=120s
-kubectl rollout status deployment argocd-application-controller -n $NS --timeout=120s
 kubectl rollout status deployment argocd-repo-server -n $NS --timeout=120s
+kubectl rollout status statefulset argocd-application-controller -n $NS --timeout=120s
 
 # Step 5: Hard refresh all applications
 echo -e "\n--- Step 5: Hard refreshing applications ---"
