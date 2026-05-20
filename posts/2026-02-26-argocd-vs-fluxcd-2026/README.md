@@ -52,7 +52,7 @@ flowchart LR
 | Image automation | Via Image Updater (separate) | Built-in image reflector/automation |
 | SSO/RBAC | Built-in SSO with OIDC, SAML | Relies on Kubernetes RBAC |
 | Notifications | Built-in notification engine | Via notification controller |
-| Diff previews | Built-in diff view | Limited (PR comments via CI) |
+| Diff previews | Built-in diff view | CLI diff via `flux diff kustomization`; PR comments via CI integrations |
 | ApplicationSets | Yes, with generators | Not applicable (uses Kustomization) |
 | Progressive delivery | Via Argo Rollouts | Via Flagger |
 
@@ -103,9 +103,14 @@ spec:
     metadata:
       name: '{{path.basename}}'
     spec:
+      project: default
       source:
         repoURL: https://github.com/my-org/config.git
+        targetRevision: main
         path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{path.basename}}'
 ```
 
 FluxCD achieves similar results through Kustomization with patches, but the pattern is different and less intuitive for this use case.
@@ -139,6 +144,7 @@ kind: ImageUpdateAutomation
 metadata:
   name: my-app
 spec:
+  interval: 30m
   sourceRef:
     kind: GitRepository
     name: fleet-config
