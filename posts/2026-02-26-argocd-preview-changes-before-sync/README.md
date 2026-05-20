@@ -33,8 +33,8 @@ The CLI provides more detailed diff output:
 
 argocd app diff my-app
 
-# Show diff in a specific format
-argocd app diff my-app --output json
+# Use a custom diff tool, if needed
+KUBECTL_EXTERNAL_DIFF="diff -u" argocd app diff my-app
 
 # Show diff against local manifests (useful during development)
 argocd app diff my-app --local ./apps/my-app/production/
@@ -87,6 +87,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install ArgoCD CLI
         run: |
@@ -114,9 +116,9 @@ jobs:
             app_diff=$(argocd app diff "$app" \
               --local "apps/$app/production/" 2>&1) || true
             if [ -n "$app_diff" ]; then
-              diff_output="${diff_output}\n### ${app}\n```diff\n${app_diff}\n```\n"
+              diff_output=$(printf "%s\n### %s\n```diff\n%s\n```\n" "$diff_output" "$app" "$app_diff")
             else
-              diff_output="${diff_output}\n### ${app}\nNo changes detected.\n"
+              diff_output=$(printf "%s\n### %s\nNo changes detected.\n" "$diff_output" "$app")
             fi
           done
 
@@ -130,13 +132,15 @@ jobs:
             const fs = require('fs');
             const diff = fs.readFileSync('/tmp/diff-output.md', 'utf8');
 
-            const body = `## ArgoCD Diff Preview
-
-            The following changes will be applied when this PR is merged:
-
-            ${diff}
-
-            > Generated automatically by ArgoCD diff preview`;
+            const body = [
+              '## ArgoCD Diff Preview',
+              '',
+              'The following changes will be applied when this PR is merged:',
+              '',
+              diff,
+              '',
+              '> Generated automatically by ArgoCD diff preview'
+            ].join('\n');
 
             // Find existing comment
             const comments = await github.rest.issues.listComments({
@@ -176,6 +180,8 @@ metadata:
   name: preview-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - pullRequest:
         github:
@@ -189,20 +195,20 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: 'preview-{{branch_slug}}-{{number}}'
+      name: 'preview-{{ .branch_slug }}-{{ .number }}'
       namespace: argocd
       labels:
         type: preview
-        pr: '{{number}}'
+        pr: '{{ .number }}'
     spec:
       project: preview
       source:
         repoURL: 'https://github.com/myorg/gitops-repo'
         path: apps/my-app/staging
-        targetRevision: '{{branch}}'
+        targetRevision: '{{ .branch }}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: 'preview-{{number}}'
+        namespace: 'preview-{{ .number }}'
       syncPolicy:
         automated:
           selfHeal: true
@@ -268,6 +274,17 @@ kind: Rollout
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+        - name: my-app
+          image: myorg/my-app:v2.0.0
   strategy:
     canary:
       canaryService: my-app-canary
