@@ -12,7 +12,7 @@ Jsonnet provides two mechanisms for injecting external data into templates: exte
 
 ## TLA vs ExtVar: What Is the Difference
 
-The fundamental difference is in how the entry point is structured. With extVars, your `main.jsonnet` is a regular expression that happens to call `std.extVar()` somewhere. With TLAs, your `main.jsonnet` is a function that takes parameters directly.
+The fundamental difference is in how the entry point is structured. With extVars, your `main.jsonnet` is a regular Jsonnet expression that happens to call `std.extVar()` somewhere. With TLAs, your `main.jsonnet` is a function that takes parameters directly.
 
 Here is a side-by-side comparison:
 
