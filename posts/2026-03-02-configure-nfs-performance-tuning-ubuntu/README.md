@@ -28,7 +28,7 @@ sudo apt install nfs-common -y
 Before tuning, measure baseline performance so you can quantify improvements:
 
 ```bash
-# Install nfs-utils and fio for benchmarking
+# Install fio for benchmarking
 sudo apt install fio -y
 
 # Mount the NFS share on the client
@@ -85,8 +85,6 @@ vers4=yes
 vers4.1=yes
 vers4.2=yes
 
-# Disable NFSv2 (old and slow)
-vers2=no
 ```
 
 ```bash
@@ -133,29 +131,28 @@ Client mount options have a large impact on observed performance:
 ```bash
 # Mount with performance-optimized options
 sudo mount -t nfs \
-    -o rw,sync,hard,intr,rsize=1048576,wsize=1048576,timeo=600,retrans=2,nfsvers=4.2 \
+    -o rw,hard,rsize=1048576,wsize=1048576,timeo=600,retrans=2,nfsvers=4.2 \
     192.168.1.100:/srv/exports \
     /mnt/nfs
 ```
 
 Key mount options:
 
-- `rsize=1048576` - read block size (1MB, up from 131072 default)
-- `wsize=1048576` - write block size (1MB)
-- `nfsvers=4.2` - use NFSv4.2 for best performance and features
+- `rsize=1048576` - read block size (1MB, the largest payload supported by the Linux NFS client)
+- `wsize=1048576` - write block size (1MB, the largest payload supported by the Linux NFS client)
+- `nfsvers=4.2` - require NFSv4.2 when both client and server support it
 - `hard` - retries indefinitely if server is unreachable (vs `soft` which times out)
-- `intr` - allows interrupting hung NFS operations with Ctrl+C
 - `timeo=600` - timeout in tenths of a second (60 seconds)
-- `retrans=2` - number of retransmissions before giving up
+- `retrans=2` - number of retransmissions before the client logs a timeout and starts recovery
 
 For read-heavy workloads (like serving large media files), add:
 
-- `nordirplus` - disable NFSv4 directory plus calls (can improve read performance)
-- `async` - client-side async (data buffered, not immediately sent)
+- `nordirplus` - disable READDIRPLUS calls when your workload performs better with simple READDIR requests
+- `async` - client-side async behavior (the default; data may be buffered before it is sent)
 
 For write-heavy workloads:
 
-- `sync` - ensure writes are committed immediately (safer)
+- `sync` - flush each write system call to the server before returning (stronger client coherence, slower)
 - `wsize=1048576` - large write buffer
 
 ### Making Mount Options Permanent in /etc/fstab
@@ -166,7 +163,7 @@ sudo nano /etc/fstab
 
 ```text
 # High-performance NFS mount
-192.168.1.100:/srv/exports /mnt/nfs nfs rw,hard,intr,rsize=1048576,wsize=1048576,timeo=600,nfsvers=4.2,_netdev 0 0
+192.168.1.100:/srv/exports /mnt/nfs nfs rw,hard,rsize=1048576,wsize=1048576,timeo=600,nfsvers=4.2,_netdev 0 0
 ```
 
 The `_netdev` option tells systemd to mount this filesystem only after the network is available.
@@ -228,7 +225,7 @@ For NFS servers using SSDs, the I/O scheduler matters:
 # Check current scheduler for each disk
 cat /sys/block/sda/queue/scheduler
 
-# For SSDs and NVMe, use 'none' or 'mq-deadline'
+# For SATA/SCSI SSDs, use 'none' or 'mq-deadline'
 echo "none" | sudo tee /sys/block/sda/queue/scheduler
 
 # Make permanent with udev rule
@@ -246,8 +243,8 @@ ACTION=="add|change", KERNEL=="sd[a-z]", ATTR{queue/rotational}=="1", ATTR{queue
 ## Monitoring NFS Performance
 
 ```bash
-# Install nfsstat
-sudo apt install nfs-utils -y
+# Install NFS and disk I/O monitoring tools
+sudo apt install nfs-common sysstat -y
 
 # Show NFS statistics
 nfsstat -s    # Server statistics
@@ -260,7 +257,7 @@ cat /proc/net/rpc/nfs
 # Monitor NFS operations per second with nfsiostat
 nfsiostat 2   # Refresh every 2 seconds
 
-# Use iostat to see NFS as a block device
+# Use iostat on the server to see backing disk activity
 iostat -x 2
 ```
 
@@ -275,11 +272,7 @@ sudo cat /proc/fs/nfsd/pool_stats
 ## Checking for Slow NFS Operations
 
 ```bash
-# Watch for NFS operations taking longer than expected
-# This shows operations older than 5 seconds
-sudo watchnfsd -v
-
-# Or use a loop to monitor outstanding RPC calls
+# Monitor NFS server thread and RPC counters
 while true; do
     echo "=== $(date) ==="
     sudo cat /proc/net/rpc/nfsd | grep th
@@ -295,7 +288,7 @@ After applying these tunings, re-run the fio benchmarks:
 # Remount with new options first
 sudo umount /mnt/nfs
 sudo mount -t nfs \
-    -o rw,hard,intr,rsize=1048576,wsize=1048576,timeo=600,nfsvers=4.2 \
+    -o rw,hard,rsize=1048576,wsize=1048576,timeo=600,nfsvers=4.2 \
     192.168.1.100:/srv/exports \
     /mnt/nfs
 
@@ -331,8 +324,8 @@ Typical improvements after tuning on a gigabit network:
 | Parameter | Default | Tuned | Impact |
 |---|---|---|---|
 | NFS threads | 8 | 32+ | Concurrent client support |
-| rsize/wsize | 131072 | 1048576 | Bulk transfer speed |
-| NFS version | 4.0 | 4.2 | Minor protocol improvements |
+| rsize/wsize | Negotiated | 1048576 | Bulk transfer speed |
+| NFS version | Negotiated | 4.2 | Minor protocol improvements |
 | async export | no | yes | Write performance (at risk) |
 | rmem_max | 212992 | 134217728 | Large buffer throughput |
 
