@@ -206,9 +206,9 @@ sudo ufw allow 443/tcp
 sudo ufw deny 22/tcp
 
 # Block database ports from public interface
-sudo ufw deny in on eth0 port 3306/tcp  # MySQL
-sudo ufw deny in on eth0 port 5432/tcp  # PostgreSQL
-sudo ufw deny in on eth0 port 6379/tcp  # Redis
+sudo ufw deny in on eth0 to any port 3306 proto tcp  # MySQL
+sudo ufw deny in on eth0 to any port 5432 proto tcp  # PostgreSQL
+sudo ufw deny in on eth0 to any port 6379 proto tcp  # Redis
 
 # Allow database from private network
 sudo ufw allow from 10.0.0.0/8 to any port 3306 proto tcp
