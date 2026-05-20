@@ -16,7 +16,7 @@ The `argocd-rbac-cm` ConfigMap is where you define who can do what in ArgoCD. It
 kubectl get configmap argocd-rbac-cm -n argocd -o yaml
 ```
 
-The ConfigMap has three main keys:
+The ConfigMap has these commonly used keys:
 
 ```yaml
 apiVersion: v1
@@ -27,13 +27,14 @@ metadata:
 data:
   policy.default: ""
   policy.csv: ""
+  policy.overlay.csv: ""
   scopes: ""
   policy.matchMode: ""
 ```
 
 ## policy.default
 
-Sets the default role for authenticated users who do not match any specific policy. This is the fallback permission level.
+Sets the default role for authenticated users. This permission level is evaluated before user-specific and group-specific policies, and permissions granted by the default role cannot be blocked by a `deny` rule.
 
 ```yaml
 data:
@@ -68,20 +69,19 @@ p, <subject>, <resource>, <action>, <object>, <allow|deny>
 ```
 
 Where:
-- **subject** - user, role, or group
+- **subject** - user or role; map SSO groups to roles with `g` lines
 - **resource** - the ArgoCD resource type
 - **action** - the operation being performed
 - **object** - the target (usually project/application pattern)
 - **effect** - `allow` or `deny`
 
-Available resources and their actions:
+Common resources and their actions:
 
 ```yaml
 data:
   policy.csv: |
     # Applications - the most common resource
     p, role:app-viewer, applications, get, */*, allow
-    p, role:app-viewer, applications, list, */*, allow
 
     p, role:app-syncer, applications, get, */*, allow
     p, role:app-syncer, applications, sync, */*, allow
@@ -89,7 +89,7 @@ data:
     p, role:app-admin, applications, *, */*, allow
 
     # Available application actions:
-    # get, create, update, delete, sync, override, action, list
+    # get, create, update, delete, sync, override, action
 
     # Logs
     p, role:log-viewer, logs, get, */*, allow
@@ -125,6 +125,19 @@ data:
 
     # Extensions
     p, role:ext-user, extensions, invoke, *, allow
+```
+
+### Additional Policy Files
+
+You can split RBAC policy across extra keys that match `policy.<name>.csv`. ArgoCD concatenates these entries below the main `policy.csv` value in key-name order:
+
+```yaml
+data:
+  policy.csv: |
+    p, role:developer, applications, get, */*, allow
+  policy.team-a.csv: |
+    p, role:team-a, applications, sync, team-a/*, allow
+    g, org:team-a, role:team-a
 ```
 
 ### Group Mappings (g lines)
@@ -241,11 +254,11 @@ data:
   # Default - uses glob matching
   policy.matchMode: "glob"
 
-  # Use regex matching (more powerful but slower)
+  # Use regex matching
   policy.matchMode: "regex"
 ```
 
-With glob mode (default), patterns use `*` for wildcards. With regex mode, patterns use full regular expressions.
+With glob mode (default), patterns use `*` for wildcards and `/` is not treated as a separator. With regex mode, patterns use full regular expressions.
 
 ## Practical Examples
 
