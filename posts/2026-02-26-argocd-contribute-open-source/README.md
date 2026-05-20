@@ -53,12 +53,12 @@ You will need several tools installed on your machine.
 
 ```bash
 # Required dependencies
-# Go 1.21+ (check go.mod for exact version)
+# Go version from go.mod
 go version
 
-# Node.js 20+ and yarn for UI development
+# Node.js and pnpm for UI development
 node --version
-yarn --version
+pnpm --version
 
 # protoc for protobuf generation
 protoc --version
@@ -78,7 +78,7 @@ Install Go dependencies and generate code.
 make install-tools-local
 
 # Generate protobuf, mocks, and other generated code
-make generate-local
+make codegen-local
 
 # Build the CLI
 make cli-local
@@ -138,7 +138,16 @@ export const ApplicationSyncPanel: React.FC<Props> = ({application, onSync}) => 
     // Use the ArgoCD services layer for API calls
     const handleSync = async () => {
         try {
-            await services.applications.sync(application.metadata.name, syncOptions);
+            await services.applications.sync(
+                application.metadata.name,
+                application.metadata.namespace,
+                application.spec.source.targetRevision || 'HEAD',
+                false,
+                false,
+                {},
+                [],
+                syncOptions
+            );
             onSync();
         } catch (e) {
             notifications.show({type: NotificationType.Error, content: e.message});
@@ -169,7 +178,7 @@ make lint-local
 
 # Run UI tests
 cd ui
-yarn test
+pnpm test
 
 # Run E2E tests (requires a running Kubernetes cluster)
 make start-e2e
@@ -208,7 +217,7 @@ Not all contributions need to be code. Here are other valuable ways to contribut
 
 **Resource Customizations** are one of the easiest entry points. These define custom health checks and actions for Kubernetes resources.
 
-```yaml
+```lua
 # resource_customizations/apps/Deployment/health.lua
 -- Custom health check for Deployments
 hs = {}
@@ -250,8 +259,8 @@ git commit -s -m "fix: correct sync retry logic for degraded applications"
 
 After your first contribution, there are many ways to stay involved.
 
-- Join the `#argo-cd` channel on CNCF Slack
-- Attend the bi-weekly community meetings (check the ArgoCD calendar)
+- Join the `#argo-cd` and `#argo-cd-contributors` channels on CNCF Slack
+- Attend the weekly contributor meetings or monthly user community meetings (check the ArgoCD calendar)
 - Review other people's PRs - this is extremely valuable
 - Help triage new issues by reproducing bugs and adding context
 - Write blog posts about your ArgoCD experiences
