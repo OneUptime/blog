@@ -85,8 +85,9 @@ if [[ -n "${GITHUB_TOKEN:-}" ]]; then
   # Extract owner/repo from URL
   REPO_PATH=$(echo "${REPO_URL}" | sed 's/.*github.com[:/]//' | sed 's/.git$//')
   curl -s -X POST \
-    -H "Authorization: token ${GITHUB_TOKEN}" \
-    -H "Accept: application/vnd.github.v3+json" \
+    -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+    -H "Accept: application/vnd.github+json" \
+    -H "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/repos/${REPO_PATH}/keys" \
     -d "{
       \"title\": \"argocd-$(date +%Y%m%d)\",
@@ -101,11 +102,8 @@ read -p "Press Enter once the key has been added to your Git provider..." -r
 # Step 5: Update the ArgoCD secrets
 echo "Updating ArgoCD credential secrets..."
 for secret_name in ${SECRETS}; do
-  kubectl patch secret "${secret_name}" -n "${NAMESPACE}" --type merge -p "{
-    \"stringData\": {
-      \"sshPrivateKey\": $(echo "${NEW_PRIVATE_KEY}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
-    }
-  }"
+  PATCH=$(jq -n --arg key "${NEW_PRIVATE_KEY}" '{"stringData":{"sshPrivateKey":$key}}')
+  kubectl patch secret "${secret_name}" -n "${NAMESPACE}" --type merge -p "${PATCH}"
   echo "  Updated: ${secret_name}"
 done
 
@@ -158,11 +156,8 @@ for secret_name in ${SECRETS}; do
   kubectl get secret "${secret_name}" -n "${NAMESPACE}" -o yaml > "/tmp/${secret_name}-backup.yaml"
 
   # Update the password/token field
-  kubectl patch secret "${secret_name}" -n "${NAMESPACE}" --type merge -p "{
-    \"stringData\": {
-      \"password\": \"${NEW_TOKEN}\"
-    }
-  }"
+  PATCH=$(jq -n --arg token "${NEW_TOKEN}" '{"stringData":{"password":$token}}')
+  kubectl patch secret "${secret_name}" -n "${NAMESPACE}" --type merge -p "${PATCH}"
 done
 
 # Wait and verify
@@ -197,7 +192,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: rotator
-              image: bitnami/kubectl:1.28
+              image: ghcr.io/your-org/argocd-cred-rotator:latest  # include kubectl, vault, jq, and bash
               command: ["/bin/bash", "/scripts/rotate-from-vault.sh"]
               env:
                 - name: VAULT_ADDR
@@ -247,19 +242,16 @@ for repo in ${REPOS}; do
 
   case "${AUTH_TYPE}" in
     ssh)
-      # Generate new SSH key via Vault PKI
-      NEW_KEY=$(vault write -format=json ssh/sign/argocd \
-        public_key="$(ssh-keygen -t ed25519 -f /dev/stdin -N '' <<< '' 2>/dev/null | head -1)" | jq -r '.data.signed_key')
-      kubectl patch secret "repo-${repo}" -n "${NAMESPACE}" --type merge -p "{
-        \"stringData\": {\"sshPrivateKey\": \"${NEW_KEY}\"}
-      }"
+      # Get the rotated private key from Vault
+      NEW_PRIVATE_KEY=$(echo "${NEW_CREDS}" | jq -r '.data.data.sshPrivateKey')
+      PATCH=$(jq -n --arg key "${NEW_PRIVATE_KEY}" '{"stringData":{"sshPrivateKey":$key}}')
+      kubectl patch secret "repo-${repo}" -n "${NAMESPACE}" --type merge -p "${PATCH}"
       ;;
     https)
       # Get rotated token from Vault
       NEW_TOKEN=$(echo "${NEW_CREDS}" | jq -r '.data.data.token')
-      kubectl patch secret "repo-${repo}" -n "${NAMESPACE}" --type merge -p "{
-        \"stringData\": {\"password\": \"${NEW_TOKEN}\"}
-      }"
+      PATCH=$(jq -n --arg token "${NEW_TOKEN}" '{"stringData":{"password":$token}}')
+      kubectl patch secret "repo-${repo}" -n "${NAMESPACE}" --type merge -p "${PATCH}"
       ;;
   esac
 
@@ -306,26 +298,22 @@ AFFECTED=$(argocd repo list -o json | jq "[.[] | select(.repo | startswith(\"${U
 echo "Repositories affected: ${AFFECTED}"
 
 # Perform the rotation
-kubectl patch secret "${SECRET_NAME}" -n "${NAMESPACE}" --type merge -p "{
-  \"stringData\": {
-    \"password\": \"${NEW_TOKEN}\"
-  }
-}"
+PATCH=$(jq -n --arg token "${NEW_TOKEN}" '{"stringData":{"password":$token}}')
+kubectl patch secret "${SECRET_NAME}" -n "${NAMESPACE}" --type merge -p "${PATCH}"
 
 echo "Credential template updated. Verifying connections..."
 sleep 10
 
 # Verify all affected repos are still connected
 FAILED=0
-argocd repo list -o json | jq -r ".[] | select(.repo | startswith(\"${URL_PATTERN}\")) | \"\(.repo)\t\(.connectionState.status)\"" | \
-  while IFS=$'\t' read -r repo status; do
-    if [[ "${status}" != "Successful" ]]; then
-      echo "  FAIL: ${repo} - ${status}"
-      FAILED=$((FAILED + 1))
-    else
-      echo "  OK: ${repo}"
-    fi
-  done
+while IFS=$'\t' read -r repo status; do
+  if [[ "${status}" != "Successful" ]]; then
+    echo "  FAIL: ${repo} - ${status}"
+    FAILED=$((FAILED + 1))
+  else
+    echo "  OK: ${repo}"
+  fi
+done < <(argocd repo list -o json | jq -r ".[] | select(.repo | startswith(\"${URL_PATTERN}\")) | \"\(.repo)\t\(.connectionState.status)\"")
 
 if [[ ${FAILED} -gt 0 ]]; then
   echo "WARNING: ${FAILED} repositories failed connection check after rotation"
