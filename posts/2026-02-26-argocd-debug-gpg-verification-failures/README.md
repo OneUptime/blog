@@ -108,7 +108,8 @@ git log --format='%GS' -1 HEAD
 
 # Show the verification status
 git log --format='%G?' -1 HEAD
-# G = Good, B = Bad, U = Unknown validity, N = No signature, E = Expired
+# G = Good, B = Bad, U = Unknown validity, X = Expired signature
+# Y = Expired key, R = Revoked key, E = Cannot check, N = No signature
 ```
 
 ### Step 4: Check ArgoCD's Keyring
@@ -149,6 +150,10 @@ kubectl get appproject "$PROJECT" -n argocd -o json | jq '{
 ```
 
 Make sure the key ID from Step 3 appears in the project's `signatureKeys` list.
+If your ArgoCD version uses Source Integrity Verification, check
+`.spec.sourceIntegrity.git.policies[].gpg.keys` instead. The legacy
+`.spec.signatureKeys` configuration is still supported, but it is the older
+declaration format.
 
 ### Step 6: Check the Repo Server
 
@@ -162,7 +167,7 @@ kubectl logs deployment/argocd-repo-server -n argocd \
 # Check if the repo-server can access the GPG keyring
 kubectl exec deployment/argocd-repo-server -n argocd \
   -c argocd-repo-server -- \
-  gpg --list-keys 2>/dev/null
+  sh -c 'GNUPGHOME=/app/config/gpg/keys gpg --list-keys 2>/dev/null'
 ```
 
 ## Common Causes and Fixes
@@ -184,11 +189,11 @@ git log --format='%GK %GS' -1 HEAD
 
 ```bash
 # Import GitHub's signing key
-curl -s https://github.com/web-flow.gpg | argocd gpg add --from -
+curl -fsSL https://github.com/web-flow.gpg -o /tmp/github-web-flow.gpg
+argocd gpg add --from /tmp/github-web-flow.gpg
 
 # Add GitHub's key to the project
-kubectl edit appproject production -n argocd
-# Add: - keyID: 4AEE18F83AFDEB23
+argocd proj add-signature-key production 4AEE18F83AFDEB23
 ```
 
 ### Cause 2: Key Not Imported or Key ID Mismatch
@@ -276,12 +281,14 @@ kubectl rollout status deployment argocd-repo-server -n argocd
 # Verify keys are loaded
 kubectl exec deployment/argocd-repo-server -n argocd \
   -c argocd-repo-server -- \
-  gpg --list-keys --keyid-format long 2>/dev/null
+  sh -c 'GNUPGHOME=/app/config/gpg/keys gpg --list-keys --keyid-format long 2>/dev/null'
 ```
 
 ### Cause 6: Tracking a Tag Instead of a Branch
 
-If your application tracks a Git tag, the tag itself might need to be signed (annotated tag with GPG signature), not just the commit it points to:
+If your application tracks a Git tag, ArgoCD's behavior depends on the tag type.
+For a lightweight tag, ArgoCD verifies the commit the tag points to. For an
+annotated tag, ArgoCD verifies the tag object itself, so the tag must be signed:
 
 ```bash
 # Check if a tag is signed
@@ -290,8 +297,6 @@ git tag -v v1.0.0
 # If not, the tag creator needs to sign it
 git tag -s v1.0.0 -m "Release v1.0.0"
 ```
-
-However, ArgoCD verifies the commit signature, not the tag signature. If the commit pointed to by the tag is not signed, verification will fail.
 
 ## Quick Verification Checklist
 
