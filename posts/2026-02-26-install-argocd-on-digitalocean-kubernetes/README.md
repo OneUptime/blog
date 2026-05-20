@@ -28,12 +28,11 @@ If you do not already have a cluster, create one with `doctl`.
 
 doctl kubernetes cluster create argocd-cluster \
   --region nyc1 \
-  --version 1.28.2-do.0 \
   --size s-2vcpu-4gb \
   --count 3
 ```
 
-This takes a few minutes. Once ready, `doctl` automatically updates your kubeconfig.
+This takes a few minutes. Without `--version`, DOKS creates the cluster with the latest supported Kubernetes version. If you need to pin a version, run `doctl kubernetes options versions` first and use one of the currently supported version slugs. Once ready, `doctl` automatically updates your kubeconfig.
 
 ```bash
 # Verify you can connect
@@ -51,7 +50,7 @@ Create the ArgoCD namespace and apply the official manifests.
 kubectl create namespace argocd
 
 # Install ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
 Wait for all pods to become ready.
@@ -61,7 +60,7 @@ Wait for all pods to become ready.
 kubectl get pods -n argocd -w
 ```
 
-All six ArgoCD pods should reach `Running` state within a few minutes.
+All ArgoCD pods should reach `Running` state within a few minutes.
 
 ## Step 3: Expose ArgoCD with a DigitalOcean Load Balancer
 
@@ -93,12 +92,8 @@ metadata:
   name: argocd-server
   namespace: argocd
   annotations:
-    # Use HTTPS on the load balancer
-    service.beta.kubernetes.io/do-loadbalancer-protocol: "http"
-    # Health check configuration
-    service.beta.kubernetes.io/do-loadbalancer-healthcheck-port: "8080"
-    service.beta.kubernetes.io/do-loadbalancer-healthcheck-protocol: "http"
-    service.beta.kubernetes.io/do-loadbalancer-healthcheck-path: "/healthz"
+    # Pass Argo CD HTTPS traffic through to argocd-server
+    service.beta.kubernetes.io/do-loadbalancer-protocol: "tcp"
     # Give it a name you can find in the DO console
     service.beta.kubernetes.io/do-loadbalancer-name: "argocd-lb"
 spec:
@@ -164,14 +159,14 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 ```bash
 kubectl apply -f cluster-issuer.yaml
 ```
 
-If you installed the NGINX Ingress Controller, create an Ingress for ArgoCD with TLS.
+If you installed the NGINX Ingress Controller with SSL passthrough enabled, create an Ingress for ArgoCD with TLS.
 
 ```yaml
 # argocd-ingress.yaml
@@ -185,6 +180,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
+  ingressClassName: nginx
   tls:
   - hosts:
     - argocd.yourdomain.com
@@ -199,7 +195,7 @@ spec:
           service:
             name: argocd-server
             port:
-              number: 443
+              name: https
 ```
 
 ```bash
