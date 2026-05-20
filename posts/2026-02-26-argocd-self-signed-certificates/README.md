@@ -109,9 +109,11 @@ kubectl create secret tls argocd-server-tls \
   -n argocd
 ```
 
-### Restart ArgoCD Server
+### Wait for ArgoCD Server to Reload the Certificate
 
 ```bash
+# ArgoCD watches argocd-server-tls and reloads it automatically.
+# If you need to force a reload in a local environment:
 kubectl rollout restart deployment argocd-server -n argocd
 ```
 
@@ -127,10 +129,10 @@ argocd login argocd.local
 argocd login argocd.local --insecure
 
 # Option 2: Trust the CA certificate
-argocd login argocd.local --certificate-authority ca.crt
+argocd login argocd.local --server-crt ca.crt
 
-# Option 3: Set environment variable
-export ARGOCD_SERVER_CERTIFICATE_AUTHORITY_DATA=$(cat ca.crt | base64)
+# Option 3: Set default CLI options
+export ARGOCD_OPTS="--server-crt ca.crt"
 argocd login argocd.local
 ```
 
@@ -309,12 +311,13 @@ kubectl create secret tls argocd-server-tls \
   --key=/tmp/server.key \
   -n argocd --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart ArgoCD server
+# ArgoCD watches argocd-server-tls and reloads it automatically.
+# If you need to force a reload in a local environment:
 kubectl rollout restart deployment argocd-server -n argocd
 
 echo "ArgoCD configured with self-signed certificate"
 echo "CA certificate: /tmp/ca.crt"
-echo "Login with: argocd login argocd.local --certificate-authority /tmp/ca.crt"
+echo "Login with: argocd login argocd.local --server-crt /tmp/ca.crt"
 ```
 
 ## Migrating from Self-Signed to CA-Signed
@@ -329,9 +332,9 @@ kubectl create secret tls argocd-server-tls \
   --key=production.key \
   -n argocd --dry-run=client -o yaml | kubectl apply -f -
 ```
-3. Restart ArgoCD server
+3. Wait for ArgoCD server to pick up the updated `argocd-server-tls` secret, or restart it if you need to force a reload
 4. Update CLI configurations to remove `--insecure` flags
-5. Remove any `--certificate-authority` flags pointing to the old CA
+5. Remove any `--server-crt` flags pointing to the old CA
 
 ## Summary
 
