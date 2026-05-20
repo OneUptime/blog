@@ -38,7 +38,7 @@ Istio's traffic mirroring sends a copy of every request to your shadow deploymen
 ```yaml
 # dark-launch/mirror-vs.yaml
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -66,7 +66,7 @@ The matching DestinationRule:
 
 ```yaml
 # dark-launch/api-service-dr.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service
@@ -151,6 +151,8 @@ kind: Application
 metadata:
   name: dark-launch-api-v2
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
   labels:
     dark-launch: "true"
     target-service: api-service
@@ -166,7 +168,7 @@ spec:
   syncPolicy:
     automated:
       selfHeal: true
-      prune: true  # Clean up when dark launch is removed from Git
+      prune: true  # Clean up resources removed from this Application's source
 ```
 
 ## Dark Launch with Feature Flags
@@ -228,7 +230,7 @@ Route internal testers to the new version using HTTP headers:
 
 ```yaml
 # dark-launch/header-routing-vs.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: web-app
