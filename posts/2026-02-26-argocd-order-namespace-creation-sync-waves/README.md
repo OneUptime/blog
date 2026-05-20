@@ -8,13 +8,13 @@ Description: Learn how to use ArgoCD sync waves to ensure namespaces are created
 
 ---
 
-One of the most common ArgoCD deployment failures happens when resources try to land in a namespace that does not exist yet. Kubernetes rejects the create request, the sync fails, and you are left staring at a red status in the UI. The fix is straightforward: use sync waves to guarantee namespace creation happens first.
+One of the most common ArgoCD deployment failures happens when resources try to land in a namespace that does not exist yet. Kubernetes rejects the create request, the sync fails, and you are left staring at a red status in the UI. The fix is straightforward: either let ArgoCD create the application's destination namespace or use sync waves to make namespace setup happen first.
 
 This guide walks through the problem, the solution, and several real-world patterns for ordering namespace creation in ArgoCD.
 
 ## Why Namespace Ordering Matters
 
-When ArgoCD syncs an application, it applies all resources in a wave together. If you have a Namespace resource and a Deployment that targets that namespace in the same wave (wave 0 by default), there is no guarantee the namespace will be created before the Deployment. Kubernetes API calls happen in parallel, and the race condition is real.
+When ArgoCD syncs an application, it orders resources by phase, wave, kind, and name. Namespaces are ordered before other Kubernetes resources, but relying only on the default wave still leaves your namespace and workloads in the same stage of the sync. A clearer pattern is to put namespace setup in an earlier wave so ArgoCD completes it before moving on to the workloads.
 
 ```mermaid
 flowchart TD
@@ -22,12 +22,12 @@ flowchart TD
     B --> C[Namespace: payments]
     B --> D[Deployment: payments-api]
     B --> E[Service: payments-svc]
-    D --> F[FAIL: namespace payments not found]
-    E --> G[FAIL: namespace payments not found]
-    C --> H[Created successfully]
+    C --> F[Ordered before other Kubernetes resources]
+    D --> G[Workload creation depends on namespace availability]
+    E --> H[Service creation depends on namespace availability]
 ```
 
-The Deployment and Service fire off at the same time as the Namespace. If they reach the API server first, they fail because the namespace does not exist yet.
+If the namespace is missing from the application, managed by another application, or still not available when namespaced resources are applied, the Deployment and Service fail because the namespace does not exist yet.
 
 ## The Solution: Negative Sync Waves
 
@@ -157,7 +157,7 @@ The wave ordering guarantees all three namespaces exist before any workloads att
 
 ## Namespace with ResourceQuota and LimitRange
 
-In production environments, you typically create namespaces alongside their ResourceQuota and LimitRange resources. These should be in the same wave as the namespace since they are namespace-level configuration.
+In production environments, you typically create namespaces alongside their ResourceQuota and LimitRange resources. These should be in the next wave after the namespace since they are namespace-level configuration and must be created inside an existing namespace.
 
 ```yaml
 # namespace-config.yaml - Wave -2 for namespace setup
@@ -262,11 +262,11 @@ First, verify the sync wave annotations are correct. A typo in the annotation ke
 # Check the sync wave annotation on your resources
 kubectl get namespace payments -o jsonpath='{.metadata.annotations}'
 
-# Check ArgoCD application resource tree
-argocd app resources payments-app --output json | jq '.[] | {kind, name, syncWave}'
+# Check ArgoCD application resource tree and health
+argocd app get payments-app --output tree=detailed
 ```
 
-Second, make sure the namespace resource is actually part of your application. If the namespace is managed by a different ArgoCD application, you have a cross-application dependency that sync waves cannot solve. In that case, consider using sync hooks or restructuring your applications.
+Second, make sure the namespace resource is actually part of your application. If the namespace is managed by a different ArgoCD application, you have a cross-application dependency that sync waves on workload resources cannot solve. In that case, restructure your applications so namespace bootstrap completes before the workloads sync.
 
 Third, check if the namespace is in a healthy state. ArgoCD waits for each wave to be healthy before proceeding. If a namespace gets stuck (which is rare but possible with admission webhooks), subsequent waves will not execute.
 
