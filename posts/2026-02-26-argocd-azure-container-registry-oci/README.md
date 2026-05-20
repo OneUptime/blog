@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD to pull Helm charts and OCI artifacts
 
 ---
 
-Azure Container Registry (ACR) is the go-to container registry for teams running workloads on Azure Kubernetes Service or any Kubernetes cluster in the Azure ecosystem. With ArgoCD's support for OCI-based sources, you can now pull Helm charts and other OCI artifacts directly from ACR, keeping your GitOps pipeline tightly integrated with Azure's identity and access management.
+Azure Container Registry (ACR) is the go-to container registry for teams running workloads on Azure Kubernetes Service or any Kubernetes cluster in the Azure ecosystem. With ArgoCD's support for OCI-based sources, you can now pull Helm charts directly from ACR, keeping your GitOps pipeline tightly integrated with Azure's identity and access management.
 
 This guide walks through every method of connecting ArgoCD to ACR for OCI artifact consumption - from service principal credentials to workload identity federation.
 
@@ -25,10 +25,10 @@ If you are already using Azure for your Kubernetes workloads, ACR gives you seve
 
 Before you start, make sure you have:
 
-- An ArgoCD instance running (v2.8 or later for full OCI support)
+- An ArgoCD instance running with Helm OCI repository support
 - An Azure Container Registry instance
 - Azure CLI (`az`) installed and configured
-- `helm` CLI for pushing charts to ACR
+- Helm 3.8 or later for pushing charts to ACR
 
 ## Pushing Helm Charts to ACR
 
@@ -88,7 +88,7 @@ Add the ACR repository to ArgoCD using the service principal credentials:
 
 ```bash
 # Add ACR as an OCI Helm repository in ArgoCD
-argocd repo add myregistry.azurecr.io \
+argocd repo add myregistry.azurecr.io/helm \
   --type helm \
   --name azure-acr \
   --enable-oci \
@@ -111,7 +111,7 @@ type: Opaque
 stringData:
   type: helm
   name: azure-acr
-  url: myregistry.azurecr.io
+  url: myregistry.azurecr.io/helm
   enableOCI: "true"
   username: "<service-principal-app-id>"
   password: "<service-principal-password>"
@@ -135,8 +135,8 @@ metadata:
 spec:
   project: default
   source:
-    chart: helm/my-chart
-    repoURL: myregistry.azurecr.io
+    chart: my-chart
+    repoURL: myregistry.azurecr.io/helm
     targetRevision: 1.0.0
     helm:
       releaseName: my-app
@@ -168,7 +168,7 @@ az acr update --name myregistry --admin-enabled true
 az acr credential show --name myregistry
 
 # Add to ArgoCD
-argocd repo add myregistry.azurecr.io \
+argocd repo add myregistry.azurecr.io/helm \
   --type helm \
   --name azure-acr-admin \
   --enable-oci \
@@ -176,9 +176,9 @@ argocd repo add myregistry.azurecr.io \
   --password "<admin-password>"
 ```
 
-## Method 3: Managed Identity (AKS Clusters)
+## Method 3: AKS ACR Attachment
 
-If ArgoCD runs on AKS, you can use the kubelet managed identity that already has ACR pull permissions. This is the cleanest approach because there are no passwords to manage.
+If ArgoCD runs on AKS, you can attach ACR to the cluster so the kubelet identity can pull container images from the registry. This is useful for the workloads ArgoCD deploys, but it does not by itself authenticate ArgoCD's repo-server when it pulls Helm charts from ACR. Use workload identity in the next section for passwordless ArgoCD repository access.
 
 ### Attach ACR to AKS
 
@@ -190,9 +190,9 @@ az aks update \
   --attach-acr myregistry
 ```
 
-### Configure ArgoCD for Anonymous Access
+### Configure ArgoCD Repository Access
 
-When the AKS node identity has AcrPull permissions, ArgoCD's repo-server pod inherits those permissions automatically. You can add the repository without explicit credentials:
+Even when the AKS node identity has AcrPull permissions, configure ArgoCD with service principal credentials or Azure Workload Identity for the Helm OCI repository. Do not rely on anonymous repository access for a private ACR:
 
 ```yaml
 apiVersion: v1
@@ -206,11 +206,12 @@ type: Opaque
 stringData:
   type: helm
   name: azure-acr
-  url: myregistry.azurecr.io
+  url: myregistry.azurecr.io/helm
   enableOCI: "true"
+  useAzureWorkloadIdentity: "true"
 ```
 
-However, this approach depends on the node identity having pull access. For more granular control, use workload identity.
+For more granular control, use workload identity.
 
 ## Method 4: Workload Identity Federation (Recommended for Production)
 
@@ -272,8 +273,37 @@ metadata:
   namespace: argocd
   annotations:
     azure.workload.identity/client-id: "<identity-client-id>"
+```
+
+### Configure the ArgoCD Repository
+
+Add the ACR Helm OCI repository with Azure Workload Identity enabled:
+
+```bash
+argocd repo add myregistry.azurecr.io/helm \
+  --type helm \
+  --name azure-acr-wi \
+  --enable-oci \
+  --use-azure-workload-identity
+```
+
+Or configure the repository declaratively:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: acr-helm-repo-wi
+  namespace: argocd
   labels:
-    azure.workload.identity/use: "true"
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: helm
+  name: azure-acr-wi
+  url: myregistry.azurecr.io/helm
+  enableOCI: "true"
+  useAzureWorkloadIdentity: "true"
 ```
 
 ### Patch the Repo-Server Deployment
@@ -283,18 +313,21 @@ If you are using Helm to deploy ArgoCD, you can set these values:
 ```yaml
 # argocd-values.yaml
 repoServer:
+  podLabels:
+    azure.workload.identity/use: "true"
+  env:
+    - name: AZURE_ARM_TOKEN_RESOURCE
+      value: https://containerregistry.azure.net
   serviceAccount:
     annotations:
       azure.workload.identity/client-id: "<identity-client-id>"
-    labels:
-      azure.workload.identity/use: "true"
 ```
 
 ## Handling ACR Token Refresh
 
-ACR access tokens expire after a configurable period (default is 3 hours). When using service principal credentials, ArgoCD handles token refresh automatically since it stores the service principal credentials and requests new tokens as needed.
+Microsoft Entra registry access tokens expire after 3 hours. When using service principal credentials, ArgoCD handles token refresh automatically since it stores the service principal credentials and requests new tokens as needed.
 
-For managed identity and workload identity, the Azure identity SDK handles token refresh transparently within the pod.
+For workload identity, ArgoCD uses the projected service account token to request Azure tokens and refreshes access as needed.
 
 If you notice intermittent pull failures, check:
 
@@ -308,7 +341,7 @@ kubectl logs -n argocd deployment/argocd-repo-server | grep -i "auth\|token\|acr
 
 ## Using ACR with Geo-Replication
 
-If you have geo-replicated ACR, you can point ArgoCD at the regional endpoint for faster pulls:
+If you have geo-replicated ACR, the default `myregistry.azurecr.io` login server routes requests to a nearby available replica. If you are enrolled in ACR regional endpoints, you can point ArgoCD at a regional endpoint for predictable routing:
 
 ```yaml
 # Use the regional login server
@@ -323,7 +356,7 @@ type: Opaque
 stringData:
   type: helm
   name: azure-acr-westus
-  url: myregistry.westus.azurecr.io
+  url: myregistry.westus.geo.azurecr.io/helm
   enableOCI: "true"
   username: "<service-principal-app-id>"
   password: "<service-principal-password>"
@@ -335,7 +368,7 @@ stringData:
 
 **Firewall blocking access**: If ACR has firewall rules, make sure the AKS cluster's outbound IP addresses are whitelisted, or use a private endpoint.
 
-**Chart not found**: Ensure the chart path in ArgoCD matches the repository path in ACR. The `chart` field should include the repository prefix (e.g., `helm/my-chart`, not just `my-chart`).
+**Chart not found**: Ensure the chart path in ArgoCD matches the repository path in ACR. If the repository URL is `myregistry.azurecr.io/helm`, the `chart` field should be `my-chart`.
 
 ```bash
 # Verify the chart exists in ACR
