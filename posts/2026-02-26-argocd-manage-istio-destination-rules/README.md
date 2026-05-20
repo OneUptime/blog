@@ -17,7 +17,7 @@ Managing DestinationRules through ArgoCD ensures that critical traffic policies 
 A DestinationRule configures what happens to traffic after it has been routed to a destination:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service
@@ -121,7 +121,7 @@ Circuit breakers prevent cascading failures. Define them in DestinationRules and
 
 ```yaml
 # base/destination-rules/payment-service.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -154,7 +154,7 @@ Different environments might need different thresholds:
 
 ```yaml
 # overlays/staging/destination-rules/payment-service-patch.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -170,7 +170,7 @@ spec:
 
 ```yaml
 # overlays/production/destination-rules/payment-service-patch.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -186,11 +186,11 @@ spec:
 
 ## Pattern 2: Mutual TLS Configuration
 
-Enforce mutual TLS across services with DestinationRules:
+Configure clients to originate Istio mutual TLS for service calls with DestinationRules:
 
 ```yaml
 # base/destination-rules/default-mtls.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: default-mtls
@@ -205,7 +205,7 @@ spec:
 For services that need specific TLS settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
@@ -230,7 +230,7 @@ Different services benefit from different load balancing algorithms:
 
 ```yaml
 # Round robin for stateless services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: stateless-api
@@ -242,7 +242,7 @@ spec:
 
 ---
 # Consistent hashing for session-sticky services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: session-service
@@ -255,7 +255,7 @@ spec:
 
 ---
 # Least request for compute-heavy services
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: compute-service
@@ -271,7 +271,7 @@ spec:
 DestinationRules define the subsets that VirtualServices reference for traffic splitting:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service
@@ -311,7 +311,7 @@ git push
 Apply different policies to different service ports:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: multi-port-service
@@ -341,7 +341,7 @@ DestinationRules should be synced before VirtualServices that reference their su
 
 ```yaml
 # DestinationRule first (wave 0)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service
@@ -356,7 +356,7 @@ spec:
 
 ---
 # VirtualService references subset from DestinationRule (wave 1)
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -389,12 +389,13 @@ spec:
     spec:
       containers:
         - name: validate
-          image: istio/istioctl:1.21.0
+          image: istio/istioctl:1.30.0
           command:
             - sh
             - -c
             - |
               # Check for common DestinationRule issues
+              set -e
               istioctl analyze -n production \
                 --output json 2>&1
 
@@ -414,8 +415,8 @@ Track whether your circuit breakers and load balancing are working:
 
 ```promql
 # Outlier detection ejections
-istio_tcp_connections_opened_total{
-  destination_service="product-service.production.svc.cluster.local"
+envoy_cluster_outlier_detection_ejections_active{
+  envoy_cluster_name=~".*product-service.*"
 }
 
 # Connection pool overflow
