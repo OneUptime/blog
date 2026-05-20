@@ -90,10 +90,11 @@ spec:
             annotations:
               # DigitalOcean-specific annotations
               service.beta.kubernetes.io/do-loadbalancer-name: "my-lb"
-              service.beta.kubernetes.io/do-loadbalancer-protocol: "https"
-              service.beta.kubernetes.io/do-loadbalancer-certificate-id: "<YOUR_CERT_ID>"
-              service.beta.kubernetes.io/do-loadbalancer-redirect-http-to-https: "true"
-              service.beta.kubernetes.io/do-loadbalancer-size-slug: "lb-small"
+              service.beta.kubernetes.io/do-loadbalancer-tls-ports: "443"
+              service.beta.kubernetes.io/do-loadbalancer-tls-passthrough: "true"
+              service.beta.kubernetes.io/do-loadbalancer-size-unit: "1"
+          extraArgs:
+            enable-ssl-passthrough: ""
   destination:
     server: https://kubernetes.default.svc
     namespace: ingress-nginx
@@ -115,8 +116,8 @@ metadata:
   name: argocd-server-ingress
   namespace: argocd
   annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
   rules:
@@ -129,7 +130,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
 ## Step 4: Configure DigitalOcean Container Registry
@@ -147,7 +148,7 @@ doctl registry kubernetes-manifest | kubectl apply -f -
 doctl kubernetes cluster registry add my-cluster
 ```
 
-This automatically creates image pull secrets in all namespaces. For ArgoCD to pull Helm charts from DOCR (if you store them there), add a repository configuration.
+The manifest creates image pull credentials for the cluster. On newer DOKS clusters, the DOSecret operator can apply the credentials across namespaces; you can also target a namespace explicitly with `--namespace`. For ArgoCD to pull Helm charts from DOCR (if you store them there), add a repository configuration.
 
 ```yaml
 # docr-repo-secret.yaml
@@ -163,15 +164,15 @@ stringData:
   name: docr
   enableOCI: "true"
   url: registry.digitalocean.com/my-registry
-  username: "<DOCR_TOKEN>"
-  password: "<DOCR_TOKEN>"
+  username: "<DOCR_USERNAME>"
+  password: "<DOCR_PASSWORD>"
 ```
 
-You can generate a DOCR token with the API.
+You can generate read-only DOCR credentials with `doctl registry docker-config` and use the generated registry username and password.
 
 ```bash
-# Generate a read-only registry token
-doctl registry docker-config
+# Generate read-only registry credentials
+doctl registry docker-config my-registry
 ```
 
 ## Step 5: Configure DigitalOcean Volumes for Persistent Storage
@@ -212,7 +213,8 @@ spec:
     targetRevision: 1.x
     helm:
       values: |
-        provider: digitalocean
+        provider:
+          name: digitalocean
         env:
           - name: DO_TOKEN
             valueFrom:
@@ -293,11 +295,11 @@ Then add a toleration and node selector to ArgoCD.
 
 ### Monitoring with DigitalOcean
 
-DOKS supports the DigitalOcean Monitoring agent. You can deploy it with ArgoCD and also use it to monitor ArgoCD itself.
+DOKS supports improved metrics, and DigitalOcean also provides a Kubernetes Monitoring Stack 1-Click app based on kube-prometheus-stack. You can use it to monitor ArgoCD itself.
 
 ```bash
-# Install the DO monitoring stack
-doctl kubernetes cluster monitoring install my-cluster
+# Install the Kubernetes Monitoring Stack 1-Click app
+doctl kubernetes 1-click install my-cluster --1-clicks monitoring
 ```
 
 ### Cost Optimization
