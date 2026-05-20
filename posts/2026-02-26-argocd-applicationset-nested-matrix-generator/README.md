@@ -229,7 +229,7 @@ spec:
       source:
         repoURL: https://github.com/myorg/platform.git
         targetRevision: HEAD
-        path: '{{.path}}'
+        path: '{{.path.path}}'
       destination:
         server: '{{.server}}'
         namespace: '{{.path.basename}}'
@@ -237,7 +237,7 @@ spec:
 
 ## Parameter Merging in Nested Matrices
 
-When generators are nested, parameters from all levels are merged into a single flat parameter set. If two generators produce a parameter with the same key, the value from the later (inner) generator takes precedence.
+When generators are nested, parameters from all levels are merged into a single flat parameter set. If two generators produce a parameter with the same key, do not rely on the inner generator overriding the outer one. Matrix generator precedence follows child generator order, and conflicting generated keys can fail in cases such as two Git generators emitting the same path parameters.
 
 ```yaml
 generators:
@@ -248,7 +248,7 @@ generators:
         # Inner: also provides "name" as app name
         - list:
             elements:
-              - name: frontend  # CONFLICT with cluster "name"!
+              - name: frontend  # Avoid reusing the cluster "name" key.
 ```
 
 To avoid conflicts, use distinct parameter names:
@@ -267,7 +267,7 @@ generators:
 
 ## Three-Level Nesting: Environments x Clusters x Services
 
-Here is a complete example with three fully nested levels.
+Here is a complete example with three dimensions using one nested matrix.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -346,9 +346,9 @@ First, nesting depth is limited. ArgoCD supports up to two levels of nesting (a 
 Second, the number of generated applications grows multiplicatively. Three generators producing 5, 10, and 8 items respectively create 400 applications. Monitor your ApplicationSet controller's resource usage.
 
 ```bash
-# Check how many applications a matrix produces
+# Check how many Argo CD Applications exist
 
-kubectl get applications -n argocd -l app.kubernetes.io/managed-by=applicationset-controller | wc -l
+kubectl get applications.argoproj.io -n argocd --no-headers | wc -l
 
 # Monitor ApplicationSet controller resources
 kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-applicationset-controller
@@ -367,17 +367,13 @@ generators:
         - list:
             elements:
               - app: debug-tool
-                env_filter: dev
+                deploy: "false"
               - app: frontend
-                env_filter: all
+                deploy: "true"
+    selector:
       # Only keep valid combinations
-      selector:
-        matchExpressions:
-          - key: env_filter
-            operator: In
-            values:
-              - all
-              - '{{env}}'
+      matchLabels:
+        deploy: "true"
 ```
 
 Nested matrix generators are the power tool for multi-dimensional ApplicationSets. Use them thoughtfully, and they will manage hundreds of applications from a single definition. For monitoring the large number of applications that nested matrices produce, [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-applicationset-git-file-globbing/view) provides centralized observability across all dimensions of your deployment.
