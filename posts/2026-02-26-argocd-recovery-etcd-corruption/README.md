@@ -31,7 +31,7 @@ When etcd is corrupted, any or all of these resources can be affected. The sympt
 
 - ArgoCD UI shows no applications
 - API server returns 500 errors
-- Application controller logs show etcd connection errors
+- Application controller logs show Kubernetes API storage errors
 - Kubernetes objects are partially missing or inconsistent
 
 ## Diagnosing etcd Corruption
@@ -46,7 +46,7 @@ kubectl get pods -n kube-system -l component=etcd
 # Check etcd logs for corruption indicators
 kubectl logs -n kube-system etcd-master-node --tail=100
 
-# Common error messages indicating corruption:
+# Common error messages indicating etcd corruption or storage health issues:
 # "mvcc: database space exceeded"
 # "etcdserver: request timed out"
 # "panic: unexpected partial uncommitted"
@@ -65,7 +65,7 @@ kubectl get configmaps -n argocd 2>&1
 # If you get errors like:
 # "etcdserver: mvcc: required revision has been compacted"
 # "error: the server was unable to return a response"
-# Then etcd data is compromised
+# Then etcd health or API storage access needs investigation
 ```
 
 ## Recovery Path 1: Restore from etcd Snapshot
@@ -90,16 +90,19 @@ sleep 10
 ls -la /var/backups/etcd/
 
 # Restore from snapshot
-sudo ETCDCTL_API=3 etcdctl snapshot restore /var/backups/etcd/snapshot.db \
+sudo etcdutl snapshot restore /var/backups/etcd/snapshot.db \
+  --bump-revision=1000000000 \
+  --mark-compacted \
   --data-dir=/var/lib/etcd-restored \
   --name=master \
   --initial-cluster=master=https://127.0.0.1:2380 \
+  --initial-cluster-token=etcd-cluster-1 \
   --initial-advertise-peer-urls=https://127.0.0.1:2380
 
 # Replace the etcd data directory
 sudo mv /var/lib/etcd /var/lib/etcd-corrupted
 sudo mv /var/lib/etcd-restored /var/lib/etcd
-sudo chown -R etcd:etcd /var/lib/etcd
+sudo chown -R --reference=/var/lib/etcd-corrupted /var/lib/etcd
 ```
 
 ### Step 3: Restart etcd and API Server
@@ -126,8 +129,8 @@ kubectl get appprojects.argoproj.io -n argocd
 kubectl get pods -n argocd
 
 # Restart ArgoCD to clear any stale caches
-kubectl rollout restart deployment -n argocd
-kubectl rollout restart statefulset -n argocd
+kubectl rollout restart deployment -n argocd --all
+kubectl rollout restart statefulset -n argocd --all
 ```
 
 ## Recovery Path 2: Rebuild Without etcd Snapshot
@@ -146,9 +149,11 @@ ETCDCTL_API=3 etcdctl defrag \
 
 # Option B: If etcd is completely unrecoverable, reset it
 # WARNING: This deletes ALL cluster state
-sudo systemctl stop etcd
+sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/
+sudo mv /etc/kubernetes/manifests/etcd.yaml /tmp/
 sudo rm -rf /var/lib/etcd/member
-sudo systemctl start etcd
+sudo mv /tmp/etcd.yaml /etc/kubernetes/manifests/
+sudo mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/
 ```
 
 ### Step 2: Reinstall ArgoCD if Needed
@@ -160,8 +165,8 @@ If the argocd namespace was lost:
 kubectl create namespace argocd
 
 # Install ArgoCD
-kubectl apply -n argocd \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.0/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for pods to be ready
 kubectl wait --for=condition=available deployment --all -n argocd --timeout=180s
@@ -171,7 +176,7 @@ kubectl wait --for=condition=available deployment --all -n argocd --timeout=180s
 
 ```bash
 # If you have an ArgoCD-level backup
-argocd admin import -n argocd < /backups/argocd-backup.yaml
+argocd admin import -n argocd - < /backups/argocd-backup.yaml
 ```
 
 Or restore manually, following the same process described in our [ArgoCD Restore from Backup](https://oneuptime.com/blog/post/2026-02-26-argocd-restore-from-backup/view) guide.
@@ -223,27 +228,26 @@ Set up regular etcd snapshots to minimize data loss:
 
 BACKUP_DIR="/var/backups/etcd"
 MAX_BACKUPS=24  # Keep 24 hours of backups
+SNAPSHOT_FILE="$BACKUP_DIR/snapshot-$(date +%Y%m%d-%H%M).db"
 
 mkdir -p "$BACKUP_DIR"
 
 # Create snapshot
 ETCDCTL_API=3 etcdctl snapshot save \
-  "$BACKUP_DIR/snapshot-$(date +%Y%m%d-%H%M).db" \
+  "$SNAPSHOT_FILE" \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
   --key=/etc/kubernetes/pki/etcd/server.key
 
 # Verify the snapshot
-ETCDCTL_API=3 etcdctl snapshot status \
-  "$BACKUP_DIR/snapshot-$(date +%Y%m%d-%H%M).db" --write-out=table
+etcdutl snapshot status "$SNAPSHOT_FILE" --write-out=table
 
 # Clean old snapshots
 ls -t "$BACKUP_DIR"/snapshot-*.db | tail -n +$((MAX_BACKUPS + 1)) | xargs rm -f 2>/dev/null
 
 # Also upload to cloud storage
-aws s3 cp "$BACKUP_DIR/snapshot-$(date +%Y%m%d-%H%M).db" \
-  "s3://my-backups/etcd/" 2>/dev/null || true
+aws s3 cp "$SNAPSHOT_FILE" "s3://my-backups/etcd/" 2>/dev/null || true
 ```
 
 Add the cron job:
