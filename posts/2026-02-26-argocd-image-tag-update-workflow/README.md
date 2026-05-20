@@ -129,6 +129,8 @@ image:
 
 ArgoCD Image Updater watches container registries and updates Git automatically when new images are available. This removes the need for your CI pipeline to touch the manifest repo.
 
+The example below uses Image Updater's annotation-based configuration; in current CR-based installations, enable annotation mode or translate the same settings into an `ImageUpdater` resource.
+
 ```yaml
 # argocd-application.yaml
 apiVersion: argoproj.io/v1alpha1
@@ -138,10 +140,9 @@ metadata:
   namespace: argocd
   annotations:
     # Tell Image Updater to watch this image
-    argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp
-    # Use semver to pick the latest version
+    argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:>=1.0.0
+    # Use semver to pick the latest version that matches the constraint
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.0.0"
     # Write changes back to Git
     argocd-image-updater.argoproj.io/write-back-method: git
 spec:
@@ -173,15 +174,9 @@ curl -X PATCH \
   -H "Content-Type: application/json" \
   "https://$ARGOCD_SERVER/api/v1/applications/myapp" \
   -d '{
-    "spec": {
-      "source": {
-        "helm": {
-          "parameters": [
-            {"name": "image.tag", "value": "'$IMAGE_TAG'"}
-          ]
-        }
-      }
-    }
+    "name": "myapp",
+    "patch": "{\"spec\":{\"source\":{\"helm\":{\"parameters\":[{\"name\":\"image.tag\",\"value\":\"'"$IMAGE_TAG"'\"}]}}}}",
+    "patchType": "merge"
   }'
 ```
 
@@ -290,7 +285,7 @@ jobs:
           argocd app get myapp --refresh --grpc-web
 
           # Wait for sync and health
-          argocd app wait myapp --grpc-web --health --timeout 300
+          argocd app wait myapp --grpc-web --sync --health --timeout 300
 ```
 
 ## Choosing the Right Approach
