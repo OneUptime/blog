@@ -12,17 +12,17 @@ Git provider rate limiting is one of the most frustrating operational issues in 
 
 ## Understanding Git Provider Rate Limits
 
-Each Git provider has different rate limits:
+Each Git provider has different rate limits, and API limits are separate from Git clone/fetch limits:
 
-| Provider | API Rate Limit | Git Clone Limit | Auth Type |
-|----------|---------------|-----------------|-----------|
-| GitHub.com | 5,000/hr (authenticated) | Varies | PAT, SSH, App |
-| GitHub.com | 60/hr (unauthenticated) | Very low | None |
-| GitLab.com | 2,000/min (authenticated) | Varies | PAT, SSH |
-| Bitbucket Cloud | 1,000/hr | Varies | App password |
-| Azure DevOps | 200 requests/min | Varies | PAT |
+| Provider | API Rate Limit | Git Clone/Fetch Limit | Auth Type |
+|----------|---------------|-----------------------|-----------|
+| GitHub.com | 5,000/hr for authenticated user requests; 60/hr unauthenticated | Varies by transport and abuse detection | PAT, SSH, App |
+| GitHub.com | GitHub App installations start at 5,000/hr and can scale higher | Varies by transport and abuse detection | App |
+| GitLab.com | 2,000/min for authenticated API requests on GitLab.com | 10,000 Git HTTPS requests/min for authenticated users on GitLab.com | PAT, SSH |
+| Bitbucket Cloud | 1,000/hr for API requests | Normal fetch and push operations are not counted against the API limit | App password, SSH |
+| Azure DevOps | Consumption-based limits, including a 200 TSTU sliding 5-minute global limit | Varies by command and service load | PAT |
 
-ArgoCD makes Git requests during every reconciliation cycle. With 200 applications and a 3-minute reconciliation interval, ArgoCD makes roughly 4,000 Git requests per hour - close to GitHub's limit.
+ArgoCD polls tracked Git repositories during reconciliation. With 200 applications and a 3-minute reconciliation interval, a setup that causes one Git request per application per poll can approach 4,000 Git requests per hour, so provider-specific Git transport limits and abuse controls matter.
 
 ## Detecting Rate Limiting
 
@@ -57,11 +57,11 @@ Common error messages by provider:
 # Port-forward repo server metrics
 kubectl port-forward svc/argocd-repo-server -n argocd 8084:8084 &
 
-# Check for failed Git requests
+# Check Git request counts
 curl -s http://localhost:8084/metrics | grep argocd_git_request_total
 
 # Look for error counts
-curl -s http://localhost:8084/metrics | grep -E "argocd_git_request_total.*error"
+curl -s http://localhost:8084/metrics | grep argocd_git_fetch_fail_total
 ```
 
 ### Check Application Status
@@ -86,7 +86,7 @@ metadata:
   namespace: argocd
 data:
   # Increase from 3 minutes to 10 minutes
-  timeout.reconciliation: "600"
+  timeout.reconciliation: "10m"
 ```
 
 This reduces Git requests by more than 3x. Combine with webhooks for immediate change detection:
@@ -144,10 +144,10 @@ With a warm cache, ArgoCD only needs to `git fetch` (lightweight) instead of `gi
 
 ## Prevention Strategy 3: Use GitHub Apps Instead of PATs
 
-GitHub App tokens have higher rate limits than Personal Access Tokens:
+GitHub App installation tokens use a separate installation rate limit, which avoids sharing one user's Personal Access Token budget across all automation:
 
 - PAT: 5,000 requests/hour (shared across all uses of the token)
-- GitHub App: 5,000 requests/hour per installation (plus 5,000 per organization)
+- GitHub App installation: 5,000 requests/hour minimum, scaling by repositories and organization users up to 12,500 requests/hour; Enterprise Cloud installations get 15,000 requests/hour
 
 ```yaml
 # Configure ArgoCD to use a GitHub App
@@ -183,6 +183,8 @@ metadata:
   name: services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/org/services
@@ -191,19 +193,23 @@ spec:
           - path: services/*
   template:
     metadata:
-      name: "{{path.basename}}"
+      name: "{{.path.basename}}"
     spec:
+      project: default
       source:
         repoURL: https://github.com/org/services
         targetRevision: main
-        path: "{{path}}"
+        path: "{{.path.path}}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{.path.basename}}"
 ```
 
 The repo server deduplicates clone requests for the same repo/revision, so multiple applications sharing the same repo benefit from the cache.
 
 ## Prevention Strategy 5: Use SSH Instead of HTTPS
 
-SSH connections do not count against API rate limits on most providers. Switching to SSH reduces your API rate limit consumption:
+SSH Git transport does not use REST API requests for normal clone and fetch operations. Switching to SSH can separate ArgoCD's Git traffic from API token budgets, though providers can still apply Git transport or abuse-detection limits:
 
 ```yaml
 # Use SSH URL instead of HTTPS
@@ -241,14 +247,14 @@ stringData:
 Jitter prevents all applications from hitting Git simultaneously:
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
+# argocd-cm ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-cm
   namespace: argocd
 data:
-  controller.reconciliation.jitter: "120"
+  timeout.reconciliation.jitter: "120s"
 ```
 
 This spreads Git requests over a 2-minute window instead of all hitting at once.
@@ -262,10 +268,10 @@ If you are already being rate-limited:
 ```bash
 # Increase reconciliation interval immediately
 kubectl patch configmap argocd-cm -n argocd \
-  --type merge -p '{"data":{"timeout.reconciliation":"1800"}}'
+  --type merge -p '{"data":{"timeout.reconciliation":"30m"}}'
 
-# Restart the controller to apply
-kubectl rollout restart deployment argocd-application-controller -n argocd
+# Restart the controller and repo server to apply
+kubectl rollout restart statefulset/argocd-application-controller deployment/argocd-repo-server -n argocd
 ```
 
 ### Check Rate Limit Status
@@ -317,7 +323,7 @@ groups:
 
       - alert: ArgocdGitRequestErrors
         expr: |
-          rate(argocd_git_request_total{request_type="fetch",result="error"}[5m]) > 0
+          rate(argocd_git_fetch_fail_total[5m]) > 0
         for: 5m
         labels:
           severity: critical
@@ -331,8 +337,8 @@ For end-to-end monitoring of your Git request rates and early warning before you
 
 - Increase reconciliation interval and use webhooks as the first line of defense
 - Enable Git caching with persistent volumes to reduce redundant requests
-- Use GitHub Apps instead of PATs for higher rate limits
-- Switch to SSH to avoid API rate limit consumption
+- Use GitHub Apps instead of shared PATs to get a separate installation rate limit
+- Switch to SSH to separate normal Git traffic from API token budgets
 - Add reconciliation jitter to spread requests over time
 - Monitor Git request rates proactively to detect problems before they hit limits
 - If rate-limited, immediately increase the reconciliation interval as emergency mitigation
