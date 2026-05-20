@@ -12,13 +12,13 @@ Redis serves as ArgoCD's caching layer, storing repository data, application man
 
 ## How ArgoCD Uses Redis
 
-Before configuring HA, understand what ArgoCD stores in Redis:
+Before configuring HA, understand what ArgoCD caches in Redis:
 
 - **Git repository metadata**: Commit hashes, file listings, and resolved references
 - **Rendered manifests**: Cached output from Helm template and Kustomize builds
-- **Application state**: Sync status, health status, and resource trees
+- **Application cache data**: Resource trees and other cached application data
 - **Cluster information**: API server versions, available resources
-- **Session data**: User login sessions and tokens
+- **Session data**: Revoked token state and related session cache data
 
 ```mermaid
 flowchart TD
@@ -36,7 +36,7 @@ flowchart TD
     end
 ```
 
-If Redis is unavailable, ArgoCD continues to function but with increased latency since every request hits Git repositories and Kubernetes APIs directly instead of the cache.
+ArgoCD stores persistent state in Kubernetes objects. Redis is a disposable cache, so if Redis is unavailable ArgoCD can rebuild cache data, but users may see errors or increased latency while components reconnect and repopulate the cache.
 
 ## Redis HA with Sentinel
 
@@ -79,7 +79,6 @@ redis-ha:
 
   # Sentinel configuration
   sentinel:
-    enabled: true
     resources:
       requests:
         cpu: 100m
@@ -92,8 +91,10 @@ redis-ha:
       down-after-milliseconds: 10000
       # How long to wait before starting failover
       failover-timeout: 30000
-      # Minimum replicas that must agree master is down
+      # How many replicas sync with the new master at once
       parallel-syncs: 1
+    # Minimum Sentinels that must agree the master is down
+    quorum: 2
 
   # HAProxy for routing connections to the current master
   haproxy:
@@ -111,9 +112,10 @@ redis-ha:
 
   # Spread Redis pods across nodes
   topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: kubernetes.io/hostname
-      whenUnsatisfiable: DoNotSchedule
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
 
   # Persistent storage for Redis data
   persistentVolume:
@@ -125,6 +127,9 @@ redis-ha:
 Install with Helm:
 
 ```bash
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+
 helm install argocd argo/argo-cd \
   --namespace argocd \
   --create-namespace \
@@ -136,6 +141,8 @@ helm install argocd argo/argo-cd \
 The ArgoCD project provides HA manifests that include Redis Sentinel:
 
 ```bash
+kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+
 kubectl apply -n argocd \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
@@ -161,24 +168,25 @@ sequenceDiagram
     S1->>S2: Vote for failover
     S2->>S1: Agree
     S3->>S1: Agree
-    S1->>R1: SLAVEOF NO ONE (promote to master)
-    S1->>R2: SLAVEOF new-master
+    S1->>R1: REPLICAOF NO ONE (promote to master)
+    S1->>R2: REPLICAOF new-master
     Note over R1: R1 is now the new master
 ```
 
 Key failover parameters:
 
-- **down-after-milliseconds**: How long a master must be unreachable before Sentinel considers it down (default 10 seconds)
-- **failover-timeout**: Maximum time for the entire failover process (default 30 seconds)
+- **down-after-milliseconds**: How long a master must be unreachable before Sentinel considers it down (10 seconds in the Helm values above; Redis Sentinel's default is 30 seconds)
+- **quorum**: How many Sentinels must agree the master is down before it is marked objectively down
+- **failover-timeout**: Maximum time for the failover process (30 seconds in the Helm values above; Redis Sentinel's default is 180 seconds)
 - **parallel-syncs**: How many replicas sync with the new master simultaneously during failover
 
 ## HAProxy Configuration
 
 HAProxy sits in front of the Redis instances and routes connections to the current master. ArgoCD components connect to HAProxy instead of Redis directly:
 
-```yaml
+```haproxy
 # HAProxy configuration (automatically managed by the Helm chart)
-# This is what gets generated - shown for understanding
+# Simplified version shown for understanding
 
 defaults
   mode tcp
@@ -199,9 +207,9 @@ backend redis-backend
   tcp-check expect string role:master
   tcp-check send QUIT\r\n
   tcp-check expect string +OK
-  server redis-0 argocd-redis-ha-server-0.argocd-redis-ha.argocd:6379 check inter 3s fall 3 rise 2
-  server redis-1 argocd-redis-ha-server-1.argocd-redis-ha.argocd:6379 check inter 3s fall 3 rise 2
-  server redis-2 argocd-redis-ha-server-2.argocd-redis-ha.argocd:6379 check inter 3s fall 3 rise 2
+  server redis-0 argocd-redis-ha-announce-0:6379 check inter 1s fall 1 rise 1
+  server redis-1 argocd-redis-ha-announce-1:6379 check inter 1s fall 1 rise 1
+  server redis-2 argocd-redis-ha-announce-2:6379 check inter 1s fall 1 rise 1
 ```
 
 The health check queries each Redis instance and only routes traffic to the one reporting `role:master`.
@@ -219,11 +227,11 @@ kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis-ha-haproxy
 
 # Verify Sentinel is tracking the master
 kubectl exec -n argocd argocd-redis-ha-server-0 -c sentinel -- \
-  redis-cli -p 26379 sentinel master mymaster
+  redis-cli -p 26379 sentinel master argocd
 
 # Check replication status
 kubectl exec -n argocd argocd-redis-ha-server-0 -c redis -- \
-  redis-cli info replication
+  sh -c 'redis-cli -a "$AUTH" --no-auth-warning info replication'
 
 # Expected output includes:
 # role:master (or role:slave)
@@ -237,20 +245,20 @@ Simulate a master failure to verify HA works:
 ```bash
 # Find the current master
 kubectl exec -n argocd argocd-redis-ha-server-0 -c redis -- \
-  redis-cli info replication | grep role
+  sh -c 'redis-cli -a "$AUTH" --no-auth-warning info replication | grep role'
 
 # If server-0 is the master, kill it
 kubectl delete pod argocd-redis-ha-server-0 -n argocd
 
-# Watch Sentinel elect a new master (within 10-30 seconds)
+# Watch Sentinel elect a new master
 kubectl exec -n argocd argocd-redis-ha-server-1 -c sentinel -- \
-  redis-cli -p 26379 sentinel master mymaster
+  redis-cli -p 26379 sentinel master argocd
 
 # Verify ArgoCD still works
 argocd app list
 ```
 
-During failover, ArgoCD may experience brief cache misses (1-2 seconds), but operations should continue without errors.
+During failover, ArgoCD may experience brief cache misses or Redis connection errors. The interruption depends on Sentinel and HAProxy timing, and is often measured in seconds to tens of seconds.
 
 ## Persistence Configuration
 
@@ -309,15 +317,15 @@ Monitor Redis health with these commands and metrics:
 ```bash
 # Check memory usage
 kubectl exec -n argocd argocd-redis-ha-server-0 -c redis -- \
-  redis-cli info memory
+  sh -c 'redis-cli -a "$AUTH" --no-auth-warning info memory'
 
 # Check connected clients
 kubectl exec -n argocd argocd-redis-ha-server-0 -c redis -- \
-  redis-cli info clients
+  sh -c 'redis-cli -a "$AUTH" --no-auth-warning info clients'
 
 # Check cache hit rate
 kubectl exec -n argocd argocd-redis-ha-server-0 -c redis -- \
-  redis-cli info stats | grep keyspace
+  sh -c 'redis-cli -a "$AUTH" --no-auth-warning info stats | grep keyspace'
 ```
 
 For Prometheus monitoring, enable metrics export in the HAProxy:
