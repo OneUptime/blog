@@ -14,32 +14,28 @@ This guide covers how to enable, configure, and use ArgoCD status badges across 
 
 ## What Are Status Badges?
 
-Status badges are dynamically generated SVG or PNG images served by the ArgoCD API server. They update in real time to reflect the current state of your applications.
+Status badges are dynamically generated SVG images served by the ArgoCD API server. They update to reflect the current state of your applications.
 
-ArgoCD provides two types of badges per application:
+ArgoCD provides a single badge that shows both status values for an application:
 
-1. **Sync Status Badge**: Shows whether the application is Synced, OutOfSync, or Unknown
-2. **Health Status Badge**: Shows whether the application is Healthy, Degraded, Progressing, or Missing
+1. **Sync Status**: Shows whether the application is Synced, OutOfSync, or Unknown
+2. **Health Status**: Shows whether the application is Healthy, Degraded, Progressing, Missing, Suspended, or Unknown
 
 ```mermaid
 flowchart LR
-    A[ArgoCD API Server] -->|Generates| B[Sync Status Badge]
-    A -->|Generates| C[Health Status Badge]
-    B -->|Embedded in| D[README]
-    B -->|Embedded in| E[Confluence]
-    B -->|Embedded in| F[Slack]
-    C -->|Embedded in| D
-    C -->|Embedded in| E
-    C -->|Embedded in| F
+    A[ArgoCD API Server] -->|Generates| B[Status Badge]
+    B -->|Embedded in| C[README]
+    B -->|Embedded in| D[Confluence]
+    B -->|Embedded in| E[Slack]
 ```
 
 ## Enabling Badge Support
 
-By default, ArgoCD badge endpoints are available but may require authentication. To allow unauthenticated access to badges (which is necessary for embedding in external tools), you need to enable anonymous access or configure the badge endpoint.
+By default, ArgoCD status badges are disabled because the badge image is available without authentication once enabled. To embed badges in external tools, enable badge support and make sure you are comfortable exposing application status to anyone who can reach the URL.
 
-### Option 1: Enable Anonymous Badge Access
+### Option 1: Enable Badge Access
 
-The simplest approach is to enable the badge endpoint without authentication:
+Enable the badge endpoint with the `statusbadge.enabled` setting:
 
 ```yaml
 apiVersion: v1
@@ -54,17 +50,22 @@ data:
 
 This setting exposes the badge endpoint at `/api/badge` without requiring authentication, while all other API endpoints remain protected.
 
-### Option 2: Token-Based Badge Access
+### Option 2: Override the Badge Base URL
 
-For additional security, you can require a token for badge access. Generate an API token and include it in the badge URL:
+If ArgoCD is behind a reverse proxy or you want generated badge snippets to use a different public hostname, configure `statusbadge.url`:
 
-```bash
-# Generate an API token for badge access
-
-argocd account generate-token --account badge-reader
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  statusbadge.enabled: "true"
+  statusbadge.url: "https://argocd.example.com/"
 ```
 
-Then use the token in the badge URL as a query parameter.
+If you need authenticated badge access, put an authenticating proxy in front of the badge URL rather than adding tokens to badge query strings.
 
 ## Badge URL Format
 
@@ -81,11 +82,14 @@ https://argocd.example.com/api/badge?name=<app-name>&revision=true
 | `name` | Application name | `name=my-app` |
 | `project` | Filter by project | `project=production` |
 | `revision` | Show Git revision | `revision=true` |
+| `showAppName` | Show the application name | `showAppName=true` |
+| `keepFullRevision` | Do not truncate the displayed revision | `keepFullRevision=true` |
+| `width` | Override the badge width | `width=500` |
 
 ### Badge URL Examples
 
 ```text
-# Sync status badge for a specific application
+# Status badge for a specific application
 https://argocd.example.com/api/badge?name=payment-service
 
 # Badge showing the Git revision
@@ -217,7 +221,7 @@ You can build a simple status dashboard using just HTML and ArgoCD badges:
 
 ## Badge Caching Considerations
 
-Badges are generated dynamically on each request. Keep these caching considerations in mind:
+ArgoCD sends badge responses with `Cache-Control: private, no-store`. Keep these caching considerations in mind:
 
 **Browser caching**: Browsers may cache badge images. Add a cache-busting parameter if you need real-time updates:
 
@@ -260,7 +264,7 @@ argocd app list -o json | jq '.[] | {name: .metadata.name, sync: .status.sync.st
 
 **Network security**: Even with `statusbadge.enabled`, make sure the ArgoCD server is not publicly accessible if you do not want external visibility into your deployment status.
 
-**Token rotation**: If using token-based badge access, rotate the token periodically and update all badge URLs.
+**Proxy credential rotation**: If you put an authenticating proxy in front of badge requests, rotate those credentials periodically and update any clients that use them.
 
 ## Troubleshooting
 
@@ -270,13 +274,13 @@ argocd app list -o json | jq '.[] | {name: .metadata.name, sync: .status.sync.st
 argocd app get <app-name>
 ```
 
-**Badge returns 404**: The badge endpoint might not be enabled. Check:
+**Badge shows "Unknown" even when the application exists**: The badge endpoint might not be enabled. Check:
 
 ```bash
 kubectl get cm argocd-cm -n argocd -o jsonpath='{.data.statusbadge\.enabled}'
 ```
 
-**Badge returns 403**: Authentication is required but not provided. Either enable `statusbadge.enabled` or provide a valid token in the request.
+**Badge returns 400**: The application name, namespace, project, or width parameter might be invalid. Check the URL parameters and try the badge URL again.
 
 ## Conclusion
 
