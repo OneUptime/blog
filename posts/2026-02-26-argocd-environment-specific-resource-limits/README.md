@@ -171,7 +171,15 @@ metadata:
   name: {{ include "my-app.fullname" . }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "my-app.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "my-app.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
       containers:
         - name: {{ .Chart.Name }}
@@ -266,10 +274,10 @@ patches:
 
 ## Vertical Pod Autoscaler Recommendations
 
-Use VPA in recommendation mode to determine the right resource limits for production:
+After installing the VPA components in your cluster, use VPA in recommendation mode to determine the right resource limits for production:
 
 ```yaml
-# Deploy VPA in recommendation mode to observe resource usage
+# Create a VPA object in recommendation mode to observe resource usage
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
