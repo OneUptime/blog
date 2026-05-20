@@ -68,7 +68,7 @@ spec:
         package k8srequiredlabels
 
         violation[{"msg": msg, "details": {"missing_labels": missing}}] {
-          provided := {label | input.review.object.metadata.labels[label]}
+          provided := {label | object.get(input.review.object.metadata, "labels", {})[label]}
           required := {label | label := input.parameters.labels[_]}
           missing := required - provided
           count(missing) > 0
@@ -119,9 +119,24 @@ spec:
       rego: |
         package k8sdisallowedtags
 
+        has_tag(image) {
+          image_without_digest := split(image, "@")[0]
+          parts := split(image_without_digest, "/")
+          name := parts[count(parts) - 1]
+          contains(name, ":")
+        }
+
+        image_tag(image) := tag {
+          has_tag(image)
+          image_without_digest := split(image, "@")[0]
+          parts := split(image_without_digest, "/")
+          name := parts[count(parts) - 1]
+          tag := split(name, ":")[count(split(name, ":")) - 1]
+        }
+
         violation[{"msg": msg}] {
           container := input.review.object.spec.template.spec.containers[_]
-          tag := split(container.image, ":")[1]
+          tag := image_tag(container.image)
           disallowed := input.parameters.tags[_]
           tag == disallowed
           msg := sprintf("Container %v uses disallowed tag: %v", [container.name, tag])
@@ -129,7 +144,8 @@ spec:
 
         violation[{"msg": msg}] {
           container := input.review.object.spec.template.spec.containers[_]
-          not contains(container.image, ":")
+          not contains(container.image, "@")
+          not has_tag(container.image)
           msg := sprintf("Container %v has no tag (defaults to latest)", [container.name])
         }
 ---
@@ -150,6 +166,8 @@ spec:
 
 Even with admission controllers, you need post-deployment verification to generate audit evidence and catch drift:
 
+The hook examples below assume you publish an internal tool image with a kubectl version that is within one minor version of your cluster API server, plus `python3`, `curl`, and a POSIX shell.
+
 ```yaml
 apiVersion: batch/v1
 kind: Job
@@ -167,7 +185,7 @@ spec:
       serviceAccountName: compliance-checker
       containers:
         - name: compliance
-          image: bitnami/kubectl:1.29
+          image: myregistry.io/platform/kubectl-python:1.35
           command:
             - sh
             - -c
@@ -314,7 +332,7 @@ spec:
       serviceAccountName: compliance-checker
       containers:
         - name: audit
-          image: bitnami/kubectl:1.29
+          image: myregistry.io/platform/kubectl-python:1.35
           command:
             - sh
             - -c
@@ -380,7 +398,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-resource-limits
       match:
@@ -390,6 +407,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce
         message: "All containers must have CPU and memory limits"
         pattern:
           spec:
@@ -406,7 +424,6 @@ kind: ClusterPolicy
 metadata:
   name: require-read-only-root
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-readonly-root
       match:
@@ -415,6 +432,7 @@ spec:
               kinds:
                 - Deployment
       validate:
+        failureAction: Enforce
         message: "Containers must use readOnlyRootFilesystem"
         pattern:
           spec:
@@ -433,7 +451,7 @@ For more on securing your ArgoCD pipeline, see our guide on [security scanning a
 
 ## Best Practices
 
-1. **Start with warnings, then enforce** - Use `validationFailureAction: Audit` initially, then switch to `Enforce` once teams have adapted.
+1. **Start with warnings, then enforce** - Use `failureAction: Audit` initially, then switch to `Enforce` once teams have adapted.
 2. **Version your policies** - Keep compliance policies in Git alongside application manifests.
 3. **Automate exceptions** - Provide a documented process for temporary policy exemptions.
 4. **Generate audit evidence automatically** - Every deployment should produce compliance documentation without manual effort.
