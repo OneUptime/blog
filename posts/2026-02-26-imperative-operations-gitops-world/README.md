@@ -71,6 +71,7 @@ kind: Application
 metadata:
   name: my-app
 spec:
+  project: default
   ignoreDifferences:
   - group: apps
     kind: Deployment
@@ -154,6 +155,8 @@ spec:
 
 Commit the job to Git, let ArgoCD create it, and it auto-deletes after completion. Remove the YAML from Git in a follow-up commit.
 
+If automated self-heal is enabled, remove the YAML before the TTL controller deletes the finished Job, or ArgoCD may recreate it because the Job is still present in Git.
+
 ## Scenario 4: Port Forwarding and Debugging
 
 Developers sometimes need to port-forward to a service or exec into a pod for debugging. These operations do not modify cluster state, so they do not conflict with GitOps:
@@ -169,9 +172,9 @@ The issue arises when debugging leads to "let me just fix this real quick" chang
 
 ## Scenario 5: CRD Updates and Operator Operations
 
-Custom Resource Definitions (CRDs) and operator-managed resources often have fields that get mutated by controllers. For example, a cert-manager Certificate resource gets status fields added by the cert-manager controller.
+Custom Resource Definitions (CRDs) and operator-managed resources often have fields that get mutated by controllers. For example, a controller may default or manage fields on a custom resource after it is applied.
 
-**Approach**: Use server-side diff and configure ArgoCD to ignore operator-managed fields:
+**Approach**: Use server-side diff for admission-defaulted resources and configure ArgoCD to ignore known operator-managed fields:
 
 ```yaml
 apiVersion: v1
@@ -181,9 +184,12 @@ metadata:
   namespace: argocd
 data:
   controller.diff.server.side: "true"
+  resource.customizations.ignoreDifferences.all: |
+    managedFieldsManagers:
+    - kube-controller-manager
 ```
 
-Server-side diff uses Kubernetes' server-side apply semantics, which understands field ownership. Fields managed by controllers are not flagged as drift.
+Server-side diff uses a Kubernetes server-side apply dry run to predict the live state during comparison. The `ignoreDifferences` customization tells ArgoCD which controller-owned fields to ignore so they are not flagged as drift. Replace the manager name with the controller that owns the fields in your cluster.
 
 ## Scenario 6: Emergency Configuration Changes
 
@@ -195,7 +201,7 @@ Production is down. You need to change an environment variable or a configuratio
 # Fast-track emergency change
 git checkout -b hotfix/production-fix
 # Make the change
-yq e '.spec.template.spec.containers[0].env[] |= select(.name == "DB_POOL_SIZE").value = "50"' \
+yq e '(.spec.template.spec.containers[0].env[] | select(.name == "DB_POOL_SIZE") | .value) = "50"' \
   -i apps/my-app/deployment.yaml
 git add . && git commit -m "EMERGENCY: increase DB pool size - incident #1234"
 git push origin hotfix/production-fix
