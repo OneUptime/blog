@@ -10,7 +10,7 @@ Description: Learn how to pass environment variables to ArgoCD Config Management
 
 Config Management Plugins in ArgoCD often need external configuration to work properly. Maybe your plugin needs to know which environment to target, what API endpoint to call, or which feature flags to enable. Environment variables are the primary mechanism for passing this configuration from ArgoCD applications to CMP sidecar plugins, and getting them right is crucial for flexible, reusable plugins.
 
-This guide covers every way to pass environment variables to CMP plugins, from simple inline values to dynamic references from Kubernetes secrets and ConfigMaps.
+This guide covers common ways to pass environment variables to CMP plugins, from simple inline values to dynamic references from Kubernetes secrets and ConfigMaps.
 
 ## How Environment Variables Flow to Plugins
 
@@ -18,20 +18,20 @@ When ArgoCD invokes a CMP plugin, environment variables come from three sources:
 
 ```mermaid
 flowchart TD
-    A[Application Spec<br/>plugin.env] --> D[Plugin Container]
+    A[Application Spec<br/>plugin.env<br/>prefixed as ARGOCD_ENV_*] --> D[Plugin Container]
     B[Sidecar Container<br/>env/envFrom] --> D
     C[ArgoCD Built-in Variables<br/>ARGOCD_APP_*] --> D
     D --> E[init command]
     D --> F[generate command]
 ```
 
-1. **Application-level env**: Defined in the Application spec under `source.plugin.env`
+1. **Application-level env**: Defined in the Application spec under `source.plugin.env` and exposed to plugin commands with an `ARGOCD_ENV_` prefix
 2. **Container-level env**: Defined in the sidecar container spec
 3. **ArgoCD built-in variables**: Automatically injected by ArgoCD
 
 ## Application-Level Environment Variables
 
-The most common approach is setting environment variables in the Application spec. These are specific to each application and override container-level variables:
+The most common approach is setting environment variables in the Application spec. These are specific to each application. ArgoCD exposes them to plugin commands with an `ARGOCD_ENV_` prefix:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -81,13 +81,13 @@ spec:
     command: [sh, -c]
     args:
       - |
-        set -euo pipefail
+        set -eu
 
         # Use environment variables with defaults
-        ENV=${ENVIRONMENT:-staging}
-        REGION=${REGION:-us-west-2}
-        REPLICAS=${REPLICA_COUNT:-3}
-        DEBUG=${ENABLE_DEBUG:-false}
+        ENV=${ARGOCD_ENV_ENVIRONMENT:-staging}
+        REGION=${ARGOCD_ENV_REGION:-us-west-2}
+        REPLICAS=${ARGOCD_ENV_REPLICA_COUNT:-3}
+        DEBUG=${ARGOCD_ENV_ENABLE_DEBUG:-false}
 
         echo "Generating manifests for $ENV in $REGION"
 
@@ -105,7 +105,7 @@ ArgoCD automatically provides these environment variables to every CMP plugin in
 ```bash
 # Application metadata
 ARGOCD_APP_NAME          # Name of the ArgoCD application
-ARGOCD_APP_NAMESPACE     # Namespace of the ArgoCD application resource
+ARGOCD_APP_NAMESPACE     # Destination namespace of the application
 ARGOCD_APP_REVISION      # Git commit SHA being rendered
 
 # Source information
@@ -113,9 +113,9 @@ ARGOCD_APP_SOURCE_PATH        # Path within the Git repo
 ARGOCD_APP_SOURCE_REPO_URL    # Git repository URL
 ARGOCD_APP_SOURCE_TARGET_REVISION  # Branch/tag/commit being tracked
 
-# Destination information
-ARGOCD_ENV_APP_DESTINATION_SERVER    # Target cluster URL
-ARGOCD_ENV_APP_DESTINATION_NAMESPACE # Target namespace
+# Cluster information
+KUBE_VERSION       # Kubernetes semantic version without trailing metadata
+KUBE_API_VERSIONS  # Available Kubernetes API versions
 ```
 
 These are invaluable for writing plugins that adapt automatically:
@@ -206,13 +206,16 @@ kubectl create secret generic plugin-credentials \
 
 ## Precedence and Override Rules
 
-When the same variable is defined in multiple places, the precedence is:
+Application-level variables do not directly override container variables with the same name. ArgoCD prefixes user-supplied Application variables with `ARGOCD_ENV_` before running `init`, `generate`, and discovery commands, so an Application variable named `ENVIRONMENT` is available as `ARGOCD_ENV_ENVIRONMENT`.
 
-1. **Application-level env** (highest priority)
-2. **Container-level env**
-3. **Container-level envFrom**
+For container variables, Kubernetes `env` entries take precedence over duplicate keys loaded through `envFrom`. To allow application-specific values to override container defaults, explicitly check the prefixed Application variable first:
 
-This means application-specific values always override container defaults:
+```sh
+ENV=${ARGOCD_ENV_ENVIRONMENT:-${ENVIRONMENT:-staging}}
+REGION=${ARGOCD_ENV_REGION:-${REGION:-us-west-2}}
+```
+
+This lets the Application-specific value win while preserving container-level defaults:
 
 ```yaml
 # Container level sets a default
@@ -220,12 +223,12 @@ env:
   - name: ENVIRONMENT
     value: "staging"
 
-# Application level overrides it
+# Application level provides ARGOCD_ENV_ENVIRONMENT to the plugin command
 # In the Application spec:
 plugin:
   env:
     - name: ENVIRONMENT
-      value: "production"  # This wins
+      value: "production"
 ```
 
 ## Practical Pattern: Multi-Environment Plugin
@@ -248,7 +251,13 @@ spec:
     command: [sh, -c]
     args:
       - |
-        set -euo pipefail
+        set -eu
+
+        ENVIRONMENT=${ARGOCD_ENV_ENVIRONMENT:-${ENVIRONMENT:-}}
+        REGION=${ARGOCD_ENV_REGION:-${REGION:-}}
+        REPLICA_COUNT=${ARGOCD_ENV_REPLICA_COUNT:-${REPLICA_COUNT:-}}
+        IMAGE_TAG=${ARGOCD_ENV_IMAGE_TAG:-${IMAGE_TAG:-}}
+        DOMAIN=${ARGOCD_ENV_DOMAIN:-${DOMAIN:-}}
 
         # Required variables
         if [ -z "${ENVIRONMENT:-}" ]; then
@@ -361,8 +370,8 @@ generate:
   command: [sh, -c]
   args:
     - |
-      # Debug: print all env vars to stderr (visible in logs)
-      env | sort | grep -E "ARGOCD_|ENVIRONMENT|REGION" >&2
+      # Debug: print selected env vars to stderr (visible in logs)
+      env | sort | grep -E "ARGOCD_|ENVIRONMENT|REGION" >&2 || true
 
       # Your actual generation logic
       helm template ...
@@ -379,4 +388,4 @@ kubectl logs deployment/argocd-repo-server \
 
 ## Summary
 
-Environment variables are the main way to pass configuration to CMP plugins in ArgoCD. Use application-level env for per-app settings, container-level env for shared defaults and secrets, and take advantage of ArgoCD's built-in variables for context-aware generation. The precedence rules let you set sensible defaults at the container level while allowing individual applications to override them as needed.
+Environment variables are the main way to pass configuration to CMP plugins in ArgoCD. Use application-level env for per-app settings, container-level env for shared defaults and secrets, and take advantage of ArgoCD's built-in variables for context-aware generation. Because ArgoCD prefixes application-level variables with `ARGOCD_ENV_`, read those prefixed names explicitly when you want individual applications to override defaults.
