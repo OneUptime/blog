@@ -71,7 +71,7 @@ config-repo/
 └── root-app.yaml
 ```
 
-The root Application bootstraps everything:
+The root Application bootstraps the production applications:
 
 ```yaml
 # root-app.yaml
@@ -112,7 +112,7 @@ spec:
   project: team-alpha
   source:
     repoURL: https://github.com/myorg/backend-api-deploy
-    targetRevision: release/v2.3.1
+    targetRevision: v2.3.1
     path: overlays/production
   destination:
     server: https://prod-cluster.example.com
@@ -168,7 +168,7 @@ metadata:
 stringData:
   type: git
   url: https://github.com/myorg
-  password: ghp_xxxxxxxxxxxx  # GitHub PAT or deploy key
+  password: ghp_xxxxxxxxxxxx  # GitHub PAT
   username: argocd-bot
 ```
 
@@ -204,6 +204,8 @@ metadata:
   name: auto-discover-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - scmProvider:
         github:
@@ -217,12 +219,12 @@ spec:
               - overlays/production/kustomization.yaml
   template:
     metadata:
-      name: "{{repository}}-production"
+      name: "{{.repository}}-production"
     spec:
       project: default
       source:
-        repoURL: "{{url}}"
-        targetRevision: main
+        repoURL: "{{.url}}"
+        targetRevision: "{{.branch}}"
         path: overlays/production
       destination:
         server: https://kubernetes.default.svc
