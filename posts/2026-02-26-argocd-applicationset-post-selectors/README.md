@@ -52,10 +52,10 @@ spec:
             url: https://dev.example.com
             env: dev
             region: eu-west-1
-        # Post selector filters the output
-        selector:
-          matchLabels:
-            env: prod
+      # Post selector filters the output
+      selector:
+        matchLabels:
+          env: prod
   template:
     metadata:
       name: 'app-{{cluster}}'
@@ -106,17 +106,17 @@ spec:
             env: dev
             region: us-east-1
             tier: standard
-        # Only deploy to non-dev environments in us-east-1
-        selector:
-          matchExpressions:
-            - key: env
-              operator: NotIn
-              values:
-                - dev
-            - key: region
-              operator: In
-              values:
-                - us-east-1
+      # Only deploy to non-dev environments in us-east-1
+      selector:
+        matchExpressions:
+          - key: env
+            operator: NotIn
+            values:
+              - dev
+          - key: region
+            operator: In
+            values:
+              - us-east-1
   template:
     metadata:
       name: 'myapp-{{cluster}}'
@@ -135,7 +135,7 @@ This configuration deploys to `prod-us` and `staging` only, since those are the 
 
 ## Post Selectors with Cluster Generator
 
-Post selectors are especially useful with the cluster generator because it automatically pulls in cluster labels from ArgoCD's cluster definitions.
+Post selectors are especially useful with the cluster generator because it automatically exposes cluster labels from ArgoCD's cluster definitions as generated parameters.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -145,17 +145,17 @@ metadata:
   namespace: argocd
 spec:
   generators:
-    - clusters:
-        # The cluster generator pulls all registered clusters
-        selector:
-          matchLabels:
-            environment: production
-          matchExpressions:
-            - key: cloud-provider
-              operator: In
-              values:
-                - aws
-                - gcp
+    # The cluster generator pulls all registered clusters
+    - clusters: {}
+      selector:
+        matchLabels:
+          metadata.labels.environment: production
+        matchExpressions:
+          - key: metadata.labels.cloud-provider
+            operator: In
+            values:
+              - aws
+              - gcp
   template:
     metadata:
       name: 'monitoring-{{name}}'
@@ -170,7 +170,7 @@ spec:
         namespace: monitoring
 ```
 
-Here, the cluster generator discovers all clusters registered in ArgoCD but the selector ensures only production clusters running on AWS or GCP get the monitoring stack deployed.
+Here, the cluster generator discovers all clusters registered in ArgoCD but the post selector uses the generated `metadata.labels.<label-key>` parameters to ensure only production clusters running on AWS or GCP get the monitoring stack deployed.
 
 ## Post Selectors with Git Generator
 
@@ -189,12 +189,12 @@ spec:
         revision: HEAD
         files:
           - path: 'services/*/config.json'
-        selector:
-          matchExpressions:
-            - key: deploy
-              operator: NotIn
-              values:
-                - "false"
+      selector:
+        matchExpressions:
+          - key: deploy
+            operator: NotIn
+            values:
+              - "false"
   template:
     metadata:
       name: '{{service_name}}'
@@ -239,13 +239,13 @@ spec:
                   cpu: "1000m"
                 - app: worker
                   cpu: "2000m"
-        # Post selector on the combined output
-        selector:
-          matchExpressions:
-            - key: app
-              operator: NotIn
-              values:
-                - worker
+      # Post selector on the combined output
+      selector:
+        matchExpressions:
+          - key: app
+            operator: NotIn
+            values:
+              - worker
   template:
     metadata:
       name: '{{name}}-{{app}}'
