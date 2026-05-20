@@ -53,7 +53,7 @@ Check what server the CLI is trying to reach:
 argocd context
 
 # List all configured contexts
-argocd context list
+argocd context
 ```
 
 If the address is wrong, update it:
@@ -101,8 +101,8 @@ If ArgoCD uses a self-signed certificate:
 # Option 1: Skip TLS verification (development only)
 argocd login argocd.example.com --insecure
 
-# Option 2: Provide the CA certificate
-argocd login argocd.example.com --certificate-authority /path/to/ca.crt
+# Option 2: Provide the server certificate
+argocd login argocd.example.com --server-crt /path/to/server.crt
 
 # Option 3: Use the --plaintext flag for non-TLS connections
 argocd login argocd.example.com --plaintext
@@ -114,7 +114,7 @@ If the ArgoCD server is configured with `--insecure` flag (common when TLS termi
 
 ```bash
 # Check if server is running in insecure mode
-kubectl get deploy argocd-server -n argocd -o jsonpath='{.spec.template.spec.containers[0].command}' | tr ',' '\n'
+kubectl get deploy argocd-server -n argocd -o jsonpath='{.spec.template.spec.containers[?(@.name=="argocd-server")].command}{"\n"}{.spec.template.spec.containers[?(@.name=="argocd-server")].args}{"\n"}'
 ```
 
 If `--insecure` is in the server command, connect with `--plaintext` when port-forwarding, or `--grpc-web` when going through ingress.
@@ -123,11 +123,11 @@ If `--insecure` is in the server command, connect with `--plaintext` when port-f
 
 The CLI can reach the server but the request times out before getting a response.
 
-### Fix 1: Increase Timeout
+### Fix 1: Increase Connection Retries
 
 ```bash
-# Use a longer timeout
-argocd app list --grpc-web --server-timeout 60
+# Retry transient connection failures
+argocd app list --grpc-web --http-retry-max 5
 ```
 
 ### Fix 2: Check Server Load
@@ -261,9 +261,9 @@ argocd context dev
 argocd context prod
 
 # List all contexts
-argocd context list
+argocd context
 ```
 
 ## Summary
 
-ArgoCD CLI connection refused errors almost always come down to one of four categories: the server is not running, the network path is blocked, TLS is misconfigured, or authentication is expired. Work through the debug steps systematically, starting with the simplest checks (is the pod running?) and moving to more complex ones (is the ingress routing correctly?). For production setups, always use `--grpc-web` when ArgoCD is behind an ingress controller, and set up proper TLS certificates to avoid needing `--insecure`.
+ArgoCD CLI connection refused errors almost always come down to one of four categories: the server is not running, the network path is blocked, TLS is misconfigured, or authentication is expired. Work through the debug steps systematically, starting with the simplest checks (is the pod running?) and moving to more complex ones (is the ingress routing correctly?). For production setups, use `--grpc-web` when ArgoCD is behind an ingress controller that does not proxy HTTP/2 gRPC correctly, and set up proper TLS certificates to avoid needing `--insecure`.
