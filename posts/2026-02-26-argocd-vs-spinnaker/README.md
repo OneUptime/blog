@@ -16,13 +16,13 @@ This is where the biggest difference hits you immediately.
 
 Spinnaker is a large, complex platform. It consists of multiple microservices: Deck (UI), Gate (API), Orca (orchestration), Clouddriver (cloud provider integration), Igor (CI integration), Echo (notifications), Front50 (persistence), Rosco (image baking), and Kayenta (canary analysis). Each service has its own configuration, scaling requirements, and failure modes.
 
-Installing Spinnaker typically requires Halyard (its configuration management tool), a backing store like S3 or GCS, a Redis instance, and significant operational expertise. Many teams spend weeks getting Spinnaker running and stable.
+Installing Spinnaker typically requires native Kubernetes configuration with Kustomize or kubectl, an external database such as MySQL/MariaDB or PostgreSQL for persistence, Redis or SQL-backed service storage depending on the deployment, and significant operational expertise. Halyard was historically the main configuration management tool, but it is now deprecated. Many teams spend weeks getting Spinnaker running and stable.
 
 ArgoCD is comparatively lightweight. It runs as three main components - the API server, the repo server, and the application controller - plus a Redis cache. Installation takes minutes with a single kubectl apply or Helm chart. The operational overhead is dramatically lower.
 
 ```mermaid
 graph TB
-    subgraph Spinnaker - 10+ Microservices
+    subgraph "Spinnaker - 10+ Microservices"
         Deck[Deck - UI]
         Gate[Gate - API]
         Orca[Orca - Orchestration]
@@ -33,10 +33,10 @@ graph TB
         Rosco[Rosco - Image Baking]
         Kayenta[Kayenta - Canary Analysis]
         Redis1[Redis]
-        S3[S3/GCS Storage]
+        DB[External Database]
     end
 
-    subgraph ArgoCD - 3 Core Components
+    subgraph "ArgoCD - 3 Core Components"
         API[API Server]
         Repo[Repo Server]
         Controller[App Controller]
@@ -133,7 +133,7 @@ This is where ArgoCD clearly wins.
 
 ArgoCD continuously monitors the cluster state and compares it against the Git repository. If someone manually changes a deployment, ArgoCD detects the drift and can automatically correct it. You always know whether your cluster matches what Git says.
 
-Spinnaker has no built-in drift detection. Once a pipeline executes, Spinnaker does not monitor whether the deployed resources change. Manual changes to the cluster go unnoticed. There is no concept of continuous reconciliation.
+Classic Spinnaker pipelines do not provide GitOps-style drift detection for all Kubernetes resources. Once a pipeline executes, the pipeline model does not continuously compare live cluster state against a Git repository and self-heal arbitrary manual changes the way ArgoCD does. Spinnaker Managed Delivery can reconcile some declarative infrastructure state, but that is a separate model from the traditional pipeline workflow.
 
 ## User Interface
 
@@ -151,11 +151,11 @@ Spinnaker stores pipeline configurations and execution history in its own backin
 
 ## Learning Curve and Operational Overhead
 
-Spinnaker has a steep learning curve. Understanding the pipeline model, configuring cloud providers, managing Halyard, and debugging multi-service interactions takes significant time and expertise. Many organizations dedicate a team to managing their Spinnaker installation.
+Spinnaker has a steep learning curve. Understanding the pipeline model, configuring cloud providers, managing native deployment configuration, and debugging multi-service interactions takes significant time and expertise. Many organizations dedicate a team to managing their Spinnaker installation.
 
 ArgoCD is straightforward to learn, especially if you already know Kubernetes. The concepts map directly to Kubernetes primitives - Applications, namespaces, manifests. Most teams can get productive with ArgoCD in a day or two.
 
-The operational overhead follows the same pattern. Spinnaker requires ongoing maintenance of 10+ microservices, database backups, version upgrades through Halyard, and cloud provider configuration updates. ArgoCD upgrades are a Helm chart update or a kubectl apply.
+The operational overhead follows the same pattern. Spinnaker requires ongoing maintenance of 10+ microservices, database backups, version upgrades through native deployment configuration, and cloud provider configuration updates. ArgoCD upgrades are a Helm chart update or a kubectl apply.
 
 ## Scaling
 
