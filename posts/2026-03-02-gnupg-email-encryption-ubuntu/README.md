@@ -27,9 +27,9 @@ gpg --version
 
 # Install if missing, or update
 sudo apt update
-sudo apt install -y gnupg2
+sudo apt install -y gnupg
 
-# On Ubuntu 22.04+, gpg2 is the default
+# Ubuntu packages GnuPG 2 as the gpg command
 which gpg
 ```
 
@@ -51,10 +51,11 @@ You will be asked several questions:
 ```bash
 # For a quick modern key with good defaults
 gpg --quick-generate-key "Your Name <your@email.com>" ed25519 cert 2y
+gpg --quick-add-key <FINGERPRINT> ed25519 sign 2y
 gpg --quick-add-key <FINGERPRINT> cv25519 encr 2y
 ```
 
-The second command adds a separate encryption subkey, which is the recommended setup.
+The second and third commands add separate signing and encryption subkeys, which is the recommended setup.
 
 ## Listing and Examining Keys
 
@@ -187,20 +188,21 @@ gpg --verify message.txt.asc
 
 Thunderbird has built-in OpenPGP support since version 78, making integration straightforward.
 
-Open Thunderbird, go to Account Settings, select your email account, and click "End-To-End Encryption". Click "Add Key" and choose "Use your external key, through GnuPG".
+Open Thunderbird, go to Account Settings, select your email account, and click "End-To-End Encryption". To use keys stored in GnuPG for signing and decryption, enable external GnuPG support first.
 
-Tell Thunderbird where to find GPG:
+Enable external GnuPG support:
 
 ```bash
 # Find the GPG binary path
 which gpg
 
-# Tell Thunderbird to use the system GPG
 # In Thunderbird: Config Editor (Advanced settings) -> search for:
 # mail.openpgp.allow_external_gnupg -> set to true
+# If Thunderbird cannot find gpg automatically, set:
+# mail.openpgp.alternative_gpg_path -> /usr/bin/gpg
 ```
 
-Then select your key in the Account Settings panel. Once configured, Thunderbird adds encrypt and sign buttons to the compose window.
+Then return to the Account Settings panel, click "Add Key", and choose "Use your external key, through GnuPG". Thunderbird still manages recipients' public keys and acceptance settings internally. Once configured, Thunderbird adds encrypt and sign buttons to the compose window.
 
 ## Backing Up Your Private Key
 
@@ -240,7 +242,7 @@ If your key is about to expire and you want to continue using it:
 gpg --edit-key your@email.com
 
 # In the interactive session:
-# key 0          (select the master key)
+# key 0          (deselect subkeys so the primary key is affected)
 # expire         (change expiration)
 # 1y             (extend by 1 year)
 # key 1          (select first subkey)
