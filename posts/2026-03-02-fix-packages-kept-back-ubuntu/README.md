@@ -19,12 +19,12 @@ This can be puzzling - you ran an upgrade, so why weren't these packages upgrade
 
 ## Why APT Keeps Packages Back
 
-APT's `upgrade` command has a deliberate constraint: it will not install new packages or remove existing ones to satisfy dependencies. It only upgrades packages that can be upgraded without changing the installed package set.
+APT's `upgrade` command has a deliberate constraint: it can install new packages when needed to satisfy dependencies, but it will not remove existing packages. The older `apt-get upgrade` command is stricter: it will not install new packages or remove existing ones.
 
 When a package update requires:
-- Installing a new package as a dependency
 - Removing a package that conflicts with the new version
 - Replacing one package with a different package
+- Installing a new package when using `apt-get upgrade`
 
 ...APT marks it as "kept back" rather than proceeding with those additional actions automatically.
 
@@ -34,11 +34,11 @@ This is a safety feature. Automatically removing or adding packages without expl
 
 ### 1. New Dependencies
 
-A package update pulls in a new dependency that isn't installed. The update can't proceed without installing the new package.
+A package update pulls in a new dependency that isn't installed. `apt upgrade` can normally install the new dependency, but `apt-get upgrade` keeps the package back unless you use `apt-get upgrade --with-new-pkgs` or another command that allows new packages.
 
 ### 2. Kernel Updates
 
-Kernel updates are almost always kept back because upgrading the kernel package involves installing new `linux-image-*` and `linux-headers-*` packages while the old ones remain for safety.
+Kernel updates often involve installing new `linux-image-*` and `linux-headers-*` packages while the old ones remain for safety. Current `apt upgrade` can handle those new packages, but kernel packages can still be kept back if the upgrade also needs removals, is held, or is affected by phased updates.
 
 ### 3. Package Splits or Transitions
 
@@ -56,7 +56,7 @@ Ubuntu uses phased updates for stability - not all users receive an update at th
 
 ### Method 1: apt full-upgrade (Recommended)
 
-`full-upgrade` (formerly `dist-upgrade`) allows APT to install and remove packages to complete the upgrade:
+`full-upgrade` (equivalent to `apt-get dist-upgrade`) allows APT to install and remove packages to complete the upgrade:
 
 ```bash
 sudo apt full-upgrade
@@ -83,7 +83,7 @@ If you only want to upgrade specific kept-back packages without a full-upgrade:
 sudo apt install linux-generic linux-headers-generic linux-image-generic
 ```
 
-When you explicitly name a package for `apt install`, APT allows it to install new dependencies and perform the necessary changes.
+When you explicitly name a package for `apt install`, APT allows it to install new dependencies and perform the necessary changes. Review the proposed changes carefully, especially if APT wants to remove packages.
 
 ### Method 3: For Kernel Updates Specifically
 
@@ -138,17 +138,11 @@ sudo apt upgrade
 If a package is kept back due to phasing (Ubuntu's gradual rollout system):
 
 ```bash
-# Install the update-manager-core package which includes tools for this
-sudo apt install update-manager-core
-
-# Check your phase
-cat /etc/update-manager/release-upgrades
-
 # Check if a package is in phased state
-apt-cache policy package-name 2>/dev/null | grep "Phased"
+apt policy package-name
 ```
 
-Phased packages show something like `Phased-Update-Percentage: 20` in their policy output, meaning only 20% of users receive this update yet. If you want to force the update regardless of phasing:
+Phased packages show something like `(phased 20%)` in their policy output, meaning only 20% of users receive this update yet. Ubuntu recommends waiting for phased updates to reach your machine. If you understand the risk and want to install the update regardless of phasing:
 
 ```bash
 # Force upgrade of a phased package
@@ -221,9 +215,9 @@ A result greater than 0 means packages are being kept back.
 
 "Packages kept back" is not an error - it's APT respecting its conservative upgrade policy. The correct resolution depends on context:
 
-- For routine kernel and package updates: `sudo apt full-upgrade`
+- For upgrades that require removals: `sudo apt full-upgrade`
 - For specific packages: `sudo apt install <package-name>`
 - For packages held intentionally: leave them alone or consciously `apt-mark unhold`
-- For phased updates: either wait for the phase to reach you, or `sudo apt install <package-name>` to force it
+- For phased updates: wait for the phase to reach you, or consciously use `sudo apt install <package-name>` if you accept the risk
 
 Always review what `full-upgrade` plans to do before confirming, particularly the list of packages it wants to remove.
