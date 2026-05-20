@@ -23,14 +23,15 @@ Before working with volume snapshots in ArgoCD, you need a CSI driver that suppo
 You also need the VolumeSnapshot CRDs and the snapshot controller installed in your cluster. These are not part of the core Kubernetes distribution and must be installed separately.
 
 ```bash
-# Install VolumeSnapshot CRDs
+git clone https://github.com/kubernetes-csi/external-snapshotter.git
+cd external-snapshotter
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+# Install VolumeSnapshot CRDs
+kubectl kustomize client/config/crd | kubectl apply -f -
 
 # Install the snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/
+# Update the controller namespace for your environment before applying.
+kubectl -n kube-system kustomize deploy/kubernetes/snapshot-controller | kubectl apply -f -
 ```
 
 ## Defining VolumeSnapshotClass in Git
@@ -176,6 +177,43 @@ While you can manually commit new VolumeSnapshot manifests to Git, a more practi
 
 ```yaml
 # scheduled/snapshot-cronjob.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: snapshot-creator
+  namespace: database
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: snapshot-creator
+  namespace: database
+rules:
+  - apiGroups:
+      - snapshot.storage.k8s.io
+    resources:
+      - volumesnapshots
+    verbs:
+      - create
+      - get
+      - list
+      - patch
+      - delete
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: snapshot-creator
+  namespace: database
+subjects:
+  - kind: ServiceAccount
+    name: snapshot-creator
+    namespace: database
+roleRef:
+  kind: Role
+  name: snapshot-creator
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -234,10 +272,9 @@ spec:
       kind: VolumeSnapshot
       jsonPointers:
         - /status
-        - /spec/source/volumeSnapshotContentName
 ```
 
-This prevents ArgoCD from showing the application as OutOfSync because of status updates or content name bindings that happen after the snapshot is created.
+This prevents ArgoCD from showing the application as OutOfSync because of status updates that happen after the snapshot is created.
 
 ## Retention and Cleanup
 
