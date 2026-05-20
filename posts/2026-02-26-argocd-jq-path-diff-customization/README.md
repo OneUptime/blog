@@ -8,7 +8,7 @@ Description: Learn how to use JQ path expressions in ArgoCD ignoreDifferences fo
 
 ---
 
-JSON Pointers work well for simple, known paths, but they fall apart when you need to match array elements by name, use wildcards, or apply conditional logic. That is where JQ path expressions come in. ArgoCD supports a subset of JQ syntax in its `jqPathExpressions` field, giving you powerful pattern matching for diff customization.
+JSON Pointers work well for simple, known paths, but they fall apart when you need to match array elements by name, use wildcards, or apply conditional logic. That is where JQ path expressions come in. ArgoCD supports JQ path expressions in its `jqPathExpressions` field, giving you powerful pattern matching for diff customization.
 
 This guide covers JQ expression syntax, practical patterns, and real-world examples for ArgoCD diff customization.
 
@@ -183,9 +183,9 @@ jqPathExpressions:
 ```yaml
 jqPathExpressions:
   # Annotations with a specific prefix
-  - .metadata.annotations | to_entries[] | select(.key | startswith("cert-manager.io/"))
+  - .metadata.annotations | .[keys[] | select(startswith("cert-manager.io/"))]
   # Pod template annotations with specific prefix
-  - .spec.template.metadata.annotations | to_entries[] | select(.key | startswith("sidecar.istio.io/"))
+  - .spec.template.metadata.annotations | .[keys[] | select(startswith("sidecar.istio.io/"))]
 ```
 
 ### Ignoring Labels by Pattern
@@ -193,9 +193,9 @@ jqPathExpressions:
 ```yaml
 jqPathExpressions:
   # Labels added by a specific operator
-  - .metadata.labels | to_entries[] | select(.key | startswith("kyverno.io/"))
+  - .metadata.labels | .[keys[] | select(startswith("kyverno.io/"))]
   # Pod template labels
-  - .spec.template.metadata.labels | to_entries[] | select(.key | startswith("security.istio.io/"))
+  - .spec.template.metadata.labels | .[keys[] | select(startswith("security.istio.io/"))]
 ```
 
 ### Ignoring Environment Variables
@@ -269,7 +269,7 @@ kubectl get deployment my-app -o json > /tmp/deploy.json
 cat /tmp/deploy.json | jq '.spec.template.spec.containers[] | select(.name == "istio-proxy")'
 
 # Test annotation pattern matching
-cat /tmp/deploy.json | jq '.metadata.annotations | to_entries[] | select(.key | startswith("sidecar.istio.io/"))'
+cat /tmp/deploy.json | jq '.metadata.annotations | .[keys[] | select(startswith("sidecar.istio.io/"))]'
 ```
 
 ### Verify in ArgoCD
@@ -285,9 +285,9 @@ argocd app diff my-app
 ### Common JQ Mistakes
 
 1. **Missing quotes around strings**: `select(.name == istio-proxy)` should be `select(.name == "istio-proxy")`
-2. **Using brackets for object access**: `.spec["template"]` is valid JQ but may not work in ArgoCD - use `.spec.template`
+2. **Using dot notation for special keys**: `.metadata.annotations.cert-manager.io/issuer` is parsed as multiple path segments. Use bracket notation for keys with dots or slashes, such as `.metadata.annotations["cert-manager.io/issuer"]`
 3. **Forgetting the pipe**: `.spec.template.spec.containers[] select(...)` needs a pipe: `.spec.template.spec.containers[] | select(...)`
-4. **Using unsupported JQ features**: ArgoCD supports a subset of JQ. Complex operations like `reduce`, `group_by`, or user-defined functions may not work
+4. **Using transformations instead of delete paths**: ArgoCD applies each expression as a delete path. Filters that transform the object, such as `to_entries`, `map`, or `group_by`, do not identify fields to remove
 
 ## JQ Expressions vs JSON Pointers
 
