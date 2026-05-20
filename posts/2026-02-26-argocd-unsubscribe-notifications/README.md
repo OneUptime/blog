@@ -30,7 +30,7 @@ kubectl annotate application my-app -n argocd \
 
 # Remove ALL notification annotations (careful with this)
 kubectl get application my-app -n argocd -o json | \
-  jq 'del(.metadata.annotations | to_entries[] | select(.key | startswith("notifications.argoproj.io")))' | \
+  jq 'if .metadata.annotations then .metadata.annotations |= with_entries(select(.key | startswith("notifications.argoproj.io") | not)) else . end' | \
   kubectl apply -f -
 ```
 
@@ -72,7 +72,7 @@ Commit and push the change. When the parent Application (app-of-apps) syncs, the
 ```bash
 # Confirm no notification annotations remain
 kubectl get application my-app -n argocd -o json | \
-  jq '.metadata.annotations | to_entries[] | select(.key | startswith("notifications"))'
+  jq '(.metadata.annotations // {}) | to_entries[] | select(.key | startswith("notifications.argoproj.io"))'
 
 # Should return empty output
 ```
@@ -137,7 +137,7 @@ If your default subscriptions do not use selectors, you can add conditions to th
 # In argocd-notifications-cm
 trigger.on-sync-failed-default: |
   - when: >
-      app.status.operationState.phase in ['Error', 'Failed'] and
+      app.status?.operationState.phase in ['Error', 'Failed'] and
       app.metadata.labels['notifications-mute'] != 'all' and
       app.metadata.labels['notifications-mute'] != 'sync'
     send: [sync-failed-template]
@@ -205,9 +205,9 @@ Create a trigger condition that checks for a silence annotation with a timestamp
 ```yaml
 trigger.on-sync-failed-silenceable: |
   - when: >
-      app.status.operationState.phase in ['Error', 'Failed'] and
+      app.status?.operationState.phase in ['Error', 'Failed'] and
       (app.metadata.annotations['notifications-silence-until'] == nil or
-       time.Now().Format("2006-01-02T15:04:05Z") > app.metadata.annotations['notifications-silence-until'])
+       time.Now().After(time.Parse(app.metadata.annotations['notifications-silence-until'])))
     send: [sync-failed-template]
 ```
 
