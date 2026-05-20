@@ -31,10 +31,10 @@ spec:
 ```
 
 When `warn: true` is set, ArgoCD:
-1. Scans the namespaces defined in the project's destinations
-2. Identifies resources not tracked by any application in the project
-3. Reports them in the project status
-4. Shows a warning badge in the ArgoCD UI
+1. Checks each project application's target namespace
+2. Identifies top-level namespaced resources not tracked by any ArgoCD application
+3. Adds an `OrphanedResourceWarning` condition to affected applications
+4. Shows the warning and orphaned resources in the ArgoCD UI
 
 ```mermaid
 flowchart LR
@@ -42,7 +42,7 @@ flowchart LR
     B -->|Yes| C[Show in UI]
     B -->|Yes| D[Include in API response]
     B -->|Yes| E[Expose in metrics]
-    B -->|No| F[Silently ignore]
+    B -->|No| F[Show orphaned resources without warning]
 ```
 
 ## Understanding Warning Behavior
@@ -51,14 +51,14 @@ flowchart LR
 
 A resource triggers an orphaned resource warning when:
 - It exists in a namespace covered by the project's destinations
-- It is not part of any ArgoCD application within the project
+- It is not part of any ArgoCD application
 - It is not in the project's ignore list
 
 ### What Does Not Trigger a Warning
 
 - Resources in namespaces not covered by any project destination
 - Resources explicitly listed in the `ignore` section
-- Resources in namespaces managed by other projects
+- Namespaced resources denied by the project
 - Cluster-scoped resources (orphaned resource monitoring only covers namespaced resources)
 
 ## Configuring Ignore Lists
@@ -79,34 +79,19 @@ orphanedResources:
     - group: discovery.k8s.io
       kind: EndpointSlice
 
-    # Kubernetes system resources
+    # Noisy runtime resources
     - group: ""
       kind: Event
+
+    # Generated Secrets from controllers such as cert-manager
     - group: ""
-      kind: ConfigMap
-      name: kube-root-ca.crt
-
-    # Default ServiceAccount in every namespace
-    - group: ""
-      kind: ServiceAccount
-      name: default
-
-    # ReplicaSets managed by Deployments (tracked through their parent)
-    - group: apps
-      kind: ReplicaSet
-
-    # Pods managed by ReplicaSets/Jobs/DaemonSets
-    - group: ""
-      kind: Pod
-
-    # ControllerRevisions managed by StatefulSets/DaemonSets
-    - group: apps
-      kind: ControllerRevision
+      kind: Secret
+      name: "*.example.com"
 ```
 
 ### Extended Ignore List for Service Mesh Environments
 
-If you run Istio or Linkerd, their control plane generates additional resources:
+If you run Istio or cert-manager, controllers may generate additional resources:
 
 ```yaml
 orphanedResources:
@@ -185,7 +170,15 @@ data:
   trigger.on-orphaned-resources: |
     - description: Notify when orphaned resources exist
       send: [orphaned-resources-warning]
-      when: app.status.orphanedResources | length > 0
+      when: app.status.conditions != nil && any(app.status.conditions, {.type == 'OrphanedResourceWarning'})
+```
+
+Then subscribe an application or project to the trigger:
+
+```yaml
+metadata:
+  annotations:
+    notifications.argoproj.io/subscribe.on-orphaned-resources.slack: platform-alerts
 ```
 
 ### Email Notifications
@@ -251,7 +244,7 @@ ArgoCD exposes orphaned resource counts as Prometheus metrics:
 
 ```promql
 # Total orphaned resources per project
-argocd_app_orphaned_resources_count{project="production"}
+sum by (project) (argocd_app_orphaned_resources_count{project="production"})
 ```
 
 ### Prometheus Alert Rules
@@ -268,7 +261,7 @@ spec:
       rules:
         # Warning when orphaned resources exceed threshold
         - alert: ArgocdOrphanedResourcesHigh
-          expr: argocd_app_orphaned_resources_count > 10
+          expr: sum by (project) (argocd_app_orphaned_resources_count) > 10
           for: 24h
           labels:
             severity: warning
@@ -278,7 +271,7 @@ spec:
 
         # Critical when orphaned resources are growing
         - alert: ArgocdOrphanedResourcesGrowing
-          expr: increase(argocd_app_orphaned_resources_count[7d]) > 20
+          expr: sum by (project) (delta(argocd_app_orphaned_resources_count[7d])) > 20
           for: 1h
           labels:
             severity: warning
@@ -298,7 +291,7 @@ Create a panel showing orphaned resource trends:
   "targets": [
     {
       "expr": "argocd_app_orphaned_resources_count",
-      "legendFormat": "{{ project }}"
+      "legendFormat": "{{ project }}/{{ name }}"
     }
   ]
 }
@@ -324,19 +317,19 @@ Implement this with Prometheus alerts at different thresholds:
 ```yaml
 rules:
   - alert: OrphanedResourcesCritical
-    expr: argocd_app_orphaned_resources_count > 50
+    expr: sum by (project) (argocd_app_orphaned_resources_count) > 50
     for: 1h
     labels:
       severity: critical
 
   - alert: OrphanedResourcesWarning
-    expr: argocd_app_orphaned_resources_count > 20
+    expr: sum by (project) (argocd_app_orphaned_resources_count) > 20
     for: 6h
     labels:
       severity: warning
 
   - alert: OrphanedResourcesInfo
-    expr: argocd_app_orphaned_resources_count > 0
+    expr: sum by (project) (argocd_app_orphaned_resources_count) > 0
     for: 168h  # 7 days
     labels:
       severity: info
@@ -388,9 +381,12 @@ spec:
   orphanedResources:
     warn: true
     ignore:
-      - group: "*"
-        kind: "*"
-        name: "dev-*"       # Ignore anything with dev- prefix
+      - group: ""
+        kind: ConfigMap
+        name: "dev-*"       # Ignore dev-prefixed ConfigMaps
+      - group: ""
+        kind: Secret
+        name: "dev-*"       # Ignore dev-prefixed Secrets
 ```
 
 ## Debugging Warning Issues
