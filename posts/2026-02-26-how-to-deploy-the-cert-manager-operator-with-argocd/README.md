@@ -23,7 +23,7 @@ Managing TLS certificates manually is error-prone. Certificates expire, issuers 
 
 ## Step 1: Deploy Cert-Manager CRDs
 
-Cert-manager CRDs are large and should be managed separately. Create a dedicated ArgoCD Application:
+Cert-manager CRDs are large and should be managed separately. Download the release CRD manifest from `https://github.com/cert-manager/cert-manager/releases/download/v1.14.5/cert-manager.crds.yaml`, commit it to your GitOps repository, and create a dedicated ArgoCD Application:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -36,9 +36,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/cert-manager/cert-manager.git
-    targetRevision: v1.14.0
-    path: deploy/crds
+    repoURL: https://github.com/your-org/platform-gitops.git
+    targetRevision: main
+    path: infrastructure/cert-manager/crds
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -70,7 +70,7 @@ spec:
   source:
     repoURL: https://charts.jetstack.io
     chart: cert-manager
-    targetRevision: v1.14.0
+    targetRevision: v1.14.5
     helm:
       # CRDs are managed separately
       skipCrds: true
@@ -115,6 +115,8 @@ spec:
         # serviceAccount:
         #   annotations:
         #     eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT:role/cert-manager
+        # securityContext:
+        #   fsGroup: 1001
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager
@@ -156,7 +158,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ---
 # Production issuer
 apiVersion: cert-manager.io/v1
@@ -175,7 +177,7 @@ spec:
       # HTTP01 challenge solver
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
         selector: {}
 ```
 
@@ -377,21 +379,16 @@ kubectl logs -n cert-manager -l app=cert-manager
 
 **Webhook timeouts during sync**: Cert-manager installs a webhook that validates CRs. If the webhook is not ready, CR creation fails. Using sync waves ensures cert-manager is running before CRs are applied.
 
-**ArgoCD shows OutOfSync for Certificate secrets**: Cert-manager creates and manages TLS Secrets. Tell ArgoCD to ignore these:
+**ArgoCD shows OutOfSync for Certificate secrets**: Cert-manager creates and manages TLS Secrets. If those generated Secrets are tracked by an ArgoCD Application, annotate them so they are ignored in sync status:
 
 ```yaml
-# In argocd-cm
-data:
-  resource.exclusions: |
-    - apiGroups:
-        - ""
-      kinds:
-        - Secret
-      clusters:
-        - "*"
+metadata:
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-options: Prune=false
 ```
 
-Or more precisely, ignore only cert-manager managed secrets by adding annotations.
+Do not globally exclude all Secrets from ArgoCD unless you intentionally want ArgoCD to stop managing every Secret in the cluster.
 
 ## Summary
 
