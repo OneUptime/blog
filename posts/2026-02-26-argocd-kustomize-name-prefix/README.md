@@ -14,7 +14,7 @@ This guide covers how namePrefix works, how to configure it in ArgoCD, practical
 
 ## How namePrefix Works
 
-Kustomize's `namePrefix` prepends a string to the `metadata.name` of every resource in the build output. Critically, it also updates references between resources - so if a Service references a Deployment, both names get the prefix and the reference stays valid.
+Kustomize's `namePrefix` prepends a string to the `metadata.name` of every resource in the build output. Critically, it also updates supported name references between resources - so if a Deployment references a ConfigMap, both names get the prefix and the reference stays valid.
 
 ```mermaid
 graph LR
@@ -50,7 +50,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -81,7 +87,13 @@ metadata:
   name: staging-api-server  # Prefixed
   namespace: shared
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       containers:
         - name: api
@@ -130,11 +142,15 @@ metadata:
   name: api-server-team-a
   namespace: argocd
 spec:
+  project: default
   source:
+    repoURL: https://github.com/myorg/k8s-configs.git
+    targetRevision: main
     path: apps/api-server/base
     kustomize:
       namePrefix: team-a-
   destination:
+    server: https://kubernetes.default.svc
     namespace: shared
 
 ---
@@ -145,11 +161,15 @@ metadata:
   name: api-server-team-b
   namespace: argocd
 spec:
+  project: default
   source:
+    repoURL: https://github.com/myorg/k8s-configs.git
+    targetRevision: main
     path: apps/api-server/base
     kustomize:
       namePrefix: team-b-
   destination:
+    server: https://kubernetes.default.svc
     namespace: shared
 ```
 
@@ -159,13 +179,13 @@ Override the prefix from the command line:
 
 ```bash
 # Set namePrefix on an existing application
-argocd app set api-server-staging --kustomize-name-prefix staging-
+argocd app set api-server-staging --nameprefix staging-
 
 # Verify the setting
 argocd app get api-server-staging -o json | jq '.spec.source.kustomize.namePrefix'
 
 # Remove the prefix override
-argocd app set api-server-staging --kustomize-name-prefix ""
+argocd app unset api-server-staging --nameprefix
 ```
 
 ## Multi-Tenant Deployments
@@ -190,8 +210,10 @@ spec:
     metadata:
       name: "api-server-{{tenant}}"
     spec:
+      project: default
       source:
         repoURL: https://github.com/myorg/k8s-configs.git
+        targetRevision: main
         path: apps/api-server/base
         kustomize:
           namePrefix: "{{tenant}}-"
@@ -211,11 +233,10 @@ Kustomize automatically updates references in these fields when applying namePre
 - `spec.template.spec.volumes[].configMap.name`
 - `spec.template.spec.volumes[].secret.secretName`
 - `spec.serviceName` in StatefulSets
-- `spec.selector.matchLabels` (if using name-based selectors)
 - `roleRef.name` in RoleBindings and ClusterRoleBindings
 
 However, Kustomize does NOT automatically update references in:
-- Custom resource definitions (CRDs) with custom fields
+- Custom resources with custom fields
 - Environment variable values that contain resource names
 - Annotations or labels used for custom service discovery
 
