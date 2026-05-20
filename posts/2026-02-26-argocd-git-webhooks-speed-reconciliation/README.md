@@ -8,7 +8,7 @@ Description: Learn how to configure Git webhooks in ArgoCD to trigger immediate 
 
 ---
 
-By default, ArgoCD polls your Git repositories every 3 minutes to check for changes. This means after you push a commit, you could wait up to 3 minutes before ArgoCD notices the change and starts syncing. Git webhooks eliminate this delay by telling ArgoCD about changes the moment they happen. This guide covers how webhooks work in ArgoCD, how to set them up, and how to troubleshoot common issues.
+By default, ArgoCD polls your Git repositories every 3 minutes to check for changes. This means after you push a commit, you could wait up to 3 minutes before ArgoCD notices the change and refreshes application status. Applications with auto-sync enabled can then sync automatically; applications without auto-sync are marked OutOfSync for manual sync. Git webhooks eliminate this detection delay by telling ArgoCD about changes the moment they happen. This guide covers how webhooks work in ArgoCD, how to set them up, and how to troubleshoot common issues.
 
 ## How ArgoCD Webhook Reconciliation Works
 
@@ -25,7 +25,7 @@ sequenceDiagram
     Note over Argo: Waits for polling interval (3min)
     Argo->>Git: Poll for changes
     Git-->>Argo: New commit found
-    Argo->>K8s: Sync resources
+    Argo->>K8s: Sync resources if auto-sync is enabled
 ```
 
 With webhooks, the flow becomes:
@@ -40,7 +40,7 @@ sequenceDiagram
     Dev->>Git: Push commit
     Git->>Argo: Webhook: new commit pushed
     Argo->>Git: Fetch latest manifests
-    Argo->>K8s: Sync resources
+    Argo->>K8s: Sync resources if auto-sync is enabled
     Note over Argo: Near-instant detection
 ```
 
@@ -51,7 +51,7 @@ ArgoCD's API server exposes a webhook endpoint at `/api/webhook`. This endpoint 
 1. ArgoCD parses the webhook payload to extract the repository URL and branch
 2. It finds all applications that reference that repository and branch
 3. It triggers an immediate refresh for those applications
-4. The normal reconciliation loop handles the rest
+4. The normal reconciliation loop handles the rest. If auto-sync is enabled, ArgoCD can sync the detected change automatically; otherwise it marks the application OutOfSync.
 
 The webhook endpoint does not require authentication by default, but you can configure a webhook secret for verification.
 
@@ -106,6 +106,7 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   rules:
     - host: argocd.example.com
@@ -126,7 +127,7 @@ spec:
 
 ### Option 2: Dedicated Webhook Service
 
-If you do not want to expose the full ArgoCD API, create a service that only exposes the webhook path:
+If you do not want to expose the full ArgoCD API, create a dedicated service and an Ingress rule that only routes the webhook path:
 
 ```yaml
 apiVersion: v1
@@ -149,6 +150,7 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     # Only allow POST to /api/webhook
     nginx.ingress.kubernetes.io/configuration-snippet: |
       if ($request_method != POST) {
@@ -182,10 +184,10 @@ metadata:
 data:
   # Increase from 3 minutes to 10 minutes
   # Webhooks handle immediate detection
-  timeout.reconciliation: "600"
+  timeout.reconciliation: "10m"
 ```
 
-This reduces the number of Git fetches by more than 3x while maintaining instant change detection through webhooks.
+This reduces the number of periodic Git checks by more than 3x while maintaining fast change detection through webhooks.
 
 ## Testing Webhook Delivery
 
@@ -245,10 +247,9 @@ kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.webhook\.github\.
 If ArgoCD is behind a firewall, ensure your Git provider's webhook IP ranges can reach the ArgoCD webhook endpoint:
 
 ```bash
-# GitHub webhook IPs (check GitHub docs for current ranges)
-# Add to your firewall allowlist
-# 140.82.112.0/20
-# 185.199.108.0/22
+# GitHub publishes current webhook delivery IP ranges in the meta API.
+# Use the "hooks" ranges for a firewall allowlist and keep them updated.
+curl -s https://api.github.com/meta | jq '.hooks'
 
 # Test connectivity from outside
 curl -v https://argocd.example.com/api/webhook
@@ -260,26 +261,26 @@ Webhooks are not guaranteed delivery. Network issues, Git provider outages, or A
 
 ```yaml
 # Never disable polling entirely - use it as a safety net
-timeout.reconciliation: "600"  # 10 minutes, not "0"
+timeout.reconciliation: "10m"  # 10 minutes, not "0"
 ```
 
 Monitor webhook delivery in your Git provider's webhook settings. Most providers show delivery history with success/failure status and response codes.
 
 ## Performance Impact of Webhooks
 
-Webhooks can cause a thundering herd problem if many applications reference the same repository. A single push triggers refresh on all of them simultaneously.
+Webhooks can cause a thundering herd problem if many applications reference the same repository. A single push triggers refresh on all of them simultaneously. Reconciliation jitter does not delay webhook-triggered refreshes, but it spreads periodic fallback reconciliations so they do not add their own synchronized load spikes.
 
 ```yaml
-# Add jitter to spread out webhook-triggered reconciliations
-# argocd-cmd-params-cm ConfigMap
+# Add jitter to spread out periodic reconciliations
+# argocd-cm ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-cm
   namespace: argocd
 data:
-  # Add random jitter to reconciliation (in seconds)
-  controller.reconciliation.jitter: "30"
+  # Add up to 30 seconds of random jitter to periodic reconciliation
+  timeout.reconciliation.jitter: "30s"
 ```
 
 For monitoring webhook delivery reliability and ArgoCD reconciliation performance, [OneUptime](https://oneuptime.com) can help you track the end-to-end latency from Git push to cluster deployment.
@@ -291,5 +292,5 @@ For monitoring webhook delivery reliability and ArgoCD reconciliation performanc
 - Keep polling as a fallback - never rely solely on webhooks
 - Increase the polling interval once webhooks are reliable to reduce load
 - Monitor webhook delivery in your Git provider's settings
-- Add reconciliation jitter to prevent thundering herd on busy repositories
+- Add reconciliation jitter to prevent thundering herd from periodic reconciliations
 - Test webhooks with curl to verify end-to-end delivery
