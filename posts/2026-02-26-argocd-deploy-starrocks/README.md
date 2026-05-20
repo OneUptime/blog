@@ -46,11 +46,11 @@ spec:
   project: data-infrastructure
   source:
     repoURL: https://starrocks.github.io/starrocks-kubernetes-operator
-    chart: kube-starrocks
+    chart: operator
     targetRevision: 1.9.0
     helm:
       values: |
-        operator:
+        starrocksOperator:
           resources:
             requests:
               cpu: "200m"
@@ -58,9 +58,6 @@ spec:
             limits:
               cpu: "1"
               memory: "512Mi"
-        # Only install the operator, not the cluster
-        starrocks:
-          enabled: false
   destination:
     server: https://kubernetes.default.svc
     namespace: starrocks-operator
@@ -136,7 +133,6 @@ spec:
 
   starRocksCnSpec:
     image: starrocks/cn-ubuntu:3.2.3
-    replicas: 3
     limits:
       cpu: "16"
       memory: "32Gi"
@@ -273,17 +269,29 @@ spec:
       containers:
         - name: init
           image: starrocks/fe-ubuntu:3.2.3
+          env:
+            - name: AWS_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: starrocks-aws-credentials
+                  key: access-key
+            - name: AWS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: starrocks-aws-credentials
+                  key: secret-key
           command:
             - /bin/bash
             - -c
             - |
-              mysql -h analytics-warehouse-fe-service -P 9030 -u root <<'SQL'
+              mysql -h analytics-warehouse-fe-service -P 9030 -u root <<SQL
 
               -- Create Hive catalog for data lake
               CREATE EXTERNAL CATALOG IF NOT EXISTS hive_catalog
               PROPERTIES (
                   "type" = "hive",
                   "hive.metastore.uris" = "thrift://hive-metastore:9083",
+                  "aws.s3.use_instance_profile" = "false",
                   "aws.s3.access_key" = "${AWS_ACCESS_KEY}",
                   "aws.s3.secret_key" = "${AWS_SECRET_KEY}",
                   "aws.s3.region" = "us-east-1"
@@ -294,6 +302,13 @@ spec:
               PROPERTIES (
                   "type" = "iceberg",
                   "iceberg.catalog.type" = "glue",
+                  "aws.glue.use_instance_profile" = "false",
+                  "aws.glue.access_key" = "${AWS_ACCESS_KEY}",
+                  "aws.glue.secret_key" = "${AWS_SECRET_KEY}",
+                  "aws.glue.region" = "us-east-1",
+                  "aws.s3.use_instance_profile" = "false",
+                  "aws.s3.access_key" = "${AWS_ACCESS_KEY}",
+                  "aws.s3.secret_key" = "${AWS_SECRET_KEY}",
                   "aws.s3.region" = "us-east-1"
               );
 
@@ -341,9 +356,9 @@ spec:
         - /spec/starRocksCnSpec/replicas
 ```
 
-The `ignoreDifferences` for CN replicas is important because the HPA changes the replica count dynamically.
+The `ignoreDifferences` for CN replicas is useful if a replica count is present in Git, because the HPA changes the replica count dynamically. For new CN autoscaling configurations, omit `spec.starRocksCnSpec.replicas` and let the HPA manage it.
 
-## Step 6: Ingress for SQL and Web UI
+## Step 6: Ingress for Web UI
 
 ```yaml
 # starrocks/production/ingress.yaml
@@ -386,7 +401,8 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.starrocks.io/component: fe
+      app.starrocks.ownerreference/name: analytics-warehouse
+      app.kubernetes.io/component: fe
   endpoints:
     - port: http
       path: /metrics
@@ -399,19 +415,20 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.starrocks.io/component: be
+      app.starrocks.ownerreference/name: analytics-warehouse
+      app.kubernetes.io/component: be
   endpoints:
-    - port: http
+    - port: webserver
       path: /metrics
       interval: 30s
 ```
 
 Key metrics to monitor:
 
-- `starrocks_fe_query_latency_ms` - query performance
-- `starrocks_be_compaction_score` - compaction health
-- `starrocks_be_mem_tracker_bytes` - memory usage per BE node
-- `starrocks_be_disk_usage_bytes` - storage utilization
+- `starrocks_fe_query_resource_group_latency` - query latency by resource group
+- `compaction_mem_bytes` - memory used by compactions
+- `starrocks_be_mem_pool_mem_usage_bytes` - BE memory pool usage
+- `disks_data_used_capacity` - storage utilization by disk path
 
 ## Best Practices
 
