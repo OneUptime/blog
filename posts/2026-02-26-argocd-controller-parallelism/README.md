@@ -49,7 +49,7 @@ Each status processor handles one application at a time. With 20 processors (the
 ### Choosing the Right Status Processor Count
 
 ```text
-Recommended status processors = Total applications / 10
+Recommended status processors = Total applications / 20
 ```
 
 Capped at a reasonable maximum based on controller resources:
@@ -59,8 +59,8 @@ Capped at a reasonable maximum based on controller resources:
 | < 100       | 20 (default)     | Default is fine |
 | 100 - 300   | 25-30            | Slight increase |
 | 300 - 500   | 30-40            | Monitor CPU |
-| 500 - 1000  | 40-50            | Consider sharding |
-| 1000+       | 20-30 per shard  | Must use sharding |
+| 500 - 1000  | 40-50            | Consider sharding if you manage many clusters |
+| 1000+       | 50+              | Consider sharding if controller memory is high |
 
 ## Configuring Operation Processors
 
@@ -146,7 +146,7 @@ spec:
               memory: "4Gi"
 ```
 
-### Large Cluster (500+ apps) with Sharding
+### Large Multi-Cluster Instance with Sharding
 
 ```yaml
 apiVersion: apps/v1
@@ -186,43 +186,42 @@ data:
 
 Total cluster-wide: 3 shards * 25 = 75 status processors, 3 * 12 = 36 operation processors.
 
-## How Sharding Distributes Applications
+## How Sharding Distributes Clusters
 
-When sharding is enabled, each controller replica manages a subset of applications:
+When sharding is enabled, each controller replica manages a subset of clusters. Applications are processed by the controller shard that owns their destination cluster:
 
 ```mermaid
 graph TD
     subgraph Shard 0
-        S0[Controller 0] --> A1[Apps 1-167]
+        S0[Controller 0] --> C1[Clusters 1-5]
+        C1 --> A1[Applications on those clusters]
     end
     subgraph Shard 1
-        S1[Controller 1] --> A2[Apps 168-334]
+        S1[Controller 1] --> C2[Clusters 6-10]
+        C2 --> A2[Applications on those clusters]
     end
     subgraph Shard 2
-        S2[Controller 2] --> A3[Apps 335-500]
+        S2[Controller 2] --> C3[Clusters 11-15]
+        C3 --> A3[Applications on those clusters]
     end
 ```
 
-The sharding algorithm assigns applications to shards based on a hash of the application name. Each shard's processors only work on its assigned applications.
+The sharding algorithm assigns clusters to shards. Each shard's processors only work on applications that target its assigned clusters.
 
 ### Configuring Sharding Algorithm
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
 data:
-  # Options: legacy, round-robin
+  # Options: legacy, round-robin, consistent-hashing
   controller.sharding.algorithm: "round-robin"
 ```
 
-`round-robin` provides more even distribution than `legacy` (hash-based).
+`round-robin` and `consistent-hashing` provide more even distribution than `legacy`, which uses a non-uniform UID-based distribution.
 
 ## Interaction Between Controller and Repo Server
 
-Controller parallelism directly affects repo server load. Each status processor may trigger a manifest generation request to the repo server:
-
-```text
-Maximum repo server requests = Status processors * (1 / Cache hit rate)
-```
+Controller parallelism directly affects repo server load. Each status processor may trigger a manifest generation request to the repo server. In the worst case, the controller can have roughly as many concurrent manifest generation requests waiting on the repo server as it has active status processors.
 
 If you increase status processors, ensure the repo server can handle the additional load:
 
@@ -230,8 +229,8 @@ If you increase status processors, ensure the repo server can handle the additio
 # Controller: 40 status processors
 controller.status.processors: "40"
 
-# Repo server must handle up to 40 concurrent requests
-# Set parallelism accordingly
+# Repo server allows up to 15 concurrent manifest generation requests
+# Choose this based on repo-server CPU and memory
 reposerver.parallelism.limit: "15"
 ```
 
@@ -343,7 +342,7 @@ For comprehensive monitoring of ArgoCD controller performance and automated para
 - Status processors handle reconciliation, operation processors handle syncs
 - Default is 20 status and 10 operation processors, suitable for under 100 applications
 - Scale processors with application count but cap based on available CPU
-- Use controller sharding for 500+ applications to distribute load
+- Use controller sharding to distribute clusters across controller replicas when controller memory is high
 - Monitor work queue depths as the primary indicator of parallelism adequacy
 - Ensure repo server parallelism can support controller demand
 - Increase resources before increasing parallelism to avoid CPU contention
