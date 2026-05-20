@@ -12,7 +12,7 @@ SSL certificates come in multiple formats, and different systems expect differen
 
 ## Understanding Certificate Formats
 
-**PEM** (Privacy Enhanced Mail) - The most common format on Linux. Base64-encoded DER certificate wrapped in `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` headers. Files typically use `.pem`, `.crt`, `.cer`, or `.key` extensions. Can contain multiple certificates or a combined certificate and private key.
+**PEM** (Privacy Enhanced Mail) - The most common format on Linux. Base64-encoded DER data wrapped in text headers such as `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` for certificates. Files typically use `.pem`, `.crt`, `.cer`, or `.key` extensions. Can contain multiple certificates or a combined certificate and private key.
 
 **DER** (Distinguished Encoding Rules) - Binary format. The same data as PEM but not base64-encoded. Files typically use `.der` or `.cer`. Cannot contain multiple items.
 
@@ -115,15 +115,16 @@ Extracting everything from a PFX into individual PEM files:
 openssl pkcs12 \
     -in bundle.pfx \
     -out everything.pem \
-    -nodes \
+    -noenc \
     -passin pass:YourPassword
-# -nodes: don't encrypt the private key in the output
+# -noenc: don't encrypt the private key in the output
 
 # Extract only the certificate (no key, no CA chain)
 openssl pkcs12 \
     -in bundle.pfx \
     -out certificate.pem \
     -nokeys \
+    -clcerts \
     -passin pass:YourPassword
 
 # Extract only the private key
@@ -131,7 +132,7 @@ openssl pkcs12 \
     -in bundle.pfx \
     -out private.key \
     -nocerts \
-    -nodes \
+    -noenc \
     -passin pass:YourPassword
 
 # Extract only the CA chain certificates
@@ -187,7 +188,7 @@ Private keys also have format considerations:
 
 ```bash
 # Convert PKCS#8 private key to traditional RSA format
-openssl rsa -in private_pkcs8.key -out private_rsa.key
+openssl rsa -in private_pkcs8.key -traditional -out private_rsa.key
 
 # Convert traditional RSA key to PKCS#8 format
 openssl pkcs8 -topk8 -inform PEM -outform PEM \
