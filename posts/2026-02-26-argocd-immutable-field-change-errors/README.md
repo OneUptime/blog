@@ -26,7 +26,7 @@ flowchart TD
     F --> G[Sync fails with error]
     G --> H{Resolution}
     H --> I[Delete and recreate]
-    H --> J[Use Replace sync option]
+    H --> J[Use Force sync option]
     H --> K[Ignore the field]
 ```
 
@@ -39,9 +39,9 @@ Jobs have the most immutable fields. Almost the entire spec is immutable after c
 ```text
 spec.template           - Pod template is immutable
 spec.selector           - Label selector is immutable
-spec.completions        - Cannot change after creation
+spec.completions        - Immutable for non-indexed Jobs; mutable with parallelism for Indexed Jobs
 spec.parallelism        - Can be updated (exception)
-spec.backoffLimit       - Cannot change after creation
+spec.backoffLimit       - Can be updated
 ```
 
 Error message:
@@ -54,8 +54,8 @@ The Job "my-job" is invalid: spec.template: Invalid value: ... field is immutabl
 ```text
 spec.clusterIP          - Assigned by Kubernetes, cannot be changed
 spec.clusterIPs         - Same as above
-spec.ipFamilies         - Cannot change after creation
-spec.ipFamilyPolicy     - Cannot change after creation (some cases)
+spec.ipFamilies         - Primary family cannot be changed; dual-stack upgrades/downgrades have rules
+spec.ipFamilyPolicy     - Can be changed only within Kubernetes dual-stack rules
 spec.type               - Can be changed, but ClusterIP allocation rules apply
 ```
 
@@ -93,33 +93,32 @@ data/stringData         - Cannot be modified when immutable: true
 
 CRDs can define immutable fields through the `x-kubernetes-validations` or webhook-based validation. Check the operator documentation.
 
-## Solution 1: Use the Replace Sync Option
+## Solution 1: Use Force and Replace Sync Options
 
-The `Replace` sync option tells ArgoCD to use `kubectl replace` instead of `kubectl apply`. Replace deletes and recreates the resource, which allows immutable fields to change:
+The `Replace` sync option tells ArgoCD to use `kubectl replace` or `kubectl create` instead of `kubectl apply`. By itself, `Replace=true` does not guarantee immutable fields can change, because `kubectl replace` is still an update to the existing resource. To delete and recreate a resource, use `Force=true,Replace=true` on the resource:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: batch/v1
+kind: Job
 metadata:
-  name: my-app
+  name: data-migration
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
-  source:
-    repoURL: https://github.com/myorg/my-app.git
-    targetRevision: main
-    path: k8s
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: default
-  syncPolicy:
-    syncOptions:
-      - Replace=true
+  template:
+    spec:
+      containers:
+        - name: migrate
+          image: myapp:v1
+          command: ["./migrate.sh"]
+      restartPolicy: Never
 ```
 
-**Warning**: Replace causes a brief downtime because the resource is deleted before being recreated. For Deployments, this means pods are terminated and new ones start. Use this with caution in production.
+**Warning**: Force causes a brief downtime because the resource is deleted before being recreated. For Deployments, this means pods are terminated and new ones start. Use this with caution in production.
 
-### Per-Resource Replace
+### Per-Resource Replace Without Force
 
-Instead of applying Replace to the entire application, target specific resources using annotations:
+If you only need ArgoCD to use `kubectl replace/create` instead of `kubectl apply`, target specific resources using annotations:
 
 ```yaml
 apiVersion: batch/v1
@@ -138,7 +137,7 @@ spec:
       restartPolicy: Never
 ```
 
-This is safer because only the Job uses replace, while other resources in the application use the default apply strategy.
+This does not delete and recreate the Job, so it will not fix immutable field changes by itself.
 
 ## Solution 2: Delete Before Sync with Sync Waves
 
@@ -192,7 +191,7 @@ Force sync deletes the resource before recreating it. Use it from the CLI:
 
 ```bash
 # Force sync a specific resource
-argocd app sync my-app --resource batch/Job/data-migration --force
+argocd app sync my-app --resource batch:Job:data-migration --force
 ```
 
 Or from the UI, select the resource, click "Sync," and check the "Force" option.
@@ -228,8 +227,6 @@ kind: Job
 metadata:
   # Include a version or hash in the name
   name: data-migration-v2
-  annotations:
-    argocd.argoproj.io/sync-options: Replace=true
 spec:
   template:
     spec:
@@ -272,7 +269,7 @@ kind: StatefulSet
 metadata:
   name: my-database
   annotations:
-    argocd.argoproj.io/sync-options: Replace=true
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 spec:
   volumeClaimTemplates:
     - metadata:
@@ -284,7 +281,7 @@ spec:
             storage: 20Gi  # Changed from 10Gi
 ```
 
-**Critical Warning**: Replacing a StatefulSet with `Replace=true` does NOT delete the associated PVCs. The old PVCs remain. You need to handle PVC migration separately.
+**Critical Warning**: Recreating a StatefulSet with `Force=true,Replace=true` does NOT delete the associated PVCs. The old PVCs remain. You need to handle PVC migration separately.
 
 ### Deployment Selector Changes
 
@@ -292,20 +289,20 @@ If you need to change a Deployment's label selector (which is immutable), you ca
 
 ```bash
 # Option 1: Delete via ArgoCD CLI
-argocd app delete-resource my-app --kind Deployment --resource-name my-app
+argocd app delete-resource my-app --group apps --kind Deployment --resource-name my-app
 
 # Then sync to recreate
 argocd app sync my-app
 
-# Option 2: Use Replace on the specific resource
+# Option 2: Use Force and Replace on the specific resource
 kubectl annotate deployment my-app \
-  argocd.argoproj.io/sync-options=Replace=true \
+  argocd.argoproj.io/sync-options=Force=true,Replace=true \
   --overwrite
 ```
 
 ### Service ClusterIP Changes
 
-The `clusterIP` field is always assigned by Kubernetes and should never be in your Git manifests:
+The `clusterIP` field is usually assigned by Kubernetes and generally should not be in your Git manifests:
 
 ```yaml
 # Bad - includes clusterIP that will cause conflicts
@@ -334,7 +331,7 @@ spec:
     - port: 80
 ```
 
-If you need a stable ClusterIP (rare), use `spec.clusterIP: None` for headless services, or create the service once and ignore the field:
+If you need a stable ClusterIP (rare), you can set a valid `spec.clusterIP` at Service creation time, use `spec.clusterIP: None` for headless services, or create the service once and ignore the field:
 
 ```yaml
 ignoreDifferences:
@@ -356,19 +353,18 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Jobs always use replace to handle immutable spec
   resource.customizations.ignoreDifferences._Service: |
     jsonPointers:
       - /spec/clusterIP
       - /spec/clusterIPs
 ```
 
-For Jobs specifically, consider always using the hook pattern or Replace:
+For Jobs specifically, consider using the hook pattern or annotating each Job that must rerun:
 
 ```yaml
-# In argocd-cm: enable replace for all Jobs
-resource.customizations.syncOptions.batch_Job: |
-  - Replace=true
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 ```
 
 ## Debugging Immutable Field Errors
@@ -392,9 +388,9 @@ The error message usually tells you exactly which field is immutable. Use that i
 ## Best Practices
 
 1. **Avoid changing immutable fields when possible** - Design your manifests to minimize the need for immutable field changes
-2. **Use Replace sparingly** - Only on resources that truly need it, not application-wide
+2. **Use Force and Replace sparingly** - Only on resources that truly need delete and recreate behavior
 3. **Prefer hooks for Jobs** - Sync hooks with `BeforeHookCreation` naturally handle Job recreation
-4. **Never include clusterIP in Git** - Let Kubernetes assign it
+4. **Avoid including clusterIP in Git** - Let Kubernetes assign it unless you intentionally need a static Service IP
 5. **Test in staging first** - Replace and force sync can cause downtime
 6. **Use unique names for Jobs** - Include a version suffix to avoid immutable field conflicts
 
