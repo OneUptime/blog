@@ -14,9 +14,9 @@ Resource tracking is the mechanism ArgoCD uses to determine which Kubernetes res
 
 Before diving into debugging, let us recap the tracking mechanisms. ArgoCD supports three modes:
 
-1. **Label tracking** - Uses `app.kubernetes.io/instance` label
-2. **Annotation tracking** - Uses `argocd.argoproj.io/tracking-id` annotation
-3. **Annotation+Label tracking** - Uses both, with annotation as source of truth
+1. **Annotation tracking** - Uses `argocd.argoproj.io/tracking-id` annotation
+2. **Annotation+Label tracking** - Uses both, with annotation as source of truth
+3. **Label tracking** - Uses `app.kubernetes.io/instance` label
 
 Check your current tracking method:
 
@@ -26,7 +26,7 @@ Check your current tracking method:
 kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.application\.resourceTrackingMethod}'
 ```
 
-If this returns empty, you are using the default label-based tracking.
+If this returns empty, you are using the default for your installed ArgoCD version. ArgoCD 3.0 and newer default to annotation-based tracking; ArgoCD 2.x defaulted to label-based tracking.
 
 ## Problem 1: Resources Show as OutOfSync but Nothing Changed
 
@@ -243,28 +243,21 @@ argocd app sync my-new-app
 When the standard debugging steps do not reveal the issue, enable debug logging on the ArgoCD application controller:
 
 ```yaml
-# Patch the argocd-application-controller deployment
-apiVersion: apps/v1
-kind: Deployment
+# Patch the argocd-cmd-params-cm ConfigMap
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-application-controller
+  name: argocd-cmd-params-cm
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-application-controller
-          command:
-            - argocd-application-controller
-            - --loglevel
-            - debug
+data:
+  controller.log.level: "debug"
 ```
 
 Then tail the logs looking for tracking-related messages:
 
 ```bash
 # Watch controller logs for tracking operations
-kubectl logs -n argocd deployment/argocd-application-controller -f | \
+kubectl logs -n argocd statefulset/argocd-application-controller -f | \
   grep -i "track\|ownership\|managed"
 ```
 
@@ -291,7 +284,7 @@ Here is a script you can run periodically to detect tracking issues before they 
 
 echo "Checking for resource tracking issues..."
 
-# Find resources with ArgoCD labels but no matching application
+# For label or annotation+label tracking, find resources with ArgoCD labels but no matching application
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
   resources=$(kubectl get all -n "$ns" -l app.kubernetes.io/instance \
     -o jsonpath='{range .items[*]}{.metadata.labels.app\.kubernetes\.io/instance}{"\n"}{end}' 2>/dev/null | sort -u)
