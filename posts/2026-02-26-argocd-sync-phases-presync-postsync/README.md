@@ -10,7 +10,7 @@ Description: Learn how to use ArgoCD sync phases including PreSync, Sync, and Po
 
 ArgoCD does not just blindly apply all your Kubernetes manifests at once. It organizes the sync operation into distinct phases, each serving a specific purpose in the deployment workflow. Understanding these phases gives you fine-grained control over when things happen during a deployment.
 
-The three main sync phases are PreSync, Sync, and PostSync. There is also a SyncFail phase for error handling. Together, they let you build deployment workflows that include database migrations, smoke tests, notifications, and cleanup tasks - all orchestrated automatically.
+The three main sync phases are PreSync, Sync, and PostSync. There is also a SyncFail hook type for error handling when a sync operation fails. Together, they let you build deployment workflows that include database migrations, smoke tests, notifications, and cleanup tasks - all orchestrated automatically.
 
 ## The Sync Phase Lifecycle
 
@@ -20,16 +20,18 @@ When ArgoCD syncs an application, it executes phases in this order:
 graph LR
     A[PreSync] --> B[Sync]
     B --> C[PostSync]
+    A -->|On Failure| D[SyncFail]
     B -->|On Failure| D[SyncFail]
+    C -->|On Failure| D[SyncFail]
 ```
 
 1. **PreSync**: Runs before any application resources are applied. Use for preparation tasks like database migrations, cache warming, or configuration validation.
 
 2. **Sync**: The main phase where application resources are applied to the cluster. This is where your Deployments, Services, ConfigMaps, and other resources get created or updated.
 
-3. **PostSync**: Runs after all application resources are successfully applied. Use for verification tasks like smoke tests, notifications, or post-deployment configuration.
+3. **PostSync**: Runs after all application resources are successfully applied and healthy. Use for verification tasks like smoke tests, notifications, or post-deployment configuration.
 
-4. **SyncFail**: Runs only if the Sync phase fails. Use for cleanup, alerting, or rollback preparation.
+4. **SyncFail**: Runs if the sync operation fails. Use for cleanup, alerting, or rollback preparation.
 
 ## Assigning Resources to Phases
 
@@ -169,7 +171,7 @@ Within the Sync phase, you can further control ordering using sync waves (covere
 
 ## PostSync Phase: Verification
 
-PostSync hooks run after all Sync phase resources are successfully applied. They are ideal for verification and notification tasks:
+PostSync hooks run after all Sync phase resources are successfully applied and healthy. They are ideal for verification and notification tasks:
 
 ### Smoke Tests
 
@@ -372,9 +374,9 @@ spec:
 
 Understanding what happens when each phase fails:
 
-- **PreSync fails**: Sync phase never starts. Application resources are not updated. The old version keeps running.
-- **Sync fails**: PostSync does not run. SyncFail runs instead. Some resources may have been partially applied.
-- **PostSync fails**: The sync operation is marked as failed even though resources were applied. The application might be running the new version but marked as "Failed."
+- **PreSync fails**: Sync phase never starts. Application resources are not updated. The old version keeps running. SyncFail hooks can run for failure handling.
+- **Sync fails**: PostSync does not run. SyncFail hooks run instead. Some resources may have been partially applied.
+- **PostSync fails**: The sync operation is marked as failed even though resources were applied. The application might be running the new version but marked as "Failed." SyncFail hooks can run for failure handling.
 - **SyncFail fails**: The failure is logged but does not affect the application state further.
 
 ## Best Practices
@@ -383,7 +385,7 @@ Understanding what happens when each phase fails:
 
 2. **Use unique names.** Include the version or a hash in hook Job names to avoid conflicts with previous sync hooks.
 
-3. **Set appropriate delete policies.** Without a delete policy, hook resources remain in the cluster after completion.
+3. **Set appropriate delete policies.** Without a delete policy, ArgoCD assumes `BeforeHookCreation`, so named hook resources are deleted before the next hook creation. Use `HookSucceeded` or `HookFailed` when you want hooks cleaned up immediately after completion.
 
 4. **Set backoff limits.** Always configure `backoffLimit` on Jobs to prevent infinite retries.
 
