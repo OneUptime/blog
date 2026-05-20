@@ -90,7 +90,10 @@ sourceRepos:
   # Match a specific GitLab group and all subgroups
   - "https://gitlab.com/my-group/**"
 
-  # Match OCI registries
+  # Match generic OCI artifact sources
+  - "oci://ghcr.io/my-org/*"
+
+  # Match Helm OCI repositories
   - "ghcr.io/my-org/*"
   - "myregistry.azurecr.io/*"
 ```
@@ -131,8 +134,8 @@ spec:
     - "https://github.com/my-org/data-pipelines.git"
     - "https://github.com/my-org/data-config.git"
     # OCI registries for Helm charts
-    - "ghcr.io/my-org/helm-charts/*"
-    - "myregistry.azurecr.io/charts/*"
+    - "ghcr.io/my-org/helm-charts"
+    - "myregistry.azurecr.io/charts"
     # Public Helm chart registries
     - "https://charts.bitnami.com/bitnami"
     - "https://prometheus-community.github.io/helm-charts"
@@ -173,7 +176,7 @@ spec:
     # Both of these must be in the project's sourceRepos
     - repoURL: "https://github.com/my-org/backend-api.git"
       path: k8s/base
-    - repoURL: "ghcr.io/my-org/helm-charts/common"
+    - repoURL: "ghcr.io/my-org/helm-charts"
       chart: common
       targetRevision: "1.0.0"
 ```
@@ -183,7 +186,7 @@ The project must allow both sources:
 ```yaml
 sourceRepos:
   - "https://github.com/my-org/backend-api.git"
-  - "ghcr.io/my-org/helm-charts/*"
+  - "ghcr.io/my-org/helm-charts"
 ```
 
 ## Updating Source Restrictions
