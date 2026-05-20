@@ -144,7 +144,12 @@ argocd repo list
 
 # Or via kubectl
 kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository \
-  -o custom-columns=NAME:.metadata.name,URL:.data.url
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.data.url}{"\n"}{end}' | \
+  while read -r name url; do
+    printf "%s\t" "$name"
+    echo "$url" | base64 --decode
+    echo
+  done
 ```
 
 Test each repository connection.
@@ -182,10 +187,10 @@ The Application Controller is the core engine. Verify it is actively reconciling
 # Check controller metrics
 kubectl port-forward svc/argocd-metrics -n argocd 8082:8082 &
 
-# Check reconciliation count (should be > 0 and increasing)
+# Check reconciliation duration metrics
 curl -s http://localhost:8082/metrics | grep argocd_app_reconcile
 
-# Check for any stuck applications
+# Check application sync and health status labels
 curl -s http://localhost:8082/metrics | grep argocd_app_info
 ```
 
@@ -273,9 +278,7 @@ Test that authentication and authorization are working.
 argocd login localhost:8080 --insecure --username admin --password <password>
 
 # Verify RBAC policies are loaded
-argocd admin settings rbac validate --policy-file /dev/stdin <<EOF
-g, my-team, role:admin
-EOF
+argocd admin settings rbac validate --namespace argocd
 
 # Check if SSO is configured and responding
 curl -sk https://localhost:8080/api/dex/.well-known/openid-configuration
