@@ -19,7 +19,7 @@ ArgoCD treats terminal access as a distinct permission type called `exec`. This 
 The RBAC policy format for exec is:
 
 ```text
-p, <subject>, exec, create, <project>/<namespace>/<application>, <allow|deny>
+p, <subject>, exec, create, <project>/<application>, <allow|deny>
 ```
 
 The key components:
@@ -29,12 +29,12 @@ The key components:
 | subject | Role or user identity | `role:developer` |
 | exec | Resource type | Always `exec` |
 | create | Action | Always `create` |
-| scope | Project/namespace/app | `my-project/*/my-app` |
+| scope | Project/app | `my-project/my-app` |
 | effect | Allow or deny | `allow` or `deny` |
 
 ## Default: Terminal Access is Denied
 
-By default, no user has exec permissions - even the built-in admin role. You must explicitly grant it. This is a deliberate security design choice.
+By default, regular users do not have exec permissions. You must explicitly grant it to the roles or users that need it. The built-in `role:admin` is unrestricted, so avoid assigning it when you want terminal access to remain limited.
 
 ```yaml
 apiVersion: v1
@@ -44,9 +44,8 @@ metadata:
   namespace: argocd
 data:
   policy.csv: |
-    # Built-in admin role does NOT automatically get exec access
-    # You must explicitly grant it
-    p, role:admin, exec, create, */*, allow
+    # Grant exec only to the role that needs it
+    p, role:sre, exec, create, */*, allow
   policy.default: role:readonly
 ```
 
@@ -119,8 +118,9 @@ During an incident, an admin can temporarily assign a user to the `emergency-res
 ```bash
 # Grant emergency access (done by admin during incident)
 
-# This would typically be automated through your incident management tool
-argocd account update-password --account emergency-user
+# Add a temporary mapping such as:
+# g, user@example.com, role:emergency-responder
+kubectl -n argocd edit configmap argocd-rbac-cm
 
 # After the incident, revoke by removing the group mapping
 ```
@@ -136,7 +136,7 @@ argocd proj role create my-project debug-role \
 
 # Add exec policy to the role
 argocd proj role add-policy my-project debug-role \
-  -a create -p allow -o exec
+  -r exec -a create -p allow -o '*'
 
 # Generate a token that expires in 1 hour
 argocd proj role create-token my-project debug-role \
@@ -200,11 +200,11 @@ Always validate your policies before deploying:
 
 ```bash
 # Check if a role has exec access to a specific scope
-argocd admin settings rbac can role:developer exec create 'dev-project/*' \
+argocd admin settings rbac can role:developer create exec 'dev-project/*' \
   --policy-file policy.csv
 # Output: Yes
 
-argocd admin settings rbac can role:developer exec create 'production-project/*' \
+argocd admin settings rbac can role:developer create exec 'production-project/*' \
   --policy-file policy.csv
 # Output: No
 
