@@ -22,7 +22,7 @@ flowchart TD
     A --> C[API-Initiated Eviction]
     A --> D[Preemption]
     A --> E[Taint-Based Eviction]
-    B --> B1[Memory pressure - OOMKill]
+    B --> B1[Memory pressure]
     B --> B2[Disk pressure]
     B --> B3[PID pressure]
     C --> C1[kubectl drain]
@@ -59,7 +59,7 @@ spec:
 
 ## Configuring PodDisruptionBudgets
 
-PDBs are your primary defense against disruptive evictions. They tell Kubernetes how many pods must remain available during voluntary disruptions.
+PDBs are your primary defense against voluntary disruptive evictions. They tell Kubernetes how many pods must remain available during voluntary disruptions.
 
 ```yaml
 # pdb-for-web-app.yaml
@@ -88,7 +88,13 @@ metadata:
   name: web-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: web
@@ -150,7 +156,7 @@ data:
 
 ## Handling Node Drain Evictions
 
-When nodes are drained (for upgrades, scaling down, or maintenance), pods receive a SIGTERM signal followed by a grace period.
+When nodes are drained (for upgrades, scaling down, or maintenance), Kubernetes starts the pod termination grace period, runs any `preStop` hook, sends the container stop signal such as SIGTERM, and then forcefully kills containers that are still running when the grace period expires.
 
 Configure proper graceful shutdown in your deployments.
 
@@ -176,7 +182,7 @@ spec:
 
 ## Priority Classes for Critical Applications
 
-Use PriorityClasses to make critical ArgoCD-managed applications less likely to be preempted by lower-priority workloads.
+Use PriorityClasses to make critical ArgoCD-managed applications less likely to be preempted and able to preempt lower-priority workloads when necessary.
 
 ```yaml
 # priority-classes.yaml (managed by ArgoCD)
