@@ -72,6 +72,8 @@ metadata:
   name: self-service-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - matrix:
         generators:
@@ -81,44 +83,33 @@ spec:
               files:
                 - path: onboarding/applications.yaml
           - list:
-              elementsYaml: "{{ .applications | toJson }}"
-    - matrix:
-        generators:
-          - git:
-              repoURL: https://github.com/company/platform-config.git
-              revision: main
-              files:
-                - path: onboarding/applications.yaml
-          - list:
               elementsYaml: |
-                {{- range .applications }}
-                {{- range .environments }}
-                - name: {{ $.name }}
-                  team: {{ $.team }}
-                  type: {{ $.type }}
-                  environment: {{ . }}
-                  repository: {{ $.repository }}
-                  port: {{ $.port }}
-                  healthPath: {{ $.healthPath }}
-                {{- end }}
-                {{- end }}
+                {{- range $app := .applications }}
+                {{- range $env := $app.environments }}
+                - name: {{ $app.name }}
+                  team: {{ $app.team }}
+                  type: {{ $app.type }}
+                  environment: {{ $env }}
+                  repository: {{ $app.repository }}
+                {{ end }}
+                {{ end }}
   template:
     metadata:
-      name: "{{team}}-{{name}}-{{environment}}"
+      name: "{{.team}}-{{.name}}-{{.environment}}"
       labels:
-        team: "{{team}}"
-        app: "{{name}}"
-        environment: "{{environment}}"
+        team: "{{.team}}"
+        app: "{{.name}}"
+        environment: "{{.environment}}"
         self-service: "true"
     spec:
-      project: "{{team}}"
+      project: "{{.team}}"
       source:
-        repoURL: "{{repository}}"
+        repoURL: "{{.repository}}"
         targetRevision: main
-        path: "deploy/{{environment}}"
+        path: "deploy/{{.environment}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{team}}-{{environment}}"
+        namespace: "{{.team}}-{{.environment}}"
       syncPolicy:
         automated:
           prune: true
@@ -144,18 +135,26 @@ case "$1" in
 
     echo "Creating application: $APP_NAME (type: $APP_TYPE)"
 
-    # Generate config from template
-    cat > /tmp/app-config.yaml << EOF
-name: $APP_NAME
-team: $TEAM
-type: $APP_TYPE
-environments:
-  - staging
-  - production
-repository: https://github.com/company/$APP_NAME
-port: 8080
-healthPath: /health
+    # Run from a checkout of company/platform-config
+    BRANCH="add-${APP_NAME}"
+    git checkout -b "$BRANCH"
+
+    # Add config from template
+    cat >> onboarding/applications.yaml << EOF
+  - name: $APP_NAME
+    team: $TEAM
+    type: $APP_TYPE
+    environments:
+      - staging
+      - production
+    repository: https://github.com/company/$APP_NAME
+    port: 8080
+    healthPath: /health
 EOF
+
+    git add onboarding/applications.yaml
+    git commit -m "Add application: $APP_NAME"
+    git push -u origin "$BRANCH"
 
     # Create PR to add application
     gh pr create \
@@ -186,7 +185,7 @@ EOF
     # Rollback to previous version
     APP_NAME=$2
     ENV=${3:-staging}
-    argocd app rollback "${TEAM}-${APP_NAME}-${ENV}" 0 \
+    argocd app rollback "${TEAM}-${APP_NAME}-${ENV}" \
       --server $ARGOCD_SERVER
     ;;
 
@@ -226,6 +225,8 @@ metadata:
   name: preview-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - pullRequest:
         github:
@@ -236,10 +237,10 @@ spec:
         requeueAfterSeconds: 60
   template:
     metadata:
-      name: "preview-checkout-{{number}}"
+      name: "preview-checkout-{{.number}}"
       labels:
         preview: "true"
-        pr: "{{number}}"
+        pr: "{{.number}}"
       annotations:
         # Auto-delete after 7 days
         platform.company.com/ttl: "7d"
@@ -247,17 +248,17 @@ spec:
       project: commerce
       source:
         repoURL: https://github.com/company/checkout-service.git
-        targetRevision: "{{branch}}"
+        targetRevision: "{{.head_sha}}"
         path: deploy/preview
         helm:
           values: |
             image:
-              tag: pr-{{number}}
+              tag: pr-{{.number}}
             ingress:
-              host: pr-{{number}}.preview.company.com
+              host: pr-{{.number}}.preview.company.com
       destination:
         server: https://kubernetes.default.svc
-        namespace: "preview-{{number}}"
+        namespace: "preview-{{.number}}"
       syncPolicy:
         automated:
           prune: true
@@ -273,7 +274,7 @@ Developers need to manage application secrets without platform team help.
 ```yaml
 # Integrate External Secrets Operator with a self-service pattern
 # developers/secrets-template.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: "{{.app.name}}-secrets"
