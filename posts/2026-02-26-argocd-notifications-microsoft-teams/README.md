@@ -4,34 +4,34 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Microsoft Teams, Notification
 
-Description: Learn how to configure ArgoCD to send deployment notifications to Microsoft Teams channels using Incoming Webhooks with adaptive card formatting.
+Description: Learn how to configure ArgoCD to send deployment notifications to Microsoft Teams channels using Teams Workflows with adaptive card formatting.
 
 ---
 
-Microsoft Teams is the default communication tool for many enterprises, and getting ArgoCD deployment alerts there keeps your team informed without switching contexts. ArgoCD supports Teams through its webhook notification service, which lets you send rich adaptive cards with deployment details, status colors, and action buttons.
+Microsoft Teams is the default communication tool for many enterprises, and getting ArgoCD deployment alerts there keeps your team informed without switching contexts. ArgoCD supports Teams through its Teams Workflows notification service, which lets you send rich adaptive cards with deployment details, status colors, and action buttons.
 
-## Setting Up the Teams Incoming Webhook
+## Setting Up the Teams Workflow Webhook
 
-First, create an Incoming Webhook connector in your Teams channel:
+First, create a Teams Workflow webhook in your Teams channel:
 
 1. Open Microsoft Teams and navigate to the channel where you want notifications
 2. Click the three dots (...) next to the channel name
-3. Select "Connectors" (or "Manage channel" then "Connectors")
-4. Search for "Incoming Webhook" and click "Configure"
-5. Give it a name like "ArgoCD" and optionally upload an icon
-6. Click "Create"
-7. Copy the webhook URL - it looks like `https://outlook.office.com/webhook/...`
+3. Select "Workflows"
+4. Search for "Send webhook alerts to a channel"
+5. Choose the team and channel
+6. Configure the webhook name and settings
+7. Copy the webhook URL - it looks like `https://api.powerautomate.com/...`, `https://api.powerplatform.com/...`, or `https://flow.microsoft.com/...`
 
-Note: If your organization uses the newer Teams Workflows instead of Connectors, create a "When a Teams webhook request is received" workflow in Power Automate and use that URL instead.
+Note: Microsoft has retired Office 365 Connectors in Teams. If you still have an old connector URL such as `https://outlook.office.com/webhook/...` or `https://webhook.office.com/...`, migrate it to a Teams Workflow webhook before using it with current ArgoCD versions.
 
 ## Configuring ArgoCD for Teams
 
-Store the Teams webhook URL in the ArgoCD notifications secret:
+Store the Teams Workflow webhook URL in the ArgoCD notifications secret:
 
 ```bash
 kubectl patch secret argocd-notifications-secret -n argocd \
   --type merge \
-  -p '{"stringData": {"teams-webhook-url": "https://outlook.office.com/webhook/your-webhook-url"}}'
+  -p '{"stringData": {"teams-workflow-webhook-url": "https://api.powerautomate.com/your-workflow-webhook-url"}}'
 ```
 
 Configure the Teams service in the notifications ConfigMap:
@@ -43,18 +43,18 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  service.teams: |
+  service.teams-workflows: |
     recipientUrls:
-      deployments-channel: $teams-webhook-url
+      deployments-channel: $teams-workflow-webhook-url
 ```
 
 The `recipientUrls` map lets you define multiple channels by name. The name you use here (`deployments-channel`) is what you reference in annotations.
 
 ## Creating Teams Notification Templates
 
-### Basic Message Card
+### Basic Adaptive Card
 
-Teams uses the MessageCard format for Incoming Webhooks:
+Teams Workflows uses Adaptive Cards. ArgoCD converts the standard Teams template fields to Adaptive Card format:
 
 ```yaml
 apiVersion: v1
@@ -63,19 +63,18 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  service.teams: |
+  service.teams-workflows: |
     recipientUrls:
-      deployments-channel: $teams-webhook-url
-      alerts-channel: $teams-alerts-webhook-url
+      deployments-channel: $teams-workflow-webhook-url
+      alerts-channel: $teams-alerts-workflow-webhook-url
 
   template.app-sync-succeeded-teams: |
-    teams:
+    teams-workflows:
       title: "Deployment Successful"
-      themeColor: "#18be52"
+      text: "Application {{ .app.metadata.name }} synced to revision {{ .app.status.sync.revision | trunc 7 }}"
+      themeColor: "Good"
       sections: |
         [{
-          "activityTitle": "{{ .app.metadata.name }}",
-          "activitySubtitle": "Synced to revision {{ .app.status.sync.revision | trunc 7 }}",
           "facts": [
             {"name": "Project", "value": "{{ .app.spec.project }}"},
             {"name": "Namespace", "value": "{{ .app.spec.destination.namespace }}"},
@@ -92,13 +91,12 @@ data:
         }]
 
   template.app-sync-failed-teams: |
-    teams:
+    teams-workflows:
       title: "Deployment Failed"
-      themeColor: "#E96D76"
+      text: "Application {{ .app.metadata.name }} sync operation failed"
+      themeColor: "Attention"
       sections: |
         [{
-          "activityTitle": "{{ .app.metadata.name }}",
-          "activitySubtitle": "Sync operation failed",
           "facts": [
             {"name": "Project", "value": "{{ .app.spec.project }}"},
             {"name": "Revision", "value": "{{ .app.status.sync.revision | trunc 7 }}"},
@@ -113,13 +111,12 @@ data:
         }]
 
   template.app-health-degraded-teams: |
-    teams:
+    teams-workflows:
       title: "Application Health Degraded"
-      themeColor: "#f4c030"
+      text: "Application {{ .app.metadata.name }} health status changed to {{ .app.status.health.status }}"
+      themeColor: "Warning"
       sections: |
         [{
-          "activityTitle": "{{ .app.metadata.name }}",
-          "activitySubtitle": "Health status changed to {{ .app.status.health.status }}",
           "facts": [
             {"name": "Project", "value": "{{ .app.spec.project }}"},
             {"name": "Namespace", "value": "{{ .app.spec.destination.namespace }}"},
@@ -135,9 +132,52 @@ data:
         }]
 ```
 
-### Adaptive Card Template (Newer Format)
+### Custom Adaptive Card Template
 
-If your Teams setup supports Adaptive Cards (through Workflows), use the webhook service instead for richer formatting:
+For richer formatting, provide an Adaptive Card directly in the Teams Workflows template. ArgoCD wraps this card in the message envelope required by Teams:
+
+```yaml
+  service.teams-workflows: |
+    recipientUrls:
+      deployments-channel: $teams-workflow-webhook-url
+
+  template.app-deployed-adaptive: |
+    teams-workflows:
+      adaptiveCard: |
+        {
+          "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+          "type": "AdaptiveCard",
+          "version": "1.4",
+          "body": [
+            {
+              "type": "TextBlock",
+              "text": "Deployment Successful",
+              "weight": "Bolder",
+              "size": "Large",
+              "color": "Good"
+            },
+            {
+              "type": "FactSet",
+              "facts": [
+                {"title": "Application", "value": "{{ .app.metadata.name }}"},
+                {"title": "Project", "value": "{{ .app.spec.project }}"},
+                {"title": "Revision", "value": "{{ .app.status.sync.revision | trunc 7 }}"},
+                {"title": "Namespace", "value": "{{ .app.spec.destination.namespace }}"},
+                {"title": "Health", "value": "{{ .app.status.health.status }}"}
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "type": "Action.OpenUrl",
+              "title": "View in ArgoCD",
+              "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}"
+            }
+          ]
+        }
+```
+
+If you use the generic webhook service instead, include the full Teams message envelope yourself:
 
 ```yaml
   service.webhook.teams-adaptive: |
@@ -146,7 +186,7 @@ If your Teams setup supports Adaptive Cards (through Workflows), use the webhook
       - name: Content-Type
         value: application/json
 
-  template.app-deployed-adaptive: |
+  template.app-deployed-adaptive-webhook: |
     webhook:
       teams-adaptive:
         method: POST
@@ -194,11 +234,12 @@ If your Teams setup supports Adaptive Cards (through Workflows), use the webhook
 
 ```yaml
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      oncePer: app.status.sync.revision
       send: [app-sync-succeeded-teams]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-failed-teams]
 
   trigger.on-health-degraded: |
@@ -212,10 +253,10 @@ If your Teams setup supports Adaptive Cards (through Workflows), use the webhook
 # Subscribe an application to Teams notifications
 
 kubectl annotate app my-app -n argocd \
-  notifications.argoproj.io/subscribe.on-deployed.teams="deployments-channel"
+  notifications.argoproj.io/subscribe.on-deployed.teams-workflows="deployments-channel"
 
 kubectl annotate app my-app -n argocd \
-  notifications.argoproj.io/subscribe.on-sync-failed.teams="alerts-channel"
+  notifications.argoproj.io/subscribe.on-sync-failed.teams-workflows="alerts-channel"
 ```
 
 For default subscriptions that apply to all applications:
@@ -223,7 +264,7 @@ For default subscriptions that apply to all applications:
 ```yaml
   subscriptions: |
     - recipients:
-        - teams:deployments-channel
+        - teams-workflows:deployments-channel
       triggers:
         - on-deployed
         - on-sync-failed
@@ -235,11 +276,11 @@ For default subscriptions that apply to all applications:
 To send to different channels for different event types, define multiple recipient URLs:
 
 ```yaml
-  service.teams: |
+  service.teams-workflows: |
     recipientUrls:
-      deployments: $teams-deployments-webhook
-      alerts: $teams-alerts-webhook
-      sre-team: $teams-sre-webhook
+      deployments: $teams-deployments-workflow-webhook
+      alerts: $teams-alerts-workflow-webhook
+      sre-team: $teams-sre-workflow-webhook
 ```
 
 Then reference them in annotations:
@@ -247,11 +288,11 @@ Then reference them in annotations:
 ```bash
 # Success notifications go to deployments channel
 kubectl annotate app my-app -n argocd \
-  notifications.argoproj.io/subscribe.on-deployed.teams="deployments"
+  notifications.argoproj.io/subscribe.on-deployed.teams-workflows="deployments"
 
 # Failures go to alerts channel
 kubectl annotate app my-app -n argocd \
-  notifications.argoproj.io/subscribe.on-sync-failed.teams="alerts"
+  notifications.argoproj.io/subscribe.on-sync-failed.teams-workflows="alerts"
 ```
 
 ## Debugging Teams Notifications
@@ -272,21 +313,21 @@ Test the webhook URL directly with curl to verify it works:
 # Test the Teams webhook independently
 curl -X POST \
   -H "Content-Type: application/json" \
-  -d '{"title":"Test","text":"ArgoCD test notification"}' \
-  "https://outlook.office.com/webhook/your-webhook-url"
+  -d '{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","content":{"type":"AdaptiveCard","version":"1.4","body":[{"type":"TextBlock","text":"ArgoCD test notification","wrap":true}]}}]}' \
+  "https://api.powerautomate.com/your-workflow-webhook-url"
 ```
 
 If this works but ArgoCD notifications do not, the issue is in the ArgoCD configuration.
 
 ## Handling Webhook URL Rotation
 
-Teams webhook URLs can expire when connectors are removed or channels are restructured. To rotate:
+Teams Workflow webhook URLs can change when workflows are deleted or channels are restructured. To rotate:
 
 ```bash
 # Update the secret with the new webhook URL
 kubectl patch secret argocd-notifications-secret -n argocd \
   --type merge \
-  -p '{"stringData": {"teams-webhook-url": "https://outlook.office.com/webhook/new-url"}}'
+  -p '{"stringData": {"teams-workflow-webhook-url": "https://api.powerautomate.com/new-workflow-webhook-url"}}'
 
 # Restart the notification controller to pick up the change
 kubectl rollout restart deployment argocd-notifications-controller -n argocd
