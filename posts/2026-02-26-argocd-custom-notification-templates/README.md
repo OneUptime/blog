@@ -12,7 +12,7 @@ ArgoCD notification templates give you complete control over what your notificat
 
 ## Template Basics
 
-ArgoCD notification templates use Go's `text/template` package. The primary data available in templates is the application object through `{{.app}}`, which gives you access to the full ArgoCD Application CRD.
+ArgoCD notification templates use Go's `html/template` package. The primary data available in templates is the application object through `{{.app}}`, which gives you access to the full ArgoCD Application CRD.
 
 ```yaml
 # In argocd-notifications-cm ConfigMap
@@ -26,7 +26,7 @@ template.my-template: |
       }]
   email:
     subject: "ArgoCD: {{ .app.metadata.name }}"
-    body: "Application {{ .app.metadata.name }} is {{ .app.status.sync.status }}"
+  message: "Application {{ .app.metadata.name }} is {{ .app.status.sync.status }}"
   webhook:
     my-service:
       method: POST
@@ -34,7 +34,7 @@ template.my-template: |
         {"app": "{{ .app.metadata.name }}"}
 ```
 
-A single template can target multiple services simultaneously. When the trigger fires, ArgoCD sends the notification to all services defined in the template.
+A single template can include formatting for multiple services. When the trigger fires, ArgoCD uses the service-specific fields that match the subscribed notification recipients.
 
 ## Available Data in Templates
 
@@ -71,7 +71,7 @@ A single template can target multiple services simultaneously. When the trigger 
 {{ .app.status.operationState.finishedAt }} - When sync finished
 ```
 
-### Context Functions
+### Context Values
 
 ```text
 {{ .context.argocdUrl }}                    - ArgoCD server URL
@@ -157,7 +157,7 @@ Available string functions:
 
 ## Time Functions
 
-Format timestamps in notifications:
+Format timestamps in notifications with the built-in time helpers:
 
 ```yaml
   template.with-time: |
@@ -165,16 +165,21 @@ Format timestamps in notifications:
       attachments: |
         [{
           "title": "{{ .app.metadata.name }}",
-          "footer": "Deployed at {{ .app.status.operationState.finishedAt }}"
+          "footer": "Deployed at {{ (call .time.Parse .app.status.operationState.finishedAt).Local.Format \"2006-01-02 15:04:05 MST\" }}"
         }]
 ```
 
 ## Multi-Service Templates
 
-A single template can format messages differently for each service:
+A single template can format messages differently for each subscribed service:
 
 ```yaml
   template.multi-service: |
+    message: |
+      Deployment Successful
+      Application: {{ .app.metadata.name }}
+      Revision: {{ .app.status.sync.revision | trunc 7 }}
+      Namespace: {{ .app.spec.destination.namespace }}
     slack:
       attachments: |
         [{
@@ -187,14 +192,6 @@ A single template can format messages differently for each service:
         }]
     email:
       subject: "Deployed: {{ .app.metadata.name }} ({{ .app.status.sync.revision | trunc 7 }})"
-      content-type: text/html
-      body: |
-        <h2>Deployment Successful</h2>
-        <p><strong>{{ .app.metadata.name }}</strong> has been deployed.</p>
-        <table>
-          <tr><td>Revision</td><td>{{ .app.status.sync.revision | trunc 7 }}</td></tr>
-          <tr><td>Namespace</td><td>{{ .app.spec.destination.namespace }}</td></tr>
-        </table>
     webhook:
       audit-api:
         method: POST
@@ -209,7 +206,7 @@ A single template can format messages differently for each service:
 
 ## Template Reuse with Named Templates
 
-You can define reusable template fragments:
+You can define smaller templates and have triggers send them together:
 
 ```yaml
   template.app-details: |
@@ -222,7 +219,7 @@ You can define reusable template fragments:
       Sync: {{ .app.status.sync.status }}
 ```
 
-While ArgoCD does not support Go's `define`/`template` syntax for shared blocks across templates, you can achieve reuse by having triggers send to multiple templates.
+ArgoCD templates are reusable because multiple triggers can reference the same template. ArgoCD does not support Go's `define`/`template` syntax for shared blocks across templates, but you can achieve similar composition by having triggers send multiple templates.
 
 ## Environment-Aware Templates
 
@@ -270,7 +267,7 @@ Annotations with dots or special characters need the `index` function:
 
 ## Error Handling in Templates
 
-Template rendering errors cause silent notification failures. Test your templates by checking the notification controller logs:
+Template rendering errors are logged by the notification controller and can prevent the notification from being sent. Check the notification controller logs when debugging templates:
 
 ```bash
 # Watch for template rendering errors
@@ -299,11 +296,15 @@ To avoid JSON issues with dynamic content that might contain quotes or newlines:
 
 ## Testing Templates
 
-There is no built-in template testing tool, but you can verify templates by:
+You can render and send templates with the `argocd admin notifications template notify` command. You can also verify templates in-cluster by:
+
+```bash
+argocd admin notifications template notify my-new-template my-app
+```
 
 1. Creating a test trigger that always fires
 2. Subscribing a test application to it
-3. Checking the notification controller logs for rendering output
+3. Checking the notification controller logs for rendering or delivery errors
 
 ```yaml
   # Test trigger - fires on any state change
