@@ -14,7 +14,7 @@ This guide covers multiple strategies for enforcing resource limits across your 
 
 ## The Problem with Missing Resource Limits
 
-Without resource limits, a single misbehaving pod can consume all CPU or memory on a node. This triggers the kubelet's eviction process, which starts killing pods based on QoS class. Pods without resource limits are in the BestEffort QoS class and get killed first, but the cascade can take down Guaranteed-class pods too when things get bad enough.
+Without resource limits, a single misbehaving pod can consume all CPU or memory on a node. This triggers the kubelet's eviction process, which starts killing pods based on QoS class. Pods without any CPU or memory requests or limits are in the BestEffort QoS class and get killed first; pods with some requests or limits are Burstable. The cascade can take down Guaranteed-class pods too when things get bad enough.
 
 In an ArgoCD environment, this is particularly problematic because ArgoCD will keep trying to sync and recreate pods that keep getting evicted, potentially making things worse.
 
@@ -110,11 +110,11 @@ spec:
     pods: "100"
     services: "20"
     persistentvolumeclaims: "30"
-    # This forces every pod to have resource limits
+    # This limits how many Deployments the namespace can contain
     count/deployments.apps: "50"
 ```
 
-The key detail here is that when a ResourceQuota is active in a namespace, Kubernetes requires all pods to specify resource requests and limits. If a developer pushes a Deployment without limits, the pod creation will fail. ArgoCD will show the Application as Degraded because the pods cannot be scheduled.
+The key detail here is that when a ResourceQuota includes `requests.cpu`, `requests.memory`, `limits.cpu`, or `limits.memory`, Kubernetes requires every incoming container in that namespace to specify the corresponding requests or limits. If a developer pushes a Deployment without those values, the ReplicaSet cannot create its Pods because the API server rejects them at admission time. ArgoCD will show the Application as unhealthy because the Deployment cannot roll out successfully.
 
 ## Strategy 3: Kyverno Validation Policies
 
@@ -127,7 +127,6 @@ kind: ClusterPolicy
 metadata:
   name: validate-resource-limits
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-resource-limits-exist
@@ -139,6 +138,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Enforce
         message: "All containers must have CPU and memory limits defined."
         pattern:
           spec:
@@ -159,34 +159,42 @@ spec:
               kinds:
                 - Deployment
       validate:
+        failureAction: Enforce
         message: >-
           Memory limit must be between 64Mi and 8Gi.
-          Current value: {{request.object.spec.template.spec.containers[0].resources.limits.memory}}
-        deny:
-          conditions:
-            any:
-              - key: "{{request.object.spec.template.spec.containers[0].resources.limits.memory}}"
-                operator: GreaterThan
-                value: "8Gi"
-    - name: check-cpu-to-memory-ratio
+        foreach:
+          - list: request.object.spec.template.spec.containers
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.resources.limits.memory }}"
+                    operator: LessThan
+                    value: "64Mi"
+                  - key: "{{ element.resources.limits.memory }}"
+                    operator: GreaterThan
+                    value: "8Gi"
+    - name: check-cpu-limit-range
       match:
         any:
           - resources:
               kinds:
                 - Deployment
       validate:
-        message: "CPU to memory ratio must be reasonable. Do not request 4 CPUs with 128Mi memory."
-        deny:
-          conditions:
-            any:
-              - key: "{{request.object.spec.template.spec.containers[0].resources.limits.cpu}}"
-                operator: GreaterThan
-                value: "4"
+        failureAction: Enforce
+        message: "CPU limit must be 4 cores or less."
+        foreach:
+          - list: request.object.spec.template.spec.containers
+            deny:
+              conditions:
+                any:
+                  - key: "{{ element.resources.limits.cpu }}"
+                    operator: GreaterThan
+                    value: "4"
 ```
 
 ## Strategy 4: ArgoCD Sync Hook for Validation
 
-Add a pre-sync validation step that checks resource limits before ArgoCD applies manifests.
+Add a pre-sync validation step that checks existing workloads before ArgoCD applies the rest of the sync. This guardrail does not automatically inspect ArgoCD's rendered manifests; to validate rendered YAML before admission, use a policy engine such as Kyverno or run validation in CI before ArgoCD syncs the change.
 
 ```yaml
 # pre-sync-resource-check.yaml
@@ -207,21 +215,17 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Check all deployment manifests for resource limits
+              # Check live Deployments in this namespace for resource limits.
+              # The hook's ServiceAccount needs permission to list Deployments.
               echo "Validating resource limits..."
               VIOLATIONS=0
 
-              for file in /manifests/*.yaml; do
-                # Check if it's a Deployment
-                KIND=$(kubectl apply --dry-run=client -f "$file" -o jsonpath='{.kind}' 2>/dev/null)
-                if [ "$KIND" = "Deployment" ]; then
-                  # Check for resource limits
-                  LIMITS=$(kubectl apply --dry-run=client -f "$file" \
-                    -o jsonpath='{.spec.template.spec.containers[*].resources.limits}' 2>/dev/null)
-                  if [ -z "$LIMITS" ]; then
-                    echo "VIOLATION: $file has no resource limits"
-                    VIOLATIONS=$((VIOLATIONS + 1))
-                  fi
+              for deployment in $(kubectl get deployments -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+                LIMITS=$(kubectl get deployment "$deployment" \
+                  -o jsonpath='{.spec.template.spec.containers[*].resources.limits}' 2>/dev/null)
+                if [ -z "$LIMITS" ]; then
+                  echo "VIOLATION: deployment/$deployment has no resource limits"
+                  VIOLATIONS=$((VIOLATIONS + 1))
                 fi
               done
 
@@ -250,6 +254,7 @@ spec:
         - alert: ContainerNearMemoryLimit
           expr: |
             (container_memory_working_set_bytes / container_spec_memory_limit_bytes) > 0.9
+            and container_spec_memory_limit_bytes > 0
           for: 5m
           labels:
             severity: warning
@@ -257,7 +262,8 @@ spec:
             summary: "Container {{ $labels.container }} in {{ $labels.namespace }} is using over 90% of memory limit"
         - alert: ContainerNearCPULimit
           expr: |
-            (rate(container_cpu_usage_seconds_total[5m]) / container_spec_cpu_quota * container_spec_cpu_period) > 0.9
+            (rate(container_cpu_usage_seconds_total[5m]) * container_spec_cpu_period / container_spec_cpu_quota) > 0.9
+            and container_spec_cpu_quota > 0
           for: 10m
           labels:
             severity: warning
@@ -270,14 +276,14 @@ If you are introducing resource limit enforcement on an existing cluster with ma
 ```bash
 # Find all deployments without resource limits
 kubectl get deployments --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.template.spec.containers[].resources.limits == null) | "\(.metadata.namespace)/\(.metadata.name)"'
+  jq -r '.items[] | select(any(.spec.template.spec.containers[]; (.resources.limits.cpu == null) or (.resources.limits.memory == null))) | "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
-Then use Kyverno in Audit mode to track progress without blocking deployments.
+Then set each Kyverno validation rule to Audit mode to track progress without blocking deployments.
 
 ```yaml
-spec:
-  validationFailureAction: Audit
+validate:
+  failureAction: Audit
 ```
 
 Review the policy reports to identify violations and work with each team to add appropriate limits. Once all existing applications are compliant, switch to Enforce mode.
@@ -286,7 +292,7 @@ Review the policy reports to identify violations and work with each team to add 
 
 Set requests based on actual usage and limits with a reasonable buffer - typically 1.5x to 2x the request. Use Vertical Pod Autoscaler (VPA) in recommendation mode to get data-driven suggestions.
 
-Always set both CPU and memory limits. Missing one but having the other creates unpredictable behavior. Memory limits are especially critical because memory is an incompressible resource - when a container exceeds its memory limit, it gets OOM-killed immediately.
+For multi-tenant enforcement, set both CPU and memory requests and limits. Memory limits are especially critical because memory is an incompressible resource - when a container exceeds its memory limit, it gets OOM-killed immediately. CPU limits prevent noisy-neighbor problems, but they can also throttle latency-sensitive workloads, so evaluate them against your workload requirements.
 
 Document your limit policies in your Git repository alongside the enforcement rules. This gives your developers clear guidance on what is expected and why.
 
