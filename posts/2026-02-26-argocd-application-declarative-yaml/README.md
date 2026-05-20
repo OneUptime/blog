@@ -22,7 +22,7 @@ The CLI and UI are great for experimentation, but for production you want:
 
 ## The Application CRD
 
-An ArgoCD Application is a Kubernetes Custom Resource. Here is the full structure:
+An ArgoCD Application is a Kubernetes Custom Resource. Here is a common structure:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -116,7 +116,7 @@ spec:
     helm:
       # Release name override
       releaseName: monitoring
-      # Values files from the chart
+      # Inline Helm values
       values: |
         prometheus:
           prometheusSpec:
@@ -221,7 +221,7 @@ spec:
       prune: true
       # Revert manual changes made directly to the cluster
       selfHeal: true
-      # Only sync when there is a difference (default true)
+      # Allow automated pruning when the desired manifests are empty
       allowEmpty: false
     syncOptions:
       # Create the namespace if it does not exist
@@ -263,7 +263,7 @@ spec:
       kind: MutatingWebhookConfiguration
       jqPathExpressions:
         - .webhooks[]?.clientConfig.caBundle
-    # Ignore all metadata annotations matching a pattern
+    # Ignore fields owned by the specified managedFields manager
     - group: "*"
       kind: "*"
       managedFieldsManagers:
