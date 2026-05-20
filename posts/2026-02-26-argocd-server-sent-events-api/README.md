@@ -61,7 +61,7 @@ curl -s -k -N \
 The `-N` flag disables curl's output buffering, so you see events as they arrive. Each event is a JSON object on a single line:
 
 ```json
-{"result":{"type":"MODIFIED","application":{"metadata":{"name":"my-app",...},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}}}
+{"result":{"type":"MODIFIED","application":{"metadata":{"name":"my-app","resourceVersion":"12345"},"status":{"sync":{"status":"Synced"},"health":{"status":"Healthy"}}}}}
 ```
 
 ### Processing Events in Bash
@@ -190,6 +190,7 @@ def send_alert(app_name, health, sync):
 
 
 # Run the event stream
+token = "your-token-here"
 stream = ArgoCDEventStream("https://argocd.example.com", token)
 stream.watch_all(handle_event)
 ```
@@ -239,6 +240,7 @@ You can consume ArgoCD SSE events directly in a browser:
       }).then(response => {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = '';
 
         function read() {
           reader.read().then(({ done, value }) => {
@@ -248,12 +250,21 @@ You can consume ArgoCD SSE events directly in a browser:
               return;
             }
 
-            const text = decoder.decode(value);
-            text.split('\n').forEach(line => {
-              if (!line.trim()) return;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            lines.forEach(line => {
+              line = line.trim();
+              if (!line) return;
+              if (line.startsWith('data:')) {
+                line = line.slice(5).trim();
+              }
               try {
                 const event = JSON.parse(line);
-                handleEvent(event.result);
+                if (event.result) {
+                  handleEvent(event.result);
+                }
               } catch (e) {}
             });
 
@@ -319,7 +330,6 @@ while read -r line; do
   NAME=$(echo "$line" | jq -r '.result.application.metadata.name // empty')
   HEALTH=$(echo "$line" | jq -r '.result.application.status.health.status // empty')
   SYNC=$(echo "$line" | jq -r '.result.application.status.sync.status // empty')
-  PREV_HEALTH=$(echo "$line" | jq -r '.result.application.status.health.previousStatus // empty')
 
   [ -z "$NAME" ] && continue
 
@@ -353,6 +363,7 @@ done
 SSE connections can drop due to network issues or server restarts. Always implement reconnection logic:
 
 ```python
+import json
 import time
 import requests
 
