@@ -54,21 +54,22 @@ metadata:
 data:
   # Increase default reconciliation to 10 minutes
   # This reduces API calls to remote clusters
-  timeout.reconciliation: "600"
+  timeout.reconciliation: "10m"
+  timeout.reconciliation.jitter: "60s"
 ```
 
-You can also set per-application reconciliation intervals using annotations. This lets you treat edge clusters differently from your local clusters.
+ArgoCD does not support per-application polling intervals through annotations. The `argocd.argoproj.io/refresh` annotation only accepts `normal` or `hard` and triggers a one-time refresh, so use separate ArgoCD instances or webhook-driven refreshes if edge clusters need a different polling profile from local clusters.
 
 ```yaml
-# Application-level reconciliation override
+# Application-level manual refresh trigger
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: pos-edge-site-42
   namespace: argocd
   annotations:
-    # Check this edge app every 15 minutes instead of the default
-    argocd.argoproj.io/refresh: "900"
+    # Request a one-time hard refresh of manifests and cluster state
+    argocd.argoproj.io/refresh: "hard"
 spec:
   # ... app spec
 ```
@@ -85,17 +86,22 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Increase the timeout for cluster API server connections
-  # Default is 60 seconds, increase for satellite/LTE links
-  controller.kubectl.parallelism: "10"
-  # Repo server timeout for generating manifests
-  reposerver.timeout.seconds: "300"
+  # Increase Kubernetes API transport timeouts for satellite/LTE links
+  controller.k8s.tcp.timeout: "60s"
+  controller.k8s.tls.handshake.timeout: "30s"
+  controller.k8s.tcp.keepalive: "60s"
+  controller.k8s.tcp.idle.timeout: "10m"
+  # Retry transient Kubernetes API request failures
+  controller.k8sclient.retry.max: "5"
+  controller.k8sclient.retry.base.backoff: "500"
+  # Repo server RPC timeout used by the application controller
+  controller.repo.server.timeout.seconds: "300"
 ```
 
-For the cluster connection itself, you can configure timeouts in the cluster secret.
+For the cluster connection itself, the cluster secret stores credentials, TLS settings, and optional proxy settings. It does not define per-cluster transport timeouts; keep those in `argocd-cmd-params-cm`.
 
 ```yaml
-# Cluster secret with extended timeouts
+# Cluster secret with credentials and optional proxy settings
 apiVersion: v1
 kind: Secret
 metadata:
@@ -114,6 +120,7 @@ stringData:
         "insecure": false,
         "caData": "<ca-data>"
       },
+      "proxyUrl": "http://edge-proxy.internal:8080",
       "execProviderConfig": null
     }
 ```
@@ -203,11 +210,11 @@ spec:
             summary: "Edge cluster {{ $labels.name }} down for 8+ hours"
 ```
 
-Resource Caching for Offline Resilience
+## Resource Caching for Offline Resilience
 
-ArgoCD caches cluster state in Redis. When a connection drops, the cached state is still available, which means the UI still shows the last-known state rather than immediately showing everything as unknown.
+ArgoCD caches application and repository state in Redis. When a connection drops, cached application state can remain available to the API server and UI for a while, but the controller still cannot refresh live Kubernetes state until the remote API server is reachable again.
 
-Increase the cache TTL for edge clusters so that the cached state persists longer during outages.
+Increase the application state cache TTL so that cached UI/API data persists longer during outages.
 
 ```yaml
 # argocd-cmd-params-cm - extend cache for edge resilience
@@ -217,55 +224,60 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Increase the cluster cache retry timeout
-  controller.cluster.cache.retry.timeout: "300"
+  # Increase application state cache expiration from the default 1 hour
+  controller.app.state.cache.expiration: "4h"
+  server.app.state.cache.expiration: "4h"
 ```
 
 ## Reducing Bandwidth Usage
 
 On low-bandwidth links, every API call counts. Here are techniques to minimize the data ArgoCD transfers.
 
-First, use resource tracking by annotation instead of label. Labels require ArgoCD to list all resources to find managed ones, while annotations are only checked on known resources.
+First, use resource tracking by annotation instead of label. This does not remove the need for ArgoCD to list and watch resources, but it avoids ownership conflicts with tools that also use the `app.kubernetes.io/instance` label and avoids the label value length limit.
 
 ```yaml
-# argocd-cm - use annotation tracking to reduce API queries
+# argocd-cm - use annotation tracking to avoid label conflicts
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Annotation-based tracking is more efficient for remote clusters
+  # Annotation-based tracking avoids conflicts with common instance labels
   application.resourceTrackingMethod: annotation
 ```
 
 Second, limit the resource kinds that ArgoCD watches on edge clusters. If your edge applications only use Deployments, Services, and ConfigMaps, there is no need to watch CRDs, Jobs, or other resource types.
 
 ```yaml
-# In the Application spec, use resource inclusion/exclusion
-spec:
-  source:
-    directory:
-      recurse: true
-  # Only track specific resource types on edge clusters
-  ignoreDifferences:
-    - group: ""
-      kind: "ConfigMap"
-      jsonPointers:
-        - /data/last-heartbeat  # Ignore frequently changing fields
+# argocd-cm - include only selected resource kinds on an edge cluster
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  resource.inclusions: |
+    - apiGroups:
+        - "apps"
+      kinds:
+        - Deployment
+      clusters:
+        - https://edge-42.vpn.internal:6443
+    - apiGroups:
+        - ""
+      kinds:
+        - Service
+        - ConfigMap
+      clusters:
+        - https://edge-42.vpn.internal:6443
 ```
 
 ## Connection Pooling and Keep-Alive
 
 For VPN or tunnel-based connections to edge clusters, configure HTTP keep-alive to maintain persistent connections instead of establishing new TLS handshakes for every API call.
 
-```bash
-# When registering a cluster with specific connection settings
-argocd cluster add edge-site-42 \
-  --name edge-site-42 \
-  --kubeconfig /path/to/kubeconfig \
-  --server-side-diff
-```
+Use the `controller.k8s.tcp.keepalive`, `controller.k8s.tcp.idle.timeout`, and `controller.k8s.client.max.idle.connections` settings in `argocd-cmd-params-cm` for these transport-level settings. The `argocd cluster add` command registers cluster credentials, but it does not expose per-cluster keep-alive flags.
 
 ## Testing Your Configuration
 
