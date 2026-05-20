@@ -23,7 +23,7 @@ Or when trying to create or refresh an application:
 Unable to create application: authentication required
 ```
 
-This guide walks through every scenario that causes this error and the corresponding fix.
+This guide walks through common scenarios that cause this error and the corresponding fix.
 
 ## Why This Happens
 
@@ -114,9 +114,6 @@ argocd repo add https://github.com/org/private-repo \
 **If using Secrets, update the password field:**
 
 ```bash
-# Encode the new token
-echo -n "ghp_new_token_here" | base64
-
 # Patch the secret
 kubectl patch secret my-repo-creds -n argocd \
   -p '{"stringData":{"password":"ghp_new_token_here"}}'
@@ -156,10 +153,10 @@ argocd repocreds add https://github.com/org \
 
 **Personal Access Token (PAT):**
 
-For GitHub, generate a PAT with the `repo` scope:
+For GitHub, generate a classic PAT with the `repo` scope, or a fine-grained token with read access to repository contents:
 
 1. Go to GitHub Settings > Developer Settings > Personal Access Tokens
-2. Generate a new token with `repo` scope (for private repos)
+2. Generate a new token with `repo` scope for a classic PAT, or `Contents: Read-only` for a fine-grained token
 3. Use the token as the password:
 
 ```bash
@@ -222,10 +219,12 @@ argocd repo add https://gitlab.com/org/repo \
 **Self-hosted GitLab with custom CA:**
 
 ```bash
+# Add the custom CA certificate to ArgoCD first
+argocd cert add-tls gitlab.internal.com --from /path/to/ca.pem
+
 argocd repo add https://gitlab.internal.com/org/repo \
   --username deploy-user \
-  --password token \
-  --insecure-skip-server-verification
+  --password token
 ```
 
 ## Fix 6: Azure DevOps Authentication
@@ -282,7 +281,7 @@ argocd repo add https://bitbucket.org/org/repo \
 
 # For Bitbucket Server (self-hosted)
 argocd repo add https://bitbucket.internal.com/scm/project/repo.git \
-  --username service-account \
+  --username x-token-auth \
   --password http-access-token
 ```
 
