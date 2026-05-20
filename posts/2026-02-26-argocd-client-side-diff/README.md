@@ -8,7 +8,7 @@ Description: Learn how ArgoCD client-side diff works, when to use it, and how to
 
 ---
 
-Client-side diff is ArgoCD's original and default diff strategy. It computes the difference between your desired state (from Git) and the live state (from the cluster) entirely within ArgoCD's processes, without involving the Kubernetes API server. While server-side diff is becoming the recommended approach, client-side diff remains relevant for older clusters and provides important control over diff normalization.
+Client-side diff is ArgoCD's original and default diff strategy. It computes the difference between your desired state (from Git) and the live state (from the cluster) inside ArgoCD's processes, without asking the Kubernetes API server to calculate a predicted state with dry-run apply. While server-side diff is becoming the recommended approach, client-side diff remains relevant for older clusters and provides important control over diff normalization.
 
 ## How Client-Side Diff Works
 
@@ -17,7 +17,7 @@ When ArgoCD uses client-side diff, the comparison happens in these steps:
 1. **Manifest rendering**: The repo server renders manifests from your Git source (Helm template, Kustomize build, or plain YAML)
 2. **State fetching**: The application controller fetches the live resource state from the Kubernetes API
 3. **Normalization**: Both the desired and live states are normalized to remove known runtime fields
-4. **Comparison**: The normalized states are compared field by field
+4. **Comparison**: ArgoCD runs its legacy diff logic, using the live state, desired state, and `kubectl.kubernetes.io/last-applied-configuration` annotation when available
 5. **Result**: Any remaining differences mean the application is OutOfSync
 
 ```mermaid
@@ -181,9 +181,9 @@ metadata:
 data:
   # Ignore specific fields for all resources of a type
   resource.customizations.ignoreDifferences.all: |
-    managedFields:
-      - manager: kube-controller-manager
-      - manager: rancher
+    managedFieldsManagers:
+      - kube-controller-manager
+      - rancher
     jsonPointers:
       - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
 
@@ -226,7 +226,7 @@ jqPathExpressions:
   - '.spec.template.spec.containers[] | select(.name == "sidecar")'
 
   # Ignore all annotations matching a pattern
-  - '.metadata.annotations | to_entries[] | select(.key | startswith("example.com/"))'
+  - '.metadata.annotations[.metadata.annotations // {} | keys[] | select(startswith("example.com/"))]'
 
   # Ignore specific environment variables
   - '.spec.template.spec.containers[].env[] | select(.name == "GENERATED_VAR")'
@@ -243,13 +243,13 @@ When client-side diff produces unexpected results:
 
 argocd app diff my-app
 
-# View the diff in JSON format for easier parsing
+# Compare the live app to manifests generated from a local path
 argocd app diff my-app --local /path/to/manifests
 
-# Check the normalized desired state
+# Check the rendered desired state
 argocd app manifests my-app --source git
 
-# Check the normalized live state
+# Check the live manifests
 argocd app manifests my-app --source live
 ```
 
@@ -268,13 +268,13 @@ diff desired.yaml live.yaml
 
 ## Performance Considerations
 
-Client-side diff is generally faster than server-side diff because it does not make additional API server requests. The diff computation happens in the application controller's memory:
+Client-side diff can be faster than server-side diff when server-side diff would need many dry-run apply requests. The diff computation happens in the application controller's memory:
 
 - **Memory**: The controller holds both desired and live states in memory during comparison
 - **CPU**: Normalization and comparison are CPU-intensive for applications with many resources
 - **Network**: Fetching live state requires API server requests, but no dry-run apply requests
 
-For applications with hundreds of resources, client-side diff is faster than server-side diff.
+For applications with hundreds of resources, client-side diff may be faster than server-side diff, but the result depends on cache state, API server latency, and the number of dry-run requests server-side diff needs to make.
 
 ## Combining Client-Side Diff with RespectIgnoreDifferences
 
