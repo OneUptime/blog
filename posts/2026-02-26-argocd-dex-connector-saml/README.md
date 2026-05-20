@@ -70,7 +70,7 @@ In ADFS, create a Relying Party Trust:
 4. Configure:
    - **Display name**: `ArgoCD Dex`
    - **Profile**: SAML 2.0
-   - **Certificate**: Skip (Dex does not sign requests by default)
+   - **Certificate**: Skip (Dex does not support signed AuthnRequests)
    - **URL**: Enable SAML 2.0 WebSSO protocol
    - **Relying party SAML 2.0 SSO service URL**: `https://argocd.example.com/api/dex/callback`
    - **Relying party trust identifier**: `https://argocd.example.com/api/dex/callback`
@@ -151,12 +151,9 @@ data:
           ssoURL: https://adfs.example.com/adfs/ls/
 
           # Path to the IdP's signing certificate (inside Dex container)
-          caData: /etc/dex/saml/idp-ca.pem
-          # Or inline the certificate:
-          # ca: |
-          #   -----BEGIN CERTIFICATE-----
-          #   MIIDpDCCAoy...
-          #   -----END CERTIFICATE-----
+          ca: /etc/dex/saml/idp-ca.pem
+          # Or provide the PEM certificate content as base64-encoded caData:
+          # caData: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...
 
           # Redirect URI (must match what's configured in the IdP)
           redirectURI: https://argocd.example.com/api/dex/callback
@@ -175,18 +172,17 @@ data:
           # NameID policy
           nameIDPolicyFormat: emailAddress
 
-          # Allow unencrypted assertions (set based on your IdP's configuration)
+          # Skip SAML response signature validation only for temporary testing
           insecureSkipSignatureValidation: false
 ```
 
-### Using Metadata URL Instead
+### Using Inline Certificate Data Instead
 
-If your IdP provides a metadata endpoint, you can reference it directly:
+Dex does not fetch SAML IdP metadata directly. If you do not want to mount the certificate file, provide the IdP signing certificate as base64-encoded `caData`:
 
 ```yaml
-          # Use metadata URL instead of manual configuration
           ssoURL: https://adfs.example.com/adfs/ls/
-          caData: /etc/dex/saml/idp-ca.pem
+          caData: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0t...
           redirectURI: https://argocd.example.com/api/dex/callback
           entityIssuer: https://argocd.example.com/api/dex/callback
 ```
@@ -320,7 +316,7 @@ If you get stuck in a redirect loop:
 
 SAML assertions have time-based validity. If there is a clock difference between the IdP and the Dex server:
 - Sync NTP on both servers
-- Some Dex SAML configurations allow a `allowedClockSkew` parameter
+- Dex has a built-in 30-second clock drift tolerance, but the SAML connector does not expose an `allowedClockSkew` configuration parameter
 
 ## Security Considerations
 
