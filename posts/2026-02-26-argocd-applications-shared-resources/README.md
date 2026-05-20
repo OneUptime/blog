@@ -8,17 +8,17 @@ Description: Learn how to manage Kubernetes resources shared between multiple Ar
 
 ---
 
-When two or more ArgoCD applications try to manage the same Kubernetes resource, things get messy. ArgoCD tracks which resources belong to which application, and when it detects a resource already managed by another application, it throws an error or behaves unpredictably. This is a common problem when multiple services share a ConfigMap, a namespace, or a ClusterRole.
+When two or more ArgoCD applications try to manage the same Kubernetes resource, things get messy. ArgoCD tracks which resources belong to which application, and if `FailOnSharedResource=true` is configured, it fails the sync when it detects a resource already managed by another application. Even without that option, duplicate ownership can cause confusing sync status and drift. This is a common problem when multiple services share a ConfigMap, a namespace, or a ClusterRole.
 
 Understanding how ArgoCD tracks resource ownership and knowing the patterns for sharing resources will save you from a lot of frustration.
 
 ## The Problem: Resource Ownership Conflicts
 
-ArgoCD adds tracking labels and annotations to every resource it manages. The key annotation is `argocd.argoproj.io/tracking-id`, which links the resource to a specific ArgoCD Application.
+ArgoCD tracks every resource it manages using the configured resource tracking method. In the default `annotation` mode, the key annotation is `argocd.argoproj.io/tracking-id`, which links the resource to a specific ArgoCD Application.
 
 When Application A creates a ConfigMap and Application B also tries to create the same ConfigMap, ArgoCD detects the conflict. Depending on your configuration, you might see:
 
-- "Resource already tracked by another application"
+- A sync failure when `FailOnSharedResource=true` is enabled
 - The resource flipping between two Applications
 - One application showing OutOfSync because the other application modified the resource
 
@@ -47,7 +47,7 @@ data:
   application.resourceTrackingMethod: annotation
 ```
 
-- **label** (legacy): Uses the `app.kubernetes.io/instance` label. This is the most restrictive - only one application can own a resource.
+- **label**: Uses the `app.kubernetes.io/instance` label. This is the most restrictive - only one application can own a resource.
 - **annotation**: Uses the `argocd.argoproj.io/tracking-id` annotation. Same ownership limitation but does not interfere with standard Kubernetes labels.
 - **annotation+label**: Uses both. Most compatible with external tools.
 
@@ -65,6 +65,7 @@ metadata:
   name: shared-infra
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/my-org/platform-config.git
     targetRevision: main
@@ -94,9 +95,21 @@ platform-config/
     service.yaml
 ```
 
-## Pattern 2: Exclude Shared Resources from Tracking
+## Pattern 2: Exclude Generated Resources from Sync Status or Discovery
 
-You can tell ArgoCD to exclude specific resources from tracking entirely using the `argocd.argoproj.io/compare-options` annotation or by configuring resource exclusions.
+You can tell ArgoCD to ignore generated resources in sync status using the `argocd.argoproj.io/compare-options` annotation. This only affects sync status; it does not stop ArgoCD from tracking or applying a resource.
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: generated-config
+  namespace: default
+  annotations:
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+```
+
+You can also configure resource exclusions for whole resource group/kind classes on a cluster. This makes ArgoCD unaware of matching resources, so use it carefully.
 
 ```yaml
 apiVersion: v1
@@ -113,15 +126,13 @@ data:
         - ConfigMap
       clusters:
         - "*"
-      namespaces:
-        - shared-config
 ```
 
 This approach tells ArgoCD to completely ignore certain resources. The downside is that ArgoCD will not manage those resources at all - no sync status, no drift detection.
 
-## Pattern 3: Use the Managed-By Annotation
+## Pattern 3: Do Not Manually Assign Ownership Annotations
 
-You can explicitly tell ArgoCD which Application manages a resource by setting the tracking annotation on the resource itself.
+Do not try to share a resource by manually setting an ownership annotation in multiple Applications. ArgoCD uses `argocd.argoproj.io/tracking-id` internally, and manually assigning it in application manifests can interfere with ArgoCD's resource tracking.
 
 ```yaml
 apiVersion: v1
@@ -130,11 +141,11 @@ metadata:
   name: shared-config
   namespace: default
   annotations:
-    # Explicitly assign this resource to the shared-infra app
-    argocd.argoproj.io/managed-by: argocd/shared-infra
+    # Do not copy or hand-edit this between Applications
+    argocd.argoproj.io/tracking-id: shared-infra:/ConfigMap:default/shared-config
 ```
 
-When another Application includes this ConfigMap in its manifests, ArgoCD will skip it because it is already managed by `shared-infra`.
+Instead, keep the resource in the shared Application only. Other Applications should reference it but should not include the same manifest.
 
 ## Pattern 4: Create Namespace Resources Separately
 
@@ -150,6 +161,7 @@ metadata:
   name: service-a
   namespace: argocd
 spec:
+  project: default
   destination:
     server: https://kubernetes.default.svc
     namespace: shared-namespace
@@ -197,6 +209,7 @@ spec:
     metadata:
       name: '{{path.basename}}'
     spec:
+      project: default
       source:
         repoURL: https://github.com/my-org/services.git
         targetRevision: main
