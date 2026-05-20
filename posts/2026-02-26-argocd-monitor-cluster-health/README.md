@@ -69,9 +69,9 @@ argocd cluster get https://production.k8s.example.com -o json | jq '{
 argocd app list -o wide
 
 # Get apps in specific health states
-argocd app list --health-status Degraded
-argocd app list --health-status Progressing
-argocd app list --sync-status OutOfSync
+argocd app list -o json | jq -r '.[] | select(.status.health.status == "Degraded") | .metadata.name'
+argocd app list -o json | jq -r '.[] | select(.status.health.status == "Progressing") | .metadata.name'
+argocd app list -o json | jq -r '.[] | select(.status.sync.status == "OutOfSync") | .metadata.name'
 ```
 
 ## ArgoCD Metrics for Prometheus
@@ -100,7 +100,7 @@ spec:
 
 ```promql
 # Cluster connection status
-argocd_cluster_info{server!=""}
+argocd_cluster_connection_status{server!=""}
 
 # Application health by cluster
 argocd_app_info{health_status="Healthy", dest_server!=""}
@@ -111,16 +111,18 @@ argocd_app_info{sync_status="Synced", dest_server!=""}
 argocd_app_info{sync_status="OutOfSync", dest_server!=""}
 
 # Application reconciliation duration
-histogram_quantile(0.95, rate(argocd_app_reconcile_bucket[5m]))
+histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le, dest_server))
 
-# Sync operation duration
-histogram_quantile(0.95, rate(argocd_app_sync_total[5m]))
+# Average sync operation duration
+sum(rate(argocd_app_sync_duration_seconds_total[5m])) by (name)
+/
+sum(rate(argocd_app_sync_total[5m])) by (name)
 
 # API server request rate
 rate(argocd_app_k8s_request_total[5m])
 
 # Cluster API errors
-rate(argocd_cluster_api_resource_actions_total{action="error"}[5m])
+sum(rate(argocd_app_k8s_request_total{response_code=~"5.."}[5m])) by (server)
 ```
 
 ### ServiceMonitor for Prometheus Operator
@@ -195,13 +197,13 @@ spec:
       rules:
         - alert: ArgoCD_ClusterUnreachable
           expr: |
-            argocd_cluster_info{server!="https://kubernetes.default.svc"} == 0
+            argocd_cluster_connection_status{server!="https://kubernetes.default.svc"} == 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "ArgoCD cannot reach cluster {{ $labels.name }}"
-            description: "Cluster {{ $labels.name }} ({{ $labels.server }}) has been unreachable for 5 minutes."
+            summary: "ArgoCD cannot reach cluster {{ $labels.server }}"
+            description: "Cluster {{ $labels.server }} has been unreachable for 5 minutes."
             runbook: "https://wiki.example.com/runbooks/argocd-cluster-unreachable"
 
         - alert: ArgoCD_AllAppsDegraded
@@ -248,7 +250,7 @@ spec:
       rules:
         - alert: ArgoCD_ReconciliationSlow
           expr: |
-            histogram_quantile(0.95, rate(argocd_app_reconcile_bucket[10m])) > 300
+            histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[10m])) by (le, dest_server)) > 300
           for: 15m
           labels:
             severity: warning
@@ -257,9 +259,9 @@ spec:
 
         - alert: ArgoCD_HighAPIErrorRate
           expr: |
-            rate(argocd_app_k8s_request_total{response_code=~"5.."}[5m])
+            sum(rate(argocd_app_k8s_request_total{response_code=~"5.."}[5m])) by (server)
             /
-            rate(argocd_app_k8s_request_total[5m])
+            sum(rate(argocd_app_k8s_request_total[5m])) by (server)
             > 0.05
           for: 5m
           labels:
@@ -282,7 +284,7 @@ data:
   # Custom health check for CertificateRequest
   resource.customizations.health.cert-manager.io_CertificateRequest: |
     hs = {}
-    if obj.status ~= nil then
+    if obj.status ~= nil and obj.status.conditions ~= nil then
       for i, condition in ipairs(obj.status.conditions) do
         if condition.type == "Ready" then
           if condition.status == "True" then
@@ -306,7 +308,7 @@ data:
   # Custom health check for ExternalSecret
   resource.customizations.health.external-secrets.io_ExternalSecret: |
     hs = {}
-    if obj.status ~= nil then
+    if obj.status ~= nil and obj.status.conditions ~= nil then
       for i, condition in ipairs(obj.status.conditions) do
         if condition.type == "Ready" then
           if condition.status == "True" then
@@ -337,7 +339,7 @@ Here is a set of useful Grafana panels for ArgoCD cluster monitoring:
       "type": "stat",
       "targets": [
         {
-          "expr": "count(argocd_cluster_info{server!='https://kubernetes.default.svc'})",
+          "expr": "sum(argocd_cluster_connection_status{server!='https://kubernetes.default.svc'})",
           "legendFormat": "Connected Clusters"
         }
       ]
