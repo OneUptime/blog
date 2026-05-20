@@ -28,7 +28,7 @@ flowchart TD
     J --> K[Operator or controller]
     J --> L[Manual kubectl edit]
     J --> M[Mutating webhook]
-    G --> N[Use ignoreDifferences or server-side diff]
+    G --> N[Use ignoreDifferences, or server-side diff for defaults]
     I --> O[Fix serialization issue]
     K --> P[Ignore operator-managed fields]
     L --> Q[Self-heal or manual revert]
@@ -47,7 +47,7 @@ argocd app diff my-app
 # Diff with more detail
 argocd app diff my-app --local /path/to/manifests
 
-# Diff in JSON format for easier parsing
+# List OutOfSync resources in JSON for easier parsing
 argocd app get my-app -o json | jq '.status.resources[] | select(.status == "OutOfSync")'
 ```
 
@@ -126,12 +126,11 @@ kubectl get deployment my-app -o json | \
 
 ### Format or Type Mismatches
 
-Sometimes the value is semantically the same but formatted differently:
+Sometimes the value is formatted differently or uses the wrong YAML type:
 
 ```bash
 # Example diffs that are format mismatches:
-# Git:  cpu: "500m"     Live: cpu: 500m       (quoted vs unquoted)
-# Git:  memory: "1Gi"   Live: memory: 1Gi
+# Git:  cpu: 100m       Live: cpu: 0.1        (quantity canonicalization in some CRDs)
 # Git:  port: "8080"    Live: port: 8080      (string vs integer)
 # Git:  replicas: "3"   Live: replicas: 3
 ```
@@ -176,9 +175,9 @@ argocd app manifests my-app --source git
 
 ArgoCD normalizes manifests before comparing them. Sometimes this normalization causes unexpected results.
 
-Resource Status
+### Resource Status
 
-ArgoCD should ignore the `status` field, but custom resources may not have proper status subresource configuration:
+ArgoCD can be configured to ignore the `status` field during diffing. In recent versions this defaults to all resources, but if `ignoreResourceStatusField` is set to `none`, status fields committed to Git can create noisy diffs:
 
 ```bash
 # Check if a CRD has status subresource enabled
@@ -186,7 +185,7 @@ kubectl get crd mycrd.example.com -o json | \
   jq '.spec.versions[].subresources'
 ```
 
-If the status subresource is not enabled, ArgoCD may include status in the diff.
+If status fields appear in the diff, check the `resource.compareoptions.ignoreResourceStatusField` setting in the `argocd-cm` ConfigMap.
 
 ### Empty vs Null vs Missing Fields
 
@@ -210,11 +209,11 @@ Fix by being explicit:
 ## Step 5: Use the ArgoCD API for Deeper Inspection
 
 ```bash
-# Get the full managed resources with diff details
+# List the resources managed by the application
 argocd app resources my-app
 
 # Get the resource tree
-argocd app resources my-app --tree
+argocd app resources my-app --output tree
 
 # Get detailed status of each resource
 argocd app get my-app -o json | \
@@ -227,11 +226,11 @@ The application controller logs contain detailed diff information:
 
 ```bash
 # Get controller logs filtered for your application
-kubectl logs -n argocd deployment/argocd-application-controller | \
+kubectl logs -n argocd statefulset/argocd-application-controller | \
   grep "my-app" | tail -50
 
 # Look for comparison or diff-related messages
-kubectl logs -n argocd deployment/argocd-application-controller | \
+kubectl logs -n argocd statefulset/argocd-application-controller | \
   grep -i "diff\|compare\|normalize" | tail -20
 ```
 
@@ -298,11 +297,11 @@ Check the ArgoCD release notes for diff-related changes.
 When nothing else works:
 
 ```bash
-# Option 1: Force replace the resource
-argocd app sync my-app --resource apps/Deployment/my-app --force
+# Option 1: Force apply the resource
+argocd app sync my-app --resource apps:Deployment:my-app --force
 
 # Option 2: Delete and let ArgoCD recreate
-argocd app delete-resource my-app --kind Deployment --resource-name my-app
+argocd app delete-resource my-app --group apps --kind Deployment --resource-name my-app
 argocd app sync my-app
 
 # Option 3: Enable server-side diff (often resolves mysterious diffs)
