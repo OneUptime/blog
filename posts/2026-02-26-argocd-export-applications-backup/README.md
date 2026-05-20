@@ -70,7 +70,7 @@ for APP_NAME in $APPS; do
         namespace: .metadata.namespace,
         labels: .metadata.labels,
         annotations: (
-          .metadata.annotations | to_entries |
+          (.metadata.annotations // {}) | to_entries |
           map(select(.key | startswith("kubectl") | not)) |
           from_entries
         ),
@@ -143,7 +143,7 @@ Use the REST API for programmatic exports:
 # Export all applications via API
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   "https://argocd.example.com/api/v1/applications" | \
-  jq '.items[] | {
+  jq '[.items[] | {
     apiVersion: "argoproj.io/v1alpha1",
     kind: "Application",
     metadata: {
@@ -155,17 +155,18 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
       finalizers: .metadata.finalizers
     },
     spec: .spec
-  }' > applications-api-export.json
+  }]' > applications-api-export.json
 ```
 
 ### Python Export Script
 
 ```python
-import requests
-import yaml
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timezone
+
+import requests
+import yaml
 
 class ApplicationExporter:
     def __init__(self, server, token):
@@ -202,7 +203,7 @@ class ApplicationExporter:
 
         # Create manifest file
         manifest = {
-            "export_date": datetime.utcnow().isoformat(),
+            "export_date": datetime.now(timezone.utc).isoformat(),
             "total_applications": len(exported),
             "applications": exported
         }
@@ -242,6 +243,7 @@ class ApplicationExporter:
             headers=self.headers,
             verify=self.verify
         )
+        resp.raise_for_status()
         current_apps = {
             app["metadata"]["name"]: self._clean_app(app)
             for app in resp.json().get("items", [])
@@ -274,6 +276,7 @@ class ApplicationExporter:
         return {"added": list(added), "modified": list(modified), "removed": list(removed)}
 
 # Usage
+token = os.environ["ARGOCD_TOKEN"]
 exporter = ApplicationExporter("https://argocd.example.com", token)
 apps = exporter.export_all("./my-export")
 print(f"Exported {len(apps)} applications")
