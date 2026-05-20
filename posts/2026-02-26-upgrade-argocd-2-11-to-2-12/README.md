@@ -4,47 +4,44 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Upgrade, Migration
 
-Description: Step-by-step guide to upgrading ArgoCD from version 2.11 to 2.12 covering breaking changes, new features, performance improvements, and migration procedures.
+Description: Step-by-step guide to upgrading ArgoCD from version 2.11 to 2.12 covering breaking changes, compatibility checks, configuration review, and migration procedures.
 
 ---
 
-ArgoCD 2.12 is a significant release that brings performance improvements, enhanced security features, and important changes to how applications are managed. This guide walks you through upgrading from 2.11 to 2.12 with detailed instructions for every step, including handling breaking changes and verifying the upgrade.
+ArgoCD 2.12 is a significant release that brings important changes to how applications, ApplicationSets, and cluster secrets are managed. This guide walks you through upgrading from 2.11 to 2.12 with detailed instructions for every step, including handling breaking changes and verifying the upgrade.
 
 ## What Changed in ArgoCD 2.12
 
-### Key New Features
+### Key Changes
 
-- **Improved application controller performance**: Significant reductions in memory usage and reconciliation time
-- **Enhanced ApplicationSet features**: New generators and improved template merge strategies
-- **Improved SSO support**: Better OIDC handling and token management
-- **Resource tracking improvements**: More reliable tracking with reduced false sync diffs
-- **Improved Helm OCI support**: Better handling of OCI-based Helm charts
-- **Native retry for sync operations**: Built-in retry logic for transient sync failures
-- **Improved UI**: Faster rendering, better search, and new visualization features
+- **Cluster secret scoping changes**: Applications and ApplicationSets now require project-scoped cluster secrets to match the application's project.
+- **Bundled Helm upgrade**: The bundled Helm version changed from 3.14.4 to 3.15.2.
+- **Redis HA chart update**: The upstream `redis-ha` Helm chart used by the community Helm chart was upgraded, and the default `redis` and `haproxy` image registries changed from Docker Hub to AWS ECR.
+- **ApplicationSet CRD field management changes**: Several ApplicationSet selector fields now use atomic server-side apply map semantics.
+- **Additional health checks**: ArgoCD 2.12 added health checks for several third-party CRDs.
 
 ### Breaking Changes
 
-- **Minimum Kubernetes version**: 2.12 requires Kubernetes 1.27 or later. Kubernetes 1.26 and earlier are no longer supported.
-- **Redis version**: ArgoCD 2.12 requires Redis 7.0+. If you are running an older Redis, upgrade it first.
-- **Deprecated API fields removed**: Some API fields deprecated since 2.9 were removed.
-- **ConfigMap consolidation**: Some configuration moved from `argocd-cm` to `argocd-cmd-params-cm`.
-- **Notification controller changes**: The notification controller configuration was further refined.
+- **Cluster secret project matching**: Cluster secrets with a non-empty `project` field are only used by applications in the same project. Unset the `project` field on any cluster secret that must be shared across projects.
+- **ApplicationSet Git generator and cluster secrets**: ApplicationSets are not scoped to a project, so cluster secrets used by the Git generator must be globally scoped.
+- **ApplicationSet server-side apply ownership**: If multiple field managers manage the same `selector` or `labelSelector` field in an ApplicationSet, update them so one field manager owns the whole selector.
+- **Redis and HAProxy image registry**: If you use the community Helm chart with Redis HA enabled, verify that your admission, signing, and image allow-list policies permit the new AWS ECR image registry.
 
 ## Pre-Upgrade Requirements
 
 ### 1. Verify Kubernetes Version
 
-This is critical - ArgoCD 2.12 drops support for Kubernetes 1.26.
+ArgoCD 2.12 was tested with Kubernetes 1.26 through 1.29. If your control plane is outside that range, validate compatibility before upgrading.
 
 ```bash
 # Check Kubernetes version
 
 kubectl version
 
-# If you are on 1.26 or earlier, upgrade Kubernetes first!
+# If you are outside the tested range, validate or upgrade Kubernetes first.
 ```
 
-### 2. Verify Redis Version
+### 2. Verify Redis Version and Registry
 
 ```bash
 # Check current Redis version
@@ -53,15 +50,15 @@ kubectl exec -n argocd deploy/argocd-redis -- redis-server --version
 # If using Redis HA
 kubectl exec -n argocd argocd-redis-ha-server-0 -- redis-server --version
 
-# Must be 7.0+
 ```
 
-If Redis is too old, upgrade it before upgrading ArgoCD.
+The upstream v2.12 manifests use Redis 7.0.15, and the community Helm chart defaults to Redis 7.2.4 from AWS ECR. If your installation pins an older Redis image or blocks ECR images, update that before upgrading ArgoCD.
 
 ```yaml
 # Update Redis in your ArgoCD values
 redis:
   image:
+    repository: public.ecr.aws/docker/library/redis
     tag: 7.2.4-alpine
 ```
 
@@ -93,21 +90,19 @@ for crd in applications.argoproj.io appprojects.argoproj.io applicationsets.argo
 done
 ```
 
-### 4. Audit Deprecated Features
+### 4. Audit Cluster Secret Project Scoping
 
-Check for any deprecated features that were removed in 2.12.
+Check for cluster secrets with a non-empty `project` field. After the upgrade, they can only be used by applications in the same project.
 
 ```bash
-# Check for deprecated annotations on applications
-kubectl get applications -n argocd -o json | jq '.items[] | select(.metadata.annotations["argocd.argoproj.io/manifest-generate-paths"] != null) | .metadata.name'
-
-# Check for deprecated sync options
-kubectl get applications -n argocd -o json | jq '.items[] | select(.spec.syncPolicy.syncOptions[]? | test("Validate=")) | .metadata.name'
+# List project-scoped cluster secrets
+kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=cluster -o json \
+  | jq -r '.items[] | select(.data.project != null) | "\(.metadata.name)\tproject=\(.data.project | @base64d)"'
 ```
 
-### 5. Check ConfigMap Settings That Moved
+If a cluster secret should be shared by applications in multiple projects, remove its `project` field before upgrading.
 
-Some settings moved from `argocd-cm` to `argocd-cmd-params-cm` in 2.12.
+### 5. Check Runtime Settings
 
 ```bash
 # List all current argocd-cm settings
@@ -117,25 +112,25 @@ kubectl get cm -n argocd argocd-cm -o json | jq '.data | keys[]'
 kubectl get cm -n argocd argocd-cmd-params-cm -o json | jq '.data | keys[]'
 ```
 
-Review the 2.12 release notes for the specific settings that moved and update your configuration accordingly.
+Review your settings against the 2.12 `argocd-cm` and `argocd-cmd-params-cm` examples and keep settings in the ConfigMap where ArgoCD expects them.
 
 ## Upgrade Steps
 
 ### Step 1: Upgrade Redis (If Needed)
 
-If your Redis version is below 7.0, upgrade it first.
+If your Redis image is pinned to an older version or registry, upgrade it first.
 
 ```yaml
 # In your ArgoCD values
 redis:
   image:
-    repository: redis
+    repository: public.ecr.aws/docker/library/redis
     tag: 7.2.4-alpine
 
 # Or for Redis HA
 redis-ha:
   image:
-    repository: redis
+    repository: public.ecr.aws/docker/library/redis
     tag: 7.2.4-alpine
 ```
 
@@ -159,12 +154,12 @@ for crd in applications.argoproj.io appprojects.argoproj.io applicationsets.argo
 done
 ```
 
-### Step 3: Migrate ConfigMap Settings
+### Step 3: Review ConfigMap Settings
 
-Move any settings that changed location.
+Keep command-line parameters in `argocd-cmd-params-cm`.
 
 ```yaml
-# argocd-cmd-params-cm - ensure settings are in the right place
+# argocd-cmd-params-cm
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -173,9 +168,6 @@ metadata:
 data:
   # Server-side diff (should already be here from 2.10+)
   controller.diff.server.side: "true"
-
-  # Resource tracking method
-  application.resourceTrackingMethod: "annotation"
 
   # Application controller settings
   controller.operation.processors: "25"
@@ -189,13 +181,26 @@ data:
   server.enable.proxy.extension: "false"
 ```
 
+Keep general ArgoCD settings such as the resource tracking method in `argocd-cm`.
+
+```yaml
+# argocd-cm
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  application.resourceTrackingMethod: "annotation"
+```
+
 ### Step 4: Update Helm Chart Version
 
 ```yaml
 # In Chart.yaml
 dependencies:
   - name: argo-cd
-    version: "7.3.0"  # Helm chart version for ArgoCD 2.12
+    version: "7.4.0"  # Helm chart version for ArgoCD 2.12.0
     repository: "https://argoproj.github.io/argo-helm"
 ```
 
@@ -236,12 +241,14 @@ argo-cd:
 
   redis:
     image:
+      repository: public.ecr.aws/docker/library/redis
       tag: 7.2.4-alpine
 
   configs:
+    cm:
+      application.resourceTrackingMethod: "annotation"
     params:
       controller.diff.server.side: "true"
-      application.resourceTrackingMethod: "annotation"
 ```
 
 ### Step 5: Apply the Upgrade
@@ -256,7 +263,7 @@ git push
 
 # Monitor the rollout - this may take a few minutes
 kubectl rollout status deploy/argocd-server -n argocd --timeout=600s
-kubectl rollout status deploy/argocd-application-controller -n argocd --timeout=600s
+kubectl rollout status statefulset/argocd-application-controller -n argocd --timeout=600s
 kubectl rollout status deploy/argocd-repo-server -n argocd --timeout=600s
 kubectl rollout status deploy/argocd-applicationset-controller -n argocd --timeout=300s
 kubectl rollout status deploy/argocd-notifications-controller -n argocd --timeout=300s
@@ -284,17 +291,20 @@ argocd app list --output json | jq '[.[] | .status.health.status] | group_by(.) 
 # 4. Check sync status
 argocd app list --output json | jq '[.[] | .status.sync.status] | group_by(.) | map({status: .[0], count: length})'
 
-# 5. Verify Redis connection
-kubectl exec -n argocd deploy/argocd-server -- argocd-server --redis-server argocd-redis.argocd.svc.cluster.local:6379 version 2>/dev/null
+# 5. Verify Redis responds
+REDIS_PASSWORD=$(kubectl get secret argocd-redis -n argocd -o jsonpath='{.data.auth}' | base64 -d)
+kubectl exec -n argocd deploy/argocd-redis -- redis-cli --no-auth-warning -a "$REDIS_PASSWORD" ping
 
 # 6. Check controller reconciliation
-kubectl logs -n argocd deploy/argocd-application-controller --tail=50 | grep "Reconciliation completed"
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=50 | grep "Reconciliation completed"
 
 # 7. Check for any errors
-for deploy in argocd-server argocd-application-controller argocd-repo-server argocd-applicationset-controller argocd-notifications-controller; do
+for deploy in argocd-server argocd-repo-server argocd-applicationset-controller argocd-notifications-controller; do
   errors=$(kubectl logs -n argocd deploy/$deploy --tail=200 2>/dev/null | grep -c -i "error")
   echo "$deploy: $errors errors in last 200 log lines"
 done
+errors=$(kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 2>/dev/null | grep -c -i "error")
+echo "argocd-application-controller: $errors errors in last 200 log lines"
 
 # 8. Test a sync operation
 argocd app sync test-app --dry-run
@@ -303,12 +313,12 @@ argocd app sync test-app --dry-run
 kubectl get applicationsets -n argocd -o json | jq '.items[] | {name: .metadata.name, conditions: .status.conditions}'
 ```
 
-## Performance Tuning for 2.12
+## Performance Tuning
 
-ArgoCD 2.12 includes performance improvements. Take advantage of them.
+Review these tuning settings after the upgrade and adjust them for your installation size.
 
 ```yaml
-# Optimized settings for 2.12
+# Example tuning settings
 configs:
   params:
     # Increase operation processors for faster syncs
@@ -339,7 +349,7 @@ spec:
       rules:
         - alert: ArgocdApplicationSyncFailing
           expr: |
-            sum(argocd_app_sync_total{phase="Error"}) by (name) > 3
+            sum(increase(argocd_app_sync_total{phase=~"Error|Failed"}[10m])) by (name) > 3
           for: 10m
           labels:
             severity: warning
@@ -393,7 +403,7 @@ argocd app list
 After upgrading, the controller may reconcile all applications, causing temporary memory spikes. If you see OOM kills, temporarily increase memory limits.
 
 ```bash
-kubectl set resources deploy/argocd-application-controller -n argocd --limits=memory=2Gi
+kubectl set resources statefulset/argocd-application-controller -n argocd --limits=memory=2Gi
 ```
 
 ### Redis Protocol Errors
@@ -401,7 +411,7 @@ kubectl set resources deploy/argocd-application-controller -n argocd --limits=me
 If Redis was upgraded alongside ArgoCD, existing connections may fail. Restart the application controller and API server.
 
 ```bash
-kubectl rollout restart deploy/argocd-application-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 kubectl rollout restart deploy/argocd-server -n argocd
 ```
 
@@ -415,4 +425,4 @@ kubectl logs -n argocd deploy/argocd-dex-server --tail=50
 
 ## Summary
 
-Upgrading ArgoCD from 2.11 to 2.12 requires verifying Kubernetes version compatibility (1.27+), ensuring Redis is at version 7.0+, and migrating any ConfigMap settings that changed location. The performance improvements in 2.12 are significant - expect lower memory usage and faster reconciliation times. Follow the upgrade procedure step by step, verify thoroughly at each stage, and keep your rollback plan ready. For production environments, always test the upgrade in staging first and allow 48 hours of monitoring before considering the upgrade complete.
+Upgrading ArgoCD from 2.11 to 2.12 requires verifying Kubernetes version compatibility, checking the cluster secret project-scoping change, and ensuring Redis image registry changes are acceptable in your environment. Follow the upgrade procedure step by step, verify thoroughly at each stage, and keep your rollback plan ready. For production environments, always test the upgrade in staging first and allow 48 hours of monitoring before considering the upgrade complete.
