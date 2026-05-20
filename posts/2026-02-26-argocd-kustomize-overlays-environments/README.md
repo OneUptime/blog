@@ -8,7 +8,7 @@ Description: Learn how to structure Kustomize overlays for dev, staging, and pro
 
 ---
 
-Every team needs to deploy the same application to multiple environments with different configurations. Dev gets one replica with debug logging. Staging mirrors production but with smaller resource limits. Production gets high availability with strict resource quotas. Kustomize overlays handle this perfectly, and ArgoCD makes deploying each overlay a separate, trackable operation.
+Every team needs to deploy the same application to multiple environments with different configurations. Dev gets one replica with debug logging. Staging mirrors production but with smaller resource limits. Production gets high availability with stricter resource limits. Kustomize overlays handle this perfectly, and ArgoCD makes deploying each overlay a separate, trackable operation.
 
 This guide covers structuring overlays for multiple environments, connecting them to ArgoCD, managing environment-specific differences, and handling the promotion workflow from dev to production.
 
@@ -69,9 +69,11 @@ resources:
   - configmap.yaml
   - ingress.yaml
 
-commonLabels:
-  app.kubernetes.io/name: my-api
-  app.kubernetes.io/part-of: platform
+labels:
+  - pairs:
+      app.kubernetes.io/name: my-api
+      app.kubernetes.io/part-of: platform
+    includeSelectors: true
 ```
 
 ```yaml
@@ -133,8 +135,10 @@ resources:
 
 namespace: dev
 
-commonLabels:
-  environment: dev
+labels:
+  - pairs:
+      environment: dev
+    includeSelectors: true
 
 patches:
   - path: config-patch.yaml
@@ -194,8 +198,10 @@ resources:
 
 namespace: production
 
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
 
 commonAnnotations:
   oncall-team: platform-eng
