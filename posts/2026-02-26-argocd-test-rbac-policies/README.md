@@ -131,9 +131,8 @@ argocd admin settings rbac validate --policy-file /tmp/test-policy.csv
 
 This catches issues like:
 - Malformed policy lines
-- Invalid resource types
 - Missing fields in policy rules
-- Duplicate rules
+- Invalid CSV or ConfigMap policy format
 
 ## Building a Test Suite
 
@@ -218,7 +217,7 @@ chmod +x test-rbac.sh
 
 ## Testing All Available Actions
 
-Here are all the actions you can test for each resource type:
+Here are common actions you can test for frequently used resource types:
 
 ```bash
 # Application actions
@@ -227,7 +226,7 @@ argocd admin settings rbac can role:test create applications 'proj/app' --policy
 argocd admin settings rbac can role:test update applications 'proj/app' --policy-file policy.csv
 argocd admin settings rbac can role:test delete applications 'proj/app' --policy-file policy.csv
 argocd admin settings rbac can role:test sync applications 'proj/app' --policy-file policy.csv
-argocd admin settings rbac can role:test action applications 'proj/app' --policy-file policy.csv
+argocd admin settings rbac can role:test action/apps/Deployment/restart applications 'proj/app' --policy-file policy.csv
 argocd admin settings rbac can role:test override applications 'proj/app' --policy-file policy.csv
 
 # Cluster actions
@@ -313,11 +312,10 @@ If a test returns an unexpected result:
 5. **Check deny rules** - A deny rule elsewhere might be blocking an allow
 
 ```bash
-# Verbose output to see which rule matched
+# Re-run the exact check with the policy file you expect Argo CD to use
 argocd admin settings rbac can role:deployer sync applications 'frontend/web-app' \
   --policy-file policy.csv \
-  --default-role '' \
-  -v
+  --default-role ''
 ```
 
 ## Summary
