@@ -66,7 +66,7 @@ Look at the deployment conditions:
 
 ```bash
 kubectl get deployment my-api -n production \
-  -o jsonpath='{.status.conditions[*]}' | python3 -m json.tool
+  -o jsonpath='{.status.conditions}' | python3 -m json.tool
 ```
 
 ## Common Cause 1: Pods Cannot Be Scheduled
@@ -173,9 +173,9 @@ readinessProbe:
   timeoutSeconds: 5
 ```
 
-## Common Cause 4: PodDisruptionBudget Blocking Rollout
+## Common Cause 4: PodDisruptionBudget Blocking Evictions
 
-A PDB can prevent old pods from being terminated, blocking the rollout:
+A PDB does not block Deployment or StatefulSet rolling updates, but it can prevent pods from being evicted during node drains or cluster maintenance. If maintenance is happening at the same time as a rollout, blocked evictions can make the situation look like a rollout problem:
 
 ```bash
 # Check PDBs
@@ -185,7 +185,7 @@ kubectl get pdb -n production
 kubectl describe pdb my-api-pdb -n production
 ```
 
-**Fix:** Temporarily adjust the PDB or perform the rollout during a maintenance window:
+**Fix:** Temporarily adjust the PDB or perform the drain during a maintenance window:
 
 ```yaml
 # Ensure PDB allows at least one pod to be unavailable
@@ -264,7 +264,10 @@ argocd app resources my-app | grep -i "unknown\|progressing"
 # argocd-cm ConfigMap
 data:
   resource.customizations.health.mygroup.io_MyResource: |
-    hs = {}
+    hs = {
+      status = "Progressing",
+      message = "Resource is being provisioned"
+    }
     if obj.status ~= nil then
       if obj.status.phase == "Ready" then
         hs.status = "Healthy"
@@ -272,9 +275,6 @@ data:
       elseif obj.status.phase == "Failed" then
         hs.status = "Degraded"
         hs.message = obj.status.message
-      else
-        hs.status = "Progressing"
-        hs.message = "Resource is being provisioned"
       end
     end
     return hs
@@ -296,7 +296,7 @@ kubectl scale deployment my-api -n production --replicas=3
 kubectl delete pods -n production -l app=my-api
 ```
 
-**Warning:** These manual interventions will cause ArgoCD to show the application as OutOfSync until the next sync.
+**Warning:** Rollbacks and temporary scaling can make ArgoCD show the application as OutOfSync if the live state no longer matches Git. Deleting pods usually does not change the desired state, but it can cause a brief health transition while Kubernetes recreates them.
 
 ## Monitoring for Stuck Progressing State
 
