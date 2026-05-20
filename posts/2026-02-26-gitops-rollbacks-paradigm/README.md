@@ -22,7 +22,7 @@ In a standard Kubernetes workflow, rollbacks work by reverting to a previous Rep
 kubectl rollout undo deployment/my-app -n production
 ```
 
-The problem is that this creates an immediate discrepancy between your Git repository (which still points to the new version) and your cluster (which now runs the old version). ArgoCD will detect this as "OutOfSync" and, if auto-sync is enabled, will push the new version right back.
+The problem is that this creates an immediate discrepancy between your Git repository (which still points to the new version) and your cluster (which now runs the old version). ArgoCD will detect this as "OutOfSync" and, if automated sync with self-healing is enabled, will push the new version right back.
 
 ```mermaid
 sequenceDiagram
@@ -86,16 +86,16 @@ argocd app history my-app
 argocd app rollback my-app 2
 ```
 
-Important caveat: this rollback is temporary if auto-sync is enabled. ArgoCD will show the app as "OutOfSync" because the live state no longer matches the latest Git state. You should follow up with a `git revert` to make the rollback permanent.
+Important caveat: ArgoCD cannot perform an application rollback while automated sync is enabled. Disable auto-sync first, then roll back to a previous history ID. After the rollback, ArgoCD will show the app as "OutOfSync" because the live state no longer matches the latest Git state. You should follow up with a `git revert` to make the rollback permanent.
 
 A practical workflow combines both:
 
 ```bash
-# Step 1: Immediately roll back using ArgoCD history (fast)
-argocd app rollback my-app 2
-
-# Step 2: Disable auto-sync temporarily
+# Step 1: Disable auto-sync temporarily
 argocd app set my-app --sync-policy none
+
+# Step 2: Immediately roll back using ArgoCD history (fast)
+argocd app rollback my-app 2
 
 # Step 3: Revert the bad commit in Git (permanent fix)
 git revert a1b2c3d --no-edit
