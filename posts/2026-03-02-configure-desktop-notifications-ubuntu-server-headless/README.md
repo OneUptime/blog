@@ -14,7 +14,7 @@ This guide covers both making notification tools work on headless servers and mo
 
 ## Understanding the Notification Landscape
 
-On a standard Ubuntu desktop, notifications go through D-Bus to a notification daemon (like GNOME's or libnotify's `notify-send` backend). On a headless server, D-Bus still runs, but there is no notification daemon watching for display notifications.
+On a standard Ubuntu desktop, notifications go through a user D-Bus session bus to a notification daemon, with tools such as `notify-send` acting as clients. On a headless server, the system D-Bus service may still run, but there is usually no graphical user session bus or notification daemon watching for display notifications.
 
 For server notifications, the practical approaches are:
 
@@ -67,7 +67,7 @@ REMOTE_HOST="your-workstation.example.com"
 # Send notification via SSH to the remote desktop
 ssh "${REMOTE_USER}@${REMOTE_HOST}" \
   "DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/\$(id -u)/bus \
-   notify-send -u ${URGENCY} '${SUMMARY}' '${BODY}'"
+   notify-send -u $(printf '%q' "${URGENCY}") -- $(printf '%q' "${SUMMARY}") $(printf '%q' "${BODY}")"
 EOF
 
 sudo chmod +x /usr/local/bin/remote-notify
@@ -81,6 +81,10 @@ remote-notify "Server Alert" "Disk usage exceeded 80%"
 For automated notifications to work without a password prompt:
 
 ```bash
+# Create a dedicated local account if you do not already have one
+sudo useradd --system --create-home --shell /usr/sbin/nologin notification-sender
+sudo install -d -m 700 -o notification-sender -g notification-sender /etc/notification-keys
+
 # Generate a notification-specific SSH key on the server
 sudo -u notification-sender ssh-keygen -t ed25519 -C "server-notifications" \
   -f /etc/notification-keys/id_ed25519 -N ""
@@ -89,7 +93,8 @@ sudo -u notification-sender ssh-keygen -t ed25519 -C "server-notifications" \
 cat /etc/notification-keys/id_ed25519.pub
 
 # On your workstation, add to authorized_keys with command restriction
-# echo 'command="notify-send \"\$SSH_ORIGINAL_COMMAND\"" ssh-ed25519 AAAA...' >> ~/.ssh/authorized_keys
+# Use a small wrapper that validates SSH_ORIGINAL_COMMAND and calls notify-send.
+# Do not run SSH_ORIGINAL_COMMAND directly through a shell.
 ```
 
 ## Using ntfy for Push Notifications
@@ -100,9 +105,9 @@ ntfy is a simple HTTP-based notification service that can send push notification
 # Install ntfy client
 sudo apt install -y ntfy 2>/dev/null || \
   sudo snap install ntfy 2>/dev/null || {
-    wget -q https://github.com/binwiederhier/ntfy/releases/download/v2.7.0/ntfy_2.7.0_linux_amd64.tar.gz
+    wget -q https://github.com/binwiederhier/ntfy/releases/download/v2.23.0/ntfy_2.23.0_linux_amd64.tar.gz
     tar xzf ntfy_*.tar.gz
-    sudo cp ntfy /usr/local/bin/
+    sudo cp -a ntfy_*_linux_amd64/ntfy /usr/local/bin/ntfy
   }
 
 # Send a notification to ntfy.sh (public server) or your own ntfy instance
@@ -150,8 +155,13 @@ For private notifications:
 
 ```bash
 # Install ntfy server
+sudo mkdir -p /etc/apt/keyrings
+sudo curl -L -o /etc/apt/keyrings/ntfy.gpg https://archive.ntfy.sh/apt/keyring.gpg
+echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/ntfy.gpg] https://archive.ntfy.sh/apt stable main" | \
+  sudo tee /etc/apt/sources.list.d/ntfy.list
+sudo apt update
 sudo apt install -y ntfy 2>/dev/null || {
-  wget https://github.com/binwiederhier/ntfy/releases/download/v2.7.0/ntfy_2.7.0_linux_amd64.deb
+  wget https://github.com/binwiederhier/ntfy/releases/download/v2.23.0/ntfy_2.23.0_linux_amd64.deb
   sudo dpkg -i ntfy_*.deb
 }
 
@@ -171,8 +181,8 @@ EOF
 sudo systemctl enable --now ntfy
 
 # Create a user for publishing
-ntfy user add --role admin adminuser
-ntfy access adminuser '*' write-only
+ntfy user add publisher
+ntfy access publisher '*' write-only
 ```
 
 ## Alerting from System Events
@@ -212,8 +222,8 @@ sudo chmod +x /usr/local/bin/service-failure-notify
 sudo mkdir -p /etc/systemd/system/nginx.service.d/
 
 sudo tee /etc/systemd/system/nginx.service.d/notify-on-failure.conf << 'EOF'
-[Service]
-OnFailure=service-failure-notify@%n.service
+[Unit]
+OnFailure=service-failure-notify@%N.service
 EOF
 
 # Create the notification service template
@@ -223,7 +233,7 @@ Description=Send notification for failed service %i
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/service-failure-notify %i
+ExecStart=/usr/local/bin/service-failure-notify %i.service
 EOF
 
 sudo systemctl daemon-reload
@@ -268,26 +278,32 @@ sudo tee /usr/local/bin/slack-notify << 'EOF'
 # Send notification to Slack via incoming webhook
 
 WEBHOOK_URL="https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
-CHANNEL="#server-alerts"
-USERNAME="$(hostname -s) Alert"
 
 TITLE="${1:-Server Notification}"
 MESSAGE="${2:-No message}"
 COLOR="${3:-#FF0000}"  # Red for alerts
+FOOTER="$(hostname) | $(date '+%Y-%m-%d %H:%M:%S')"
+
+PAYLOAD=$(TITLE="$TITLE" MESSAGE="$MESSAGE" COLOR="$COLOR" FOOTER="$FOOTER" python3 - << 'PY'
+import json
+import os
+
+print(json.dumps({
+    "text": f"{os.environ['TITLE']}: {os.environ['MESSAGE']}",
+    "attachments": [{
+        "color": os.environ["COLOR"],
+        "title": os.environ["TITLE"],
+        "text": os.environ["MESSAGE"],
+        "footer": os.environ["FOOTER"],
+        "mrkdwn_in": ["text"]
+    }]
+}))
+PY
+)
 
 curl -s -X POST "$WEBHOOK_URL" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"channel\": \"${CHANNEL}\",
-    \"username\": \"${USERNAME}\",
-    \"attachments\": [{
-      \"color\": \"${COLOR}\",
-      \"title\": \"${TITLE}\",
-      \"text\": \"${MESSAGE}\",
-      \"footer\": \"$(hostname) | $(date '+%Y-%m-%d %H:%M:%S')\",
-      \"mrkdwn_in\": [\"text\"]
-    }]
-  }" > /dev/null
+  -d "$PAYLOAD" > /dev/null
 
 echo "Slack notification sent"
 EOF
