@@ -31,7 +31,7 @@ SonarQube runs during CI to analyze code before images are built. ArgoCD can opt
 
 ## Deploying SonarQube with ArgoCD
 
-Run SonarQube on Kubernetes, managed through ArgoCD:
+Run SonarQube on Kubernetes, managed through ArgoCD. This example assumes an external PostgreSQL database and Kubernetes Secrets for JDBC and monitoring passcode values already exist:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -44,19 +44,24 @@ spec:
   source:
     repoURL: https://SonarSource.github.io/helm-chart-sonarqube
     chart: sonarqube
-    targetRevision: 10.3.0
+    targetRevision: 2026.3.0
     helm:
       values: |
+        community:
+          enabled: true
         replicaCount: 1
+        monitoringPasscodeSecretName: sonarqube-monitoring-passcode
+        monitoringPasscodeSecretKey: SONAR_WEB_SYSTEMPASSCODE
         persistence:
           enabled: true
           size: 20Gi
           storageClass: gp3
-        postgresql:
+        jdbcOverwrite:
           enabled: true
-          persistence:
-            enabled: true
-            size: 10Gi
+          jdbcUrl: "jdbc:postgresql://postgresql.sonarqube.svc.cluster.local:5432/sonar"
+          jdbcUsername: sonar
+          jdbcSecretName: sonarqube-jdbc
+          jdbcSecretPasswordKey: password
         resources:
           requests:
             cpu: 400m
@@ -109,10 +114,12 @@ spec:
     spec:
       containers:
         - name: quality-check
-          image: curlimages/curl:latest
+          image: alpine:3.20
           command: [sh, -c]
           args:
             - |
+              apk add --no-cache curl python3 >/dev/null
+
               echo "Checking SonarQube quality gate for project: my-app"
 
               # Query the quality gate status
@@ -292,7 +299,7 @@ spec:
               if [ "$STATUS" = "OK" ]; then
                 echo "Quality gate passed!"
                 exit 0
-              elif [ "$STATUS" = "ERROR" ]; then
+              elif [ "$STATUS" = "ERROR" ] || [ "$STATUS" = "WARN" ] || [ "$STATUS" = "NONE" ]; then
                 echo "Quality gate FAILED!"
                 echo $RESPONSE
                 exit 1
@@ -331,7 +338,7 @@ spec:
         command: [sh, -c]
         args:
           - |
-            git clone https://$(GIT_TOKEN)@github.com/my-org/k8s-manifests.git /tmp/manifests
+            git clone https://${GIT_TOKEN}@github.com/my-org/k8s-manifests.git /tmp/manifests
             cd /tmp/manifests
             NEW_TAG="{{workflow.parameters.branch}}-{{workflow.uid}}"
             sed -i "s|image: my-org/my-app:.*|image: my-org/my-app:${NEW_TAG}|" \
@@ -374,30 +381,35 @@ Define quality gates in SonarQube through the API (useful for automation):
 
 ```bash
 # Create a custom quality gate
+GATE_NAME="Production Gate"
 
 curl -s -u "$SONAR_TOKEN:" \
   -X POST "$SONAR_HOST/api/qualitygates/create" \
-  -d "name=Production Gate"
-
-# Add conditions
-GATE_ID=$(curl -s -u "$SONAR_TOKEN:" \
-  "$SONAR_HOST/api/qualitygates/show?name=Production%20Gate" | \
-  jq -r '.id')
+  --data-urlencode "name=$GATE_NAME"
 
 # No new critical bugs
 curl -s -u "$SONAR_TOKEN:" \
   -X POST "$SONAR_HOST/api/qualitygates/create_condition" \
-  -d "gateId=$GATE_ID&metric=new_bugs&op=GT&error=0"
+  --data-urlencode "gateName=$GATE_NAME" \
+  -d "metric=new_bugs" \
+  -d "op=GT" \
+  -d "error=0"
 
 # Coverage must be above 80%
 curl -s -u "$SONAR_TOKEN:" \
   -X POST "$SONAR_HOST/api/qualitygates/create_condition" \
-  -d "gateId=$GATE_ID&metric=new_coverage&op=LT&error=80"
+  --data-urlencode "gateName=$GATE_NAME" \
+  -d "metric=new_coverage" \
+  -d "op=LT" \
+  -d "error=80"
 
-# No new security hotspots
+# All new security hotspots must be reviewed
 curl -s -u "$SONAR_TOKEN:" \
   -X POST "$SONAR_HOST/api/qualitygates/create_condition" \
-  -d "gateId=$GATE_ID&metric=new_security_hotspots&op=GT&error=0"
+  --data-urlencode "gateName=$GATE_NAME" \
+  -d "metric=new_security_hotspots_reviewed" \
+  -d "op=LT" \
+  -d "error=100"
 ```
 
 ## Best Practices
