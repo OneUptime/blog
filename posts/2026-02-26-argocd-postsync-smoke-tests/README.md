@@ -173,7 +173,7 @@ def wait_for_service(url, timeout=60):
             resp = requests.get(f"{url}/health", timeout=5)
             if resp.status_code == 200:
                 return True
-        except requests.exceptions.ConnectionError:
+        except requests.exceptions.RequestException:
             pass
         time.sleep(2)
     raise TimeoutError(f"Service at {url} not ready after {timeout}s")
@@ -250,7 +250,7 @@ spec:
 
 ## gRPC Service Smoke Tests
 
-For gRPC services, use grpcurl:
+For gRPC services, use grpcurl. These examples assume server reflection is enabled; if it is not, pass the required `-proto` or `-protoset` flags to grpcurl.
 
 ```yaml
 apiVersion: batch/v1
@@ -264,27 +264,22 @@ spec:
   template:
     spec:
       containers:
-        - name: smoke-test
+        - name: grpc-health-check
           image: fullstorydev/grpcurl:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              echo "Testing gRPC health..."
-              grpcurl -plaintext grpc-svc:50051 grpc.health.v1.Health/Check || {
-                echo "FAIL: gRPC health check"
-                exit 1
-              }
-
-              echo "Testing ListUsers RPC..."
-              grpcurl -plaintext \
-                -d '{"page_size": 1}' \
-                grpc-svc:50051 api.v1.UserService/ListUsers || {
-                echo "FAIL: ListUsers RPC"
-                exit 1
-              }
-
-              echo "All gRPC smoke tests passed"
+          args:
+            - -plaintext
+            - -d
+            - '{}'
+            - grpc-svc:50051
+            - grpc.health.v1.Health/Check
+        - name: grpc-list-users
+          image: fullstorydev/grpcurl:latest
+          args:
+            - -plaintext
+            - -d
+            - '{"page_size": 1}'
+            - grpc-svc:50051
+            - api.v1.UserService/ListUsers
       restartPolicy: Never
   backoffLimit: 1
 ```
@@ -309,7 +304,7 @@ argocd app rollback my-app
 ```
 
 **Automatic rollback on failure:**
-You can combine smoke tests with ArgoCD rollback by using a SyncFail hook:
+For applications that do not use automated sync, you can combine smoke tests with ArgoCD rollback by using a SyncFail hook. If automated sync is enabled, ArgoCD does not allow `argocd app rollback`; use a Git revert-based rollback instead.
 
 ```yaml
 # SyncFail hook that reverts to previous version
