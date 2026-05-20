@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, API, Health Check
 
-Description: Define and manage custom health checks for ArgoCD applications using Lua scripts and the REST API to accurately assess the health of CRDs and custom resources.
+Description: Define and manage custom health checks for ArgoCD applications using Lua scripts, ConfigMap updates, and the REST API to accurately assess the health of CRDs and custom resources.
 
 ---
 
 ArgoCD has built-in health checks for standard Kubernetes resources like Deployments, StatefulSets, and Services. But when you use Custom Resource Definitions (CRDs) from operators like Istio, Cert-Manager, or your own custom controllers, ArgoCD does not know how to assess their health out of the box. Your CRD might show as "Progressing" forever or "Healthy" when it is actually broken.
 
-This post shows you how to implement custom health checks using Lua scripts and manage them through ArgoCD's configuration API.
+This post shows you how to implement custom health checks using Lua scripts, manage them through ArgoCD's ConfigMap, and verify them through the ArgoCD API.
 
 ## How ArgoCD Health Checks Work
 
-ArgoCD evaluates health by inspecting the status of each Kubernetes resource in an application. For built-in resource types, it has hardcoded logic. For everything else, it falls back to a generic check that looks for standard conditions.
+ArgoCD evaluates health by inspecting each Kubernetes resource in an application. For built-in resource types, it has hardcoded logic. For custom resources and other unsupported types, ArgoCD only evaluates health when a Lua health check is configured.
 
 The health assessment flow is straightforward.
 
@@ -24,7 +24,7 @@ flowchart TD
     B -->|Yes| C[Use built-in health check]
     B -->|No| D{Custom Lua script defined?}
     D -->|Yes| E[Execute Lua script]
-    D -->|No| F[Use generic health check]
+    D -->|No| F[No resource health assessed]
     C --> G[Return Health Status]
     E --> G
     F --> G
@@ -83,18 +83,40 @@ data:
   resource.customizations.health.networking.istio.io_VirtualService: |
     hs = {}
     if obj.status ~= nil then
-      if obj.status.validationStatus ~= nil then
-        if obj.status.validationStatus == "True" then
+      if obj.status.conditions ~= nil then
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "PassedAnalysis" then
+            if condition.status == "True" then
+              hs.status = "Healthy"
+              hs.message = condition.message or "VirtualService passed analysis"
+            else
+              hs.status = "Degraded"
+              hs.message = condition.message or "VirtualService analysis failed"
+            end
+            return hs
+          end
+        end
+        hs.status = "Progressing"
+        hs.message = "Waiting for VirtualService analysis"
+      elseif obj.status.validationMessages ~= nil then
+        for i, message in ipairs(obj.status.validationMessages) do
+          if message.level == "Error" then
+            hs.status = "Degraded"
+            hs.message = message.message or "VirtualService validation failed"
+            return hs
+          end
+        end
+        if #obj.status.validationMessages == 0 then
           hs.status = "Healthy"
-          hs.message = "VirtualService is valid and applied"
+          hs.message = "VirtualService has no validation messages"
         else
-          hs.status = "Degraded"
-          hs.message = "VirtualService validation failed"
+          hs.status = "Progressing"
+          hs.message = "VirtualService has validation warnings"
         end
       else
-        -- Istio VirtualServices may not have status in older versions
+        -- Istio VirtualService status is optional and disabled by default
         hs.status = "Healthy"
-        hs.message = "VirtualService applied (no validation status)"
+        hs.message = "VirtualService applied (no status conditions)"
       end
     else
       hs.status = "Healthy"
@@ -138,16 +160,16 @@ Suppose you have a custom operator that manages databases with a `Database` CRD.
     return hs
 ```
 
-## Managing Health Checks via the API
+## Managing Health Checks and Checking Settings via the API
 
-You can update the `argocd-cm` ConfigMap through the ArgoCD settings API.
+You can inspect the active resource overrides through the ArgoCD settings API, but health check definitions are stored in the `argocd-cm` ConfigMap and must be updated through Kubernetes.
 
 ```bash
 # Get current ArgoCD settings
 curl -s -k "$ARGOCD_URL/api/v1/settings" \
   -H "$AUTH_HEADER" | jq '.resourceOverrides'
 
-# Update settings via the ConfigMap
+# Update the ConfigMap through Kubernetes
 # First, get the current configmap
 kubectl get configmap argocd-cm -n argocd -o yaml > argocd-cm.yaml
 
@@ -278,7 +300,7 @@ For CRDs that manage replicas (like custom operators for databases or caches).
 -- Replica-based health check
 hs = {}
 if obj.status ~= nil then
-  local desired = obj.spec.replicas or 1
+  local desired = (obj.spec and obj.spec.replicas) or 1
   local ready = obj.status.readyReplicas or 0
   local updated = obj.status.updatedReplicas or 0
 
