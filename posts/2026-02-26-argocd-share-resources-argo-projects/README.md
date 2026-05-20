@@ -113,7 +113,7 @@ This automatically creates copies of the secret in the `argo` and `argo-events` 
 
 ## Sharing Container Registry Credentials
 
-Both Argo Workflows (for building and pushing images) and ArgoCD (for pulling image information) may need registry access:
+Both Argo Workflows (for building and pushing images) and ArgoCD Image Updater (for checking and updating image tags) may need registry access:
 
 ```yaml
 # Create a docker-registry secret that works across namespaces
@@ -172,7 +172,7 @@ roleRef:
 
 ## Sharing Artifact Storage
 
-Argo Workflows stores artifacts (build outputs, test results, logs) in S3-compatible storage. Argo Rollouts Analysis can also read from S3 for custom metric sources. Configure a shared artifact repository:
+Argo Workflows stores artifacts (build outputs, test results, logs) in S3-compatible storage. Rollout analysis jobs and workflow steps can use the same object store when they need access to shared test artifacts. Configure a shared artifact repository:
 
 ```yaml
 # Shared MinIO for artifact storage
@@ -224,9 +224,9 @@ spec:
           ports:
             - containerPort: 9000
           env:
-            - name: MINIO_ACCESS_KEY
+            - name: MINIO_ROOT_USER
               value: "argoplatform"
-            - name: MINIO_SECRET_KEY
+            - name: MINIO_ROOT_PASSWORD
               value: "argoplatform123"
           volumeMounts:
             - name: data
@@ -251,7 +251,7 @@ spec:
 
 ## Sharing Prometheus for Metrics
 
-Argo Rollouts uses Prometheus for analysis queries, and Argo Workflows can use it for pipeline metrics. Point both to the same Prometheus instance:
+Argo Rollouts uses Prometheus for analysis queries, and Prometheus can scrape Argo Workflows metrics. Point Rollouts analysis to the same Prometheus instance:
 
 ```yaml
 # In Argo Rollouts AnalysisTemplate
@@ -285,6 +285,7 @@ metadata:
   namespace: argocd
   annotations:
     reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
+    reflector.v1.k8s.emberstack.com/reflection-auto-enabled: "true"
     reflector.v1.k8s.emberstack.com/reflection-auto-namespaces: "argo-events"
 type: Opaque
 data:
@@ -294,7 +295,7 @@ data:
 
 ## Using a Shared ConfigMap for Platform Settings
 
-Create a central configuration that all components reference:
+Create a central configuration and mirror it into the namespaces where pods need to consume it:
 
 ```yaml
 apiVersion: v1
@@ -302,6 +303,11 @@ kind: ConfigMap
 metadata:
   name: platform-config
   namespace: shared
+  annotations:
+    reflector.v1.k8s.emberstack.com/reflection-allowed: "true"
+    reflector.v1.k8s.emberstack.com/reflection-allowed-namespaces: "argo,argo-events,argocd,argo-rollouts"
+    reflector.v1.k8s.emberstack.com/reflection-auto-enabled: "true"
+    reflector.v1.k8s.emberstack.com/reflection-auto-namespaces: "argo,argo-events,argocd,argo-rollouts"
 data:
   git-org: "myorg"
   registry: "registry.example.com"
@@ -310,7 +316,7 @@ data:
   argo-server: "argo-server.argo.svc.cluster.local"
 ```
 
-Reference this from Argo Workflows:
+Reference the mirrored ConfigMap from Argo Workflows:
 
 ```yaml
 templates:
