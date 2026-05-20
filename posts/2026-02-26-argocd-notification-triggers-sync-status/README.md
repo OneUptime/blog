@@ -18,11 +18,11 @@ ArgoCD tracks several sync statuses for every application:
 - **OutOfSync** - the live state has drifted from the desired state
 - **Unknown** - ArgoCD cannot determine the sync status
 
-Notification triggers evaluate conditions against the application state and fire when those conditions become true. The trigger system uses Go templates with access to the full application object.
+Notification triggers evaluate expressions against the application state and fire when those conditions become true. Notification templates use Go templates with access to the full application object.
 
 ## Prerequisites
 
-Before configuring triggers, make sure you have the ArgoCD notifications controller installed. If you installed ArgoCD v2.6 or later, it is bundled in. For older versions, install it separately:
+Before configuring triggers, make sure you have the ArgoCD notifications controller installed. If you installed ArgoCD v2.3 or later using the default manifests, it is bundled in:
 
 ```bash
 # Check if notifications controller is running
@@ -30,7 +30,7 @@ Before configuring triggers, make sure you have the ArgoCD notifications control
 kubectl get pods -n argocd -l app.kubernetes.io/component=notifications-controller
 ```
 
-If you need to install it:
+If you need to install the official trigger and template catalog:
 
 ```bash
 kubectl apply -n argocd \
@@ -60,7 +60,7 @@ data:
         - app-outofsync
 ```
 
-The `oncePer` field is critical. Without it, ArgoCD would send a notification on every reconciliation loop (roughly every 3 minutes by default). By keying on `app.status.sync.revision`, you get one alert per Git revision that causes the drift.
+The `oncePer` field is critical for alerts that can become true repeatedly because of status flapping. By keying on `app.status.sync.revision`, you get one alert per Git revision that causes the drift.
 
 ### Trigger for Successful Sync
 
@@ -69,7 +69,8 @@ This trigger fires when an application transitions to a Synced state after a syn
 ```yaml
   # Trigger when sync succeeds
   trigger.on-sync-succeeded: |
-    - when: app.status.sync.status == 'Synced' and app.status.operationState.phase in ['Succeeded']
+    - when: app.status.sync.status == 'Synced' and app.status?.operationState.phase in ['Succeeded']
+      oncePer: app.status?.operationState.finishedAt
       send:
         - app-sync-succeeded
 ```
@@ -83,7 +84,8 @@ Sync failures are usually the most critical alerts. Configure them with high pri
 ```yaml
   # Trigger when sync fails
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
+      oncePer: app.status?.operationState.finishedAt
       send:
         - app-sync-failed
 ```
@@ -95,8 +97,8 @@ Sometimes you want to know when a sync starts, especially for long-running deplo
 ```yaml
   # Trigger when sync starts
   trigger.on-sync-running: |
-    - when: app.status.operationState.phase in ['Running']
-      oncePer: app.status.operationState.startedAt
+    - when: app.status?.operationState.phase in ['Running']
+      oncePer: app.status?.operationState.startedAt
       send:
         - app-sync-running
 ```
@@ -211,8 +213,8 @@ The `oncePer` field deserves special attention. Without it, you will get flooded
 
   # One notification per operation
   trigger.on-sync-complete: |
-    - when: app.status.operationState.phase in ['Succeeded', 'Failed', 'Error']
-      oncePer: app.status.operationState.finishedAt
+    - when: app.status?.operationState.phase in ['Succeeded', 'Failed', 'Error']
+      oncePer: app.status?.operationState.finishedAt
       send:
         - app-sync-complete
 ```
@@ -242,20 +244,20 @@ data:
         - app-outofsync
 
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded'] and app.status.sync.status == 'Synced'
-      oncePer: app.status.operationState.finishedAt
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.sync.status == 'Synced'
+      oncePer: app.status?.operationState.finishedAt
       send:
         - app-sync-succeeded
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
-      oncePer: app.status.operationState.finishedAt
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
+      oncePer: app.status?.operationState.finishedAt
       send:
         - app-sync-failed
 
   trigger.on-sync-running: |
-    - when: app.status.operationState != nil and app.status.operationState.phase in ['Running']
-      oncePer: app.status.operationState.startedAt
+    - when: app.status?.operationState.phase in ['Running']
+      oncePer: app.status?.operationState.startedAt
       send:
         - app-sync-running
 
@@ -301,9 +303,9 @@ If triggers are not firing, check that the application has the correct subscript
 
 ## Common Pitfalls
 
-**Missing nil checks**: Always check `app.status.operationState != nil` before accessing nested fields. If no sync has ever run, `operationState` is nil and your trigger will error out silently.
+**Missing nil checks**: Use optional chaining, such as `app.status?.operationState.phase`, before accessing optional fields. If no sync has ever run, `operationState` is nil and evaluating `app.status.operationState.phase` will fail.
 
-**Forgetting oncePer**: Without `oncePer`, you will get a notification every 3 minutes for as long as the condition remains true. This is the number one complaint from teams setting up notifications.
+**Forgetting oncePer**: Without `oncePer`, flapping conditions can send repeated notifications each time the condition becomes true again. This is one of the most common complaints from teams setting up notifications.
 
 **Overly broad triggers**: A trigger on just `app.status.sync.status == 'Synced'` will fire for every application that is in sync, not just ones that just completed a sync. Combine sync status with operation state to get precise alerts.
 
