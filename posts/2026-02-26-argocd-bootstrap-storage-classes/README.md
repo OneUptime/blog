@@ -52,9 +52,8 @@ provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   encrypted: "true"
-  # Use AWS-managed key for encryption
-  kmsKeyId: ""
-  fsType: ext4
+  # Omit kmsKeyId to use the default AWS-managed EBS key
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -74,7 +73,7 @@ parameters:
   encrypted: "true"
   iops: "16000"
   throughput: "1000"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -92,7 +91,7 @@ provisioner: ebs.csi.aws.com
 parameters:
   type: st1
   encrypted: "true"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -134,7 +133,7 @@ spec:
       - ServerSideApply=true
 ```
 
-Notice that `prune` is set to `false`. Deleting a StorageClass while PVCs reference it can cause data loss. It is safer to require manual cleanup of StorageClasses.
+Notice that `prune` is set to `false`. Deleting a StorageClass while PVCs reference it can break future provisioning for those claims. It is safer to require manual cleanup of StorageClasses.
 
 ## Cloud-Specific StorageClass Examples
 
@@ -152,6 +151,7 @@ provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-ssd
   disk-encryption-kms-key: projects/my-project/locations/us-central1/keyRings/my-ring/cryptoKeys/my-key
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -170,7 +170,7 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: Premium_LRS
-  enableEncryptionAtHost: "true"
+  diskEncryptionSetID: /subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/my-resource-group/providers/Microsoft.Compute/diskEncryptionSets/my-disk-encryption-set
   fsType: ext4
 reclaimPolicy: Delete
 allowVolumeExpansion: true
@@ -193,17 +193,17 @@ metadata:
   name: gp2
   annotations:
     storageclass.kubernetes.io/is-default-class: "false"
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp2
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
 ```
 
 **Option 2: Ignore the provider-created class and let ArgoCD manage only your custom ones**
 
-Add it to ignoreDifferences in your ArgoCD project configuration and accept that two defaults might briefly coexist during bootstrapping.
+Keep it out of this ArgoCD Application and accept that two defaults might briefly coexist during bootstrapping.
 
 ## Using Kustomize for Multi-Cloud StorageClasses
 
@@ -265,7 +265,7 @@ metadata:
     argocd.argoproj.io/sync-options: Delete=false
 ```
 
-3. **Use project restrictions** to limit who can modify storage resources:
+3. **Use project restrictions** so only selected ArgoCD projects can deploy storage resources:
 
 ```yaml
 spec:
@@ -279,6 +279,21 @@ spec:
 ArgoCD does not have a built-in health check for StorageClasses since they are static resources. But you can verify they work by creating a test PVC as a PostSync hook.
 
 ```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-storage-class
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp3-encrypted
+  resources:
+    requests:
+      storage: 1Gi
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -292,7 +307,14 @@ spec:
       containers:
         - name: test
           image: busybox:1.36
-          command: ["sh", "-c", "echo 'StorageClass validation passed'"]
+          command: ["sh", "-c", "echo 'StorageClass validation passed' > /mnt/test/result"]
+          volumeMounts:
+            - name: test-volume
+              mountPath: /mnt/test
+      volumes:
+        - name: test-volume
+          persistentVolumeClaim:
+            claimName: test-storage-class
       restartPolicy: Never
   backoffLimit: 1
 ```
