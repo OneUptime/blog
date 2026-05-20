@@ -16,9 +16,9 @@ This guide covers how to configure orphaned resource monitoring at the project l
 
 An orphaned resource is a Kubernetes resource that:
 
-- Exists in a namespace that is a destination for one or more ArgoCD applications
-- Is not managed by any ArgoCD application in the project
-- Was not created by ArgoCD
+- Is a top-level namespaced resource
+- Exists in the target namespace of an ArgoCD application whose project has orphaned resource monitoring enabled
+- Does not belong to any ArgoCD application
 
 For example, if you have an ArgoCD application that manages the `payments` namespace and deploys a Deployment and a Service, but someone manually creates a ConfigMap in that namespace, that ConfigMap is an orphaned resource.
 
@@ -53,25 +53,25 @@ spec:
 
 With `warn: true`, ArgoCD will:
 
-- Scan all destination namespaces for the project
-- Identify resources not tracked by any application in the project
+- Scan the target namespaces of applications in the project
+- Identify top-level namespaced resources that do not belong to any ArgoCD application
 - Display warnings in the ArgoCD UI and CLI
-- Report orphaned resources in the application status
+- Add an `OrphanedResourceWarning` condition to affected applications
 
 ## Understanding the Detection Logic
 
 ArgoCD determines if a resource is orphaned by checking:
 
-1. The resource exists in a namespace that matches a project destination
-2. No application in the project tracks this resource (via `app.kubernetes.io/instance` label or ArgoCD tracking annotations)
-3. The resource was not created by Kubernetes itself (system resources are excluded)
+1. The resource is a top-level namespaced resource in the target namespace of an application whose project enables orphaned resource monitoring
+2. The resource does not belong to any ArgoCD application
+3. The resource is not denied by the project and does not match one of ArgoCD's built-in or configured orphaned resource exclusions
 
 ```mermaid
 flowchart TD
-    A[Resource in project destination namespace]
-    A --> B{Tracked by an ArgoCD app in this project?}
+    A[Top-level resource in application target namespace]
+    A --> B{Belongs to any ArgoCD app?}
     B -->|Yes| C[Managed - not orphaned]
-    B -->|No| D{System resource?}
+    B -->|No| D{Denied or ignored resource?}
     D -->|Yes| C
     D -->|No| E[ORPHANED - warning raised]
 ```
@@ -100,7 +100,7 @@ orphanedResources:
     - group: ""
       kind: Event
 
-    # Ignore EndpointSlices created by kube-proxy
+    # Ignore EndpointSlices created by Kubernetes controllers
     - group: discovery.k8s.io
       kind: EndpointSlice
 ```
@@ -169,26 +169,27 @@ orphanedResources:
 
 When orphaned resource monitoring is enabled, the ArgoCD UI shows:
 
-1. A warning banner on the project page
-2. Individual orphaned resources listed with their kind, name, and namespace
-3. A count of orphaned resources per namespace
+1. An `OrphanedResourceWarning` condition in the application's sync panel when `warn: true`
+2. Individual orphaned resources in the application details page when the "Show Orphaned" filter is enabled
+3. Orphaned resource entries with their kind, name, and namespace
 
 ### Via CLI
 
 ```bash
-# Get project details including orphaned resource warnings
+# Get project details including orphaned resource monitoring settings
 
 argocd proj get backend
 
-# List applications with their orphaned resource status
-argocd app list --project backend
+# List orphaned resources for an affected application
+argocd app resources backend-api --orphaned
 ```
 
 ### Via Kubernetes API
 
 ```bash
-# Check the AppProject status
-kubectl get appproject backend -n argocd -o yaml | grep -A 20 orphanedResources
+# Check for orphaned resource warning conditions on applications
+kubectl get applications -n argocd -o json \
+  | jq '.items[] | {name: .metadata.name, orphaned: (.status.conditions // [] | map(select(.type == "OrphanedResourceWarning")))}'
 ```
 
 ## Handling Orphaned Resources
@@ -266,13 +267,13 @@ metadata:
   namespace: argocd
 data:
   trigger.on-orphaned-resources: |
-    - when: app.status.orphanedResources | length > 0
+    - when: app.status.conditions != nil and any(app.status.conditions, {.type == 'OrphanedResourceWarning'})
       send: [orphaned-resources-alert]
 
   template.orphaned-resources-alert: |
     message: |
-      Application {{.app.metadata.name}} has {{.app.status.orphanedResources | length}} orphaned resources
-      in namespace(s): {{range .app.status.orphanedResources}}{{.namespace}}/{{.kind}}/{{.name}} {{end}}
+      Application {{.app.metadata.name}} has an orphaned resource warning.
+      {{range .app.status.conditions}}{{if eq .type "OrphanedResourceWarning"}}{{.message}}{{end}}{{end}}
 ```
 
 ### Using Prometheus Metrics
@@ -285,7 +286,7 @@ groups:
   - name: argocd-orphaned-resources
     rules:
       - alert: OrphanedResourcesDetected
-        expr: argocd_app_info{orphaned_resources="true"} > 0
+        expr: argocd_app_orphaned_resources_count > 0
         for: 24h
         labels:
           severity: warning
@@ -334,8 +335,7 @@ metadata:
   name: development
   namespace: argocd
 spec:
-  # Either disable entirely
-  # orphanedResources: {}
+  # Either disable entirely by omitting orphanedResources
 
   # Or enable with broad exclusions
   orphanedResources:
@@ -361,12 +361,12 @@ Mitigations:
 **Too many false positives**: Refine your ignore list. Check which resources are being flagged:
 
 ```bash
-argocd proj get backend -o json | jq '.status.orphanedResources'
+argocd app resources backend-api --orphaned
 ```
 
-**Orphaned resources not detected**: Verify that `orphanedResources.warn` is set to `true` and that the resource's namespace is in the project's destinations.
+**Orphaned resources not detected**: Verify that `orphanedResources` is configured on the project and that the resource is in the target namespace of an application in that project. If resources are visible but no warning condition appears, verify that `orphanedResources.warn` is set to `true`.
 
-**Performance degradation**: If API server load increases after enabling orphan monitoring, check how many resources exist in destination namespaces:
+**Performance degradation**: If API server load increases after enabling orphan monitoring, check how many resources exist in application target namespaces:
 
 ```bash
 kubectl get all -n backend-prod | wc -l
