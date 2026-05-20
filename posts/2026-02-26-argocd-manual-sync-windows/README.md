@@ -116,7 +116,7 @@ syncWindows:
     timeZone: 'America/New_York'
 ```
 
-When multiple windows overlap, the most restrictive `manualSync` setting wins. If any active window has `manualSync: false`, manual syncs are blocked regardless of other active windows with `manualSync: true`.
+When multiple deny windows overlap, the most restrictive `manualSync` setting wins. If any active deny window has `manualSync: false`, manual syncs are blocked regardless of other active deny windows with `manualSync: true`. For allow windows, manual syncs outside the active allow period are permitted only when all matching inactive allow windows have `manualSync: true`.
 
 ## How Manual Sync Works with Allow Windows
 
@@ -192,9 +192,8 @@ To prevent CI/CD from bypassing windows, either:
 Before attempting a manual sync, check the current window status.
 
 ```bash
-# Check application conditions for sync window info
-argocd app get my-app --output json | \
-  jq '.status.conditions[] | select(.type | contains("SyncWindow"))'
+# Check application details for the current SyncWindow line
+argocd app get my-app
 
 # Check project windows and their manualSync settings
 argocd proj windows list production --output json | \
@@ -230,31 +229,35 @@ Even with `manualSync: true`, a developer without the `sync` permission on produ
 
 ## Audit Trail for Manual Syncs
 
-ArgoCD logs all sync operations, including manual syncs during restricted windows.
+ArgoCD records sync history and emits Kubernetes Events for application activity, including manual syncs during restricted windows.
 
 ```bash
 # View sync history for an application
 argocd app history my-app
 
-# Output includes who triggered the sync and when
-# REVISION  DATE                  AUTHOR    MESSAGE
-# abc123    2026-02-26 14:30:00   admin     Sync operation
+# Output includes deployment IDs, timestamps, and revisions
+# ID  DATE                           REVISION
+# 0   2026-02-26 14:30:00 +0000 UTC  abc123
+
+# View application events, which include the actor when applicable
+kubectl get events -n argocd --field-selector involvedObject.name=my-app
 ```
 
-For compliance, combine this with ArgoCD audit logging.
+For compliance, combine this with structured ArgoCD server logs and longer-term event retention.
 
 ```yaml
-# Enable audit logging in argocd-cmd-params-cm
+# Configure structured ArgoCD server logs in argocd-cmd-params-cm
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  server.audit.enabled: "true"
+  server.log.level: "info"
+  server.log.format: "json"
 ```
 
-Audit logs capture who performed the manual sync, what was synced, and when. This is essential for post-incident reviews and compliance audits.
+Structured server logs and Kubernetes Events help capture who performed the manual sync, what was synced, and when. This is essential for post-incident reviews and compliance audits.
 
 ## Best Practices
 
