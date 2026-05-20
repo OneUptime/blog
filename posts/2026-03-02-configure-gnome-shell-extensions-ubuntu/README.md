@@ -20,14 +20,15 @@ Extensions are tied to specific GNOME Shell versions. Installing an extension bu
 gnome-shell --version
 # Example output: GNOME Shell 44.3
 
-# Check using dconf
+# Check the current GNOME session name
 gsettings get org.gnome.desktop.session session-name
 ```
 
 Ubuntu ships specific GNOME versions per release:
-- Ubuntu 22.04: GNOME 42
+- Ubuntu 22.04: GNOME Shell 42, with some apps kept at GNOME 41 versions
 - Ubuntu 23.04: GNOME 44
 - Ubuntu 24.04: GNOME 46
+- Ubuntu 26.04: GNOME 50
 
 ## Installing Required Tools
 
@@ -39,8 +40,11 @@ sudo apt install -y gnome-shell-extensions gnome-shell-extension-manager
 # Install the GNOME Tweaks tool for additional settings
 sudo apt install -y gnome-tweaks
 
-# Install the browser integration for extensions.gnome.org
-sudo apt install -y chrome-gnome-shell
+# Install the browser integration for extensions.gnome.org on Ubuntu 24.04 and later
+sudo apt install -y gnome-browser-connector
+
+# On Ubuntu 22.04, use:
+# sudo apt install -y chrome-gnome-shell
 
 # For Firefox, also install the browser extension:
 # Visit https://extensions.gnome.org and click the link to install the browser add-on
@@ -54,7 +58,7 @@ The Extensions Manager (installed as `gnome-shell-extension-manager`) provides a
 
 ```bash
 # Launch the extensions manager
-gnome-shell-extension-manager
+extension-manager
 # Or find it in applications as "Extension Manager"
 ```
 
@@ -97,9 +101,9 @@ unzip extension.zip -d ~/.local/share/gnome-shell/extensions/extension-uuid@auth
 # Enable the extension
 gnome-extensions enable extension-uuid@author
 
-# Reload GNOME Shell (X11 only - on Wayland, you must log out and log back in)
-# On X11:
-busctl --user call org.gnome.Shell /org/gnome/Shell org.gnome.Shell Eval s 'Meta.restart("Restarting…")'
+# Reload GNOME Shell
+# On X11: press Alt+F2, type restart, and press Enter
+# On Wayland: log out and log back in
 ```
 
 ## Managing Extensions from the Command Line
@@ -153,12 +157,12 @@ gsettings set org.gnome.shell.extensions.dash-to-dock intellihide true
 Adds system tray support for legacy applications:
 
 ```bash
-# UUID: appindicatorsupport@rgcjonas.gmail.com
+# UUID for the Ubuntu apt package: ubuntu-appindicators@ubuntu.com
 # Or install via apt:
 sudo apt install -y gnome-shell-extension-appindicator
 
 # Enable it
-gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com
+gnome-extensions enable ubuntu-appindicators@ubuntu.com
 
 # Restart GNOME Shell to see system tray icons
 ```
@@ -233,7 +237,7 @@ sudo apt install -y \
 
 # List of extensions to enable (by UUID)
 EXTENSIONS=(
-    "appindicatorsupport@rgcjonas.gmail.com"
+    "ubuntu-appindicators@ubuntu.com"
     "user-theme@gnome-shell-extensions.gcampax.github.com"
     "workspace-indicator@gnome-shell-extensions.gcampax.github.com"
     "places-menu@gnome-shell-extensions.gcampax.github.com"
@@ -249,7 +253,7 @@ for ext in "${EXTENSIONS[@]}"; do
 done
 
 # Apply settings
-dconf write /org/gnome/shell/extensions/appindicatorsupport/icon-size 18
+dconf write /org/gnome/shell/extensions/appindicator/icon-size 18
 dconf write /org/gnome/desktop/wm/preferences/button-layout "'appmenu:minimize,maximize,close'"
 
 echo "GNOME extensions configured"
