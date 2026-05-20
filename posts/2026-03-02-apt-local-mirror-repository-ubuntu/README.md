@@ -23,7 +23,7 @@ This post covers configuring APT clients to use these mirrors, with focus on the
 
 ## Option 1: Using apt-cacher-ng as a Caching Proxy
 
-`apt-cacher-ng` is the simplest approach for most environments. It acts as a transparent proxy - the first client that requests a package downloads it from the internet, and subsequent requests are served from the cache.
+`apt-cacher-ng` is the simplest approach for most environments. It acts as a caching proxy - the first client that requests a package over HTTP downloads it from the internet, and subsequent requests are served from the cache.
 
 ### On the Cache Server
 
@@ -49,17 +49,17 @@ Create a proxy configuration file:
 ```bash
 # On each client machine, create an APT proxy config
 sudo tee /etc/apt/apt.conf.d/01proxy << 'EOF'
-Acquire::HTTP::Proxy "http://your-cache-server:3142";
-Acquire::HTTPS::Proxy "DIRECT";
+Acquire::http::Proxy "http://your-cache-server:3142";
+Acquire::https::Proxy "DIRECT";
 EOF
 ```
 
-Alternatively, use the apt-cacher-ng protocol that handles HTTPS repositories:
+If you need APT to reach HTTPS repositories through the proxy, configure the HTTPS proxy too. This tunnels HTTPS traffic through apt-cacher-ng; it does not cache encrypted package downloads unless you rewrite repository URLs using apt-cacher-ng's HTTPS URL format.
 
 ```bash
 sudo tee /etc/apt/apt.conf.d/01proxy << 'EOF'
-Acquire::HTTP::Proxy "http://your-cache-server:3142";
-Acquire::HTTPS::Proxy "http://your-cache-server:3142";
+Acquire::http::Proxy "http://your-cache-server:3142";
+Acquire::https::Proxy "http://your-cache-server:3142";
 EOF
 ```
 
@@ -132,14 +132,14 @@ sudo apt-get -d install curl --reinstall
 
 ## Option 3: Automating Mirror Selection
 
-Ubuntu's `netselect-apt` can automatically pick the fastest mirror for your location:
+Debian's `netselect-apt` can automatically pick the fastest Debian mirror for your location. It is not available in current Ubuntu repositories, so these commands are useful for Debian clients but not Ubuntu clients:
 
 ```bash
-# Install netselect-apt
+# On Debian, install netselect-apt
 sudo apt install netselect-apt
 
-# Generate a sources.list with the fastest mirror
-sudo netselect-apt jammy -o /tmp/sources.list.test
+# Generate a sources.list with the fastest Debian mirror
+sudo netselect-apt stable -o /tmp/sources.list.test
 
 # Review and move it into place if it looks good
 cat /tmp/sources.list.test
@@ -149,7 +149,7 @@ For local mirrors, you don't need this - you already know your server's address.
 
 ## Setting Up APT Mirror Selection with Multiple Fallbacks
 
-You can list multiple mirror URLs and APT will try them in order:
+You can list multiple mirror URLs. APT treats earlier sources as more preferred and can fall back to another configured source if one is unavailable:
 
 ```bash
 sudo tee /etc/apt/sources.list.d/ubuntu.sources << 'EOF'
@@ -161,7 +161,7 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 EOF
 ```
 
-With multiple URIs, APT tries the first, then falls back to the next if it's unreachable.
+List the local mirror first so it is the preferred source when the same package version is available from more than one source.
 
 ## Configuring the Mirror Server
 
@@ -208,7 +208,7 @@ When you have many servers to configure:
 - name: Configure APT to use local mirror
   copy:
     content: |
-      Acquire::HTTP::Proxy "http://{{ apt_mirror_host }}:3142";
+      Acquire::http::Proxy "http://{{ apt_mirror_host }}:3142";
     dest: /etc/apt/apt.conf.d/01proxy
     owner: root
     group: root
@@ -226,8 +226,8 @@ When you have many servers to configure:
 # Add verbose output temporarily to verify the source
 sudo apt-get -o Debug::Acquire::http=true update 2>&1 | grep "Connecting to"
 
-# Or check the APT log after an update
-sudo grep "http" /var/log/apt/history.log | tail -20
+# Or check the proxy server's access log after an update
+sudo tail -f /var/log/apt-cacher-ng/apt-cacher-ng.log
 ```
 
 ## Handling HTTPS Repositories Through the Mirror
@@ -238,11 +238,11 @@ Some repositories use HTTPS. Configure apt-cacher-ng to handle them:
 # On the apt-cacher-ng server, edit the config
 sudo nano /etc/apt-cacher-ng/acng.conf
 
-# Add or uncomment:
-PassThroughPattern: .*
+# Add or uncomment a pass-through pattern for HTTPS CONNECT targets:
+PassThroughPattern: ^(.*):443$
 
 # Or allow specific HTTPS domains:
-# PassThroughPattern: download.docker.com
+# PassThroughPattern: ^download.docker.com:443$
 
 sudo systemctl restart apt-cacher-ng
 ```
