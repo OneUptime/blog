@@ -156,6 +156,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: my-project
+  namespace: argocd
 spec:
   destinations:
     - server: https://kubernetes.default.svc
@@ -240,21 +241,17 @@ If this has been restricted, either add your namespace back or move the applicat
 
 ## Fix 8: Namespace-Scoped ArgoCD Installation
 
-If ArgoCD is installed in namespace-scoped mode (not cluster-wide), it can only manage resources in specific namespaces. This is different from project restrictions:
+If ArgoCD was installed with the namespace-scoped manifests, the default RBAC is different from a cluster-wide installation. The official `namespace-install.yaml` is intended for setups that do not need ArgoCD to deploy workloads into the same cluster without additional credentials:
 
 ```bash
 # Check if ArgoCD is namespace-scoped
-kubectl get deployment argocd-application-controller -n argocd -o yaml | \
-  grep ARGOCD_APPLICATION_NAMESPACES
+kubectl get rolebinding -n argocd | grep argocd-application-controller
 ```
 
-If namespace-scoped, update the allowed namespaces:
+If you need this ArgoCD instance to deploy to namespaces in the same cluster, add the cluster with the namespaces it may manage, or update Kubernetes RBAC for the `argocd-application-controller` service account:
 
-```yaml
-# On the controller deployment
-env:
-  - name: ARGOCD_APPLICATION_NAMESPACES
-    value: "namespace1,namespace2,production"
+```bash
+argocd cluster add <CONTEXT> --in-cluster --namespace production
 ```
 
 ## Debugging the Error
