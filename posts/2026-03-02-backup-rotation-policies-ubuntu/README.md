@@ -90,7 +90,7 @@ log "Processing rotation for: $TODAYS_BACKUP"
 
 # Promote to weekly on Sundays (day 7)
 if [ "$DAY_OF_WEEK" -eq 7 ]; then
-    WEEKLY_BACKUP="$WEEKLY_DIR/weekly-$(date +%Y-W%V).tar.gz"
+    WEEKLY_BACKUP="$WEEKLY_DIR/weekly-$(date +%G-W%V).tar.gz"
     log "Sunday: Copying to weekly backup: $WEEKLY_BACKUP"
     cp "$TODAYS_BACKUP" "$WEEKLY_BACKUP"
 fi
@@ -174,7 +174,7 @@ for DB_TYPE in mysql postgresql; do
 
     # Weekly promotion on Sunday
     if [ "$DAY_OF_WEEK" -eq 7 ]; then
-        cp "$TODAY_BACKUP" "$WEEKLY_DIR/weekly-$(date +%Y-W%V)-$BASENAME"
+        cp "$TODAY_BACKUP" "$WEEKLY_DIR/weekly-$(date +%G-W%V)-$BASENAME"
         log "$DB_TYPE: Promoted to weekly"
     fi
 
