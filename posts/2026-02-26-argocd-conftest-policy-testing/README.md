@@ -31,8 +31,10 @@ flowchart LR
 brew install conftest
 
 # Linux
-curl -L https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz | \
-  tar xz -C /usr/local/bin/
+LATEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | \
+  grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+curl -L "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz" | \
+  sudo tar xz -C /usr/local/bin conftest
 
 # Verify installation
 conftest --version
@@ -48,7 +50,7 @@ Create `policy/deployment.rego`:
 package main
 
 # Deny deployments without resource limits
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.limits
@@ -56,7 +58,7 @@ deny[msg] {
 }
 
 # Deny deployments without resource requests
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.requests
@@ -64,7 +66,7 @@ deny[msg] {
 }
 
 # Deny deployments running as root
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.securityContext.runAsNonRoot
@@ -72,11 +74,12 @@ deny[msg] {
 }
 
 # Deny containers with privilege escalation
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
-    container.securityContext.privileged == true
-    msg := sprintf("Container '%s' in Deployment '%s' must not run as privileged", [container.name, input.metadata.name])
+    allow_privilege_escalation := object.get(object.get(container, "securityContext", {}), "allowPrivilegeEscalation", true)
+    allow_privilege_escalation
+    msg := sprintf("Container '%s' in Deployment '%s' must set allowPrivilegeEscalation: false", [container.name, input.metadata.name])
 }
 ```
 
@@ -87,11 +90,9 @@ Test it against a deployment:
 conftest test apps/my-app/deployment.yaml
 
 # Output:
-# FAIL - apps/my-app/deployment.yaml - main -
-#   Container 'my-app' in Deployment 'my-app' must have resource limits
-# FAIL - apps/my-app/deployment.yaml - main -
-#   Container 'my-app' in Deployment 'my-app' must set runAsNonRoot: true
-# 2 tests, 0 passed, 0 warnings, 2 failures
+# FAIL - apps/my-app/deployment.yaml - main - Container 'my-app' in Deployment 'my-app' must have resource limits
+# FAIL - apps/my-app/deployment.yaml - main - Container 'my-app' in Deployment 'my-app' must set runAsNonRoot: true
+# 2 tests, 0 passed, 0 warnings, 2 failures, 0 exceptions
 ```
 
 ## ArgoCD-Specific Policies
@@ -104,7 +105,7 @@ Create `policy/argocd.rego`:
 package main
 
 # ArgoCD Application must specify a project (not "default")
-deny[msg] {
+deny contains msg if {
     input.kind == "Application"
     input.apiVersion == "argoproj.io/v1alpha1"
     input.spec.project == "default"
@@ -112,15 +113,20 @@ deny[msg] {
 }
 
 # ArgoCD Application must have automated sync policy
-warn[msg] {
+warn contains msg if {
     input.kind == "Application"
     input.apiVersion == "argoproj.io/v1alpha1"
-    not input.spec.syncPolicy.automated
+    not automated_sync_enabled
     msg := sprintf("Application '%s' does not have automated sync enabled", [input.metadata.name])
 }
 
+automated_sync_enabled if {
+    input.spec.syncPolicy.automated
+    object.get(input.spec.syncPolicy.automated, "enabled", true)
+}
+
 # ArgoCD Application must target a specific revision (not HEAD)
-deny[msg] {
+deny contains msg if {
     input.kind == "Application"
     input.apiVersion == "argoproj.io/v1alpha1"
     input.spec.source.targetRevision == "HEAD"
@@ -128,16 +134,16 @@ deny[msg] {
 }
 
 # ArgoCD Application must have retry configured
-warn[msg] {
+warn contains msg if {
     input.kind == "Application"
     input.apiVersion == "argoproj.io/v1alpha1"
-    input.spec.syncPolicy.automated
+    automated_sync_enabled
     not input.spec.syncPolicy.retry
     msg := sprintf("Application '%s' has auto-sync but no retry policy", [input.metadata.name])
 }
 
 # ArgoCD AppProject must restrict source repos
-deny[msg] {
+deny contains msg if {
     input.kind == "AppProject"
     input.apiVersion == "argoproj.io/v1alpha1"
     source := input.spec.sourceRepos[_]
@@ -146,7 +152,7 @@ deny[msg] {
 }
 
 # ArgoCD AppProject must restrict destination clusters
-deny[msg] {
+deny contains msg if {
     input.kind == "AppProject"
     input.apiVersion == "argoproj.io/v1alpha1"
     dest := input.spec.destinations[_]
@@ -172,7 +178,7 @@ allowed_registries := [
 ]
 
 # Deny images from untrusted registries
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     image := container.image
@@ -180,13 +186,13 @@ deny[msg] {
     msg := sprintf("Container '%s' uses image '%s' from untrusted registry", [container.name, image])
 }
 
-image_from_allowed_registry(image) {
+image_from_allowed_registry(image) if {
     registry := allowed_registries[_]
-    startswith(image, registry)
+    startswith(image, sprintf("%s/", [registry]))
 }
 
 # Deny images using 'latest' tag
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     image := container.image
@@ -194,13 +200,23 @@ deny[msg] {
     msg := sprintf("Container '%s' uses 'latest' tag - pin to a specific version", [container.name])
 }
 
-# Deny images without a tag (defaults to latest)
-deny[msg] {
+# Deny images without a tag or digest (defaults to latest)
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     image := container.image
-    not contains(image, ":")
-    msg := sprintf("Container '%s' image '%s' has no tag - pin to a specific version", [container.name, image])
+    not image_has_tag_or_digest(image)
+    msg := sprintf("Container '%s' image '%s' has no tag or digest - pin to a specific version", [container.name, image])
+}
+
+image_has_tag_or_digest(image) if {
+    contains(image, "@sha256:")
+}
+
+image_has_tag_or_digest(image) if {
+    parts := split(image, "/")
+    name := parts[count(parts) - 1]
+    contains(name, ":")
 }
 ```
 
@@ -217,7 +233,7 @@ package main
 required_labels := ["app.kubernetes.io/name", "app.kubernetes.io/version", "team"]
 
 # Deny resources without required labels
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     label := required_labels[_]
     not input.metadata.labels[label]
@@ -225,13 +241,13 @@ deny[msg] {
 }
 
 # Deny deployments in the default namespace
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     not input.metadata.namespace
     msg := sprintf("Deployment '%s' must specify a namespace (not default)", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     input.metadata.namespace == "default"
     msg := sprintf("Deployment '%s' must not be in the default namespace", [input.metadata.name])
@@ -279,8 +295,10 @@ jobs:
 
       - name: Install Conftest
         run: |
-          curl -L https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz | \
-            tar xz -C /usr/local/bin/
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | \
+            grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          curl -L "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz" | \
+            sudo tar xz -C /usr/local/bin conftest
 
       - name: Run policy tests
         run: |
@@ -326,16 +344,16 @@ package main
 
 import data.allowed_registries
 
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not image_allowed(container.image)
     msg := sprintf("Image '%s' not from allowed registry", [container.image])
 }
 
-image_allowed(image) {
+image_allowed(image) if {
     registry := allowed_registries[_]
-    startswith(image, registry)
+    startswith(image, sprintf("%s/", [registry]))
 }
 ```
 
@@ -355,7 +373,7 @@ Use `warn` for policies you want to flag but not block on, and `deny` for hard r
 package main
 
 # Hard requirement - blocks deployment
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.limits
@@ -363,7 +381,7 @@ deny[msg] {
 }
 
 # Soft recommendation - shows warning
-warn[msg] {
+warn contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.readinessProbe
