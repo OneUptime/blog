@@ -123,13 +123,37 @@ Combine GeoIP variables with map for geographic routing:
 
 ```nginx
 http {
+    proxy_cache_path /var/cache/nginx/us levels=1:2 keys_zone=us_cache:10m;
+    proxy_cache_path /var/cache/nginx/eu levels=1:2 keys_zone=eu_cache:10m;
+    proxy_cache_path /var/cache/nginx/asia levels=1:2 keys_zone=asia_cache:10m;
+
+    upstream us_backend {
+        server 127.0.0.1:3000;
+    }
+
+    upstream eu_backend {
+        server 127.0.0.1:3001;
+    }
+
+    upstream de_backend {
+        server 127.0.0.1:3002;
+    }
+
+    upstream jp_backend {
+        server 127.0.0.1:3003;
+    }
+
+    upstream au_backend {
+        server 127.0.0.1:3004;
+    }
+
     # Map country codes to backends (requires GeoIP module)
     map $geoip2_data_country_code $regional_backend {
-        default    "http://us-backend.example.com";
-        EU         "http://eu-backend.example.com";
-        DE         "http://de-backend.example.com";
-        JP         "http://jp-backend.example.com";
-        AU         "http://au-backend.example.com";
+        default    "http://us_backend";
+        FR         "http://eu_backend";
+        DE         "http://de_backend";
+        JP         "http://jp_backend";
+        AU         "http://au_backend";
     }
 
     # Map countries to cache zones
@@ -284,31 +308,49 @@ http {
         "enterprise" "enterprise";
     }
 
-    # Second map: set rate limits based on the plan tier
-    map $plan_tier $rate_limit_zone {
-        default      "free_zone";
-        "basic"      "basic_zone";
-        "pro"        "pro_zone";
-        "enterprise" "enterprise_zone";
+    # Second set of maps: activate one rate-limit key based on the plan tier
+    map $plan_tier $free_limit_key {
+        default      $binary_remote_addr;
+        "basic"      "";
+        "pro"        "";
+        "enterprise" "";
+    }
+
+    map $plan_tier $basic_limit_key {
+        default      "";
+        "basic"      $binary_remote_addr;
+    }
+
+    map $plan_tier $pro_limit_key {
+        default      "";
+        "pro"        $binary_remote_addr;
+    }
+
+    map $plan_tier $enterprise_limit_key {
+        default      "";
+        "enterprise" $binary_remote_addr;
     }
 
     # Third map: set backend based on tier
     map $plan_tier $api_backend {
-        default      "http://shared-backend:3000";
-        "enterprise" "http://dedicated-backend:3000";
+        default      "http://127.0.0.1:3000";
+        "enterprise" "http://127.0.0.1:3001";
     }
 
-    limit_req_zone $binary_remote_addr zone=free_zone:10m rate=10r/m;
-    limit_req_zone $binary_remote_addr zone=basic_zone:10m rate=60r/m;
-    limit_req_zone $binary_remote_addr zone=pro_zone:10m rate=300r/m;
-    limit_req_zone $binary_remote_addr zone=enterprise_zone:10m rate=1000r/m;
+    limit_req_zone $free_limit_key zone=free_zone:10m rate=10r/m;
+    limit_req_zone $basic_limit_key zone=basic_zone:10m rate=60r/m;
+    limit_req_zone $pro_limit_key zone=pro_zone:10m rate=300r/m;
+    limit_req_zone $enterprise_limit_key zone=enterprise_zone:10m rate=1000r/m;
 
     server {
         listen 80;
         server_name api.example.com;
 
         location / {
-            limit_req zone=$rate_limit_zone burst=20 nodelay;
+            limit_req zone=free_zone burst=20 nodelay;
+            limit_req zone=basic_zone burst=20 nodelay;
+            limit_req zone=pro_zone burst=20 nodelay;
+            limit_req zone=enterprise_zone burst=20 nodelay;
             proxy_pass $api_backend;
         }
     }
