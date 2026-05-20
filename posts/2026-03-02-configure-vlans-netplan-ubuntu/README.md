@@ -123,8 +123,7 @@ network:
       link: enp3s0
       dhcp4: true           # get address via DHCP on VLAN 20
       dhcp4-overrides:
-        route-metric: 200   # secondary, only used if VLAN 10 fails
-        use-routes: false   # do not add another default route
+        use-routes: false   # ignore DHCP routes from VLAN 20
 ```
 
 ## VLANs on a Bond Interface
