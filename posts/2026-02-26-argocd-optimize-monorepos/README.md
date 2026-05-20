@@ -8,7 +8,7 @@ Description: Learn how to optimize ArgoCD for monorepo deployments including man
 
 ---
 
-Monorepos - single repositories containing multiple applications, services, or infrastructure configurations - are popular in organizations that value code sharing and atomic cross-service changes. However, monorepos create unique challenges for ArgoCD. Every push to the repo triggers reconciliation for every application, even if the change only affects one service. The repo server must clone the entire monorepo for each operation. Webhook notifications lack granularity. This guide covers the specific optimizations needed to make ArgoCD work efficiently with monorepos.
+Monorepos - single repositories containing multiple applications, services, or infrastructure configurations - are popular in organizations that value code sharing and atomic cross-service changes. However, monorepos create unique challenges for ArgoCD. A new commit can invalidate cached manifests for many applications, even if the change only affects one service. The repo server must keep a local checkout of the monorepo and generate manifests from the relevant paths. Webhook notifications need path awareness to avoid unnecessary refreshes. This guide covers the specific optimizations needed to make ArgoCD work efficiently with monorepos.
 
 ## The Monorepo Challenge
 
@@ -43,7 +43,7 @@ graph TD
     API --> R2[Refresh user-service]
     API --> R3[Refresh order-service]
     API --> R4[Refresh ... 47 more apps]
-    R1 --> RS[Repo Server: Clone entire monorepo for each]
+    R1 --> RS[Repo Server: Fetch repo and generate manifests]
 ```
 
 ## Optimization 1: Use ApplicationSet with Git Generator
@@ -83,22 +83,24 @@ spec:
           - CreateNamespace=true
 ```
 
-The ApplicationSet performs a single Git clone to discover all directories, which is more efficient than each application cloning independently.
+The ApplicationSet Git generator discovers services from the repository and creates the Applications consistently, which is more manageable than maintaining each Application by hand.
 
 ## Optimization 2: Enable Shallow Clone
 
 For monorepos especially, shallow clones make a huge difference:
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
-
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cmd-params-cm
+  name: monorepo
   namespace: argocd
-data:
-  reposerver.git.shallow.clone: "true"
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/org/monorepo
+  depth: "1"
 ```
 
 A 2GB monorepo with years of history might shallow-clone at under 100MB.
@@ -157,46 +159,32 @@ spec:
               mountPath: /tmp
 ```
 
+This example uses a `ReadWriteOnce` volume, which is appropriate for a single repo-server pod. If you scale the repo server horizontally, use one cache volume per replica or a storage backend that supports the access mode required by your deployment.
+
 ## Optimization 5: Webhook with Path Filtering
 
-Standard Git webhooks trigger ArgoCD for every push, regardless of what changed. While ArgoCD itself does not support path-based webhook filtering, you can use a webhook proxy to add this intelligence:
-
-### Using a Simple Webhook Proxy
-
-Deploy a lightweight proxy that inspects push payloads and only forwards relevant notifications:
+Standard Git webhooks can trigger unnecessary work for applications that share a repository. ArgoCD supports the `argocd.argoproj.io/manifest-generate-paths` annotation to avoid refreshing applications when the changed files do not match the paths used for manifest generation:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: argocd-webhook-proxy
+  name: user-service
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/manifest-generate-paths: .
 spec:
-  replicas: 1
-  template:
-    spec:
-      containers:
-        - name: proxy
-          image: python:3.11-slim
-          command:
-            - python
-            - /app/proxy.py
-          ports:
-            - containerPort: 8080
-          volumeMounts:
-            - name: proxy-script
-              mountPath: /app
-      volumes:
-        - name: proxy-script
-          configMap:
-            name: webhook-proxy-script
+  source:
+    repoURL: https://github.com/org/monorepo
+    targetRevision: main
+    path: services/user-service/manifests
 ```
 
-The proxy script examines which files changed and only notifies ArgoCD about applications whose paths were affected. While implementing a full proxy is beyond the scope of this post, the concept is to compare changed file paths against application source paths.
+The annotation is a semicolon-separated list of paths used to generate manifests. Relative paths are resolved from the application source path, so `.` means `services/user-service/manifests` in this example. For webhooks, ArgoCD compares the changed files in the webhook payload against these paths.
 
 ### Alternative: Increase Reconciliation Interval
 
-If a webhook proxy is too complex, simply accept that all applications will be refreshed but make it less frequent:
+If you use webhooks, you can also reduce polling frequency so ArgoCD checks repositories less often when no webhook arrives:
 
 ```yaml
 # argocd-cm ConfigMap
@@ -206,7 +194,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  timeout.reconciliation: "600"
+  timeout.reconciliation: "10m"
 ```
 
 ## Optimization 6: Directory Include/Exclude
@@ -270,16 +258,16 @@ data:
   reposerver.parallelism.limit: "5"
 ```
 
-This is especially important for monorepos because a webhook triggers refresh on all applications at once. Without a limit, the repo server tries to serve 50+ requests simultaneously.
+This is especially important for monorepos without path-aware refresh behavior because a webhook can trigger refreshes for many applications at once. Without a limit, the repo server may try to serve 50+ requests simultaneously.
 
 ## Optimization 9: Add Reconciliation Jitter
 
 Prevent the thundering herd when all monorepo applications reconcile together:
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
+# argocd-cm ConfigMap
 data:
-  controller.reconciliation.jitter: "120"
+  timeout.reconciliation.jitter: "120s"
 ```
 
 ## Optimization 10: Use Multiple Sources for Shared Config
@@ -358,5 +346,5 @@ For comprehensive monitoring of your monorepo ArgoCD performance including clone
 - Add reconciliation jitter to spread load after webhook-triggered refreshes
 - Use directory include/exclude to skip non-manifest files
 - Scale the repo server horizontally and increase memory for large monorepos
-- Consider a webhook proxy for path-based filtering to avoid unnecessary refreshes
+- Use manifest-generate-paths for path-aware refresh behavior
 - Structure your monorepo with predictable manifest directories for clean ArgoCD integration
