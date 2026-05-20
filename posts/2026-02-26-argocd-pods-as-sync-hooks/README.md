@@ -22,7 +22,7 @@ Use bare Pods when:
 
 Use Jobs when:
 - You need automatic retries (`backoffLimit`)
-- You need timeout enforcement (`activeDeadlineSeconds`)
+- You need timeout enforcement across retries (`activeDeadlineSeconds`)
 - You need parallel execution (`parallelism`)
 - You need completion tracking for multiple tasks (`completions`)
 
@@ -39,13 +39,13 @@ metadata:
 spec:
   containers:
     - name: check
-      image: curlimages/curl:latest
+      image: busybox:1.36
       command:
         - /bin/sh
         - -c
         - |
           echo "Checking database connectivity..."
-          curl -sf http://postgres:5432/ || { echo "Database unavailable"; exit 1; }
+          nc -z -w 5 postgres 5432 || { echo "Database unavailable"; exit 1; }
           echo "Database is ready"
   restartPolicy: Never
 ```
@@ -79,7 +79,7 @@ metadata:
 spec:
   containers:
     - name: check
-      image: curlimages/curl:latest
+      image: busybox:1.36
       command:
         - /bin/sh
         - -c
@@ -87,13 +87,13 @@ spec:
           FAILURES=0
 
           # Check database
-          curl -sf http://postgres:5432/ > /dev/null 2>&1 || {
+          nc -z -w 5 postgres 5432 > /dev/null 2>&1 || {
             echo "FAIL: Database unreachable"
             FAILURES=$((FAILURES + 1))
           }
 
           # Check Redis
-          curl -sf http://redis:6379/ > /dev/null 2>&1 || {
+          nc -z -w 5 redis 6379 > /dev/null 2>&1 || {
             echo "FAIL: Redis unreachable"
             FAILURES=$((FAILURES + 1))
           }
@@ -217,7 +217,7 @@ spec:
 | Feature | Pod Hook | Job Hook |
 |---------|:---:|:---:|
 | Automatic retries | No | Yes (backoffLimit) |
-| Timeout enforcement | No (Pod runs until killed) | Yes (activeDeadlineSeconds) |
+| Timeout enforcement | Yes (activeDeadlineSeconds or script logic) | Yes (activeDeadlineSeconds) |
 | Parallel execution | No | Yes (parallelism) |
 | Completion tracking | Basic (Succeeded/Failed) | Rich (succeeded/failed counts) |
 | Resource overhead | Minimal | Slight (Job controller) |
@@ -226,7 +226,7 @@ spec:
 
 ## Adding Timeout to Pod Hooks
 
-Since Pods do not have `activeDeadlineSeconds` like Jobs, you need to implement timeouts yourself:
+Pods support `activeDeadlineSeconds`, and you can also implement command-level timeouts yourself:
 
 ```yaml
 apiVersion: v1
@@ -237,7 +237,7 @@ metadata:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  # Pod-level timeout (Kubernetes 1.28+)
+  # Pod-level timeout
   activeDeadlineSeconds: 120
   containers:
     - name: check
@@ -255,7 +255,7 @@ spec:
   restartPolicy: Never
 ```
 
-Note: Pod-level `activeDeadlineSeconds` was added in Kubernetes 1.28. For older versions, use the `timeout` command within the script.
+Note: `activeDeadlineSeconds` limits how long the Pod may be active before Kubernetes tries to mark it failed and terminate its containers. Script-level timeouts are still useful when you want a shorter timeout for one command inside the hook.
 
 ## Handling Pod Failures
 
