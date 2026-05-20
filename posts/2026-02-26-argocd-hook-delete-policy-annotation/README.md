@@ -8,7 +8,7 @@ Description: Learn how to use the ArgoCD hook-delete-policy annotation to manage
 
 ---
 
-Every time ArgoCD runs a sync hook (a PreSync, PostSync, or SyncFail Job), it creates a Kubernetes resource. Without a delete policy, these resources accumulate in your cluster. After 50 deployments, you have 50 completed migration Jobs, 50 smoke test Jobs, and 50 notification Jobs cluttering your namespace. The `argocd.argoproj.io/hook-delete-policy` annotation controls when these hook resources are cleaned up.
+Every time ArgoCD runs a sync hook (a PreSync, PostSync, or SyncFail Job), it applies a Kubernetes resource. With generated hook names or delete policies that preserve completed resources, these resources can accumulate in your cluster. After 50 deployments, you might have 50 completed migration Jobs, 50 smoke test Jobs, and 50 notification Jobs cluttering your namespace. The `argocd.argoproj.io/hook-delete-policy` annotation controls when these hook resources are cleaned up.
 
 ## Available delete policies
 
@@ -68,7 +68,7 @@ spec:
 **Pros:**
 - The last hook result is always visible in the cluster for debugging
 - Clean state before each new run
-- Works well with Jobs that need unique names per run
+- Works well with Jobs that use a fixed `metadata.name`
 
 **Cons:**
 - One stale hook resource always exists between syncs
@@ -83,7 +83,7 @@ ArgoCD deletes the hook resource immediately after it completes successfully.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: smoke-test
+  generateName: smoke-test-
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
@@ -121,7 +121,7 @@ ArgoCD deletes the hook resource if it fails. Successful hooks remain.
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: deploy-report
+  generateName: deploy-report-
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookFailed
@@ -180,7 +180,7 @@ annotations:
   argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 ```
 
-Behavior: Exactly one instance of the hook always exists in the cluster - either running or completed. Provides maximum debugging information.
+Behavior: For a hook with a fixed `metadata.name`, exactly one instance of the hook always exists in the cluster - either running or completed. Provides maximum debugging information.
 
 ## Policy recommendations by hook type
 
@@ -205,7 +205,7 @@ annotations:
   argocd.argoproj.io/hook-delete-policy: HookSucceeded
 ```
 
-Why: Successful smoke tests are not interesting - you only care about failures. HookSucceeded removes the clutter while preserving failed test Jobs for debugging.
+Why: Successful smoke tests are not interesting - you only care about failures. HookSucceeded removes the clutter while preserving failed test Jobs for debugging. If the hook uses a fixed `metadata.name`, combine this with `BeforeHookCreation` so the hook can be recreated after a failed run.
 
 ### Notifications
 
@@ -298,7 +298,7 @@ spec:
       restartPolicy: Never
 ```
 
-The `ttlSecondsAfterFinished` field is a Kubernetes-native feature that works as a secondary cleanup mechanism, catching any Jobs that ArgoCD's delete policy missed.
+The `ttlSecondsAfterFinished` field is a Kubernetes-native feature that works as a secondary cleanup mechanism, catching any Jobs that ArgoCD's delete policy missed. Be aware that TTL-based deletion can make an ArgoCD Application appear OutOfSync because the Job still exists in Git but has been removed from the cluster.
 
 ## Debugging delete policy issues
 
