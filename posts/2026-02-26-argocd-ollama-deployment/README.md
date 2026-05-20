@@ -8,7 +8,7 @@ Description: Learn how to deploy Ollama for local LLM serving on Kubernetes usin
 
 ---
 
-Ollama makes running large language models as simple as running a Docker container. It handles model downloads, quantization, and serving through a clean REST API. While vLLM is optimized for maximum throughput in production, Ollama excels at ease of use - making it ideal for internal tools, development environments, and teams that want LLM capabilities without the complexity of a full ML serving platform. Deploying Ollama through ArgoCD gives you a GitOps-managed LLM service that your team can rely on.
+Ollama makes running large language models as simple as running a Docker container. It handles model downloads, model management, and serving through a clean REST API. While vLLM is optimized for maximum throughput in production, Ollama excels at ease of use - making it ideal for internal tools, development environments, and teams that want LLM capabilities without the complexity of a full ML serving platform. Deploying Ollama through ArgoCD gives you a GitOps-managed LLM service that your team can rely on.
 
 This guide covers deploying Ollama on Kubernetes with ArgoCD, including model management, GPU configuration, and scaling for team use.
 
@@ -53,7 +53,7 @@ spec:
     spec:
       containers:
         - name: ollama
-          image: ollama/ollama:0.1.27
+          image: ollama/ollama:0.24.0
           ports:
             - containerPort: 11434
               name: http
@@ -141,7 +141,7 @@ spec:
     spec:
       containers:
         - name: ollama
-          image: ollama/ollama:0.1.27
+          image: ollama/ollama:0.24.0
           ports:
             - containerPort: 11434
           env:
@@ -180,7 +180,7 @@ spec:
 
 ## Preloading Models
 
-Ollama downloads models on first request, which causes a long delay. Preload models during deployment with an init container:
+Ollama loads models into memory on first use, and pulling large models during rollout can take a long time. Preload models during deployment with an init container:
 
 ```yaml
 apiVersion: apps/v1
@@ -193,7 +193,7 @@ spec:
       initContainers:
         # Start Ollama temporarily to pull models
         - name: model-preloader
-          image: ollama/ollama:0.1.27
+          image: ollama/ollama:0.24.0
           command:
             - sh
             - -c
@@ -229,7 +229,7 @@ spec:
               mountPath: /root/.ollama
       containers:
         - name: ollama
-          image: ollama/ollama:0.1.27
+          image: ollama/ollama:0.24.0
           # ... rest of container spec
 ```
 
@@ -255,6 +255,7 @@ data:
     #!/bin/sh
     # Start Ollama server in the background
     ollama serve &
+    SERVER_PID=$!
     sleep 5
 
     # Pull each model from the list
@@ -271,7 +272,7 @@ data:
     done < /config/models.txt
 
     echo "Model preloading complete"
-    kill %1
+    kill "$SERVER_PID"
 ```
 
 Update the init container to use this config:
@@ -279,7 +280,7 @@ Update the init container to use this config:
 ```yaml
 initContainers:
   - name: model-preloader
-    image: ollama/ollama:0.1.27
+    image: ollama/ollama:0.24.0
     command:
       - sh
       - /config/pull-script.sh
@@ -299,7 +300,7 @@ To add or update a model, just update the ConfigMap in Git:
 
 ```bash
 # Add a new model
-echo "mixtral:8x7b" >> models.txt
+vi apps/ollama/model-config.yaml
 git add apps/ollama/model-config.yaml
 git commit -m "Add Mixtral 8x7B model to Ollama"
 git push
@@ -341,17 +342,19 @@ Load custom models in the init container:
 ```yaml
 initContainers:
   - name: model-preloader
-    image: ollama/ollama:0.1.27
+    image: ollama/ollama:0.24.0
     command:
       - sh
       - -c
       - |
         ollama serve &
+        SERVER_PID=$!
         sleep 5
 
         # Pull base models
         while IFS= read -r model; do
           [ -z "$model" ] && continue
+          echo "$model" | grep -q '^#' && continue
           ollama pull "$model"
         done < /config/models.txt
 
@@ -362,7 +365,7 @@ initContainers:
           ollama create "$name" -f "$modelfile"
         done
 
-        kill %1
+        kill "$SERVER_PID"
     volumeMounts:
       - name: ollama-data
         mountPath: /root/.ollama
@@ -378,7 +381,7 @@ volumes:
 
 ## Exposing the Ollama API
 
-Set up ingress with authentication for team access:
+Set up ingress with authentication for team access. Create the referenced `ollama-basic-auth` Secret in the same namespace before syncing this Ingress:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -510,6 +513,12 @@ spec:
           containers:
             - name: check
               image: curlimages/curl:8.5.0
+              env:
+                - name: SLACK_WEBHOOK
+                  valueFrom:
+                    secretKeyRef:
+                      name: slack-webhook
+                      key: url
               command:
                 - sh
                 - -c
@@ -520,15 +529,17 @@ spec:
                   if [ "$status" != "200" ]; then
                     echo "Ollama unhealthy: HTTP $status"
                     # Send alert
-                    curl -X POST "$SLACK_WEBHOOK" \
-                      -H "Content-Type: application/json" \
-                      -d '{"text":"Ollama health check failed"}'
+                    if [ -n "$SLACK_WEBHOOK" ]; then
+                      curl -X POST "$SLACK_WEBHOOK" \
+                        -H "Content-Type: application/json" \
+                        -d '{"text":"Ollama health check failed"}'
+                    fi
                     exit 1
                   fi
 
-                  # List loaded models
-                  models=$(curl -s http://ollama.default.svc:11434/api/tags)
-                  echo "Available models: $models"
+                  # List models currently loaded into memory
+                  models=$(curl -s http://ollama.default.svc:11434/api/ps)
+                  echo "Running models: $models"
 ```
 
 Use OneUptime to monitor Ollama API latency, track model loading times, and alert when the service becomes unresponsive or inference times spike.
@@ -567,7 +578,7 @@ For high-throughput production LLM serving, see our guide on [deploying vLLM wit
 
 ## Best Practices
 
-1. **Preload models** - Use init containers to download models before the main container starts. First-request downloads cause unacceptable latency.
+1. **Preload models** - Use init containers to download models before the main container starts. On-demand pulls and first-request model loads cause unacceptable latency.
 2. **Use persistent storage** - Store models on PVCs so they survive pod restarts without re-downloading.
 3. **Set OLLAMA_KEEP_ALIVE** - Keep models loaded in memory between requests to avoid reload latency.
 4. **Right-size GPU memory** - A 7B model needs roughly 4GB GPU RAM (quantized). A 13B model needs roughly 8GB.
