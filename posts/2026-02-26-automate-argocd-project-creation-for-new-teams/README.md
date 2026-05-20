@@ -8,7 +8,7 @@ Description: Learn how to automate ArgoCD AppProject creation for new teams with
 
 ---
 
-Every time a new team spins up in your organization, they need an ArgoCD project. That project needs the right source repositories, destination namespaces, resource quotas, RBAC roles, and sync windows. Doing this manually is slow, error-prone, and inconsistent. This guide shows you how to automate ArgoCD project creation so that new teams get a fully configured, secure project in minutes.
+Every time a new team spins up in your organization, they need an ArgoCD project. That project needs the right source repositories, destination namespaces, RBAC roles, and sync windows, and the onboarding workflow should also create matching namespace resource quotas. Doing this manually is slow, error-prone, and inconsistent. This guide shows you how to automate ArgoCD project creation so that new teams get a fully configured, secure project in minutes.
 
 ## What an ArgoCD Project Needs
 
@@ -43,22 +43,36 @@ echo "Creating ArgoCD project for team: ${TEAM_NAME} (tier: ${TIER})"
 # Define tier-based settings
 case "${TIER}" in
   standard)
-    MAX_APPS=20
     ALLOW_CLUSTER_RESOURCES="false"
-    SYNC_WINDOW_DENY=""
-    DESTINATIONS_SERVERS='["https://kubernetes.default.svc"]'
+    DESTINATIONS=$(cat <<DEST
+    - namespace: "${TEAM_NAME}-*"
+      server: "https://kubernetes.default.svc"
+    - namespace: "${TEAM_NAME}"
+      server: "https://kubernetes.default.svc"
+DEST
+)
     ;;
   premium)
-    MAX_APPS=50
     ALLOW_CLUSTER_RESOURCES="false"
-    SYNC_WINDOW_DENY=""
-    DESTINATIONS_SERVERS='["https://kubernetes.default.svc","https://staging.k8s.example.com"]'
+    DESTINATIONS=$(cat <<DEST
+    - namespace: "${TEAM_NAME}-*"
+      server: "https://kubernetes.default.svc"
+    - namespace: "${TEAM_NAME}"
+      server: "https://kubernetes.default.svc"
+    - namespace: "${TEAM_NAME}-*"
+      server: "https://staging.k8s.example.com"
+DEST
+)
     ;;
   platform)
-    MAX_APPS=100
     ALLOW_CLUSTER_RESOURCES="true"
-    SYNC_WINDOW_DENY=""
-    DESTINATIONS_SERVERS='["*"]'
+    DESTINATIONS=$(cat <<DEST
+    - namespace: "${TEAM_NAME}-*"
+      server: "*"
+    - namespace: "${TEAM_NAME}"
+      server: "*"
+DEST
+)
     ;;
   *)
     echo "ERROR: Unknown tier '${TIER}'. Use: standard, premium, or platform"
@@ -94,10 +108,7 @@ spec:
 
   # Destination restrictions
   destinations:
-    - namespace: "${TEAM_NAME}-*"
-      server: "https://kubernetes.default.svc"
-    - namespace: "${TEAM_NAME}"
-      server: "https://kubernetes.default.svc"
+${DESTINATIONS}
 
   # Namespace-scoped resource whitelist
   namespaceResourceWhitelist:
@@ -166,7 +177,7 @@ spec:
         - "p, proj:${TEAM_NAME}:ci, applications, sync, ${TEAM_NAME}/*, allow"
         - "p, proj:${TEAM_NAME}:ci, applications, get, ${TEAM_NAME}/*, allow"
 
-  # Sync windows - block production deployments on weekends for standard tier
+  # Sync windows - allow weekday syncs and block production deployments on weekends
   syncWindows:
     - kind: allow
       schedule: "0 8 * * 1-5"
