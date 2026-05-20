@@ -49,7 +49,7 @@ kubectl get pods -n argo-rollouts
 For traffic management, you also need one of these:
 - NGINX Ingress Controller
 - Istio service mesh
-- AWS ALB Ingress Controller
+- AWS Load Balancer Controller (ALB)
 - Traefik
 - Or just basic Kubernetes replica-based traffic splitting (no ingress controller required)
 
@@ -260,7 +260,7 @@ strategy:
       - pause: {duration: 5m}
 ```
 
-If the analysis fails, Argo Rollouts automatically rolls back the canary.
+If the analysis fails, Argo Rollouts aborts the update and sends traffic back to the stable ReplicaSet. The Rollout stays on the newer desired spec until Git is updated back to the stable version or the rollout is retried.
 
 ## ArgoCD Application Configuration
 
@@ -298,11 +298,11 @@ kubectl argo rollouts get rollout my-app -n production --watch
 # Check current step
 kubectl argo rollouts status my-app -n production
 
-# View the canary weight
+# Check the current step index
 kubectl get rollout my-app -n production -o jsonpath='{.status.currentStepIndex}'
 ```
 
-In the ArgoCD UI, the Rollout resource will show as "Progressing" during the canary process.
+In the ArgoCD UI, the Rollout resource will show as "Progressing" or "Suspended" during the canary process, depending on whether it is actively advancing or paused.
 
 ## Manual Intervention
 
