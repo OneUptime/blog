@@ -44,46 +44,38 @@ This report shows all deployments within a given time period.
 
 START_DATE="$1"
 END_DATE="$2"
-ARGOCD_SERVER="https://argocd.myorg.com"
 OUTPUT_FILE="deployment-report-${START_DATE}-to-${END_DATE}.json"
+GENERATED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 echo "Generating deployment report for $START_DATE to $END_DATE"
 
-# Get all applications
-APPS=$(argocd app list -o json | jq -r '.[].metadata.name')
-
-echo '{"report_type": "deployment_history",' > "$OUTPUT_FILE"
-echo "\"period\": {\"start\": \"$START_DATE\", \"end\": \"$END_DATE\"}," >> "$OUTPUT_FILE"
-echo '"generated_at": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'",' >> "$OUTPUT_FILE"
-echo '"deployments": [' >> "$OUTPUT_FILE"
-
-FIRST=true
-for APP in $APPS; do
-  # Get application history
-  HISTORY=$(argocd app history "$APP" -o json 2>/dev/null)
-  if [ -n "$HISTORY" ]; then
-    echo "$HISTORY" | jq -c --arg start "$START_DATE" --arg end "$END_DATE" \
-      --arg app "$APP" \
-      '.[] | select(.deployedAt >= $start and .deployedAt <= $end) |
+# Get each application and read deployment history from its status
+argocd app list -o json | jq -r '.[].metadata.name' | while IFS= read -r APP; do
+  argocd app get "$APP" -o json 2>/dev/null | jq -c \
+    --arg start "${START_DATE}T00:00:00Z" \
+    --arg end "${END_DATE}T00:00:00Z" \
+    --arg app "$APP" \
+    '. as $application |
+      .status.history[]? |
+      select(.deployedAt >= $start and .deployedAt < $end) |
       {
         application: $app,
         revision: .revision,
         deployed_at: .deployedAt,
         id: .id,
-        source: .source
-      }' | while read -r RECORD; do
-        if [ "$FIRST" = true ]; then
-          FIRST=false
-        else
-          echo "," >> "$OUTPUT_FILE"
-        fi
-        echo "$RECORD" >> "$OUTPUT_FILE"
-      done
-  fi
-done
-
-echo ']' >> "$OUTPUT_FILE"
-echo '}' >> "$OUTPUT_FILE"
+        source: (.source // $application.spec.source // null),
+        sources: (.sources // $application.spec.sources // null)
+      }'
+done | jq -s \
+  --arg start "$START_DATE" \
+  --arg end "$END_DATE" \
+  --arg generated_at "$GENERATED_AT" \
+  '{
+    report_type: "deployment_history",
+    period: {start: $start, end: $end},
+    generated_at: $generated_at,
+    deployments: .
+  }' > "$OUTPUT_FILE"
 
 echo "Report saved to $OUTPUT_FILE"
 ```
@@ -117,9 +109,10 @@ echo ""
 # Get ArgoCD accounts (local accounts)
 echo "=== Local Accounts ==="
 kubectl get configmap argocd-cm -n argocd -o json | \
-  jq '[to_entries[] | select(.key | startswith("accounts.")) | {
-    account: (.key | ltrimstr("accounts.")),
-    capabilities: .value
+  jq '.data as $data | [$data | to_entries[] | select(.key | test("^accounts\\.[^.]+$")) | .key as $key | {
+    account: ($key | ltrimstr("accounts.")),
+    capabilities: .value,
+    enabled: ($data["\($key).enabled"] // "true")
   }]'
 echo ""
 
@@ -163,7 +156,7 @@ argocd app list -o json | jq '[.[] | select(.status.sync.status == "OutOfSync") 
   application: .metadata.name,
   namespace: .spec.destination.namespace,
   sync_status: .status.sync.status,
-  diff_count: (.status.resources | map(select(.status == "OutOfSync")) | length)
+  diff_count: ((.status.resources // []) | map(select(.status == "OutOfSync")) | length)
 }]'
 
 echo ""
@@ -180,7 +173,7 @@ argocd app list -o json | jq '.[] | {
 
 ## Report 4: Policy Enforcement Report
 
-If you use Kyverno or OPA Gatekeeper, generate policy compliance reports.
+If you use Kyverno, generate policy compliance reports. Gatekeeper exposes similar audit results through constraint status and metrics.
 
 ```bash
 #!/bin/bash
@@ -214,9 +207,12 @@ echo ""
 echo "=== Active Policies ==="
 kubectl get clusterpolicy -o json | jq '.items[] | {
   name: .metadata.name,
-  enforcement_action: .spec.validationFailureAction,
   background: .spec.background,
-  rules_count: (.spec.rules | length)
+  rules_count: (.spec.rules | length),
+  validation_rules: [.spec.rules[]? | select(.validate) | {
+    name: .name,
+    failure_action: (.validate.failureAction // "not set")
+  }]
 }'
 ```
 
@@ -251,16 +247,18 @@ spec:
 
                   # Generate all reports
                   ./generate-deployment-report.sh "$START_DATE" "$END_DATE"
-                  ./generate-access-report.sh
-                  ./generate-drift-report.sh
-                  ./generate-policy-report.sh
+                  mv "deployment-report-${START_DATE}-to-${END_DATE}.json" /reports/
+                  ./generate-access-report.sh > "/reports/access-report-${START_DATE}-to-${END_DATE}.txt"
+                  ./generate-drift-report.sh > "/reports/drift-report-${START_DATE}-to-${END_DATE}.txt"
+                  ./generate-policy-report.sh > "/reports/policy-report-${START_DATE}-to-${END_DATE}.txt"
 
                   # Combine into a single compliance package
                   tar czf "/reports/compliance-${START_DATE}-${END_DATE}.tar.gz" \
-                    deployment-report-*.json \
-                    access-report-*.json \
-                    drift-report-*.json \
-                    policy-report-*.json
+                    -C /reports \
+                    "deployment-report-${START_DATE}-to-${END_DATE}.json" \
+                    "access-report-${START_DATE}-to-${END_DATE}.txt" \
+                    "drift-report-${START_DATE}-to-${END_DATE}.txt" \
+                    "policy-report-${START_DATE}-to-${END_DATE}.txt"
 
                   # Upload to S3
                   aws s3 cp "/reports/compliance-${START_DATE}-${END_DATE}.tar.gz" \
@@ -270,7 +268,7 @@ spec:
                   curl -X POST "$SLACK_WEBHOOK" \
                     -H "Content-Type: application/json" \
                     -d "{\"text\": \"Monthly compliance report generated for ${START_DATE} to ${END_DATE}\"}"
-              volumMounts:
+              volumeMounts:
                 - name: reports
                   mountPath: /reports
           volumes:
@@ -287,20 +285,21 @@ Build a real-time compliance dashboard using ArgoCD metrics.
 # Key Prometheus queries for compliance dashboards
 
 # Sync success rate (should be > 95%)
-# sum(argocd_app_sync_total{phase="Succeeded"}) /
-#   sum(argocd_app_sync_total) * 100
+# sum(increase(argocd_app_sync_total{phase="Succeeded"}[30d])) /
+#   sum(increase(argocd_app_sync_total[30d])) * 100
 
-# Applications with auto-sync enabled
-# count(argocd_app_info{autosync_enabled="true"})
+# Healthy applications
+# count(argocd_app_info{health_status="Healthy"})
 
 # Applications currently out of sync
 # count(argocd_app_info{sync_status="OutOfSync"})
 
-# Average time to sync (mean time to deploy)
-# avg(argocd_app_sync_total_seconds)
+# Average sync duration over 30 days
+# sum(increase(argocd_app_sync_duration_seconds_total[30d])) /
+#   sum(increase(argocd_app_sync_total[30d]))
 
-# Policy violations over time
-# sum(increase(gatekeeper_violations[1h])) by (constraint)
+# Current audited policy violations
+# sum(gatekeeper_violations) by (enforcement_action)
 ```
 
 ## Report Formats for Different Audiences
