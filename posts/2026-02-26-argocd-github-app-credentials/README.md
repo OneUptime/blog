@@ -54,11 +54,11 @@ ls ~/Downloads/argocd-gitops-production.2026-02-26.private-key.pem
 
 Still on the GitHub App settings page, click "Install App" in the left sidebar. Choose your organization and select which repositories ArgoCD should have access to. You can grant access to all repositories or select specific ones.
 
-After installation, note the Installation ID from the URL. It will be in the URL bar as something like `https://github.com/settings/installations/12345678`. That number at the end is your Installation ID.
+After installation, you can note the Installation ID from the URL if you want to configure it explicitly. It will be in the URL bar as something like `https://github.com/settings/installations/12345678`. That number at the end is your Installation ID.
 
 ## Step 4: Configure ArgoCD with GitHub App Credentials
 
-Now you need to provide ArgoCD with three pieces of information: the App ID, the Installation ID, and the private key.
+Now you need to provide ArgoCD with the App ID and the private key. You can also provide the Installation ID explicitly, as shown below; if you omit it, ArgoCD can automatically discover the installation ID based on the repository's organization.
 
 ### Using the CLI
 
