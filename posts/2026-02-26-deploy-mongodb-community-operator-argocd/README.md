@@ -293,7 +293,7 @@ Once the replica set is running, applications connect through the generated conn
 mongodb://app-user:<password>@production-mongodb-0.production-mongodb-svc.databases.svc.cluster.local:27017,production-mongodb-1.production-mongodb-svc.databases.svc.cluster.local:27017,production-mongodb-2.production-mongodb-svc.databases.svc.cluster.local:27017/application?replicaSet=production-mongodb&authSource=admin
 ```
 
-The operator creates a ConfigMap with the connection string that your applications can reference.
+The operator creates a Secret (named `<resource-name>-<db>-<user>`) containing the connection strings and credentials that your applications can reference.
 
 ## Scaling the Replica Set
 
