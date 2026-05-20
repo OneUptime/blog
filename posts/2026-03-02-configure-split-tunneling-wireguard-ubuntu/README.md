@@ -82,22 +82,20 @@ Sometimes you want everything through the VPN except specific addresses (like yo
 For example, to route everything except `192.168.1.0/24`:
 
 ```ini
-AllowedIPs = 0.0.0.0/1, 128.0.0.0/1  # This is equivalent to 0.0.0.0/0 but allows adding exclusions
+AllowedIPs = 0.0.0.0/1, 128.0.0.0/2, 192.0.0.0/9, ...
+# Continue with the full complementary CIDR list that excludes 192.168.1.0/24
 ```
 
 The WireGuard AllowedIPs Calculator is useful here:
 
 ```bash
-# Install the wg-quick wrapper
-# Most Ubuntu systems use wg-quick which does this calculation automatically
-
 # Example: AllowedIPs that covers everything except 192.168.1.0/24
 # Use the "CIDR hole" technique:
 # 0.0.0.0/5, 8.0.0.0/7, 10.0.0.0/8, 11.0.0.0/8, 12.0.0.0/6, ...
 # (too long to write manually - use a calculator tool)
 ```
 
-Use the `wg-allowedips` tool or online calculators to generate the proper CIDR list.
+Use an AllowedIPs calculator to generate the proper CIDR list. `wg-quick` will add routes for the `AllowedIPs` you configure, but it does not calculate exclusions automatically.
 
 ## Policy-Based Routing for Advanced Split Tunneling
 
@@ -106,6 +104,8 @@ For more complex scenarios where routing decisions depend on source address, use
 ### Mark Specific Processes for VPN Routing
 
 This approach marks network traffic from specific processes and routes marked traffic through the VPN:
+
+For this pattern, the WireGuard peer still needs `AllowedIPs` broad enough for the marked destinations, often `0.0.0.0/0, ::/0`, while `Table = off` or a custom `Table` prevents `wg-quick` from putting those broad routes in the main table.
 
 ```bash
 # Create a separate routing table for VPN traffic
@@ -126,7 +126,7 @@ Now any traffic from user with UID 1001 goes through the VPN, while other users 
 
 ### Application-Specific VPN Routing with cgroups
 
-A cleaner approach uses cgroups to isolate application traffic:
+Another approach uses cgroups to isolate application traffic. The following example uses the cgroup v1 `net_cls` controller; on Ubuntu systems using the unified cgroup v2 hierarchy, use the iptables cgroup `--path` matcher or another cgroup-v2-aware workflow instead.
 
 ```bash
 # Create a cgroup for VPN applications
@@ -237,7 +237,7 @@ curl ifconfig.me
 
 ### All Traffic Still Going Through VPN
 
-Check if the server is pushing a `redirect-gateway` directive:
+WireGuard does not push an OpenVPN-style `redirect-gateway` directive, so check the local routes created from your client configuration:
 
 ```bash
 # View WireGuard status - check what routes were added
