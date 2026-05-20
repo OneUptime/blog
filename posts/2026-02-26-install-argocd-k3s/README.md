@@ -10,13 +10,13 @@ Description: A practical guide to installing ArgoCD on K3s lightweight Kubernete
 
 K3s is a lightweight Kubernetes distribution built by Rancher Labs (now SUSE). It packages the entire Kubernetes control plane into a single binary under 100MB. This makes it ideal for edge computing, IoT devices, home labs, and any environment where running a full Kubernetes distribution is overkill. ArgoCD runs beautifully on K3s, giving you GitOps capabilities even on resource-constrained hardware.
 
-This guide covers installing K3s, deploying ArgoCD on top of it, and configuring everything for a production-ready setup.
+This guide covers installing K3s, deploying ArgoCD on top of it, and configuring everything for a practical setup.
 
 ## Why K3s for ArgoCD?
 
 K3s is appealing for ArgoCD deployments because:
 
-- **Low resource usage** - runs on machines with as little as 512MB RAM for the control plane
+- **Low resource usage** - the K3s server needs 2 CPU cores and 2GB RAM, while agent nodes can run with as little as 512MB RAM
 - **Single binary** - no complex multi-component installation
 - **Built-in features** - includes Traefik ingress, local storage, and CoreDNS out of the box
 - **Fast installation** - one curl command to install
@@ -66,7 +66,7 @@ If you want to install a specific version or customize the installation:
 
 ```bash
 # Install a specific K3s version
-curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="v1.28.5+k3s1" sh -
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="<supported-version>" sh -
 
 # Install without the default Traefik ingress (if you prefer nginx)
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable=traefik" sh -
@@ -81,7 +81,8 @@ Now install ArgoCD on your K3s cluster:
 kubectl create namespace argocd
 
 # Install ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for all ArgoCD pods to be ready
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=600s
@@ -98,11 +99,18 @@ K3s comes with Traefik as the default ingress controller. Let us use it to expos
 
 ### Option A: Using Traefik IngressRoute (K3s Default)
 
-K3s ships with Traefik v2, which uses IngressRoute CRDs:
+K3s ships with Traefik, and current Traefik CRDs use the `traefik.io` API group. Configure ArgoCD to let Traefik terminate TLS and forward HTTP to the ArgoCD server:
+
+```bash
+kubectl patch configmap argocd-cmd-params-cm -n argocd \
+  --type merge \
+  -p '{"data":{"server.insecure":"true"}}'
+kubectl rollout restart deployment argocd-server -n argocd
+```
 
 ```yaml
 # Save as argocd-ingress.yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: argocd-server
@@ -111,18 +119,57 @@ spec:
   entryPoints:
   - websecure
   routes:
-  - match: Host(`argocd.local`)
+  - kind: Rule
+    match: Host(`argocd.local`)
+    priority: 10
+    services:
+    - name: argocd-server
+      port: 80
+  - kind: Rule
+    match: Host(`argocd.local`) && Header(`Content-Type`, `application/grpc`)
+    priority: 11
+    services:
+    - name: argocd-server
+      port: 80
+      scheme: h2c
+  tls: {}
+```
+
+If you are on an older K3s release that still bundles Traefik v2 with the old CRD group, use `apiVersion: traefik.containo.us/v1alpha1` instead.
+
+```bash
+kubectl apply -f argocd-ingress.yaml
+
+# Add argocd.local to your hosts file
+echo "$(hostname -I | awk '{print $1}') argocd.local" | sudo tee -a /etc/hosts
+
+# Access at https://argocd.local
+```
+
+If you prefer to keep ArgoCD's built-in TLS and pass encrypted traffic through Traefik, use an `IngressRouteTCP` instead:
+
+```yaml
+# Save as argocd-ingress-tcp.yaml
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  entryPoints:
+  - websecure
+  routes:
+  - match: HostSNI(`argocd.local`)
     kind: Rule
     services:
     - name: argocd-server
       port: 443
-    # Pass through TLS to ArgoCD
   tls:
     passthrough: true
 ```
 
 ```bash
-kubectl apply -f argocd-ingress.yaml
+kubectl apply -f argocd-ingress-tcp.yaml
 
 # Add argocd.local to your hosts file
 echo "$(hostname -I | awk '{print $1}') argocd.local" | sudo tee -a /etc/hosts
@@ -141,7 +188,6 @@ metadata:
   namespace: argocd
   annotations:
     traefik.ingress.kubernetes.io/router.tls: "true"
-    ingress.kubernetes.io/ssl-passthrough: "true"
 spec:
   rules:
   - host: argocd.local
@@ -153,8 +199,13 @@ spec:
           service:
             name: argocd-server
             port:
-              number: 443
+              name: http
+  tls:
+  - hosts:
+    - argocd.local
 ```
+
+Use this option with `server.insecure: "true"` in `argocd-cmd-params-cm`, as shown in Option A.
 
 ### Option C: NodePort (Simplest)
 
@@ -182,9 +233,9 @@ ARGOCD_PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd \
   -o jsonpath='{.data.password}' | base64 -d)
 
 # Install the ArgoCD CLI
-curl -sSL -o /usr/local/bin/argocd \
+sudo curl -sSL -o /usr/local/bin/argocd \
   https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-chmod +x /usr/local/bin/argocd
+sudo chmod +x /usr/local/bin/argocd
 
 # Login
 argocd login argocd.local --insecure --username admin --password $ARGOCD_PASSWORD
@@ -249,13 +300,13 @@ Apply similar patches for the repo server and other components:
 ```bash
 # Reduce resource requests across ArgoCD components
 kubectl patch deployment argocd-server -n argocd --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"50m","memory":"128Mi"},"limits":{"cpu":"500m","memory":"256Mi"}}}]'
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"50m","memory":"128Mi"},"limits":{"cpu":"500m","memory":"256Mi"}}}]'
 
 kubectl patch deployment argocd-repo-server -n argocd --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"50m","memory":"128Mi"},"limits":{"cpu":"500m","memory":"512Mi"}}}]'
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"50m","memory":"128Mi"},"limits":{"cpu":"500m","memory":"512Mi"}}}]'
 
 kubectl patch deployment argocd-redis -n argocd --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"25m","memory":"64Mi"},"limits":{"cpu":"250m","memory":"128Mi"}}}]'
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/resources","value":{"requests":{"cpu":"25m","memory":"64Mi"},"limits":{"cpu":"250m","memory":"128Mi"}}}]'
 ```
 
 ### Increase Polling Interval
@@ -271,7 +322,7 @@ metadata:
   namespace: argocd
 data:
   # Increase polling from 3 minutes to 10 minutes
-  timeout.reconciliation: "600"
+  timeout.reconciliation: "10m"
 ```
 
 ### Use Core Install for Minimal Footprint
@@ -283,7 +334,7 @@ If you do not need the web UI, use ArgoCD's core installation:
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/core-install.yaml
 ```
 
-This significantly reduces resource usage but means you can only manage ArgoCD through kubectl and the ArgoCD CLI.
+This significantly reduces resource usage but means you can only manage ArgoCD through kubectl and the ArgoCD CLI in core mode.
 
 ## K3s Multi-Node Setup
 
@@ -323,9 +374,12 @@ Register edge clusters with the central ArgoCD:
 
 ```bash
 # From the central ArgoCD cluster
+# List kubeconfig contexts for the edge clusters
+kubectl config get-contexts -o name
+
 # Add each edge cluster
-argocd cluster add edge-cluster-1 --name "Store A"
-argocd cluster add edge-cluster-2 --name "Store B"
+argocd cluster add <edge-cluster-1-context> --name "Store A"
+argocd cluster add <edge-cluster-2-context> --name "Store B"
 
 # Use ApplicationSets to deploy to all edge clusters
 ```
@@ -338,7 +392,9 @@ Keep K3s updated alongside ArgoCD:
 
 ```bash
 # Install the system-upgrade-controller for automated K3s upgrades
-kubectl apply -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
+kubectl apply \
+  -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/crd.yaml \
+  -f https://github.com/rancher/system-upgrade-controller/releases/latest/download/system-upgrade-controller.yaml
 
 # Create an upgrade plan
 cat <<EOF | kubectl apply -f -
@@ -356,7 +412,7 @@ spec:
   serviceAccountName: system-upgrade
   upgrade:
     image: rancher/k3s-upgrade
-  version: v1.28.5+k3s1
+  version: <supported-version>
 EOF
 ```
 
@@ -373,7 +429,7 @@ kubectl describe node | grep -A5 "Conditions"
 
 **Problem: Traefik conflicts with ArgoCD TLS**
 
-ArgoCD uses its own TLS certificates. Use TLS passthrough in Traefik to avoid certificate conflicts.
+ArgoCD uses its own TLS certificates. Either run ArgoCD with `server.insecure: "true"` and terminate TLS at Traefik, or use TLS passthrough in Traefik to avoid certificate conflicts.
 
 **Problem: Slow image pulls**
 
@@ -381,7 +437,9 @@ K3s uses containerd instead of Docker. Pre-pull ArgoCD images or use a local reg
 
 ```bash
 # Pre-pull images on the K3s node
-sudo k3s ctr images pull quay.io/argoproj/argocd:latest
+ARGOCD_IMAGE=$(kubectl get deploy argocd-server -n argocd \
+  -o jsonpath='{.spec.template.spec.containers[0].image}')
+sudo k3s ctr images pull "$ARGOCD_IMAGE"
 ```
 
 **Problem: K3s service not starting after reboot**
