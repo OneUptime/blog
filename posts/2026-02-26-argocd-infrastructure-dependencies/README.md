@@ -29,7 +29,7 @@ graph TD
     J --> F
 ```
 
-Without explicit ordering, ArgoCD applies all resources simultaneously. This works surprisingly often because Kubernetes has built-in retry logic. But when it fails, it fails in confusing ways - resources are "healthy" but missing dependencies, or they enter crash loops waiting for resources that have not been created yet.
+Without explicit dependency ordering, most resources land in the same sync wave. This works surprisingly often because Kubernetes has built-in retry logic. But when it fails, it fails in confusing ways - resources are "healthy" but missing dependencies, or they enter crash loops waiting for resources that have not been created yet.
 
 ## Sync Waves: Ordering Within an Application
 
@@ -55,8 +55,9 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 type: Opaque
-data:
-  password: cGFzc3dvcmQ=
+stringData:
+  POSTGRES_PASSWORD: password
+  url: postgres://postgres:password@postgres.my-app.svc:5432/postgres
 
 ---
 # Wave 0: ConfigMap
@@ -138,6 +139,22 @@ spec:
                 name: app-config
 
 ---
+# Wave 2: Application service
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-service
+  namespace: my-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  selector:
+    app: api-service
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
 # Wave 3: Ingress (depends on service being ready)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -165,7 +182,7 @@ ArgoCD processes waves sequentially: it applies all wave -1 resources, waits for
 
 ## Sync Phases: PreSync, Sync, and PostSync
 
-Sync phases provide three distinct execution stages:
+The most common sync hook phases for dependency ordering are PreSync, Sync, and PostSync:
 
 ```mermaid
 graph LR
@@ -185,6 +202,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: db-migrate
+  namespace: my-app
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -248,11 +266,35 @@ spec:
     namespace: default
 ```
 
-When these Applications are managed by a parent App of Apps, the sync waves ensure infrastructure is healthy before application deployment begins.
+When these Applications are managed by a parent App of Apps, sync waves can ensure infrastructure is healthy before application deployment begins. In Argo CD 1.8 and later, you must restore health assessment for `argoproj.io/Application` resources for this pattern to wait on child Application health:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = ""
+    if obj.status ~= nil then
+      if obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+    end
+    return hs
+```
 
 ### Approach 2: ApplicationSet with Progressive Sync
 
 ApplicationSet's progressive sync feature rolls out changes to Applications sequentially:
+
+Progressive Syncs are a beta feature in current Argo CD releases and must be explicitly enabled on the ApplicationSet controller.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -328,7 +370,13 @@ kind: Deployment
 metadata:
   name: api-service
 spec:
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       initContainers:
         # Wait for database to accept connections
