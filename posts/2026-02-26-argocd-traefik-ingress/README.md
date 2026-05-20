@@ -76,7 +76,7 @@ spec:
           port: 80
     - kind: Rule
       # Route gRPC traffic based on content-type header
-      match: Host(`argocd.example.com`) && Headers(`Content-Type`, `application/grpc`)
+      match: Host(`argocd.example.com`) && Header(`Content-Type`, `application/grpc`)
       priority: 11
       services:
         - name: argocd-server
@@ -259,7 +259,7 @@ kubectl logs -n traefik -l app.kubernetes.io/name=traefik
 curl -I https://argocd.example.com
 
 # Test CLI login with gRPC
-argocd login argocd.example.com --grpc-web
+argocd login argocd.example.com
 ```
 
 ## Troubleshooting
