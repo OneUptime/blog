@@ -41,7 +41,7 @@ Dex acts as the SAML Service Provider (SP), and your identity platform is the Id
 You will need:
 1. The ArgoCD Dex callback URL: `https://argocd.example.com/api/dex/callback`
 2. Access to create a SAML application in your IdP
-3. The IdP metadata URL or XML file
+3. The IdP SSO URL and signing certificate (often available from the IdP metadata URL or XML file)
 4. Attribute mappings for email, name, and groups
 
 ## General Dex SAML Configuration
@@ -63,13 +63,12 @@ data:
       id: saml
       name: SSO
       config:
-        # Option 1: Use IdP metadata URL (preferred)
+        # IdP SSO URL and signing certificate
         ssoURL: https://idp.example.com/saml/sso
         caData: <base64-encoded-idp-signing-cert>
 
-        # Option 2: Use full metadata URL
+        # Optional: expected issuer value from the SAML response
         # ssoIssuer: https://idp.example.com
-        # ssoURL: https://idp.example.com/saml/sso
 
         # ArgoCD Dex callback URL - this is your ACS URL
         redirectURI: https://argocd.example.com/api/dex/callback
@@ -220,7 +219,7 @@ data:
 
 ### Check Dex Logs
 
-Enable debug logging to see the full SAML assertion:
+Enable debug logging to see SAML connector errors and claim-mapping details:
 
 ```bash
 # Set debug log level
@@ -241,7 +240,7 @@ kubectl logs -f deployment/argocd-dex-server -n argocd
 
 **"Audience mismatch"**: The Entity ID in Dex config must exactly match what is configured in the IdP. Check for trailing slashes.
 
-**"Groups not appearing"**: Verify the groups attribute name. Use the debug logs to see the raw SAML assertion and check what attribute name the IdP actually sends.
+**"Groups not appearing"**: Verify the groups attribute name. Capture and decode the SAML response to check what attribute name the IdP actually sends.
 
 ### Decode SAML Responses
 
