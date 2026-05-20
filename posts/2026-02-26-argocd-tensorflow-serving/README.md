@@ -61,12 +61,13 @@ spec:
             - containerPort: 8500
               name: grpc
           args:
-            - --model_name=image-classifier
-            - --model_base_path=s3://ml-models/image-classifier/
+            - --model_config_file=/config/model.config
             - --port=8500
             - --rest_api_port=8501
             - --enable_batching=true
             - --batching_parameters_file=/config/batching.config
+            - --monitoring_config_file=/config/monitoring.config
+            - --allow_version_labels_for_unavailable_models=true
           env:
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
@@ -165,6 +166,12 @@ data:
         }
       }
     }
+
+  monitoring.config: |
+    prometheus_config {
+      enable: true
+      path: "/monitoring/prometheus/metrics"
+    }
 ```
 
 The model config allows serving multiple versions simultaneously with labels for routing.
@@ -230,6 +237,13 @@ spec:
               cpu: "4"
               memory: 16Gi
               nvidia.com/gpu: 1
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          configMap:
+            name: tf-serving-config
       nodeSelector:
         accelerator: nvidia-tesla-t4
       tolerations:
@@ -274,7 +288,13 @@ kind: Deployment
 metadata:
   name: tf-serving-multi
 spec:
+  selector:
+    matchLabels:
+      app: tf-serving-multi
   template:
+    metadata:
+      labels:
+        app: tf-serving-multi
     spec:
       containers:
         - name: tf-serving
@@ -329,7 +349,7 @@ git push
 
 ## Autoscaling TensorFlow Serving
 
-Scale based on request rate and GPU utilization:
+Scale based on CPU utilization and request rate:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -377,6 +397,44 @@ spec:
 Deploy a new model version to a subset of traffic:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tf-serving-stable-config
+data:
+  model.config: |
+    model_config_list {
+      config {
+        name: "image-classifier"
+        base_path: "s3://ml-models/image-classifier/"
+        model_platform: "tensorflow"
+        model_version_policy {
+          specific {
+            versions: 4
+          }
+        }
+      }
+    }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tf-serving-canary-config
+data:
+  model.config: |
+    model_config_list {
+      config {
+        name: "image-classifier"
+        base_path: "s3://ml-models/image-classifier/"
+        model_platform: "tensorflow"
+        model_version_policy {
+          specific {
+            versions: 5
+          }
+        }
+      }
+    }
+---
 # Stable deployment (current model)
 apiVersion: apps/v1
 kind: Deployment
@@ -392,13 +450,25 @@ spec:
       app: tf-serving
       variant: stable
   template:
+    metadata:
+      labels:
+        app: tf-serving
+        variant: stable
     spec:
       containers:
         - name: tf-serving
           image: tensorflow/serving:2.14.0
           args:
-            - --model_name=image-classifier
-            - --model_base_path=s3://ml-models/image-classifier/v4/
+            - --model_config_file=/config/model.config
+            - --port=8500
+            - --rest_api_port=8501
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          configMap:
+            name: tf-serving-stable-config
 ---
 # Canary deployment (new model)
 apiVersion: apps/v1
@@ -415,16 +485,54 @@ spec:
       app: tf-serving
       variant: canary
   template:
+    metadata:
+      labels:
+        app: tf-serving
+        variant: canary
     spec:
       containers:
         - name: tf-serving
           image: tensorflow/serving:2.14.0
           args:
-            - --model_name=image-classifier
-            - --model_base_path=s3://ml-models/image-classifier/v5/
+            - --model_config_file=/config/model.config
+            - --port=8500
+            - --rest_api_port=8501
+          volumeMounts:
+            - name: config
+              mountPath: /config
+      volumes:
+        - name: config
+          configMap:
+            name: tf-serving-canary-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tf-serving
+spec:
+  selector:
+    app: tf-serving
+  ports:
+    - name: rest
+      port: 8501
+      targetPort: 8501
+---
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: tf-serving-destination
+spec:
+  host: tf-serving
+  subsets:
+    - name: stable
+      labels:
+        variant: stable
+    - name: canary
+      labels:
+        variant: canary
 ---
 # Traffic split
-apiVersion: networking.istio.io/v1alpha3
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tf-serving-route
@@ -434,12 +542,14 @@ spec:
   http:
     - route:
         - destination:
-            host: tf-serving-stable
+            host: tf-serving
+            subset: stable
             port:
               number: 8501
           weight: 90
         - destination:
-            host: tf-serving-canary
+            host: tf-serving
+            subset: canary
             port:
               number: 8501
           weight: 10
@@ -447,7 +557,7 @@ spec:
 
 ## Monitoring TensorFlow Serving
 
-TensorFlow Serving exposes Prometheus metrics on the REST port:
+TensorFlow Serving exposes Prometheus metrics on the REST port when you enable a monitoring config:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
