@@ -125,7 +125,7 @@ syncWindows:
       - 'auth-*'
       - 'storefront-*'
       - 'checkout-*'
-    manualSync: true
+    manualSync: false
     timeZone: 'America/New_York'
 ```
 
@@ -176,7 +176,7 @@ syncWindows:
     duration: 8h
     applications:
       - 'payment-gateway-prod'
-    manualSync: true
+    manualSync: false
 
   # Broader window for everything else
   - kind: allow
@@ -288,13 +288,8 @@ This approach is cleaner when the deployment restrictions are fundamentally diff
 Check which sync windows affect a specific application.
 
 ```bash
-# Get application details including sync conditions
-argocd app get payment-gateway-prod --output json | \
-  jq '{
-    name: .metadata.name,
-    project: .spec.project,
-    conditions: [.status.conditions[] | select(.type | contains("SyncWindow"))]
-  }'
+# Get application details including sync window status
+argocd app get payment-gateway-prod
 
 # List all windows in the project
 argocd proj windows list production
