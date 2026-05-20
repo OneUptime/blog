@@ -33,6 +33,7 @@ kind: Application
 metadata:
   name: backend-api-dev
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/backend-api-config
     targetRevision: dev
@@ -48,6 +49,7 @@ kind: Application
 metadata:
   name: backend-api-staging
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/backend-api-config
     targetRevision: staging
@@ -63,6 +65,7 @@ kind: Application
 metadata:
   name: backend-api-production
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/backend-api-config
     targetRevision: main
@@ -121,10 +124,14 @@ kind: Application
 metadata:
   name: backend-api-dev
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/backend-api-config
     targetRevision: main
     path: overlays/dev
+  destination:
+    server: https://dev-cluster.example.com
+    namespace: dev
 
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -132,10 +139,14 @@ kind: Application
 metadata:
   name: backend-api-production
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/backend-api-config
     targetRevision: main
     path: overlays/production
+  destination:
+    server: https://prod-cluster.example.com
+    namespace: production
 ```
 
 Promotion means updating the image tag in the next environment's overlay:
@@ -171,10 +182,14 @@ kind: Application
 metadata:
   name: backend-api-production
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/backend-api-config
     targetRevision: production/v2.3.1  # Tag
     path: overlays/production
+  destination:
+    server: https://prod-cluster.example.com
+    namespace: production
 ```
 
 Promotion creates a new tag:
@@ -288,17 +303,26 @@ on:
         type: choice
         options: [staging, production]
 
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   promote:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
 
       - name: Get current version
         id: version
         run: |
           VERSION=$(kustomize build "overlays/${{ inputs.from_env }}" | \
-            grep "image:" | head -1 | awk -F: '{print $NF}')
+            grep -E "image: .*myorg/${{ inputs.service }}:" | head -1 | awk -F: '{print $NF}')
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Update target environment
@@ -307,14 +331,15 @@ jobs:
           kustomize edit set image "myorg/${{ inputs.service }}:${{ steps.version.outputs.version }}"
 
       - name: Create promotion PR
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
+          token: ${{ secrets.CREATE_PR_TOKEN }}
           title: "Promote ${{ inputs.service }} ${{ steps.version.outputs.version }} to ${{ inputs.to_env }}"
           body: |
             Promoting ${{ inputs.service }} from ${{ inputs.from_env }} to ${{ inputs.to_env }}.
             Version: ${{ steps.version.outputs.version }}
           branch: "promote/${{ inputs.service }}-${{ inputs.to_env }}"
-          reviewers: platform-team
+          team-reviewers: platform-team
 ```
 
 ## Summary
