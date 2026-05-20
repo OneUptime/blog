@@ -25,7 +25,7 @@ flowchart TD
     C["3. Kubernetes RBAC<br/>Can the user create Applications here?"] -->|"Yes"| D
     C -->|"No"| F3["Fix: Create Role/RoleBinding"]
 
-    D["4. ArgoCD RBAC<br/>Does ArgoCD allow this user+project?"] -->|"Yes"| E
+    D["4. ArgoCD RBAC<br/>Does ArgoCD allow this user+project+namespace?"] -->|"Yes"| E
     D -->|"No"| F4["Fix: Update argocd-rbac-cm"]
 
     E["5. Project Source/Destination<br/>Are source repo and destination allowed?"] -->|"Yes"| OK["Application Works"]
@@ -198,7 +198,7 @@ argocd admin settings rbac can \
   your-username \
   sync \
   applications \
-  team-a/my-app
+  team-a/team-a/my-app
 
 # Check the current RBAC policy
 kubectl get configmap argocd-rbac-cm -n argocd -o yaml
@@ -217,8 +217,8 @@ data:
 
   policy.csv: |
     # Grant team-a-members access to their project's applications
-    p, role:team-a, applications, *, team-a/*, allow
-    p, role:team-a, logs, get, team-a/*, allow
+    p, role:team-a, applications, *, team-a/team-a/*, allow
+    p, role:team-a, logs, get, team-a/team-a/*, allow
     g, team-a-members, role:team-a
 ```
 
@@ -231,7 +231,7 @@ argocd admin settings rbac can \
   team-a-members \
   sync \
   applications \
-  team-a/my-app
+  team-a/team-a/my-app
 ```
 
 ## Issue 5: Source Repository Not Allowed
