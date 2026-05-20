@@ -36,7 +36,7 @@ flowchart LR
 
 There are two integration patterns:
 
-1. **Reverse proxy mode** - OpenUnison handles authentication and proxies requests to ArgoCD
+1. **Reverse proxy mode** - OpenUnison protects and proxies access to ArgoCD, while ArgoCD still uses OIDC for its own login session
 2. **OIDC mode** - ArgoCD uses OpenUnison as its OIDC provider
 
 This guide covers both approaches.
@@ -47,52 +47,37 @@ This is the simpler approach where ArgoCD uses OpenUnison as its OIDC identity p
 
 ### Step 1: Configure OpenUnison Trust
 
-In your OpenUnison configuration, add ArgoCD as a trusted client. This is typically done in the OpenUnison Helm values:
+In your OpenUnison configuration, add ArgoCD as a trusted client. Create a Kubernetes `Secret` for the client secret in the `openunison` namespace:
 
-```yaml
-# openunison-values.yaml
-
-openunison:
-  non_secret_data:
-    ARGOCD_URL: https://argocd.example.com
-
-  apps:
-    - name: argocd
-      label: ArgoCD
-      org: MyOrg
-      badgeUrl: argocd
-      injectToken: false
-      azSuccessResponse: redirect
-      azFailResponse: default
-      azRules:
-        - scope: filter
-          constraint: "(groups=argocd-users)"
-      results:
-        auSuccess: redirect
-        auFail: default
-      urls:
-        - hosts:
-            - "#[ARGOCD_URL]"
-          filterType: redirect
-          uri: /
-          azRules:
-            - scope: filter
-              constraint: "(groups=argocd-users)"
+```bash
+kubectl -n openunison create secret generic argocd-oidc-secret \
+  --from-literal=clientSecret='your-openunison-client-secret'
 ```
 
-Register ArgoCD as an OIDC client in OpenUnison's trust configuration:
+Register ArgoCD as an OIDC client with an OpenUnison `Trust`:
 
 ```yaml
-# In OpenUnison trust configuration
-trusts:
-  - name: argocd
-    clientID: argocd
-    clientSecret: <generated-secret>
-    redirectURI:
-      - https://argocd.example.com/auth/callback
-    publicEndpoint: true
-    verifyRedirect: true
-    mapGroups: true
+apiVersion: openunison.tremolo.io/v1
+kind: Trust
+metadata:
+  name: argocd
+  namespace: openunison
+spec:
+  accessTokenSkewMillis: 120000
+  accessTokenTimeToLive: 60000
+  authChainName: login-service
+  clientId: argocd
+  clientSecret:
+    keyName: clientSecret
+    secretName: argocd-oidc-secret
+  codeLastMileKeyName: lastmile-oidc
+  codeTokenSkewMilis: 60000
+  publicEndpoint: true
+  redirectURI:
+    - https://argocd.example.com/auth/callback
+    - http://localhost:8085/auth/callback
+  signedUserInfo: false
+  verifyRedirect: true
 ```
 
 ### Step 2: Configure ArgoCD
@@ -109,7 +94,7 @@ data:
   url: https://argocd.example.com
   oidc.config: |
     name: OpenUnison
-    issuer: https://openunison.example.com/auth/idp/argocd
+    issuer: https://openunison.example.com/auth/idp/k8sIdp
     clientID: argocd
     clientSecret: $oidc.openunison.clientSecret
     requestedScopes:
@@ -156,40 +141,41 @@ data:
 
 ## Method 2: OpenUnison as Reverse Proxy
 
-In this mode, OpenUnison sits in front of ArgoCD and handles all authentication. ArgoCD trusts the identity information forwarded by OpenUnison.
+In this mode, OpenUnison sits in front of ArgoCD and protects the route to the ArgoCD server. ArgoCD still uses OpenUnison as its OIDC provider for the ArgoCD login session.
 
 ### Step 1: Deploy OpenUnison with ArgoCD Integration
 
-Use the OpenUnison Helm chart with ArgoCD integration enabled:
+Use the OpenUnison Helm chart with an application entry for ArgoCD:
 
 ```yaml
 # openunison-values.yaml
-network:
-  openunison_host: openunison.example.com
-  dashboard_host: dashboard.example.com
-  argocd_host: argocd.example.com
-  api_server_host: api.example.com
-
-services:
-  enable_argocd: true
-  argocd:
-    # ArgoCD service name and port
-    service_name: argocd-server
-    namespace: argocd
-    port: 443
+openunison:
+  apps:
+    - name: argocd
+      label: ArgoCD
+      org: b1bf4c92-7220-4ad2-91af-ee0fe0af7312
+      badgeUrl: https://argocd.example.com/
+      injectToken: false
+      azSuccessResponse: argocd
+      proxyTo: https://argocd-server.argocd.svc:443${fullURI}
+      az_groups:
+        - cn=argocd-users,ou=Groups,DC=example,DC=com
 ```
 
 Install OpenUnison:
 
 ```bash
-helm upgrade --install openunison openunison/openunison-k8s-login-argocd \
+helm repo add tremolo https://nexus.tremolo.io/repository/helm/
+helm repo update
+helm upgrade --install orchestra-login-portal tremolo/orchestra-login-portal \
   -n openunison \
+  --create-namespace \
   -f openunison-values.yaml
 ```
 
 ### Step 2: Configure ArgoCD for Proxy Authentication
 
-When using the reverse proxy mode, configure ArgoCD to trust the headers that OpenUnison sends:
+When using the reverse proxy mode, configure ArgoCD to use OpenUnison as its OIDC provider:
 
 ```yaml
 apiVersion: v1
@@ -199,10 +185,9 @@ metadata:
   namespace: argocd
 data:
   url: https://argocd.example.com
-  # ArgoCD trusts OpenUnison's OIDC tokens
   oidc.config: |
     name: OpenUnison
-    issuer: https://openunison.example.com/auth/idp/argocd
+    issuer: https://openunison.example.com/auth/idp/k8sIdp
     clientID: argocd
     clientSecret: $oidc.openunison.clientSecret
     requestedScopes:
