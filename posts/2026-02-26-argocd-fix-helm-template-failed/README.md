@@ -84,11 +84,12 @@ nil pointer evaluating interface {}.tag
 **Fix with default values:**
 
 ```yaml
-# Instead of direct reference that can be nil:
-image: {{ .Values.image.tag }}
+# Instead of direct references that can be nil:
+image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
 
-# Use the default function:
-image: {{ .Values.image.tag | default "latest" }}
+# Default the parent map before reading nested values:
+{{- $image := .Values.image | default dict }}
+image: {{ $image.repository | default "nginx" }}:{{ $image.tag | default "latest" }}
 
 # Or use the 'with' block for nested values:
 {{ with .Values.image }}
@@ -149,16 +150,16 @@ Your chart requires a Helm version that ArgoCD does not have:
 kubectl exec -n argocd deployment/argocd-repo-server -- helm version
 ```
 
-**If the chart uses Helm 3 features not available in the bundled version:**
+**If ArgoCD is using the wrong Helm major version:**
 
 ```yaml
-# Specify the required Helm version in Chart.yaml
-apiVersion: v2    # v2 means Helm 3
-name: my-chart
-version: 1.0.0
+spec:
+  source:
+    helm:
+      version: v3
 ```
 
-For very new Helm features, you may need to upgrade ArgoCD to a version that bundles the required Helm version.
+ArgoCD assumes Helm v3 by default unless v2 is explicitly configured. For very new Helm features, you may need to upgrade ArgoCD to a version that bundles the required Helm version.
 
 ## Cause 5: Chart Dependencies Not Resolved
 
@@ -168,21 +169,22 @@ If your chart has dependencies that are not pulled:
 Error: found in Chart.yaml, but missing in charts/ directory: common, postgresql
 ```
 
-**For charts stored in Git, dependencies should be vendored:**
+**For charts stored in Git, either make dependency repositories accessible to ArgoCD or vendor the dependencies:**
 
 ```bash
 # Update dependencies locally
 helm dependency update ./my-chart
 
-# Commit the charts/ directory
+# If vendoring dependencies, commit the lock file and charts/ directory
+git add my-chart/Chart.lock
 git add my-chart/charts/
 git commit -m "Update Helm dependencies"
 git push
 ```
 
-**Or let ArgoCD handle dependencies (for Helm repository sources):**
+**Or let ArgoCD handle dependencies:**
 
-ArgoCD automatically resolves dependencies when the chart is sourced from a Helm repository. But for Git sources, you need to commit the `charts/` directory.
+ArgoCD can run `helm dependency build` when Helm reports missing dependencies, but the referenced dependency repositories must be reachable and permitted by the ArgoCD project. Vendoring the `charts/` directory is still a reliable option for Git-sourced charts.
 
 **If using a Helm repository as source:**
 
@@ -276,8 +278,8 @@ spec:
 Using functions that are not available in the Helm version bundled with ArgoCD:
 
 ```yaml
-# Some newer Helm functions might not be available
-{{ .Values.data | toRawJson }}  # toRawJson added in Helm 3.12
+# Some newer Helm functions might not be available in older ArgoCD images
+{{ .Values.data | toYamlPretty }}
 ```
 
 **Check function availability:**
