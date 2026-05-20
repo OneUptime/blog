@@ -53,7 +53,7 @@ kubectl get configmap argocd-tls-certs-cm -n argocd -o yaml > "$BACKUP_DIR/argoc
 kubectl get configmap argocd-ssh-known-hosts-cm -n argocd -o yaml > "$BACKUP_DIR/argocd-ssh-known-hosts-cm.yaml"
 kubectl get configmap argocd-notifications-cm -n argocd -o yaml > "$BACKUP_DIR/argocd-notifications-cm.yaml"
 
-# Secrets (encrypted at rest)
+# Secrets (sensitive; store and transfer backups securely)
 kubectl get secret argocd-secret -n argocd -o yaml > "$BACKUP_DIR/argocd-secret.yaml"
 kubectl get secret argocd-notifications-secret -n argocd -o yaml > "$BACKUP_DIR/argocd-notifications-secret.yaml"
 
@@ -116,6 +116,7 @@ kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
 
 # Step 6: Restore configuration from backups
 kubectl apply -f argocd-backup/argocd-cm.yaml
+kubectl apply -f argocd-backup/argocd-cmd-params-cm.yaml
 kubectl apply -f argocd-backup/argocd-rbac-cm.yaml
 kubectl apply -f argocd-backup/argocd-tls-certs-cm.yaml
 kubectl apply -f argocd-backup/argocd-ssh-known-hosts-cm.yaml
@@ -125,6 +126,7 @@ kubectl apply -f argocd-backup/repo-creds.yaml
 kubectl apply -f argocd-backup/clusters.yaml
 kubectl apply -f argocd-backup/argocd-notifications-cm.yaml
 kubectl apply -f argocd-backup/argocd-notifications-secret.yaml
+[ -f argocd-backup/argocd-gpg-keys-cm.yaml ] && kubectl apply -f argocd-backup/argocd-gpg-keys-cm.yaml
 
 # Step 7: Restore AppProjects first, then Applications
 kubectl apply -f argocd-backup/appprojects.yaml
@@ -231,7 +233,7 @@ argocd account list
 
 # 8. Notifications are configured
 echo "8. Notifications:"
-kubectl get configmap argocd-notifications-cm -n argocd -o jsonpath='{.data}' | jq keys
+kubectl get configmap argocd-notifications-cm -n argocd -o json | jq '.data | keys'
 
 # 9. SSO is working (if configured)
 echo "9. SSO/Dex Status:"
@@ -309,7 +311,7 @@ spec:
           serviceAccountName: argocd-server
           containers:
             - name: dr-check
-              image: quay.io/argoproj/argocd:v2.10.0
+              image: quay.io/argoproj/argocd:v3.4.2
               command:
                 - /bin/sh
                 - -c
@@ -317,8 +319,7 @@ spec:
                   # Verify backup exists and is recent
                   echo "Checking ArgoCD backup freshness..."
                   # Verify all apps are healthy
-                  argocd app list --server argocd-server.argocd.svc --insecure \
-                    --auth-token $ARGOCD_TOKEN | grep -c "Healthy"
+                  argocd app list --core | grep -c "Healthy"
                   echo "DR check completed"
           restartPolicy: Never
 ```
