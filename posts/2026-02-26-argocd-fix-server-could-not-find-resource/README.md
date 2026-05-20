@@ -50,6 +50,9 @@ spec:
     repoURL: https://github.com/prometheus-operator/prometheus-operator
     path: example/prometheus-operator-crd
     targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
 ---
 # Deploy resources that use the CRD (sync wave 0)
 apiVersion: argoproj.io/v1alpha1
@@ -63,6 +66,9 @@ spec:
     repoURL: https://github.com/my-org/monitoring-config
     path: manifests/
     targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
 ```
 
 For more details on managing CRD ordering, see our guide on [handling CRDs that must be installed before operators](https://oneuptime.com/blog/post/2026-02-26-argocd-crds-before-operators/view).
@@ -77,7 +83,8 @@ Common examples include:
 - `rbac.authorization.k8s.io/v1beta1` (removed in Kubernetes 1.22, use `v1`)
 - `batch/v1beta1` CronJob (removed in Kubernetes 1.25, use `batch/v1`)
 - `policy/v1beta1` PodDisruptionBudget (removed in Kubernetes 1.25, use `policy/v1`)
-- `autoscaling/v2beta1` HorizontalPodAutoscaler (removed in Kubernetes 1.26, use `autoscaling/v2`)
+- `autoscaling/v2beta1` HorizontalPodAutoscaler (removed in Kubernetes 1.25, use `autoscaling/v2`)
+- `autoscaling/v2beta2` HorizontalPodAutoscaler (removed in Kubernetes 1.26, use `autoscaling/v2`)
 
 ```bash
 # Check which API versions your cluster supports
@@ -105,7 +112,7 @@ If you recently upgraded your Kubernetes cluster, APIs that were deprecated in t
 
 ```bash
 # Check your cluster version
-kubectl version --short
+kubectl version
 
 # Check if a specific API is available
 kubectl get --raw /apis/extensions/v1beta1 2>/dev/null || echo "API not available"
@@ -126,10 +133,10 @@ pluto detect-api-resources
 ArgoCD caches the API resources available on each cluster. If you recently installed a CRD or upgraded the cluster, ArgoCD may still be using cached API information that does not include the new resources.
 
 ```bash
-# Force ArgoCD to refresh its cluster API cache
+# Force ArgoCD to recompare the application and refresh the target manifests cache
 argocd app get my-app --hard-refresh
 
-# Or restart the application controller to refresh all caches
+# Restart the application controller if the cluster API cache still appears stale
 kubectl -n argocd rollout restart deployment argocd-application-controller
 ```
 
