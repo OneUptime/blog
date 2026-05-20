@@ -107,7 +107,13 @@ metadata:
   name: web-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: web-app
@@ -125,28 +131,33 @@ spec:
             name: feature-toggles
 ```
 
-When using volume mounts, Kubernetes automatically updates the file when the ConfigMap changes (with a delay of up to a minute). Your application can watch the file for changes:
+When using volume mounts, Kubernetes automatically updates the file when the ConfigMap changes. The delay depends on the kubelet sync period and ConfigMap cache propagation, so your application should tolerate eventual updates. Your application can reload the file when it changes:
 
 ```python
-# Example Python toggle reader with file watching
+# Example Python toggle reader with reload-on-change
 import json
 import os
-import time
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
 
 class ToggleManager:
     def __init__(self, toggle_path):
         self.toggle_path = toggle_path
         self.toggles = {}
+        self.last_mtime = None
         self._load_toggles()
 
     def _load_toggles(self):
         with open(self.toggle_path, 'r') as f:
             data = json.load(f)
             self.toggles = data.get('features', {})
+        self.last_mtime = os.path.getmtime(self.toggle_path)
+
+    def _reload_if_changed(self):
+        current_mtime = os.path.getmtime(self.toggle_path)
+        if current_mtime != self.last_mtime:
+            self._load_toggles()
 
     def is_enabled(self, feature_name):
+        self._reload_if_changed()
         feature = self.toggles.get(feature_name, {})
         return feature.get('enabled', False)
 
@@ -166,7 +177,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: web-app
@@ -211,11 +228,20 @@ metadata:
   name: web-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
     metadata:
+      labels:
+        app: web-app
       annotations:
         # This hash changes when the ConfigMap changes
         checksum/toggles: "sha256-of-configmap-content"
+    spec:
+      containers:
+        - name: web-app
+          image: ghcr.io/myorg/web-app:v3.0.0
 ```
 
 If you use Helm with ArgoCD, the hash is computed automatically:
@@ -345,64 +371,63 @@ spec:
 
 ## Toggle Validation
 
-Add a pre-sync hook to validate toggle JSON before applying:
+Validate toggle JSON in CI before ArgoCD applies it:
 
 ```yaml
-# toggles/hooks/validate.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: validate-toggles
-  annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
-spec:
-  template:
-    spec:
-      containers:
-        - name: validate
-          image: python:3.11-slim
-          command:
-            - python3
-            - -c
-            - |
-              import json
-              import sys
-              import os
+# .github/workflows/validate-toggles.yaml
+name: Validate feature toggles
 
-              toggle_file = '/etc/toggles/toggles.json'
+on:
+  pull_request:
+    paths:
+      - "toggles/**"
 
-              # Read from ConfigMap mount
-              if not os.path.exists(toggle_file):
-                  print("Toggle file not found, skipping validation")
-                  sys.exit(0)
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - run: |
+          python3 - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
 
-              with open(toggle_file) as f:
+          import yaml
+
+          validated = 0
+          for path in Path("toggles").rglob("*.yaml"):
+              for doc in yaml.safe_load_all(path.read_text()):
+                  if not doc or doc.get("kind") != "ConfigMap":
+                      continue
+
+                  toggle_json = doc.get("data", {}).get("toggles.json")
+                  if toggle_json is None:
+                      continue
+
                   try:
-                      data = json.load(f)
+                      data = json.loads(toggle_json)
                   except json.JSONDecodeError as e:
-                      print(f"ERROR: Invalid JSON in toggles: {e}")
+                      print(f"ERROR: Invalid JSON in {path}: {e}")
                       sys.exit(1)
 
-              features = data.get('features', {})
-              for name, config in features.items():
-                  if 'enabled' not in config:
-                      print(f"ERROR: Feature '{name}' missing 'enabled' field")
-                      sys.exit(1)
-                  if not isinstance(config['enabled'], bool):
-                      print(f"ERROR: Feature '{name}' enabled must be boolean")
-                      sys.exit(1)
+                  features = data.get("features", {})
+                  for name, config in features.items():
+                      if "enabled" not in config:
+                          print(f"ERROR: Feature '{name}' missing 'enabled' field in {path}")
+                          sys.exit(1)
+                      if not isinstance(config["enabled"], bool):
+                          print(f"ERROR: Feature '{name}' enabled must be boolean in {path}")
+                          sys.exit(1)
 
-              print(f"Validated {len(features)} feature toggles successfully")
-          volumeMounts:
-            - name: toggles
-              mountPath: /etc/toggles
-      volumes:
-        - name: toggles
-          configMap:
-            name: feature-toggles
-      restartPolicy: Never
-  backoffLimit: 1
+                  validated += len(features)
+
+          print(f"Validated {validated} feature toggles successfully")
+          PY
 ```
 
 ## Rollback Workflow
