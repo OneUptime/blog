@@ -164,19 +164,21 @@ Even when deploying to all clusters, you often need slightly different configura
 First, label your clusters:
 
 ```bash
-# Add labels to clusters
-
-argocd cluster set prod-us-east-1 \
+# Add labels when registering clusters
+argocd cluster add prod-us-east-1 \
+  --name prod-us-east-1 \
   --label environment=production \
   --label region=us-east-1 \
   --label cloud=aws
 
-argocd cluster set prod-eu-west-1 \
+argocd cluster add prod-eu-west-1 \
+  --name prod-eu-west-1 \
   --label environment=production \
   --label region=eu-west-1 \
   --label cloud=aws
 
-argocd cluster set dev-cluster \
+argocd cluster add dev-cluster \
+  --name dev-cluster \
   --label environment=development \
   --label region=us-east-1 \
   --label cloud=aws
@@ -307,11 +309,8 @@ spec:
   generators:
     - clusters:
         selector:
-          matchExpressions:
-            - key: name
-              operator: NotIn
-              values:
-                - in-cluster
+          matchLabels:
+            argocd.argoproj.io/secret-type: cluster
   template:
     metadata:
       name: 'remote-agent-{{name}}'
@@ -328,7 +327,7 @@ spec:
 
 ## Progressive Rollout Across All Clusters
 
-Combine the cluster generator with progressive syncs for safe fleet-wide rollouts.
+Combine the cluster generator with progressive syncs for safe fleet-wide rollouts. Progressive syncs must be enabled on the ApplicationSet controller before using `RollingSync`.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -374,8 +373,8 @@ spec:
         server: '{{server}}'
         namespace: platform
       syncPolicy:
-        automated:
-          selfHeal: true
+        retry:
+          limit: 3
 ```
 
 This configuration deploys to dev clusters first, then staging, then production clusters one at a time.
