@@ -1,29 +1,29 @@
-# How to Configure Compare Options per Application in ArgoCD
+# How to Configure Diff Customization per Application in ArgoCD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration Management
 
-Description: Learn how to configure compare options on a per-application basis in ArgoCD to control how resource diffs are calculated, ignore specific fields, and handle environment-specific comparison behavior.
+Description: Learn how to configure diff customization on a per-application basis in ArgoCD to control how resource diffs are calculated, ignore specific fields, and handle environment-specific comparison behavior.
 
 ---
 
-ArgoCD continuously compares the desired state in your Git repository against the live state in your Kubernetes cluster. By default, it applies a standard comparison strategy across all applications. But in the real world, different applications have different needs. Some applications use operators that inject fields you do not control. Others rely on admission webhooks that modify resources after they are applied. Configuring compare options per application gives you fine-grained control over how ArgoCD evaluates drift for each workload.
+ArgoCD continuously compares the desired state in your Git repository against the live state in your Kubernetes cluster. By default, it applies a standard comparison strategy across all applications. But in the real world, different applications have different needs. Some applications use operators that inject fields you do not control. Others rely on admission webhooks that modify resources after they are applied. Configuring diff customization per application gives you fine-grained control over how ArgoCD evaluates drift for each workload.
 
-## Why Per-Application Compare Options Matter
+## Why Per-Application Diff Customization Matters
 
 When you run a handful of applications, the default comparison behavior works fine. Once you scale to dozens or hundreds of applications, you will encounter situations where certain apps constantly show as "OutOfSync" even though nothing meaningful has changed. The root cause is usually server-side mutations - fields added by operators, webhooks, or controllers that are not part of your Git manifests.
 
-Instead of applying a blanket ignore rule across your entire ArgoCD instance, per-application compare options let you tailor the diff behavior to each application's needs. This means your monitoring dashboard stays clean, and you only get alerted about real drift.
+Instead of applying a blanket ignore rule across your entire ArgoCD instance, per-application diff customization lets you tailor the diff behavior to each application's needs. This means your monitoring dashboard stays clean, and you only get alerted about real drift.
 
-## Understanding the compareOptions Spec
+## Understanding the ignoreDifferences Spec
 
-ArgoCD exposes compare options through the `spec.ignoreDifferences` field in the Application resource. This field accepts a list of rules that tell ArgoCD which fields to skip during comparison.
+ArgoCD exposes application-level diff customization through the `spec.ignoreDifferences` field in the Application resource. This field accepts a list of rules that tell ArgoCD which fields to skip during comparison.
 
 Here is the basic structure:
 
 ```yaml
-# Application with per-app compare options
+# Application with per-app diff customization
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -85,11 +85,11 @@ ignoreDifferences:
     jqPathExpressions:
       # Ignore a specific annotation across all matching resources
       - .metadata.annotations["deployment.kubernetes.io/revision"]
-      # Ignore all annotations matching a pattern
-      - .spec.template.metadata.annotations | keys[] | select(startswith("sidecar.istio.io"))
+      # Ignore injected init containers by name
+      - .spec.template.spec.initContainers[] | select(.name == "injected-init-container")
 ```
 
-JQ expressions are the recommended approach for most use cases because they handle edge cases like special characters in field names without awkward escaping.
+JQ expressions are useful when you need to identify list items by content or avoid awkward escaping for special characters in field names.
 
 ## Common Scenarios and Solutions
 
@@ -151,7 +151,7 @@ ignoreDifferences:
       - /status
 ```
 
-## Scoping Compare Options to Specific Resources
+## Scoping Diff Customization to Specific Resources
 
 You can narrow down your ignore rules to specific resource names within an application:
 
@@ -174,7 +174,7 @@ The `name` field is optional. When omitted, the rule applies to all resources ma
 
 ## Using managedFieldsManagers for Server-Side Apply
 
-ArgoCD 2.5 and later supports ignoring fields owned by specific field managers. This is useful when another controller manages parts of a resource:
+ArgoCD 2.3 and later supports ignoring fields owned by specific field managers. This is useful when another controller manages parts of a resource:
 
 ```yaml
 ignoreDifferences:
@@ -191,7 +191,7 @@ This approach is cleaner than listing individual fields because it automatically
 
 ## Combining with System-Level Defaults
 
-Per-application compare options work alongside system-level defaults configured in the `argocd-cm` ConfigMap. The system-level defaults set a baseline, and per-application settings add additional ignore rules on top.
+Per-application diff customization works alongside system-level defaults configured in the `argocd-cm` ConfigMap. The system-level defaults set a baseline, and per-application settings add additional ignore rules on top.
 
 ```yaml
 # argocd-cm ConfigMap (system-level defaults)
@@ -210,9 +210,9 @@ data:
 
 The per-application `ignoreDifferences` entries are merged with these system-level rules. You do not need to repeat system-level ignores in each application.
 
-## Verifying Your Compare Options
+## Verifying Your Diff Customization
 
-After configuring compare options, verify they work correctly:
+After configuring diff customization, verify it works correctly:
 
 ```bash
 # Check application sync status
@@ -229,11 +229,11 @@ If the application still shows as OutOfSync after adding ignore rules, double-ch
 
 ## Best Practices
 
-1. **Start with JQ expressions** - they are more readable and handle edge cases better than JSON pointers.
+1. **Use JQ expressions for list items or complex paths** - they are useful when JSON pointers become awkward or too rigid.
 2. **Document why** you are ignoring each field by adding comments in your Application YAML.
 3. **Be specific** - ignore the narrowest field path possible rather than entire sections of the spec.
 4. **Use managedFieldsManagers** when the ignored fields come from a specific controller.
 5. **Test changes** with `argocd app diff` before assuming your rules are correct.
-6. **Review periodically** - compare options can mask real drift if left unchecked.
+6. **Review periodically** - ignored differences can mask real drift if left unchecked.
 
-Per-application compare options are essential for running ArgoCD at scale. They keep your sync status accurate and meaningful, letting you focus on the changes that actually matter. For more on ArgoCD diff customization, see our guide on [How to Customize Diffs in ArgoCD](https://oneuptime.com/blog/post/2026-01-25-customize-diffs-argocd/view).
+Per-application diff customization is essential for running ArgoCD at scale. It keeps your sync status accurate and meaningful, letting you focus on the changes that actually matter. For more on ArgoCD diff customization, see our guide on [How to Customize Diffs in ArgoCD](https://oneuptime.com/blog/post/2026-01-25-customize-diffs-argocd/view).
