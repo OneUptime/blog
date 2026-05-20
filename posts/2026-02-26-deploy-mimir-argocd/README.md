@@ -60,7 +60,6 @@ metrics/
     Chart.yaml
     values.yaml
     values-production.yaml
-    runtime-config.yaml
 ```
 
 ## Creating the Wrapper Chart
@@ -84,6 +83,10 @@ dependencies:
 ```yaml
 # metrics/mimir/values.yaml
 mimir-distributed:
+  # Disable the bundled MinIO deployment when using an external object store.
+  minio:
+    enabled: false
+
   # Global image settings
   global:
     extraEnvFrom:
@@ -375,17 +378,12 @@ kube-prometheus-stack:
 
 ## Runtime Configuration for Tenant Overrides
 
-Mimir supports runtime configuration that can be updated without restarting pods. Store it as a ConfigMap.
+Mimir supports runtime configuration that can be updated without restarting pods. With the Helm chart, set runtime overrides through the `runtimeConfig` value so the chart creates and mounts the runtime configuration for Mimir.
 
 ```yaml
-# metrics/mimir/runtime-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: mimir-runtime-config
-  namespace: metrics
-data:
-  runtime.yaml: |
+# metrics/mimir/values-production.yaml
+mimir-distributed:
+  runtimeConfig:
     overrides:
       # Per-tenant overrides when multi-tenancy is enabled
       tenant-a:
@@ -415,9 +413,9 @@ argocd app get mimir
 
 ## Handling Ingester Rollouts
 
-Ingesters are stateful and hold in-memory data. The Mimir rollout operator handles safe updates by ensuring data is flushed before pods are terminated. Make sure it is enabled in your values, and ArgoCD will coordinate with it during syncs.
+Ingesters are stateful and hold recently received samples in memory. The Mimir rollout operator coordinates updates for partitioned StatefulSets so ingesters are rolled safely instead of all being deleted at once. Make sure it is enabled in your values before applying changes that affect ingesters.
 
-If you need to force a sync that updates ingesters, set the sync wave annotations to ensure the rollout operator deploys before the ingesters.
+If you need to control resource ordering during sync, use ArgoCD sync wave annotations so the rollout operator is deployed before resources that depend on it.
 
 ## Summary
 
