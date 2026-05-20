@@ -166,24 +166,56 @@ Git clone and fetch operations are often the repo server's biggest bottleneck. O
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cmd-params-cm
+  name: platform-manifests-repo
   namespace: argocd
-data:
-  # Use shallow clones to reduce clone time
-  reposerver.git.shallow.clone: "true"
+  labels:
+    argocd.argoproj.io/secret-type: repository
+  annotations:
+    managed-by: argocd.argoproj.io
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/example/platform-manifests.git
 
-  # Disable git LFS if not needed (saves bandwidth)
-  reposerver.git.lfs.enabled: "false"
+  # Use shallow clones to reduce clone time
+  depth: "1"
+
+  # Git LFS is disabled unless you enable it for the repository
+  enableLfs: "false"
 ```
 
-For large repositories, consider using the `--depth 1` shallow clone approach. This dramatically reduces clone times:
+You can also configure shallow clones when adding a repository with the Argo CD CLI:
+
+```bash
+argocd repo add https://github.com/example/platform-manifests.git --depth 1
+```
+
+For repositories that need Git LFS, enable it per repository:
+
+```bash
+argocd repo add https://github.com/example/platform-manifests.git --enable-lfs
+```
+
+For large repositories, shallow clones can dramatically reduce clone times:
 
 ```bash
 # Compare clone times
 # Full clone of a large repo: 45 seconds, 2GB
 # Shallow clone: 3 seconds, 50MB
+```
+
+You can still tune repo-server Git request timeout globally:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  reposerver.git.request.timeout: "60s"
 ```
 
 ## Use tmpfs for Faster I/O
@@ -192,17 +224,18 @@ The repo server writes cloned repos and rendered manifests to disk. Using tmpfs 
 
 ```yaml
 repoServer:
-  volumes:
-    - name: tmp
+  existingVolumes:
+    tmp:
       emptyDir:
         medium: Memory
         sizeLimit: 2Gi
-  volumeMounts:
-    - name: tmp
-      mountPath: /tmp
+    helmWorkingDir:
+      emptyDir:
+        medium: Memory
+        sizeLimit: 1Gi
 ```
 
-Or with the full deployment patch:
+Or with a strategic merge patch for the repo-server Deployment:
 
 ```yaml
 apiVersion: apps/v1
@@ -218,7 +251,7 @@ spec:
           emptyDir:
             medium: Memory
             sizeLimit: 2Gi
-        - name: helm-cache
+        - name: helm-working-dir
           emptyDir:
             medium: Memory
             sizeLimit: 1Gi
@@ -227,13 +260,13 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            - name: helm-cache
+            - name: helm-working-dir
               mountPath: /helm-working-dir
 ```
 
-## Configure Connection Pool
+## Configure Request Timeouts and Parallelism
 
-The controller connects to repo server instances through gRPC. Configure the connection pool for optimal load distribution:
+The controller connects to repo server instances through gRPC. Configure request timeout and manifest generation parallelism so slow renders do not overwhelm the repo server:
 
 ```yaml
 apiVersion: v1
@@ -242,7 +275,7 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Max number of concurrent Git operations per repo server
+  # Max number of concurrent manifest generations per repo server
   reposerver.parallelism.limit: "10"
 
   # Timeout for repo server requests from the controller
@@ -274,7 +307,7 @@ groups:
   - name: argocd-repo-server
     rules:
       - alert: ArgocdRepoServerHighLatency
-        expr: histogram_quantile(0.95, argocd_git_request_duration_seconds_bucket) > 30
+        expr: histogram_quantile(0.95, sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le)) > 30
         for: 10m
         labels:
           severity: warning
