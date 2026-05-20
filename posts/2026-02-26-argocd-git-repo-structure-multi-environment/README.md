@@ -299,6 +299,7 @@ kind: Application
 metadata:
   name: payment-service-prod
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/team-alpha-config.git
     path: services/payment-service
@@ -308,6 +309,7 @@ spec:
         - values.yaml
         - values-prod.yaml
   destination:
+    server: https://kubernetes.default.svc
     namespace: team-alpha-prod
 ```
 
