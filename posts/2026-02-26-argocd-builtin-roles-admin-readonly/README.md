@@ -21,47 +21,74 @@ Here is what the admin role can do:
 - Create, update, delete, and sync any application
 - Create, update, and delete projects
 - Add and remove repositories and clusters
-- Manage user accounts and RBAC policies
-- Access all API endpoints
+- Manage local user accounts through Argo CD
+- Perform all Argo CD RBAC-protected operations
 - View logs, events, and resource details
 
 The admin role is defined internally in ArgoCD and cannot be modified. You can verify the permissions granted to admin by checking the RBAC policy:
 
-```yaml
+```csv
 # The admin role effectively has this policy (built-in, not configurable)
 
-p, role:admin, applications, *, */*, allow
-p, role:admin, clusters, *, *, allow
-p, role:admin, repositories, *, *, allow
-p, role:admin, accounts, *, *, allow
-p, role:admin, certificates, *, *, allow
-p, role:admin, gpgkeys, *, *, allow
-p, role:admin, logs, *, *, allow
-p, role:admin, exec, *, */*, allow
+p, role:admin, applications, create, */*, allow
+p, role:admin, applications, update, */*, allow
+p, role:admin, applications, update/*, */*, allow
+p, role:admin, applications, delete, */*, allow
+p, role:admin, applications, delete/*, */*, allow
+p, role:admin, applications, sync, */*, allow
+p, role:admin, applications, override, */*, allow
+p, role:admin, applications, action/*, */*, allow
+p, role:admin, applicationsets, get, */*, allow
+p, role:admin, applicationsets, create, */*, allow
+p, role:admin, applicationsets, update, */*, allow
+p, role:admin, applicationsets, delete, */*, allow
+p, role:admin, certificates, create, *, allow
+p, role:admin, certificates, update, *, allow
+p, role:admin, certificates, delete, *, allow
+p, role:admin, clusters, create, *, allow
+p, role:admin, clusters, update, *, allow
+p, role:admin, clusters, delete, *, allow
+p, role:admin, repositories, create, *, allow
+p, role:admin, repositories, update, *, allow
+p, role:admin, repositories, delete, *, allow
+p, role:admin, write-repositories, create, *, allow
+p, role:admin, write-repositories, update, *, allow
+p, role:admin, write-repositories, delete, *, allow
+p, role:admin, projects, create, *, allow
+p, role:admin, projects, update, *, allow
+p, role:admin, projects, delete, *, allow
+p, role:admin, accounts, update, *, allow
+p, role:admin, gpgkeys, create, *, allow
+p, role:admin, gpgkeys, delete, *, allow
+p, role:admin, exec, create, */*, allow
+g, role:admin, role:readonly
 ```
 
-Each line follows the Casbin policy format: `p, subject, resource, action, object, effect`. The wildcards (`*`) mean "everything," so the admin role is allowed to perform any action on any resource.
+Each `p` line follows the Casbin policy format: `p, subject, resource, action, object, effect`. The wildcards (`*`) mean "everything" within that field, and the `g` line makes `role:admin` inherit the built-in readonly permissions.
 
 ## The Readonly Role
 
 The `role:readonly` is the opposite extreme. It grants view-only access to all resources but prevents any modifications.
 
-```yaml
+```csv
 # The readonly role effectively has this policy (built-in, not configurable)
 p, role:readonly, applications, get, */*, allow
+p, role:readonly, applicationsets, get, */*, allow
+p, role:readonly, certificates, get, *, allow
 p, role:readonly, clusters, get, *, allow
 p, role:readonly, repositories, get, *, allow
+p, role:readonly, write-repositories, get, *, allow
+p, role:readonly, projects, get, *, allow
 p, role:readonly, accounts, get, *, allow
-p, role:readonly, certificates, get, *, allow
 p, role:readonly, gpgkeys, get, *, allow
-p, role:readonly, logs, get, *, allow
+p, role:readonly, logs, get, */*, allow
 ```
 
 Users with the readonly role can:
 
 - View all applications across all projects
 - See sync status, health status, and resource details
-- Browse repository and cluster configurations
+- Browse repository, cluster, project, and ApplicationSet configurations
 - View logs and events
 
 Users with the readonly role cannot:
@@ -192,7 +219,7 @@ data:
   admin.enabled: "false"
 ```
 
-2. **Role inheritance** - Built-in roles do not inherit from each other. The admin role is not "readonly plus more permissions." They are separate, independent role definitions.
+2. **Role inheritance** - The built-in admin role inherits the built-in readonly role through `g, role:admin, role:readonly`, so admin users get readonly permissions plus the additional admin permissions.
 
 3. **No deny rules in built-in roles** - The built-in roles only use allow rules. If you need deny rules, you must create custom policies.
 
