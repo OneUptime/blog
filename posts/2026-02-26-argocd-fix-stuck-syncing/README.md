@@ -38,7 +38,7 @@ The most common cause. If your application uses sync hooks (PreSync, PostSync), 
 
 ```bash
 # Look for hook resources
-kubectl get jobs -n production -l argocd.argoproj.io/hook
+kubectl get jobs -n production -o yaml | grep -B5 -A5 "argocd.argoproj.io/hook"
 
 # Check if any jobs are not completing
 kubectl get jobs -n production | grep -v "1/1"
@@ -51,7 +51,7 @@ kubectl get jobs -n production | grep -v "1/1"
 kubectl describe job pre-sync-migration -n production
 
 # Check the pod logs
-kubectl logs -n production -l job-name=pre-sync-migration
+kubectl logs -n production -l batch.kubernetes.io/job-name=pre-sync-migration
 ```
 
 **Common reasons hooks get stuck:**
@@ -146,7 +146,7 @@ metadata:
 
 ```bash
 # Check annotations on resources
-argocd app resources my-app -o wide
+argocd app manifests my-app | grep -B5 -A5 "argocd.argoproj.io/sync-wave"
 ```
 
 **Fix by ensuring earlier waves can complete independently:**
@@ -179,15 +179,28 @@ data:
   controller.operation.processors: "25"
 ```
 
-Or scale the controller replicas (with sharding):
+Or scale the controller replicas with sharding. Make sure `ARGOCD_CONTROLLER_REPLICAS` matches the StatefulSet replica count:
 
-```bash
-kubectl scale statefulset argocd-application-controller -n argocd --replicas=3
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argocd-application-controller
+  namespace: argocd
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_CONTROLLER_REPLICAS
+              value: "3"
 ```
 
 ## Cause 5: Webhook or Admission Controller Slow
 
-If a mutating or validating webhook is slow or hanging, `kubectl apply` calls from ArgoCD will hang:
+If a mutating or validating webhook is slow or unavailable, `kubectl apply` calls from ArgoCD can be delayed or fail after the webhook timeout:
 
 ```bash
 # Check for slow webhooks
@@ -198,7 +211,7 @@ kubectl get validatingwebhookconfigurations
 kubectl get mutatingwebhookconfigurations
 ```
 
-If a webhook service is down, all `apply` operations will timeout. Fix the webhook service or temporarily remove the failing webhook configuration.
+If a webhook service is down and the webhook matches the resources ArgoCD is applying, those `apply` operations can time out. Fix the webhook service or temporarily remove the failing webhook configuration.
 
 ## Cause 6: Stale Operation State
 
@@ -217,13 +230,13 @@ argocd app get my-app
 If the terminate does not work:
 
 ```bash
-# Remove the operation state by patching the application
+# Remove the pending operation by patching the application
 kubectl patch application my-app -n argocd \
   --type json \
-  -p '[{"op": "remove", "path": "/status/operationState"}]'
+  -p '[{"op": "remove", "path": "/operation"}]'
 ```
 
-**Warning:** Only use the patch approach as a last resort. It forcefully clears the operation state.
+**Warning:** Only use the patch approach as a last resort. It forcefully clears the requested operation.
 
 ## Cause 7: Large Number of Resources
 
@@ -250,9 +263,9 @@ syncPolicy:
     - ApplyOutOfSyncOnly=true
 ```
 
-## Cause 8: PodDisruptionBudget Blocking Rollout
+## Cause 8: PodDisruptionBudget Blocking Eviction
 
-A PDB can prevent Deployments from rolling out:
+A PDB can block eviction-based operations, such as node drains, that your sync depends on. Workload controllers such as Deployments and StatefulSets are not limited by PDBs during rolling updates, but unavailable pods from a rolling update still count against the disruption budget:
 
 ```bash
 # Check PDBs
@@ -262,7 +275,7 @@ kubectl get pdb -n production
 kubectl describe pdb my-pdb -n production
 ```
 
-**Fix by adjusting the PDB or performing the rollout during maintenance windows.**
+**Fix by adjusting the PDB or performing eviction-based maintenance during an appropriate maintenance window.**
 
 ## Recovery Workflow
 
@@ -279,7 +292,7 @@ sleep 10
 argocd app get my-app
 
 # Step 4: If stuck hooks exist, clean them up
-kubectl delete jobs -n production -l argocd.argoproj.io/hook
+kubectl delete job pre-sync-migration -n production
 
 # Step 5: Fix the underlying issue (see causes above)
 
@@ -290,7 +303,7 @@ argocd app sync my-app
 ## Prevention
 
 1. **Always set `activeDeadlineSeconds` on sync hook Jobs**
-2. **Configure sync retry with limits** instead of letting syncs hang:
+2. **Configure sync retry with limits** for transient sync failures:
 
 ```yaml
 syncPolicy:
@@ -302,9 +315,9 @@ syncPolicy:
       maxDuration: 5m
 ```
 
-3. **Set appropriate health check timeouts** for custom resources
+3. **Set appropriate Kubernetes-level deadlines** such as `activeDeadlineSeconds` on Jobs and `progressDeadlineSeconds` on Deployments
 4. **Monitor sync duration** with Prometheus metrics: `argocd_app_sync_total` and `argocd_app_reconcile`
 
 ## Summary
 
-An ArgoCD application stuck in Syncing state is usually caused by a hook that never completes, a resource that never becomes healthy, or a sync wave deadlock. Start by checking `argocd app resources` to find which resource is blocking the sync. Use `argocd app terminate-op` to forcefully stop the stuck operation, fix the underlying issue, and retry. Always set timeouts on sync hooks and resource health checks to prevent indefinite hangs.
+An ArgoCD application stuck in Syncing state is usually caused by a hook that never completes, a resource that never becomes healthy, or a sync wave deadlock. Start by checking `argocd app resources` to find which resource is blocking the sync. Use `argocd app terminate-op` to forcefully stop the stuck operation, fix the underlying issue, and retry. Always set deadlines on sync hook Jobs and Kubernetes workloads to prevent indefinite hangs.
