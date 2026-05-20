@@ -100,7 +100,7 @@ Use Git branch protection as the approval gate. The production branch requires s
 Create a `CODEOWNERS` file:
 
 ```text
-# Production environment changes require platform team approval
+# Production environment changes require approval from at least one listed owner
 environments/production/** @org/platform-team @org/security-team
 
 # Staging only needs dev lead approval
@@ -115,9 +115,14 @@ kind: Application
 metadata:
   name: myapp-production
 spec:
+  project: production
   source:
+    repoURL: https://github.com/org/config-repo.git
     targetRevision: production  # Protected branch
     path: environments/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: myapp-production
   syncPolicy:
     automated:
       prune: true
@@ -134,7 +139,7 @@ Build an interactive approval flow in Slack:
 # approval-bot/app.py
 from slack_bolt import App
 import requests
-import json
+import os
 
 app = App(token=os.environ["SLACK_BOT_TOKEN"])
 
@@ -193,7 +198,7 @@ def request_approval(app_name, revision, channel):
 def handle_approve(ack, body, say):
     ack()
     approval_id = body["actions"][0]["value"]
-    user = body["user"]["username"]
+    user = body["user"]["id"]
 
     if approval_id not in pending_approvals:
         say("This approval request has expired.")
@@ -201,7 +206,7 @@ def handle_approve(ack, body, say):
 
     approval = pending_approvals[approval_id]
 
-    # Prevent self-approval
+    # Prevent duplicate approval
     if user in approval["approved_by"]:
         say(f"You have already approved this deployment, {user}.")
         return
@@ -218,11 +223,12 @@ def handle_approve(ack, body, say):
             "Authorization": f"Bearer {ARGOCD_TOKEN}",
             "Content-Type": "application/json"
         }
-        requests.post(
+        response = requests.post(
             f"{ARGOCD_SERVER}/api/v1/applications/{approval['app_name']}/sync",
             headers=headers,
             json={"revision": approval["revision"]}
         )
+        response.raise_for_status()
         say(f":rocket: Deployment initiated for `{approval['app_name']}`")
         del pending_approvals[approval_id]
     else:
@@ -233,7 +239,7 @@ def handle_approve(ack, body, say):
 def handle_reject(ack, body, say):
     ack()
     approval_id = body["actions"][0]["value"]
-    user = body["user"]["username"]
+    user = body["user"]["id"]
 
     if approval_id in pending_approvals:
         app_name = pending_approvals[approval_id]["app_name"]
@@ -253,7 +259,7 @@ metadata:
   name: check-change-approval
   annotations:
     argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 spec:
   template:
     spec:
@@ -264,11 +270,6 @@ spec:
         - /bin/sh
         - -c
         - |
-          # Check ServiceNow for approved change ticket
-          CHANGE_TICKET=$(kubectl get configmap deployment-metadata \
-            -n myapp-production \
-            -o jsonpath='{.data.change-ticket}')
-
           if [ -z "$CHANGE_TICKET" ]; then
             echo "ERROR: No change ticket found"
             exit 1
@@ -287,6 +288,11 @@ spec:
 
           echo "Change ticket $CHANGE_TICKET is approved. Proceeding with deployment."
         env:
+        - name: CHANGE_TICKET
+          valueFrom:
+            configMapKeyRef:
+              name: deployment-metadata
+              key: change-ticket
         - name: SNOW_USER
           valueFrom:
             secretKeyRef:
@@ -330,6 +336,7 @@ kind: Application
 metadata:
   name: myapp-production
 spec:
+  project: production
   source:
     repoURL: https://github.com/org/config-repo.git
     targetRevision: HEAD
@@ -360,7 +367,7 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  trigger.on-sync-status-unknown: |
+  trigger.on-out-of-sync: |
     - when: app.status.sync.status == 'OutOfSync'
       oncePer: app.status.sync.revision
       send: [pending-approval-notice]
