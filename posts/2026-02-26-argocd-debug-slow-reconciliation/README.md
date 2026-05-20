@@ -27,10 +27,10 @@ Start with metrics to identify where time is being spent:
 ```bash
 # Port-forward the controller metrics endpoint
 
-kubectl port-forward svc/argocd-application-controller-metrics -n argocd 8082:8082 &
+kubectl port-forward svc/argocd-metrics -n argocd 8082:8082 &
 
 # Check reconciliation duration (in seconds)
-curl -s http://localhost:8082/metrics | grep argocd_app_reconcile_duration_seconds
+curl -s http://localhost:8082/metrics | grep argocd_app_reconcile
 
 # Check the repo server metrics
 kubectl port-forward svc/argocd-repo-server -n argocd 8084:8084 &
@@ -41,7 +41,7 @@ Key metrics and what they mean:
 
 | Metric | Healthy Value | Problem Threshold |
 |--------|--------------|-------------------|
-| `argocd_app_reconcile_duration_seconds` p99 | < 10s | > 30s |
+| `argocd_app_reconcile` p99 | < 10s | > 30s |
 | `argocd_git_request_duration_seconds` p99 | < 5s | > 15s |
 | `argocd_repo_pending_request_total` | < 5 | > 20 |
 | `argocd_app_k8s_request_total` rate | varies | sudden increases |
@@ -89,14 +89,29 @@ Symptoms of Git bottleneck:
 Fixes:
 
 ```yaml
-# Enable shallow clones
+# Enable shallow clones for a repository
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/example/my-repo.git
+  depth: "1"
+type: Opaque
+```
+
+```yaml
+# Limit concurrent manifest generation
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  reposerver.git.shallow.clone: "true"
   reposerver.parallelism.limit: "5"
 ```
 
@@ -155,7 +170,7 @@ spec:
 
 ```bash
 # Check controller logs for slow API calls
-kubectl logs -n argocd deployment/argocd-application-controller --tail=200 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 | \
   grep -E "slow|timeout|api-server|rate"
 
 # Check the Kubernetes API server request latency
@@ -202,7 +217,7 @@ kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-application-controlle
 # Check repo server resource usage
 kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-repo-server
 
-# Check API server resource usage
+# Check ArgoCD API server resource usage
 kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-server
 
 # Check Redis resource usage
@@ -214,7 +229,7 @@ If any component is hitting its resource limits:
 ```yaml
 # Increase controller resources
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -242,19 +257,21 @@ For deeper investigation, enable debug logging on the affected component:
 
 ```bash
 # Enable debug logging on the controller
-kubectl patch deployment argocd-application-controller -n argocd --type json \
-  -p '[{"op": "add", "path": "/spec/template/spec/containers/0/command/-", "value": "--loglevel=debug"}]'
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge \
+  -p '{"data":{"controller.log.level":"debug"}}'
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 
 # Enable debug logging on the repo server
-kubectl patch deployment argocd-repo-server -n argocd --type json \
-  -p '[{"op": "add", "path": "/spec/template/spec/containers/0/command/-", "value": "--loglevel=debug"}]'
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge \
+  -p '{"data":{"reposerver.log.level":"debug"}}'
+kubectl rollout restart deployment/argocd-repo-server -n argocd
 ```
 
 Watch for specific timing information:
 
 ```bash
 # Filter for reconciliation timing
-kubectl logs -n argocd deployment/argocd-application-controller -f | \
+kubectl logs -n argocd statefulset/argocd-application-controller -f | \
   grep -E "Reconciliation completed|Reconciliation.*duration"
 ```
 
@@ -262,8 +279,9 @@ Remember to set logging back to `info` level after debugging:
 
 ```bash
 # Revert to info logging
-kubectl patch deployment argocd-application-controller -n argocd --type json \
-  -p '[{"op": "replace", "path": "/spec/template/spec/containers/0/command/-1", "value": "--loglevel=info"}]'
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge \
+  -p '{"data":{"controller.log.level":"info","reposerver.log.level":"info"}}'
+kubectl rollout restart statefulset/argocd-application-controller deployment/argocd-repo-server -n argocd
 ```
 
 ## Step 6: Check for Specific Slow Applications
