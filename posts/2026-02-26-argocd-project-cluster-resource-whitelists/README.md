@@ -33,14 +33,14 @@ Cluster-scoped resources affect the entire cluster, not just a single namespace.
 **Policy and Admission**:
 - ValidatingWebhookConfiguration - Validates API requests
 - MutatingWebhookConfiguration - Modifies API requests
-- PodSecurityPolicy (deprecated) - Restricts pod capabilities
+- PodSecurityPolicy (deprecated in Kubernetes v1.21 and removed in v1.25) - Restricted pod capabilities in older clusters
 
 **Networking**:
 - ClusterIssuer (cert-manager) - Manages cluster-wide TLS certificates
 
 ## Default Behavior
 
-By default, ArgoCD projects deny all cluster-scoped resources. This is the secure default - you must explicitly allow each cluster resource type a team needs.
+By default, ArgoCD projects deny all cluster-scoped resources unless the project explicitly allows them. This is the secure default for dedicated projects - you must explicitly allow each cluster resource type a team needs. The built-in `default` project is an exception: ArgoCD creates it with `group: "*"` and `kind: "*"` so new installations are permissive until you restrict it.
 
 ```yaml
 # Default: no cluster resources allowed
@@ -236,7 +236,7 @@ clusterResourceWhitelist:
 
 ## Working with Custom Resources
 
-When you install CRDs for operators like Istio, cert-manager, or Prometheus, some of their custom resources are cluster-scoped. You need to whitelist these explicitly.
+When you install CRDs for operators and platform APIs like cert-manager or Gateway API, some of their custom resources are cluster-scoped. You need to whitelist these explicitly.
 
 ### Finding Cluster-Scoped Custom Resources
 
@@ -250,24 +250,20 @@ kubectl api-resources --namespaced=false | grep -i cert-manager
 kubectl api-resources --namespaced=false | grep -i prometheus
 ```
 
-### Example: Istio Cluster Resources
+### Example: cert-manager Cluster Resources
 
 ```yaml
 clusterResourceWhitelist:
-  - group: security.istio.io
-    kind: PeerAuthentication   # Only if applied cluster-wide
-  - group: networking.istio.io
-    kind: EnvoyFilter          # Only cluster-scoped ones
+  - group: cert-manager.io
+    kind: ClusterIssuer
 ```
 
-### Example: Prometheus Operator Cluster Resources
+### Example: Gateway API Cluster Resources
 
 ```yaml
 clusterResourceWhitelist:
-  - group: monitoring.coreos.com
-    kind: Prometheus           # The Prometheus instance itself
-  - group: monitoring.coreos.com
-    kind: Alertmanager
+  - group: gateway.networking.k8s.io
+    kind: GatewayClass
 ```
 
 ## Combining Whitelist and Blacklist
