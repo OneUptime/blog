@@ -8,11 +8,11 @@ Description: Learn how to use annotation-based notification subscriptions in Arg
 
 ---
 
-ArgoCD notification subscriptions are driven entirely by annotations. This design choice means notification routing is part of your application manifest, lives in Git alongside your code, and follows the same review and approval process. This guide dives deep into annotation-based subscription patterns, bulk management strategies, and advanced techniques for handling notifications at scale.
+ArgoCD notification subscriptions can be driven by annotations. This design choice means notification routing can be part of your application manifest, live in Git alongside your code, and follow the same review and approval process. This guide dives deep into annotation-based subscription patterns, bulk management strategies, and advanced techniques for handling notifications at scale.
 
 ## The Annotation-Based Subscription Model
 
-Every notification subscription in ArgoCD is expressed as a Kubernetes annotation on either an Application or an AppProject resource. The format is:
+Every annotation-based notification subscription in ArgoCD is expressed as a Kubernetes annotation on either an Application or an AppProject resource. The format is:
 
 ```text
 notifications.argoproj.io/subscribe.<trigger>.<service>: <recipient>
@@ -21,7 +21,7 @@ notifications.argoproj.io/subscribe.<trigger>.<service>: <recipient>
 Breaking this down:
 - `notifications.argoproj.io/subscribe` - the fixed prefix that the notifications controller watches
 - `<trigger>` - the trigger name defined in `argocd-notifications-cm`
-- `<service>` - the service name (slack, email, pagerduty, webhook, etc.)
+- `<service>` - the service name (slack, email, pagerdutyv2, webhook, etc.)
 - `<recipient>` - the channel, email address, or other service-specific recipient
 
 ## Basic Annotation Patterns
@@ -63,7 +63,7 @@ metadata:
   annotations:
     notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts
     notifications.argoproj.io/subscribe.on-sync-failed.email: oncall@company.com
-    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerdutyv2: my-service
 ```
 
 ### Default Trigger Subscriptions
@@ -120,7 +120,7 @@ resources:
   - ../../base
 commonAnnotations:
   notifications.argoproj.io/subscribe.on-sync-failed.slack: prod-critical
-  notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ""
+  notifications.argoproj.io/subscribe.on-sync-failed.pagerdutyv2: my-service
   notifications.argoproj.io/subscribe.on-deployed.slack: prod-deployments
 
 ---
@@ -144,7 +144,7 @@ notifications:
   subscriptions:
     on-sync-failed:
       slack: prod-critical
-      pagerduty: ""
+      pagerdutyv2: my-service
     on-deployed:
       slack: prod-deployments
     on-health-degraded:
@@ -160,11 +160,11 @@ kind: Application
 metadata:
   name: {{ .Values.name }}
   annotations:
-    {{- range $trigger, $services := .Values.notifications.subscriptions }}
-    {{- range $service, $recipient := $services }}
+{{- range $trigger, $services := .Values.notifications.subscriptions }}
+{{- range $service, $recipient := $services }}
     notifications.argoproj.io/subscribe.{{ $trigger }}.{{ $service }}: {{ $recipient | quote }}
-    {{- end }}
-    {{- end }}
+{{- end }}
+{{- end }}
 ```
 
 ## Bulk Annotation Management with kubectl
@@ -259,7 +259,7 @@ kubectl annotate application my-app \
 
 # Remove all notification annotations (be careful)
 kubectl get application my-app -n argocd -o json | \
-  jq -r '.metadata.annotations | keys[] | select(startswith("notifications"))' | \
+  jq -r '.metadata.annotations // {} | keys[] | select(startswith("notifications.argoproj.io/subscribe"))' | \
   xargs -I {} kubectl annotate application my-app -n argocd {}-
 ```
 
