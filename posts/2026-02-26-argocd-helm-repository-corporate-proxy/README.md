@@ -32,7 +32,7 @@ sequenceDiagram
 
 ## Step 1: Configure Proxy Environment Variables
 
-The ArgoCD repo-server needs proxy environment variables to route Helm requests through the corporate proxy:
+The ArgoCD repo-server can use proxy environment variables to route Helm requests through the corporate proxy. ArgoCD also supports per-repository `proxy` and `noProxy` fields, but global environment variables are useful when all outbound repository traffic should use the same proxy:
 
 ```yaml
 # argocd-repo-server-proxy.yaml
@@ -164,54 +164,26 @@ data:
     -----END CERTIFICATE-----
 ```
 
-### Mount Custom CA Bundle
+### Configure Multiple Repository Hosts
 
-A more scalable approach is mounting a complete CA bundle:
+A more scalable approach is adding the same corporate CA certificate for each external repository host ArgoCD needs to verify. The `argocd-tls-certs-cm` keys must be repository hostnames, not full URLs:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          env:
-            - name: HTTP_PROXY
-              value: "http://proxy.company.com:8080"
-            - name: HTTPS_PROXY
-              value: "http://proxy.company.com:8080"
-            - name: NO_PROXY
-              value: "kubernetes.default.svc,10.0.0.0/8,.company.com,.svc,.local"
-            # Point to custom CA bundle for Helm operations
-            - name: HELM_TLS_CA_FILE
-              value: "/etc/ssl/custom/ca-bundle.crt"
-          volumeMounts:
-            - name: custom-ca
-              mountPath: /etc/ssl/custom
-              readOnly: true
-      volumes:
-        - name: custom-ca
-          configMap:
-            name: custom-ca-bundle
----
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: custom-ca-bundle
+  name: argocd-tls-certs-cm
   namespace: argocd
 data:
-  ca-bundle.crt: |
+  charts.bitnami.com: |
     # Corporate Proxy CA
     -----BEGIN CERTIFICATE-----
     MIIFjTCCA3WgAwIBAgIUK...
     -----END CERTIFICATE-----
-    # Any additional CA certs
+  prometheus-community.github.io: |
+    # Corporate Proxy CA
     -----BEGIN CERTIFICATE-----
-    MIIDrzCCApegAwIBAgIQC...
+    MIIFjTCCA3WgAwIBAgIUK...
     -----END CERTIFICATE-----
 ```
 
@@ -232,6 +204,9 @@ stringData:
   type: helm
   name: bitnami
   url: https://charts.bitnami.com/bitnami
+  # Optional alternative to global HTTP_PROXY/HTTPS_PROXY environment variables
+  proxy: http://proxy.company.com:8080
+  noProxy: "kubernetes.default.svc,10.0.0.0/8,.company.com,.svc,.local"
 ```
 
 ```bash
@@ -338,7 +313,7 @@ kubectl logs -n argocd deployment/argocd-repo-server --tail=50 | grep -i "proxy\
 
 ### "x509: certificate signed by unknown authority"
 
-The proxy's CA certificate is not trusted. Add it to `argocd-tls-certs-cm` or mount a custom CA bundle.
+The proxy's CA certificate is not trusted. Add it to `argocd-tls-certs-cm` for each repository hostname that ArgoCD needs to verify.
 
 ### "Proxy Authentication Required" (407)
 
