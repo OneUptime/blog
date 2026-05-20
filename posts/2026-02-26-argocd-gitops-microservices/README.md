@@ -80,12 +80,16 @@ spec:
       server: https://kubernetes.default.svc
     - namespace: "checkout-*"
       server: https://staging-cluster.example.com
+    - namespace: "checkout-*"
+      server: https://production-cluster.example.com
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
   namespaceResourceWhitelist:
     - group: "apps"
       kind: Deployment
+    - group: "batch"
+      kind: Job
     - group: ""
       kind: Service
     - group: ""
@@ -94,6 +98,10 @@ spec:
       kind: Secret
     - group: "networking.k8s.io"
       kind: Ingress
+    - group: "argoproj.io"
+      kind: Rollout
+    - group: "argoproj.io"
+      kind: AnalysisTemplate
 ```
 
 This ensures the checkout team can only deploy to their own namespaces and only create the resource types they need.
@@ -216,7 +224,11 @@ spec:
   project: team-platform
   source:
     repoURL: https://github.com/your-org/team-platform-config.git
+    targetRevision: main
     path: apps/auth-service/overlays/production
+  destination:
+    server: https://production-cluster.example.com
+    namespace: platform-prod
 
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -229,7 +241,11 @@ spec:
   project: team-platform
   source:
     repoURL: https://github.com/your-org/team-platform-config.git
+    targetRevision: main
     path: apps/user-service/overlays/production
+  destination:
+    server: https://production-cluster.example.com
+    namespace: platform-prod
 ```
 
 ## Handling Shared Resources
@@ -269,6 +285,19 @@ metadata:
   name: order-service
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+        - name: order-service
+          image: your-registry/order-service:1.0.0
+          ports:
+            - containerPort: 8080
   strategy:
     canary:
       canaryService: order-service-canary
@@ -326,17 +355,21 @@ spec:
 For microservices with frequent releases, use ArgoCD Image Updater to automatically update image tags:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  name: order-service
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: "main=your-registry/order-service"
-    argocd-image-updater.argoproj.io/main.update-strategy: semver
-    argocd-image-updater.argoproj.io/main.semver-constraint: ">=1.0.0"
-    argocd-image-updater.argoproj.io/write-back-method: git
+  name: order-service-images
+  namespace: argocd
 spec:
-  # ... standard Application spec
+  applicationRefs:
+    - namePattern: order-service
+      images:
+        - alias: main
+          imageName: your-registry/order-service:>=1.0.0
+          commonUpdateSettings:
+            updateStrategy: semver
+      writeBackConfig:
+        method: git
 ```
 
 This watches the container registry for new tags matching the semver constraint and updates the Git repo automatically.
