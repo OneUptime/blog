@@ -40,13 +40,8 @@ security/
     Chart.yaml
     values.yaml
   crowdsec-bouncers/
-    nginx-bouncer.yaml
+    ingress-nginx-values.yaml
     traefik-bouncer.yaml
-  crowdsec-config/
-    custom-scenarios/
-      k8s-brute-force.yaml
-    custom-parsers/
-      custom-nginx-parser.yaml
 ```
 
 ## Deploying CrowdSec
@@ -63,7 +58,7 @@ type: application
 version: 1.0.0
 dependencies:
   - name: crowdsec
-    version: "0.12.0"
+    version: "0.24.0"
     repository: "https://crowdsecurity.github.io/helm-charts"
 ```
 
@@ -95,9 +90,13 @@ crowdsec:
         size: 1Gi
         storageClassName: gp3
 
-    # Dashboard for viewing alerts and decisions
-    dashboard:
+    # Prometheus metrics and ServiceMonitor
+    metrics:
       enabled: true
+      serviceMonitor:
+        enabled: true
+        additionalLabels:
+          release: kube-prometheus-stack
 
     # Environment variables
     env:
@@ -124,8 +123,11 @@ crowdsec:
       - namespace: argocd
         podName: argocd-server-*
         program: argocd
+
+    additionalAcquisition:
       # Read SSH logs from nodes
-      - filenames:
+      - source: file
+        filenames:
           - /var/log/auth.log
           - /var/log/syslog
         labels:
@@ -204,59 +206,48 @@ spec:
 
 ## Deploying the Nginx Ingress Bouncer
 
-The bouncer integrates with your ingress controller to block malicious IPs.
-
-```yaml
-# security/crowdsec-bouncers/nginx-bouncer.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: crowdsec-bouncer-nginx
-  namespace: crowdsec
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: crowdsec-bouncer-nginx
-  template:
-    metadata:
-      labels:
-        app: crowdsec-bouncer-nginx
-    spec:
-      containers:
-        - name: bouncer
-          image: crowdsecurity/lua-bouncer-plugin:latest
-          env:
-            - name: CROWDSEC_BOUNCER_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: crowdsec-bouncer-key
-                  key: api-key
-            - name: CROWDSEC_BOUNCER_LAPI_URL
-              value: "http://crowdsec-service.crowdsec.svc.cluster.local:8080"
-          resources:
-            requests:
-              cpu: 50m
-              memory: 64Mi
-            limits:
-              memory: 128Mi
-```
-
-For Nginx Ingress Controller, a simpler approach is to use the CrowdSec Lua bouncer as a plugin.
+The bouncer integrates with your ingress controller to block malicious IPs. For Nginx Ingress Controller, use the CrowdSec Lua bouncer as an ingress-nginx plugin. Lua support was removed from the upstream ingress-nginx controller image in version 1.12, so use the CrowdSec-maintained controller image shown below.
 
 ```yaml
 # In your ingress-nginx values
 controller:
+  image:
+    registry: docker.io
+    image: crowdsecurity/controller
+    tag: v1.13.2
   config:
     plugins: "crowdsec"
     lua-shared-dicts: "crowdsec_cache: 50m"
   extraVolumes:
     - name: crowdsec-bouncer-plugin
-      configMap:
-        name: crowdsec-bouncer-config
+      emptyDir: {}
+  extraInitContainers:
+    - name: init-clone-crowdsec-bouncer
+      image: crowdsecurity/lua-bouncer-plugin
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: API_URL
+          value: "http://crowdsec-service.crowdsec.svc.cluster.local:8080"
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: crowdsec-bouncer-key
+              key: api-key
+        - name: BOUNCER_CONFIG
+          value: "/crowdsec/crowdsec-bouncer.conf"
+        - name: BAN_TEMPLATE_PATH
+          value: "/etc/nginx/lua/plugins/crowdsec/templates/ban.html"
+      command:
+        - sh
+        - -c
+        - sh /docker_start.sh; mkdir -p /lua_plugins/crowdsec/; cp -R /crowdsec/* /lua_plugins/crowdsec/
+      volumeMounts:
+        - name: crowdsec-bouncer-plugin
+          mountPath: /lua_plugins
   extraVolumeMounts:
     - name: crowdsec-bouncer-plugin
       mountPath: /etc/nginx/lua/plugins/crowdsec
+      subPath: crowdsec
 ```
 
 ## Custom Scenarios
@@ -264,35 +255,43 @@ controller:
 Write custom scenarios for Kubernetes-specific threats.
 
 ```yaml
-# security/crowdsec-config/custom-scenarios/k8s-api-brute-force.yaml
-type: leaky
-name: custom/k8s-api-brute-force
-description: "Detect brute force attempts against Kubernetes API"
-filter: "evt.Meta.log_type == 'k8s-audit' && evt.Meta.verb in ['create', 'update', 'delete'] && evt.Meta.responseCode == '403'"
-groupby: evt.Meta.sourceIP
-capacity: 5
-leakspeed: 30s
-blackhole: 5m
-labels:
-  type: brute_force
-  service: kubernetes
-  remediation: true
+# security/crowdsec/values.yaml
+crowdsec:
+  config:
+    scenarios:
+      k8s-api-brute-force.yaml: |
+        type: leaky
+        name: custom/k8s-api-brute-force
+        description: "Detect brute force attempts against Kubernetes API"
+        filter: "evt.Meta.log_type == 'k8s-audit' && evt.Meta.verb in ['create', 'update', 'delete'] && evt.Meta.responseCode == '403'"
+        groupby: "evt.Meta.sourceIP"
+        capacity: 5
+        leakspeed: "30s"
+        blackhole: 5m
+        labels:
+          type: brute_force
+          service: kubernetes
+          remediation: true
 ```
 
 ```yaml
-# security/crowdsec-config/custom-scenarios/high-rate-404.yaml
-type: leaky
-name: custom/high-rate-404
-description: "Detect high rate of 404 errors indicating scanning"
-filter: "evt.Meta.log_type == 'nginx' && evt.Meta.http_status == '404'"
-groupby: evt.Meta.source_ip
-capacity: 20
-leakspeed: 10s
-blackhole: 10m
-labels:
-  type: scan
-  service: http
-  remediation: true
+# security/crowdsec/values.yaml
+crowdsec:
+  config:
+    scenarios:
+      high-rate-404.yaml: |
+        type: leaky
+        name: custom/high-rate-404
+        description: "Detect high rate of 404 errors indicating scanning"
+        filter: "evt.Meta.service == 'http' && evt.Meta.http_status == '404'"
+        groupby: "evt.Meta.source_ip"
+        capacity: 20
+        leakspeed: "10s"
+        blackhole: 10m
+        labels:
+          type: scan
+          service: http
+          remediation: true
 ```
 
 ## Whitelisting Trusted IPs
@@ -300,17 +299,22 @@ labels:
 Create whitelists for your infrastructure IPs to prevent false positives.
 
 ```yaml
-# security/crowdsec-config/whitelists/infrastructure.yaml
-name: custom/whitelist-infra
-description: "Whitelist infrastructure IPs"
-whitelist:
-  reason: "Infrastructure services"
-  ip:
-    - "10.0.0.0/8"       # Internal network
-    - "172.16.0.0/12"     # Internal network
-    - "192.168.0.0/16"    # Internal network
-  expression:
-    - evt.Meta.source_ip startsWith "10."
+# security/crowdsec/values.yaml
+crowdsec:
+  config:
+    parsers:
+      s02-enrich:
+        infrastructure-whitelist.yaml: |
+          name: custom/whitelist-infra
+          description: "Whitelist infrastructure IPs"
+          whitelist:
+            reason: "Infrastructure services"
+            cidr:
+              - "10.0.0.0/8"       # Internal network
+              - "172.16.0.0/12"     # Internal network
+              - "192.168.0.0/16"    # Internal network
+            expression:
+              - evt.Meta.source_ip startsWith '10.'
 ```
 
 ## Managing Bouncer API Keys
@@ -350,7 +354,10 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: crowdsec-lapi
+      app: crowdsec-service
+  namespaceSelector:
+    matchNames:
+      - crowdsec
   endpoints:
     - port: metrics
       interval: 30s
