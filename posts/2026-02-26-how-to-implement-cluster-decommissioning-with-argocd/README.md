@@ -43,10 +43,10 @@ First, understand everything running on the cluster. ArgoCD makes this easy:
 ```bash
 # List all applications deployed to the cluster being decommissioned
 
-argocd app list --dest-server https://old-cluster.k8s.example.com
+argocd app list --cluster https://old-cluster.k8s.example.com
 
 # Export the list for review
-argocd app list --dest-server https://old-cluster.k8s.example.com -o json > workloads.json
+argocd app list --cluster https://old-cluster.k8s.example.com -o json > workloads.json
 
 # Check for applications not managed by ArgoCD
 kubectl get all --all-namespaces --context old-cluster | \
@@ -191,6 +191,20 @@ aws route53 change-resource-record-sets \
       "ResourceRecordSet": {
         "Name": "api.example.com",
         "Type": "A",
+        "SetIdentifier": "old-cluster",
+        "Weight": 90,
+        "AliasTarget": {
+          "DNSName": "old-cluster-lb.us-east-1.elb.amazonaws.com",
+          "HostedZoneId": "Z456",
+          "EvaluateTargetHealth": true
+        }
+      }
+    },
+    {
+      "Action": "UPSERT",
+      "ResourceRecordSet": {
+        "Name": "api.example.com",
+        "Type": "A",
         "SetIdentifier": "new-cluster",
         "Weight": 10,
         "AliasTarget": {
@@ -217,7 +231,7 @@ Before removing the old cluster, verify everything works:
 
 ```bash
 # Check all applications on new cluster are healthy
-argocd app list --dest-server https://new-cluster.k8s.example.com \
+argocd app list --cluster https://new-cluster.k8s.example.com \
   -o json | jq '.[] | {name: .metadata.name, health: .status.health.status, sync: .status.sync.status}'
 
 # Run integration tests against new cluster
@@ -260,7 +274,8 @@ Remove remaining resources from the old cluster:
 
 ```bash
 # Cordon all nodes
-kubectl cordon --all --context old-cluster
+kubectl get nodes --context old-cluster -o name | \
+  xargs -r kubectl --context old-cluster cordon
 
 # Delete non-system namespaces
 for ns in $(kubectl get ns --context old-cluster -o jsonpath='{.items[*].metadata.name}' | \
@@ -351,7 +366,7 @@ spec:
 
               # Verify all apps migrated
               echo "Checking application migration status..."
-              APPS=$(argocd app list --dest-server "$CLUSTER_SERVER" -o name)
+              APPS=$(argocd app list --cluster "$CLUSTER_SERVER" -o name)
               if [ -n "$APPS" ]; then
                 echo "ERROR: Applications still deployed to cluster:"
                 echo "$APPS"
