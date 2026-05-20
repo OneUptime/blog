@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Configuration
 
-Description: A detailed breakdown of every key stored in the ArgoCD argocd-secret Kubernetes Secret, including admin credentials, server keys, SSO secrets, and webhook configurations.
+Description: A detailed breakdown of common keys stored in the ArgoCD argocd-secret Kubernetes Secret, including admin credentials, server keys, SSO secrets, and webhook configurations.
 
 ---
 
-The `argocd-secret` Kubernetes Secret is one of the most sensitive components in your ArgoCD installation. It stores the admin password, server signing keys, SSO credentials, and webhook secrets. Understanding what each key stores helps you manage, rotate, and troubleshoot authentication issues. This guide documents every key in the argocd-secret.
+The `argocd-secret` Kubernetes Secret is one of the most sensitive components in your ArgoCD installation. It stores the admin password, server signing keys, SSO credentials, and webhook secrets. Understanding what each key stores helps you manage, rotate, and troubleshoot authentication issues. This guide documents the common built-in and integration keys in the argocd-secret.
 
 ## Viewing the Secret
 
@@ -17,7 +17,7 @@ You should never dump the secret contents in plain text in a shared terminal, bu
 ```bash
 # See the keys (not values)
 
-kubectl get secret argocd-secret -n argocd -o jsonpath='{.data}' | jq 'keys'
+kubectl get secret argocd-secret -n argocd -o json | jq '.data | keys'
 
 # Decode a specific key (be careful with this)
 kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.admin\.password}' | base64 -d
@@ -37,7 +37,7 @@ The value is base64-encoded, and underneath that encoding is a bcrypt hash. To s
 
 ```bash
 # Generate a new bcrypt hash
-NEW_HASH=$(htpasswd -nbBC 10 "" 'MyNewPassword123' | tr -d ':\n' | sed 's/$2y/$2a/')
+NEW_HASH=$(argocd account bcrypt --password 'MyNewPassword123')
 
 # Update the secret
 kubectl patch secret argocd-secret -n argocd -p "{
@@ -61,7 +61,7 @@ This is a plain ISO 8601 timestamp, base64-encoded. When you change the password
 
 ## server.secretkey
 
-The symmetric key used by the ArgoCD server to sign and encrypt JWT tokens, session cookies, and other server-side secrets.
+The symmetric key used by the ArgoCD server to sign local JWT session tokens. The browser session cookie carries this signed token.
 
 ```yaml
 data:
@@ -70,8 +70,8 @@ data:
 
 This key is critical for security:
 
-- If it is compromised, all active sessions can be forged
-- If it changes, all existing sessions are invalidated (users must re-login)
+- If it is compromised, local ArgoCD-signed session tokens can be forged
+- If it changes, existing local ArgoCD-signed sessions are invalidated (users must re-login)
 - It must be the same across all ArgoCD server replicas
 
 To rotate the server secret key:
@@ -91,11 +91,11 @@ kubectl patch secret argocd-secret -n argocd -p "{
 kubectl rollout restart deployment argocd-server -n argocd
 ```
 
-After rotation, all users will need to log in again.
+After rotation, users with ArgoCD-signed session tokens will need to log in again.
 
 ## tls.crt and tls.key
 
-The TLS certificate and private key for the ArgoCD server. These are standard Kubernetes TLS secret fields:
+The TLS certificate and private key for the ArgoCD server. ArgoCD still supports these fields in `argocd-secret` for backwards compatibility, but the recommended location is the separate `argocd-server-tls` secret.
 
 ```yaml
 data:
@@ -103,7 +103,7 @@ data:
   tls.key: <base64-encoded PEM private key>
 ```
 
-ArgoCD generates a self-signed certificate if these are not provided. For production, replace with a proper certificate:
+ArgoCD generates a self-signed certificate if no valid key pair is found in `argocd-server-tls` or `argocd-secret`. For production, create a proper certificate in `argocd-server-tls`:
 
 ```bash
 kubectl create secret tls argocd-server-tls \
@@ -113,7 +113,7 @@ kubectl create secret tls argocd-server-tls \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-Note: Some installations use a separate `argocd-server-tls` secret instead of storing TLS in `argocd-secret`.
+Note: `argocd-server-tls` is the recommended secret for server TLS. Storing `tls.crt` and `tls.key` in `argocd-secret` is deprecated and should only be treated as a backwards-compatible fallback.
 
 ## Dex SSO Secrets
 
@@ -210,13 +210,13 @@ data:
   webhook.gitlab.secret: <base64-encoded>
 ```
 
-### webhook.bitbucket.secret
+### webhook.bitbucket.uuid
 
-Secret for Bitbucket Server webhooks:
+UUID for Bitbucket Cloud webhooks:
 
 ```yaml
 data:
-  webhook.bitbucket.secret: <base64-encoded>
+  webhook.bitbucket.uuid: <base64-encoded>
 ```
 
 ### webhook.bitbucketserver.secret
