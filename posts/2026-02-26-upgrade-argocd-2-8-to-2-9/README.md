@@ -8,24 +8,24 @@ Description: Step-by-step guide to upgrading ArgoCD from version 2.8 to 2.9 cove
 
 ---
 
-ArgoCD 2.9 introduced several significant changes including improved ApplicationSet features, enhanced notification support, and changes to resource tracking. Upgrading from 2.8 to 2.9 is generally straightforward, but there are specific breaking changes and configuration updates you need to be aware of. This guide walks you through every step of the upgrade process.
+ArgoCD 2.9 introduced several changes including an upgraded bundled Kustomize version and ongoing improvements across the Argo CD controllers. Upgrading from 2.8 to 2.9 is generally straightforward, but there are specific version and configuration updates you need to be aware of. This guide walks you through every step of the upgrade process.
 
 ## What Changed in ArgoCD 2.9
 
 ### Key New Features
 
-- **ApplicationSet Progressive Syncs**: Roll out changes to applications progressively using ApplicationSet strategies
-- **Server-side diff**: Improved diff calculation using server-side logic instead of client-side
-- **Improved notifications**: Notification templates became part of the core ArgoCD installation
-- **Application-level RBAC improvements**: More granular access control for application operations
-- **Improved Helm support**: Better handling of Helm dependencies and OCI registries
+- **Bundled Kustomize upgrade**: The bundled Kustomize version changed from 5.1.0 to 5.2.1
+- **ApplicationSet Progressive Syncs**: Roll out changes to applications progressively using ApplicationSet strategies when the feature is enabled
+- **Bundled notifications controller**: Notifications remain part of the standard ArgoCD installation
+- **Bundled ApplicationSet controller**: ApplicationSet remains part of the standard ArgoCD installation
+- **Updated Helm chart support**: The argo-cd Helm chart 5.51.0 maps to Argo CD 2.9.0
 
 ### Breaking Changes
 
-- The `argocd-notifications-controller` was merged into the main ArgoCD installation. If you deployed notifications separately, you need to remove the standalone installation.
-- `spec.source` is deprecated in favor of `spec.sources` (plural) for multi-source applications, though `spec.source` still works.
-- The ApplicationSet controller is now part of the core installation. Remove any standalone ApplicationSet controller deployments.
-- Changes to how `ignoreDifferences` works with server-side apply.
+- The bundled Kustomize upgrade from 5.1.0 to 5.2.1 can affect applications that depend on Kustomize rendering behavior.
+- Notifications and ApplicationSet were already bundled in Argo CD before 2.9. If you still carry old standalone installations from earlier versions, remove duplicate controllers before relying on the bundled controllers.
+- `spec.sources` (plural) is available for multi-source applications. `spec.source` remains valid for single-source applications.
+- Starting with Argo CD 2.9.16, the NetworkPolicy for `argocd-redis` and `argocd-redis-ha-haproxy` dropped Egress restrictions. Review this if you upgrade directly to 2.9.16 or later.
 
 ## Pre-Upgrade Steps
 
@@ -40,10 +40,10 @@ kubectl get deploy -n argocd -o jsonpath='{.items[*].spec.template.spec.containe
 
 ### 2. Check Kubernetes Version Compatibility
 
-ArgoCD 2.9 supports Kubernetes 1.25 through 1.29. Verify your cluster version.
+ArgoCD 2.9 was tested with Kubernetes 1.25 through 1.28. The argo-cd Helm chart 5.51.0 declares `kubeVersion: ">=1.23.0-0"`. Verify your cluster version and your own support requirements.
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ### 3. Backup Everything
@@ -86,7 +86,7 @@ argocd app list --output json | jq length
 
 ### 5. Handle Standalone Notifications Controller
 
-If you deployed argocd-notifications separately, you need to remove it since 2.9 includes it natively.
+If you deployed argocd-notifications separately, you need to remove it since the standard ArgoCD installation includes it natively.
 
 ```bash
 # Check if standalone notifications controller exists
@@ -127,7 +127,7 @@ kubectl delete deploy -n argocd argocd-notifications-controller --ignore-not-fou
 kubectl delete deploy -n argocd argocd-applicationset-controller --ignore-not-found
 ```
 
-Keep the ConfigMaps and Secrets - the integrated controllers will use them.
+Keep the ConfigMaps and Secrets - the bundled controllers will use them.
 
 ### Step 3: Update the Helm Chart Version
 
@@ -153,18 +153,18 @@ helm dependency update
 Several Helm values changed between chart versions. Key changes include:
 
 ```yaml
-# New in 2.9 - notifications are now built-in
+# Notifications are included in the argo-cd chart
 notifications:
-  enabled: true  # Was a separate chart before
+  enabled: true
 
-# ApplicationSet is now always included
+# ApplicationSet is included by default
 applicationSet:
-  enabled: true  # Was optional before
+  enabled: true
 
-# New server-side diff feature
-server:
-  extraArgs:
-    - --enable-server-side-diff  # Optional but recommended
+# Progressive Syncs are controlled through argocd-cmd-params-cm
+configs:
+  params:
+    applicationsetcontroller.enable.progressive.syncs: "true"
 ```
 
 ### Step 5: Apply the Upgrade
@@ -180,7 +180,7 @@ git push
 # ArgoCD will detect the change and upgrade itself
 # Monitor the rollout
 kubectl rollout status deploy/argocd-server -n argocd
-kubectl rollout status deploy/argocd-application-controller -n argocd
+kubectl rollout status statefulset/argocd-application-controller -n argocd
 kubectl rollout status deploy/argocd-repo-server -n argocd
 ```
 
@@ -203,7 +203,7 @@ argocd version
 argocd app list --output wide
 
 # Check for errors in logs
-kubectl logs -n argocd deploy/argocd-application-controller --tail=100 | grep -i error
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=100 | grep -i error
 kubectl logs -n argocd deploy/argocd-server --tail=100 | grep -i error
 kubectl logs -n argocd deploy/argocd-repo-server --tail=100 | grep -i error
 
@@ -213,24 +213,17 @@ kubectl logs -n argocd deploy/argocd-notifications-controller --tail=50
 
 ## Post-Upgrade Configuration
 
-### Enable Server-Side Diff
+### Review Kustomize Rendering
 
-Server-side diff is a major improvement in 2.9 that provides more accurate diff calculation.
+ArgoCD 2.9 upgrades bundled Kustomize from 5.1.0 to 5.2.1. If your applications rely on Kustomize-specific behavior, render and compare those applications before and after the upgrade.
 
-```yaml
-# In argocd-cmd-params-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  controller.diff.server.side: "true"
+```bash
+argocd app diff my-app
 ```
 
 ### Migrate to Multi-Source Applications
 
-While `spec.source` still works, consider migrating to `spec.sources` for applications that use multiple sources.
+Use `spec.sources` for applications that need multiple sources. Keep `spec.source` for single-source applications.
 
 ```yaml
 # Old (still works)
@@ -264,6 +257,7 @@ git push
 # If CRDs cause issues, downgrade them
 kubectl apply --server-side -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.0/manifests/crds/application-crd.yaml
 kubectl apply --server-side -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.0/manifests/crds/appproject-crd.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.8.0/manifests/crds/applicationset-crd.yaml
 
 # Verify rollback
 argocd version
@@ -283,12 +277,12 @@ kubectl get deploy -n argocd | grep applicationset
 
 ### Notification Template Errors
 
-If notification templates break, the ConfigMap format may have changed slightly. Check the new template format in the 2.9 documentation.
+If notification templates break after removing an old standalone installation, compare your `argocd-notifications-cm` and `argocd-notifications-secret` with the notification configuration expected by the bundled controller.
 
-### Sync Diff Changes
+### Kustomize Rendering Changes
 
-The server-side diff may show different results than the client-side diff used in 2.8. Some applications may appear out of sync after the upgrade even though nothing changed. Review these carefully and adjust `ignoreDifferences` if needed.
+The bundled Kustomize upgrade may render some applications differently. Some applications may appear out of sync after the upgrade even though your manifests did not change. Review these carefully and adjust manifests or `ignoreDifferences` if needed.
 
 ## Summary
 
-Upgrading ArgoCD from 2.8 to 2.9 is primarily about handling the consolidation of notifications and ApplicationSet controllers into the core installation. Back up everything before starting, update CRDs first, remove any standalone controllers, and verify thoroughly after the upgrade. The rollback procedure is straightforward with Helm or Git revert if needed. Plan for about 30 minutes of maintenance window for the upgrade, though the actual downtime should be minimal since ArgoCD handles rolling updates.
+Upgrading ArgoCD from 2.8 to 2.9 is primarily about applying the new manifests or Helm chart, updating CRDs, and reviewing the bundled Kustomize version change. Back up everything before starting, remove any leftover standalone controllers from older installations, and verify thoroughly after the upgrade. The rollback procedure is straightforward with Helm or Git revert if needed. Plan for about 30 minutes of maintenance window for the upgrade, though the actual downtime should be minimal since ArgoCD handles rolling updates.
