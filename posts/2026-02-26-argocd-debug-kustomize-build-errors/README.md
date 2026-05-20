@@ -42,7 +42,7 @@ Common error messages and what they mean:
 - `rpc error: code = Unknown desc = Manifest generation error` - Kustomize build failed
 - `kustomize build failed` - The `kustomize build` command returned a non-zero exit code
 - `accumulating resources` - A file referenced in `resources` does not exist or has errors
-- `no matches for kind` - A CRD is referenced but not installed
+- `no matches for kind` - A custom resource type is referenced during diff or sync, but ArgoCD cannot find the matching API resource in the cluster
 
 ## Step 2: Check Repo Server Logs
 
@@ -162,7 +162,7 @@ The Kustomize version in ArgoCD does not support the field you are using:
 kubectl exec -n argocd deploy/argocd-repo-server -- kustomize version
 ```
 
-Fix: Either upgrade Kustomize in ArgoCD or use an older equivalent feature. For example, use `vars` instead of `replacements` for older versions.
+Fix: Either upgrade Kustomize in ArgoCD or use an older equivalent feature. For example, older Kustomize versions may require `vars` instead of `replacements`, although `vars` is deprecated in newer Kustomize releases.
 
 ## Common Error: Load Restrictions
 
@@ -198,7 +198,7 @@ For issues that only reproduce in ArgoCD, build directly inside the repo server 
 
 ```bash
 # Exec into the repo server
-kubectl exec -it -n argocd deploy/argocd-repo-server -- bash
+kubectl exec -it -n argocd deploy/argocd-repo-server -- sh
 
 # Navigate to the cached repo (ArgoCD caches repos in /tmp)
 ls /tmp/
@@ -232,8 +232,8 @@ If the build succeeds but the sync fails, check the diff:
 # See what ArgoCD wants to apply
 argocd app diff my-app
 
-# Check for specific resources
-argocd app diff my-app --resource ':Deployment:my-api'
+# Inspect a specific live resource
+argocd app get-resource my-app --kind Deployment --resource-name my-api -o yaml
 ```
 
 ## Prevention: CI Validation
