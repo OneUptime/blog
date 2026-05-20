@@ -51,7 +51,7 @@ id alice
 
 # Check the home directory
 ls -la /home/alice/
-# Shows .bashrc, .bash_profile, .profile (from /etc/skel)
+# Shows files such as .bashrc, .bash_logout, and .profile (from /etc/skel)
 ```
 
 ## Adding a User with useradd
@@ -72,14 +72,20 @@ sudo passwd alice
 
 # More options:
 sudo useradd \
-    -m \                          # Create home directory
-    -s /bin/bash \                # Shell
-    -c "Service Account" \        # Comment
-    -d /opt/myservice \           # Custom home directory
-    -u 1500 \                     # Specific UID (optional)
-    -g developers \               # Primary group
-    -G docker,sudo \              # Additional groups
+    -m \
+    -s /bin/bash \
+    -c "Service Account" \
+    -d /opt/myservice \
+    -u 1500 \
+    -g developers \
+    -G docker,sudo \
     myservice
+
+# Flags explained:
+# -d        Custom home directory
+# -u        Specific UID (optional)
+# -g        Primary group (must already exist)
+# -G        Additional groups (must already exist)
 ```
 
 ## Creating Service Accounts
@@ -89,11 +95,16 @@ Service accounts run application processes and typically don't need login shells
 ```bash
 # Create a system user for a daemon (no home dir, no login)
 sudo useradd \
-    --system \          # System user (UID < 1000)
-    --no-create-home \  # No home directory
-    --shell /usr/sbin/nologin \  # Prevent interactive login
+    --system \
+    --no-create-home \
+    --shell /usr/sbin/nologin \
     --comment "MyApp Service Account" \
     myapp
+
+# Flags explained:
+# --system          Use the system UID/GID range
+# --no-create-home  No home directory
+# --shell           Prevent interactive login with /usr/sbin/nologin
 
 # Or use adduser with --system flag
 sudo adduser --system --no-create-home --group myapp
@@ -124,10 +135,10 @@ sudo usermod -s /bin/zsh alice
 # Change the home directory (and move files)
 sudo usermod -d /home/new-home -m alice
 
-# Lock an account (disable login without deleting)
+# Lock the password (disable password login without deleting)
 sudo usermod -L alice
 
-# Unlock an account
+# Unlock the password
 sudo usermod -U alice
 
 # Change the username
@@ -199,7 +210,7 @@ sudo deluser alice
 # With home directory removal
 sudo deluser --remove-home alice
 
-# Also remove the user from all groups
+# Remove all files on the system owned by this user
 sudo deluser --remove-all-files alice
 ```
 
@@ -264,7 +275,7 @@ while IFS=: read -r username fullname; do
 
     # Create the user
     sudo adduser --disabled-password \
-                 --gecos "$fullname" \
+                 --comment "$fullname" \
                  "$username"
 
     echo "Created user: $username"
