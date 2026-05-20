@@ -20,16 +20,17 @@ Check the PAM configuration:
 
 ```bash
 grep pam_limits /etc/pam.d/common-session
-grep pam_limits /etc/pam.d/sshd
+grep pam_limits /etc/pam.d/common-session-noninteractive
+grep common-session /etc/pam.d/sshd
 ```
 
-You should see a line like:
+For session files that load `pam_limits.so` directly, you should see a line like:
 
 ```text
 session required pam_limits.so
 ```
 
-If this line is missing, limits won't be applied for that login method.
+On Ubuntu, `sshd` usually includes the common session files rather than listing `pam_limits.so` directly. If neither the login method nor its included session files load `pam_limits.so`, limits won't be applied for that login method.
 
 ## File Format
 
@@ -39,10 +40,10 @@ Each line in `limits.conf` follows this format:
 <domain>  <type>  <item>  <value>
 ```
 
-- **domain**: Username, group (`@groupname`), wildcard (`*`), or process UID range
+- **domain**: Username, group (`@groupname`), wildcard (`*`), UID range, or GID range
 - **type**: `hard` or `soft`
   - `soft`: Current default limit (user can raise up to hard limit)
-  - `hard`: Absolute maximum (root can lower, non-root can't raise above it)
+  - `hard`: Absolute maximum (non-root users can't raise above it)
   - `-`: Sets both hard and soft to the same value
 - **item**: The resource being limited (see list below)
 - **value**: Numeric value or `unlimited`
@@ -57,7 +58,7 @@ Each line in `limits.conf` follows this format:
 | `stack` | Maximum stack size (KB) | 8192 |
 | `fsize` | Maximum file size (KB) | unlimited |
 | `core` | Maximum core dump size (KB) | 0 |
-| `rss` | Maximum resident set size (KB) | unlimited |
+| `rss` | Maximum resident set size (KB; ignored on modern Linux) | unlimited |
 | `cpu` | CPU time limit (minutes) | unlimited |
 | `as` | Address space (virtual memory) limit (KB) | unlimited |
 | `maxlogins` | Maximum concurrent logins | unlimited |
@@ -149,7 +150,7 @@ developer       hard    core      unlimited
 
 ## Drop-In Directory
 
-Modern Ubuntu uses `/etc/security/limits.d/` for additional limit files, processed before `limits.conf`:
+Modern Ubuntu uses `/etc/security/limits.d/` for additional limit files, processed after `limits.conf` in C-locale filename order:
 
 ```bash
 # Create a service-specific limits file
@@ -300,7 +301,7 @@ echo "fs.file-max = 2097152" | sudo tee /etc/sysctl.d/10-file-max.conf
 sudo sysctl -p /etc/sysctl.d/10-file-max.conf
 ```
 
-Per-user `nofile` limits can't exceed the system-wide `fs.file-max`.
+Per-process `nofile` limits can't exceed `/proc/sys/fs/nr_open`. The `fs.file-max` setting is the system-wide limit for allocated file handles, so it must still be high enough for the total workload.
 
 ## Common Errors and Solutions
 
@@ -308,7 +309,7 @@ Per-user `nofile` limits can't exceed the system-wide `fs.file-max`.
 
 ```bash
 # Check current usage vs limit
-lsof -p $(pgrep nginx) | wc -l
+sudo lsof -p $(pgrep -o nginx) | wc -l
 cat /proc/$(pgrep -o nginx)/limits | grep "Max open files"
 
 # If usage is near the limit, increase nofile in limits.conf
@@ -339,7 +340,7 @@ cat /proc/sys/fs/file-nr
 sudo lsof | awk '{print $2}' | sort | uniq -c | sort -rn | head -20
 
 # Check if a process is near its limit
-PID=$(pgrep mysql)
+PID=$(pgrep -o mysql)
 CURRENT=$(ls /proc/$PID/fd | wc -l)
 MAX=$(cat /proc/$PID/limits | grep "Max open files" | awk '{print $4}')
 echo "MySQL: $CURRENT/$MAX file descriptors used"
