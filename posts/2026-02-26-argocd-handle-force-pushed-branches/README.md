@@ -8,13 +8,13 @@ Description: Learn how to handle force-pushed branches in ArgoCD, understand why
 
 ---
 
-Force pushing to a Git branch rewrites the commit history. The branch pointer moves to a completely new commit that is not a descendant of the previous HEAD. This breaks a fundamental assumption that Git clients make - that history only moves forward. When ArgoCD encounters a force-pushed branch, its local cached repository becomes inconsistent with the remote, leading to fetch failures, sync errors, and confusing OutOfSync states.
+Force pushing to a Git branch rewrites the commit history. The branch pointer moves to a new commit that may not be a descendant of the previous HEAD. Modern ArgoCD releases fetch with force updates enabled, so the branch reference itself can move backward or sideways. Problems usually appear when an application is pinned to a commit that was removed from the remote, when a webhook or refresh has not yet updated ArgoCD's cache, or when the repo-server's local working tree is otherwise stale.
 
 This guide covers how to configure ArgoCD to handle force pushes gracefully and what happens behind the scenes when history gets rewritten.
 
 ## What Happens When a Branch Is Force-Pushed
 
-ArgoCD's repo server maintains a local clone of each repository. When it performs a `git fetch`, it expects the remote branch to be a descendant of the local branch. A force push breaks this expectation:
+ArgoCD's repo server maintains local Git state for each repository. In current releases, its native Git client fetches from origin with `--tags --force --prune`, so it can accept non-fast-forward updates to remote-tracking references. A force push still changes what a branch name resolves to:
 
 ```mermaid
 gitGraph
@@ -27,17 +27,17 @@ gitGraph
     commit id: "E" tag: "main (remote after force push)"
 ```
 
-After the force push, the remote `main` branch points to commit E, which has a completely different history from commit C. ArgoCD's local clone still has the old history A-B-C, and a normal `git fetch` might fail or produce unexpected results.
+After the force push, the remote `main` branch points to commit E, which has a different history from commit C. Once ArgoCD refreshes, the branch target should resolve to E. If an application, webhook, or automation still references C and the Git server no longer advertises that commit, ArgoCD may be unable to resolve or fetch it.
 
 ## Common Error Messages from Force Pushes
 
-When ArgoCD encounters a force-pushed branch, you typically see errors like:
+When ArgoCD is asked to render a commit that disappeared after a force push, you may see errors like:
 
 ```text
 ComparisonError: rpc error: code = Internal desc = Failed to fetch
-default/my-app: `git fetch origin main` result error: exit status 128
+default/my-app: `git fetch origin <commit-sha> --tags --force --prune` failed exit status 128
 
-fatal: refusing to merge unrelated histories
+fatal: remote error: upload-pack: not our ref <commit-sha>
 ```
 
 Or:
@@ -46,56 +46,21 @@ Or:
 Unable to resolve 'main' to a commit SHA
 ```
 
-Or the application shows as OutOfSync even though you know the manifests match, because ArgoCD is comparing against the old (pre-force-push) commit.
+Or the application shows as Unknown or OutOfSync until ArgoCD refreshes and compares against the new branch tip.
 
 ## Configuring ArgoCD to Handle Force Pushes
 
-The primary fix is to ensure ArgoCD uses `--force` when fetching from remote repositories. This tells Git to accept non-fast-forward updates to branch references.
+The primary fix is to run a current ArgoCD release and let the repo server perform its normal forced fetch. ArgoCD's native Git client already fetches with:
 
-Configure the repo server's Git behavior:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-repo-server-gitconfig
-  namespace: argocd
-data:
-  gitconfig: |
-    [remote "origin"]
-      fetch = +refs/heads/*:refs/remotes/origin/*
-
-    [fetch]
-      prune = true
-      pruneTags = true
+```text
+git fetch origin <revision> --tags --force --prune
 ```
 
-The `+` prefix in the fetch refspec tells Git to allow forced updates. The `prune` settings remove local references that no longer exist on the remote. Mount this configuration into the repo server:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-      - name: argocd-repo-server
-        volumeMounts:
-        - name: gitconfig
-          mountPath: /home/argocd/.gitconfig
-          subPath: gitconfig
-      volumes:
-      - name: gitconfig
-        configMap:
-          name: argocd-repo-server-gitconfig
-```
+The `--force` flag tells Git to accept non-fast-forward updates to references, and `--prune` removes remote-tracking references that no longer exist on the remote. You do not need to mount a custom `.gitconfig` just to add a force-fetch refspec.
 
 ## Forcing a Repository Refresh
 
-When a force push has already caused issues, you need to force ArgoCD to drop its cached repository and re-clone:
+When a force push has already caused issues, force ArgoCD to refresh application data and the target manifest cache:
 
 ```bash
 # Hard refresh the application
@@ -106,58 +71,29 @@ argocd app get my-app --hard-refresh
 argocd app diff my-app --hard-refresh
 
 # Force refresh via the API
-curl -X POST "https://argocd.example.com/api/v1/applications/my-app?refresh=hard" \
+curl -X GET "https://argocd.example.com/api/v1/applications/my-app?refresh=hard" \
   -H "Authorization: Bearer $ARGOCD_TOKEN"
 ```
 
-The `--hard-refresh` flag tells ArgoCD to delete the cached repository and perform a fresh clone. This resolves any inconsistency caused by the force push.
+The `--hard-refresh` flag refreshes application data as well as the target manifests cache. This resolves stale comparison data caused by the force push.
 
 ## Automating Recovery from Force Pushes
 
-Instead of manually hard-refreshing after every force push, configure a webhook that triggers a hard refresh when the Git server reports a force push event.
-
-For GitHub, create a webhook that listens for push events:
-
-```yaml
-# GitHub webhook payload includes a "forced" field
-# Example webhook handler as a Kubernetes Job
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: force-push-handler
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-      - name: handler
-        image: bitnami/kubectl
-        command:
-        - /bin/sh
-        - -c
-        - |
-          # Parse the webhook payload to detect force push
-          # Then trigger hard refresh for affected applications
-          argocd app list -o name | while read app; do
-            argocd app get "$app" --hard-refresh
-          done
-      restartPolicy: OnFailure
-```
-
-A more targeted approach is to use ArgoCD's webhook integration. Configure the Git webhook in ArgoCD, and it will automatically re-fetch the repository when push events are received:
+Instead of manually hard-refreshing after every force push, configure ArgoCD's webhook integration. Configure the Git webhook in ArgoCD, and it will automatically refresh matching applications when push events are received:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   # Webhook secret for GitHub
   webhook.github.secret: "your-webhook-secret"
 ```
 
-When ArgoCD receives the webhook, it triggers a repository refresh. For force pushes, the fetch might still fail with the cached state, so combining webhooks with the Git configuration fix (force fetch refspec) is the most robust approach.
+When ArgoCD receives the webhook at `/api/webhook`, it triggers a refresh for applications related to the Git repository. For force pushes, this removes the polling delay and lets the repo server perform its normal forced fetch promptly.
 
 ## Preventing Force Push Issues
 
@@ -195,7 +131,7 @@ spec:
     targetRevision: abc123def456  # Specific commit - immutable
 ```
 
-Commit SHAs are immutable. Even if the branch is force-pushed, the SHA still references the exact state you deployed.
+Full commit SHAs identify an exact Git object, so they avoid ambiguity when a branch is rewritten. The commit still needs to remain reachable or otherwise fetchable from the remote; if a force push removes it and the Git server will not advertise it, ArgoCD may not be able to fetch it later.
 
 ## Handling Force Pushes in Multi-Application Setups
 
@@ -225,7 +161,7 @@ Set up monitoring to detect when force pushes affect your ArgoCD installation:
 
 ```promql
 # Track Git fetch failures - spikes may indicate force push issues
-rate(argocd_git_request_total{grpc_code!="OK"}[5m])
+rate(argocd_git_fetch_fail_total[5m])
 
 # Track application sync errors
 argocd_app_sync_total{phase="Error"}
@@ -248,4 +184,4 @@ groups:
       description: "More than 5 applications are in Unknown sync state. This may indicate a force push to a shared repository."
 ```
 
-Force pushes are a reality of Git workflows. Configure ArgoCD to handle them gracefully with force-fetch refspecs and automatic hard refresh on webhook events, while also implementing organizational policies to minimize their occurrence on production-tracked branches.
+Force pushes are a reality of Git workflows. Keep ArgoCD current so the repo server uses its built-in forced fetch behavior, use webhooks to remove polling delays, and implement organizational policies to minimize force pushes on production-tracked branches.
