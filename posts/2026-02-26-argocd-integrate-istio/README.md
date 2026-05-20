@@ -14,14 +14,14 @@ Istio service mesh adds powerful networking capabilities to Kubernetes - traffic
 
 Before diving into solutions, understand what makes Istio and ArgoCD tricky together:
 
-1. **Sidecar injection** - Istio's mutating webhook injects the envoy proxy container, making live Deployments differ from Git manifests
+1. **Sidecar injection** - Istio's mutating webhook injects the Envoy proxy container into Pods at creation time. Automatic injection does not patch the Deployment itself, but directly managed Pod manifests and other admission-mutated resources can still produce diff noise.
 2. **CRD health** - ArgoCD does not know how to assess the health of Istio custom resources
 3. **Resource ordering** - Istio CRDs must exist before you can create VirtualServices and DestinationRules
-4. **Status fields** - Istio controllers update status fields that trigger false OutOfSync reports
+4. **Status fields** - If Istio configuration status is enabled, Istio controllers update status fields that can trigger false OutOfSync reports
 
 ## Managing Istio Installation with ArgoCD
 
-First, deploy Istio itself through ArgoCD. Using the Istio operator or Helm charts:
+First, deploy Istio itself through ArgoCD using the Istio Helm charts:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -34,7 +34,7 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: base
-    targetRevision: 1.20.0
+    targetRevision: 1.30.0
     helm:
       values: |
         defaultRevision: default
@@ -63,7 +63,7 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: istiod
-    targetRevision: 1.20.0
+    targetRevision: 1.30.0
     helm:
       values: |
         meshConfig:
@@ -95,7 +95,7 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: gateway
-    targetRevision: 1.20.0
+    targetRevision: 1.30.0
     helm:
       values: |
         service:
@@ -112,7 +112,7 @@ spec:
 
 ## Handling Sidecar Injection Differences
 
-The biggest source of diff noise is Istio's sidecar injection. Configure ArgoCD to ignore injected fields:
+Istio's automatic sidecar injection happens at the Pod level, so ArgoCD will not see injected containers in the Deployment object itself. If you manage Pod manifests directly or compare other admission-mutated resources, configure ArgoCD to ignore injected fields:
 
 ```yaml
 # argocd-cm ConfigMap
@@ -124,30 +124,38 @@ metadata:
   namespace: argocd
 data:
   # Ignore Istio sidecar injection differences
-  resource.customizations.ignoreDifferences.apps_Deployment: |
+  resource.customizations.ignoreDifferences._Pod: |
     jqPathExpressions:
-      - .spec.template.metadata.annotations["sidecar.istio.io/status"]
-      - .spec.template.metadata.annotations["prometheus.io/path"]
-      - .spec.template.metadata.annotations["prometheus.io/port"]
-      - .spec.template.metadata.annotations["prometheus.io/scrape"]
-      - .spec.template.metadata.labels["security.istio.io/tlsMode"]
-      - .spec.template.metadata.labels["service.istio.io/canonical-name"]
-      - .spec.template.metadata.labels["service.istio.io/canonical-revision"]
-    managedFieldsManagers:
-      - istio-sidecar-injector
-
-  resource.customizations.ignoreDifferences.apps_StatefulSet: |
-    jqPathExpressions:
-      - .spec.template.metadata.annotations["sidecar.istio.io/status"]
+      - .metadata.annotations["sidecar.istio.io/status"]
+      - .metadata.annotations["prometheus.io/path"]
+      - .metadata.annotations["prometheus.io/port"]
+      - .metadata.annotations["prometheus.io/scrape"]
+      - .metadata.labels["security.istio.io/tlsMode"]
+      - .metadata.labels["service.istio.io/canonical-name"]
+      - .metadata.labels["service.istio.io/canonical-revision"]
+      - .spec.initContainers[]? | select(.name == "istio-init")
+      - .spec.containers[]? | select(.name == "istio-proxy")
+      - .spec.volumes[]? | select(.name == "istio-envoy" or .name == "istio-data" or .name == "istio-podinfo" or .name == "istio-token" or .name == "istiod-ca-cert")
     managedFieldsManagers:
       - istio-sidecar-injector
 ```
 
-Alternatively, enable server-side diff which handles sidecar injection automatically:
+Alternatively, enable server-side diff in the argocd-cmd-params-cm ConfigMap and add the compare option on applications that need mutating webhook output included in diff calculation:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
 data:
   controller.diff.server.side: "true"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    argocd.argoproj.io/compare-options: IncludeMutationWebhook=true
 ```
 
 ## Custom Health Checks for Istio Resources
@@ -162,7 +170,7 @@ data:
     hs = {}
     if obj.status ~= nil and obj.status.validationMessages ~= nil then
       for _, msg in ipairs(obj.status.validationMessages) do
-        if msg.type == "ERROR" then
+        if msg.level == "Error" then
           hs.status = "Degraded"
           hs.message = msg.message
           return hs
@@ -200,7 +208,7 @@ Store Istio traffic configuration in Git and manage it through ArgoCD:
 
 ```yaml
 # Git repository: istio-config/my-app/virtual-service.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -211,35 +219,47 @@ spec:
   gateways:
     - istio-ingress/main-gateway
   http:
-    - match:
+    - name: canary-header
+      match:
         - headers:
             x-canary:
               exact: "true"
       route:
         - destination:
-            host: my-app-canary
+            host: my-app
+            subset: canary
             port:
               number: 80
-    - route:
+    - name: primary
+      route:
         - destination:
-            host: my-app-stable
+            host: my-app
+            subset: stable
             port:
               number: 80
           weight: 90
         - destination:
-            host: my-app-canary
+            host: my-app
+            subset: canary
             port:
               number: 80
           weight: 10
 
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
   namespace: my-app
 spec:
   host: my-app
+  subsets:
+    - name: stable
+      labels:
+        app: my-app
+    - name: canary
+      labels:
+        app: my-app
   trafficPolicy:
     connectionPool:
       tcp:
@@ -341,7 +361,7 @@ Use sync waves to ensure Istio CRDs and control plane are ready before deploying
 # Wave 4: VirtualServices and DestinationRules
 
 # In your VirtualService manifest
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -351,7 +371,7 @@ metadata:
 
 ## Best Practices
 
-1. **Use server-side diff** to handle sidecar injection differences cleanly.
+1. **Use server-side diff with mutation webhook comparison** to handle admission-mutated resources cleanly.
 2. **Separate Istio infrastructure from application mesh config** into different ArgoCD applications.
 3. **Use sync waves** to ensure proper resource ordering.
 4. **Add health checks** for all Istio CRDs you use.
