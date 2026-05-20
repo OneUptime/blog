@@ -113,6 +113,7 @@ deploy/
     eu-west-1/
       kustomization.yaml
       config.yaml
+      network-policy-gdpr.yaml
       gdpr/
         data-protection-annotations.yaml
         pii-encryption-config.yaml
@@ -184,7 +185,6 @@ resources:
   - ../../base
 configMapGenerator:
   - name: region-config
-    behavior: replace
     literals:
       - REGION=us-east-1
       - DATABASE_URL=postgresql://users-db.us-east-1.rds.amazonaws.com:5432/users
@@ -219,7 +219,7 @@ spec:
 
 ## Step 5: EU Region Configuration with GDPR
 
-The EU overlay includes everything from the US overlay plus GDPR-specific configuration:
+The EU overlay uses the same base as the US overlay plus GDPR-specific configuration:
 
 ```yaml
 # deploy/overlays/eu-west-1/kustomization.yaml
@@ -227,17 +227,16 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-  - gdpr/consent-service.yaml
+  - network-policy-gdpr.yaml
 configMapGenerator:
   - name: region-config
-    behavior: replace
     literals:
       - REGION=eu-west-1
       - DATABASE_URL=postgresql://users-db.eu-west-1.rds.amazonaws.com:5432/users
       - REDIS_URL=redis://redis.eu-west-1.cache.amazonaws.com:6379
       - S3_BUCKET=company-user-data-eu
       - CDN_URL=https://cdn-eu.company.com
-      - TIMEZONE=Europe/London
+      - TIMEZONE=Europe/Dublin
       - LOCALE=en-EU
       - CURRENCY=EUR
       - DATA_RESIDENCY=eu
@@ -255,6 +254,7 @@ patches:
   - path: gdpr/data-protection-annotations.yaml
   - path: gdpr/pii-encryption-config.yaml
   - path: gdpr/log-sanitization.yaml
+  - path: gdpr/consent-service.yaml
 ```
 
 ```yaml
@@ -355,6 +355,8 @@ spec:
 
 ## Step 6: Create the ApplicationSet
 
+RollingSync is part of ArgoCD ApplicationSet Progressive Syncs, so enable Progressive Syncs in the ApplicationSet controller before using this strategy. RollingSync also triggers syncs itself and disables automated sync on generated Applications, so leave `syncPolicy.automated` out of the template.
+
 ```yaml
 # argocd/applicationsets/user-service.yaml
 apiVersion: argoproj.io/v1alpha1
@@ -399,9 +401,6 @@ spec:
         server: "{{server}}"
         namespace: user-service
       syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
         syncOptions:
           - CreateNamespace=true
 ```
@@ -437,8 +436,8 @@ spec:
     - to:
         - ipBlock:
             cidr: 10.100.0.0/16  # EU VPC CIDR
-    # Block US endpoints explicitly
-    # (defense in depth - application config also prevents this)
+    # All other egress, including US endpoints, is denied by default.
+    # Application config also prevents cross-region PII transfer.
 ```
 
 ## Step 8: Monitoring Both Regions
@@ -458,9 +457,19 @@ spec:
         - alert: RegionLatencyDrift
           expr: |
             abs(
-              avg by (region) (http_request_duration_seconds{app="user-service",quantile="0.99"})
+              histogram_quantile(
+                0.99,
+                sum by (region, le) (
+                  rate(http_request_duration_seconds_bucket{app="user-service"}[5m])
+                )
+              )
               - ignoring(region) group_left
-              avg(http_request_duration_seconds{app="user-service",quantile="0.99"})
+              histogram_quantile(
+                0.99,
+                sum by (le) (
+                  rate(http_request_duration_seconds_bucket{app="user-service"}[5m])
+                )
+              )
             ) > 0.5
           for: 10m
           annotations:
