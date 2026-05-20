@@ -18,8 +18,7 @@ Once the terminal feature is enabled (see our guide on [enabling the web-based t
 2. Click on a Pod in the resource tree
 3. Select the **Terminal** tab
 4. Choose the target container from the dropdown
-5. Select your preferred shell (bash, sh, etc.)
-6. Click **Connect**
+5. Click **Connect**
 
 You will see a terminal prompt and can start running commands.
 
@@ -286,7 +285,7 @@ flowchart TD
 
 **Do not make changes**: Resist the temptation to fix things directly in the terminal. Any changes you make will be lost on pod restart and will cause drift from the desired state in Git. Instead, use what you learn to update your manifests.
 
-**Use ephemeral debug containers**: For Kubernetes 1.23+, consider using ephemeral containers instead of exec for debugging. They let you attach a fully equipped debug container to a running pod without modifying the pod spec.
+**Use ephemeral debug containers**: For Kubernetes 1.25+ (stable), consider using ephemeral containers instead of exec for debugging. They let you attach a fully equipped debug container to a running pod without rebuilding the application image or restarting the pod.
 
 ## Conclusion
 
