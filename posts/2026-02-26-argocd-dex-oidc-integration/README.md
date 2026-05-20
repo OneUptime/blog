@@ -83,11 +83,9 @@ data:
         # Map IdP claims to Dex attributes
         userIDKey: sub
         userNameKey: preferred_username
-        emailKey: email
 
         # If your IdP includes groups in the ID token
         insecureEnableGroups: true
-        groupsKey: groups
 ```
 
 Store the client secret in argocd-secret:
@@ -106,9 +104,9 @@ Keycloak is a popular open-source identity provider. Configure it as a Dex OIDC 
 
 In the Keycloak admin console:
 1. Create a new client with Client ID `argocd-dex`
-2. Set Access Type to `confidential`
+2. Enable Client authentication so the client is confidential
 3. Add Valid Redirect URI: `https://argocd.example.com/api/dex/callback`
-4. Enable "Include Client Roles" in the token
+4. Ensure the group membership mapper is included in the ID token
 5. Add a group membership mapper:
    - Mapper Type: Group Membership
    - Token Claim Name: groups
@@ -133,14 +131,13 @@ dex.config: |
       - email
       - groups
       insecureEnableGroups: true
-      groupsKey: groups
       userIDKey: sub
       userNameKey: preferred_username
 ```
 
 ## Google Workspace Integration
 
-Google Workspace supports OIDC and can include group memberships with the admin SDK:
+Google Accounts support OIDC, but Google Workspace group membership and hosted-domain controls are handled by Dex's dedicated Google connector:
 
 ```yaml
 dex.config: |
@@ -157,10 +154,8 @@ dex.config: |
       - openid
       - profile
       - email
-      # Google does not include groups in OIDC tokens
-      # Use the Google connector type instead for group support
-      hostedDomains:
-      - example.com
+      # Google does not include groups in OIDC tokens.
+      # Use the Google connector type instead for Workspace groups and domain filtering.
 ```
 
 For Google Workspace groups, use the dedicated Google connector instead of generic OIDC:
@@ -179,7 +174,8 @@ dex.config: |
       - example.com
       # Service account for group lookups
       serviceAccountFilePath: /tmp/google-sa.json
-      adminEmail: admin@example.com
+      domainToAdminEmail:
+        example.com: admin@example.com
       # Fetch groups from Google Workspace
       fetchTransitiveGroupMembership: true
 ```
@@ -202,7 +198,6 @@ dex.config: |
       redirectURI: https://argocd.example.com/api/dex/callback
       scopes: [openid, profile, email, groups]
       insecureEnableGroups: true
-      groupsKey: groups
 
   # Contractors use GitHub
   - type: github
@@ -250,8 +245,9 @@ config:
   # Map custom claim names to Dex standard attributes
   userIDKey: user_id          # Default: sub
   userNameKey: login_name     # Default: name
-  emailKey: email_address     # Default: email
-  groupsKey: team_memberships # Default: groups
+  claimMapping:
+    email: email_address      # Default: email
+    groups: team_memberships  # Default: groups
 
   insecureEnableGroups: true
 
@@ -336,7 +332,7 @@ kubectl run curl --image=curlimages/curl --rm -it -- \
 ### Groups Not Appearing
 
 1. Check that `insecureEnableGroups: true` is set
-2. Verify the `groupsKey` matches your IdP's claim name
+2. Verify `claimMapping.groups` matches your IdP's claim name if it is not `groups`
 3. Check that the OIDC scope for groups is requested
 4. Some IdPs only include groups in the access token, not the ID token - check your IdP configuration
 
