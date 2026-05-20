@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, API, Automation
 
-Description: A complete guide to ArgoCD's REST API covering create, read, update, and delete operations for applications, projects, repositories, and clusters with practical curl examples.
+Description: A practical guide to ArgoCD's REST API covering common create, read, update, delete, and sync operations for applications, projects, repositories, and clusters with curl examples.
 
 ---
 
-ArgoCD ships with a powerful REST API that backs both the web UI and the CLI. Anything you can do through the UI or CLI, you can do through the API. This makes it the foundation for building custom tooling, automation pipelines, and integrations with other systems.
+ArgoCD ships with a powerful REST API that backs both the web UI and the CLI. Most operations you can do through the UI or CLI are available through the API. This makes it the foundation for building custom tooling, automation pipelines, and integrations with other systems.
 
-This post walks through every major CRUD operation against the ArgoCD API using practical curl examples that you can adapt to your own environment.
+This post walks through common operations against the ArgoCD API using practical curl examples that you can adapt to your own environment.
 
 ## Authentication
 
@@ -20,6 +20,7 @@ Before making any API calls, you need an authentication token. There are two way
 # Method 1: Login with username/password to get a bearer token
 
 TOKEN=$(curl -s -k https://argocd.company.com/api/v1/session \
+  -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"your-password"}' \
   | jq -r '.token')
 
@@ -33,7 +34,7 @@ AUTH_HEADER="Authorization: Bearer $TOKEN"
 ARGOCD_URL="https://argocd.company.com"
 ```
 
-For production automation, always use dedicated service accounts with limited RBAC permissions rather than the admin account.
+For production automation, always use dedicated local accounts or project role tokens with limited RBAC permissions rather than the admin account.
 
 ## Application Operations
 
@@ -127,13 +128,10 @@ For partial updates, use the PATCH endpoint.
 # Patch just the target revision without sending the entire spec
 curl -s -k -X PATCH "$ARGOCD_URL/api/v1/applications/my-web-app" \
   -H "$AUTH_HEADER" \
-  -H "Content-Type: application/merge-patch+json" \
+  -H "Content-Type: application/json" \
   -d '{
-    "spec": {
-      "source": {
-        "targetRevision": "release-v2"
-      }
-    }
+    "patchType": "application/merge-patch+json",
+    "patch": "{\"spec\":{\"source\":{\"targetRevision\":\"release-v2\"}}}"
   }' | jq '.spec.source.targetRevision'
 ```
 
@@ -207,14 +205,14 @@ curl -s -k -X POST "$ARGOCD_URL/api/v1/repositories" \
   }' | jq '{repo: .repo, connectionState: .connectionState}'
 
 # Add a repository with SSH key
-curl -s -k -X POST "$ARGOCD_URL/api/v1/repositories" \
+PRIVATE_KEY=$(< ~/.ssh/argocd_deploy_key)
+jq -n --arg repo "git@github.com:company/k8s-configs.git" \
+      --arg sshPrivateKey "$PRIVATE_KEY" \
+      '{repo: $repo, sshPrivateKey: $sshPrivateKey, type: "git"}' | \
+  curl -s -k -X POST "$ARGOCD_URL/api/v1/repositories" \
   -H "$AUTH_HEADER" \
   -H "Content-Type: application/json" \
-  -d '{
-    "repo": "git@github.com:company/k8s-configs.git",
-    "sshPrivateKey": "'"$(cat ~/.ssh/argocd_deploy_key)"'",
-    "type": "git"
-  }' | jq '{repo: .repo, connectionState: .connectionState}'
+  -d @- | jq '{repo: .repo, connectionState: .connectionState}'
 ```
 
 ### List Repositories
@@ -372,4 +370,4 @@ argocd_api POST "/api/v1/applications/my-web-app/sync" '{"prune": true}'
 
 ## Wrapping Up
 
-ArgoCD's REST API provides complete programmatic control over every aspect of the system. The patterns shown here - authentication, CRUD for applications, repositories, clusters, and projects, plus sync operations and resource tree queries - form the building blocks for any custom integration. Whether you are building a deployment dashboard, a Slack bot, or a CI/CD pipeline integration, the REST API gives you everything you need. For more advanced use cases, check out [how to build custom dashboards using the ArgoCD API](https://oneuptime.com/blog/post/2026-02-26-how-to-create-custom-dashboards-using-argocd-api/view).
+ArgoCD's REST API provides programmatic control over the system. The patterns shown here - authentication, application changes, repository, cluster, and project operations, plus sync operations and resource tree queries - form the building blocks for custom integrations. Whether you are building a deployment dashboard, a Slack bot, or a CI/CD pipeline integration, the REST API gives you the tools you need. For more advanced use cases, check out [how to build custom dashboards using the ArgoCD API](https://oneuptime.com/blog/post/2026-02-26-how-to-create-custom-dashboards-using-argocd-api/view).
