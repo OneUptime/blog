@@ -33,8 +33,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Git request timeout in seconds (default: 60)
-  reposerver.git.request.timeout: "90"
+  # Git request timeout (default: 15s)
+  reposerver.git.request.timeout: "90s"
 ```
 
 After updating this ConfigMap, restart the repo server to apply the change:
@@ -57,11 +57,12 @@ If you installed ArgoCD using Helm, configure the timeout in your values file:
 
 ```yaml
 # values.yaml for ArgoCD Helm chart
-repoServer:
-  extraArgs:
-    - --git-request-timeout=90s
+configs:
+  params:
+    reposerver.git.request.timeout: "90s"
 
-  # Or via environment variables
+# If manifest generation also needs more time
+repoServer:
   env:
     - name: ARGOCD_EXEC_TIMEOUT
       value: "120s"
@@ -82,7 +83,7 @@ ArgoCD has multiple timeout layers that affect Git operations. Understanding eac
 ```mermaid
 flowchart LR
     A[Client Request] --> B[API Server Timeout]
-    B --> C[Repo Server gRPC Timeout]
+    B --> C[Git Request Timeout]
     C --> D[Git Command Timeout]
     D --> E[HTTP/SSH Transport Timeout]
     E --> F[Git Server]
@@ -96,14 +97,15 @@ Each layer has its own timeout configuration:
 # argocd-cmd-params-cm
 data:
   server.repo.server.timeout.seconds: "120"
+  controller.repo.server.timeout.seconds: "120"
 ```
 
-**Repo Server gRPC timeout** - Controls the internal gRPC timeout for repo server operations:
+**Git request timeout** - Controls the timeout for Git requests performed by the repo server:
 
 ```yaml
 # argocd-cmd-params-cm
 data:
-  reposerver.git.request.timeout: "90"
+  reposerver.git.request.timeout: "90s"
 ```
 
 **Git command execution timeout** - Controls the overall timeout for the Git process:
@@ -122,7 +124,6 @@ env:
 [http]
   lowSpeedLimit = 1000
   lowSpeedTime = 30
-  connectTimeout = 30
 ```
 
 ## Setting Timeouts for Manifest Generation
@@ -138,9 +139,10 @@ metadata:
   namespace: argocd
 data:
   # Timeout for Git requests
-  reposerver.git.request.timeout: "90"
-  # Timeout for generating manifests (Helm template, Kustomize build, etc.)
-  reposerver.default.cache.expiration: "24h"
+  reposerver.git.request.timeout: "90s"
+  # Repo server RPC timeouts for manifest generation responses
+  server.repo.server.timeout.seconds: "180"
+  controller.repo.server.timeout.seconds: "180"
 ```
 
 For Helm-based applications that use large charts with many dependencies, the manifest generation timeout can be a bottleneck. You can set the overall exec timeout to accommodate this:
@@ -192,31 +194,34 @@ Here are recommended timeout configurations for common environments:
 
 ```yaml
 data:
-  reposerver.git.request.timeout: "60"
+  reposerver.git.request.timeout: "60s"
 ```
 
 **Enterprise with self-hosted Git and large repos:**
 
 ```yaml
 data:
-  reposerver.git.request.timeout: "120"
+  reposerver.git.request.timeout: "120s"
   server.repo.server.timeout.seconds: "180"
+  controller.repo.server.timeout.seconds: "180"
 ```
 
 **Cross-region deployments or VPN connections:**
 
 ```yaml
 data:
-  reposerver.git.request.timeout: "180"
+  reposerver.git.request.timeout: "180s"
   server.repo.server.timeout.seconds: "240"
+  controller.repo.server.timeout.seconds: "240"
 ```
 
 **Monorepos with complex manifest generation:**
 
 ```yaml
 data:
-  reposerver.git.request.timeout: "120"
+  reposerver.git.request.timeout: "120s"
   server.repo.server.timeout.seconds: "300"
+  controller.repo.server.timeout.seconds: "300"
 ```
 
 ## Monitoring Timeout Metrics
@@ -226,15 +231,15 @@ ArgoCD exposes metrics that help you understand Git operation durations and iden
 ```promql
 # 99th percentile Git request duration
 histogram_quantile(0.99,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
+  sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le)
 )
 
 # Average Git request duration by request type
-rate(argocd_git_request_duration_seconds_sum[5m])
-  / rate(argocd_git_request_duration_seconds_count[5m])
+sum by (request_type) (rate(argocd_git_request_duration_seconds_sum[5m]))
+  / sum by (request_type) (rate(argocd_git_request_duration_seconds_count[5m]))
 
-# Count of timed-out requests
-rate(argocd_git_request_total{grpc_code="DeadlineExceeded"}[5m])
+# Count of failed fetch requests
+rate(argocd_git_fetch_fail_total[5m])
 ```
 
 Create a Prometheus alerting rule to catch timeouts before they become a persistent problem:
@@ -246,7 +251,7 @@ groups:
   - alert: ArgocdGitRequestSlow
     expr: |
       histogram_quantile(0.95,
-        rate(argocd_git_request_duration_seconds_bucket[10m])
+        sum(rate(argocd_git_request_duration_seconds_bucket[10m])) by (le)
       ) > 30
     for: 15m
     labels:
