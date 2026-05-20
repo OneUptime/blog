@@ -133,8 +133,6 @@ spec:
       - ServerSideApply=true
       # Create namespace if it does not exist
       - CreateNamespace=true
-      # Replace resources rather than applying (useful for CRDs)
-      - Replace=true
     retry:
       limit: 5
       backoff:
@@ -212,7 +210,6 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      - Replace=true
 ```
 
 This separation means CRD updates do not trigger a full operator redeployment, and you can version CRDs independently.
@@ -254,12 +251,14 @@ data:
 
 Operators often add finalizers to custom resources. When ArgoCD prunes a resource with a finalizer, the deletion will hang until the operator removes the finalizer. Make sure your operator is running and healthy before pruning CRs.
 
-You can also configure ArgoCD to handle finalizer removal:
+You can also configure pruning to run as the last sync step and to use foreground deletion propagation. This does not remove custom finalizers for you; it gives the operator a chance to finish cleanup before ArgoCD completes the prune:
 
 ```yaml
 syncPolicy:
   syncOptions:
-    # Allow ArgoCD to delete resources with finalizers
+    # Prune after other resources have synced and become healthy
+    - PruneLast=true
+    # Wait for dependents to be deleted before completing the prune
     - PrunePropagationPolicy=foreground
 ```
 
