@@ -157,7 +157,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: ehr
-          image: approved-registry.internal/ehr-service:v4.2.0@sha256:abc123...
+          image: approved-registry.internal/ehr-service:v4.2.0@sha256:3b7c6f8d4e5a9b1c2d3e4f5061728394a5b6c7d8e9f00112233445566778899a
           # Always use digest-pinned images for PHI workloads
           securityContext:
             allowPrivilegeEscalation: false
@@ -221,83 +221,89 @@ Use Kyverno to enforce HIPAA-required security controls:
 ```yaml
 # Policy: PHI workloads must be encrypted in transit
 
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-tls-for-phi
 spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: check-tls
-      match:
-        resources:
-          kinds:
-            - Deployment
-          selector:
-            matchLabels:
-              data-classification: phi
-      validate:
-        message: "PHI workloads must use TLS. Container must expose HTTPS port."
-        pattern:
-          spec:
-            template:
-              spec:
-                containers:
-                  - ports:
-                      - name: https
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+  matchConditions:
+    - name: phi-workload
+      expression: >-
+        has(object.spec.template.metadata.labels) &&
+        object.spec.template.metadata.labels["data-classification"] == "phi"
+  validations:
+    - message: "PHI workloads must use TLS. Container must expose HTTPS port."
+      expression: >-
+        object.spec.template.spec.containers.exists(container,
+          has(container.ports) && container.ports.exists(port, port.name == "https"))
 
 ---
 # Policy: PHI pods must have security context
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: phi-security-context
 spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: check-non-root
-      match:
-        resources:
-          kinds:
-            - Pod
-          selector:
-            matchLabels:
-              data-classification: phi
-      validate:
-        message: "PHI workloads must run as non-root with read-only filesystem"
-        pattern:
-          spec:
-            securityContext:
-              runAsNonRoot: true
-            containers:
-              - securityContext:
-                  readOnlyRootFilesystem: true
-                  allowPrivilegeEscalation: false
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchConditions:
+    - name: phi-workload
+      expression: >-
+        has(object.metadata.labels) &&
+        object.metadata.labels["data-classification"] == "phi"
+  validations:
+    - message: "PHI workloads must run as non-root with read-only filesystem"
+      expression: >-
+        has(object.spec.securityContext) &&
+        has(object.spec.securityContext.runAsNonRoot) &&
+        object.spec.securityContext.runAsNonRoot == true &&
+        object.spec.containers.all(container,
+          has(container.securityContext) &&
+          has(container.securityContext.readOnlyRootFilesystem) &&
+          container.securityContext.readOnlyRootFilesystem == true &&
+          has(container.securityContext.allowPrivilegeEscalation) &&
+          container.securityContext.allowPrivilegeEscalation == false)
 
 ---
 # Policy: Images must be signed and from approved registry
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
 metadata:
   name: verified-images-only
 spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: verify-image
-      match:
-        resources:
-          kinds:
-            - Pod
-      verifyImages:
-        - imageReferences:
-            - "approved-registry.internal/*"
-          attestors:
-            - entries:
-                - keys:
-                    publicKeys: |-
-                      -----BEGIN PUBLIC KEY-----
-                      ...
-                      -----END PUBLIC KEY-----
+  validationActions: [Deny]
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  matchImageReferences:
+    - glob: "approved-registry.internal/*"
+  attestors:
+    - name: cosign
+      cosign:
+        key:
+          data: |-
+            -----BEGIN PUBLIC KEY-----
+            ...
+            -----END PUBLIC KEY-----
+  validations:
+    - message: "Images must be signed by the approved registry key."
+      expression: >-
+        images.containers.map(image, verifyImageSignatures(image, [attestors.cosign])).all(result, result > 0)
 ```
 
 ## Network Isolation for PHI
@@ -353,7 +359,7 @@ spec:
 
 ## Audit Logging
 
-HIPAA requires comprehensive audit logging of all PHI access:
+HIPAA requires audit controls for systems containing ePHI. ArgoCD notifications can help record deployment activity:
 
 ```yaml
 apiVersion: v1
@@ -520,7 +526,7 @@ spec:
     helm:
       values: |
         falco:
-          rules_file:
+          rules_files:
             - /etc/falco/falco_rules.yaml
             - /etc/falco/falco_rules.local.yaml
             - /etc/falco/rules.d
@@ -528,15 +534,14 @@ spec:
           log_stderr: true
         customRules:
           hipaa-rules.yaml: |-
-            - rule: PHI Data Access Outside Business Hours
-              desc: Detect access to PHI databases outside business hours
+            - rule: PHI Database Connection
+              desc: Detect connections from PHI-labeled pods to database ports
               condition: >
                 evt.type in (connect) and
                 fd.sport in (5432, 3306) and
-                container.labels.data-classification = "phi" and
-                not (evt.time.hour >= 6 and evt.time.hour <= 22)
+                k8s.pod.label[data-classification] = "phi"
               output: >
-                PHI database access outside business hours
+                PHI database connection
                 (user=%user.name command=%proc.cmdline container=%container.name)
               priority: WARNING
               tags: [hipaa, phi, compliance]
