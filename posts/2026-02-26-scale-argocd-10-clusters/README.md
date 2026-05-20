@@ -71,10 +71,10 @@ For 10 clusters, the hub-and-spoke pattern works well. At 20+ clusters, federate
 ```bash
 # Register each cluster using the ArgoCD CLI
 
-argocd cluster add production-us --name production-us
-argocd cluster add production-eu --name production-eu
-argocd cluster add staging --name staging
-argocd cluster add development --name development
+argocd cluster add production-us-context --name production-us
+argocd cluster add production-eu-context --name production-eu
+argocd cluster add staging-context --name staging
+argocd cluster add development-context --name development
 # ... repeat for all clusters
 ```
 
@@ -114,7 +114,7 @@ stringData:
 For better security, store cluster credentials in a secrets manager and use ExternalSecrets to populate them.
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: cluster-production-us
@@ -127,6 +127,7 @@ spec:
   target:
     name: cluster-production-us
     template:
+      engineVersion: v2
       metadata:
         labels:
           argocd.argoproj.io/secret-type: cluster
@@ -256,18 +257,20 @@ spec:
           - list:
               elements:
                 - component: prometheus
+                  repoURL: https://prometheus-community.github.io/helm-charts
                   chart: kube-prometheus-stack
                   version: "55.x"
                 - component: loki
-                  chart: loki-stack
-                  version: "2.x"
+                  repoURL: https://grafana-community.github.io/helm-charts
+                  chart: loki
+                  version: "6.x"
   template:
     metadata:
       name: "{{component}}-{{name}}"
     spec:
       project: monitoring
       source:
-        repoURL: https://prometheus-community.github.io/helm-charts
+        repoURL: "{{repoURL}}"
         chart: "{{chart}}"
         targetRevision: "{{version}}"
       destination:
@@ -336,7 +339,7 @@ spec:
 
 ## Step 5: RBAC for Multi-Cluster
 
-Define who can deploy to which clusters.
+Define who can deploy to which projects, and pair those projects with AppProject destination restrictions for cluster-level control.
 
 ```yaml
 apiVersion: v1
@@ -350,7 +353,7 @@ data:
     p, role:platform-admin, applications, *, */*, allow
     p, role:platform-admin, clusters, get, *, allow
 
-    # Dev team can only deploy to dev and staging
+    # Dev team can only deploy to dev and staging projects
     p, role:developer, applications, *, development/*, allow
     p, role:developer, applications, *, staging/*, allow
     p, role:developer, applications, get, production-*/*, allow
@@ -372,18 +375,17 @@ data:
 You can assign specific clusters to specific controller shards for predictable load distribution.
 
 ```yaml
-# Annotate cluster secrets to assign to specific shards
-metadata:
-  annotations:
-    # Assign this cluster to shard 0
-    argocd.argoproj.io/shard: "0"
+# Set the shard field in cluster secrets to assign specific shards
+stringData:
+  # Assign this cluster to shard 0
+  shard: "0"
 ```
 
-### Cluster Connection Pooling
+### Kubernetes Client Rate Limits
 
 ```yaml
 data:
-  # Limit concurrent connections to each cluster
+  # Tune the Kubernetes client request rate
   controller.k8s.client.qps: "50"
   controller.k8s.client.burst: "100"
 ```
@@ -435,7 +437,7 @@ count(argocd_app_info{sync_status="OutOfSync"}) by (dest_server)
 count(argocd_app_info{health_status!="Healthy"}) by (dest_server)
 
 # Cluster connection status
-argocd_cluster_info
+argocd_cluster_connection_status
 ```
 
 ### Alerts for Multi-Cluster
@@ -443,14 +445,14 @@ argocd_cluster_info
 ```yaml
 rules:
   - alert: ClusterUnreachable
-    expr: argocd_cluster_info{connection_state!="Successful"} == 1
+    expr: argocd_cluster_connection_status{connection_status!="Successful"} == 1
     for: 5m
     labels:
       severity: critical
     annotations:
       summary: "Cluster {{ $labels.name }} is unreachable from ArgoCD"
 
-  - alert: ClusterHighSyncFailure
+  - alert: ClusterHighOutOfSync
     expr: |
       count(argocd_app_info{sync_status="OutOfSync"}) by (dest_server) /
       count(argocd_app_info) by (dest_server) > 0.2
@@ -474,9 +476,6 @@ kind: Application
 metadata:
   name: my-app-dr
   namespace: argocd
-  annotations:
-    # Disable auto-sync for DR - only enable during failover
-    argocd.argoproj.io/sync-policy: none
 spec:
   project: default
   source:
@@ -486,6 +485,7 @@ spec:
   destination:
     server: https://dr-cluster.k8s.example.com
     namespace: production
+  # No automated syncPolicy is set for DR - add it during failover
 ```
 
 ### ArgoCD Hub Recovery
