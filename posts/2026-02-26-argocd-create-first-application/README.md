@@ -146,8 +146,8 @@ Sync deploys the manifests from Git to the cluster:
 # Sync the application
 argocd app sync nginx-demo
 
-# Watch the sync progress
-argocd app get nginx-demo --refresh
+# Wait for sync and health
+argocd app wait nginx-demo
 ```
 
 You can also sync from the UI. Open the ArgoCD web interface, find your application, and click the **Sync** button.
