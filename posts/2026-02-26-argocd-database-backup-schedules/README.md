@@ -27,7 +27,7 @@ graph TD
     D --> J[File-level Backup]
 ```
 
-Each approach has trade-offs. Operator-native backups are the most integrated. CronJob-based backups are the most flexible. Velero backups capture everything including volumes.
+Each approach has trade-offs. Operator-native backups are the most integrated. CronJob-based backups are the most flexible. Velero backups can capture Kubernetes resources and persistent volumes when configured with snapshots or file-system backups.
 
 ## Operator-Native Backups: CloudNativePG
 
@@ -80,7 +80,7 @@ metadata:
   name: daily-backup
   namespace: database
 spec:
-  schedule: "0 2 * * *"  # Daily at 2 AM
+  schedule: "0 0 2 * * *"  # Daily at 2 AM; CloudNativePG includes seconds
   backupOwnerReference: self
   cluster:
     name: production-db
@@ -96,7 +96,7 @@ metadata:
   name: hourly-backup
   namespace: database
 spec:
-  schedule: "0 * * * *"  # Every hour
+  schedule: "0 0 * * * *"  # Every hour; CloudNativePG includes seconds
   backupOwnerReference: self
   cluster:
     name: production-db
@@ -157,14 +157,14 @@ spec:
         spec:
           containers:
             - name: backup
-              image: postgres:16
+              image: your-org/postgres-awscli:16  # PostgreSQL client tools plus AWS CLI
               command:
                 - /bin/sh
                 - -c
                 - |
                   set -e
                   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-                  BACKUP_FILE="/backups/postgres-${TIMESTAMP}.sql.gz"
+                  BACKUP_FILE="/backups/postgres-${TIMESTAMP}.dump"
 
                   echo "Starting backup at $(date)"
 
@@ -184,7 +184,7 @@ spec:
 
                   # Upload to S3
                   aws s3 cp "$BACKUP_FILE" \
-                    "s3://database-backups/postgres/daily/${TIMESTAMP}.sql.gz" \
+                    "s3://database-backups/postgres/daily/${TIMESTAMP}.dump" \
                     --storage-class STANDARD_IA
 
                   echo "Uploaded to S3"
@@ -248,12 +248,14 @@ spec:
         spec:
           containers:
             - name: backup
-              image: mysql:8.0
+              image: your-org/mysql-awscli:8.0  # MySQL client tools plus AWS CLI
               command:
                 - /bin/sh
                 - -c
                 - |
+                  set -e
                   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_FILE="/backups/mysql-${TIMESTAMP}.sql.gz"
 
                   mysqldump \
                     -h $DB_HOST \
@@ -265,7 +267,13 @@ spec:
                     --triggers \
                     --events \
                     --set-gtid-purged=OFF | \
-                    gzip > /backups/mysql-${TIMESTAMP}.sql.gz
+                    gzip > "$BACKUP_FILE"
+
+                  aws s3 cp "$BACKUP_FILE" \
+                    "s3://database-backups/mysql/daily/${TIMESTAMP}.sql.gz" \
+                    --storage-class STANDARD_IA
+
+                  rm -f "$BACKUP_FILE"
 
                   echo "MySQL backup complete"
               env:
@@ -281,6 +289,16 @@ spec:
                     secretKeyRef:
                       name: mysql-credentials
                       key: password
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
+              volumeMounts:
+                - name: backup-temp
+                  mountPath: /backups
+          volumes:
+            - name: backup-temp
+              emptyDir:
+                sizeLimit: 20Gi
+          serviceAccountName: backup-runner
           restartPolicy: OnFailure
 ```
 
@@ -301,17 +319,25 @@ spec:
         spec:
           containers:
             - name: backup
-              image: mongo:7.0
+              image: your-org/mongodb-tools-awscli:100  # MongoDB Database Tools plus AWS CLI
               command:
                 - /bin/sh
                 - -c
                 - |
+                  set -e
                   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_FILE="/backups/mongo-${TIMESTAMP}.gz"
 
                   mongodump \
                     --uri="$MONGO_URI" \
                     --gzip \
-                    --archive="/backups/mongo-${TIMESTAMP}.gz"
+                    --archive="$BACKUP_FILE"
+
+                  aws s3 cp "$BACKUP_FILE" \
+                    "s3://database-backups/mongodb/daily/${TIMESTAMP}.gz" \
+                    --storage-class STANDARD_IA
+
+                  rm -f "$BACKUP_FILE"
 
                   echo "MongoDB backup complete"
               env:
@@ -320,6 +346,16 @@ spec:
                     secretKeyRef:
                       name: mongo-credentials
                       key: uri
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
+              volumeMounts:
+                - name: backup-temp
+                  mountPath: /backups
+          volumes:
+            - name: backup-temp
+              emptyDir:
+                sizeLimit: 20Gi
+          serviceAccountName: backup-runner
           restartPolicy: OnFailure
 ```
 
@@ -342,21 +378,27 @@ spec:
         spec:
           containers:
             - name: verify
-              image: postgres:16
+              image: your-org/postgres-awscli:16  # PostgreSQL client tools plus AWS CLI
               command:
                 - /bin/sh
                 - -c
                 - |
+                  set -e
                   echo "=== Backup Verification ==="
 
                   # Get latest backup from S3
                   LATEST=$(aws s3 ls s3://database-backups/postgres/daily/ | \
                     sort | tail -1 | awk '{print $4}')
+                  if [ -z "$LATEST" ]; then
+                    echo "No backup found in S3"
+                    exit 1
+                  fi
                   echo "Testing backup: $LATEST"
 
-                  aws s3 cp "s3://database-backups/postgres/daily/$LATEST" /tmp/backup.sql.gz
+                  aws s3 cp "s3://database-backups/postgres/daily/$LATEST" /tmp/backup.dump
 
                   # Create a test database
+                  PGPASSWORD=$DB_PASSWORD dropdb -h $DB_HOST -U $DB_USER --if-exists backup_test
                   PGPASSWORD=$DB_PASSWORD createdb -h $DB_HOST -U $DB_USER backup_test
 
                   # Restore backup
@@ -365,7 +407,7 @@ spec:
                     -U $DB_USER \
                     -d backup_test \
                     --no-owner \
-                    /tmp/backup.sql.gz
+                    /tmp/backup.dump
 
                   # Verify table counts
                   TABLES=$(PGPASSWORD=$DB_PASSWORD psql \
@@ -383,7 +425,23 @@ spec:
                   PGPASSWORD=$DB_PASSWORD dropdb -h $DB_HOST -U $DB_USER backup_test
 
                   echo "Backup verification PASSED"
+              env:
+                - name: DB_HOST
+                  value: production-db-rw.database.svc
+                - name: DB_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-credentials
+                      key: username
+                - name: DB_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: db-credentials
+                      key: password
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
           restartPolicy: OnFailure
+          serviceAccountName: backup-runner
 ```
 
 ## Backup Retention Management
@@ -408,13 +466,17 @@ spec:
                 - /bin/sh
                 - -c
                 - |
+                  set -e
                   echo "Cleaning up old backups..."
 
                   # Keep daily backups for 30 days
                   CUTOFF=$(date -d '30 days ago' +%Y%m%d)
                   aws s3 ls s3://database-backups/postgres/daily/ | while read LINE; do
-                    FILE=$(echo $LINE | awk '{print $4}')
-                    FILE_DATE=$(echo $FILE | grep -oP '\d{8}')
+                    FILE=$(echo "$LINE" | awk '{print $4}')
+                    FILE_DATE=$(echo "$FILE" | sed -n 's/.*\([0-9]\{8\}\).*/\1/p')
+                    if [ -z "$FILE_DATE" ]; then
+                      continue
+                    fi
                     if [ "$FILE_DATE" -lt "$CUTOFF" ]; then
                       echo "Deleting: $FILE (older than 30 days)"
                       aws s3 rm "s3://database-backups/postgres/daily/$FILE"
@@ -422,7 +484,11 @@ spec:
                   done
 
                   echo "Retention cleanup complete"
+              env:
+                - name: AWS_DEFAULT_REGION
+                  value: us-east-1
           restartPolicy: OnFailure
+          serviceAccountName: backup-runner
 ```
 
 ## Monitoring Backup Health
