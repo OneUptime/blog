@@ -60,9 +60,11 @@ resources:
   - service.yaml
   - configmap.yaml
 
-commonLabels:
-  app: my-app
-  managed-by: argocd
+labels:
+  - includeSelectors: true
+    pairs:
+      app: my-app
+      managed-by: argocd
 ```
 
 Your base deployment should use sensible defaults:
@@ -282,11 +284,8 @@ spec:
     - list:
         elements:
           - env: dev
-            autoSync: "true"
           - env: staging
-            autoSync: "true"
           - env: production
-            autoSync: "false"  # Manual sync for production
   template:
     metadata:
       name: 'my-app-{{env}}'
@@ -316,10 +315,10 @@ patches:
         path: /spec/replicas
         value: 2
       - op: add
-        path: /spec/template/spec/containers/0/env/-
+        path: /spec/template/spec/containers/0/env
         value:
-          name: LOG_LEVEL
-          value: debug
+          - name: LOG_LEVEL
+            value: debug
 ```
 
 JSON patches are useful when you need to add items to arrays or make very specific changes without providing the full resource structure.
@@ -332,14 +331,13 @@ Kustomize can generate ConfigMaps and Secrets from files or literals, with uniqu
 # overlays/production/kustomization.yaml
 configMapGenerator:
   - name: my-app-config
-    behavior: merge
     literals:
       - DATABASE_POOL_SIZE=20
       - CACHE_TTL=3600
       - LOG_LEVEL=warn
 ```
 
-The `behavior: merge` option merges with the base ConfigMap generator if one exists, or you can use `replace` to completely override it.
+If the base also defines a ConfigMap generator with the same name, add `behavior: merge` to merge values from the overlay, or use `replace` to completely override it.
 
 ## Verifying Overlays Locally
 
@@ -362,6 +360,6 @@ One frequent mistake is duplicating entire manifests in overlays instead of usin
 
 Another common issue is forgetting to update the base when adding new fields. If you add a new container to the base deployment, make sure your overlay patches still target the correct container by name.
 
-Finally, be careful with `commonLabels` in overlays. Kustomize injects these into selector fields, which are immutable on existing Deployments. If you change common labels on an existing deployment, ArgoCD will not be able to apply the change and you will need to delete and recreate the Deployment.
+Finally, be careful with `labels` in overlays when `includeSelectors: true` is set. Kustomize injects these into selector fields, which are immutable on existing Deployments. If you change selector labels on an existing deployment, ArgoCD will not be able to apply the change and you will need to delete and recreate the Deployment.
 
 Kustomize overlays combined with ArgoCD give you a clean, maintainable way to manage environment differences. The base stays DRY, patches are minimal and easy to review, and ArgoCD keeps every environment converged to its declared state automatically.
