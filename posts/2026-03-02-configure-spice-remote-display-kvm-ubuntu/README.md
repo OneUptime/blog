@@ -25,23 +25,23 @@ On the KVM host:
 ```bash
 sudo apt update
 sudo apt install \
-  qemu-kvm \
+  qemu-system-x86 \
   libvirt-daemon-system \
-  spice-server-dev \
-  spice-vdagent
+  libvirt-clients \
+  virtinst
 
 # Verify SPICE support in QEMU
 
-qemu-system-x86_64 --display help | grep spice
+qemu-system-x86_64 -spice help
 ```
 
 On the client machine (where you connect from):
 
 ```bash
-sudo apt install virt-viewer remote-viewer spice-client-gtk
+sudo apt install virt-viewer spice-client-gtk
 
 # Or on Fedora/RHEL:
-# sudo dnf install virt-viewer remote-viewer
+# sudo dnf install virt-viewer
 ```
 
 ## Configuring SPICE in a New VM
@@ -58,7 +58,7 @@ sudo virt-install \
   --graphics spice,listen=127.0.0.1,port=5910,password=your-password \
   --video qxl \
   --channel spicevmc \
-  --import
+  --cdrom /path/to/ubuntu.iso
 ```
 
 ## Configuring SPICE on an Existing VM
@@ -90,11 +90,12 @@ Find and replace the `<graphics>` section (and `<video>` section):
 
 <!-- QXL video adapter for best SPICE performance -->
 <video>
+  <!-- RAM values are in KB; heads controls the number of monitors. -->
   <model type='qxl'
-         ram='65536'      <!-- Frame buffer RAM in KB -->
-         vram='65536'     <!-- Video RAM in KB -->
-         vgamem='16384'   <!-- VGA memory in KB -->
-         heads='1'        <!-- Number of monitors -->
+         ram='65536'
+         vram='65536'
+         vgamem='16384'
+         heads='1'
          primary='yes'/>
 </video>
 
@@ -122,7 +123,7 @@ virsh start myvm
 virsh qemu-monitor-command myvm --hmp "set_password spice your-password"
 
 # Set password expiration (seconds)
-virsh qemu-monitor-command myvm --hmp "expire_password spice 3600"
+virsh qemu-monitor-command myvm --hmp "expire_password spice +3600"
 
 # Check current SPICE info
 virsh qemu-monitor-command myvm --hmp "info spice"
@@ -156,23 +157,23 @@ For connecting without SSH tunnel, configure TLS:
 
 ```bash
 # Generate TLS certificates
-mkdir -p /etc/pki/libvirt-spice
+sudo mkdir -p /etc/pki/libvirt-spice
 
 # Create CA key and certificate
-openssl genrsa -out /etc/pki/libvirt-spice/ca-key.pem 4096
-openssl req -new -x509 \
+sudo openssl genrsa -out /etc/pki/libvirt-spice/ca-key.pem 4096
+sudo openssl req -new -x509 \
   -key /etc/pki/libvirt-spice/ca-key.pem \
   -out /etc/pki/libvirt-spice/ca-cert.pem \
   -days 3650 \
   -subj "/CN=SpiceCA"
 
 # Create server key and certificate
-openssl genrsa -out /etc/pki/libvirt-spice/server-key.pem 4096
-openssl req -new \
+sudo openssl genrsa -out /etc/pki/libvirt-spice/server-key.pem 4096
+sudo openssl req -new \
   -key /etc/pki/libvirt-spice/server-key.pem \
   -out /tmp/server.csr \
   -subj "/CN=kvm-host.example.com"
-openssl x509 -req \
+sudo openssl x509 -req \
   -in /tmp/server.csr \
   -CA /etc/pki/libvirt-spice/ca-cert.pem \
   -CAkey /etc/pki/libvirt-spice/ca-key.pem \
@@ -181,10 +182,21 @@ openssl x509 -req \
   -days 3650
 ```
 
+Enable SPICE TLS in `/etc/libvirt/qemu.conf`, then restart libvirt:
+
+```conf
+spice_tls = 1
+spice_tls_x509_cert_dir = "/etc/pki/libvirt-spice"
+```
+
+```bash
+sudo systemctl restart libvirtd
+```
+
 Configure VM XML for TLS:
 
 ```xml
-<graphics type='spice'>
+<graphics type='spice' tlsPort='-1' autoport='yes'>
   <listen type='address' address='0.0.0.0'/>
   <channel name='main' mode='secure'/>
   <channel name='display' mode='secure'/>
@@ -206,7 +218,6 @@ Inside the Ubuntu VM, install the guest agent for full functionality:
 sudo apt update
 sudo apt install \
   spice-vdagent \
-  spice-vdagentd \
   xserver-xorg-video-qxl
 
 # Enable and start the agent
@@ -220,7 +231,6 @@ The SPICE guest agent enables:
 - Clipboard copy/paste between host and VM
 - Dynamic desktop resolution (resizes when you resize the window)
 - File transfer between host and VM
-- Audio support
 
 ## Configuring Multi-Monitor Support
 
@@ -228,15 +238,16 @@ For multiple monitors, update the QXL video section:
 
 ```xml
 <video>
+  <!-- RAM values are in KB; heads controls the number of monitors. -->
   <model type='qxl'
          ram='131072'
          vram='131072'
          vgamem='16384'
-         heads='2'          <!-- Number of heads/monitors -->
+         heads='2'
          primary='yes'/>
 </video>
 
-<!-- Add second graphics head -->
+<!-- Keep a single SPICE graphics device for the VM. -->
 <graphics type='spice'>
   <!-- ... configuration ... -->
 </graphics>
@@ -253,19 +264,16 @@ SPICE supports audio passthrough with ICH9 audio:
 <sound model='ich9'>
   <codec type='micro'/>
   <codec type='duplex'/>
+  <audio id='1'/>
 </sound>
 
-<!-- ICH9 requires additional configuration -->
-<devices>
-  ...
-  <sound model='ich9'/>
-  ...
-</devices>
+<!-- Use the SPICE audio backend for the viewer session. -->
+<audio id='1' type='spice'/>
 ```
 
 ```bash
-# Enable audio in virt-viewer connection
-remote-viewer --spice-audio spice://127.0.0.1:5910
+# Connect with a SPICE-capable viewer
+remote-viewer spice://127.0.0.1:5910
 ```
 
 ## USB Redirection
