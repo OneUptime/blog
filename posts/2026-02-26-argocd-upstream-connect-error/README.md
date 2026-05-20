@@ -49,24 +49,21 @@ Common reasons the server pod fails:
 
 Fix resource issues:
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-server
-  namespace: argocd
+```bash
+kubectl patch deployment argocd-server -n argocd --type='strategic' -p='
 spec:
   template:
     spec:
       containers:
-        - name: argocd-server
-          resources:
-            requests:
-              cpu: 100m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
+      - name: argocd-server
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+'
 ```
 
 ## Cause 2: TLS Protocol Mismatch
@@ -84,14 +81,14 @@ annotations:
 
 **Fix**: Either set ArgoCD to insecure mode:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  server.insecure: "true"
+```bash
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p='{"data":{"server.insecure":"true"}}'
+```
+
+Then restart the ArgoCD server so the command parameter change takes effect:
+
+```bash
+kubectl rollout restart deployment argocd-server -n argocd
 ```
 
 Or tell the ingress to use HTTPS backend:
@@ -119,10 +116,10 @@ annotations:
 
 ## Cause 3: Wrong Service Port
 
-The ingress is pointing to the wrong port on the ArgoCD service. ArgoCD server exposes two ports:
+The ingress is pointing to the wrong port on the ArgoCD service. The default ArgoCD server Service exposes two ports:
 
-- Port 80 (HTTP) - used when `server.insecure` is true
-- Port 443 (HTTPS) - used when ArgoCD handles its own TLS
+- Port 80 (HTTP) - redirects to HTTPS by default and is commonly used when `server.insecure` is true
+- Port 443 (gRPC/HTTPS) - used when ArgoCD handles its own TLS
 
 ```bash
 # Check what ports the ArgoCD server service exposes
@@ -139,7 +136,7 @@ backend:
     port:
       number: 80  # Use 80 when server.insecure is true
 
-# For TLS passthrough
+# For TLS passthrough or HTTPS to the backend
 backend:
   service:
     name: argocd-server
@@ -160,18 +157,15 @@ kubectl get pods -n argocd
 
 Fix options:
 
-```yaml
+```bash
 # Option 1: Disable sidecar for ArgoCD server
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-server
-  namespace: argocd
+kubectl patch deployment argocd-server -n argocd -p='
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         sidecar.istio.io/inject: "false"
+'
 ```
 
 ```yaml
@@ -232,13 +226,14 @@ Check health check status:
 # For Nginx Ingress
 kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx | grep "argocd"
 
-# Direct health check test
-kubectl exec -n argocd deploy/argocd-server -- curl -s localhost:8080/healthz
+# Direct health check test from inside the cluster
+kubectl run argocd-healthcheck --rm -it --image=curlimages/curl -- \
+  curl -s http://argocd-server.argocd.svc.cluster.local:80/healthz
 ```
 
 ## Cause 7: Proxy Buffer Too Small
 
-ArgoCD can return large responses, especially for applications with many resources. If the proxy buffer is too small, the connection is reset.
+ArgoCD can return large headers, especially when authentication cookies or proxy headers are large. If Nginx reports that the upstream sent too big a header, increase the proxy buffer settings.
 
 Fix for Nginx:
 
@@ -258,12 +253,20 @@ When you encounter this error, work through this checklist:
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server
 
 # Step 2: Can you access ArgoCD directly (bypassing ingress)?
-kubectl port-forward svc/argocd-server -n argocd 8080:80
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+# Visit https://localhost:8080
+#
+# If server.insecure is true, use:
+# kubectl port-forward svc/argocd-server -n argocd 8080:80
 # Visit http://localhost:8080
 
 # Step 3: Is the service reachable from within the cluster?
 kubectl run test --rm -it --image=curlimages/curl -- \
-  curl -v http://argocd-server.argocd.svc.cluster.local:80/healthz
+  curl -vk https://argocd-server.argocd.svc.cluster.local:443/healthz
+#
+# If server.insecure is true, use:
+# kubectl run test --rm -it --image=curlimages/curl -- \
+#   curl -v http://argocd-server.argocd.svc.cluster.local:80/healthz
 
 # Step 4: Check ingress controller logs
 kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx --tail=100
