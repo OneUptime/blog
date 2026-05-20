@@ -62,7 +62,7 @@ Commit this to Git and let ArgoCD sync it. The new PVC gets created while your e
 
 ## Phase 2: Data Copy Job
 
-Create a Kubernetes Job that copies data from the old PVC to the new one. This job runs as an ArgoCD PreSync hook to ensure data is copied before the workload switches:
+Create a Kubernetes Job that copies data from the old PVC to the new one. This job runs as an ArgoCD PreSync hook after the workload is quiesced to ensure data is copied before the workload switches:
 
 ```yaml
 # migration/data-copy-job.yaml
@@ -129,7 +129,7 @@ spec:
 
 ## Handling Database Quiescence
 
-For databases, you need to stop writes before copying data. Use a multi-step approach with sync waves:
+For databases, you need to stop writes and stop the database process before copying database files. Use a multi-step approach with sync waves:
 
 ```yaml
 # migration/step1-scale-down.yaml
@@ -148,23 +148,29 @@ spec:
       serviceAccountName: migration-sa
       containers:
         - name: scale-down
-          image: bitnami/kubectl:latest
+          image: alpine:3.20
           command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache kubectl postgresql16-client
+
               # Scale down the application that uses the database
               kubectl scale deployment app-server -n production --replicas=0
 
               # Wait for pods to terminate
-              kubectl wait --for=delete pod -l app=app-server -n production --timeout=120s
+              kubectl wait --for=delete pod -l app=app-server -n production --timeout=120s || true
 
               # Create a checkpoint in postgres
               PGPASSWORD=$DB_PASSWORD psql -h postgres-svc -U postgres \
                 -c "CHECKPOINT;" \
                 -c "SELECT pg_switch_wal();"
 
-              echo "Application scaled down and database checkpointed"
+              # Stop postgres before the physical file copy
+              kubectl scale statefulset postgres -n database --replicas=0
+              kubectl wait --for=delete pod -l app=postgres -n database --timeout=180s
+
+              echo "Application scaled down, database checkpointed, and postgres stopped"
           env:
             - name: DB_PASSWORD
               valueFrom:
@@ -272,10 +278,10 @@ spec:
             - |
               # Run verification queries
               PGPASSWORD=$DB_PASSWORD psql -h postgres-svc -U postgres -d myapp <<EOF
-              -- Check table counts
-              SELECT schemaname, tablename, n_tup_ins
+              -- Review row-count estimates
+              SELECT schemaname, relname AS tablename, n_live_tup
               FROM pg_stat_user_tables
-              ORDER BY n_tup_ins DESC;
+              ORDER BY n_live_tup DESC;
 
               -- Verify data integrity
               SELECT count(*) as total_users FROM users;
