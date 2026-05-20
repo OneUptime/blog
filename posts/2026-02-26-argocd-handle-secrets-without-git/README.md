@@ -20,7 +20,6 @@ This is probably the most asked question in the ArgoCD community, and there are 
 | External Secrets Operator | Medium | Excellent | High |
 | Vault with ArgoCD Vault Plugin | High | Excellent | High |
 | SOPS with Age/GPG | Low | Good | High |
-| Kubernetes External Secrets | Medium | Good | Medium |
 | Just use cloud-native secrets | Low | Good | Low |
 
 ## Option 1: Bitnami Sealed Secrets
@@ -44,7 +43,7 @@ flowchart LR
 # Install the Sealed Secrets controller
 
 helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
-helm install sealed-secrets sealed-secrets/sealed-secrets -n kube-system
+helm install sealed-secrets sealed-secrets/sealed-secrets -n kube-system --set-string fullnameOverride=sealed-secrets-controller
 
 # Install the kubeseal CLI
 brew install kubeseal
@@ -107,7 +106,7 @@ helm install external-secrets external-secrets/external-secrets -n external-secr
 First, create a SecretStore that points to your secret provider:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets
@@ -126,7 +125,7 @@ spec:
 Then create an ExternalSecret that references secrets from the store:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-creds
@@ -165,7 +164,7 @@ This ExternalSecret manifest is safe to commit to Git because it only contains r
 
 ## Option 3: SOPS with Age or GPG
 
-SOPS (Secrets OPerationS) encrypts values within YAML/JSON files. Combined with the KSOPS Kustomize plugin or ArgoCD's native SOPS support, it integrates well with ArgoCD.
+SOPS (Secrets OPerationS) encrypts values within YAML/JSON files. Combined with a repo-server plugin such as KSOPS or Helm secrets, it integrates well with ArgoCD.
 
 ### Setup
 
@@ -229,7 +228,7 @@ sops:
         -----END AGE ENCRYPTED FILE-----
 ```
 
-Configure ArgoCD to decrypt with SOPS using KSOPS or the Helm secrets plugin.
+Configure ArgoCD to decrypt with SOPS using a repo-server plugin such as KSOPS or Helm secrets.
 
 **Pros:**
 - No external service dependency
@@ -266,12 +265,12 @@ stringData:
   username: <username>
 ```
 
-ArgoCD replaces `<password>` and `<username>` with values from Vault during sync. The manifest in Git never contains actual secret values.
+AVP replaces `<password>` and `<username>` with values from Vault during manifest generation. The manifest in Git never contains actual secret values.
 
 **Pros:**
-- Leverages Vault's full feature set (rotation, audit, dynamic secrets)
+- Leverages Vault-backed secret storage with audit and versioned KV secrets
 - Placeholders in Git are self-documenting
-- Works with any Vault backend
+- Works with Vault KV v1/v2 and several other supported secret managers
 
 **Cons:**
 - Complex setup (Vault + AVP plugin + ArgoCD configuration)
@@ -283,7 +282,7 @@ ArgoCD replaces `<password>` and `<username>` with values from Vault during sync
 If you are all-in on a single cloud provider, use their native secret management without any Kubernetes operator:
 
 ```yaml
-# AWS: Use IRSA to let pods access Secrets Manager directly
+# AWS: Use IRSA or EKS Pod Identity to let pods access Secrets Manager directly
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -295,11 +294,11 @@ spec:
       containers:
         - name: myapp
           env:
-            - name: DATABASE_URL
-              value: "aws-secretsmanager://myapp/production/db-url"
+            - name: DATABASE_SECRET_ID
+              value: "myapp/production/db-url"
 ```
 
-Your application reads secrets from the cloud provider at runtime. ArgoCD only manages the deployment, not the secrets.
+Your application uses the cloud provider SDK to read that secret at runtime. ArgoCD only manages the deployment, not the secrets.
 
 **Pros:** Simplest approach. No extra operators.
 **Cons:** Application code needs cloud SDK integration. Not pure GitOps.
