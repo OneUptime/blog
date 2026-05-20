@@ -8,7 +8,7 @@ Description: Learn how to detect and respond to Application Synced events in Arg
 
 ---
 
-Every time ArgoCD successfully syncs an application, it represents a completed deployment. Capturing these synced events is valuable for deployment tracking, triggering post-deployment tests, updating change management systems, and maintaining audit trails. ArgoCD provides several mechanisms to detect when an application transitions from OutOfSync to Synced, and this guide covers the most effective patterns.
+Every time ArgoCD successfully syncs an application, it represents a completed sync operation. Capturing these synced events is valuable for deployment tracking, triggering post-deployment tests, updating change management systems, and maintaining audit trails. For a complete deployment signal, combine sync success with application health. ArgoCD provides several mechanisms to detect successful sync operations, and this guide covers the most effective patterns.
 
 ## Why Track Synced Events?
 
@@ -37,8 +37,8 @@ data:
   # Trigger when sync operation succeeds
   trigger.on-sync-succeeded: |
     - description: Application synced successfully
-      when: app.status.operationState.phase in ['Succeeded']
-      oncePer: app.status.operationState.syncResult.revision
+      when: app.status?.operationState.phase in ['Succeeded']
+      oncePer: app.status?.operationState.syncResult.revision
       send:
         - sync-succeeded-webhook
         - sync-succeeded-slack
@@ -80,7 +80,7 @@ data:
       title: "Deployment Complete: {{.app.metadata.name}}"
       text: |
         *Application*: {{.app.metadata.name}}
-        *Revision*: `{{.app.status.operationState.syncResult.revision | truncate 8}}`
+        *Revision*: `{{.app.status.operationState.syncResult.revision | trunc 8}}`
         *Namespace*: {{.app.spec.destination.namespace}}
         *Synced at*: {{.app.status.operationState.finishedAt}}
         *Initiated by*: {{.app.status.operationState.operation.initiatedBy.username | default "auto-sync"}}
@@ -142,9 +142,9 @@ data:
 
   trigger.on-sync-with-tests: |
     - description: Sync succeeded, trigger tests
-      when: app.status.operationState.phase in ['Succeeded'] and
-            app.metadata.labels.run-post-deploy-tests == 'true'
-      oncePer: app.status.operationState.syncResult.revision
+      when: app.status?.operationState.phase in ['Succeeded'] and
+            app.metadata.labels['run-post-deploy-tests'] == 'true'
+      oncePer: app.status?.operationState.syncResult.revision
       send:
         - trigger-post-deploy-tests
 ```
@@ -270,18 +270,18 @@ Not all sync events are equally important. Use conditions to filter:
 trigger.on-production-sync: |
   - description: Production sync completed
     when: >-
-      app.status.operationState.phase in ['Succeeded'] and
+      app.status?.operationState.phase in ['Succeeded'] and
       app.spec.destination.namespace matches 'production.*'
-    oncePer: app.status.operationState.syncResult.revision
+    oncePer: app.status?.operationState.syncResult.revision
     send:
       - production-deploy-notification
 
 trigger.on-manual-sync: |
   - description: Manual sync completed
     when: >-
-      app.status.operationState.phase in ['Succeeded'] and
+      app.status?.operationState.phase in ['Succeeded'] and
       app.status.operationState.operation.initiatedBy.username != ''
-    oncePer: app.status.operationState.syncResult.revision
+    oncePer: app.status?.operationState.syncResult.revision
     send:
       - manual-deploy-audit
 ```
