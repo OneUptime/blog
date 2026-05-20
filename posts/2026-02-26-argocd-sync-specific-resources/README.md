@@ -54,11 +54,11 @@ argocd app sync my-app --resource :Secret:db-credentials
 
 The format is `group:kind:name`. For core Kubernetes resources like ConfigMaps, Services, and Secrets, the group is empty, so you start with a colon.
 
-For resources in specific namespaces within a multi-namespace application, include the namespace.
+For resources in specific namespaces within a multi-namespace application, include the namespace in the resource name.
 
 ```bash
 # Sync a Deployment in a specific namespace
-argocd app sync my-app --resource apps:Deployment:my-deployment --namespace production
+argocd app sync my-app --resource apps:Deployment:production/my-deployment
 ```
 
 ## Syncing Multiple Specific Resources
@@ -108,6 +108,7 @@ Understanding the resource identification format is key to using selective sync 
 
 ```text
 GROUP:KIND:NAME
+GROUP:KIND:NAMESPACE/NAME
 ```
 
 Here are the group identifiers for common Kubernetes resource types:
@@ -166,7 +167,7 @@ curl -X POST "https://argocd.example.com/api/v1/applications/my-app/sync" \
   }'
 ```
 
-The API accepts an array of resource identifiers. Each identifier needs `group`, `kind`, and `name`. This is the approach to use in CI/CD pipelines or custom automation.
+The API accepts an array of resource identifiers. Each identifier needs `kind` and `name`; `group` and `namespace` can also be provided when needed. This is the approach to use in CI/CD pipelines or custom automation.
 
 ## Selective Sync with Sync Options
 
@@ -205,10 +206,10 @@ If you find yourself constantly using selective sync, it might be a sign that yo
 
 ## Limitations of Selective Sync
 
-Selective sync does not run sync waves or hooks. When you sync specific resources, ArgoCD applies them directly without processing wave annotations or executing PreSync/PostSync hooks. This means dependencies between resources are not enforced during selective sync.
+Selective sync does not run hooks and is not recorded in sync history. When you sync specific resources, ArgoCD only considers the selected resources, so dependencies outside the selection are not applied as part of that operation.
 
 Selective sync does not trigger pruning of resources not included in the selection. If you removed a resource from Git and do a selective sync of other resources, the removed resource will not be pruned until you do a full sync.
 
-Auto-sync does not support selective sync. When ArgoCD detects drift and auto-sync is enabled, it always performs a full sync. You cannot configure auto-sync to only target specific resources.
+Auto-sync does not support choosing a specific resource list the way manual selective sync does. When ArgoCD detects drift and auto-sync is enabled, the sync operation is triggered at the application level. You cannot configure auto-sync to only target specific resources.
 
 For more on sync operations in general, see the [ArgoCD sync waves guide](https://oneuptime.com/blog/post/2026-02-09-argocd-sync-waves-ordered-deployments/view).
