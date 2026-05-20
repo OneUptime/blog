@@ -27,7 +27,7 @@ flowchart TD
     F --> H[ArgoCD shows Healthy - no way to know]
 ```
 
-Starting with Istio 1.17+, status reporting has improved with the `status.validationMessages` and `status.conditions` fields on some resources.
+Istio 1.6+ can report configuration status with the `status.validationMessages` and `status.conditions` fields on some resources, but this alpha feature is disabled by default and must be enabled during installation.
 
 ## VirtualService Health Check
 
@@ -51,12 +51,12 @@ data:
       return hs
     end
 
-    -- Check for validation messages (Istio 1.17+)
+    -- Check for validation messages when Istio status reporting is enabled
     if obj.status.validationMessages ~= nil then
       local hasErrors = false
       local errorMsg = ""
       for i, msg in ipairs(obj.status.validationMessages) do
-        if msg.level == "ERROR" or msg.level == "WARNING" then
+        if msg.level == "Error" or msg.level == "Warn" or msg.level == "ERROR" or msg.level == "WARNING" then
           hasErrors = true
           if errorMsg ~= "" then
             errorMsg = errorMsg .. "; "
@@ -71,33 +71,21 @@ data:
       end
     end
 
-    -- Check conditions (Istio 1.22+)
+    -- Check analysis conditions
     if obj.status.conditions ~= nil then
       for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Reconciled" then
+        if condition.type == "PassedAnalysis" then
           if condition.status == "True" then
             hs.status = "Healthy"
-            hs.message = "VirtualService is reconciled"
+            hs.message = "VirtualService passed Istio analysis"
             return hs
           elseif condition.status == "False" then
             hs.status = "Degraded"
-            hs.message = condition.message or "Reconciliation failed"
+            hs.message = condition.message or "Istio analysis found issues"
             return hs
           end
         end
       end
-    end
-
-    -- Check observedGeneration
-    if obj.status.observedGeneration ~= nil and obj.metadata.generation ~= nil then
-      if obj.status.observedGeneration == obj.metadata.generation then
-        hs.status = "Healthy"
-        hs.message = "VirtualService processed by Istiod"
-      else
-        hs.status = "Progressing"
-        hs.message = "Waiting for Istiod to process changes"
-      end
-      return hs
     end
 
     hs.status = "Healthy"
@@ -120,7 +108,7 @@ data:
     -- Check for validation messages
     if obj.status.validationMessages ~= nil then
       for i, msg in ipairs(obj.status.validationMessages) do
-        if msg.level == "ERROR" then
+        if msg.level == "Error" or msg.level == "ERROR" then
           hs.status = "Degraded"
           hs.message = msg.message or "Gateway has validation errors"
           return hs
@@ -131,14 +119,14 @@ data:
     -- Check conditions
     if obj.status.conditions ~= nil then
       for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Reconciled" or condition.type == "Ready" then
+        if condition.type == "PassedAnalysis" then
           if condition.status == "True" then
             hs.status = "Healthy"
-            hs.message = "Gateway is reconciled"
+            hs.message = "Gateway passed Istio analysis"
             return hs
           else
             hs.status = "Degraded"
-            hs.message = condition.message or "Gateway is not ready"
+            hs.message = condition.message or "Istio analysis found issues"
             return hs
           end
         end
@@ -165,7 +153,7 @@ data:
     -- Check for validation issues
     if obj.status.validationMessages ~= nil then
       for i, msg in ipairs(obj.status.validationMessages) do
-        if msg.level == "ERROR" then
+        if msg.level == "Error" or msg.level == "ERROR" then
           hs.status = "Degraded"
           hs.message = msg.message or "DestinationRule has validation errors"
           return hs
@@ -176,13 +164,13 @@ data:
     -- Check conditions
     if obj.status.conditions ~= nil then
       for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Reconciled" then
+        if condition.type == "PassedAnalysis" then
           if condition.status == "True" then
             hs.status = "Healthy"
-            hs.message = "DestinationRule reconciled"
+            hs.message = "DestinationRule passed Istio analysis"
           else
             hs.status = "Degraded"
-            hs.message = condition.message or "Reconciliation issue"
+            hs.message = condition.message or "Istio analysis found issues"
           end
           return hs
         end
@@ -208,7 +196,7 @@ data:
 
     if obj.status.validationMessages ~= nil then
       for i, msg in ipairs(obj.status.validationMessages) do
-        if msg.level == "ERROR" then
+        if msg.level == "Error" or msg.level == "ERROR" then
           hs.status = "Degraded"
           hs.message = msg.message or "ServiceEntry has validation errors"
           return hs
@@ -235,13 +223,13 @@ data:
 
     if obj.status.conditions ~= nil then
       for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Reconciled" then
+        if condition.type == "PassedAnalysis" then
           if condition.status == "True" then
             hs.status = "Healthy"
-            hs.message = "PeerAuthentication reconciled"
+            hs.message = "PeerAuthentication passed Istio analysis"
           else
             hs.status = "Degraded"
-            hs.message = condition.message or "Not reconciled"
+            hs.message = condition.message or "Istio analysis found issues"
           end
           return hs
         end
@@ -267,13 +255,13 @@ data:
 
     if obj.status.conditions ~= nil then
       for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Reconciled" then
+        if condition.type == "PassedAnalysis" then
           if condition.status == "True" then
             hs.status = "Healthy"
-            hs.message = "AuthorizationPolicy reconciled"
+            hs.message = "AuthorizationPolicy passed Istio analysis"
           else
             hs.status = "Degraded"
-            hs.message = condition.message or "Not reconciled"
+            hs.message = condition.message or "Istio analysis found issues"
           end
           return hs
         end
@@ -326,28 +314,39 @@ If you use Istio with the Kubernetes Gateway API (replacing the Istio Gateway re
 
   resource.customizations.health.gateway.networking.k8s.io_HTTPRoute: |
     hs = {}
-    if obj.status == nil or obj.status.parents == nil then
+    if obj.status == nil or obj.status.parents == nil or #obj.status.parents == 0 then
       hs.status = "Progressing"
-      hs.message = "HTTPRoute initializing"
+      hs.message = "HTTPRoute not attached to any parent gateway yet"
       return hs
     end
 
     local allAccepted = true
+    local foundAccepted = false
     local errorMsg = ""
     for i, parent in ipairs(obj.status.parents) do
       if parent.conditions ~= nil then
         for j, condition in ipairs(parent.conditions) do
-          if condition.type == "Accepted" and condition.status ~= "True" then
+          if condition.type == "Accepted" then
+            foundAccepted = true
+            if condition.status ~= "True" then
+              allAccepted = false
+              errorMsg = condition.message or "Not accepted by parent"
+            end
+          end
+          if condition.type == "ResolvedRefs" and condition.status == "False" then
             allAccepted = false
-            errorMsg = condition.message or "Not accepted by parent"
+            errorMsg = condition.message or "Route has unresolved references"
           end
         end
       end
     end
 
-    if allAccepted then
+    if foundAccepted and allAccepted then
       hs.status = "Healthy"
       hs.message = "HTTPRoute accepted by all parent gateways"
+    elseif errorMsg == "" then
+      hs.status = "Progressing"
+      hs.message = "Waiting for parent gateway acceptance"
     else
       hs.status = "Degraded"
       hs.message = errorMsg
@@ -386,7 +385,7 @@ spec:
     spec:
       containers:
         - name: analyze
-          image: istio/istioctl:1.22
+          image: istio/istioctl:1.30.0
           command:
             - istioctl
             - analyze
@@ -400,7 +399,7 @@ spec:
 ## Best Practices
 
 1. **Accept limitations** - Older Istio versions have minimal status reporting; health checks may be limited to existence checks
-2. **Upgrade Istio for better status** - Istio 1.17+ has improved validation messages and status conditions
+2. **Enable Istio status reporting if you need it** - Istio's configuration status field is alpha and disabled by default
 3. **Use istioctl analyze** - Supplement ArgoCD health checks with Istio's built-in analysis tool
 4. **Monitor envoy proxy health** - VirtualService health does not tell you if the actual proxy routing is working
 5. **Test with invalid configurations** - Verify your health checks correctly catch misconfigurations
