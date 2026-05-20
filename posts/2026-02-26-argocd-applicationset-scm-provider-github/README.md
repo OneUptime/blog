@@ -14,7 +14,7 @@ This is perfect for organizations with many microservices, where new repositorie
 
 ## How the SCM Provider Generator Works
 
-The generator queries the GitHub API to list repositories in an organization. It filters results based on topics, names, visibility, and other criteria. For each matching repository, it produces parameters including the repo URL, name, default branch, and other metadata.
+The generator queries the GitHub API to list repositories in an organization. It filters results based on topics, names, branches, and paths in the repository. For each matching repository, it produces parameters including the repo URL, name, default branch, and other metadata.
 
 ```mermaid
 graph TD
@@ -46,9 +46,13 @@ For GitHub Apps (recommended for organizations), create a secret with the app cr
 
 ```bash
 kubectl create secret generic github-app-creds -n argocd \
+  --from-literal=type=git \
+  --from-literal=url=https://github.com/myorg \
   --from-literal=githubAppID=12345 \
   --from-literal=githubAppInstallationID=67890 \
-  --from-file=githubAppPrivateKey=private-key.pem
+  --from-file=githubAppPrivateKey=private-key.pem \
+  --dry-run=client -o yaml | kubectl label -f - \
+  argocd.argoproj.io/secret-type=repo-creds --local -o yaml | kubectl apply -f -
 ```
 
 ## Basic SCM Provider Generator
@@ -64,6 +68,7 @@ metadata:
 spec:
   generators:
   - scmProvider:
+      cloneProtocol: https
       github:
         # GitHub organization name
         organization: myorg
@@ -71,7 +76,7 @@ spec:
         tokenRef:
           secretName: github-token
           key: token
-        # Only include repos that aren't archived
+        # Scan only the default branch of each repo
         allBranches: false
       # Filter repositories
       filters:
@@ -102,7 +107,7 @@ The SCM Provider generator provides these parameters for each discovered reposit
 
 - `organization` - the GitHub org name
 - `repository` - the repository name
-- `url` - the clone URL (HTTPS)
+- `url` - the clone URL for the selected `cloneProtocol`
 - `branch` - the default branch
 - `sha` - the latest commit SHA
 - `labels` - repository topics as comma-separated string
@@ -128,6 +133,7 @@ GitHub topics are a powerful way to tag repositories. Use them to control which 
 ```yaml
 generators:
 - scmProvider:
+    cloneProtocol: https
     github:
       organization: myorg
       tokenRef:
@@ -155,6 +161,7 @@ You can filter based on branch patterns to target specific branches.
 ```yaml
 generators:
 - scmProvider:
+    cloneProtocol: https
     github:
       organization: myorg
       tokenRef:
@@ -175,6 +182,7 @@ For production environments, GitHub Apps provide better security and higher rate
 ```yaml
 generators:
 - scmProvider:
+    cloneProtocol: https
     github:
       organization: myorg
       appSecretName: github-app-creds
@@ -183,7 +191,7 @@ generators:
       labelMatch: "deploy-argocd"
 ```
 
-The secret must contain `githubAppID`, `githubAppInstallationID`, and `githubAppPrivateKey`.
+The secret must be in Argo CD repo-creds format and contain `type`, `url`, `githubAppID`, `githubAppInstallationID`, and `githubAppPrivateKey`.
 
 ## Combining SCM Provider with Other Generators
 
@@ -200,6 +208,7 @@ spec:
   - matrix:
       generators:
       - scmProvider:
+          cloneProtocol: https
           github:
             organization: myorg
             tokenRef:
@@ -227,18 +236,26 @@ spec:
 
 ## Rate Limiting and Caching
 
-The SCM Provider generator queries the GitHub API on every reconciliation cycle. For large organizations with many repositories, this can hit rate limits.
+The SCM Provider generator queries the GitHub API on its ApplicationSet generator polling interval. For large organizations with many repositories, this can hit rate limits.
 
 ```yaml
-# Adjust reconciliation interval
-apiVersion: v1
-kind: ConfigMap
+# Adjust the SCM Provider generator polling interval
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
 metadata:
-  name: argocd-cm
+  name: org-services
   namespace: argocd
-data:
-  # Increase interval to reduce API calls (default: 180 seconds)
-  timeout.reconciliation: "300"
+spec:
+  generators:
+  - scmProvider:
+      cloneProtocol: https
+      github:
+        organization: myorg
+        tokenRef:
+          secretName: github-token
+          key: token
+    # Increase interval to reduce API calls
+    requeueAfterSeconds: 300
 ```
 
 Monitor your API usage.
