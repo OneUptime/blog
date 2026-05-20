@@ -17,7 +17,7 @@ This guide walks you through every step of connecting JFrog Artifactory to ArgoC
 Artifactory offers features that go well beyond what a basic Helm repository provides:
 
 - Universal artifact management across Docker images, Helm charts, npm packages, and more
-- Fine-grained access control with tokens, API keys, and LDAP/SSO integration
+- Fine-grained access control with tokens, legacy API keys, and LDAP/SSO integration
 - Virtual repositories that aggregate multiple remote and local repositories behind a single URL
 - Replication for multi-site deployments
 - Built-in vulnerability scanning with JFrog Xray
@@ -55,30 +55,30 @@ You can also create a virtual repository that aggregates your local Helm repo wi
 The repository URL typically follows this pattern:
 
 ```text
-https://artifactory.example.com/artifactory/helm-virtual
+https://artifactory.example.com/artifactory/api/helm/helm-virtual
 ```
 
 ## Adding Artifactory as a Helm Repository in ArgoCD
 
 ### Method 1: Using the ArgoCD CLI
 
-The simplest approach is adding the repository through the CLI with username and password or API key authentication:
+The simplest approach is adding the repository through the CLI with username and password authentication:
 
 ```bash
 # Add with username and password
 
-argocd repo add https://artifactory.example.com/artifactory/helm-virtual \
+argocd repo add https://artifactory.example.com/artifactory/api/helm/helm-virtual \
   --type helm \
   --name artifactory-helm \
   --username admin \
   --password '<your-password>'
 ```
 
-For API key authentication:
+For older Artifactory installations with an existing API key:
 
 ```bash
 # Add with API key (use the API key as the password)
-argocd repo add https://artifactory.example.com/artifactory/helm-virtual \
+argocd repo add https://artifactory.example.com/artifactory/api/helm/helm-virtual \
   --type helm \
   --name artifactory-helm \
   --username admin \
@@ -89,10 +89,10 @@ For access token authentication, which is the recommended approach in modern Art
 
 ```bash
 # Add with access token
-argocd repo add https://artifactory.example.com/artifactory/helm-virtual \
+argocd repo add https://artifactory.example.com/artifactory/api/helm/helm-virtual \
   --type helm \
   --name artifactory-helm \
-  --username access-token \
+  --username argocd-service \
   --password '<your-access-token>'
 ```
 
@@ -113,8 +113,8 @@ type: Opaque
 stringData:
   type: helm
   name: artifactory-helm
-  url: https://artifactory.example.com/artifactory/helm-virtual
-  username: admin
+  url: https://artifactory.example.com/artifactory/api/helm/helm-virtual
+  username: argocd-service
   password: <your-access-token>
 ```
 
@@ -140,12 +140,12 @@ metadata:
 type: Opaque
 stringData:
   type: helm
-  url: https://artifactory.example.com/artifactory/
+  url: https://artifactory.example.com/artifactory/api/helm/
   username: argocd-service
   password: <your-access-token>
 ```
 
-Now any Helm repository you add with a URL matching `https://artifactory.example.com/artifactory/` will automatically inherit these credentials.
+Now any Helm repository you add with a URL matching `https://artifactory.example.com/artifactory/api/helm/` will automatically inherit these credentials.
 
 ## Deploying a Helm Chart from Artifactory
 
@@ -162,7 +162,7 @@ spec:
   project: default
   source:
     # Reference the Helm repository by its URL
-    repoURL: https://artifactory.example.com/artifactory/helm-virtual
+    repoURL: https://artifactory.example.com/artifactory/api/helm/helm-virtual
     chart: my-chart
     targetRevision: 1.2.3
     helm:
@@ -193,7 +193,7 @@ Or use the CLI:
 
 ```bash
 argocd app create my-application \
-  --repo https://artifactory.example.com/artifactory/helm-virtual \
+  --repo https://artifactory.example.com/artifactory/api/helm/helm-virtual \
   --helm-chart my-chart \
   --revision 1.2.3 \
   --dest-server https://kubernetes.default.svc \
@@ -219,7 +219,7 @@ type: Opaque
 stringData:
   type: helm
   name: artifactory-oci
-  url: artifactory.example.com/artifactory/helm-oci
+  url: artifactory.example.com/helm-oci
   enableOCI: "true"
   username: admin
   password: <your-access-token>
@@ -227,7 +227,7 @@ stringData:
 
 ## Configuring TLS for Artifactory
 
-If your Artifactory instance uses a self-signed certificate or a private CA, you need to provide the CA certificate to ArgoCD:
+If your Artifactory instance requires mutual TLS, you can provide the client certificate and key in the repository Secret:
 
 ```yaml
 apiVersion: v1
@@ -241,20 +241,25 @@ type: Opaque
 stringData:
   type: helm
   name: artifactory-helm
-  url: https://artifactory.example.com/artifactory/helm-virtual
+  url: https://artifactory.example.com/artifactory/api/helm/helm-virtual
   username: admin
   password: <your-access-token>
   tlsClientCertData: |
-    <base64-encoded-client-cert>
+    -----BEGIN CERTIFICATE-----
+    <client-cert-pem>
+    -----END CERTIFICATE-----
   tlsClientCertKey: |
-    <base64-encoded-client-key>
+    -----BEGIN PRIVATE KEY-----
+    <client-key-pem>
+    -----END PRIVATE KEY-----
 ```
 
-You can also add the CA certificate to ArgoCD's trust store by editing the `argocd-tls-certs-cm` ConfigMap:
+If your Artifactory instance uses a self-signed certificate or a private CA, add the CA certificate to ArgoCD's trust store by updating the `argocd-tls-certs-cm` ConfigMap:
 
 ```bash
 kubectl -n argocd create configmap argocd-tls-certs-cm \
-  --from-file=artifactory.example.com=/path/to/ca-cert.pem
+  --from-file=artifactory.example.com=/path/to/ca-cert.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Troubleshooting Common Issues
@@ -265,9 +270,9 @@ If ArgoCD cannot find your Helm repository, verify the URL. Artifactory Helm rep
 
 ```bash
 # Correct
-https://artifactory.example.com/artifactory/helm-virtual
+https://artifactory.example.com/artifactory/api/helm/helm-virtual
 
-# Incorrect - missing /artifactory/ prefix
+# Incorrect - missing /artifactory/api/helm/ prefix
 https://artifactory.example.com/helm-virtual
 ```
 
@@ -293,7 +298,7 @@ argocd repo list
 argocd app get my-application --refresh
 ```
 
-Artifactory generates the Helm index lazily for virtual repositories. You may need to trigger an index recalculation in Artifactory under **Administration > Artifactory > Helm > Recalculate Index**.
+Artifactory generates the Helm index lazily for virtual repositories. You may need to trigger an index recalculation in Artifactory from **Application > Artifactory > Artifacts**, then right-click the Helm repository and select **Recalculate Index**.
 
 ## Best Practices
 
