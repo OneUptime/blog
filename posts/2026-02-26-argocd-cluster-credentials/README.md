@@ -14,7 +14,7 @@ In this guide, I will cover all the credential types ArgoCD supports, how to con
 
 ## How ArgoCD Stores Cluster Credentials
 
-ArgoCD stores cluster credentials as Kubernetes Secrets in the ArgoCD namespace. Each secret has the label `argocd.argoproj.io/secret-type: cluster` and contains three fields:
+ArgoCD stores cluster credentials as Kubernetes Secrets in the ArgoCD namespace. Each secret has the label `argocd.argoproj.io/secret-type: cluster` and contains at least three fields:
 
 ```yaml
 apiVersion: v1
@@ -102,7 +102,7 @@ openssl genrsa -out argocd-client.key 2048
 # Create a CSR
 openssl req -new -key argocd-client.key \
   -out argocd-client.csr \
-  -subj "/CN=argocd-manager/O=system:masters"
+  -subj "/CN=argocd-manager/O=argocd-managers"
 
 # Sign with the cluster CA (on the control plane node)
 sudo openssl x509 -req \
@@ -123,7 +123,7 @@ CA_DATA=$(cat /etc/kubernetes/pki/ca.crt | base64 -w 0)
 
 For cloud providers that use external authentication tools:
 
-### AWS EKS (aws-iam-authenticator)
+### AWS EKS (awsAuthConfig)
 
 ```yaml
 stringData:
@@ -140,7 +140,7 @@ stringData:
     }
 ```
 
-### GCP GKE (gcloud)
+### GCP GKE (argocd-k8s-auth with Workload Identity)
 
 ```yaml
 stringData:
@@ -158,22 +158,22 @@ stringData:
     }
 ```
 
-### Azure AKS (kubelogin)
+### Azure AKS (argocd-k8s-auth with kubelogin)
 
 ```yaml
 stringData:
   config: |
     {
       "execProviderConfig": {
-        "command": "kubelogin",
-        "args": [
-          "get-token",
-          "--login", "spn",
-          "--server-id", "6dae42f8-4368-4678-94ff-3960e28e3630",
-          "--client-id", "<client-id>",
-          "--client-secret", "<client-secret>",
-          "--tenant-id", "<tenant-id>"
-        ],
+        "command": "argocd-k8s-auth",
+        "args": ["azure"],
+        "env": {
+          "AAD_ENVIRONMENT_NAME": "AzurePublicCloud",
+          "AAD_LOGIN_METHOD": "spn",
+          "AZURE_CLIENT_ID": "<client-id>",
+          "AZURE_CLIENT_SECRET": "<client-secret>",
+          "AZURE_TENANT_ID": "<tenant-id>"
+        },
         "apiVersion": "client.authentication.k8s.io/v1beta1"
       },
       "tlsClientConfig": {
@@ -206,22 +206,15 @@ The `tlsClientConfig` section controls how ArgoCD verifies the cluster's TLS cer
 
 ```yaml
 "tlsClientConfig": {
-  // Skip TLS verification (NEVER use in production)
   "insecure": false,
-
-  // CA certificate to verify the server (base64 encoded PEM)
   "caData": "LS0tLS1CRUdJTi...",
-
-  // Client certificate for mTLS (base64 encoded PEM)
   "certData": "LS0tLS1CRUdJTi...",
-
-  // Client private key for mTLS (base64 encoded PEM)
   "keyData": "LS0tLS1CRUdJTi...",
-
-  // Server name for TLS verification (if different from URL)
   "serverName": "kubernetes.example.com"
 }
 ```
+
+Use `insecure` to skip TLS verification only for non-production testing. `caData`, `certData`, and `keyData` are base64 encoded PEM data. `serverName` overrides the server name used for SNI and certificate verification.
 
 ## Credential Rotation
 
@@ -262,13 +255,15 @@ NEW_TOKEN=$(kubectl get secret argocd-manager-token \
 kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=cluster \
   -o json | jq -r ".items[] | select(.data.name | @base64d == \"$CLUSTER_NAME\") | .metadata.name" | \
 while read secret_name; do
-  # Patch the secret with new config
-  NEW_CONFIG=$(jq -n --arg token "$NEW_TOKEN" --arg ca "$CA_DATA" \
-    '{bearerToken: $token, tlsClientConfig: {insecure: false, caData: $ca}}')
+  # Patch the secret with the new token and keep the existing TLS config
+  CURRENT_CONFIG=$(kubectl get secret "$secret_name" -n argocd \
+    -o jsonpath='{.data.config}' | base64 -d)
+  NEW_CONFIG=$(echo "$CURRENT_CONFIG" | jq --arg token "$NEW_TOKEN" \
+    '.bearerToken = $token')
 
-  kubectl patch secret $secret_name -n argocd \
-    --type='json' \
-    -p="[{\"op\":\"replace\",\"path\":\"/stringData/config\",\"value\":\"$NEW_CONFIG\"}]"
+  kubectl patch secret "$secret_name" -n argocd \
+    --type='merge' \
+    -p="$(jq -n --arg config "$NEW_CONFIG" '{stringData: {config: $config}}')"
 done
 
 echo "Token rotated for cluster: $CLUSTER_NAME"
@@ -284,7 +279,7 @@ echo "Token rotated for cluster: $CLUSTER_NAME"
 openssl genrsa -out new-client.key 2048
 openssl req -new -key new-client.key \
   -out new-client.csr \
-  -subj "/CN=argocd-manager/O=system:masters"
+  -subj "/CN=argocd-manager/O=argocd-managers"
 
 # Sign with cluster CA
 sudo openssl x509 -req \
@@ -298,6 +293,18 @@ sudo openssl x509 -req \
 # Update ArgoCD cluster secret with new cert and key
 CERT_DATA=$(cat new-client.crt | base64 -w 0)
 KEY_DATA=$(cat new-client.key | base64 -w 0)
+SECRET_NAME="production-cluster"
+
+CURRENT_CONFIG=$(kubectl get secret "$SECRET_NAME" -n argocd \
+  -o jsonpath='{.data.config}' | base64 -d)
+NEW_CONFIG=$(echo "$CURRENT_CONFIG" | jq \
+  --arg cert "$CERT_DATA" \
+  --arg key "$KEY_DATA" \
+  '.tlsClientConfig.certData = $cert | .tlsClientConfig.keyData = $key')
+
+kubectl patch secret "$SECRET_NAME" -n argocd \
+  --type='merge' \
+  -p="$(jq -n --arg config "$NEW_CONFIG" '{stringData: {config: $config}}')"
 
 # Cleanup
 rm new-client.key new-client.csr new-client.crt
@@ -345,22 +352,50 @@ kind: SealedSecret
 metadata:
   name: production-cluster
   namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: cluster
+spec:
+  template:
+    metadata:
+      labels:
+        argocd.argoproj.io/secret-type: cluster
+  encryptedData:
+    name: <encrypted-cluster-name>
+    server: <encrypted-api-server-url>
+    config: <encrypted-cluster-config-json>
 
+---
 # Option 2: External Secrets
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: production-cluster
   namespace: argocd
 spec:
+  secretStoreRef:
+    name: production-secrets
+    kind: ClusterSecretStore
   target:
     name: production-cluster
     template:
       metadata:
         labels:
           argocd.argoproj.io/secret-type: cluster
+      data:
+        name: "{{ .name }}"
+        server: "{{ .server }}"
+        config: "{{ .config }}"
+  data:
+    - secretKey: name
+      remoteRef:
+        key: argocd/production-cluster
+        property: name
+    - secretKey: server
+      remoteRef:
+        key: argocd/production-cluster
+        property: server
+    - secretKey: config
+      remoteRef:
+        key: argocd/production-cluster
+        property: config
 ```
 
 ## Summary
