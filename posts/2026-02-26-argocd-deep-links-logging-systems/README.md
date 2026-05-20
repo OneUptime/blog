@@ -49,18 +49,18 @@ metadata:
 data:
   resource.links: |
     # Pod logs in Grafana/Loki
-    - url: https://grafana.example.com/explore?orgId=1&left={"queries":[{"refId":"A","expr":"{namespace=\"{{.metadata.namespace}}\", pod=\"{{.metadata.name}}\"}","queryType":"range"}],"range":{"from":"now-1h","to":"now"},"datasource":"Loki"}
+    - url: https://grafana.example.com/explore?orgId=1&left={"queries":[{"refId":"A","expr":"{namespace=\"{{.resource.metadata.namespace}}\", pod=\"{{.resource.metadata.name}}\"}","queryType":"range"}],"range":{"from":"now-1h","to":"now"},"datasource":"Loki"}
       title: View Logs (Loki)
       description: View pod logs in Grafana Loki
       icon.class: "fa fa-scroll"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
     # Deployment logs in Grafana/Loki (all pods for a deployment)
-    - url: https://grafana.example.com/explore?orgId=1&left={"queries":[{"refId":"A","expr":"{namespace=\"{{.metadata.namespace}}\", app=\"{{.metadata.labels.app}}\"}","queryType":"range"}],"range":{"from":"now-1h","to":"now"},"datasource":"Loki"}
+    - url: https://grafana.example.com/explore?orgId=1&left={"queries":[{"refId":"A","expr":"{namespace=\"{{.resource.metadata.namespace}}\", app=\"{{.resource.spec.selector.matchLabels.app}}\"}","queryType":"range"}],"range":{"from":"now-1h","to":"now"},"datasource":"Loki"}
       title: View Logs (Loki)
       description: View all pod logs for this deployment
       icon.class: "fa fa-scroll"
-      if: kind == "Deployment"
+      if: resource.kind == "Deployment"
 ```
 
 ### Loki with Log Level Filtering
@@ -69,11 +69,11 @@ You can create multiple deep links for different log levels:
 
 ```yaml
     # Error logs only
-    - url: https://grafana.example.com/explore?orgId=1&left={"queries":[{"refId":"A","expr":"{namespace=\"{{.metadata.namespace}}\", pod=\"{{.metadata.name}}\"} |= \"error\" or \"ERROR\"","queryType":"range"}],"range":{"from":"now-1h","to":"now"},"datasource":"Loki"}
+    - url: https://grafana.example.com/explore?orgId=1&left={"queries":[{"refId":"A","expr":"{namespace=\"{{.resource.metadata.namespace}}\", pod=\"{{.resource.metadata.name}}\"} |~ \"(?i)error\"","queryType":"range"}],"range":{"from":"now-1h","to":"now"},"datasource":"Loki"}
       title: Error Logs (Loki)
       description: View only error-level logs
       icon.class: "fa fa-exclamation-triangle"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 ```
 
 ## Deep Links to Elasticsearch/Kibana
@@ -83,18 +83,18 @@ Kibana uses a different URL format with Discover queries:
 ```yaml
   resource.links: |
     # Pod logs in Kibana Discover
-    - url: https://kibana.example.com/app/discover#/?_g=(time:(from:now-1h,to:now))&_a=(query:(language:kuery,query:'kubernetes.namespace:"{{.metadata.namespace}}" AND kubernetes.pod_name:"{{.metadata.name}}"'))
+    - url: https://kibana.example.com/app/discover#/?_g=(time:(from:now-1h,to:now))&_a=(query:(language:kuery,query:'kubernetes.namespace:"{{.resource.metadata.namespace}}" AND kubernetes.pod_name:"{{.resource.metadata.name}}"'))
       title: View Logs (Kibana)
       description: View pod logs in Kibana
       icon.class: "fa fa-search"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
     # Deployment logs in Kibana
-    - url: https://kibana.example.com/app/discover#/?_g=(time:(from:now-1h,to:now))&_a=(query:(language:kuery,query:'kubernetes.namespace:"{{.metadata.namespace}}" AND kubernetes.labels.app:"{{.metadata.labels.app}}"'))
+    - url: https://kibana.example.com/app/discover#/?_g=(time:(from:now-1h,to:now))&_a=(query:(language:kuery,query:'kubernetes.namespace:"{{.resource.metadata.namespace}}" AND kubernetes.labels.app:"{{.resource.spec.selector.matchLabels.app}}"'))
       title: View Logs (Kibana)
       description: View deployment logs in Kibana
       icon.class: "fa fa-search"
-      if: kind == "Deployment"
+      if: resource.kind == "Deployment"
 ```
 
 ### Kibana with Saved Searches
@@ -103,11 +103,11 @@ If you have pre-configured saved searches or dashboards:
 
 ```yaml
     # Link to a saved Kibana dashboard with filters
-    - url: https://kibana.example.com/app/dashboards#/view/k8s-pod-logs?_g=(time:(from:now-1h,to:now))&_a=(filters:!((query:(match_phrase:(kubernetes.namespace:'{{.metadata.namespace}}'))),(query:(match_phrase:(kubernetes.pod_name:'{{.metadata.name}}')))))
+    - url: https://kibana.example.com/app/dashboards#/view/k8s-pod-logs?_g=(time:(from:now-1h,to:now))&_a=(filters:!((query:(match_phrase:(kubernetes.namespace:'{{.resource.metadata.namespace}}'))),(query:(match_phrase:(kubernetes.pod_name:'{{.resource.metadata.name}}')))))
       title: Log Dashboard (Kibana)
       description: View pod log dashboard
       icon.class: "fa fa-tachometer-alt"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 ```
 
 ## Deep Links to AWS CloudWatch Logs
@@ -117,22 +117,22 @@ CloudWatch URLs are more complex because of AWS's URL encoding requirements:
 ```yaml
   resource.links: |
     # CloudWatch Logs Insights query for a pod
-    - url: https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:logs-insights$3FqueryDetail$3D~(editorString~'fields*20*40timestamp*2c*20*40message*0a*7c*20filter*20kubernetes.namespace_name*3d*22{{.metadata.namespace}}*22*0a*7c*20filter*20kubernetes.pod_name*3d*22{{.metadata.name}}*22*0a*7c*20sort*20*40timestamp*20desc*0a*7c*20limit*20200~source~(~'*2faws*2feks*2fcluster*2fcontainer-logs)~timeRange~(~'relative~3600))
+    - url: https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:logs-insights$3FqueryDetail$3D~(editorString~'fields*20*40timestamp*2c*20*40message*0a*7c*20filter*20kubernetes.namespace_name*3d*22{{.resource.metadata.namespace}}*22*0a*7c*20filter*20kubernetes.pod_name*3d*22{{.resource.metadata.name}}*22*0a*7c*20sort*20*40timestamp*20desc*0a*7c*20limit*20200~source~(~'*2faws*2feks*2fcluster*2fcontainer-logs)~timeRange~(~'relative~3600))
       title: CloudWatch Logs
       description: View pod logs in CloudWatch Logs Insights
       icon.class: "fa fa-cloud"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 ```
 
 A simpler alternative using CloudWatch log groups directly:
 
 ```yaml
     # CloudWatch Log Group filtered by pod
-    - url: https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups/log-group/$252Faws$252Feks$252Fmy-cluster$252Fcontainers/log-events?filterPattern={{.metadata.name}}
+    - url: https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#logsV2:log-groups/log-group/$252Faws$252Feks$252Fmy-cluster$252Fcontainers/log-events?filterPattern={{.resource.metadata.name}}
       title: CloudWatch Logs
       description: View filtered CloudWatch logs
       icon.class: "fa fa-cloud"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 ```
 
 ## Deep Links to Splunk
@@ -142,18 +142,18 @@ Splunk uses SPL (Search Processing Language) in its URLs:
 ```yaml
   resource.links: |
     # Splunk search for pod logs
-    - url: https://splunk.example.com/en-US/app/search/search?q=search%20index%3Dkubernetes%20namespace%3D%22{{.metadata.namespace}}%22%20pod%3D%22{{.metadata.name}}%22%20earliest%3D-1h%20latest%3Dnow&display.page.search.mode=verbose
+    - url: https://splunk.example.com/en-US/app/search/search?q=search%20index%3Dkubernetes%20namespace%3D%22{{.resource.metadata.namespace}}%22%20pod%3D%22{{.resource.metadata.name}}%22%20earliest%3D-1h%20latest%3Dnow&display.page.search.mode=verbose
       title: View Logs (Splunk)
       description: Search pod logs in Splunk
       icon.class: "fa fa-search"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
     # Splunk dashboard for a deployment
-    - url: https://splunk.example.com/en-US/app/kubernetes_monitoring/k8s_deployment?form.namespace={{.metadata.namespace}}&form.deployment={{.metadata.name}}&earliest=-1h&latest=now
+    - url: https://splunk.example.com/en-US/app/kubernetes_monitoring/k8s_deployment?form.namespace={{.resource.metadata.namespace}}&form.deployment={{.resource.metadata.name}}&earliest=-1h&latest=now
       title: Deployment Logs (Splunk)
       description: View deployment dashboard in Splunk
       icon.class: "fa fa-chart-bar"
-      if: kind == "Deployment"
+      if: resource.kind == "Deployment"
 ```
 
 ## Deep Links to Google Cloud Logging
@@ -163,18 +163,18 @@ For GKE clusters using Google Cloud Logging:
 ```yaml
   resource.links: |
     # Google Cloud Logging for a pod
-    - url: https://console.cloud.google.com/logs/query;query=resource.type%3D%22k8s_container%22%0Aresource.labels.namespace_name%3D%22{{.metadata.namespace}}%22%0Aresource.labels.pod_name%3D%22{{.metadata.name}}%22;timeRange=PT1H?project=my-gcp-project
+    - url: https://console.cloud.google.com/logs/query;query=resource.type%3D%22k8s_container%22%0Aresource.labels.namespace_name%3D%22{{.resource.metadata.namespace}}%22%0Aresource.labels.pod_name%3D%22{{.resource.metadata.name}}%22;timeRange=PT1H?project=my-gcp-project
       title: Cloud Logging
       description: View pod logs in Google Cloud Logging
       icon.class: "fa fa-cloud"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 
     # Cloud Logging for a deployment's containers
-    - url: https://console.cloud.google.com/logs/query;query=resource.type%3D%22k8s_container%22%0Aresource.labels.namespace_name%3D%22{{.metadata.namespace}}%22%0Alabels.k8s-pod%2Fapp%3D%22{{.metadata.labels.app}}%22;timeRange=PT1H?project=my-gcp-project
+    - url: https://console.cloud.google.com/logs/query;query=resource.type%3D%22k8s_container%22%0Aresource.labels.namespace_name%3D%22{{.resource.metadata.namespace}}%22%0Alabels.%22k8s-pod%2Fapp%22%3D%22{{.resource.spec.selector.matchLabels.app}}%22;timeRange=PT1H?project=my-gcp-project
       title: Cloud Logging
       description: View deployment logs in Google Cloud Logging
       icon.class: "fa fa-cloud"
-      if: kind == "Deployment"
+      if: resource.kind == "Deployment"
 ```
 
 ## Deep Links to Azure Monitor Logs
@@ -184,11 +184,11 @@ For AKS clusters using Azure Monitor:
 ```yaml
   resource.links: |
     # Azure Monitor Log Analytics for a pod
-    - url: https://portal.azure.com/#blade/Microsoft_Azure_Monitoring_Logs/DemoLogsBlade/resourceId/%2Fsubscriptions%2FSUB_ID%2FresourceGroups%2FRG_NAME%2Fproviders%2FMicrosoft.ContainerService%2FmanagedClusters%2FCLUSTER_NAME/source/LogsBlade.AnalyticsShareLinkToQuery/q/ContainerLogV2%0A%7C%20where%20PodNamespace%20%3D%3D%20%22{{.metadata.namespace}}%22%0A%7C%20where%20PodName%20%3D%3D%20%22{{.metadata.name}}%22%0A%7C%20project%20TimeGenerated%2C%20LogMessage%0A%7C%20order%20by%20TimeGenerated%20desc/timespan/PT1H
+    - url: https://portal.azure.com/#blade/Microsoft_Azure_Monitoring_Logs/DemoLogsBlade/resourceId/%2Fsubscriptions%2FSUB_ID%2FresourceGroups%2FRG_NAME%2Fproviders%2FMicrosoft.ContainerService%2FmanagedClusters%2FCLUSTER_NAME/source/LogsBlade.AnalyticsShareLinkToQuery/q/ContainerLogV2%0A%7C%20where%20PodNamespace%20%3D%3D%20%22{{.resource.metadata.namespace}}%22%0A%7C%20where%20PodName%20%3D%3D%20%22{{.resource.metadata.name}}%22%0A%7C%20project%20TimeGenerated%2C%20LogMessage%0A%7C%20order%20by%20TimeGenerated%20desc/timespan/PT1H
       title: Azure Logs
       description: View pod logs in Azure Monitor
       icon.class: "fa fa-cloud"
-      if: kind == "Pod"
+      if: resource.kind == "Pod"
 ```
 
 ## Application-Level Logging Links
@@ -198,13 +198,13 @@ In addition to resource-level links, configure application-level links that show
 ```yaml
   application.links: |
     # All logs for the application's namespace in Grafana/Loki
-    - url: https://grafana.example.com/explore?orgId=1&left={"queries":[{"refId":"A","expr":"{namespace=\"{{.spec.destination.namespace}}\"}","queryType":"range"}],"range":{"from":"now-1h","to":"now"},"datasource":"Loki"}
+    - url: https://grafana.example.com/explore?orgId=1&left={"queries":[{"refId":"A","expr":"{namespace=\"{{.app.spec.destination.namespace}}\"}","queryType":"range"}],"range":{"from":"now-1h","to":"now"},"datasource":"Loki"}
       title: All App Logs
       description: View all logs in the application namespace
       icon.class: "fa fa-scroll"
 
     # Application logs in Kibana
-    - url: https://kibana.example.com/app/discover#/?_g=(time:(from:now-1h,to:now))&_a=(query:(language:kuery,query:'kubernetes.namespace:"{{.spec.destination.namespace}}"'))
+    - url: https://kibana.example.com/app/discover#/?_g=(time:(from:now-1h,to:now))&_a=(query:(language:kuery,query:'kubernetes.namespace:"{{.app.spec.destination.namespace}}"'))
       title: All App Logs (Kibana)
       description: View all logs for this application
       icon.class: "fa fa-search"
@@ -218,7 +218,7 @@ In addition to resource-level links, configure application-level links that show
 
 **Create multiple links per resource**: It is useful to have separate links for "all logs" and "error logs only" to save time during investigations.
 
-**Handle multi-container pods**: If you have sidecar containers, consider adding a container-specific filter. For Loki, this would be `container=\"{{.spec.containers[0].name}}\"`.
+**Handle multi-container pods**: If you have sidecar containers, consider adding a container-specific filter. For Loki, this would be `container=\"{{ index (index .resource.spec.containers 0) \"name\" }}\"`.
 
 **Test with real data**: After configuring deep links, click them from different resource types to verify the filters produce results. Empty results often mean the label names do not match.
 
