@@ -45,6 +45,8 @@ kubectl create secret tls linkerd-trust-anchor \
   --cert=ca.crt --key=ca.key -n linkerd
 ```
 
+If your cluster does not already have the Kubernetes Gateway API CRDs installed, install them before the Linkerd Helm charts. Linkerd uses Gateway API resources for authorization policy and dynamic request routing.
+
 Now deploy Linkerd through ArgoCD:
 
 ```yaml
@@ -180,11 +182,11 @@ data:
     hs.message = "ServiceProfile configured"
     return hs
 
-  # TrafficSplit health (SMI spec)
-  resource.customizations.health.split.smi-spec.io_TrafficSplit: |
+  # HTTPRoute health
+  resource.customizations.health.policy.linkerd.io_HTTPRoute: |
     hs = {}
     hs.status = "Healthy"
-    hs.message = "TrafficSplit configured"
+    hs.message = "HTTPRoute configured"
     return hs
 
   # Server health (Linkerd policy)
@@ -194,17 +196,24 @@ data:
     hs.message = "Server policy configured"
     return hs
 
-  # ServerAuthorization health
-  resource.customizations.health.policy.linkerd.io_ServerAuthorization: |
+  # AuthorizationPolicy health
+  resource.customizations.health.policy.linkerd.io_AuthorizationPolicy: |
     hs = {}
     hs.status = "Healthy"
-    hs.message = "ServerAuthorization configured"
+    hs.message = "AuthorizationPolicy configured"
+    return hs
+
+  # MeshTLSAuthentication health
+  resource.customizations.health.policy.linkerd.io_MeshTLSAuthentication: |
+    hs = {}
+    hs.status = "Healthy"
+    hs.message = "MeshTLSAuthentication configured"
     return hs
 ```
 
 ## Managing Service Profiles through GitOps
 
-Service Profiles configure per-route metrics and retries in Linkerd. Manage them in Git:
+Service Profiles configure per-route metrics and retries in Linkerd. They continue to be supported for backwards compatibility, although Gateway API resources are preferred for new Linkerd configurations. Manage them in Git:
 
 ```yaml
 # Git: linkerd-config/my-app/service-profile.yaml
@@ -243,7 +252,7 @@ spec:
 
 ## Traffic Splitting with Linkerd and ArgoCD
 
-Linkerd supports the SMI TrafficSplit spec for canary deployments:
+Linkerd's current traffic shifting uses HTTPRoute or GRPCRoute resources. Older SMI TrafficSplit resources are still supported through the deprecated linkerd-smi extension, but new GitOps configurations should prefer HTTPRoute:
 
 ```yaml
 # stable deployment
@@ -296,22 +305,61 @@ spec:
           image: my-org/my-app:v2.0.0
 
 ---
+# stable service
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-stable
+  namespace: my-namespace
+spec:
+  selector:
+    app: my-app
+    version: stable
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+---
+# canary service
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app-canary
+  namespace: my-namespace
+spec:
+  selector:
+    app: my-app
+    version: canary
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+
+---
 # Traffic split: 90% stable, 10% canary
-apiVersion: split.smi-spec.io/v1alpha2
-kind: TrafficSplit
+apiVersion: policy.linkerd.io/v1beta2
+kind: HTTPRoute
 metadata:
   name: my-app
   namespace: my-namespace
 spec:
-  service: my-app
-  backends:
-    - service: my-app-stable
-      weight: 900
-    - service: my-app-canary
-      weight: 100
+  parentRefs:
+    - name: my-app-stable
+      kind: Service
+      group: core
+      port: 8080
+  rules:
+    - backendRefs:
+        - name: my-app-stable
+          port: 8080
+          weight: 90
+        - name: my-app-canary
+          port: 8080
+          weight: 10
 ```
 
-Updating the traffic split weights is a Git commit and PR, reviewed by your team before ArgoCD applies it.
+Updating the HTTPRoute weights is a Git commit and PR, reviewed by your team before ArgoCD applies it.
 
 ## Linkerd Authorization Policies via GitOps
 
@@ -319,7 +367,7 @@ Manage Linkerd's authorization policies through ArgoCD:
 
 ```yaml
 # Only allow traffic from specific sources
-apiVersion: policy.linkerd.io/v1beta1
+apiVersion: policy.linkerd.io/v1beta3
 kind: Server
 metadata:
   name: my-app-http
@@ -333,18 +381,31 @@ spec:
 
 ---
 apiVersion: policy.linkerd.io/v1alpha1
-kind: ServerAuthorization
+kind: AuthorizationPolicy
 metadata:
   name: allow-frontend
   namespace: my-namespace
 spec:
-  server:
+  targetRef:
+    group: policy.linkerd.io
+    kind: Server
     name: my-app-http
-  client:
-    meshTLS:
-      serviceAccounts:
-        - name: frontend
-          namespace: frontend-namespace
+  requiredAuthenticationRefs:
+    - group: policy.linkerd.io
+      kind: MeshTLSAuthentication
+      name: frontend
+
+---
+apiVersion: policy.linkerd.io/v1alpha1
+kind: MeshTLSAuthentication
+metadata:
+  name: frontend
+  namespace: my-namespace
+spec:
+  identityRefs:
+    - kind: ServiceAccount
+      name: frontend
+      namespace: frontend-namespace
 ```
 
 ## Certificate Rotation with ArgoCD
@@ -353,6 +414,16 @@ Linkerd certificates expire and need rotation. Automate this with cert-manager a
 
 ```yaml
 # Use cert-manager to manage Linkerd certificates
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: linkerd-trust-anchor
+  namespace: linkerd
+spec:
+  ca:
+    secretName: linkerd-trust-anchor
+
+---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -364,12 +435,13 @@ spec:
   renewBefore: 25h
   issuerRef:
     name: linkerd-trust-anchor
-    kind: ClusterIssuer
+    kind: Issuer
   commonName: identity.linkerd.cluster.local
   dnsNames:
     - identity.linkerd.cluster.local
   isCA: true
   privateKey:
+    rotationPolicy: Always
     algorithm: ECDSA
   usages:
     - cert sign
