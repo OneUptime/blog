@@ -12,7 +12,7 @@ The plugin generator is the escape hatch in the ApplicationSet generator system.
 
 ## How the Plugin Generator Works
 
-The plugin generator sends an HTTP POST request to an external service. The service returns a JSON array of parameter maps. Each parameter map becomes one Application through the template.
+The plugin generator sends an HTTP POST request to an external service. The service returns parameter maps under `output.parameters`. Each parameter map becomes one Application through the template.
 
 ```mermaid
 graph LR
@@ -24,34 +24,36 @@ graph LR
     C --> F[Application N]
 ```
 
-The controller sends the request on every reconciliation cycle, so the plugin service should be fast and idempotent.
+The controller sends the request every `requeueAfterSeconds` interval, so the plugin service should be fast and idempotent.
 
 ## Plugin Service Requirements
 
 The plugin service must:
 - Accept HTTP POST requests
-- Return a JSON response with a `parameters` array
-- Each element in the array must be an object with string key-value pairs
-- Respond quickly (the controller has a timeout, default 3 seconds)
+- Return a JSON response with an `output.parameters` array
+- Each element in the array must be an object map
+- Respond quickly (the controller has a request timeout, default 30 seconds)
 
 ### Expected Response Format
 
 ```json
 {
-  "parameters": [
-    {
-      "name": "api-gateway",
-      "namespace": "api",
-      "cluster": "production",
-      "image_tag": "v1.5.0"
-    },
-    {
-      "name": "user-service",
-      "namespace": "users",
-      "cluster": "production",
-      "image_tag": "v2.1.0"
-    }
-  ]
+  "output": {
+    "parameters": [
+      {
+        "name": "api-gateway",
+        "namespace": "api",
+        "cluster": "production",
+        "image_tag": "v1.5.0"
+      },
+      {
+        "name": "user-service",
+        "namespace": "users",
+        "cluster": "production",
+        "image_tag": "v2.1.0"
+      }
+    ]
+  }
 }
 ```
 
@@ -86,8 +88,9 @@ metadata:
   name: service-registry-plugin
   namespace: argocd
 data:
-  token: "$plugin.token"
-  baseUrl: "http://service-registry.internal.svc.cluster.local:8080"
+  token: "$argocd-applicationset-plugin-token:plugin.token"
+  baseUrl: "http://service-registry-plugin.argocd.svc.cluster.local:8080"
+  requestTimeout: "30"
 ```
 
 ### Step 2: Store the Token in a Secret
@@ -100,6 +103,8 @@ kind: Secret
 metadata:
   name: argocd-applicationset-plugin-token
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 type: Opaque
 stringData:
   plugin.token: "your-auth-token-here"
@@ -174,7 +179,11 @@ def get_parameters():
     # Look up services for the requested environment
     services = SERVICE_REGISTRY.get(environment, [])
 
-    return jsonify({"parameters": services})
+    return jsonify({"output": {"parameters": services}})
+
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8080)
@@ -254,7 +263,7 @@ def get_from_cmdb():
             "cluster": svc.target_cluster,
         })
 
-    return jsonify({"parameters": parameters})
+    return jsonify({"output": {"parameters": parameters}})
 ```
 
 ### Feature Flag Service Integration
@@ -280,7 +289,7 @@ def get_from_feature_flags():
                 "namespace": f"feature-{flag.name}",
             })
 
-    return jsonify({"parameters": parameters})
+    return jsonify({"output": {"parameters": parameters}})
 ```
 
 ### Dynamic Cluster Assignment
@@ -303,7 +312,7 @@ def get_cluster_assignments():
             "path": assignment.manifest_path,
         })
 
-    return jsonify({"parameters": parameters})
+    return jsonify({"output": {"parameters": parameters}})
 ```
 
 ## Plugin Generator with Go Templates
@@ -348,6 +357,8 @@ spec:
 Always authenticate requests to your plugin service:
 
 ```python
+import os
+
 @app.before_request
 def check_auth():
     token = request.headers.get("Authorization", "").replace("Bearer ", "")
@@ -419,9 +430,9 @@ kubectl logs -n argocd -l app=service-registry-plugin --tail=50
 ```
 
 Common issues:
-- **Timeout**: The default timeout is 3 seconds. If your plugin service takes longer, the controller reports an error. Optimize the service or increase the timeout.
+- **Timeout**: The default request timeout is 30 seconds. If your plugin service takes longer, the controller reports an error. Optimize the service or increase the timeout.
 - **Wrong endpoint**: The controller sends to `<baseUrl>/api/v1/getparams.execute` by default. Make sure your service handles this path.
-- **Non-string values**: All parameter values must be strings. If your service returns integers or booleans, convert them to strings.
-- **Empty response**: Return `{"parameters": []}` for no results, not an empty body.
+- **Wrong response wrapper**: The response must put the list under `output.parameters`, not a top-level `parameters` key.
+- **Empty response**: Return `{"output": {"parameters": []}}` for no results, not an empty body.
 
 The plugin generator opens up ArgoCD ApplicationSets to any data source you can imagine. When the built-in generators are not enough, build a simple HTTP service and let the plugin generator call it. For built-in generator options, see the [ApplicationSet controllers and generators overview](https://oneuptime.com/blog/post/2026-02-26-argocd-applicationset-controllers-generators/view).
