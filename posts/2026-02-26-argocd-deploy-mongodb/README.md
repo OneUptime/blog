@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, MongoDB, Database
 
-Description: Learn how to deploy and manage MongoDB on Kubernetes with ArgoCD, including standalone instances, replica sets for high availability, and the MongoDB Community Operator.
+Description: Learn how to deploy and manage MongoDB on Kubernetes with ArgoCD, including standalone instances, replica sets for high availability, and MongoDB Controllers for Kubernetes.
 
 ---
 
@@ -16,7 +16,7 @@ You can deploy MongoDB in several ways:
 
 1. **Plain manifests**: Direct StatefulSet with manual replica set configuration
 2. **Helm chart**: Bitnami MongoDB chart with built-in replication
-3. **MongoDB Community Operator**: Official operator with automated replica sets, backups, and lifecycle management
+3. **MongoDB Controllers for Kubernetes**: Official operator with automated replica sets, user management, and lifecycle management for MongoDB Community
 4. **Percona Operator**: Alternative operator with sharding support
 
 ## Standalone MongoDB for Development
@@ -75,6 +75,9 @@ spec:
       containers:
         - name: mongodb
           image: mongo:7.0
+          args:
+            - "--config"
+            - /etc/mongod.conf
           ports:
             - containerPort: 27017
           envFrom:
@@ -212,8 +215,7 @@ spec:
           image: mongo:7.0
           ports:
             - containerPort: 27017
-          command:
-            - mongod
+          args:
             - "--replSet"
             - rs0
             - "--bind_ip_all"
@@ -224,12 +226,12 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: mongodb-credentials
-                  key: username
+                  key: MONGO_INITDB_ROOT_USERNAME
             - name: MONGO_INITDB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mongodb-credentials
-                  key: password
+                  key: MONGO_INITDB_ROOT_PASSWORD
           volumeMounts:
             - name: data
               mountPath: /data/db
@@ -316,34 +318,38 @@ spec:
               mongosh --host mongodb-0.mongodb-headless \
                 -u admin -p $MONGO_PASSWORD --authenticationDatabase admin \
                 --eval '
-                  rs.initiate({
-                    _id: "rs0",
-                    members: [
-                      { _id: 0, host: "mongodb-0.mongodb-headless:27017" },
-                      { _id: 1, host: "mongodb-1.mongodb-headless:27017" },
-                      { _id: 2, host: "mongodb-2.mongodb-headless:27017" }
-                    ]
-                  })
+                  try {
+                    rs.status()
+                  } catch (e) {
+                    rs.initiate({
+                      _id: "rs0",
+                      members: [
+                        { _id: 0, host: "mongodb-0.mongodb-headless:27017" },
+                        { _id: 1, host: "mongodb-1.mongodb-headless:27017" },
+                        { _id: 2, host: "mongodb-2.mongodb-headless:27017" }
+                      ]
+                    })
+                  }
                 '
           env:
             - name: MONGO_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: mongodb-credentials
-                  key: password
+                  key: MONGO_INITDB_ROOT_PASSWORD
       restartPolicy: OnFailure
 ```
 
-## MongoDB Community Operator
+## MongoDB Controllers for Kubernetes
 
-For production, the MongoDB Community Operator automates replica set management:
+For production, MongoDB Controllers for Kubernetes automates replica set management:
 
 ```yaml
 # Step 1: Deploy the operator
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: mongodb-operator
+  name: mongodb-kubernetes-operator
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "-5"
@@ -351,8 +357,8 @@ spec:
   project: default
   source:
     repoURL: https://mongodb.github.io/helm-charts
-    chart: community-operator
-    targetRevision: 0.9.0
+    chart: mongodb-kubernetes
+    targetRevision: 1.8.0
   destination:
     server: https://kubernetes.default.svc
     namespace: mongodb-operator
@@ -387,6 +393,7 @@ spec:
       db: admin
       passwordSecretRef:
         name: mongodb-admin-password
+      scramCredentialsSecretName: mongodb-admin-scram
       roles:
         - name: clusterAdmin
           db: admin
@@ -400,6 +407,7 @@ spec:
       db: myapp
       passwordSecretRef:
         name: mongodb-myapp-password
+      scramCredentialsSecretName: mongodb-myapp-scram
       roles:
         - name: readWrite
           db: myapp
@@ -489,7 +497,8 @@ spec:
         spec:
           containers:
             - name: backup
-              image: mongo:7.0
+              # Use a custom image that includes MongoDB Database Tools and the AWS CLI.
+              image: myorg/mongodb-database-tools-awscli:7.0
               command: [sh, -c]
               args:
                 - |
@@ -516,7 +525,7 @@ spec:
                   valueFrom:
                     secretKeyRef:
                       name: mongodb-credentials
-                      key: password
+                      key: MONGO_INITDB_ROOT_PASSWORD
               volumeMounts:
                 - name: backup
                   mountPath: /backup
@@ -538,8 +547,8 @@ metadata:
   name: mongodb-connection
 type: Opaque
 stringData:
-  # For standalone
-  MONGODB_URI: "mongodb://myapp:password@mongodb.databases.svc:27017/myapp?authSource=myapp"
+  # For standalone, use:
+  # MONGODB_URI: "mongodb://myapp:password@mongodb.databases.svc:27017/myapp?authSource=myapp"
 
   # For replica set
   MONGODB_URI: "mongodb://myapp:password@mongodb-0.mongodb-headless:27017,mongodb-1.mongodb-headless:27017,mongodb-2.mongodb-headless:27017/myapp?replicaSet=rs0&authSource=myapp"
@@ -558,4 +567,4 @@ env:
 
 ## Summary
 
-Deploying MongoDB with ArgoCD ranges from simple standalone instances for development to production replica sets managed by the MongoDB Community Operator. Key practices include using Recreate strategy for standalone instances, the MongoDB Operator for automated replica set management, PreSync/PostSync hooks for initialization, and CronJobs for automated backups. Disable auto-prune for all database resources, use orphan propagation policy for PVCs, and monitor with the Percona MongoDB Exporter. The entire MongoDB deployment - from operator installation to replica set configuration to backup schedules - is declared in Git and managed through ArgoCD.
+Deploying MongoDB with ArgoCD ranges from simple standalone instances for development to production replica sets managed by MongoDB Controllers for Kubernetes. Key practices include using Recreate strategy for standalone instances, the MongoDB Operator for automated replica set management, PreSync/PostSync hooks for initialization, and CronJobs for automated backups. Disable auto-prune for database storage resources, use orphan propagation policy for PVCs, and monitor with the Percona MongoDB Exporter. The entire MongoDB deployment - from operator installation to replica set configuration to backup schedules - is declared in Git and managed through ArgoCD.
