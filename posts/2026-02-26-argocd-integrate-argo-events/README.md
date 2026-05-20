@@ -12,7 +12,7 @@ ArgoCD watches Git repositories and syncs cluster state. But what if you need to
 
 ## What Argo Events Brings to ArgoCD
 
-ArgoCD on its own is poll-based. It periodically checks Git repositories for changes (every 3 minutes by default). Argo Events makes your GitOps pipeline reactive:
+ArgoCD periodically checks Git repositories for changes. By default, the reconciliation timeout is 120 seconds with up to 60 seconds of jitter, so refreshes can take up to about 3 minutes. Argo Events makes your GitOps pipeline reactive:
 
 - **Instant deployments** triggered by Git push webhooks instead of waiting for ArgoCD to poll
 - **Image-driven deployments** triggered when new images are pushed to a registry
@@ -86,6 +86,7 @@ spec:
         endpoint: /github
         port: "12000"
         method: POST
+        url: https://webhooks.mycompany.com
       events:
         - push
         - pull_request
@@ -125,12 +126,11 @@ spec:
           method: POST
           headers:
             Content-Type: application/json
-            Authorization: "Bearer $ARGOCD_TOKEN"
           payload:
             - src:
                 dependencyName: github-push
-                dataKey: body.after
-              dest: revision
+                value: my-app
+              dest: name
           secureHeaders:
             - name: Authorization
               valueFrom:
@@ -141,7 +141,7 @@ spec:
 
 ### Step 3: Expose the EventSource Webhook
 
-Create a Service and Ingress to receive GitHub webhooks:
+Create an Ingress to receive GitHub webhooks. The EventSource controller creates the Service named `github-eventsource-eventsource-svc`:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -177,6 +177,10 @@ metadata:
   name: docker-registry
   namespace: argo-events
 spec:
+  service:
+    ports:
+      - port: 13000
+        targetPort: 13000
   webhook:
     image-push:
       endpoint: /docker
@@ -191,6 +195,8 @@ metadata:
   name: image-deploy-sensor
   namespace: argo-events
 spec:
+  template:
+    serviceAccountName: operate-workflow-sa
   dependencies:
     - name: new-image
       eventSourceName: docker-registry
@@ -291,8 +297,8 @@ spec:
           payload:
             - src:
                 dependencyName: nightly
-                value: '{"prune": true}'
-              dest: ""
+                value: staging-app
+              dest: name
           secureHeaders:
             - name: Authorization
               valueFrom:
@@ -337,8 +343,8 @@ spec:
           payload:
             - src:
                 dependencyName: alert-fired
-                value: '{"id": 0}'
-              dest: ""
+                value: my-app
+              dest: name
           secureHeaders:
             - name: Authorization
               valueFrom:
@@ -380,7 +386,7 @@ kubectl create secret generic argocd-token -n argo-events \
 2. **Filter events carefully** in sensors to avoid triggering on irrelevant events.
 3. **Use RBAC** to limit what Argo Events can do in ArgoCD - only grant sync permissions, not delete.
 4. **Monitor sensor logs** to catch trigger failures early.
-5. **Set up dead-letter queues** for events that fail to trigger successfully.
+5. **Set up dead-letter triggers** for events that fail to trigger successfully.
 6. **Combine with Argo Workflows** for complex multi-step operations that go beyond simple sync.
 
 Argo Events transforms ArgoCD from a poll-based system into a reactive, event-driven deployment platform. Whether you need instant deployments on Git push, image-triggered rollouts, or scheduled syncs, the combination of Argo Events and ArgoCD gives you the building blocks. For the full CI/CD picture, see [How to Integrate ArgoCD with Argo Workflows](https://oneuptime.com/blog/post/2026-02-26-argocd-integrate-argo-workflows/view).
