@@ -25,7 +25,7 @@ sequenceDiagram
     participant Auth as ArgoCD Auth
     participant Backend as Backend Service
 
-    User->>ArgoCD: GET /api/extensions/my-service/data
+    User->>ArgoCD: GET /extensions/my-service/data
     ArgoCD->>Auth: Verify JWT token
     Auth-->>ArgoCD: User authenticated
     ArgoCD->>Backend: Forward request
@@ -35,7 +35,19 @@ sequenceDiagram
 
 ## Configuring Proxy Extensions
 
-Proxy extensions are configured in the ArgoCD ConfigMap (`argocd-cm`). Each extension maps a URL path prefix to a backend service.
+Proxy extensions must first be enabled in the ArgoCD command parameters ConfigMap (`argocd-cmd-params-cm`), then configured in the ArgoCD ConfigMap (`argocd-cm`). Each extension maps a URL path prefix to a backend service.
+
+```yaml
+# argocd-cmd-params-cm ConfigMap
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  server.enable.proxy.extension: "true"
+```
 
 ### Basic Configuration
 
@@ -58,7 +70,7 @@ data:
                 name: in-cluster
 ```
 
-With this configuration, any request to `/api/extensions/metrics/*` on the ArgoCD server will be proxied to the metrics service.
+With this configuration, any request to `/extensions/metrics/*` on the ArgoCD server will be proxied to the metrics service.
 
 ### Multi-Service Configuration
 
@@ -83,9 +95,9 @@ data:
 ```
 
 This gives you three proxy endpoints:
-- `/api/extensions/metrics/*` - Routes to your metrics service
-- `/api/extensions/cost/*` - Routes to Kubecost
-- `/api/extensions/security/*` - Routes to Trivy
+- `/extensions/metrics/*` - Routes to your metrics service
+- `/extensions/cost/*` - Routes to Kubecost
+- `/extensions/security/*` - Routes to Trivy
 
 ### Cluster-Specific Routing
 
@@ -101,12 +113,14 @@ data:
             - url: http://metrics-service.monitoring.svc.cluster.local:8080
               cluster:
                 name: in-cluster
+                server: https://kubernetes.default.svc
             - url: https://metrics.production-cluster.example.com
               cluster:
                 name: production
+                server: https://production-cluster.example.com
               headers:
                 - name: Authorization
-                  value: "Bearer $ext.metrics.production.token"
+                  value: "$ext.metrics.production.token"
 ```
 
 ## Building a Backend Service for Proxy Extensions
@@ -136,10 +150,10 @@ type CostData struct {
 }
 
 func costHandler(w http.ResponseWriter, r *http.Request) {
-    // The ArgoCD proxy passes the original path
-    // For /api/extensions/cost/apps/my-app, you receive /apps/my-app
+    // The ArgoCD proxy strips the extension prefix before forwarding.
+    // For /extensions/cost/api/cost, you receive /api/cost.
 
-    // Extract application name from path
+    // Extract application details from query parameters
     appName := r.URL.Query().Get("application")
     namespace := r.URL.Query().Get("namespace")
 
@@ -233,10 +247,14 @@ From a UI extension or any authenticated client:
 // In your ArgoCD UI extension
 const fetchCostData = async (appName: string, namespace: string) => {
   const response = await fetch(
-    `/api/extensions/cost/api/cost?application=${appName}&namespace=${namespace}`,
+    `/extensions/cost/api/cost?application=${appName}&namespace=${namespace}`,
     {
       // Cookies are automatically included for authenticated requests
       credentials: 'same-origin',
+      headers: {
+        'Argocd-Application-Name': `argocd:${appName}`,
+        'Argocd-Project-Name': 'default',
+      },
     }
   );
   return response.json();
@@ -257,9 +275,11 @@ metadata:
 data:
   policy.csv: |
     # Allow admins to access all extensions
+    p, role:admin, applications, get, */*, allow
     p, role:admin, extensions, invoke, *, allow
 
     # Allow developers to access only the metrics extension
+    p, role:developer, applications, get, default/*, allow
     p, role:developer, extensions, invoke, metrics, allow
 
     # Deny access to the cost extension for developers
@@ -282,9 +302,9 @@ data:
                 # Pass a static header
                 - name: X-Custom-Header
                   value: "argocd-extension"
-                # Pass user information
-                - name: X-ArgoCD-Username
-                  value: "$argocd.session.username"
+                # Pass a secret from argocd-secret
+                - name: Authorization
+                  value: "$metrics.authorization.header"
 ```
 
 ## Practical Use Cases
@@ -385,7 +405,7 @@ kubectl exec -n argocd deployment/argocd-server -- \
 
 ### CORS Issues
 
-If you get CORS errors in the browser, make sure you are calling the extension through the ArgoCD path (`/api/extensions/...`) and not directly.
+If you get CORS errors in the browser, make sure you are calling the extension through the ArgoCD path (`/extensions/...`) and not directly.
 
 ## Conclusion
 
