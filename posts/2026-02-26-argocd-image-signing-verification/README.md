@@ -41,7 +41,7 @@ For production, use a KMS provider instead of file-based keys:
 
 ```bash
 # Generate keys using AWS KMS
-cosign generate-key-pair --kms awskms:///arn:aws:kms:us-east-1:123456789:key/abc-123
+cosign generate-key-pair --kms awskms:///alias/cosign-signing-key
 
 # Or Google Cloud KMS
 cosign generate-key-pair --kms gcpkms://projects/my-project/locations/global/keyRings/my-ring/cryptoKeys/my-key
@@ -57,6 +57,10 @@ name: Build, Scan, and Sign
 on:
   push:
     branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
 
 jobs:
   build:
@@ -84,7 +88,7 @@ jobs:
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' \
             registry.example.com/myapp:${{ github.sha }})
 
-          cosign sign --key env://COSIGN_KEY "$DIGEST"
+          cosign sign --yes --key env://COSIGN_KEY "$DIGEST"
 
           echo "Image signed: $DIGEST"
 
@@ -99,7 +103,7 @@ jobs:
             --output scan-results.json \
             registry.example.com/myapp:${{ github.sha }}
 
-          cosign attest --key env://COSIGN_KEY \
+          cosign attest --yes --key env://COSIGN_KEY \
             --predicate scan-results.json \
             --type vuln \
             registry.example.com/myapp:${{ github.sha }}
@@ -121,17 +125,23 @@ spec:
   source:
     repoURL: https://kyverno.github.io/kyverno
     chart: kyverno
-    targetRevision: 3.1.0
+    targetRevision: 3.8.1
     helm:
       values: |
-        replicaCount: 3
-        resources:
-          limits:
-            memory: 512Mi
-          requests:
-            cpu: 100m
-            memory: 256Mi
-        webhookEnabled: true
+        admissionController:
+          replicas: 3
+          resources:
+            limits:
+              memory: 512Mi
+            requests:
+              cpu: 100m
+              memory: 256Mi
+        backgroundController:
+          replicas: 2
+        cleanupController:
+          replicas: 2
+        reportsController:
+          replicas: 2
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
@@ -159,9 +169,9 @@ metadata:
     policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: critical
 spec:
-  validationFailureAction: Enforce
-  webhookTimeoutSeconds: 30
-  failurePolicy: Fail
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 30
   rules:
     - name: verify-cosign-signature
       match:
@@ -175,6 +185,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
@@ -199,11 +210,15 @@ For even simpler key management, use Sigstore's keyless signing which ties signa
 
 ```yaml
 # In CI pipeline - keyless signing
-- name: Sign image (keyless)
-  run: |
-    COSIGN_EXPERIMENTAL=1 cosign sign \
-      --oidc-issuer https://token.actions.githubusercontent.com \
-      registry.example.com/myapp:${{ github.sha }}
+permissions:
+  contents: read
+  id-token: write
+
+steps:
+  - name: Sign image (keyless)
+    run: |
+      COSIGN_EXPERIMENTAL=1 cosign sign --yes \
+        registry.example.com/myapp:${{ github.sha }}
 ```
 
 ```yaml
@@ -213,7 +228,8 @@ kind: ClusterPolicy
 metadata:
   name: verify-keyless-signatures
 spec:
-  validationFailureAction: Enforce
+  webhookConfiguration:
+    timeoutSeconds: 30
   rules:
     - name: verify-sigstore-keyless
       match:
@@ -224,11 +240,12 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1
               entries:
                 - keyless:
-                    subject: "https://github.com/your-org/*"
+                    subject: "https://github.com/your-org/your-repo/.github/workflows/build-sign.yaml@refs/heads/main"
                     issuer: "https://token.actions.githubusercontent.com"
                     rekor:
                       url: https://rekor.sigstore.dev
@@ -255,37 +272,13 @@ spec:
     spec:
       containers:
         - name: verify
-          image: bitnami/cosign:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              IMAGES="
-              registry.example.com/frontend:v3.2.1
-              registry.example.com/backend:v2.8.0
-              "
-
-              FAILED=0
-
-              for IMAGE in $IMAGES; do
-                echo "Verifying signature for: $IMAGE"
-
-                cosign verify \
-                  --key /keys/cosign.pub \
-                  "$IMAGE" 2>&1
-
-                if [ $? -ne 0 ]; then
-                  echo "FAILED: No valid signature for $IMAGE"
-                  FAILED=1
-                else
-                  echo "PASSED: Valid signature for $IMAGE"
-                fi
-              done
-
-              if [ "$FAILED" -eq "1" ]; then
-                echo "Deployment BLOCKED: Unsigned images detected"
-                exit 1
-              fi
+          image: ghcr.io/sigstore/cosign/cosign:v3.0.2
+          args:
+            - verify
+            - --key
+            - /keys/cosign.pub
+            - registry.example.com/frontend:v3.2.1
+            - registry.example.com/backend:v2.8.0
           volumeMounts:
             - name: cosign-key
               mountPath: /keys
@@ -341,4 +334,4 @@ Monitor signature verification events with [OneUptime](https://oneuptime.com) to
 
 ## Summary
 
-Enforcing image signing verification with ArgoCD involves signing images in CI with Cosign, deploying a verification policy through Kyverno or OPA Gatekeeper, and optionally adding PreSync verification hooks. Keyless signing with Sigstore simplifies key management by tying signatures to CI identities. The `mutateDigest` feature in Kyverno provides an extra layer of protection by replacing tags with verified digests. All policies are managed through ArgoCD in Git, making your supply chain security posture fully auditable and version-controlled.
+Enforcing image signing verification with ArgoCD involves signing images in CI with Cosign, deploying a verification policy through Kyverno or another admission controller, and optionally adding PreSync verification hooks. Keyless signing with Sigstore simplifies key management by tying signatures to CI identities. The `mutateDigest` feature in Kyverno provides an extra layer of protection by replacing tags with verified digests. All policies are managed through ArgoCD in Git, making your supply chain security posture fully auditable and version-controlled.
