@@ -151,10 +151,10 @@ metadata:
   name: api
   annotations:
     # AWS ALB specific annotations
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/xxx
 spec:
+  ingressClassName: alb
   rules:
     - host: api-us.example.com
 ```
