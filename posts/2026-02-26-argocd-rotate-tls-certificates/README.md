@@ -8,11 +8,11 @@ Description: Learn how to rotate TLS certificates in ArgoCD without downtime, in
 
 ---
 
-TLS certificates expire. It is inevitable. If you are running ArgoCD in production, you need a strategy for rotating certificates before they expire and cause unexpected outages. This guide walks through the complete process of rotating TLS certificates for every ArgoCD component that uses them.
+TLS certificates expire. It is inevitable. If you are running ArgoCD in production, you need a strategy for rotating certificates before they expire and cause unexpected outages. This guide walks through the process of rotating TLS certificates for the common ArgoCD components and integrations that use them.
 
 ## Why Certificate Rotation Matters
 
-ArgoCD uses TLS in several places. The ArgoCD server exposes an HTTPS endpoint for the UI and API. The repo server communicates with Git repositories over HTTPS. Internal gRPC connections between the API server and the repo server also rely on TLS. When any of these certificates expire, the entire deployment pipeline can grind to a halt.
+ArgoCD uses TLS in several places. The ArgoCD server exposes an HTTPS endpoint for the UI and API. The repo server can communicate with Git repositories over HTTPS. Internal gRPC connections between the API server, application controllers, and the repo server also use TLS by default. When any required certificate expires, the deployment pipeline can grind to a halt.
 
 Certificate rotation is not just about preventing expiry. Security best practices recommend regular rotation to limit the blast radius of a compromised key. Many compliance frameworks like SOC2 and PCI-DSS require periodic certificate rotation.
 
@@ -26,7 +26,6 @@ graph TD
     A --> C[gRPC endpoint]
     D[Repo Server TLS] --> E[Internal gRPC]
     F[Repository Certificates] --> G[Git over HTTPS]
-    H[Redis TLS] --> I[Cache encryption]
 ```
 
 Each of these has a different rotation procedure, so we will cover them individually.
@@ -104,10 +103,7 @@ spec:
 To force an immediate rotation with cert-manager:
 
 ```bash
-# Delete the certificate secret to trigger re-issuance
-kubectl delete secret argocd-server-tls -n argocd
-
-# Or use cmctl to manually trigger renewal
+# Trigger renewal
 cmctl renew argocd-server-tls -n argocd
 ```
 
@@ -120,7 +116,7 @@ cmctl status certificate argocd-server-tls -n argocd
 
 ## Rotating Internal gRPC TLS Certificates
 
-ArgoCD components communicate over gRPC. By default, the repo server generates a self-signed TLS certificate on startup that is stored in a Kubernetes secret:
+ArgoCD components communicate over gRPC. By default, the repo server generates a non-persistent, self-signed TLS certificate on startup. If you have configured a persistent repo server certificate, it is stored in a Kubernetes secret:
 
 ```bash
 # Check the repo server TLS certificate
@@ -128,17 +124,14 @@ kubectl get secret argocd-repo-server-tls -n argocd -o jsonpath='{.data.tls\.crt
   base64 -d | openssl x509 -noout -dates -subject
 ```
 
-To rotate this internal certificate, the simplest approach is to delete the secret and restart the repo server:
+To rotate the default self-signed certificate, restart the repo server:
 
 ```bash
-# Delete the auto-generated TLS secret
-kubectl delete secret argocd-repo-server-tls -n argocd
-
 # Restart the repo server to regenerate
 kubectl rollout restart deployment argocd-repo-server -n argocd
 ```
 
-The repo server will automatically generate a new self-signed certificate on startup. The API server and application controller will pick up the new certificate through their TLS trust configuration.
+The repo server will automatically generate a new self-signed certificate on startup. By default, ArgoCD clients use non-validating TLS connections to the repo server because this generated certificate is not available for verification.
 
 If you manage internal certificates with your own CA, update the secret the same way as the server certificate:
 
@@ -154,6 +147,8 @@ data:
   tls.key: <base64-encoded-new-key>
   ca.crt: <base64-encoded-ca-cert>
 ```
+
+After updating `argocd-repo-server-tls`, restart the repo server. If you have enabled strict repo server TLS verification, also restart the ArgoCD workloads that connect to the repo server so they pick up the new trust data.
 
 ## Rotating Repository HTTPS Certificates
 
@@ -174,7 +169,7 @@ kubectl create configmap argocd-tls-certs-cm \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-No restart is needed. ArgoCD watches this ConfigMap and picks up changes automatically.
+No restart is needed, but it can take a couple of minutes for the change to propagate across the cluster.
 
 ## Automating Rotation with a CronJob
 
@@ -236,7 +231,7 @@ echo | openssl s_client -connect argocd.example.com:443 -servername argocd.examp
 
 ## Monitoring Certificate Expiry
 
-Set up monitoring to catch certificates before they expire. If you use Prometheus, the `x509_cert_expiry` exporter works well:
+Set up monitoring to catch certificates before they expire. If you use Prometheus, the `x509-certificate-exporter` works well:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
