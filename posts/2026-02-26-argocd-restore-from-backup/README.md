@@ -37,7 +37,7 @@ The simplest restore method uses the built-in admin tool:
 ```bash
 # Import from a backup file created with argocd admin export
 
-argocd admin import -n argocd < argocd-backup.yaml
+argocd admin import - -n argocd < argocd-backup.yaml
 ```
 
 This command reads the YAML documents from the backup and creates or updates the resources in the argocd namespace.
@@ -54,8 +54,8 @@ If ArgoCD is not already installed:
 # Create the namespace
 kubectl create namespace argocd
 
-# Install ArgoCD (use the same version as the backup)
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.0/manifests/install.yaml
+# Install ArgoCD (use the same supported version as the backup)
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.2/manifests/install.yaml
 
 # Wait for the installation to be ready
 kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=120s
@@ -110,11 +110,11 @@ After restoring ConfigMaps and Secrets, restart ArgoCD to pick up the changes:
 
 ```bash
 # Restart all ArgoCD components
-kubectl rollout restart deployment argocd-server -n argocd
-kubectl rollout restart deployment argocd-repo-server -n argocd
-kubectl rollout restart deployment argocd-applicationset-controller -n argocd
-kubectl rollout restart deployment argocd-notifications-controller -n argocd
-kubectl rollout restart statefulset argocd-application-controller -n argocd
+kubectl rollout restart deployment/argocd-server -n argocd
+kubectl rollout restart deployment/argocd-repo-server -n argocd
+kubectl rollout restart deployment/argocd-applicationset-controller -n argocd
+kubectl rollout restart deployment/argocd-notifications-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 
 # Wait for all components to be ready
 kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=120s
@@ -194,7 +194,7 @@ Here is an automated restore script:
 
 set -euo pipefail
 
-BACKUP_DIR="$1"
+BACKUP_DIR="${1:-}"
 NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
 
 if [ -z "$BACKUP_DIR" ]; then
@@ -259,9 +259,9 @@ done
 # Step 3: Restart ArgoCD
 echo ""
 echo "Step 3: Restarting ArgoCD components..."
-kubectl rollout restart deployment argocd-server -n "$NAMESPACE" 2>/dev/null || true
-kubectl rollout restart deployment argocd-repo-server -n "$NAMESPACE" 2>/dev/null || true
-kubectl rollout restart statefulset argocd-application-controller -n "$NAMESPACE" 2>/dev/null || true
+kubectl rollout restart deployment/argocd-server -n "$NAMESPACE" 2>/dev/null || true
+kubectl rollout restart deployment/argocd-repo-server -n "$NAMESPACE" 2>/dev/null || true
+kubectl rollout restart statefulset/argocd-application-controller -n "$NAMESPACE" 2>/dev/null || true
 echo "  Waiting for components to be ready..."
 sleep 15
 
