@@ -34,10 +34,20 @@ spec:
   destinations:
     - server: "https://kubernetes.default.svc"
       namespace: "my-team-*"
-  clusterResourceWhitelist: []
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+      name: "my-team-*"
+  clusterResourceBlacklist:
+    - group: ""
+      kind: Namespace
+      name: "kube-*"
   namespaceResourceWhitelist:
     - group: "*"
       kind: "*"
+  namespaceResourceBlacklist:
+    - group: ""
+      kind: ResourceQuota
   roles:
     - name: developer
       policies:
@@ -47,6 +57,15 @@ spec:
       schedule: "0 8 * * 1-5"
       duration: 10h
       applications: ["*"]
+      timeZone: "America/New_York"
+      manualSync: true
+  signatureKeys:
+    - keyID: "4AEE18F83AFDEB23"
+  orphanedResources:
+    warn: true
+  permitOnlyProjectScopedClusters: false
+  sourceNamespaces:
+    - "team-argocd"
 ```
 
 ## metadata Section
@@ -100,7 +119,8 @@ spec:
 
     # Helm chart repositories
     - "https://charts.helm.sh/stable"
-    - "oci://registry.example.com/charts"
+    # Helm OCI repositories are referenced without the oci:// prefix
+    - "registry.example.com/charts"
 
     # Allow all repositories (not recommended for production)
     - "*"
@@ -151,6 +171,7 @@ spec:
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
+      name: "team-*"
     - group: rbac.authorization.k8s.io
       kind: ClusterRole
     - group: rbac.authorization.k8s.io
@@ -166,6 +187,8 @@ spec:
 
 An empty list means no cluster-scoped resources are allowed. This is the recommended default for application teams.
 
+The optional `name` field can restrict matching to resources with a specific name or name pattern.
+
 ## spec.clusterResourceBlacklist
 
 Explicitly deny specific cluster-scoped resources. Takes precedence over the whitelist:
@@ -174,7 +197,8 @@ Explicitly deny specific cluster-scoped resources. Takes precedence over the whi
 spec:
   clusterResourceBlacklist:
     - group: ""
-      kind: Namespace    # Prevent teams from creating namespaces
+      kind: Namespace    # Prevent teams from creating kube-* namespaces
+      name: "kube-*"
     - group: rbac.authorization.k8s.io
       kind: ClusterRoleBinding    # Prevent cluster-wide RBAC changes
 ```
@@ -229,8 +253,8 @@ spec:
       kind: ResourceQuota      # Prevent teams from changing their quotas
     - group: ""
       kind: LimitRange         # Prevent teams from changing limit ranges
-    - group: ""
-      kind: PersistentVolume   # Prevent direct PV management
+    - group: networking.k8s.io
+      kind: NetworkPolicy      # Prevent teams from changing network policies
 ```
 
 ## spec.roles
@@ -278,9 +302,9 @@ The policy format follows Casbin syntax:
 p, <subject>, <resource>, <action>, <project>/<application>, <allow|deny>
 ```
 
-Available resources: `applications`, `logs`, `exec`, `repositories`, `clusters`, `projects`
+Available resources include: `applications`, `applicationsets`, `logs`, `exec`, `repositories`, `clusters`, `projects`, `certificates`, `accounts`, `gpgkeys`, and `extensions`
 
-Available actions: `get`, `create`, `update`, `delete`, `sync`, `override`, `action`, `*`
+Available actions include: `get`, `create`, `update`, `delete`, `sync`, `override`, `action/<group>/<kind>/<action-name>`, `invoke`, and `*`
 
 ## spec.syncWindows
 
@@ -325,7 +349,7 @@ Window behavior:
 
 ## spec.signatureKeys
 
-Require GPG signature verification on Git commits:
+Require GPG signature verification on Git revisions:
 
 ```yaml
 spec:
@@ -334,7 +358,7 @@ spec:
     - keyID: "B5690EEEBB952194"
 ```
 
-When configured, ArgoCD only syncs commits signed by one of the listed keys.
+When configured, ArgoCD only syncs Git revisions signed by one of the listed keys. For branch names and commit SHAs, it verifies the commit; for annotated tags, it verifies the tag object.
 
 ## spec.orphanedResources
 
@@ -365,6 +389,17 @@ spec:
 ```
 
 This is used with the "apps in any namespace" feature.
+
+## spec.permitOnlyProjectScopedClusters
+
+Restrict applications in this project to clusters explicitly scoped to the project:
+
+```yaml
+spec:
+  permitOnlyProjectScopedClusters: true
+```
+
+When this is `false`, applications can sync to any cluster allowed by the `destinations` field, even if that cluster is not scoped to this project.
 
 ## Practical Examples
 
