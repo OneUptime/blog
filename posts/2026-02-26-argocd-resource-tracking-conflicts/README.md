@@ -12,7 +12,7 @@ Resource tracking conflicts are one of the most common headaches in ArgoCD envir
 
 ## What Causes Resource Tracking Conflicts
 
-ArgoCD uses a tracking mechanism to know which resources belong to which application. By default, it uses labels to tag each resource with the owning application's name. When two applications define or reference the same resource (same name, kind, namespace), both try to claim ownership. This is a tracking conflict.
+ArgoCD uses a tracking mechanism to know which resources belong to which application. Current ArgoCD releases use the `argocd.argoproj.io/tracking-id` annotation by default, while older installations may still use the `app.kubernetes.io/instance` label. When two applications define or reference the same resource (same name, kind, namespace), both try to claim ownership. This is a tracking conflict.
 
 Common scenarios that trigger conflicts include:
 
@@ -38,9 +38,9 @@ data:
   application.resourceTrackingMethod: annotation
 ```
 
-**Label-based tracking** (default) uses the `app.kubernetes.io/instance` label. This is the simplest approach but also the most conflict-prone because labels are visible and easily overwritten.
+**Label-based tracking** uses the `app.kubernetes.io/instance` label. This is the simplest approach but also the most conflict-prone because labels are visible and easily overwritten.
 
-**Annotation-based tracking** stores ownership data in the `argocd.argoproj.io/tracking-id` annotation. This reduces conflicts with external tools that might set the `app.kubernetes.io/instance` label.
+**Annotation-based tracking** (default in current ArgoCD releases) stores ownership data in the `argocd.argoproj.io/tracking-id` annotation. This reduces conflicts with external tools that might set the `app.kubernetes.io/instance` label.
 
 **Annotation+Label tracking** uses both. The annotation is the source of truth, while the label is maintained for backward compatibility.
 
@@ -50,7 +50,7 @@ The first sign of a tracking conflict is usually an application stuck in OutOfSy
 
 ```bash
 # List all resources managed by a specific application
-argocd app resources my-app --output json | jq '.[] | {kind, name, namespace}'
+argocd app get my-app -o json | jq '.status.resources[] | {kind, name, namespace}'
 
 # Check which application owns a specific resource
 kubectl get deployment my-deployment -n production \
@@ -64,7 +64,7 @@ kubectl get deployment my-deployment -n production \
 You can also find conflicts by searching for resources claimed by multiple applications.
 
 ```bash
-# Find all resources with ArgoCD tracking annotations
+# Find common workload resources with ArgoCD tracking annotations
 kubectl get all -n production \
   -o custom-columns="NAME:.metadata.name,TRACKED-BY:.metadata.annotations.argocd\.argoproj\.io/tracking-id"
 
@@ -79,39 +79,26 @@ kubectl get configmap shared-config -n production -o yaml | \
 
 The cleanest fix is to ensure only one application manages the resource. Remove the duplicate resource definition from one of the applications.
 
-```yaml
-# In the application that should NOT own the resource,
-# exclude it from sync using resource exclusions
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: app-secondary
-spec:
-  source:
-    repoURL: https://github.com/org/repo
-    path: manifests/
-  ignoreDifferences:
-    - group: ""
-      kind: ConfigMap
-      name: shared-config
-      jsonPointers:
-        - /data
+```bash
+# Remove the duplicate manifest from the secondary app's Git path,
+# then refresh and sync that app so the desired state no longer includes it.
+argocd app get app-secondary --refresh
+argocd app sync app-secondary
 ```
 
-### Strategy 2: Use Shared Resource Annotations
+### Strategy 2: Use Compare and Prune Annotations for Generated Resources
 
-For resources that genuinely need to be referenced by multiple applications, you can mark them as shared.
+For resources that are generated outside the application's desired manifests, you can keep ArgoCD from pruning them or counting them as extraneous. This does not make a resource safely owned by multiple applications; it is only for resources that should not be managed by the application.
 
 ```yaml
-# Mark a resource as shared so ArgoCD does not enforce single ownership
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: shared-config
   namespace: production
   annotations:
-    # Tell ArgoCD this resource is managed externally
-    argocd.argoproj.io/managed-by: external
+    argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-options: Prune=false
 ```
 
 ### Strategy 3: Move Shared Resources to a Dedicated Application
@@ -176,6 +163,8 @@ metadata:
   name: team-alpha
   namespace: argocd
 spec:
+  sourceRepos:
+    - https://github.com/org/*
   destinations:
     - namespace: alpha-*
       server: https://kubernetes.default.svc
@@ -223,19 +212,24 @@ When migrating resources between applications, follow this sequence to avoid con
 
 ```bash
 # Step 1: Remove the resource from the old application without pruning
-argocd app sync old-app --prune=false
+argocd app set old-app --sync-option Prune=false
 
 # Step 2: Remove the resource definition from the old app's Git source
 # (commit and push)
 
-# Step 3: Wait for the old app to reconcile and release ownership
+# Step 3: Refresh and sync the old app so it no longer has the resource in desired state
 argocd app get old-app --refresh
+argocd app sync old-app
 argocd app wait old-app --sync
 
-# Step 4: Add the resource to the new application's Git source
+# Step 4: Remove the old tracking metadata from the live resource if it remains in the cluster
+kubectl annotate configmap shared-config -n production argocd.argoproj.io/tracking-id-
+kubectl label configmap shared-config -n production app.kubernetes.io/instance-
+
+# Step 5: Add the resource to the new application's Git source
 # (commit and push)
 
-# Step 5: Sync the new application
+# Step 6: Sync the new application
 argocd app sync new-app
 ```
 
