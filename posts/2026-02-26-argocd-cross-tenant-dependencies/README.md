@@ -47,7 +47,7 @@ Dependencies fall into three categories:
 
 ## Pattern 1: Sync Waves Across Applications
 
-For deployment dependencies within the same ArgoCD instance, use sync waves on the parent Application resources. This works when you use an app-of-apps pattern.
+For deployment dependencies within the same ArgoCD instance, use sync waves on the parent Application resources. This works when you use an app-of-apps pattern and restore or configure health assessment for the child Application resources.
 
 ```yaml
 # Infrastructure deploys first (wave -3)
@@ -64,6 +64,7 @@ spec:
     repoURL: https://github.com/myorg/platform-infra.git
     path: postgresql
   destination:
+    server: https://kubernetes.default.svc
     namespace: shared-databases
 
 ---
@@ -80,6 +81,7 @@ spec:
     repoURL: https://github.com/myorg/team-beta-auth.git
     path: k8s/prod
   destination:
+    server: https://kubernetes.default.svc
     namespace: team-beta-prod
 
 ---
@@ -96,10 +98,11 @@ spec:
     repoURL: https://github.com/myorg/team-alpha-api.git
     path: k8s/prod
   destination:
+    server: https://kubernetes.default.svc
     namespace: team-alpha-prod
 ```
 
-This guarantees PostgreSQL exists before auth-service tries to connect, and auth-service exists before api-service starts calling it.
+With Application health assessment configured for the app-of-apps pattern, this ensures PostgreSQL is synced and healthy before auth-service is synced, and auth-service is synced and healthy before api-service is synced.
 
 ## Pattern 2: Health Check Based Dependencies
 
@@ -135,7 +138,13 @@ metadata:
   name: api-service
   namespace: team-alpha-prod
 spec:
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       initContainers:
         # Wait for auth service to be available
@@ -181,7 +190,7 @@ A service mesh like Istio or Linkerd handles cross-tenant communication more gra
 - **Traffic policies** that control which tenants can communicate
 
 ```yaml
-# Istio AuthorizationPolicy - only team-alpha can call team-beta's auth service
+# Istio AuthorizationPolicy - team-alpha and team-gamma can call team-beta's auth service
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -235,6 +244,7 @@ spec:
     repoURL: https://github.com/myorg/team-alpha-config.git
     path: dependencies
   destination:
+    server: https://kubernetes.default.svc
     namespace: team-alpha-prod
 ```
 
