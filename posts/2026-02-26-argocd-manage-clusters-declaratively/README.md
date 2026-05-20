@@ -22,7 +22,7 @@ flowchart LR
     Controller --> Remote3["Dev Cluster"]
 ```
 
-The in-cluster (where ArgoCD runs) is always available and does not need a secret. For remote clusters, you need to create these secrets.
+By default, the in-cluster (where ArgoCD runs) is available and does not need a secret. For remote clusters, you need to create these secrets.
 
 ## Declaring a Cluster with Bearer Token
 
@@ -178,7 +178,7 @@ stringData:
     }
 ```
 
-For EKS authentication, the ArgoCD controller pods need AWS credentials (via IRSA or environment variables) that can assume the specified role.
+For EKS authentication, the ArgoCD controller and server pods need AWS credentials (via IRSA, EKS Pod Identity, an AWS profile, or environment variables) that can assume the specified role.
 
 ## Declaring a GKE Cluster
 
@@ -248,7 +248,10 @@ spec:
           matchLabels:
             environment: production
   template:
+    metadata:
+      name: '{{name}}-monitoring'
     spec:
+      project: default
       source:
         repoURL: https://github.com/myorg/monitoring.git
         path: k8s
@@ -374,10 +377,13 @@ argocd cluster list
 # Check detailed cluster info
 argocd cluster get https://kubernetes.prod-us.example.com
 
-# Test cluster connectivity
-kubectl get secrets -n argocd \
+# Inspect decoded cluster secret server URLs
+kubectl get secret -n argocd \
   -l argocd.argoproj.io/secret-type=cluster \
-  -o custom-columns='NAME:.metadata.name,SERVER:.data.server'
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.data.server}{"\n"}{end}' \
+  | while read -r name server; do
+      printf "%s\t%s\n" "$name" "$(printf "%s" "$server" | base64 -d)"
+    done
 ```
 
 Declarative cluster management is the final piece of a fully GitOps-driven ArgoCD setup. Combined with [declarative applications](https://oneuptime.com/blog/post/2026-02-26-argocd-manage-applications-declaratively/view), [projects](https://oneuptime.com/blog/post/2026-02-26-argocd-manage-projects-declaratively/view), and [repositories](https://oneuptime.com/blog/post/2026-02-26-argocd-manage-repositories-declaratively/view), every aspect of your ArgoCD configuration lives in Git.
