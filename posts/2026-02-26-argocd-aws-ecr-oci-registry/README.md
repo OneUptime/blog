@@ -71,6 +71,8 @@ This works immediately but stops working after 12 hours when the token expires.
 
 Deploy a CronJob that periodically refreshes the ECR token in ArgoCD's secret store:
 
+The container image used by the CronJob must include both the AWS CLI and `kubectl`. Build and pin an internal image for this purpose, or replace the image below with an equivalent trusted image from your environment.
+
 ```yaml
 # ecr-token-refresher.yaml
 apiVersion: v1
@@ -120,7 +122,7 @@ spec:
           serviceAccountName: ecr-token-refresher
           containers:
             - name: refresher
-              image: amazon/aws-cli:2.15.0
+              image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/platform/aws-cli-kubectl:2.15.0
               command:
                 - /bin/bash
                 - -c
@@ -220,15 +222,17 @@ kubectl get secret argocd-ecr-oci-creds -n argocd
 
 ## Method 3: IRSA on ArgoCD Repo Server (Best for EKS)
 
-The most elegant solution on EKS is to use IRSA directly on the ArgoCD repo server. This eliminates the need for a token refresher entirely because the SDK handles token management automatically.
+On EKS, IRSA can give the ArgoCD repo server pod an AWS identity without storing long-lived AWS keys.
 
-However, this requires a custom repo server image or a sidecar that handles ECR authentication. The standard ArgoCD repo server does not natively support IRSA-based ECR authentication for Helm OCI - it relies on stored credentials.
+However, IRSA alone does not make Helm OCI pulls from ECR passwordless. This requires a custom repo server image or a sidecar that uses the AWS SDK or CLI to refresh the ECR registry login before ArgoCD invokes Helm. The standard ArgoCD repo server does not natively support IRSA-based ECR authentication for Helm OCI - it relies on stored credentials.
 
 A practical approach is to use the CronJob method (Method 2) with IRSA on the CronJob's ServiceAccount.
 
 ## Method 4: External Secrets Operator
 
 If you already use External Secrets Operator, you can integrate it with ECR token management:
+
+External Secrets Operator does not call `ecr:GetAuthorizationToken` by itself. Use this pattern only when another automation updates the `ecr-auth-token` value in AWS Secrets Manager before the ECR token expires.
 
 ```yaml
 # ECR token as an external secret
@@ -335,7 +339,7 @@ aws ecr set-repository-policy \
   --policy-text file://ecr-policy.json
 ```
 
-The consuming account's ArgoCD still needs `ecr:GetAuthorizationToken` on its own account.
+The IAM principal used by ArgoCD in the consuming account still needs `ecr:GetAuthorizationToken` in an identity-based IAM policy. Amazon ECR requires this action before the principal can authenticate to a registry and use the repository policy above.
 
 ## Multi-Region ECR
 
