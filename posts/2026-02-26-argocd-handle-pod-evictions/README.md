@@ -37,9 +37,9 @@ flowchart TD
 
 When pods are evicted, ArgoCD's behavior depends on your sync configuration.
 
-With **self-healing enabled**, ArgoCD detects the drift between desired state (Deployment with 3 replicas) and actual state (only 2 pods running) and triggers a sync. However, the Deployment controller in Kubernetes actually handles pod recreation, not ArgoCD. ArgoCD's role is to ensure the Deployment spec has not changed.
+With **self-healing enabled**, ArgoCD can correct out-of-band changes to the live Kubernetes objects it manages when those objects drift from Git. A pod eviction by itself is not usually a Git-vs-live spec drift for the Deployment. The Deployment controller in Kubernetes handles pod recreation; ArgoCD's role is to ensure the Deployment spec has not changed.
 
-With **self-healing disabled**, ArgoCD shows the application as Degraded but does not take action. The Kubernetes Deployment controller still recreates pods, but if any configuration drift occurs during the process, ArgoCD will not correct it.
+With **self-healing disabled**, ArgoCD may show the application as Degraded while replicas are unavailable, but it does not recreate pods itself. The Kubernetes Deployment controller still recreates pods, but if someone changes a managed spec field in the cluster, ArgoCD will not automatically correct that live drift.
 
 ```yaml
 # Recommended configuration for eviction resilience
@@ -47,7 +47,7 @@ With **self-healing disabled**, ArgoCD shows the application as Degraded but doe
 spec:
   syncPolicy:
     automated:
-      selfHeal: true  # Correct any drift caused by evictions
+      selfHeal: true  # Correct live spec drift on managed resources
       prune: false     # Don't delete unexpected resources during recovery
     retry:
       limit: 5
@@ -112,11 +112,11 @@ spec:
       app: web-app
 ```
 
-## Handling OOM-Kill Evictions
+## Handling OOM Kills
 
-OOM-kills are the most common eviction type in production. They happen when a container exceeds its memory limit.
+OOM kills are not the same as Kubernetes pod evictions. They happen when a container exceeds its memory limit, and the kubelet can restart the container according to the pod's restart policy.
 
-ArgoCD sees OOM-killed pods as CrashLoopBackOff, which makes the application show as Degraded. The fix is not in ArgoCD but in proper resource limits.
+If OOM kills repeat, Kubernetes may report the container as CrashLoopBackOff, and ArgoCD may show the application as Degraded when the workload has unavailable replicas. The fix is not in ArgoCD but in proper resource requests and limits.
 
 ```yaml
 # Common pattern: set memory limit with headroom
@@ -130,7 +130,7 @@ spec:
           memory: "512Mi"   # 2x headroom for spikes
 ```
 
-Set up ArgoCD custom health checks to distinguish between OOM issues and other problems.
+Set up ArgoCD custom health checks if you want to change how unavailable replicas are reported for your Deployments.
 
 ```yaml
 # argocd-cm.yaml
@@ -138,7 +138,6 @@ data:
   resource.customizations.health.apps_Deployment: |
     hs = {}
     if obj.status.unavailableReplicas ~= nil and obj.status.unavailableReplicas > 0 then
-      -- Check if pods are OOM-killed
       hs.status = "Degraded"
       hs.message = "Unavailable replicas: " .. obj.status.unavailableReplicas
     elseif obj.status.availableReplicas == obj.spec.replicas then
@@ -177,7 +176,7 @@ spec:
 
 ## Priority Classes for Critical Applications
 
-Use PriorityClasses to protect critical ArgoCD-managed applications from preemption.
+Use PriorityClasses to make critical ArgoCD-managed applications less likely to be preempted by lower-priority workloads.
 
 ```yaml
 # priority-classes.yaml (managed by ArgoCD)
@@ -187,15 +186,15 @@ metadata:
   name: critical-production
 value: 1000000
 globalDefault: false
-description: "For critical production services that should not be preempted"
+description: "For critical production services that should preempt lower-priority workloads"
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
 metadata:
   name: standard-production
 value: 100000
-globalDefault: true
-description: "Default priority for production workloads"
+globalDefault: false
+description: "For standard production workloads"
 ---
 apiVersion: scheduling.k8s.io/v1
 kind: PriorityClass
