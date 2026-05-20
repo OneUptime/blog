@@ -83,27 +83,36 @@ Harness GitOps uses ArgoCD as its underlying engine but wraps it with additional
 # Configured through Harness UI or YAML pipeline
 pipeline:
   name: Deploy My Service
+  identifier: Deploy_My_Service
+  projectIdentifier: my_project
+  orgIdentifier: default
   stages:
     - stage:
         name: GitOps Deploy
-        type: GitOps
+        identifier: GitOps_Deploy
+        type: Deployment
         spec:
-          gitOpsCluster:
-            identifier: production_cluster
+          deploymentType: Kubernetes
+          gitOpsEnabled: true
           service:
-            identifier: my_service
+            serviceRef: my_service
           environment:
-            identifier: production
+            environmentRef: production
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: production_cluster
           execution:
             steps:
               - step:
                   type: GitOpsSync
                   name: Sync Application
+                  identifier: Sync_Application
                   spec:
                     prune: true
                     dryRun: false
                     applicationsList:
-                      - my-service
+                      - applicationName: my-service
+                        agentId: production_gitops_agent
 ```
 
 ## Feature Comparison
@@ -146,21 +155,19 @@ Harness uses a tiered pricing model:
 
 ```text
 Free Tier:
-- Limited to 5 services
-- Basic features
-- Community support
+- Intended for individual developers and small teams
+- Starter platform and open source options
 
-Team Tier (~$100/developer/month):
-- More services
-- Basic RBAC
-- Email support
+Essentials Plan:
+- Packaged modules such as Continuous Delivery & GitOps, CI, IaCM, and STO
+- Standard support
+- Contact Harness for pricing
 
 Enterprise Tier (custom pricing):
-- Unlimited services
+- Modular enterprise plans
 - Advanced governance
 - SSO, RBAC, audit trails
-- 24/7 support
-- SLA guarantees
+- Premium support and dedicated account management options
 ```
 
 ### Total Cost of Ownership
@@ -174,9 +181,9 @@ ArgoCD (self-managed):
   Total: ~$10,150/month
 
 Harness (Enterprise):
-  Platform cost: $2,000-5,000/month (varies by contract)
+  Platform cost: contract pricing based on selected modules and usage
   Reduced engineering time (5%): 0.25 FTE = ~$2,500/month
-  Total: ~$4,500-7,500/month
+  Total: depends on negotiated subscription plus reduced operating cost
 ```
 
 The breakeven depends heavily on your team's size and operational maturity. Smaller teams with Kubernetes expertise often find ArgoCD more cost-effective. Larger organizations with compliance requirements may find Harness worth the investment.
@@ -200,16 +207,21 @@ The breakeven depends heavily on your team's size and operational maturity. Smal
 
 ### Pipeline Integration
 
-**ArgoCD** is deployment-only. You need external tools for pre-deployment and post-deployment steps.
+**ArgoCD** is deployment-focused. It supports sync hooks for in-cluster deployment tasks, but broader CI, approval, and pre-deployment or post-deployment workflow orchestration generally requires external tools.
 
 **Harness** wraps GitOps in pipelines with verification steps.
 
 ```yaml
 # Harness pipeline with pre/post deployment steps
 pipeline:
+  name: GitOps Deployment With Verification
+  identifier: GitOps_Deployment_With_Verification
+  projectIdentifier: my_project
+  orgIdentifier: default
   stages:
     - stage:
         name: Pre-Deploy Checks
+        identifier: Pre_Deploy_Checks
         type: Custom
         spec:
           execution:
@@ -217,22 +229,42 @@ pipeline:
               - step:
                   type: ShellScript
                   name: Run Integration Tests
+                  identifier: Run_Integration_Tests
               - step:
                   type: Policy
                   name: Check OPA Policies
+                  identifier: Check_OPA_Policies
 
     - stage:
         name: Deploy
-        type: GitOps
+        identifier: Deploy
+        type: Deployment
         spec:
+          deploymentType: Kubernetes
+          gitOpsEnabled: true
+          service:
+            serviceRef: my_service
+          environment:
+            environmentRef: production
+            deployToAll: false
+            infrastructureDefinitions:
+              - identifier: production_cluster
           execution:
             steps:
               - step:
                   type: GitOpsSync
                   name: Sync
+                  identifier: Sync
+                  spec:
+                    prune: true
+                    dryRun: false
+                    applicationsList:
+                      - applicationName: my-service
+                        agentId: production_gitops_agent
 
     - stage:
         name: Verify
+        identifier: Verify
         type: Verify
         spec:
           execution:
@@ -240,6 +272,7 @@ pipeline:
               - step:
                   type: Verify
                   name: Continuous Verification
+                  identifier: Continuous_Verification
                   spec:
                     type: Auto
                     monitoredService:
