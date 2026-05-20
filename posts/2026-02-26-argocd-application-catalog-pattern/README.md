@@ -222,7 +222,7 @@ Add a JSON schema to validate inputs:
   "properties": {
     "name": {
       "type": "string",
-      "pattern": "^[a-z][a-z0-9-]{2,62}$",
+      "pattern": "^[a-z][a-z0-9-]{1,61}[a-z0-9]$",
       "description": "Application name (lowercase, alphanumeric, hyphens)"
     },
     "team": {
@@ -401,7 +401,7 @@ spec:
       server: https://production-cluster.example.com
 ```
 
-This ensures teams cannot bypass the catalog and deploy arbitrary manifests.
+This limits teams to the catalog and team config repositories. To fully prevent teams from bypassing the catalog, combine AppProject restrictions with RBAC, repository review, or admission policy that prevents the team config repo from being used as a direct manifest source.
 
 ## Testing Catalog Templates
 
