@@ -14,7 +14,7 @@ This guide covers how template overrides work, when to use them, and practical p
 
 ## Understanding Template Overrides
 
-Every ApplicationSet has a base `template` that defines the default Application spec. When you add a `template` block inside a generator's element, that generator-level template merges with and overrides the base template for that specific element.
+Every ApplicationSet has a base `template` that defines the default Application spec. When you add a `template` block to a generator, that generator-level template merges with and overrides the base template for the applications produced by that generator.
 
 ```mermaid
 flowchart TD
@@ -43,9 +43,10 @@ spec:
             namespace: users
           - name: order-service
             namespace: orders
+    - list:
+        elements:
           - name: payment-service
             namespace: payments
-            # This element has a template override
         template:
           metadata:
             name: 'payment-service'
@@ -76,11 +77,11 @@ spec:
           selfHeal: true
 ```
 
-In this example, `user-service` and `order-service` use the base template pointing to the shared mono-repo. The `payment-service` element includes a template override that changes the source repository and path, while still inheriting the destination, syncPolicy, and labels from the base template.
+In this example, `user-service` and `order-service` use the base template pointing to the shared mono-repo. The `payment-service` generator includes a template override that changes the source repository and path, while still inheriting the destination, syncPolicy, and labels from the base template.
 
 ## Template Overrides with List Generator
 
-The list generator is the most common place to use template overrides because each element can carry its own template block.
+The list generator is the most common place to use template overrides because you can group elements that need the same override in their own generator entry.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -96,6 +97,8 @@ spec:
           - name: frontend
             env: production
             cluster: https://prod.example.com
+    - list:
+        elements:
           # App with template override for different sync policy
           - name: database-migrator
             env: production
@@ -106,7 +109,8 @@ spec:
           spec:
             syncPolicy:
               # Database migrator should NOT auto-sync
-              automated: null
+              automated:
+                enabled: false
             source:
               repoURL: https://github.com/myorg/db-migrations.git
               targetRevision: HEAD
@@ -138,7 +142,7 @@ The database migrator gets its own sync policy (no auto-sync) and a different so
 
 ## Template Overrides with Merge Generator
 
-The merge generator is specifically designed for template override scenarios at scale. It lets you define a primary generator for the base configuration and additional generators that override specific fields.
+The merge generator is specifically designed for parameter override scenarios at scale. It lets you define a primary generator for the base parameters and additional generators that override specific parameter values.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -153,11 +157,20 @@ spec:
           - name
         generators:
           # Primary generator provides base values
-          - git:
-              repoURL: https://github.com/myorg/services.git
-              revision: HEAD
-              directories:
-                - path: 'services/*'
+          - list:
+              elements:
+                - name: user-service
+                  targetRevision: HEAD
+                  project: backend
+                - name: order-service
+                  targetRevision: HEAD
+                  project: backend
+                - name: payment-service
+                  targetRevision: HEAD
+                  project: backend
+                - name: auth-service
+                  targetRevision: HEAD
+                  project: backend
           # Override generator provides custom values for specific services
           - list:
               elements:
@@ -169,19 +182,19 @@ spec:
                   project: security
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{name}}'
     spec:
       project: '{{project}}'
       source:
         repoURL: https://github.com/myorg/services.git
         targetRevision: '{{targetRevision}}'
-        path: 'services/{{path.basename}}'
+        path: 'services/{{name}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{name}}'
 ```
 
-The merge generator merges parameter sets based on the `mergeKeys` field. Services listed in the override list get custom `targetRevision` and `project` values, while all other services discovered by the Git generator use the default values.
+The merge generator merges parameter sets based on the `mergeKeys` field. Services listed in the override list get custom `targetRevision` and `project` values, while all other services from the primary generator use the default values.
 
 ## Overriding Metadata
 
@@ -199,6 +212,8 @@ spec:
         elements:
           - name: standard-app
             env: prod
+    - list:
+        elements:
           - name: critical-app
             env: prod
         template:
@@ -228,7 +243,7 @@ spec:
         namespace: '{{name}}'
 ```
 
-The critical app gets PagerDuty notification annotations and a finalizer, while the standard app only gets the Slack notification from the base template.
+The critical app adds PagerDuty notification annotations and a finalizer, while the standard app only gets the Slack notification from the base template.
 
 ## Override Patterns for Different Source Types
 
@@ -249,9 +264,19 @@ spec:
             chart_path: charts/api-gateway
           - name: web-frontend
             chart_path: charts/web-frontend
+        template:
+          spec:
+            source:
+              repoURL: https://github.com/myorg/charts.git
+              targetRevision: HEAD
+              path: '{{chart_path}}'
+              helm:
+                valueFiles:
+                  - values-production.yaml
+    - list:
+        elements:
           # This uses Kustomize instead of Helm
           - name: config-service
-            chart_path: unused
         template:
           metadata:
             name: 'config-service'
@@ -261,19 +286,12 @@ spec:
               repoURL: https://github.com/myorg/config-service.git
               targetRevision: HEAD
               path: deploy/overlays/production
-              # No helm section means ArgoCD auto-detects Kustomize
+              # ArgoCD auto-detects Kustomize from this source path
   template:
     metadata:
       name: '{{name}}'
     spec:
       project: default
-      source:
-        repoURL: https://github.com/myorg/charts.git
-        targetRevision: HEAD
-        path: '{{chart_path}}'
-        helm:
-          valueFiles:
-            - values-production.yaml
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{name}}'
