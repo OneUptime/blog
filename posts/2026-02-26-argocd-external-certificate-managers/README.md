@@ -27,13 +27,13 @@ If you do not already have cert-manager installed:
 ```bash
 # Install cert-manager using Helm
 
-helm repo add jetstack https://charts.jetstack.io
+helm repo add jetstack https://charts.jetstack.io --force-update
 helm repo update
 
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 ```
 
 ### Setting Up a ClusterIssuer
@@ -54,7 +54,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 For internal services, a CA issuer is often more appropriate:
@@ -111,6 +111,7 @@ metadata:
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
+  ingressClassName: nginx
   tls:
     - hosts:
         - argocd.example.com
@@ -132,7 +133,7 @@ With this annotation, cert-manager automatically creates and manages the certifi
 
 ## Venafi Integration
 
-Venafi is an enterprise certificate management platform. cert-manager has a Venafi issuer that integrates with both Venafi Trust Protection Platform and Venafi as a Service.
+Venafi is an enterprise certificate management platform. cert-manager has a CyberArk issuer, formerly known as the Venafi issuer, that integrates with both CyberArk Certificate Manager Self-Hosted and CyberArk Certificate Manager SaaS.
 
 ### Installing the Venafi Issuer
 
@@ -160,7 +161,7 @@ Create the credentials secret:
 ```bash
 kubectl create secret generic venafi-tpp-credentials \
   --namespace cert-manager \
-  --from-literal=username=admin \
+  --from-literal=username=local:admin \
   --from-literal=password='your-password'
 ```
 
@@ -197,13 +198,13 @@ metadata:
   name: argocd-server
   namespace: argocd
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/abc-123
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
-    alb.ingress.kubernetes.io/backend-protocol: HTTPS
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
 spec:
+  ingressClassName: alb
   rules:
     - host: argocd.example.com
       http:
@@ -214,10 +215,10 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  number: 80
 ```
 
-Since TLS terminates at the ALB, you need to configure ArgoCD to run in insecure mode (HTTP behind the load balancer) or keep HTTPS with self-signed certs for the internal connection:
+Since TLS terminates at the ALB in this example, configure ArgoCD to run in insecure mode for HTTP behind the load balancer:
 
 ```yaml
 # In argocd-cmd-params-cm ConfigMap
@@ -294,6 +295,8 @@ spec:
   duration: 8760h
   renewBefore: 720h
 ```
+
+Unlike `argocd-server`, `argocd-repo-server` does not hot-reload this secret. Restart the repo server pods after creating or renewing the secret.
 
 ## Verifying the Integration
 
