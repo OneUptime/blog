@@ -8,7 +8,7 @@ Description: Learn how to implement automated secret rotation with ArgoCD using 
 
 ---
 
-AWS provides several services for secret management - Secrets Manager, Systems Manager Parameter Store, and KMS. Each can integrate with ArgoCD-managed Kubernetes workloads through the External Secrets Operator or the AWS Secrets and Configuration Provider (ASCP). This guide covers implementing automated secret rotation using AWS-native services with ArgoCD.
+AWS provides several services for secret management - Secrets Manager, Systems Manager Parameter Store, and KMS. Secrets Manager and Parameter Store can integrate with ArgoCD-managed Kubernetes workloads through the External Secrets Operator or the AWS Secrets and Configuration Provider (ASCP), while KMS provides the encryption keys used by those services. This guide covers implementing automated secret rotation using AWS-native services with ArgoCD.
 
 ## AWS Secret Management Options
 
@@ -18,7 +18,7 @@ AWS offers three main services relevant to secret management in Kubernetes:
 |---------|----------|----------|------|
 | Secrets Manager | Database credentials, API keys | Built-in auto-rotation | $0.40/secret/month |
 | Parameter Store | Configuration values, simple secrets | Manual or custom | Free for standard |
-| KMS | Encryption keys | Automatic | $1/key/month |
+| KMS | Encryption keys | Optional automatic rotation for supported keys | $1/key/month plus rotation and request charges |
 
 ```mermaid
 graph TD
@@ -119,6 +119,7 @@ aws secretsmanager create-secret \
   --name payments/database \
   --description "Payment service database credentials" \
   --secret-string '{
+    "engine": "postgres",
     "host": "payments-db.cluster-abc123.us-east-1.rds.amazonaws.com",
     "port": "5432",
     "username": "payment_svc",
@@ -186,13 +187,13 @@ AWS Secrets Manager has built-in rotation support using Lambda functions. This i
 
 ### Step 1: Create the Rotation Lambda
 
-For RDS credentials, AWS provides a pre-built rotation function:
+For RDS credentials, AWS provides rotation function templates that you can deploy as a Lambda function:
 
 ```bash
-# Enable rotation for the secret using AWS-provided Lambda
+# Enable rotation for the secret using a Lambda created from the AWS PostgreSQL rotation template
 aws secretsmanager rotate-secret \
   --secret-id payments/database \
-  --rotation-lambda-arn arn:aws:lambda:us-east-1:123456789:function:SecretsManagerRDSPostgreSQLRotation \
+  --rotation-lambda-arn arn:aws:lambda:us-east-1:123456789:function:SecretsManagerRDSPostgreSQLRotationSingleUser \
   --rotation-rules '{"AutomaticallyAfterDays": 30}'
 ```
 
@@ -202,7 +203,6 @@ For custom secrets, create a Lambda rotation function:
 # lambda_rotation.py - Custom rotation Lambda for API keys
 import boto3
 import json
-import os
 import secrets
 import string
 
@@ -225,12 +225,22 @@ def lambda_handler(event, context):
 
 def create_secret(secret_arn, token):
     """Generate a new secret value."""
-    # Get current secret
+    # Get current secret and make the create step idempotent
     current = secretsmanager.get_secret_value(
         SecretId=secret_arn,
         VersionStage="AWSCURRENT"
     )
     current_secret = json.loads(current['SecretString'])
+
+    try:
+        secretsmanager.get_secret_value(
+            SecretId=secret_arn,
+            VersionId=token,
+            VersionStage="AWSPENDING"
+        )
+        return
+    except secretsmanager.exceptions.ResourceNotFoundException:
+        pass
 
     # Generate new password
     alphabet = string.ascii_letters + string.digits
@@ -271,11 +281,15 @@ def test_secret(secret_arn, token):
 
 def finish_secret(secret_arn, token):
     """Finalize the rotation."""
+    current_version = get_current_version(secret_arn)
+    if current_version == token:
+        return
+
     secretsmanager.update_secret_version_stage(
         SecretId=secret_arn,
         VersionStage="AWSCURRENT",
         MoveToVersionId=token,
-        RemoveFromVersionId=get_current_version(secret_arn)
+        RemoveFromVersionId=current_version
     )
 
 def get_current_version(secret_arn):
@@ -324,7 +338,7 @@ When AWS Secrets Manager rotates the secret:
 2. New secret version becomes AWSCURRENT
 3. ESO detects the change during its next refresh cycle
 4. ESO updates the Kubernetes Secret
-5. Reloader or Stakater detects the Secret change
+5. Stakater Reloader or another restart controller detects the Secret change
 6. Application pods are gracefully restarted with new credentials
 
 ## Using Parameter Store for Configuration
@@ -402,17 +416,14 @@ aws secretsmanager describe-secret \
     NextRotationDate: NextRotationDate
   }'
 
-# Check for rotation failures
-aws cloudwatch get-metric-statistics \
-  --namespace AWS/SecretsManager \
-  --metric-name RotationFailed \
-  --dimensions Name=SecretName,Value=payments/database \
+# Check for recent rotation failure events in CloudTrail
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=RotationFailed \
   --start-time $(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
-  --period 86400 \
-  --statistics Sum
+  --query 'Events[].{Time:EventTime,Name:EventName,Resources:Resources}'
 ```
 
 ## Summary
 
-AWS Secrets Manager's built-in rotation combined with ArgoCD and the External Secrets Operator creates a robust, fully automated secret rotation pipeline. Secrets Manager handles the rotation logic through Lambda functions, ESO syncs the rotated secrets to Kubernetes, and ArgoCD ensures the ESO configuration is managed through GitOps. For RDS credentials, use the AWS-provided rotation functions. For custom secrets, write a Lambda that follows the four-step rotation protocol. For Vault-based rotation, see our guide on [secret rotation with ArgoCD and Vault](https://oneuptime.com/blog/post/2026-02-26-argocd-secret-rotation-vault/view).
+AWS Secrets Manager's built-in rotation combined with ArgoCD and the External Secrets Operator creates a robust, fully automated secret rotation pipeline. Secrets Manager handles the rotation logic through Lambda functions, ESO syncs the rotated secrets to Kubernetes, and ArgoCD ensures the ESO configuration is managed through GitOps. For RDS credentials, use a Lambda created from the AWS-provided rotation templates. For custom secrets, write a Lambda that follows the four-step rotation protocol. For Vault-based rotation, see our guide on [secret rotation with ArgoCD and Vault](https://oneuptime.com/blog/post/2026-02-26-argocd-secret-rotation-vault/view).
