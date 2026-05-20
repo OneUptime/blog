@@ -125,9 +125,9 @@ For organizations managing dozens of clusters, ArgoCD's centralized approach is 
 
 Both tools support Helm and Kustomize natively.
 
-ArgoCD renders Helm templates on the repo server side and applies the rendered manifests. It does not use Helm's release mechanism - there are no Helm releases tracked by Tiller or the Helm SDK. This means you cannot use `helm list` to see ArgoCD-managed releases.
+ArgoCD renders Helm templates on the repo server side and applies the rendered manifests. It does not use Helm's release storage or manage the release lifecycle through Helm. This means you cannot use `helm list` to see ArgoCD-managed Helm charts as Helm releases.
 
-FluxCD uses the Helm SDK directly through its helm-controller. Helm releases show up in `helm list`. If you rely on Helm's native rollback mechanism or have tools that read Helm release metadata, FluxCD preserves that workflow.
+FluxCD uses Helm actions through its helm-controller when you manage charts with `HelmRelease` resources. Helm release metadata is stored in the configured storage namespace, so releases can be inspected with Helm CLI commands such as `helm list` or `helm get`. If you rely on tools that read Helm release metadata or want controller-driven Helm rollback/remediation, FluxCD preserves that workflow better.
 
 ## Sync and Reconciliation
 
@@ -172,7 +172,7 @@ Pick ArgoCD if:
 Pick FluxCD if:
 
 - You want a purely Kubernetes-native approach using CRDs and controllers
-- You need Helm release compatibility with `helm list` and `helm rollback`
+- You need Helm release metadata compatibility and controller-driven rollback/remediation
 - You prefer decentralized, per-cluster GitOps installations
 - Your team is comfortable with kubectl and does not need a UI
 - You want each team or cluster to be fully self-managing
@@ -183,7 +183,7 @@ Pick FluxCD if:
 |---------|--------|--------|
 | Web UI | Built-in | Third-party only |
 | CLI | Yes | Yes |
-| Multi-cluster | Hub-and-spoke | Per-cluster |
+| Multi-cluster | Hub-and-spoke | Per-cluster by default |
 | Helm support | Template rendering | Native Helm SDK |
 | Kustomize | Yes | Yes |
 | RBAC | Built-in + SSO | Kubernetes RBAC |
