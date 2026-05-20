@@ -44,6 +44,7 @@ spec:
       values: |
         # Watch all namespaces
         watchNamespaces: []
+        watchAnyNamespace: true
         # Operator replicas
         replicas: 2
         # Resource limits
@@ -54,8 +55,6 @@ spec:
           requests:
             memory: 256Mi
             cpu: 200m
-        # Feature gates for KRaft
-        featureGates: "+UseKRaft"
   destination:
     server: https://kubernetes.default.svc
     namespace: strimzi-system
@@ -158,6 +157,8 @@ spec:
         tls: true
         authentication:
           type: tls
+    authorization:
+      type: simple
     config:
       # Replication defaults
       default.replication.factor: 3
