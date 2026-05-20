@@ -94,23 +94,28 @@ Each service's CI pipeline only touches its own directory. Conflicts between ser
 
 ## Prevention Strategy 3: Lock-Free Updates
 
-Use Git's atomic operations to avoid conflicts from concurrent CI updates:
+Use an optimistic retry loop to avoid conflicts from concurrent CI updates:
 
 ```bash
 #!/bin/bash
 # update-image-tag.sh - Conflict-free image update script
+set -euo pipefail
+
 SERVICE=$1
 TAG=$2
 ENV=$3
+REPO_ROOT=$(git rev-parse --show-toplevel)
 MAX_RETRIES=5
 RETRY=0
 
 while [ $RETRY -lt $MAX_RETRIES ]; do
+    cd "${REPO_ROOT}"
+
     # Pull latest
     git pull --rebase origin main
 
     # Make the change
-    cd "services/${SERVICE}/overlays/${ENV}"
+    cd "${REPO_ROOT}/services/${SERVICE}/overlays/${ENV}"
     kustomize edit set image "myorg/${SERVICE}:${TAG}"
 
     # Try to commit and push
@@ -122,7 +127,8 @@ while [ $RETRY -lt $MAX_RETRIES ]; do
         exit 0
     else
         echo "Push failed, retrying (${RETRY}/${MAX_RETRIES})..."
-        git reset HEAD~1  # Undo the commit
+        cd "${REPO_ROOT}"
+        git reset --hard HEAD~1  # Undo the failed generated commit and worktree change
         RETRY=$((RETRY + 1))
         sleep $((RANDOM % 5 + 1))  # Random backoff
     fi
@@ -149,15 +155,15 @@ merge_queue:
   build_timeout_minutes: 10
 ```
 
-With merge queues, PRs are tested in order. If PR #2 conflicts with PR #1, the queue rebases PR #2 automatically and re-runs checks before merging.
+With merge queues, PRs are tested in order. GitHub creates temporary merge group branches that include the target branch plus queued PRs ahead of the current PR, then re-runs required checks before merging.
 
 ## Handling Conflicts When They Occur
 
 When you do get a conflict, follow these rules:
 
-### Rule 1: Always Take the Newer Version
+### Rule 1: Prefer the Intended Version
 
-For image tag conflicts, the correct resolution is almost always the newer version:
+For image tag conflicts, the correct resolution is the version intended for that environment. That is often the newer version, but verify it before resolving:
 
 ```bash
 # Check which version is actually running
@@ -165,7 +171,7 @@ kubectl get deployment backend-api -n production -o jsonpath='{.spec.template.sp
 # myorg/backend-api:v2.3.5
 
 # The conflict shows v2.3.4 vs v2.3.5
-# Take v2.3.5 (the newer one)
+# Take v2.3.5 only if it is the intended production version
 ```
 
 ### Rule 2: Verify Against Live State
@@ -298,7 +304,7 @@ metadata:
   namespace: argocd
 data:
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [slack-alert]
   template.slack-alert: |
     message: |
