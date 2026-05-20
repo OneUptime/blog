@@ -62,7 +62,11 @@ SYNCED=$(argocd app list -o json | jq '[.[] | select(.status.sync.status == "Syn
 OUT_OF_SYNC=$(argocd app list -o json | jq '[.[] | select(.status.sync.status != "Synced")] | length')
 
 echo "Total applications: $TOTAL"
-echo "In sync: $SYNCED ($((SYNCED * 100 / TOTAL))%)"
+if [ "$TOTAL" -gt 0 ]; then
+  echo "In sync: $SYNCED ($((SYNCED * 100 / TOTAL))%)"
+else
+  echo "In sync: 0 (0%)"
+fi
 echo "Out of sync: $OUT_OF_SYNC"
 
 # List out-of-sync applications with details
@@ -86,28 +90,34 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  template.drift-detected: |
+  template.out-of-sync-detected: |
     webhook:
       audit-log:
         method: POST
         body: |
           {
-            "event": "drift_detected",
+            "event": "out_of_sync_detected",
             "application": "{{.app.metadata.name}}",
             "project": "{{.app.spec.project}}",
             "cluster": "{{.app.spec.destination.server}}",
             "namespace": "{{.app.spec.destination.namespace}}",
             "timestamp": "{{.app.status.reconciledAt}}",
-            "resources": {{.app.status.resources | toJson}}
+            "sync_status": "{{.app.status.sync.status}}",
+            "health_status": "{{.app.status.health.status}}"
           }
-  trigger.on-sync-status-unknown: |
+  trigger.on-out-of-sync: |
     - when: app.status.sync.status == 'OutOfSync'
-      send: [drift-detected]
+      send: [out-of-sync-detected]
   service.webhook.audit-log: |
     url: https://audit.company.com/api/events
     headers:
       - name: Authorization
         value: Bearer $audit-api-token
+  subscriptions: |
+    - recipients:
+        - audit-log
+      triggers:
+        - on-out-of-sync
 ```
 
 ## Auditing with Kyverno Policy Reports
@@ -119,7 +129,7 @@ Kyverno generates PolicyReport and ClusterPolicyReport resources that contain au
 ```bash
 # Get a summary of all policy violations across the cluster
 kubectl get clusterpolicyreport -o json | jq '{
-  total_resources: [.items[].results[]] | length,
+  total_results: [.items[].results[]] | length,
   pass: [.items[].results[] | select(.result == "pass")] | length,
   fail: [.items[].results[] | select(.result == "fail")] | length,
   warn: [.items[].results[] | select(.result == "warn")] | length,
@@ -194,12 +204,12 @@ sum(argocd_app_info{sync_status="Synced"}) / sum(argocd_app_info) * 100
 # ArgoCD application health compliance rate
 sum(argocd_app_info{health_status="Healthy"}) / sum(argocd_app_info) * 100
 
-# Kyverno policy compliance (if using kyverno-json exporter)
-sum(kyverno_policy_results_total{rule_result="pass"})
-/ sum(kyverno_policy_results_total) * 100
+# Kyverno policy compliance over the last 24 hours
+sum(increase(kyverno_policy_results{rule_result="pass"}[24h]))
+/ sum(increase(kyverno_policy_results[24h])) * 100
 
 # Gatekeeper violations trend
-sum(opa_constraint_violations) by (constraint_kind)
+sum(gatekeeper_violations) by (enforcement_action)
 
 # Compliance score over time (custom recording rule)
 # Record overall compliance as a metric
@@ -258,8 +268,8 @@ sum(opa_constraint_violations) by (constraint_kind)
         "type": "timeseries",
         "targets": [
           {
-            "expr": "sum(opa_constraint_violations) by (constraint_kind)",
-            "legendFormat": "{{constraint_kind}}"
+            "expr": "sum(gatekeeper_violations) by (enforcement_action)",
+            "legendFormat": "{{enforcement_action}}"
           }
         ],
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
@@ -428,7 +438,7 @@ spec:
         # Alert on new policy violations
         - alert: NewPolicyViolations
           expr: |
-            increase(kyverno_policy_results_total{rule_result="fail"}[1h]) > 10
+            increase(kyverno_policy_results{rule_result="fail"}[1h]) > 10
           for: 5m
           labels:
             severity: warning
