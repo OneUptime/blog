@@ -8,7 +8,7 @@ Description: Learn how to manage Linkerd ServiceProfile resources with ArgoCD fo
 
 ---
 
-Linkerd's ServiceProfile is the primary resource for configuring per-route behavior in the Linkerd service mesh. It defines routes for a service, enabling per-route metrics, retries, and timeouts. Unlike Istio which uses multiple CRDs for traffic management, Linkerd consolidates route configuration into a single ServiceProfile resource, making it simpler to manage with ArgoCD.
+Linkerd's ServiceProfile resource configures per-route behavior in the Linkerd service mesh. It defines routes for a service, enabling per-route metrics, retries, and timeouts. As of Linkerd 2.16, Gateway API route resources are the preferred way to configure per-route metrics, retries, and timeouts; ServiceProfiles remain supported for backward compatibility and for existing deployments that already use them. Unlike Istio which uses multiple CRDs for traffic management, Linkerd ServiceProfiles consolidate route configuration into a single resource, making them simpler to manage with ArgoCD.
 
 This guide covers deploying and managing Linkerd ServiceProfiles through ArgoCD for reliable, GitOps-driven mesh configuration.
 
@@ -69,7 +69,7 @@ spec:
   source:
     repoURL: https://helm.linkerd.io/edge
     chart: linkerd-crds
-    targetRevision: 2024.2.1
+    targetRevision: 2026.5.2
   destination:
     server: https://kubernetes.default.svc
     namespace: linkerd
@@ -93,7 +93,7 @@ spec:
   source:
     repoURL: https://helm.linkerd.io/edge
     chart: linkerd-control-plane
-    targetRevision: 2024.2.1
+    targetRevision: 2026.5.2
     helm:
       valuesObject:
         identityTrustAnchorsPEM: |
@@ -132,12 +132,12 @@ linkerd-config/
   overlays/
     staging/
       kustomization.yaml
-      patches/
-        relaxed-timeouts.yaml
+      service-profiles/
+        user-service.yaml
     production/
       kustomization.yaml
-      patches/
-        strict-timeouts.yaml
+      service-profiles/
+        user-service.yaml
 ```
 
 ## Creating ServiceProfiles from OpenAPI Specs
@@ -151,7 +151,7 @@ linkerd profile --open-api product-service-openapi.yaml \
   > service-profiles/production/product-service.yaml
 ```
 
-Or use an ArgoCD pre-sync hook:
+Avoid generating ServiceProfiles in an ArgoCD pre-sync hook unless the hook also applies the generated manifest itself. Hook output written to a container filesystem is not fed back into the same ArgoCD sync. If you need in-cluster generation from live traffic, run it as an explicit job with the Linkerd Viz extension available and apply the generated profile:
 
 ```yaml
 apiVersion: batch/v1
@@ -166,23 +166,17 @@ spec:
     spec:
       containers:
         - name: profile-gen
-          image: cr.l5d.io/linkerd/cli:edge-24.2.1
+          image: your-org/linkerd-kubectl:edge-26.5.2
           command:
             - sh
             - -c
             - |
-              # Generate profiles from live traffic data
-              linkerd profile --tap deploy/product-service \
-                -n production \
+              # Generate profiles from live traffic data and apply them
+              linkerd viz profile -n production product-service \
+                --tap deploy/product-service \
                 --tap-duration 60s \
-                > /output/product-service-profile.yaml
-          volumeMounts:
-            - name: output
-              mountPath: /output
+                | kubectl apply -f -
       restartPolicy: Never
-      volumes:
-        - name: output
-          emptyDir: {}
   backoffLimit: 1
 ```
 
@@ -325,7 +319,7 @@ spec:
 
 ## Pattern 3: Environment-Specific Timeouts
 
-Use Kustomize to vary timeouts between staging and production:
+Use Kustomize overlays to vary timeouts between staging and production:
 
 ```yaml
 # base/service-profiles/production/user-service.yaml
@@ -350,7 +344,7 @@ spec:
 ```
 
 ```yaml
-# overlays/staging/patches/relaxed-timeouts.yaml
+# overlays/staging/service-profiles/user-service.yaml
 apiVersion: linkerd.io/v1alpha2
 kind: ServiceProfile
 metadata:
@@ -376,8 +370,8 @@ spec:
 Once ServiceProfiles are deployed, Linkerd provides per-route metrics:
 
 ```bash
-# Check per-route metrics
-linkerd stat sp/product-service.production.svc.cluster.local \
+# Check per-route metrics with the Linkerd Viz extension
+linkerd viz routes svc/product-service \
   -n production
 
 # Output shows per-route success rate, RPS, and latency
@@ -392,13 +386,13 @@ Track these in Grafana with the Linkerd Prometheus metrics:
 ```promql
 # Per-route success rate
 sum(rate(
-  response_total{
+  route_response_total{
     classification="success",
     rt_route="GET /api/products"
   }[5m]
 )) /
 sum(rate(
-  response_total{
+  route_response_total{
     rt_route="GET /api/products"
   }[5m]
 ))
@@ -406,7 +400,7 @@ sum(rate(
 # Per-route P95 latency
 histogram_quantile(0.95,
   sum(rate(
-    response_latency_ms_bucket{
+    route_response_latency_ms_bucket{
       rt_route="GET /api/products"
     }[5m]
   )) by (le)
@@ -415,4 +409,4 @@ histogram_quantile(0.95,
 
 ## Summary
 
-Linkerd ServiceProfiles are the key to unlocking per-route observability and traffic policies in the Linkerd mesh. Managing them with ArgoCD ensures consistent configuration across environments, with every change tracked in Git. Use OpenAPI specs or live traffic data to generate initial profiles, then customize retry policies, timeouts, and response classification per route. The result is a service mesh that is both well-understood and well-managed through GitOps principles.
+For existing Linkerd deployments that use ServiceProfiles, they remain a useful way to manage per-route observability and traffic policies in the Linkerd mesh. Managing them with ArgoCD ensures consistent configuration across environments, with every change tracked in Git. Use OpenAPI specs or live traffic data to generate initial profiles, then customize retry policies, timeouts, and response classification per route. The result is a service mesh that is both well-understood and well-managed through GitOps principles.
