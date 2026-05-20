@@ -325,8 +325,8 @@ data:
   controller.status.processors: "50"
   controller.operation.processors: "25"
   # Increase K8s API QPS for more clusters
-  controller.k8s.client.config.qps: "100"
-  controller.k8s.client.config.burst: "200"
+  controller.k8s.client.qps: "100"
+  controller.k8s.client.burst: "200"
 ```
 
 ## Measuring Actual Usage
@@ -337,10 +337,10 @@ Do not guess - measure. Use these commands to understand your actual resource co
 # Current pod resource usage
 kubectl top pods -n argocd
 
-# Historical usage (if Prometheus/metrics-server is available)
+# Per-container current usage (requires metrics-server)
 kubectl top pods -n argocd --containers
 
-# Detailed memory breakdown for the controller
+# Detailed memory breakdown for the controller (requires controller.profile.enabled: "true")
 kubectl exec -n argocd deployment/argocd-application-controller -- \
   curl -s localhost:8082/debug/pprof/heap > /tmp/heap.prof
 
@@ -402,7 +402,7 @@ Recommended node types by cloud provider:
 # Check for OOMKilled events
 kubectl get events -n argocd --field-selector reason=OOMKilling
 
-# Check for CPU throttling
+# Check containers with high current CPU usage
 kubectl top pods -n argocd --containers | sort -k3 -rn
 ```
 
