@@ -162,11 +162,18 @@ spec:
             - /bin/sh
             - -c
             - |
-              CURRENT=$(migrate -path /migrations -database "$DATABASE_URL" version 2>&1 | head -1)
+              CURRENT=$(migrate -path /migrations -database "$DATABASE_URL" version 2>&1 | awk '{print $1}')
               TARGET_VERSION=41  # The version we want to roll back to
 
               echo "Current version: $CURRENT"
               echo "Target version: $TARGET_VERSION"
+
+              case "$CURRENT" in
+                ''|*[!0-9]*)
+                  echo "Could not determine current migration version"
+                  exit 1
+                  ;;
+              esac
 
               if [ "$CURRENT" -gt "$TARGET_VERSION" ]; then
                 echo "Rolling back to version $TARGET_VERSION..."
@@ -219,7 +226,7 @@ spec:
               echo "Restoring database from pre-migration backup..."
 
               # Find the latest pre-migration backup
-              LATEST_BACKUP=$(ls -t /backups/pre-migration-*.sql | head -1)
+              LATEST_BACKUP=$(ls -t /backups/pre-migration-*.dump | head -1)
               echo "Using backup: $LATEST_BACKUP"
 
               # Drop and recreate the database
@@ -278,7 +285,7 @@ graph TD
 
 Each phase is a separate Git commit and ArgoCD sync:
 
-```yaml
+```sql
 # Phase 1: Expand - Add new column (backward compatible)
 # migrations/042_expand_add_display_name.up.sql
 ---
