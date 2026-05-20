@@ -12,9 +12,9 @@ ArgoCD supports multiple ways to track your source repository - branches, tags, 
 
 This guide covers all the tracking strategies available in ArgoCD, when to use each one, and exactly how to switch between them.
 
-## The Four Tracking Strategies
+## The Five Tracking Strategies
 
-ArgoCD supports four primary tracking strategies through the `targetRevision` field:
+ArgoCD supports five primary tracking strategies through the `targetRevision` field:
 
 ```mermaid
 graph TD
@@ -35,7 +35,7 @@ Each one is appropriate for different situations:
 | Strategy | Best For | Stability | Automation |
 |----------|----------|-----------|------------|
 | Branch | Dev/staging | Low - changes constantly | High - auto-deploy on push |
-| Tag | Production releases | High - immutable reference | Medium - explicit promotion |
+| Tag | Production releases | High - stable if tags are not moved | Medium - explicit promotion |
 | Commit SHA | Incident response, compliance | Highest - absolute reference | Low - manual updates |
 | HEAD | Simple setups, templates | Low - follows default branch | High - automatic |
 | Semver | Helm chart versioning | Configurable via constraints | Medium to high |
@@ -183,7 +183,7 @@ argocd app get my-app-production
 
 ## Automating Strategy Switches
 
-You can automate tracking strategy changes using CI/CD pipelines. Here is an example that automatically promotes the latest tag to production:
+You can automate tracking strategy changes using CI/CD pipelines. Here is an example that promotes a selected tag to production:
 
 ```yaml
 # .github/workflows/promote.yaml
