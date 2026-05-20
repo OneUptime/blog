@@ -194,15 +194,16 @@ When you delete an ArgoCD Application that used CreateNamespace, what happens to
 
 ### Namespace Created by CreateNamespace Only
 
-If the namespace was only created by the CreateNamespace option (not defined as a resource in Git), it is managed by ArgoCD. When you delete the Application with cascade:
-- The namespace may or may not be deleted depending on ArgoCD version and configuration
-- In most versions, the namespace created by CreateNamespace is NOT deleted on cascade delete
+If the namespace was only created by the CreateNamespace option (not defined as a resource in Git), it is normally not tracked as an ArgoCD Application resource. When you delete the Application with cascade:
+- ArgoCD deletes the resources it tracks for the Application
+- The namespace created by CreateNamespace is normally NOT deleted on cascade delete
+- The namespace can be deleted only if you intentionally make it tracked or owned by ArgoCD, such as by adding ArgoCD resource tracking metadata
 
 ### Namespace Defined in Git Manifests
 
 If you have a Namespace resource in your Git manifests and the Application has the resources finalizer:
 - The namespace and all resources in it will be deleted during cascade delete
-- This includes resources NOT managed by ArgoCD if they are in that namespace
+- This includes namespaced resources NOT managed by ArgoCD if they are in that namespace
 
 Be careful with this. Deleting a namespace in Kubernetes deletes everything inside it.
 
@@ -273,9 +274,9 @@ spec:
 
 1. **Always enable CreateNamespace for new applications** - It eliminates the bootstrapping problem where the namespace must exist before ArgoCD can deploy to it.
 
-2. **Use managedNamespaceMetadata for namespace configuration** - If you need labels or annotations on the namespace, define them in the sync policy rather than maintaining a separate Namespace manifest.
+2. **Use managedNamespaceMetadata for simple namespace metadata** - If you only need labels or annotations on the namespace, define them in the sync policy rather than maintaining a separate Namespace manifest.
 
-3. **Include Namespace resources in Git for complex namespace configs** - If you need ResourceQuotas, LimitRanges, or NetworkPolicies tied to the namespace, define a full Namespace resource in your manifests.
+3. **Include namespace-related resources in Git for complex namespace configs** - If you need ResourceQuotas, LimitRanges, or NetworkPolicies tied to the namespace, define those resources in your manifests. Include a Namespace resource too if you want Git to own the namespace object itself.
 
 4. **Be aware of deletion behavior** - Understand whether the namespace will be deleted when you remove the ArgoCD Application to avoid surprises.
 
