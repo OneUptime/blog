@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD to detect Git changes via webhooks on
 
 ---
 
-By default, ArgoCD polls Git repositories every 3 minutes to check for changes. This means after pushing a commit, you wait up to 3 minutes before ArgoCD even notices the change. For teams that expect near-instant deployments, this delay is unacceptable. The solution is to configure webhooks so that ArgoCD is notified the moment a push happens. This guide covers the complete setup for every major Git provider.
+By default, ArgoCD polls Git repositories every 3 minutes to check for changes. This default is 120 seconds plus up to 60 seconds of jitter, which means after pushing a commit, you wait up to about 3 minutes before ArgoCD even notices the change. For teams that expect near-instant deployments, this delay is unacceptable. The solution is to configure webhooks so that ArgoCD is notified the moment a push happens. This guide covers the complete setup for several major Git providers.
 
 ## How Polling Works (And Why It Is Slow)
 
@@ -21,16 +21,16 @@ sequenceDiagram
     participant ArgoCD as ArgoCD Controller
 
     Dev->>Git: git push (commit at T=0)
-    Note over ArgoCD: Polling interval: 180s
+    Note over ArgoCD: Polling interval: 120s + up to 60s jitter
     Note over ArgoCD: Last poll at T=-60s
     Note over ArgoCD: Next poll at T=+120s
     ArgoCD->>Git: git ls-remote (at T=+120s)
     Git-->>ArgoCD: New commit detected
-    ArgoCD->>ArgoCD: Sync starts (at T=+120s)
+    ArgoCD->>ArgoCD: Refresh starts (at T=+120s)
     Note over Dev: Developer waits 2 minutes
 ```
 
-With polling, the average wait time is half the polling interval. For a 3-minute interval, you wait 1.5 minutes on average.
+With polling, the average wait time is roughly half the polling interval. With ArgoCD's default reconciliation timeout and jitter, you can wait up to about 3 minutes.
 
 ## How Webhooks Work (And Why They Are Fast)
 
@@ -46,11 +46,11 @@ sequenceDiagram
     Dev->>Git: git push (commit at T=0)
     Git->>ArgoCD: POST /api/webhook (at T=+1s)
     ArgoCD->>Controller: Trigger refresh for affected apps
-    Controller->>Controller: Sync starts (at T=+2s)
+    Controller->>Controller: Refresh starts (at T=+2s)
     Note over Dev: Developer waits 2 seconds
 ```
 
-With webhooks, ArgoCD detects the change within seconds. The total time from push to sync start is typically under 5 seconds.
+With webhooks, ArgoCD detects the change within seconds. The total time from push to refresh is typically under 5 seconds. If automated sync is enabled for the application, ArgoCD can then sync the app automatically.
 
 ## Step 1: Configure ArgoCD Webhook Secret
 
@@ -58,16 +58,18 @@ First, configure a webhook secret in ArgoCD. This secret is used to validate tha
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   # Set a webhook secret for your Git provider
   # Use the same secret when configuring the webhook in your Git provider
   webhook.github.secret: "your-super-secret-webhook-key"
   # webhook.gitlab.secret: "your-gitlab-webhook-secret"
-  # webhook.bitbucket.secret: "your-bitbucket-webhook-secret"
+  # Bitbucket Cloud uses the webhook UUID, not a shared secret
+  # webhook.bitbucket.uuid: "your-bitbucket-webhook-uuid"
   # webhook.bitbucketserver.secret: "your-bitbucket-server-webhook-secret"
   # webhook.gogs.secret: "your-gogs-webhook-secret"
 ```
@@ -75,16 +77,13 @@ data:
 ```bash
 # Apply the configuration
 
-kubectl apply -f argocd-cm.yaml
-
-# Restart the API server to pick up the new secret
-kubectl rollout restart deployment/argocd-server -n argocd
+kubectl apply -f argocd-secret.yaml
 ```
 
 Generate a strong random secret.
 
 ```bash
-# Generate a random 32-character secret
+# Generate a random 64-character hex secret
 openssl rand -hex 32
 # Example output: a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2a3b4c5d6a7b8c9d0e1f2
 ```
@@ -98,7 +97,7 @@ openssl rand -hex 32
 gh api repos/org/my-repo/hooks --method POST \
   --field name='web' \
   --field active=true \
-  --field events='["push"]' \
+  --field events[]=push \
   --field 'config[url]=https://argocd.example.com/api/webhook' \
   --field 'config[content_type]=json' \
   --field 'config[secret]=your-super-secret-webhook-key' \
@@ -157,6 +156,8 @@ curl -X POST "https://api.bitbucket.org/2.0/repositories/org/repo/hooks" \
 ```
 
 Bitbucket Cloud uses a different webhook payload format than Bitbucket Server. ArgoCD handles both formats automatically.
+
+If you want ArgoCD to verify Bitbucket Cloud webhooks, get the webhook UUID from Bitbucket after creating the webhook and store it as `webhook.bitbucket.uuid` in `argocd-secret`.
 
 ## Step 3: Ensure the Webhook Endpoint Is Accessible
 
@@ -231,11 +232,9 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  webhook.github.secret: "your-super-secret-webhook-key"
-
   # Increase polling interval since webhooks handle immediate detection
   # 5 minutes instead of default 3 minutes
-  timeout.reconciliation: "300"
+  timeout.reconciliation: "5m"
 ```
 
 Do not disable polling entirely (`timeout.reconciliation: "0"`) unless you are confident your webhooks are 100% reliable. Polling serves as a fallback for webhook delivery failures.
@@ -265,7 +264,7 @@ for repo in $repos; do
     gh api "repos/$repo/hooks" --method POST \
       --field name='web' \
       --field active=true \
-      --field events='["push"]' \
+      --field events[]=push \
       --field "config[url]=$WEBHOOK_URL" \
       --field 'config[content_type]=json' \
       --field "config[secret]=$WEBHOOK_SECRET" \
@@ -285,7 +284,7 @@ For GitHub organizations, you can also create an organization-level webhook that
 gh api orgs/your-org/hooks --method POST \
   --field name='web' \
   --field active=true \
-  --field events='["push"]' \
+  --field events[]=push \
   --field 'config[url]=https://argocd.example.com/api/webhook' \
   --field 'config[content_type]=json' \
   --field 'config[secret]=your-webhook-secret'
@@ -300,18 +299,18 @@ Set up monitoring to detect webhook delivery failures before they impact your wo
 gh api repos/org/my-repo/hooks --jq '.[0].id' | xargs -I {} gh api repos/org/my-repo/hooks/{}/deliveries --jq '.[] | select(.status_code != 200) | {delivered_at, status_code}'
 ```
 
-On the ArgoCD side, monitor the API server for webhook processing errors.
+On the ArgoCD side, monitor the API server logs or your ingress metrics for webhook processing errors.
 
-```promql
-# Count webhook requests by status
-rate(argocd_server_request_total{path="/api/webhook"}[5m])
+```bash
+# Check recent webhook-related server log entries
+kubectl logs -n argocd deployment/argocd-server --since=1h | grep -i webhook
 ```
 
 ## Troubleshooting
 
 ### Webhook Returns 403
 
-The webhook secret does not match. Verify the secret in both ArgoCD's `argocd-cm` ConfigMap and the Git provider's webhook settings.
+The webhook secret does not match. Verify the secret in both ArgoCD's `argocd-secret` Secret and the Git provider's webhook settings.
 
 ### Webhook Returns 404
 
