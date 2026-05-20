@@ -109,8 +109,9 @@ patches:
         path: /metadata/name
         value: backend-api-monitor
       - op: replace
-        path: /spec/selector/matchLabels/app.kubernetes.io~1name
-        value: backend-api
+        path: /spec/selector/matchLabels
+        value:
+          app.kubernetes.io/name: backend-api
       - op: replace
         path: /spec/namespaceSelector/matchNames/0
         value: production
@@ -163,18 +164,18 @@ spec:
             - containerPort: {{ .Values.port | default 8080 }}
           resources:
             requests:
-              cpu: {{ .Values.resources.requests.cpu | default "100m" }}
-              memory: {{ .Values.resources.requests.memory | default "128Mi" }}
+              cpu: {{ dig "resources" "requests" "cpu" "100m" .Values }}
+              memory: {{ dig "resources" "requests" "memory" "128Mi" .Values }}
             limits:
-              cpu: {{ .Values.resources.limits.cpu | default "500m" }}
-              memory: {{ .Values.resources.limits.memory | default "512Mi" }}
+              cpu: {{ dig "resources" "limits" "cpu" "500m" .Values }}
+              memory: {{ dig "resources" "limits" "memory" "512Mi" .Values }}
           readinessProbe:
             httpGet:
-              path: {{ .Values.healthCheck.path | default "/healthz" }}
+              path: {{ dig "healthCheck" "path" "/healthz" .Values }}
               port: {{ .Values.port | default 8080 }}
           livenessProbe:
             httpGet:
-              path: {{ .Values.healthCheck.path | default "/healthz" }}
+              path: {{ dig "healthCheck" "path" "/healthz" .Values }}
               port: {{ .Values.port | default 8080 }}
             initialDelaySeconds: 15
 {{- end -}}
@@ -265,11 +266,10 @@ patches:
       kind: Deployment
     patch: |
       - op: add
-        path: /spec/template/metadata/annotations/prometheus.io~1scrape
-        value: "true"
-      - op: add
-        path: /spec/template/metadata/annotations/prometheus.io~1port
-        value: "8080"
+        path: /spec/template/metadata/annotations
+        value:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "8080"
 ```
 
 Services include components in their overlays:
@@ -319,11 +319,11 @@ When you release a new version of a shared library, services need to update thei
 ```json
 // renovate.json in each service repo
 {
-  "extends": ["config:base"],
+  "extends": ["config:recommended"],
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["kustomization\\.yaml$"],
+      "managerFilePatterns": ["/kustomization\\.yaml$/"],
       "matchStrings": [
         "https://github\\.com/myorg/shared-k8s-configs//.*\\?ref=(?<currentValue>v[\\d\\.]+)"
       ],
