@@ -16,7 +16,7 @@ High CPU on the ArgoCD repo server causes slow manifest generation, delayed sync
 - Applications show "ComparisonError" with "context deadline exceeded" messages
 - The repo server pod shows consistently high CPU usage (>80% of limits)
 - ArgoCD UI shows applications as "Unknown" or stuck in "Progressing"
-- Prometheus metric `argocd_repo_server_request_duration_seconds` is elevated
+- Prometheus metric `argocd_git_request_duration_seconds` is elevated, or `argocd_repo_pending_request_total` is growing
 
 ## Impact Assessment
 
@@ -38,7 +38,7 @@ kubectl get deployment argocd-repo-server -n argocd \
   -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq .
 
 # Check if the pod is being CPU-throttled
-# Look for high throttled_periods_total
+# Look for increasing nr_throttled and throttled_usec/throttled_time values
 kubectl exec -n argocd deployment/argocd-repo-server -- cat /sys/fs/cgroup/cpu/cpu.stat 2>/dev/null || \
 kubectl exec -n argocd deployment/argocd-repo-server -- cat /sys/fs/cgroup/cpu.stat 2>/dev/null
 ```
@@ -61,9 +61,9 @@ kubectl logs -n argocd deployment/argocd-repo-server --tail=500 | grep -c "gener
 Some applications are much more expensive to generate manifests for than others. Large Helm charts with many dependencies are the most common culprits.
 
 ```bash
-# Check Prometheus for the slowest repos
-# argocd_repo_server_request_duration_seconds_sum by (repo)
-# Sort by highest total duration
+# Check Prometheus for the slowest Git operations
+# sum by (repo, request_type) (rate(argocd_git_request_duration_seconds_sum[5m]))
+# Sort by highest duration
 
 # Alternatively, check logs for long-running operations
 kubectl logs -n argocd deployment/argocd-repo-server --tail=1000 | grep "duration" | sort -t= -k2 -rn | head -20
@@ -129,7 +129,7 @@ The repo server processes all incoming requests simultaneously by default.
 ```bash
 # Set a parallelism limit to prevent overload
 kubectl patch deployment argocd-repo-server -n argocd --type='json' \
-  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--parallelism-limit=10"}]'
+  -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--parallelismlimit=10"}]'
 ```
 
 This queues excess requests instead of processing them all at once, preventing CPU saturation.
@@ -170,12 +170,8 @@ Cloning large repositories is CPU-intensive due to decompression.
 kubectl logs -n argocd deployment/argocd-repo-server --tail=200 | grep "clone\|fetch"
 
 # Immediate fix: use RAM-backed tmpfs
-kubectl patch deployment argocd-repo-server -n argocd --type='json' \
-  -p='[{
-    "op": "replace",
-    "path": "/spec/template/spec/volumes",
-    "value": [{"name": "tmp", "emptyDir": {"medium": "Memory", "sizeLimit": "10Gi"}}]
-  }]'
+kubectl patch deployment argocd-repo-server -n argocd --type='strategic' \
+  -p='{"spec":{"template":{"spec":{"volumes":[{"name":"tmp","emptyDir":{"medium":"Memory","sizeLimit":"10Gi"}}],"containers":[{"name":"argocd-repo-server","volumeMounts":[{"name":"tmp","mountPath":"/tmp"}]}]}}}}'
 ```
 
 ### Cause 6: Webhook Storm
@@ -186,9 +182,9 @@ A push to a repository used by many applications triggers manifest generation fo
 # Check recent webhook activity
 kubectl logs -n argocd deployment/argocd-server --tail=200 | grep "webhook"
 
-# Temporary mitigation: increase reconciliation interval to spread load
+# Temporary mitigation: increase reconciliation interval and jitter to spread polling load
 kubectl patch configmap argocd-cm -n argocd --type merge \
-  -p='{"data":{"timeout.reconciliation":"300"}}'
+  -p='{"data":{"timeout.reconciliation":"5m","timeout.reconciliation.jitter":"60s"}}'
 ```
 
 Long-term fix: split the monorepo or stagger application refresh schedules.
@@ -216,15 +212,15 @@ kubectl logs -n argocd deployment/argocd-repo-server --tail=100 | grep -c "deadl
 
 1. Set CPU requests and limits appropriately for your workload
 2. Run at least 2 repo server replicas in production
-3. Set `--parallelism-limit` to prevent CPU saturation
+3. Set `--parallelismlimit` to prevent CPU saturation
 4. Pre-build Helm dependencies in CI pipelines
-5. Monitor `argocd_repo_server_request_duration_seconds` and alert when it exceeds thresholds
+5. Monitor `argocd_git_request_duration_seconds`, `argocd_repo_pending_request_total`, and repo-server CPU, and alert when they exceed thresholds
 6. For repos used by many applications, consider pre-rendering manifests
 
 ## Escalation
 
 If CPU remains high after scaling up and setting parallelism limits:
 
-- Collect a CPU profile: `kubectl exec -n argocd deployment/argocd-repo-server -- curl localhost:8084/debug/pprof/profile?seconds=30 > cpu-profile.pprof`
+- Enable `reposerver.profile.enabled` in `argocd-cmd-params-cm`, then collect a CPU profile: `kubectl exec -n argocd deployment/argocd-repo-server -- curl localhost:8084/debug/pprof/profile?seconds=30 > cpu-profile.pprof`
 - Check ArgoCD GitHub issues for known performance regressions
 - Consider upgrading ArgoCD if running an older version with known performance bugs
