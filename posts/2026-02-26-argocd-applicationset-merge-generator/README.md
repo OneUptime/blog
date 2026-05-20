@@ -14,7 +14,7 @@ This guide covers Merge generator syntax, key-based merging, override patterns, 
 
 ## How the Merge Generator Works
 
-The Merge generator takes multiple child generators and a `mergeKeys` field that specifies which parameters to use as the join key. The first generator provides the base parameter sets. Subsequent generators override matching parameters.
+The Merge generator takes multiple child generators and a `mergeKeys` field that specifies which parameters to use as the join key. The first generator provides the base parameter sets. Subsequent generators override matching parameters, and non-matching parameter sets from later generators are discarded.
 
 ```mermaid
 graph TD
@@ -120,20 +120,23 @@ spec:
           revision: main
           directories:
           - path: services/*
+            values:
+              targetCluster: https://kubernetes.default.svc
+              syncWave: "2"
       # Override: specific configuration for known services
       - list:
           elements:
           - path.basename: api-gateway
-            targetCluster: https://api-cluster.example.com
-            syncWave: "1"
+            values.targetCluster: https://api-cluster.example.com
+            values.syncWave: "1"
           - path.basename: database-migrator
-            targetCluster: https://db-cluster.example.com
-            syncWave: "0"
+            values.targetCluster: https://db-cluster.example.com
+            values.syncWave: "0"
   template:
     metadata:
       name: '{{path.basename}}'
       annotations:
-        argocd.argoproj.io/sync-wave: '{{syncWave}}'
+        argocd.argoproj.io/sync-wave: '{{values.syncWave}}'
     spec:
       project: default
       source:
@@ -141,11 +144,11 @@ spec:
         targetRevision: main
         path: '{{path}}'
       destination:
-        server: '{{targetCluster}}'
+        server: '{{values.targetCluster}}'
         namespace: '{{path.basename}}'
 ```
 
-Services that have overrides get the specific cluster and sync wave. Services without overrides use whatever the template renders (which would need default handling via Go templates).
+Services that have overrides get the specific cluster and sync wave. Services without overrides keep the defaults from the Git generator's `values` field.
 
 ## Multiple Override Layers
 
@@ -239,6 +242,8 @@ spec:
           elements:
           - name: basic-app
             path: apps/basic
+          - name: other-app
+            path: apps/other
       - list:
           elements:
           - name: basic-app
@@ -248,7 +253,7 @@ spec:
       name: '{{ .name }}'
       annotations:
         # Use default if customDomain is not set
-        domain: '{{ default "default.example.com" .customDomain }}'
+        domain: '{{ dig "customDomain" "default.example.com" . }}'
 ```
 
 ## Debugging Merge Generator
