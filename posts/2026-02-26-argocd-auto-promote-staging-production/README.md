@@ -231,6 +231,9 @@ spec:
         - analysis:
             templates:
               - templateName: success-rate
+            args:
+              - name: service-name
+                value: my-app
         - setWeight: 100
   selector:
     matchLabels:
@@ -281,6 +284,9 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  service.slack: |
+    token: $slack-token
+
   trigger.on-deployed: |
     - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       send: [deployment-success]
@@ -313,6 +319,15 @@ data:
         }]
 ```
 
+Subscribe the production Application to the notification triggers:
+
+```yaml
+metadata:
+  annotations:
+    notifications.argoproj.io/subscribe.on-deployed.slack: deployments
+    notifications.argoproj.io/subscribe.on-deploy-failed.slack: deployments
+```
+
 ## Automatic Rollback on Failure
 
 If the production deployment fails, automatically roll back to the previous version:
@@ -323,16 +338,33 @@ post-deploy-verification:
   needs: promote-to-production
   runs-on: ubuntu-latest
   steps:
+    - name: Install ArgoCD CLI
+      run: |
+        curl -sSL -o /usr/local/bin/argocd \
+          https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+        chmod +x /usr/local/bin/argocd
+
+    - name: Login to ArgoCD
+      run: |
+        argocd login ${{ secrets.ARGOCD_SERVER }} \
+          --username admin \
+          --password ${{ secrets.ARGOCD_PASSWORD }} \
+          --grpc-web
+
+    - name: Checkout config repo
+      uses: actions/checkout@v4
+      with:
+        repository: myorg/app-config
+        token: ${{ secrets.GIT_TOKEN }}
+
     - name: Wait for production sync
       run: |
         argocd app wait my-app-production --sync --health --timeout 600 || {
           echo "Production deployment failed, initiating rollback"
 
-          # Get the previous revision
-          PREVIOUS_REV=$(argocd app history my-app-production \
-            --output json | jq -r '.[1].revision')
-
           # Rollback in Git
+          git config user.name "Auto-Promoter"
+          git config user.email "promoter@myorg.com"
           cd overlays/production
           git revert HEAD --no-edit
           git push
@@ -363,10 +395,16 @@ Even with full automation, add guardrails to prevent runaway failures:
 # Limit auto-promotion to business hours
 # In the CI workflow
 promote-to-production:
-  if: |
-    needs.run-staging-tests.result == 'success' &&
-    github.event.head_commit.timestamp >= '09:00' &&
-    github.event.head_commit.timestamp <= '16:00'
+  needs: run-staging-tests
+  runs-on: ubuntu-latest
+  steps:
+    - name: Check business hours
+      run: |
+        HOUR=$(TZ=America/New_York date +%H)
+        if [ "$HOUR" -lt 9 ] || [ "$HOUR" -ge 16 ]; then
+          echo "Outside promotion window"
+          exit 1
+        fi
 ```
 
 Consider adding a promotion rate limit. If multiple versions are queued, promote only the latest one rather than cycling through each version sequentially.
