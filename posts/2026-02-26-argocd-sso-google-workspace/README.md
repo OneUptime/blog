@@ -152,8 +152,9 @@ data:
             - example.com
           # Service account for fetching Google Groups
           serviceAccountFilePath: /tmp/google/googleAuth.json
-          # A Google Workspace admin email (required for domain-wide delegation)
-          adminEmail: admin@example.com
+          # A Google Workspace admin email for each domain (required for domain-wide delegation)
+          domainToAdminEmail:
+            example.com: admin@example.com
           # Fetch group membership
           fetchTransitiveGroupMembership: true
 ```
@@ -265,7 +266,7 @@ This approach does not scale well for large teams, which is why Method 1 with De
 
 Both methods allow you to restrict login to specific Google Workspace domains. With Dex, use the `hostedDomains` setting. With direct OIDC, Google handles this through the OAuth consent screen configuration in Google Cloud Console.
 
-For extra safety, add domain validation in ArgoCD:
+For extra safety, make audience validation explicit in ArgoCD:
 
 ```yaml
   oidc.config: |
