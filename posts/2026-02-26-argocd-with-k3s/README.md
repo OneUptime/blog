@@ -17,8 +17,8 @@ K3s differs from standard Kubernetes in several ways that impact ArgoCD:
 1. **Traefik is the default ingress controller** (not Nginx)
 2. **SQLite is the default datastore** (not etcd, unless you configure it)
 3. **Local Path Provisioner** is included for storage
-4. **Service Load Balancer** (Klipper) handles LoadBalancer services
-5. **Containerd** is the only container runtime (no Docker)
+4. **ServiceLB** (formerly Klipper LoadBalancer) handles LoadBalancer services
+5. **Containerd** is the default container runtime; Docker support requires the optional cri-dockerd integration
 
 ```mermaid
 graph TD
@@ -77,12 +77,12 @@ kubectl top pods -n argocd
 
 ## Exposing ArgoCD with Traefik
 
-K3s ships with Traefik v2 as the default ingress controller. Configure it for ArgoCD.
+K3s ships with Traefik as the default ingress controller. Current K3s releases ship Traefik v3, while older K3s releases shipped Traefik v2. Configure it for ArgoCD.
 
 ```yaml
-# IngressRoute for Traefik v2 (K3s default)
-apiVersion: traefik.containo.us/v1alpha1
-kind: IngressRoute
+# IngressRouteTCP for TLS passthrough
+apiVersion: traefik.io/v1alpha1
+kind: IngressRouteTCP
 metadata:
   name: argocd-server
   namespace: argocd
@@ -90,17 +90,15 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`argocd.example.com`)
-      kind: Rule
+    - match: HostSNI(`argocd.example.com`)
       services:
         - name: argocd-server
           port: 443
-      # Enable TLS passthrough so ArgoCD handles its own TLS
   tls:
     passthrough: true
 ```
 
-If you prefer the standard Kubernetes Ingress resource, Traefik supports that too.
+If you prefer the standard Kubernetes Ingress resource and want Traefik to terminate TLS, Traefik supports that too. Use it with ArgoCD's insecure mode, shown in the next section.
 
 ```yaml
 # Standard Ingress resource (Traefik handles it)
@@ -110,7 +108,7 @@ metadata:
   name: argocd-server-ingress
   namespace: argocd
   annotations:
-    # Traefik-specific annotation for SSL passthrough
+    # Traefik-specific annotation for TLS termination
     traefik.ingress.kubernetes.io/router.tls: "true"
 spec:
   ingressClassName: traefik
@@ -124,7 +122,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  number: 80
   tls:
     - hosts:
         - argocd.example.com
@@ -134,7 +132,7 @@ For more on ArgoCD with Traefik, see [ArgoCD Traefik ingress configuration](http
 
 ## Configuring ArgoCD for TLS Without Passthrough
 
-If you want Traefik to terminate TLS instead of passing through to ArgoCD, disable TLS on the ArgoCD server.
+If you want Traefik to terminate TLS, disable TLS on the ArgoCD server.
 
 ```bash
 # Tell ArgoCD server to run in insecure mode (Traefik handles TLS)
@@ -146,7 +144,7 @@ kubectl patch deployment argocd-server -n argocd \
 Then configure the IngressRoute without passthrough.
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: argocd-server
@@ -226,7 +224,7 @@ kubectl apply -k .
 
 ## Using K3s Local Path Provisioner
 
-K3s includes the Local Path Provisioner, which creates PersistentVolumes backed by local directories. ArgoCD's Redis can use this for persistence.
+K3s includes the Local Path Provisioner, which creates PersistentVolumes backed by local directories. If you customize ArgoCD to use PersistentVolumeClaims, the default K3s `local-path` StorageClass can provision them.
 
 ```bash
 # Verify the storage class exists
@@ -237,7 +235,7 @@ kubectl get storageclass
 # local-path (default)   rancher.io/local-path   5d
 ```
 
-If you need Redis persistence (useful for caching), no extra storage configuration is needed. K3s handles it.
+The default ArgoCD manifests do not create persistent storage for Redis. If you add Redis persistence yourself, K3s can provision the required volume through the `local-path` StorageClass.
 
 ## K3s with Embedded etcd (Multi-Server)
 
@@ -269,6 +267,7 @@ A common pattern is running ArgoCD on one K3s cluster and managing multiple edge
 ```bash
 # On each edge cluster, get the kubeconfig
 # Then add the cluster to ArgoCD
+# The first argument is the kubeconfig context name for the target cluster
 argocd cluster add k3s-edge-01 --name edge-site-01
 argocd cluster add k3s-edge-02 --name edge-site-02
 ```
@@ -318,19 +317,19 @@ curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--disable traefik" sh -
 
 ### Service Load Balancer
 
-K3s uses Klipper as a simple service load balancer. If you use `type: LoadBalancer` for ArgoCD server, Klipper assigns a node IP.
+K3s uses ServiceLB, formerly known as Klipper LoadBalancer, as a simple service load balancer. If you use `type: LoadBalancer` for ArgoCD server, ServiceLB exposes the service through available node host ports and reports node IPs as external IPs.
 
 ```bash
-# Check the external IP assigned by Klipper
+# Check the external IPs reported by ServiceLB
 kubectl get svc argocd-server -n argocd
 ```
 
 ### K3s Agent Nodes and ArgoCD Scheduling
 
-By default, K3s server nodes have a taint that prevents workload scheduling. If your K3s cluster only has server nodes, ArgoCD pods will not schedule unless you remove the taint.
+K3s server nodes run the agent components by default and can schedule workloads unless you configured node taints. If your K3s cluster only has server nodes and you tainted them with `NoSchedule`, ArgoCD pods will not schedule unless you add tolerations or remove the taint.
 
 ```bash
-# Remove the taint from server nodes to allow ArgoCD to schedule
+# Remove common control-plane taints to allow ArgoCD to schedule, if you added them
 kubectl taint nodes --all node-role.kubernetes.io/master:NoSchedule- 2>/dev/null || true
 kubectl taint nodes --all node-role.kubernetes.io/control-plane:NoSchedule- 2>/dev/null || true
 ```
