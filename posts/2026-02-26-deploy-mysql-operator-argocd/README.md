@@ -38,20 +38,21 @@ spec:
   source:
     chart: mysql-operator
     repoURL: https://mysql.github.io/mysql-operator/
-    targetRevision: 2.2.1
+    targetRevision: 2.2.8
     helm:
       releaseName: mysql-operator
       values: |
         # Run two replicas for operator HA
         replicas: 2
         # Resource limits
-        resources:
-          requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 200m
-            memory: 256Mi
+        deployment:
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
   destination:
     server: https://kubernetes.default.svc
     namespace: mysql-operator
@@ -198,14 +199,14 @@ spec:
 
 ## Step 5: Configure Backups
 
-The MySQL Operator supports scheduled backups to object storage. Define backup profiles and schedules.
+The MySQL Operator supports scheduled backups to object storage. Define backup profiles and schedules in the InnoDBCluster, and use `MySQLBackup` for one-off backups.
 
 ```yaml
-# databases/mysql/backup-schedule.yaml
+# databases/mysql/manual-backup.yaml
 apiVersion: mysql.oracle.com/v2
 kind: MySQLBackup
 metadata:
-  name: production-mysql-backup-schedule
+  name: production-mysql-manual-backup
   namespace: databases
 spec:
   clusterName: production-mysql
@@ -244,7 +245,10 @@ ArgoCD needs to understand what a healthy MySQL InnoDB Cluster looks like.
 # argocd-cm ConfigMap
 data:
   resource.customizations.health.mysql.oracle.com_InnoDBCluster: |
-    hs = {}
+    hs = {
+      status = "Progressing",
+      message = "Waiting for cluster status"
+    }
     if obj.status ~= nil then
       if obj.status.cluster ~= nil then
         if obj.status.cluster.status == "ONLINE" then
@@ -258,9 +262,6 @@ data:
           hs.status = "Progressing"
           hs.message = obj.status.cluster.status or "Initializing"
         end
-      else
-        hs.status = "Progressing"
-        hs.message = "Waiting for cluster status"
       end
     end
     return hs
