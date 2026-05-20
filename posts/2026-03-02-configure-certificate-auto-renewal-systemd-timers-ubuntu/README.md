@@ -15,10 +15,10 @@ Expired certificates cause outages. A certificate that renews automatically mean
 systemd timers have several advantages for certificate renewal:
 
 - Output goes to the journal (`journalctl`) - no lost emails or /dev/null
-- Supports `OnCalendar` (like cron) plus `OnBootSec`, `OnActiveSec` - useful if the system was off when renewal should have run
+- Supports `OnCalendar` (like cron) plus `OnBootSec`, `OnActiveSec` - useful for boot-relative and interval-based scheduling
 - Service unit handles dependencies (wait for network, etc.)
-- `AccuracySec` adds randomization to spread load across a time window
-- Systemd tracks when timers last ran, so missed runs are retried at next boot
+- `RandomizedDelaySec` adds randomization to spread load across a time window
+- With `Persistent=true`, systemd tracks when calendar timers last ran, so missed runs are retried at next boot
 
 ## Basic Architecture
 
@@ -26,7 +26,7 @@ A systemd timer consists of two units:
 - A `.service` unit: what to run
 - A `.timer` unit: when to run the service
 
-Both must have the same base name.
+By default, both use the same base name. For example, `acme-renew.timer` activates `acme-renew.service` unless you set `Unit=` in the timer.
 
 ## Setting Up Renewal for acme.sh
 
@@ -65,13 +65,12 @@ sudo nano /etc/systemd/system/acme-renew.timer
 ```ini
 [Unit]
 Description=Daily ACME certificate renewal
-Wants=acme-renew.service
 
 [Timer]
 # Run daily at a random time between 02:00 and 03:00
 OnCalendar=*-*-* 02:00:00
 # Spread the start time by up to 1 hour (reduces CA server load)
-AccuracySec=1h
+AccuracySec=1us
 RandomizedDelaySec=1h
 # Run at boot if the scheduled time was missed (e.g., system was off)
 Persistent=true
@@ -108,7 +107,6 @@ sudo nano /usr/local/bin/renew-certificates.sh
 set -euo pipefail
 
 LOG_TAG="cert-renew"
-NGINX_RELOADED=false
 
 logger -t "$LOG_TAG" "Starting certificate renewal check"
 
@@ -116,7 +114,7 @@ logger -t "$LOG_TAG" "Starting certificate renewal check"
 # Example: Certbot
 if command -v certbot &>/dev/null; then
     if certbot renew --quiet --no-random-sleep-on-renew; then
-        logger -t "$LOG_TAG" "Certbot renewal completed successfully"
+        logger -t "$LOG_TAG" "Certbot renewal check completed successfully"
     else
         logger -t "$LOG_TAG" "Certbot renewal failed"
         exit 1
@@ -133,8 +131,8 @@ if [ -x /root/.acme.sh/acme.sh ]; then
     fi
 fi
 
-# Reload nginx only if not already reloaded
-if ! $NGINX_RELOADED && systemctl is-active --quiet nginx; then
+# Reload nginx so it picks up any renewed certificate files
+if systemctl is-active --quiet nginx; then
     systemctl reload nginx
     logger -t "$LOG_TAG" "Nginx reloaded"
 fi
@@ -221,8 +219,8 @@ systemctl status cert-renew.timer
 Expected output for `list-timers`:
 
 ```text
-NEXT                        LEFT      LAST                        PASSED UNIT
-Mon 2026-03-02 12:34:00 UTC 6h left   Mon 2026-03-02 00:12:00 UTC 6h ago cert-renew.timer
+NEXT                        LEFT      LAST                        PASSED UNIT             ACTIVATES
+Mon 2026-03-02 12:34:00 UTC 6h left   Mon 2026-03-02 00:12:00 UTC 6h ago cert-renew.timer cert-renew.service
 ```
 
 ## Running the Renewal Manually
