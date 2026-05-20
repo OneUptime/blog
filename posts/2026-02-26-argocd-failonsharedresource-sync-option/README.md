@@ -75,11 +75,11 @@ The sync stops, and no resources are applied. This fail-fast behavior lets you k
 
 ## Enabling via CLI
 
-For a one-time sync with the option:
+To add the option to an existing application with the CLI:
 
 ```bash
-# Sync and fail if shared resources are found
-argocd app sync team-a-services --sync-option FailOnSharedResource=true
+# Configure the application to fail if shared resources are found
+argocd app set team-a-services --sync-option FailOnSharedResource=true
 ```
 
 ## Practical Example: Multi-Team Platform
@@ -186,17 +186,15 @@ spec:
       kind: ResourceQuota
 ```
 
-**Option 3: Intentionally share resources.** If two applications legitimately need to manage the same resource, you can use the `argocd.argoproj.io/managed-by` annotation to explicitly assign ownership:
+**Option 3: Intentionally share resources.** If multiple applications need to use the same ConfigMap, Secret, or ServiceAccount, do not define it in each application. Let exactly one application manage the shared resource, and have the other applications reference it:
 
 ```yaml
-# Explicitly assign resource to one application
+# Managed by the shared-infrastructure application
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: shared-config
   namespace: platform
-  annotations:
-    argocd.argoproj.io/managed-by: team-a-platform
 data:
   key: value
 ```
@@ -217,7 +215,7 @@ data:
   application.resourceTrackingMethod: annotation+label
 ```
 
-The `annotation+label` method is the most reliable for detecting shared resources because it uses both the label and annotation for tracking. If you are using the basic `label` tracking method, there are edge cases where shared resources might not be detected.
+The `annotation` and `annotation+label` methods are the most reliable for detecting shared resources because they use the `argocd.argoproj.io/tracking-id` annotation for tracking. With `annotation+label`, the `app.kubernetes.io/instance` label is still added for compatibility with other tools, but ArgoCD does not use that label for tracking. If you are using the basic `label` tracking method, there are edge cases where shared resources might not be detected.
 
 ## When to Use FailOnSharedResource
 
