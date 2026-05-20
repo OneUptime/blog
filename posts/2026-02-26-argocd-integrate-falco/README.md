@@ -45,11 +45,21 @@ spec:
   source:
     repoURL: https://falcosecurity.github.io/charts
     chart: falco
-    targetRevision: 4.0.0
+    targetRevision: 8.0.5
     helm:
       values: |
         driver:
           kind: modern_ebpf  # Use eBPF instead of kernel module
+        mounts:
+          volumes:
+            - name: falco-custom-rules
+              configMap:
+                name: falco-custom-rules
+                optional: true
+          volumeMounts:
+            - name: falco-custom-rules
+              mountPath: /etc/falco/rules.d/custom-rules.yaml
+              subPath: custom-rules.yaml
         falcosidekick:
           enabled: true
           config:
@@ -66,11 +76,11 @@ spec:
             memory: 512Mi
           limits:
             memory: 1Gi
+        metrics:
+          enabled: true
+        serviceMonitor:
+          create: true
         falco:
-          grpc:
-            enabled: true
-          grpc_output:
-            enabled: true
           json_output: true
           log_level: info
   destination:
@@ -122,7 +132,7 @@ data:
         outbound and
         container and
         k8s.ns.name in (production) and
-        not (fd.sip in (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16))
+        not (fd.sip in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"))
       output: >
         Unexpected outbound connection from production
         (command=%proc.cmdline connection=%fd.name
@@ -153,7 +163,7 @@ data:
         open_read and
         container and
         (fd.name in (/etc/shadow, /etc/passwd, /etc/sudoers) or
-        fd.directory in (/root/.ssh, /home/*/.ssh))
+        (fd.name pmatch (/root/.ssh, /home) and fd.name contains "/.ssh/"))
       output: >
         Sensitive file read in container
         (file=%fd.name command=%proc.cmdline
@@ -187,7 +197,7 @@ metadata:
   name: falco-custom-rules
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"  # After Falco is installed
+    argocd.argoproj.io/sync-wave: "-1"  # Before Falco mounts the rules ConfigMap
 spec:
   project: security
   source:
@@ -286,7 +296,7 @@ spec:
                       command: [sh, -c]
                       args:
                         - |
-                          # Apply a network policy to isolate the pod
+                          # Label the pod for a quarantine NetworkPolicy selector
                           kubectl label pod {{inputs.parameters.pod-name}} \
                             -n {{inputs.parameters.namespace}} \
                             quarantine=true --overwrite
@@ -305,7 +315,7 @@ spec:
 
 ## Monitoring Falco Health with ArgoCD
 
-Configure ArgoCD to check Falco DaemonSet health:
+Configure ArgoCD to check the Falco DaemonSet health:
 
 ```yaml
 # argocd-cm ConfigMap
@@ -329,7 +339,7 @@ data:
 
 ## Falco Metrics in Prometheus
 
-Falco exposes Prometheus metrics for monitoring:
+With `metrics.enabled` and `serviceMonitor.create` enabled in the Falco Helm values above, Falco exposes Prometheus metrics and the chart creates a ServiceMonitor. If you manage the ServiceMonitor separately, use the chart's metrics service labels:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -341,6 +351,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: falco
+      type: falco-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -350,13 +361,13 @@ Key metrics to monitor:
 
 ```promql
 # Alert rate by priority
-rate(falco_events_total[5m])
+rate(falcosecurity_falco_rules_matches_total[5m])
 
 # Critical alerts
-rate(falco_events_total{priority="Critical"}[5m])
+rate(falcosecurity_falco_rules_matches_total{priority="2"}[5m])
 
 # Rules with most alerts
-topk(10, sum by (rule) (rate(falco_events_total[1h])))
+topk(10, sum by (rule_name) (rate(falcosecurity_falco_rules_matches_total[1h])))
 ```
 
 ## Best Practices
