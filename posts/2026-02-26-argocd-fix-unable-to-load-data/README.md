@@ -14,12 +14,12 @@ This guide covers the most common reasons behind this error and gives you concre
 
 ## Understanding the Error
 
-The ArgoCD UI is a single-page application that communicates with the ArgoCD API server over gRPC-web and REST endpoints. When you see "Unable to load data," it means the frontend could not successfully complete an API call to the backend. This could be caused by:
+The ArgoCD UI is a single-page application that communicates with the HTTP/HTTPS interface exposed by the ArgoCD API server. When you see "Unable to load data," it means the frontend could not successfully complete an API call to the backend. This could be caused by:
 
 - The API server being down or unhealthy
 - Authentication token expiration
 - Network or ingress misconfiguration
-- CORS or TLS issues
+- Reverse proxy path or TLS issues
 - The API server being overloaded
 
 ## Step 1: Check the ArgoCD API Server Health
@@ -45,7 +45,7 @@ Common issues include:
 - Missing or corrupted TLS certificates
 - Unable to connect to the Redis cache
 - Unable to connect to the repo server
-- Database connection failures in HA mode
+- Kubernetes API, Redis, or Redis HA connectivity failures
 
 ## Step 2: Verify Your Authentication Token
 
@@ -76,7 +76,7 @@ argocd login argocd.example.com --username admin --password <password>
 
 ## Step 3: Check Ingress and Network Configuration
 
-If you access ArgoCD through an ingress controller or load balancer, misconfigurations can cause intermittent "Unable to load data" errors, especially around gRPC communication.
+If you access ArgoCD through an ingress controller or load balancer, misconfigurations can cause intermittent "Unable to load data" errors, especially around routing, TLS, or subpath handling.
 
 **Common Nginx Ingress issues:**
 
@@ -88,12 +88,13 @@ metadata:
   namespace: argocd
   annotations:
     # These annotations are critical for ArgoCD
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
     # Increase timeouts to prevent premature disconnects
     nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
 spec:
+  ingressClassName: nginx
   rules:
     - host: argocd.example.com
       http:
@@ -104,12 +105,12 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
-**If using gRPC (which ArgoCD UI uses internally):**
+**If using the ArgoCD CLI through the same ingress:**
 
-ArgoCD uses gRPC-Web for real-time data streaming. If your load balancer does not support HTTP/2 or gRPC, you need to split the ingress into two:
+The ArgoCD CLI uses gRPC over HTTP/2 by default, while the UI uses HTTP/HTTPS. If you terminate TLS at ingress-nginx and do not use SSL passthrough, split the ingress into two and run the ArgoCD API server with TLS disabled:
 
 ```yaml
 # HTTP ingress for the UI and REST API
@@ -119,8 +120,9 @@ metadata:
   name: argocd-server-http
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
 spec:
+  ingressClassName: nginx
   rules:
     - host: argocd.example.com
       http:
@@ -131,9 +133,9 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: http
 ---
-# gRPC ingress for the CLI and real-time streaming
+# gRPC ingress for the CLI
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -142,6 +144,7 @@ metadata:
   annotations:
     nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
 spec:
+  ingressClassName: nginx
   rules:
     - host: grpc.argocd.example.com
       http:
@@ -152,7 +155,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
 ## Step 4: Check for TLS Certificate Issues
@@ -191,9 +194,8 @@ The ArgoCD API server relies on Redis for caching. If Redis is down or unreachab
 # Check Redis pod status
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis
 
-# Check Redis connectivity from the API server
-kubectl exec -n argocd deployment/argocd-server -- \
-  redis-cli -h argocd-redis.argocd.svc.cluster.local ping
+# Check Redis connectivity from the Redis pod in a non-HA installation
+kubectl exec -n argocd deployment/argocd-redis -- redis-cli ping
 ```
 
 You should see `PONG` as the response. If Redis is down, restart it:
@@ -214,9 +216,9 @@ Common patterns you might see:
 - **401 Unauthorized**: Token expired, log back in
 - **403 Forbidden**: RBAC policy preventing access to the resource
 - **502/504 Gateway errors**: Ingress or load balancer cannot reach the API server
-- **CORS errors**: The ArgoCD server URL does not match the URL in the browser
+- **404 errors on a subpath**: The ArgoCD server is not configured for the path used by the reverse proxy
 
-**Fix CORS issues by setting the server URL:**
+**Fix subpath issues by setting the UI and API paths:**
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
@@ -226,8 +228,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  server.rootpath: ""
-  server.basehref: "/"
+  server.rootpath: "/argo-cd"
+  server.basehref: "/argo-cd"
 ```
 
 ## Step 7: Check RBAC Restrictions
