@@ -30,14 +30,28 @@ Navigate to your config repo settings or use the GitHub API:
 ```bash
 # Set branch protection via GitHub CLI
 
-gh api repos/org/config-repo/branches/main/protection \
-  --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["validate-manifests","lint-yaml"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":2,"dismiss_stale_reviews":true,"require_code_owner_reviews":true}' \
-  --field restrictions=null \
-  --field allow_force_pushes=false \
-  --field allow_deletions=false
+gh api repos/org/config-repo/branches/main/protection --method PUT --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": [],
+    "checks": [
+      {"context": "validate-manifests"},
+      {"context": "security-scan"},
+      {"context": "dry-run-sync"}
+    ]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 2,
+    "dismiss_stale_reviews": true,
+    "require_code_owner_reviews": true
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+JSON
 ```
 
 ### Recommended Rules
@@ -60,7 +74,6 @@ rules:
     strict: true  # Branch must be up to date before merging
     checks:
       - validate-manifests
-      - lint-yaml
       - dry-run-sync
       - security-scan
 
@@ -109,11 +122,11 @@ CODEOWNERS ensures the right people review changes to the right files:
 # Shared libraries require platform approval
 /lib/                     @org/platform-team
 
-# Production overlays require both team and platform approval
+# Production overlays require platform approval
 /services/*/overlays/production/  @org/platform-team
 ```
 
-With `require_code_owner_reviews` enabled, a PR modifying production overlays requires approval from both the platform team and the security team.
+With `require_code_owner_reviews` enabled, a PR modifying production overlays requires approval from a platform team code owner. If multiple owners are listed on the same CODEOWNERS line, GitHub accepts approval from any one of those owners; use additional approval rules or status checks when you need separate approvals from multiple groups.
 
 ## CI Status Checks
 
@@ -130,6 +143,7 @@ on:
 
 jobs:
   validate:
+    name: validate-manifests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -170,6 +184,7 @@ on:
 
 jobs:
   scan:
+    name: security-scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -192,7 +207,7 @@ jobs:
 
 ### Dry-Run Sync Check
 
-Validate that ArgoCD can actually render and apply the manifests:
+Validate that ArgoCD can render the manifests and compare them with live state:
 
 ```yaml
 # .github/workflows/dry-run.yaml
@@ -203,15 +218,18 @@ on:
 
 jobs:
   dry-run:
+    name: dry-run-sync
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Get changed applications
         id: changes
         run: |
           # Find which ArgoCD applications are affected by this PR
-          changed_dirs=$(git diff --name-only origin/main | xargs -I{} dirname {} | sort -u)
+          changed_dirs=$(git diff --name-only origin/main...HEAD | xargs -r -I{} dirname {} | sort -u | tr '\n' ' ')
           echo "changed=$changed_dirs" >> $GITHUB_OUTPUT
 
       - name: ArgoCD diff check
@@ -237,18 +255,17 @@ If you use GitLab instead of GitHub:
 ```bash
 # Set branch protection via GitLab API
 curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-  --request PUT \
-  "https://gitlab.com/api/v4/projects/$PROJECT_ID/repository/branches/main/protect" \
-  --data "developers_can_push=false" \
-  --data "developers_can_merge=false"
+  --header "Content-Type: application/json" \
+  --request POST \
+  --data '{"name":"main","push_access_level":0,"merge_access_level":40,"allow_force_push":false}' \
+  "https://gitlab.com/api/v4/projects/$PROJECT_ID/protected_branches"
 
 # Set merge request approval rules
 curl --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
+  --header "Content-Type: application/json" \
   --request POST \
-  "https://gitlab.com/api/v4/projects/$PROJECT_ID/approval_rules" \
-  --data "name=Production Approval" \
-  --data "approvals_required=2" \
-  --data "group_ids[]=$PLATFORM_TEAM_GROUP_ID"
+  --data "{\"name\":\"Production Approval\",\"approvals_required\":2,\"group_ids\":[$PLATFORM_TEAM_GROUP_ID],\"applies_to_all_protected_branches\":true}" \
+  "https://gitlab.com/api/v4/projects/$PROJECT_ID/approval_rules"
 ```
 
 ## Environment-Specific Branch Protection
@@ -278,7 +295,7 @@ Different environments may need different levels of protection:
 
 ## Integrating with ArgoCD
 
-ArgoCD can be configured to only sync from protected branches:
+ArgoCD applications should be configured to track the protected branch, while AppProjects restrict the trusted source repository:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -288,8 +305,11 @@ metadata:
 spec:
   sourceRepos:
     - https://github.com/org/config-repo.git
-  # ArgoCD will only allow applications that reference the main branch
-  # Combine this with the Application targetRevision
+  destinations:
+    - namespace: production
+      server: https://kubernetes.default.svc
+  # AppProjects restrict source repositories, not Git branches.
+  # Combine this with the Application targetRevision below.
 ```
 
 Set the Application to track a specific branch:
@@ -311,7 +331,7 @@ gh api repos/org/config-repo/branches/main/protection | jq '{
   required_reviews: .required_pull_request_reviews.required_approving_review_count,
   dismiss_stale: .required_pull_request_reviews.dismiss_stale_reviews,
   code_owners: .required_pull_request_reviews.require_code_owner_reviews,
-  status_checks: [.required_status_checks.contexts[]],
+  status_checks: ((.required_status_checks.contexts // []) + ((.required_status_checks.checks // []) | map(.context))),
   force_push: .allow_force_pushes.enabled,
   deletion: .allow_deletions.enabled
 }'
