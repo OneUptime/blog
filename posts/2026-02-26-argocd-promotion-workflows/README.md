@@ -99,8 +99,8 @@ resources:
 images:
   - name: myregistry.com/myapp
     newTag: "abc1234"  # Promoted from dev
-patchesStrategicMerge:
-  - replica-patch.yaml
+patches:
+  - path: replica-patch.yaml
 
 # overlays/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -111,9 +111,9 @@ resources:
 images:
   - name: myregistry.com/myapp
     newTag: "def5678"  # Promoted from staging
-patchesStrategicMerge:
-  - replica-patch.yaml
-  - resources-patch.yaml
+patches:
+  - path: replica-patch.yaml
+  - path: resources-patch.yaml
 ```
 
 ### ArgoCD Applications per Environment
@@ -248,7 +248,7 @@ jobs:
           curl -sSL -o /usr/local/bin/argocd \
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x /usr/local/bin/argocd
-          argocd app wait myapp-dev --grpc-web --health --timeout 300
+          argocd app wait myapp-dev --grpc-web --sync --health --timeout 300
 
       - name: Run smoke tests on dev
         run: |
@@ -279,7 +279,7 @@ jobs:
           curl -sSL -o /usr/local/bin/argocd \
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x /usr/local/bin/argocd
-          argocd app wait myapp-staging --grpc-web --health --timeout 300
+          argocd app wait myapp-staging --grpc-web --sync --health --timeout 300
 
       - uses: actions/checkout@v4
       - name: Run integration tests on staging
@@ -309,7 +309,7 @@ jobs:
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
           chmod +x /usr/local/bin/argocd
           argocd app sync myapp-production --grpc-web
-          argocd app wait myapp-production --grpc-web --health --timeout 300
+          argocd app wait myapp-production --grpc-web --sync --health --timeout 300
 ```
 
 ## Pull Request Based Promotion
@@ -360,9 +360,8 @@ ENV="${1:-production}"
 cd /tmp/k8s-manifests
 
 # Get the previous image tag from Git history
-PREVIOUS_TAG=$(git log --oneline -2 "overlays/$ENV/kustomization.yaml" | \
-  tail -1 | awk '{print $1}' | \
-  xargs git show -- "overlays/$ENV/kustomization.yaml" | \
+PREVIOUS_COMMIT=$(git log --format=%H -2 -- "overlays/$ENV/kustomization.yaml" | tail -1)
+PREVIOUS_TAG=$(git show "$PREVIOUS_COMMIT:overlays/$ENV/kustomization.yaml" | \
   grep "newTag:" | awk '{print $2}' | tr -d '"')
 
 echo "Rolling back $ENV to $PREVIOUS_TAG"
