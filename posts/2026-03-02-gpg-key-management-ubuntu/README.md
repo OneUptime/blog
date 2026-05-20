@@ -28,7 +28,8 @@ ls -la ~/.gnupg/
 
 # Set proper permissions (important for security)
 chmod 700 ~/.gnupg
-chmod 600 ~/.gnupg/*
+find ~/.gnupg -type d -exec chmod 700 {} \;
+find ~/.gnupg -type f -exec chmod 600 {} \;
 ```
 
 ## Generating a Secure Key Pair
@@ -49,9 +50,9 @@ gpg --full-generate-key
 # Passphrase: Use a strong, memorable passphrase
 ```
 
-### Generating an Ed25519/Cv25519 Key (Modern Approach)
+### Generating an Ed25519/Curve25519 Key (Modern Approach)
 
-Ed25519 keys are smaller, faster, and considered more secure than RSA 4096 for most use cases:
+Ed25519 keys are smaller, faster, and a modern choice with strong security for most use cases:
 
 ```bash
 # Interactive key generation specifying Ed25519
@@ -175,7 +176,7 @@ gpg --keyserver keys.openpgp.org --search-keys target@example.com
 # Import by key ID or fingerprint (more reliable than email search)
 gpg --keyserver keys.openpgp.org --recv-keys ABCDEF1234567890
 
-# Import from keys.gnupg.net
+# Import from Ubuntu's keyserver
 gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys KEYID
 ```
 
@@ -185,14 +186,14 @@ gpg --keyserver hkps://keyserver.ubuntu.com --recv-keys KEYID
 # Get your key ID first
 gpg --list-keys --keyid-format LONG youremail@example.com
 
-# Send to the OpenPGP keyserver network
+# Send to keys.openpgp.org
 gpg --keyserver keys.openpgp.org --send-keys YOURKEYID
 
 # Send to Ubuntu's keyserver
 gpg --keyserver hkps://keyserver.ubuntu.com --send-keys YOURKEYID
 
-# Send to multiple keyservers
-for ks in keys.openpgp.org keyserver.ubuntu.com pgp.mit.edu; do
+# Send to multiple keyservers if you intentionally use more than one
+for ks in keys.openpgp.org keyserver.ubuntu.com; do
     gpg --keyserver "$ks" --send-keys YOURKEYID
 done
 ```
@@ -260,7 +261,7 @@ gpg --lsign-key someone@example.com
 ```bash
 # Create or edit ~/.gnupg/gpg.conf
 cat << 'EOF' > ~/.gnupg/gpg.conf
-# Use the strongest hash algorithm
+# Set preferred algorithms
 personal-cipher-preferences AES256 AES192 AES
 personal-digest-preferences SHA512 SHA384 SHA256
 personal-compress-preferences ZLIB BZIP2 ZIP Uncompressed
@@ -268,7 +269,7 @@ personal-compress-preferences ZLIB BZIP2 ZIP Uncompressed
 # Use SHA512 for certificate signatures
 cert-digest-algo SHA512
 
-# Always show long key IDs (prevent key ID collision attacks)
+# Always show long key IDs (fingerprints are still the safest identifier)
 keyid-format 0xlong
 
 # Show fingerprints in key listings
@@ -277,11 +278,13 @@ with-fingerprint
 # Don't reveal the key ID used to encrypt a message (privacy)
 throw-keyids
 
-# Use the specified keyserver
-keyserver hkps://keys.openpgp.org
-
 # Always include your key in encrypted messages (so you can decrypt your own)
 default-recipient-self
+EOF
+
+# Configure the default keyserver for GnuPG's keyserver helper
+cat << 'EOF' > ~/.gnupg/dirmngr.conf
+keyserver hkps://keys.openpgp.org
 EOF
 ```
 
