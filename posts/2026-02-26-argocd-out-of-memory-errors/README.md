@@ -33,7 +33,7 @@ kubectl get pods -n argocd -o json | \
     {container: .name, exitCode: .lastState.terminated.exitCode}'
 ```
 
-You will also see these patterns in the logs before an OOM:
+You may also see these patterns in the logs before an OOM:
 
 ```bash
 # Check controller logs for memory warnings
@@ -208,12 +208,19 @@ The repo server OOMs when rendering large Helm charts or cloning large repositor
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cmd-params-cm
+  name: my-large-repo
   namespace: argocd
-data:
-  reposerver.git.shallow.clone: "true"
+  labels:
+    argocd.argoproj.io/secret-type: repository
+  annotations:
+    managed-by: argocd.argoproj.io
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/example/large-manifests.git
+  depth: "1"
 ```
 
 ### Limit Concurrent Manifest Generation
@@ -251,9 +258,11 @@ redis:
   resources:
     limits:
       memory: 1Gi
-  config:
-    maxmemory: 768mb  # 75% of limit
-    maxmemory-policy: allkeys-lru  # Evict least recently used keys
+  extraArgs:
+    - --maxmemory
+    - 768mb  # 75% of limit
+    - --maxmemory-policy
+    - allkeys-lru  # Evict least recently used keys
 ```
 
 For Redis HA:
