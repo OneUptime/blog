@@ -8,7 +8,7 @@ Description: Learn how ArgoCD label-based resource tracking works, its advantage
 
 ---
 
-Label-based tracking is the original and default resource tracking method in ArgoCD. It uses the standard Kubernetes label `app.kubernetes.io/instance` to associate cluster resources with ArgoCD applications. While it is the simplest approach, it comes with significant limitations that you need to understand to avoid problems in production.
+Label-based tracking is the original resource tracking method in ArgoCD, though current ArgoCD releases default to annotation-based tracking. It uses the standard Kubernetes label `app.kubernetes.io/instance` to associate cluster resources with ArgoCD applications. While it is the simplest approach, it comes with significant limitations that you need to understand to avoid problems in production.
 
 This guide covers how label-based tracking works, its practical implications, and how to deal with the issues it can cause.
 
@@ -36,7 +36,7 @@ The label value is the name of the ArgoCD Application resource that manages it. 
 
 ## Configuring Label-Based Tracking
 
-Label-based tracking is the default, so you may not need to configure anything. But if you want to explicitly set it:
+Current ArgoCD releases default to annotation-based tracking, so you need to explicitly set label-based tracking if you want to use it:
 
 ```yaml
 apiVersion: v1
@@ -48,7 +48,7 @@ data:
   application.resourceTrackingMethod: label
 ```
 
-Or leave the `application.resourceTrackingMethod` key unset, which defaults to `label`.
+Leaving the `application.resourceTrackingMethod` key unset uses ArgoCD's default tracking method, which is `annotation` in current releases.
 
 ## Querying Tracked Resources
 
@@ -104,14 +104,14 @@ When ArgoCD deploys this chart, it:
 This can cause:
 
 - The Helm-generated label value is lost
-- The resource may show as perpetually "OutOfSync" because Git has one value but live has another
+- The resource may be mis-associated or show drift if another tool later changes the label value
 - Other tools that depend on the Helm release name in this label break
 
 ### Diagnosing Label Conflicts
 
 ```bash
 # Check the desired label value (from Git/Helm)
-argocd app manifests my-app --source live -o json | jq '.metadata.labels["app.kubernetes.io/instance"]'
+argocd app manifests my-app --source git | yq 'select(.kind == "Deployment" and .metadata.name == "my-deployment").metadata.labels."app.kubernetes.io/instance"'
 
 # Check the live label value
 kubectl get deployment my-deployment -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}'
@@ -179,7 +179,7 @@ When two ArgoCD applications try to manage the same resource, label-based tracki
 # Only one label value can exist - whoever syncs last "wins"
 ```
 
-This is a fundamental limitation of label-based tracking. Annotation tracking handles this better because the tracking ID includes the full resource path.
+This is a fundamental limitation of label-based tracking. Annotation tracking reduces ambiguity because the tracking ID includes the application and full resource path, but it still does not make shared ownership of the same live resource safe.
 
 ## Label Propagation to Sub-Resources
 
