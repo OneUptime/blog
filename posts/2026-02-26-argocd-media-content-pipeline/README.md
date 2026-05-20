@@ -54,6 +54,8 @@ spec:
   - group: ''
     kind: Namespace
   namespaceResourceWhitelist:
+  - group: ''
+    kind: ConfigMap
   - group: 'apps'
     kind: Deployment
   - group: 'batch'
@@ -62,6 +64,8 @@ spec:
     kind: CronJob
   - group: 'keda.sh'
     kind: ScaledObject
+  - group: 'keda.sh'
+    kind: TriggerAuthentication
 ---
 # projects/media-delivery.yaml
 apiVersion: argoproj.io/v1alpha1
@@ -139,6 +143,16 @@ spec:
         operator: Exists
         effect: NoSchedule
 ---
+# KEDA authentication for AWS pod identity
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: transcoder-sqs-auth
+  namespace: media-ingest-prod
+spec:
+  podIdentity:
+    provider: aws
+---
 # KEDA autoscaler based on queue depth
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -153,6 +167,8 @@ spec:
   cooldownPeriod: 300
   triggers:
   - type: aws-sqs-queue
+    authenticationRef:
+      name: transcoder-sqs-auth
     metadata:
       queueURL: https://sqs.us-east-1.amazonaws.com/123456789/media-ingest-queue
       queueLength: "10"
@@ -211,7 +227,7 @@ data:
     }
 ```
 
-When an engineer commits a new profile, ArgoCD syncs the ConfigMap. The workers pick up the new configuration without restarting, or you can add a rolling restart annotation if needed.
+When an engineer commits a new profile, ArgoCD syncs the ConfigMap. Workers can pick up the new configuration without restarting if the application reloads the mounted file, or you can add a rolling restart annotation if needed.
 
 ## CDN Origin Server Deployment
 
@@ -331,10 +347,10 @@ spec:
 
 ## Handling Content Drops and Major Events
 
-When a major show premieres or a live event starts, you need to scale infrastructure ahead of time. Use ArgoCD sync waves to orchestrate this:
+When a major show premieres or a live event starts, you need to scale infrastructure ahead of time. Use ArgoCD sync waves to orchestrate the complete manifests or Kustomize patches that change replica counts:
 
 ```yaml
-# events/premiere-scaling.yaml
+# events/premiere-scaling-patches.yaml
 # Wave 0: Scale up infrastructure first
 apiVersion: v1
 kind: ConfigMap
@@ -345,7 +361,8 @@ metadata:
 data:
   event: "show-premiere-2026-03-01"
 ---
-# Wave 1: Scale transcoder workers
+# Wave 1: Scale transcoder workers.
+# Use this as a Kustomize strategic merge patch against the existing Deployment.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -355,7 +372,8 @@ metadata:
 spec:
   replicas: 200  # Pre-scale for event
 ---
-# Wave 2: Scale origin servers
+# Wave 2: Scale origin servers.
+# Use this as a Kustomize strategic merge patch against the existing Deployment.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -365,7 +383,8 @@ metadata:
 spec:
   replicas: 30  # Increased for event
 ---
-# Wave 3: Scale streaming edges
+# Wave 3: Scale streaming edges.
+# Use this as a Kustomize strategic merge patch against the existing Deployment.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -380,10 +399,10 @@ Create a PR before the event with these scaling changes, merge when ready, and A
 
 ## Monitoring Media Pipelines
 
-Track processing pipeline health with custom ArgoCD health checks:
+Track processing pipeline health with custom ArgoCD health checks for custom media-processing resources:
 
 ```lua
--- custom-health-check for media processing jobs
+-- resource.customizations.health.media.example.com_ProcessingJob
 hs = {}
 if obj.status ~= nil then
   if obj.status.conditions ~= nil then
