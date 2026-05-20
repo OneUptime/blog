@@ -8,9 +8,9 @@ Description: Learn how to configure ArgoCD health checks for cert-manager Certif
 
 ---
 
-Cert-manager automates TLS certificate management in Kubernetes. When you manage cert-manager resources through ArgoCD, you need accurate health reporting. A Certificate resource that exists but has a failed ACME challenge is not healthy. An Issuer that cannot connect to its CA is not healthy. Without custom health checks, ArgoCD shows these as green, hiding critical TLS failures.
+Cert-manager automates TLS certificate management in Kubernetes. When you manage cert-manager resources through ArgoCD, you need accurate health reporting. A Certificate resource that exists but has a failed ACME challenge is not healthy. An Issuer that cannot connect to its CA is not healthy. Without built-in or custom health checks, ArgoCD may not surface these failures, hiding critical TLS issues.
 
-This guide provides ready-to-use health check configurations for all cert-manager resource types.
+This guide provides ready-to-use health check configurations for the common cert-manager resource types involved in certificate issuance.
 
 ## Cert-Manager Resource Types
 
@@ -29,7 +29,7 @@ The health of a Certificate depends on the entire chain working correctly.
 
 ## Certificate Health Check
 
-The Certificate resource is the most important one to monitor. It has conditions that indicate whether the certificate is issued, expiring, or failed:
+The Certificate resource is the most important one to monitor. It has conditions that indicate whether the certificate is ready, issuing, or failed, and status fields that include expiry information:
 
 ```yaml
 apiVersion: v1
@@ -44,6 +44,17 @@ data:
       hs.status = "Progressing"
       hs.message = "Certificate is being provisioned"
       return hs
+    end
+
+    -- Check for Issuing condition first so renewals do not appear healthy
+    for i, condition in ipairs(obj.status.conditions) do
+      if condition.type == "Issuing" then
+        if condition.status == "True" then
+          hs.status = "Progressing"
+          hs.message = condition.message or "Certificate is being issued"
+          return hs
+        end
+      end
     end
 
     -- Check for Ready condition
@@ -71,17 +82,6 @@ data:
             hs.status = "Degraded"
             hs.message = condition.message or "Certificate is not ready: " .. (condition.reason or "unknown")
           end
-          return hs
-        end
-      end
-    end
-
-    -- Check for Issuing condition
-    for i, condition in ipairs(obj.status.conditions) do
-      if condition.type == "Issuing" then
-        if condition.status == "True" then
-          hs.status = "Progressing"
-          hs.message = condition.message or "Certificate is being issued"
           return hs
         end
       end
@@ -163,6 +163,17 @@ CertificateRequests are created automatically by cert-manager when processing a 
       return hs
     end
     for i, condition in ipairs(obj.status.conditions) do
+      if condition.type == "Denied" and condition.status == "True" then
+        hs.status = "Degraded"
+        hs.message = condition.message or "CertificateRequest was denied"
+        return hs
+      elseif condition.type == "InvalidRequest" and condition.status == "True" then
+        hs.status = "Degraded"
+        hs.message = condition.message or "CertificateRequest is invalid"
+        return hs
+      end
+    end
+    for i, condition in ipairs(obj.status.conditions) do
       if condition.type == "Ready" then
         if condition.status == "True" then
           hs.status = "Healthy"
@@ -174,9 +185,6 @@ CertificateRequests are created automatically by cert-manager when processing a 
           elseif condition.reason == "Failed" then
             hs.status = "Degraded"
             hs.message = condition.message or "CertificateRequest failed"
-          elseif condition.reason == "Denied" then
-            hs.status = "Degraded"
-            hs.message = condition.message or "CertificateRequest was denied"
           else
             hs.status = "Progressing"
             hs.message = condition.message or condition.reason or "Processing"
@@ -206,7 +214,7 @@ For ACME-based issuers (Let's Encrypt), Orders track the certificate order proce
       hs.status = "Healthy"
       hs.message = "Order is valid"
     elseif obj.status.state == "ready" then
-      hs.status = "Healthy"
+      hs.status = "Progressing"
       hs.message = "Order is ready for finalization"
     elseif obj.status.state == "pending" then
       hs.status = "Progressing"
@@ -217,6 +225,9 @@ For ACME-based issuers (Let's Encrypt), Orders track the certificate order proce
     elseif obj.status.state == "invalid" then
       hs.status = "Degraded"
       hs.message = obj.status.reason or "Order validation failed"
+    elseif obj.status.state == "expired" then
+      hs.status = "Degraded"
+      hs.message = obj.status.reason or "Order expired"
     elseif obj.status.state == "errored" then
       hs.status = "Degraded"
       hs.message = obj.status.reason or "Order encountered an error"
@@ -251,6 +262,9 @@ Challenges represent individual domain validation attempts:
     elseif obj.status.state == "invalid" then
       hs.status = "Degraded"
       hs.message = obj.status.reason or "Challenge validation failed"
+    elseif obj.status.state == "expired" then
+      hs.status = "Degraded"
+      hs.message = obj.status.reason or "Challenge expired"
     elseif obj.status.state == "errored" then
       hs.status = "Degraded"
       hs.message = obj.status.reason or "Challenge error"
@@ -263,7 +277,7 @@ Challenges represent individual domain validation attempts:
 
 ## Complete ConfigMap Example
 
-Here is a complete `argocd-cm` configuration with all cert-manager health checks:
+Here is a complete `argocd-cm` configuration with the core cert-manager health checks:
 
 ```yaml
 apiVersion: v1
@@ -278,6 +292,13 @@ data:
       hs.status = "Progressing"
       hs.message = "Certificate is being provisioned"
       return hs
+    end
+    for i, condition in ipairs(obj.status.conditions) do
+      if condition.type == "Issuing" and condition.status == "True" then
+        hs.status = "Progressing"
+        hs.message = condition.message or "Issuing"
+        return hs
+      end
     end
     for i, condition in ipairs(obj.status.conditions) do
       if condition.type == "Ready" then
