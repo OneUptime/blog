@@ -49,6 +49,7 @@ Before setting up cross-region DR:
 - A global DNS service (Route53, Cloud DNS, Cloudflare)
 - Shared storage for backups (S3, GCS with cross-region replication)
 - Git repositories accessible from both regions
+- Docker on the machine running the state sync script
 
 ## Step 1: Deploy ArgoCD in the DR Region
 
@@ -58,9 +59,10 @@ Before setting up cross-region DR:
 kubectl config use-context us-west-cluster
 
 # Install ArgoCD matching primary version
+ARGOCD_VERSION="v3.4.2"  # Use the same version as the primary ArgoCD instance
 kubectl create namespace argocd
 kubectl apply -n argocd \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.0/manifests/ha/install.yaml
+  -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/ha/install.yaml"
 
 # Scale down the controller (passive mode)
 kubectl scale statefulset argocd-application-controller \
@@ -79,116 +81,39 @@ PRIMARY_CONTEXT="us-east-cluster"
 DR_CONTEXT="us-west-cluster"
 S3_BUCKET="s3://argocd-dr-sync"
 NAMESPACE="argocd"
+ARGOCD_VERSION="v3.4.2"  # Use the same version as the primary ArgoCD instance
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_FILE="/tmp/argocd-backup-${TIMESTAMP}.yaml"
+IMPORT_FILE="/tmp/argocd-backup-import.yaml"
 
 # Export from primary
 echo "=== Exporting from Primary (US-East) ==="
 kubectl config use-context "$PRIMARY_CONTEXT"
 
-# Export applications
-kubectl get applications.argoproj.io -n "$NAMESPACE" -o yaml > /tmp/dr-apps.yaml
-
-# Export projects
-kubectl get appprojects.argoproj.io -n "$NAMESPACE" -o yaml > /tmp/dr-projects.yaml
-
-# Export ConfigMaps
-for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-notifications-cm; do
-  kubectl get configmap "$cm" -n "$NAMESPACE" -o yaml > "/tmp/dr-cm-${cm}.yaml" 2>/dev/null
-done
-
-# Export Secrets
-kubectl get secrets -n "$NAMESPACE" \
-  -l 'argocd.argoproj.io/secret-type' -o yaml > /tmp/dr-secrets.yaml
+docker run --rm \
+  -v "$HOME/.kube:/home/argocd/.kube:ro" \
+  "quay.io/argoproj/argocd:${ARGOCD_VERSION}" \
+  argocd admin export -n "$NAMESPACE" > "$BACKUP_FILE"
 
 # Upload to S3
 echo "=== Uploading to S3 ==="
-aws s3 sync /tmp/dr-*.yaml "$S3_BUCKET/$TIMESTAMP/" --exclude '*' --include 'dr-*'
-aws s3 cp /tmp/dr-apps.yaml "$S3_BUCKET/latest/apps.yaml"
-aws s3 cp /tmp/dr-projects.yaml "$S3_BUCKET/latest/projects.yaml"
-aws s3 cp /tmp/dr-secrets.yaml "$S3_BUCKET/latest/secrets.yaml"
-for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-notifications-cm; do
-  aws s3 cp "/tmp/dr-cm-${cm}.yaml" "$S3_BUCKET/latest/cm-${cm}.yaml" 2>/dev/null
-done
+aws s3 cp "$BACKUP_FILE" "$S3_BUCKET/$TIMESTAMP/backup.yaml"
+aws s3 cp "$BACKUP_FILE" "$S3_BUCKET/latest/backup.yaml"
 
 # Import to DR
 echo "=== Importing to DR (US-West) ==="
 kubectl config use-context "$DR_CONTEXT"
 
 # Download from S3
-aws s3 sync "$S3_BUCKET/latest/" /tmp/dr-import/
+aws s3 cp "$S3_BUCKET/latest/backup.yaml" "$IMPORT_FILE"
 
-# Apply ConfigMaps
-for f in /tmp/dr-import/cm-*.yaml; do
-  [ -f "$f" ] && python3 -c "
-import yaml, sys
-doc = yaml.safe_load(open('$f'))
-if doc:
-    meta = doc.get('metadata', {})
-    for field in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
-        meta.pop(field, None)
-    print(yaml.dump(doc))
-" | kubectl apply -n "$NAMESPACE" -f -
-done
-
-# Apply Secrets
-python3 -c "
-import yaml, sys
-for doc in yaml.safe_load_all(open('/tmp/dr-import/secrets.yaml')):
-    if doc is None:
-        continue
-    if doc.get('kind') == 'List':
-        items = doc.get('items', [])
-    else:
-        items = [doc]
-    for item in items:
-        meta = item.get('metadata', {})
-        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
-            meta.pop(f, None)
-        print('---')
-        print(yaml.dump(item))
-" | kubectl apply -n "$NAMESPACE" -f -
-
-# Apply Projects
-python3 -c "
-import yaml, sys
-for doc in yaml.safe_load_all(open('/tmp/dr-import/projects.yaml')):
-    if doc is None:
-        continue
-    if doc.get('kind') == 'List':
-        items = doc.get('items', [])
-    else:
-        items = [doc]
-    for item in items:
-        meta = item.get('metadata', {})
-        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
-            meta.pop(f, None)
-        item.pop('status', None)
-        print('---')
-        print(yaml.dump(item))
-" | kubectl apply -n "$NAMESPACE" -f -
-
-# Apply Applications
-python3 -c "
-import yaml, sys
-for doc in yaml.safe_load_all(open('/tmp/dr-import/apps.yaml')):
-    if doc is None:
-        continue
-    if doc.get('kind') == 'List':
-        items = doc.get('items', [])
-    else:
-        items = [doc]
-    for item in items:
-        meta = item.get('metadata', {})
-        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
-            meta.pop(f, None)
-        item.pop('status', None)
-        item.pop('operation', None)
-        print('---')
-        print(yaml.dump(item))
-" | kubectl apply -n "$NAMESPACE" -f -
+docker run --rm -i \
+  -v "$HOME/.kube:/home/argocd/.kube:ro" \
+  "quay.io/argoproj/argocd:${ARGOCD_VERSION}" \
+  argocd admin import - -n "$NAMESPACE" < "$IMPORT_FILE"
 
 # Cleanup
-rm -rf /tmp/dr-*.yaml /tmp/dr-import/
+rm -f "$BACKUP_FILE" "$IMPORT_FILE"
 
 echo "=== Sync Complete ==="
 echo "DR Applications: $(kubectl get applications.argoproj.io -n $NAMESPACE --no-headers | wc -l | tr -d ' ')"
