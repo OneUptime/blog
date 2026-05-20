@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, OPA, Gatekeeper
 
-Description: Use Open Policy Agent Gatekeeper with ArgoCD to enforce resource quotas, limit ranges, and resource request policies across Kubernetes namespaces via GitOps.
+Description: Use Open Policy Agent Gatekeeper with ArgoCD to enforce resource request and limit policies across Kubernetes namespaces via GitOps.
 
 ---
 
-Resource quotas prevent any single team or application from consuming all the CPU, memory, or storage in a shared Kubernetes cluster. Open Policy Agent (OPA) Gatekeeper extends this concept by letting you define custom policies that enforce resource limits at admission time. Combined with ArgoCD, you get a GitOps-driven resource governance system where policies are version-controlled, reviewed through pull requests, and consistently applied across all clusters.
+Resource quotas prevent any single team or application from consuming all the CPU, memory, or storage in a shared Kubernetes cluster. Open Policy Agent (OPA) Gatekeeper complements this by letting you define custom policies that enforce resource requests and limits at admission time. Combined with ArgoCD, you get a GitOps-driven resource governance system where policies are version-controlled, reviewed through pull requests, and consistently applied across all clusters.
 
-This post shows how to deploy OPA Gatekeeper through ArgoCD and create policies that enforce resource quotas and limits.
+This post shows how to deploy OPA Gatekeeper through ArgoCD and create policies that enforce resource requests and limits.
 
 ## Architecture
 
@@ -51,19 +51,18 @@ spec:
     helm:
       valuesObject:
         replicas: 3
-        audit:
-          replicas: 1
-          # Audit interval in seconds
-          auditInterval: 300
+        # Audit interval in seconds
+        auditInterval: 300
         # Log denials for debugging
-        logDenials: true
+        logDenies: true
         # Emit admission events
         emitAdmissionEvents: true
         # Exempt system namespaces
-        exemptNamespaces:
-          - kube-system
-          - gatekeeper-system
-          - argocd
+        controllerManager:
+          exemptNamespaces:
+            - kube-system
+            - gatekeeper-system
+            - argocd
   destination:
     server: https://kubernetes.default.svc
     namespace: gatekeeper-system
@@ -135,6 +134,13 @@ spec:
           required_request := input.parameters.requireRequests[_]
           not container.resources.requests[required_request]
           msg := sprintf("Init container '%v' must specify resource request for '%v'", [container.name, required_request])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.initContainers[_]
+          required_limit := input.parameters.requireLimits[_]
+          not container.resources.limits[required_limit]
+          msg := sprintf("Init container '%v' must specify resource limit for '%v'", [container.name, required_limit])
         }
 ```
 
@@ -241,10 +247,21 @@ spec:
       rego: |
         package k8sresourceratio
 
+        # Convert CPU string to millicores for comparison
+        cpu_to_millicores(cpu) = result {
+          endswith(cpu, "m")
+          result := to_number(trim_suffix(cpu, "m"))
+        }
+
+        cpu_to_millicores(cpu) = result {
+          not endswith(cpu, "m")
+          result := to_number(cpu) * 1000
+        }
+
         violation[{"msg": msg}] {
           container := input.review.object.spec.containers[_]
-          cpu_request := to_number(trim_suffix(container.resources.requests.cpu, "m"))
-          cpu_limit := to_number(trim_suffix(container.resources.limits.cpu, "m"))
+          cpu_request := cpu_to_millicores(container.resources.requests.cpu)
+          cpu_limit := cpu_to_millicores(container.resources.limits.cpu)
           ratio := cpu_limit / cpu_request
           ratio > input.parameters.maxRatio
           msg := sprintf("Container '%v' CPU limit/request ratio %.1f exceeds maximum %.1f", [container.name, ratio, input.parameters.maxRatio])

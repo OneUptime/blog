@@ -24,7 +24,8 @@ ArgoCD's state is distributed across several resource types. Here is the complet
 | Secret (repository) | Git/Helm repo credentials | Yes |
 | Secret (repo-creds) | Credential templates | Yes |
 | Secret (cluster) | Cluster registrations + tokens | Yes |
-| ConfigMap (argocd-cm) | Core configuration | Possibly (OIDC secrets) |
+| ConfigMap (argocd-cm) | Core configuration | No (may reference secrets) |
+| Secret (argocd-secret) | User passwords, signing key, Dex/OIDC and webhook secrets | Yes |
 | ConfigMap (argocd-rbac-cm) | RBAC policies | No |
 | ConfigMap (argocd-cmd-params-cm) | Runtime parameters | No |
 | ConfigMap (argocd-notifications-cm) | Notification config | No |
@@ -55,6 +56,7 @@ clean_metadata() {
     .metadata.resourceVersion,
     .metadata.uid,
     .metadata.generation,
+    .metadata.namespace,
     .metadata.creationTimestamp,
     .metadata.managedFields,
     .metadata.annotations["kubectl.kubernetes.io/last-applied-configuration"]
@@ -149,6 +151,12 @@ if kubectl get secret argocd-notifications-secret -n "$NAMESPACE" &>/dev/null; t
     clean_metadata > "$EXPORT_DIR/config/argocd-notifications-secret.yaml"
 fi
 
+# Export Core ArgoCD Secret
+if kubectl get secret argocd-secret -n "$NAMESPACE" &>/dev/null; then
+  kubectl get secret argocd-secret -n "$NAMESPACE" -o yaml | \
+    clean_metadata > "$EXPORT_DIR/config/argocd-secret.yaml"
+fi
+
 echo ""
 echo "Export complete!"
 echo "  Applications:    $APP_COUNT"
@@ -157,13 +165,13 @@ echo "  Projects:        $PROJ_COUNT"
 echo "  Repositories:    $REPO_COUNT"
 echo "  Clusters:        $CLUSTER_COUNT"
 echo ""
-echo "WARNING: Export contains secrets (repo credentials, cluster tokens)."
+echo "WARNING: Export contains secrets (repo credentials, cluster tokens, SSO/webhook secrets)."
 echo "         Store securely and encrypt before transmitting."
 ```
 
 ## Import Script
 
-The import script applies resources in the correct order: config first, then credentials, then projects, then applications.
+The import script applies resources in the correct order: config and core secrets first, then credentials, then projects, then applications.
 
 ```bash
 #!/bin/bash
@@ -182,9 +190,9 @@ fi
 echo "Importing ArgoCD state from: $IMPORT_DIR"
 echo "Target namespace: $NAMESPACE"
 
-# Step 1: Import ConfigMaps
+# Step 1: Import ConfigMaps and core Secrets
 echo ""
-echo "--- Step 1: Importing ConfigMaps ---"
+echo "--- Step 1: Importing ConfigMaps and core Secrets ---"
 for cm in "$IMPORT_DIR"/config/argocd-*.yaml; do
   if [ -f "$cm" ]; then
     name=$(basename "$cm" .yaml)
@@ -283,17 +291,17 @@ Sometimes you only need to export specific applications or projects.
 ```bash
 # Export applications matching a label
 kubectl get applications -n argocd -l team=backend -o yaml | \
-  yq eval 'del(.items[].status, .items[].metadata.resourceVersion, .items[].metadata.uid)' - \
+  yq eval 'del(.items[].status, .items[].metadata.resourceVersion, .items[].metadata.uid, .items[].metadata.namespace)' - \
   > backend-apps-export.yaml
 
 # Export applications in a specific project
 argocd app list -p production -o json | \
-  jq '[.[] | {apiVersion: "argoproj.io/v1alpha1", kind: "Application", metadata: {name: .metadata.name, namespace: "argocd"}, spec: .spec}]' \
+  jq '[.[] | {apiVersion: "argoproj.io/v1alpha1", kind: "Application", metadata: {name: .metadata.name}, spec: .spec}]' \
   > production-apps-export.json
 
 # Export a single application
 kubectl get application my-web-app -n argocd -o yaml | \
-  yq eval 'del(.status, .metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp, .metadata.managedFields, .metadata.generation)' - \
+  yq eval 'del(.status, .metadata.resourceVersion, .metadata.uid, .metadata.namespace, .metadata.creationTimestamp, .metadata.managedFields, .metadata.generation)' - \
   > my-web-app-export.yaml
 ```
 
