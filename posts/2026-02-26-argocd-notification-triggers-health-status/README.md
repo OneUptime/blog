@@ -17,7 +17,7 @@ ArgoCD assigns one of these health statuses to every application:
 - **Healthy** - all resources are running and passing health checks
 - **Degraded** - one or more resources have failed (e.g., CrashLoopBackOff, failed readiness probes)
 - **Progressing** - resources are updating (rollout in progress, pods starting up)
-- **Suspended** - the application is paused (Argo Rollouts pause, HPA scale-to-zero)
+- **Suspended** - the application is paused (for example, an Argo Rollouts pause, suspended Job, or paused Deployment)
 - **Missing** - expected resources do not exist in the cluster
 - **Unknown** - health status cannot be determined
 
@@ -43,7 +43,7 @@ data:
         - app-health-degraded
 ```
 
-The `oncePer` expression concatenates health status and revision. This means you get one notification per degraded state per revision. If the same revision keeps degrading after a recovery attempt, you will get another notification.
+The `oncePer` expression concatenates health status and revision. This means you get one notification per degraded state per revision. If the same revision keeps degrading after a recovery attempt, ArgoCD will not send another notification unless the `oncePer` value changes.
 
 ### Trigger for Healthy Status
 
@@ -64,7 +64,7 @@ Long-running progressions can indicate stuck rollouts:
 ```yaml
   trigger.on-health-progressing: |
     - when: app.status.health.status == 'Progressing'
-      oncePer: app.status.operationState.startedAt
+      oncePer: app.status?.operationState.startedAt
       send:
         - app-health-progressing
 ```
@@ -83,7 +83,7 @@ Missing health status means expected resources were not found in the cluster:
 
 ### Trigger for Suspended Applications
 
-Applications suspended by Argo Rollouts or other controllers:
+Applications suspended by Argo Rollouts, suspended Jobs, paused Deployments, or other controllers:
 
 ```yaml
   trigger.on-health-suspended: |
@@ -143,7 +143,7 @@ Each trigger needs a corresponding template. Here are templates designed to give
           "text": "Application update is in progress.",
           "fields": [
             {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
-            {"title": "Started", "value": "{{.app.status.operationState.startedAt}}", "short": true}
+            {"title": "Started", "value": "{{if .app.status.operationState}}{{.app.status.operationState.startedAt}}{{else}}unknown{{end}}", "short": true}
           ]
         }]
 
@@ -198,6 +198,7 @@ Route health alerts to different channels based on environment labels:
   trigger.on-prod-degraded: |
     - when: >
         app.status.health.status == 'Degraded' and
+        app.metadata.labels != nil and
         app.metadata.labels['env'] == 'production'
       oncePer: app.status.health.status + app.status.sync.revision
       send:
@@ -207,6 +208,7 @@ Route health alerts to different channels based on environment labels:
   trigger.on-staging-degraded: |
     - when: >
         app.status.health.status == 'Degraded' and
+        app.metadata.labels != nil and
         app.metadata.labels['env'] == 'staging'
       oncePer: app.status.health.status + app.status.sync.revision
       send:
@@ -239,9 +241,8 @@ A common issue is applications that get stuck in Progressing status. You can cre
   trigger.on-stuck-progressing: |
     - when: >
         app.status.health.status == 'Progressing' and
-        app.status.operationState != nil and
-        app.status.operationState.phase in ['Succeeded', 'Failed', 'Error']
-      oncePer: app.status.operationState.finishedAt
+        app.status?.operationState.phase in ['Succeeded', 'Failed', 'Error']
+      oncePer: app.status?.operationState.finishedAt
       send:
         - app-stuck-progressing
 ```
@@ -253,23 +254,26 @@ This catches cases where the sync operation completed but resources are still sh
 Test your health triggers by deliberately causing a health change:
 
 ```bash
-# Scale a deployment to zero to trigger Missing/Degraded
+# Delete a managed resource to trigger Missing
 
-kubectl scale deployment my-app --replicas=0 -n my-namespace
+kubectl delete deployment my-app -n my-namespace
+
+# Or set a bad image to trigger Degraded/Progressing, depending on the workload health check
+kubectl set image deployment/my-app my-container=nginx:does-not-exist -n my-namespace
 
 # Watch notification controller logs
 kubectl logs -n argocd -l app.kubernetes.io/component=notifications-controller -f
 
-# Scale back up to trigger Healthy
-kubectl scale deployment my-app --replicas=1 -n my-namespace
+# Sync the application again to restore the desired state and trigger Healthy
+argocd app sync my-production-app
 ```
 
 ## Common Issues
 
-**Health status flapping**: If an application oscillates between Healthy and Degraded, you will get multiple notifications even with `oncePer`. Consider adding a time-based debounce by using a coarser `oncePer` expression.
+**Health status flapping**: If an application oscillates between Healthy and Degraded, `oncePer` prevents duplicate notifications for the same deduplication key. Choose a stable `oncePer` expression, such as the sync revision, so the same revision does not alert repeatedly.
 
 **Missing operationState**: New applications that have never been synced will have a nil `operationState`. Always add nil checks in triggers that reference operation state fields.
 
-**CRD health checks**: Custom resources might not have health checks defined. ArgoCD reports them as Healthy by default. If you need health notifications for CRDs, configure [custom health checks](https://oneuptime.com/blog/post/2026-02-26-argocd-notification-triggers-sync-status/view) first.
+**CRD health checks**: Custom resources might not have health checks defined. ArgoCD reports resources without health checks as Healthy if they exist. If you need health notifications for CRDs, configure [custom health checks](https://oneuptime.com/blog/post/2026-02-26-argocd-health-checks-crds/view) first.
 
 Health-based triggers complement [sync status triggers](https://oneuptime.com/blog/post/2026-02-26-argocd-notification-triggers-sync-status/view) to give you a complete picture of your deployment pipeline. Together, they ensure your team knows both when deployments happen and whether they actually work.
