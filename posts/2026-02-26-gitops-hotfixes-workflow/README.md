@@ -58,6 +58,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Log in to container registry
+        run: |
+          echo "${{ secrets.DOCKER_TOKEN }}" | docker login \
+            --username "${{ secrets.DOCKER_USERNAME }}" \
+            --password-stdin
+
       - name: Build container image
         run: |
           docker build -t myorg/my-app:hotfix-${{ github.sha }} .
@@ -72,8 +78,10 @@ jobs:
       # Update GitOps repository immediately
       - name: Update GitOps repo
         run: |
-          git clone https://github.com/myorg/gitops-repo.git
+          git clone https://x-access-token:${{ secrets.GITOPS_TOKEN }}@github.com/myorg/gitops-repo.git
           cd gitops-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           # Update the image tag
           sed -i "s|image: myorg/my-app:.*|image: myorg/my-app:hotfix-${{ github.sha }}|" \
             apps/my-app/production/deployment.yaml
@@ -133,7 +141,7 @@ spec:
   syncWindows:
     # Normal deployment window
     - kind: allow
-      schedule: '0 9-17 * * 1-5'  # Weekdays 9am-5pm
+      schedule: '0 9 * * 1-5'  # Weekdays 9am-5pm
       duration: 8h
       applications:
         - '*'
@@ -176,7 +184,7 @@ Many production issues can be resolved with configuration changes rather than co
 Common config-only hotfixes:
 
 ```yaml
-# Increase replicas to handle load spike
+# In the existing Deployment manifest, increase replicas to handle load spike
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -185,7 +193,7 @@ spec:
   replicas: 10  # Scaled up from 3
 
 ---
-# Add resource limits to prevent OOM
+# In the existing Deployment manifest, add resource limits to prevent OOM
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -202,7 +210,7 @@ spec:
               memory: "512Mi"
 
 ---
-# Enable feature flag to disable problematic feature
+# In the existing ConfigMap manifest, disable the problematic feature
 apiVersion: v1
 kind: ConfigMap
 metadata:
