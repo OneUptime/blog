@@ -127,7 +127,7 @@ ignoreDifferences:
   - group: apps
     kind: Deployment
     jqPathExpressions:
-      - '.metadata.annotations | to_entries[] | select(.key | startswith("kubectl.kubernetes.io/"))'
+      - '.metadata.annotations[.metadata.annotations // {} | keys[] | select(startswith("kubectl.kubernetes.io/"))]'
 
   # Ignore env vars matching a pattern
   - group: apps
@@ -155,9 +155,9 @@ metadata:
 data:
   # Ignore differences for ALL resource types
   resource.customizations.ignoreDifferences.all: |
-    managedFields:
-      - manager: kube-controller-manager
-      - manager: kube-scheduler
+    managedFieldsManagers:
+      - kube-controller-manager
+      - kube-scheduler
     jsonPointers:
       - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
 
@@ -166,20 +166,20 @@ data:
     jsonPointers:
       - /spec/replicas
     jqPathExpressions:
-      - '.metadata.annotations | to_entries[] | select(.key | startswith("deployment.kubernetes.io/"))'
+      - '.metadata.annotations[.metadata.annotations // {} | keys[] | select(startswith("deployment.kubernetes.io/"))]'
 
   resource.customizations.ignoreDifferences.admissionregistration.k8s.io_MutatingWebhookConfiguration: |
     jqPathExpressions:
       - '.webhooks[]?.clientConfig.caBundle'
       - '.webhooks[]?.rules'
 
-  resource.customizations.ignoreDifferences._Service: |
+  resource.customizations.ignoreDifferences.Service: |
     jsonPointers:
       - /spec/clusterIP
       - /spec/clusterIPs
 ```
 
-The key format is `resource.customizations.ignoreDifferences.<group>_<kind>`. For core API group resources (like Service), use `_<kind>` (with a leading underscore and no group prefix).
+The key format is `resource.customizations.ignoreDifferences.<group>_<kind>`. For core API group resources (like Service), use `<kind>` with no group prefix.
 
 ## Using ManagedFields Manager
 
@@ -202,10 +202,10 @@ You can also configure this globally:
 # In argocd-cm
 
 resource.customizations.ignoreDifferences.all: |
-  managedFields:
-    - manager: kube-controller-manager
-    - manager: cluster-autoscaler
-    - manager: cert-manager-certificates
+  managedFieldsManagers:
+    - kube-controller-manager
+    - cluster-autoscaler
+    - cert-manager-certificates
 ```
 
 ## Common ignoreDifferences Recipes
@@ -231,7 +231,7 @@ ignoreDifferences:
   - group: apps
     kind: Deployment
     jqPathExpressions:
-      - '.spec.template.metadata.annotations | to_entries[] | select(.key | startswith("sidecar.istio.io/"))'
+      - '.spec.template.metadata.annotations[.spec.template.metadata.annotations // {} | keys[] | select(startswith("sidecar.istio.io/"))]'
       - '.spec.template.metadata.labels["security.istio.io/tlsMode"]'
       - '.spec.template.spec.containers[] | select(.name == "istio-proxy")'
       - '.spec.template.spec.initContainers[] | select(.name == "istio-init")'
@@ -259,11 +259,11 @@ ignoreDifferences:
   - group: ""
     kind: Service
     jqPathExpressions:
-      - '.metadata.annotations | to_entries[] | select(.key | startswith("service.beta.kubernetes.io/aws-load-balancer"))'
+      - '.metadata.annotations[.metadata.annotations // {} | keys[] | select(startswith("service.beta.kubernetes.io/aws-load-balancer"))]'
   - group: networking.k8s.io
     kind: Ingress
     jqPathExpressions:
-      - '.metadata.annotations | to_entries[] | select(.key | startswith("alb.ingress.kubernetes.io/"))'
+      - '.metadata.annotations[.metadata.annotations // {} | keys[] | select(startswith("alb.ingress.kubernetes.io/"))]'
 ```
 
 ### Kyverno Policy Status
