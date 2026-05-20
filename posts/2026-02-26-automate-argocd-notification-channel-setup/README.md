@@ -29,23 +29,23 @@ Here is a script that configures Slack notifications for a team:
 
 set -euo pipefail
 
-TEAM_NAME="${1:?Usage: $0 <team-name> <slack-channel> <webhook-url>}"
+TEAM_NAME="${1:?Usage: $0 <team-name> <slack-channel> <bot-token>}"
 SLACK_CHANNEL="${2:?Specify Slack channel (e.g., #team-deploys)}"
-WEBHOOK_URL="${3:?Specify Slack webhook URL}"
+SLACK_TOKEN="${3:?Specify Slack bot token}"
 NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
 
 echo "Setting up Slack notifications for team: ${TEAM_NAME}"
 
-# Step 1: Store the webhook URL in the notifications secret
-echo "Storing webhook URL in secret..."
+# Step 1: Store the Slack bot token in the notifications secret
+echo "Storing Slack bot token in secret..."
 kubectl patch secret argocd-notifications-secret -n "${NAMESPACE}" \
   --type merge -p "{
     \"stringData\": {
-      \"slack-token-${TEAM_NAME}\": \"${WEBHOOK_URL}\"
+      \"slack-token-${TEAM_NAME}\": \"${SLACK_TOKEN}\"
     }
   }" 2>/dev/null || \
 kubectl create secret generic argocd-notifications-secret -n "${NAMESPACE}" \
-  --from-literal="slack-token-${TEAM_NAME}=${WEBHOOK_URL}"
+  --from-literal="slack-token-${TEAM_NAME}=${SLACK_TOKEN}"
 
 # Step 2: Add the Slack service configuration
 echo "Configuring Slack service..."
@@ -94,7 +94,7 @@ kubectl patch configmap argocd-notifications-cm -n "${NAMESPACE}" --type merge -
 echo "Slack notifications configured for ${TEAM_NAME}"
 echo ""
 echo "To enable notifications on an application, add this annotation:"
-echo "  notifications.argoproj.io/subscribe.on-sync-${TEAM_NAME}.slack.${TEAM_NAME}: ${SLACK_CHANNEL}"
+echo "  notifications.argoproj.io/subscribe.on-sync-${TEAM_NAME}.${TEAM_NAME}: ${SLACK_CHANNEL}"
 ```
 
 ## Batch Setup from Configuration File
@@ -151,11 +151,11 @@ teams:
   - name: frontend
     type: slack
     channel: "#frontend-deploys"
-    credential: "https://hooks.slack.com/services/T00/B00/xxx"
+    credential: "xoxb-1234567890-1234567890123-xxxxxxxxxxxxxxxxxxxxxxxx"
   - name: backend
     type: slack
     channel: "#backend-deploys"
-    credential: "https://hooks.slack.com/services/T00/B00/yyy"
+    credential: "xoxb-2345678901-2345678901234-yyyyyyyyyyyyyyyyyyyyyyyy"
   - name: platform
     type: webhook
     channel: ""
@@ -187,7 +187,9 @@ kubectl patch secret argocd-notifications-secret -n "${NAMESPACE}" \
     \"stringData\": {
       \"webhook-url-${TEAM_NAME}\": \"${WEBHOOK_URL}\"
     }
-  }"
+  }" 2>/dev/null || \
+kubectl create secret generic argocd-notifications-secret -n "${NAMESPACE}" \
+  --from-literal="webhook-url-${TEAM_NAME}=${WEBHOOK_URL}"
 
 # Configure webhook service and template
 SERVICE_CONFIG="url: \$webhook-url-${TEAM_NAME}
@@ -208,14 +210,21 @@ TEMPLATE_CONFIG="webhook:
         \"timestamp\": \"{{.app.status.operationState.finishedAt}}\"
       }"
 
+TRIGGER_CONFIG="- when: app.status.operationState.phase in ['Succeeded', 'Failed', 'Error']
+  send: [${TEAM_NAME}-webhook]"
+
 kubectl patch configmap argocd-notifications-cm -n "${NAMESPACE}" --type merge -p "{
   \"data\": {
     \"service.webhook.${TEAM_NAME}\": $(echo "${SERVICE_CONFIG}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
-    \"template.${TEAM_NAME}-webhook\": $(echo "${TEMPLATE_CONFIG}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
+    \"template.${TEAM_NAME}-webhook\": $(echo "${TEMPLATE_CONFIG}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'),
+    \"trigger.on-sync-${TEAM_NAME}\": $(echo "${TRIGGER_CONFIG}" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')
   }
 }"
 
 echo "Webhook notifications configured for ${TEAM_NAME}"
+echo ""
+echo "To enable notifications on an application, add this annotation:"
+echo "  notifications.argoproj.io/subscribe.on-sync-${TEAM_NAME}.${TEAM_NAME}: \"\""
 ```
 
 ## Annotating Applications Automatically
@@ -245,7 +254,7 @@ fi
 echo "${APPS}" | while read -r app_name; do
   echo "  Annotating: ${app_name}"
   kubectl annotate application "${app_name}" -n "${NAMESPACE}" \
-    "notifications.argoproj.io/subscribe.on-sync-${TEAM_NAME}.slack.${TEAM_NAME}=${CHANNEL}" \
+    "notifications.argoproj.io/subscribe.on-sync-${TEAM_NAME}.${TEAM_NAME}=${CHANNEL}" \
     --overwrite
 done
 
