@@ -14,10 +14,10 @@ Vanilla Kubernetes refers to the upstream, unmodified Kubernetes distribution th
 
 Before installing ArgoCD on vanilla Kubernetes, make sure your cluster meets these requirements:
 
-- Kubernetes 1.24 or later (ArgoCD 2.x supports 1.24+)
+- A Kubernetes version supported by the ArgoCD version you install
 - A working Ingress controller (or you will use port-forwarding/NodePort)
 - At least 2 worker nodes for reliability
-- Persistent storage provisioner if you want durable Redis data
+- CoreDNS enabled in the cluster
 - kubectl configured with cluster admin access
 
 ```bash
@@ -27,7 +27,7 @@ kubectl cluster-info
 kubectl get nodes -o wide
 
 # Check the Kubernetes version
-kubectl version --short
+kubectl version
 ```
 
 ## Installing ArgoCD on Vanilla Kubernetes
@@ -39,7 +39,7 @@ The standard installation uses the ArgoCD manifests directly.
 kubectl create namespace argocd
 
 # Install ArgoCD using the official manifests
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for all pods to be ready
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
@@ -72,7 +72,7 @@ On vanilla Kubernetes, you do not get a cloud load balancer automatically. Here 
 kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort"}}'
 
 # Get the assigned NodePort
-kubectl get svc argocd-server -n argocd -o jsonpath='{.spec.ports[0].nodePort}'
+kubectl get svc argocd-server -n argocd -o jsonpath='{.spec.ports[?(@.name=="https")].nodePort}'
 ```
 
 Access the UI at `https://<any-node-ip>:<nodeport>`.
@@ -107,7 +107,7 @@ spec:
   tls:
     - hosts:
         - argocd.example.com
-      secretName: argocd-tls
+      secretName: argocd-server-tls
 ```
 
 ### Option 3: Port Forward for Quick Access
@@ -134,10 +134,10 @@ argocd account update-password
 
 ## Configuring Storage for Vanilla Kubernetes
 
-Vanilla Kubernetes does not come with a default StorageClass. You need to set one up for ArgoCD's Redis to persist data across restarts (optional but recommended for production).
+Vanilla Kubernetes does not come with a default dynamic StorageClass. ArgoCD stores its state in Kubernetes objects, and Redis is a cache that can be rebuilt, so ArgoCD itself does not require persistent Redis storage. You still need a StorageClass for workloads deployed by ArgoCD that request persistent volumes.
 
 ```yaml
-# Example: local-path StorageClass for bare metal
+# Example: local-path StorageClass for bare metal after installing the local-path provisioner
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -212,10 +212,9 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              app: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
       ports:
         - port: 8080
-        - port: 8443
 ```
 
 ### RBAC Configuration
@@ -242,7 +241,7 @@ metadata:
   name: argocd-server-tls
   namespace: argocd
 spec:
-  secretName: argocd-tls
+  secretName: argocd-server-tls
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
@@ -289,17 +288,17 @@ For production use, deploy ArgoCD in HA mode.
 
 ```bash
 # Install the HA manifests instead
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
 
 This gives you:
 
-- 3 replicas of the application controller (with leader election)
-- 3 replicas of the API server
-- 3 replicas of the repo server
-- HA Redis with Sentinel
+- 1 replica of the application controller by default
+- 2 replicas of the API server
+- 2 replicas of the repo server
+- HA Redis with Sentinel and 3 Redis server replicas
 
-Make sure your vanilla cluster has enough resources for the HA deployment.
+Make sure your vanilla cluster has enough resources for the HA deployment. The HA manifests require at least three different nodes because of pod anti-affinity rules.
 
 ```bash
 # Check resource requests for HA ArgoCD
@@ -313,10 +312,10 @@ Since you installed from raw manifests, upgrades are straightforward.
 
 ```bash
 # Upgrade to a specific version
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.0/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.2/manifests/install.yaml
 
 # Or if using HA
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.0/manifests/ha/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/v3.4.2/manifests/ha/install.yaml
 
 # Wait for the rollout to complete
 kubectl rollout status deployment/argocd-server -n argocd
