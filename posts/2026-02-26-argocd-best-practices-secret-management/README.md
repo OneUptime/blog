@@ -25,14 +25,14 @@ Before diving into solutions, understand why this matters:
 
 Bitnami Sealed Secrets encrypts secrets client-side so only the cluster can decrypt them:
 
-```bash
+```yaml
 # Install the Sealed Secrets controller via ArgoCD
 
 # manifests/sealed-secrets/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.27.0/controller.yaml
+  - https://github.com/bitnami-labs/sealed-secrets/releases/download/v0.36.6/controller.yaml
 ```
 
 Create and seal a secret:
@@ -98,7 +98,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.10.0
+    targetRevision: 2.5.0
   destination:
     server: https://kubernetes.default.svc
     namespace: external-secrets
@@ -108,7 +108,7 @@ Configure a SecretStore:
 
 ```yaml
 # Connect to AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -127,7 +127,7 @@ spec:
 Define ExternalSecrets in your Git repo (safe to commit - no secret values):
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -162,6 +162,25 @@ spec:
 For organizations already using Vault:
 
 ```yaml
+# ConfigManagementPlugin mounted into the sidecar
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cmp-plugin
+  namespace: argocd
+data:
+  avp.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: argocd-vault-plugin
+    spec:
+      generate:
+        command:
+          - argocd-vault-plugin
+          - generate
+          - "."
+---
 # ArgoCD repo server with Vault plugin sidecar
 apiVersion: apps/v1
 kind: Deployment
@@ -171,20 +190,36 @@ metadata:
 spec:
   template:
     spec:
+      automountServiceAccountToken: true
+      volumes:
+        - name: var-files
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        - name: cmp-plugin
+          configMap:
+            name: cmp-plugin
       containers:
         - name: argocd-repo-server
           # ... standard config
         - name: avp
-          image: quay.io/argoproj-labs/argocd-vault-plugin:v1.17.0
+          image: your-container-registry/argocd-vault-plugin:v1.17.0
           command: ["/var/run/argocd/argocd-cmp-server"]
           securityContext:
             runAsNonRoot: true
             runAsUser: 999
           volumeMounts:
+            - name: var-files
+              mountPath: /var/run/argocd
             - name: plugins
               mountPath: /home/argocd/cmp-server/plugins
             - name: tmp
               mountPath: /tmp
+            - name: cmp-plugin
+              mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: avp.yaml
 ```
 
 Reference Vault secrets in your manifests:
@@ -205,7 +240,7 @@ stringData:
 
 ## Approach 4: SOPS encrypted secrets
 
-Mozilla SOPS encrypts specific values in YAML files while keeping keys readable:
+SOPS encrypts specific values in YAML files while keeping keys readable:
 
 ```yaml
 # Encrypted with SOPS - safe to commit
@@ -237,6 +272,10 @@ apiVersion: viaduct.ai/v1
 kind: ksops
 metadata:
   name: db-credentials
+  annotations:
+    config.kubernetes.io/function: |
+      exec:
+        path: ksops
 files:
   - secrets/db-credentials.enc.yaml
 ```
@@ -258,19 +297,19 @@ ArgoCD stores sensitive data (repo credentials, cluster credentials, SSO configs
 
 ```bash
 # ArgoCD secrets in the argocd namespace
-kubectl get secrets -n argocd -l app.kubernetes.io/part-of=argocd
+kubectl get secrets -n argocd
 
 # Critical secrets:
 # argocd-secret - admin password, SSO config
-# repo-* - Git repository credentials
-# cluster-* - Remote cluster credentials
+# repository secrets - Git repository credentials
+# cluster secrets - Remote cluster credentials
 ```
 
 Protect ArgoCD's own secrets:
 
 ```yaml
 # Use External Secrets for ArgoCD repo credentials
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: repo-github-creds
