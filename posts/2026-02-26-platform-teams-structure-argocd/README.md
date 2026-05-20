@@ -136,7 +136,7 @@ spec:
   # Sync windows for production
   syncWindows:
     - kind: allow
-      schedule: "0 9-17 * * 1-5"  # Business hours, weekdays
+      schedule: "0 9 * * 1-5"  # Business hours, weekdays
       duration: 8h
       applications:
         - "*-production"
@@ -237,18 +237,25 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
   egress:
     - to:
         - namespaceSelector:
             matchLabels:
               team: alpha
-    - to: []  # Allow DNS
+    - to:  # Allow DNS to CoreDNS
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - port: 53
           protocol: UDP
-    - to: []  # Allow HTTPS egress
-      ports:
+        - port: 53
+          protocol: TCP
+    - ports:  # Allow HTTPS egress
         - port: 443
           protocol: TCP
 ```
@@ -265,6 +272,8 @@ metadata:
   name: team-alpha-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/company/team-alpha-deployments.git
@@ -273,11 +282,11 @@ spec:
           - path: apps/*/overlays/*
   template:
     metadata:
-      name: "alpha-{{path[1]}}-{{path[3]}}"
+      name: "alpha-{{index .path.segments 1}}-{{index .path.segments 3}}"
       labels:
         team: alpha
-        app: "{{path[1]}}"
-        environment: "{{path[3]}}"
+        app: "{{index .path.segments 1}}"
+        environment: "{{index .path.segments 3}}"
       annotations:
         notifications.argoproj.io/subscribe.on-sync-failed.slack: alpha-deployments
         notifications.argoproj.io/subscribe.on-health-degraded.slack: alpha-alerts
@@ -286,10 +295,10 @@ spec:
       source:
         repoURL: https://github.com/company/team-alpha-deployments.git
         targetRevision: main
-        path: "apps/{{path[1]}}/overlays/{{path[3]}}"
+        path: "apps/{{index .path.segments 1}}/overlays/{{index .path.segments 3}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "alpha-{{path[3]}}"
+        namespace: "alpha-{{index .path.segments 3}}"
       syncPolicy:
         automated:
           prune: true
