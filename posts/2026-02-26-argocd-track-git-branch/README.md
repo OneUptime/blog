@@ -80,6 +80,7 @@ metadata:
   name: my-app-dev
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/my-manifests.git
     targetRevision: develop
@@ -99,6 +100,7 @@ metadata:
   name: my-app-staging
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/my-manifests.git
     targetRevision: main
@@ -114,7 +116,7 @@ spec:
 
 ### ApplicationSet with Branch Tracking
 
-You can also use an ApplicationSet to automatically generate applications for branches using the Git generator:
+You can also use an ApplicationSet to automatically generate applications for multiple overlay directories while each generated application tracks a branch:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -123,6 +125,8 @@ metadata:
   name: my-app-branches
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/my-manifests.git
@@ -131,15 +135,16 @@ spec:
           - path: k8s/overlays/*
   template:
     metadata:
-      name: 'my-app-{{path.basename}}'
+      name: 'my-app-{{.path.basename}}'
     spec:
+      project: default
       source:
         repoURL: https://github.com/myorg/my-manifests.git
         targetRevision: develop
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
 ```
 
 ## Verifying Your Branch Tracking Configuration
@@ -171,7 +176,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Reduce polling interval to 1 minute
+  # Reduce the base polling interval to 1 minute
   timeout.reconciliation: "60s"
 ```
 
