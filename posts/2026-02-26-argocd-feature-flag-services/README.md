@@ -44,7 +44,7 @@ spec:
     helm:
       values: |
         api:
-          replicaCount: 3
+          replicacount: 3
           resources:
             requests:
               cpu: 250m
@@ -52,25 +52,17 @@ spec:
             limits:
               cpu: "1"
               memory: 512Mi
-          env:
-            - name: DJANGO_ALLOWED_HOSTS
-              value: "*"
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: flagsmith-db
-                  key: url
-            - name: ENABLE_ADMIN_ACCESS_USER_PASS
-              value: "true"
+          extraEnv:
+            ENABLE_ADMIN_ACCESS_USER_PASS: "true"
 
         frontend:
-          replicaCount: 2
+          replicacount: 2
           resources:
             requests:
               cpu: 100m
               memory: 128Mi
 
-        postgresql:
+        devPostgresql:
           enabled: true
           auth:
             database: flagsmith
@@ -81,16 +73,16 @@ spec:
               storageClass: gp3
 
         ingress:
-          enabled: true
-          className: nginx
-          hosts:
-            - host: flags.internal.example.com
-              paths:
-                - path: /
-                  pathType: Prefix
-
-        redis:
-          enabled: true
+          frontend:
+            enabled: true
+            ingressClassName: nginx
+            hosts:
+              - flags.internal.example.com
+          api:
+            enabled: true
+            ingressClassName: nginx
+            hosts:
+              - flags.internal.example.com
   destination:
     server: https://kubernetes.default.svc
     namespace: flagsmith
@@ -202,7 +194,7 @@ spec:
 
 ## OpenFeature Operator
 
-OpenFeature is a vendor-neutral standard for feature flags. Deploy the OpenFeature operator with ArgoCD to inject feature flag sidecars into your pods:
+OpenFeature is a vendor-neutral standard for feature flags. With cert-manager already installed, deploy the OpenFeature operator with ArgoCD to inject feature flag sidecars into your pods:
 
 ```yaml
 # openfeature-operator-app.yaml
@@ -216,17 +208,18 @@ spec:
   source:
     repoURL: https://open-feature.github.io/open-feature-operator/
     chart: open-feature-operator
-    targetRevision: 0.6.0
+    targetRevision: 0.9.1
     helm:
       values: |
         controllerManager:
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
+          manager:
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
   destination:
     server: https://kubernetes.default.svc
-    namespace: open-feature-system
+    namespace: open-feature-operator-system
   syncPolicy:
     automated:
       selfHeal: true
@@ -245,8 +238,8 @@ metadata:
   namespace: production
 spec:
   sources:
-    - source: flagsmith
-      provider: flagd
+    - source: production/app-flags
+      provider: kubernetes
   port: 8013
   evaluator: json
   defaultSyncProvider: kubernetes
@@ -329,9 +322,12 @@ spec:
 
                   # Keep only last 7 days of backups
                   find /backups -name "flagsmith-*.sql.gz" -mtime +7 -delete
-              envFrom:
-                - secretRef:
-                    name: flagsmith-db
+              env:
+                - name: DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: flagsmith
+                      key: DATABASE_URL
               volumeMounts:
                 - name: backup-storage
                   mountPath: /backups
@@ -369,7 +365,7 @@ spec:
         - alert: FeatureFlagHighLatency
           expr: |
             histogram_quantile(0.99,
-              rate(http_request_duration_seconds_bucket{service="flagsmith"}[5m])
+              sum(rate(flagsmith_http_server_request_duration_seconds_bucket[5m])) by (le)
             ) > 1
           for: 5m
           labels:
