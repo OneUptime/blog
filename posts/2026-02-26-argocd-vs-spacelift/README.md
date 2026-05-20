@@ -76,10 +76,10 @@ spec:
 ArgoCD provides:
 - Real-time sync status for every Kubernetes resource
 - Visual resource tree showing parent-child relationships
-- Health assessment for all resource types
+- Built-in health assessment for many standard resource types, with custom health checks for others
 - Live diff between Git state and cluster state
 - Automatic drift detection and correction (self-heal)
-- Kubernetes-native RBAC through Projects
+- Argo CD RBAC and project-level restrictions through AppProjects
 
 ### Spacelift Kubernetes Deployment
 
@@ -139,7 +139,7 @@ argocd app get my-app
 # Deployment -> ReplicaSet -> Pods -> Containers
 
 # It can show you live logs from pods
-argocd app logs my-app --pod my-app-abc123
+argocd app logs my-app --kind Pod --name my-app-abc123
 
 # It detects and heals drift immediately
 # If someone manually changes a resource, ArgoCD reverts it
@@ -180,10 +180,10 @@ Spacelift excels at managing the cloud infrastructure that supports Kubernetes.
 # Spacelift manages the full infrastructure stack
 module "eks_cluster" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.0"
+  version = "~> 21.0"
 
   cluster_name    = "production"
-  cluster_version = "1.28"
+  cluster_version = "1.35"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -199,7 +199,7 @@ module "eks_cluster" {
 }
 ```
 
-ArgoCD cannot manage VPCs, EKS clusters, RDS databases, or any non-Kubernetes infrastructure. It operates strictly within the Kubernetes API.
+ArgoCD does not directly provision VPCs, EKS clusters, RDS databases, or other non-Kubernetes infrastructure. It operates through the Kubernetes API, unless you pair it with Kubernetes controllers and CRDs that manage external resources.
 
 ### Policy Enforcement
 
@@ -209,19 +209,19 @@ Spacelift has a sophisticated policy engine built on Open Policy Agent.
 # Spacelift OPA policy
 package spacelift
 
-# Prevent deploying to production without approval
-deny[reason] {
+# Require human review for production stacks
+warn contains "Production deployments require manual review" if {
   input.spacelift.stack.labels[_] == "production"
-  not input.spacelift.run.triggered_by == "approval"
-  reason := "Production deployments require approval"
 }
 
 # Enforce resource naming conventions
-deny[reason] {
-  resource := input.terraform.resource_changes[_]
+deny contains reason if {
+  some resource in input.terraform.resource_changes
   resource.type == "kubernetes_deployment"
-  not startswith(resource.change.after.metadata[0].name, "app-")
-  reason := sprintf("Deployment %s must start with 'app-' prefix", [resource.change.after.metadata[0].name])
+  resource.change.actions != ["delete"]
+  name := resource.change.after.metadata[0].name
+  not startswith(name, "app-")
+  reason := sprintf("Deployment %s must start with 'app-' prefix", [name])
 }
 ```
 
@@ -268,7 +268,7 @@ graph TD
 - Ingress and networking policies
 - ConfigMaps and Secrets
 
-```yaml
+```text
 # Example: Spacelift creates the cluster, ArgoCD deploys to it
 
 # Step 1: Spacelift provisions the EKS cluster and registers it with ArgoCD
@@ -277,7 +277,9 @@ resource "argocd_cluster" "production" {
   server = module.eks_cluster.cluster_endpoint
   name   = "production"
   config {
-    bearer_token = data.aws_eks_cluster_auth.production.token
+    aws_auth_config {
+      cluster_name = module.eks_cluster.cluster_name
+    }
     tls_client_config {
       ca_data = base64decode(module.eks_cluster.cluster_certificate_authority_data)
     }
@@ -298,9 +300,9 @@ spec:
 | Aspect | ArgoCD | Spacelift |
 |--------|--------|-----------|
 | Software cost | Free (open source) | Free tier + paid plans |
-| Typical monthly cost | $0 + infrastructure | $100-2,000+ depending on scale |
-| Infrastructure needed | Small (in-cluster) | SaaS (no self-hosting) |
-| Operational overhead | Medium (self-managed) | Low (managed service) |
+| Typical monthly cost | $0 + infrastructure | Free tier; paid plans start at $399/month, with higher tiers quote-based |
+| Infrastructure needed | Small (in-cluster) | SaaS by default; self-hosted available on Enterprise |
+| Operational overhead | Medium (self-managed) | Low for SaaS; higher for self-hosted |
 
 ## When to Choose ArgoCD
 
