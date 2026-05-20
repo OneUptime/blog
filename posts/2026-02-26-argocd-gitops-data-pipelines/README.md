@@ -73,14 +73,41 @@ Use the Strimzi operator to manage Kafka on Kubernetes:
 ```yaml
 # infrastructure/kafka/base/kafka-cluster.yaml
 
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: dual-role
+  labels:
+    strimzi.io/cluster: data-platform
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 500Gi
+        class: gp3
+        kraftMetadata: shared
+  resources:
+    requests:
+      memory: 4Gi
+      cpu: "2"
+    limits:
+      memory: 8Gi
+      cpu: "4"
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: data-platform
 spec:
   kafka:
-    version: 3.6.1
-    replicas: 3
+    version: 4.2.0
+    metadataVersion: 4.2-IV1
     listeners:
       - name: plain
         port: 9092
@@ -97,23 +124,6 @@ spec:
       default.replication.factor: 3
       min.insync.replicas: 2
       log.retention.hours: 168
-    storage:
-      type: persistent-claim
-      size: 500Gi
-      class: gp3
-    resources:
-      requests:
-        memory: 4Gi
-        cpu: "2"
-      limits:
-        memory: 8Gi
-        cpu: "4"
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 100Gi
-      class: gp3
   entityOperator:
     topicOperator: {}
     userOperator: {}
@@ -123,7 +133,7 @@ Manage Kafka topics declaratively:
 
 ```yaml
 # infrastructure/kafka/base/kafka-topics.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: raw-events
@@ -137,7 +147,7 @@ spec:
     cleanup.policy: delete
     segment.bytes: "1073741824"   # 1GB segments
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: processed-events
@@ -198,7 +208,7 @@ spec:
   source:
     repoURL: https://airflow.apache.org
     chart: airflow
-    targetRevision: 1.13.0
+    targetRevision: 1.21.0
     helm:
       values: |
         executor: KubernetesExecutor
@@ -220,8 +230,9 @@ spec:
           replicas: 0  # KubernetesExecutor - no persistent workers
         postgresql:
           enabled: true
-          persistence:
-            size: 50Gi
+          primary:
+            persistence:
+              size: 50Gi
         redis:
           enabled: false  # Not needed with KubernetesExecutor
         dags:
@@ -229,8 +240,9 @@ spec:
             enabled: true
             repo: https://github.com/your-org/airflow-dags.git
             branch: main
+            ref: main
             subPath: dags
-            wait: 60
+            period: 60s
         config:
           core:
             max_active_runs_per_dag: 3
@@ -266,7 +278,7 @@ spec:
   source:
     repoURL: https://kubeflow.github.io/spark-operator
     chart: spark-operator
-    targetRevision: 2.0.0
+    targetRevision: 2.5.0
     helm:
       values: |
         webhook:
@@ -304,7 +316,7 @@ spec:
     image: my-registry/spark-etl:v2.1.0
     mainApplicationFile: "local:///app/etl_orders.py"
     arguments:
-      - "--date={{ ds }}"
+      - "--run-mode=scheduled"
       - "--output=s3a://data-lake/orders/"
     sparkVersion: "3.5.0"
     driver:
@@ -366,7 +378,7 @@ The `upgradeMode: savepoint` ensures that when ArgoCD applies an updated version
 
 ## Handling Data Pipeline Dependencies
 
-Data pipelines have complex dependencies. Use sync waves to order deployments:
+Data pipelines have complex dependencies. Use sync waves to order resources within the same ArgoCD sync operation, such as when these Applications are managed by a parent app-of-apps:
 
 ```yaml
 # Wave -3: Storage and messaging infrastructure
@@ -418,6 +430,9 @@ spec:
     matchLabels:
       app: schema-registry
   template:
+    metadata:
+      labels:
+        app: schema-registry
     spec:
       containers:
         - name: schema-registry
