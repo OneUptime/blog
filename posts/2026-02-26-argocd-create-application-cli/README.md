@@ -368,7 +368,7 @@ argocd app get my-app -o json | jq '{
 }'
 
 # List unhealthy apps
-argocd app list -o json | jq '.items[] | select(.status.health.status != "Healthy") | .metadata.name'
+argocd app list -o json | jq '.[] | select(.status.health.status != "Healthy") | .metadata.name'
 ```
 
 For creating applications declaratively through YAML manifests, see [ArgoCD Application declarative YAML](https://oneuptime.com/blog/post/2026-02-26-argocd-application-declarative-yaml/view). For the UI approach, see [creating ArgoCD applications using the UI](https://oneuptime.com/blog/post/2026-02-26-argocd-create-application-ui/view).
