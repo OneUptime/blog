@@ -27,7 +27,7 @@ Most of these are transient. They resolve themselves within seconds or minutes. 
 
 ## Configuring Repo Server Retry Behavior
 
-The ArgoCD repo server is the component responsible for all Git operations. You can configure its retry behavior through the argocd-cmd-params-cm ConfigMap:
+The ArgoCD repo server is the component responsible for Git operations. You can configure the timeout for Git requests through the argocd-cmd-params-cm ConfigMap:
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
@@ -38,8 +38,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Maximum number of retries for Git operations
-  reposerver.git.request.timeout: "60"
+  # Git request timeout
+  reposerver.git.request.timeout: "60s"
 ```
 
 For more granular control over Git retry behavior, you can configure environment variables on the repo server deployment:
@@ -65,13 +65,22 @@ spec:
         # Retry count for Git operations
         - name: ARGOCD_GIT_ATTEMPTS_COUNT
           value: "5"
+        # Base duration between Git retry attempts
+        - name: ARGOCD_GIT_RETRY_DURATION
+          value: "250ms"
+        # Exponential backoff factor for Git retry attempts
+        - name: ARGOCD_GIT_RETRY_FACTOR
+          value: "2"
+        # Maximum duration between Git retry attempts
+        - name: ARGOCD_GIT_RETRY_MAX_DURATION
+          value: "5s"
 ```
 
-The `ARGOCD_GIT_ATTEMPTS_COUNT` environment variable controls how many times ArgoCD will retry a failed Git operation before giving up. The default value is usually 1, which means no retries. Setting it to 5 gives ArgoCD up to 4 additional attempts after the initial failure.
+The `ARGOCD_GIT_ATTEMPTS_COUNT` environment variable controls how many times ArgoCD will retry supported failed Git remote requests, such as `ls-remote` revision resolution, before giving up. The default value is 1, which means no retries. Setting it to 5 gives ArgoCD up to 4 additional attempts after the initial failure.
 
 ## Configuring Application-Level Sync Retries
 
-While the above settings handle Git-level retries within the repo server, you can also configure retry behavior at the application sync level. This is different from Git retries - it retries the entire sync operation, which includes Git fetch, manifest generation, and Kubernetes apply steps.
+While the above settings handle Git remote request retries within the repo server, you can also configure retry behavior at the application sync level. This is different from Git retries - it retries the entire sync operation, which includes Git fetch, manifest generation, and Kubernetes apply steps.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -141,8 +150,6 @@ data:
     [http]
       lowSpeedLimit = 1000
       lowSpeedTime = 20
-    [transfer]
-      retryCount = 3
     [core]
       compression = 0
 ```
@@ -170,7 +177,7 @@ spec:
           name: argocd-repo-server-config
 ```
 
-The `transfer.retryCount` setting tells Git itself to retry pack transfers. The `http.lowSpeedLimit` and `http.lowSpeedTime` settings define when a connection is considered too slow and should be dropped, triggering a retry.
+The `http.lowSpeedLimit` and `http.lowSpeedTime` settings define when an HTTP connection is considered too slow and should be aborted. When combined with ArgoCD's Git retry settings, that aborted request can be retried by ArgoCD.
 
 ## Handling Rate Limiting from Git Providers
 
@@ -194,24 +201,24 @@ data:
   # This reduces the frequency of Git operations significantly
 ```
 
-Webhooks are the best solution for rate limiting. Instead of ArgoCD polling your Git server every few minutes, the Git server notifies ArgoCD when changes occur. This dramatically reduces the number of Git operations. See our post on [configuring Git webhooks for GitHub in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-git-webhook-github/view) for a detailed walkthrough.
+Webhooks are the best solution for rate limiting. Instead of relying only on ArgoCD polling your Git server every few minutes, the Git server notifies ArgoCD when changes occur. This can reduce the number of Git operations, especially when you also increase the reconciliation interval. See our post on [configuring Git webhooks for GitHub in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-git-webhook-github/view) for a detailed walkthrough.
 
 ## Monitoring Git Retry Behavior
 
-Once you have retries configured, you want to monitor how often they trigger. ArgoCD exposes Prometheus metrics for Git operations:
+Once you have retries configured, you want to monitor Git request volume and failures. ArgoCD exposes Prometheus metrics for Git operations:
 
 ```promql
 # Count of Git fetch requests
-argocd_git_request_total
+argocd_git_request_total{request_type="fetch"}
 
 # Duration of Git operations
 argocd_git_request_duration_seconds_bucket
 
-# Failed Git requests
-argocd_git_request_total{request_type="fetch", grpc_code!="OK"}
+# Failed Git fetch requests
+argocd_git_fetch_fail_total
 ```
 
-Set up alerts when retry counts exceed normal thresholds:
+Set up alerts when Git failures exceed normal thresholds:
 
 ```yaml
 groups:
@@ -219,7 +226,7 @@ groups:
   rules:
   - alert: ArgocdGitRequestFailures
     expr: |
-      rate(argocd_git_request_total{grpc_code!="OK"}[5m]) > 0.1
+      rate(argocd_git_fetch_fail_total[5m]) > 0.1
     for: 10m
     labels:
       severity: warning
