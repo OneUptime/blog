@@ -52,7 +52,10 @@ data:
 
     # Backup ApplicationSet resources
     echo "Backing up ApplicationSets..."
-    kubectl get applicationsets -n "${NAMESPACE}" -o yaml > "${BACKUP_DIR}/applicationsets.yaml" 2>/dev/null || echo "No ApplicationSets found"
+    if ! kubectl get applicationsets -n "${NAMESPACE}" -o yaml > "${BACKUP_DIR}/applicationsets.yaml" 2>/dev/null; then
+      rm -f "${BACKUP_DIR}/applicationsets.yaml"
+      echo "No ApplicationSets found"
+    fi
 
     # Backup AppProject resources
     echo "Backing up AppProjects..."
@@ -61,13 +64,19 @@ data:
     # Backup ConfigMaps
     echo "Backing up ConfigMaps..."
     for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-ssh-known-hosts-cm argocd-tls-certs-cm argocd-notifications-cm; do
-      kubectl get configmap "${cm}" -n "${NAMESPACE}" -o yaml > "${BACKUP_DIR}/${cm}.yaml" 2>/dev/null || echo "ConfigMap ${cm} not found, skipping"
+      if ! kubectl get configmap "${cm}" -n "${NAMESPACE}" -o yaml > "${BACKUP_DIR}/${cm}.yaml" 2>/dev/null; then
+        rm -f "${BACKUP_DIR}/${cm}.yaml"
+        echo "ConfigMap ${cm} not found, skipping"
+      fi
     done
 
     # Backup Secrets (sensitive - handle carefully)
     echo "Backing up Secrets..."
     for secret in argocd-secret argocd-notifications-secret; do
-      kubectl get secret "${secret}" -n "${NAMESPACE}" -o yaml > "${BACKUP_DIR}/${secret}.yaml" 2>/dev/null || echo "Secret ${secret} not found, skipping"
+      if ! kubectl get secret "${secret}" -n "${NAMESPACE}" -o yaml > "${BACKUP_DIR}/${secret}.yaml" 2>/dev/null; then
+        rm -f "${BACKUP_DIR}/${secret}.yaml"
+        echo "Secret ${secret} not found, skipping"
+      fi
     done
 
     # Backup repository credentials
@@ -85,7 +94,7 @@ data:
     # Create a tarball
     echo "Creating archive..."
     cd /backups
-    tar -czf "argocd-$(date +%Y%m%d-%H%M%S).tar.gz" "$(basename ${BACKUP_DIR})"
+    tar -czf "argocd-$(date +%Y%m%d-%H%M%S).tar.gz" "$(basename "${BACKUP_DIR}")"
     rm -rf "${BACKUP_DIR}"
 
     # Clean up old backups
@@ -238,19 +247,20 @@ data:
 
     # Export all resources
     kubectl get applications -n "${NAMESPACE}" -o yaml > "${TEMP_DIR}/applications.yaml"
-    kubectl get applicationsets -n "${NAMESPACE}" -o yaml > "${TEMP_DIR}/applicationsets.yaml" 2>/dev/null || true
+    kubectl get applicationsets -n "${NAMESPACE}" -o yaml > "${TEMP_DIR}/applicationsets.yaml" 2>/dev/null || rm -f "${TEMP_DIR}/applicationsets.yaml"
     kubectl get appprojects -n "${NAMESPACE}" -o yaml > "${TEMP_DIR}/appprojects.yaml"
 
     for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-ssh-known-hosts-cm argocd-tls-certs-cm argocd-notifications-cm; do
-      kubectl get configmap "${cm}" -n "${NAMESPACE}" -o yaml > "${TEMP_DIR}/${cm}.yaml" 2>/dev/null || true
+      kubectl get configmap "${cm}" -n "${NAMESPACE}" -o yaml > "${TEMP_DIR}/${cm}.yaml" 2>/dev/null || rm -f "${TEMP_DIR}/${cm}.yaml"
     done
 
     for secret in argocd-secret argocd-notifications-secret; do
-      kubectl get secret "${secret}" -n "${NAMESPACE}" -o yaml > "${TEMP_DIR}/${secret}.yaml" 2>/dev/null || true
+      kubectl get secret "${secret}" -n "${NAMESPACE}" -o yaml > "${TEMP_DIR}/${secret}.yaml" 2>/dev/null || rm -f "${TEMP_DIR}/${secret}.yaml"
     done
 
     kubectl get secrets -n "${NAMESPACE}" -l argocd.argoproj.io/secret-type=repository -o yaml > "${TEMP_DIR}/repo-creds.yaml"
     kubectl get secrets -n "${NAMESPACE}" -l argocd.argoproj.io/secret-type=cluster -o yaml > "${TEMP_DIR}/cluster-secrets.yaml"
+    kubectl get secrets -n "${NAMESPACE}" -l argocd.argoproj.io/secret-type=repo-creds -o yaml > "${TEMP_DIR}/repo-cred-templates.yaml"
 
     # Create archive and upload
     cd "${TEMP_DIR}"
@@ -286,25 +296,32 @@ RESTORE_DIR=$(mktemp -d)
 
 echo "Extracting backup..."
 tar -xzf "${BACKUP_FILE}" -C "${RESTORE_DIR}"
+BACKUP_ROOT="${RESTORE_DIR}"
+for d in "${RESTORE_DIR}"/argocd-*; do
+  if [[ -d "$d" ]]; then
+    BACKUP_ROOT="$d"
+    break
+  fi
+done
 
 echo "Restoring ConfigMaps..."
-for f in "${RESTORE_DIR}"/argocd-*-cm.yaml "${RESTORE_DIR}"/argocd-cm.yaml; do
+for f in "${BACKUP_ROOT}"/argocd-*-cm.yaml "${BACKUP_ROOT}"/argocd-cm.yaml; do
   [[ -f "$f" ]] && kubectl apply -f "$f" -n "${NAMESPACE}"
 done
 
 echo "Restoring Secrets..."
-for f in "${RESTORE_DIR}"/*secret*.yaml "${RESTORE_DIR}"/repo-creds.yaml "${RESTORE_DIR}"/cluster-secrets.yaml; do
+for f in "${BACKUP_ROOT}"/*secret*.yaml "${BACKUP_ROOT}"/repo-creds.yaml "${BACKUP_ROOT}"/cluster-secrets.yaml "${BACKUP_ROOT}"/repo-cred-templates.yaml; do
   [[ -f "$f" ]] && kubectl apply -f "$f" -n "${NAMESPACE}"
 done
 
 echo "Restoring AppProjects..."
-kubectl apply -f "${RESTORE_DIR}/appprojects.yaml" -n "${NAMESPACE}"
+kubectl apply -f "${BACKUP_ROOT}/appprojects.yaml" -n "${NAMESPACE}"
 
 echo "Restoring Applications..."
-kubectl apply -f "${RESTORE_DIR}/applications.yaml" -n "${NAMESPACE}"
+kubectl apply -f "${BACKUP_ROOT}/applications.yaml" -n "${NAMESPACE}"
 
 echo "Restoring ApplicationSets..."
-[[ -f "${RESTORE_DIR}/applicationsets.yaml" ]] && kubectl apply -f "${RESTORE_DIR}/applicationsets.yaml" -n "${NAMESPACE}"
+[[ -f "${BACKUP_ROOT}/applicationsets.yaml" ]] && kubectl apply -f "${BACKUP_ROOT}/applicationsets.yaml" -n "${NAMESPACE}"
 
 echo "Restore complete. Restart ArgoCD to pick up config changes:"
 echo "  kubectl rollout restart deployment -n ${NAMESPACE}"
