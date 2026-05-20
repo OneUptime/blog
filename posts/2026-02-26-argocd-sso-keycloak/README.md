@@ -121,7 +121,7 @@ data:
         essential: true
 ```
 
-Note: If you are using Keycloak before v18 (WildFly-based), the issuer URL format is different:
+Note: If you are using Keycloak before v17 (WildFly-based), the issuer URL format is different:
 
 ```text
 issuer: https://keycloak.example.com/auth/realms/platform
@@ -181,12 +181,14 @@ Test the login:
 3. Authenticate with your Keycloak credentials
 4. Verify access based on your group membership
 
-CLI test:
+CLI test (after enabling PKCE for the ArgoCD OIDC client and adding `http://localhost:8085/auth/callback` to the Keycloak client's **Valid redirect URIs**):
 
 ```bash
 argocd login argocd.example.com --sso
 argocd account get-user-info
 ```
+
+The ArgoCD CLI listens on localhost during `argocd login --sso`.
 
 ## Advanced Configuration
 
@@ -215,7 +217,7 @@ data:
 
 ### Integrating Keycloak with External Identity Providers
 
-Keycloak can federate with external identity providers, making it a broker between ArgoCD and sources like:
+Keycloak can federate users and broker external identity providers, making it an integration point between ArgoCD and sources like:
 
 - Corporate LDAP/Active Directory
 - GitHub
@@ -225,9 +227,11 @@ Keycloak can federate with external identity providers, making it a broker betwe
 To add an external identity provider:
 
 1. In Keycloak, go to **Identity Providers**
-2. Select the provider type (e.g., LDAP, GitHub, SAML)
+2. Select the provider type (e.g., GitHub, Google, SAML)
 3. Configure the connection
 4. Map external attributes to Keycloak groups
+
+For LDAP or Active Directory, use **User federation** instead of **Identity Providers**, then map federated users or groups into the Keycloak groups used by ArgoCD.
 
 This way, ArgoCD only needs to know about Keycloak, and Keycloak handles the complexity of multiple identity sources.
 
@@ -252,7 +256,7 @@ data:
       - profile
       - email
       - groups
-    logoutURL: https://keycloak.example.com/realms/platform/protocol/openid-connect/logout?post_logout_redirect_uri=https://argocd.example.com&client_id=argocd
+    logoutURL: https://keycloak.example.com/realms/platform/protocol/openid-connect/logout?id_token_hint={{token}}&post_logout_redirect_uri={{logoutRedirectURL}}
 ```
 
 ## Troubleshooting
@@ -279,13 +283,25 @@ If users can log in but groups are not being passed:
 
 If Keycloak uses a self-signed certificate:
 
-```bash
-kubectl -n argocd create configmap argocd-tls-certs-cm \
-  --from-file=keycloak.example.com=/path/to/keycloak-ca.crt \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-kubectl -n argocd rollout restart deployment argocd-server
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  oidc.config: |
+    name: Keycloak
+    issuer: https://keycloak.example.com/realms/platform
+    clientID: argocd
+    clientSecret: $oidc.keycloak.clientSecret
+    rootCA: |
+      -----BEGIN CERTIFICATE-----
+      ... PEM-encoded Keycloak CA certificate ...
+      -----END CERTIFICATE-----
 ```
+
+The `argocd-tls-certs-cm` ConfigMap is for repository and similar server certificates; OIDC provider trust is configured with `rootCA` in `oidc.config`.
 
 ### Session Timeout Issues
 
