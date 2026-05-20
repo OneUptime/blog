@@ -89,17 +89,12 @@ helm:
 # kube-prometheus-stack / Prometheus Operator
 helm:
   values: |
-    prometheusOperator:
-      admissionWebhooks:
-        enabled: false
-    # CRDs are managed via crds/ directory, use skipCrds
-  skipCrds: true
+    crds:
+      enabled: false
 
 # Istio
-helm:
-  values: |
-    base:
-      enableCRDTemplates: false
+# Current Istio base charts render CRDs as templates, so manage the
+# istio/base chart or CRD manifests separately instead of relying on skipCrds.
 
 # Argo Rollouts
 helm:
