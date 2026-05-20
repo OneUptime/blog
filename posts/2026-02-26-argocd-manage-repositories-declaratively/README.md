@@ -71,7 +71,7 @@ stringData:
   password: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-For GitHub, use a personal access token or GitHub App installation token as the password. For GitLab, use a deploy token or project access token.
+For GitHub, use a personal access token as the password. For GitLab, use a deploy token or project access token.
 
 ## Declaring a Private Git Repository with SSH
 
@@ -260,6 +260,7 @@ type: Opaque
 stringData:
   type: git
   url: https://github.com/myorg/private-backend.git
+  username: argocd-bot
   password: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 EOF
 
@@ -276,7 +277,7 @@ Define an ExternalSecret that creates the repository secret from a vault:
 
 ```yaml
 # repositories/repo-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: repo-private-backend
@@ -289,6 +290,7 @@ spec:
   target:
     name: repo-private-backend
     template:
+      engineVersion: v2
       metadata:
         labels:
           argocd.argoproj.io/secret-type: repository
@@ -363,10 +365,9 @@ argocd repo list
 # Test a specific repository connection
 argocd repo get https://github.com/myorg/backend-api.git
 
-# Check for connection errors
+# Inspect the repository secrets ArgoCD is watching
 kubectl get secrets -n argocd \
-  -l argocd.argoproj.io/secret-type=repository \
-  -o custom-columns='NAME:.metadata.name,URL:.data.url'
+  -l argocd.argoproj.io/secret-type=repository
 ```
 
 ## Common Issues
