@@ -140,10 +140,10 @@ Rancher uses its own proxy to route kubectl commands to downstream clusters. If 
 # Find the cluster ID from Rancher
 rancher cluster ls
 
-# Add cluster using the Rancher proxy URL
-argocd cluster add --name production-cluster \
-  --server https://rancher.yourdomain.com/k8s/clusters/c-m-xxxxxxxx \
-  --auth-token <rancher-bearer-token>
+# Add the cluster from a kubeconfig that uses the Rancher proxy URL
+argocd cluster add <rancher-proxy-context-name> \
+  --kubeconfig /tmp/downstream-cluster.yaml \
+  --name production-cluster
 ```
 
 Alternatively, create a Kubernetes Secret with the cluster credentials directly.
@@ -160,13 +160,13 @@ metadata:
 type: Opaque
 stringData:
   name: downstream-cluster-1
-  server: https://downstream-api-server:6443
+  server: https://rancher.yourdomain.com/k8s/clusters/c-m-xxxxxxxx
   config: |
     {
-      "bearerToken": "<service-account-token>",
+      "bearerToken": "<rancher-bearer-token>",
       "tlsClientConfig": {
         "insecure": false,
-        "caData": "<base64-ca-cert>"
+        "caData": "<base64-rancher-ca-cert>"
       }
     }
 ```
@@ -220,13 +220,10 @@ metadata:
 spec:
   generators:
   - clusters:
-      # Select all registered clusters except the management cluster
+      # Select registered remote clusters and exclude the default in-cluster target
       selector:
-        matchExpressions:
-        - key: name
-          operator: NotIn
-          values:
-            - in-cluster
+        matchLabels:
+          argocd.argoproj.io/secret-type: cluster
   template:
     metadata:
       name: 'guestbook-{{name}}'
@@ -292,7 +289,7 @@ kubectl run test-connectivity --rm -i --tty --image=curlimages/curl -- \
 
 ### Rancher Token Expired
 
-If using Rancher bearer tokens, they may expire. Use a ServiceAccount token instead for long-lived access.
+If using Rancher bearer tokens, they may expire. Use a ServiceAccount token with an appropriate rotation process instead.
 
 ```bash
 # On the downstream cluster, create a service account for ArgoCD
