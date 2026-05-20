@@ -8,28 +8,30 @@ Description: Diagnose and fix ArgoCD applications that keep triggering auto-sync
 
 ---
 
-Your ArgoCD application has auto-sync enabled, and it keeps syncing over and over again. You check the sync history and see dozens of syncs, each a few minutes apart, even though nobody has pushed any changes. This sync loop wastes cluster resources, clutters your audit logs, and can cause unnecessary pod restarts.
+Your ArgoCD application has auto-sync and self-heal enabled, and it keeps syncing over and over again. You check the sync history and see dozens of syncs, each a few minutes apart, even though nobody has pushed any changes. This sync loop wastes cluster resources, clutters your audit logs, and can cause unnecessary pod restarts.
 
-The root cause is almost always that something modifies the live state of your resources after ArgoCD syncs them, causing ArgoCD to detect drift and sync again. Let me walk through how to identify what is causing the loop and how to stop it.
+The root cause is usually that something modifies the live state of your resources after ArgoCD syncs them, causing ArgoCD to detect drift and, when self-heal is enabled, sync again. Let me walk through how to identify what is causing the loop and how to stop it.
 
 ## Understanding the Auto-Sync Loop
 
 ArgoCD auto-sync works like this:
 
 1. ArgoCD compares the live cluster state with the desired Git state
-2. If they differ, ArgoCD triggers a sync
+2. If they differ, ArgoCD marks the application OutOfSync
 3. The sync applies the Git manifests to the cluster
 4. Something modifies the live state (mutation)
 5. ArgoCD detects the difference on the next comparison
-6. Go back to step 2
+6. If automated self-heal is enabled, go back to step 3
 
 ```mermaid
 flowchart TD
     A[Compare Git vs Live] --> B{Different?}
     B -->|No| C[Wait for next check]
     C --> A
-    B -->|Yes| D[Trigger Sync]
-    D --> E[Apply Manifests]
+    B -->|Yes| D[Mark OutOfSync]
+    D --> G{Self-heal enabled?}
+    G -->|No| C
+    G -->|Yes| E
     E --> F[External Mutation]
     F --> A
 ```
@@ -38,11 +40,11 @@ The key is identifying what causes step 4 - the external mutation.
 
 ## Cause 1: Mutating Admission Webhooks
 
-Mutating webhooks modify resources after ArgoCD creates or updates them. Common culprits include:
+Mutating webhooks modify resources during admission, before the API server stores ArgoCD's create or update request. Common culprits include:
 
 - **Istio sidecar injector**: Adds sidecar containers, volumes, and annotations
 - **Vault injector**: Adds init containers and annotations for secret injection
-- **OPA Gatekeeper**: May modify resources to add labels or annotations
+- **OPA Gatekeeper mutation policies**: May modify resources to add labels or annotations
 - **Kubernetes itself**: Adds default values to fields you did not specify
 
 ```bash
@@ -104,9 +106,9 @@ Or better yet, remove `spec.replicas` from your Git manifests entirely and let t
 
 ## Cause 3: Server-Side Defaults
 
-As covered in our guide on [handling ArgoCD OutOfSync due to server-side defaults](https://oneuptime.com/blog/post/2026-02-26-argocd-outofsync-server-side-defaults/view), Kubernetes adds default values that your Git manifests do not specify. With auto-sync enabled, this creates a loop.
+As covered in our guide on [handling ArgoCD OutOfSync due to server-side defaults](https://oneuptime.com/blog/post/2026-02-26-argocd-outofsync-server-side-defaults/view), Kubernetes adds default values that your Git manifests do not specify. If ArgoCD reports those defaults as drift and automated self-heal is enabled, this can contribute to a sync loop.
 
-Enable server-side diff to eliminate false positives from defaults.
+Enable server-side diff to reduce false positives from defaults.
 
 ```yaml
 apiVersion: v1
@@ -117,6 +119,8 @@ metadata:
 data:
   controller.diff.server.side: "true"
 ```
+
+Restart the `argocd-application-controller` after changing `argocd-cmd-params-cm`.
 
 ## Cause 4: Annotation or Label Churn
 
@@ -139,7 +143,7 @@ ignoreDifferences:
 
 ## Cause 5: Status Field Changes
 
-Some CRDs do not properly separate spec from status, causing status updates to trigger ArgoCD diffs.
+Status is usually ignored by ArgoCD's default compare options, but status fields can still cause noise if status is present in your rendered manifests or if your instance has changed the default status compare behavior.
 
 ```yaml
 # Global ignore for status fields on custom resources
@@ -156,7 +160,7 @@ data:
 
 ## Cause 6: Resource Generation Field
 
-The `metadata.generation` and `metadata.resourceVersion` fields change on every update. ArgoCD normally handles these correctly, but custom resources or older versions might not.
+The `metadata.resourceVersion` field changes on every update, and `metadata.generation` changes when the desired state of a resource changes. Current ArgoCD versions ignore these metadata fields for resource update reconciliation by default, so if they are the only fields changing in `kubectl` output, look for another field in the ArgoCD diff before adding an ignore rule.
 
 ## Diagnosing the Loop
 
@@ -173,7 +177,7 @@ argocd app diff my-app
 
 ```bash
 # Sync the app
-argocd app sync my-app --force
+argocd app sync my-app
 
 # Wait 10 seconds and check the diff again
 sleep 10
@@ -189,7 +193,7 @@ If the diff shows differences immediately after a sync, something is modifying t
 kubectl -n argocd logs -f deployment/argocd-application-controller | grep "my-app"
 ```
 
-Look for messages about "auto-sync" being triggered and what changed.
+Look for messages about "auto-sync" being triggered and what changed. For high-churn resource updates, enable debug logging and search for "Requesting app refresh caused by object update".
 
 ### Step 4: Use kubectl to Watch for Modifications
 
@@ -239,17 +243,17 @@ spec:
       - RespectIgnoreDifferences=true
 ```
 
-This is important because without this option, ArgoCD still applies the Git version of ignored fields during sync - it just does not report them as OutOfSync. With `RespectIgnoreDifferences=true`, ArgoCD leaves those fields alone during sync too.
+This is important because without this option, ArgoCD still applies the Git version of ignored fields during sync - it just does not report them as OutOfSync. With `RespectIgnoreDifferences=true`, ArgoCD pre-patches the desired state so those ignored fields are not applied during sync for resources that already exist in the cluster.
 
 ## Prevention
 
 To prevent sync loops in the future:
 
-1. **Always enable server-side diff** on new installations
+1. **Consider enabling server-side diff** on new installations
 2. **Test with auto-sync disabled first**, then enable it after confirming there are no phantom diffs
 3. **Monitor sync frequency** - if an app syncs more than once per actual Git change, investigate immediately
 4. **Use `RespectIgnoreDifferences=true`** whenever you use `ignoreDifferences`
 
 Use [OneUptime](https://oneuptime.com) to monitor your ArgoCD sync frequency. An abnormally high sync rate is a clear indicator of a sync loop that needs attention.
 
-Sync loops are one of the most common operational issues with ArgoCD auto-sync. The root cause is always some external modification to your resources, and the fix is always either ignoring the difference or removing the conflicting field from your Git manifests.
+Sync loops are one of the most common operational issues with ArgoCD auto-sync and self-heal. The root cause is usually some external modification to your resources, and the fix is usually either ignoring the difference or removing the conflicting field from your Git manifests.
