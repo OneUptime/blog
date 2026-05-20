@@ -99,18 +99,17 @@ args:
 - --timeout=300
 ```
 
-On the ArgoCD side, you can configure the Redis connection in the `argocd-cm` ConfigMap.
+On the ArgoCD side, you can configure the Redis connection in the `argocd-cmd-params-cm` ConfigMap.
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Redis connection URL
+  # Redis server hostname and port
   redis.server: "argocd-redis:6379"
-  # Optional: connection pool size per ArgoCD component
 ```
 
 ## Tuning Redis Persistence
@@ -126,11 +125,16 @@ args:
 - --maxmemory-policy=allkeys-lru
 # Enable RDB snapshots
 # Save after 900 seconds if at least 1 key changed
-- --save=900 1
+- --save
+- "900"
+- "1"
 # Save after 300 seconds if at least 100 keys changed
-- --save=300 100
+- --save
+- "300"
+- "100"
 # Disable AOF (not needed for caching)
-- --appendonly=no
+- --appendonly
+- "no"
 ```
 
 The tradeoff is that RDB snapshots consume CPU and create a temporary memory spike (Redis forks to write the snapshot). For pure caching workloads, it is usually better to skip persistence and accept the cold-start penalty.
@@ -140,23 +144,37 @@ The tradeoff is that RDB snapshots consume CPU and create a temporary memory spi
 For production deployments where Redis downtime directly impacts ArgoCD functionality, use Redis Sentinel for automatic failover.
 
 ```yaml
-# Deploy Redis with Sentinel using Bitnami Helm chart
-# helm install argocd-redis bitnami/redis \
-#   --set sentinel.enabled=true \
-#   --set replica.replicaCount=3 \
-#   --namespace argocd
+# Deploy the ArgoCD HA manifests, which include Redis HA and Sentinel
+# kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 
-# Configure ArgoCD to use Sentinel
+# Configure ArgoCD to use the Redis HA proxy
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  redis.server: "argocd-redis-node-0.argocd-redis-headless:26379,argocd-redis-node-1.argocd-redis-headless:26379,argocd-redis-node-2.argocd-redis-headless:26379"
+  redis.server: "argocd-redis-ha-haproxy:6379"
 ```
 
-Alternatively, configure Sentinel in the `argocd-cmd-params-cm` ConfigMap.
+Alternatively, configure Sentinel directly on each ArgoCD component using the Redis Sentinel flags.
+
+```yaml
+args:
+- /usr/local/bin/argocd-repo-server
+- --sentinel
+- argocd-redis-node-0:26379
+- --sentinel
+- argocd-redis-node-1:26379
+- --sentinel
+- argocd-redis-node-2:26379
+- --sentinelmaster
+- mymaster
+```
+
+## Optimizing Key Expiration
+
+ArgoCD sets TTLs on cached keys. You can influence how long data stays cached through the `argocd-cmd-params-cm` ConfigMap.
 
 ```yaml
 apiVersion: v1
@@ -165,27 +183,11 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  redis.server: "argocd-redis"
-  redis.sentinelMasterName: "mymaster"
-  redis.sentinelAddresses: "argocd-redis-node-0:26379,argocd-redis-node-1:26379,argocd-redis-node-2:26379"
-```
-
-## Optimizing Key Expiration
-
-ArgoCD sets TTLs on cached keys. You can influence how long data stays cached through the `argocd-cm` ConfigMap.
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
   # Repo cache expiration (default: 24h)
   reposerver.repo.cache.expiration: "48h"
 
-  # OIDC cache expiration
-  oidc.cache.expiration: "3h"
+  # OIDC cache expiration (default: 3m)
+  server.oidc.cache.expiration: "3h"
 ```
 
 Longer cache expiration means fewer cache misses, but also means stale data lives longer. This is fine if you use webhooks to invalidate caches on actual changes.
@@ -201,7 +203,6 @@ args:
 - --maxmemory-policy=allkeys-lru
 # Enable active defragmentation
 - --activedefrag=yes
-- --active-defrag-enabled=yes
 # Start defrag when fragmentation ratio exceeds 1.1
 - --active-defrag-threshold-lower=10
 # Use up to 25% CPU for defrag
