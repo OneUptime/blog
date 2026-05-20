@@ -38,19 +38,22 @@ echo | openssl s_client -connect argocd.example.com:443 -servername argocd.examp
 
 # Check repository TLS certificates
 kubectl get configmap argocd-tls-certs-cm -n argocd -o json | \
-  jq -r '.data | to_entries[] | "\(.key): \(.value)"' | \
-  while read line; do
-    host=$(echo "$line" | cut -d: -f1)
+  jq -r '.data // {} | to_entries[] | @base64' | \
+  while read entry; do
+    host=$(echo "$entry" | base64 -d | jq -r '.key')
     echo "=== $host ==="
-    echo "$line" | cut -d: -f2- | openssl x509 -noout -dates 2>/dev/null
+    echo "$entry" | base64 -d | jq -r '.value' | openssl x509 -noout -dates 2>/dev/null
   done
 
 # Check cluster certificates
 kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=cluster -o json | \
-  jq -r '.items[] | .data.config' | base64 -d | \
-  jq -r '.tlsClientConfig.caData // empty' | \
-  while read cert; do
-    echo "$cert" | base64 -d | openssl x509 -noout -dates 2>/dev/null
+  jq -r '.items[] | @base64' | \
+  while read secret; do
+    name=$(echo "$secret" | base64 -d | jq -r '.metadata.name')
+    ca=$(echo "$secret" | base64 -d | jq -r '.data.config' | base64 -d | jq -r '.tlsClientConfig.caData // empty')
+    [ -n "$ca" ] || continue
+    echo "=== $name ==="
+    echo "$ca" | base64 -d | openssl x509 -noout -dates 2>/dev/null
   done
 
 # Check Dex certificates
@@ -89,11 +92,9 @@ kubectl describe certificate argocd-server-tls -n argocd
 kubectl logs -n cert-manager deployment/cert-manager --tail=100 | grep argocd
 
 # Force a certificate renewal
-kubectl delete secret argocd-server-tls -n argocd
-# cert-manager will automatically create a new one
+cmctl renew argocd-server-tls -n argocd
 
-# Restart the API server to pick up the new cert
-kubectl rollout restart deployment/argocd-server -n argocd
+# ArgoCD automatically picks up changes to the argocd-server-tls secret
 ```
 
 #### If Using a Manually Managed Certificate
@@ -107,17 +108,17 @@ kubectl create secret tls argocd-server-tls -n argocd \
   --key=/path/to/new/tls.key \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart the API server
-kubectl rollout restart deployment/argocd-server -n argocd
+# ArgoCD automatically picks up changes to the argocd-server-tls secret
 ```
 
 #### If Using the Self-Signed Certificate
 
-ArgoCD generates a self-signed certificate by default. To regenerate it.
+ArgoCD generates a self-signed certificate by default and stores it in `argocd-secret`. To regenerate it.
 
 ```bash
-# Delete the existing TLS secret
-kubectl delete secret argocd-server-tls -n argocd
+# Remove the existing self-signed certificate from argocd-secret
+kubectl patch secret argocd-secret -n argocd --type=json \
+  -p='[{"op":"remove","path":"/data/tls.crt"},{"op":"remove","path":"/data/tls.key"}]'
 
 # Restart the API server - it will generate a new self-signed cert
 kubectl rollout restart deployment/argocd-server -n argocd
@@ -131,18 +132,15 @@ When ArgoCD connects to a Git repository over HTTPS, it validates the server's T
 
 ```bash
 # Check which repos have custom certificates
-kubectl get configmap argocd-tls-certs-cm -n argocd -o json | jq 'keys'
+kubectl get configmap argocd-tls-certs-cm -n argocd -o json | jq '.data // {} | keys'
 
 # If the repo uses a custom/private CA, update the CA certificate
 # Get the new CA cert from your Git server admin
 
-# Update the certificate in the ConfigMap
-kubectl create configmap argocd-tls-certs-cm -n argocd \
-  --from-file=git.internal.example.com=/path/to/new-ca-cert.pem \
-  --dry-run=client -o yaml | kubectl apply -f -
+# Update the certificate for the repository server
+argocd cert add-tls git.internal.example.com --from /path/to/new-ca-cert.pem --upsert
 
-# Restart the repo server
-kubectl rollout restart deployment/argocd-repo-server -n argocd
+# It can take a couple of minutes for the change to propagate
 ```
 
 If the repository uses a public CA (like GitHub, GitLab.com), the issue is likely that the ArgoCD container's CA bundle is outdated. Upgrade ArgoCD to a newer version that includes updated CA certificates.
@@ -223,7 +221,7 @@ spec:
     # Alert 30 days before expiry
     - alert: ArgoCDCertExpiringSoon
       expr: |
-        (probe_ssl_earliest_cert_expiry{job="argocd-tls-probe"} - time()) / 86400 < 30
+        probe_ssl_earliest_cert_expiry{job="argocd-tls-probe"} - time() < 30 * 24 * 60 * 60
       labels:
         severity: warning
       annotations:
@@ -232,7 +230,7 @@ spec:
     # Alert 7 days before expiry
     - alert: ArgoCDCertExpiringCritical
       expr: |
-        (probe_ssl_earliest_cert_expiry{job="argocd-tls-probe"} - time()) / 86400 < 7
+        probe_ssl_earliest_cert_expiry{job="argocd-tls-probe"} - time() < 7 * 24 * 60 * 60
       labels:
         severity: critical
       annotations:
