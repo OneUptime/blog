@@ -235,7 +235,7 @@ deploy-review:
         --dest-namespace preview-mr-$CI_MERGE_REQUEST_IID \
         --project previews \
         --sync-option CreateNamespace=true \
-        --parameter image.tag=mr-$CI_MERGE_REQUEST_IID \
+        --kustomize-image $IMAGE_NAME=$IMAGE_NAME:mr-$CI_MERGE_REQUEST_IID \
         --sync-policy automated \
         --grpc-web || true
 
@@ -273,7 +273,7 @@ Store ArgoCD credentials securely in GitLab CI variables:
 | `ARGOCD_TOKEN` | (API token) | Yes | Yes |
 | `DEPLOY_TOKEN` | (Git deploy token) | Yes | Yes |
 
-Use protected variables so they are only available in pipelines running on protected branches.
+Use protected variables so they are only available in pipelines running on protected branches or tags.
 
 ## Pattern 6: Webhook-Based Fast Sync
 
@@ -346,7 +346,7 @@ Create reusable templates for common ArgoCD operations:
 .argocd-base:
   image: alpine:3.19
   before_script:
-    - apk add --no-cache curl
+    - apk add --no-cache curl jq
     - curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
     - chmod +x /usr/local/bin/argocd
     - argocd login $ARGOCD_SERVER --auth-token $ARGOCD_TOKEN --grpc-web
