@@ -79,7 +79,7 @@ spec:
 
         # Replica configuration
         replica:
-          replicaCount: 2
+          replicaCount: 3
           resources:
             requests:
               cpu: 250m
@@ -253,7 +253,11 @@ const redis = new Redis({
 For Python with redis-py:
 
 ```python
+import os
+
 from redis.sentinel import Sentinel
+
+REDIS_PASSWORD = os.environ["REDIS_PASSWORD"]
 
 sentinel = Sentinel([
     ('redis-node-0.redis-headless.caching.svc', 26379),
@@ -340,7 +344,7 @@ To add more read replicas:
 
 ```yaml
 replica:
-  replicaCount: 4  # was 2
+  replicaCount: 4  # was 3
 ```
 
 New replicas automatically connect to the primary and start replicating. Sentinel discovers them and adds them to its monitoring list.
