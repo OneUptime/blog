@@ -175,9 +175,8 @@ If you prefer to manage CRDs separately, you can disable them in the chart and c
 ```yaml
 # In your values.yaml, disable CRD installation from the chart
 kube-prometheus-stack:
-  prometheus-operator:
-    crds:
-      enabled: false
+  crds:
+    enabled: false
 ```
 
 Then create a separate Application for CRDs.
@@ -192,16 +191,16 @@ spec:
   project: monitoring
   source:
     repoURL: https://github.com/prometheus-operator/prometheus-operator.git
-    targetRevision: v0.77.1
+    targetRevision: v0.76.1
     path: example/prometheus-operator-crd
   destination:
     server: https://kubernetes.default.svc
+    namespace: monitoring
   syncPolicy:
     automated:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      - Replace=true
 ```
 
 ## Dealing with Common Sync Issues
@@ -212,7 +211,7 @@ The kube-prometheus-stack generates large ConfigMaps and Secrets for Grafana das
 
 ### Out of Sync Due to Helm Hooks
 
-Some resources in kube-prometheus-stack use Helm hooks that ArgoCD does not natively support in the same way. Add these annotations to skip hook-related resources.
+Some resources in kube-prometheus-stack use Helm hooks that ArgoCD maps to ArgoCD hooks. If completed hook Jobs show harmless field-level drift in your environment, ignore only the reported fields.
 
 ```yaml
 # In ignoreDifferences
