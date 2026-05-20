@@ -130,13 +130,9 @@ argocd app set backend-api \
   --helm-set image.tag=v2.1.0 \
   --helm-set resources.limits.memory=1Gi
 
-# Set Helm values from a string
+# Set Helm values from a literal values file
 argocd app set backend-api \
-  --values '
-replicaCount: 5
-image:
-  tag: v2.1.0
-'
+  --values-literal-file values-override.yaml
 
 # Set Kustomize image override
 argocd app set frontend \
@@ -144,7 +140,7 @@ argocd app set frontend \
 
 # Set Kustomize name prefix
 argocd app set frontend \
-  --kustomize-name-prefix prod-
+  --nameprefix prod-
 ```
 
 ## Using the UI for Overrides
@@ -157,7 +153,7 @@ In the ArgoCD web UI:
 4. Click "Edit" to modify parameters
 5. Update the values and save
 
-The UI provides a form-based interface for Helm parameters, showing all available values from the chart with their current and default values.
+The UI provides a form-based interface for Helm parameters and other supported parameter overrides. For Helm applications, the Parameters tab shows parameters, but it does not show the complete merged set of values from `valueFiles`, `values`, and `valuesObject`.
 
 ## Override Priority
 
@@ -166,7 +162,8 @@ When multiple sources of values exist, ArgoCD follows a specific priority order 
 1. Default values from `values.yaml` in the chart (lowest priority)
 2. Values from additional values files specified in `valueFiles`
 3. Values from the `values` block in the Application spec
-4. Individual `parameters` (highest priority)
+4. Values from the `valuesObject` map in the Application spec
+5. Individual `parameters` (highest priority)
 
 ```yaml
 spec:
@@ -181,10 +178,14 @@ spec:
       values: |
         replicaCount: 3
 
-      # Priority 4: individual parameters (wins)
+      # Priority 4: values object
+      valuesObject:
+        replicaCount: 4
+
+      # Priority 5: individual parameters (wins)
       parameters:
         - name: replicaCount
-          value: "5"    # This wins over the values block
+          value: "5"    # This wins over valuesObject and the values block
 ```
 
 ## When to Use Parameter Overrides
@@ -228,7 +229,7 @@ For most cases, you should make changes in Git instead of using overrides. Here 
 
 ## Making Overrides Visible
 
-If you use overrides, make them visible. ArgoCD shows a warning when an application has parameter overrides that differ from the Git source. You can also query overrides via the API:
+If you use overrides, make them visible. ArgoCD stores overrides in the Application spec, so you can query them via the API:
 
 ```bash
 # Show current overrides
@@ -254,7 +255,7 @@ git commit -m "Set replicaCount to 5 for production backend-api"
 git push
 
 # 3. Remove the override
-argocd app unset backend-api --helm-set replicaCount
+argocd app unset backend-api -p replicaCount
 
 # 4. Sync to verify
 argocd app sync backend-api
