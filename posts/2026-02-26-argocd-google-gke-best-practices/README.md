@@ -16,8 +16,8 @@ GKE offers two modes: Autopilot (fully managed nodes) and Standard (you manage n
 
 **GKE Autopilot**: Google manages nodes entirely. Similar to Fargate on AWS.
 - ArgoCD works well on Autopilot
-- Resource requests are required on every pod
-- No DaemonSets support
+- GKE applies default resource requests when you do not specify them, but you should set requests explicitly for predictable sizing and cost
+- DaemonSets are supported with Autopilot-specific resource defaults and constraints
 - Simpler to manage, higher per-pod cost
 
 **GKE Standard**: You manage node pools and can customize nodes.
@@ -37,7 +37,7 @@ Use Helm for a production installation:
 
 global:
   image:
-    tag: v2.10.0
+    tag: v3.4.2
 
 controller:
   replicas: 2
@@ -69,8 +69,8 @@ server:
     ingressClassName: ""
     annotations:
       kubernetes.io/ingress.class: gce-internal
-      networking.gke.io/managed-certificates: argocd-cert
       networking.gke.io/v1beta1.FrontendConfig: argocd-frontend-config
+      ingress.gcp.kubernetes.io/pre-shared-cert: argocd-regional-cert
     hosts:
       - argocd.internal.example.com
 
@@ -142,7 +142,7 @@ For a detailed walkthrough, see our guide on [ArgoCD with GKE Workload Identity]
 
 ## Private Cluster Configuration
 
-GKE private clusters do not expose the API server publicly. This affects how ArgoCD communicates with managed clusters.
+GKE private clusters use nodes without public IP addresses, and you can also disable the public control plane endpoint. This affects how ArgoCD communicates with managed clusters.
 
 ### ArgoCD on the Same Private Cluster
 
@@ -153,12 +153,13 @@ If ArgoCD runs on the same cluster it manages, no special configuration is neede
 For managing other private clusters, you need network connectivity:
 
 ```bash
-# Authorize the ArgoCD cluster's network to access the remote cluster's master
+# Enable the remote cluster's private control plane endpoint
 gcloud container clusters update remote-cluster \
-  --enable-master-authorized-networks \
-  --master-authorized-networks $(gcloud container clusters describe argocd-cluster \
-    --format="value(privateClusterConfig.publicEndpoint)" \
-    --region us-central1)/32
+  --enable-private-endpoint \
+  --region us-central1
+
+# Ensure the ArgoCD cluster can reach the remote cluster private endpoint
+# through the same VPC, VPC peering, Cloud VPN, or Cloud Interconnect.
 ```
 
 Register the remote cluster:
@@ -178,20 +179,21 @@ stringData:
   config: |
     {
       "execProviderConfig": {
-        "command": "gke-gcloud-auth-plugin",
+        "command": "argocd-k8s-auth",
+        "args": ["gcp"],
         "apiVersion": "client.authentication.k8s.io/v1beta1",
-        "args": [
-          "--project", "my-project",
-          "--region", "us-central1",
-          "--cluster", "staging-cluster"
-        ]
+        "installHint": "Use an ArgoCD image that includes argocd-k8s-auth."
+      },
+      "tlsClientConfig": {
+        "insecure": false,
+        "caData": "<base64-encoded-cluster-ca>"
       }
     }
 ```
 
 ## Google-Managed Certificates
 
-Use GKE Managed Certificates for HTTPS on the ArgoCD server:
+Use GKE Managed Certificates for HTTPS on the ArgoCD server when you expose ArgoCD with an external GKE Ingress:
 
 ```yaml
 apiVersion: networking.gke.io/v1
@@ -228,8 +230,8 @@ metadata:
   namespace: argocd
   annotations:
     kubernetes.io/ingress.class: gce-internal
-    networking.gke.io/managed-certificates: argocd-cert
     networking.gke.io/v1beta1.FrontendConfig: argocd-frontend-config
+    ingress.gcp.kubernetes.io/pre-shared-cert: argocd-regional-cert
 spec:
   defaultBackend:
     service:
@@ -249,7 +251,7 @@ spec:
                   number: 80
 ```
 
-Alternatively, use the Gateway API (recommended for newer GKE clusters):
+Internal GKE Ingress does not support GKE ManagedCertificate resources, so use a regional pre-shared certificate or a Kubernetes TLS Secret for HTTPS. Alternatively, use the Gateway API (recommended for newer GKE clusters):
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1beta1
@@ -287,7 +289,7 @@ spec:
 
 ## SSO with Google Workspace
 
-Configure ArgoCD to use Google as the OIDC provider:
+Configure ArgoCD to use Google as the OIDC provider. This authenticates Google Workspace users, but Google's standard OIDC flow does not include Google Groups membership for RBAC:
 
 ```yaml
 apiVersion: v1
@@ -308,7 +310,7 @@ data:
       - email
 ```
 
-Map Google groups to ArgoCD roles:
+Map user emails to ArgoCD roles, or configure the Dex Google connector with Google Directory API access if you need Google Groups in RBAC:
 
 ```yaml
 apiVersion: v1
@@ -318,8 +320,8 @@ metadata:
   namespace: argocd
 data:
   policy.csv: |
-    g, devops@example.com, role:admin
-    g, developers@example.com, role:developer
+    g, devops-admin@example.com, role:admin
+    g, developer@example.com, role:developer
     p, role:developer, applications, get, */*, allow
     p, role:developer, applications, sync, dev/*, allow
 ```
@@ -434,7 +436,7 @@ spec:
           serviceAccountName: argocd-backup-sa
           containers:
             - name: backup
-              image: bitnami/kubectl:latest
+              image: gcr.io/my-project/argocd-backup-tools:1.0.0  # Includes kubectl and gsutil
               command:
                 - /bin/sh
                 - -c
