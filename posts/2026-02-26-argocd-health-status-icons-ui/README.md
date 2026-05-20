@@ -46,34 +46,33 @@ In the main application list, each application shows:
 | Icon | Color | Status | Meaning |
 |------|-------|--------|---------|
 | Check mark (circle) | Green | Synced | Live state matches Git desired state |
-| Circular arrows | Yellow | OutOfSync | Live state differs from Git desired state |
-| Question mark | Grey | Unknown | Cannot determine sync status |
+| Up arrow in a circle | Yellow | OutOfSync | Live state differs from Git desired state |
+| Spinning circle | Grey | Unknown | Cannot determine sync status |
 
 ### Health Status Icons
 
 | Icon | Color | Status | Meaning |
 |------|-------|--------|---------|
 | Heart | Green | Healthy | All resources are healthy |
-| Spinning circle | Yellow | Progressing | Resources are being updated |
+| Spinning circle | Blue | Progressing | Resources are being updated |
 | Broken heart | Red | Degraded | One or more resources are in error state |
-| Pause symbol | Blue | Suspended | Resources are paused (e.g., scaled to zero) |
-| Warning triangle | Yellow | Missing | Resources are missing from the cluster |
+| Pause symbol | Purple | Suspended | Resources are suspended or paused |
+| Missing-resource icon | Yellow | Missing | Resources are missing from the cluster |
 | Question mark | Grey | Unknown | Cannot determine health |
 
 ## Application Detail View
 
 When you click into an application, you see the resource tree. Each resource node shows its own health and sync status.
 
-Resource Tree Node Colors
+Resource Tree and List Indicators
 
 ```mermaid
 flowchart TD
-    subgraph "Resource Node Colors"
-        A["Green border = Healthy + Synced"]
-        B["Yellow border = Progressing or OutOfSync"]
-        C["Red border = Degraded"]
-        D["Blue border = Suspended"]
-        E["Grey border = Unknown"]
+    subgraph "Status Indicators"
+        A["Health icons show Healthy, Progressing, Degraded, Suspended, Missing, or Unknown"]
+        B["Sync icons show Synced, OutOfSync, or Unknown"]
+        C["Application list color bars follow health status"]
+        D["Resource tree nodes display health and sync icons"]
     end
 ```
 
@@ -100,10 +99,9 @@ During a sync operation, additional icons appear:
 
 | Icon | Meaning |
 |------|---------|
-| Spinning blue circle | Sync in progress |
+| Spinning blue circle | Sync is in progress or otherwise not complete |
 | Green check | Sync succeeded |
-| Red X | Sync failed |
-| Yellow clock | Sync pending (waiting for wave or hook) |
+| Red X | Sync failed or hit an error |
 
 ### Sync Phase Icons
 
@@ -126,7 +124,7 @@ flowchart LR
     W2 --> W3[Wave 3<br/>Ingresses]
 ```
 
-Resources in earlier waves must be healthy before later waves begin.
+Argo CD applies the first wave that contains an out-of-sync or unhealthy resource, then repeats the process until all phases and waves are in sync and healthy. This allows earlier waves to gate later waves when resources are not yet healthy.
 
 ## The Conditions Panel
 
@@ -157,8 +155,12 @@ The operation state shows what happened during the last sync:
 |-------|---------|
 | Succeeded | Last sync completed successfully |
 | Failed | Last sync encountered errors |
+| Error | Last sync hit an error condition |
 | Running | Sync is currently in progress |
 | Terminating | Sync is being cancelled |
+| Pending | Operation is pending |
+| Waiting | Operation is waiting |
+| Progressing | Operation is progressing |
 
 ## Diff View Indicators
 
@@ -187,9 +189,9 @@ Applications are synced but unhealthy. The configuration in Git is correct (matc
 - Events for scheduling failures
 - Resource limits for OOM kills
 
-### Scenario 4: Yellow Spinning
+### Scenario 4: Blue Spinning
 
-Applications are progressing. A deployment is rolling out. Wait for it to complete. If it stays yellow for more than your `progressDeadlineSeconds`, it will turn red.
+Applications are progressing. A deployment is rolling out. Wait for it to complete. For Kubernetes Deployments, if rollout progress exceeds `progressDeadlineSeconds`, Kubernetes marks the rollout as failed and Argo CD can report the resource as Degraded.
 
 ### Scenario 5: Mixed Colors
 
