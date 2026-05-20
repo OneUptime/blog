@@ -19,7 +19,7 @@ Sharding divides the set of managed clusters among multiple controller instances
 ```mermaid
 flowchart TD
     subgraph ArgoCD Control Plane
-        SC[Shard Coordinator]
+        SC[Shard Assignment]
         S0[Shard 0<br/>Controller Pod 0]
         S1[Shard 1<br/>Controller Pod 1]
         S2[Shard 2<br/>Controller Pod 2]
@@ -35,7 +35,7 @@ flowchart TD
     S2 --> C6[Edge Cluster]
 ```
 
-## Static vs Dynamic Sharding
+## Static vs Automatic Sharding
 
 ArgoCD supports two approaches to distributing clusters across shards.
 
@@ -43,7 +43,7 @@ ArgoCD supports two approaches to distributing clusters across shards.
 
 With static sharding, you manually assign a shard number to each cluster. This gives you full control but requires manual intervention whenever you add or remove clusters.
 
-To assign a cluster to a specific shard, annotate the cluster secret:
+To assign a cluster to a specific shard declaratively, set the optional `shard` field in the cluster secret data:
 
 ```yaml
 apiVersion: v1
@@ -53,32 +53,37 @@ metadata:
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: cluster
-  annotations:
-    # Assign this cluster to shard 1
-    argocd.argoproj.io/shard: "1"
 type: Opaque
-data:
-  name: cHJvZHVjdGlvbi11cw==  # production-us
-  server: aHR0cHM6Ly9rdWJlcm5ldGVzLnByb2QudXMuZXhhbXBsZS5jb20=
-  config: <base64-encoded-config>
+stringData:
+  name: production-us
+  server: https://kubernetes.prod.us.example.com
+  # Assign this cluster to shard 1
+  shard: "1"
+  config: |
+    {
+      "bearerToken": "<authentication-token>",
+      "tlsClientConfig": {
+        "insecure": false,
+        "caData": "<base64-encoded-certificate>"
+      }
+    }
 ```
 
-You can also assign shards using the CLI:
+You can also assign shards when adding a cluster using the CLI:
 
 ```bash
-# Set shard for a cluster
-
-argocd cluster set https://kubernetes.prod.us.example.com \
+# Add a cluster and set its shard
+argocd cluster add production-us \
   --shard 1
 ```
 
-### Dynamic Sharding (Recommended)
+### Automatic Sharding (Recommended)
 
-Dynamic sharding uses a hash-based algorithm to automatically distribute clusters. See our guide on [enabling dynamic cluster distribution](https://oneuptime.com/blog/post/2026-02-26-argocd-dynamic-cluster-distribution/view) for the full setup.
+When a cluster has no `shard` field, Argo CD calculates its shard automatically using the configured sharding algorithm. Argo CD also has an alpha dynamic cluster distribution feature that re-runs the sharding algorithm when controller replicas are added or removed. See our guide on [enabling dynamic cluster distribution](https://oneuptime.com/blog/post/2026-02-26-argocd-dynamic-cluster-distribution/view) for the full setup.
 
 ## Configuring Multiple Controller Replicas
 
-Regardless of whether you use static or dynamic sharding, you need multiple controller instances. Here is how to set up the controller as a StatefulSet with 3 replicas:
+For the standard StatefulSet-based sharding mode, you need multiple controller instances. Here is how to set up the controller as a StatefulSet with 3 replicas:
 
 ```yaml
 apiVersion: apps/v1
@@ -99,7 +104,7 @@ spec:
     spec:
       containers:
         - name: argocd-application-controller
-          image: quay.io/argoproj/argocd:v2.12.0
+          image: quay.io/argoproj/argocd:v3.4.1
           command:
             - argocd-application-controller
           env:
@@ -141,13 +146,13 @@ For example, if you manage 80 clusters, start with 4 shards. Monitor resource us
 After configuring sharding, verify that clusters are distributed as expected:
 
 ```bash
-# Check which shard each cluster is assigned to
+# Check which static shard each cluster is assigned to
 kubectl get secrets -n argocd \
   -l argocd.argoproj.io/secret-type=cluster \
-  -o custom-columns='NAME:.metadata.name,SHARD:.metadata.annotations.argocd\.argoproj\.io/shard'
+  -o go-template='{{range .items}}{{.metadata.name}}{{"\t"}}{{if index .data "shard"}}{{index .data "shard" | base64decode}}{{else}}auto{{end}}{{"\n"}}{{end}}'
 ```
 
-For dynamic sharding, the shard annotation is set automatically. For static sharding, you will see the values you manually assigned.
+For automatically calculated sharding, the secret usually has no `shard` field because the controller calculates the assignment at runtime. For static sharding, you will see the values you manually assigned.
 
 You can also check the controller logs for shard activity:
 
@@ -155,8 +160,8 @@ You can also check the controller logs for shard activity:
 # Check shard 0's logs
 kubectl logs argocd-application-controller-0 -n argocd | head -50
 
-# Look for cluster processing messages
-kubectl logs argocd-application-controller-1 -n argocd | grep "Processing"
+# Look for cluster assignment messages
+kubectl logs argocd-application-controller-1 -n argocd | grep "assigned to shard"
 ```
 
 ## Handling the In-Cluster (Default) Cluster
@@ -167,12 +172,9 @@ To balance this, you can explicitly register the in-cluster as a named cluster a
 
 ```bash
 # Register the in-cluster explicitly
-argocd cluster add in-cluster \
+argocd cluster add <kubeconfig-context-name> \
   --in-cluster \
-  --name "management-cluster"
-
-# Assign it to a specific shard (static sharding)
-argocd cluster set https://kubernetes.default.svc \
+  --name "management-cluster" \
   --shard 2
 ```
 
@@ -181,7 +183,7 @@ argocd cluster set https://kubernetes.default.svc \
 Each shard exposes its own set of metrics. Set up Prometheus to scrape all controller pods and use labels to distinguish shards:
 
 ```yaml
-# Prometheus ServiceMonitor for controller pods
+# Prometheus ServiceMonitor for the controller metrics service
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -190,7 +192,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: argocd-application-controller
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -234,10 +236,10 @@ kubectl set env statefulset/argocd-application-controller \
 
 ## Best Practices
 
-1. **Use dynamic sharding** unless you have a specific reason to manually assign clusters
+1. **Use automatic sharding** unless you have a specific reason to manually assign clusters
 2. **Set PodDisruptionBudgets** to keep at least N-1 shards running during updates
 3. **Use pod anti-affinity** to spread shards across nodes
 4. **Monitor each shard independently** with per-pod dashboards
 5. **Test failover** by intentionally killing a shard pod and watching recovery
 
-Distributing clusters across shards is essential for running ArgoCD at scale. Whether you choose static or dynamic distribution, the key is monitoring shard health and adjusting the replica count as your infrastructure evolves.
+Distributing clusters across shards is essential for running ArgoCD at scale. Whether you choose static or automatic distribution, the key is monitoring shard health and adjusting the replica count as your infrastructure evolves.
