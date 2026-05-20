@@ -139,7 +139,7 @@ Every time you add a new service directory, it automatically gets deployed to al
 
 ## Nested Matrix Generators
 
-You can nest Matrix generators to create three-way or higher combinations. The trick is that each Matrix generator takes exactly two child generators, but one of those children can be another Matrix.
+You can nest Matrix generators one level deep to create three-way combinations. The trick is that each Matrix generator takes exactly two child generators, but one of those children can be another Matrix.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -184,11 +184,11 @@ spec:
         namespace: '{{team}}-{{path.basename}}'
 ```
 
-Note that nested Matrix generators have a limitation: the inner Matrix cannot use dynamic generators that depend on parameters from the outer generator. The Git generator URL `{{repo}}` in the example above requires the parameter from the List generator in the same inner Matrix.
+Note that nested Matrix generators have a limitation: combination-type generators can only be nested once. The Git generator URL `{{repo}}` in the example above is valid because it uses a parameter from the List generator in the same inner Matrix, and the generator that consumes the parameter comes after the generator that produces it.
 
 ## Parameter Precedence in Matrix
 
-When both generators provide a parameter with the same name, the second generator's value takes precedence. Design your generators to avoid parameter name collisions.
+When both generators provide a parameter with the same name, use that only when you intentionally want one generator's defaults to be overridden by the other generator's values. Design your generators to avoid accidental parameter name collisions, especially with automatically generated parameters such as `name` or Git `path` fields.
 
 ```yaml
 generators:
@@ -200,7 +200,7 @@ generators:
         - name: api
           namespace: default
     # Generator B provides: {name: "prod-cluster", server: "..."}
-    # The 'name' parameter from B overwrites A's 'name'
+    # The 'name' parameter collides with A's 'name'
     - clusters: {}
 ```
 
@@ -215,7 +215,7 @@ generators:
         - appName: api  # Use 'appName' instead of 'name'
     - clusters:
         values:
-          clusterName: '{{name}}'  # Rename to avoid collision
+          clusterName: '{{name}}'  # Available as '{{values.clusterName}}'
 ```
 
 ## Performance Considerations
