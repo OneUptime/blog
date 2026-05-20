@@ -321,11 +321,32 @@ rules:
     verbs: ["get", "list", "watch"]
 
   # Standard workload write access
-  - apiGroups: ["", "apps", "batch"]
-    resources: ["*"]
+  - apiGroups: [""]
+    resources:
+      - configmaps
+      - endpoints
+      - persistentvolumeclaims
+      - pods
+      - secrets
+      - serviceaccounts
+      - services
     verbs: ["create", "update", "patch", "delete"]
 
-  # EXPLICITLY DENY cluster-level RBAC changes
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - daemonsets
+      - replicasets
+      - statefulsets
+    verbs: ["create", "update", "patch", "delete"]
+
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["create", "update", "patch", "delete"]
+
+  # DO NOT GRANT cluster-level RBAC changes
   # (by not including these verbs for these resources)
   # This prevents ArgoCD from:
   # - Creating ClusterRoles with elevated permissions
@@ -342,6 +363,9 @@ metadata:
   name: team-a
   namespace: argocd
 spec:
+  sourceRepos:
+    - "*"
+
   # Deny cluster-scoped resources
   clusterResourceBlacklist:
     - group: rbac.authorization.k8s.io
@@ -401,7 +425,8 @@ rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
     verbs: ["get", "list", "watch", "create", "update", "patch"]
-    # Note: consider restricting to specific CRD names
+    # Note: resourceNames can restrict get/update/patch for existing CRDs,
+    # but Kubernetes RBAC cannot restrict top-level create by resource name.
 
   # Allow managing instances of specific CRDs
   - apiGroups: ["cert-manager.io"]
