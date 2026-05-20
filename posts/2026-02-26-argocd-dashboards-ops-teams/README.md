@@ -72,7 +72,7 @@ Configure this as a pie chart with colors:
 sum(increase(argocd_app_sync_total{phase="Succeeded"}[1h]))
 
 # Failed syncs per hour
-sum(increase(argocd_app_sync_total{phase="Error"}[1h]))
+sum(increase(argocd_app_sync_total{phase=~"Error|Failed"}[1h]))
 ```
 
 ### Panel 4: Overall GitOps Health Score
@@ -137,17 +137,17 @@ histogram_quantile(0.99, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
 # Git fetch duration (P95)
 histogram_quantile(0.95, sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le, request_type))
 
-# Git fetch error rate
-rate(argocd_git_request_total{grpc_code!="OK"}[5m])
+# Git fetch and ls-remote error rate
+sum(rate(argocd_git_fetch_fail_total[5m])) + sum(rate(argocd_git_lsremote_fail_total[5m]))
 ```
 
 ### Panel 6: Repo Server Load
 
 ```promql
-# Pending manifest generation requests
+# Pending repository lock requests by repository
 argocd_repo_pending_request_total
 
-# Concurrent manifest generation
+# Total pending repository lock requests
 sum(argocd_repo_pending_request_total)
 ```
 
@@ -268,7 +268,6 @@ providers:
     updateIntervalSeconds: 30
     options:
       path: /var/lib/grafana/dashboards/argocd-ops
-      foldersFromFilesStructure: true
 ```
 
 Map Grafana roles to your team structure:
@@ -285,25 +284,57 @@ Configure Grafana alerting directly from dashboard panels for quick issue detect
 # Grafana alert rule for unhealthy applications
 apiVersion: 1
 groups:
-  - name: argocd-dashboard-alerts
+  - orgId: 1
+    name: argocd-dashboard-alerts
     folder: ArgoCD Operations
-    interval: 1m
+    interval: 60s
     rules:
-      - title: Applications Unhealthy
+      - uid: argocd_apps_unhealthy
+        title: Applications Unhealthy
         condition: B
+        for: 5m
+        noDataState: OK
+        execErrState: Alerting
         data:
           - refId: A
-            queryType: ""
+            datasourceUid: YOUR_PROMETHEUS_DATASOURCE_UID
+            relativeTimeRange:
+              from: 600
+              to: 0
             model:
+              datasource:
+                type: prometheus
+                uid: YOUR_PROMETHEUS_DATASOURCE_UID
               expr: count(argocd_app_info{health_status!="Healthy"}) or vector(0)
+              instant: true
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: A
           - refId: B
-            queryType: ""
+            datasourceUid: __expr__
+            relativeTimeRange:
+              from: 0
+              to: 0
             model:
-              type: threshold
               conditions:
                 - evaluator:
                     type: gt
                     params: [0]
+                  operator:
+                    type: and
+                  query:
+                    params: [B]
+                  reducer:
+                    type: last
+                  type: query
+              datasource:
+                type: __expr__
+                uid: __expr__
+              expression: A
+              intervalMs: 1000
+              maxDataPoints: 43200
+              refId: B
+              type: threshold
 ```
 
 ## Summary
