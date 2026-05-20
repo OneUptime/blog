@@ -12,7 +12,7 @@ Backing up your Ubuntu system with rsync is one of the most reliable and flexibl
 
 ## Understanding rsync for System Backups
 
-rsync copies files while preserving metadata like permissions, ownership, timestamps, and symlinks. The `-a` (archive) flag is the workhorse here - it enables recursive copying, preserves symlinks, permissions, timestamps, group, owner, and device files all at once.
+rsync copies files while preserving metadata like permissions, ownership, timestamps, and symlinks. The `-a` (archive) flag is the workhorse here - it enables recursive copying, preserves symlinks, permissions, timestamps, group, owner, and device files all at once. For system backups, add `-A`, `-X`, and `-H` to preserve ACLs, extended attributes, and hard links.
 
 For a full system backup, you need to understand what to include and what to exclude. Certain directories like `/proc`, `/sys`, `/dev`, and `/run` are virtual filesystems that should not be backed up - they are populated at runtime by the kernel.
 
@@ -36,7 +36,7 @@ sudo mkdir -p /mnt/backup/system-backup
 Run your first full system backup:
 
 ```bash
-sudo rsync -aAXv \
+sudo rsync -aAXHv \
   --exclude='/dev/*' \
   --exclude='/proc/*' \
   --exclude='/sys/*' \
@@ -52,6 +52,7 @@ Breaking down the flags:
 - `-a` - archive mode (recursive, preserves permissions, symlinks, times, group, owner)
 - `-A` - preserve Access Control Lists
 - `-X` - preserve extended attributes
+- `-H` - preserve hard links
 - `-v` - verbose output to see progress
 
 ## Creating an Exclusion File
@@ -99,7 +100,7 @@ Add the following content:
 Now run rsync using this file:
 
 ```bash
-sudo rsync -aAXv \
+sudo rsync -aAXHv \
   --exclude-from='/etc/rsync-exclude.txt' \
   / /mnt/backup/system-backup/
 ```
@@ -116,7 +117,7 @@ LATEST="$BACKUP_DEST/latest"
 CURRENT="$BACKUP_DEST/$DATE"
 
 # Run backup with hard links to previous backup
-sudo rsync -aAXv \
+sudo rsync -aAXHv \
   --exclude-from='/etc/rsync-exclude.txt' \
   --link-dest="$LATEST" \
   / "$CURRENT/"
@@ -129,14 +130,14 @@ This approach lets you keep many backup snapshots without each one taking full d
 
 ## Backing Up to a Remote Server
 
-rsync works seamlessly over SSH. Set up SSH key authentication first, then use the remote syntax:
+rsync works seamlessly over SSH. Set up SSH key authentication first, then use a remote account that can preserve ownership, device files, ACLs, and extended attributes:
 
 ```bash
 # Backup to remote server
-sudo rsync -aAXzv \
+sudo rsync -aAXHzv \
   --exclude-from='/etc/rsync-exclude.txt' \
   -e "ssh -p 22 -i /root/.ssh/backup_key" \
-  / user@backup-server:/backups/$(hostname)/
+  / root@backup-server:/backups/$(hostname)/
 
 # The -z flag enables compression during transfer - useful for slow connections
 # For fast local networks, skip -z as it adds CPU overhead
@@ -179,7 +180,7 @@ log "Starting system backup to $CURRENT_BACKUP"
 mkdir -p "$CURRENT_BACKUP"
 
 # Run rsync backup
-if rsync -aAXv \
+if rsync -aAXHv \
     --exclude-from="$EXCLUDE_FILE" \
     --link-dest="$LATEST_LINK" \
     --stats \
@@ -197,7 +198,7 @@ fi
 
 # Clean up old backups
 log "Removing backups older than $KEEP_DAYS days"
-find "$BACKUP_DEST" -maxdepth 1 -type d -mtime +"$KEEP_DAYS" -exec rm -rf {} \; 2>/dev/null || true
+find "$BACKUP_DEST" -mindepth 1 -maxdepth 1 -type d -mtime +"$KEEP_DAYS" -exec rm -rf {} \; 2>/dev/null || true
 
 log "Backup process complete"
 ```
@@ -250,13 +251,13 @@ To restore individual files or directories:
 
 ```bash
 # Restore a single file
-sudo rsync -aAXv /mnt/backup/snapshots/latest/etc/nginx/nginx.conf /etc/nginx/nginx.conf
+sudo rsync -aAXHv /mnt/backup/snapshots/latest/etc/nginx/nginx.conf /etc/nginx/nginx.conf
 
 # Restore an entire directory
-sudo rsync -aAXv /mnt/backup/snapshots/latest/home/username/ /home/username/
+sudo rsync -aAXHv /mnt/backup/snapshots/latest/home/username/ /home/username/
 
 # Restore with dry-run first to preview changes
-sudo rsync -aAXvn /mnt/backup/snapshots/latest/etc/ /etc/
+sudo rsync -aAXHvn /mnt/backup/snapshots/latest/etc/ /etc/
 ```
 
 For a full system restore, boot from a live USB, mount your target drive, and run rsync from the backup to the target:
@@ -266,10 +267,10 @@ For a full system restore, boot from a live USB, mount your target drive, and ru
 sudo mount /dev/sda1 /mnt/target
 
 # Restore the full system
-sudo rsync -aAXv /mnt/backup/snapshots/latest/ /mnt/target/
+sudo rsync -aAXHv /mnt/backup/snapshots/latest/ /mnt/target/
 
-# Reinstall bootloader after restore
-sudo grub-install --root-directory=/mnt/target /dev/sda
+# Reinstall bootloader after restore on BIOS systems
+sudo grub-install --boot-directory=/mnt/target/boot /dev/sda
 ```
 
 ## Verifying Backup Integrity
@@ -278,7 +279,7 @@ Never assume a backup is good without verifying it. rsync has a `--checksum` fla
 
 ```bash
 # Verify backup matches source (dry run - no changes made)
-sudo rsync -aAXvn --checksum \
+sudo rsync -aAXHvn --checksum \
   --exclude-from='/etc/rsync-exclude.txt' \
   / /mnt/backup/snapshots/latest/ 2>&1 | grep -v "/$"
 ```
@@ -293,6 +294,6 @@ If the output shows few or no differences, your backup is current. Any files lis
 
 **SSH connection timeouts for remote backups:** Add `-o ServerAliveInterval=60` to your SSH options in the rsync command to keep the connection alive during large transfers.
 
-**Slow backup performance:** Use `--bwlimit=1000` to limit bandwidth to 1 MB/s, preventing the backup from saturating your network. For local backups, try adding `--no-compress` to skip compression overhead.
+**Slow backup performance:** Use `--bwlimit=1000` to limit bandwidth to about 1 MB/s, preventing the backup from saturating your network. For local backups or fast local networks, avoid `-z` or `--compress` to skip compression overhead.
 
 rsync is a mature, battle-tested tool that handles full system backups reliably. Combined with a solid exclusion list, incremental hard-link backups, and automated scheduling, it forms a robust foundation for your Ubuntu backup strategy.
