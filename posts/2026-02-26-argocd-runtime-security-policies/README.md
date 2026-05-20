@@ -63,12 +63,11 @@ metadata:
 The `restricted` profile enforces strict security requirements:
 - Must run as non-root
 - Must drop all capabilities
-- Must use read-only root filesystem
 - Cannot use host networking or host PID
 
-## Managing Namespace Security with ApplicationSet
+## Managing Namespace Security with an ArgoCD Application
 
-Apply security labels consistently across all namespaces:
+Apply security labels consistently across all namespace manifests:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -106,20 +105,16 @@ spec:
   source:
     repoURL: https://falcosecurity.github.io/charts
     chart: falco
-    targetRevision: 4.2.0
+    targetRevision: 8.0.5
     helm:
       values: |
         driver:
-          kind: ebpf  # Use eBPF instead of kernel module
+          kind: modern_ebpf  # Use the modern eBPF driver instead of a kernel module
         falco:
-          grpc:
-            enabled: true
-          grpcOutput:
-            enabled: true
-          httpOutput:
+          http_output:
             enabled: true
             url: http://falcosidekick.security:2801
-          rules_file:
+          rules_files:
             - /etc/falco/falco_rules.yaml
             - /etc/falco/falco_rules.local.yaml
             - /etc/falco/rules.d
@@ -191,7 +186,7 @@ spec:
 
 ## Custom Seccomp Profiles
 
-Deploy seccomp profiles that restrict system calls available to containers:
+Store seccomp profiles in Git and distribute them to the kubelet seccomp profile path on every node:
 
 ```yaml
 # security/seccomp-profiles.yaml
@@ -234,6 +229,8 @@ data:
     }
 ```
 
+The `Localhost` seccomp profile type requires the profile to exist on each node under the kubelet seccomp root, such as `/var/lib/kubelet/seccomp/profiles/restricted.json`. A ConfigMap alone does not make the profile available to the container runtime; use a privileged DaemonSet, image-baked node configuration, or the Security Profiles Operator to install it on every node.
+
 Reference the seccomp profile in your deployments:
 
 ```yaml
@@ -242,7 +239,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       securityContext:
         seccompProfile:
@@ -295,7 +298,7 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: ingress-nginx
+              kubernetes.io/metadata.name: ingress-nginx
       ports:
         - protocol: TCP
           port: 8080
@@ -303,14 +306,21 @@ spec:
     - to:
         - namespaceSelector:
             matchLabels:
-              name: database
+              kubernetes.io/metadata.name: database
       ports:
         - protocol: TCP
           port: 5432
     - to:  # Allow DNS
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
+          port: 53
+        - protocol: TCP
           port: 53
 ```
 
@@ -325,7 +335,6 @@ kind: ClusterPolicy
 metadata:
   name: enforce-security-context
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-drop-all-capabilities
       match:
@@ -336,6 +345,7 @@ spec:
               namespaces:
                 - production
       validate:
+        failureAction: Enforce
         message: "Containers must drop ALL capabilities"
         pattern:
           spec:
@@ -354,6 +364,7 @@ spec:
               namespaces:
                 - production
       validate:
+        failureAction: Enforce
         message: "Containers must use readOnlyRootFilesystem"
         pattern:
           spec:
@@ -370,6 +381,7 @@ spec:
               namespaces:
                 - production
       validate:
+        failureAction: Enforce
         message: "Containers must run as non-root"
         pattern:
           spec:
@@ -392,12 +404,12 @@ metadata:
   namespace: security
 data:
   config.yaml: |
-    kubernetesPolicyReport:
+    policyreport:
       enabled: true
-      minimumPriority: warning
+      minimumpriority: warning
     webhook:
       address: http://response-handler.security:8080
-      minimumPriority: critical
+      minimumpriority: critical
 ```
 
 The response handler can automatically kill suspicious pods, create incident tickets, or trigger a rescan. Use [OneUptime](https://oneuptime.com) for comprehensive runtime security monitoring and incident management.
