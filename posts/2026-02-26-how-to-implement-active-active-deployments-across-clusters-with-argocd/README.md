@@ -230,6 +230,7 @@ metadata:
     external-dns.alpha.kubernetes.io/hostname: api.example.com
     external-dns.alpha.kubernetes.io/aws-weight: "100"
     external-dns.alpha.kubernetes.io/set-identifier: us-east-1
+    external-dns.alpha.kubernetes.io/aws-health-check-id: "<route53-health-check-id>"
 spec:
   type: LoadBalancer
   ports:
@@ -243,7 +244,7 @@ Each cluster gets the same DNS hostname but with different set identifiers and o
 
 ## Step 5: Health-Based Traffic Routing
 
-Configure DNS health checks so traffic is automatically routed away from unhealthy clusters:
+Configure DNS health checks so traffic is automatically routed away from unhealthy clusters. ExternalDNS can associate a record with an existing Route53 health check using the `external-dns.alpha.kubernetes.io/aws-health-check-id` annotation, but it does not create the health check itself:
 
 ```yaml
 # AWS Route53 health check (managed via Terraform or Crossplane)
@@ -264,7 +265,7 @@ spec:
 
 ## Step 6: Consistent Rollouts
 
-For active-active deployments, you want changes to roll out across all clusters consistently. Use ArgoCD's progressive sync feature or implement a rollout strategy:
+For active-active deployments, you want changes to roll out across all clusters consistently. When ArgoCD's progressive syncs are enabled, use a RollingSync strategy:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -300,6 +301,8 @@ spec:
   template:
     metadata:
       name: 'api-{{name}}'
+      labels:
+        region: '{{metadata.labels.region}}'
     spec:
       project: default
       source:
@@ -319,7 +322,7 @@ Monitor the health of all clusters from ArgoCD:
 
 ```bash
 # View all instances of the active-active deployment
-argocd app list --selector appset=api-active-active
+argocd app list --selector argocd.argoproj.io/application-set-name=api-active-active
 
 # Check specific cluster
 argocd app get api-us-east
