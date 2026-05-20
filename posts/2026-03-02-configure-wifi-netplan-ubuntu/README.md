@@ -209,7 +209,7 @@ network:
 
 ## Multiple Access Points (Roaming)
 
-You can configure multiple networks that the system will try to connect to in order:
+You can configure multiple networks that the backend can connect to when they are available:
 
 ```yaml
 network:
@@ -227,7 +227,7 @@ network:
           password: "hotspotpassword"
 ```
 
-The system connects to whichever network it sees first. For more control over roaming priority, NetworkManager is better suited than networkd.
+The selected network depends on the backend and the available access points. For more control over roaming priority, NetworkManager is better suited than networkd.
 
 ## Connecting WiFi and Wired Simultaneously
 
@@ -260,7 +260,7 @@ With different route metrics, the wired connection is preferred but WiFi provide
 # Show connection status and signal strength
 iw dev wlan0 link
 
-# Show more details including bitrate
+# Show interface details
 iw dev wlan0 info
 
 # Scan for available networks
@@ -281,8 +281,8 @@ networkctl status wlan0
 # Check if the interface is up
 ip link show wlan0
 
-# Check wpa_supplicant logs
-sudo journalctl -u wpa_supplicant -f
+# Check wpa_supplicant logs for the Netplan-generated service
+sudo journalctl -u netplan-wpa-wlan0.service -f
 
 # Check systemd-networkd logs
 sudo journalctl -u systemd-networkd | grep wlan0
@@ -343,4 +343,4 @@ sudo chown root:root /etc/netplan/*.yaml
 ls -la /etc/netplan/
 ```
 
-For environments where this is a concern, using NetworkManager with its credential storage (which encrypts passwords in the system keyring) is more appropriate than networkd with Netplan.
+For environments where this is a concern, using NetworkManager with user-specific secret storage or secret-agent settings is more appropriate than networkd with Netplan. System-wide NetworkManager connection profiles can still store secrets in root-readable plaintext files, so check the connection's secret flags and storage location.
