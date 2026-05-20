@@ -45,7 +45,7 @@ With applications in any namespace:
 
 ## Enabling the Feature
 
-The feature requires configuration in two places: the ArgoCD server and the Application controller.
+This feature requires a cluster-wide ArgoCD installation. It does not work with ArgoCD installed in namespace-scoped mode. The feature also requires global configuration for the ArgoCD server and the Application controller, plus per-project allow lists.
 
 ### Step 1: Configure argocd-cmd-params-cm
 
@@ -92,6 +92,8 @@ kubectl rollout restart statefulset argocd-application-controller -n argocd
 kubectl rollout status deployment/argocd-server -n argocd
 kubectl rollout status statefulset/argocd-application-controller -n argocd
 ```
+
+If you want namespaced Applications to be managed through the ArgoCD API, CLI, or UI, also make sure the `argocd-server` ServiceAccount has Kubernetes RBAC permissions to work with `Application` resources in those namespaces.
 
 ### Step 3: Configure AppProject Source Namespaces
 
@@ -217,15 +219,15 @@ spec:
 
 ### RBAC Configuration
 
-ArgoCD's RBAC policies also apply. Even if a team can create Application resources in their namespace, ArgoCD checks its own RBAC policies before processing them:
+ArgoCD's RBAC policies apply when users manage applications through the ArgoCD API, CLI, or UI:
 
 ```csv
 # argocd-rbac-cm
-p, role:team-a, applications, *, team-a/*, allow
+p, role:team-a, applications, *, team-a/team-a/*, allow
 g, team-a-developers, role:team-a
 ```
 
-The RBAC policy format for namespaced applications is `<project>/<application>`, where the application name may include the namespace prefix.
+The RBAC policy format for namespaced applications is `<project>/<namespace>/<application>`. Applications in the ArgoCD control plane namespace can still use the older `<project>/<application>` format for backwards compatibility.
 
 ### Prevent Namespace Escalation
 
@@ -301,7 +303,7 @@ argocd app get frontend --app-namespace team-a
 argocd app sync frontend --app-namespace team-a
 ```
 
-In the CLI and API, you reference namespaced applications as `<namespace>/<name>` when there might be ambiguity:
+In the CLI and UI, you reference namespaced applications as `<namespace>/<name>`:
 
 ```bash
 argocd app get team-a/frontend
