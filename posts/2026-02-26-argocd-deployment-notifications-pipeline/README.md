@@ -26,7 +26,7 @@ graph TD
 
 ## Install ArgoCD Notifications
 
-ArgoCD Notifications is included in ArgoCD v2.5+. Verify it is running:
+ArgoCD Notifications is included in ArgoCD v2.3+. Verify it is running:
 
 ```bash
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-notifications-controller
@@ -56,10 +56,10 @@ data:
     username: $email-username
     password: $email-password
 
-  # PagerDuty configuration
-  service.pagerduty: |
-    token: $pagerduty-token
-    serviceID: P12345
+  # PagerDuty Events API v2 configuration
+  service.pagerdutyv2: |
+    serviceKeys:
+      production: $pagerduty-key-production
 
   # Generic webhook (for dashboards, status pages, etc.)
   service.webhook.status-dashboard: |
@@ -84,7 +84,7 @@ Store secrets:
 kubectl create secret generic argocd-notifications-secret \
   --namespace argocd \
   --from-literal=slack-token='xoxb-your-slack-token' \
-  --from-literal=pagerduty-token='your-pagerduty-token' \
+  --from-literal=pagerduty-key-production='your-pagerduty-integration-key' \
   --from-literal=github-token='ghp_your-github-token' \
   --from-literal=email-username='argocd@example.com' \
   --from-literal=email-password='your-email-password' \
@@ -110,19 +110,19 @@ data:
 
   # When sync operation starts
   trigger.on-sync-running: |
-    - when: app.status.operationState.phase in ['Running']
+    - when: app.status?.operationState.phase in ['Running']
       send: [slack-sync-started, webhook-deployment-started]
 
   # When sync succeeds and app is healthy
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
-      oncePer: app.status.operationState.syncResult.revision
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      oncePer: app.status?.operationState.syncResult.revision
       send: [slack-deployment-success, github-commit-status-success, webhook-deployment-complete, email-deployment-summary]
 
   # When sync fails
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
-      oncePer: app.status.operationState.syncResult.revision
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
+      oncePer: app.status?.operationState.syncResult.revision
       send: [slack-deployment-failed, pagerduty-deployment-failed, github-commit-status-failed, webhook-deployment-failed]
 
   # When app health degrades after deployment
@@ -132,7 +132,7 @@ data:
 
   # When app health returns to healthy
   trigger.on-health-recovered: |
-    - when: app.status.health.status == 'Healthy' and time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() < 30
+    - when: app.status?.operationState.finishedAt != nil and app.status.health.status == 'Healthy' and time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() < 30
       send: [slack-health-recovered]
 
   # --- TEMPLATES ---
@@ -229,22 +229,23 @@ data:
 
   # PagerDuty: Deployment failure alert
   template.pagerduty-deployment-failed: |
-    pagerduty:
-      severity: critical
+    pagerdutyv2:
       summary: "Deployment failed: {{.app.metadata.name}} in {{.app.spec.destination.namespace}}"
-      source: "ArgoCD"
-      details:
-        application: "{{.app.metadata.name}}"
-        environment: "{{.app.spec.destination.namespace}}"
-        revision: "{{.app.status.operationState.operation.sync.revision}}"
-        error: "{{.app.status.operationState.message}}"
+      severity: critical
+      source: "{{.app.metadata.name}}"
+      component: "{{.app.spec.destination.namespace}}"
+      dedupKey: "{{.app.metadata.name}}-deployment"
+      url: "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
 
   # PagerDuty: Health degradation alert
   template.pagerduty-health-degraded: |
-    pagerduty:
-      severity: high
+    pagerdutyv2:
       summary: "Health degraded: {{.app.metadata.name}} in {{.app.spec.destination.namespace}}"
-      source: "ArgoCD"
+      severity: warning
+      source: "{{.app.metadata.name}}"
+      component: "{{.app.spec.destination.namespace}}"
+      dedupKey: "{{.app.metadata.name}}-health"
+      url: "{{.context.argocdUrl}}/applications/{{.app.metadata.name}}"
 
   # GitHub: Commit status on success
   template.github-commit-status-success: |
@@ -319,14 +320,14 @@ data:
   template.email-deployment-summary: |
     email:
       subject: "[ArgoCD] {{.app.metadata.name}} deployed to {{.app.spec.destination.namespace}}"
-      body: |
-        Application: {{.app.metadata.name}}
-        Environment: {{.app.spec.destination.namespace}}
-        Revision: {{.app.status.sync.revision}}
-        Health: {{.app.status.health.status}}
-        Time: {{.app.status.operationState.finishedAt}}
+    message: |
+      Application: {{.app.metadata.name}}
+      Environment: {{.app.spec.destination.namespace}}
+      Revision: {{.app.status.sync.revision}}
+      Health: {{.app.status.health.status}}
+      Time: {{.app.status.operationState.finishedAt}}
 
-        View details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
+      View details: {{.context.argocdUrl}}/applications/{{.app.metadata.name}}
 ```
 
 ## Subscribe Applications to Notifications
@@ -347,17 +348,17 @@ metadata:
     notifications.argoproj.io/subscribe.on-health-degraded.slack: deployments-alerts
 
     # PagerDuty for failures
-    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ""
-    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerdutyv2: production
+    notifications.argoproj.io/subscribe.on-health-degraded.pagerdutyv2: production
 
     # GitHub commit statuses
     notifications.argoproj.io/subscribe.on-deployed.github: ""
     notifications.argoproj.io/subscribe.on-sync-failed.github: ""
 
     # Webhook to status dashboard
-    notifications.argoproj.io/subscribe.on-sync-running.webhook.status-dashboard: ""
-    notifications.argoproj.io/subscribe.on-deployed.webhook.status-dashboard: ""
-    notifications.argoproj.io/subscribe.on-sync-failed.webhook.status-dashboard: ""
+    notifications.argoproj.io/subscribe.on-sync-running.status-dashboard: ""
+    notifications.argoproj.io/subscribe.on-deployed.status-dashboard: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.status-dashboard: ""
 
     # Email to stakeholders
     notifications.argoproj.io/subscribe.on-deployed.email: release-team@example.com
@@ -395,8 +396,8 @@ metadata:
     notifications.argoproj.io/subscribe.on-out-of-sync.slack: prod-deploys
     notifications.argoproj.io/subscribe.on-deployed.slack: prod-deploys
     notifications.argoproj.io/subscribe.on-sync-failed.slack: prod-alerts
-    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ""
-    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerdutyv2: production
+    notifications.argoproj.io/subscribe.on-health-degraded.pagerdutyv2: production
 ```
 
 For comprehensive deployment monitoring beyond notifications, integrate ArgoCD metrics with OneUptime to track deployment frequency, success rates, and mean time to recovery across all your environments.
