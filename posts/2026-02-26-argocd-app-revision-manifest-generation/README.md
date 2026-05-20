@@ -19,7 +19,7 @@ The value depends on the tracking strategy configured for your Application:
 | Tracking Strategy | ARGOCD_APP_REVISION Value |
 |---|---|
 | Branch tracking (e.g., `main`) | Full commit SHA (e.g., `a1b2c3d4e5f6...`) |
-| Tag tracking (e.g., `v1.5.0`) | The tag name (e.g., `v1.5.0`) |
+| Tag tracking (e.g., `v1.5.0`) | The commit SHA that the tag resolves to |
 | Specific commit | The commit SHA |
 | HEAD | Full commit SHA |
 
@@ -32,10 +32,14 @@ metadata:
   name: backend-api
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: main    # Branch tracking
     path: apps/backend-api
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backend-api
 ```
 
 When ArgoCD syncs this application from commit `a1b2c3d4e5f6789...`, `ARGOCD_APP_REVISION` will contain that full SHA.
@@ -53,6 +57,7 @@ metadata:
   name: backend-api
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/helm-charts.git
     targetRevision: main
@@ -78,7 +83,7 @@ metadata:
   annotations:
     # Track which Git commit this deployment came from
     app.kubernetes.io/git-revision: {{ .Values.gitRevision | default "unknown" | quote }}
-    deployment.kubernetes.io/revision-hash: {{ .Values.gitRevision | default "unknown" | trunc 8 | quote }}
+    app.kubernetes.io/git-revision-short: {{ .Values.gitRevision | default "unknown" | trunc 8 | quote }}
 spec:
   template:
     metadata:
@@ -108,7 +113,7 @@ This means:
 - Developer commits to the config repo
 - ArgoCD detects the new commit
 - Manifest generation uses the commit SHA as the image tag
-- The deployment pulls the image built from that exact commit
+- The deployment pulls the image tagged with that config revision
 
 The flow:
 
@@ -236,8 +241,8 @@ argocd app history backend-api
 # Output:
 # ID  DATE                           REVISION
 # 1   2024-03-15T10:30:00Z          a1b2c3d4
-# 2   2024-03-16T14:22:00Z          e5f6g7h8
-# 3   2024-03-18T09:15:00Z          i9j0k1l2
+# 2   2024-03-16T14:22:00Z          e5f60718
+# 3   2024-03-18T09:15:00Z          19a0c1d2
 
 # Rollback to a specific revision
 argocd app rollback backend-api 2
@@ -257,36 +262,39 @@ Then in Prometheus queries, compare metrics between revisions:
 
 ```promql
 # Compare error rates between current and previous revision
-rate(http_errors_total{revision="i9j0k1l2"}[5m])
+rate(http_errors_total{revision="19a0c1d2"}[5m])
 /
-rate(http_errors_total{revision="e5f6g7h8"}[5m])
+rate(http_errors_total{revision="e5f60718"}[5m])
 ```
 
 ## Handling Tag-Based Revisions
 
-When using tag-based tracking, `ARGOCD_APP_REVISION` contains the tag name instead of a SHA:
+When using tag-based tracking, `ARGOCD_APP_SOURCE_TARGET_REVISION` contains the configured tag name, while `ARGOCD_APP_REVISION` contains the commit SHA that the tag resolves to:
 
 ```yaml
 spec:
   source:
-    targetRevision: v1.5.0    # ARGOCD_APP_REVISION = "v1.5.0"
+    targetRevision: v1.5.0    # ARGOCD_APP_SOURCE_TARGET_REVISION = "v1.5.0"
+                              # ARGOCD_APP_REVISION = resolved commit SHA
 ```
 
-Adjust your templates to handle both formats:
+If you pass both values into Helm, adjust your templates to use the right value for each purpose:
 
 ```yaml
 metadata:
   annotations:
-    # Works for both SHA and tag
-    app.kubernetes.io/version: {{ .Values.gitRevision | quote }}
+    # Full resolved commit SHA
+    app.kubernetes.io/git-revision: {{ .Values.gitRevision | quote }}
+    # Configured branch, tag, or revision from spec.source.targetRevision
+    app.kubernetes.io/version: {{ .Values.targetRevision | quote }}
   labels:
-    # Truncate for labels (safe for both SHA and short tags)
-    version: {{ .Values.gitRevision | trunc 63 | quote }}
+    # Truncate for labels (safe for SHA values and simple tags)
+    version: {{ .Values.targetRevision | trunc 63 | quote }}
 ```
 
 ## Revision in Multi-Source Applications
 
-When using multiple sources, each source has its own revision. ArgoCD provides the revision of the primary source in `ARGOCD_APP_REVISION`. For multi-source setups:
+When using multiple sources, ArgoCD generates manifests for each source separately and combines them. During manifest generation for a source, `ARGOCD_APP_REVISION` is the resolved revision for that source. For multi-source setups:
 
 ```yaml
 spec:
