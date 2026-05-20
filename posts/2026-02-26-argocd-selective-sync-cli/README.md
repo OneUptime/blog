@@ -126,11 +126,11 @@ The output shows the group, kind, namespace, and name for each resource. Use the
 
 ```bash
 # Get resources in JSON format for scripting
-argocd app resources my-app --output json
+argocd app get my-app -o json | jq '.status.resources'
 
 # Filter to only out-of-sync resources
-argocd app resources my-app --output json | \
-  jq '.[] | select(.status == "OutOfSync") | "\(.group):\(.kind):\(.name)"'
+argocd app get my-app -o json | \
+  jq '.status.resources[] | select(.status == "OutOfSync") | "\(.group // ""):\(.kind):\(.name)"'
 ```
 
 ## Practical Example: Hotfix Deployment
@@ -142,8 +142,8 @@ During an incident, you need to push a hotfix to a single service. The applicati
 argocd app diff my-app
 
 # Step 2: Verify only the Deployment changed
-argocd app resources my-app --output json | \
-  jq '.[] | select(.status == "OutOfSync")'
+argocd app get my-app -o json | \
+  jq '.status.resources[] | select(.status == "OutOfSync")'
 
 # Step 3: Sync only the changed Deployment
 argocd app sync my-app --resource apps:Deployment:payment-service
@@ -195,8 +195,8 @@ For CI/CD pipelines, you can script selective sync based on what changed in Git.
 APP_NAME="my-app"
 
 # Get list of out-of-sync resources
-RESOURCES=$(argocd app resources "$APP_NAME" --output json | \
-  jq -r '.[] | select(.status == "OutOfSync") | "\(.group):\(.kind):\(.name)"')
+RESOURCES=$(argocd app get "$APP_NAME" -o json | \
+  jq -r '.status.resources[] | select(.status == "OutOfSync") | "\(.group // ""):\(.kind):\(.name)"')
 
 if [ -z "$RESOURCES" ]; then
   echo "No resources out of sync"
@@ -204,14 +204,14 @@ if [ -z "$RESOURCES" ]; then
 fi
 
 # Build the resource flags
-RESOURCE_FLAGS=""
+RESOURCE_FLAGS=()
 while IFS= read -r resource; do
-  RESOURCE_FLAGS="$RESOURCE_FLAGS --resource $resource"
+  RESOURCE_FLAGS+=(--resource "$resource")
 done <<< "$RESOURCES"
 
 # Execute selective sync
 echo "Syncing resources: $RESOURCES"
-eval argocd app sync "$APP_NAME" $RESOURCE_FLAGS
+argocd app sync "$APP_NAME" "${RESOURCE_FLAGS[@]}"
 
 # Wait for health
 argocd app wait "$APP_NAME" --health --timeout 300
@@ -239,8 +239,8 @@ After a selective sync, verify the result.
 
 ```bash
 # Check the sync status of the specific resource
-argocd app resources my-app --output json | \
-  jq '.[] | select(.kind == "Deployment" and .name == "web-server") | {status, health: .health.status}'
+argocd app get my-app -o json | \
+  jq '.status.resources[] | select(.kind == "Deployment" and .name == "web-server") | {status, health: .health.status}'
 
 # Check the overall application status
 argocd app get my-app
@@ -253,7 +253,7 @@ The application might still show as "OutOfSync" overall even after a selective s
 
 ## Limitations to Keep in Mind
 
-Selective sync bypasses sync waves and hooks. PreSync and PostSync hooks do not execute during selective sync operations. If your deployment relies on hooks for database migrations or smoke tests, use a full sync instead.
+Selective sync does not run hooks. PreSync and PostSync hooks do not execute during selective sync operations. If your deployment relies on hooks for database migrations or smoke tests, use a full sync instead.
 
 Selective sync does not enforce resource dependencies. If you sync a Deployment without syncing the ConfigMap it references, and the ConfigMap changed, the Deployment will roll out with a mix of old and new configuration until you sync the ConfigMap too.
 
