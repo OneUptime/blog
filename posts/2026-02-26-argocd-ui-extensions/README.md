@@ -8,28 +8,27 @@ Description: Learn how to create custom UI extensions for ArgoCD to add new tabs
 
 ---
 
-ArgoCD's web UI is functional out of the box, but every team has unique needs. Maybe you want to display cost information for each application, show deployment metrics, or add a custom approval workflow panel. ArgoCD's UI extension system lets you build custom React components that integrate directly into the ArgoCD dashboard.
+Argo CD's web UI is functional out of the box, but every team has unique needs. Maybe you want to display cost information for each application, show deployment metrics, or add a custom approval workflow panel. Argo CD's UI extension system lets you build custom React components that integrate directly into the Argo CD dashboard.
 
 This guide covers how the extension system works, how to build your first extension, and practical examples of extensions that teams commonly build.
 
 ## Understanding ArgoCD UI Extensions
 
-ArgoCD supports two types of extensions:
+Argo CD supports several UI extension points, including these two common tab-based options:
 
 1. **Resource tab extensions** - Add custom tabs to the resource detail view (when you click on a specific Kubernetes resource)
 2. **Application tab extensions** - Add custom tabs to the application detail view (the main view when you click on an ArgoCD Application)
 
-Extensions are React components that get loaded into the ArgoCD UI at runtime. They are served as JavaScript bundles from a configurable URL.
+Extensions are React components that get loaded into the Argo CD UI at runtime. They are delivered as JavaScript files in the `argocd-server` pod under `/tmp/extensions`, and the file name must start with `extension` and end with `.js`.
 
 ## How Extensions Work
 
-The ArgoCD UI loads extensions through a plugin mechanism. When the UI starts, it checks for configured extensions and dynamically loads them. Extensions have access to the application and resource data that ArgoCD already tracks.
+The Argo CD UI loads extensions during initial page rendering. Each extension registers itself with the `extensionsAPI` global variable. Extensions have access to the application and resource data that Argo CD already tracks.
 
 ```mermaid
 flowchart LR
     UI[ArgoCD UI] -->|loads| ExtLoader[Extension Loader]
-    ExtLoader -->|fetches JS| ExtServer[Extension Server]
-    ExtServer -->|returns| Bundle[JS Bundle]
+    ExtLoader -->|loads JS from /tmp/extensions| Bundle[JS Bundle]
     Bundle -->|renders| Tab[Custom Tab/Panel]
     Tab -->|reads| API[ArgoCD API Data]
 ```
@@ -44,8 +43,8 @@ First, you need to set up a development environment for building extensions.
 git clone https://github.com/argoproj/argo-cd.git
 cd argo-cd
 
-# Look at the extension examples
-ls ui/src/app/extensions/
+# Read the UI extension documentation and source code
+ls ui/src/app/shared/services/
 ```
 
 Create a new project for your extension.
@@ -59,6 +58,22 @@ npm init -y
 # Install dependencies
 npm install react react-dom typescript
 npm install --save-dev @types/react @types/react-dom webpack webpack-cli ts-loader
+```
+
+Create a TypeScript configuration that supports JSX.
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2018",
+    "module": "ESNext",
+    "jsx": "react",
+    "moduleResolution": "Node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true
+  }
+}
 ```
 
 ## Building a Resource Tab Extension
@@ -86,8 +101,10 @@ interface ExtensionProps {
   application: {
     metadata: {
       name: string;
+      namespace: string;
     };
     spec: {
+      project: string;
       destination: {
         server: string;
         namespace: string;
@@ -102,7 +119,12 @@ const PodMetricsExtension: React.FC<ExtensionProps> = ({ resource, application }
 
   React.useEffect(() => {
     // Fetch metrics from your custom backend
-    fetch(`/api/extensions/metrics/pods/${resource.metadata.namespace}/${resource.metadata.name}`)
+    fetch(`/extensions/pod-metrics/metrics/pods/${resource.metadata.namespace}/${resource.metadata.name}`, {
+      headers: {
+        'Argocd-Application-Name': `${application.metadata.namespace}:${application.metadata.name}`,
+        'Argocd-Project-Name': application.spec.project,
+      },
+    })
       .then(res => res.json())
       .then(data => {
         setMetrics(data);
@@ -153,12 +175,13 @@ const PodMetricsExtension: React.FC<ExtensionProps> = ({ resource, application }
   );
 };
 
-// Register the extension
-// The extension system looks for this export pattern
 ((window: any) => {
-  window.extensions = window.extensions || {};
-  window.extensions.resources = window.extensions.resources || {};
-  window.extensions.resources['pod-metrics'] = PodMetricsExtension;
+  window.extensionsAPI.registerResourceExtension(
+    PodMetricsExtension,
+    '',
+    'Pod',
+    'Metrics'
+  );
 })(window);
 ```
 
@@ -173,10 +196,6 @@ module.exports = {
   output: {
     filename: 'extension.js',
     path: path.resolve(__dirname, 'dist'),
-    // Library format required by ArgoCD
-    library: {
-      type: 'window',
-    },
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.js'],
@@ -207,63 +226,42 @@ npx webpack --mode production
 
 ## Deploying the Extension
 
-Extensions need to be served from a web server that ArgoCD can reach. You can use a simple Nginx deployment.
+Extensions need to be mounted into the `argocd-server` pod under `/tmp/extensions`. A simple way to do this is to place the built bundle in a ConfigMap and mount it into the server deployment.
 
 ```yaml
-# extension-server.yaml
+# argocd-server patch
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: argocd-extensions
+  name: argocd-server
   namespace: argocd
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: argocd-extensions
   template:
-    metadata:
-      labels:
-        app: argocd-extensions
     spec:
       containers:
-        - name: nginx
-          image: nginx:alpine
-          ports:
-            - containerPort: 80
+        - name: argocd-server
           volumeMounts:
-            - name: extensions
-              mountPath: /usr/share/nginx/html
+            - name: pod-metrics-extension
+              mountPath: /tmp/extensions/pod-metrics/extension.js
+              subPath: extension.js
       volumes:
-        - name: extensions
+        - name: pod-metrics-extension
           configMap:
-            name: argocd-extensions
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: argocd-extensions
-  namespace: argocd
-spec:
-  ports:
-    - port: 80
-      targetPort: 80
-  selector:
-    app: argocd-extensions
+            name: pod-metrics-extension
 ```
 
 Create a ConfigMap with your extension bundle.
 
 ```bash
 # Create ConfigMap from the built extension
-kubectl create configmap argocd-extensions \
+kubectl create configmap pod-metrics-extension \
   --namespace argocd \
   --from-file=extension.js=dist/extension.js
 ```
 
-### Configure ArgoCD to Load the Extension
+### Configure the Argo CD Proxy Backend
 
-Update the ArgoCD ConfigMap to register your extension.
+If your extension calls a custom backend, update the Argo CD ConfigMap to register a proxy extension. This does not load the UI bundle; it exposes the backend at `/extensions/pod-metrics/...`.
 
 ```yaml
 # argocd-cm patch
@@ -273,18 +271,17 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Register UI extensions
   extension.config: |
     extensions:
       - name: pod-metrics
         backend:
           services:
-            - url: http://argocd-extensions.argocd.svc.cluster.local
+            - url: http://pod-metrics-api.argocd.svc.cluster.local
 ```
 
 ## Building an Application Tab Extension
 
-Application tab extensions appear at the application level, not the resource level. These are useful for showing deployment history, cost data, or custom dashboards.
+Application tab extensions appear at the application level, not the resource level. Since an Argo CD Application is a Kubernetes resource, you register an application tab as a resource tab for the `argoproj.io` `Application` kind. These are useful for showing deployment history, cost data, or custom dashboards.
 
 ```typescript
 // src/DeploymentHistoryExtension.tsx
@@ -341,9 +338,12 @@ const DeploymentHistoryExtension: React.FC<ApplicationTabProps> = ({ application
 };
 
 ((window: any) => {
-  window.extensions = window.extensions || {};
-  window.extensions.applications = window.extensions.applications || {};
-  window.extensions.applications['deployment-history'] = DeploymentHistoryExtension;
+  window.extensionsAPI.registerResourceExtension(
+    DeploymentHistoryExtension,
+    'argoproj.io',
+    'Application',
+    'Deployment History'
+  );
 })(window);
 ```
 
@@ -377,4 +377,4 @@ When building extensions, keep these security points in mind:
 
 ## Conclusion
 
-ArgoCD UI extensions are a powerful way to customize the dashboard for your team's specific needs. Whether you need cost visibility, custom metrics, compliance dashboards, or approval workflows, extensions let you build exactly what you need without forking the ArgoCD codebase. The development model is straightforward: build a React component, bundle it with webpack, serve it from a web server, and configure ArgoCD to load it. Start with a simple extension and iterate from there.
+Argo CD UI extensions are a powerful way to customize the dashboard for your team's specific needs. Whether you need cost visibility, custom metrics, compliance dashboards, or approval workflows, extensions let you build exactly what you need without forking the Argo CD codebase. The development model is straightforward: build a React component, bundle it with webpack, mount the JavaScript file into the `argocd-server` pod, and register the component with `extensionsAPI`. Start with a simple extension and iterate from there.
