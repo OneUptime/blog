@@ -243,9 +243,10 @@ spec:
   destinations:
     - server: https://kubernetes.default.svc
       namespace: payments
-  # Only allow apps from the payments team directory
+  # If Applications-in-any-namespace is enabled, only allow Application
+  # resources in these namespaces to use this project
   sourceNamespaces:
-    - argocd
+    - payments-argocd
 ```
 
 **Best for:** Organizations with clear team ownership boundaries and RBAC requirements.
@@ -310,6 +311,8 @@ metadata:
   name: all-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/your-org/k8s-manifests.git
@@ -318,15 +321,16 @@ spec:
           - path: apps/*
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
     spec:
+      project: default
       source:
         repoURL: https://github.com/your-org/k8s-manifests.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
 ```
 
 This automatically creates an ArgoCD Application for every directory under `apps/`.
@@ -358,7 +362,7 @@ The good news is that ArgoCD supports all three source types, so you can migrate
 ```bash
 # .github/workflows/lint.yaml
 yamllint -d relaxed apps/
-kubeval --strict apps/**/*.yaml
+kubectl apply --dry-run=server --validate=strict --recursive -f apps/
 ```
 
 **Review PRs carefully** - With plain YAML, every change is visible in the diff. There is no template rendering to hide behind.
