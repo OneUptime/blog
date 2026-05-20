@@ -45,7 +45,7 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         # Disable sidecar for repo-server if needed
         sidecar.istio.io/inject: "false"
 ```
@@ -227,24 +227,7 @@ spec:
 
 ### Handling opaque ports
 
-ArgoCD uses non-HTTP protocols (Redis, gRPC). Tell Linkerd to treat these as opaque (TCP-level proxying):
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-server
-  namespace: argocd
-spec:
-  template:
-    metadata:
-      annotations:
-        linkerd.io/inject: enabled
-        # Treat gRPC and Redis ports as opaque
-        config.linkerd.io/opaque-ports: "6379,8081"
-```
-
-For Redis specifically:
+ArgoCD uses Redis, and Linkerd can treat Redis as opaque (TCP-level proxying). Configure opaque ports on the destination workload or service:
 
 ```yaml
 apiVersion: apps/v1
@@ -257,7 +240,20 @@ spec:
     metadata:
       annotations:
         linkerd.io/inject: enabled
+        # Treat Redis as opaque
         config.linkerd.io/opaque-ports: "6379"
+```
+
+For namespace-wide configuration:
+
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  annotations:
+    linkerd.io/inject: enabled
+    config.linkerd.io/opaque-ports: "6379"
 ```
 
 ### Startup Order with Linkerd
@@ -311,24 +307,24 @@ Both Istio and Linkerd provide metrics for ArgoCD traffic automatically:
 # View ArgoCD traffic metrics in Kiali
 istioctl dashboard kiali
 
-# Check mTLS status
-istioctl x check-inject -n argocd
+# Check sidecar injection status
+istioctl x check-inject deployment/argocd-server -n argocd
 
-# Verify mTLS is working
-istioctl authn tls-check argocd-server.argocd.svc.cluster.local
+# Inspect workload certificates in the server proxy
+istioctl proxy-config secret deployment/argocd-server -n argocd
 ```
 
 ### Linkerd Metrics
 
 ```bash
 # View ArgoCD in Linkerd dashboard
-linkerd dashboard
+linkerd viz dashboard
 
 # Check ArgoCD stats
-linkerd stat deployment -n argocd
+linkerd viz stat deploy -n argocd
 
 # Check live traffic
-linkerd top deployment/argocd-server -n argocd
+linkerd viz top deploy/argocd-server -n argocd
 ```
 
 ## Troubleshooting
