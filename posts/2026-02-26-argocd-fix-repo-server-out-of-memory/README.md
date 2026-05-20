@@ -111,7 +111,7 @@ kubectl patch deployment argocd-repo-server -n argocd \
 
 ## Fix 2: Limit Concurrent Operations
 
-The repo server processes multiple manifest generation requests in parallel. Each request clones a repo and runs the tool, consuming memory. Limiting parallelism reduces peak memory usage:
+The repo server processes multiple manifest generation requests in parallel. Each request uses a checked-out repo and runs the configured tool, consuming memory. Limiting parallelism reduces peak memory usage:
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
@@ -156,17 +156,30 @@ reposerver.parallelism.limit: "2"
 
 ## Fix 4: Reduce Git Repository Size
 
-Large Git repositories are the primary memory hog. When the repo server clones a repo, it holds the entire clone in memory and on disk.
+Large Git repositories are often a major source of resource usage. When the repo server clones a repo, the working tree and Git object database are stored on disk under the repo server's temporary directory, and Git operations still consume memory while they run.
 
 **Enable shallow cloning:**
 
-ArgoCD clones repos by default with limited depth. You can control this:
+ArgoCD performs a full clone by default. You can enable shallow cloning per repository with the `depth` repository option:
 
 ```yaml
-# argocd-cmd-params-cm
-data:
-  # Set fetch depth (lower = less memory, but may miss some refs)
-  reposerver.git.fetch.depth: "1"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/org/repo.git
+  depth: "1"
+```
+
+Or add the repository with the CLI:
+
+```bash
+argocd repo add https://github.com/org/repo.git --depth 1
 ```
 
 **Optimize your Git repositories:**
@@ -223,7 +236,7 @@ With proper caching, the repo server only regenerates manifests when the Git rev
 
 ## Fix 7: Use Volumes for Temporary Storage
 
-The repo server uses `/tmp` for Git clones. If this is backed by an emptyDir, it uses the pod's memory:
+The repo server uses `/tmp` for Git clones. If `/tmp` is backed by a memory-backed `emptyDir` (`medium: Memory`), files written there count against container memory. Use a disk-backed `emptyDir` or PVC for larger temporary data:
 
 ```yaml
 # Add an explicit volume for tmp
@@ -247,7 +260,7 @@ volumes:
       claimName: argocd-repo-server-tmp
 ```
 
-This moves temporary files off the pod's memory-backed storage.
+This moves temporary files off memory-backed storage when your current `/tmp` is a tmpfs volume.
 
 ## Fix 8: Set GOMEMLIMIT
 
@@ -314,7 +327,7 @@ groups:
 
 ## Fix 10: Check for CMP Sidecar Memory
 
-If you use Config Management Plugins (CMPs), the sidecar containers also consume memory and are not covered by the main container's limits:
+If you use Config Management Plugins (CMPs), the sidecar containers also consume memory and have their own container limits separate from the main repo server container:
 
 ```bash
 # Check all containers in the repo server pod
@@ -325,7 +338,7 @@ kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server \
 kubectl top pods -n argocd -l app.kubernetes.io/name=argocd-repo-server --containers
 ```
 
-Set memory limits on CMP sidecars too:
+Set memory limits on CMP sidecars too. For example, in the Argo CD Helm chart:
 
 ```yaml
 sidecars:
