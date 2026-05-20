@@ -35,6 +35,8 @@ graph LR
 gcloud services enable secretmanager.googleapis.com
 gcloud services enable container.googleapis.com
 gcloud services enable iam.googleapis.com
+gcloud services enable iamcredentials.googleapis.com
+gcloud services enable pubsub.googleapis.com
 ```
 
 ### Enable Workload Identity on GKE
@@ -50,6 +52,12 @@ gcloud container clusters create my-cluster \
 gcloud container clusters update my-cluster \
   --region us-central1 \
   --workload-pool=my-project.svc.id.goog
+
+# For existing Standard node pools
+gcloud container node-pools update my-node-pool \
+  --cluster=my-cluster \
+  --region us-central1 \
+  --workload-metadata=GKE_METADATA
 ```
 
 ## Setting Up IAM
@@ -94,7 +102,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.10.0
+    targetRevision: 2.5.0
     helm:
       values: |
         installCRDs: true
@@ -117,7 +125,7 @@ spec:
 ## Creating the ClusterSecretStore
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -169,7 +177,7 @@ gcloud secrets update production-db-password \
 ### Simple Secret
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-password
@@ -193,7 +201,7 @@ spec:
 ### JSON Secret with Property Extraction
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -223,7 +231,7 @@ spec:
 ### Extract All Properties
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-all-secrets
@@ -245,7 +253,7 @@ spec:
 Google Secret Manager supports secret versions. Pin to a specific version for stability:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: pinned-secret
@@ -275,7 +283,7 @@ remoteRef:
 ## Using Find to Discover Secrets by Labels
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: discover-app-secrets
@@ -289,6 +297,9 @@ spec:
     name: discovered-secrets
   dataFrom:
     - find:
+        tags:
+          app: my-app
+          env: production
         name:
           regexp: "^production-my-app-.*"
 ```
@@ -299,7 +310,7 @@ Use different GCP projects for different environments:
 
 ```yaml
 # Production store
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-sm-production
@@ -317,7 +328,7 @@ spec:
             namespace: external-secrets
 ---
 # Staging store
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-sm-staging
@@ -364,13 +375,13 @@ spec:
 
 ## Automatic Secret Rotation
 
-Google Secret Manager supports automatic rotation with Cloud Functions:
+Google Secret Manager supports rotation schedules that publish Pub/Sub notifications. A subscriber such as a Cloud Function can handle the notification and create a new secret version:
 
 ```bash
-# Create a rotation schedule
+# Create a rotation schedule after creating the Pub/Sub topic and granting publish access
 gcloud secrets update production-db-password \
-  --rotation-period="30d" \
-  --next-rotation-time="2026-04-01T00:00:00Z" \
+  --rotation-period="2592000s" \
+  --next-rotation-time="2026-06-01T00:00:00Z" \
   --topics="projects/my-project/topics/secret-rotation"
 ```
 
