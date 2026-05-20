@@ -14,11 +14,11 @@ This guide covers how to configure external URLs on your resources and practical
 
 ## How External URLs Work
 
-External URLs in ArgoCD use the `link.argocd.argoproj.io/external-link` annotation on any Kubernetes resource. When this annotation is present, ArgoCD displays a clickable link icon next to the resource in the resource tree view.
+External URLs in ArgoCD use annotations with the `link.argocd.argoproj.io/` prefix, such as `link.argocd.argoproj.io/external-link`, on any Kubernetes resource. When this annotation is present, ArgoCD displays a clickable link icon next to the resource in the resource tree view.
 
 ```mermaid
 flowchart LR
-    A[Kubernetes Resource] -->|Has external-link annotation| B[ArgoCD UI shows link icon]
+    A[Kubernetes Resource] -->|Has link annotation| B[ArgoCD UI shows link icon]
     B -->|User clicks icon| C[Opens URL in new tab]
 ```
 
@@ -253,7 +253,7 @@ Both external URLs and deep links create clickable links in the ArgoCD UI, but t
 | Scope | Per-resource | Per-resource-type |
 | Managed by | Application teams | Platform team |
 | Dynamic URLs | Manual per resource | Template-based |
-| One link per resource | Yes (single annotation) | Multiple links possible |
+| Multiple links per resource | Yes (multiple link annotations) | Yes |
 
 **Use external URLs when:**
 - Each resource needs a unique, specific link
@@ -300,7 +300,7 @@ Then open the ArgoCD UI, navigate to the application, and look for the external 
 
 ## Troubleshooting
 
-**Link not showing**: Verify the annotation key is exactly `link.argocd.argoproj.io/external-link`. Typos in the annotation key will silently fail.
+**Link not showing**: Verify the annotation key uses the `link.argocd.argoproj.io/` prefix, for example `link.argocd.argoproj.io/external-link`. Typos in the annotation key will silently fail.
 
 **Link opens wrong URL**: Check the annotation value. Make sure the URL is complete and properly formatted.
 
@@ -308,4 +308,4 @@ Then open the ArgoCD UI, navigate to the application, and look for the external 
 
 ## Conclusion
 
-External URLs are a straightforward way to create per-resource links from ArgoCD to any external tool. By adding a single annotation to your Kubernetes manifests, you give your team instant access to relevant dashboards, documentation, and tools. For broader, template-based linking, combine external URLs with ArgoCD deep links. See our guide on [configuring deep links in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-configure-deep-links/view) for more details.
+External URLs are a straightforward way to create per-resource links from ArgoCD to any external tool. By adding link annotations to your Kubernetes manifests, you give your team instant access to relevant dashboards, documentation, and tools. For broader, template-based linking, combine external URLs with ArgoCD deep links. See our guide on [configuring deep links in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-configure-deep-links/view) for more details.
