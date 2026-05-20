@@ -235,7 +235,7 @@ metadata:
   name: register-schemas
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 spec:
   template:
     spec:
@@ -263,7 +263,7 @@ spec:
                   key: SCHEMA_REGISTRY_URL
           volumeMounts:
             - name: schemas
-              mountPath: /schemas
+              mountPath: /schemas/avro
       volumes:
         - name: schemas
           configMap:
