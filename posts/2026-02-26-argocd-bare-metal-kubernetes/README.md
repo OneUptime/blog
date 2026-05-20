@@ -26,7 +26,7 @@ The biggest difference between cloud and bare-metal Kubernetes is load balancing
 ```bash
 # Install MetalLB
 
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB pods to be ready
 kubectl wait --for=condition=Ready pod --all -n metallb-system --timeout=120s
@@ -97,6 +97,8 @@ spec:
     helm:
       values: |
         controller:
+          extraArgs:
+            enable-ssl-passthrough: ""
           service:
             type: LoadBalancer
           # For bare metal, hostNetwork can be an alternative
@@ -124,7 +126,6 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
   rules:
@@ -142,16 +143,18 @@ spec:
 
 ### Alternative: HostNetwork Approach
 
-For environments where MetalLB is not an option, you can run ArgoCD server directly on host networking.
+For environments where MetalLB is not an option, you can run the ingress controller directly on host networking.
 
 ```yaml
-# Patch ArgoCD server to use hostNetwork
-# This binds directly to the node's network interface
-spec:
-  template:
-    spec:
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
+# Configure ingress-nginx to use hostNetwork
+# This binds ports 80 and 443 directly to the node's network interface
+controller:
+  kind: DaemonSet
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  reportNodeInternalIp: true
+  service:
+    enabled: false
 ```
 
 ## Step 4: Set Up Persistent Storage
@@ -164,7 +167,7 @@ The simplest option, suitable for development and small clusters.
 
 ```bash
 # Install Rancher's local-path-provisioner
-kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml
+kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/v0.0.35/deploy/local-path-storage.yaml
 
 # Set as default storage class
 kubectl patch storageclass local-path \
@@ -187,13 +190,13 @@ spec:
   source:
     repoURL: https://charts.longhorn.io
     chart: longhorn
-    targetRevision: 1.6.x
+    targetRevision: v1.11.1
     helm:
       values: |
         defaultSettings:
           defaultReplicaCount: 2
         persistence:
-          defaultClassReplicaCount: 2
+          defaultClassReplicaCount: "2"
   destination:
     server: https://kubernetes.default.svc
     namespace: longhorn-system
@@ -221,7 +224,7 @@ spec:
   source:
     repoURL: https://charts.rook.io/release
     chart: rook-ceph
-    targetRevision: v1.13.x
+    targetRevision: v1.19.x
   destination:
     server: https://kubernetes.default.svc
     namespace: rook-ceph
@@ -253,9 +256,10 @@ spec:
   source:
     repoURL: https://helm.goharbor.io
     chart: harbor
-    targetRevision: 1.14.x
+    targetRevision: 1.19.x
     helm:
       values: |
+        externalURL: https://registry.internal.example.com
         expose:
           type: ingress
           ingress:
@@ -313,6 +317,7 @@ spec:
   issuerRef:
     name: selfsigned-issuer
     kind: ClusterIssuer
+    group: cert-manager.io
 ---
 # Use the CA to issue certificates
 apiVersion: cert-manager.io/v1
@@ -347,37 +352,31 @@ If your bare-metal cluster is in a private network, ArgoCD needs to reach your G
 - Set up an HTTP proxy for external Git access
 - Use a VPN connection to your Git provider
 
-```yaml
-# Configure ArgoCD to use an HTTP proxy
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Set proxy for Git operations
-  HTTPS_PROXY: "http://proxy.internal:3128"
-  HTTP_PROXY: "http://proxy.internal:3128"
-  NO_PROXY: "10.0.0.0/8,192.168.0.0/16,kubernetes.default.svc"
+```bash
+# Configure the ArgoCD repo server to use an HTTP proxy for Git operations
+kubectl -n argocd set env deployment/argocd-repo-server \
+  HTTPS_PROXY=http://proxy.internal:3128 \
+  HTTP_PROXY=http://proxy.internal:3128 \
+  NO_PROXY=10.0.0.0/8,192.168.0.0/16,kubernetes.default.svc
 ```
 
 ### High Availability Without Cloud Features
 
 On bare metal, you are responsible for HA at every layer.
 
-```yaml
+```bash
 # ArgoCD HA deployment
 # Use the HA installation manifests
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
 
-For Redis HA, switch to Redis Sentinel mode.
+The HA manifests include Redis in HA mode.
 
 ### Hardware Failures
 
 Unlike cloud providers, failed hardware on bare metal stays failed until you fix it. Plan for this:
 
-- Run at least 3 master nodes
+- Run at least 3 control plane nodes
 - Use distributed storage (Longhorn or Ceph) with replication
 - Set PodDisruptionBudgets on ArgoCD components
 - Monitor node health with tools like node-problem-detector
@@ -428,7 +427,7 @@ kubectl exec -n argocd deployment/argocd-repo-server -- \
 
 ### Storage Performance Issues
 
-Monitor I/O performance on your nodes.
+Monitor I/O performance on your nodes. If metrics-server is installed, you can start with node resource usage.
 
 ```bash
 kubectl top nodes
