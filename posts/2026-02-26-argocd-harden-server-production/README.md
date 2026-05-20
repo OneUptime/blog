@@ -91,11 +91,11 @@ Verify your RBAC configuration:
 
 ```bash
 # Test what a specific user can do
-argocd admin settings rbac can developer get applications '*/*' \
+argocd admin settings rbac can role:developer get applications '*/*' \
   --policy-file policy.csv
 
 # Test what they cannot do
-argocd admin settings rbac can developer delete applications '*/*' \
+argocd admin settings rbac can role:developer delete applications '*/*' \
   --policy-file policy.csv
 ```
 
@@ -255,10 +255,10 @@ data:
   controller.log.format: "json"
 ```
 
-Forward logs to your centralized logging system:
+Forward Kubernetes container logs to your centralized logging system:
 
 ```yaml
-# Fluentd sidecar for ArgoCD audit logs
+# Fluentd configuration for ArgoCD container logs
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -268,7 +268,7 @@ data:
   fluent.conf: |
     <source>
       @type tail
-      path /var/log/argocd/*.log
+      path /var/log/containers/argocd-*.log
       pos_file /var/log/fluentd/argocd.pos
       tag argocd.audit
       <parse>
@@ -285,7 +285,7 @@ data:
 
 ## Secure Redis
 
-Redis is used for caching and does not have authentication by default. Enable password authentication:
+Redis is used for caching. Current ArgoCD default installs automatically enable Redis authentication and store the password in the `argocd-redis` Secret. If you provide your own Redis credentials, keep the same Secret key:
 
 ```yaml
 apiVersion: v1
@@ -298,23 +298,44 @@ data:
   auth: <base64-encoded-password>
 ```
 
-Configure ArgoCD to use the password:
+Configure ArgoCD components that connect to Redis to read the password. Repeat this for `argocd-server`, `argocd-repo-server`, and `argocd-application-controller`:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-server
   namespace: argocd
-data:
-  redis.server: "argocd-redis:6379"
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: argocd-redis
+                  key: auth
 ```
 
-For high-security environments, enable Redis TLS:
+For high-security environments, enable Redis TLS on every ArgoCD component that connects to Redis:
 
 ```yaml
-data:
-  redis.tls.enabled: "true"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          args:
+            - /usr/local/bin/argocd-server
+            - --redis-use-tls
+            - --redis-ca-certificate=/etc/certs/redis/ca.crt
 ```
 
 ## Restrict Cluster Permissions
@@ -382,14 +403,27 @@ spec:
 Protect against brute force and denial of service:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-server
   namespace: argocd
-data:
-  server.login.attempts.max: "5"
-  server.login.attempts.reset: "300"
+  annotations:
+    nginx.ingress.kubernetes.io/limit-rps: "10"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  number: 80
 ```
 
 ### Disable Anonymous Access
