@@ -8,7 +8,7 @@ Description: Learn how to configure custom ArgoCD health checks for Crossplane m
 
 ---
 
-Crossplane brings cloud infrastructure management into Kubernetes using custom resources. When you manage Crossplane resources through ArgoCD, you need ArgoCD to understand whether an AWS RDS instance is actually ready or whether a GCP bucket failed to provision. Without custom health checks, ArgoCD just sees that the CRD exists and marks it healthy, completely ignoring the actual provisioning status.
+Crossplane brings cloud infrastructure management into Kubernetes using custom resources. When you manage Crossplane resources through ArgoCD, you need ArgoCD to understand whether an AWS RDS instance is actually ready or whether a GCP bucket failed to provision. Without custom health checks, ArgoCD does not derive health from Crossplane's provisioning conditions, so the dashboard can miss the actual infrastructure status.
 
 This guide covers writing Lua health check scripts for Crossplane managed resources, composite resources (XRs), and claims so your ArgoCD dashboard gives you real infrastructure status.
 
@@ -60,97 +60,101 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations.health.*.crossplane.io_*: |
-    hs = {}
-    if obj.status == nil or obj.status.conditions == nil then
-      hs.status = "Progressing"
-      hs.message = "Waiting for Crossplane to reconcile"
-      return hs
-    end
-
-    ready = false
-    synced = false
-    readyMessage = ""
-    syncedMessage = ""
-
-    for i, condition in ipairs(obj.status.conditions) do
-      if condition.type == "Ready" then
-        if condition.status == "True" then
-          ready = true
+  resource.customizations: |
+    "*.crossplane.io/*":
+      health.lua: |
+        hs = {}
+        if obj.status == nil or obj.status.conditions == nil then
+          hs.status = "Progressing"
+          hs.message = "Waiting for Crossplane to reconcile"
+          return hs
         end
-        readyMessage = condition.message or condition.reason or ""
-      end
-      if condition.type == "Synced" then
-        if condition.status == "True" then
-          synced = true
+
+        ready = false
+        synced = false
+        readyMessage = ""
+        syncedMessage = ""
+
+        for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Ready" then
+            if condition.status == "True" then
+              ready = true
+            end
+            readyMessage = condition.message or condition.reason or ""
+          end
+          if condition.type == "Synced" then
+            if condition.status == "True" then
+              synced = true
+            end
+            syncedMessage = condition.message or condition.reason or ""
+          end
         end
-        syncedMessage = condition.message or condition.reason or ""
-      end
-    end
 
-    if ready and synced then
-      hs.status = "Healthy"
-      hs.message = "Resource is ready and synced"
-    elseif not synced then
-      hs.status = "Degraded"
-      hs.message = "Sync failed: " .. syncedMessage
-    elseif not ready then
-      hs.status = "Progressing"
-      hs.message = "Waiting for resource to become ready: " .. readyMessage
-    end
+        if ready and synced then
+          hs.status = "Healthy"
+          hs.message = "Resource is ready and synced"
+        elseif not synced then
+          hs.status = "Degraded"
+          hs.message = "Sync failed: " .. syncedMessage
+        elseif not ready then
+          hs.status = "Progressing"
+          hs.message = "Waiting for resource to become ready: " .. readyMessage
+        end
 
-    return hs
+        return hs
 ```
 
-The wildcard pattern `*.crossplane.io_*` matches any Crossplane API group and resource type, making this a catch-all health check.
+The wildcard pattern `"*.crossplane.io/*"` matches API groups ending in `.crossplane.io` and any kind in those groups. ArgoCD supports wildcards in the `resource.customizations` YAML block, not in `resource.customizations.health.<group>_<kind>` ConfigMap keys.
 
 ## Health Checks for Specific Crossplane Providers
 
-While the generic check works for most cases, you might want more specific health checks for particular providers. Here are examples for commonly used Crossplane providers.
+While the generic condition logic works for most cases, you need patterns that match the API groups used by each provider. Here are examples for commonly used Crossplane providers.
 
 ### AWS Provider Resources
 
 ```yaml
-  # Health check for AWS Provider resources (provider-aws)
-  resource.customizations.health.aws.upbound.io_*: |
-    hs = {}
-    if obj.status == nil or obj.status.conditions == nil then
-      hs.status = "Progressing"
-      hs.message = "Waiting for AWS resource provisioning"
+# Health check for AWS Provider resources (provider-aws)
+resource.customizations: |
+  "*.aws.upbound.io/*":
+    health.lua: |
+      hs = {}
+      if obj.status == nil or obj.status.conditions == nil then
+        hs.status = "Progressing"
+        hs.message = "Waiting for AWS resource provisioning"
+        return hs
+      end
+
+      ready = false
+      synced = false
+      message = ""
+
+      for i, condition in ipairs(obj.status.conditions) do
+        if condition.type == "Ready" then
+          ready = condition.status == "True"
+          if not ready then
+            message = condition.message or condition.reason or "Not ready"
+          end
+        end
+        if condition.type == "Synced" then
+          synced = condition.status == "True"
+          if not synced then
+            message = condition.message or condition.reason or "Not synced"
+          end
+        end
+      end
+
+      if ready and synced then
+        hs.status = "Healthy"
+        hs.message = "AWS resource is provisioned and ready"
+      elseif synced and not ready then
+        hs.status = "Progressing"
+        hs.message = "AWS resource is provisioning: " .. message
+      else
+        hs.status = "Degraded"
+        hs.message = message
+      end
+
       return hs
-    end
-
-    ready = false
-    synced = false
-    message = ""
-
-    for i, condition in ipairs(obj.status.conditions) do
-      if condition.type == "Ready" then
-        ready = condition.status == "True"
-        if not ready then
-          message = condition.message or condition.reason or "Not ready"
-        end
-      end
-      if condition.type == "Synced" then
-        synced = condition.status == "True"
-        if not synced then
-          message = condition.message or condition.reason or "Not synced"
-        end
-      end
-    end
-
-    if ready and synced then
-      hs.status = "Healthy"
-      hs.message = "AWS resource is provisioned and ready"
-    elseif synced and not ready then
-      hs.status = "Progressing"
-      hs.message = "AWS resource is provisioning: " .. message
-    else
-      hs.status = "Degraded"
-      hs.message = message
-    end
-
-    return hs
 ```
 
 ### Composite Resources (XRs) and Claims
@@ -158,92 +162,96 @@ While the generic check works for most cases, you might want more specific healt
 Crossplane composite resources and claims have the same condition structure but may also have `compositionRef` and `resourceRefs` that can provide additional context.
 
 ```yaml
-  # Health check for Composite Resources
-  resource.customizations.health.*.crossplane.io_XR*: |
-    hs = {}
-    if obj.status == nil or obj.status.conditions == nil then
-      hs.status = "Progressing"
-      hs.message = "Waiting for composite resource reconciliation"
+# Health check for Composite Resources
+resource.customizations: |
+  "example.org/*":
+    health.lua: |
+      hs = {}
+      if obj.status == nil or obj.status.conditions == nil then
+        hs.status = "Progressing"
+        hs.message = "Waiting for composite resource reconciliation"
+        return hs
+      end
+
+      ready = false
+      synced = false
+      message = ""
+
+      for i, condition in ipairs(obj.status.conditions) do
+        if condition.type == "Ready" then
+          ready = condition.status == "True"
+          if not ready then
+            message = condition.message or condition.reason or ""
+          end
+        end
+        if condition.type == "Synced" then
+          synced = condition.status == "True"
+          if not synced then
+            message = condition.message or condition.reason or ""
+          end
+        end
+      end
+
+      -- Check how many composed resources exist
+      resourceCount = 0
+      if obj.status.resourceRefs ~= nil then
+        resourceCount = #obj.status.resourceRefs
+      end
+
+      if ready and synced then
+        hs.status = "Healthy"
+        hs.message = "Composite resource is ready (" .. tostring(resourceCount) .. " composed resources)"
+      elseif synced and not ready then
+        hs.status = "Progressing"
+        hs.message = "Composite resource provisioning: " .. message
+      else
+        hs.status = "Degraded"
+        hs.message = "Sync issue: " .. message
+      end
+
       return hs
-    end
-
-    ready = false
-    synced = false
-    message = ""
-
-    for i, condition in ipairs(obj.status.conditions) do
-      if condition.type == "Ready" then
-        ready = condition.status == "True"
-        if not ready then
-          message = condition.message or condition.reason or ""
-        end
-      end
-      if condition.type == "Synced" then
-        synced = condition.status == "True"
-        if not synced then
-          message = condition.message or condition.reason or ""
-        end
-      end
-    end
-
-    -- Check how many composed resources exist
-    resourceCount = 0
-    if obj.status.resourceRefs ~= nil then
-      resourceCount = #obj.status.resourceRefs
-    end
-
-    if ready and synced then
-      hs.status = "Healthy"
-      hs.message = "Composite resource is ready (" .. tostring(resourceCount) .. " composed resources)"
-    elseif synced and not ready then
-      hs.status = "Progressing"
-      hs.message = "Composite resource provisioning: " .. message
-    else
-      hs.status = "Degraded"
-      hs.message = "Sync issue: " .. message
-    end
-
-    return hs
 ```
+
+Replace `example.org/*` with the API group and kinds defined by your XRDs and claims.
 
 ## Health Check for Crossplane Provider Itself
 
 Do not forget to monitor the health of the Crossplane provider packages themselves:
 
 ```yaml
-  # Health check for Crossplane Provider packages
-  resource.customizations.health.pkg.crossplane.io_Provider: |
-    hs = {}
-    if obj.status == nil or obj.status.conditions == nil then
-      hs.status = "Progressing"
-      hs.message = "Provider is being installed"
-      return hs
-    end
-
-    installed = false
-    healthy = false
-
-    for i, condition in ipairs(obj.status.conditions) do
-      if condition.type == "Installed" then
-        installed = condition.status == "True"
-      end
-      if condition.type == "Healthy" then
-        healthy = condition.status == "True"
-      end
-    end
-
-    if installed and healthy then
-      hs.status = "Healthy"
-      hs.message = "Provider is installed and healthy"
-    elseif installed and not healthy then
-      hs.status = "Degraded"
-      hs.message = "Provider is installed but not healthy"
-    else
-      hs.status = "Progressing"
-      hs.message = "Provider is being installed"
-    end
-
+# Health check for Crossplane Provider packages
+resource.customizations.health.pkg.crossplane.io_Provider: |
+  hs = {}
+  if obj.status == nil or obj.status.conditions == nil then
+    hs.status = "Progressing"
+    hs.message = "Provider is being installed"
     return hs
+  end
+
+  installed = false
+  healthy = false
+
+  for i, condition in ipairs(obj.status.conditions) do
+    if condition.type == "Installed" then
+      installed = condition.status == "True"
+    end
+    if condition.type == "Healthy" then
+      healthy = condition.status == "True"
+    end
+  end
+
+  if installed and healthy then
+    hs.status = "Healthy"
+    hs.message = "Provider is installed and healthy"
+  elseif installed and not healthy then
+    hs.status = "Degraded"
+    hs.message = "Provider is installed but not healthy"
+  else
+    hs.status = "Progressing"
+    hs.message = "Provider is being installed"
+  end
+
+  return hs
 ```
 
 ## Applying with Helm Values
@@ -251,40 +259,42 @@ Do not forget to monitor the health of the Crossplane provider packages themselv
 If you manage ArgoCD with the community Helm chart, add these to your values file:
 
 ```yaml
-server:
-  config:
+configs:
+  cm:
     # Generic Crossplane health check
-    "resource.customizations.health.*.crossplane.io_*": |
-      hs = {}
-      if obj.status == nil or obj.status.conditions == nil then
-        hs.status = "Progressing"
-        hs.message = "Waiting for reconciliation"
-        return hs
-      end
-      ready = false
-      synced = false
-      message = ""
-      for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Ready" then
-          ready = condition.status == "True"
-          if not ready then message = condition.message or condition.reason or "" end
-        end
-        if condition.type == "Synced" then
-          synced = condition.status == "True"
-          if not synced then message = condition.message or condition.reason or "" end
-        end
-      end
-      if ready and synced then
-        hs.status = "Healthy"
-        hs.message = "Resource is ready and synced"
-      elseif synced and not ready then
-        hs.status = "Progressing"
-        hs.message = "Provisioning: " .. message
-      else
-        hs.status = "Degraded"
-        hs.message = message
-      end
-      return hs
+    resource.customizations: |
+      "*.crossplane.io/*":
+        health.lua: |
+          hs = {}
+          if obj.status == nil or obj.status.conditions == nil then
+            hs.status = "Progressing"
+            hs.message = "Waiting for reconciliation"
+            return hs
+          end
+          ready = false
+          synced = false
+          message = ""
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" then
+              ready = condition.status == "True"
+              if not ready then message = condition.message or condition.reason or "" end
+            end
+            if condition.type == "Synced" then
+              synced = condition.status == "True"
+              if not synced then message = condition.message or condition.reason or "" end
+            end
+          end
+          if ready and synced then
+            hs.status = "Healthy"
+            hs.message = "Resource is ready and synced"
+          elseif synced and not ready then
+            hs.status = "Progressing"
+            hs.message = "Provisioning: " .. message
+          else
+            hs.status = "Degraded"
+            hs.message = message
+          end
+          return hs
 ```
 
 ## Testing Crossplane Health Checks
@@ -304,7 +314,7 @@ argocd app get my-infrastructure-app --refresh
 
 ## Common Pitfalls
 
-**API group mismatches**: Crossplane providers use different API groups. The classic Crossplane provider uses `aws.crossplane.io` while the Upbound provider uses `aws.upbound.io`. Make sure your wildcard patterns cover both, or add separate health checks for each.
+**API group mismatches**: Crossplane providers use different API groups. The classic Crossplane provider uses groups like `aws.crossplane.io`, while Upbound AWS provider resources use service-specific groups such as `ec2.aws.upbound.io` or `ec2.aws.m.upbound.io`. Make sure your wildcard patterns cover the groups used by your installed provider, or add separate health checks for each.
 
 **Slow provisioning**: Some cloud resources (like RDS instances or EKS clusters) can take 15 to 30 minutes to provision. During that time, ArgoCD will show "Progressing" which is correct. Make sure your sync timeouts accommodate this.
 
