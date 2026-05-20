@@ -8,7 +8,7 @@ Description: A hands-on guide to collecting and shipping ArgoCD logs to Grafana 
 
 ---
 
-Grafana Loki is a popular log aggregation system designed to be cost-effective and easy to operate. Unlike Elasticsearch, Loki does not index the full text of logs - it only indexes metadata labels, making it significantly cheaper to run at scale. For ArgoCD deployments, Loki combined with Promtail provides a lightweight yet powerful logging solution that integrates naturally with Grafana dashboards.
+Grafana Loki is a popular log aggregation system designed to be cost-effective and easy to operate. Unlike Elasticsearch, Loki does not index the full text of logs - it only indexes metadata labels, making it significantly cheaper to run at scale. For ArgoCD deployments that already use Promtail, Loki combined with Promtail provides a lightweight yet powerful logging solution that integrates naturally with Grafana dashboards. Promtail reached end-of-life on March 2, 2026, so use Grafana Alloy or another supported collector for new deployments.
 
 ## Architecture Overview
 
@@ -26,10 +26,10 @@ Promtail runs as a DaemonSet on each node, reads the container log files, applie
 
 ## Prerequisites
 
-Configure ArgoCD to output JSON-formatted logs for reliable parsing:
+Configure the main ArgoCD components to output JSON-formatted logs for reliable parsing:
 
 ```yaml
-# Enable JSON logging for all ArgoCD components
+# Enable JSON logging for the main ArgoCD components
 
 apiVersion: v1
 kind: ConfigMap
@@ -40,22 +40,25 @@ data:
   server.log.format: "json"
   controller.log.format: "json"
   reposerver.log.format: "json"
+  applicationsetcontroller.log.format: "json"
+  notificationscontroller.log.format: "json"
 ```
 
 ## Installing Loki Stack with Helm
 
-Deploy Loki, Promtail, and Grafana together:
+Deploy Loki and Grafana first, then install Promtail with the custom configuration in the next section:
 
 ```bash
 # Add the Grafana Helm repo
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-# Install the Loki stack (Loki + Promtail + Grafana)
+# Install the Loki stack (Loki + Grafana). Promtail is installed separately below.
 helm install loki grafana/loki-stack \
   --namespace logging \
   --create-namespace \
   --set grafana.enabled=true \
+  --set promtail.enabled=false \
   --set loki.persistence.enabled=true \
   --set loki.persistence.size=50Gi
 ```
@@ -134,10 +137,9 @@ data:
           # Use the timestamp from ArgoCD rather than collection time
           - timestamp:
               source: time
-              format: "2006-01-02T15:04:05Z"
-          # Set the log line to the message field
-          - output:
-              source: message
+              format: RFC3339Nano
+              fallback_formats:
+                - RFC3339
 ```
 
 ## Deploying Promtail
@@ -148,7 +150,6 @@ Deploy Promtail using Helm with the custom config:
 # Install Promtail with ArgoCD-specific configuration
 helm install promtail grafana/promtail \
   --namespace logging \
-  --set config.lokiAddress=http://loki.logging.svc.cluster.local:3100/loki/api/v1/push \
   -f promtail-values.yaml
 ```
 
@@ -157,6 +158,8 @@ Here is the values file:
 ```yaml
 # promtail-values.yaml
 config:
+  clients:
+    - url: http://loki.logging.svc.cluster.local:3100/loki/api/v1/push
   snippets:
     # Add ArgoCD-specific scrape configuration
     extraScrapeConfigs: |
@@ -170,10 +173,18 @@ config:
           - source_labels: [__meta_kubernetes_namespace]
             action: keep
             regex: argocd
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
           - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
             target_label: app
           - source_labels: [__meta_kubernetes_pod_container_name]
             target_label: component
+          - source_labels: [__meta_kubernetes_pod_uid, __meta_kubernetes_pod_container_name]
+            target_label: __path__
+            separator: /
+            replacement: /var/log/pods/*$1/*.log
         pipeline_stages:
           - cri: {}
           - json:
@@ -223,7 +234,7 @@ topk(10,
 )
 
 # Git operation failures
-{namespace="argocd", component="argocd-repo-server"}
+{namespace="argocd", app="argocd-repo-server"}
   | json
   | level="error"
   | msg=~".*git.*|.*repository.*|.*clone.*"
@@ -323,7 +334,7 @@ data:
           - alert: ArgoCD_GitConnectivityIssue
             expr: |
               sum(count_over_time(
-                {namespace="argocd", component="argocd-repo-server"}
+                {namespace="argocd", app="argocd-repo-server"}
                 | json
                 | level="error"
                 | msg=~".*git.*|.*repository.*" [5m]
@@ -377,9 +388,9 @@ loki:
     schema_config:
       configs:
         - from: 2024-01-01
-          store: boltdb-shipper
+          store: tsdb
           object_store: s3
-          schema: v12
+          schema: v13
           index:
             prefix: argocd_index_
             period: 24h
@@ -387,4 +398,4 @@ loki:
 
 ## Summary
 
-Shipping ArgoCD logs to Loki provides a cost-effective centralized logging solution. Use JSON log format from ArgoCD, configure Promtail to properly label and parse the logs, and leverage LogQL for powerful queries. Build Grafana dashboards for operational visibility and set up alerting rules to catch issues early. Loki's label-based indexing keeps storage costs low while still providing the query power you need for effective troubleshooting. For related guides, see [configuring ArgoCD component log levels](https://oneuptime.com/blog/post/2026-02-26-argocd-component-log-levels/view) and [correlating ArgoCD logs with application logs](https://oneuptime.com/blog/post/2026-02-26-argocd-correlate-application-logs/view).
+Shipping ArgoCD logs to Loki provides a cost-effective centralized logging solution. Use JSON log format from ArgoCD, configure Promtail to properly label and parse the logs for existing Promtail deployments, and leverage LogQL for powerful queries. Build Grafana dashboards for operational visibility and set up alerting rules to catch issues early. Loki's label-based indexing keeps storage costs low while still providing the query power you need for effective troubleshooting. For related guides, see [configuring ArgoCD component log levels](https://oneuptime.com/blog/post/2026-02-26-argocd-component-log-levels/view) and [correlating ArgoCD logs with application logs](https://oneuptime.com/blog/post/2026-02-26-argocd-correlate-application-logs/view).
