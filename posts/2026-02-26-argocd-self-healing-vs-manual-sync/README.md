@@ -8,17 +8,17 @@ Description: Compare ArgoCD self-healing automatic sync with manual sync approac
 
 ---
 
-One of the first configuration decisions with ArgoCD is whether to enable auto-sync with self-healing or require manual syncs. Auto-sync means ArgoCD automatically applies changes from Git and reverts any manual changes in the cluster. Manual sync means humans must explicitly trigger each deployment.
+One of the first configuration decisions with ArgoCD is whether to enable auto-sync with self-healing or require manual syncs. Auto-sync means ArgoCD automatically applies changes from Git. Self-healing means ArgoCD also reverts manual changes in the cluster. Manual sync means humans must explicitly trigger each deployment.
 
 Both approaches have strong advocates, and the right choice depends on your team's maturity, risk tolerance, and operational needs.
 
 ## What Self-Healing Actually Does
 
-Self-healing in ArgoCD has two components:
+Automated sync in ArgoCD has two related settings:
 
-1. **Auto-sync**: When ArgoCD detects a difference between Git and the cluster, it automatically applies the Git state. This covers both new commits to Git and manual changes in the cluster.
+1. **Auto-sync**: When ArgoCD detects that the desired manifests in Git have changed and the application is OutOfSync, it automatically applies the Git state.
 
-2. **Self-heal specifically**: When someone or something modifies a resource in the cluster directly (using kubectl, the Kubernetes dashboard, or another tool), ArgoCD detects the drift and reverts the change to match Git.
+2. **Self-heal**: When someone or something modifies a resource in the cluster directly (using kubectl, the Kubernetes dashboard, or another tool), ArgoCD detects the drift and reverts the change to match Git.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -191,7 +191,7 @@ roleRef:
 
 The biggest concern with self-healing is "what if I need to make a quick change during an incident?" There are several approaches.
 
-**Disable auto-sync temporarily**: ArgoCD lets you disable auto-sync without changing the Application spec.
+**Disable auto-sync temporarily**: ArgoCD lets you disable auto-sync from the CLI instead of editing manifests by hand.
 
 ```bash
 # Disable auto-sync during an incident
@@ -200,8 +200,8 @@ argocd app set my-app --sync-policy none
 # Make your emergency changes directly
 kubectl -n my-app scale deployment my-app --replicas=10
 
-# After the incident, re-enable and sync from Git
-argocd app set my-app --sync-policy automated
+# After the incident, re-enable self-healing and sync from Git
+argocd app set my-app --sync-policy automated --auto-prune --self-heal
 argocd app sync my-app
 ```
 
@@ -217,17 +217,28 @@ spec:
     - kind: allow
       schedule: '0 6-18 * * 1-5'  # Allow sync Mon-Fri 6AM-6PM
       duration: 12h
+      applications:
+        - '*'
     - kind: deny
       schedule: '0 0 * * 0'  # Deny sync on Sundays
       duration: 24h
+      applications:
+        - '*'
 ```
 
-**Annotate specific resources to skip self-healing**:
+**Ignore specific fields during self-healing**:
 
 ```yaml
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-options: Prune=false
+spec:
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: my-app
+      jsonPointers:
+        - /spec/replicas
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
 ## Monitoring Sync Behavior
