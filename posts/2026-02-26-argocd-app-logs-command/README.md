@@ -41,13 +41,13 @@ Target logs from specific resources within the application:
 
 ```bash
 # Logs from pods belonging to a specific Deployment
-argocd app logs my-app --kind Deployment --resource-name my-app
+argocd app logs my-app --kind Deployment --name my-app
 
 # Logs from pods belonging to a specific StatefulSet
-argocd app logs my-app --kind StatefulSet --resource-name my-database
+argocd app logs my-app --kind StatefulSet --name my-database
 
 # Logs from a specific pod
-argocd app logs my-app --kind Pod --resource-name my-app-7f8b9c-abc12
+argocd app logs my-app --kind Pod --name my-app-7f8b9c-abc12
 ```
 
 ## Filtering by Group
@@ -56,7 +56,7 @@ For resources in specific API groups:
 
 ```bash
 # Logs from an Argo Rollout's pods
-argocd app logs my-app --group argoproj.io --kind Rollout --resource-name my-rollout
+argocd app logs my-app --group argoproj.io --kind Rollout --name my-rollout
 ```
 
 ## Namespace Filter
@@ -95,13 +95,13 @@ argocd app logs my-app --tail 50 --follow
 argocd app logs my-app --tail 10 --container app
 ```
 
-## Since Timestamp
+## Time Filters
 
-View logs starting from a specific time:
+View logs from a relative start time, or stop at a specific timestamp:
 
 ```bash
-# Logs from the last hour
-argocd app logs my-app --since-time "2026-02-26T10:00:00Z"
+# Logs until a specific timestamp
+argocd app logs my-app --until-time "2026-02-26T10:00:00Z"
 
 # Logs from the last 30 minutes (using duration)
 argocd app logs my-app --since-seconds 1800
@@ -159,7 +159,7 @@ echo ""
 echo "--- App Container ---"
 argocd app logs "$APP_NAME" \
   --kind Deployment \
-  --resource-name "$DEPLOY_NAME" \
+  --name "$DEPLOY_NAME" \
   --container app \
   --tail 20
 
@@ -168,7 +168,7 @@ echo ""
 echo "--- Sidecar Container ---"
 argocd app logs "$APP_NAME" \
   --kind Deployment \
-  --resource-name "$DEPLOY_NAME" \
+  --name "$DEPLOY_NAME" \
   --container sidecar \
   --tail 20 2>/dev/null || echo "No sidecar container found"
 ```
@@ -257,21 +257,7 @@ argocd app logs "$APP_NAME" --tail 100
 
 ## Enabling Logs in ArgoCD
 
-The log streaming feature needs to be enabled on the ArgoCD server. Check your configuration:
-
-```yaml
-# argocd-cmd-params-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Enable log streaming (usually enabled by default)
-  server.enable.proxy.extension: "true"
-```
-
-Also ensure the RBAC policy allows log access:
+The `argocd app logs` command does not require the proxy extension feature flag. Ensure the RBAC policy allows log access:
 
 ```csv
 # argocd-rbac-cm - Allow log access
@@ -296,13 +282,13 @@ p, role:developer, logs, get, production/*, deny
 
 ## Limitations
 
-1. **Log retention**: `argocd app logs` only shows logs from currently running pods. Once a pod is terminated, its logs are gone (use a centralized logging system for historical logs).
+1. **Log retention**: `argocd app logs` only retrieves logs that are still available from Kubernetes for the application's pods. Once pod logs are rotated or the pod object is deleted, use a centralized logging system for historical logs.
 
 2. **Large log volumes**: Streaming logs from applications with many pods can be overwhelming. Use filters to narrow down.
 
 3. **Binary logs**: The command expects text-based logs. Binary log formats will not display correctly.
 
-4. **Previous containers**: There is no direct equivalent of `kubectl logs --previous` for crashed containers, though some versions support it through flags.
+4. **Previous containers**: Current ArgoCD versions support `--previous` for previously terminated container logs, similar to `kubectl logs --previous`.
 
 ## Summary
 
