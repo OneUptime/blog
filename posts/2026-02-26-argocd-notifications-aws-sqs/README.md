@@ -16,7 +16,7 @@ Direct notification services like Slack or email are fire-and-forget. If the ser
 
 - **Reliability**: Messages persist until consumed, with configurable retention
 - **Decoupling**: Multiple consumers can process events independently
-- **Ordering**: FIFO queues guarantee message ordering
+- **Ordering**: FIFO queues guarantee message ordering within a message group
 - **Dead letter queues**: Failed processing attempts are captured
 - **Integration**: Lambda, Step Functions, and other AWS services consume from SQS natively
 
@@ -109,6 +109,7 @@ Resources:
       IntegrationType: AWS_PROXY
       IntegrationSubtype: SQS-SendMessage
       CredentialsArn: !GetAtt ApiGatewayRole.Arn
+      PayloadFormatVersion: '1.0'
       RequestParameters:
         QueueUrl: !Ref ArgoCDEventsQueue
         MessageBody: $request.body
@@ -120,6 +121,13 @@ Resources:
       RouteKey: POST /events
       Target: !Sub integrations/${SQSIntegration}
       AuthorizationType: NONE
+
+  DefaultStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ArgocdWebhookApi
+      StageName: $default
+      AutoDeploy: true
 
   ArgoCDEventsQueue:
     Type: AWS::SQS::Queue
@@ -145,6 +153,8 @@ Resources:
                 Action: sqs:SendMessage
                 Resource: !GetAtt ArgoCDEventsQueue.Arn
 ```
+
+If you switch this template to a FIFO queue, add a `MessageGroupId` request parameter such as `MessageGroupId: argocd` or a mapped application identifier. SQS requires a non-empty message group ID when sending to FIFO queues.
 
 ## Configuring ArgoCD
 
@@ -198,7 +208,7 @@ data:
             "health": {
               "status": "{{ .app.status.health.status }}"
             },
-            "source": {
+            "repository": {
               "repoURL": "{{ .app.spec.source.repoURL }}",
               "path": "{{ .app.spec.source.path }}",
               "targetRevision": "{{ .app.spec.source.targetRevision }}"
@@ -233,7 +243,7 @@ data:
 
 ```yaml
   trigger.on-any-sync-sqs: |
-    - when: app.status.operationState.phase in ['Succeeded', 'Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Succeeded', 'Error', 'Failed']
       send: [sqs-deployment-event]
 
   trigger.on-health-change-sqs: |
@@ -250,6 +260,7 @@ data:
 import json
 import boto3
 import os
+import time
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ['DEPLOYMENTS_TABLE'])
@@ -286,7 +297,7 @@ For all applications:
 ```yaml
   subscriptions: |
     - recipients:
-        - aws-sqs:
+        - aws-sqs
       triggers:
         - on-any-sync-sqs
         - on-health-change-sqs
