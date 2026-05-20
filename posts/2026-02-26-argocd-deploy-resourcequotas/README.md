@@ -79,7 +79,7 @@ spec:
       selfHeal: true  # Prevent manual quota changes
 ```
 
-The `selfHeal: true` setting is critical. If someone manually increases a quota to work around limits, ArgoCD reverts it immediately. This enforces that all quota changes go through the Git review process.
+The `selfHeal: true` setting is critical. If someone manually increases a quota to work around limits, ArgoCD reverts it during automated reconciliation. This enforces that all quota changes go through the Git review process.
 
 ## Multi-Tenant Quota Configuration
 
@@ -166,11 +166,11 @@ spec:
 Kubernetes supports scoped quotas that apply to specific pod priority classes:
 
 ```yaml
-# Quota for best-effort pods (no resource requests/limits)
+# Quota for low-priority pods
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: best-effort-quota
+  name: low-priority-quota
   namespace: production
 spec:
   hard:
@@ -254,6 +254,26 @@ metadata:
   namespace: production
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+        - name: myapp
+          image: nginx:1.27
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
 ```
 
 ## Handling Quota Exceeded Errors
@@ -322,7 +342,7 @@ spec:
         - alert: NamespaceQuotaNearlyFull
           expr: |
             kube_resourcequota{type="used"}
-            / kube_resourcequota{type="hard"}
+            / ignoring(type) kube_resourcequota{type="hard"}
             > 0.85
           for: 15m
           labels:
@@ -359,7 +379,7 @@ spec:
 
 ResourceQuota and LimitRange Together
 
-ResourceQuotas require that all pods in the namespace have resource requests and limits defined. If a pod does not specify them, it cannot be created. Pair your quota with a LimitRange to set default requests and limits:
+When a ResourceQuota sets CPU or memory request or limit quotas, pods in the namespace must specify the corresponding resource requests or limits. If a pod does not specify the required values, it may be rejected. Pair your quota with a LimitRange to set default requests and limits:
 
 ```yaml
 apiVersion: v1
