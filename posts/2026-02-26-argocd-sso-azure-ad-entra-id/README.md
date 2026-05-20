@@ -44,6 +44,8 @@ sequenceDiagram
    - **Redirect URI**: Select **Web** and enter `https://argocd.example.com/auth/callback`
 5. Click **Register**
 
+If you plan to use the ArgoCD CLI with SSO, go to **Authentication > Add a platform > Mobile and desktop applications** and add `http://localhost:8085/auth/callback` as an additional redirect URI.
+
 Note the following from the overview page:
 - **Application (client) ID**: e.g., `12345678-1234-1234-1234-123456789012`
 - **Directory (tenant) ID**: e.g., `abcdefgh-abcd-abcd-abcd-abcdefghijkl`
@@ -89,13 +91,13 @@ Important: By default, Azure AD includes group Object IDs (GUIDs) in the token, 
 
 If you want human-readable group names in ArgoCD RBAC, you have two options:
 
-**Option A: Configure Azure AD to emit group names** (requires Azure AD Premium P1)
+**Option A: Configure Azure AD to emit group names** (requires Azure AD Premium P1 when using groups assigned to the application)
 
-In Token configuration, change the group claim to emit `sAMAccountName` or `Display Name` instead of Object IDs.
+In Token configuration, change the group claim to emit `sAMAccountName` for Active Directory-synchronized groups or **Cloud-only group display names** for cloud-only groups instead of Object IDs.
 
-**Option B: Use Dex with Azure AD connector** (works with any Azure AD tier)
+**Option B: Use Dex with the Microsoft connector** (works with any Azure AD tier)
 
-Dex can transform group GUIDs into display names. See the Dex section later in this guide.
+Dex can query Microsoft for group memberships and, by default, return group display names instead of group IDs. See the Dex section later in this guide.
 
 ## Step 5: Configure ArgoCD
 
@@ -241,8 +243,8 @@ data:
             - Platform Engineering
             - Backend Developers
             - SRE Team
-          # Use group names instead of IDs
-          useGroupDisplayName: true
+          # Dex returns group names by default. To return IDs instead, set:
+          # groupNameFormat: id
 ```
 
 ## Troubleshooting
