@@ -52,7 +52,7 @@ kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server
 argocd app list
 ```
 
-**Preparation**: Ensure replicas > 1 for all components. Configure PDBs.
+**Preparation**: Ensure replicas > 1 for stateless components such as the API server and repo server, use the HA Redis manifests for Redis availability, and configure PDBs.
 
 ## Scenario 2: Controller Leader Failure
 
@@ -91,7 +91,7 @@ kubectl logs statefulset/argocd-application-controller -n argocd --tail=20
 
 **Impact**: Cache loss. Temporary performance degradation.
 
-**What happens without Redis HA**: All ArgoCD components lose their cache. Every request hits Git repositories and Kubernetes APIs directly. Performance drops significantly. After Redis restarts, the cache rebuilds gradually.
+**What happens without Redis HA**: ArgoCD components lose their shared cache. More requests fall back to Git repositories and Kubernetes APIs directly. Performance can drop significantly. After Redis restarts, the cache rebuilds gradually.
 
 **What happens with Redis HA**: Sentinel detects the master failure and promotes a replica. HAProxy redirects to the new master. ArgoCD experiences 1-2 seconds of cache misses during failover.
 
@@ -107,30 +107,26 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-redis --previous
 # Step 3: Common fix - delete the pod to get a fresh start
 kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-redis
 
-# Step 4: If persistent data is corrupted, delete the PVC
-kubectl delete pvc redis-data-argocd-redis-0 -n argocd
-kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-redis
-
-# Step 5: ArgoCD will rebuild cache automatically
+# Step 4: ArgoCD will rebuild cache automatically
 # Monitor recovery
-kubectl logs deployment/argocd-application-controller -n argocd --tail=10 -f
+kubectl logs statefulset/argocd-application-controller -n argocd --tail=10 -f
 ```
 
 **Runbook for Redis HA failover verification**:
 
 ```bash
 # Check Sentinel status
-kubectl exec -n argocd argocd-redis-ha-server-0 -c sentinel -- \
-  redis-cli -p 26379 sentinel master mymaster
+kubectl exec -n argocd argocd-redis-ha-server-0 -c sentinel -- sh -c \
+  'redis-cli -a "$AUTH" --no-auth-warning -p 26379 sentinel master argocd'
 
 # Verify the new master is accepting writes
-MASTER_IP=$(kubectl exec -n argocd argocd-redis-ha-server-0 -c sentinel -- \
-  redis-cli -p 26379 sentinel get-master-addr-by-name mymaster | head -1)
+MASTER_IP=$(kubectl exec -n argocd argocd-redis-ha-server-0 -c sentinel -- sh -c \
+  'redis-cli -a "$AUTH" --no-auth-warning -p 26379 sentinel get-master-addr-by-name argocd' | head -1)
 echo "Current master: $MASTER_IP"
 
 # Check replication status
-kubectl exec -n argocd argocd-redis-ha-server-0 -c redis -- \
-  redis-cli info replication
+kubectl exec -n argocd argocd-redis-ha-server-0 -c redis -- sh -c \
+  'redis-cli -a "$AUTH" --no-auth-warning info replication'
 ```
 
 ## Scenario 4: Node Failure
@@ -148,7 +144,7 @@ kubectl get nodes
 
 # Speed up rescheduling by deleting pods on the failed node
 kubectl get pods -n argocd --field-selector spec.nodeName=failed-node-name -o name | \
-  xargs kubectl delete -n argocd
+  xargs -r kubectl delete -n argocd
 ```
 
 **Preparation**: Use pod anti-affinity to avoid all replicas on one node. Use PDBs to prevent drain operations from killing too many pods.
@@ -172,7 +168,7 @@ kubectl get pods -n argocd -o wide | grep Running
 
 # Step 3: If not enough capacity, temporarily relax PDBs
 kubectl patch pdb argocd-server -n argocd \
-  --type merge -p '{"spec": {"minAvailable": 1}}'
+  --type merge -p '{"spec": {"maxUnavailable": null, "minAvailable": 1}}'
 
 # Step 4: Scale up in healthy zones if needed
 kubectl scale deployment argocd-server -n argocd --replicas=5
@@ -184,7 +180,7 @@ argocd app list
 
 ## Scenario 6: Complete ArgoCD Cluster Loss
 
-**Impact**: Total loss of ArgoCD. No deployments, no monitoring, no self-healing.
+**Impact**: Total loss of ArgoCD. No ArgoCD UI/API, automated syncs, or self-healing.
 
 This is the worst case and requires a recovery plan.
 
