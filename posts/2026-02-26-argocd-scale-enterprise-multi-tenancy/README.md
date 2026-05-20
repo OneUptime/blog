@@ -46,7 +46,7 @@ Assign applications to specific shards based on cluster:
 
 ```yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -61,23 +61,30 @@ spec:
               value: "3"
 ```
 
-ArgoCD uses consistent hashing to assign clusters to shards. Each controller instance only reconciles applications in its assigned clusters.
+ArgoCD assigns clusters to shards using the configured sharding algorithm. Each controller instance only reconciles applications in its assigned clusters.
 
 ### Dynamic Cluster Distribution
 
-ArgoCD 2.8+ supports dynamic cluster distribution, which automatically balances clusters across controller shards:
+ArgoCD 2.9+ supports dynamic cluster distribution as an alpha feature, which automatically re-runs cluster distribution when controller shards are added or removed:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-application-controller
   namespace: argocd
-data:
-  controller.dynamic.cluster.distribution.enabled: "true"
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION
+              value: "true"
 ```
 
-This is the recommended approach for enterprises because it handles shard rebalancing automatically when controllers are added or removed.
+This can be useful for large installations because it handles shard rebalancing automatically when controllers are added or removed, but evaluate the alpha status before using it in production.
 
 ## Scaling the Repo Server
 
@@ -103,7 +110,7 @@ spec:
               cpu: "4"
               memory: 8Gi
           env:
-            # Increase parallelism for manifest generation
+            # Increase the timeout for manifest generation commands
             - name: ARGOCD_EXEC_TIMEOUT
               value: "180s"
             # Configure repo server parallelism
@@ -121,7 +128,7 @@ spec:
 
 ### Repo Server Caching
 
-Enable aggressive caching to reduce Git operations:
+Tune caching to reduce Git operations:
 
 ```yaml
 apiVersion: v1
@@ -130,10 +137,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Cache manifests for longer
-  reposerver.repo.cache.expiration: 1h
-  # Cache Helm indexes
-  reposerver.helm.cache.max.entries: "1000"
+  # Cache repo state, app details, manifest generation, and revision metadata
+  reposerver.repo.cache.expiration: "24h0m0s"
 ```
 
 ## Scaling the API Server
@@ -152,6 +157,9 @@ spec:
     spec:
       containers:
         - name: argocd-server
+          env:
+            - name: ARGOCD_API_SERVER_REPLICAS
+              value: "3"
           resources:
             requests:
               cpu: 500m
@@ -202,10 +210,11 @@ spec:
           limits:
             memory: 4Gi
   destination:
+    server: https://kubernetes.default.svc
     namespace: argocd
 ```
 
-Resource Tuning for Large Scale
+## Resource Tuning for Large Scale
 
 At enterprise scale, the default resource allocations are too small. Here are recommended starting points for different scales:
 
@@ -323,6 +332,7 @@ spec:
             hosts:
               - argocd-bu-a.internal.example.com
   destination:
+    server: https://kubernetes.default.svc
     namespace: argocd-bu-a
 ```
 
