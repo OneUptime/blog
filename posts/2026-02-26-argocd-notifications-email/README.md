@@ -110,13 +110,12 @@ For Gmail, you need to use an App Password (not your regular password). Generate
 
 ### HTML Email Template
 
-For professional-looking emails, use HTML:
+For professional-looking emails, set `html: true` in the email service and use HTML in the email body:
 
 ```yaml
   template.app-deployed-email: |
     email:
       subject: "Deployed: {{ .app.metadata.name }} to {{ .app.spec.destination.namespace }}"
-      content-type: text/html
       body: |
         <html>
         <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
@@ -161,7 +160,6 @@ For professional-looking emails, use HTML:
   template.app-sync-failed-email: |
     email:
       subject: "FAILED: {{ .app.metadata.name }} sync failed"
-      content-type: text/html
       body: |
         <html>
         <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5;">
@@ -193,11 +191,11 @@ For professional-looking emails, use HTML:
 
 ```yaml
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       send: [app-deployed-email]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-failed-email]
 ```
 
@@ -209,7 +207,7 @@ For professional-looking emails, use HTML:
 kubectl annotate app my-app -n argocd \
   notifications.argoproj.io/subscribe.on-deployed.email="devops@example.com"
 
-# Send to multiple recipients (comma-separated)
+# Send to multiple recipients (semicolon-separated)
 kubectl annotate app my-app -n argocd \
   notifications.argoproj.io/subscribe.on-sync-failed.email="devops@example.com;oncall@example.com"
 ```
@@ -286,7 +284,7 @@ Be careful with auto-sync enabled applications - they can generate a lot of noti
 
 ```yaml
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [app-deployed-email]
 ```
