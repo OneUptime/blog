@@ -68,7 +68,7 @@ The `defaultns: library` setting handles official Docker images (like `nginx`, `
 
 ## Configuring an Application for Image Updates
 
-Add annotations to your ArgoCD Application to tell Image Updater which images to watch.
+Add annotations to your ArgoCD Application to tell Image Updater which images to watch. In current ArgoCD Image Updater versions, make sure your `ImageUpdater` custom resource selects the Application with `useAnnotations: true` so these legacy Application annotations are read.
 
 ### Basic Configuration
 
@@ -81,11 +81,9 @@ metadata:
   namespace: argocd
   annotations:
     # Define the image to track
-    argocd-image-updater.argoproj.io/image-list: myapp=docker.io/myorg/myapp
+    argocd-image-updater.argoproj.io/image-list: "myapp=docker.io/myorg/myapp:>=1.0.0"
     # Use semver strategy - picks the highest semantic version
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    # Only consider tags matching semver pattern
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.0.0"
 spec:
   project: default
   source:
@@ -109,11 +107,10 @@ If your application uses multiple containers:
 metadata:
   annotations:
     argocd-image-updater.argoproj.io/image-list: |
-      app=docker.io/myorg/myapp,
+      app=docker.io/myorg/myapp:>=1.0.0,
       sidecar=docker.io/myorg/sidecar
     argocd-image-updater.argoproj.io/app.update-strategy: semver
-    argocd-image-updater.argoproj.io/app.semver-constraint: ">=1.0.0"
-    argocd-image-updater.argoproj.io/sidecar.update-strategy: latest
+    argocd-image-updater.argoproj.io/sidecar.update-strategy: newest-build
     argocd-image-updater.argoproj.io/sidecar.allow-tags: "regexp:^v[0-9]+"
 ```
 
@@ -125,19 +122,18 @@ Best for images tagged with semantic version numbers (1.0.0, 1.2.3, etc.):
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/image-list: myapp=docker.io/myorg/myapp
+  argocd-image-updater.argoproj.io/image-list: "myapp=docker.io/myorg/myapp:1.x"
   argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: "^1.0"  # 1.x.x only
 ```
 
-### Latest Strategy
+### Newest-Build Strategy
 
-Picks the most recently pushed image by build date:
+Picks the image with the most recent build date:
 
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=docker.io/myorg/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-[a-f0-9]{7}$"
 ```
 
@@ -207,7 +203,7 @@ data:
         credentials: pullsecret:argocd/dockerhub-creds
         defaultns: library
         default: true
-        limit: 50  # Limit API calls per interval
+        limit: 10  # Limit registry requests per second
   # Reduce check interval to stay within rate limits
   log.level: info
 ```
@@ -252,10 +248,9 @@ metadata:
   namespace: argocd
   annotations:
     # Image to track
-    argocd-image-updater.argoproj.io/image-list: webapp=docker.io/myorg/webapp
+    argocd-image-updater.argoproj.io/image-list: "webapp=docker.io/myorg/webapp:>=1.0.0"
     # Use semver, only pick stable releases
     argocd-image-updater.argoproj.io/webapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/webapp.semver-constraint: ">=1.0.0"
     # Ignore pre-release tags
     argocd-image-updater.argoproj.io/webapp.allow-tags: "regexp:^[0-9]+\\.[0-9]+\\.[0-9]+$"
     # Write changes back to Git
