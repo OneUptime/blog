@@ -1,14 +1,14 @@
-# How to Use Finalizer Annotations for Deletion Control in ArgoCD
+# How to Use Finalizers for Deletion Control in ArgoCD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Finalizer, Application Lifecycle
 
-Description: Learn how to use ArgoCD finalizer annotations to control what happens when you delete applications, including cascade and orphan deletion strategies.
+Description: Learn how to use ArgoCD finalizers to control what happens when you delete applications, including cascade and orphan deletion strategies.
 
 ---
 
-Deleting an ArgoCD Application is not as simple as running `kubectl delete`. What happens to the Kubernetes resources the application manages? Do they get cleaned up, or do they remain in the cluster? The ArgoCD finalizer annotation controls this behavior, and getting it right is crucial for both cleanup and safety.
+Deleting an ArgoCD Application is not as simple as running `kubectl delete`. What happens to the Kubernetes resources the application manages? Do they get cleaned up, or do they remain in the cluster? The ArgoCD finalizer controls this behavior, and getting it right is crucial for both cleanup and safety.
 
 ## What Is the ArgoCD Finalizer?
 
@@ -139,19 +139,19 @@ Background deletion is faster but less predictable in ordering.
 The ArgoCD CLI lets you override the finalizer behavior at deletion time:
 
 ```bash
-# Cascade delete (default if finalizer exists)
+# Cascade delete (the CLI default)
 
 argocd app delete my-web-app --cascade
 
-# Orphan delete (ignore finalizer, keep resources)
+# Orphan delete (remove the finalizer if needed, keep resources)
 argocd app delete my-web-app --cascade=false
 
-# Force delete with propagation policy
+# Cascade delete with a propagation policy
 argocd app delete my-web-app --propagation-policy foreground
 argocd app delete my-web-app --propagation-policy background
 ```
 
-The `--cascade=false` flag is particularly useful for emergency situations where you want to remove the Application resource without waiting for all resources to be cleaned up.
+The `--cascade=false` flag is particularly useful for situations where you want to remove the Application resource while keeping the managed resources running.
 
 ## Declarative Finalizer Management
 
@@ -249,8 +249,6 @@ kind: Application
 metadata:
   name: payment-service
   namespace: argocd
-  annotations:
-    argocd.argoproj.io/sync-options: "Delete=false"
   # No finalizer - production resources should never be auto-deleted
 spec:
   project: production
@@ -331,4 +329,4 @@ The best strategy is to design your finalizer configuration upfront as part of y
 
 ## Summary
 
-The ArgoCD finalizer annotation is a simple but powerful control over what happens when an Application is deleted. The `resources-finalizer.argocd.argoproj.io` finalizer triggers cascade deletion of all managed resources, while omitting it leaves resources in place. Choose the right strategy per application based on its environment and criticality, and always have a plan for handling stuck deletions.
+The ArgoCD finalizer is a simple but powerful control over what happens when an Application is deleted. The `resources-finalizer.argocd.argoproj.io` finalizer triggers cascade deletion of all managed resources, while omitting it leaves resources in place. Choose the right strategy per application based on its environment and criticality, and always have a plan for handling stuck deletions.
