@@ -15,7 +15,7 @@ K0s (pronounced "k-zeros") is a lightweight, CNCF-certified Kubernetes distribut
 K0s has several characteristics that affect how you run ArgoCD:
 
 - **Single binary**: The entire control plane and worker components are in one binary
-- **No host OS dependencies**: Everything is bundled (containerd, kubelet, etcd)
+- **No host OS dependencies**: Everything is bundled (containerd, kubelet, and datastore components such as etcd or SQLite)
 - **Konnectivity**: Uses the Konnectivity service for control plane to worker communication
 - **Autopilot**: Built-in update controller for automated Kubernetes upgrades
 - **Default CNI**: Kube-Router (with Calico available as an option)
@@ -114,7 +114,11 @@ echo "ArgoCD UI: https://<node-ip>:$NODE_PORT"
 
 ```bash
 # Install Nginx ingress controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.4/deploy/static/provider/baremetal/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/baremetal/deploy.yaml
+
+# Enable SSL passthrough for the ArgoCD ingress below
+kubectl -n ingress-nginx patch deployment ingress-nginx-controller --type=json \
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--enable-ssl-passthrough"}]'
 
 # Wait for it
 kubectl wait --for=condition=Ready pods -l app.kubernetes.io/component=controller -n ingress-nginx --timeout=120s
@@ -129,7 +133,6 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
   rules:
@@ -142,14 +145,14 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
 ### Using MetalLB for LoadBalancer Support
 
 ```bash
 # Install MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 kubectl wait --for=condition=Ready pods -l app=metallb -n metallb-system --timeout=120s
 ```
 
@@ -189,7 +192,7 @@ argocd login argocd.example.com --username admin --password <password>
 
 ## K0s Storage
 
-K0s does not include a storage provisioner by default. You need to install one.
+K0s does not enable a storage provisioner by default. You need to install one or enable the bundled OpenEBS local storage extension.
 
 ### OpenEBS Local PV
 
@@ -203,19 +206,24 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://openebs.github.io/charts
+    repoURL: https://openebs.github.io/openebs
     chart: openebs
-    targetRevision: 3.10.0
+    targetRevision: 4.4.0
     helm:
       values: |
-        localprovisioner:
-          enabled: true
-        ndm:
-          enabled: false
-        cstor:
-          enabled: false
-        jiva:
-          enabled: false
+        engines:
+          replicated:
+            mayastor:
+              enabled: false
+        lvm-localpv:
+          lvmNode:
+            kubeletDir: /var/lib/k0s/kubelet
+        zfs-localpv:
+          zfsNode:
+            kubeletDir: /var/lib/k0s/kubelet
+        localpv-provisioner:
+          hostpathClass:
+            isDefaultClass: true
   destination:
     server: https://kubernetes.default.svc
     namespace: openebs
@@ -226,20 +234,20 @@ spec:
       - CreateNamespace=true
 ```
 
-### Host Path Provisioner
+### Built-in OpenEBS Local Storage
 
-For simpler setups, use a host path provisioner.
+For simpler setups, enable k0s's bundled OpenEBS local storage extension.
 
 ```yaml
-# Simple host path StorageClass
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+# /etc/k0s/k0s.yaml
+apiVersion: k0s.k0sproject.io/v1beta1
+kind: ClusterConfig
 metadata:
-  name: local-storage
-  annotations:
-    storageclass.kubernetes.io/is-default-class: "true"
-provisioner: kubernetes.io/no-provisioner
-volumeBindingMode: WaitForFirstConsumer
+  name: k0s
+spec:
+  extensions:
+    storage:
+      type: openebs_local_storage
 ```
 
 ## K0s Configuration for ArgoCD
@@ -284,10 +292,10 @@ This bootstraps ArgoCD during cluster creation using K0s's built-in Helm extensi
 
 ## K0s Autopilot and ArgoCD
 
-K0s has a built-in Autopilot controller for automated Kubernetes upgrades. When K0s upgrades, nodes are cordoned and drained. ArgoCD needs to handle this.
+K0s has a built-in Autopilot controller for automated Kubernetes upgrades. During node maintenance and upgrades, ArgoCD should be able to tolerate planned pod evictions. If you run highly available ArgoCD components with at least two replicas, add Pod Disruption Budgets.
 
 ```yaml
-# Pod Disruption Budget for ArgoCD during K0s upgrades
+# Pod Disruption Budgets for HA ArgoCD components during K0s upgrades
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
@@ -321,8 +329,8 @@ Manage multiple K0s clusters from a single ArgoCD instance.
 sudo k0s kubeconfig admin > k0s-cluster-X.yaml
 
 # Add clusters to ArgoCD
-argocd cluster add k0s-staging --name staging --kubeconfig k0s-staging.yaml
-argocd cluster add k0s-production --name production --kubeconfig k0s-production.yaml
+argocd cluster add k0s-staging --name staging --label distribution=k0s --kubeconfig k0s-staging.yaml
+argocd cluster add k0s-production --name production --label distribution=k0s --kubeconfig k0s-production.yaml
 ```
 
 ```yaml
