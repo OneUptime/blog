@@ -30,24 +30,26 @@ Each layer adds defense in depth. Let's implement all three.
 
 ## Scanning During CI with ArgoCD Image Updater
 
-If you use ArgoCD Image Updater to automatically update image tags, add a scanning step that runs before the image is considered for update:
+If you use ArgoCD Image Updater to automatically update image tags, configure it to consider only tags that your CI pipeline scans and pushes:
 
 ```yaml
-# argocd-image-updater annotations on your Application
-
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+# ImageUpdater resource
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  name: my-app
+  name: my-app-updater
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: myapp=registry.example.com/myapp
-    argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/myapp.allow-tags: regexp:^v[0-9]+\.[0-9]+\.[0-9]+$
-    # Only update to images that pass scanning
-    argocd-image-updater.argoproj.io/myapp.pull-secret: pullsecret:argocd/registry-creds
 spec:
-  # ... application spec
+  applicationRefs:
+    - namePattern: "my-app"
+      images:
+        - alias: "myapp"
+          imageName: "registry.example.com/myapp:~1"
+          commonUpdateSettings:
+            updateStrategy: "semver"
+            allowTags: "regexp:^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+            # Only tags pushed by the scan-gated CI workflow are considered.
+            pullSecret: "pullsecret:argocd/registry-creds"
 ```
 
 The real scanning happens in your CI pipeline. Here is a GitHub Actions example that gates image pushes on scan results:
@@ -57,7 +59,7 @@ The real scanning happens in your CI pipeline. Here is a GitHub Actions example 
 name: Build and Scan
 on:
   push:
-    branches: [main]
+    tags: ['v*.*.*']
 
 jobs:
   build-and-scan:
@@ -65,20 +67,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.example.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
       - name: Build image
-        run: docker build -t registry.example.com/myapp:${{ github.sha }} .
+        run: docker build -t registry.example.com/myapp:${{ github.ref_name }} .
 
       - name: Scan with Trivy
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: registry.example.com/myapp:${{ github.sha }}
+          image-ref: registry.example.com/myapp:${{ github.ref_name }}
           format: 'json'
           output: 'scan-results.json'
           severity: 'CRITICAL,HIGH'
           exit-code: '1'  # Fail the build on CRITICAL or HIGH
 
       - name: Push image (only if scan passes)
-        run: docker push registry.example.com/myapp:${{ github.sha }}
+        run: docker push registry.example.com/myapp:${{ github.ref_name }}
 ```
 
 ## PreSync Image Scanning Hook
@@ -150,9 +159,21 @@ If the scan finds CRITICAL or HIGH vulnerabilities, the Job fails, and ArgoCD wi
 
 ## Dynamic Image Extraction for Scanning
 
-Rather than hardcoding the image in the scan job, extract it dynamically from the manifests being deployed:
+Rather than hardcoding the image in the scan job, keep the image list in the same Git source as the manifests being deployed and have the PreSync job read that list:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: images-to-scan
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-2"
+data:
+  images: |
+    registry.example.com/myapp:v1.5.0
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -160,6 +181,7 @@ metadata:
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   template:
     spec:
@@ -171,17 +193,7 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Install kubectl
-              apk add --no-cache curl
-              curl -LO "https://dl.k8s.io/release/stable.txt"
-              curl -LO "https://dl.k8s.io/release/$(cat stable.txt)/bin/linux/amd64/kubectl"
-              chmod +x kubectl && mv kubectl /usr/local/bin/
-
-              # Extract all images from deployments in the namespace
-              IMAGES=$(kubectl get deployments,statefulsets,daemonsets \
-                -n default \
-                -o jsonpath='{range .items[*]}{range .spec.template.spec.containers[*]}{.image}{"\n"}{end}{end}' \
-                2>/dev/null | sort -u)
+              IMAGES=$(sort -u /config/images)
 
               FAILED=0
 
@@ -195,7 +207,14 @@ spec:
               done
 
               exit $FAILED
+          volumeMounts:
+            - name: images-to-scan
+              mountPath: /config
       restartPolicy: Never
+      volumes:
+        - name: images-to-scan
+          configMap:
+            name: images-to-scan
   backoffLimit: 1
 ```
 
@@ -204,49 +223,51 @@ spec:
 For the strongest enforcement, deploy an admission controller that checks scan results before allowing pod creation:
 
 ```yaml
-# Deploy Kyverno policy for image scanning
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# Deploy Kyverno ImageValidatingPolicy for image scanning
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
 metadata:
   name: check-image-vulnerabilities
   annotations:
     policies.kyverno.io/title: Check Image Vulnerabilities
     policies.kyverno.io/description: >-
-      Verify that container images have been scanned and have no
-      critical vulnerabilities before allowing deployment.
+      Verify that container images have a signed vulnerability scan
+      attestation before allowing deployment.
 spec:
-  validationFailureAction: Enforce
-  background: false
-  rules:
-    - name: check-scan-results
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      verifyImages:
-        - imageReferences:
-            - "registry.example.com/*"
-          attestations:
-            - type: https://cosign.sigstore.dev/attestation/vuln/v1
-              conditions:
-                - all:
-                    - key: "{{ scanner }}"
-                      operator: Equals
-                      value: "trivy"
-                    - key: "{{ result[?(@.severity=='CRITICAL')].count | sum(@) }}"
-                      operator: Equals
-                      value: 0
-              attestors:
-                - entries:
-                    - keys:
-                        publicKeys: |
-                          -----BEGIN PUBLIC KEY-----
-                          MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
-                          -----END PUBLIC KEY-----
+  validationActions: [Deny]
+  webhookConfiguration:
+    timeoutSeconds: 15
+  failurePolicy: Fail
+  evaluation:
+    background:
+      enabled: false
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ['']
+        apiVersions: ['v1']
+        operations: ['CREATE', 'UPDATE']
+        resources: ['pods']
+  matchImageReferences:
+    - glob: 'registry.example.com/*'
+  attestors:
+    - name: cosign
+      cosign:
+        key:
+          data: |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+            -----END PUBLIC KEY-----
+  attestations:
+    - name: vuln
+      intoto:
+        type: cosign.sigstore.dev/attestation/vuln/v1
+  validations:
+    - expression: >-
+        images.containers.map(image, verifyAttestationSignatures(image, attestations.vuln, [attestors.cosign])).all(e, e > 0)
+      message: 'Failed to verify vulnerability scan attestation'
 ```
 
-This Kyverno policy checks that every image from your registry has a signed vulnerability attestation with zero critical findings.
+This Kyverno policy checks that every image from your registry has a signed vulnerability attestation. If your CI workflow only signs attestations after the Trivy severity gate passes, this gives the admission controller a verifiable deployment gate.
 
 ## Scan Result Caching
 
@@ -328,7 +349,7 @@ spec:
     spec:
       containers:
         - name: report
-          image: aquasec/trivy:latest
+          image: registry.example.com/security/trivy-awscli:latest # Includes Trivy and AWS CLI
           command:
             - /bin/sh
             - -c
