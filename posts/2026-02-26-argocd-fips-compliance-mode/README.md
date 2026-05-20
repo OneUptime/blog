@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Compliance
 
-Description: A comprehensive guide to running ArgoCD in FIPS 140-2 compliance mode for government and regulated environments requiring cryptographic standards.
+Description: A comprehensive guide to running ArgoCD in FIPS 140 compliance mode for government and regulated environments requiring cryptographic standards.
 
 ---
 
-Federal Information Processing Standards (FIPS) 140-2 defines the security requirements for cryptographic modules used by the US federal government. If you work in a government agency, defense contractor, or any regulated industry that requires FIPS compliance, you need to ensure that ArgoCD uses only FIPS-approved cryptographic algorithms. This guide walks through the process of making ArgoCD FIPS-compliant.
+Federal Information Processing Standards (FIPS) 140 defines the security requirements for cryptographic modules used by the US federal government. FIPS 140-2 has been superseded by FIPS 140-3, but many environments still refer to the requirement as "FIPS mode." If you work in a government agency, defense contractor, or any regulated industry that requires FIPS compliance, you need to ensure that ArgoCD uses only FIPS-approved cryptographic algorithms from validated modules. This guide walks through the process of making ArgoCD FIPS-compliant.
 
-## What Is FIPS 140-2 Compliance
+## What Is FIPS 140 Compliance
 
-FIPS 140-2 specifies which cryptographic algorithms and implementations are approved for use in federal systems. Key requirements include:
+FIPS 140 specifies which cryptographic algorithms and implementations are approved for use in federal systems. Key requirements include:
 
-- Only using approved encryption algorithms (AES, SHA-256, RSA 2048+)
+- Only using approved cryptographic algorithms and key sizes, such as AES, SHA-2, RSA 2048+, and approved elliptic curves
 - No use of deprecated algorithms (MD5, DES, SHA-1 for signing)
 - Cryptographic modules must be validated by NIST
 - TLS 1.2 or higher (TLS 1.0 and 1.1 are prohibited)
@@ -23,7 +23,7 @@ For ArgoCD, this affects several areas: the Go runtime's crypto libraries, TLS c
 
 ## Using FIPS-Compliant Go Builds
 
-Standard Go binaries use the Go standard library's crypto packages, which are not FIPS-validated. To get FIPS-compliant crypto, you need Go binaries built with a FIPS-validated crypto module.
+Standard Go binaries use the Go standard library's crypto packages, but FIPS mode is not enabled unless the binary is built or run with the appropriate FIPS settings. To get FIPS-compliant crypto, you need Go binaries built with a FIPS-validated crypto module and deployed on a supported operating environment.
 
 ### Option 1: Red Hat's FIPS-Compliant ArgoCD
 
@@ -38,11 +38,11 @@ Red Hat OpenShift GitOps includes a FIPS-compliant build of ArgoCD. If you are o
 oc get csv -n openshift-gitops | grep gitops
 ```
 
-Red Hat builds ArgoCD using Go toolchains that link against FIPS-validated OpenSSL libraries, ensuring all cryptographic operations use validated modules.
+Red Hat builds ArgoCD using Go toolchains integrated with the platform FIPS crypto stack when OpenShift is installed in FIPS mode.
 
-### Option 2: Building ArgoCD with BoringCrypto
+### Option 2: Building ArgoCD with Go FIPS 140-3 Mode
 
-Google's BoringCrypto is a FIPS 140-2 validated crypto module. Go supports building with BoringCrypto through the GOEXPERIMENT=boringcrypto flag:
+Starting with Go 1.24, Go includes a native FIPS 140-3 cryptographic module that can be selected at build time with `GOFIPS140`. The older `GOEXPERIMENT=boringcrypto` path was a legacy, unsupported mechanism and should not be used for new builds:
 
 ```bash
 # Clone the ArgoCD repository
@@ -50,24 +50,24 @@ git clone https://github.com/argoproj/argo-cd.git
 cd argo-cd
 git checkout v2.13.0
 
-# Build with BoringCrypto (FIPS mode)
-GOEXPERIMENT=boringcrypto CGO_ENABLED=1 go build \
+# Build with the validated Go FIPS 140-3 module enabled by default
+GOFIPS140=v1.0.0 CGO_ENABLED=0 go build \
   -o argocd-fips \
   ./cmd
 
-# Verify the binary uses BoringCrypto
-go tool nm argocd-fips | grep -i boring
+# Verify the binary records the FIPS module build setting
+go version -m argocd-fips | grep GOFIPS140
 ```
 
 Build a FIPS-compliant container image:
 
 ```dockerfile
 # Dockerfile.fips
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.24-bookworm AS builder
 
-# Enable BoringCrypto
-ENV GOEXPERIMENT=boringcrypto
-ENV CGO_ENABLED=1
+# Enable the Go FIPS 140-3 module
+ENV GOFIPS140=v1.0.0
+ENV CGO_ENABLED=0
 
 WORKDIR /src
 COPY . .
@@ -75,23 +75,19 @@ RUN make argocd-all
 
 FROM ubuntu:22.04
 
-# Install FIPS-validated OpenSSL
-RUN apt-get update && \
-    apt-get install -y openssl libssl3 && \
-    rm -rf /var/lib/apt/lists/*
-
 COPY --from=builder /src/dist/argocd /usr/local/bin/argocd
 ```
 
-### Verifying BoringCrypto Is Active
+### Verifying Go FIPS Mode Is Active
 
-After building, verify that the binary actually uses BoringCrypto:
+After building, verify that the binary was built with the expected FIPS module:
 
 ```bash
-# Check for BoringCrypto symbols
-go tool nm argocd-fips 2>/dev/null | grep -c "_Cfunc__goboringcrypto"
+# Check the Go build metadata
+go version -m argocd-fips | grep GOFIPS140
 
-# If the count is greater than 0, BoringCrypto is linked
+# Optional: force strict FIPS checks during startup testing
+GODEBUG=fips140=only ./argocd-fips version --client
 ```
 
 ## Configuring FIPS-Compliant TLS
@@ -112,7 +108,9 @@ data:
   # Enforce TLS 1.2 minimum
   server.tls.minversion: "1.2"
   # Only allow FIPS-approved cipher suites
-  server.tls.ciphersuites: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+  server.tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
+  reposerver.tls.minversion: "1.2"
+  reposerver.tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384"
 ```
 
 ### Redis TLS Configuration
@@ -120,36 +118,70 @@ data:
 Redis connections also need FIPS-compliant TLS:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-server
   namespace: argocd
-data:
-  redis.tls.enabled: "true"
-  redis.tls.minversion: "1.2"
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          args:
+            - /usr/local/bin/argocd-server
+            - --redis-use-tls
+            - --repo-server-redis-use-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-application-controller
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          args:
+            - /usr/local/bin/argocd-application-controller
+            - --redis-use-tls
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-repo-server
+          args:
+            - /usr/local/bin/argocd-repo-server
+            - --redis-use-tls
 ```
 
 ### Repository Connections
 
-Ensure Git repository connections use FIPS-compliant algorithms. When connecting over SSH, restrict to approved key exchange algorithms:
+Prefer HTTPS Git repository connections in FIPS-enabled clusters. Red Hat documents SSH-based Git repository connections as a known issue in FIPS mode because SSH can negotiate non-FIPS-compliant algorithms. If your Git server uses a private CA, add the CA certificate to ArgoCD:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-ssh-known-hosts-cm
+  name: argocd-tls-certs-cm
   namespace: argocd
 data:
-  ssh_known_hosts: |
-    # Only use FIPS-approved host key types
-    git.example.com ssh-rsa AAAA...
-    git.example.com ecdsa-sha2-nistp256 AAAA...
+  git.example.com: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
 ```
 
 ## Configuring the FIPS Kernel Mode
 
-On Linux systems, you can enable FIPS mode at the kernel level. This ensures all processes on the node use FIPS-compliant crypto:
+On Linux systems, you can enable FIPS mode at the operating system level. This makes FIPS mode available to the OS crypto libraries, but applications still need to use FIPS-aware cryptographic modules:
 
 ```bash
 # Check if FIPS mode is enabled on the node
@@ -188,23 +220,21 @@ metadata:
   name: argocd-fips
   namespace: argocd
 spec:
+  image: your-registry.example.com/argocd-fips
+  version: v2.13.0
   server:
-    image: your-registry.example.com/argocd-fips:v2.13.0
-    tls:
-      minVersion: "1.2"
-      cipherSuites:
-        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
-        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+    extraCommandArgs:
+      - --tlsminversion
+      - "1.2"
+      - --tlsciphers
+      - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384:TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
   repo:
-    image: your-registry.example.com/argocd-fips:v2.13.0
-  controller:
-    image: your-registry.example.com/argocd-fips:v2.13.0
+    autotls: openshift
+    verifytls: true
   redis:
-    image: redis:7-fips
-  dex:
-    image: dexidp/dex:v2.38.0-fips
+    image: your-registry.example.com/redis-fips
+    version: "7"
+    autotls: openshift
 ```
 
 ## Validating FIPS Compliance
@@ -252,7 +282,7 @@ kubectl get pods -n argocd -o jsonpath='{range .items[*]}{.spec.containers[*].im
 echo ""
 echo "Node FIPS Status:"
 kubectl get nodes -o name | while read node; do
-  echo "$node: FIPS=$(kubectl debug $node -it --image=busybox -- cat /proc/sys/crypto/fips_enabled 2>/dev/null || echo 'unknown')"
+  echo "$node: FIPS=$(kubectl debug "$node" -it --image=busybox -- chroot /host cat /proc/sys/crypto/fips_enabled 2>/dev/null || echo 'unknown')"
 done
 ```
 
@@ -262,12 +292,12 @@ There are several things that can break FIPS compliance in ArgoCD:
 
 1. Using the standard ArgoCD image instead of a FIPS-built one
 2. Not restricting TLS cipher suites, allowing non-FIPS ciphers
-3. Using SSH with non-FIPS key types (like ed25519, which is not yet FIPS-approved)
+3. Using SSH repository connections in FIPS-enabled clusters instead of HTTPS
 4. Redis running without TLS, allowing unencrypted cache data
 5. Helm charts pulling non-FIPS sidecar images
 
 ## Conclusion
 
-Running ArgoCD in FIPS compliance mode requires attention to every component in the stack. Start with FIPS-compliant binaries (Red Hat OpenShift GitOps or custom BoringCrypto builds), configure TLS to use only approved cipher suites, and validate your setup with real tests. FIPS compliance is not a one-time task - it requires ongoing monitoring to ensure that updates and configuration changes do not introduce non-compliant components.
+Running ArgoCD in FIPS compliance mode requires attention to every component in the stack. Start with FIPS-compliant binaries (Red Hat OpenShift GitOps or custom Go FIPS builds), configure TLS to use only approved cipher suites, and validate your setup with real tests. FIPS compliance is not a one-time task - it requires ongoing monitoring to ensure that updates and configuration changes do not introduce non-compliant components.
 
 For related security hardening, check out our guide on [hardening ArgoCD server for production](https://oneuptime.com/blog/post/2026-02-26-argocd-harden-server-production/view).
