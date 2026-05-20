@@ -215,12 +215,12 @@ esac
 
 ## Interaction with dist-upgrade
 
-One important thing to know: even with `apt upgrade`, held packages are skipped. But `apt dist-upgrade` is smarter about dependency resolution - it can still upgrade packages if doing so resolves a dependency conflict. If you need an absolute hold that even `dist-upgrade` respects, the dpkg selection method combined with APT pinning provides more control.
+One important thing to know: `apt upgrade` and `apt dist-upgrade` both respect held packages by default. `dist-upgrade` is smarter about dependency resolution and may remove or install other packages to complete an upgrade, but held packages are not automatically installed, upgraded, or removed unless you explicitly override the hold with options such as `--ignore-hold` or `--allow-change-held-packages`. If you need tighter version control than a hold provides, combine `apt-mark hold` with APT pinning.
 
 For truly critical holds, combine `apt-mark hold` with an APT preferences file:
 
 ```bash
-# Create a pin file to prevent a package from upgrading
+# Create a pin file to prefer PostgreSQL 14 packages
 cat > /etc/apt/preferences.d/pin-postgresql << 'EOF'
 Package: postgresql-14
 Pin: version 14.*
@@ -228,7 +228,7 @@ Pin-Priority: 1001
 EOF
 ```
 
-A pin priority above 1000 makes APT prefer the pinned version even over newer available packages, providing a belt-and-suspenders approach to version locking.
+A pin priority above 1000 makes APT prefer matching versions even if that requires a downgrade, providing a belt-and-suspenders approach to keeping a package on the selected version series.
 
 ## Summary
 
