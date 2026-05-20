@@ -32,7 +32,7 @@ This means health checks for ServiceMonitors are fundamentally limited. However,
 
 ## ServiceMonitor Health Check
 
-Since ServiceMonitors lack status fields, we check for basic validity indicators:
+Since ServiceMonitors usually lack directly useful status fields, we check for basic validity indicators:
 
 ```yaml
 apiVersion: v1
@@ -67,22 +67,28 @@ data:
       return hs
     end
 
-    -- If status exists (newer Prometheus Operator versions)
-    if obj.status ~= nil then
-      if obj.status.conditions ~= nil then
-        for i, condition in ipairs(obj.status.conditions) do
-          if condition.type == "Reconciled" or condition.type == "Available" then
-            if condition.status == "True" then
-              hs.status = "Healthy"
-              hs.message = "ServiceMonitor is reconciled by Prometheus"
-              return hs
-            else
-              hs.status = "Degraded"
-              hs.message = condition.message or "Reconciliation issue"
-              return hs
+    -- If status exists with the StatusForConfigurationResources feature gate
+    if obj.status ~= nil and obj.status.bindings ~= nil then
+      local acceptedBindings = 0
+      for i, binding in ipairs(obj.status.bindings) do
+        if binding.conditions ~= nil then
+          for j, condition in ipairs(binding.conditions) do
+            if condition.type == "Accepted" then
+              if condition.status == "True" then
+                acceptedBindings = acceptedBindings + 1
+              elseif condition.status == "False" then
+                hs.status = "Degraded"
+                hs.message = condition.message or "ServiceMonitor was rejected by " .. binding.resource .. " " .. binding.name
+                return hs
+              end
             end
           end
         end
+      end
+      if acceptedBindings > 0 then
+        hs.status = "Healthy"
+        hs.message = "ServiceMonitor accepted by " .. acceptedBindings .. " workload(s)"
+        return hs
       end
     end
 
@@ -118,20 +124,28 @@ PodMonitors have the same limitations as ServiceMonitors:
       return hs
     end
 
-    -- Check for status if available
-    if obj.status ~= nil and obj.status.conditions ~= nil then
-      for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Reconciled" then
-          if condition.status == "True" then
-            hs.status = "Healthy"
-            hs.message = "PodMonitor reconciled"
-            return hs
-          else
-            hs.status = "Degraded"
-            hs.message = condition.message or "Not reconciled"
-            return hs
+    -- Check for status if available with the StatusForConfigurationResources feature gate
+    if obj.status ~= nil and obj.status.bindings ~= nil then
+      local acceptedBindings = 0
+      for i, binding in ipairs(obj.status.bindings) do
+        if binding.conditions ~= nil then
+          for j, condition in ipairs(binding.conditions) do
+            if condition.type == "Accepted" then
+              if condition.status == "True" then
+                acceptedBindings = acceptedBindings + 1
+              elseif condition.status == "False" then
+                hs.status = "Degraded"
+                hs.message = condition.message or "PodMonitor was rejected by " .. binding.resource .. " " .. binding.name
+                return hs
+              end
+            end
           end
         end
+      end
+      if acceptedBindings > 0 then
+        hs.status = "Healthy"
+        hs.message = "PodMonitor accepted by " .. acceptedBindings .. " workload(s)"
+        return hs
       end
     end
 
@@ -168,20 +182,28 @@ PrometheusRules define alerting and recording rules. Invalid PromQL in a rule gr
       end
     end
 
-    -- Check status if available (newer operator versions)
-    if obj.status ~= nil and obj.status.conditions ~= nil then
-      for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Available" or condition.type == "Reconciled" then
-          if condition.status == "True" then
-            hs.status = "Healthy"
-            hs.message = totalRules .. " rules in " .. #obj.spec.groups .. " group(s) - reconciled"
-            return hs
-          else
-            hs.status = "Degraded"
-            hs.message = condition.message or "Rules not reconciled"
-            return hs
+    -- Check status if available with the StatusForConfigurationResources feature gate
+    if obj.status ~= nil and obj.status.bindings ~= nil then
+      local acceptedBindings = 0
+      for i, binding in ipairs(obj.status.bindings) do
+        if binding.conditions ~= nil then
+          for j, condition in ipairs(binding.conditions) do
+            if condition.type == "Accepted" then
+              if condition.status == "True" then
+                acceptedBindings = acceptedBindings + 1
+              elseif condition.status == "False" then
+                hs.status = "Degraded"
+                hs.message = condition.message or "Rules were rejected by " .. binding.resource .. " " .. binding.name
+                return hs
+              end
+            end
           end
         end
+      end
+      if acceptedBindings > 0 then
+        hs.status = "Healthy"
+        hs.message = totalRules .. " rules in " .. #obj.spec.groups .. " group(s) - accepted by " .. acceptedBindings .. " workload(s)"
+        return hs
       end
     end
 
@@ -292,20 +314,28 @@ The Prometheus CRD itself has better status reporting:
       return hs
     end
 
-    -- Check status if available
-    if obj.status ~= nil and obj.status.conditions ~= nil then
-      for i, condition in ipairs(obj.status.conditions) do
-        if condition.type == "Ready" or condition.type == "Reconciled" then
-          if condition.status == "True" then
-            hs.status = "Healthy"
-            hs.message = "AlertmanagerConfig reconciled"
-            return hs
-          else
-            hs.status = "Degraded"
-            hs.message = condition.message or "Config not reconciled"
-            return hs
+    -- Check status if available with the StatusForConfigurationResources feature gate
+    if obj.status ~= nil and obj.status.bindings ~= nil then
+      local acceptedBindings = 0
+      for i, binding in ipairs(obj.status.bindings) do
+        if binding.conditions ~= nil then
+          for j, condition in ipairs(binding.conditions) do
+            if condition.type == "Accepted" then
+              if condition.status == "True" then
+                acceptedBindings = acceptedBindings + 1
+              elseif condition.status == "False" then
+                hs.status = "Degraded"
+                hs.message = condition.message or "Config was rejected by " .. binding.resource .. " " .. binding.name
+                return hs
+              end
+            end
           end
         end
+      end
+      if acceptedBindings > 0 then
+        hs.status = "Healthy"
+        hs.message = "AlertmanagerConfig accepted by " .. acceptedBindings .. " workload(s)"
+        return hs
       end
     end
 
@@ -322,7 +352,7 @@ The Prometheus CRD itself has better status reporting:
 
 ## Supplementing Health Checks with Validation
 
-Since ServiceMonitors and PrometheusRules have limited status reporting, add validation as a sync hook:
+Since ServiceMonitors and PrometheusRules have limited status reporting, add validation as a sync hook after exporting rule files to a ConfigMap:
 
 ```yaml
 apiVersion: batch/v1
@@ -337,12 +367,12 @@ spec:
     spec:
       containers:
         - name: validate
-          image: prom/prometheus:latest
+          image: prom/prometheus:v3.11.3
           command:
             - sh
             - -c
             - |
-              # Validate all PrometheusRule resources
+              # Validate exported Prometheus rule files
               for rule_file in /tmp/rules/*.yaml; do
                 promtool check rules "$rule_file" || exit 1
               done
@@ -400,7 +430,7 @@ argocd app get my-monitoring -o json | \
 1. **Accept the limitations** - ServiceMonitors and PodMonitors have minimal status reporting in most Prometheus Operator versions
 2. **Validate PromQL** - Use promtool to validate PrometheusRules before deployment
 3. **Monitor Prometheus targets** - The real health signal comes from the Prometheus targets endpoint
-4. **Upgrade the Prometheus Operator** - Newer versions have better status reporting
+4. **Upgrade the Prometheus Operator** - Newer versions can report configuration resource status when the `StatusForConfigurationResources` feature gate is enabled
 5. **Use informative messages** - Even if health is always "Healthy," include useful information like rule count and endpoint count
 6. **Set up meta-monitoring** - Monitor your monitoring. Alert if Prometheus cannot scrape its own targets
 
