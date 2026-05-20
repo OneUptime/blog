@@ -12,11 +12,11 @@ Running ArgoCD's end-to-end (E2E) tests locally is critical for anyone contribut
 
 ## Understanding the E2E Test Architecture
 
-ArgoCD's E2E tests run against a real Kubernetes cluster with a fully deployed ArgoCD instance. The tests use Go's testing framework and interact with ArgoCD through its API and CLI.
+ArgoCD's E2E tests run against a real Kubernetes cluster, with ArgoCD resources installed in the `argocd-e2e` namespace and ArgoCD services started locally by the test harness. The tests use Go's testing framework and interact with ArgoCD through its API and CLI.
 
 ```mermaid
 graph TD
-    A[E2E Test Runner] --> B[ArgoCD API Server]
+    A[E2E Test Runner] --> B[Local ArgoCD API Server]
     A --> C[ArgoCD CLI]
     B --> D[Application Controller]
     D --> E[Repo Server]
@@ -34,10 +34,11 @@ Before running E2E tests, you need a local Kubernetes cluster and several tools 
 ```bash
 # Required tools
 
-go version          # Go 1.21+
+go version          # Use the Go version declared in go.mod
 kubectl version     # kubectl matching your cluster version
 kind version        # kind for creating local clusters
 docker version      # Docker for building images
+kustomize version   # Kustomize for applying test manifests
 
 # Optional but helpful
 k9s                 # Terminal UI for Kubernetes
@@ -56,8 +57,8 @@ cd argo-cd
 # Install build tools
 make install-tools-local
 
-# Generate code (required before building)
-make generate-local
+# Generate code (required after changing generated APIs or manifests)
+make codegen-local
 ```
 
 ### Creating a Kind Cluster
@@ -65,10 +66,7 @@ make generate-local
 The E2E tests expect a Kubernetes cluster. Kind (Kubernetes in Docker) is the recommended option.
 
 ```bash
-# Create a kind cluster with the configuration used by CI
-kind create cluster --name argocd-e2e --config test/container/kind.yaml
-
-# If the config file does not exist, create a basic cluster
+# Create a local kind cluster
 kind create cluster --name argocd-e2e
 
 # Verify the cluster is running
@@ -77,36 +75,30 @@ kubectl cluster-info --context kind-argocd-e2e
 
 ### Starting the E2E Environment
 
-ArgoCD provides a make target that builds everything and deploys it to your kind cluster.
+ArgoCD provides make targets that install the E2E resources into your current Kubernetes context and start the ArgoCD services needed by the tests.
 
 ```bash
-# Build ArgoCD images and deploy to the kind cluster
-# This builds the images, loads them into kind, and deploys ArgoCD
+# Start the E2E server using the virtualized toolchain
 make start-e2e
 
 # This target does several things:
-# 1. Builds ArgoCD container images
-# 2. Loads images into the kind cluster
-# 3. Deploys ArgoCD using test manifests
-# 4. Starts a local Git server for test repositories
-# 5. Waits for all components to be ready
+# 1. Builds the argocd-test-tools image
+# 2. Creates argocd-e2e namespaces in the current cluster
+# 3. Applies test manifests from test/manifests/base
+# 4. Starts local ArgoCD services, Redis, Dex, UI, and test repository services
+# 5. Leaves the server processes running for make test-e2e
 ```
 
 If you want more control over the process, you can run the steps individually.
 
 ```bash
-# Build the ArgoCD image
-make image DEV_IMAGE=true
+# Apply the test manifests yourself before starting local services
+kubectl create namespace argocd-e2e
+kubectl config set-context --current --namespace=argocd-e2e
+kustomize build test/manifests/base | kubectl apply --server-side --force-conflicts -f -
 
-# Load the image into kind
-kind load docker-image argoproj/argocd:latest --name argocd-e2e
-
-# Deploy ArgoCD with test configuration
-kubectl apply -n argocd -f test/manifests/base
-
-# Wait for components to be ready
-kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=120s
-kubectl wait --for=condition=available deployment/argocd-repo-server -n argocd --timeout=120s
+# Then start the E2E services locally
+make start-e2e-local
 ```
 
 ## Running the Tests
@@ -117,8 +109,8 @@ kubectl wait --for=condition=available deployment/argocd-repo-server -n argocd -
 # Run all E2E tests
 make test-e2e
 
-# This is equivalent to:
-go test -v -timeout 30m ./test/e2e/...
+# With a locally started server, run the local test target
+make test-e2e-local
 ```
 
 The full suite can take 30 to 60 minutes depending on your machine. For development, you will usually want to run specific tests.
@@ -127,16 +119,16 @@ The full suite can take 30 to 60 minutes depending on your machine. For developm
 
 ```bash
 # Run a single test by name
-go test -v -timeout 10m -run TestAppSyncWithHelm ./test/e2e/
+make TEST_FLAGS="-run TestHelm" test-e2e-local
 
 # Run tests matching a pattern
-go test -v -timeout 10m -run "TestApp.*Sync" ./test/e2e/
+make TEST_FLAGS="-run TestApp.*Sync" test-e2e-local
 
 # Run tests in a specific file
-go test -v -timeout 10m ./test/e2e/ -run TestHelmApp
+make TEST_MODULE=./test/e2e/helm_test.go test-e2e-local
 
 # Run with increased verbosity for debugging
-go test -v -timeout 10m -count=1 -run TestAppSyncWithHelm ./test/e2e/ 2>&1 | tee test-output.log
+make TEST_FLAGS="-run TestHelm -count=1" test-e2e-local 2>&1 | tee test-output.log
 ```
 
 ### Test Environment Variables
@@ -146,20 +138,22 @@ Several environment variables control E2E test behavior.
 ```bash
 # Point tests at your ArgoCD instance
 export ARGOCD_SERVER=localhost:8080
-export ARGOCD_AUTH_TOKEN=$(argocd account generate-token --account admin)
 
 # Use a specific kubeconfig
 export KUBECONFIG=~/.kube/config
 
-# Set the test Git server URL
-export ARGOCD_E2E_GIT_SERVICE=http://localhost:9081
+# Set the test Git server URL for remote-style E2E runs
+export ARGOCD_E2E_GIT_SERVICE=http://127.0.0.1:9081/argo-e2e/testdata.git
+
+# Set the overall E2E suite timeout
+export ARGOCD_E2E_TEST_TIMEOUT=2h
 
 # Skip tests that require specific features
 export ARGOCD_E2E_SKIP_HELM=true
-export ARGOCD_E2E_SKIP_KUSTOMIZE=true
+export ARGOCD_E2E_SKIP_OPENSHIFT=true
 
 # Run tests with race detection (slower but catches race conditions)
-go test -race -v -timeout 30m ./test/e2e/...
+make TEST_FLAGS="-race" test-e2e-local
 ```
 
 ## Understanding E2E Test Structure
@@ -168,10 +162,22 @@ ArgoCD E2E tests follow a consistent pattern. Understanding this pattern helps w
 
 ```go
 // test/e2e/app_sync_test.go
-func TestAppSyncWithHelm(t *testing.T) {
+package e2e
+
+import (
+    "testing"
+
+    "github.com/argoproj/argo-cd/gitops-engine/pkg/health"
+    . "github.com/argoproj/argo-cd/gitops-engine/pkg/sync/common"
+
+    . "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+    . "github.com/argoproj/argo-cd/v3/test/e2e/fixture/app"
+)
+
+func TestHelmGuestbook(t *testing.T) {
     // Given: Create a test application pointing to a Helm chart
-    app := Given(t).
-        Path("helm-chart").           // Test fixture in test/e2e/testdata/
+    Given(t).
+        Path("helm-guestbook").       // Test fixture in test/e2e/testdata/
         Revision("HEAD").
         When().
         CreateApp().                   // Create the ArgoCD Application
@@ -188,11 +194,9 @@ The test framework uses a fluent API with Given/When/Then patterns.
 ```go
 // Given - sets up test preconditions
 Given(t).
-    Path("testdata/my-app").          // Path in the test Git repo
-    DestNamespace("test-ns").         // Target namespace
+    Path("my-app").                   // Path under test/e2e/testdata/
+    SetAppNamespace("test-ns").       // Application namespace
     Revision("main").                  // Git revision
-    Helm().                            // Use Helm
-    Values("values-test.yaml")        // Custom values file
 
 // When - performs actions
 When().
@@ -247,17 +251,13 @@ When tests fail, here is how to investigate.
 ### Check ArgoCD Component Logs
 
 ```bash
-# Application controller logs
-kubectl logs -n argocd deployment/argocd-application-controller --tail=100
+# ArgoCD service logs are emitted by the local start-e2e process
 
-# Repo server logs
-kubectl logs -n argocd deployment/argocd-repo-server --tail=100
-
-# API server logs
-kubectl logs -n argocd deployment/argocd-server --tail=100
+# Inspect the Kubernetes resources installed for E2E tests
+kubectl get all -n argocd-e2e
 
 # Use stern for real-time multi-pod logging
-stern -n argocd argocd
+stern -n argocd-e2e argocd
 ```
 
 ### Inspect Application State
@@ -267,7 +267,7 @@ stern -n argocd argocd
 argocd app get test-app -o yaml
 
 # Check sync results
-argocd app sync-status test-app
+argocd app get test-app
 
 # Check the resources managed by the application
 argocd app resources test-app
@@ -276,13 +276,11 @@ argocd app resources test-app
 ### Run Tests with Debug Output
 
 ```bash
-# Run with Go's -v flag for verbose output
-go test -v -run TestMyFailingTest ./test/e2e/ 2>&1 | tee debug.log
+# Run with verbose output
+make TEST_FLAGS="-run TestMyFailingTest" test-e2e-local 2>&1 | tee debug.log
 
-# Enable ArgoCD debug logging during tests
-kubectl patch configmap argocd-cmd-params-cm -n argocd \
-  --type merge -p '{"data":{"controller.log.level":"debug"}}'
-kubectl rollout restart deployment -n argocd argocd-application-controller
+# The E2E Procfile starts ArgoCD services with debug logging by default
+ARGOCD_START=api-server make start-e2e-local
 ```
 
 ## Writing New E2E Tests
@@ -295,7 +293,12 @@ package e2e
 
 import (
     "testing"
-    . "github.com/argoproj/argo-cd/v2/test/e2e/fixture"
+
+    . "github.com/argoproj/argo-cd/gitops-engine/pkg/sync/common"
+    "github.com/stretchr/testify/assert"
+
+    . "github.com/argoproj/argo-cd/v3/pkg/apis/application/v1alpha1"
+    . "github.com/argoproj/argo-cd/v3/test/e2e/fixture/app"
 )
 
 func TestCustomFeatureSync(t *testing.T) {
@@ -324,9 +327,8 @@ After running tests, clean up the test environment.
 # Delete the kind cluster
 kind delete cluster --name argocd-e2e
 
-# Or just reset the ArgoCD namespace
-kubectl delete namespace argocd
-kubectl create namespace argocd
+# Or just reset the ArgoCD E2E namespaces
+kubectl delete namespace argocd-e2e argocd-e2e-external argocd-e2e-external-2
 ```
 
 Running E2E tests locally is an investment that pays off quickly. You catch integration issues early, build confidence in your changes, and avoid the slow feedback loop of CI-only testing. Once your tests pass locally, check out our guide on [building ArgoCD from source](https://oneuptime.com/blog/post/2026-02-26-argocd-build-from-source/view) for the complete development workflow.
