@@ -90,9 +90,9 @@ gh pr list --state merged --limit 20 --json number,title,mergedAt,mergedBy,revie
 
 ## ArgoCD Audit Logging
 
-### Enable Server-Side Audit Logging
+### Configure Server-Side Logging for Audits
 
-ArgoCD logs all API operations:
+ArgoCD logs API operations through the API server. Configure the server logs to use JSON so they are easier to ship and query:
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
@@ -102,7 +102,7 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable audit logging
+  # Make API server logs audit-friendly
   server.log.level: info
   server.log.format: json
 ```
@@ -124,28 +124,24 @@ The server logs contain entries like:
 
 ### Export Audit Logs to External Systems
 
-Ship ArgoCD logs to your logging platform:
+Ship ArgoCD's stdout logs to your logging platform. Most Kubernetes logging agents collect these from the node-level container log files:
 
 ```yaml
-# Fluentd sidecar for ArgoCD server
-apiVersion: apps/v1
-kind: Deployment
+# Fluent Bit input example for ArgoCD server logs
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-server
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-server
-          # ... existing config ...
-        - name: fluentd-sidecar
-          image: fluent/fluentd:v1.16
-          volumeMounts:
-            - name: argocd-logs
-              mountPath: /var/log/argocd
-          env:
-            - name: ELASTICSEARCH_HOST
-              value: elasticsearch.logging.svc
+  name: fluent-bit-argocd-input
+  namespace: logging
+data:
+  argocd-input.conf: |
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/argocd-server-*_argocd_*.log
+        Parser            cri
+        Tag               argocd.server
+        Refresh_Interval  5
+        Mem_Buf_Limit     10MB
 ```
 
 ### ArgoCD Notifications for Audit Events
@@ -165,7 +161,7 @@ template.audit-log: |
           "project": "{{ .app.spec.project }}",
           "action": "sync",
           "status": "{{ .app.status.operationState.phase }}",
-          "revision": "{{ .app.status.sync.revision }}",
+          "revision": "{{ .app.status.operationState.syncResult.revision }}",
           "initiatedBy": "{{ .app.status.operationState.operation.initiatedBy.username }}",
           "automated": {{ if .app.status.operationState.operation.initiatedBy.automated }}true{{ else }}false{{ end }},
           "destination": {
@@ -179,7 +175,7 @@ template.audit-log: |
         }
 
 trigger.audit-on-sync-complete: |
-  - when: app.status.operationState.phase in ['Succeeded', 'Failed', 'Error']
+  - when: app.status?.operationState.phase in ['Succeeded', 'Failed', 'Error']
     send: [audit-log]
 
 service.webhook.audit-webhook: |
@@ -216,6 +212,7 @@ rules:
     resources:
       - group: "rbac.authorization.k8s.io"
         resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["create", "update", "patch", "delete"]
 
   # Log namespace operations
   - level: RequestResponse
@@ -235,16 +232,18 @@ Filter Kubernetes audit logs for ArgoCD operations:
 
 ```bash
 # Find all resources modified by ArgoCD
-kubectl get events --all-namespaces -o json | jq '.items[] |
-  select(.source.component == "argocd-application-controller") |
+jq '
+  select(.user.username == "system:serviceaccount:argocd:argocd-application-controller") |
+  select(.verb | IN("create", "update", "patch", "delete")) |
   {
-    time: .lastTimestamp,
-    namespace: .metadata.namespace,
-    resource: .involvedObject.name,
-    kind: .involvedObject.kind,
-    reason: .reason,
-    message: .message
-  }'
+    time: .requestReceivedTimestamp,
+    namespace: .objectRef.namespace,
+    resource: .objectRef.name,
+    kind: .objectRef.resource,
+    verb: .verb,
+    user: .user.username
+  }
+' /var/log/kubernetes/audit/audit.log
 ```
 
 ## Building an Audit Dashboard
@@ -288,7 +287,7 @@ echo "Repo: $REPO_URL"
 echo "Path: $APP_PATH"
 
 # Get the commit details for each revision in the history
-argocd app history "$APP_NAME" -o json | jq -r '.[].revision' | while read rev; do
+argocd app get "$APP_NAME" -o json | jq -r '.status.history[].revision' | while read rev; do
   echo "  Revision: $rev"
 done
 
@@ -367,7 +366,7 @@ template.s3-audit-event: |
           "eventType": "deployment",
           "timestamp": "{{ .app.status.operationState.finishedAt }}",
           "application": "{{ .app.metadata.name }}",
-          "revision": "{{ .app.status.sync.revision }}",
+          "revision": "{{ .app.status.operationState.syncResult.revision }}",
           "status": "{{ .app.status.operationState.phase }}",
           "cluster": "{{ .app.spec.destination.server }}",
           "namespace": "{{ .app.spec.destination.namespace }}"
