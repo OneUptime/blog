@@ -58,12 +58,14 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: payments
-  # Ensure ArgoCD labels propagate to managed resources
+  # Apply cost labels to the destination namespace when Argo CD creates it
   syncPolicy:
     managedNamespaceMetadata:
       labels:
         team: payments
         cost-center: CC-1234
+    syncOptions:
+      - CreateNamespace=true
 ```
 
 Add labels to your application manifests as well:
@@ -76,17 +78,31 @@ metadata:
   name: payment-service
   labels:
     app: payment-service
+    app.kubernetes.io/instance: payment-service
     team: payments
     cost-center: CC-1234
     argocd-app: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  replicas: 3
   template:
     metadata:
       labels:
         app: payment-service
+        app.kubernetes.io/instance: payment-service
         team: payments
         cost-center: CC-1234
         argocd-app: payment-service
+    spec:
+      containers:
+        - name: payment-service
+          image: ghcr.io/myorg/payment-service:1.0.0
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
 ```
 
 ## Step 2: Use ArgoCD Resource Tracking
@@ -97,12 +113,12 @@ ArgoCD tracks all resources it manages. You can query this information to build 
 # List all resources managed by an ArgoCD application
 argocd app resources payment-service
 
-# Get detailed resource information including resource requests
-argocd app resources payment-service --output json | \
-  jq '.[] | {kind: .kind, name: .name, namespace: .namespace}'
+# Get resource inventory information from the Application status
+argocd app get payment-service -o json | \
+  jq '.status.resources[] | {kind: .kind, name: .name, namespace: .namespace}'
 
 # Get the full resource tree
-argocd app get payment-service --resource-tree
+argocd app get payment-service --output tree
 ```
 
 Build a script that calculates resource usage per application:
@@ -232,7 +248,9 @@ spec:
             sum by (label_team) (
               argocd_app_total_cost_monthly
               * on(label_app_kubernetes_io_instance) group_left(label_team)
-              kube_pod_labels{label_team!=""}
+              max by (label_app_kubernetes_io_instance, label_team) (
+                kube_pod_labels{label_team!=""}
+              )
             )
 ```
 
@@ -335,7 +353,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
