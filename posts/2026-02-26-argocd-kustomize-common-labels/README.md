@@ -14,10 +14,10 @@ This guide covers how commonLabels work with ArgoCD, the important differences b
 
 ## How commonLabels Work
 
-Kustomize's `commonLabels` adds labels to three places on every resource:
+Kustomize's `commonLabels` adds labels to resource metadata and, for built-in selector-aware resources, also updates selectors and pod templates:
 
 1. `metadata.labels` - the resource's own labels
-2. `spec.selector.matchLabels` - for Deployments, StatefulSets, DaemonSets, Jobs
+2. `spec.selector.matchLabels` or selector fields - for resources such as Deployments, StatefulSets, DaemonSets, and Services
 3. `spec.template.metadata.labels` - for Pod template labels
 
 This is powerful but has a critical implication: once a Deployment's `spec.selector.matchLabels` is set, it cannot be changed without recreating the Deployment. This makes commonLabels a "set once" decision for label keys used in selectors.
@@ -75,6 +75,9 @@ spec:
         environment: production
         team: platform
         cost-center: engineering-123
+      # Optional: set this to true if you intentionally want ArgoCD
+      # to replace an existing commonLabels/labels key in kustomization.yaml.
+      forceCommonLabels: false
   destination:
     server: https://kubernetes.default.svc
     namespace: production
@@ -112,7 +115,7 @@ Invalid value: ... field is immutable
 
 ## Using labels Instead of commonLabels
 
-Kustomize (v4.1.0+) offers the `labels` transformer that gives you more control over where labels are applied:
+Current Kustomize offers the `labels` transformer that gives you more control over where labels are applied:
 
 ```yaml
 # overlays/production/kustomization.yaml
@@ -133,7 +136,7 @@ labels:
 
 With `includeSelectors: false`, these labels go on `metadata.labels` and `spec.template.metadata.labels` but NOT on `spec.selector.matchLabels`. This means you can change them later without breaking Deployments.
 
-ArgoCD's `kustomize.commonLabels` in the Application spec always behaves like the old `commonLabels` (includes selectors). If you need the finer control of the `labels` transformer, put it in the kustomization.yaml file.
+By default, ArgoCD's `kustomize.commonLabels` in the Application spec behaves like the old `commonLabels` behavior and includes selectors. In current ArgoCD versions, you can set `labelWithoutSelector: true` to avoid applying those common labels to selectors, and set `labelIncludeTemplates: true` if you still want them on pod templates. You can also put the `labels` transformer in the kustomization.yaml file when you want that behavior to live with the overlay.
 
 ## Practical Patterns
 
@@ -214,26 +217,27 @@ spec:
 
 ## Labels ArgoCD Adds Automatically
 
-ArgoCD automatically adds its own labels to managed resources:
+Depending on its resource tracking configuration, ArgoCD can add its own tracking metadata to managed resources. Label-based and annotation+label tracking use the default instance label:
 
 ```yaml
 labels:
   app.kubernetes.io/instance: my-api  # Application name
 ```
 
-This label is used by ArgoCD to track which resources belong to which Application. Do not override it with commonLabels.
+In current ArgoCD, the default tracking method is annotation-based and uses `argocd.argoproj.io/tracking-id` for ownership. Label-based tracking uses `app.kubernetes.io/instance` for ownership, while annotation+label mode keeps the label for compatibility and uses the annotation for ownership. Do not override the configured tracking label with commonLabels.
 
 ## Precedence Rules
 
 When commonLabels are set in both the kustomization.yaml and the ArgoCD Application spec:
 
 1. Labels from kustomization.yaml are applied first
-2. Labels from the ArgoCD Application spec override any with the same key
-3. ArgoCD's built-in tracking label (`app.kubernetes.io/instance`) is always added
+2. If the same key already exists, ArgoCD fails manifest generation unless `forceCommonLabels: true` is set
+3. With `forceCommonLabels: true`, labels from the ArgoCD Application spec replace existing values with the same key
+4. ArgoCD's configured resource tracking metadata is added according to its tracking method
 
 ```yaml
 # kustomization.yaml: commonLabels: {env: from-file, team: alpha}
-# ArgoCD spec: commonLabels: {env: from-argocd, cost: 123}
+# ArgoCD spec: commonLabels: {env: from-argocd, cost: 123}, forceCommonLabels: true
 # Result: {env: from-argocd, team: alpha, cost: 123}
 ```
 
