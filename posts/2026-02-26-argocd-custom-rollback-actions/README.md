@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Rollback
 
-Description: Learn how to create custom rollback actions in ArgoCD for Deployments, StatefulSets, and Argo Rollouts that let you revert to previous revisions directly from the ArgoCD UI or CLI.
+Description: Learn how to create custom rollback actions in ArgoCD for Deployments and Argo Rollouts that let you request previous revisions directly from the ArgoCD UI or CLI.
 
 ---
 
-ArgoCD has built-in rollback functionality at the application level, but sometimes you need more granular control. You might want to roll back a single Deployment within a multi-resource application, or you might want to roll back to a specific ReplicaSet revision rather than an ArgoCD sync revision. Custom rollback actions give you this fine-grained control directly from the ArgoCD interface.
+ArgoCD has built-in rollback functionality at the application level, but sometimes you need more granular control. You might want to roll back a single Deployment within a multi-resource application, or you might want to roll back to a specific ReplicaSet revision rather than an ArgoCD sync revision. Custom rollback actions can give you a fine-grained entry point directly from the ArgoCD interface, usually by recording the request on the resource for a controller to process.
 
-This guide covers creating custom rollback resource actions for Deployments, StatefulSets, and Argo Rollouts resources.
+This guide covers creating custom rollback resource actions for Deployments and Argo Rollouts resources.
 
 ## Application-Level vs Resource-Level Rollback
 
 ArgoCD supports two types of rollback:
 
-**Application-level rollback** reverts the entire application to a previous sync revision. This is built into ArgoCD and works by re-syncing to a previous Git commit.
+**Application-level rollback** reverts the entire application to a previous deployed revision from ArgoCD's history.
 
 ```bash
 # Built-in application rollback
@@ -31,7 +31,7 @@ flowchart TD
     A[Rollback Needed] --> B{Scope?}
     B -->|Entire Application| C[ArgoCD App Rollback]
     B -->|Single Resource| D[Custom Resource Action]
-    C --> E[Re-sync to previous Git commit]
+    C --> E[Re-sync to a previous deployed revision]
     D --> F[Use Kubernetes revision history]
 ```
 
@@ -39,9 +39,9 @@ flowchart TD
 
 Kubernetes Deployments keep a history of ReplicaSets. Each time you update the pod template, a new ReplicaSet is created and the old one is kept (up to `revisionHistoryLimit`). A rollback action can set the Deployment to use a previous ReplicaSet.
 
-However, Lua scripts in ArgoCD cannot directly interact with the Kubernetes API (they can only modify the object they receive). So the approach is to undo the last change by reverting the pod template spec.
+However, Lua scripts in ArgoCD cannot directly interact with the Kubernetes API. A custom action cannot inspect ReplicaSets and copy an old pod template by itself.
 
-A simpler approach is to use the Deployment's `spec.rollbackTo` field (deprecated in newer Kubernetes versions) or trigger a rollback annotation:
+The Deployment `spec.rollbackTo` field was removed from the modern `apps/v1` API, so a practical approach is to trigger a rollback annotation and let a small controller run `kubectl rollout undo`:
 
 ```yaml
 apiVersion: v1
@@ -51,17 +51,15 @@ metadata:
   namespace: argocd
 data:
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
-      -- Show rollback action only if there is revision history
+      -- Show rollback action when the Deployment status is available.
       if obj.status ~= nil and obj.status.conditions ~= nil then
         actions["rollback-previous"] = {
           ["disabled"] = false
         }
       end
-      actions["restart"] = {
-        ["disabled"] = false
-      }
       return actions
     definitions:
       - name: rollback-previous
@@ -72,27 +70,47 @@ data:
             obj.metadata.annotations = {}
           end
           local os = require("os")
-          obj.metadata.annotations["argocd.argoproj.io/rollback-requested"] = tostring(os.time())
+          obj.metadata.annotations["argocd.argoproj.io/rollback-requested-at"] = os.date("!%Y-%m-%dT%XZ")
           obj.metadata.annotations["argocd.argoproj.io/rollback-revision"] = "previous"
-          return obj
-      - name: restart
-        action.lua: |
-          local os = require("os")
-          if obj.spec.template.metadata == nil then
-            obj.spec.template.metadata = {}
-          end
-          if obj.spec.template.metadata.annotations == nil then
-            obj.spec.template.metadata.annotations = {}
-          end
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
           return obj
 ```
 
 ### Using a Webhook-Based Rollback
 
-Since Lua scripts cannot call the Kubernetes API directly, a more practical approach for true rollback is to combine the action with an external controller that watches for the rollback annotation:
+Since Lua scripts cannot call the Kubernetes API directly, a practical approach for true rollback is to combine the action with an external controller that watches for the rollback annotation:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rollback-controller
+  namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: rollback-controller
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["apps"]
+    resources: ["replicasets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: rollback-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: rollback-controller
+subjects:
+  - kind: ServiceAccount
+    name: rollback-controller
+    namespace: argocd
+---
 # External rollback controller (runs as a Deployment in the cluster)
 apiVersion: apps/v1
 kind: Deployment
@@ -120,7 +138,7 @@ spec:
               while true; do
                 # Watch for deployments with rollback annotation
                 DEPLOYMENTS=$(kubectl get deployments --all-namespaces \
-                  -o jsonpath='{range .items[?(@.metadata.annotations.argocd\.argoproj\.io/rollback-requested)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
+                  -o jsonpath='{range .items[?(@.metadata.annotations.argocd\.argoproj\.io/rollback-requested-at)]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}')
 
                 for dep in $DEPLOYMENTS; do
                   NS=$(echo $dep | cut -d/ -f1)
@@ -128,7 +146,7 @@ spec:
                   echo "Rolling back $NS/$NAME"
                   kubectl rollout undo deployment/$NAME -n $NS
                   kubectl annotate deployment/$NAME -n $NS \
-                    argocd.argoproj.io/rollback-requested- \
+                    argocd.argoproj.io/rollback-requested-at- \
                     argocd.argoproj.io/rollback-revision-
                 done
                 sleep 10
@@ -137,73 +155,26 @@ spec:
 
 ## Rollback Action for Argo Rollouts
 
-Argo Rollouts resources have built-in rollback capabilities that are much cleaner to use with resource actions:
+ArgoCD includes built-in resource actions for Argo Rollouts operations such as abort, retry, restart, and promote-full. A true "undo" to a previous Rollout revision is provided by the Argo Rollouts CLI, so the same annotation-plus-controller pattern is needed if you want to start it from an ArgoCD custom action:
 
 ```yaml
-  resource.customizations.actions.argoproj.io_Rollout: |
-    discovery.lua: |
-      actions = {}
-      -- Abort action - stop the current rollout and revert
-      if obj.status ~= nil and obj.status.phase == "Progressing" then
-        actions["abort"] = {["disabled"] = false}
-      end
-      -- Retry action - retry a failed rollout
-      if obj.status ~= nil and (obj.status.phase == "Degraded" or obj.status.phase == "Error") then
-        actions["retry"] = {["disabled"] = false}
-      end
-      -- Undo action - revert to previous revision
-      actions["undo"] = {["disabled"] = false}
-      -- Promote action - skip analysis and promote
-      if obj.status ~= nil and obj.status.phase == "Paused" then
-        actions["promote-full"] = {["disabled"] = false}
-      end
-      return actions
-    definitions:
-      - name: abort
-        action.lua: |
-          -- Abort the current rollout
-          obj.status.abort = true
-          return obj
-      - name: retry
-        action.lua: |
-          -- Reset the abort flag and restart conditions
-          if obj.status ~= nil then
-            obj.status.abort = false
-            obj.status.pauseConditions = nil
-          end
-          -- Trigger a restart by updating the template annotation
-          local os = require("os")
-          if obj.spec.template.metadata == nil then
-            obj.spec.template.metadata = {}
-          end
-          if obj.spec.template.metadata.annotations == nil then
-            obj.spec.template.metadata.annotations = {}
-          end
-          obj.spec.template.metadata.annotations["rollout.argoproj.io/retry"] = tostring(os.time())
-          return obj
-      - name: undo
-        action.lua: |
-          -- Setting workloadRef to a previous revision spec
-          -- For simplicity, this reverts the restartAt annotation
-          if obj.metadata.annotations == nil then
-            obj.metadata.annotations = {}
-          end
-          local os = require("os")
-          obj.metadata.annotations["rollout.argoproj.io/undo"] = tostring(os.time())
-          return obj
-      - name: promote-full
-        action.lua: |
-          -- Clear pause conditions to promote
-          if obj.status ~= nil then
-            obj.status.pauseConditions = nil
-          end
-          -- Set full promotion
-          if obj.metadata.annotations == nil then
-            obj.metadata.annotations = {}
-          end
-          local os = require("os")
-          obj.metadata.annotations["rollout.argoproj.io/promoted"] = tostring(os.time())
-          return obj
+resource.customizations.actions.argoproj.io_Rollout: |
+  mergeBuiltinActions: true
+  discovery.lua: |
+    actions = {}
+    -- Request an external controller to run "kubectl argo rollouts undo"
+    actions["request-undo"] = {["disabled"] = false}
+    return actions
+  definitions:
+    - name: request-undo
+      action.lua: |
+        if obj.metadata.annotations == nil then
+          obj.metadata.annotations = {}
+        end
+        local os = require("os")
+        obj.metadata.annotations["argocd.argoproj.io/rollout-undo-requested-at"] = os.date("!%Y-%m-%dT%XZ")
+        obj.metadata.annotations["argocd.argoproj.io/rollout-undo-revision"] = "previous"
+        return obj
 ```
 
 ## Using the Rollback Actions
@@ -213,7 +184,7 @@ Argo Rollouts resources have built-in rollback capabilities that are much cleane
 1. Navigate to your application in ArgoCD
 2. Click on the Deployment or Rollout resource
 3. Click "Actions" in the resource detail view
-4. Select "rollback-previous" or "undo"
+4. Select "rollback-previous" or "request-undo"
 5. Confirm the action
 
 ### From the CLI
@@ -231,11 +202,13 @@ argocd app actions run my-app rollback-previous \
 # For Argo Rollouts
 argocd app actions run my-app abort \
   --kind Rollout \
+  --group argoproj.io \
   --resource-name my-rollout \
   --namespace production
 
-argocd app actions run my-app undo \
+argocd app actions run my-app request-undo \
   --kind Rollout \
+  --group argoproj.io \
   --resource-name my-rollout \
   --namespace production
 ```
