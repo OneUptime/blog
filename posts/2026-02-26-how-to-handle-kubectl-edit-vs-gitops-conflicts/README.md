@@ -34,15 +34,19 @@ argocd app diff my-app
 
 This shows exactly what fields were changed manually.
 
-### Event-Based Detection
+### Audit-Log-Based Detection
 
-Kubernetes audit logs capture who changed what:
+Kubernetes audit logs capture who changed what. The exact query depends on your audit backend, but for a file-based audit log on a self-managed control plane you can filter update and patch requests like this:
 
 ```bash
-# Query audit logs for manual changes
-kubectl get events -n my-namespace --field-selector reason=Updated | \
-  grep -v "argocd" | \
-  grep -v "system:serviceaccount:argocd"
+# Query API server audit logs for manual changes
+sudo jq -r '
+  select(.verb == "update" or .verb == "patch") |
+  select(.objectRef.namespace == "my-namespace") |
+  select((.user.username | test("system:serviceaccount:argocd") | not)) |
+  [.stageTimestamp, .user.username, .verb, .objectRef.resource, .objectRef.name] |
+  @tsv
+' /var/log/kubernetes/audit.log
 ```
 
 ### Script-Based Drift Detection
@@ -60,21 +64,20 @@ echo ""
 APPS_JSON=$(argocd app list -o json)
 DRIFTED=0
 
-echo "${APPS_JSON}" | jq -r '.[] | "\(.metadata.name)\t\(.status.sync.status)\t\(.spec.project)"' | \
-  while IFS=$'\t' read -r name sync_status project; do
-    if [[ "${sync_status}" == "OutOfSync" ]]; then
-      DRIFTED=$((DRIFTED + 1))
-      echo "DRIFT: ${name} (project: ${project})"
+while IFS=$'\t' read -r name sync_status project; do
+  if [[ "${sync_status}" == "OutOfSync" ]]; then
+    DRIFTED=$((DRIFTED + 1))
+    echo "DRIFT: ${name} (project: ${project})"
 
-      # Show the diff summary
-      DIFF=$(argocd app diff "${name}" 2>/dev/null || echo "Unable to compute diff")
-      if [[ -n "${DIFF}" ]]; then
-        echo "${DIFF}" | head -20
-        echo "  ..."
-      fi
-      echo ""
+    # Show the diff summary. argocd app diff normally exits 1 when a diff is found.
+    DIFF=$(argocd app diff "${name}" --exit-code=false 2>/dev/null || echo "Unable to compute diff")
+    if [[ -n "${DIFF}" ]]; then
+      echo "${DIFF}" | head -20
+      echo "  ..."
     fi
-  done
+    echo ""
+  fi
+done < <(echo "${APPS_JSON}" | jq -r '.[] | "\(.metadata.name)\t\(.status.sync.status)\t\(.spec.project)"')
 
 echo "Total drifted applications: ${DRIFTED}"
 ```
@@ -168,7 +171,7 @@ spec:
       - RespectIgnoreDifferences=true
 ```
 
-With self-heal enabled, if someone runs `kubectl edit`, ArgoCD detects the change within the reconciliation interval (default 3 minutes, configurable) and reverts it.
+With self-heal enabled, if someone runs `kubectl edit`, ArgoCD detects the change within the reconciliation interval (120 seconds plus up to 60 seconds of jitter by default, configurable) and reverts it.
 
 ### Self-Heal Timeout
 
@@ -210,16 +213,16 @@ git commit -m "EMERGENCY: hotfix-123 deployed manually during incident INC-456"
 git push
 ```
 
-### Step 3: Disable Self-Heal Temporarily (if needed)
+### Step 3: Disable Automated Sync Temporarily (if needed)
 
-If self-heal would revert your emergency fix before Git catches up:
+If self-heal would revert your emergency fix before Git catches up, temporarily disable automated sync:
 
 ```bash
-# Temporarily disable self-heal
-argocd app set my-app --self-heal=false
+# Temporarily disable automated sync
+argocd app set my-app --sync-policy none
 
 # After Git change is synced, re-enable
-argocd app set my-app --self-heal=true
+argocd app set my-app --sync-policy automated --self-heal
 ```
 
 ### Step 4: Follow Up
