@@ -24,9 +24,9 @@ flowchart LR
     style B fill:#f96,stroke:#333
 ```
 
-The second is operator-and-webhook dependencies. An operator installs a ValidatingWebhookConfiguration that validates its own CRDs. But the webhook needs the operator running to serve validation requests. If the webhook is installed before the operator is ready, CRD creation fails because the webhook endpoint is unavailable.
+The second is operator-and-webhook dependencies. An operator installs a ValidatingWebhookConfiguration that validates its custom resources. But the webhook needs the operator or webhook server running to serve validation requests. If the webhook is installed before the backing Service is ready, custom resource creation can fail because the webhook endpoint is unavailable.
 
-The third is cross-namespace RBAC. A service account in namespace A needs a RoleBinding in namespace B, but the RoleBinding references a ServiceAccount that exists in namespace A, which does not exist until namespace A is created.
+The third is RBAC and namespace ordering. A RoleBinding in namespace B can reference a ServiceAccount in namespace A, but workloads that use that ServiceAccount need the namespace, ServiceAccount, and binding to exist before they can successfully call the API with those permissions.
 
 ## Strategy 1: Decouple with Kubernetes Service DNS
 
@@ -146,11 +146,11 @@ spec:
             - -c
             - |
               echo "Waiting for payment-service to be available..."
-              until nslookup payment-service.production.svc.cluster.local; do
+              until nc -z payment-service.production.svc.cluster.local 8080; do
                 echo "Still waiting..."
                 sleep 2
               done
-              echo "payment-service DNS is available"
+              echo "payment-service is available"
       containers:
         - name: app
           image: myregistry/order-service:v1.0.0
@@ -159,7 +159,7 @@ spec:
               value: "http://payment-service.production.svc.cluster.local:8080"
 ```
 
-With this approach, both Deployments can be in the same sync wave. The init container blocks until the dependency is resolvable. This does not technically break the circular dependency but it gracefully handles the startup order.
+With this approach, both Deployments can be in the same sync wave. The init container blocks until the dependency accepts connections on the expected port. This does not technically break the circular dependency but it gracefully handles the startup order.
 
 ## Strategy 3: Split Into Separate Applications
 
@@ -220,54 +220,72 @@ Each Application syncs independently, and the app-of-apps pattern with sync wave
 
 ## Strategy 4: Break the Webhook Circular Dependency
 
-The operator-webhook circular dependency is particularly nasty. The operator's webhook needs to be running to validate resources, but the operator itself is a resource that might be validated by its own webhook.
+The operator-webhook circular dependency is particularly nasty. The operator's webhook needs to be running to validate resources, but the custom resources managed by that operator might be applied in the same sync.
 
 The solution is to deploy the operator without the webhook first, then add the webhook.
 
 ```yaml
-# Wave -1: Deploy the operator without webhook validation
+# Wave -1: Deploy the operator and webhook Service before webhook validation
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cert-manager
-  namespace: cert-manager
+  name: my-operator
+  namespace: operators
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: cert-manager
+      app: my-operator
   template:
     metadata:
       labels:
-        app: cert-manager
+        app: my-operator
     spec:
       containers:
-        - name: cert-manager
-          image: quay.io/jetstack/cert-manager-controller:v1.13.0
+        - name: operator
+          image: myregistry/my-operator:v1.0.0
           args:
             - --v=2
+          ports:
+            - name: webhook
+              containerPort: 9443
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-operator-webhook
+  namespace: operators
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  selector:
+    app: my-operator
+  ports:
+    - name: https
+      port: 443
+      targetPort: webhook
 ---
 # Wave 0: Add the webhook after the operator is running
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: cert-manager-webhook
+  name: my-operator.example.com
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 webhooks:
-  - name: webhook.cert-manager.io
+  - name: webhook.example.com
     clientConfig:
       service:
-        name: cert-manager-webhook
-        namespace: cert-manager
+        name: my-operator-webhook
+        namespace: operators
         path: /validate
     rules:
-      - apiGroups: ["cert-manager.io"]
+      - apiGroups: ["example.com"]
         apiVersions: ["v1"]
         operations: ["CREATE", "UPDATE"]
-        resources: ["certificates", "issuers"]
+        resources: ["widgets"]
     failurePolicy: Fail
     sideEffects: None
     admissionReviewVersions: ["v1"]
@@ -277,7 +295,7 @@ Another option is to set `failurePolicy: Ignore` on the webhook temporarily, whi
 
 ## Strategy 5: Use Replace Sync Strategy for Stuck Resources
 
-Sometimes a circular dependency causes a sync to get stuck. Resources created in a previous sync attempt might block the current sync. The `Replace` sync option can help by deleting and recreating stuck resources.
+Sometimes a circular dependency causes a sync to get stuck. Resources created in a previous sync attempt might block the current sync. The `Replace` sync option can help by using `kubectl replace` or `kubectl create` instead of `kubectl apply`.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -296,10 +314,10 @@ spec:
     namespace: production
   syncPolicy:
     syncOptions:
-      - Replace=true  # Delete and recreate instead of apply
+      - Replace=true  # Use kubectl replace/create instead of apply
 ```
 
-Use this sparingly. Replace causes downtime because resources are deleted before being recreated.
+Use this sparingly. Replace can be disruptive because some resource changes may require recreation and can cause an outage.
 
 ## General Rules for Avoiding Circular Dependencies
 
