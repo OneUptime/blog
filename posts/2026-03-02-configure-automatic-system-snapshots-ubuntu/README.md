@@ -40,13 +40,13 @@ Timeshift has both a GUI and a CLI. For servers and automated setups, the CLI is
 
 ### First-Time Setup
 
-Run the initial setup to choose snapshot location and type:
+Run the graphical setup wizard to choose snapshot location and type if you are on a desktop system:
 
 ```bash
-sudo timeshift --setup
+sudo timeshift-gtk
 ```
 
-This creates a configuration file at `/etc/timeshift/timeshift.json`. You can also edit it directly:
+This creates a configuration file at `/etc/timeshift/timeshift.json`. On a server, you can also create or edit it directly:
 
 ```bash
 sudo nano /etc/timeshift/timeshift.json
@@ -61,8 +61,8 @@ A typical configuration looks like this:
   "do_first_run": "false",
   "btrfs_mode": "false",
   "include_btrfs_home_for_backup": "false",
+  "include_btrfs_home_for_restore": "false",
   "stop_cron_emails": "true",
-  "btrfs_use_qgroup": "true",
   "schedule_monthly": "false",
   "schedule_weekly": "true",
   "schedule_daily": "true",
@@ -98,7 +98,7 @@ Copy the UUID of the target partition into the `backup_device_uuid` field in the
 
 ## Setting Up Snapshot Schedules
 
-Timeshift's scheduling is handled through a cron job it installs automatically when the daemon is enabled. However, you can also manage it manually for more control.
+Timeshift's scheduling is handled through cron files it installs automatically when scheduled snapshots are enabled. However, you can also manage it manually for more control.
 
 ### Enabling the Timeshift Cron Job
 
@@ -108,7 +108,7 @@ sudo cat /etc/cron.d/timeshift-hourly
 sudo cat /etc/cron.d/timeshift-boot
 ```
 
-If these files don't exist, enable scheduling through the config file as shown above and then create the snapshot:
+The hourly cron entry runs `timeshift --check --scripted`, which creates a snapshot only when one of the enabled schedules is due. If these files don't exist, enable scheduling through the config file as shown above and then create a snapshot:
 
 ```bash
 sudo timeshift --create --comments "Initial snapshot" --tags D
@@ -139,8 +139,7 @@ Add entries like these:
 # Weekly snapshot on Sundays at 1 AM
 0 1 * * 0 /usr/bin/timeshift --create --comments "Weekly auto-snapshot" --tags W >> /var/log/timeshift-cron.log 2>&1
 
-# Delete old snapshots (keep only the last 5 daily)
-30 2 * * * /usr/bin/timeshift --delete-all --scripted >> /var/log/timeshift-cron.log 2>&1
+# Retention is controlled by count_daily, count_weekly, and the other count_* settings in /etc/timeshift/timeshift.json.
 ```
 
 ## Automating Snapshots Before System Updates
@@ -224,7 +223,7 @@ sudo nano /usr/local/bin/check-snapshots.sh
 #!/bin/bash
 # Check if recent snapshots exist and send alert if not
 
-SNAPSHOT_COUNT=$(timeshift --list 2>/dev/null | grep -c "^[0-9]")
+SNAPSHOT_COUNT=$(timeshift --list 2>/dev/null | grep -c "^[[:space:]]*[0-9]")
 MIN_SNAPSHOTS=1
 
 if [ "$SNAPSHOT_COUNT" -lt "$MIN_SNAPSHOTS" ]; then
