@@ -8,7 +8,7 @@ Description: Learn how to create Kubernetes Network Policies to restrict traffic
 
 ---
 
-By default, Kubernetes allows all pods to communicate with each other. This means if an attacker compromises any pod in your cluster, they can reach ArgoCD's API server, Redis cache, and repo server. Network Policies restrict this communication to only what is necessary, significantly reducing the attack surface. This guide provides production-ready Network Policies for every ArgoCD component.
+By default, Kubernetes allows all pods to communicate with each other. This means if an attacker compromises any pod in your cluster, they can reach ArgoCD's API server, Redis cache, and repo server. Network Policies restrict this communication to only what is necessary, significantly reducing the attack surface. This guide provides a production starting point for Network Policies for the core ArgoCD components.
 
 ## Why Network Policies for ArgoCD
 
@@ -23,11 +23,12 @@ graph TD
     E -->|TCP| D
     E -->|HTTPS| F[Kubernetes API]
     C -->|HTTPS/SSH| G[Git Repos]
+    C -->|TCP| D
     B -->|HTTPS| H[OIDC Provider]
     style D fill:#f96,stroke:#333
 ```
 
-Without Network Policies, Redis (which has no authentication by default) is accessible to every pod in the cluster. An attacker in any namespace could connect to Redis and potentially extract cached data or poison the cache.
+Without Network Policies, Redis is reachable from every pod in the cluster unless other controls block it. Recent ArgoCD default installs enable Redis authentication, but older or custom installs may not. An attacker in any namespace could connect to Redis and potentially extract cached data or poison the cache if Redis is exposed or misconfigured.
 
 ## Prerequisites
 
@@ -36,9 +37,9 @@ Network Policies require a CNI plugin that supports them. Common options include
 - Calico
 - Cilium
 - Weave Net
-- Azure CNI
+- Azure CNI powered by Cilium, Azure NPM, or Calico on AKS
 
-Check if your cluster supports Network Policies:
+Create a simple policy object to confirm that the Kubernetes API accepts NetworkPolicy resources:
 
 ```bash
 # Create a test network policy
@@ -55,7 +56,8 @@ spec:
     - Ingress
 EOF
 
-# If no error, your CNI supports network policies
+# If no error, the API accepted the object. You still need to test
+# traffic behavior to confirm your CNI enforces network policies.
 kubectl delete networkpolicy test-netpol -n default
 ```
 
@@ -105,9 +107,7 @@ spec:
             matchLabels:
               app.kubernetes.io/name: ingress-nginx
       ports:
-        - port: 8080  # HTTP/HTTPS
-          protocol: TCP
-        - port: 8083  # gRPC
+        - port: 8080  # HTTP/HTTPS and gRPC when the Service targets the pod directly
           protocol: TCP
     # Allow from application controller (for API calls)
     - from:
@@ -164,6 +164,7 @@ spec:
         - port: 443
           protocol: TCP
     # Kubernetes API (usually on 443 or 6443)
+    # Replace this broad rule with your API server CIDR or IP when possible
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -227,6 +228,7 @@ spec:
         - port: 6379
           protocol: TCP
     # ArgoCD server API
+    # Optional: keep only if your controller workflows call the ArgoCD server
     - to:
         - podSelector:
             matchLabels:
@@ -235,6 +237,7 @@ spec:
         - port: 8080
           protocol: TCP
     # Kubernetes API for all managed clusters
+    # Replace this broad rule with the API server CIDRs or IPs for your managed clusters
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -326,6 +329,9 @@ spec:
               app.kubernetes.io/name: argocd-server
         - podSelector:
             matchLabels:
+              app.kubernetes.io/name: argocd-repo-server
+        - podSelector:
+            matchLabels:
               app.kubernetes.io/name: argocd-application-controller
       ports:
         - port: 6379
@@ -415,7 +421,7 @@ kubectl get networkpolicy -n argocd
 # Check pod labels match policy selectors
 kubectl get pods -n argocd --show-labels
 
-# Check if the CNI supports network policies
+# Inspect how Kubernetes interpreted the policy selectors and rules
 kubectl describe networkpolicy argocd-server -n argocd
 
 # Temporarily remove default deny to test
@@ -424,6 +430,6 @@ kubectl delete networkpolicy default-deny-all -n argocd
 
 ## Conclusion
 
-Network Policies are essential for securing ArgoCD in production. The default-deny approach ensures that only explicitly allowed communication happens. The most critical policy is restricting Redis access, as it often has no authentication. Apply all policies together (default deny plus all allow rules) to avoid breaking ArgoCD. Test thoroughly in a staging environment before applying to production.
+Network Policies are essential for securing ArgoCD in production. The default-deny approach ensures that only explicitly allowed communication happens. The most critical policy is restricting Redis access, especially for older or custom deployments where Redis authentication may not be enabled. Apply all policies together (default deny plus all allow rules) to avoid breaking ArgoCD. Test thoroughly in a staging environment before applying to production.
 
 For more security hardening, see our guide on [hardening ArgoCD server for production](https://oneuptime.com/blog/post/2026-02-26-argocd-harden-server-production/view).
