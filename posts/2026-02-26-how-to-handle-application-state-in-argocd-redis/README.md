@@ -65,7 +65,13 @@ metadata:
   name: argocd-redis
   namespace: argocd
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-redis
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-redis
     spec:
       containers:
         - name: redis
@@ -112,7 +118,7 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Point to Redis Sentinel instead of standalone Redis
+  # Point to the Redis HAProxy service from the HA manifests
   redis.server: argocd-redis-ha-haproxy:6379
 ```
 
@@ -145,7 +151,7 @@ stringData:
 
 ## Understanding Cache Behavior
 
-The application controller's cluster cache has a configurable retry timeout. When a cluster becomes unreachable, the cached state persists until the timeout expires.
+The application controller's application state cache and the repo server's repository cache both have configurable expiration settings.
 
 ```yaml
 # argocd-cmd-params-cm - cache settings
@@ -155,10 +161,10 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # How long to keep cluster cache after connectivity loss
-  controller.cluster.cache.retry.timeout: "300"
+  # Application state cache expiration
+  controller.app.state.cache.expiration: "1h0m0s"
   # Repo server manifest cache expiration
-  reposerver.repo.cache.expiration: "24h"
+  reposerver.repo.cache.expiration: "24h0m0s"
 ```
 
 When you update `reposerver.repo.cache.expiration`, you control how long rendered manifests stay cached. A longer TTL reduces Git fetch and manifest generation operations but means changes to Helm charts or Kustomize bases take longer to propagate.
@@ -168,9 +174,11 @@ When you update `reposerver.repo.cache.expiration`, you control how long rendere
 Set up monitoring to catch Redis issues before they affect ArgoCD.
 
 ```bash
-# Check Redis connection from the application controller
-kubectl exec -n argocd deploy/argocd-application-controller -- \
-  curl -s localhost:8082/metrics | grep argocd_redis
+# Check application controller metrics
+kubectl port-forward -n argocd svc/argocd-metrics 8082:8082
+
+# In another terminal
+curl -s localhost:8082/metrics | grep argocd_redis
 
 # Check Redis memory stats
 kubectl exec -n argocd deploy/argocd-redis -- redis-cli info memory
@@ -278,7 +286,13 @@ metadata:
   name: argocd-redis
   namespace: argocd
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-redis
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-redis
     spec:
       containers:
         - name: redis
@@ -299,9 +313,9 @@ spec:
             - --maxclients
             - "1000"
             # Optimize hash storage for many small entries
-            - --hash-max-ziplist-entries
+            - --hash-max-listpack-entries
             - "128"
-            - --hash-max-ziplist-value
+            - --hash-max-listpack-value
             - "64"
           resources:
             requests:
