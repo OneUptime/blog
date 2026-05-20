@@ -24,9 +24,11 @@ graph TD
     G[App Controller] -->|gRPC| D
     G -->|TCP| E
     G -->|HTTPS| H[Kubernetes API Servers]
+    D -->|TCP| E
     D -->|SSH/HTTPS| I[Git Repositories]
     D -->|HTTPS| J[Helm Registries]
-    K[Notifications Controller] -->|TCP| E
+    K[Notifications Controller] -->|gRPC| D
+    K -->|HTTPS| H
     K -->|HTTPS| L[Notification Targets]
 ```
 
@@ -77,6 +79,12 @@ spec:
       ports:
         - port: 8080
           protocol: TCP
+    # Accept metrics scraping from monitoring
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
         - port: 8083
           protocol: TCP  # Metrics
   egress:
@@ -221,6 +229,14 @@ spec:
       ports:
         - port: 8081
           protocol: TCP
+    # Accept from Notifications Controller
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-notifications-controller
+      ports:
+        - port: 8081
+          protocol: TCP
     # Accept metrics from monitoring
     - from:
         - namespaceSelector:
@@ -230,6 +246,14 @@ spec:
         - port: 8084
           protocol: TCP
   egress:
+    # To Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-redis
+      ports:
+        - port: 6379
+          protocol: TCP
     # To Git repositories (HTTPS)
     - to:
         - ipBlock:
@@ -276,20 +300,18 @@ spec:
     - from:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/part-of: argocd
+              app.kubernetes.io/name: argocd-server
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-repo-server
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-application-controller
       ports:
         - port: 6379
           protocol: TCP
-  egress:
-    # Redis should not initiate any outbound connections
-    # Exception: DNS for Redis Sentinel/HA
-    - to:
-        - namespaceSelector: {}
-      ports:
-        - port: 53
-          protocol: TCP
-        - port: 53
-          protocol: UDP
+  # Redis should not initiate any outbound connections
+  egress: []
 ```
 
 ## Dex Server Network Policy
@@ -318,13 +340,13 @@ spec:
           protocol: TCP
         - port: 5557
           protocol: TCP
-    # Callback from external identity provider
+    # Accept metrics scraping from monitoring
     - from:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
+              kubernetes.io/metadata.name: monitoring
       ports:
-        - port: 5556
+        - port: 5558
           protocol: TCP
   egress:
     # To identity providers (OIDC, LDAP, etc.)
@@ -371,13 +393,22 @@ spec:
         - port: 9001
           protocol: TCP
   egress:
-    # To Redis
+    # To Repo Server
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: argocd-redis
+              app.kubernetes.io/name: argocd-repo-server
       ports:
-        - port: 6379
+        - port: 8081
+          protocol: TCP
+    # To Kubernetes API servers
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 6443
           protocol: TCP
     # To notification targets (Slack, email, webhooks)
     - to:
@@ -458,17 +489,21 @@ Test that your policies work:
 
 ```bash
 # Test that Redis is not accessible from outside ArgoCD namespace
-kubectl run test-pod --rm -it --image=busybox -n default -- \
+kubectl run test-pod --rm -it --restart=Never --image=busybox -n default -- \
   nc -zv argocd-redis.argocd.svc.cluster.local 6379
 # Should fail: connection refused or timeout
 
 # Test that the repo server can reach GitHub
-kubectl exec -n argocd deployment/argocd-repo-server -- \
+kubectl debug -n argocd -it "$(kubectl get pod -n argocd \
+  -l app.kubernetes.io/name=argocd-repo-server -o name | head -n 1)" \
+  --image=curlimages/curl:latest --target=argocd-repo-server -- \
   curl -s -o /dev/null -w "%{http_code}" https://github.com
 # Should return 200
 
 # Test that the repo server CANNOT reach internal services it should not
-kubectl exec -n argocd deployment/argocd-repo-server -- \
+kubectl debug -n argocd -it "$(kubectl get pod -n argocd \
+  -l app.kubernetes.io/name=argocd-repo-server -o name | head -n 1)" \
+  --image=busybox:latest --target=argocd-repo-server -- \
   nc -zv some-internal-service.default.svc.cluster.local 80
 # Should fail
 ```
