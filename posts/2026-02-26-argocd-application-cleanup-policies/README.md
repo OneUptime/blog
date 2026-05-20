@@ -49,9 +49,9 @@ spec:
 
 With the `resources-finalizer.argocd.argoproj.io` finalizer, deleting the ArgoCD Application also deletes all Kubernetes resources it manages. Without this finalizer, deleting the Application only removes it from ArgoCD while leaving the resources running in the cluster.
 
-## Strategy 2: TTL-Based Cleanup with ApplicationSets
+## Strategy 2: Pull Request Cleanup with ApplicationSets
 
-Use ApplicationSets with Git generator to automatically create and remove applications based on branch lifecycle.
+Use ApplicationSets with the pull request generator to automatically create and remove applications based on pull request lifecycle.
 
 ```yaml
 # preview-appset.yaml
@@ -115,37 +115,28 @@ spec:
           serviceAccountName: argocd-cleanup
           containers:
             - name: cleanup
-              image: argoproj/argocd:v2.10.0
+              image: quay.io/argoproj/argocd:v3.4.2
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Login to ArgoCD
-                  argocd login argocd-server.argocd.svc.cluster.local \
-                    --grpc-web --insecure \
-                    --username admin \
-                    --password "$ARGOCD_ADMIN_PASSWORD"
-
                   # Find applications older than 7 days in the previews project
                   MAX_AGE_DAYS=7
                   CUTOFF=$(date -d "$MAX_AGE_DAYS days ago" +%s 2>/dev/null || \
                            date -v-${MAX_AGE_DAYS}d +%s)
 
-                  argocd app list -p previews -o json | \
-                    jq -r --argjson cutoff "$CUTOFF" \
-                    '.[] | select(.metadata.creationTimestamp | fromdateiso8601 < $cutoff) | .metadata.name' | \
-                    while read APP; do
+                  kubectl get applications.argoproj.io -n argocd \
+                    -o go-template='{{range .items}}{{if eq .spec.project "previews"}}{{.metadata.name}}{{"\t"}}{{.metadata.creationTimestamp}}{{"\n"}}{{end}}{{end}}' | \
+                    while IFS="$(printf '\t')" read APP CREATED_AT; do
+                      CREATED_EPOCH=$(date -d "$CREATED_AT" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$CREATED_AT" +%s)
+                      if [ "$CREATED_EPOCH" -ge "$CUTOFF" ]; then
+                        continue
+                      fi
                       echo "Deleting stale application: $APP"
-                      argocd app delete "$APP" --cascade --yes
+                      argocd --core app delete "$APP" --cascade --yes
                     done
 
                   echo "Cleanup complete"
-              env:
-                - name: ARGOCD_ADMIN_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: argocd-initial-admin-secret
-                      key: password
           restartPolicy: OnFailure
 ```
 
@@ -185,7 +176,7 @@ spec:
           serviceAccountName: argocd-cleanup
           containers:
             - name: cleanup
-              image: bitnami/kubectl:latest
+              image: bitnami/kubectl:1.33
               command:
                 - /bin/sh
                 - -c
@@ -195,41 +186,40 @@ spec:
                   # Find applications with expired dates
                   kubectl get applications -n argocd \
                     -l cleanup-policy=auto \
-                    -o json | \
-                    jq -r --arg today "$TODAY" \
-                    '.items[] | select(.metadata.labels["expires-at"] <= $today) | .metadata.name' | \
-                    while read APP; do
-                      echo "Deleting expired application: $APP (expired)"
-                      kubectl delete application "$APP" -n argocd
+                    -o go-template='{{range .items}}{{.metadata.name}}{{"\t"}}{{index .metadata.labels "expires-at"}}{{"\n"}}{{end}}' | \
+                    while IFS="$(printf '\t')" read APP EXPIRES_AT; do
+                      if [ -n "$EXPIRES_AT" ] && { [ "$EXPIRES_AT" = "$TODAY" ] || [ "$EXPIRES_AT" \< "$TODAY" ]; }; then
+                        echo "Deleting expired application: $APP (expired)"
+                        kubectl delete application "$APP" -n argocd
+                      fi
                     done
           restartPolicy: OnFailure
 ```
 
 ## Strategy 5: Namespace Cleanup with Kyverno
 
-Use Kyverno cleanup policies to automatically delete namespaces that have been idle for too long.
+Use Kyverno deleting policies to automatically delete preview namespaces that are older than your retention period.
 
 ```yaml
 # kyverno-namespace-cleanup.yaml
-apiVersion: kyverno.io/v2beta1
-kind: ClusterCleanupPolicy
+apiVersion: policies.kyverno.io/v1
+kind: DeletingPolicy
 metadata:
   name: cleanup-stale-preview-namespaces
 spec:
-  match:
-    any:
-      - resources:
-          kinds:
-            - Namespace
-          selector:
-            matchLabels:
-              type: preview
-  conditions:
-    any:
-      - key: "{{ time_since('', '{{target.metadata.creationTimestamp}}', '') }}"
-        operator: GreaterThan
-        value: "168h"  # 7 days
   schedule: "0 3 * * *"  # Run daily at 3 AM
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["*"]
+        resources: ["namespaces"]
+        scope: "Cluster"
+  conditions:
+    - name: is-preview
+      expression: "has(object.metadata.labels) && 'type' in object.metadata.labels && object.metadata.labels.type == 'preview'"
+    - name: older-than-seven-days
+      expression: "now() - object.metadata.creationTimestamp > duration('168h')"
 ```
 
 ## Strategy 6: Prune Orphaned Resources
@@ -269,7 +259,7 @@ metadata:
 rules:
   - apiGroups: ["argoproj.io"]
     resources: ["applications"]
-    verbs: ["list", "delete"]
+    verbs: ["get", "list", "watch", "delete", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
