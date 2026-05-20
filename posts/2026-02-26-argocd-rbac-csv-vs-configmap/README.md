@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, RBAC, Configuration
 
-Description: Understand the differences between inline RBAC CSV policies and ConfigMap-based RBAC configuration in ArgoCD, and learn which approach works best for your team.
+Description: Understand the differences between the main RBAC CSV policy and additional ConfigMap policy fragments in ArgoCD, and learn which approach works best for your team.
 
 ---
 
-ArgoCD gives you two main ways to define RBAC policies: the inline `policy.csv` field within the `argocd-rbac-cm` ConfigMap and external policy files referenced by the ArgoCD server. Both achieve the same result but have different trade-offs for management, version control, and scalability.
+ArgoCD gives you two main ways to organize RBAC policies: the main `policy.csv` field within the `argocd-rbac-cm` ConfigMap and additional `policy.<name>.csv` entries in the same ConfigMap. Both are evaluated as one policy, but they have different trade-offs for management, version control, and scalability.
 
 This guide breaks down both approaches and helps you choose the right one for your setup.
 
@@ -29,7 +29,7 @@ data:
     p, role:deployer, applications, sync, */*, allow
     g, developers, role:deployer
 
-  # Default role for unauthenticated users
+  # Default role for authenticated users
   policy.default: role:readonly
 
   # Token claims to use for group matching
@@ -68,77 +68,76 @@ Everything is in one place, one field, one ConfigMap.
 ### Disadvantages of Inline CSV
 
 - **Scale issues** - With hundreds of policy lines, the ConfigMap gets unwieldy
-- **No modularity** - Cannot split policies across multiple files
+- **Limited modularity** - Cannot load arbitrary external policy files directly
 - **YAML escaping** - Multiline strings in YAML can be tricky to get right
 - **Limited size** - Kubernetes ConfigMaps have a 1MB size limit
 
-## External Policy Files (policy.csv File)
+## Additional Policy CSV Keys
 
-ArgoCD also supports loading RBAC policies from a file mounted into the ArgoCD server pod. This is less common but useful for large policies:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-server
-          # Mount the policy file
-          volumeMounts:
-            - name: rbac-policy
-              mountPath: /etc/argocd-rbac
-      volumes:
-        - name: rbac-policy
-          configMap:
-            name: argocd-rbac-policy-file
-```
-
-Then create a ConfigMap with the policy file:
+ArgoCD also supports composing the final RBAC policy from additional ConfigMap keys. Any key matching `policy.<any string>.csv` is concatenated below the main `policy.csv` field, ordered by the key string. This is useful when Kustomize, Helm, or other tooling needs to patch in separate policy fragments:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-rbac-policy-file
+  name: argocd-rbac-cm
   namespace: argocd
 data:
   policy.csv: |
     p, role:deployer, applications, get, */*, allow
     p, role:deployer, applications, sync, */*, allow
     g, developers, role:deployer
+
+  policy.platform.csv: |
+    p, role:platform-admin, *, *, *, allow
+    g, platform-team, role:platform-admin
 ```
 
-### Advantages of External File
+You can also add a policy fragment with a Kustomize patch:
 
-- **Separation** - RBAC policy is a separate resource from ArgoCD config
-- **Larger policies** - Can use multiple ConfigMaps or even mount from a Secret
-- **Team ownership** - Different teams can own different policy files
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.team-a.csv: |
+    p, role:team-a-deployer, applications, get, team-a/*, allow
+    p, role:team-a-deployer, applications, sync, team-a/*, allow
+    g, team-a-developers, role:team-a-deployer
+```
 
-### Disadvantages of External File
+### Advantages of Additional Policy Keys
 
-- **More complex setup** - Requires volume mounts and deployment changes
-- **Restart required** - Changes to mounted volumes require pod restart
-- **Less standard** - Most tutorials and examples use the inline approach
+- **Separation** - RBAC policy can be split into named fragments
+- **Tooling-friendly** - Works well with Kustomize overlays, Helm values, or generated patches
+- **Team ownership** - Different teams can own different policy fragments
+
+### Disadvantages of Additional Policy Keys
+
+- **Same ConfigMap limit** - All policy fragments still live in `argocd-rbac-cm`
+- **Ordering matters for readability** - Additional policies are concatenated by key name
+- **Less familiar** - Most tutorials and examples start with the single `policy.csv` field
 
 ## Combining Both Approaches
 
-You can actually use both inline and external policies together. ArgoCD merges them:
+You can use both the main `policy.csv` field and additional `policy.<name>.csv` keys together. ArgoCD concatenates them into the final policy:
 
 ```yaml
-# argocd-rbac-cm with inline policy
-
 data:
   policy.csv: |
     # Core policies
     g, platform-admins, role:admin
-    policy.default: role:readonly
+
+  policy.team-a.csv: |
+    p, role:team-a-deployer, applications, sync, team-a/*, allow
+    g, team-a-developers, role:team-a-deployer
+
+  policy.default: role:readonly
 ```
 
-Plus an external file with additional policies. The policies are combined - both sets of rules are evaluated.
+The policies are combined - both sets of rules are evaluated.
 
 ## Project-Level RBAC as an Alternative
 
@@ -216,7 +215,7 @@ data:
     p, role:deployer, applications, sync, */*, allow
     g, developers, role:deployer
 
-# NOT this (quoted strings cause problems):
+# Avoid this (quoted strings are harder to read and maintain):
 data:
   policy.csv: "p, role:deployer, applications, get, */*, allow\ng, developers, role:deployer"
 
@@ -254,8 +253,6 @@ Use a script or template to generate the policy.csv from a higher-level configur
 ```python
 #!/usr/bin/env python3
 # generate-rbac.py
-import yaml
-
 teams = {
     "frontend": {"groups": ["frontend-devs"], "projects": ["frontend"]},
     "backend": {"groups": ["backend-devs"], "projects": ["backend"]},
@@ -293,4 +290,4 @@ argocd admin settings rbac can role:deployer sync applications 'frontend/web-app
 
 ## Summary
 
-For most ArgoCD deployments, the inline `policy.csv` in `argocd-rbac-cm` is the right choice. It is simple, well-documented, and works well for small to medium policy sizes. When policies grow large, distribute them across AppProject resources or use tooling to generate the CSV. The external file approach works but adds complexity that is rarely needed. Whichever approach you choose, store your RBAC config in Git and test every change before applying it.
+For most ArgoCD deployments, the inline `policy.csv` in `argocd-rbac-cm` is the right choice. It is simple, well-documented, and works well for small to medium policy sizes. When policies grow large, distribute them across AppProject resources, use tooling to generate the CSV, or compose additional `policy.<name>.csv` fragments in the same ConfigMap. Whichever approach you choose, store your RBAC config in Git and test every change before applying it.
