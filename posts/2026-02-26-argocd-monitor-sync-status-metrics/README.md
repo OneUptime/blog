@@ -24,8 +24,10 @@ argocd_app_info{
   namespace="argocd",
   dest_namespace="production",
   dest_server="https://kubernetes.default.svc",
+  autosync_enabled="true",
   health_status="Healthy",
   sync_status="Synced",
+  operation="",
   project="default"
 }
 ```
@@ -40,11 +42,12 @@ argocd_app_sync_total{
   namespace="argocd",
   dest_server="https://kubernetes.default.svc",
   phase="Succeeded",
+  dry_run="false",
   project="default"
 }
 ```
 
-The `phase` label can be: Succeeded, Failed, Error, or Running.
+The `phase` label can be: Succeeded, Failed, Error, Running, or Terminating.
 
 ## Tracking Current Sync Status
 
@@ -114,7 +117,7 @@ sum(rate(argocd_app_sync_total{phase="Succeeded"}[24h])) by (name)
 Drift detection is about identifying applications that have been OutOfSync for longer than expected. ArgoCD does not have a built-in "time since last sync" metric, but you can detect prolonged OutOfSync states:
 
 ```promql
-# Applications that have been OutOfSync for more than 5 minutes
+# Applications that are currently OutOfSync
 # This works because the metric continuously reports the current state
 argocd_app_info{sync_status="OutOfSync"}
 ```
@@ -234,13 +237,15 @@ Table listing all currently OutOfSync applications with their project and destin
 Sync status metrics become more powerful when combined with other data:
 
 ```promql
-# Applications that are OutOfSync AND have Git fetch errors
+# Applications that are OutOfSync AND had sync errors in the last 15 minutes
 argocd_app_info{sync_status="OutOfSync"}
-  and on(name)
-argocd_app_sync_total{phase="Error"}
+  and on(name, namespace, project, dest_server)
+sum by (name, namespace, project, dest_server) (
+  increase(argocd_app_sync_total{phase="Error"}[15m])
+) > 0
 ```
 
-This helps you distinguish between applications that are OutOfSync because of legitimate Git changes (normal) versus applications that are OutOfSync because ArgoCD cannot reach the repository (a problem).
+This helps you distinguish between applications that are OutOfSync because of legitimate Git changes (normal) versus applications that are OutOfSync while recent sync attempts are erroring (a problem).
 
 ## Recording Rules for Performance
 
