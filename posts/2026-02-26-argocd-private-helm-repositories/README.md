@@ -34,13 +34,14 @@ argocd repo add https://charts.myorg.com \
   --tls-client-cert-path /path/to/cert.pem \
   --tls-client-cert-key-path /path/to/key.pem
 
-# Add a repository that uses a custom CA certificate
+# Trust a repository server that uses a custom CA certificate
+argocd cert add-tls charts.internal.myorg.com --from /path/to/ca.crt
+
 argocd repo add https://charts.internal.myorg.com \
   --type helm \
   --name internal-charts \
   --username admin \
-  --password 's3cret' \
-  --ca-cert-path /path/to/ca.crt
+  --password 's3cret'
 ```
 
 ### Method 2: Declarative Secret
@@ -139,7 +140,7 @@ stringData:
 
 ### Token-Based Authentication
 
-Some providers use bearer tokens:
+Some providers use access tokens as the password:
 
 ```yaml
 apiVersion: v1
@@ -154,7 +155,7 @@ stringData:
   type: helm
   name: my-charts
   url: https://charts.myorg.com
-  username: ""
+  username: deploy-user
   password: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
@@ -163,7 +164,7 @@ stringData:
 For AWS ECR hosting OCI Helm charts:
 
 ```bash
-# ECR requires token refresh - use the ArgoCD ECR credential helper
+# ECR authorization tokens are short-lived and need to be refreshed
 # First, add the ECR repository
 argocd repo add xxxxxxxxxxxx.dkr.ecr.us-east-1.amazonaws.com \
   --type helm \
@@ -173,12 +174,12 @@ argocd repo add xxxxxxxxxxxx.dkr.ecr.us-east-1.amazonaws.com \
   --password "$(aws ecr get-login-password --region us-east-1)"
 ```
 
-For automated credential refresh, use an ECR credential helper or External Secrets Operator to keep the password updated.
+For automated credential refresh, use External Secrets Operator or another automation process to keep the password updated.
 
 ### Google Artifact Registry
 
 ```bash
-argocd repo add https://us-central1-docker.pkg.dev/my-project/my-repo \
+argocd repo add us-central1-docker.pkg.dev/my-project/my-repo \
   --type helm \
   --name gar-charts \
   --enable-oci \
@@ -324,7 +325,7 @@ kubectl logs -n argocd deployment/argocd-repo-server | grep "charts.myorg.com"
 ## Troubleshooting
 
 1. **401 Unauthorized**: Verify credentials are correct. Check if the password has expired.
-2. **Certificate errors**: Add the CA certificate using the `--ca-cert` option or include it in the Secret.
+2. **Certificate errors**: Add the CA certificate with `argocd cert add-tls <hostname> --from <ca-file>`, or configure it declaratively in ArgoCD's TLS certificates ConfigMap.
 3. **Chart not found**: Ensure the chart name and version exist in the repository. Try `helm search repo` locally.
 4. **Stale cache**: ArgoCD caches chart index files. Force a refresh with `argocd app get my-app --hard-refresh`.
 
