@@ -171,7 +171,7 @@ Click the **"SYNC"** button in the top bar. A sync dialog appears with options:
 - **Synchronize**: Apply all changes
 - **Dry Run**: Preview what would change without applying
 - **Prune**: Also delete resources that no longer exist in Git
-- **Force**: Skip safety checks (use with caution)
+- **Force**: Delete and recreate selected resources during sync (use with caution)
 
 Select the resources you want to sync (or leave all selected) and click **"SYNCHRONIZE"**.
 
