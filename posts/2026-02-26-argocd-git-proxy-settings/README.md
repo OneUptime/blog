@@ -188,14 +188,13 @@ data:
   ssh_config: |
     Host github.com
       ProxyCommand nc -X 5 -x socks-proxy.company.com:1080 %h %p
-      IdentityFile /app/config/ssh/ssh_known_hosts
 ```
 
 Mount this as the SSH config in the repo-server.
 
 ## Git-Specific Proxy Settings
 
-In addition to environment variables, you can configure proxy settings directly in Git's configuration:
+In addition to environment variables, you can configure proxy settings directly in Git's system configuration:
 
 ```yaml
 apiVersion: v1
@@ -204,10 +203,8 @@ metadata:
   name: argocd-git-config
   namespace: argocd
 data:
-  .gitconfig: |
+  gitconfig: |
     [http]
-        proxy = http://proxy.company.com:8080
-    [https]
         proxy = http://proxy.company.com:8080
     [http "https://internal-gitlab.company.com"]
         proxy = ""
@@ -228,8 +225,8 @@ spec:
         - name: argocd-repo-server
           volumeMounts:
             - name: git-config
-              mountPath: /home/argocd/.gitconfig
-              subPath: .gitconfig
+              mountPath: /etc/gitconfig
+              subPath: gitconfig
       volumes:
         - name: git-config
           configMap:
@@ -273,7 +270,7 @@ metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
 data:
-  # Add proxy CA cert for all external HTTPS connections
+  # Add the proxy CA cert for each HTTPS repository host
   github.com: |
     -----BEGIN CERTIFICATE-----
     (proxy CA certificate)
