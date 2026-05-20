@@ -129,6 +129,13 @@ spec:
         - name: sops-age-key
           secret:
             secretName: sops-age-key
+        - name: custom-tools
+          emptyDir: {}
+        - name: helm-sops-plugin
+          configMap:
+            name: helm-sops-plugin
+        - name: cmp-tmp
+          emptyDir: {}
 
       containers:
         # The SOPS+Helm plugin sidecar
@@ -138,11 +145,18 @@ spec:
           env:
             - name: SOPS_AGE_KEY_FILE
               value: /sops/age-key.txt
+            - name: PATH
+              value: /custom-tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
           volumeMounts:
             - name: var-files
               mountPath: /var/run/argocd
             - name: plugins
               mountPath: /home/argocd/cmp-server/plugins
+            - name: helm-sops-plugin
+              mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: plugin.yaml
+            - name: custom-tools
+              mountPath: /custom-tools
             - name: sops-age-key
               mountPath: /sops
             - name: cmp-tmp
@@ -158,7 +172,7 @@ spec:
             - sh
             - -c
             - |
-              # Install sops, helm, and kustomize
+              # Install sops and helm
               wget -O /custom-tools/sops https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
               chmod +x /custom-tools/sops
               wget -O- https://get.helm.sh/helm-v3.14.0-linux-amd64.tar.gz | tar xz -C /custom-tools --strip-components=1 linux-amd64/helm
@@ -175,7 +189,7 @@ Create the plugin configuration:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmp-cm
+  name: helm-sops-plugin
   namespace: argocd
 data:
   plugin.yaml: |
@@ -184,36 +198,34 @@ data:
     metadata:
       name: helm-sops
     spec:
-      version: v1.0
       init:
-        command: ["/bin/sh", "-c"]
+        command: ["/bin/sh", "-ec"]
         args:
           - |
             # Decrypt all .enc.yaml files
             for f in $(find . -name '*.enc.yaml' -o -name '*.enc.yml'); do
-              sops --decrypt "$f" > "${f%.enc.yaml}.yaml.dec" 2>/dev/null || \
-              sops --decrypt "$f" > "${f%.enc.yml}.yml.dec" 2>/dev/null || true
+              sops --decrypt "$f" > "$f.dec"
             done
       generate:
-        command: ["/bin/sh", "-c"]
+        command: ["/bin/sh", "-ec"]
         args:
           - |
             # Find the chart directory
             CHART_DIR="."
 
             # Build the helm command
-            HELM_CMD="helm template $ARGOCD_APP_NAME $CHART_DIR"
+            set -- helm template "$ARGOCD_APP_NAME" "$CHART_DIR"
 
             # Add all values files (prefer decrypted versions)
             for f in $(find . -name 'values*.yaml' -o -name 'values*.yml' | sort); do
               if [ -f "${f}.dec" ]; then
-                HELM_CMD="$HELM_CMD -f ${f}.dec"
-              elif [[ ! "$f" == *".enc."* ]]; then
-                HELM_CMD="$HELM_CMD -f $f"
+                set -- "$@" -f "${f}.dec"
+              elif case "$f" in *".enc."*) false ;; *) true ;; esac; then
+                set -- "$@" -f "$f"
               fi
             done
 
-            eval $HELM_CMD
+            "$@"
       discover:
         find:
           glob: "**/Chart.yaml"
@@ -263,21 +275,24 @@ The helm-secrets plugin provides a more native Helm experience. Install it in th
 # Dockerfile for custom repo server
 FROM quay.io/argoproj/argocd:v2.10.0
 
+ENV HELM_PLUGINS=/gitops-tools/helm-plugins \
+  HELM_SECRETS_SOPS_PATH=/gitops-tools/sops \
+  HELM_SECRETS_AGE_PATH=/gitops-tools/age \
+  HELM_SECRETS_VALUES_ALLOW_ABSOLUTE_PATH=true
+
 # Switch to root to install
 USER root
 
-# Install helm-secrets plugin
-RUN helm plugin install https://github.com/jkroepke/helm-secrets --version v4.5.1
-
-# Install sops
-RUN wget -O /usr/local/bin/sops \
+# Install helm-secrets, sops, and age
+RUN mkdir -p /gitops-tools/helm-plugins && \
+  wget -O /gitops-tools/sops \
   https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64 && \
-  chmod +x /usr/local/bin/sops
-
-# Install age
-RUN wget -O /usr/local/bin/age \
-  https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz && \
-  tar xzf /usr/local/bin/age -C /usr/local/bin/ --strip-components=1
+  wget -O- https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz | \
+  tar xz -C /gitops-tools --strip-components=1 age/age && \
+  wget -O- https://github.com/jkroepke/helm-secrets/releases/download/v4.5.1/helm-secrets.tar.gz | \
+  tar xz -C /gitops-tools/helm-plugins && \
+  chmod +x /gitops-tools/sops /gitops-tools/age && \
+  chown -R argocd:argocd /gitops-tools
 
 USER argocd
 ```
@@ -303,6 +318,18 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: production
+```
+
+For ArgoCD, also add the helm-secrets schemes to the `argocd-cm` ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  helm.valuesFileSchemes: secrets,secrets+age-import,secrets+age-import-kubernetes,https
 ```
 
 ## Multi-Environment Setup
