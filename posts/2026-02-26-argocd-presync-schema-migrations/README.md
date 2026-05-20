@@ -173,12 +173,12 @@ metadata:
   name: migration-files
   namespace: production
 data:
-  004_add_index_on_email.sql: |
+  004_add_index_on_email.up.sql: |
     -- Migration: 004_add_index_on_email
     -- Date: 2026-02-26
     CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_email
     ON users (email);
-  004_add_index_on_email_down.sql: |
+  004_add_index_on_email.down.sql: |
     -- Rollback: 004_add_index_on_email
     DROP INDEX IF EXISTS idx_users_email;
 ```
@@ -195,6 +195,8 @@ containers:
       - /bin/sh
       - -c
       - |
+        set -e
+
         # Run migrations from mounted files
         migrate \
           -path /migrations \
@@ -301,7 +303,7 @@ spec:
             - -c
             - |
               TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-              BACKUP_FILE="/backups/pre-migration-${TIMESTAMP}.sql"
+              BACKUP_FILE="/backups/pre-migration-${TIMESTAMP}.dump"
 
               echo "Creating pre-migration backup..."
               PGPASSWORD=$DB_PASSWORD pg_dump \
