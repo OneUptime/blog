@@ -41,7 +41,7 @@ Even if an attacker gains access to the Git repository, they cannot create commi
 
 ## Prerequisites
 
-- ArgoCD v2.4 or later
+- ArgoCD v1.7 or later. In current Argo CD releases, `signatureKeys` is a legacy/deprecated configuration; use Source Integrity Verification for new configurations when available.
 - GnuPG installed on your local machine
 - Git configured for commit signing
 - Team members with GPG key pairs
@@ -96,15 +96,15 @@ metadata:
   name: argocd-gpg-keys-cm
   namespace: argocd
 data:
-  # Key name is arbitrary, content is the public key
-  developer1: |
+  # Key name is the public GnuPG key ID, content is the public key
+  ABCDEF1234567890: |
     -----BEGIN PGP PUBLIC KEY BLOCK-----
 
     mQINBGN...
     ...
     -----END PGP PUBLIC KEY BLOCK-----
 
-  developer2: |
+  1234567890ABCDEF: |
     -----BEGIN PGP PUBLIC KEY BLOCK-----
 
     mQINBGN...
