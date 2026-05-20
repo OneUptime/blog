@@ -79,6 +79,7 @@ spec:
     metadata:
       name: "vpa-{{name}}"
     spec:
+      project: default
       source:
         repoURL: https://github.com/myorg/platform-config
         targetRevision: main
@@ -118,7 +119,7 @@ def get_vpa_recommendations(namespace):
     """Get VPA recommendations for all deployments in a namespace."""
     result = subprocess.run(
         ["kubectl", "get", "vpa", "-n", namespace, "-o", "json"],
-        capture_output=True, text=True
+        capture_output=True, text=True, check=True
     )
     vpas = json.loads(result.stdout)
     recommendations = []
@@ -149,7 +150,7 @@ def get_current_requests(deployment, namespace):
     """Get current resource requests for a deployment."""
     result = subprocess.run(
         ["kubectl", "get", "deployment", deployment, "-n", namespace, "-o", "json"],
-        capture_output=True, text=True
+        capture_output=True, text=True, check=True
     )
     deploy = json.loads(result.stdout)
     containers = deploy["spec"]["template"]["spec"]["containers"]
@@ -221,7 +222,8 @@ spec:
           serviceAccountName: right-sizing-pipeline
           containers:
             - name: pipeline
-              image: python:3.11-slim
+              # Build this image with Python, kubectl, git, and your PR tooling.
+              image: myorg/right-sizing-pipeline:latest
               command:
                 - python
                 - /scripts/right_sizing_pipeline.py
@@ -268,16 +270,57 @@ spec:
       rego: |
         package k8sresourceratios
 
+        cpu_millicores(q) = value {
+          endswith(q, "m")
+          value := to_number(trim_suffix(q, "m"))
+        } else = value {
+          not endswith(q, "m")
+          value := to_number(q) * 1000
+        }
+
+        memory_mib(q) = value {
+          endswith(q, "Ki")
+          value := to_number(trim_suffix(q, "Ki")) / 1024
+        } else = value {
+          endswith(q, "Mi")
+          value := to_number(trim_suffix(q, "Mi"))
+        } else = value {
+          endswith(q, "Gi")
+          value := to_number(trim_suffix(q, "Gi")) * 1024
+        }
+
         # Deny if limit-to-request ratio is too high
         violation[{"msg": msg}] {
           container := input.review.object.spec.template.spec.containers[_]
-          requests_cpu := to_number(trim_suffix(container.resources.requests.cpu, "m"))
-          limits_cpu := to_number(trim_suffix(container.resources.limits.cpu, "m"))
+          requests_cpu := cpu_millicores(container.resources.requests.cpu)
+          limits_cpu := cpu_millicores(container.resources.limits.cpu)
           ratio := limits_cpu / requests_cpu
           ratio > input.parameters.maxLimitToRequestRatio
           msg := sprintf(
             "Container %v has CPU limit/request ratio of %.1f, max allowed is %.1f",
             [container.name, ratio, input.parameters.maxLimitToRequestRatio]
+          )
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.template.spec.containers[_]
+          cpu_request := cpu_millicores(container.resources.requests.cpu)
+          max_cpu := cpu_millicores(input.parameters.maxCpuPerReplica)
+          cpu_request > max_cpu
+          msg := sprintf(
+            "Container %v requests %vm CPU, max allowed is %vm",
+            [container.name, cpu_request, max_cpu]
+          )
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.template.spec.containers[_]
+          memory_request := memory_mib(container.resources.requests.memory)
+          max_memory := memory_mib(input.parameters.maxMemoryPerReplica)
+          memory_request > max_memory
+          msg := sprintf(
+            "Container %v requests %.0fMi memory, max allowed is %.0fMi",
+            [container.name, memory_request, max_memory]
           )
         }
 ---
@@ -310,7 +353,13 @@ metadata:
   name: payment-service
 spec:
   replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       containers:
         - name: payment-service
