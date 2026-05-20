@@ -45,7 +45,7 @@ The available actions for the `applicationsets` resource are:
 | `update` | Modify existing ApplicationSets |
 | `delete` | Delete ApplicationSets |
 
-The object format follows the same `<project>/<name>` pattern as applications:
+The object format uses `<project>/<name>`. For ApplicationSets, the project segment represents the AppProject where the ApplicationSet is allowed to create Applications:
 
 ```yaml
 # Allow managing ApplicationSets in the frontend project
@@ -71,7 +71,7 @@ policy.csv: |
 
 ## Project-Scoped ApplicationSet Management
 
-Restrict ApplicationSet management to specific projects:
+Restrict ApplicationSet management to specific Application projects:
 
 ```yaml
 policy.csv: |
@@ -134,7 +134,7 @@ policy.csv: |
   g, platform-admins, role:admin
 ```
 
-Additionally, configure the ApplicationSet itself to preserve generated applications on deletion:
+Additionally, configure the ApplicationSet itself to preserve deployed Kubernetes resources when generated applications are deleted:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -160,7 +160,7 @@ spec:
       destination:
         server: '{{url}}'
         namespace: app
-  # Preserve applications when ApplicationSet is deleted
+  # Preserve deployed resources when generated Applications are deleted
   syncPolicy:
     preserveResourcesOnDeletion: true
 ```
@@ -305,7 +305,7 @@ data:
     p, role:appset-manager, applicationsets, update, */*, allow
     p, role:appset-manager, applications, get, */*, allow
     p, role:appset-manager, applications, sync, */*, allow
-    p, role:appset-manager, applications, action, */*, allow
+    p, role:appset-manager, applications, action/*, */*, allow
     p, role:appset-manager, logs, get, */*, allow
 
     # Developers - can view and sync, cannot manage ApplicationSets
@@ -323,4 +323,4 @@ data:
 
 ## Summary
 
-ApplicationSet RBAC in ArgoCD requires managing both the `applicationsets` resource and the `applications` resource. Control who can create, update, and especially delete ApplicationSets, since these operations can affect many applications at once. Use the `preserveResourcesOnDeletion` setting for safety, restrict `delete` access to admins only, and give developers view and sync access to generated applications without the ability to modify the ApplicationSet generators themselves.
+ApplicationSet RBAC in ArgoCD requires managing both the `applicationsets` resource and the `applications` resource. Control who can create, update, and especially delete ApplicationSets, since these operations can affect many applications at once. Use the `preserveResourcesOnDeletion` setting to protect deployed resources, restrict `delete` access to admins only, and give developers view and sync access to generated applications without the ability to modify the ApplicationSet generators themselves.
