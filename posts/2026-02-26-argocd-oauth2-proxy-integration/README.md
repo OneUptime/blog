@@ -33,7 +33,7 @@ graph LR
     E --> F[ArgoCD API]
 ```
 
-The user hits OAuth2 Proxy first. If not authenticated, they are redirected to the IdP. After authentication, OAuth2 Proxy forwards the request to ArgoCD with authentication headers.
+The user hits OAuth2 Proxy first. If not authenticated, they are redirected to the IdP. After authentication, OAuth2 Proxy allows the request through to ArgoCD. The headers can be useful for logging or upstream applications that support header auth, but ArgoCD does not use OAuth2 Proxy headers as an ArgoCD login identity.
 
 ## Deploy OAuth2 Proxy
 
@@ -62,14 +62,16 @@ config:
     cookie_secure = true
     cookie_domains = [".example.com"]
     cookie_samesite = "lax"
-    upstreams = ["http://argocd-server.argocd.svc.cluster.local:80"]
+    reverse_proxy = true
+    redirect_url = "https://argocd.example.com/oauth2/callback"
+    upstreams = ["static://202"]
     set_xauthrequest = true
     pass_access_token = true
     pass_authorization_header = true
     skip_provider_button = true
 
 ingress:
-  enabled: true
+  enabled: false
   className: nginx
   hosts:
   - argocd.example.com
@@ -95,9 +97,9 @@ helm install oauth2-proxy oauth2-proxy/oauth2-proxy \
   --values oauth2-proxy-values.yaml
 ```
 
-## Configure ArgoCD for Proxy Authentication
+## Configure ArgoCD Behind the Proxy
 
-ArgoCD needs to trust the authentication headers that OAuth2 Proxy sends. Configure the ArgoCD server to accept proxy authentication:
+OAuth2 Proxy can gate access before requests reach ArgoCD, but ArgoCD does not support logging users in from `X-Auth-Request-*` headers. If you want the browser UI to open without a second ArgoCD login prompt, enable anonymous access and control the default permissions with ArgoCD RBAC. Keep the ArgoCD service reachable only through the protected Ingress.
 
 ```yaml
 apiVersion: v1
@@ -111,11 +113,20 @@ data:
   # Disable built-in Dex since we are using OAuth2 Proxy
   dex.config: ""
 
-  # Users info header from OAuth2 Proxy
-  users.anonymous.enabled: "false"
+  # OAuth2 Proxy authenticates at the ingress; ArgoCD treats these requests as anonymous
+  users.anonymous.enabled: "true"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  # Start with read-only access and add explicit roles if your workflow needs more
+  policy.default: role:readonly
 ```
 
-For ArgoCD to work behind a proxy, you need to configure the server to run without its own TLS (let the proxy handle TLS) and accept forwarded headers:
+For ArgoCD to work behind a TLS-terminating proxy, configure the server to run without its own TLS and let the proxy handle HTTPS:
 
 ```yaml
 apiVersion: v1
@@ -126,9 +137,6 @@ metadata:
 data:
   # Run ArgoCD server in insecure mode (proxy handles TLS)
   server.insecure: "true"
-
-  # Trust proxy headers
-  server.rootpath: ""
 ```
 
 ## Provider-Specific Configurations
@@ -142,7 +150,7 @@ client_id = "your-google-client-id.apps.googleusercontent.com"
 client_secret = "your-google-client-secret"
 email_domains = ["example.com"]
 # Restrict to specific Google Workspace groups
-google_group = "argocd-users@example.com"
+google_groups = ["argocd-users@example.com"]
 google_admin_email = "admin@example.com"
 google_service_account_json = "/etc/oauth2-proxy/service-account.json"
 ```
@@ -161,14 +169,13 @@ github_team = "platform-team,devops"
 scope = "user:email read:org"
 ```
 
-### Azure AD (Entra ID)
+### Microsoft Entra ID
 
 ```ini
-# OAuth2 Proxy config for Azure AD
-provider = "azure"
-client_id = "your-azure-client-id"
-client_secret = "your-azure-client-secret"
-azure_tenant = "your-tenant-id"
+# OAuth2 Proxy config for Microsoft Entra ID
+provider = "entra-id"
+client_id = "your-entra-client-id"
+client_secret = "your-entra-client-secret"
 oidc_issuer_url = "https://login.microsoftonline.com/your-tenant-id/v2.0"
 email_domains = ["example.com"]
 scope = "openid email profile"
@@ -237,7 +244,7 @@ spec:
 
 ## ArgoCD CLI Access
 
-The ArgoCD CLI does not go through the browser-based OAuth2 flow. For CLI access, you have two options:
+The ArgoCD CLI does not use OAuth2 Proxy's browser auth gate as an ArgoCD login. For CLI access, you have two options:
 
 ### Option 1: API Token
 
@@ -250,11 +257,10 @@ argocd account generate-token --account admin
 
 ### Option 2: Use ArgoCD SSO with Dex Alongside OAuth2 Proxy
 
-Keep Dex for CLI SSO while using OAuth2 Proxy for the web UI. This requires separate Ingress paths:
+Keep Dex for ArgoCD SSO while using OAuth2 Proxy as an additional web UI gate. The CLI can then use ArgoCD's SSO flow:
 
-```yaml
-# CLI uses direct ArgoCD with Dex
-# Web UI goes through OAuth2 Proxy
+```bash
+argocd login argocd.example.com --sso --grpc-web
 ```
 
 ## Session Management
@@ -300,20 +306,20 @@ Set up alerts for authentication failures and proxy errors through OneUptime to 
 
 ### 403 Forbidden After Authentication
 
-Check that the OAuth2 Proxy is correctly forwarding headers:
+Check the OAuth2 Proxy logs and confirm the user is allowed by your provider restrictions:
 
 ```bash
-# Verify headers reach ArgoCD
-kubectl logs deployment/argocd-server -n argocd | grep -i "x-auth"
+# Verify OAuth2 Proxy auth decisions
+kubectl logs deployment/oauth2-proxy -n argocd | grep -i "auth"
 ```
 
 ### Redirect Loop
 
-This usually means ArgoCD's built-in auth is conflicting with OAuth2 Proxy:
+This usually means ArgoCD's own login is still required or the callback URL does not match the OAuth client:
 
 ```bash
-# Ensure Dex is disabled
-kubectl get configmap argocd-cm -n argocd -o yaml | grep dex
+# If you rely on OAuth2 Proxy plus anonymous ArgoCD UI access, ensure anonymous access is enabled
+kubectl get configmap argocd-cm -n argocd -o yaml | grep users.anonymous.enabled
 ```
 
 ### WebSocket Connection Fails
@@ -324,7 +330,6 @@ ArgoCD uses WebSockets for log streaming. Configure the Ingress to support WebSo
 annotations:
   nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
   nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
-  nginx.ingress.kubernetes.io/connection-proxy-header: "keep-alive"
 ```
 
 ## Conclusion
