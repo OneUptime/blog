@@ -109,7 +109,7 @@ spec:
   # Start WITHOUT auto-sync to control the first sync manually
   syncPolicy:
     syncOptions:
-      - ServerSideApply=true  # Adopt existing resources
+      - ServerSideApply=true  # Use server-side apply on sync
 ```
 
 Apply but do not sync yet:
@@ -131,7 +131,7 @@ argocd app get my-app-production
 ```
 
 Expected differences include:
-- Labels like `app.kubernetes.io/managed-by` that ArgoCD adds
+- The default resource tracking label `app.kubernetes.io/instance` that ArgoCD adds, or the tracking annotation if your ArgoCD installation uses annotation-based tracking
 - Annotations related to `kubectl.kubernetes.io/last-applied-configuration`
 
 If the diff shows unexpected changes, check your kustomization.yaml build options match what you have been using in CI.
@@ -151,15 +151,17 @@ spec:
       kind: Service
       jsonPointers:
         - /spec/clusterIP  # Assigned by Kubernetes
-    - group: ""
+    - group: "*"
       kind: "*"
       managedFieldsManagers:
         - kube-controller-manager  # Ignore controller-managed fields
 ```
 
+If you want ArgoCD to respect these ignored fields during sync, add `RespectIgnoreDifferences=true` to `syncOptions`.
+
 ## Step 7: Perform the Initial Sync
 
-With server-side apply, ArgoCD adopts existing resources without recreating them:
+With server-side apply, ArgoCD can apply to existing resources without recreating them:
 
 ```bash
 # Sync with server-side apply
@@ -172,7 +174,7 @@ argocd app get my-app-production --watch
 argocd app resources my-app-production
 ```
 
-No Pods should restart. No resources should be deleted and recreated. The existing resources are now tracked by ArgoCD.
+If the rendered manifests match the live pod template specs, no Pods should restart. No resources should be deleted and recreated. The existing resources are now tracked by ArgoCD.
 
 ## Step 8: Verify Application Health
 
@@ -201,6 +203,7 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:
