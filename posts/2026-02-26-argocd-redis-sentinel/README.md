@@ -55,7 +55,7 @@ redis-ha:
   replicas: 3
 
   sentinel:
-    enabled: true
+    quorum: 2
 
     config:
       # Time in milliseconds an instance must be unreachable
@@ -72,7 +72,6 @@ redis-ha:
       # Quorum: minimum number of Sentinels that must agree
       # a master is down before triggering failover.
       # For 3 Sentinels, quorum of 2 is standard.
-      # This is auto-calculated based on replica count.
 
     resources:
       requests:
@@ -128,6 +127,20 @@ data:
     # sentinel auth-pass mymaster your-redis-password
 ---
 # redis-sentinel-statefulset.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-redis-sentinel
+  namespace: argocd
+spec:
+  clusterIP: None
+  selector:
+    app: argocd-redis-sentinel
+  ports:
+    - port: 26379
+      targetPort: sentinel
+      name: sentinel
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -144,6 +157,18 @@ spec:
       labels:
         app: argocd-redis-sentinel
     spec:
+      initContainers:
+        - name: copy-config
+          image: redis:7-alpine
+          command:
+            - sh
+            - -c
+            - cp /readonly-config/sentinel.conf /etc/redis/sentinel.conf
+          volumeMounts:
+            - name: readonly-config
+              mountPath: /readonly-config
+            - name: config
+              mountPath: /etc/redis
       containers:
         - name: sentinel
           image: redis:7-alpine
@@ -182,9 +207,11 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
       volumes:
-        - name: config
+        - name: readonly-config
           configMap:
             name: redis-sentinel-config
+        - name: config
+          emptyDir: {}
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -306,7 +333,7 @@ done
 
 # If you find two masters, reset Sentinel and force one to be a replica
 kubectl exec -n argocd argocd-redis-ha-server-1 -c redis -- \
-  redis-cli slaveof argocd-redis-ha-server-0.argocd-redis-ha.argocd 6379
+  redis-cli replicaof argocd-redis-ha-server-0.argocd-redis-ha.argocd 6379
 ```
 
 ### Problem: Sentinel Logs Show "No suitable replica"
@@ -326,16 +353,24 @@ kubectl exec -n argocd argocd-redis-ha-server-1 -c redis -- \
 
 ## Monitoring Sentinel with Prometheus
 
-Export Sentinel metrics for monitoring:
+Export Sentinel metrics for monitoring. Make sure redis_exporter is configured to scrape the Sentinel endpoint, for example with `REDIS_ADDR=redis://localhost:26379` in a sidecar, or by using the exporter's `/scrape` endpoint with Sentinel targets:
 
 ```yaml
 # Prometheus scrape config for Sentinel
 - job_name: 'redis-sentinel'
+  metrics_path: /scrape
   static_configs:
     - targets:
-        - 'argocd-redis-ha-server-0.argocd-redis-ha.argocd:9121'
-        - 'argocd-redis-ha-server-1.argocd-redis-ha.argocd:9121'
-        - 'argocd-redis-ha-server-2.argocd-redis-ha.argocd:9121'
+        - 'redis://argocd-redis-ha-server-0.argocd-redis-ha.argocd:26379'
+        - 'redis://argocd-redis-ha-server-1.argocd-redis-ha.argocd:26379'
+        - 'redis://argocd-redis-ha-server-2.argocd-redis-ha.argocd:26379'
+  relabel_configs:
+    - source_labels: [__address__]
+      target_label: __param_target
+    - source_labels: [__param_target]
+      target_label: instance
+    - target_label: __address__
+      replacement: redis-exporter.monitoring.svc.cluster.local:9121
 ```
 
 Key alerts to configure:
@@ -345,7 +380,7 @@ groups:
   - name: redis-sentinel
     rules:
       - alert: RedisSentinelMasterDown
-        expr: redis_sentinel_master_status{status="ok"} == 0
+        expr: redis_sentinel_master_status{master_status="ok"} == 0
         for: 1m
         labels:
           severity: critical
