@@ -52,20 +52,23 @@ ArgoCD uses the repo-server to fetch and render Helm charts. The repo-server nee
 Build a custom repo-server image with the plugin pre-installed.
 
 ```dockerfile
-FROM quay.io/argoproj/argocd:v2.10.0
+FROM quay.io/argoproj/argocd:v3.4.2
 
 # Switch to root to install the plugin
 USER root
 
-# Install the helm-s3 plugin
+# Install dependencies needed by the helm-s3 plugin installer
 RUN apt-get update && \
     apt-get install -y curl && \
-    helm plugin install https://github.com/hypnoglow/helm-s3.git --version 0.16.0 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Switch back to the argocd user
 USER argocd
+
+RUN helm plugin install https://github.com/hypnoglow/helm-s3.git --version 0.17.1
+
+ENV HELM_PLUGINS="/home/argocd/.local/share/helm/plugins/"
 ```
 
 Build and push this image, then update the repo-server deployment.
@@ -82,7 +85,7 @@ spec:
     spec:
       containers:
         - name: argocd-repo-server
-          image: myregistry.com/argocd-custom:v2.10.0
+          image: myregistry.com/argocd-custom:v3.4.2
 ```
 
 ### Method B: Init Container Approach
@@ -106,21 +109,21 @@ spec:
             - -c
             - |
               # Download and install helm-s3 plugin
-              wget -qO- https://github.com/hypnoglow/helm-s3/releases/download/v0.16.0/helm-s3_0.16.0_linux_amd64.tar.gz | tar xz -C /custom-tools/
+              mkdir -p /helm-plugins/helm-s3
+              wget -qO- https://github.com/hypnoglow/helm-s3/releases/download/v0.17.1/helm-s3_0.17.1_linux_amd64.tar.gz | tar xz -C /helm-plugins/helm-s3
           volumeMounts:
-            - name: custom-tools
-              mountPath: /custom-tools
+            - name: helm-plugins
+              mountPath: /helm-plugins
       containers:
         - name: argocd-repo-server
           volumeMounts:
-            - name: custom-tools
-              mountPath: /usr/local/bin/helm-s3
-              subPath: helm-s3
+            - name: helm-plugins
+              mountPath: /helm-plugins
           env:
             - name: HELM_PLUGINS
-              value: /custom-tools/helm-plugins
+              value: /helm-plugins
       volumes:
-        - name: custom-tools
+        - name: helm-plugins
           emptyDir: {}
 ```
 
@@ -152,6 +155,11 @@ cat > helm-s3-policy.json << 'EOF'
   ]
 }
 EOF
+
+# Create the IAM policy
+aws iam create-policy \
+  --policy-name helm-s3-access \
+  --policy-document file://helm-s3-policy.json
 
 # Create the IAM role with IRSA trust policy
 eksctl create iamserviceaccount \
@@ -293,7 +301,7 @@ kubectl -n argocd exec deployment/argocd-repo-server -- helm plugin list
 **Access denied**: Verify the AWS credentials or IRSA role have the correct S3 permissions.
 
 ```bash
-# Test S3 access from the repo-server pod
+# Test S3 access from the repo-server pod if the AWS CLI is installed in the image
 kubectl -n argocd exec deployment/argocd-repo-server -- aws s3 ls s3://my-helm-charts/stable/
 ```
 
