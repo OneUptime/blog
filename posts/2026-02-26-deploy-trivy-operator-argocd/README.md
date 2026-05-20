@@ -47,7 +47,7 @@ type: application
 version: 1.0.0
 dependencies:
   - name: trivy-operator
-    version: "0.24.1"
+    version: "0.32.1"
     repository: "https://aquasecurity.github.io/helm-charts"
 ```
 
@@ -58,14 +58,27 @@ dependencies:
 trivy-operator:
   # Operator settings
   operator:
-    # Scan all namespaces
+    # Limit concurrent scan jobs
     scanJobsConcurrentLimit: 10
-    # Rescan interval
+    # Scan only current workload revisions
     vulnerabilityScannerScanOnlyCurrentRevisions: true
     configAuditScannerScanOnlyCurrentRevisions: true
     # Batch delete limit for cleanup
     batchDeleteLimit: 10
     batchDeleteDelay: 10s
+
+    # Scanner reports to generate
+    vulnerabilityScannerEnabled: true
+    configAuditScannerEnabled: true
+    exposedSecretScannerEnabled: true
+    rbacAssessmentScannerEnabled: true
+    infraAssessmentScannerEnabled: true
+    clusterComplianceEnabled: true
+
+    # Metrics
+    metricsVulnIdEnabled: true
+    metricsFindingsEnabled: true
+    metricsExposedSecretInfo: true
 
   # Trivy scanner configuration
   trivy:
@@ -86,8 +99,10 @@ trivy-operator:
         memory: 500Mi
 
     # Use compressed DB to save bandwidth
-    dbRepository: ghcr.io/aquasecurity/trivy-db
-    javaDbRepository: ghcr.io/aquasecurity/trivy-java-db
+    dbRegistry: ghcr.io
+    dbRepository: aquasecurity/trivy-db
+    javaDbRegistry: ghcr.io
+    javaDbRepository: aquasecurity/trivy-java-db
 
     # Timeout for individual scans
     timeout: 10m0s
@@ -98,28 +113,13 @@ trivy-operator:
     # Offline mode if cluster has no internet
     offlineScan: false
 
-  # Scanner reports to generate
-  scanners:
-    vulnerability:
-      enabled: true
-    configAudit:
-      enabled: true
-    exposedSecrets:
-      enabled: true
-    rbacAssessment:
-      enabled: true
-    infraAssessment:
-      enabled: true
-    clusterComplianceReport:
-      enabled: true
-
   # Compliance standards to check
   compliance:
     specs:
-      - nsa
-      - cis
+      - k8s-nsa-1.0
+      - k8s-cis-1.23
 
-  # Exclude namespaces from scanning
+  # Scan all namespaces unless these are set
   excludeNamespaces: ""
   targetNamespaces: ""
 
@@ -148,12 +148,6 @@ trivy-operator:
     labels:
       release: kube-prometheus-stack
 
-  # Metrics
-  trivyOperator:
-    metricsVulnerabilityId:
-      enabled: true
-    metricsFindingsEnabled: true
-    metricsExposedSecretInfo: true
 ```
 
 ## Creating the ArgoCD Application
@@ -227,7 +221,7 @@ spec:
     spec:
       containers:
         - name: trivy
-          image: ghcr.io/aquasecurity/trivy:0.57.0
+          image: mirror.gcr.io/aquasec/trivy:0.69.3
           args:
             - server
             - --listen
