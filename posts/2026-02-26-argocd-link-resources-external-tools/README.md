@@ -17,27 +17,27 @@ ArgoCD provides two main mechanisms for linking resources to external tools:
 ```mermaid
 graph TD
     A[ArgoCD Resource] --> B[Annotations]
-    A --> C[External URLs in argocd-cm]
+    A --> C[Deep links in argocd-cm]
 
-    B --> D[argocd.argoproj.io/managed-by]
-    B --> E[link.argocd.argoproj.io/*]
+    B --> D[link.argocd.argoproj.io/external-link]
+    B --> E[link.argocd.argoproj.io/<custom-name>]
 
-    C --> F[resource.customizations.externalURLs]
+    C --> F[resource.links]
 ```
 
-### Method 1: Managed-By Annotation
+### Method 1: External Link Annotation
 
 The simplest approach for per-resource links:
 
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://app.terraform.io/app/myorg/workspaces/prod"
+    link.argocd.argoproj.io/external-link: "https://app.terraform.io/app/myorg/workspaces/prod"
 ```
 
-### Method 2: External URLs Configuration
+### Method 2: Deep Links Configuration
 
-For automatic linking based on resource type, configure external URLs in the ArgoCD ConfigMap:
+For automatic linking based on resource type, configure deep links in the ArgoCD ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -46,17 +46,17 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # External URLs that appear on resources in the UI
-  resource.customizations.externalURLs: |
+  # Deep links that appear on matching resources in the UI
+  resource.links: |
     - title: Grafana Dashboard
-      url: https://grafana.example.com/d/k8s-resources?var-namespace={{.Namespace}}&var-workload={{.Name}}
-      condition: kind == "Deployment"
+      url: https://grafana.example.com/d/k8s-resources?var-namespace={{.resource.metadata.namespace}}&var-workload={{.resource.metadata.name}}
+      if: resource.kind == "Deployment"
     - title: Datadog APM
-      url: https://app.datadoghq.com/apm/services?query=service:{{.Name}}
-      condition: kind == "Deployment" || kind == "StatefulSet"
+      url: https://app.datadoghq.com/apm/services?query=service:{{.resource.metadata.name}}
+      if: resource.kind == "Deployment" || resource.kind == "StatefulSet"
     - title: Cloud Console
-      url: https://console.cloud.google.com/kubernetes/deployment/us-central1-a/production/{{.Namespace}}/{{.Name}}
-      condition: kind == "Deployment"
+      url: https://console.cloud.google.com/kubernetes/deployment/{{.cluster.name}}/{{.resource.metadata.namespace}}/{{.resource.metadata.name}}/overview
+      if: resource.kind == "Deployment"
 ```
 
 ## Linking to Terraform
@@ -71,7 +71,7 @@ kind: Namespace
 metadata:
   name: production
   annotations:
-    argocd.argoproj.io/managed-by: "https://app.terraform.io/app/myorg/workspaces/k8s-namespaces"
+    link.argocd.argoproj.io/terraform-workspace: "https://app.terraform.io/app/myorg/workspaces/k8s-namespaces"
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -79,7 +79,7 @@ metadata:
   name: main-ingress
   namespace: production
   annotations:
-    argocd.argoproj.io/managed-by: "https://app.terraform.io/app/myorg/workspaces/k8s-networking"
+    link.argocd.argoproj.io/terraform-workspace: "https://app.terraform.io/app/myorg/workspaces/k8s-networking"
 ```
 
 For Crossplane-managed cloud resources:
@@ -90,7 +90,7 @@ kind: Instance
 metadata:
   name: production-db
   annotations:
-    argocd.argoproj.io/managed-by: "https://console.aws.amazon.com/rds/home?region=us-east-1#database:id=production-db"
+    link.argocd.argoproj.io/aws-rds: "https://console.aws.amazon.com/rds/home?region=us-east-1#database:id=production-db"
 ```
 
 ## Linking to Monitoring Tools
@@ -104,12 +104,12 @@ metadata:
   name: api-server
   annotations:
     # Link to the service-specific Grafana dashboard
-    argocd.argoproj.io/managed-by: "https://grafana.example.com/d/api-server-dashboard"
+    link.argocd.argoproj.io/grafana-dashboard: "https://grafana.example.com/d/api-server-dashboard"
     # Or use a generic link with variables
     link.argocd.argoproj.io/grafana: "https://grafana.example.com/d/k8s?var-namespace=production&var-deployment=api-server"
 ```
 
-For automated Grafana linking across all Deployments, use the external URLs config:
+For automated Grafana linking across all Deployments, use the deep links config:
 
 ```yaml
 apiVersion: v1
@@ -118,13 +118,13 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations.externalURLs: |
+  resource.links: |
     - title: Grafana Metrics
-      url: "https://grafana.example.com/d/k8s-workloads?var-namespace={{.Namespace}}&var-workload={{.Name}}"
-      condition: kind == "Deployment"
+      url: "https://grafana.example.com/d/k8s-workloads?var-namespace={{.resource.metadata.namespace}}&var-workload={{.resource.metadata.name}}"
+      if: resource.kind == "Deployment"
     - title: Grafana Logs
-      url: "https://grafana.example.com/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22%7Bnamespace%3D%5C%22{{.Namespace}}%5C%22,container%3D%5C%22{{.Name}}%5C%22%7D%22%7D%5D%7D"
-      condition: kind == "Deployment"
+      url: "https://grafana.example.com/explore?left=%7B%22queries%22:%5B%7B%22expr%22:%22%7Bnamespace%3D%5C%22{{.resource.metadata.namespace}}%5C%22,container%3D%5C%22{{.resource.metadata.name}}%5C%22%7D%22%7D%5D%7D"
+      if: resource.kind == "Deployment"
 ```
 
 ### Datadog
@@ -135,7 +135,7 @@ kind: Deployment
 metadata:
   name: payment-service
   annotations:
-    argocd.argoproj.io/managed-by: "https://app.datadoghq.com/apm/services?query=service:payment-service&env:production"
+    link.argocd.argoproj.io/datadog-apm: "https://app.datadoghq.com/apm/services?query=service:payment-service&env:production"
 ```
 
 ### OneUptime
@@ -148,7 +148,7 @@ kind: Deployment
 metadata:
   name: api-server
   annotations:
-    argocd.argoproj.io/managed-by: "https://oneuptime.com/dashboard/project-id/monitors"
+    link.argocd.argoproj.io/oneuptime: "https://oneuptime.com/dashboard/project-id/monitors"
 ```
 
 ## Linking to Issue Tracking
@@ -164,7 +164,7 @@ metadata:
   name: checkout-service
   annotations:
     # Link to the team's Jira board
-    argocd.argoproj.io/managed-by: "https://myorg.atlassian.net/jira/software/projects/CHECKOUT/boards/15"
+    link.argocd.argoproj.io/jira-board: "https://myorg.atlassian.net/jira/software/projects/CHECKOUT/boards/15"
 ```
 
 ### GitHub Issues
@@ -172,7 +172,7 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/checkout-service/issues"
+    link.argocd.argoproj.io/github-issues: "https://github.com/myorg/checkout-service/issues"
 ```
 
 ## Linking to CI/CD Pipelines
@@ -185,7 +185,7 @@ kind: Deployment
 metadata:
   name: api-server
   annotations:
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/api-server/actions/workflows/deploy.yml"
+    link.argocd.argoproj.io/github-actions: "https://github.com/myorg/api-server/actions/workflows/deploy.yml"
 ```
 
 ### GitLab CI
@@ -193,7 +193,7 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://gitlab.com/myorg/api-server/-/pipelines"
+    link.argocd.argoproj.io/gitlab-pipelines: "https://gitlab.com/myorg/api-server/-/pipelines"
 ```
 
 ### Jenkins
@@ -201,7 +201,7 @@ metadata:
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://jenkins.example.com/job/api-server/"
+    link.argocd.argoproj.io/jenkins: "https://jenkins.example.com/job/api-server/"
 ```
 
 ## Linking to Cloud Console Resources
@@ -217,7 +217,7 @@ kind: Service
 metadata:
   name: api-server
   annotations:
-    argocd.argoproj.io/managed-by: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LoadBalancers:"
+    link.argocd.argoproj.io/aws-load-balancers: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#LoadBalancers:"
 ---
 # Link a PVC to its EBS volume
 apiVersion: v1
@@ -225,7 +225,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: data-volume
   annotations:
-    argocd.argoproj.io/managed-by: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#Volumes:"
+    link.argocd.argoproj.io/aws-ebs-volumes: "https://us-east-1.console.aws.amazon.com/ec2/home?region=us-east-1#Volumes:"
 ```
 
 ### GCP Resources
@@ -236,7 +236,7 @@ kind: Service
 metadata:
   name: api-server
   annotations:
-    argocd.argoproj.io/managed-by: "https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers?project=my-project"
+    link.argocd.argoproj.io/gcp-load-balancers: "https://console.cloud.google.com/net-services/loadbalancing/list/loadBalancers?project=my-project"
 ```
 
 ## Building a Deep Links Configuration
@@ -252,27 +252,27 @@ metadata:
 data:
   # Resource-level deep links
   resource.links: |
-    - url: https://grafana.example.com/d/pods?var-namespace={{.Namespace}}&var-pod={{.Name}}
+    - url: https://grafana.example.com/d/pods?var-namespace={{.resource.metadata.namespace}}&var-pod={{.resource.metadata.name}}
       title: Grafana Pod Metrics
       description: View pod metrics in Grafana
-      icon: dashboard
-      if: kind == "Pod"
-    - url: https://app.datadoghq.com/logs?query=kube_namespace:{{.Namespace}}+kube_deployment:{{.Name}}
+      icon.class: fa-chart-line
+      if: resource.kind == "Pod"
+    - url: https://app.datadoghq.com/logs?query=kube_namespace:{{.resource.metadata.namespace}}+kube_deployment:{{.resource.metadata.name}}
       title: Datadog Logs
       description: View deployment logs in Datadog
-      icon: file-text
-      if: kind == "Deployment"
-    - url: https://console.cloud.google.com/kubernetes/deployment/{{.ClusterName}}/{{.Namespace}}/{{.Name}}/overview
+      icon.class: fa-file-alt
+      if: resource.kind == "Deployment"
+    - url: https://console.cloud.google.com/kubernetes/deployment/{{.cluster.name}}/{{.resource.metadata.namespace}}/{{.resource.metadata.name}}/overview
       title: GKE Console
       description: View in Google Cloud Console
-      icon: cloud
-      if: kind == "Deployment"
+      icon.class: fa-cloud
+      if: resource.kind == "Deployment"
 
   # Application-level deep links
   application.links: |
-    - url: https://grafana.example.com/d/argocd-app?var-app={{.metadata.name}}
+    - url: https://grafana.example.com/d/argocd-app?var-app={{.application.metadata.name}}
       title: Application Dashboard
-    - url: https://github.com/myorg/gitops-config/tree/main/apps/{{.metadata.name}}
+    - url: https://github.com/myorg/gitops-config/tree/main/apps/{{.application.metadata.name}}
       title: Git Source
 ```
 
@@ -300,7 +300,7 @@ kind: AnnotationsTransformer
 metadata:
   name: managed-by-links
 annotations:
-  argocd.argoproj.io/managed-by: "https://github.com/myorg/platform-config/tree/main/services"
+  link.argocd.argoproj.io/git-source: "https://github.com/myorg/platform-config/tree/main/services"
 fieldSpecs:
   - path: metadata/annotations
     create: true
@@ -312,18 +312,21 @@ Verify your links are properly configured:
 
 ```bash
 # List all resources with external tool links
-kubectl get all -n production -o json | \
+kubectl get all,ingress,pvc -n production -o json | \
   jq -r '.items[] |
-    select(.metadata.annotations["argocd.argoproj.io/managed-by"] != null) |
-    "\(.kind)/\(.metadata.name): \(.metadata.annotations["argocd.argoproj.io/managed-by"])"'
+    . as $item |
+    (.metadata.annotations // {}) as $annotations |
+    $annotations | to_entries[] |
+    select(.key | startswith("link.argocd.argoproj.io/")) |
+    "\($item.kind)/\($item.metadata.name): \(.value)"'
 ```
 
 ## Best Practices
 
 1. **Link to actionable pages** - Link directly to the relevant dashboard or page, not just the tool's homepage
-2. **Use dynamic URLs** - Leverage template variables in external URL configurations for automatic linking
+2. **Use dynamic URLs** - Leverage template variables in deep link configurations for automatic linking
 3. **Keep URLs updated** - When tools change their URL structure, update the annotations
-4. **Layer your links** - Use managed-by for the primary link and deep links for supplementary tool links
+4. **Layer your links** - Use per-resource link annotations for specific links and deep links for supplementary tool links
 5. **Document conventions** - Create a team standard for which tools to link from which resource types
 
 Linking ArgoCD resources to external tools transforms your deployment platform from an isolated tool into a connected hub. When an incident occurs, operators can navigate from a problematic deployment in ArgoCD directly to its monitoring dashboard, CI/CD pipeline, or cloud console in a single click.
