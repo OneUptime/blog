@@ -81,8 +81,8 @@ To                         Action      From
 80/tcp                     ALLOW OUT   Anywhere
 443/tcp                    ALLOW OUT   Anywhere
 587/tcp                    ALLOW OUT   Anywhere
-5432/tcp                   ALLOW OUT   192.168.1.60
-5672/tcp                   ALLOW OUT   192.168.1.70
+192.168.1.60 5432/tcp      ALLOW OUT   Anywhere
+192.168.1.70 5672/tcp      ALLOW OUT   Anywhere
 123/udp                    ALLOW OUT   Anywhere
 ```
 
@@ -118,18 +118,14 @@ sudo ufw allow out 123/udp  # NTP
 sudo ufw allow out 80/tcp   # HTTP (for apt, etc.)
 sudo ufw allow out 443/tcp  # HTTPS
 
-# Allow related/established traffic (critical for stateful rules)
-# This ensures reply traffic for outbound-initiated connections is allowed
-sudo ufw allow out on eth0 to any port 0:65535 proto tcp
-
 sudo ufw enable
 ```
 
 ### The Established Connections Problem
 
-When you deny all outgoing traffic and then try to allow specific ports, you might find that even allowed outbound connections don't work. This is because TCP connections have both outgoing SYN packets (the initial connection) and incoming ACK/data packets (the response).
+When you deny all outgoing traffic and then try to allow specific ports, you might wonder whether TCP responses need separate rules. TCP connections have both outgoing SYN packets (the initial connection) and incoming ACK/data packets (the response).
 
-The UFW default incoming deny handles incoming traffic, but when you also deny all outgoing, you can accidentally block the ACK packets for established connections.
+The UFW default incoming deny handles new incoming traffic, but it does not normally block reply packets for connections you initiated.
 
 UFW handles this through the `before.rules` file, which allows established and related connections:
 
@@ -140,11 +136,11 @@ sudo cat /etc/ufw/before.rules | grep ESTABLISHED
 You should see rules allowing established connections:
 
 ```text
--A ufw-before-input -m state --state ESTABLISHED,RELATED -j ACCEPT
--A ufw-before-output -m state --state ESTABLISHED,RELATED -j ACCEPT
+-A ufw-before-input -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A ufw-before-output -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 ```
 
-These rules ensure that reply traffic for connections you initiated (established state) is allowed even when the default outgoing policy is deny.
+These rules ensure that reply traffic for connections you initiated, and reply traffic for allowed incoming connections, is allowed even when the default policies are deny.
 
 ## Restricting Outbound to Specific Destinations
 
@@ -152,7 +148,7 @@ For environments requiring strict egress control:
 
 ```bash
 # Only allow outbound HTTPS to specific IP ranges (e.g., your CDN)
-sudo ufw allow out to 104.16.0.0/12 port 443 proto tcp  # Cloudflare
+sudo ufw allow out to 104.16.0.0/13 port 443 proto tcp  # Cloudflare
 sudo ufw allow out to 13.32.0.0/15 port 443 proto tcp   # AWS CloudFront
 
 # Allow outbound to internal services only
@@ -251,12 +247,12 @@ sudo ufw allow out 53/tcp
 # NTP - keep the clock accurate
 sudo ufw allow out 123/udp
 
-# Package management - for system updates
-sudo ufw allow out to security.ubuntu.com port 80 proto tcp
-sudo ufw allow out to security.ubuntu.com port 443 proto tcp
-sudo ufw allow out to archive.ubuntu.com port 80 proto tcp
+# Package management - for HTTP package mirrors
+# UFW rules use IP addresses, not DNS hostnames; allow HTTP/HTTPS or maintain
+# explicit IP ranges for your package mirrors.
+sudo ufw allow out 80/tcp
 
-# HTTPS - for git operations, API calls, artifact upload
+# HTTPS - for package mirrors, git operations, API calls, artifact upload
 sudo ufw allow out 443/tcp
 
 # Git over SSH (GitHub, GitLab)
