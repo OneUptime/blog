@@ -247,8 +247,8 @@ Create scaling profiles that can be activated through Git:
 ```yaml
 # scaling/normal/kustomization.yaml
 
-apiVersion: kustomize.io/v1beta1
-kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
 patches:
   - target:
       kind: HorizontalPodAutoscaler
@@ -273,8 +273,8 @@ patches:
 
 ---
 # scaling/black-friday/kustomization.yaml
-apiVersion: kustomize.io/v1beta1
-kind: Kustomization
+apiVersion: kustomize.config.k8s.io/v1alpha1
+kind: Component
 patches:
   - target:
       kind: HorizontalPodAutoscaler
@@ -301,8 +301,8 @@ patches:
 To activate Black Friday scaling:
 
 ```bash
-# In the production overlay's kustomization.yaml, switch to black-friday scaling
-# Update reference from scaling/normal to scaling/black-friday
+# In the production overlay's kustomization.yaml, switch the component to black-friday scaling
+# Update components reference from scaling/normal to scaling/black-friday
 git commit -m "Activate Black Friday scaling profile"
 git push
 # ArgoCD scales up to the new minimums
@@ -354,6 +354,9 @@ spec:
     matchLabels:
       app: inventory
   template:
+    metadata:
+      labels:
+        app: inventory
     spec:
       containers:
         - name: inventory
