@@ -47,17 +47,14 @@ spec:
     targetRevision: 0.7.0
     helm:
       values: |
-        trivy:
-          mode: server
-        server:
-          replicas: 2
-          resources:
-            requests:
-              cpu: 500m
-              memory: 2Gi
-            limits:
-              cpu: 2
-              memory: 4Gi
+        replicaCount: 2
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
         persistence:
           enabled: true
           size: 10Gi
@@ -65,10 +62,9 @@ spec:
         service:
           type: ClusterIP
           port: 4954
-        # Cache vulnerability DB
-        cacheDir: /home/scanner/.cache/trivy
-        # Auto-update vulnerability DB
-        dbUpdateInterval: 12h
+        # The server chart stores Trivy's DB under /home/scanner/.cache/trivy.
+        trivy:
+          skipDBUpdate: false
   destination:
     server: https://kubernetes.default.svc
     namespace: trivy-system
@@ -125,18 +121,16 @@ spec:
                   "$IMAGE"
 
                 # Check for critical vulns separately to gate deployment
-                CRITICAL_COUNT=$(trivy image \
+                if trivy image \
                   --server http://trivy-server.trivy-system:4954 \
                   --severity CRITICAL \
-                  --format json \
-                  --quiet \
-                  "$IMAGE" | jq '[.Results[]?.Vulnerabilities[]?] | length')
-
-                if [ "$CRITICAL_COUNT" -gt "0" ]; then
-                  echo "FAILED: $IMAGE has $CRITICAL_COUNT critical vulnerabilities"
-                  FAILED=1
-                else
+                  --exit-code 1 \
+                  --format table \
+                  "$IMAGE"; then
                   echo "PASSED: $IMAGE has no critical vulnerabilities"
+                else
+                  echo "FAILED: $IMAGE has one or more critical vulnerabilities"
+                  FAILED=1
                 fi
               done
 
@@ -177,6 +171,7 @@ spec:
           rbacAssessmentScannerEnabled: true
           scanJobTimeout: 10m
           scanJobTTL: 30m
+          scannerReportTTL: 24h
         trivy:
           mode: ClientServer
           serverURL: http://trivy-server.trivy-system:4954
@@ -184,8 +179,8 @@ spec:
           ignoreUnfixed: false
         compliance:
           failEntriesLimit: 10
-        vulnerabilityReportsPlugin: Trivy
-        scannerReportTTL: 24h
+        trivyOperator:
+          vulnerabilityReportsPlugin: Trivy
   destination:
     server: https://kubernetes.default.svc
     namespace: trivy-system
@@ -220,15 +215,19 @@ spec:
             - -c
             - |
               # Check for critical vulnerabilities in the namespace
-              REPORTS=$(kubectl get vulnerabilityreports \
+              CRITICAL_TOTAL=0
+              HIGH_TOTAL=0
+              for COUNT in $(kubectl get vulnerabilityreports \
                 -n default \
-                -o json)
+                -o jsonpath='{range .items[*]}{.report.summary.criticalCount}{"\n"}{end}'); do
+                CRITICAL_TOTAL=$((CRITICAL_TOTAL + COUNT))
+              done
 
-              CRITICAL_TOTAL=$(echo "$REPORTS" | \
-                jq '[.items[].report.summary.criticalCount] | add // 0')
-
-              HIGH_TOTAL=$(echo "$REPORTS" | \
-                jq '[.items[].report.summary.highCount] | add // 0')
+              for COUNT in $(kubectl get vulnerabilityreports \
+                -n default \
+                -o jsonpath='{range .items[*]}{.report.summary.highCount}{"\n"}{end}'); do
+                HIGH_TOTAL=$((HIGH_TOTAL + COUNT))
+              done
 
               echo "Vulnerability Summary:"
               echo "  Critical: $CRITICAL_TOTAL"
@@ -237,11 +236,13 @@ spec:
               # List affected workloads
               echo ""
               echo "Affected workloads:"
-              echo "$REPORTS" | jq -r '
-                .items[] |
-                select(.report.summary.criticalCount > 0) |
-                "  \(.metadata.labels["trivy-operator.resource.name"]): \(.report.summary.criticalCount) critical"
-              '
+              kubectl get vulnerabilityreports -n default \
+                -o jsonpath='{range .items[*]}{.metadata.labels.trivy-operator\.resource\.name}{" "}{.report.summary.criticalCount}{"\n"}{end}' | \
+                while read -r WORKLOAD COUNT; do
+                  if [ "${COUNT:-0}" -gt "0" ]; then
+                    echo "  $WORKLOAD: $COUNT critical"
+                  fi
+                done
 
               if [ "$CRITICAL_TOTAL" -gt "0" ]; then
                 echo ""
@@ -252,6 +253,13 @@ spec:
               echo "No critical vulnerabilities - deployment approved"
       restartPolicy: Never
   backoffLimit: 1
+---
+# ServiceAccount used by the PreSync job
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vuln-report-reader
+  namespace: default
 ---
 # RBAC for reading vulnerability reports
 apiVersion: rbac.authorization.k8s.io/v1
@@ -294,6 +302,19 @@ metadata:
 spec:
   template:
     spec:
+      initContainers:
+        - name: clone-configs
+          image: alpine/git:latest
+          command:
+            - git
+            - clone
+            - --depth
+            - "1"
+            - https://github.com/your-org/k8s-configs.git
+            - /configs
+          volumeMounts:
+            - name: configs
+              mountPath: /configs
       containers:
         - name: config-scanner
           image: aquasec/trivy:latest
@@ -301,11 +322,6 @@ spec:
             - /bin/sh
             - -c
             - |
-              apk add --no-cache git
-
-              # Clone the config repo
-              git clone --depth 1 https://github.com/your-org/k8s-configs.git /configs
-
               # Scan Kubernetes configs for misconfigurations
               trivy config \
                 --severity CRITICAL,HIGH \
@@ -319,6 +335,12 @@ spec:
               fi
 
               echo "Configuration scan passed"
+          volumeMounts:
+            - name: configs
+              mountPath: /configs
+      volumes:
+        - name: configs
+          emptyDir: {}
       restartPolicy: Never
   backoffLimit: 1
 ```
@@ -339,10 +361,23 @@ CVE-2024-5678
 Mount this file in your scan job:
 
 ```yaml
+volumeMounts:
+  - name: trivy-config
+    mountPath: /etc/trivy
+    readOnly: true
 volumes:
   - name: trivy-config
     configMap:
       name: trivy-ignore-rules
+```
+
+Then point Trivy at the mounted file:
+
+```sh
+trivy image --ignorefile /etc/trivy/.trivyignore registry.example.com/backend:v2.8.0
+```
+
+```yaml
 ---
 # ConfigMap managed by ArgoCD
 apiVersion: v1
