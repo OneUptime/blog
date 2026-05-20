@@ -97,7 +97,7 @@ kustomize build ./overlays/production
 Common rendering issues:
 
 - **Helm value override ordering** - Values files and parameters are applied in a specific order
-- **Kustomize patch failures** - A patch that does not match creates an empty diff
+- **Kustomize patch failures** - A patch that does not match the intended resource leaves rendered output unchanged or fails the build
 - **Jsonnet import errors** - Missing libraries or incorrect import paths
 - **Environment-specific values** - Wrong values file being used for the target environment
 
@@ -115,16 +115,20 @@ argocd version
 
 Common normalization problems:
 
-### Integer vs String Type Mismatches
+### Quantity Formatting Differences
 
-Kubernetes sometimes converts between integer and string representations:
+Kubernetes custom marshalers can reformat quantities, especially when CRDs reuse built-in Kubernetes types:
 
 ```yaml
 # Your manifest says
-replicas: 3
+resources:
+  requests:
+    cpu: 100m
 
 # Live state might show
-replicas: "3"  # String instead of integer
+resources:
+  requests:
+    cpu: 0.1
 ```
 
 ### Null vs Missing Fields
@@ -140,22 +144,28 @@ spec: {}
 
 ### Array Ordering
 
-Some resources have arrays that Kubernetes sorts differently:
+Some resources have arrays that controllers sort differently:
 
 ```yaml
 # Your manifest
-env:
-  - name: B_VAR
-    value: "b"
-  - name: A_VAR
-    value: "a"
+spec:
+  metrics:
+    - type: Resource
+      resource:
+        name: memory
+    - type: Resource
+      resource:
+        name: cpu
 
-# Live state (sorted by controller)
-env:
-  - name: A_VAR
-    value: "a"
-  - name: B_VAR
-    value: "b"
+# Live state (reordered by controller)
+spec:
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+    - type: Resource
+      resource:
+        name: memory
 ```
 
 ## Step 5: Examine Controller Logs
@@ -164,20 +174,21 @@ The ArgoCD application controller logs contain detailed information about compar
 
 ```bash
 # Get recent controller logs
-kubectl logs -n argocd deployment/argocd-application-controller \
+kubectl logs -n argocd statefulset/argocd-application-controller \
   --tail=100 | grep "my-app"
 
 # Filter for comparison-related messages
-kubectl logs -n argocd deployment/argocd-application-controller \
+kubectl logs -n argocd statefulset/argocd-application-controller \
   --tail=200 | grep -i "compari\|diff\|sync.*status\|reconcil"
 
 # Check for errors during comparison
-kubectl logs -n argocd deployment/argocd-application-controller \
+kubectl logs -n argocd statefulset/argocd-application-controller \
   --tail=500 | grep -i "error\|warn\|fail" | grep "my-app"
 
 # Increase log verbosity temporarily
-kubectl patch deployment argocd-application-controller -n argocd \
-  --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/command", "value": ["argocd-application-controller", "--loglevel", "debug"]}]'
+kubectl patch configmap argocd-cmd-params-cm -n argocd \
+  --type merge -p '{"data":{"controller.log.level":"debug"}}'
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 ```
 
 Look for these log patterns:
@@ -289,7 +300,7 @@ If comparison is slow:
 
 1. **Split large applications** into smaller, focused applications
 2. **Increase controller resources** if CPU is the bottleneck
-3. **Enable server-side diff** which can be faster for large resource sets
+3. **Enable server-side diff** when admission or defaulting behavior needs to be included in the diff
 4. **Reduce sync frequency** for non-critical applications
 
 ## Quick Reference Checklist
