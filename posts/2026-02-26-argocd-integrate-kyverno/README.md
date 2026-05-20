@@ -37,14 +37,22 @@ spec:
     targetRevision: 3.1.0
     helm:
       values: |
-        replicaCount: 3
-        resources:
-          limits:
-            memory: 384Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
-        # Exclude ArgoCD namespace from policy enforcement
+        admissionController:
+          replicas: 3
+          container:
+            resources:
+              limits:
+                memory: 384Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+        backgroundController:
+          replicas: 2
+        cleanupController:
+          replicas: 2
+        reportsController:
+          replicas: 2
+        # Exclude ArgoCD namespace from admission webhook processing
         config:
           excludeGroups:
             - system:nodes
@@ -56,6 +64,7 @@ spec:
                     values:
                       - kube-system
                       - kyverno
+                      - argocd
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
@@ -86,7 +95,6 @@ metadata:
       All Deployments and StatefulSets must have team and environment labels.
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce  # or Audit
   background: true
   rules:
     - name: require-team-label
@@ -100,6 +108,7 @@ spec:
                 - production
                 - staging
       validate:
+        failureAction: Enforce  # or Audit
         message: "The label 'team' is required."
         pattern:
           metadata:
@@ -113,6 +122,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce  # or Audit
         message: "The label 'environment' is required."
         pattern:
           metadata:
@@ -126,7 +136,6 @@ kind: ClusterPolicy
 metadata:
   name: disallow-latest-tag
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: validate-image-tag
@@ -138,6 +147,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Enforce
         message: "Using ':latest' tag is not allowed. Use a specific version."
         pattern:
           spec:
@@ -153,7 +163,6 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: require-limits
@@ -164,6 +173,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce
         message: "CPU and memory limits are required for all containers."
         pattern:
           spec:
@@ -304,12 +314,12 @@ spec:
 ### Option 3: Use Server-Side Diff
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-cmd-params-cm ConfigMap
 data:
   controller.diff.server.side: "true"
 ```
 
-Server-side diff handles mutation webhook effects more accurately.
+Server-side diff handles mutation webhook effects more accurately. Restart the `argocd-application-controller` after changing this setting.
 
 ## ArgoCD Application for Policies
 
@@ -383,7 +393,7 @@ Fix the violation in Git and sync again. The PR review process naturally becomes
 When certain applications need to bypass a policy:
 
 ```yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: allow-system-without-limits
@@ -396,6 +406,9 @@ spec:
   match:
     any:
       - resources:
+          kinds:
+            - Deployment
+            - StatefulSet
           namespaces:
             - kube-system
             - monitoring
@@ -403,7 +416,7 @@ spec:
 
 ## Best Practices
 
-1. **Start with Audit mode** (`validationFailureAction: Audit`) before switching to `Enforce`.
+1. **Start with Audit mode** (`failureAction: Audit`) before switching to `Enforce`.
 2. **Use sync waves** to install Kyverno before policies, and policies before workloads.
 3. **Separate validation from mutation** policies for clearer management.
 4. **Handle mutation diffs** either by including mutated values in Git or configuring ignore rules.
