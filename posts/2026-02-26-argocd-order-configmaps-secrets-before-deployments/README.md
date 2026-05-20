@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Sync Waves, Configuration Management
 
-Description: Learn how to use ArgoCD sync waves to deploy ConfigMaps and Secrets before the Deployments that reference them, preventing pod startup failures and CrashLoopBackOff issues.
+Description: Learn how to use ArgoCD sync waves to deploy ConfigMaps and Secrets before the Deployments that reference them, preventing pod startup failures and noisy rollout issues.
 
 ---
 
-A Deployment that references a ConfigMap or Secret that does not exist yet will create pods that crash on startup. The container runtime cannot mount the missing volume or inject the missing environment variable, so the pod enters CrashLoopBackOff. ArgoCD sync waves prevent this by ensuring configuration resources exist before the workloads that consume them.
+A Deployment that references a ConfigMap or Secret that does not exist yet will create pods that cannot start. The kubelet cannot mount the missing volume or inject the missing environment variable, so the pod waits until the missing object is available. ArgoCD sync waves prevent this by ensuring configuration resources exist before the workloads that consume them.
 
 ## The Problem: Missing Configuration at Pod Start
 
-When ArgoCD applies resources in the same sync wave, ConfigMaps, Secrets, and Deployments may be created in any order. If the Deployment reaches the API server first, Kubernetes schedules pods immediately. Those pods try to mount or read the ConfigMap or Secret, fail, and crash.
+When ArgoCD applies resources in the same sync wave, it orders them by phase, wave, kind, and name. Even though built-in kind ordering usually puts core configuration resources before workload resources, explicit waves make the dependency clear and are especially useful when configuration is produced by another controller. If a Deployment creates a pod before a required ConfigMap or Secret is available, Kubernetes schedules the pod, but the pod cannot start.
 
 ```mermaid
 sequenceDiagram
@@ -25,12 +25,12 @@ sequenceDiagram
     K8s->>Pod: Schedule pod
     Pod->>K8s: Mount configmap app-config
     K8s-->>Pod: Error: configmap "app-config" not found
-    Pod->>Pod: CrashLoopBackOff
+    Pod->>Pod: Pending / CreateContainerConfigError
     Note over K8s: ConfigMap created moments later
     Note over Pod: Pod eventually recovers on retry
 ```
 
-The pod might eventually recover after Kubernetes retries, but this creates a noisy deployment with transient errors. With sync waves, you avoid the problem entirely.
+The pod might eventually start after Kubernetes retries, but this creates a noisy deployment with transient errors. With sync waves, you avoid the problem for resources ArgoCD applies directly.
 
 ## Basic ConfigMap-Before-Deployment Ordering
 
@@ -104,7 +104,7 @@ spec:
             name: app-config
 ```
 
-ArgoCD creates the ConfigMap and Secret in wave -1, confirms they exist, and then creates the Deployment in wave 0. The pods start with all configuration already available.
+ArgoCD applies the ConfigMap and Secret in wave -1 before it applies the Deployment in wave 0. The pods start with all configuration already available.
 
 ## Multiple ConfigMaps for Different Components
 
@@ -153,7 +153,7 @@ data:
   LOG_OUTPUT: "stdout"
 ```
 
-All three ConfigMaps deploy in wave -1, in parallel. The Deployment in wave 0 can safely reference all of them.
+All three ConfigMaps deploy as part of wave -1. The Deployment in wave 0 can safely reference all of them.
 
 ## Handling Optional ConfigMaps
 
@@ -256,7 +256,7 @@ spec:
                 name: app-credentials
 ```
 
-The gap between wave -2 and wave 0 gives the External Secrets Operator time to fetch the secret data and create the Kubernetes Secret. If you use wave -1 for the ExternalSecret and wave 0 for the Deployment, there might not be enough time for reconciliation.
+The gap between wave -2 and wave 0 gives the External Secrets Operator a chance to fetch the secret data and create the Kubernetes Secret. This ordering alone does not guarantee that the target Secret has been created before the Deployment starts, because ArgoCD's default delay between waves is short and external reconciliation can take longer. If the Deployment must wait strictly for the generated Secret, add an ArgoCD health check for ExternalSecret or a PreSync check that waits for the target Secret.
 
 ## ConfigMap Updates and Deployment Rollouts
 
@@ -371,6 +371,6 @@ spec:
       targetPort: 8080
 ```
 
-This layered approach guarantees that every dependency is satisfied before it is needed. Namespace exists before anything deploys into it, configuration exists before workloads reference it, and networking is set up after workloads are running.
+This layered approach makes the dependency order explicit. Namespace exists before anything deploys into it, configuration exists before workloads reference it, and networking is set up after workloads are created.
 
 For more on sync wave fundamentals, see the [ArgoCD sync waves guide](https://oneuptime.com/blog/post/2026-02-09-argocd-sync-waves-ordered-deployments/view). For namespace ordering specifically, check out the [namespace ordering guide](https://oneuptime.com/blog/post/2026-02-26-argocd-order-namespace-creation-sync-waves/view).
