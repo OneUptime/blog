@@ -10,27 +10,27 @@ If you've opened a Datadog invoice recently and felt your stomach drop, you're n
 
 The pattern is always the same: you start with APM for a handful of services. Then you add logs because correlating traces with log lines is useful. Then custom metrics creep in. Then someone enables RUM. Then you get the invoice and realize you're spending more on observability than on the infrastructure you're observing.
 
-This isn't a Datadog hit piece. Their product is genuinely good. But their pricing model - per-host for infra, per-million for logs, per-span for APM, per-session for RUM - creates a tax on growth that hits mid-market teams hardest. You're too big for the free tier, too small to negotiate enterprise discounts, and stuck in the middle watching costs compound.
+This isn't a Datadog hit piece. Their product is genuinely good. But their pricing model - per-host for infra and APM, per-GB and per-million-event for logs, per-GB and per-indexed-span for APM data, per-session for RUM - creates a tax on growth that hits mid-market teams hardest. You're too big for the free tier, too small to negotiate enterprise discounts, and stuck in the middle watching costs compound.
 
 So what do you do about it?
 
 ## The Actual Numbers
 
-Let's put real numbers on this. A typical mid-market setup - 50 hosts, 20 services, reasonable log volume (100GB/day), basic APM, and a status page - runs roughly:
+Let's put real numbers on this. A typical mid-market setup - 50 hosts, APM on 40 hosts, reasonable log volume (100GB/day), RUM, synthetics, and incident management - runs roughly:
 
 | Component | Datadog Cost (Monthly) |
 |-----------|----------------------|
 | Infrastructure (50 hosts) | $1,150 |
-| APM (20 services) | $1,240 |
+| APM (40 APM hosts) | $1,240 |
 | Log Management (100GB/day) | $3,045 |
-| Synthetics (100 tests) | $480 |
-| RUM (100k sessions) | $1,590 |
+| Synthetics (~40k browser test runs) | $480 |
+| RUM Investigate (100k sessions) | $300 |
 | Incident Management | $680 |
-| **Total** | **~$8,185/mo** |
+| **Total** | **~$6,895/mo** |
 
-That's nearly $100K per year. For observability. For a team that probably has 20-40 engineers.
+That's more than $80K per year. For observability. For a team that probably has 20-40 engineers.
 
-And the worst part? These costs scale linearly with your infrastructure. Double your hosts, double your bill. Add a new service, add another line item. Growth literally costs you money in observability overhead.
+And the worst part? Large parts of these costs scale linearly with your infrastructure and telemetry usage. Double your hosts, and the host-based parts of the bill double. Add more logs, indexed spans, browser test runs, or RUM sessions, and usage-based charges grow with them. Growth literally costs you money in observability overhead.
 
 ## The Open Source Landscape in 2026
 
@@ -65,7 +65,7 @@ This is where 2026 is genuinely different from 2023. Platforms like OneUptime, S
 Not every team should leave Datadog. Here's an honest framework:
 
 **Stay on Datadog if:**
-- You have fewer than 10 hosts (the free tier is fine)
+- You have five or fewer infrastructure hosts and only need free-tier coverage
 - You heavily use 5+ Datadog integrations that don't exist elsewhere
 - You have zero appetite for any self-hosting or operational work
 - Your company negotiated a deep enterprise discount
@@ -89,24 +89,50 @@ If you're going to switch, do it in phases. Don't rip and replace overnight.
 
 **Phase 1 (Week 1-2): Parallel Run**
 
-Deploy your open source platform alongside Datadog. Send the same telemetry to both. OpenTelemetry makes this trivially easy - just add another exporter.
+Deploy your open source platform alongside Datadog. Send the same telemetry to both. OpenTelemetry makes this straightforward - add another exporter and attach it to the same pipelines.
 
 ```yaml
 # otel-collector-config.yaml
 
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+
+connectors:
+  datadog/connector:
+
 exporters:
-  otlp/oneuptime:
-    endpoint: "your-oneuptime-instance:4317"
-  datadog:
+  otlphttp/oneuptime:
+    endpoint: "https://your-oneuptime-instance/otlp"
+    encoding: json
+    headers:
+      "Content-Type": "application/json"
+      "x-oneuptime-token": "${env:ONEUPTIME_TOKEN}"
+  datadog/exporter:
     api:
-      key: ${DD_API_KEY}
+      key: ${env:DD_API_KEY}
 
 service:
   pipelines:
     traces:
-      exporters: [otlp/oneuptime, datadog]
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/oneuptime, datadog/connector, datadog/exporter]
     metrics:
-      exporters: [otlp/oneuptime, datadog]
+      receivers: [otlp, datadog/connector]
+      processors: [batch]
+      exporters: [otlphttp/oneuptime, datadog/exporter]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlphttp/oneuptime, datadog/exporter]
 ```
 
 **Phase 2 (Week 3-4): Validate**
