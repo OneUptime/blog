@@ -88,12 +88,12 @@ KUBECONFIG=/path/to/remote/kubeconfig kubectl get --raw /healthz
 ### Step 5: Check for Certificate Issues
 
 ```bash
-# Check if the cluster certificate has expired
+# Check if the client certificate stored in ArgoCD has expired
 kubectl get secret $CLUSTER_SECRET -n argocd -o jsonpath='{.data.config}' | base64 -d | \
   jq -r '.tlsClientConfig.certData // empty' | base64 -d | \
   openssl x509 -text -noout 2>/dev/null | grep -A2 "Not After"
 
-# Check if the CA cert matches the cluster's current CA
+# Check if the stored CA certificate has expired
 kubectl get secret $CLUSTER_SECRET -n argocd -o jsonpath='{.data.config}' | base64 -d | \
   jq -r '.tlsClientConfig.caData // empty' | base64 -d | \
   openssl x509 -text -noout 2>/dev/null | grep -A2 "Not After"
@@ -101,9 +101,9 @@ kubectl get secret $CLUSTER_SECRET -n argocd -o jsonpath='{.data.config}' | base
 
 ## Root Causes and Resolutions
 
-### Cause 1: Service Account Token Expired
+### Cause 1: Service Account Token Expired or Invalidated
 
-Many managed Kubernetes services rotate service account tokens. If the token stored in ArgoCD has expired, it cannot authenticate.
+ArgoCD stores a service account token for the managed cluster. If that token was issued with an expiry, was revoked, or was invalidated, ArgoCD cannot authenticate.
 
 ```bash
 # Re-add the cluster with fresh credentials
@@ -118,8 +118,10 @@ argocd cluster add <context-name> --name <cluster-name>
 For EKS clusters, the token may need to be refreshed differently.
 
 ```bash
-# For EKS: update the cluster with the current IAM credentials
-argocd cluster add arn:aws:eks:<region>:<account>:cluster/<cluster-name> \
+# For EKS: update the cluster using the kubeconfig context and AWS auth settings
+argocd cluster add <context-name> \
+  --aws-cluster-name <cluster-name> \
+  --aws-role-arn arn:aws:iam::<account>:role/<role-name> \
   --name <cluster-name>
 ```
 
@@ -170,14 +172,14 @@ Someone modified the RBAC on the remote cluster, removing permissions from ArgoC
 KUBECONFIG=/path/to/remote/kubeconfig kubectl get serviceaccount argocd-manager -n kube-system
 
 # Check ClusterRoleBinding
-KUBECONFIG=/path/to/remote/kubeconfig kubectl get clusterrolebinding argocd-manager-role
+KUBECONFIG=/path/to/remote/kubeconfig kubectl get clusterrolebinding argocd-manager-role-binding
 
 # If missing, recreate the RBAC
 KUBECONFIG=/path/to/remote/kubeconfig kubectl apply -f - <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: argocd-manager-role
+  name: argocd-manager-role-binding
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
