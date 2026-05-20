@@ -47,6 +47,8 @@ data:
   application.namespaces: "team-*"
 ```
 
+Restart the ArgoCD server and application controller after changing this ConfigMap. If developers will manage these applications through the ArgoCD UI or CLI, also extend the Kubernetes RBAC for the `argocd-server` ServiceAccount so it can access Application resources in those namespaces.
+
 Now create an AppProject that restricts what teams can deploy:
 
 ```yaml
@@ -136,6 +138,8 @@ metadata:
   name: self-service-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/app-registry.git
@@ -144,20 +148,20 @@ spec:
           - path: "apps/*/config.yaml"
   template:
     metadata:
-      name: "{{app.name}}"
+      name: "{{.app.name}}"
       namespace: argocd
       labels:
-        team: "{{app.team}}"
-        environment: "{{app.environment}}"
+        team: "{{.app.team}}"
+        environment: "{{.app.environment}}"
     spec:
-      project: "{{app.team}}"
+      project: "{{.app.team}}"
       source:
-        repoURL: "{{app.repoURL}}"
-        path: "{{app.path}}"
-        targetRevision: "{{app.targetRevision}}"
+        repoURL: "{{.app.repoURL}}"
+        path: "{{.app.path}}"
+        targetRevision: "{{.app.targetRevision}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{app.team}}-{{app.environment}}"
+        namespace: "{{.app.team}}-{{.app.environment}}"
       syncPolicy:
         automated:
           prune: true
@@ -185,6 +189,18 @@ The platform team reviews the PR, verifies the team name and namespace are corre
 
 Each team gets a parent application that watches a directory in their repository. Any Application YAML they add to that directory gets created automatically.
 
+For this pattern, the team project must also allow the parent app to deploy `Application` resources into team namespaces, in addition to the workload resources shown earlier:
+
+```yaml
+spec:
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "team-alpha-*"
+  namespaceResourceWhitelist:
+    - group: argoproj.io
+      kind: Application
+```
+
 ```yaml
 # Platform team creates this for each team
 apiVersion: argoproj.io/v1alpha1
@@ -200,7 +216,7 @@ spec:
     targetRevision: main
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: team-alpha-dev
   syncPolicy:
     automated:
       prune: true
@@ -215,9 +231,9 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: payment-service
-  namespace: argocd
+  namespace: team-alpha-dev
 spec:
-  project: team-alpha  # Enforced by parent's project
+  project: team-alpha
   source:
     repoURL: https://github.com/myorg/team-alpha-payment.git
     path: k8s/dev
@@ -270,34 +286,24 @@ Use admission webhooks or policy engines to validate self-service application cr
 
 ```yaml
 # Kyverno policy to validate application configurations
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: validate-argocd-apps
 spec:
-  rules:
-    - name: require-team-label
-      match:
-        resources:
-          kinds:
-            - Application
-      validate:
-        message: "Applications must have a team label"
-        pattern:
-          metadata:
-            labels:
-              team: "?*"
-    - name: enforce-namespace-naming
-      match:
-        resources:
-          kinds:
-            - Application
-      validate:
-        message: "Destination namespace must match team-* pattern"
-        pattern:
-          spec:
-            destination:
-              namespace: "team-*"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["argoproj.io"]
+        apiVersions: ["v1alpha1"]
+        operations: [CREATE, UPDATE]
+        resources: ["applications"]
+  validations:
+    - message: "Applications must have a team label"
+      expression: "has(object.metadata.labels) && 'team' in object.metadata.labels && object.metadata.labels['team'] != ''"
+    - message: "Destination namespace must match team-* pattern"
+      expression: "has(object.spec.destination.namespace) && object.spec.destination.namespace.matches('^team-[a-z0-9-]+$')"
 ```
 
 ## RBAC for Self-Service
@@ -305,12 +311,19 @@ spec:
 Configure ArgoCD RBAC so teams can manage their own applications but not others.
 
 ```csv
-# Team Alpha can manage their own applications
-p, role:team-alpha-dev, applications, get, team-alpha/*, allow
-p, role:team-alpha-dev, applications, create, team-alpha/*, allow
-p, role:team-alpha-dev, applications, update, team-alpha/*, allow
-p, role:team-alpha-dev, applications, delete, team-alpha/*, allow
-p, role:team-alpha-dev, applications, sync, team-alpha/*, allow
+# Team Alpha can manage their own applications in team namespaces
+p, role:team-alpha-dev, applications, get, team-alpha/team-alpha-*/*, allow
+p, role:team-alpha-dev, applications, create, team-alpha/team-alpha-*/*, allow
+p, role:team-alpha-dev, applications, update, team-alpha/team-alpha-*/*, allow
+p, role:team-alpha-dev, applications, delete, team-alpha/team-alpha-*/*, allow
+p, role:team-alpha-dev, applications, sync, team-alpha/team-alpha-*/*, allow
+
+# If Applications are kept in the ArgoCD namespace, use that namespace explicitly
+p, role:team-alpha-dev, applications, get, team-alpha/argocd/*, allow
+p, role:team-alpha-dev, applications, create, team-alpha/argocd/*, allow
+p, role:team-alpha-dev, applications, update, team-alpha/argocd/*, allow
+p, role:team-alpha-dev, applications, delete, team-alpha/argocd/*, allow
+p, role:team-alpha-dev, applications, sync, team-alpha/argocd/*, allow
 
 # Team Alpha can view but not modify project settings
 p, role:team-alpha-dev, projects, get, team-alpha, allow
