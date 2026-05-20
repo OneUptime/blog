@@ -10,7 +10,7 @@ Description: Deploy and configure VictoriaMetrics on Ubuntu as a drop-in Prometh
 
 VictoriaMetrics is a time-series database and monitoring solution that is compatible with the Prometheus query language (PromQL) and data model while offering significantly better storage efficiency and query performance. It can act as a drop-in replacement for Prometheus or as long-term storage in a Prometheus federation.
 
-For Ubuntu servers running existing Prometheus-based monitoring, VictoriaMetrics accepts the same scrape configurations, responds to the same HTTP API endpoints, and supports Grafana without changes to existing dashboards.
+For Ubuntu servers running existing Prometheus-based monitoring, VictoriaMetrics accepts Prometheus-style scrape configurations, responds to Prometheus-compatible HTTP query API endpoints, and supports Grafana without changes to existing dashboards.
 
 ## Why Consider VictoriaMetrics
 
@@ -21,7 +21,7 @@ Compared to Prometheus, VictoriaMetrics:
 - Supports MetricsQL (a PromQL superset) with additional functions
 - Provides a single binary with no external dependencies
 
-The trade-off is that VictoriaMetrics does not support alerting natively - you still use Prometheus Alertmanager or another tool for alerts, with VictoriaMetrics as the data source.
+The trade-off is that VictoriaMetrics does not run alerting rules in the single-node server - you still use vmalert, Prometheus, or another tool for alerts, with VictoriaMetrics as the data source.
 
 ## Downloading VictoriaMetrics
 
@@ -30,7 +30,7 @@ VictoriaMetrics provides single-node and cluster versions. The single-node versi
 ```bash
 # Set the version to download
 
-VM_VERSION="v1.99.0"
+VM_VERSION="v1.143.0"
 
 # Download the single-node binary
 wget "https://github.com/VictoriaMetrics/VictoriaMetrics/releases/download/${VM_VERSION}/victoria-metrics-linux-amd64-${VM_VERSION}.tar.gz" \
@@ -110,7 +110,7 @@ Key flags explained:
 
 ## Creating the Scrape Configuration
 
-VictoriaMetrics uses the same scrape configuration format as Prometheus:
+VictoriaMetrics uses the same scrape configuration format as Prometheus for scrape jobs, though non-scrape settings such as Prometheus rule evaluation are not used:
 
 ```bash
 sudo nano /etc/victoriametrics/prometheus.yml
@@ -122,7 +122,6 @@ sudo nano /etc/victoriametrics/prometheus.yml
 
 global:
   scrape_interval: 15s
-  evaluation_interval: 15s
   external_labels:
     environment: production
     datacenter: us-east
@@ -231,11 +230,11 @@ sudo mv vmctl-prod /usr/local/bin/vmctl
 
 # Migrate data from Prometheus
 vmctl prometheus \
-  --prom-snapshot-dir=/var/lib/prometheus/snapshots/snapshot-name \
+  --prom-snapshot=/var/lib/prometheus/snapshots/snapshot-name \
   --vm-addr=http://localhost:8428
 ```
 
-First create a Prometheus snapshot:
+First create a Prometheus snapshot. The Prometheus admin API must be enabled with `--web.enable-admin-api`:
 
 ```bash
 # Create a snapshot via Prometheus API
@@ -262,18 +261,9 @@ remote_write:
 For production, add basic authentication:
 
 ```bash
-# Generate a bcrypt password hash
-htpasswd -nbB admin your_password
-# Output: admin:$2y$05$...
-
-# Create auth config
-sudo nano /etc/victoriametrics/auth.yml
-```
-
-```yaml
-users:
-  - username: admin
-    password: "your_password"
+# Store the password in a root-readable file
+sudo install -m 600 -o root -g root /dev/null /etc/victoriametrics/http-password
+echo "your_password" | sudo tee /etc/victoriametrics/http-password >/dev/null
 ```
 
 Update the systemd service to enable authentication:
@@ -282,7 +272,7 @@ Update the systemd service to enable authentication:
 ExecStart=/usr/local/bin/victoria-metrics \
   ...existing flags... \
   -httpAuth.username=admin \
-  -httpAuth.password=your_password
+  -httpAuth.password=file:///etc/victoriametrics/http-password
 ```
 
 ## Monitoring VictoriaMetrics Itself
@@ -302,4 +292,4 @@ curl -s "http://localhost:8428/api/v1/query?query=vm_data_size_bytes"
 
 ## Summary
 
-VictoriaMetrics provides a high-performance, storage-efficient alternative to Prometheus that accepts the same configuration format and exposes compatible query APIs. Deploying it on Ubuntu involves downloading the binary, creating a systemd service with appropriate flags for retention and storage path, and pointing it at a Prometheus-format scrape configuration. Existing Prometheus scrape configs, Grafana dashboards, and Alertmanager setups continue to work without modification. The most immediate benefit is typically storage reduction - a Prometheus instance using 50GB of disk space will often use under 10GB in VictoriaMetrics with the same data.
+VictoriaMetrics provides a high-performance, storage-efficient alternative to Prometheus that accepts Prometheus-style scrape configuration and exposes compatible query APIs. Deploying it on Ubuntu involves downloading the binary, creating a systemd service with appropriate flags for retention and storage path, and pointing it at a Prometheus-format scrape configuration. Existing Prometheus scrape jobs and Grafana dashboards continue to work with minimal changes, while alerting rules should run in vmalert, Prometheus, or another alerting tool. The most immediate benefit is typically storage reduction - a Prometheus instance using 50GB of disk space will often use under 10GB in VictoriaMetrics with the same data.
