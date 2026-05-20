@@ -33,10 +33,11 @@ sudo virt-install \
   --memory 2048 \
   --vcpus 2 \
   --disk size=20,format=qcow2,path=/var/lib/libvirt/images/ubuntu-base.qcow2 \
-  --cdrom /path/to/ubuntu-22.04-server.iso \
+  --location /path/to/ubuntu-22.04-server.iso \
   --os-variant ubuntu22.04 \
   --network network=default \
   --graphics none \
+  --console pty,target_type=serial \
   --extra-args 'console=ttyS0'
 ```
 
@@ -113,6 +114,9 @@ sudo qemu-img convert \
   /var/lib/libvirt/images/ubuntu-base.qcow2 \
   /var/lib/libvirt/images/templates/ubuntu-22.04-base.qcow2
 
+# Make the template read-only so overlays cannot modify it accidentally
+sudo chmod 444 /var/lib/libvirt/images/templates/ubuntu-22.04-base.qcow2
+
 # Check the compressed size
 ls -lh /var/lib/libvirt/images/templates/ubuntu-22.04-base.qcow2
 ```
@@ -156,7 +160,7 @@ sudo mkdir -p /var/lib/libvirt/images/base
 sudo wget -O /var/lib/libvirt/images/base/ubuntu-22.04-cloud.qcow2 \
   https://cloud-images.ubuntu.com/jammy/current/jammy-server-cloudimg-amd64.img
 
-# Verify the download
+# Check the downloaded image checksum
 sha256sum /var/lib/libvirt/images/base/ubuntu-22.04-cloud.qcow2
 ```
 
