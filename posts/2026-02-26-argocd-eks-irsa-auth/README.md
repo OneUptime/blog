@@ -31,7 +31,7 @@ In this guide, I will walk through the complete IRSA setup for ArgoCD, from OIDC
 
 ## Step 1: Enable OIDC Provider on the Management Cluster
 
-IRSA requires an OIDC identity provider. Most EKS clusters created with eksctl have this enabled by default:
+IRSA requires an OIDC identity provider. It is not enabled on every EKS cluster by default, so check the cluster first:
 
 ```bash
 # Check if OIDC is already associated
@@ -131,7 +131,7 @@ aws iam attach-role-policy \
   --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/ArgoCD-EKS-Management
 ```
 
-Note: The trust policy uses `StringLike` with a wildcard so both `argocd-application-controller` and `argocd-server` can assume the role.
+Note: The trust policy uses `StringLike` with a wildcard so the `argocd-application-controller`, `argocd-applicationset-controller`, and `argocd-server` service accounts can assume the role.
 
 ## Step 4: Annotate ArgoCD Service Accounts
 
@@ -146,14 +146,53 @@ kubectl annotate serviceaccount argocd-server \
   -n argocd \
   eks.amazonaws.com/role-arn=arn:aws:iam::${ACCOUNT_ID}:role/ArgoCD-IRSA-Controller
 
+# Annotate the ApplicationSet controller (needed if ApplicationSets manage clusters)
+kubectl annotate serviceaccount argocd-applicationset-controller \
+  -n argocd \
+  eks.amazonaws.com/role-arn=arn:aws:iam::${ACCOUNT_ID}:role/ArgoCD-IRSA-Controller
+
 # Restart the pods to pick up the new annotations
 kubectl rollout restart deployment argocd-server -n argocd
+kubectl rollout restart deployment argocd-applicationset-controller -n argocd
 kubectl rollout restart statefulset argocd-application-controller -n argocd
 ```
 
 ## Step 5: Configure the Target EKS Cluster
 
-Map the ArgoCD IAM role in the target cluster's aws-auth ConfigMap:
+Create a target cluster role that the ArgoCD management role can assume:
+
+```bash
+cat > target-role-trust-policy.json << EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::123456789012:role/ArgoCD-IRSA-Controller"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+aws iam create-role \
+  --role-name ArgoCD-Target-Production \
+  --assume-role-policy-document file://target-role-trust-policy.json
+```
+
+For current EKS clusters, prefer EKS access entries over the deprecated `aws-auth` ConfigMap:
+
+```bash
+aws eks create-access-entry \
+  --cluster-name production-cluster \
+  --principal-arn arn:aws:iam::123456789012:role/ArgoCD-Target-Production \
+  --type STANDARD \
+  --kubernetes-groups argocd-managers
+```
+
+If your cluster still uses the legacy `aws-auth` path, map the target cluster role in the target cluster's `aws-auth` ConfigMap:
 
 ```bash
 # Edit aws-auth in the target cluster
@@ -169,8 +208,8 @@ metadata:
 data:
   mapRoles: |
     # Existing node role mappings...
-    - rolearn: arn:aws:iam::123456789012:role/ArgoCD-IRSA-Controller
-      username: argocd-controller
+    - rolearn: arn:aws:iam::123456789012:role/ArgoCD-Target-Production
+      username: arn:aws:iam::123456789012:role/ArgoCD-Target-Production
       groups:
         - argocd-managers  # Map to a custom group for least privilege
 ```
@@ -226,7 +265,7 @@ stringData:
     {
       "awsAuthConfig": {
         "clusterName": "production-cluster",
-        "roleARN": "arn:aws:iam::123456789012:role/ArgoCD-IRSA-Controller"
+        "roleARN": "arn:aws:iam::123456789012:role/ArgoCD-Target-Production"
       },
       "tlsClientConfig": {
         "insecure": false,
@@ -237,7 +276,7 @@ stringData:
 
 The `awsAuthConfig` section tells ArgoCD to:
 1. Use the IRSA credentials from the service account
-2. Optionally assume the specified roleARN (for cross-account or role chaining)
+2. Assume the specified target cluster `roleARN`
 3. Generate an EKS auth token for the specified cluster name
 
 ## Cross-Account Configuration
@@ -264,12 +303,7 @@ cat > cross-account-trust.json << EOF
       "Principal": {
         "AWS": "arn:aws:iam::111111111111:role/ArgoCD-IRSA-Controller"
       },
-      "Action": "sts:AssumeRole",
-      "Condition": {
-        "StringEquals": {
-          "sts:ExternalId": "argocd-cross-account"
-        }
-      }
+      "Action": "sts:AssumeRole"
     }
   ]
 }
@@ -324,10 +358,13 @@ eksctl create iamserviceaccount \
   --region us-east-1 \
   --namespace argocd \
   --name argocd-application-controller \
+  --role-name ArgoCD-IRSA-Controller \
   --attach-policy-arn arn:aws:iam::123456789012:policy/ArgoCD-EKS-Management \
   --override-existing-serviceaccounts \
   --approve
 ```
+
+Repeat the same service account setup for `argocd-server` and `argocd-applicationset-controller`, or annotate those existing service accounts manually as shown above.
 
 ## Verifying IRSA Configuration
 
@@ -336,11 +373,11 @@ eksctl create iamserviceaccount \
 kubectl get sa argocd-application-controller -n argocd -o yaml | grep eks.amazonaws.com
 
 # Verify the IRSA token is mounted
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+kubectl exec -n argocd pod/argocd-application-controller-0 -- \
   ls -la /var/run/secrets/eks.amazonaws.com/serviceaccount/
 
-# Test AWS identity
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+# Test AWS identity if the AWS CLI is available in the container
+kubectl exec -n argocd pod/argocd-application-controller-0 -- \
   aws sts get-caller-identity
 
 # Expected output should show the IRSA role ARN:
@@ -362,7 +399,7 @@ argocd cluster get https://ABCDEF1234.gr7.us-east-1.eks.amazonaws.com
 # Fix: Check trust policy and OIDC provider configuration
 
 # Problem: "Unauthorized" when connecting to target cluster
-# Fix: Check aws-auth ConfigMap in target cluster
+# Fix: Check the target cluster access entry or aws-auth ConfigMap
 
 # Problem: No AWS credentials in pod
 # Fix: Ensure SA annotation is correct and pod has been restarted
@@ -375,7 +412,7 @@ aws iam get-open-id-connect-provider \
   --open-id-connect-provider-arn arn:aws:iam::123456789012:oidc-provider/${OIDC_PROVIDER}
 
 # Check pod environment variables for IRSA
-kubectl exec -n argocd deploy/argocd-application-controller -- env | grep AWS
+kubectl exec -n argocd pod/argocd-application-controller-0 -- env | grep AWS
 # Should see:
 # AWS_ROLE_ARN=arn:aws:iam::123456789012:role/ArgoCD-IRSA-Controller
 # AWS_WEB_IDENTITY_TOKEN_FILE=/var/run/secrets/eks.amazonaws.com/serviceaccount/token
@@ -383,4 +420,4 @@ kubectl exec -n argocd deploy/argocd-application-controller -- env | grep AWS
 
 ## Summary
 
-IRSA is the gold standard for connecting ArgoCD to EKS clusters. It eliminates static credentials, provides automatic token rotation, enables full AWS audit trails, and supports clean cross-account access patterns. The setup requires creating an IAM role with IRSA trust, annotating the ArgoCD service accounts, configuring the target cluster's aws-auth ConfigMap, and registering the cluster with `awsAuthConfig`. While the initial setup is more involved than a static bearer token, the security benefits make it well worth the effort for any production environment.
+IRSA is the gold standard for connecting ArgoCD to EKS clusters. It eliminates static credentials, provides automatic token rotation, enables full AWS audit trails, and supports clean cross-account access patterns. The setup requires creating an IAM role with IRSA trust, annotating the ArgoCD service accounts, configuring target cluster access entries or the legacy `aws-auth` ConfigMap, and registering the cluster with `awsAuthConfig`. While the initial setup is more involved than a static bearer token, the security benefits make it well worth the effort for any production environment.
