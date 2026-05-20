@@ -23,12 +23,12 @@ There are several distinct reasons a package might appear in the kept-back list:
 
 ### 1. Dependency Changes
 
-The most common reason: upgrading the package would require installing a new dependency or removing an existing one. `apt upgrade` refuses to do this automatically. Only `apt dist-upgrade` (or `apt full-upgrade`) will handle these cases:
+The most common reason: upgrading the package would require changing dependencies in a way the selected upgrade command will not perform. Current `apt upgrade` can install new packages when needed, but it will not remove installed packages. `apt-get upgrade` is stricter and will not install new packages or remove existing ones. Use `apt full-upgrade` (or `apt-get dist-upgrade`) when removals or more complex dependency changes are required:
 
 ```bash
-# dist-upgrade is equivalent to full-upgrade - both handle dependency changes
+# apt-get dist-upgrade and apt full-upgrade both handle dependency changes
 
-sudo apt dist-upgrade
+sudo apt-get dist-upgrade
 
 # Or explicitly
 sudo apt full-upgrade
@@ -76,7 +76,7 @@ linux-generic:
         1001 /var/lib/dpkg/status
 ```
 
-A pin priority above 1000 means the installed version is preferred over available upgrades.
+A pin priority above 1000 on the installed version means that version is preferred over available upgrades.
 
 ### 4. Repository Configuration Issues
 
@@ -115,7 +115,7 @@ A more detailed approach using `aptitude`:
 ```bash
 sudo apt install aptitude
 
-# Aptitude explains why packages are held
+# Aptitude can show dependency chains that prevent installation
 sudo aptitude why-not package-name
 
 # Or use aptitude's full-upgrade which provides better explanations
@@ -143,11 +143,12 @@ Carefully review the dry-run output. If it wants to remove packages you need, in
 Sometimes apt will process the upgrade if you name the package directly:
 
 ```bash
-# Force install a specific package
+# Install or upgrade a specific package
 sudo apt install package-name
 
-# Install with automatic resolution
-sudo apt install --fix-missing package-name
+# If package files are missing or stale, refresh package lists and retry
+sudo apt update
+sudo apt install package-name
 ```
 
 ### Method 3: Release a Manual Hold
@@ -240,7 +241,7 @@ sudo apt upgrade
 When apt cannot resolve dependencies automatically, aptitude offers an interactive resolver:
 
 ```bash
-sudo aptitude upgrade
+sudo aptitude safe-upgrade
 
 # aptitude will propose solutions and explain its reasoning
 # Type 'y' to accept, 'n' to reject and see alternatives
@@ -262,7 +263,7 @@ sudo dpkg --configure -a
 sudo apt check
 
 # List packages with issues
-dpkg -l | grep "^[^ii]"
+dpkg -l | awk 'NR > 5 && $1 !~ /^ii/ {print}'
 ```
 
 ## When to Leave Packages Held
@@ -277,7 +278,7 @@ In these cases, document the hold and its reason:
 
 ```bash
 # Document holds in a comment file
-cat > /etc/apt/preferences.d/holds-documentation << 'EOF'
+sudo tee /etc/apt/preferences.d/holds-documentation >/dev/null << 'EOF'
 # Package: libssl-dev
 # Held until: application upgrade to version 2.x (planned Q2 2024)
 # Ticket: https://jira.example.com/INFRA-1234
