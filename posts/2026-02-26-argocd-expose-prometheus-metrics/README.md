@@ -10,11 +10,11 @@ Description: Learn how to expose and configure Prometheus metrics from ArgoCD co
 
 ArgoCD exposes a rich set of Prometheus metrics from each of its core components. These metrics give you visibility into sync operations, application health, Git operations, reconciliation performance, and resource utilization. But by default, these metrics endpoints are not always easily accessible to your Prometheus installation. You need to configure the right ports, service monitors, and annotations to make them scrapable.
 
-This guide covers how to expose metrics from every ArgoCD component and make them available to your Prometheus stack.
+This guide covers how to expose metrics from the core ArgoCD components and make them available to your Prometheus stack.
 
 ## ArgoCD Components That Expose Metrics
 
-ArgoCD has three main components, and each exposes its own metrics endpoint:
+This guide focuses on three core ArgoCD components, and each exposes its own metrics endpoint:
 
 ```mermaid
 flowchart TD
@@ -65,7 +65,7 @@ argocd_app_info{dest_namespace="default",dest_server="https://kubernetes.default
 
 ## Creating Kubernetes Services for Metrics
 
-To make metrics endpoints accessible to Prometheus, create dedicated services for each component's metrics port:
+To make metrics endpoints accessible to Prometheus, create dedicated services for each component's metrics port if your installation does not already include them:
 
 ```yaml
 # Application Controller metrics service
@@ -125,11 +125,11 @@ spec:
 
 ## Configuring Metrics via Prometheus Annotations
 
-If your Prometheus is configured to discover targets via pod annotations, add the appropriate annotations to ArgoCD deployments:
+If your Prometheus is configured to discover targets via pod annotations, add the appropriate annotations to the ArgoCD workload pod templates:
 
 ```yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -142,7 +142,7 @@ spec:
         prometheus.io/path: "/metrics"
 ```
 
-Apply similar annotations for the API server (port 8083) and repo server (port 8084).
+Apply similar annotations to the API server and repo server Deployments (port 8083 for the API server and port 8084 for the repo server).
 
 If you manage ArgoCD with Helm, set the annotations in your values file:
 
@@ -292,7 +292,7 @@ argocd_app_sync_total
 # Git request metrics
 argocd_git_request_total
 
-# API server request metrics
+# API server gRPC request metrics, if gRPC metrics are enabled
 grpc_server_handled_total
 
 # Repo server Git request metrics
@@ -303,22 +303,33 @@ Run these queries in your Prometheus UI or Grafana. If they return results, your
 
 ## Configuring Metrics Port Customization
 
-If the default metrics ports conflict with other services in your cluster, you can change them:
+If the default metrics ports conflict with other services in your cluster and you manage ArgoCD with Helm, you can change the metrics container ports and matching metrics service ports:
 
 ```yaml
-# argocd-cmd-params-cm
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  controller.metrics.port: "9082"
-  server.metrics.port: "9083"
-  reposerver.metrics.port: "9084"
+# values.yaml
+controller:
+  containerPorts:
+    metrics: 9082
+  metrics:
+    service:
+      servicePort: 9082
+
+server:
+  containerPorts:
+    metrics: 9083
+  metrics:
+    service:
+      servicePort: 9083
+
+repoServer:
+  containerPorts:
+    metrics: 9084
+  metrics:
+    service:
+      servicePort: 9084
 ```
 
-Update your services and ServiceMonitors to match the new ports after making this change.
+If you do not use Helm, update each component's `--metrics-port` argument and matching Kubernetes Service/ServiceMonitor port after making this change.
 
 ## Securing Metrics Endpoints
 
