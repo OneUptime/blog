@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD to work with Git submodules for share
 
 ---
 
-Git submodules allow you to include one Git repository inside another. They are commonly used to share Kubernetes base configurations, Helm library charts, or common policy definitions across multiple application repositories. ArgoCD supports Git submodules, but it requires explicit configuration since submodule checkout is disabled by default.
+Git submodules allow you to include one Git repository inside another. They are commonly used to share Kubernetes base configurations, Helm library charts, or common policy definitions across multiple application repositories. ArgoCD supports Git submodules and picks them up automatically by default.
 
 ## Why Use Git Submodules with ArgoCD
 
@@ -28,9 +28,9 @@ graph TD
     B --> F[Common RBAC policies]
 ```
 
-## Enabling Git Submodule Support
+## Git Submodule Support in ArgoCD
 
-By default, ArgoCD does not recurse into submodules when cloning a repository. You need to enable this in the ArgoCD ConfigMap:
+By default, ArgoCD checks out Git submodules automatically when cloning a repository. You do not need to enable this in the ArgoCD ConfigMap:
 
 ```yaml
 # argocd-cm.yaml
@@ -41,16 +41,16 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Enable Git submodule support globally
+  # This customizes diff behavior; it does not enable Git submodules
   resource.customizations.ignoreDifferences.all: |
     managedFieldsManagers:
       - ""
 ```
 
-Wait, that is a different setting. The actual setting for enabling submodules is done at the repository level or via environment variables in the repo-server:
+Wait, that is a different setting. The `resource.customizations.ignoreDifferences.all` key configures diff behavior, not Git checkout behavior. For submodules, the repo-server environment variable is used only when you want to disable submodule support globally:
 
 ```yaml
-# Patch the argocd-repo-server deployment
+# Patch the argocd-repo-server deployment to disable submodules
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,42 +62,15 @@ spec:
       containers:
         - name: argocd-repo-server
           env:
-            # Enable recursive submodule fetch
+            # Disable recursive submodule fetch
             - name: ARGOCD_GIT_MODULES_ENABLED
-              value: "true"
+              value: "false"
 ```
 
 Apply the patch:
 
 ```bash
-kubectl patch deployment argocd-repo-server -n argocd --type json -p '[
-  {
-    "op": "add",
-    "path": "/spec/template/spec/containers/0/env/-",
-    "value": {
-      "name": "ARGOCD_GIT_MODULES_ENABLED",
-      "value": "true"
-    }
-  }
-]'
-```
-
-Alternatively, you can enable submodules on a per-repository basis by adding the `enableSubmodules` field to the repository Secret:
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: repo-with-submodules
-  namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
-stringData:
-  type: git
-  url: https://github.com/my-org/app-repo.git
-  username: argocd
-  password: ghp_token
-  enableSubmodules: "true"
+kubectl set env deployment/argocd-repo-server -n argocd ARGOCD_GIT_MODULES_ENABLED=false
 ```
 
 ## Setting Up the Repository Structure
@@ -131,11 +104,11 @@ The `.gitmodules` file defines the submodule:
 
 ## Handling Submodule Authentication
 
-The tricky part is that the submodule repository might require its own credentials. If the submodule URL points to a different repository or organization, ArgoCD needs credentials for both the parent and the submodule repository.
+The tricky part is that the submodule repository might require credentials. ArgoCD's submodule checkout expects the credentials used for the parent repository to also match the submodule repository.
 
 ### Same Organization (Credential Templates Handle This)
 
-If both repositories are in the same organization, a credential template covers both:
+If both repositories are in the same organization, a credential template can cover both:
 
 ```yaml
 apiVersion: v1
@@ -154,36 +127,21 @@ stringData:
 
 ### Different Organizations or Providers
 
-If the submodule points to a different organization or Git provider, register credentials for both:
+If the submodule points to a different organization or Git provider, make sure the parent repository credentials can also access the submodule repository. One common approach is to use a credential template with a URL prefix that matches both repositories:
 
 ```yaml
-# Credentials for the parent repo's org
 apiVersion: v1
 kind: Secret
 metadata:
-  name: app-org-creds
+  name: github-creds
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: https://github.com/app-org
+  url: https://github.com
   username: argocd
-  password: ghp_app_org_token
----
-# Credentials for the submodule's org
-apiVersion: v1
-kind: Secret
-metadata:
-  name: shared-org-creds
-  namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repo-creds
-stringData:
-  type: git
-  url: https://github.com/shared-org
-  username: argocd
-  password: ghp_shared_org_token
+  password: ghp_token_with_access_to_both_repos
 ```
 
 ### SSH Submodules
@@ -196,19 +154,19 @@ If your `.gitmodules` uses SSH URLs:
     url = git@github.com:shared-org/shared-k8s-base.git
 ```
 
-You need SSH credentials registered for the submodule's URL prefix:
+You need SSH credentials that can access both the parent repository and the submodule URL:
 
 ```yaml
 apiVersion: v1
 kind: Secret
 metadata:
-  name: shared-ssh-creds
+  name: github-ssh-creds
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: git@github.com:shared-org
+  url: git@github.com:
   sshPrivateKey: |
     -----BEGIN OPENSSH PRIVATE KEY-----
     ...
@@ -300,7 +258,7 @@ This is actually a feature, not a bug. It gives you explicit control over when s
 ### Submodule Not Being Cloned
 
 ```bash
-# Check if submodule support is enabled
+# Check whether submodule support has been disabled
 kubectl get deployment argocd-repo-server -n argocd -o yaml | grep ARGOCD_GIT_MODULES
 
 # Check repo-server logs
@@ -310,7 +268,7 @@ kubectl logs -n argocd deployment/argocd-repo-server --tail=100 | grep -i "submo
 ### Authentication Failures for Submodules
 
 ```bash
-# Verify credentials exist for the submodule URL
+# Verify the credential template can match the parent and submodule URLs
 argocd repocreds list
 
 # Check the .gitmodules file URL matches your credential template
@@ -336,4 +294,4 @@ If submodules feel too complex, consider these alternatives:
 
 Each has trade-offs. Submodules give you explicit version pinning. Remote bases are simpler but harder to pin. Multiple sources are the most ArgoCD-native solution.
 
-For more on combining multiple sources in ArgoCD, see the [ArgoCD documentation on multi-source applications](https://oneuptime.com/blog/post/2026-01-25-deploy-helm-charts-argocd/view).
+For more on combining multiple sources in ArgoCD, see the [ArgoCD documentation on multi-source applications](https://argo-cd.readthedocs.io/en/stable/user-guide/multiple_sources/).
