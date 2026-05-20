@@ -59,7 +59,7 @@ destinations:
     namespace: "backend-prod"
 ```
 
-You can use either `server` or `name`, but not both in the same destination entry.
+Destination clusters can be identified by `server`, `name`, or both.
 
 ## Wildcard Destinations
 
@@ -160,14 +160,23 @@ Note that ArgoCD uses glob matching, not regex, for wildcard patterns.
 
 ## Denying Specific Destinations
 
-ArgoCD does not have a native "deny" mechanism for destinations - it uses an allow list model. But you can achieve deny-like behavior by being specific about what you allow.
+ArgoCD supports negated destination rules by prefixing the `server` or `namespace` value with `!`. A destination is permitted only when at least one allow rule matches and no deny rule matches.
 
 For example, to allow all namespaces except `kube-system`:
 
 ```yaml
-# There is no deny syntax, so you must list allowed namespaces explicitly
+destinations:
+  # Do not allow apps to deploy to kube-system on any cluster
+  - server: "*"
+    namespace: "!kube-system"
+  # Allow every other namespace on every cluster
+  - server: "*"
+    namespace: "*"
+```
 
-# or use a prefix convention that excludes system namespaces
+You can also use a prefix convention that excludes system namespaces:
+
+```yaml
 destinations:
   - server: "https://kubernetes.default.svc"
     namespace: "team-*"
@@ -177,10 +186,11 @@ If your naming convention puts team namespaces under a common prefix, this effec
 
 ## Combining with Namespace Creation
 
-A common question is: can a team create the namespace they need? This depends on two things:
+A common question is: can a team create the namespace they need? This depends on three things:
 
 1. The project must allow `Namespace` as a cluster resource
 2. The namespace must be in the allowed destinations
+3. The ArgoCD application controller must have Kubernetes RBAC permission to create namespaces on the target cluster
 
 ```yaml
 spec:
