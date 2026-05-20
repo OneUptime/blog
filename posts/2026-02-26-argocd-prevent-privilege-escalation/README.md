@@ -16,9 +16,9 @@ Privilege escalation in ArgoCD happens when a user deploys Kubernetes resources 
 
 ```mermaid
 graph TD
-    A[ArgoCD User] --> B[Deploy ClusterRole with cluster-admin]
-    A --> C[Deploy Pod with hostNetwork]
-    A --> D[Deploy ServiceAccount with elevated permissions]
+    A[ArgoCD User] --> B[Deploy ClusterRoleBinding to cluster-admin]
+    A --> C[Deploy privileged Pod with host namespaces]
+    A --> D[Deploy RoleBinding with elevated permissions]
     A --> E[Deploy CRDs that bypass restrictions]
     A --> F[Deploy to kube-system namespace]
     B --> G[Full Cluster Access]
@@ -163,7 +163,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-privileged-containers
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: deny-privileged
       match:
@@ -172,13 +171,19 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Privileged containers are not allowed"
         pattern:
           spec:
+            "=(ephemeralContainers)":
+              - "=(securityContext)":
+                  "=(privileged)": "false"
+            "=(initContainers)":
+              - "=(securityContext)":
+                  "=(privileged)": "false"
             containers:
-              - securityContext:
-                  privileged: "false"
-                  allowPrivilegeEscalation: "false"
+              - "=(securityContext)":
+                  "=(privileged)": "false"
     - name: deny-host-namespaces
       match:
         any:
@@ -186,12 +191,33 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Host namespaces are not allowed"
         pattern:
           spec:
-            hostNetwork: "false"
-            hostPID: "false"
-            hostIPC: "false"
+            "=(hostNetwork)": "false"
+            "=(hostPID)": "false"
+            "=(hostIPC)": "false"
+    - name: deny-privilege-escalation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        failureAction: Enforce
+        message: "Privilege escalation is not allowed"
+        pattern:
+          spec:
+            "=(ephemeralContainers)":
+              - securityContext:
+                  allowPrivilegeEscalation: "false"
+            "=(initContainers)":
+              - securityContext:
+                  allowPrivilegeEscalation: "false"
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: "false"
 ```
 
 ### Using Pod Security Standards
@@ -269,7 +295,7 @@ data:
 
 ## Validating Manifests Before Deployment
 
-Use ArgoCD's built-in manifest validation along with external tools:
+Keep ArgoCD's built-in Kubernetes schema validation enabled along with external tools. This validation checks Kubernetes API schemas; it is not a security policy engine:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -280,11 +306,11 @@ metadata:
 spec:
   syncPolicy:
     syncOptions:
-      # Enable manifest validation
+      # Keep kubectl schema validation enabled
       - Validate=true
 ```
 
-For advanced validation, use a Config Management Plugin that runs security checks:
+For advanced validation, use a Config Management Plugin that runs security checks. The ConfigMap must be mounted into an Argo CD repo-server sidecar at `/home/argocd/cmp-server/config/plugin.yaml` for Argo CD to use it:
 
 ```yaml
 apiVersion: v1
@@ -324,11 +350,11 @@ Set up alerts for potential privilege escalation attempts:
 
 ```bash
 # Check for applications trying to deploy RBAC resources
-kubectl logs deployment/argocd-application-controller -n argocd | \
+kubectl logs statefulset/argocd-application-controller -n argocd | \
   jq 'select(.msg | test("ClusterRole|ClusterRoleBinding|Role|RoleBinding"))'
 
 # Check for applications targeting restricted namespaces
-kubectl logs deployment/argocd-application-controller -n argocd | \
+kubectl logs statefulset/argocd-application-controller -n argocd | \
   jq 'select(.msg | test("kube-system|argocd|default"))'
 ```
 
