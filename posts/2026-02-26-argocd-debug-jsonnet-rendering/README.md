@@ -94,7 +94,7 @@ This often happens when external variables or TLAs pass the wrong type:
 function(replicas)
 {
   spec: {
-    replicas: replicas,  // Error if replicas is "3" instead of 3
+    replicas: replicas + 1,  // Error if replicas is "3" instead of 3
   },
 }
 ```
@@ -180,7 +180,7 @@ Break the cycle by restructuring your code to avoid circular dependencies. If yo
 Jsonnet does not allow duplicate field names in the same object by default:
 
 ```text
-RUNTIME ERROR: duplicate field name: "name"
+STATIC ERROR: duplicate field: name
 ```
 
 ```jsonnet
@@ -235,7 +235,9 @@ jsonnet -J vendor -J lib apps/my-app/main.jsonnet | wc -c
 
 # Increase ArgoCD repo server timeout if needed
 kubectl edit configmap argocd-cmd-params-cm -n argocd
-# Add: reposerver.timeout.seconds: "300"
+# Add: controller.repo.server.timeout.seconds: "300"
+# If CLI or UI manifest requests time out, also add:
+# server.repo.server.timeout.seconds: "300"
 ```
 
 Common causes of slow rendering include generating hundreds of resources from loops, importing very large library files, and deeply nested object merges.
