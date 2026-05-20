@@ -21,7 +21,7 @@ When you trigger a cascade delete, ArgoCD follows this sequence:
 3. If the finalizer is present, ArgoCD identifies all resources it tracks for that application
 4. ArgoCD deletes each managed resource from the cluster
 5. Once all resources are deleted (or deletion is initiated), ArgoCD removes the finalizer
-6. Kubernetes then garbage-collects the Application resource itself
+6. Kubernetes then completes deletion of the Application resource itself
 
 ```mermaid
 sequenceDiagram
@@ -35,7 +35,7 @@ sequenceDiagram
     ArgoCD->>K8s: Delete managed ConfigMap
     ArgoCD->>K8s: Delete managed Ingress
     ArgoCD->>ArgoCD: Remove finalizer
-    K8s->>K8s: Garbage collect Application
+    K8s->>K8s: Complete Application deletion
 ```
 
 ## Setting up cascade delete with finalizers
@@ -106,8 +106,10 @@ argocd app delete web-frontend --cascade --propagation-policy foreground
 # Available propagation policies:
 # foreground - parent waits for children to be deleted first
 # background - parent is deleted immediately, children are garbage collected
-# orphan     - children are NOT deleted (despite cascade flag)
 argocd app delete web-frontend --cascade --propagation-policy background
+
+# Non-cascade delete removes only the Application and leaves managed resources running
+argocd app delete web-frontend --cascade=false
 ```
 
 ## Propagation policies explained
@@ -126,11 +128,11 @@ argocd app delete web-frontend --cascade --propagation-policy background
 ```
 Kubernetes deletes parent resources immediately and schedules child resources for deletion asynchronously. Faster but the order is not guaranteed.
 
-**Orphan propagation (careful with this one):**
+**Non-cascade delete (careful with this one):**
 ```bash
-argocd app delete web-frontend --cascade --propagation-policy orphan
+argocd app delete web-frontend --cascade=false
 ```
-This seems contradictory - cascade is on but orphan propagation means Kubernetes will not garbage-collect child resources. The ArgoCD-managed resources themselves get deleted, but any sub-resources they own may be left behind.
+This removes only the ArgoCD Application resource. The managed resources themselves are preserved in the cluster, but ArgoCD no longer tracks or reconciles them.
 
 ## Cascade delete via the UI
 
@@ -217,7 +219,7 @@ If cascade delete hangs, it is usually because one of the managed resources has 
 
 ```bash
 # Find resources stuck in Terminating state
-kubectl get all -n web-frontend --field-selector=metadata.deletionTimestamp!=
+kubectl get all -n web-frontend | grep Terminating
 
 # Check which finalizers are blocking
 kubectl get pod stuck-pod -n web-frontend -o jsonpath='{.metadata.finalizers}'
