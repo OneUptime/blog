@@ -58,7 +58,7 @@ If you want no timeout (wait indefinitely for user input):
 GRUB_TIMEOUT=-1
 ```
 
-Setting `GRUB_TIMEOUT_STYLE=countdown` shows the menu with a countdown timer:
+Setting `GRUB_TIMEOUT_STYLE=countdown` shows a one-line countdown before booting the default entry:
 
 ```bash
 GRUB_TIMEOUT_STYLE=countdown
@@ -101,12 +101,13 @@ GRUB supports background images in PNG, JPEG, or TGA format.
 
 ### Prepare the Image
 
-The image should match or be close to your screen resolution. Find your GRUB resolution:
+The image should match or be close to your screen resolution. To check available GRUB resolutions, press `c` at the GRUB menu and run:
 
 ```bash
-# Check available resolutions
-sudo grep -r "GRUB_GFXMODE" /etc/default/grub
+videoinfo
 ```
+
+On older BIOS systems, the command may be `vbeinfo` instead.
 
 Set a resolution explicitly:
 
@@ -179,7 +180,7 @@ git clone https://github.com/vinceliuice/grub2-themes.git
 cd grub2-themes
 
 # Install a specific theme (options: Vimix, Tela, Stylish, WhiteSur)
-sudo ./install.sh -t vimix -s 1080p
+sudo ./install.sh -b -t vimix -s 1080p
 ```
 
 The installer copies theme files to `/boot/grub/themes/` and updates `/etc/default/grub`.
@@ -233,8 +234,8 @@ menuentry "System Restart" {
     reboot
 }
 
-menuentry "Boot from USB" {
-    # Boot from first USB device
+menuentry "Boot another BIOS disk" {
+    # Chainload another BIOS/MBR disk; device number may vary
     set root=(hd1)
     chainloader +1
 }
