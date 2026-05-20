@@ -65,6 +65,8 @@ metadata:
   namespace: production
 spec:
   replicas: 10
+  rollbackWindow:
+    revisions: 3
   selector:
     matchLabels:
       app: myapp
@@ -116,8 +118,6 @@ spec:
       - setWeight: 100
 
       # Automatic rollback on failure
-      rollbackWindow:
-        revisions: 3
       abortScaleDownDelaySeconds: 30
 ```
 
@@ -183,11 +183,11 @@ spec:
           }[5m]))
 ```
 
-When any analysis metric fails, Argo Rollouts automatically aborts the rollout and reverts to the previous stable version.
+When any analysis metric fails, Argo Rollouts automatically aborts the rollout and shifts traffic back to the stable ReplicaSet.
 
 ## Pattern 2: Custom Controller for Post-Sync Health Monitoring
 
-For deployments not using Argo Rollouts, build a post-sync health monitor:
+For deployments not using Argo Rollouts, build a post-sync health monitor. ArgoCD's rollback API cannot be used while automated sync is enabled, so use this pattern only for Applications with manual sync or disable automated sync before calling the rollback API:
 
 ```yaml
 # PostSync hook that monitors health after deployment
@@ -237,12 +237,17 @@ spec:
               if [ $failures -ge $FAILURE_THRESHOLD ]; then
                 echo "CRITICAL: Health degradation detected. Initiating rollback..."
 
+                PREVIOUS_ID=$(curl -s \
+                  "https://${ARGOCD_SERVER}/api/v1/applications/${APP_NAME}" \
+                  -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
+                  | jq -r '.status.history[-2].id')
+
                 # Trigger rollback via ArgoCD API
                 curl -s -X PUT \
                   "https://${ARGOCD_SERVER}/api/v1/applications/${APP_NAME}/rollback" \
                   -H "Authorization: Bearer ${ARGOCD_TOKEN}" \
                   -H "Content-Type: application/json" \
-                  -d '{"id": 0}'  # Rollback to previous version
+                  -d "{\"id\": ${PREVIOUS_ID}}"
 
                 echo "Rollback initiated"
                 exit 1
@@ -289,8 +294,8 @@ spec:
           /
           sum(rate(http_requests_total[5m])) by (service)
         ) > 0.05
-        and
-        changes(kube_deployment_status_observed_generation{namespace="production"}[10m]) > 0
+        and on()
+        sum(changes(kube_deployment_status_observed_generation{namespace="production"}[10m])) > 0
       for: 2m
       labels:
         severity: critical
@@ -307,8 +312,8 @@ Configure Alertmanager to trigger a rollback webhook:
 route:
   receiver: default
   routes:
-  - match:
-      action: rollback
+  - matchers:
+    - action="rollback"
     receiver: argocd-rollback
     repeat_interval: 1h
 
@@ -319,11 +324,12 @@ receivers:
     send_resolved: false
 ```
 
-Build a simple rollback controller:
+Build a simple rollback controller. As with the PostSync example, this uses ArgoCD's rollback API and requires automated sync to be disabled for the target Application:
 
 ```python
 # rollback-controller/app.py
 from flask import Flask, request
+import os
 import requests
 
 app = Flask(__name__)
@@ -459,15 +465,15 @@ spec:
     rules:
     - alert: FrequentRollbacks
       expr: |
-        increase(argocd_app_rollback_total[24h]) > 3
+        increase(rollback_controller_rollback_total[24h]) > 3
       labels:
         severity: warning
       annotations:
-        summary: "Application {{ $labels.name }} has rolled back more than 3 times in 24h"
+        summary: "Application {{ $labels.app }} has rolled back more than 3 times in 24h"
 ```
 
 Use OneUptime to monitor both the health metrics that trigger rollbacks and the rollback events themselves, creating a complete picture of deployment reliability.
 
 ## Conclusion
 
-Automatic rollback on health degradation closes the gap between "deployment succeeded" and "application is actually working." Argo Rollouts with AnalysisTemplates provides the most sophisticated approach, running continuous health checks during progressive delivery and automatically aborting if metrics degrade. For simpler setups, PostSync hooks that monitor health and trigger rollbacks via the ArgoCD API work well. The Prometheus alert-driven approach scales best because it uses your existing monitoring infrastructure. Whichever pattern you choose, the goal is the same: detect health degradation quickly and revert to the last known good state before users are significantly impacted.
+Automatic rollback on health degradation closes the gap between "deployment succeeded" and "application is actually working." Argo Rollouts with AnalysisTemplates provides the most sophisticated approach, running continuous health checks during progressive delivery and automatically aborting if metrics degrade. For simpler setups with manual sync, PostSync hooks that monitor health and trigger rollbacks via the ArgoCD API work well. The Prometheus alert-driven approach scales best because it uses your existing monitoring infrastructure. Whichever pattern you choose, the goal is the same: detect health degradation quickly and revert to the last known good state before users are significantly impacted.
