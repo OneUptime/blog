@@ -21,12 +21,11 @@ Docker Hub is the most widely used container registry. Using it as your Helm cha
 - You are distributing open-source Helm charts that benefit from Docker Hub's CDN
 - You want a simple setup without managing your own registry infrastructure
 
-The main consideration is Docker Hub's pull rate limits. Unauthenticated pulls are limited to 100 per 6 hours, and free authenticated accounts get 200 per 6 hours. For production ArgoCD setups, a paid Docker Hub subscription eliminates rate limit concerns.
+The main consideration is Docker Hub's pull rate limits. Unauthenticated pulls are limited to 100 per 6 hours, and Docker Personal authenticated accounts get 200 per 6 hours. For production ArgoCD setups, a paid Docker Hub subscription eliminates pull rate limit concerns, subject to Docker Hub's fair use policy.
 
 ## Prerequisites
 
 - ArgoCD v2.8 or later (for stable OCI support)
-- Docker CLI installed locally for pushing charts
 - Helm CLI v3.8 or later (OCI support is GA)
 - A Docker Hub account
 
@@ -55,7 +54,7 @@ Verify the push:
 helm pull oci://registry-1.docker.io/myusername/my-chart --version 1.0.0
 ```
 
-Note the registry URL format. Docker Hub's OCI-compatible endpoint is `registry-1.docker.io`, not `docker.io`. While `docker.io` works for container images, the OCI distribution spec requires the full registry endpoint.
+Note the registry URL format. Docker Hub's OCI-compatible endpoint for Helm chart pushes is `registry-1.docker.io`, not `docker.io`.
 
 ## Configuring ArgoCD with Docker Hub Credentials
 
@@ -65,7 +64,7 @@ The simplest way to add Docker Hub as a repository source:
 
 ```bash
 # Add Docker Hub as an OCI Helm repository
-argocd repo add registry-1.docker.io \
+argocd repo add registry-1.docker.io/myusername \
   --type helm \
   --name dockerhub \
   --enable-oci \
@@ -92,7 +91,7 @@ type: Opaque
 stringData:
   type: helm
   name: dockerhub
-  url: registry-1.docker.io
+  url: registry-1.docker.io/myusername
   enableOCI: "true"
   username: "myusername"
   password: "<docker-hub-access-token>"
@@ -123,7 +122,7 @@ stringData:
   password: "<docker-hub-access-token>"
 ```
 
-With this template in place, any ArgoCD application referencing `registry-1.docker.io` will automatically use these credentials.
+With this template in place, any ArgoCD application referencing a repository URL prefixed by `registry-1.docker.io`, such as `registry-1.docker.io/myusername`, will automatically use these credentials.
 
 ## Creating an ArgoCD Application
 
@@ -139,8 +138,8 @@ metadata:
 spec:
   project: default
   source:
-    chart: myusername/my-chart
-    repoURL: registry-1.docker.io
+    chart: my-chart
+    repoURL: registry-1.docker.io/myusername
     targetRevision: 1.0.0
     helm:
       releaseName: my-app
@@ -164,7 +163,7 @@ spec:
 kubectl apply -f dockerhub-app.yaml
 ```
 
-The `chart` field uses the format `<namespace>/<chart-name>`, where namespace is your Docker Hub username or organization name.
+The `repoURL` field includes your Docker Hub username or organization namespace, and the `chart` field is the chart name within that namespace.
 
 ## Using Public Charts from Docker Hub
 
@@ -182,7 +181,7 @@ type: Opaque
 stringData:
   type: helm
   name: dockerhub-public
-  url: registry-1.docker.io
+  url: registry-1.docker.io/<namespace>
   enableOCI: "true"
 ```
 
@@ -195,9 +194,9 @@ Docker Hub enforces pull rate limits that can affect ArgoCD's ability to sync ap
 | Account Type | Rate Limit |
 |---|---|
 | Unauthenticated | 100 pulls / 6 hours |
-| Free (authenticated) | 200 pulls / 6 hours |
-| Pro | 5,000 pulls / day |
-| Team | 5,000 pulls / day |
+| Personal (authenticated) | 200 pulls / 6 hours |
+| Pro | Unlimited |
+| Team | Unlimited |
 | Business | Unlimited |
 
 ArgoCD periodically refreshes application state, which counts against your rate limit. Here are strategies to manage this:
@@ -218,7 +217,7 @@ data:
 
 ### Use Webhook-Based Refresh
 
-Instead of polling, configure Docker Hub webhooks to trigger ArgoCD refreshes only when charts actually change:
+Instead of relying only on polling, configure registry webhooks to trigger ArgoCD refreshes when charts change. ArgoCD's OCI registry webhook support is version- and provider-specific, so verify that your ArgoCD release supports Docker Hub's webhook payload before relying on this path:
 
 ```bash
 # Create a webhook in Docker Hub pointing to:
@@ -252,7 +251,8 @@ For team workflows, push charts under your Docker Hub organization:
 helm push my-chart-1.0.0.tgz oci://registry-1.docker.io/my-org
 
 # Reference in ArgoCD application
-# chart: my-org/my-chart
+# repoURL: registry-1.docker.io/my-org
+# chart: my-chart
 ```
 
 This allows you to manage access at the organization level and share charts across team members.
@@ -265,7 +265,7 @@ Docker Hub OCI artifacts support semantic versioning. ArgoCD can track specific 
 # Pin to exact version
 targetRevision: 1.2.3
 
-# Use a version constraint (requires ArgoCD 2.10+)
+# Use a version constraint
 targetRevision: ">=1.0.0 <2.0.0"
 
 # Track latest (not recommended for production)
