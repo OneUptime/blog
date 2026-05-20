@@ -83,20 +83,23 @@ kubectl delete pod "$POD" -n argocd
 
 # Immediately test API access
 echo "Testing API access during failover..."
+API_OK=0
 for i in $(seq 1 30); do
   if argocd app list > /dev/null 2>&1; then
     RECOVERY_TIME=$(($(date +%s) - START))
     echo "PASS: API accessible after $RECOVERY_TIME seconds"
+    API_OK=1
     break
   fi
   sleep 1
 done
+if [ "$API_OK" -ne 1 ]; then
+  echo "FAIL: API did not become accessible within 30 seconds"
+fi
 
 # Wait for replacement pod
 echo "Waiting for replacement pod..."
-kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/name=argocd-server \
-  -n argocd --timeout=120s
+kubectl rollout status deployment/argocd-server -n argocd --timeout=120s
 
 # Verify all replicas are back
 RUNNING=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server \
@@ -119,6 +122,14 @@ fi
 #!/bin/bash
 echo "=== Test 2: Controller Leader Failover ==="
 
+# Verify there is a standby controller to take over
+CTRL_REPLICAS=$(kubectl get statefulset argocd-application-controller -n argocd \
+  -o jsonpath='{.status.readyReplicas}')
+if [ "${CTRL_REPLICAS:-0}" -lt 2 ]; then
+  echo "FAIL: Controller leader failover requires at least 2 ready controller replicas"
+  exit 1
+fi
+
 # Find current leader
 LEADER=$(kubectl get lease argocd-application-controller -n argocd \
   -o jsonpath='{.spec.holderIdentity}')
@@ -135,16 +146,22 @@ START=$(date +%s)
 
 # Watch for new leader
 echo "Waiting for new leader election..."
+NEW_LEADER_FOUND=0
 for i in $(seq 1 60); do
   NEW_LEADER=$(kubectl get lease argocd-application-controller -n argocd \
     -o jsonpath='{.spec.holderIdentity}' 2>/dev/null)
   if [ -n "$NEW_LEADER" ] && [ "$NEW_LEADER" != "$LEADER" ]; then
     FAILOVER_TIME=$(($(date +%s) - START))
     echo "PASS: New leader elected: $NEW_LEADER (took $FAILOVER_TIME seconds)"
+    NEW_LEADER_FOUND=1
     break
   fi
   sleep 1
 done
+if [ "$NEW_LEADER_FOUND" -ne 1 ]; then
+  echo "FAIL: No new leader elected within 60 seconds"
+  exit 1
+fi
 
 # Verify reconciliation works
 echo "Testing application reconciliation..."
@@ -173,15 +190,19 @@ echo "Lease transitions: $TRANSITIONS_BEFORE -> $TRANSITIONS_AFTER"
 #!/bin/bash
 echo "=== Test 3: Redis Failover ==="
 
+REDIS_MASTER_GROUP="${REDIS_MASTER_GROUP:-argocd}"
+
 # Find current Redis master
 MASTER_INFO=$(kubectl exec -n argocd argocd-redis-ha-server-0 -c sentinel -- \
-  redis-cli -p 26379 sentinel get-master-addr-by-name mymaster 2>/dev/null)
+  sh -c 'redis-cli -a "$AUTH" --no-auth-warning -p 26379 sentinel get-master-addr-by-name "$1"' \
+  -- "$REDIS_MASTER_GROUP" 2>/dev/null)
 echo "Current Redis master: $MASTER_INFO"
+MASTER_ADDR=$(echo "$MASTER_INFO" | head -1)
 
 # Find which pod is the master
 for i in 0 1 2; do
   ROLE=$(kubectl exec -n argocd argocd-redis-ha-server-$i -c redis -- \
-    redis-cli info replication 2>/dev/null | grep role)
+    sh -c 'redis-cli -a "$AUTH" --no-auth-warning info replication' 2>/dev/null | grep role)
   echo "Server $i: $ROLE"
   if echo "$ROLE" | grep -q "master"; then
     MASTER_POD="argocd-redis-ha-server-$i"
@@ -189,6 +210,10 @@ for i in 0 1 2; do
 done
 
 echo "Master pod: $MASTER_POD"
+if [ -z "$MASTER_POD" ]; then
+  echo "FAIL: Could not identify Redis master pod"
+  exit 1
+fi
 
 # Kill the master
 echo "Killing Redis master..."
@@ -197,19 +222,25 @@ START=$(date +%s)
 
 # Wait for Sentinel failover
 echo "Waiting for Sentinel failover..."
+NEW_MASTER_FOUND=0
 for i in $(seq 1 45); do
   # Check any surviving Sentinel
   for j in 0 1 2; do
     NEW_MASTER=$(kubectl exec -n argocd argocd-redis-ha-server-$j -c sentinel -- \
-      redis-cli -p 26379 sentinel get-master-addr-by-name mymaster 2>/dev/null | head -1)
-    if [ -n "$NEW_MASTER" ]; then
+      sh -c 'redis-cli -a "$AUTH" --no-auth-warning -p 26379 sentinel get-master-addr-by-name "$1"' \
+      -- "$REDIS_MASTER_GROUP" 2>/dev/null | head -1)
+    if [ -n "$NEW_MASTER" ] && [ "$NEW_MASTER" != "$MASTER_ADDR" ]; then
       FAILOVER_TIME=$(($(date +%s) - START))
       echo "New master detected at: $NEW_MASTER (took $FAILOVER_TIME seconds)"
+      NEW_MASTER_FOUND=1
       break 2
     fi
   done
   sleep 1
 done
+if [ "$NEW_MASTER_FOUND" -ne 1 ]; then
+  echo "FAIL: Redis master did not change within 45 seconds"
+fi
 
 # Test ArgoCD still works
 echo "Testing ArgoCD after Redis failover..."
@@ -242,8 +273,8 @@ POD=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server \
 echo "Killing repo server: $POD"
 kubectl delete pod "$POD" -n argocd
 
-# Immediately trigger multiple syncs
-echo "Triggering concurrent syncs..."
+# Immediately trigger a sync
+echo "Triggering sync..."
 argocd app sync ha-test --force --async
 
 # Check if sync completes
@@ -256,9 +287,7 @@ else
 fi
 
 # Verify replacement pod
-kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/name=argocd-repo-server \
-  -n argocd --timeout=120s
+kubectl rollout status deployment/argocd-repo-server -n argocd --timeout=120s
 
 RUNNING=$(kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server \
   --field-selector=status.phase=Running --no-headers | wc -l)
@@ -290,11 +319,11 @@ echo "ArgoCD pods on node: $PODS_ON_NODE"
 # Attempt drain with a short timeout
 echo "Attempting node drain (60s timeout)..."
 kubectl drain "$NODE" --ignore-daemonsets --delete-emptydir-data \
-  --timeout=60s --dry-run=client 2>&1
+  --timeout=60s --dry-run=server 2>&1
 
 # Check if drain would succeed
 if kubectl drain "$NODE" --ignore-daemonsets --delete-emptydir-data \
-  --timeout=60s --dry-run=client 2>&1 | grep -q "evict"; then
+  --timeout=60s --dry-run=server 2>&1 | grep -q "evict"; then
   echo "PASS: Drain would succeed while respecting PDBs"
 else
   echo "INFO: Drain may be partially blocked by PDBs (expected behavior)"
