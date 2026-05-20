@@ -315,6 +315,7 @@ ls helm-values/monitoring/prometheus/values.yaml
 
 # Test Helm rendering locally with the same values
 helm template prometheus prometheus-community/kube-prometheus-stack \
+  --repo https://prometheus-community.github.io/helm-charts \
   --version 56.6.2 \
   -f helm-values/monitoring/prometheus/values.yaml
 
