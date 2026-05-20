@@ -8,7 +8,7 @@ Description: Learn how to configure and use Deja Dup on Ubuntu for automatic enc
 
 ---
 
-Deja Dup is Ubuntu's built-in backup tool, designed to be straightforward enough for everyday users while still being capable enough for reliable automated backups. It handles encryption, scheduling, and backup rotation without requiring command-line knowledge. Under the hood it uses Duplicity, which provides incremental encrypted backups.
+Deja Dup is Ubuntu's built-in backup tool, designed to be straightforward enough for everyday users while still being capable enough for reliable automated backups. It handles encryption, scheduling, and backup rotation without requiring command-line knowledge. Ubuntu's packaged versions commonly use Duplicity underneath, while newer upstream and Flatpak releases may use Restic. Both provide incremental encrypted backups.
 
 ## Installing Deja Dup
 
@@ -38,11 +38,11 @@ Launch Deja Dup from the Activities menu by searching for "Backups", or run it f
 deja-dup &
 ```
 
-The interface is minimal with three main sections: Overview, Folders, and Scheduling.
+The interface is minimal, with main options for scheduling, folders, and the storage location.
 
 ## Configuring What to Back Up
 
-Click on "Folders to save" to define what gets backed up. By default, Deja Dup backs up your home directory.
+Click on "Folders" to define what gets backed up. By default, Deja Dup backs up your home directory, excluding folders such as Trash and Downloads.
 
 You can also configure this from the command line by editing the DConf settings:
 
@@ -93,7 +93,7 @@ Deja Dup integrates with GNOME Online Accounts for Google Drive backup:
 1. Open Settings and go to "Online Accounts"
 2. Add your Google account
 3. In Deja Dup, select "Google Drive" as the backup location
-4. The backup folder in Google Drive defaults to `Deja Dup`
+4. The backup folder in Google Drive defaults to your hostname
 
 ```bash
 # Set Google Drive as backend
@@ -105,10 +105,10 @@ dconf write /org/gnome/deja-dup/backend "'google'"
 For backing up to a remote SSH server:
 
 ```bash
-# Set SFTP backend
-dconf write /org/gnome/deja-dup/backend "'sftp'"
-dconf write /org/gnome/deja-dup/sftp/server "'backup.example.com'"
-dconf write /org/gnome/deja-dup/sftp/directory "'/backups/desktop'"
+# Set a remote SFTP location
+dconf write /org/gnome/deja-dup/backend "'remote'"
+dconf write /org/gnome/deja-dup/remote/uri "'sftp://backup.example.com'"
+dconf write /org/gnome/deja-dup/remote/folder "'/backups/desktop'"
 ```
 
 ## Enabling Encryption
@@ -116,15 +116,15 @@ dconf write /org/gnome/deja-dup/sftp/directory "'/backups/desktop'"
 Deja Dup encrypts backups by default. During your first backup run, it prompts for an encryption password. Store this password somewhere safe - losing it means losing access to your backups permanently.
 
 ```bash
-# Check if encryption is enabled
-dconf read /org/gnome/deja-dup/encrypt-metadata
+# Check which backup engine this Deja Dup installation is configured to use
+dconf read /org/gnome/deja-dup/tool
 ```
 
-The encryption key is derived from your password using GPG. The actual data is encrypted before leaving your machine, which means even if your backup destination is compromised, your data remains protected.
+For Duplicity backups, encryption is handled through GPG using your password. For Restic backups, Restic derives its repository key from your password. In both cases, the actual data is encrypted before leaving your machine, which means even if your backup destination is compromised, your data remains protected.
 
 ## Setting Up Automatic Backups
 
-Configure the backup schedule through the GUI's "Scheduling" tab, or via DConf:
+Configure the backup schedule through the GUI's "Schedule" option, or via DConf:
 
 ```bash
 # Enable automatic backups
@@ -137,14 +137,14 @@ dconf write /org/gnome/deja-dup/periodic-period 7
 dconf write /org/gnome/deja-dup/delete-after 180
 ```
 
-The background daemon `deja-dup-monitor` handles scheduled backups. It runs as a user systemd service:
+The background helper `deja-dup-monitor` handles scheduled backups. On Ubuntu desktop packages it is started by the desktop session from an XDG autostart file:
 
 ```bash
-# Check if the backup monitor service is running
-systemctl --user status deja-dup-monitor
+# Check whether the backup monitor process is running
+pgrep -a deja-dup-monitor
 
-# Enable it if not running
-systemctl --user enable --now deja-dup-monitor
+# Check the autostart entry installed by the package
+ls /etc/xdg/autostart/org.gnome.DejaDup.Monitor.desktop
 ```
 
 ## Running a Manual Backup
@@ -158,8 +158,8 @@ deja-dup --backup
 # Restore from backup
 deja-dup --restore
 
-# Restore a specific file (opens a file picker)
-deja-dup --restore-missing ~/documents/important-file.txt
+# Restore a specific file or folder
+deja-dup --restore ~/Documents/important-file.txt
 ```
 
 Through the GUI, click "Back Up Now" on the main screen.
@@ -169,11 +169,11 @@ Through the GUI, click "Back Up Now" on the main screen.
 Deja Dup provides a notification when backups complete or fail. You can also check the logs:
 
 ```bash
-# View journal logs for Deja Dup
-journalctl --user -u deja-dup-monitor
+# View recent user-session journal messages mentioning Deja Dup
+journalctl --user --since today | grep -i deja-dup
 
-# Check recent backup logs from duplicity (the underlying tool)
-ls -la ~/.cache/deja-dup/
+# Check cached metadata from duplicity, if this installation uses duplicity
+ls -la ~/.cache/duplicity/
 ```
 
 If a backup fails, the notification includes the error message. Common causes include:
@@ -198,26 +198,26 @@ For command-line restoration:
 # Restore all files to original locations
 deja-dup --restore
 
-# Restore to a different location
-deja-dup --restore-missing /path/to/file
+# Restore a specific file or folder
+deja-dup --restore /path/to/file
 ```
 
-Deja Dup also integrates with the Files (Nautilus) file manager. Right-click any file or folder and look for "Restore Previous Versions" to access backup history for that specific item.
+Some older or distribution-specific desktop integrations also expose restore actions from the file manager, but current Ubuntu packages primarily restore through the Deja Dup application.
 
 ## Verifying Your Backups
 
 Run a verification check to confirm your backup data is intact:
 
 ```bash
-# Verify backup integrity
-deja-dup --verify
+# Verify a duplicity-format backup against the current home directory
+duplicity verify --compare-data file:///mnt/backup/deja-dup "$HOME"
 ```
 
-This runs duplicity's verify command against your backup set, comparing checksums of backed-up files against the originals. It is good practice to run this monthly.
+Current Deja Dup releases do not expose a `--verify` command-line option. For Duplicity-format backups, `duplicity verify --compare-data` compares backed-up files against the originals. For Restic-format backups, use Restic's `check` command against the repository. It is good practice to verify backups monthly.
 
 ## Working Directly with Duplicity
 
-Since Deja Dup uses Duplicity underneath, you can use duplicity commands directly for more control:
+If your Deja Dup backup folder contains files whose names begin with `duplicity-`, you can use duplicity commands directly for more control:
 
 ```bash
 # Install duplicity if needed
