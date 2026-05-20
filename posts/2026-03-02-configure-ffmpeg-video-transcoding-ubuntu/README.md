@@ -25,14 +25,7 @@ ffmpeg -version
 ffmpeg -codecs 2>/dev/null | grep -i h264
 ```
 
-The repository version may lag behind the current release. For the latest features (AV1 hardware encoding, newer codec support), install from a PPA:
-
-```bash
-# Add the jonathonf PPA for a more current FFmpeg build
-sudo add-apt-repository ppa:jonathonf/ffmpeg-4 -y
-sudo apt update
-sudo apt install ffmpeg -y
-```
+The repository version may lag behind the current upstream release. For newer features such as AV1 hardware encoding, use a current static build or build FFmpeg from source. Only use a third-party PPA after verifying that it supports your Ubuntu release.
 
 Alternatively, download a static build from John Van Sickle's builds for a zero-dependency binary:
 
@@ -75,8 +68,8 @@ Constant Rate Factor (CRF) produces the best quality-to-size ratio for offline t
 # High-quality H.264 encode with CRF 18 (lower = better quality, larger file)
 ffmpeg -i input.mp4 \
     -c:v libx264 \
-    -preset slow \       # Slower preset = better compression at same quality
-    -crf 18 \            # 18-28 is typical; 23 is default
+    -preset slow \
+    -crf 18 \
     -c:a aac \
     -b:a 192k \
     output_hq.mp4
@@ -88,23 +81,25 @@ ffmpeg -i input.mp4 \
     -crf 23 \
     -c:a aac \
     -b:a 128k \
-    -movflags +faststart \  # Move moov atom to start for streaming
+    -movflags +faststart \
     output_web.mp4
 ```
+
+The `slow` preset improves compression efficiency at the same quality, and `-movflags +faststart` moves the MP4 moov atom to the start for progressive playback.
 
 ## Scaling and Resolution Changes
 
 ```bash
 # Scale to 1280x720 while preserving aspect ratio
 ffmpeg -i input.mp4 \
-    -vf "scale=1280:720" \
+    -vf "scale=1280:720:force_original_aspect_ratio=decrease" \
     -c:v libx264 -crf 22 \
     -c:a copy \
     output_720p.mp4
 
 # Scale to width 1280, auto-calculate height (maintaining aspect ratio)
 ffmpeg -i input.mp4 \
-    -vf "scale=1280:-1" \
+    -vf "scale=1280:-2" \
     -c:v libx264 -crf 22 \
     -c:a copy \
     output_1280w.mp4
@@ -131,21 +126,21 @@ BASENAME=$(basename "$INPUT" | sed 's/\.[^.]*$//')
 # 1080p output
 ffmpeg -i "$INPUT" \
     -c:v libx264 -preset medium -crf 20 \
-    -vf "scale=1920:1080" \
+    -vf "scale=1920:1080:force_original_aspect_ratio=decrease" \
     -c:a aac -b:a 192k \
     "${BASENAME}_1080p.mp4"
 
 # 720p output
 ffmpeg -i "$INPUT" \
     -c:v libx264 -preset medium -crf 22 \
-    -vf "scale=1280:720" \
+    -vf "scale=1280:720:force_original_aspect_ratio=decrease" \
     -c:a aac -b:a 128k \
     "${BASENAME}_720p.mp4"
 
 # 480p output
 ffmpeg -i "$INPUT" \
     -c:v libx264 -preset medium -crf 24 \
-    -vf "scale=854:480" \
+    -vf "scale=854:480:force_original_aspect_ratio=decrease" \
     -c:a aac -b:a 96k \
     "${BASENAME}_480p.mp4"
 
@@ -165,8 +160,8 @@ ffmpeg -encoders 2>/dev/null | grep nvenc
 # H.264 encoding with NVENC
 ffmpeg -i input.mp4 \
     -c:v h264_nvenc \
-    -preset p4 \          # p1 (fastest) to p7 (best quality)
-    -cq 23 \              # Constant quality mode
+    -preset p4 \
+    -cq 23 \
     -c:a copy \
     output_nvenc.mp4
 
@@ -178,6 +173,8 @@ ffmpeg -i input.mp4 \
     -c:a copy \
     output_hevc_nvenc.mp4
 ```
+
+NVENC presets range from `p1` (fastest) to `p7` (best quality), and `-cq` sets the target quality level for VBR constant-quality mode.
 
 ### Intel Quick Sync (QSV)
 
