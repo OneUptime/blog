@@ -66,7 +66,7 @@ Narrow down to applications in a specific project:
 ```bash
 # List applications in the "production" project
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://argocd.example.com/api/v1/applications?project=production" | jq '.items[].metadata.name'
+  "https://argocd.example.com/api/v1/applications?projects=production" | jq '.items[].metadata.name'
 ```
 
 You can specify multiple projects:
@@ -74,7 +74,7 @@ You can specify multiple projects:
 ```bash
 # List applications in production or staging projects
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://argocd.example.com/api/v1/applications?project=production&project=staging"
+  "https://argocd.example.com/api/v1/applications?projects=production&projects=staging"
 ```
 
 ### Filter by Label Selector
@@ -95,14 +95,14 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   "https://argocd.example.com/api/v1/applications?selector=env%21%3Dstaging"
 ```
 
-### Filter by Name Pattern
+### Filter by Name
 
-Search for applications by name:
+Filter to a specific application name:
 
 ```bash
-# Search by name (substring match)
+# Filter by exact application name
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://argocd.example.com/api/v1/applications?search=frontend"
+  "https://argocd.example.com/api/v1/applications?name=frontend"
 ```
 
 ### Filter by Repository
@@ -117,15 +117,20 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
 
 ## Controlling Response Fields
 
-The full application response can be quite large. Use the `fields` parameter to limit what is returned:
+The full application response can be quite large. Project only the fields you need with `jq`:
 
 ```bash
-# Get only metadata and sync status (much smaller response)
+# Print only application names and status fields
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://argocd.example.com/api/v1/applications?fields=items.metadata.name,items.status.sync.status,items.status.health.status"
+  "https://argocd.example.com/api/v1/applications" | \
+  jq '{items: [.items[] | {
+    name: .metadata.name,
+    sync: .status.sync.status,
+    health: .status.health.status
+  }]}'
 ```
 
-This is particularly important when you have hundreds of applications - a full response with all resources can be several megabytes.
+This is particularly useful when you have hundreds of applications - the projected output is much easier to process and read. To reduce the data returned by Argo CD, combine the server-side filters above.
 
 ## Practical Examples
 
@@ -215,12 +220,13 @@ For more complex queries, use Python:
 ```python
 import requests
 from collections import Counter
+import os
 
 def list_apps(server, token, project=None, selector=None):
     """List applications with optional filtering."""
     params = {}
     if project:
-        params["project"] = project
+        params["projects"] = project
     if selector:
         params["selector"] = selector
 
@@ -234,6 +240,7 @@ def list_apps(server, token, project=None, selector=None):
     return resp.json().get("items", [])
 
 # Get all production apps
+token = os.environ["ARGOCD_TOKEN"]
 apps = list_apps("https://argocd.example.com", token, project="production")
 
 # Summarize health status
@@ -260,7 +267,7 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
 
 # Combine filters to reduce response size
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://argocd.example.com/api/v1/applications?project=production&selector=tier%3Dfrontend"
+  "https://argocd.example.com/api/v1/applications?projects=production&selector=tier%3Dfrontend"
 ```
 
 ## Watching for Application Changes
@@ -296,4 +303,4 @@ case $HTTP_CODE in
 esac
 ```
 
-The applications list endpoint is foundational to ArgoCD automation. Combined with filtering and field selection, it provides efficient access to your application inventory. Use it to build dashboards, generate reports, trigger bulk operations, or monitor your GitOps fleet.
+The applications list endpoint is foundational to ArgoCD automation. Combined with filtering and client-side field projection, it provides efficient access to your application inventory. Use it to build dashboards, generate reports, trigger bulk operations, or monitor your GitOps fleet.
