@@ -29,7 +29,7 @@ Each component is responsible for different things:
 - **Application Controller**: Reconciliation, sync operations, health checks
 - **Repo Server**: Git operations, manifest generation (Helm, Kustomize, etc.)
 - **Dex Server**: SSO and external authentication
-- **Redis**: Caching, state management
+- **Redis**: Disposable cache for reducing Kubernetes API and Git provider requests
 
 ## Quick Log Commands for Each Component
 
@@ -39,7 +39,7 @@ Each component is responsible for different things:
 kubectl logs -n argocd deploy/argocd-server --tail=100
 
 # Application Controller logs
-kubectl logs -n argocd deploy/argocd-application-controller --tail=100
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=100
 
 # Repo Server logs
 kubectl logs -n argocd deploy/argocd-repo-server --tail=100
@@ -71,11 +71,11 @@ When you have hundreds of applications, you need to filter logs for just one:
 
 ```bash
 # Filter controller logs for a specific application
-kubectl logs -n argocd deploy/argocd-application-controller --tail=500 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | \
   grep "my-app-name"
 
 # Filter with context lines (3 lines before and after)
-kubectl logs -n argocd deploy/argocd-application-controller --tail=500 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | \
   grep -B3 -A3 "my-app-name"
 
 # Filter repo server logs for a specific repository
@@ -89,15 +89,15 @@ ArgoCD uses structured logging. Filter by log level:
 
 ```bash
 # Show only errors
-kubectl logs -n argocd deploy/argocd-application-controller --tail=500 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | \
   grep 'level=error'
 
 # Show errors and warnings
-kubectl logs -n argocd deploy/argocd-application-controller --tail=500 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | \
   grep -E 'level=(error|warning)'
 
 # Show fatal messages (component is crashing)
-kubectl logs -n argocd deploy/argocd-application-controller --tail=500 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | \
   grep 'level=fatal'
 ```
 
@@ -110,7 +110,7 @@ When debugging an active issue, stream logs while reproducing the problem:
 kubectl logs -n argocd deploy/argocd-server -f | grep -i "sync\|error"
 
 # Stream controller logs during a sync operation
-kubectl logs -n argocd deploy/argocd-application-controller -f | grep -i "my-app"
+kubectl logs -n argocd statefulset/argocd-application-controller -f | grep -i "my-app"
 
 # Stream multiple components at once using stern (recommended)
 # Install stern: brew install stern (macOS) or go install github.com/stern/stern@latest
@@ -142,7 +142,7 @@ When a pod has restarted (possibly due to OOMKill or crash), check the previous 
 
 ```bash
 # Get logs from the previous container instance
-kubectl logs -n argocd deploy/argocd-application-controller --previous --tail=200
+kubectl logs -n argocd statefulset/argocd-application-controller --previous --tail=200
 
 # Check why the pod restarted
 kubectl describe pod -n argocd -l app.kubernetes.io/name=argocd-application-controller | \
@@ -179,18 +179,19 @@ kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
 }'
 
 # Restart components to apply
-kubectl rollout restart deployment -n argocd argocd-server argocd-application-controller argocd-repo-server
+kubectl rollout restart deployment -n argocd argocd-server argocd-repo-server
+kubectl rollout restart statefulset -n argocd argocd-application-controller
 ```
 
 With JSON logs, you can use `jq` for powerful filtering:
 
 ```bash
 # Parse JSON logs and filter by application
-kubectl logs -n argocd deploy/argocd-application-controller --tail=200 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 | \
   jq -r 'select(.application == "my-app") | "\(.time) \(.level) \(.msg)"'
 
 # Find all errors with their applications
-kubectl logs -n argocd deploy/argocd-application-controller --tail=500 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | \
   jq -r 'select(.level == "error") | "\(.application): \(.msg)"'
 ```
 
