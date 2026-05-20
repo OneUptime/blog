@@ -215,7 +215,7 @@ metadata:
   namespace: argocd
 spec:
   source:
-    repoURL: oci://ghcr.io/myorg/charts
+    repoURL: ghcr.io/myorg/charts  # OCI Helm repo; omit the oci:// prefix
     chart: my-app
     targetRevision: 1.5.2  # Exact OCI tag
   destination:
@@ -225,7 +225,7 @@ spec:
 
 ## Monitoring Version Status
 
-Set up notifications to alert when a new chart version is available but not yet deployed:
+ArgoCD Notifications can alert when the deployed chart revision changes. To detect new chart versions that are available upstream but not yet committed to Git, use a dependency update tool such as Renovate to open pull requests for chart bumps.
 
 ```yaml
 # argocd-notifications ConfigMap snippet
@@ -235,10 +235,10 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  trigger.on-outdated-chart: |
-    - description: Chart has newer version available
-      when: app.status.summary.externalURLs != nil
-      send: [slack-outdated-notification]
+  trigger.on-chart-revision-changed: |
+    when: app.status?.operationState.phase in ['Succeeded'] and app.status.sync.revision != nil
+    oncePer: app.status.sync.revision
+    send: [slack-chart-revision-notification]
 ```
 
 ## Best Practices
