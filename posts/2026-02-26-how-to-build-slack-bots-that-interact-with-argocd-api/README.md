@@ -25,8 +25,7 @@ graph LR
     Bot --> Slack
     Slack --> User
 
-    ArgoCD -.->|Notifications| Bot
-    Bot -.->|Alert Messages| Slack
+    ArgoCD -.->|Notifications| Slack
 ```
 
 ## Setting Up the Slack App
@@ -44,11 +43,10 @@ Here is a Python implementation using Flask and the Slack SDK.
 
 # Slack bot for ArgoCD operations
 import os
-import json
 import requests
 from flask import Flask, request, jsonify
 from slack_sdk import WebClient
-from slack_sdk.errors import SlackApiError
+from slack_sdk.signature import SignatureVerifier
 
 app = Flask(__name__)
 
@@ -57,11 +55,13 @@ SLACK_TOKEN = os.environ['SLACK_BOT_TOKEN']
 SLACK_SIGNING_SECRET = os.environ['SLACK_SIGNING_SECRET']
 ARGOCD_URL = os.environ['ARGOCD_URL']
 ARGOCD_TOKEN = os.environ['ARGOCD_TOKEN']
+ARGOCD_VERIFY_TLS = os.environ.get('ARGOCD_VERIFY_TLS', 'true').lower() == 'true'
 
 slack_client = WebClient(token=SLACK_TOKEN)
+signature_verifier = SignatureVerifier(SLACK_SIGNING_SECRET)
 
 # ArgoCD API helper
-def argocd_request(method, endpoint, data=None):
+def argocd_request(method, endpoint, data=None, params=None):
     """Make an authenticated request to the ArgoCD API."""
     headers = {
         'Authorization': f'Bearer {ARGOCD_TOKEN}',
@@ -71,8 +71,9 @@ def argocd_request(method, endpoint, data=None):
     resp = requests.request(
         method, url,
         headers=headers,
+        params=params,
         json=data,
-        verify=False,  # Adjust for your TLS setup
+        verify=ARGOCD_VERIFY_TLS,
         timeout=30
     )
     resp.raise_for_status()
@@ -82,6 +83,9 @@ def argocd_request(method, endpoint, data=None):
 @app.route('/slack/commands', methods=['POST'])
 def handle_command():
     """Handle the /argocd slash command."""
+    if not signature_verifier.is_valid_request(request.get_data(), request.headers):
+        return jsonify({'error': 'invalid Slack signature'}), 403
+
     command_text = request.form.get('text', '').strip()
     channel_id = request.form.get('channel_id')
     user_id = request.form.get('user_id')
@@ -172,12 +176,6 @@ def handle_status(app_name, channel_id, user_id):
                     'type': 'button',
                     'text': {'type': 'plain_text', 'text': 'View in ArgoCD'},
                     'url': f'{ARGOCD_URL}/applications/{app_name}'
-                },
-                {
-                    'type': 'button',
-                    'text': {'type': 'plain_text', 'text': 'Sync Now'},
-                    'action_id': f'sync_{app_name}',
-                    'style': 'primary'
                 }
             ]
         }
@@ -213,8 +211,8 @@ def handle_list(app_name, channel_id, user_id):
     """List all applications or filter by project."""
     project = app_name  # Reuse the second argument as project filter
 
-    params = f'?projects={project}' if project else ''
-    apps = argocd_request('GET', f'/api/v1/applications{params}')
+    params = {'projects': project} if project else None
+    apps = argocd_request('GET', '/api/v1/applications', params=params)
 
     items = apps.get('items', [])
     if not items:
@@ -331,6 +329,9 @@ spec:
                 secretKeyRef:
                   name: argocd-bot-token
                   key: token
+            - name: ARGOCD_VERIFY_TLS
+              # Set to "true" when the ArgoCD server certificate is trusted by the container.
+              value: "false"
           resources:
             requests:
               cpu: 50m
@@ -378,10 +379,9 @@ metadata:
   namespace: argocd
 data:
   policy.csv: |
-    # Slack bot can read all apps and sync non-production apps
+    # Slack bot can read and sync all apps
     p, role:slack-bot, applications, get, */*, allow
     p, role:slack-bot, applications, sync, */*, allow
-    p, role:slack-bot, applications, action, */*, allow
     # But cannot delete or create applications
     p, role:slack-bot, applications, delete, */*, deny
     p, role:slack-bot, applications, create, */*, deny
@@ -416,7 +416,7 @@ data:
           ]
         }]
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [app-synced]
 ```
 
