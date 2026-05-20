@@ -33,7 +33,7 @@ graph TD
 
 ## Deploying 5G Core Network Functions
 
-5G core network functions have strict dependency ordering. The Network Repository Function (NRF) must be running before other functions can register. ArgoCD sync waves handle this ordering.
+5G core network functions have strict dependency ordering. The Network Repository Function (NRF) must be running before other functions can register. ArgoCD sync waves handle this ordering when these Application resources are deployed by a parent application; for app-of-apps ordering, restore ArgoCD's Application health assessment so later waves wait for earlier applications to become healthy.
 
 ```yaml
 # NRF must deploy first - other CNFs register with it
@@ -72,13 +72,17 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: 5g-amf
+  namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   project: telecom-core
   source:
+    repoURL: https://github.com/org/telecom-gitops.git
     path: 5g-core/amf
+    targetRevision: main
   destination:
+    server: https://telecom-cluster.internal
     namespace: 5g-core
 
 ---
@@ -87,13 +91,17 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: 5g-smf
+  namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "2"
 spec:
   project: telecom-core
   source:
+    repoURL: https://github.com/org/telecom-gitops.git
     path: 5g-core/smf
+    targetRevision: main
   destination:
+    server: https://telecom-cluster.internal
     namespace: 5g-core
 
 ---
@@ -102,13 +110,17 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: 5g-upf
+  namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "3"
 spec:
   project: telecom-core
   source:
+    repoURL: https://github.com/org/telecom-gitops.git
     path: 5g-core/upf
+    targetRevision: main
   destination:
+    server: https://telecom-cluster.internal
     namespace: 5g-core
 ```
 
@@ -125,7 +137,15 @@ metadata:
   namespace: 5g-core
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: upf
   template:
+    metadata:
+      labels:
+        app: upf
+      annotations:
+        k8s.v1.cni.cncf.io/networks: sriov-n3@net1, sriov-n6@net2
     spec:
       containers:
         - name: upf
@@ -154,7 +174,7 @@ spec:
         - name: hugepage
           emptyDir:
             medium: HugePages
-      # Pin to specific nodes with performance profiles
+      # Schedule to nodes with performance profiles
       nodeSelector:
         node-role.kubernetes.io/upf: ""
         feature.node.kubernetes.io/cpu-cpuid.AVX2: "true"
@@ -177,11 +197,33 @@ spec:
   config: |
     {
       "cniVersion": "0.3.1",
+      "name": "sriov-n3",
       "type": "sriov",
       "vlan": 100,
       "ipam": {
         "type": "host-local",
         "ranges": [[{"subnet": "10.10.10.0/24"}]]
+      }
+    }
+
+---
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: sriov-n6
+  namespace: 5g-core
+  annotations:
+    k8s.v1.cni.cncf.io/resourceName: intel.com/sriov_netdevice
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "name": "sriov-n6",
+      "type": "sriov",
+      "vlan": 200,
+      "ipam": {
+        "type": "host-local",
+        "ranges": [[{"subnet": "10.10.20.0/24"}]]
       }
     }
 ```
@@ -282,6 +324,8 @@ metadata:
 data:
   resource.customizations.health.5g.telecom.io_NetworkFunction: |
     hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for network function status"
     if obj.status ~= nil then
       if obj.status.phase == "Running" and obj.status.registeredWithNRF == true then
         hs.status = "Healthy"
@@ -309,12 +353,18 @@ metadata:
   name: amf
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: amf
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1       # Add one new pod at a time
       maxUnavailable: 0  # Never reduce capacity during upgrade
   template:
+    metadata:
+      labels:
+        app: amf
     spec:
       terminationGracePeriodSeconds: 300  # 5 minutes for graceful drain
       containers:
@@ -411,7 +461,17 @@ Telecom operators must comply with various regulations and internal change manag
 
 ```yaml
 # Strict sync windows for production network
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: telecom-core
+  namespace: argocd
 spec:
+  sourceRepos:
+    - https://github.com/org/telecom-gitops.git
+  destinations:
+    - server: https://telecom-cluster.internal
+      namespace: '*'
   syncWindows:
     # Maintenance windows aligned with network operations
     - kind: allow
@@ -419,12 +479,7 @@ spec:
       duration: 4h
       applications:
         - '*'
-    # Emergency changes require manual sync
-    - kind: allow
-      schedule: '* * * * *'
-      duration: 24h
-      applications:
-        - '*'
+      # Emergency changes outside the window require manual sync
       manualSync: true
 ```
 
@@ -467,4 +522,4 @@ spec:
             summary: "SMF session setup latency exceeds 100ms at p99"
 ```
 
-The telecom industry's move to cloud-native network functions on Kubernetes creates an opportunity to apply GitOps practices to network infrastructure management. ArgoCD provides the deployment consistency, audit trail, and automated reconciliation that carrier-grade networks demand. Combined with proper health checks, rolling update strategies, and multi-site management, ArgoCD can serve as the deployment backbone for modern telecom infrastructure. For comprehensive monitoring of your telecom CNF deployments, explore [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-gaming-deployments/view) for end-to-end observability across your network function lifecycle.
+The telecom industry's move to cloud-native network functions on Kubernetes creates an opportunity to apply GitOps practices to network infrastructure management. ArgoCD provides the deployment consistency, audit trail, and automated reconciliation that carrier-grade networks demand. Combined with proper health checks, rolling update strategies, and multi-site management, ArgoCD can serve as the deployment backbone for modern telecom infrastructure. For comprehensive monitoring of your telecom CNF deployments, explore [OneUptime](https://oneuptime.com/) for end-to-end observability across your network function lifecycle.
