@@ -15,7 +15,7 @@ Incus storage pools are the backing storage for container and VM disk images, vo
 | Backend | Copy-on-Write | Snapshots | Pool Size | Notes |
 |---------|---------------|-----------|-----------|-------|
 | dir | No | Slow (rsync) | OS filesystem | Simplest, least efficient |
-| Btrfs | Yes | Fast | Loop file or partition | Good balance, no extra setup |
+| Btrfs | Yes | Fast | Loop file or partition | Good balance, needs btrfs-progs |
 | ZFS | Yes | Fast | Loop file or partition | Best features, higher RAM usage |
 | LVM | No | LVM snapshots | Block device | Good for raw performance |
 | Ceph | Yes | Fast | Ceph cluster | Distributed, cluster use |
@@ -38,19 +38,22 @@ incus storage volume list default
 
 ## Create a Btrfs Storage Pool
 
-Btrfs is the recommended backend for most use cases. It supports copy-on-write, fast snapshots, and does not require additional configuration on Ubuntu.
+Btrfs is the recommended backend for most use cases. It supports copy-on-write, fast snapshots, and requires the Btrfs userspace tools on Ubuntu.
 
 ```bash
+# Install Btrfs utilities first
+sudo apt-get install -y btrfs-progs
+
 # Create a Btrfs pool using a loop file (for testing)
-incus storage create btfs-pool btrfs
+incus storage create btrfs-pool btrfs
 
 # Create a Btrfs pool on a specific block device
 # This is more performant and appropriate for production
 sudo parted /dev/sdb --script mklabel gpt mkpart primary btrfs 0% 100%
-incus storage create btfs-pool btrfs source=/dev/sdb1
+incus storage create btrfs-pool btrfs source=/dev/sdb1
 
 # Create a Btrfs pool with a specific size (loop file)
-incus storage create btfs-pool btrfs size=100GiB
+incus storage create btrfs-pool btrfs size=100GiB
 ```
 
 ## Create a ZFS Storage Pool
@@ -72,14 +75,18 @@ incus storage create zfs-pool zfs \
     source=/dev/sdb \
     zfs.pool_name=incus \
     volume.zfs.use_refquota=true \
+    volume.zfs.block_mode=true \
     volume.block.filesystem=ext4
 ```
 
 ## Create an LVM Storage Pool
 
-LVM provides raw block devices to containers, which is useful for I/O-intensive workloads:
+LVM uses logical volumes underneath instances and custom volumes, which is useful for I/O-intensive workloads:
 
 ```bash
+# Install LVM utilities first
+sudo apt-get install -y lvm2
+
 # Create an LVM pool on a dedicated volume group
 sudo pvcreate /dev/sdc
 sudo vgcreate incus-vg /dev/sdc
@@ -99,11 +106,13 @@ After creating a pool, configure its properties for performance and space manage
 # Set the default volume size for new containers
 incus storage set default volume.size 20GiB
 
-# Enable compression (Btrfs and ZFS)
+# Enable compression for Btrfs pools
 incus storage set btrfs-pool btrfs.mount_options "compress=zstd:3"
 
-# For ZFS: enable compression
+# For ZFS: use refquota for volume size limits
 incus storage set zfs-pool volume.zfs.use_refquota true
+
+# Limit rsync transfer bandwidth for fallback migrations and copies
 incus storage set zfs-pool rsync.bwlimit 100MB/s
 
 # Set volume block filesystem (for LVM and Ceph)
@@ -233,8 +242,8 @@ echo "options zfs zfs_arc_max=4294967296" | sudo tee /etc/modprobe.d/zfs.conf
 # Apply without reboot
 echo 4294967296 | sudo tee /sys/module/zfs/parameters/zfs_arc_max
 
-# Enable ZFS compression globally
-sudo zfs set compression=zstd incus/containers
+# Enable ZFS compression on the Incus pool/dataset
+sudo zfs set compression=zstd incus
 
 # Check pool health
 sudo zpool status
@@ -244,8 +253,8 @@ sudo zpool status
 
 ```bash
 # Check Btrfs pool usage (including snapshot storage)
-# The pool is a loop file under /var/lib/incus/storage-pools/
-POOL_PATH=$(incus storage show btrfs-pool | grep source | awk '{print $2}')
+# Incus mounts local storage pools under /var/lib/incus/storage-pools/
+POOL_PATH=/var/lib/incus/storage-pools/btrfs-pool
 sudo btrfs filesystem usage "$POOL_PATH"
 
 # Run balance to reclaim space after deleting snapshots
