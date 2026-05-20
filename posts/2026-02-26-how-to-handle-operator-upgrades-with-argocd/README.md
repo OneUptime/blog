@@ -176,7 +176,7 @@ argocd app sync my-operator
 
 Important caveats about operator rollbacks:
 
-- **CRD rollbacks may not work**: If the new CRD version added a required field and existing resources now have that field, downgrading the CRD may fail validation
+- **CRD rollbacks may not work**: If custom resources have been written with a new storage version, schema, or conversion behavior, downgrading the CRD may fail or leave older clients unable to read the objects correctly
 - **Data migrations may not be reversible**: Some operators perform data migrations on upgrade that cannot be undone
 - **Test rollbacks in staging first**: Always verify that a downgrade path exists before upgrading in production
 
@@ -253,13 +253,6 @@ spec:
         - "*-operator"
         - "*-crds"
       manualSync: true
-    # Deny syncs outside the window
-    - kind: deny
-      schedule: "0 0 * * *"
-      duration: 24h
-      applications:
-        - "*-operator"
-        - "*-crds"
 ```
 
 ## Canary Operator Upgrades
@@ -298,7 +291,7 @@ Test the new version with canary workloads before switching production to the ne
 
 ## Monitoring Upgrades
 
-Track operator upgrade health with these metrics:
+Track operator upgrade health with these metrics. The custom resource condition metric name depends on your operator or kube-state-metrics CustomResourceStateMetrics configuration:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -320,7 +313,7 @@ spec:
             summary: "Operator reconciliation errors spiking after upgrade"
         - alert: OperatorCRNotReady
           expr: |
-            count(kube_customresource_status_condition{status!="True",type="Ready"}) > 0
+            count(myresource_status_condition{status!="True",type="Ready"}) > 0
           for: 10m
           labels:
             severity: warning
