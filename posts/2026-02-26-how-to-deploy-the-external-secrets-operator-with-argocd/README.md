@@ -43,14 +43,17 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.9.11
+    targetRevision: 2.5.0
     helm:
       values: |
         # Only install CRDs, nothing else
         installCRDs: true
+        createOperator: false
         crds:
           createClusterExternalSecret: true
           createClusterSecretStore: true
+        rbac:
+          create: false
         webhook:
           create: false
         certController:
@@ -82,7 +85,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/external-secrets/external-secrets.git
-    targetRevision: v0.9.11
+    targetRevision: v2.5.0
     path: deploy/crds
   destination:
     server: https://kubernetes.default.svc
@@ -109,7 +112,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.9.11
+    targetRevision: 2.5.0
     helm:
       values: |
         installCRDs: false
@@ -172,7 +175,7 @@ SecretStores define how ESO connects to your external secret provider. For a clu
 ### AWS Secrets Manager with IRSA
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -193,7 +196,7 @@ spec:
 ### HashiCorp Vault
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -217,7 +220,7 @@ spec:
 ### Google Secret Manager
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: gcp-secret-manager
@@ -242,7 +245,7 @@ spec:
 Now you can create ExternalSecret resources in your application manifests. These live in Git and are safe to commit because they only contain references, not actual secret values.
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -276,7 +279,7 @@ spec:
 For pulling an entire JSON secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -352,9 +355,9 @@ data:
 
 ## Handling ArgoCD Diff Issues
 
-ArgoCD will show managed Kubernetes Secrets as OutOfSync because ESO updates them outside of ArgoCD. You have two options:
+In a normal ESO setup, ArgoCD should manage the ExternalSecret resource, not the generated Kubernetes Secret. If you also keep a placeholder Secret manifest in Git, or another tool copies ArgoCD tracking metadata to ESO-created Secrets, ArgoCD can report drift or extraneous resources. You have two options:
 
-Option 1 - Ignore the Secret resources created by ESO:
+Option 1 - Ignore only the managed fields on the specific Secret that is also declared in Git:
 
 ```yaml
 # In the Application spec
@@ -363,11 +366,13 @@ spec:
   ignoreDifferences:
     - group: ""
       kind: Secret
+      name: database-credentials
+      namespace: default
       jsonPointers:
         - /data
 ```
 
-Option 2 - Use resource tracking annotations so ArgoCD does not manage ESO-created Secrets at all. Since ESO creates the Secrets (not ArgoCD), ArgoCD should only track the ExternalSecret resource.
+Option 2 - Use annotation-based resource tracking in ArgoCD and do not template ArgoCD tracking labels or annotations onto ESO-created Secrets. Since ESO creates the Secrets, ArgoCD should only track the ExternalSecret resource.
 
 ## Multi-Environment Setup
 
@@ -375,7 +380,7 @@ For multiple environments, use Kustomize overlays with different ExternalSecret 
 
 ```yaml
 # base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
