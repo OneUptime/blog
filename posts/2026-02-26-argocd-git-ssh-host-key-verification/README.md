@@ -135,7 +135,7 @@ Apply with:
 kubectl apply -f argocd-ssh-known-hosts-cm.yaml
 ```
 
-The repo server picks up changes to this ConfigMap automatically without requiring a restart.
+The repo server picks up changes to this ConfigMap through the Kubernetes ConfigMap volume without requiring a restart, although it can take a little while for the mounted file to update.
 
 ## Handling Host Key Changes
 
@@ -145,7 +145,7 @@ To update a host key:
 
 ```bash
 # Remove the old key
-argocd cert rm-ssh github.com
+argocd cert rm github.com --cert-type ssh
 
 # Fetch and add the new key
 ssh-keyscan github.com 2>/dev/null | argocd cert add-ssh --batch
@@ -174,29 +174,10 @@ Most Git hosting providers publish their SSH host key fingerprints on their docu
 
 In development or testing environments, you might want to skip host key verification entirely. This is insecure and should never be used in production:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-ssh-known-hosts-cm
-  namespace: argocd
-data:
-  ssh_known_hosts: |
-    # Wildcard entry - INSECURE, development only
-```
-
-A slightly better approach for development is to set the SSH option in the Git configuration:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-repo-server-gitconfig
-  namespace: argocd
-data:
-  gitconfig: |
-    [core]
-      sshCommand = ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+```bash
+argocd repo add git@git.example.com:repos/repo \
+  --ssh-private-key-path ~/id_rsa \
+  --insecure-skip-server-verification
 ```
 
 Again, do not use this in production. It defeats the purpose of SSH host key verification and leaves you vulnerable to man-in-the-middle attacks.
@@ -220,13 +201,13 @@ Add this to your known hosts ConfigMap with the brackets and port included.
 
 ## Automating Host Key Management
 
-For organizations managing many Git servers, automate host key updates with a CronJob:
+For organizations managing many Git servers, automate host key drift detection with a CronJob. Do not automatically trust and apply new `ssh-keyscan` output without verifying it against an approved source:
 
 ```yaml
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: update-ssh-known-hosts
+  name: check-ssh-known-hosts
   namespace: argocd
 spec:
   schedule: "0 0 * * 0"  # Weekly on Sunday
@@ -236,23 +217,29 @@ spec:
         spec:
           serviceAccountName: argocd-server
           containers:
-          - name: update-keys
-            image: bitnami/kubectl:latest
+          - name: check-keys
+            # Use an internal image that includes kubectl, ssh-keyscan, and diff.
+            image: your-registry/kubectl-openssh:latest
             command:
             - /bin/sh
             - -c
             - |
-              # Fetch current host keys
-              KEYS=$(ssh-keyscan github.com gitlab.com bitbucket.org git.internal.example.com 2>/dev/null)
+              set -eu
 
-              # Update the ConfigMap
-              kubectl create configmap argocd-ssh-known-hosts-cm \
-                --from-literal="ssh_known_hosts=$KEYS" \
-                -n argocd \
-                --dry-run=client -o yaml | kubectl apply -f -
+              # Fetch current host keys for comparison only.
+              ssh-keyscan github.com gitlab.com bitbucket.org git.internal.example.com 2>/dev/null \
+                | sort > /tmp/current_known_hosts
+
+              # Read the approved keys Argo CD is using.
+              kubectl get configmap argocd-ssh-known-hosts-cm -n argocd \
+                -o jsonpath='{.data.ssh_known_hosts}' \
+                | sort > /tmp/approved_known_hosts
+
+              # Exit non-zero if keys changed so monitoring can alert.
+              diff -u /tmp/approved_known_hosts /tmp/current_known_hosts
           restartPolicy: OnFailure
 ```
 
-This keeps your SSH host keys up to date automatically. Combine this with monitoring and alerting to catch any host key rotation events.
+This does not update keys automatically; it gives monitoring and alerting a clear failure signal when a host key rotation or mismatch needs review.
 
 SSH host key verification is a critical security mechanism. Take the time to configure it properly rather than disabling it. Once set up, it requires minimal maintenance unless your Git providers rotate their keys.
