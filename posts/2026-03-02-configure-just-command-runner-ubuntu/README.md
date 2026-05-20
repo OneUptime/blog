@@ -17,7 +17,7 @@ Description: Install and configure the just command runner on Ubuntu, write just
 ```bash
 # Install via the install script (recommended)
 
-curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | sudo bash -s -- --to /usr/local/bin
 
 # Verify installation
 just --version
@@ -364,14 +364,17 @@ clean:
 
 ```bash
 # Generate bash completion
-just --completions bash >> ~/.bashrc
-source ~/.bashrc
+mkdir -p ~/.local/share/bash-completion/completions
+just --completions bash > ~/.local/share/bash-completion/completions/just
 
 # Generate zsh completion
-just --completions zsh >> ~/.zshrc
-source ~/.zshrc
+mkdir -p ~/.zsh/completions
+just --completions zsh > ~/.zsh/completions/_just
+echo 'fpath=(~/.zsh/completions $fpath)' >> ~/.zshrc
+echo 'autoload -U compinit && compinit' >> ~/.zshrc
 
 # Generate fish completion
+mkdir -p ~/.config/fish/completions
 just --completions fish > ~/.config/fish/completions/just.fish
 ```
 
@@ -381,8 +384,8 @@ just --completions fish > ~/.config/fish/completions/just.fish
 # Show all recipes with their documentation
 just --list
 
-# Show the justfile that would be run
-just --show
+# Dump the justfile that would be run
+just --dump
 
 # Run recipe in dry-run mode
 just --dry-run build
