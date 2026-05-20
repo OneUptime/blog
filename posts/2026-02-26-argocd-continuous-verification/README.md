@@ -31,7 +31,7 @@ graph TD
 
 Continuous verification has two phases:
 1. **During deployment**: Analyze metrics at each step of progressive delivery
-2. **After deployment**: Ongoing monitoring that can trigger rollback if quality degrades
+2. **After deployment**: Ongoing monitoring that can alert or trigger rollback automation if quality degrades
 
 ## Phase 1: Verification During Deployment with Argo Rollouts
 
@@ -82,7 +82,8 @@ spec:
         - name: service-name
           value: myapp
         - name: canary-hash
-          valueFromPodTemplateHash: true
+          valueFrom:
+            podTemplateHashValue: Latest
 ```
 
 ### Comprehensive Analysis Template
@@ -271,6 +272,10 @@ kind: AnalysisTemplate
 metadata:
   name: custom-verification
 spec:
+  args:
+  - name: service-name
+  - name: api-token
+
   metrics:
   # Call external verification service
   - name: external-quality-check
@@ -284,6 +289,8 @@ spec:
         headers:
         - key: Authorization
           value: "Bearer {{args.api-token}}"
+        - key: Content-Type
+          value: application/json
         body: |
           {
             "service": "{{args.service-name}}",
@@ -381,15 +388,15 @@ Track verification status across all deployments:
 
 # Panel: Verification Pass Rate
 # Query:
-argocd_app_info{health_status="Healthy"} / argocd_app_info
+sum(argocd_app_info{health_status="Healthy"}) / sum(argocd_app_info)
 
 # Panel: Active Analysis Runs
 analysis_run_info{phase="Running"}
 
-# Panel: Analysis Failure Rate
-increase(analysis_run_metric_phase{phase="Failed"}[24h])
+# Panel: Analysis Failure Ratio
+sum(analysis_run_phase{phase="Failed"})
 /
-increase(analysis_run_metric_phase[24h])
+sum(analysis_run_phase)
 ```
 
 ## Triggering Post-Deploy Verification Automatically
@@ -446,7 +453,7 @@ graph TD
     B --> C[Level 3: Canary analysis with Argo Rollouts]
     C --> D[Level 4: Background analysis during rollout]
     D --> E[Level 5: 24h post-deploy continuous analysis]
-    E --> F[Level 6: Baseline comparison with auto-rollback]
+    E --> F[Level 6: Baseline comparison with rollback automation]
 ```
 
 Start at Level 1 and progressively move up. Most organizations get significant value at Level 3 or 4.
