@@ -17,7 +17,7 @@ Module files live in `/etc/apache2/mods-available/`. Each module typically has t
 - `.load` - contains the `LoadModule` directive that loads the shared library
 - `.conf` - contains configuration for the module (not all modules have this)
 
-Enabling a module creates symlinks to these files in `/etc/apache2/mods-enabled/`. Apache reads everything in `mods-enabled/` at startup.
+Enabling a module creates symlinks to these files in `/etc/apache2/mods-enabled/`. Apache reads the enabled `.load` and `.conf` files at startup.
 
 ```bash
 # List all available modules
@@ -80,7 +80,7 @@ sudo systemctl reload apache2
 
 Required for:
 - WordPress pretty permalinks
-- Laravel, Symfony, Django URL routing
+- Laravel and Symfony front-controller routing
 - SEO-friendly URLs
 - HTTPS redirect rules
 
@@ -90,7 +90,7 @@ Example use in VirtualHost or `.htaccess`:
 RewriteEngine On
 # Redirect non-www to www
 RewriteCond %{HTTP_HOST} !^www\.
-RewriteRule ^(.*)$ https://www.%{HTTP_HOST}/$1 [R=301,L]
+RewriteRule ^/?(.*)$ https://www.%{HTTP_HOST}/$1 [R=301,L]
 ```
 
 ### mod_ssl - HTTPS Support
@@ -214,11 +214,11 @@ Modern Ubuntu deployments typically use PHP-FPM rather than `mod_php`:
 
 ```bash
 # The old way (don't use for new setups)
-# sudo a2enmod php8.1   # mod_php
+# sudo a2enmod phpX.Y   # mod_php, replacing X.Y with the installed PHP version
 
 # The modern way - use PHP-FPM via proxy_fcgi
 sudo a2enmod proxy_fcgi setenvif
-sudo a2enconf php8.1-fpm    # Enable PHP-FPM config
+sudo a2enconf phpX.Y-fpm    # Enable PHP-FPM config, replacing X.Y with the installed PHP version
 sudo systemctl reload apache2
 ```
 
@@ -310,8 +310,7 @@ Some modules have separate configuration files in `/etc/apache2/conf-available/`
 ls /etc/apache2/conf-available/
 
 # Enable a module's configuration
-sudo a2enconf security
-sudo a2enconf php8.1-fpm
+sudo a2enconf phpX.Y-fpm
 
 # Disable a module's configuration
 sudo a2disconf serve-cgi-bin
