@@ -18,7 +18,7 @@ Before optimizing, measure how much bandwidth ArgoCD currently uses. The applica
 # Check how many API requests ArgoCD makes to each cluster
 
 kubectl exec -n argocd deploy/argocd-application-controller -- \
-  curl -s localhost:8082/metrics | grep argocd_cluster_api
+  curl -s localhost:8082/metrics | grep argocd_kubectl_requests_total
 
 # Look at the resource version cache hit rate
 kubectl exec -n argocd deploy/argocd-application-controller -- \
@@ -40,37 +40,16 @@ metadata:
   namespace: argocd
 data:
   # Set global reconciliation to 15 minutes (900 seconds)
-  timeout.reconciliation: "900"
+  timeout.reconciliation: "15m"
 ```
 
-For edge-specific applications, override on a per-app basis.
-
-```yaml
-# Per-application override via annotation
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: sensor-collector-site-17
-  namespace: argocd
-  annotations:
-    # Reconcile every 30 minutes for this bandwidth-constrained site
-    argocd.argoproj.io/refresh: "1800"
-spec:
-  project: edge-sensors
-  source:
-    repoURL: https://github.com/company/edge-configs
-    targetRevision: main
-    path: sites/site-17/sensor-collector
-  destination:
-    server: https://site-17.edge.internal:6443
-    namespace: sensors
-```
+ArgoCD does not support a per-Application reconciliation interval annotation. The `argocd.argoproj.io/refresh` annotation triggers a one-time refresh with the values `normal` or `hard`; it does not accept an interval. If different edge sites need very different polling intervals, use separate ArgoCD instances or keep the global interval conservative and rely on webhooks for faster Git-change detection.
 
 ## Optimizing Resource Tracking
 
-ArgoCD tracks which Kubernetes resources belong to which Application. The default tracking method uses labels, which requires listing all resources of each type across the cluster to find the ones with matching labels. This generates significant API traffic.
+ArgoCD tracks which Kubernetes resources belong to which Application. Older installations commonly use label-based tracking, while current ArgoCD versions can use annotation-based tracking. Annotation tracking avoids conflicts with other tools that also write the `app.kubernetes.io/instance` label and can make ownership more precise.
 
-Switch to annotation-based tracking, which is more targeted.
+Use annotation-based tracking where possible.
 
 ```yaml
 # argocd-cm - switch to annotation tracking
@@ -80,11 +59,11 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Annotation tracking reduces list operations
+  # Annotation tracking avoids app.kubernetes.io/instance label conflicts
   application.resourceTrackingMethod: annotation
 ```
 
-With annotation tracking, ArgoCD only needs to check resources it already knows about rather than listing entire resource types.
+After changing the tracking method, sync your applications again so ArgoCD applies the new tracking metadata to managed resources.
 
 ## Limiting Watched Resources
 
@@ -122,7 +101,7 @@ data:
 
 ## Using Server-Side Diff
 
-ArgoCD's default diff strategy downloads the full live manifests from the cluster and compares them locally. Server-side diff uses the Kubernetes API server's built-in dry-run capability instead, which can reduce the amount of data transferred.
+ArgoCD's default diff strategy compares desired manifests with live state and the last-applied configuration. Server-side diff uses Kubernetes server-side apply dry-run to calculate the predicted live state. It still makes API calls to the cluster, but it can produce more accurate diffs for resources managed with server-side apply.
 
 ```yaml
 # Enable server-side diff globally
@@ -143,15 +122,43 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: sensor-collector-site-17
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
-  # ... other fields
+  project: edge-sensors
+  source:
+    repoURL: https://github.com/company/edge-configs
+    targetRevision: main
+    path: sites/site-17/sensor-collector
+  destination:
+    server: https://site-17.edge.internal:6443
+    namespace: sensors
+```
+
+For sync operations, use server-side apply and selective sync when they fit your workload.
+
+```yaml
+# Per-application sync options
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: sensor-collector-site-17
+spec:
+  project: edge-sensors
+  source:
+    repoURL: https://github.com/company/edge-configs
+    targetRevision: main
+    path: sites/site-17/sensor-collector
+  destination:
+    server: https://site-17.edge.internal:6443
+    namespace: sensors
   syncPolicy:
     syncOptions:
       - ServerSideApply=true
       - ApplyOutOfSyncOnly=true
 ```
 
-The combination of `ServerSideApply` and `ApplyOutOfSyncOnly` means ArgoCD only sends data to the edge cluster when something actually needs to change.
+`ServerSideApply` makes ArgoCD apply changes with Kubernetes server-side apply, and `ApplyOutOfSyncOnly` tells ArgoCD to sync only out-of-sync resources during auto sync.
 
 ## Optimizing Manifest Generation
 
@@ -167,8 +174,8 @@ metadata:
 data:
   # Increase repo server parallelism limit to prevent queueing
   reposerver.parallelism.limit: "5"
-  # Cache manifests longer to reduce regeneration
-  reposerver.repo.cache.expiration: "24h"
+  # Keep manifest/revision cache entries for 24 hours
+  reposerver.repo.cache.expiration: "24h0m0s"
 ```
 
 ## Compressing API Traffic
@@ -193,14 +200,14 @@ stringData:
       "bearerToken": "<token>",
       "tlsClientConfig": {
         "insecure": false,
-        "caData": "<ca-cert>"
+        "caData": "<base64-ca-cert>"
       }
     }
 ```
 
 The Go HTTP client that ArgoCD uses already sends `Accept-Encoding: gzip` headers. Make sure your edge cluster's API server (or any reverse proxy in front of it) honors this header.
 
-## Selective Sync with Resource Hooks
+## Selective Sync with Sync Waves
 
 Instead of syncing everything at once, use sync waves to prioritize critical resources. This way, if the connection drops mid-sync, the most important resources are already applied.
 
@@ -250,7 +257,7 @@ spec:
 Instead of having ArgoCD poll the Git repository on a schedule, configure a Git webhook to trigger syncs only when there are actual changes. This eliminates unnecessary Git fetch operations.
 
 ```yaml
-# argocd-cm - configure webhook secret
+# argocd-cm - disable periodic repository polling
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -258,7 +265,7 @@ metadata:
   namespace: argocd
 data:
   # Disable automatic polling for edge applications
-  timeout.reconciliation: "0"  # Disable periodic reconciliation
+  timeout.reconciliation: "0"  # Disable periodic reconciliation by timeout
 ```
 
 Then configure your Git provider to send webhooks to ArgoCD's webhook endpoint.
@@ -276,7 +283,7 @@ Note that setting reconciliation to 0 disables periodic polling entirely. This s
 ```yaml
 # Balanced approach: webhooks plus hourly drift detection
 data:
-  timeout.reconciliation: "3600"  # 1 hour safety net
+  timeout.reconciliation: "1h"  # 1 hour safety net
 ```
 
 ## Monitoring Bandwidth Impact
@@ -286,10 +293,10 @@ Track the bandwidth impact of your ArgoCD configuration using the controller's b
 ```yaml
 # Grafana dashboard query for API request rate per cluster
 # This shows how many requests ArgoCD makes to each edge cluster
-rate(argocd_cluster_api_server_requests_total{server=~".*edge.*"}[1h])
+rate(argocd_kubectl_requests_total{server=~".*edge.*"}[1h])
 ```
 
-Compare the before and after metrics when you apply these optimizations. In practice, the combination of extended reconciliation intervals, annotation tracking, and selective syncing can reduce ArgoCD's bandwidth usage by 80 to 90 percent compared to the default configuration.
+Compare the before and after metrics when you apply these optimizations. In practice, the combination of extended reconciliation intervals, resource exclusions, webhooks, and selective syncing can significantly reduce ArgoCD's bandwidth usage compared to the default configuration.
 
 ## Wrapping Up
 
