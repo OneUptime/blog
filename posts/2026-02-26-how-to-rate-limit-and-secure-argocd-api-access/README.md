@@ -151,9 +151,7 @@ metadata:
     nginx.ingress.kubernetes.io/limit-connections: "5"
     # Custom error when rate limited
     nginx.ingress.kubernetes.io/limit-req-status-code: "429"
-    # Use the real client IP for rate limiting
-    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
-    # SSL passthrough for gRPC
+    # Connect to the ArgoCD HTTPS backend
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
@@ -173,6 +171,8 @@ spec:
                 port:
                   number: 443
 ```
+
+If the ingress controller sits behind another load balancer, configure `use-forwarded-headers` in the ingress-nginx controller ConfigMap so rate limiting uses the real client IP from trusted `X-Forwarded-For` headers. ArgoCD's native CLI gRPC traffic may need a separate `GRPCS` ingress or SSL passthrough; SSL passthrough operates at layer 4, so HTTP rate-limit annotations will not apply to that traffic.
 
 ### Using Istio Rate Limiting
 
@@ -265,7 +265,7 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
       ports:
-        - port: 8082
+        - port: 8083
           protocol: TCP
     # Allow internal ArgoCD components
     - from:
@@ -276,7 +276,7 @@ spec:
 
 ## API Audit Logging
 
-Track every API call for security auditing. Enable ArgoCD's audit logging and forward to your SIEM.
+Track API activity for security auditing. Use structured ArgoCD server logging and forward those logs to your SIEM.
 
 ```yaml
 # argocd-cmd-params-cm - enable detailed logging
@@ -286,13 +286,13 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable server audit logging
+  # Keep server logs at the default informational level
   server.log.level: "info"
   # Log format for structured logging
   server.log.format: "json"
 ```
 
-ArgoCD logs API requests including the authenticated user, the action, and the resource. Forward these to your logging infrastructure.
+ArgoCD logs the payloads of most API requests, except sensitive requests such as session creation and some cluster operations. It also records Kubernetes events for application operations, including the user and action. Forward these to your logging infrastructure.
 
 ```yaml
 # Example: Fluent Bit config to forward ArgoCD audit logs
@@ -306,7 +306,7 @@ data:
     [INPUT]
         Name              tail
         Path              /var/log/containers/argocd-server-*.log
-        Parser            json
+        Multiline.Parser  docker, cri
         Tag               argocd.server
         Refresh_Interval  5
 
@@ -384,16 +384,16 @@ spec:
 Track API usage patterns to detect anomalies and unauthorized access attempts.
 
 ```promql
-# Rate of API requests by user
+# Rate of ApplicationService API requests by method
 sum by (grpc_method) (rate(grpc_server_handled_total{grpc_service="application.ApplicationService"}[5m]))
 
 # Failed authentication attempts
 sum(rate(grpc_server_handled_total{grpc_code="Unauthenticated"}[5m]))
 
-# Rate of requests by client
+# Rate of requests by method
 sum by (grpc_method) (rate(grpc_server_handled_total[5m])) > 10
 ```
 
 ## Wrapping Up
 
-Securing the ArgoCD API requires defense in depth: disable default accounts and use SSO with dedicated service accounts, enforce least-privilege RBAC for every account and role, add rate limiting through an API gateway or service mesh, restrict network access with Kubernetes NetworkPolicies, enable audit logging and forward to your SIEM, and automate token rotation. These layers work together to protect your deployment infrastructure while still allowing the automation and integrations that make ArgoCD powerful.
+Securing the ArgoCD API requires defense in depth: disable default accounts and use SSO with dedicated service accounts, enforce least-privilege RBAC for every account and role, add rate limiting through an API gateway or service mesh, restrict network access with Kubernetes NetworkPolicies, use structured logging and forward security-relevant logs to your SIEM, and automate token rotation. These layers work together to protect your deployment infrastructure while still allowing the automation and integrations that make ArgoCD powerful.
