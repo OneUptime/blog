@@ -51,6 +51,9 @@ spec:
         - key: node-role.kubernetes.io/control-plane
           operator: Exists
           effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
       containers:
         - name: fluent-bit
           image: fluent/fluent-bit:2.2
@@ -231,11 +234,11 @@ spec:
 
 ## Health Checks in ArgoCD
 
-ArgoCD determines DaemonSet health by checking if the number of ready pods matches the desired number of scheduled pods. This means:
+ArgoCD determines DaemonSet health by checking whether the DaemonSet controller has observed the latest generation, whether the number of updated pods matches the desired number scheduled, and whether those updated pods are available. This means:
 
-- If you have 10 nodes and 10 pods are ready, the DaemonSet is healthy
-- If you have 10 nodes and 8 pods are ready, it is progressing
-- If pods are crash-looping, it shows as degraded
+- If you have 10 scheduled nodes, 10 updated pods, and 10 available pods, the DaemonSet is healthy
+- If you have 10 scheduled nodes and only 8 updated or available pods, it is progressing
+- If pods are crash-looping and do not become available, it remains progressing until the rollout completes or you add a custom health check
 
 You can customize this health check:
 
@@ -245,16 +248,28 @@ data:
   resource.customizations.health.apps_DaemonSet: |
     hs = {}
     if obj.status ~= nil then
-      if obj.status.desiredNumberScheduled == obj.status.numberReady then
+      if obj.metadata.generation ~= nil and
+         obj.status.observedGeneration ~= nil and
+         obj.metadata.generation > obj.status.observedGeneration then
+        hs.status = "Progressing"
+        hs.message = "Waiting for DaemonSet controller to observe the latest generation"
+      elseif obj.spec.updateStrategy ~= nil and
+             obj.spec.updateStrategy.type == "OnDelete" then
         hs.status = "Healthy"
-        hs.message = "All pods running on all scheduled nodes"
+        hs.message = "OnDelete DaemonSet synced; pods update when manually deleted"
       elseif obj.status.updatedNumberScheduled ~= nil and
+             obj.status.desiredNumberScheduled ~= nil and
              obj.status.updatedNumberScheduled < obj.status.desiredNumberScheduled then
         hs.status = "Progressing"
         hs.message = "Rolling update in progress"
-      else
+      elseif obj.status.numberAvailable ~= nil and
+             obj.status.desiredNumberScheduled ~= nil and
+             obj.status.numberAvailable < obj.status.desiredNumberScheduled then
         hs.status = "Progressing"
-        hs.message = "Waiting for pods to be ready"
+        hs.message = "Waiting for updated pods to become available"
+      else
+        hs.status = "Healthy"
+        hs.message = "All updated DaemonSet pods are available"
       end
     else
       hs.status = "Progressing"
