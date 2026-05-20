@@ -51,25 +51,25 @@ echo "Collecting version info..."
 
 cat > "$BUNDLE_DIR/environment.txt" << ENVEOF
 Collection Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
-Kubernetes Version: $(kubectl version --short 2>/dev/null || kubectl version -o json 2>/dev/null | jq -r '.serverVersion.gitVersion')
-Kubectl Version: $(kubectl version --client --short 2>/dev/null || echo "unknown")
+Kubernetes Version: $(kubectl version -o json 2>/dev/null | jq -r '.serverVersion.gitVersion // "unknown"' || echo "unknown")
+Kubectl Version: $(kubectl version --client -o json 2>/dev/null | jq -r '.clientVersion.gitVersion // "unknown"' || echo "unknown")
 ArgoCD CLI Version: $(argocd version --client --short 2>/dev/null || echo "not installed")
 Namespace: $NAMESPACE
 ENVEOF
 
 # ArgoCD server version (from container image)
-kubectl get deploy -n $NAMESPACE -o json 2>/dev/null | \
+kubectl get deploy -n "$NAMESPACE" -o json 2>/dev/null | \
   jq -r '.items[] | "\(.metadata.name): \(.spec.template.spec.containers[0].image)"' \
-  >> "$BUNDLE_DIR/environment.txt"
+  >> "$BUNDLE_DIR/environment.txt" || true
 
 # ============================================
 # 2. Pod status
 # ============================================
 echo "Collecting pod status..."
 
-kubectl get pods -n $NAMESPACE -o wide > "$BUNDLE_DIR/status/pods.txt" 2>&1
-kubectl describe pods -n $NAMESPACE > "$BUNDLE_DIR/status/pods-describe.txt" 2>&1
-kubectl top pods -n $NAMESPACE > "$BUNDLE_DIR/status/pods-resources.txt" 2>&1
+kubectl get pods -n "$NAMESPACE" -o wide > "$BUNDLE_DIR/status/pods.txt" 2>&1 || true
+kubectl describe pods -n "$NAMESPACE" > "$BUNDLE_DIR/status/pods-describe.txt" 2>&1 || true
+kubectl top pods -n "$NAMESPACE" > "$BUNDLE_DIR/status/pods-resources.txt" 2>&1 || true
 
 # ============================================
 # 3. Component logs
@@ -89,13 +89,13 @@ COMPONENTS=(
 for comp in "${COMPONENTS[@]}"; do
   echo "  Logs: $comp"
   # Current logs
-  kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=$comp \
+  kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name="$comp" \
     --tail=$TAIL_LINES --max-log-requests=10 \
-    > "$BUNDLE_DIR/logs/${comp}.log" 2>&1
+    > "$BUNDLE_DIR/logs/${comp}.log" 2>&1 || true
   # Previous logs
-  kubectl logs -n $NAMESPACE -l app.kubernetes.io/name=$comp \
+  kubectl logs -n "$NAMESPACE" -l app.kubernetes.io/name="$comp" \
     --previous --tail=$TAIL_LINES --max-log-requests=10 \
-    > "$BUNDLE_DIR/logs/${comp}-previous.log" 2>&1
+    > "$BUNDLE_DIR/logs/${comp}-previous.log" 2>&1 || true
 done
 
 # ============================================
@@ -103,29 +103,29 @@ done
 # ============================================
 echo "Collecting configuration..."
 
-# ConfigMaps (safe to share)
-kubectl get configmap argocd-cm -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/argocd-cm.yaml" 2>&1
-kubectl get configmap argocd-rbac-cm -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/argocd-rbac-cm.yaml" 2>&1
-kubectl get configmap argocd-cmd-params-cm -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/argocd-cmd-params-cm.yaml" 2>&1
-kubectl get configmap argocd-ssh-known-hosts-cm -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/argocd-ssh-known-hosts-cm.yaml" 2>&1
-kubectl get configmap argocd-tls-certs-cm -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/argocd-tls-certs-cm.yaml" 2>&1
+# ConfigMaps (review before sharing)
+kubectl get configmap argocd-cm -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/argocd-cm.yaml" 2>&1 || true
+kubectl get configmap argocd-rbac-cm -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/argocd-rbac-cm.yaml" 2>&1 || true
+kubectl get configmap argocd-cmd-params-cm -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/argocd-cmd-params-cm.yaml" 2>&1 || true
+kubectl get configmap argocd-ssh-known-hosts-cm -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/argocd-ssh-known-hosts-cm.yaml" 2>&1 || true
+kubectl get configmap argocd-tls-certs-cm -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/argocd-tls-certs-cm.yaml" 2>&1 || true
 
 # Deployments (container args, resource limits)
-kubectl get deployments -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/deployments.yaml" 2>&1
+kubectl get deployments -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/deployments.yaml" 2>&1 || true
 
 # Services
-kubectl get services -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/services.yaml" 2>&1
+kubectl get services -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/services.yaml" 2>&1 || true
 
 # Ingress
-kubectl get ingress -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/ingress.yaml" 2>&1
+kubectl get ingress -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/ingress.yaml" 2>&1 || true
 
 # ============================================
 # 5. Applications
@@ -133,32 +133,32 @@ kubectl get ingress -n $NAMESPACE -o yaml \
 echo "Collecting application information..."
 
 # Application list with status
-kubectl get applications -n $NAMESPACE \
+kubectl get applications -n "$NAMESPACE" \
   -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,PROJECT:.spec.project \
-  > "$BUNDLE_DIR/applications/app-list.txt" 2>&1
+  > "$BUNDLE_DIR/applications/app-list.txt" 2>&1 || true
 
 # Full application specs (redact if needed)
-kubectl get applications -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/applications/all-applications.yaml" 2>&1
+kubectl get applications -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/applications/all-applications.yaml" 2>&1 || true
 
 # Applications with conditions (errors)
-kubectl get applications -n $NAMESPACE -o json 2>/dev/null | \
+kubectl get applications -n "$NAMESPACE" -o json 2>/dev/null | \
   jq '[.items[] | select(.status.conditions != null and (.status.conditions | length > 0)) | {
     name: .metadata.name,
     conditions: .status.conditions
-  }]' > "$BUNDLE_DIR/applications/apps-with-conditions.json" 2>&1
+  }]' > "$BUNDLE_DIR/applications/apps-with-conditions.json" 2>&1 || true
 
 # Projects
-kubectl get appprojects -n $NAMESPACE -o yaml \
-  > "$BUNDLE_DIR/config/projects.yaml" 2>&1
+kubectl get appprojects -n "$NAMESPACE" -o yaml \
+  > "$BUNDLE_DIR/config/projects.yaml" 2>&1 || true
 
 # ============================================
 # 6. Events
 # ============================================
 echo "Collecting events..."
 
-kubectl get events -n $NAMESPACE --sort-by='.lastTimestamp' \
-  > "$BUNDLE_DIR/status/events.txt" 2>&1
+kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' \
+  > "$BUNDLE_DIR/status/events.txt" 2>&1 || true
 
 # ============================================
 # 7. Error summary
@@ -170,11 +170,12 @@ echo "" >> "$BUNDLE_DIR/error-summary.txt"
 
 for logfile in "$BUNDLE_DIR"/logs/*.log; do
   component=$(basename "$logfile" .log)
-  errors=$(grep -c "level=error\|level=fatal" "$logfile" 2>/dev/null || echo 0)
+  errors=$(grep -E -c "level=(error|fatal)" "$logfile" 2>/dev/null || true)
+  errors=${errors:-0}
   if [ "$errors" -gt 0 ]; then
     echo "$component: $errors errors" >> "$BUNDLE_DIR/error-summary.txt"
     echo "--- Top errors ---" >> "$BUNDLE_DIR/error-summary.txt"
-    grep "level=error\|level=fatal" "$logfile" | \
+    grep -E "level=(error|fatal)" "$logfile" | \
       sort | uniq -c | sort -rn | head -5 >> "$BUNDLE_DIR/error-summary.txt"
     echo "" >> "$BUNDLE_DIR/error-summary.txt"
   fi
@@ -277,15 +278,15 @@ kubectl get application my-app -n argocd -o json | \
 
 ```bash
 # Collect metrics snapshot
-kubectl port-forward -n argocd deploy/argocd-application-controller 8082:8082 &
+kubectl port-forward -n argocd svc/argocd-metrics 8082:8082 &
 curl -s localhost:8082/metrics > controller-metrics.txt
 kill %1
 
-kubectl port-forward -n argocd deploy/argocd-server 8083:8083 &
+kubectl port-forward -n argocd svc/argocd-server-metrics 8083:8083 &
 curl -s localhost:8083/metrics > server-metrics.txt
 kill %1
 
-kubectl port-forward -n argocd deploy/argocd-repo-server 8084:8084 &
+kubectl port-forward -n argocd svc/argocd-repo-server 8084:8084 &
 curl -s localhost:8084/metrics > repo-server-metrics.txt
 kill %1
 ```
