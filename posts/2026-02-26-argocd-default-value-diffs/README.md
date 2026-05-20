@@ -105,11 +105,13 @@ To enable server-side diff globally for all applications:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  server.diff.serverSideDiff: "true"
+  controller.diff.server.side: "true"
 ```
+
+After updating this ConfigMap, restart the `argocd-application-controller` so it picks up the new setting.
 
 ## Strategy 2: Include Defaults in Git Manifests
 
@@ -263,8 +265,8 @@ spec.ports[].protocol: TCP
 ### Ingress Defaults
 
 ```yaml
-# Fields commonly defaulted on Ingresses
-spec.rules[].http.paths[].pathType: ImplementationSpecific  # depends on version
+# networking.k8s.io/v1 Ingresses do not default this field
+spec.rules[].http.paths[].pathType: Prefix  # required; choose Prefix, Exact, or ImplementationSpecific
 ```
 
 ## Default Values That Change Between Kubernetes Versions
@@ -293,8 +295,16 @@ kind: CustomResourceDefinition
 metadata:
   name: myresources.example.com
 spec:
+  group: example.com
+  scope: Namespaced
+  names:
+    plural: myresources
+    singular: myresource
+    kind: MyResource
   versions:
     - name: v1
+      served: true
+      storage: true
       schema:
         openAPIV3Schema:
           type: object
@@ -334,10 +344,12 @@ kubectl get deployment my-app -o yaml
 diff <(cat git-manifest.yaml) <(kubectl get deployment my-app -o yaml)
 
 # Check if server-side diff would help
-# Temporarily enable it on one app
-argocd app set my-app --plugin-env 'ARGOCD_APP_PARAMETERS=[]'
+# Run one diff using server-side diff
+argocd app diff my-app --server-side-diff
+
+# Or temporarily enable it on one app
 kubectl annotate application my-app -n argocd \
-  argocd.argoproj.io/compare-options=ServerSideDiff=true
+  argocd.argoproj.io/compare-options=ServerSideDiff=true --overwrite
 argocd app get my-app --hard-refresh
 argocd app diff my-app
 ```
