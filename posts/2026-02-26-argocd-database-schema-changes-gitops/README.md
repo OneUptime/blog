@@ -14,7 +14,7 @@ This guide covers the practical patterns for handling database migrations with A
 
 ## The Challenge
 
-In a traditional CI/CD pipeline, database migrations typically run as part of the deployment script - right before or right after the new application version starts. With GitOps, ArgoCD manages the deployment by syncing Kubernetes manifests from Git. There is no built-in concept of "run this script before deploying."
+In a traditional CI/CD pipeline, database migrations typically run as part of the deployment script - right before or right after the new application version starts. With GitOps, ArgoCD manages the deployment by syncing Kubernetes manifests from Git. Instead of an external deployment script step, you need to model the migration as a Kubernetes resource or ArgoCD hook.
 
 The questions you need to answer are:
 
@@ -97,7 +97,13 @@ metadata:
   name: backend-api
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: backend-api
   template:
+    metadata:
+      labels:
+        app: backend-api
     spec:
       initContainers:
         - name: db-migrate
@@ -128,10 +134,9 @@ spec:
 - During rolling updates, multiple pods may try to run migrations simultaneously
 - Slower pod startup because migrations must complete first
 
-To handle the concurrency issue, use a migration tool that supports locking. For example, with Django:
+To handle the concurrency issue, use a migration tool that supports locking. Django records which migrations have been applied, but it does not provide a cluster-wide lock around concurrent `migrate` processes. If multiple init containers can start at once, use a single migration Job or wrap `migrate` in your own database advisory lock:
 
-```python
-# Django migrations use database-level locks automatically
+```bash
 python manage.py migrate --no-input
 ```
 
@@ -143,7 +148,7 @@ flyway.lockRetryCount=10
 
 ## Pattern 3: Dedicated Migration Application
 
-For complex migration workflows, create a separate ArgoCD Application that handles only database migrations:
+For complex migration workflows, create a separate ArgoCD Application that handles only database migrations. If you use sync waves to order the two Applications, manage both Application manifests from a parent "app of apps" Application so ArgoCD applies them in one ordered sync:
 
 ```yaml
 # Migration Application - syncs first
@@ -254,7 +259,7 @@ argocd app sync backend-api
 
 ## Monitoring Migrations
 
-Track migration status with ArgoCD health checks and monitoring. For critical production deployments, consider adding a PostSync hook that verifies the database schema:
+Track migration status with ArgoCD health checks and monitoring. For critical production deployments, consider adding a PostSync hook that verifies there are no unapplied Django migrations:
 
 ```yaml
 apiVersion: batch/v1
@@ -270,7 +275,7 @@ spec:
       containers:
         - name: verify
           image: myorg/backend-api:v1.5.0
-          command: ["python", "manage.py", "check", "--database", "default"]
+          command: ["python", "manage.py", "migrate", "--check"]
       restartPolicy: Never
   backoffLimit: 1
 ```
