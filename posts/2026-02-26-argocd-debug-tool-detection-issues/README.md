@@ -8,7 +8,7 @@ Description: A practical guide to diagnosing and fixing tool detection problems 
 
 ---
 
-Tool detection issues in ArgoCD manifest themselves in confusing ways. You push a Kustomize overlay to Git, but ArgoCD tries to render it with Helm and fails. Or your CMP plugin never gets called because ArgoCD sees a file it thinks belongs to a built-in tool. These problems are subtle because ArgoCD does not loudly announce which tool it chose - it just uses it and fails with an error that seems unrelated to detection. This guide shows you how to trace detection issues and fix them efficiently.
+Tool detection issues in ArgoCD manifest themselves in confusing ways. You push a Kustomize overlay to Git, but ArgoCD renders it as a plain directory and fails. Or your CMP plugin never gets called because its discovery rule does not match the application source. These problems are subtle because ArgoCD does not loudly announce which tool it chose - it just uses it and fails with an error that seems unrelated to detection. This guide shows you how to trace detection issues and fix them efficiently.
 
 ## Symptoms of Detection Problems
 
@@ -17,27 +17,23 @@ Tool detection issues in ArgoCD manifest themselves in confusing ways. You push 
 The most obvious symptom is an error message from the wrong tool:
 
 ```text
-# Expected Kustomize, got Helm
+# Expected Kustomize, got Directory
 
 ComparisonError: failed to load initial state of resource Deployment:
-  helm template . --name-template my-app: Error: Chart.yaml file is missing
-
-# Expected CMP plugin, got Kustomize
-ComparisonError: failed to load initial state of resource:
-  kustomize build: error: unable to find one of 'kustomization.yaml'...
-
-# Expected Jsonnet, got Directory
-ComparisonError: failed to load initial state of resource:
   error unmarshaling JSON: json: cannot unmarshal string into Go value
+
+# Expected CMP plugin, got Directory
+ComparisonError: failed to load initial state of resource:
+  error converting YAML to JSON: yaml: invalid map key
 ```
 
 ### Silent Wrong Output
 
-Sometimes detection picks a tool that succeeds but produces wrong manifests. For example, treating a Helm chart directory as plain YAML will try to apply Go template syntax as literal strings, creating resources with `{{ .Values.xxx }}` in field values.
+Sometimes detection picks a tool that succeeds but produces wrong manifests. For example, pointing ArgoCD at a Helm chart's `templates/` subdirectory instead of the chart root can make it treat Go template files as plain YAML, creating resources with `{{ .Values.xxx }}` in field values.
 
 ### Plugin Never Called
 
-Your CMP plugin is installed and working, but certain applications never trigger it because a built-in tool matches first.
+Your CMP plugin is installed and working, but certain applications never trigger it because the plugin has no discovery rule, its discovery rule does not match, or the Application does not explicitly specify the plugin.
 
 ## Step-by-Step Debugging
 
@@ -74,7 +70,8 @@ REVISION=$(kubectl get application my-app -n argocd \
 PATH_IN_REPO=$(kubectl get application my-app -n argocd \
   -o jsonpath='{.spec.source.path}')
 
-git clone --depth 1 --branch "$REVISION" "$REPO" /tmp/debug-repo
+git clone "$REPO" /tmp/debug-repo
+git -C /tmp/debug-repo checkout "$REVISION"
 ls -la "/tmp/debug-repo/$PATH_IN_REPO"
 ```
 
@@ -87,10 +84,10 @@ echo "=== Helm markers ==="
 ls -la Chart.yaml 2>/dev/null || echo "  No Chart.yaml"
 
 echo "=== Kustomize markers ==="
-ls -la kustomization.yaml kustomization.yml Kustomization 2>/dev/null || echo "  No kustomization files"
+find . -maxdepth 1 \( -name "kustomization.yaml" -o -name "kustomization.yml" -o -name "Kustomization" \) -print
 
-echo "=== Jsonnet markers ==="
-find . -maxdepth 1 \( -name "*.jsonnet" -o -name "*.libsonnet" \) -print 2>/dev/null || echo "  No Jsonnet files"
+echo "=== Jsonnet files handled by Directory source type ==="
+find . -maxdepth 1 -name "*.jsonnet" -print
 
 echo "=== Other files ==="
 ls -la
@@ -119,7 +116,7 @@ Turn on debug logging for the repo-server to see detection decisions:
 # Enable debug logging
 kubectl set env deployment/argocd-repo-server \
   -n argocd \
-  ARGOCD_LOG_LEVEL=debug
+  ARGOCD_REPO_SERVER_LOGLEVEL=debug
 
 # Wait for the pod to restart
 kubectl rollout status deployment/argocd-repo-server -n argocd
@@ -161,27 +158,23 @@ ls -la /home/argocd/cmp-server/plugins/
 cat /home/argocd/cmp-server/config/plugin.yaml
 ```
 
-Then simulate the discovery check:
+Then simulate the discovery check against the same checkout you inspected earlier. `discover.fileName`, `discover.find.glob`, and `discover.find.command` are evaluated relative to the Application source directory.
 
 ```bash
-# If using glob discovery
-kubectl exec deployment/argocd-repo-server \
-  -n argocd \
-  -c my-custom-plugin -- \
-  sh -c 'find /tmp -name "*.cue" -print 2>/dev/null | head -5'
+# If using glob-style discovery, test against the Application source directory
+cd "/tmp/debug-repo/$PATH_IN_REPO"
+find . -name "*.cue" -print 2>/dev/null | head -5
 
-# If using command discovery - run the exact command
-kubectl exec deployment/argocd-repo-server \
-  -n argocd \
-  -c my-custom-plugin -- \
-  sh -c 'cd /tmp/test-dir && <your-discovery-command>'
+# If using command discovery, run the exact command from the Application source directory
+cd "/tmp/debug-repo/$PATH_IN_REPO"
+<your-discovery-command>
 ```
 
 ## Common Issues and Fixes
 
 ### Issue: Hidden Chart.yaml in Subdirectory
 
-If your source path contains subdirectories with their own `Chart.yaml`, ArgoCD only checks the root of the source path. But if your path itself points to a Helm chart, detection picks Helm.
+If your source path contains subdirectories with their own `Chart.yaml`, that does not make the current Application a Helm app. ArgoCD selects the source type for the configured source path. But if your path itself points to a Helm chart, detection picks Helm.
 
 ```bash
 # Your source path points to the wrong directory
@@ -209,15 +202,15 @@ Kustomization.yaml  # Wrong - Kustomization has no extension
 
 ### Issue: Symlinks Not Followed
 
-ArgoCD does not follow symlinks during detection. If `Chart.yaml` is a symlink to another file, detection may not work as expected.
+ArgoCD rejects out-of-bounds symlinks by default before manifest generation. If a marker file or manifest depends on a symlink that points outside the repository or extracted chart, generation can fail even though the file appears to exist locally.
 
-### Issue: Git Sparse Checkout
+### Issue: Incomplete Local Checkout
 
-If you are using Git sparse checkout and the marker file is excluded, detection will not find it:
+If your local debugging checkout does not contain the same files ArgoCD checked out, you can draw the wrong conclusion about detection:
 
 ```bash
-# Make sure marker files are included in sparse checkout
-git sparse-checkout add 'apps/my-app/Chart.yaml'
+# Make sure the marker files are present in the revision you are testing
+git -C /tmp/debug-repo ls-tree --name-only HEAD apps/my-app
 ```
 
 ### Issue: Plugin Socket Not Created
@@ -237,7 +230,7 @@ kubectl exec deployment/argocd-repo-server \
 
 ## Creating a Detection Test Script
 
-Build a script that mimics ArgoCD's detection logic for local testing:
+Build a script that checks the same built-in marker files for local testing. It cannot test CMP sidecar discovery, which ArgoCD checks before built-in marker detection.
 
 ```bash
 #!/bin/bash
@@ -247,29 +240,41 @@ DIR=${1:-.}
 echo "Checking directory: $DIR"
 echo "========================"
 
+HAS_KUSTOMIZE=false
+HAS_HELM=false
+
 if [ -f "$DIR/Chart.yaml" ]; then
-  echo "DETECTED: Helm (Chart.yaml found)"
-  echo "  Priority: 1 (highest)"
-  exit 0
+  HAS_HELM=true
 fi
 
 if [ -f "$DIR/kustomization.yaml" ] || [ -f "$DIR/kustomization.yml" ] || [ -f "$DIR/Kustomization" ]; then
-  echo "DETECTED: Kustomize"
-  echo "  Priority: 2"
+  HAS_KUSTOMIZE=true
+fi
+
+if [ "$HAS_HELM" = true ] && [ "$HAS_KUSTOMIZE" = true ]; then
+  echo "CONFLICT: Helm and Kustomize markers are both present"
+  exit 1
+fi
+
+if [ "$HAS_HELM" = true ]; then
+  echo "DETECTED: Helm (Chart.yaml found)"
   exit 0
 fi
 
-if find "$DIR" -maxdepth 1 \( -name "*.jsonnet" -o -name "*.libsonnet" \) -print -quit 2>/dev/null | grep -q .; then
-  echo "DETECTED: Jsonnet"
-  echo "  Priority: 3"
+if [ "$HAS_KUSTOMIZE" = true ]; then
+  echo "DETECTED: Kustomize"
+  exit 0
+fi
+
+if find "$DIR" -maxdepth 1 -name "*.jsonnet" -print -quit 2>/dev/null | grep -q .; then
+  echo "DETECTED: Directory (Jsonnet files are evaluated within Directory apps)"
   exit 0
 fi
 
 echo "DETECTED: Directory (plain YAML)"
-echo "  Priority: 5 (fallback)"
 echo ""
-echo "Note: CMP plugins (Priority 4) cannot be tested locally"
-echo "      without the ArgoCD repo-server environment."
+echo "Note: CMP plugins cannot be tested locally without"
+echo "      the ArgoCD repo-server and CMP sidecar environment."
 ```
 
 Use it across your repository:
@@ -292,4 +297,4 @@ done
 
 ## Summary
 
-Debugging tool detection issues starts with checking what ArgoCD actually detected (`status.sourceType`), then examining the source directory for conflicting marker files, and finally verifying CMP plugin discovery if applicable. Most issues stem from unexpected marker files, case sensitivity, or the fixed priority order placing Helm above Kustomize. The permanent fix is to always specify tool types explicitly and structure your repositories to avoid ambiguity. For deeper visibility into your ArgoCD operations, consider setting up monitoring with [OneUptime](https://oneuptime.com) to catch detection-related sync failures early.
+Debugging tool detection issues starts with checking what ArgoCD actually detected (`status.sourceType`), then examining the source directory for marker files, and finally verifying CMP plugin discovery if applicable. Most issues stem from missing marker files, case sensitivity, incomplete local checkouts, or plugin discovery rules that do not match the source. The permanent fix is to always specify tool types explicitly and structure your repositories to avoid ambiguity. For deeper visibility into your ArgoCD operations, consider setting up monitoring with [OneUptime](https://oneuptime.com) to catch detection-related sync failures early.
