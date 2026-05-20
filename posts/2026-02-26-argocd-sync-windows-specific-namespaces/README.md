@@ -38,6 +38,7 @@ spec:
       namespaces:
         - 'production'
       manualSync: true
+      useAndOperator: true
       timeZone: 'UTC'
 
     # Staging: deploy during business hours only
@@ -49,6 +50,7 @@ spec:
       namespaces:
         - 'staging'
       manualSync: true
+      useAndOperator: true
       timeZone: 'UTC'
 
     # Development: no restrictions (24h window)
@@ -60,6 +62,7 @@ spec:
       namespaces:
         - 'development'
       manualSync: true
+      useAndOperator: true
       timeZone: 'UTC'
 ```
 
@@ -80,6 +83,7 @@ syncWindows:
     namespaces:
       - 'prod-*'
     manualSync: true
+    useAndOperator: true
 
   # Match all staging namespaces
   - kind: allow
@@ -90,6 +94,7 @@ syncWindows:
     namespaces:
       - 'staging-*'
     manualSync: true
+    useAndOperator: true
 
   # Match team-specific namespaces
   - kind: allow
@@ -100,6 +105,7 @@ syncWindows:
     namespaces:
       - 'team-alpha-*'
     manualSync: true
+    useAndOperator: true
 ```
 
 This works well when you use namespace naming conventions like `prod-payments`, `prod-auth`, `staging-payments`, etc.
@@ -120,6 +126,7 @@ syncWindows:
       - 'production'
       - 'prod-*'
     manualSync: true
+    useAndOperator: true
     timeZone: 'America/New_York'
 
   # Tier 1: Production - deny business hours
@@ -132,6 +139,7 @@ syncWindows:
       - 'production'
       - 'prod-*'
     manualSync: true
+    useAndOperator: true
     timeZone: 'America/New_York'
 
   # Tier 2: Staging - business hours only
@@ -144,6 +152,7 @@ syncWindows:
       - 'staging'
       - 'stage-*'
     manualSync: true
+    useAndOperator: true
     timeZone: 'America/New_York'
 
   # Tier 3: Dev/Test - no restrictions
@@ -157,6 +166,7 @@ syncWindows:
       - 'dev-*'
       - 'test-*'
     manualSync: true
+    useAndOperator: true
 ```
 
 Staging deployments are restricted to business hours so that someone is always available to verify the changes. Development namespaces have no restrictions since they are non-critical.
@@ -177,6 +187,7 @@ syncWindows:
       - 'backend'
       - 'backend-*'
     manualSync: true
+    useAndOperator: true
     timeZone: 'America/Chicago'
 
   # Frontend team: deploys Monday and Wednesday mornings
@@ -189,6 +200,7 @@ syncWindows:
       - 'frontend'
       - 'frontend-*'
     manualSync: true
+    useAndOperator: true
     timeZone: 'America/Chicago'
 
   # Data team: deploys weekends
@@ -201,6 +213,7 @@ syncWindows:
       - 'data-pipeline'
       - 'data-*'
     manualSync: true
+    useAndOperator: true
     timeZone: 'America/Chicago'
 
   # Platform/infra: deploys nightly
@@ -215,6 +228,7 @@ syncWindows:
       - 'logging'
       - 'ingress-*'
     manualSync: true
+    useAndOperator: true
     timeZone: 'America/Chicago'
 ```
 
@@ -262,6 +276,7 @@ syncWindows:
     namespaces:
       - 'production'
     manualSync: true
+    useAndOperator: true
     timeZone: 'UTC'
 
   # All other apps in production: nightly 10 PM - 4 AM
@@ -273,6 +288,7 @@ syncWindows:
     namespaces:
       - 'production'
     manualSync: true
+    useAndOperator: true
     timeZone: 'UTC'
 
   # Everything in staging: always allowed
@@ -284,9 +300,10 @@ syncWindows:
     namespaces:
       - 'staging'
     manualSync: true
+    useAndOperator: true
 ```
 
-Note that a window matches if any combination of its application, namespace, and cluster patterns match the application. So the second window (all apps in production) also matches payment apps. This means payment apps can sync during either window. If you want payment apps restricted to only the Wednesday window, add a deny window for the nightly period targeting payment apps specifically.
+When `useAndOperator: true` is set, a window matches only when its application, namespace, and cluster patterns all match the application. Without this setting, ArgoCD ORs the selector fields, so a window with `applications: '*'` would match every application regardless of namespace. The second window (all apps in production) still matches payment apps because `payment-*` is included by `*`. This means payment apps can sync during either window. If you want payment apps restricted to only the Wednesday window, exclude them from the broader production allow window or add non-overlapping deny windows that target payment apps during the other production windows.
 
 ## Verifying Namespace-Based Windows
 
@@ -297,11 +314,13 @@ Verify that windows are correctly targeting namespaces.
 argocd proj windows list shared-cluster
 
 # Check a specific application
+argocd app get my-app
+
+# Check the destination namespace used for namespace window matching
 argocd app get my-app --output json | \
   jq '{
     name: .metadata.name,
-    destinationNamespace: .spec.destination.namespace,
-    syncConditions: [.status.conditions[] | select(.type | contains("Sync"))]
+    destinationNamespace: .spec.destination.namespace
   }'
 
 # List applications by destination namespace
