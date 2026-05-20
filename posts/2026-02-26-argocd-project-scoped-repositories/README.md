@@ -8,7 +8,7 @@ Description: Learn how to configure project-scoped repositories in ArgoCD to pro
 
 ---
 
-By default, ArgoCD repository credentials are global - any project can use any configured repository. This creates two problems in multi-tenant environments: teams can see each other's repository credentials, and repository access is not scoped to the teams that need it. Project-scoped repositories solve this by associating repository credentials with specific projects.
+By default, ArgoCD repository credentials are global - any project allowed by its `sourceRepos` policy can use any configured repository. This creates two problems in multi-tenant environments: repository credentials can be reused outside the teams that own them, and repository access is not scoped to the teams that need it. Project-scoped repositories solve this by associating repository credentials with specific projects.
 
 This guide covers how to configure and use project-scoped repositories for proper multi-tenant credential isolation.
 
@@ -24,9 +24,9 @@ argocd repo add https://github.com/my-org/payments.git \
 
 This credential is stored in a Secret in the `argocd` namespace and is available to all projects. That means:
 
-- Any project's application can reference this repository
-- Users in any project can see that this repository is configured
-- A compromise in one project could expose another project's repository credentials
+- Any project's application can reference this repository if its `sourceRepos` policy allows the URL
+- Repository credentials are not scoped to the team that owns them
+- A compromise in one project could let an attacker use another team's repository credentials through ArgoCD
 
 ## How Project-Scoped Repositories Work
 
@@ -101,7 +101,7 @@ argocd repo add https://github.com/my-org/payments-service.git \
 
 ## Configuring Multiple Teams
 
-Here is a complete example with three teams, each with their own scoped repository credentials:
+Here is a complete example with two teams, each with their own scoped repository credentials:
 
 ### Payments Team Repositories
 
@@ -176,9 +176,9 @@ stringData:
   # No 'project' field = global repository
 ```
 
-## Project-Scoped Repository Credential Templates
+## Repository Credential Templates
 
-Similar to global credential templates, you can create project-scoped credential templates that automatically apply to any matching URL:
+Repository credential templates automatically apply to any matching URL prefix. ArgoCD does not support project-scoped `repo-creds` templates, so do not add a `project` field to these Secrets:
 
 ```yaml
 apiVersion: v1
@@ -194,10 +194,9 @@ stringData:
   url: "https://github.com/my-org/payments-"
   username: "payments-bot"
   password: "ghp_payments_token"
-  project: "payments"
 ```
 
-With this template, any application in the `payments` project that references a repository matching `https://github.com/my-org/payments-*` will automatically use these credentials.
+With this template, any application that references a repository URL beginning with `https://github.com/my-org/payments-` will automatically use these credentials, as long as the repository is allowed by the application's AppProject.
 
 ## Using SSH Keys with Project-Scoped Repos
 
@@ -266,18 +265,17 @@ stringData:
 When multiple credentials could match a repository URL, ArgoCD uses this precedence:
 
 1. Project-scoped repository credentials (exact URL match)
-2. Project-scoped repository credential templates (pattern match)
-3. Global repository credentials (exact URL match)
-4. Global repository credential templates (pattern match)
+2. Global repository credentials (exact URL match)
+3. Global repository credential templates (URL prefix match, longest prefix wins)
 
-This means project-scoped credentials always take priority over global ones for applications in that project.
+Credential templates are used only when the repository is not configured with credential fields of its own. This means project-scoped repository credentials take priority over global repository credentials for applications in that project, but `repo-creds` templates are not project-scoped.
 
 ## Managing with External Secrets
 
 For production environments, integrate with External Secrets Operator to manage repository credentials:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: payments-repo-creds
@@ -322,7 +320,7 @@ argocd repo list
 
 ```bash
 # Verify connectivity from ArgoCD
-argocd repo get https://github.com/my-org/payments-service.git
+argocd repo get https://github.com/my-org/payments-service.git --project payments
 ```
 
 ### Check That Scoping Works
@@ -346,7 +344,7 @@ argocd app create test-access \
 
 ```bash
 kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository \
-  -o custom-columns=NAME:.metadata.name,PROJECT:.data.project
+  -o go-template='{{range .items}}{{.metadata.name}}{{"\t"}}{{if index .data "project"}}{{index .data "project" | base64decode}}{{else}}-{{end}}{{"\n"}}{{end}}'
 ```
 
 **Application can access repo from wrong project**: Check if there is also a global credential for the same URL that is not project-scoped. Global credentials are accessible from any project.
@@ -355,4 +353,4 @@ kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository \
 
 ## Summary
 
-Project-scoped repositories isolate repository credentials between teams in a multi-tenant ArgoCD setup. Each team gets its own credentials that only work within their project, preventing cross-team credential leakage. Use credential templates for teams with many repositories sharing the same authentication, and integrate with External Secrets Operator for production credential management. Remember that both the project's `sourceRepos` and the scoped credentials must align for applications to access a repository.
+Project-scoped repositories isolate repository credentials between teams in a multi-tenant ArgoCD setup. Each team gets its own credentials that only work within their project, preventing cross-team credential leakage. Use repository Secrets for team isolation, use credential templates only for credentials that can apply to all matching repositories, and integrate with External Secrets Operator for production credential management. Remember that both the project's `sourceRepos` and the scoped credentials must align for applications to access a repository.
