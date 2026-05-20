@@ -81,10 +81,10 @@ argocd proj role create-token my-project ci-role
 
 ## Detecting Changed Resources Automatically
 
-Instead of hardcoding which resources to sync, detect what changed in the Git commit and sync only those resources.
+Instead of hardcoding which resources to sync, detect manifest changes in the Git commit and sync only resources ArgoCD reports as out of sync.
 
 ```yaml
-# GitHub Actions - detect changed manifests and sync matching resources
+# GitHub Actions - detect changed manifests and sync out-of-sync resources
 name: Smart Selective Sync
 on:
   push:
@@ -125,8 +125,8 @@ jobs:
           echo "$CHANGED_FILES"
 
           # Get out-of-sync resources (the changes ArgoCD detected)
-          OOS=$(argocd app resources production-app --output json | \
-            jq -r '.[] | select(.status == "OutOfSync") | "\(.group):\(.kind):\(.name)"')
+          OOS=$(argocd app get production-app --output json | \
+            jq -r '.status.resources[] | select(.status == "OutOfSync") | "\(.group):\(.kind):\(.name)"')
 
           if [ -z "$OOS" ]; then
             echo "No out-of-sync resources"
@@ -166,8 +166,8 @@ deploy-to-staging:
     - argocd login $ARGOCD_SERVER --auth-token $ARGOCD_TOKEN --grpc-web
     # Sync only staging namespace resources
     - |
-      STAGING_RESOURCES=$(argocd app resources platform-app --output json | \
-        jq -r '.[] | select(.namespace == "staging" and .status == "OutOfSync") | "\(.group):\(.kind):\(.name)"')
+      STAGING_RESOURCES=$(argocd app get platform-app --output json | \
+        jq -r '.status.resources[] | select(.namespace == "staging" and .status == "OutOfSync") | "\(.group):\(.kind):\(.namespace)/\(.name)"')
       if [ -n "$STAGING_RESOURCES" ]; then
         RESOURCE_FLAGS=""
         while IFS= read -r resource; do
@@ -189,8 +189,8 @@ deploy-to-production:
   script:
     - argocd login $ARGOCD_SERVER --auth-token $ARGOCD_TOKEN --grpc-web
     - |
-      PROD_RESOURCES=$(argocd app resources platform-app --output json | \
-        jq -r '.[] | select(.namespace == "production" and .status == "OutOfSync") | "\(.group):\(.kind):\(.name)"')
+      PROD_RESOURCES=$(argocd app get platform-app --output json | \
+        jq -r '.status.resources[] | select(.namespace == "production" and .status == "OutOfSync") | "\(.group):\(.kind):\(.namespace)/\(.name)"')
       if [ -n "$PROD_RESOURCES" ]; then
         RESOURCE_FLAGS=""
         while IFS= read -r resource; do
@@ -366,21 +366,21 @@ if ! argocd app get "$APP_NAME" > /dev/null 2>&1; then
 fi
 
 # Check 2: Verify the resource exists in the application
-RESOURCE_EXISTS=$(argocd app resources "$APP_NAME" --output json | \
-  jq --arg r "$RESOURCE" '[.[] | "\(.group):\(.kind):\(.name)"] | any(. == $r)')
+RESOURCE_EXISTS=$(argocd app get "$APP_NAME" --output json | \
+  jq --arg r "$RESOURCE" '[.status.resources[] | "\(.group):\(.kind):\(.name)"] | any(. == $r)')
 if [ "$RESOURCE_EXISTS" != "true" ]; then
   echo "ERROR: Resource $RESOURCE not found in $APP_NAME"
   exit 1
 fi
 
-# Check 3: Check if sync windows allow sync
-SYNC_ALLOWED=$(argocd app get "$APP_NAME" --output json | \
+# Check 3: Check current sync status
+SYNC_STATUS=$(argocd app get "$APP_NAME" --output json | \
   jq '.status.sync.status')
-echo "Current sync status: $SYNC_ALLOWED"
+echo "Current sync status: $SYNC_STATUS"
 
-# Check 4: Preview changes
+# Check 4: Preview application changes
 echo "Changes to be applied:"
-argocd app diff "$APP_NAME" --resource "$RESOURCE" || true
+argocd app diff "$APP_NAME" || true
 
 # Execute sync
 echo "Proceeding with sync..."
