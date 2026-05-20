@@ -8,7 +8,7 @@ Description: Learn how to detect and respond to application health status change
 
 ---
 
-ArgoCD continuously monitors the health of every application it manages. When an application's health transitions from Healthy to Degraded, Progressing to Healthy, or any other state change, it represents a significant operational event. Capturing these health transitions enables automated incident response, proactive alerting, and self-healing workflows.
+ArgoCD continuously monitors the health of every application it manages. When an application's health is observed as Healthy, Degraded, Progressing, or another state, it represents a significant operational signal. Capturing these health status observations enables automated incident response, proactive alerting, and self-healing workflows.
 
 This guide covers how to detect health changes in ArgoCD, route them to the right systems, and build automation around common health transitions.
 
@@ -40,7 +40,7 @@ stateDiagram-v2
 
 ## Setting Up Health Change Notifications
 
-Configure ArgoCD Notifications to fire on each health transition.
+Configure ArgoCD Notifications to fire when an application is observed in a health state.
 
 ```yaml
 # argocd-notifications-cm ConfigMap
@@ -62,8 +62,7 @@ data:
   # Trigger when health recovers
   trigger.on-health-recovered: |
     - description: Application health recovered
-      when: app.status.health.status == 'Healthy' and
-            time.Now().Sub(time.Parse(app.status.reconciledAt)).Minutes() < 5
+      when: app.status.health.status == 'Healthy'
       send:
         - health-recovered-notification
 
@@ -83,23 +82,21 @@ data:
 
   # Alert template for degraded health
   template.health-degraded-alert: |
+    message: |
+      Application {{.app.metadata.name}} is degraded.
     slack:
-      channel: "{{index .app.metadata.labels "alert-channel" | default "platform-alerts"}}"
-      title: "DEGRADED: {{.app.metadata.name}}"
-      text: |
-        *Application*: {{.app.metadata.name}}
-        *Health Status*: {{.app.status.health.status}}
-        *Message*: {{.app.status.health.message | default "No message"}}
-        *Namespace*: {{.app.spec.destination.namespace}}
-        *Last Synced*: {{.app.status.operationState.finishedAt}}
-        *Revision*: `{{.app.status.sync.revision | truncate 8}}`
-
-        {{range .app.status.resources}}
-        {{if eq .health.status "Degraded"}}
-        - {{.kind}}/{{.name}}: {{.health.message}}
-        {{end}}
-        {{end}}
-      color: "#FF0000"
+      attachments: |
+        [{
+          "title": "DEGRADED: {{.app.metadata.name}}",
+          "color": "#FF0000",
+          "fields": [
+            {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+            {"title": "Health Status", "value": "{{.app.status.health.status}}", "short": true},
+            {"title": "Message", "value": "{{.app.status.health.message | default "No message"}}", "short": false},
+            {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+            {"title": "Revision", "value": "{{.app.status.sync.revision | trunc 8}}", "short": true}
+          ]
+        }]
 
   # Webhook for incident creation
   template.health-degraded-incident: |
@@ -130,39 +127,56 @@ data:
 
   # Recovery notification
   template.health-recovered-notification: |
+    message: |
+      Application {{.app.metadata.name}} health has been restored.
     slack:
-      channel: "{{index .app.metadata.labels "alert-channel" | default "platform-alerts"}}"
-      title: "RECOVERED: {{.app.metadata.name}}"
-      text: |
-        *Application*: {{.app.metadata.name}}
-        *Health Status*: Healthy
-        *Namespace*: {{.app.spec.destination.namespace}}
-        Application health has been restored.
-      color: "#36a64f"
+      attachments: |
+        [{
+          "title": "RECOVERED: {{.app.metadata.name}}",
+          "color": "#36a64f",
+          "fields": [
+            {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+            {"title": "Health Status", "value": "Healthy", "short": true},
+            {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true}
+          ]
+        }]
 
   # Progressing notification
   template.health-progressing-notification: |
+    message: |
+      Application {{.app.metadata.name}} is progressing.
     slack:
-      channel: deployments
-      title: "DEPLOYING: {{.app.metadata.name}}"
-      text: |
-        *Application*: {{.app.metadata.name}}
-        *Status*: Deployment in progress
-        *Revision*: `{{.app.status.sync.revision | truncate 8}}`
-      color: "#FFA500"
+      attachments: |
+        [{
+          "title": "DEPLOYING: {{.app.metadata.name}}",
+          "color": "#FFA500",
+          "fields": [
+            {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+            {"title": "Status", "value": "Deployment in progress", "short": true},
+            {"title": "Revision", "value": "{{.app.status.sync.revision | trunc 8}}", "short": true}
+          ]
+        }]
 
   # Suspended alert
   template.health-suspended-alert: |
+    message: |
+      Application {{.app.metadata.name}} rollout is suspended.
     slack:
-      channel: deployments
-      title: "SUSPENDED: {{.app.metadata.name}}"
-      text: |
-        *Application*: {{.app.metadata.name}}
-        *Status*: Rollout paused - manual intervention may be required
-        *Namespace*: {{.app.spec.destination.namespace}}
-      color: "#9C27B0"
+      attachments: |
+        [{
+          "title": "SUSPENDED: {{.app.metadata.name}}",
+          "color": "#9C27B0",
+          "fields": [
+            {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+            {"title": "Status", "value": "Rollout paused - manual intervention may be required", "short": false},
+            {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true}
+          ]
+        }]
 
   # Webhook services
+  service.slack: |
+    token: $slack-token
+
   service.webhook.incident-api: |
     url: https://oneuptime.com/api/incident
     headers:
@@ -184,12 +198,11 @@ metadata:
   labels:
     team: payments
     severity: critical
-    alert-channel: payments-alerts
   annotations:
-    notifications.argoproj.io/subscribe.on-health-degraded.slack: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.slack: payments-alerts
     notifications.argoproj.io/subscribe.on-health-degraded.incident-api: ""
-    notifications.argoproj.io/subscribe.on-health-recovered.slack: ""
-    notifications.argoproj.io/subscribe.on-health-progressing.slack: ""
+    notifications.argoproj.io/subscribe.on-health-recovered.slack: payments-alerts
+    notifications.argoproj.io/subscribe.on-health-progressing.slack: deployments
 ```
 
 ## Building a Self-Healing Workflow
@@ -209,13 +222,16 @@ spec:
     matchLabels:
       app: argocd-self-healer
   template:
+    metadata:
+      labels:
+        app: argocd-self-healer
     spec:
       containers:
         - name: healer
           image: your-org/argocd-self-healer:latest
           env:
             - name: ARGOCD_SERVER
-              value: argocd-server.argocd.svc:443
+              value: https://argocd-server.argocd.svc
             - name: ARGOCD_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -228,7 +244,11 @@ The self-healer logic:
 ```python
 # self-healer logic (simplified)
 import time
+import os
 import requests
+
+ARGOCD_SERVER = os.environ['ARGOCD_SERVER']
+ARGOCD_TOKEN = os.environ['ARGOCD_TOKEN']
 
 def handle_degraded_event(app_name, degraded_resources):
     """Handle application health degradation."""
@@ -255,6 +275,7 @@ def handle_degraded_event(app_name, degraded_resources):
 
 def rollback_to_last_healthy(app_name):
     """Rollback application to the last known healthy revision."""
+    # Rollbacks require automated sync to be disabled for the application.
     # Get application history
     response = requests.get(
         f'{ARGOCD_SERVER}/api/v1/applications/{app_name}',
@@ -277,13 +298,14 @@ def rollback_to_last_healthy(app_name):
 
 ## Health Check Customization
 
-ArgoCD's health assessment depends on its understanding of each resource type. Customize health checks for your custom resources:
+ArgoCD's health assessment depends on its understanding of each resource type. Customize health checks for your custom resources or override built-in checks when needed:
 
 ```yaml
 # argocd-cm ConfigMap
 data:
   resource.customizations.health.apps_Deployment: |
     hs = {}
+    hs.status = "Progressing"
     if obj.status ~= nil then
       if obj.status.availableReplicas ~= nil and
          obj.status.availableReplicas == obj.spec.replicas then
@@ -309,7 +331,7 @@ trigger.on-critical-degraded: |
   - description: Critical application degraded
     when: >-
       app.status.health.status == 'Degraded' and
-      app.metadata.labels.severity == 'critical'
+      app.metadata.labels["severity"] == 'critical'
     send:
       - pagerduty-critical
       - slack-urgent
@@ -318,14 +340,14 @@ trigger.on-standard-degraded: |
   - description: Standard application degraded
     when: >-
       app.status.health.status == 'Degraded' and
-      app.metadata.labels.severity != 'critical'
+      app.metadata.labels["severity"] != 'critical'
     send:
       - slack-warning
 ```
 
 ## Monitoring Health Transitions with Metrics
 
-Export health transitions as Prometheus metrics for dashboarding:
+Export health observations to a metrics collector for dashboarding. The collector can calculate transitions by comparing the new status to the previously stored status for the application:
 
 ```yaml
 template.health-change-metric: |
@@ -337,8 +359,7 @@ template.health-change-metric: |
           "metric": "argocd_app_health_transition",
           "labels": {
             "application": "{{.app.metadata.name}}",
-            "from_status": "unknown",
-            "to_status": "{{.app.status.health.status}}",
+            "status": "{{.app.status.health.status}}",
             "team": "{{index .app.metadata.labels "team"}}"
           },
           "value": 1
