@@ -19,7 +19,7 @@ A fresh Kubernetes cluster needs a lot of components before it is production-rea
 - **Security layer**: OPA/Gatekeeper, Sealed Secrets, network policies
 - **Application layer**: Your actual workloads
 
-These components have dependencies. Cert-manager needs to be running before you can create Certificate resources. The ingress controller needs to exist before Ingress resources work. The App-of-Apps pattern with sync waves handles this ordering.
+These components have dependencies. Cert-manager needs to be running before you can create Certificate resources. The ingress controller needs to exist before Ingress resources work. The App-of-Apps pattern with sync waves handles the order in which ArgoCD applies the child Application resources. If you need later waves to wait until earlier child Applications are healthy, restore the ArgoCD Application health check described below.
 
 ```mermaid
 flowchart TD
@@ -114,7 +114,9 @@ spec:
       namespace: frontend
     - server: https://kubernetes.default.svc
       namespace: backend
-  clusterResourceWhitelist: []
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
   namespaceResourceWhitelist:
     - group: '*'
       kind: '*'
@@ -307,6 +309,33 @@ spec:
 
 Note the `directory.recurse: true` setting, which makes ArgoCD scan all subdirectories for YAML files. The `exclude` prevents the root app from trying to create itself.
 
+ArgoCD removed the built-in health assessment for `argoproj.io/Application` in ArgoCD 1.8. If you want the parent Application's sync waves to wait for child Applications to become healthy before moving to the next wave, add the official Application health customization to `argocd-cm` before relying on wave-gated bootstraps:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  resource.customizations.health.argoproj.io_Application: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = ""
+    if obj.status ~= nil then
+      if obj.status.health ~= nil then
+        hs.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          hs.message = obj.status.health.message
+        end
+      end
+    end
+    return hs
+```
+
 ## The Bootstrap Process
 
 With everything in Git, bootstrapping is a three-step process:
@@ -314,7 +343,7 @@ With everything in Git, bootstrapping is a three-step process:
 ```bash
 # Step 1: Install ArgoCD on the fresh cluster
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Step 2: Wait for ArgoCD to be ready
 kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=300s
@@ -326,7 +355,7 @@ kubectl apply -f root-app.yaml
 That is it. ArgoCD discovers all the child applications and syncs them in wave order:
 
 1. Wave -3: cert-manager starts installing
-2. Wave -2: ingress-nginx starts after cert-manager is healthy
+2. Wave -2: ingress-nginx starts after the cert-manager Application resource is applied, or after it is healthy if you restored Application health assessment
 3. Wave -1: Monitoring stack deploys
 4. Wave 0: Security components deploy
 5. Wave 1: Application workloads deploy last
@@ -379,7 +408,7 @@ kind create cluster --name bootstrap-test
 
 # Install ArgoCD
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=300s
 
 # Apply root app
