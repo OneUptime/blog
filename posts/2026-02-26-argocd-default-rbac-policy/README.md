@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, RBAC, Security
 
-Description: Learn how to configure the default RBAC policy in ArgoCD to control baseline permissions for authenticated users who do not have explicit role assignments.
+Description: Learn how to configure the default RBAC policy in ArgoCD to control baseline permissions for authenticated users.
 
 ---
 
-The default RBAC policy in ArgoCD determines what permissions authenticated users get when they do not match any specific role or group mapping. It is the safety net that catches every user who slips through your explicit policy rules. Getting this wrong can either lock out your entire team or give everyone admin access.
+The default RBAC policy in ArgoCD determines what permissions authenticated users get before their specific user or group policies are evaluated. It is the baseline role granted to every authenticated user. Getting this wrong can either lock out your entire team or give everyone admin access.
 
 This guide explains how the default policy works, what options you have, and which setting is right for different environments.
 
@@ -26,7 +26,7 @@ data:
   policy.default: role:readonly
 ```
 
-When ArgoCD evaluates an RBAC request and no explicit policy rule matches the user (either by direct user mapping or through group membership), it falls back to the default policy.
+When ArgoCD evaluates an RBAC request, it checks the role named in `policy.default` first. If that default role allows or denies the action, that result is used. If the default role does not match the action, ArgoCD continues with policies that apply directly to the user or through group membership.
 
 ## The Three Common Options
 
@@ -50,7 +50,7 @@ data:
   policy.default: ""
 ```
 
-Users without explicit role assignments see nothing and can do nothing. They land on an empty dashboard after logging in. This is ideal when:
+Users without explicit policies or role assignments see nothing and can do nothing. They land on an empty dashboard after logging in. This is ideal when:
 
 - You work in a regulated environment with strict least-privilege requirements
 - Different teams should not see each other's applications
@@ -69,28 +69,27 @@ data:
 
 Create a custom role with specific permissions and use it as the default. This gives you more control than the built-in readonly role. This is ideal when:
 
-- You want view access but also log access for everyone
+- You want application and log access without granting visibility into clusters or repositories
 - You want to exclude certain resources from the default (like cluster management)
 - You need something between readonly and no access
 
 ## How the Default Policy Interacts with Explicit Rules
 
-The default policy is a fallback, not an override. Here is how ArgoCD evaluates permissions:
+The default policy is a baseline, not an override. Here is how ArgoCD evaluates permissions:
 
 ```mermaid
 graph TD
-    A[User makes request] --> B{Explicit deny rule?}
-    B -->|Yes| C[Permission Denied]
-    B -->|No| D{Explicit allow rule?}
-    D -->|Yes| E[Permission Granted]
-    D -->|No| F{Default policy set?}
-    F -->|No| C
-    F -->|Yes| G{Default role allows?}
-    G -->|Yes| E
-    G -->|No| C
+    A[User makes request] --> B{Default role matches?}
+    B -->|Allow| C[Permission Granted]
+    B -->|Deny| D[Permission Denied]
+    B -->|No match| E{Subject or group deny?}
+    E -->|Yes| D
+    E -->|No| F{Subject or group allow?}
+    F -->|Yes| C
+    F -->|No| D
 ```
 
-Important: If a user has explicit role assignments AND the default policy applies, the user gets the union of both. The default policy adds to, not replaces, explicit permissions.
+Important: If a user has explicit role assignments and an allow-only default policy like `role:readonly`, the user gets the union of both. The default policy adds to, not replaces, explicit permissions. Permissions granted by the default policy cannot be blocked by a `deny` rule in a user or group policy, so keep the default role as small as possible.
 
 ```yaml
 data:
@@ -104,11 +103,11 @@ data:
 ```
 
 In this case, `dev-user` can:
-- View all applications (from default readonly)
+- View ArgoCD resources allowed by `role:readonly` (from the default role)
 - Sync frontend applications (from explicit deployer role)
 
 A user without any explicit mapping can only:
-- View all applications (from default readonly)
+- View ArgoCD resources allowed by `role:readonly` (from the default role)
 
 ## Configuring Different Defaults for Different Environments
 
@@ -252,4 +251,4 @@ data:
 
 ## Summary
 
-The default RBAC policy in ArgoCD is the baseline permission level for all authenticated users without explicit role assignments. Set it to `role:readonly` for environments where visibility is valued, or empty string for environments where strict least-privilege is required. Always test the impact of changes with `argocd admin settings rbac can` before applying them, and create explicit role assignments for users who need more than the default before you tighten it.
+The default RBAC policy in ArgoCD is the baseline permission level for all authenticated users. Set it to `role:readonly` for environments where visibility is valued, or empty string for environments where strict least-privilege is required. Always test the impact of changes with `argocd admin settings rbac can` before applying them, and create explicit role assignments for users who need more than the default before you tighten it.
