@@ -20,7 +20,7 @@ When running on GKE, the GCE Ingress Controller is the first-party option. It cr
 - IAP (Identity-Aware Proxy) for an additional authentication layer
 - Native health checking through Google Cloud
 
-The main consideration is that GCE Ingress creates external load balancers, which take 3 to 5 minutes to provision and have some quirks around backend health checks.
+The main consideration is that GCE Ingress creates external load balancers, which can take several minutes to provision and have some quirks around backend health checks.
 
 ## Prerequisites
 
@@ -117,7 +117,7 @@ spec:
 
 ## Creating the GCE Ingress
 
-Now create the Ingress resource:
+Reserve the global static IP before applying this Ingress so the annotation can reference an existing address. Then create the Ingress resource:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -188,12 +188,12 @@ Create a Cloud Armor security policy to protect ArgoCD:
 gcloud compute security-policies create argocd-security-policy \
   --description="Security policy for ArgoCD"
 
-# Add a rule to allow only specific IP ranges
+# Add a rule to allow only specific public IP ranges
 gcloud compute security-policies rules create 1000 \
   --security-policy=argocd-security-policy \
-  --src-ip-ranges="10.0.0.0/8,172.16.0.0/12" \
+  --src-ip-ranges="203.0.113.0/24,198.51.100.0/24" \
   --action=allow \
-  --description="Allow internal networks"
+  --description="Allow trusted public networks"
 
 # Set default rule to deny
 gcloud compute security-policies rules update 2147483647 \
@@ -238,13 +238,13 @@ kubectl create secret generic argocd-iap-secret \
 
 ## Verifying the Setup
 
-GCE load balancer provisioning takes 3 to 5 minutes. Monitor the progress:
+GCE load balancer provisioning can take several minutes. Monitor the progress:
 
 ```bash
 # Watch the Ingress status
 kubectl get ingress -n argocd -w
 
-# Check managed certificate status (takes up to 15 minutes)
+# Check managed certificate status (can take up to 60 minutes)
 kubectl get managedcertificates -n argocd
 
 # Check backend health in the Google Cloud console
@@ -259,7 +259,7 @@ curl -I https://argocd.example.com
 
 ## Troubleshooting
 
-**Backend Unhealthy**: The most common issue. GCE health checks hit the pod directly, not through the service. Verify that port 8080 on the ArgoCD server pod returns 200 on `/healthz`.
+**Backend Unhealthy**: The most common issue. With NEG-backed services, GCE health checks hit the pod IP directly. With instance group backends, they hit the service NodePort. Verify that the configured health check port and `/healthz` path return HTTP 200 for your backend type.
 
 **Certificate Pending**: Google-managed certificates need DNS to resolve to the load balancer IP before they provision. Make sure your DNS is pointing to the static IP.
 
