@@ -78,7 +78,6 @@ metadata:
     haproxy.org/server-ssl: "false"
     # Connection timeout for long sync operations (5 minutes)
     haproxy.org/timeout-server: "300s"
-    haproxy.org/timeout-client: "300s"
     # Enable HTTP/2 for gRPC support
     haproxy.org/server-proto: "h2"
     # Health check path
@@ -116,8 +115,6 @@ metadata:
   annotations:
     haproxy.org/server-proto: "h2"
     haproxy.org/timeout-server: "300s"
-    haproxy.org/timeout-client: "300s"
-    haproxy.org/timeout-tunnel: "3600s"
 spec:
   ingressClassName: haproxy
   rules:
@@ -137,7 +134,17 @@ spec:
       secretName: argocd-grpc-tls
 ```
 
-The `timeout-tunnel` annotation is important for gRPC streaming connections, which ArgoCD uses for watching application events.
+The controller-wide `timeout-tunnel` ConfigMap key is important for gRPC streaming connections, which ArgoCD uses for watching application events:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haproxy-ingress-kubernetes-ingress
+  namespace: haproxy-controller
+data:
+  timeout-tunnel: "3600s"
+```
 
 ## TLS Passthrough Configuration
 
@@ -193,7 +200,7 @@ Restrict access to specific networks:
 ```yaml
 annotations:
   # Only allow traffic from these CIDRs
-  haproxy.org/whitelist: "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
+  haproxy.org/allow-list: "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
 ```
 
 ## Connection Tuning
@@ -204,12 +211,23 @@ HAProxy gives you fine-grained control over connections. These settings are usef
 annotations:
   # Maximum concurrent connections per backend server
   haproxy.org/pod-maxconn: "100"
-  # Connection queue timeout
-  haproxy.org/timeout-queue: "30s"
-  # HTTP keep-alive timeout
-  haproxy.org/timeout-http-keep-alive: "60s"
   # Check interval for health checks
   haproxy.org/check-interval: "10s"
+```
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: haproxy-ingress-kubernetes-ingress
+  namespace: haproxy-controller
+data:
+  # Client timeout for long-running requests
+  timeout-client: "300s"
+  # Connection queue timeout
+  timeout-queue: "30s"
+  # HTTP keep-alive timeout
+  timeout-http-keep-alive: "60s"
 ```
 
 ## Backend Health Checks
@@ -221,21 +239,17 @@ annotations:
   haproxy.org/check: "true"
   haproxy.org/check-http: "/healthz"
   haproxy.org/check-interval: "10s"
-  # Mark backend as down after 3 failed checks
-  haproxy.org/check-fall: "3"
-  # Mark backend as up after 2 successful checks
-  haproxy.org/check-rise: "2"
 ```
 
 ## Custom HAProxy Configuration
 
-For advanced use cases, you can inject raw HAProxy configuration:
+For advanced use cases, you can inject raw HAProxy configuration in the controller ConfigMap:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: haproxy-configmap
+  name: haproxy-ingress-kubernetes-ingress
   namespace: haproxy-controller
 data:
   # Global section additions
@@ -244,7 +258,7 @@ data:
     maxconn 4096
   # Backend section for ArgoCD
   backend-config-snippet: |
-    # Enable server-side HTTP/2
+    # Customize backend health checks
     option httpchk GET /healthz
     http-check expect status 200
 ```
