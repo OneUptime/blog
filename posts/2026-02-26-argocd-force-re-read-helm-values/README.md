@@ -20,7 +20,7 @@ ArgoCD uses its repo-server component to clone Git repositories and generate Kub
 
 **Git webhook not configured**: Without a webhook, ArgoCD polls Git on an interval (default 3 minutes). Your changes may just not have been detected yet.
 
-**Wrong values file path**: If the path to your values file in the Application spec does not match the actual file path in the repo, ArgoCD will use default values.
+**Wrong values file path**: If the path to your values file in the Application spec does not match the actual file path in the repo, Helm manifest generation will fail unless `ignoreMissingValueFiles` is enabled.
 
 **Branch reference issues**: If your Application points to a branch but ArgoCD has cached the old commit SHA, it may not see the new commit.
 
@@ -33,8 +33,8 @@ The quickest way to force ArgoCD to re-read everything from Git is a hard refres
 
 argocd app get my-app --hard-refresh
 
-# Or trigger a hard refresh and sync in one step
-argocd app sync my-app --force
+# Then sync the newly generated target state
+argocd app sync my-app
 ```
 
 In the ArgoCD UI, click on your application, then click the "Refresh" button while holding Shift (or click the dropdown and select "Hard Refresh"). This invalidates the repo-server cache for that application.
@@ -44,15 +44,14 @@ In the ArgoCD UI, click on your application, then click the "Refresh" button whi
 If hard refresh does not work, you can clear the entire repo-server cache.
 
 ```bash
-# The repo-server stores its cache in a Redis instance
-# You can flush the cache by restarting the repo-server
+# Restarting the repo-server clears its local repository cache
 kubectl -n argocd rollout restart deployment argocd-repo-server
 
-# Or if you are using Redis, flush it directly
+# ArgoCD also uses Redis as a disposable cache; flushing it affects all apps
 kubectl -n argocd exec -it deployment/argocd-redis -- redis-cli FLUSHALL
 ```
 
-Note that flushing Redis affects all applications, not just the one you are troubleshooting. All manifests will be regenerated on the next sync cycle.
+Note that flushing Redis affects all applications, not just the one you are troubleshooting. Manifests will be regenerated on the next refresh or reconciliation cycle.
 
 ## Method 3: Verify Your Values File Configuration
 
@@ -65,6 +64,7 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/my-org/my-repo.git
     targetRevision: main
@@ -79,6 +79,9 @@ spec:
         replicaCount: 3
         image:
           tag: v1.2.3
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
 ```
 
 A common mistake is specifying the values file path relative to the repo root instead of relative to the chart path. If your chart is at `charts/my-app/` and your values file is at `charts/my-app/values-production.yaml`, then the `valueFiles` entry should be just `values-production.yaml`.
@@ -87,6 +90,7 @@ If your values file lives outside the chart directory, use the `$values` referen
 
 ```yaml
 spec:
+  project: default
   sources:
     - repoURL: https://github.com/my-org/my-repo.git
       targetRevision: main
@@ -97,9 +101,12 @@ spec:
       helm:
         valueFiles:
           - $values/environments/production/values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
 ```
 
-The multi-source Application approach (using `sources` instead of `source`) lets you pull values from a different repo or a different path in the same repo.
+The multi-source Application approach (using `sources` instead of `source`) lets you pull values from a different repo or a different path in the same repo. The `$values` path is relative to the root of the source that has `ref: values`.
 
 ## Method 4: Configure Git Webhooks
 
@@ -137,15 +144,16 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Reduce from default 180 seconds (3 minutes) to 60 seconds
-  timeout.reconciliation: "60"
+  # Reduce from the default roughly 3-minute polling interval to 60 seconds
+  timeout.reconciliation: 60s
+  timeout.reconciliation.jitter: 0s
 ```
 
 Be careful with very low intervals on large installations. Each poll triggers a Git fetch, and if you have hundreds of applications, this can put significant load on both the repo-server and your Git host.
 
 ## Method 6: Use Helm Parameters Instead of Values Files
 
-For individual value overrides, you can use the `parameters` field instead of values files. These are applied directly and do not depend on file caching.
+For individual value overrides, you can use the `parameters` field instead of values files. These are stored directly in the Application spec, so they avoid mistakes with external values file paths.
 
 ```yaml
 spec:
