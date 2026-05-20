@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Supply Chain
 
-Description: Learn how to verify ArgoCD release binaries and container images using checksums, GPG signatures, and cosign for supply chain security.
+Description: Learn how to verify ArgoCD release binaries and container images using checksums, cosign, and SLSA provenance for supply chain security.
 
 ---
 
-Supply chain attacks are a growing concern in the software industry. When you install ArgoCD, you are trusting that the binaries and container images have not been tampered with. Verifying release signatures and checksums ensures that what you install is exactly what the ArgoCD project published. This guide covers every method of verification available.
+Supply chain attacks are a growing concern in the software industry. When you install ArgoCD, you are trusting that the binaries and container images have not been tampered with. Verifying release signatures and checksums ensures that what you install is exactly what the ArgoCD project published. This guide covers the supported release artifact verification methods.
 
 ## Why Verification Matters
 
@@ -17,9 +17,8 @@ In 2020, the SolarWinds attack demonstrated how devastating supply chain comprom
 ArgoCD provides multiple verification mechanisms:
 
 - SHA256 checksums for CLI binaries
-- GPG signatures for releases
 - Cosign signatures for container images
-- SLSA provenance attestations
+- SLSA provenance attestations for CLI binaries and container images
 
 ## Verifying CLI Binary Checksums
 
@@ -36,7 +35,7 @@ curl -sSL -o argocd-linux-amd64 \
 
 # Download the checksum file
 curl -sSL -o checksums.txt \
-  https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${VERSION}-checksums.txt
+  https://github.com/argoproj/argo-cd/releases/download/${VERSION}/cli_checksums.txt
 
 # Verify the checksum
 sha256sum argocd-linux-amd64
@@ -54,11 +53,14 @@ curl -sSL -o argocd-darwin-amd64 \
   https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-darwin-amd64
 
 curl -sSL -o checksums.txt \
-  https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${VERSION}-checksums.txt
+  https://github.com/argoproj/argo-cd/releases/download/${VERSION}/cli_checksums.txt
 
 # macOS uses shasum instead of sha256sum
 shasum -a 256 argocd-darwin-amd64
 grep argocd-darwin-amd64 checksums.txt
+
+# Or verify automatically
+shasum -a 256 -c <(grep argocd-darwin-amd64 checksums.txt)
 ```
 
 For Apple Silicon Macs, use `argocd-darwin-arm64` instead.
@@ -86,11 +88,15 @@ BASE_URL="https://github.com/argoproj/argo-cd/releases/download/${VERSION}"
 
 # Download binary and checksums
 curl -sSL -o /tmp/argocd "${BASE_URL}/${BINARY}"
-curl -sSL -o /tmp/checksums.txt "${BASE_URL}/argocd-${VERSION}-checksums.txt"
+curl -sSL -o /tmp/checksums.txt "${BASE_URL}/cli_checksums.txt"
 
 # Extract expected checksum
 EXPECTED=$(grep "${BINARY}" /tmp/checksums.txt | awk '{print $1}')
-ACTUAL=$(sha256sum /tmp/argocd | awk '{print $1}')
+if command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL=$(sha256sum /tmp/argocd | awk '{print $1}')
+else
+  ACTUAL=$(shasum -a 256 /tmp/argocd | awk '{print $1}')
+fi
 
 if [ "$EXPECTED" != "$ACTUAL" ]; then
   echo "ERROR: Checksum verification failed!"
@@ -122,14 +128,16 @@ go install github.com/sigstore/cosign/v2/cmd/cosign@latest
 ```bash
 # Verify the ArgoCD server image
 cosign verify \
-  --certificate-identity-regexp="https://github.com/argoproj/argo-cd" \
+  --certificate-identity-regexp="https://github.com/argoproj/argo-cd/.github/workflows/image-reuse.yaml@refs/tags/v.*" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  --certificate-github-workflow-repository="argoproj/argo-cd" \
   quay.io/argoproj/argocd:v2.13.0
 
-# Verify the argocd-applicationset-controller image
+# Argo CD components use the same release image
 cosign verify \
-  --certificate-identity-regexp="https://github.com/argoproj/argo-cd" \
+  --certificate-identity-regexp="https://github.com/argoproj/argo-cd/.github/workflows/image-reuse.yaml@refs/tags/v.*" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  --certificate-github-workflow-repository="argoproj/argo-cd" \
   quay.io/argoproj/argocd:v2.13.0
 ```
 
@@ -162,7 +170,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-argocd-images
 spec:
-  validationFailureAction: Enforce
   background: false
   rules:
     - name: verify-signature
@@ -176,11 +183,14 @@ spec:
       verifyImages:
         - imageReferences:
             - "quay.io/argoproj/argocd:*"
+          failureAction: Enforce
           attestors:
             - entries:
                 - keyless:
-                    subject: "https://github.com/argoproj/argo-cd/*"
+                    subjectRegExp: "https://github\\.com/argoproj/argo-cd/\\.github/workflows/image-reuse\\.yaml@refs/tags/v.*"
                     issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev
 ```
 
 ## Verifying SLSA Provenance
@@ -191,43 +201,43 @@ SLSA (Supply-chain Levels for Software Artifacts) provenance attestations provid
 # Install slsa-verifier
 go install github.com/slsa-framework/slsa-verifier/v2/cli/slsa-verifier@latest
 
+# Download the CLI provenance file
+curl -sSL -o argocd-cli.intoto.jsonl \
+  https://github.com/argoproj/argo-cd/releases/download/v2.13.0/argocd-cli.intoto.jsonl
+
 # Verify the CLI binary provenance
 slsa-verifier verify-artifact argocd-linux-amd64 \
-  --provenance-path argocd-linux-amd64.intoto.jsonl \
+  --provenance-path argocd-cli.intoto.jsonl \
   --source-uri github.com/argoproj/argo-cd \
   --source-tag v2.13.0
 ```
 
 ## Verifying GPG Signatures
 
-ArgoCD releases may include GPG signatures. You can verify them with the ArgoCD project's public key:
-
-```bash
-# Import the ArgoCD release signing key
-gpg --keyserver keyserver.ubuntu.com --recv-keys <KEY_ID>
-
-# Download the signature file
-curl -sSL -o argocd-linux-amd64.asc \
-  https://github.com/argoproj/argo-cd/releases/download/v2.13.0/argocd-linux-amd64.asc
-
-# Verify the signature
-gpg --verify argocd-linux-amd64.asc argocd-linux-amd64
-```
+ArgoCD v2.13.0 release assets do not include per-binary `.asc` GPG signature files. The GitHub release commit is signed by GitHub, but downloaded release assets should be verified with `cli_checksums.txt`, cosign, and SLSA provenance instead.
 
 ## Verifying Helm Chart Integrity
 
 If you install ArgoCD via Helm, verify the chart's integrity:
 
 ```bash
+# Add the official Argo Helm repository
+helm repo add argo https://argoproj.github.io/argo-helm
+helm repo update
+
+# Import the Argo Helm chart signing key
+curl -sSL https://argoproj.github.io/argo-helm/pgp_keys.asc | gpg --import
+gpg --export > ~/.gnupg/pubring.gpg
+
 # Pull the chart without installing
-helm pull argo/argo-cd --version 7.0.0 --verify
+helm pull argo/argo-cd --version 7.0.0 --verify --keyring ~/.gnupg/pubring.gpg
 
 # Or manually verify the chart digest
 helm pull argo/argo-cd --version 7.0.0
 sha256sum argo-cd-7.0.0.tgz
 ```
 
-Compare the checksum against the value published on the Artifact Hub or the official Helm repository.
+Compare the checksum against the digest published in the official Helm repository index.
 
 ## Building a Verification Policy
 
@@ -258,13 +268,14 @@ echo "=== Verifying ArgoCD ${VERSION} ==="
 # Step 1: Verify container image signature
 echo "Verifying container image signature..."
 cosign verify \
-  --certificate-identity-regexp="https://github.com/argoproj/argo-cd" \
+  --certificate-identity-regexp="https://github.com/argoproj/argo-cd/.github/workflows/image-reuse.yaml@refs/tags/v.*" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  --certificate-github-workflow-repository="argoproj/argo-cd" \
   "${IMAGE}" > /dev/null 2>&1 && echo "Image signature: VERIFIED" || echo "Image signature: FAILED"
 
 # Step 2: Verify CLI checksum
 echo "Verifying CLI binary checksum..."
-EXPECTED=$(curl -sSL "https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-${VERSION}-checksums.txt" | grep "argocd-linux-amd64" | awk '{print $1}')
+EXPECTED=$(curl -sSL "https://github.com/argoproj/argo-cd/releases/download/${VERSION}/cli_checksums.txt" | grep "argocd-linux-amd64" | awk '{print $1}')
 ACTUAL=$(sha256sum /usr/local/bin/argocd | awk '{print $1}')
 [ "$EXPECTED" = "$ACTUAL" ] && echo "CLI checksum: VERIFIED" || echo "CLI checksum: FAILED"
 
