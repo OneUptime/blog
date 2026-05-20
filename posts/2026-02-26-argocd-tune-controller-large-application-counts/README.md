@@ -25,7 +25,7 @@ graph TD
     G --> H[Health Check]
 ```
 
-With 500 applications and only 10 status processors, each reconciliation cycle takes much longer than necessary because most applications sit in the queue waiting.
+With 500 applications and only the default 20 status processors, each reconciliation cycle takes much longer than necessary because most applications sit in the queue waiting.
 
 ## Increasing Status Processors
 
@@ -44,7 +44,7 @@ spec:
       - name: argocd-application-controller
         args:
         - /usr/local/bin/argocd-application-controller
-        # Default is 10, increase based on app count
+        # Default is 20, increase based on app count
         # Rule of thumb: 1 processor per 10 apps
         - --status-processors=100
         # Default is 10
@@ -68,7 +68,7 @@ Set this to roughly half your status processor count. Operations are heavier tha
 
 ## Enabling Controller Sharding
 
-For very large deployments (500+ applications), a single controller instance may not be enough regardless of processor counts. Controller sharding distributes applications across multiple controller replicas.
+For very large deployments, especially when those applications target many clusters, a single controller instance may not be enough regardless of processor counts. Controller sharding distributes clusters across multiple controller replicas, and each shard reconciles the applications assigned to its clusters.
 
 ```yaml
 apiVersion: apps/v1
@@ -92,18 +92,19 @@ spec:
           value: "3"
 ```
 
-With sharding enabled, each controller replica is responsible for a subset of applications. The assignment is based on a hash of the application name, so it is deterministic and does not require coordination between replicas.
+With sharding enabled, each controller replica is responsible for a subset of clusters. The assignment is based on the cluster shard value, or calculated by the controller when a cluster does not specify one.
 
-You can also use the `--sharding-method` flag to control how applications are distributed.
+You can also use the `--sharding-method` flag to control how clusters are distributed.
 
 ```yaml
 # Available sharding methods
-# round-robin: distributes evenly by app count
+# round-robin: distributes clusters evenly across shards
+# consistent-hashing: reduces reshuffling when shards or clusters change
 # legacy: hash-based (default)
 - --sharding-method=round-robin
 ```
 
-The `round-robin` method provides more even distribution, which is important if some applications are significantly more expensive to reconcile than others.
+The `round-robin` method provides more even cluster distribution. In current ArgoCD versions, `round-robin` and `consistent-hashing` are still documented as experimental, so test them before using them in production.
 
 ## Configuring Resource Limits
 
@@ -146,40 +147,26 @@ metadata:
   namespace: argocd
 data:
   # Increase for large app counts to reduce controller load
-  # Default: 180s
-  timeout.reconciliation: "300"
+  # Current default maximum is 120s plus up to 60s of jitter
+  timeout.reconciliation: "300s"
 ```
 
 For large deployments, increasing the reconciliation interval to 5 minutes (300s) reduces the steady-state load on the controller. Combine this with webhooks so that actual changes are still detected immediately.
 
 ## Adjusting the kubectl Parallelism Limit
 
-When the controller syncs an application, it uses kubectl to apply resources. The default parallelism limit is quite conservative.
+When the controller syncs applications, it can fork and execute kubectl commands. The kubectl parallelism limit controls the number of concurrent kubectl fork/exec operations across the controller.
 
 ```yaml
-# Default: 1 (sequential kubectl operations)
+# Default: 20 in current ArgoCD
 - --kubectl-parallelism-limit=20
 ```
 
-Setting this to 20 means the controller can apply up to 20 resources concurrently during a single sync. This makes a huge difference for applications with many resources - a Helm chart that produces 50 resources will sync 20x faster.
+Setting this higher can help when kubectl execution is the bottleneck, but it also increases load on the Kubernetes API server. Monitor API server latency and controller metrics before raising it.
 
 ## Using Server-Side Apply
 
-Server-side apply offloads the merge logic to the Kubernetes API server, which is more efficient for large resources and reduces client-side CPU usage.
-
-```yaml
-# Enable server-side apply globally
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Enable server-side apply
-  application.sync.serverSideApply: "true"
-```
-
-Or enable it per-application in the sync policy.
+Server-side apply uses Kubernetes field management instead of the `kubectl.kubernetes.io/last-applied-configuration` annotation. Enable it per-application in the sync policy.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -199,12 +186,12 @@ Server-side apply also eliminates the "too large" error that occurs when annotat
 Track these Prometheus metrics to understand controller behavior at scale.
 
 ```promql
-# Queue depth - should stay low
-argocd_app_reconcile_pending
+# Reconciliation queue depth - should stay low
+workqueue_depth{name="app_reconciliation_queue"}
 
 # Reconciliation time per app
 histogram_quantile(0.95,
-  rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+  sum(rate(argocd_app_reconcile_bucket[5m])) by (le)
 )
 
 # Number of apps in each sync status
@@ -234,6 +221,6 @@ These are starting points. Profile your actual workload because the complexity o
 
 One frequent mistake is increasing processor counts without providing enough CPU. Each processor is a goroutine that actively computes diffs, so high processor counts without proportional CPU just causes contention.
 
-Another mistake is running too many shards for a small number of applications. Sharding has overhead for coordination, and if each shard only handles 20 applications, the overhead may outweigh the benefit.
+Another mistake is running too many shards for a small number of clusters. Sharding has operational overhead, and if each shard only handles one or two small clusters, the overhead may outweigh the benefit.
 
 Finally, do not forget that the repo server and Redis also need to scale alongside the controller. A tuned controller that is waiting on a slow repo server will not show improvement. See our guide on [tuning the ArgoCD repo server](https://oneuptime.com/blog/post/2026-02-26-argocd-tune-repo-server-large-repos/view) for the repo server side.
