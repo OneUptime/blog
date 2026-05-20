@@ -178,7 +178,7 @@ After changing the port, review your auth logs to confirm the reduction in noise
 # Check SSH authentication attempts
 sudo journalctl -u ssh --since "1 hour ago" | grep -i "invalid\|failed"
 
-# Count failed attempts on the new port
+# Count invalid-user attempts in auth.log
 sudo grep "Invalid user" /var/log/auth.log | wc -l
 
 # Watch live SSH connection attempts
@@ -187,23 +187,20 @@ sudo journalctl -u ssh -f
 
 You will notice dramatically fewer attempts on the non-standard port compared to port 22.
 
-## Creating a Systemd Drop-in for Port Persistence
+## Creating an sshd_config.d Snippet for Port Persistence
 
-On some cloud providers, the SSH service configuration may be overridden during system updates. To make your port setting more resilient:
+Ubuntu's default `/etc/ssh/sshd_config` includes snippets from `/etc/ssh/sshd_config.d/`. To keep your custom port setting separate from the packaged configuration file:
 
 ```bash
-# Create a systemd drop-in override directory
-sudo mkdir -p /etc/systemd/system/ssh.service.d/
+# Create an OpenSSH server configuration snippet directory
+sudo mkdir -p /etc/ssh/sshd_config.d/
 
-# Create a drop-in file that ensures the config is loaded
-sudo tee /etc/systemd/system/ssh.service.d/override.conf << 'EOF'
-[Service]
-# Ensure the main config file is always used
-ExecStart=
-ExecStart=/usr/sbin/sshd -D -f /etc/ssh/sshd_config
+# Create a snippet for the custom SSH port
+sudo tee /etc/ssh/sshd_config.d/99-custom-port.conf << 'EOF'
+Port 2222
 EOF
 
-sudo systemctl daemon-reload
+sudo sshd -t
 sudo systemctl restart ssh
 ```
 
@@ -214,6 +211,7 @@ If something goes wrong and you need to revert:
 ```bash
 # Using console access or another terminal session:
 sudo sed -i 's/Port 2222/Port 22/' /etc/ssh/sshd_config
+sudo rm -f /etc/ssh/sshd_config.d/99-custom-port.conf
 sudo systemctl restart ssh
 sudo ufw allow 22/tcp
 sudo ufw delete allow 2222/tcp
