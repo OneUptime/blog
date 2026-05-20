@@ -37,16 +37,16 @@ The most common cause of all applications showing "Unknown" is a controller that
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-application-controller
 
 # Check if the controller is processing
-kubectl logs -n argocd deployment/argocd-application-controller --tail=100
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=100
 
 # If the controller is OOMKilled or CrashLooping:
 kubectl get events -n argocd --field-selector reason=OOMKilling
 
 # Fix: restart the controller
-kubectl rollout restart deployment/argocd-application-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 
 # If OOMKilled, increase memory first
-kubectl patch deployment argocd-application-controller -n argocd --type='json' \
+kubectl patch statefulset argocd-application-controller -n argocd --type='json' \
   -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "4Gi"}]'
 ```
 
@@ -54,7 +54,7 @@ If only some applications show "Unknown" while others are fine, the controller i
 
 ```bash
 # Increase status processors to handle more apps concurrently
-kubectl patch deployment argocd-application-controller -n argocd --type='json' \
+kubectl patch statefulset argocd-application-controller -n argocd --type='json' \
   -p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--status-processors=50"}]'
 ```
 
@@ -72,7 +72,7 @@ kubectl rollout restart deployment/argocd-redis -n argocd
 kubectl rollout status deployment/argocd-redis -n argocd
 
 # Then restart the controller
-kubectl rollout restart deployment/argocd-application-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 ```
 
 ## Cause 3: Repo Server Failure
@@ -104,7 +104,7 @@ argocd cluster list
 
 # If the cluster shows an error, see the cluster disconnected runbook
 # Test connectivity
-kubectl exec -n argocd deployment/argocd-application-controller -- \
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
   wget -qO- --timeout=5 <cluster-api-url>/healthz 2>&1
 ```
 
@@ -171,12 +171,12 @@ Applications with many resources may time out during comparison.
 
 ```bash
 # Check controller logs for timeout messages
-kubectl logs -n argocd deployment/argocd-application-controller --tail=500 | grep -i "timeout\|deadline"
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | grep -i "timeout\|deadline"
 
-# Increase the controller's comparison timeout
-# This is controlled by ARGOCD_RECONCILIATION_TIMEOUT environment variable
-kubectl set env deployment/argocd-application-controller -n argocd \
-  ARGOCD_RECONCILIATION_TIMEOUT=300
+# Increase the controller's repo-server RPC timeout
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge \
+  -p '{"data":{"controller.repo.server.timeout.seconds":"300"}}'
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 ```
 
 ## Quick Resolution Flowchart
