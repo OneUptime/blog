@@ -62,7 +62,7 @@ helm repo add argo https://argoproj.github.io/argo-helm
 helm install argocd argo/argo-cd \
   -n argocd \
   --set server.service.type=LoadBalancer \
-  --set configs.params.server\.insecure=true
+  --set 'configs.params.server\.insecure=true'
 ```
 
 ### Keep Applications Simple
@@ -130,9 +130,10 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: azure/k8s-set-context@v3
+      - uses: actions/checkout@v6
+      - uses: azure/k8s-set-context@v5
         with:
+          method: kubeconfig
           kubeconfig: ${{ secrets.KUBECONFIG }}
       - run: kubectl apply -f k8s/production/
 ```
