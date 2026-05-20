@@ -76,6 +76,9 @@ kubectl get svc argocd-server -n argocd
 ### Option 2: Minikube Service Command
 
 ```bash
+# Change ArgoCD server to NodePort type
+kubectl patch svc argocd-server -n argocd -p '{"spec": {"type": "NodePort"}}'
+
 # Open the ArgoCD server service in your browser
 minikube service argocd-server -n argocd --https
 
@@ -92,6 +95,8 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443 &
 ```
 
 ### Option 4: Minikube Ingress Addon
+
+With the Docker driver, the Minikube ingress addon is supported on Linux. On Docker Desktop for macOS or Windows, use port-forwarding or `minikube tunnel` instead.
 
 ```bash
 # Enable the ingress addon
@@ -112,7 +117,6 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
@@ -145,7 +149,7 @@ echo "$(minikube ip) argocd.local" | sudo tee -a /etc/hosts
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
 echo
 
-# Login with ArgoCD CLI
+# Login with ArgoCD CLI if you are using the port-forwarding option
 argocd login localhost:8080 --insecure --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d)
 ```
 
@@ -169,8 +173,7 @@ kubectl top pods -n argocd
 # Enable the built-in Docker registry
 minikube addons enable registry
 
-# Push images to the Minikube registry
-# First, get the registry's cluster IP
+# Get the registry's cluster IP for in-cluster pulls
 REGISTRY=$(kubectl get svc registry -n kube-system -o jsonpath='{.spec.clusterIP}')
 echo "Registry is at $REGISTRY:80"
 ```
@@ -236,9 +239,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://charts.bitnami.com/bitnami
+    repoURL: registry-1.docker.io/bitnamicharts
     chart: nginx
-    targetRevision: 15.4.4
+    targetRevision: 23.0.4
     helm:
       values: |
         # Smaller resource requests for Minikube
