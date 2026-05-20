@@ -84,6 +84,7 @@ spec:
               NAMESPACE=${NAMESPACE:-default}
               APP_LABEL="app=api-service"
               SERVICE_URL="http://api-service.$NAMESPACE.svc:8080/health"
+              trap 'kubectl delete podchaos pod-kill-test -n "$NAMESPACE" 2>/dev/null || true' EXIT
 
               echo "=== Chaos Test: Pod Kill ==="
               echo "Target: $APP_LABEL in $NAMESPACE"
@@ -120,6 +121,7 @@ spec:
                     - $NAMESPACE
                   labelSelectors:
                     app: api-service
+                gracePeriod: 0
                 duration: "30s"
               CHAOS_EOF
 
@@ -143,7 +145,7 @@ spec:
               echo "During chaos: $AVAILABLE available, $UNAVAILABLE unavailable"
 
               # Clean up chaos experiment
-              kubectl delete podchaos pod-kill-test -n "$NAMESPACE" 2>/dev/null
+              kubectl delete podchaos pod-kill-test -n "$NAMESPACE" 2>/dev/null || true
 
               # Wait for recovery
               echo "Waiting for recovery..."
@@ -207,6 +209,7 @@ spec:
             - |
               NAMESPACE=${NAMESPACE:-default}
               SERVICE_URL="http://api-service.$NAMESPACE.svc:8080/health"
+              trap 'kubectl delete networkchaos network-latency-test -n "$NAMESPACE" 2>/dev/null || true' EXIT
 
               echo "=== Chaos Test: Network Latency ==="
 
@@ -263,7 +266,7 @@ spec:
               done
 
               # Clean up
-              kubectl delete networkchaos network-latency-test -n "$NAMESPACE" 2>/dev/null
+              kubectl delete networkchaos network-latency-test -n "$NAMESPACE" 2>/dev/null || true
 
               ERROR_RATE=$((ERRORS * 100 / TOTAL))
               echo ""
@@ -352,9 +355,10 @@ spec:
                   responseCode: "200"
             mode: Continuous
             runProperties:
-              probeTimeout: 5s
-              interval: 2s
+              probeTimeout: 5
+              interval: 2
               retry: 3
+              probePollingInterval: 2
 ```
 
 Litmus includes built-in probes that validate service health during chaos, making it a good choice for PostSync validation.
