@@ -33,9 +33,9 @@ Here is a minimal script that creates an ArgoCD application using the CLI:
 
 set -euo pipefail
 
-APP_NAME="$1"
-REPO_URL="$2"
-PATH_IN_REPO="$3"
+APP_NAME="${1:-}"
+REPO_URL="${2:-}"
+PATH_IN_REPO="${3:-}"
 DEST_NAMESPACE="${4:-default}"
 DEST_SERVER="${5:-https://kubernetes.default.svc}"
 PROJECT="${6:-default}"
@@ -95,7 +95,7 @@ DRY_RUN="${DRY_RUN:-false}"
 FAILED_APPS=()
 
 # Skip header line, read each row
-tail -n +2 "${CSV_FILE}" | while IFS=',' read -r app_name repo_url path namespace project; do
+while IFS=',' read -r app_name repo_url path namespace project; do
   echo "---"
   echo "Processing: ${app_name}"
 
@@ -125,7 +125,7 @@ tail -n +2 "${CSV_FILE}" | while IFS=',' read -r app_name repo_url path namespac
     echo "  FAILED: ${app_name}"
     FAILED_APPS+=("${app_name}")
   fi
-done
+done < <(tail -n +2 "${CSV_FILE}")
 
 # Report failures
 if [[ ${#FAILED_APPS[@]} -gt 0 ]]; then
@@ -238,8 +238,12 @@ NAMESPACE="${NAMESPACE:-${APP_NAME}}"
 PROJECT="${PROJECT:-${DEPLOY_ENV}-apps}"
 SYNC_POLICY="${SYNC_POLICY:-automated}"
 
-# Build labels JSON for the ArgoCD CLI
-LABELS="team=${TEAM:-unknown},env=${DEPLOY_ENV},managed-by=ci"
+# Build labels for the ArgoCD CLI
+LABEL_ARGS=(
+  --label "team=${TEAM:-unknown}"
+  --label "env=${DEPLOY_ENV}"
+  --label "managed-by=ci"
+)
 
 echo "Creating ArgoCD application"
 echo "  Name:      ${APP_NAME}-${DEPLOY_ENV}"
@@ -254,7 +258,7 @@ argocd app create "${APP_NAME}-${DEPLOY_ENV}" \
   --dest-namespace "${NAMESPACE}" \
   --dest-server "https://kubernetes.default.svc" \
   --project "${PROJECT}" \
-  --label "${LABELS}" \
+  "${LABEL_ARGS[@]}" \
   --sync-policy "${SYNC_POLICY}" \
   --auto-prune \
   --self-heal \
@@ -278,6 +282,14 @@ Production scripts need guardrails. Here is a validation wrapper:
 #!/bin/bash
 # safe-create-app.sh - Create apps with safety checks
 set -euo pipefail
+
+# Expected environment variables
+: "${APP_NAME:?APP_NAME is required}"
+: "${REPO_URL:?REPO_URL is required}"
+: "${APP_PATH:?APP_PATH is required}"
+: "${NAMESPACE:?NAMESPACE is required}"
+: "${DEST_SERVER:=https://kubernetes.default.svc}"
+: "${PROJECT:=default}"
 
 validate_prerequisites() {
   # Check ArgoCD CLI is available
@@ -303,8 +315,9 @@ validate_repo_access() {
   local repo_url="$1"
   # Verify ArgoCD can access the repository
   if ! argocd repo get "${repo_url}" &>/dev/null; then
-    echo "WARNING: Repository ${repo_url} not registered. Adding it..."
-    argocd repo add "${repo_url}" --ssh-private-key-path ~/.ssh/id_rsa
+    echo "ERROR: Repository ${repo_url} is not registered with ArgoCD."
+    echo "Register it first with 'argocd repo add' and the appropriate credentials."
+    exit 1
   fi
 }
 
