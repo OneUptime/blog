@@ -23,7 +23,7 @@ Not all packages use debconf, so not all packages respond meaningfully to `dpkg-
 
 sudo dpkg-reconfigure package-name
 
-# Run with lower priority (shows more questions, not just high-priority ones)
+# Explicitly show low-priority questions
 sudo dpkg-reconfigure --priority=low package-name
 
 # Run silently with current/default settings (non-interactive)
@@ -134,7 +134,10 @@ sudo tee /etc/timezone <<< "America/New_York"
 sudo dpkg-reconfigure --frontend=noninteractive tzdata
 
 # Set locale without interaction
-echo "LANG=en_US.UTF-8" | sudo tee /etc/default/locale
+printf '%s\n' \
+  "locales locales/locales_to_be_generated multiselect en_US.UTF-8 UTF-8" \
+  "locales locales/default_environment_locale select en_US.UTF-8" | \
+    sudo debconf-set-selections
 sudo dpkg-reconfigure --frontend=noninteractive locales
 ```
 
@@ -142,7 +145,7 @@ For packages where you want to pre-answer debconf questions before reconfiguring
 
 ```bash
 # Pre-seed answers using debconf-set-selections
-echo "postfix postfix/main_mailer_type string 'Internet Site'" | \
+echo "postfix postfix/main_mailer_type select Internet Site" | \
     sudo debconf-set-selections
 
 echo "postfix postfix/mailname string mail.example.com" | \
@@ -167,7 +170,7 @@ sudo debconf-show postfix
 # Output:
 #   postfix/main_mailer_type: Internet Site
 # * postfix/mailname: mail.example.com
-# (starred items have non-default values)
+# (starred items have already been asked)
 ```
 
 ## Exporting and Importing debconf Settings
@@ -220,17 +223,17 @@ sudo DEBIAN_FRONTEND=noninteractive apt install -y package-name
 If `dpkg-reconfigure` doesn't seem to change anything:
 
 ```bash
-# Run with --force to re-ask all questions regardless of cached answers
+# Use --force if the package is in an inconsistent or broken state
 sudo dpkg-reconfigure --force package-name
 
-# Run with low priority to see all questions (not just high-priority ones)
+# Run with low priority to explicitly include low-priority questions
 sudo dpkg-reconfigure --priority=low package-name
 
 # Check debconf's database for the current values
 sudo debconf-show package-name
 
 # Clear cached debconf answers and start fresh
-echo "package-name" | sudo xargs -I{} debconf-communicate {} <<< "PURGE"
+echo "PURGE" | sudo debconf-communicate package-name
 sudo dpkg-reconfigure package-name
 ```
 
@@ -257,8 +260,10 @@ ln -sf /usr/share/zoneinfo/America/Chicago /etc/localtime
 dpkg-reconfigure --frontend=noninteractive tzdata
 
 # Set locale
-echo "LANG=en_US.UTF-8" > /etc/default/locale
-locale-gen en_US.UTF-8
+printf '%s\n' \
+  "locales locales/locales_to_be_generated multiselect en_US.UTF-8 UTF-8" \
+  "locales locales/default_environment_locale select en_US.UTF-8" | \
+    debconf-set-selections
 dpkg-reconfigure --frontend=noninteractive locales
 
 # Configure console keyboard (if needed)
