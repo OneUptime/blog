@@ -189,7 +189,7 @@ metadata:
     model: recommendation
     version: v2.3.1
   annotations:
-    # Scale to zero when idle
+    # Keep at least one replica warm
     autoscaling.knative.dev/minScale: "1"
     autoscaling.knative.dev/maxScale: "10"
     autoscaling.knative.dev/target: "50"
@@ -296,6 +296,7 @@ spec:
   predictors:
     - name: default
       replicas: 3
+      traffic: 90
       graph:
         name: model
         implementation: SKLEARN_SERVER
@@ -328,8 +329,16 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gpu-model-server
+  labels:
+    app: gpu-model-server
 spec:
+  selector:
+    matchLabels:
+      app: gpu-model-server
   template:
+    metadata:
+      labels:
+        app: gpu-model-server
     spec:
       containers:
         - name: model-server
@@ -404,12 +413,27 @@ kind: Deployment
 metadata:
   name: model-a
   labels:
+    app: model-a
     model: recommendation
     variant: a
     version: v2.3.1
 spec:
   replicas: 3
-  # ... standard deployment spec
+  selector:
+    matchLabels:
+      app: model-a
+  template:
+    metadata:
+      labels:
+        app: model-a
+        model: recommendation
+        variant: a
+    spec:
+      containers:
+        - name: model-server
+          image: myregistry.io/recommendation-service:v2.3.1
+          ports:
+            - containerPort: 8080
 
 ---
 # Model B: Challenger model
@@ -418,12 +442,51 @@ kind: Deployment
 metadata:
   name: model-b
   labels:
+    app: model-b
     model: recommendation
     variant: b
     version: v2.4.0
 spec:
   replicas: 1
-  # ... standard deployment spec
+  selector:
+    matchLabels:
+      app: model-b
+  template:
+    metadata:
+      labels:
+        app: model-b
+        model: recommendation
+        variant: b
+    spec:
+      containers:
+        - name: model-server
+          image: myregistry.io/recommendation-service:v2.4.0
+          ports:
+            - containerPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-a
+spec:
+  selector:
+    app: model-a
+  ports:
+    - port: 8080
+      targetPort: 8080
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: model-b
+spec:
+  selector:
+    app: model-b
+  ports:
+    - port: 8080
+      targetPort: 8080
 
 ---
 # Traffic split with Istio
