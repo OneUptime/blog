@@ -16,6 +16,8 @@ This guide walks through configuring progressive syncs, defining rollout steps, 
 
 Progressive syncs use the `RollingSync` strategy in ApplicationSets. Instead of updating all generated Applications at once, the controller processes them in defined steps. Each step specifies which Applications to sync using label selectors. The controller waits for all Applications in a step to become healthy before proceeding to the next step.
 
+Progressive syncs are an experimental feature and must be enabled on the ApplicationSet controller before `RollingSync` strategies take effect. You can enable them with the `--enable-progressive-syncs` controller argument, the `ARGOCD_APPLICATIONSET_CONTROLLER_ENABLE_PROGRESSIVE_SYNCS=true` environment variable, or the `applicationsetcontroller.enable.progressive.syncs: "true"` setting in the `argocd-cmd-params-cm` ConfigMap.
+
 ```mermaid
 flowchart LR
     A[Step 1: Canary] -->|Healthy| B[Step 2: Staging]
@@ -77,13 +79,11 @@ spec:
       destination:
         server: '{{cluster}}'
         namespace: myapp
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
 ```
 
 The labels on the generated Applications must match the `matchExpressions` in the rollout steps. The controller uses these labels to determine which Applications belong to each step.
+
+RollingSync triggers sync operations itself and forces generated Applications to have automated sync disabled. If you include `syncPolicy.automated` in a RollingSync ApplicationSet, Argo CD disables autosync on the generated Applications and logs a warning.
 
 ## Multi-Step Regional Rollout
 
@@ -139,9 +139,6 @@ spec:
       destination:
         server: '{{server}}'
         namespace: payment-svc
-      syncPolicy:
-        automated:
-          selfHeal: true
 ```
 
 For this to work, your clusters need the `rollout-group` label set appropriately:
@@ -191,14 +188,19 @@ spec:
           - list:
               elements:
                 - env: staging
+                  clusterName: staging
                   cluster: https://staging.example.com
                 - env: production
+                  clusterName: prod-1
                   cluster: https://prod-1.example.com
                 - env: production
+                  clusterName: prod-2
                   cluster: https://prod-2.example.com
                 - env: production
+                  clusterName: prod-3
                   cluster: https://prod-3.example.com
                 - env: production
+                  clusterName: prod-4
                   cluster: https://prod-4.example.com
           - list:
               elements:
@@ -207,7 +209,7 @@ spec:
                 - app: worker
   template:
     metadata:
-      name: '{{app}}-{{env}}-{{cluster}}'
+      name: '{{app}}-{{env}}-{{clusterName}}'
       labels:
         env: '{{env}}'
         app: '{{app}}'
@@ -273,8 +275,6 @@ spec:
         server: '{{cluster}}'
         namespace: api
       syncPolicy:
-        automated:
-          selfHeal: true
         # Retry on transient failures
         retry:
           limit: 3
@@ -291,11 +291,11 @@ The retry policy is important with progressive syncs. Transient failures (like a
 Check the progress of a rolling sync.
 
 ```bash
-# View the ApplicationSet status including rollout progress
+# View ApplicationSet status and conditions
 kubectl get applicationset regional-rollout -n argocd -o yaml | \
   yq '.status'
 
-# Check which step is currently active
+# Inspect ApplicationSet events and conditions
 kubectl describe applicationset regional-rollout -n argocd
 
 # List all applications with their sync and health status
@@ -305,7 +305,7 @@ argocd app list -l app=payment-svc -o wide
 kubectl get applications -n argocd -l app=payment-svc -w
 ```
 
-The ApplicationSet status section shows which step is currently being processed and the health of applications in each step.
+Use the generated Applications' sync and health status to see which rollout group is still progressing. The ApplicationSet status and events can help identify reconciliation errors, while the individual Applications show the actual sync and health gate state.
 
 ## Handling Rollout Failures
 
@@ -321,7 +321,7 @@ argocd app sync myapp-canary
 # Option 3: Roll back the change in Git
 git revert HEAD
 git push origin main
-# The ApplicationSet will sync all applications back to the previous state
+# The ApplicationSet will roll applications back through the same RollingSync steps
 ```
 
 ## Progressive Sync with Go Templates
