@@ -34,24 +34,30 @@ The API server acts as a proxy, aggregating data from the controller, repo serve
 
 ## Key API Server Metrics
 
-**HTTP Request Duration:**
+ArgoCD exposes API server metrics at the `argocd-server-metrics:8083/metrics` endpoint. gRPC latency histograms require the `ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true` environment variable.
+
+**gRPC Request Duration:**
 
 ```promql
-# HTTP request duration by method and path
+# gRPC request duration by service and method
 
 histogram_quantile(0.95,
-  rate(http_request_duration_seconds_bucket{
-    namespace="argocd",
-    job=~".*argocd-server.*"
-  }[5m])
-) by (method, path)
+  sum by (le, grpc_service, grpc_method, grpc_type) (
+    rate(grpc_server_handling_seconds_bucket{
+      namespace="argocd",
+      job=~".*argocd-server.*"
+    }[5m])
+  )
+)
 
 # Overall P95 latency
 histogram_quantile(0.95,
-  rate(http_request_duration_seconds_bucket{
-    namespace="argocd",
-    job=~".*argocd-server.*"
-  }[5m])
+  sum by (le) (
+    rate(grpc_server_handling_seconds_bucket{
+      namespace="argocd",
+      job=~".*argocd-server.*"
+    }[5m])
+  )
 )
 ```
 
@@ -59,60 +65,67 @@ histogram_quantile(0.95,
 
 ```promql
 # gRPC request count by service and method
-rate(grpc_server_handled_total{
-  namespace="argocd",
-  grpc_service=~".*application.*|.*repository.*|.*session.*"
-}[5m]) by (grpc_service, grpc_method, grpc_code)
+sum by (grpc_service, grpc_method, grpc_code) (
+  rate(grpc_server_handled_total{
+    namespace="argocd",
+    job=~".*argocd-server.*"
+  }[5m])
+)
 
 # gRPC request duration
 histogram_quantile(0.95,
-  rate(grpc_server_handling_seconds_bucket{
-    namespace="argocd"
-  }[5m])
-) by (grpc_service, grpc_method)
+  sum by (le, grpc_service, grpc_method) (
+    rate(grpc_server_handling_seconds_bucket{
+      namespace="argocd",
+      job=~".*argocd-server.*"
+    }[5m])
+  )
+)
 ```
 
 **Request Rate:**
 
 ```promql
 # Total request rate
-sum(rate(http_request_duration_seconds_count{
+sum(rate(grpc_server_handled_total{
   namespace="argocd",
   job=~".*argocd-server.*"
 }[5m]))
 
 # Request rate by status code
-sum(rate(http_request_duration_seconds_count{
+sum(rate(grpc_server_handled_total{
   namespace="argocd",
   job=~".*argocd-server.*"
-}[5m])) by (code)
+}[5m])) by (grpc_code)
 ```
 
 ## Tracking Latency by Endpoint
 
-Different API endpoints have different expected latencies. The application list endpoint might serve hundreds of applications and take longer than a single application GET:
+Different API operations have different expected latencies. ArgoCD's built-in API server metrics identify gRPC service and method rather than REST path. The application list operation might serve hundreds of applications and take longer than a single application GET:
 
 ```promql
-# Top 10 slowest endpoints
+# Top 10 slowest gRPC methods
 topk(10,
   histogram_quantile(0.95,
-    rate(http_request_duration_seconds_bucket{
-      namespace="argocd",
-      job=~".*argocd-server.*"
-    }[5m])
-  ) by (path)
+    sum by (le, grpc_service, grpc_method) (
+      rate(grpc_server_handling_seconds_bucket{
+        namespace="argocd",
+        job=~".*argocd-server.*"
+      }[5m])
+    )
+  )
 )
 ```
 
-Common API paths and their expected latency ranges:
+Common API operations and starting latency ranges:
 
-| Endpoint | Expected P95 | Description |
+| Operation | Expected P95 | Description |
 |----------|-------------|-------------|
-| /api/v1/applications | 500ms - 2s | List all applications |
-| /api/v1/applications/{name} | 100ms - 500ms | Get single application |
-| /api/v1/applications/{name}/sync | 200ms - 1s | Trigger sync |
-| /api/v1/repositories | 100ms - 500ms | List repositories |
-| /api/v1/session | 100ms - 300ms | Authentication |
+| ApplicationService/List | 500ms - 2s | List all applications |
+| ApplicationService/Get | 100ms - 500ms | Get single application |
+| ApplicationService/Sync | 200ms - 1s | Trigger sync |
+| RepositoryService/List | 100ms - 500ms | List repositories |
+| SessionService/Create | 100ms - 300ms | Authentication |
 
 ## Setting Up Latency Alerts
 
@@ -126,10 +139,12 @@ groups:
   - alert: ArgocdApiServerLatencyHigh
     expr: |
       histogram_quantile(0.95,
-        rate(http_request_duration_seconds_bucket{
-          namespace="argocd",
-          job=~".*argocd-server.*"
-        }[5m])
+        sum by (le) (
+          rate(grpc_server_handling_seconds_bucket{
+            namespace="argocd",
+            job=~".*argocd-server.*"
+          }[5m])
+        )
       ) > 2
     for: 10m
     labels:
@@ -142,10 +157,12 @@ groups:
   - alert: ArgocdApiServerLatencyCritical
     expr: |
       histogram_quantile(0.99,
-        rate(http_request_duration_seconds_bucket{
-          namespace="argocd",
-          job=~".*argocd-server.*"
-        }[5m])
+        sum by (le) (
+          rate(grpc_server_handling_seconds_bucket{
+            namespace="argocd",
+            job=~".*argocd-server.*"
+          }[5m])
+        )
       ) > 10
     for: 5m
     labels:
@@ -154,15 +171,15 @@ groups:
       summary: "ArgoCD API server P99 latency is above 10 seconds"
       description: "API server 99th percentile latency is {{ $value }}s. Users are likely experiencing timeouts."
 
-  # Error rate is elevated
-  - alert: ArgocdApiServerErrorRate
+  # gRPC error rate is elevated
+  - alert: ArgocdApiServerGrpcErrorRate
     expr: |
-      sum(rate(http_request_duration_seconds_count{
+      sum(rate(grpc_server_handled_total{
         namespace="argocd",
         job=~".*argocd-server.*",
-        code=~"5.."
+        grpc_code=~"Unknown|DeadlineExceeded|Internal|Unavailable|DataLoss"
       }[5m]))
-      / sum(rate(http_request_duration_seconds_count{
+      / sum(rate(grpc_server_handled_total{
         namespace="argocd",
         job=~".*argocd-server.*"
       }[5m])) > 0.05
@@ -170,16 +187,19 @@ groups:
     labels:
       severity: warning
     annotations:
-      summary: "ArgoCD API server error rate is above 5%"
-      description: "{{ $value | humanizePercentage }} of API requests are returning 5xx errors."
+      summary: "ArgoCD API server gRPC error rate is above 5%"
+      description: "{{ $value | humanizePercentage }} of API requests are returning server-side gRPC errors."
 
   # gRPC latency alert
   - alert: ArgocdGrpcLatencyHigh
     expr: |
       histogram_quantile(0.95,
-        rate(grpc_server_handling_seconds_bucket{
-          namespace="argocd"
-        }[5m])
+        sum by (le) (
+          rate(grpc_server_handling_seconds_bucket{
+            namespace="argocd",
+            job=~".*argocd-server.*"
+          }[5m])
+        )
       ) > 5
     for: 10m
     labels:
@@ -195,39 +215,39 @@ groups:
 
 Request rate stat:
 ```promql
-sum(rate(http_request_duration_seconds_count{namespace="argocd", job=~".*argocd-server.*"}[5m]))
+sum(rate(grpc_server_handled_total{namespace="argocd", job=~".*argocd-server.*"}[5m]))
 ```
 
 P95 latency stat:
 ```promql
-histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m]))
+histogram_quantile(0.95, sum by (le) (rate(grpc_server_handling_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m])))
 ```
 
 Error rate gauge:
 ```promql
-sum(rate(http_request_duration_seconds_count{namespace="argocd", job=~".*argocd-server.*", code=~"5.."}[5m]))
-/ sum(rate(http_request_duration_seconds_count{namespace="argocd", job=~".*argocd-server.*"}[5m])) * 100
+sum(rate(grpc_server_handled_total{namespace="argocd", job=~".*argocd-server.*", grpc_code=~"Unknown|DeadlineExceeded|Internal|Unavailable|DataLoss"}[5m]))
+/ sum(rate(grpc_server_handled_total{namespace="argocd", job=~".*argocd-server.*"}[5m])) * 100
 ```
 
 **Row 2: Latency Details**
 
 Time series - Latency percentiles over time:
 ```promql
-histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m]))
-histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m]))
-histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m]))
+histogram_quantile(0.50, sum by (le) (rate(grpc_server_handling_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m])))
+histogram_quantile(0.95, sum by (le) (rate(grpc_server_handling_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m])))
+histogram_quantile(0.99, sum by (le) (rate(grpc_server_handling_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m])))
 ```
 
 **Row 3: Request Breakdown**
 
 Time series - Requests by status code:
 ```promql
-sum(rate(http_request_duration_seconds_count{namespace="argocd", job=~".*argocd-server.*"}[5m])) by (code)
+sum(rate(grpc_server_handled_total{namespace="argocd", job=~".*argocd-server.*"}[5m])) by (grpc_code)
 ```
 
-Table - Slowest endpoints:
+Table - Slowest gRPC methods:
 ```promql
-topk(10, histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m])) by (path))
+topk(10, histogram_quantile(0.95, sum by (le, grpc_service, grpc_method) (rate(grpc_server_handling_seconds_bucket{namespace="argocd", job=~".*argocd-server.*"}[5m]))))
 ```
 
 ## Diagnosing Latency Issues
@@ -241,7 +261,14 @@ When API server latency is high, follow this investigation path:
 rate(container_cpu_usage_seconds_total{namespace="argocd", container="argocd-server"}[5m])
 
 # Check Redis latency
-redis_commands_duration_seconds_total
+histogram_quantile(0.95,
+  sum by (le) (
+    rate(argocd_redis_request_duration_seconds_bucket{
+      namespace="argocd",
+      initiator="argocd-server"
+    }[5m])
+  )
+)
 ```
 
 **Check backend component latency:**
@@ -252,7 +279,7 @@ kubectl exec -n argocd deployment/argocd-server -- \
   curl -s -w "%{time_total}s\n" -o /dev/null http://argocd-repo-server:8081/healthz
 
 # Check Kubernetes API server latency
-kubectl get --raw /healthz
+kubectl get --raw /readyz
 ```
 
 **Check for connection pooling issues:**
@@ -301,7 +328,7 @@ data:
   redis.server: "argocd-redis-ha:6379"
 ```
 
-**Enable response caching:**
+**Ensure Redis cache capacity:**
 
 ArgoCD caches application data in Redis. Ensure Redis has enough memory for the cache:
 
@@ -334,27 +361,29 @@ groups:
   - record: argocd:api_request_latency_p95:5m
     expr: |
       histogram_quantile(0.95,
-        rate(http_request_duration_seconds_bucket{
-          namespace="argocd",
-          job=~".*argocd-server.*"
-        }[5m])
+        sum by (le) (
+          rate(grpc_server_handling_seconds_bucket{
+            namespace="argocd",
+            job=~".*argocd-server.*"
+          }[5m])
+        )
       )
 
   - record: argocd:api_error_rate:5m
     expr: |
-      sum(rate(http_request_duration_seconds_count{
+      sum(rate(grpc_server_handled_total{
         namespace="argocd",
         job=~".*argocd-server.*",
-        code=~"5.."
+        grpc_code=~"Unknown|DeadlineExceeded|Internal|Unavailable|DataLoss"
       }[5m]))
-      / sum(rate(http_request_duration_seconds_count{
+      / sum(rate(grpc_server_handled_total{
         namespace="argocd",
         job=~".*argocd-server.*"
       }[5m]))
 
   - record: argocd:api_request_rate:5m
     expr: |
-      sum(rate(http_request_duration_seconds_count{
+      sum(rate(grpc_server_handled_total{
         namespace="argocd",
         job=~".*argocd-server.*"
       }[5m]))
