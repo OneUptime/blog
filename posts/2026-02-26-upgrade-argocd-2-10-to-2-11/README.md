@@ -8,25 +8,23 @@ Description: Step-by-step guide to upgrading ArgoCD from version 2.10 to 2.11 co
 
 ---
 
-ArgoCD 2.11 continued the evolution of the platform with improvements to ApplicationSet progressive syncs, enhanced security features, and important changes to how applications are reconciled. This guide provides a detailed walkthrough of the upgrade process from 2.10 to 2.11, covering every change that might affect your production setup.
+ArgoCD 2.11 continued the evolution of the platform with Application CRD schema updates, Helm chart changes, and optional features that are useful to review before upgrading. This guide provides a detailed walkthrough of the upgrade process from 2.10 to 2.11, covering the changes that might affect your production setup.
 
 ## What Changed in ArgoCD 2.11
 
 ### Key New Features
 
-- **ApplicationSet progressive syncs improvements**: More control over how ApplicationSet-generated applications are synced
-- **Improved server-side diff**: Enhanced accuracy and performance of server-side diff calculations
-- **Enhanced webhook support**: Better GitHub, GitLab, and Bitbucket webhook handling
-- **Improved resource health checks**: New built-in health checks for additional Kubernetes resource types
-- **Application controller sharding V2**: Improved algorithm for distributing applications across controller shards
-- **Proxy extensions**: Support for extending the ArgoCD UI with custom proxy endpoints
+- **Application CRD schema update**: `initiatedBy` was added to the Application CRD
+- **Server-side diff available as opt-in beta**: Server-side diff can be enabled globally or per application
+- **ApplicationSet progressive syncs remain opt-in alpha**: RollingSync can control updates to ApplicationSet-generated applications
+- **Application controller sharding options**: Controller sharding can use the default `legacy` algorithm or the opt-in `round-robin` algorithm
+- **Helm chart controller option**: The argo-cd chart can run the application controller as a StatefulSet when `controller.enableStatefulSet` is enabled
 
 ### Breaking Changes
 
-- **Notification template changes**: Some notification template variables were renamed for consistency
-- **ApplicationSet merge generator behavior**: The merge generator's conflict resolution was changed
-- **Health check changes**: Some resources may report different health states after the upgrade
-- **CLI output format changes**: Some CLI commands changed their JSON output structure
+- **Application CRD update**: Apply the 2.11 CRDs so the API server knows about the new Application schema
+- **Redis NetworkPolicy change in 2.11.2 and later**: The `argocd-redis` and `argocd-redis-ha-haproxy` NetworkPolicies dropped egress restrictions, so review custom network policies if you depend on strict Redis egress rules
+- **Helm chart StatefulSet option**: Enabling `controller.enableStatefulSet` for the application controller can be a downtime or breaking change in HA deployments
 
 ## Pre-Upgrade Checklist
 
@@ -37,8 +35,8 @@ ArgoCD 2.11 continued the evolution of the platform with improvements to Applica
 
 argocd version
 
-# Check Kubernetes version - 2.11 supports 1.27 through 1.31
-kubectl version --short
+# Check Kubernetes version - Argo CD 2.11 was tested with Kubernetes 1.25 through 1.29
+kubectl version
 
 # Verify cluster health
 kubectl get nodes
@@ -67,25 +65,23 @@ kubectl get cm -n argocd argocd-rbac-cm -o yaml > argocd-backup-2.10/rbac.yaml
 
 ### 3. Check Notification Templates
 
-If you use ArgoCD notifications, review your templates. Some variables changed in 2.11.
+If you use ArgoCD notifications, back up your templates before the upgrade. The 2.10 to 2.11 upgrade notes do not require a notification template migration, but templates are a common customization to verify in staging.
 
 ```bash
 kubectl get cm -n argocd argocd-notifications-cm -o yaml > argocd-backup-2.10/notifications.yaml
 ```
 
-Common template variable changes:
+Example field to verify if your templates report the synced revision:
 
 ```yaml
-# Old variable names (2.10)
 # {{ .app.status.operationState.syncResult.revision }}
-
-# New variable names (2.11 - check release notes for specifics)
+# For multi-source applications, verify whether your template should use:
 # {{ .app.status.operationState.syncResult.revisions }}
 ```
 
 ### 4. Review ApplicationSet Merge Generators
 
-If you use merge generators in ApplicationSets, test them after upgrading because conflict resolution behavior changed.
+If you use merge generators in ApplicationSets, test them after upgrading. The 2.10 to 2.11 upgrade notes do not document a merge generator behavior change, but generated Application output should still be verified in staging.
 
 ```bash
 # List ApplicationSets using merge generators
@@ -94,7 +90,7 @@ kubectl get applicationsets -n argocd -o json | jq '.items[] | select(.spec.gene
 
 ### 5. Check for Custom Health Checks
 
-Custom health checks defined in `argocd-cm` may need updates if they conflict with new built-in health checks.
+Custom health checks defined in `argocd-cm` should be reviewed during staging tests.
 
 ```bash
 # List custom health checks
@@ -169,7 +165,7 @@ Key values updates for 2.11:
 
 ```yaml
 argo-cd:
-  # Controller sharding V2 (recommended)
+  # Controller sharding with two controller replicas
   controller:
     replicas: 2
     env:
@@ -178,16 +174,16 @@ argo-cd:
 
   configs:
     params:
-      # Server-side diff (recommended as stable in 2.11)
+      # Server-side diff (opt-in beta in 2.11)
       controller.diff.server.side: "true"
 
-      # New in 2.11 - progressive sync support for ApplicationSets
+      # Progressive sync support for ApplicationSets (opt-in alpha)
       applicationsetcontroller.enable.progressive.syncs: "true"
 
-  # Proxy extensions (new in 2.11)
+  # UI extensions
   server:
     extensions:
-      enabled: false  # Enable if you use proxy extensions
+      enabled: false  # Enable if you use Argo CD UI extensions
 ```
 
 ### Step 4: Apply the Upgrade
@@ -242,9 +238,9 @@ argocd app sync test-app --dry-run
 
 ## Handling Health Check Changes
 
-After the upgrade, some resources may show different health status. This is expected when new health checks are added for resource types that previously showed as "Healthy" by default.
+After the upgrade, verify resource health status for your applications. If a resource shows as "Degraded" that was previously "Healthy", inspect the resource before overriding health behavior.
 
-If a resource shows as "Degraded" that was previously "Healthy":
+If a resource shows as "Degraded":
 
 ```bash
 # Check the health message
@@ -266,7 +262,7 @@ Only do this as a temporary workaround. The correct fix is to resolve the actual
 
 ## ApplicationSet Progressive Syncs
 
-2.11 improves progressive syncs. If you want to use this feature:
+Progressive syncs are an opt-in alpha feature in 2.11. If you want to use this feature:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -300,6 +296,8 @@ spec:
   template:
     metadata:
       name: "{{name}}-my-app"
+      labels:
+        region: "{{metadata.labels.region}}"
     spec:
       source:
         repoURL: https://github.com/your-org/repo.git
@@ -333,11 +331,11 @@ kubectl apply -f argocd-backup-2.10/notifications.yaml
 
 ### Applications Flapping Between Synced and OutOfSync
 
-This can happen due to health check changes. Check which resources are causing the issue and add `ignoreDifferences` if the changes are expected.
+Check which resources are causing the issue and add `ignoreDifferences` only if the live changes are expected and should be ignored by Argo CD.
 
 ### Webhook Delivery Failures
 
-If GitHub or GitLab webhooks stop working, check the webhook configuration. The webhook path may have changed.
+If GitHub or GitLab webhooks stop working, check the webhook configuration and Argo CD server logs.
 
 ```bash
 # Check webhook logs
@@ -346,10 +344,10 @@ kubectl logs -n argocd deploy/argocd-server --tail=100 | grep webhook
 
 ### Increased Memory Usage
 
-The improved server-side diff may use more memory. Monitor the repo server and increase limits if needed.
+Server-side diff sends dry-run server-side apply requests to the Kubernetes API server. Monitor the application controller and Kubernetes API server after enabling it, and increase limits if needed.
 
 ```yaml
-repoServer:
+controller:
   resources:
     limits:
       memory: 2Gi  # Increase from default if needed
@@ -357,4 +355,4 @@ repoServer:
 
 ## Summary
 
-Upgrading ArgoCD from 2.10 to 2.11 focuses on ApplicationSet progressive sync improvements, enhanced health checks, and server-side diff maturation. The main areas to watch are notification template variables, merge generator behavior, and new health check states that may affect your applications. Back up your configuration, test in staging, and verify thoroughly after the upgrade. The progressive sync feature alone makes this upgrade worthwhile for teams managing applications across multiple clusters.
+Upgrading ArgoCD from 2.10 to 2.11 focuses on applying the updated Application CRD, reviewing Helm chart behavior, and deciding whether to enable optional features such as server-side diff or ApplicationSet progressive syncs. Back up your configuration, test in staging, and verify thoroughly after the upgrade. Progressive syncs can be useful for teams managing applications across multiple clusters, but treat them as an alpha feature in 2.11.
