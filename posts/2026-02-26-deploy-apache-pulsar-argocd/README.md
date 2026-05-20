@@ -80,6 +80,10 @@ spec:
     helm:
       releaseName: pulsar
       values: |
+        # Required when rendering the chart through ArgoCD
+        initialize: true
+        useReleaseStatus: false
+
         # ZooKeeper configuration
         zookeeper:
           replicaCount: 3
@@ -145,8 +149,9 @@ spec:
             # Schema enforcement
             isSchemaValidationEnforced: "true"
             schemaCompatibilityStrategy: "BACKWARD"
-          podAntiAffinity:
-            zone: true
+          affinity:
+            anti_affinity: true
+            anti_affinity_topology_key: topology.kubernetes.io/zone
 
         # Proxy configuration
         proxy:
@@ -164,8 +169,9 @@ spec:
             PULSAR_MEM: "-Xms512m -Xmx1g"
 
         # Pulsar Manager (UI)
+        components:
+          pulsar_manager: true
         pulsar_manager:
-          enabled: true
           resources:
             requests:
               cpu: 100m
@@ -175,16 +181,20 @@ spec:
               memory: 512Mi
 
         # Monitoring
-        monitoring:
-          prometheus: true
-          grafana: false  # Use external Grafana
+        kube-prometheus-stack:
+          enabled: true
+          prometheus:
+            enabled: true
+          grafana:
+            enabled: false  # Use external Grafana
 
         # Authentication
         auth:
           authentication:
             enabled: true
             provider: jwt
-            usingSecretKey: true
+            jwt:
+              usingSecretKey: true
           superUsers:
             broker: "admin"
             proxy: "proxy-admin"
@@ -215,6 +225,41 @@ Create a Job that generates JWT keys and tokens for Pulsar authentication.
 
 ```yaml
 # pulsar/jwt-setup.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pulsar-jwt-init
+  namespace: pulsar
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pulsar-jwt-init
+  namespace: pulsar
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pulsar-jwt-init
+  namespace: pulsar
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+subjects:
+  - kind: ServiceAccount
+    name: pulsar-jwt-init
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pulsar-jwt-init
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -226,47 +271,73 @@ metadata:
 spec:
   template:
     spec:
-      containers:
-        - name: jwt-init
-          image: apachepulsar/pulsar:3.3.0
+      initContainers:
+        - name: generate-tokens
+          image: apachepulsar/pulsar:3.0.6
           command:
             - /bin/bash
             - -c
             - |
+              # Generate secret key
+              bin/pulsar tokens create-secret-key \
+                --output /work/secret.key
+
+              # Generate tokens for each role
+              ADMIN_TOKEN=$(bin/pulsar tokens create \
+                --secret-key file:///work/secret.key \
+                --subject admin)
+
+              PROXY_TOKEN=$(bin/pulsar tokens create \
+                --secret-key file:///work/secret.key \
+                --subject proxy-admin)
+
+              CLIENT_TOKEN=$(bin/pulsar tokens create \
+                --secret-key file:///work/secret.key \
+                --subject super-user)
+
+              printf "%s" "$ADMIN_TOKEN" > /work/admin.token
+              printf "%s" "$PROXY_TOKEN" > /work/proxy-admin.token
+              printf "%s" "$CLIENT_TOKEN" > /work/super-user.token
+          volumeMounts:
+            - name: token-workdir
+              mountPath: /work
+      containers:
+        - name: create-secrets
+          image: bitnami/kubectl:1.29
+          command:
+            - /bin/sh
+            - -c
+            - |
               # Check if secret already exists
-              if kubectl get secret pulsar-token-keys -n pulsar 2>/dev/null; then
+              if kubectl get secret pulsar-token-symmetric-key -n pulsar 2>/dev/null; then
                 echo "JWT keys already exist, skipping"
                 exit 0
               fi
 
-              # Generate secret key
-              bin/pulsar tokens create-secret-key \
-                --output /tmp/secret.key
-
-              # Generate tokens for each role
-              ADMIN_TOKEN=$(bin/pulsar tokens create \
-                --secret-key /tmp/secret.key \
-                --subject admin)
-
-              PROXY_TOKEN=$(bin/pulsar tokens create \
-                --secret-key /tmp/secret.key \
-                --subject proxy-admin)
-
-              CLIENT_TOKEN=$(bin/pulsar tokens create \
-                --secret-key /tmp/secret.key \
-                --subject super-user)
-
-              # Create Kubernetes secret
-              kubectl create secret generic pulsar-token-keys \
+              # Create Kubernetes secrets expected by the Pulsar Helm chart
+              kubectl create secret generic pulsar-token-symmetric-key \
                 -n pulsar \
-                --from-file=SECRETKEY=/tmp/secret.key \
-                --from-literal=ADMIN_TOKEN=$ADMIN_TOKEN \
-                --from-literal=PROXY_TOKEN=$PROXY_TOKEN \
-                --from-literal=CLIENT_TOKEN=$CLIENT_TOKEN
+                --from-file=SECRETKEY=/work/secret.key
 
-              rm /tmp/secret.key
+              kubectl create secret generic pulsar-token-admin \
+                -n pulsar \
+                --from-file=TOKEN=/work/admin.token
+
+              kubectl create secret generic pulsar-token-proxy-admin \
+                -n pulsar \
+                --from-file=TOKEN=/work/proxy-admin.token
+
+              kubectl create secret generic pulsar-token-super-user \
+                -n pulsar \
+                --from-file=TOKEN=/work/super-user.token
+          volumeMounts:
+            - name: token-workdir
+              mountPath: /work
       serviceAccountName: pulsar-jwt-init
       restartPolicy: OnFailure
+      volumes:
+        - name: token-workdir
+          emptyDir: {}
   backoffLimit: 3
 ```
 
@@ -289,46 +360,57 @@ spec:
     spec:
       containers:
         - name: setup
-          image: apachepulsar/pulsar:3.3.0
+          image: apachepulsar/pulsar:3.0.6
           command:
             - /bin/bash
             - -c
             - |
+              ADMIN_ARGS=(
+                --admin-url http://pulsar-broker.pulsar.svc:8080
+                --auth-plugin org.apache.pulsar.client.impl.auth.AuthenticationToken
+                --auth-params file:///pulsar/tokens/client/token
+              )
+
               # Wait for brokers
-              until bin/pulsar-admin \
-                --admin-url http://pulsar-broker.pulsar.svc:8080 \
-                brokers list; do
+              until bin/pulsar-admin "${ADMIN_ARGS[@]}" brokers list pulsar; do
                 echo "Waiting for Pulsar brokers..."
                 sleep 10
               done
 
               # Create tenants
-              bin/pulsar-admin tenants create platform \
-                --admin-url http://pulsar-broker.pulsar.svc:8080 \
+              bin/pulsar-admin "${ADMIN_ARGS[@]}" tenants create platform \
+                --allowed-clusters pulsar \
                 || echo "Tenant platform exists"
 
-              bin/pulsar-admin tenants create analytics \
-                --admin-url http://pulsar-broker.pulsar.svc:8080 \
+              bin/pulsar-admin "${ADMIN_ARGS[@]}" tenants create analytics \
+                --allowed-clusters pulsar \
                 || echo "Tenant analytics exists"
 
               # Create namespaces
-              bin/pulsar-admin namespaces create platform/orders \
-                --admin-url http://pulsar-broker.pulsar.svc:8080 \
+              bin/pulsar-admin "${ADMIN_ARGS[@]}" namespaces create platform/orders \
                 || echo "Namespace exists"
 
-              bin/pulsar-admin namespaces create platform/notifications \
-                --admin-url http://pulsar-broker.pulsar.svc:8080 \
+              bin/pulsar-admin "${ADMIN_ARGS[@]}" namespaces create platform/notifications \
                 || echo "Namespace exists"
 
               # Set retention policies
-              bin/pulsar-admin namespaces set-retention \
-                platform/orders \
-                --admin-url http://pulsar-broker.pulsar.svc:8080 \
+              bin/pulsar-admin "${ADMIN_ARGS[@]}" namespaces set-retention \
                 --size -1 \
-                --time 7d
+                --time 7d \
+                platform/orders
 
               echo "Tenant and namespace setup complete"
+          volumeMounts:
+            - name: client-token
+              mountPath: /pulsar/tokens
       restartPolicy: OnFailure
+      volumes:
+        - name: client-token
+          secret:
+            secretName: pulsar-token-super-user
+            items:
+              - key: TOKEN
+                path: client/token
   backoffLimit: 3
 ```
 
@@ -340,11 +422,10 @@ Add this to your broker configuration:
 
 ```yaml
 broker:
-  configData:
-    # Tiered storage - S3
-    managedLedgerOffloadDriver: "aws-s3"
-    s3ManagedLedgerOffloadBucket: "pulsar-tiered-storage"
-    s3ManagedLedgerOffloadRegion: "us-east-1"
+  storageOffload:
+    driver: "aws-s3"
+    bucket: "pulsar-tiered-storage"
+    region: "us-east-1"
     managedLedgerOffloadAutoTriggerSizeThresholdBytes: "1073741824"  # 1GB
 ```
 
@@ -380,7 +461,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      component: bookkeeper
+      component: bookie
   endpoints:
     - port: http
       path: /metrics
@@ -407,7 +488,7 @@ proxy:
   replicaCount: 4  # was 2
 ```
 
-Commit, push, and ArgoCD handles the rest. Brokers and proxies are stateless, so scaling them is fast. BookKeeper nodes require data rebalancing which the system handles automatically.
+Commit, push, and ArgoCD handles the rest. Brokers and proxies are stateless, so scaling them is fast. New BookKeeper nodes take new ledger traffic after scaling, while existing ledger placement is handled separately through BookKeeper recovery and re-replication when needed.
 
 ## Conclusion
 
