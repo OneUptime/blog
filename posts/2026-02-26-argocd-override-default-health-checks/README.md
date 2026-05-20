@@ -19,7 +19,7 @@ ArgoCD's built-in health checks are compiled into the application controller bin
 - **Deployment**: Healthy when all replicas are available and updated
 - **StatefulSet**: Healthy when all replicas are ready and at the current revision
 - **DaemonSet**: Healthy when the desired number equals the ready number
-- **Service**: Always healthy (just needs to exist)
+- **Service**: Healthy once it exists, except LoadBalancer Services need at least one load balancer ingress entry
 - **Ingress**: Healthy when it has at least one IP or hostname assigned
 - **PersistentVolumeClaim**: Healthy when bound
 - **Pod**: Healthy when running and all containers are ready
@@ -90,7 +90,7 @@ data:
 
 ### Override Service Health Check
 
-The default Service health check considers all Services healthy. You might want to flag Services that have no endpoints:
+The default Service health check considers non-LoadBalancer Services healthy and waits for LoadBalancer Services to get an ingress entry. You might want to add more detailed reporting for LoadBalancer provisioning:
 
 ```yaml
   resource.customizations.health.v1_Service: |
@@ -102,14 +102,14 @@ The default Service health check considers all Services healthy. You might want 
       return hs
     end
 
-    -- For LoadBalancer services, check if external IP is assigned
+    -- For LoadBalancer services, check if an external address is assigned
     if obj.spec.type == "LoadBalancer" then
       if obj.status ~= nil and obj.status.loadBalancer ~= nil and obj.status.loadBalancer.ingress ~= nil then
         ingress = obj.status.loadBalancer.ingress
         if #ingress > 0 then
           hs.status = "Healthy"
           ip = ingress[1].ip or ingress[1].hostname or "assigned"
-          hs.message = "LoadBalancer IP: " .. ip
+          hs.message = "LoadBalancer address: " .. ip
         else
           hs.status = "Progressing"
           hs.message = "Waiting for LoadBalancer IP assignment"
@@ -251,8 +251,8 @@ If you manage ArgoCD with the community Helm chart:
 ```yaml
 # values.yaml
 
-server:
-  config:
+configs:
+  cm:
     # Override Deployment health check to be more lenient during rolling updates
     resource.customizations.health.apps_Deployment: |
       hs = {}
