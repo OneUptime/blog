@@ -69,7 +69,7 @@ kubectl get nodes
 ```bash
 # Create namespace and install ArgoCD
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for all pods to be ready
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
@@ -242,7 +242,7 @@ kind create cluster --name production
 # Install ArgoCD on the management cluster
 kubectl config use-context kind-management
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for ArgoCD to be ready
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
@@ -309,7 +309,7 @@ jobs:
       - name: Install ArgoCD
         run: |
           kubectl create namespace argocd
-          kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+          kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
           kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
 
       - name: Deploy test application
@@ -333,26 +333,23 @@ Speed up cluster creation by pre-pulling ArgoCD images.
 
 ```bash
 # Pull images before creating the cluster
-docker pull quay.io/argoproj/argocd:v2.10.0
-docker pull redis:7.0.14-alpine
-docker pull ghcr.io/dexidp/dex:v2.37.0
+docker pull quay.io/argoproj/argocd:v3.4.2
+docker pull public.ecr.aws/docker/library/redis:8.2.3-alpine
+docker pull ghcr.io/dexidp/dex:v2.45.0
 
 # Load them into the Kind cluster
-kind load docker-image quay.io/argoproj/argocd:v2.10.0 --name argocd-dev
-kind load docker-image redis:7.0.14-alpine --name argocd-dev
-kind load docker-image ghcr.io/dexidp/dex:v2.37.0 --name argocd-dev
+kind load docker-image quay.io/argoproj/argocd:v3.4.2 --name argocd-dev
+kind load docker-image public.ecr.aws/docker/library/redis:8.2.3-alpine --name argocd-dev
+kind load docker-image ghcr.io/dexidp/dex:v2.45.0 --name argocd-dev
 ```
 
-### Use Kind's Built-In Registry
+### Use a Local Registry with Kind
 
 For faster image loading, use a local Docker registry connected to Kind.
 
 ```bash
 # Create a local registry
-docker run -d --restart=always -p 5001:5000 --name local-registry registry:2
-
-# Connect it to the Kind network
-docker network connect kind local-registry
+docker run -d --restart=always -p 127.0.0.1:5001:5000 --name kind-registry registry:3
 
 # Create a Kind cluster that uses the registry
 cat <<EOF | kind create cluster --name argocd-dev --config=-
@@ -360,9 +357,20 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
   - |-
-    [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
-      endpoint = ["http://local-registry:5000"]
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"
 EOF
+
+# Connect the registry to the Kind network
+docker network connect kind kind-registry
+
+# Tell containerd on each Kind node how to reach the registry
+for node in $(kind get nodes --name argocd-dev); do
+  docker exec "${node}" mkdir -p /etc/containerd/certs.d/localhost:5001
+  cat <<EOF | docker exec -i "${node}" cp /dev/stdin /etc/containerd/certs.d/localhost:5001/hosts.toml
+[host."http://kind-registry:5000"]
+EOF
+done
 ```
 
 ## Cleanup
