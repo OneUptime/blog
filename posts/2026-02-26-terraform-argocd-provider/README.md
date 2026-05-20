@@ -22,8 +22,8 @@ terraform {
 
   required_providers {
     argocd = {
-      source  = "oboukili/argocd"
-      version = "~> 6.0"
+      source  = "argoproj-labs/argocd"
+      version = "~> 7.15"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
@@ -60,7 +60,7 @@ provider "argocd" {
   password                    = var.argocd_admin_password
 }
 
-# Option 4: Core mode (direct Kubernetes access, no API server)
+# Option 4: Core mode (direct Kubernetes access, no remote ArgoCD API server)
 provider "argocd" {
   core = true
 }
@@ -138,7 +138,7 @@ resource "argocd_project" "platform" {
     # RBAC roles
     role {
       name        = "developers"
-      description = "Read-only access for developers"
+      description = "Application access for developers"
       policies = [
         "p, proj:platform:developers, applications, get, platform/*, allow",
         "p, proj:platform:developers, applications, sync, platform/*, allow",
@@ -205,10 +205,10 @@ resource "argocd_application" "api_service" {
       }
 
       retry {
-        limit = 5
+        limit = "5"
         backoff {
           duration     = "5s"
-          factor       = 2
+          factor       = "2"
           max_duration = "3m"
         }
       }
@@ -323,11 +323,10 @@ resource "argocd_repository" "bitnami" {
 # OCI Helm repository
 resource "argocd_repository" "oci_charts" {
   repo            = "oci://myregistry.io/helm-charts"
-  type            = "helm"
+  type            = "oci"
   name            = "internal-charts"
   username        = var.registry_username
   password        = var.registry_password
-  enable_oci      = true
 }
 ```
 
@@ -462,10 +461,10 @@ If you already have ArgoCD resources created manually, import them into Terrafor
 
 ```bash
 # Import an existing application
-terraform import argocd_application.api_service argocd/api-service
+terraform import argocd_application.api_service api-service:argocd
 
 # Import a project
-terraform import argocd_project.platform argocd/platform
+terraform import argocd_project.platform platform
 
 # Import a repository
 terraform import argocd_repository.platform_gitops https://github.com/myorg/platform-gitops.git
