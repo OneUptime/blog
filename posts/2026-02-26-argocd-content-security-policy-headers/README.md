@@ -36,7 +36,7 @@ By default, ArgoCD sets some basic headers, but they may not be strict enough fo
 
 ## Configuring CSP via Ingress Annotations
 
-The most common approach is to add security headers at the ingress level. This works with any ArgoCD installation and does not require modifying ArgoCD itself.
+The most common approach is to add security headers at the ingress level. This works with any ArgoCD installation and does not require modifying ArgoCD itself. For ingress-nginx examples that use `configuration-snippet`, make sure snippet annotations are enabled in your controller configuration.
 
 ### Nginx Ingress Controller
 
@@ -47,11 +47,12 @@ metadata:
   name: argocd-server
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "false"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     # Security headers
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss:; frame-ancestors 'none'";
+      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss:; frame-ancestors 'none'";
       more_set_headers "X-Frame-Options: DENY";
       more_set_headers "X-Content-Type-Options: nosniff";
       more_set_headers "X-XSS-Protection: 1; mode=block";
@@ -85,7 +86,7 @@ metadata:
   namespace: argocd
 spec:
   headers:
-    contentSecurityPolicy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss:; frame-ancestors 'none'"
+    contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss:; frame-ancestors 'none'"
     frameDeny: true
     contentTypeNosniff: true
     browserXssFilter: true
@@ -117,7 +118,7 @@ spec:
 
 ## Configuring CSP via ArgoCD Server Directly
 
-ArgoCD allows you to set custom headers through its server configuration. This is useful when you do not control the ingress configuration or want the headers to apply regardless of how the server is accessed.
+ArgoCD allows you to set its Content-Security-Policy and X-Frame-Options headers through server configuration. This is useful when you do not control the ingress configuration or want these headers to apply regardless of how the server is accessed.
 
 ```yaml
 apiVersion: v1
@@ -128,8 +129,7 @@ metadata:
 data:
   # Set custom security headers
   server.x.frame.options: "DENY"
-  server.content.security.policy: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss:; frame-ancestors 'none'"
-  server.strict.transport.security: "max-age=31536000; includeSubDomains; preload"
+  server.content.security.policy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss:; frame-ancestors 'none'"
 ```
 
 After updating the ConfigMap, restart the ArgoCD server:
@@ -140,7 +140,7 @@ kubectl rollout restart deployment argocd-server -n argocd
 
 ## Understanding CSP Directives for ArgoCD
 
-ArgoCD's UI requires specific CSP directives to function properly. Here is what each directive does and why it is needed:
+ArgoCD's UI needs CSP directives that allow its same-origin assets and API connections. Start with these directives in report-only mode and relax them only if your browser console shows violations:
 
 ```text
 default-src 'self'
@@ -148,9 +148,9 @@ default-src 'self'
 Only allow content from the same origin by default.
 
 ```text
-script-src 'self' 'unsafe-inline' 'unsafe-eval'
+script-src 'self'
 ```
-ArgoCD's React UI uses inline scripts and eval for certain features. Unfortunately, these are required for the UI to function.
+Allow ArgoCD's JavaScript bundles from the same origin. Avoid adding `unsafe-inline` or `unsafe-eval` unless you have tested your ArgoCD version and extensions and confirmed that they are required.
 
 ```text
 style-src 'self' 'unsafe-inline'
@@ -214,7 +214,7 @@ nginx.ingress.kubernetes.io/configuration-snippet: |
   more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload";
 ```
 
-The `preload` directive submits your domain for browser HSTS preloading, ensuring HTTPS is enforced even on the very first visit. Only enable this if you are committed to HTTPS permanently.
+The `preload` directive marks your domain as requesting inclusion in browser HSTS preload lists, but you still need to meet the preload requirements and submit the domain to the preload service. Only enable this if you are committed to HTTPS permanently for the domain and all subdomains.
 
 ## Combining All Security Headers
 
@@ -232,7 +232,7 @@ metadata:
     nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/configuration-snippet: |
       # Content Security Policy
-      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+      more_set_headers "Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' wss: https:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
       # Prevent clickjacking
       more_set_headers "X-Frame-Options: DENY";
       # Prevent MIME sniffing
@@ -265,6 +265,6 @@ spec:
 
 ## Conclusion
 
-Configuring security headers for ArgoCD is a straightforward but important step in hardening your deployment. CSP prevents XSS attacks, X-Frame-Options prevents clickjacking, and HSTS ensures encrypted connections. Start with report-only mode to test your CSP policy, then switch to enforcement once you confirm the UI works correctly. Remember that ArgoCD's React UI requires `unsafe-inline` and `unsafe-eval` for scripts, so you cannot achieve the strictest possible CSP, but the headers still provide significant protection against common web attacks.
+Configuring security headers for ArgoCD is a straightforward but important step in hardening your deployment. CSP helps reduce the impact of XSS attacks, X-Frame-Options prevents clickjacking, and HSTS ensures encrypted connections. Start with report-only mode to test your CSP policy, then switch to enforcement once you confirm the UI works correctly. Avoid `unsafe-inline` and `unsafe-eval` for scripts unless testing shows that your ArgoCD version or UI extensions require them.
 
 For more security hardening, see our guide on [hardening ArgoCD server for production](https://oneuptime.com/blog/post/2026-02-26-argocd-harden-server-production/view).
