@@ -47,6 +47,8 @@ You do not need to whitelist all of them. Only whitelist what each team actually
 
 ## Basic Configuration
 
+The examples below focus on resource restrictions. Complete AppProject manifests also need `sourceRepos` and `destinations` configured for the repositories, clusters, and namespaces the project should allow.
+
 ### Minimal Whitelist for Stateless Applications
 
 For teams deploying standard web applications:
@@ -168,7 +170,7 @@ spec:
 
 ## Working with Custom Resource Definitions
 
-When your cluster has operators installed, their custom resources are namespace-scoped. You need to add these to the whitelist explicitly.
+When your cluster has operators installed, many of their custom resources are namespace-scoped. If you use `namespaceResourceWhitelist`, you need to add the namespace-scoped custom resources your applications deploy.
 
 ### Prometheus / Monitoring Stack
 
