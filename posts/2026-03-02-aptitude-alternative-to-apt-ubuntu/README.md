@@ -29,8 +29,8 @@ Many aptitude commands mirror their APT equivalents, making it easy to switch be
 # Update package lists
 sudo aptitude update
 
-# Upgrade all packages
-sudo aptitude upgrade
+# Upgrade all packages conservatively
+sudo aptitude safe-upgrade
 
 # Full upgrade (allows installs and removals)
 sudo aptitude full-upgrade
@@ -199,11 +199,11 @@ sudo aptitude --simulate full-upgrade
 # The -s flag is equivalent
 sudo aptitude -s full-upgrade
 
-# Ask for confirmation before each action
+# Always ask for confirmation before downloading, installing, or removing packages
 sudo aptitude -P full-upgrade
 ```
 
-## Managing Package Priorities with aptitude
+## Managing Automatic Package States with aptitude
 
 ```bash
 # Find packages that have been manually installed
@@ -215,7 +215,7 @@ aptitude search '~i ~M'   # Installed and automatically installed
 # Show what aptitude considers "garbage" (auto-installed, no dependents)
 aptitude search '~g'
 
-# Remove all garbage packages
+# Clean obsolete package files, then remove garbage packages
 sudo aptitude autoclean
 sudo aptitude remove '~g'
 ```
@@ -239,7 +239,7 @@ aptitude why-not some-conflicting-package
 ```bash
 # Find all packages related to a topic
 aptitude search '~dfirewall'      # All packages with "firewall" in description
-aptitude search '~sdatabase'      # Packages with "database" in short description
+aptitude search '~sdatabase'      # Packages in sections matching "database"
 
 # Find competing packages for the same task
 aptitude search '~Pmail-transport-agent'  # All packages providing MTA
@@ -247,7 +247,7 @@ aptitude search '~Pmail-transport-agent'  # All packages providing MTA
 
 ## Scripting with aptitude
 
-aptitude works well in scripts because of its rich exit codes:
+aptitude can be used in scripts with normal shell success/failure handling:
 
 ```bash
 #!/bin/bash
@@ -268,16 +268,16 @@ fi
 Configure aptitude behavior in `~/.aptitude/config` or `/etc/apt/apt.conf`:
 
 ```text
-// Prefer aptitude's behavior for autoremove
+// Automatically remove unused auto-installed packages
 Aptitude::Delete-Unused "true";
 
 // Automatically resolve dependency problems
 Aptitude::Auto-Fix-Broken "true";
 
-// Show verbose output
-Aptitude::Verbose "1";
+// Show verbose command-line output
+Aptitude::CmdLine::Verbose "1";
 
-// Keep packages at current version by default when conflicts arise
+// Do not keep any unused packages from automatic removal
 Aptitude::Keep-Unused-Pattern "";
 ```
 
