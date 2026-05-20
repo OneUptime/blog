@@ -46,8 +46,8 @@ argocd version
 
 # Check the ArgoCD compatibility matrix
 # ArgoCD 2.9.x supports Kubernetes 1.25 to 1.28
-# ArgoCD 2.10.x supports Kubernetes 1.26 to 1.29
-# ArgoCD 2.11.x supports Kubernetes 1.27 to 1.30
+# ArgoCD 2.10.x supports Kubernetes 1.25 to 1.28
+# ArgoCD 2.11.x supports Kubernetes 1.25 to 1.29
 ```
 
 If your ArgoCD version does not support the target Kubernetes version, upgrade ArgoCD first.
@@ -72,15 +72,15 @@ pluto detect-api-resources -o wide
 Common deprecations to watch for:
 
 ```yaml
-# Deprecated in 1.25 - PodSecurityPolicy
+# Deprecated in 1.21, removed in 1.25 - PodSecurityPolicy
 # apiVersion: policy/v1beta1  # REMOVED
 # kind: PodSecurityPolicy
 
-# Deprecated in 1.22 - Ingress v1beta1
+# Deprecated in 1.19, removed in 1.22 - Ingress v1beta1
 # apiVersion: networking.k8s.io/v1beta1  # Use v1 instead
 # kind: Ingress
 
-# Deprecated in 1.25 - CronJob v1beta1
+# Deprecated in 1.21, removed in 1.25 - CronJob v1beta1
 # apiVersion: batch/v1beta1  # Use batch/v1
 # kind: CronJob
 ```
@@ -92,6 +92,9 @@ Update your Git manifests before the upgrade.
 Prevent ArgoCD from making changes during the upgrade.
 
 ```bash
+# Save the list of applications that currently have auto-sync enabled
+argocd app list -o json | jq -r '(.items // .)[] | select(.spec.syncPolicy.automated != null) | .metadata.name' > argocd-autosync-apps.txt
+
 # Disable auto-sync on all applications
 for app in $(argocd app list -o name); do
   argocd app set "$app" --sync-policy none
@@ -191,7 +194,7 @@ kubectl logs -f -l app.kubernetes.io/name=argocd-application-controller -n argoc
 
 ### Handle Node Drains Gracefully
 
-When nodes hosting ArgoCD pods are drained, the PDBs ensure at least one replica stays running. But on single-replica setups, there will be downtime.
+When nodes hosting ArgoCD pods are drained, PDBs help keep at least one replica running for components that have multiple replicas. On single-replica setups, a PDB with `minAvailable: 1` can block voluntary evictions during drain, so plan the drain order or accept a short maintenance window.
 
 ```bash
 # Check which node ArgoCD pods are on
@@ -250,8 +253,8 @@ done
 Once everything looks good, re-enable auto-sync.
 
 ```bash
-# Re-enable auto-sync on all applications
-for app in $(argocd app list -o name); do
+# Re-enable auto-sync only for applications that had it enabled before the upgrade
+for app in $(cat argocd-autosync-apps.txt); do
   argocd app set "$app" --sync-policy automated
   echo "Re-enabled auto-sync for $app"
 done
