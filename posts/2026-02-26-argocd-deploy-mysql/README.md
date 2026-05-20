@@ -26,6 +26,7 @@ metadata:
 type: Opaque
 stringData:
   MYSQL_ROOT_PASSWORD: changeme-root
+  MYSQL_ROOT_HOST: "%"
   MYSQL_USER: myapp
   MYSQL_PASSWORD: changeme-app
   MYSQL_DATABASE: myapp
@@ -213,11 +214,14 @@ spec:
     targetRevision: 9.15.0
     helm:
       values: |
+        architecture: replication
+
         auth:
           rootPassword: changeme-root
           database: myapp
           username: myapp
           password: changeme-app
+          replicationPassword: changeme-replication
 
         primary:
           persistence:
@@ -347,9 +351,9 @@ stringData:
   rootPassword: changeme-production
 ```
 
-## MySQL Replication with StatefulSet
+## MySQL Replication Foundation with StatefulSet
 
-For a manual replication setup without an operator:
+For a manual replication setup without an operator, start with stable pod identity and per-pod server IDs. This manifest does not bootstrap replication by itself; after initialization, configure each replica with `CHANGE REPLICATION SOURCE TO` and `START REPLICA`, or automate those steps in a Job.
 
 ```yaml
 apiVersion: apps/v1
@@ -381,11 +385,13 @@ spec:
               echo "[mysqld]" > /mnt/conf.d/server-id.cnf
               echo "server-id=$SERVER_ID" >> /mnt/conf.d/server-id.cnf
 
-              # First pod is primary, others are replicas
+              # First pod is the writable source, others start read-only
               if [ "$ORDINAL" -eq 0 ]; then
                 echo "log-bin=mysql-bin" >> /mnt/conf.d/server-id.cnf
               else
-                echo "super-read-only" >> /mnt/conf.d/server-id.cnf
+                echo "relay-log=mysql-relay-bin" >> /mnt/conf.d/server-id.cnf
+                echo "read-only=ON" >> /mnt/conf.d/server-id.cnf
+                echo "super-read-only=ON" >> /mnt/conf.d/server-id.cnf
               fi
           volumeMounts:
             - name: conf
@@ -506,7 +512,8 @@ spec:
         spec:
           containers:
             - name: backup
-              image: mysql:8.0
+              # Build this image with the MySQL client and AWS CLI installed.
+              image: myorg/mysql-backup:8.0
               command: [sh, -c]
               args:
                 - |
@@ -571,9 +578,12 @@ spec:
           image: prom/mysqld-exporter:v0.15.1
           ports:
             - containerPort: 9104
+          args:
+            - --mysqld.address=mysql.databases.svc:3306
+            - --mysqld.username=exporter
           env:
-            - name: DATA_SOURCE_NAME
-              value: "exporter:exporterpass@(mysql.databases.svc:3306)/"
+            - name: MYSQLD_EXPORTER_PASSWORD
+              value: exporterpass
 ```
 
 ## Summary
