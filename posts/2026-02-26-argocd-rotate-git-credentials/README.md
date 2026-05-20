@@ -138,15 +138,15 @@ kubectl apply -f updated-credentials.yaml
 # Verify ArgoCD can still access the repository
 argocd repo list
 
-# Force a sync to confirm everything works
-argocd app sync my-app --force
+# Run a sync to confirm everything works
+argocd app sync my-app
 ```
 
 ### Step 4: Verify and Remove Old Credentials
 
 ```bash
 # Check all applications are syncing properly
-argocd app list --output wide | grep -v "Healthy.*Synced"
+argocd app list --output wide | grep -v "Synced.*Healthy"
 
 # If everything looks good, revoke the old token/key in your Git provider
 ```
@@ -179,7 +179,7 @@ The best long-term solution is to stop managing credentials manually and use Ext
 
 ```yaml
 # external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: github-creds
