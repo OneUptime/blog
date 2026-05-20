@@ -38,7 +38,7 @@ Different autoscalers modify different fields:
 |-----------|----------------|---------------|
 | HPA | `.spec.replicas` | High |
 | VPA | `.spec.template.spec.containers[].resources` | High |
-| KEDA | `.spec.replicas`, labels, annotations | High |
+| KEDA | Creates/manages an HPA that updates `.spec.replicas` | High |
 | Cluster Autoscaler | Node-level (no pod manifest conflict) | None |
 | Argo Rollouts | `.spec.replicas`, rollout status | Medium |
 
@@ -144,20 +144,15 @@ spec:
       jqPathExpressions:
         - .spec.template.spec.containers[].resources.requests
 
-    # Ignore KEDA-added labels
-    - group: apps
-      kind: Deployment
-      jqPathExpressions:
-        - .metadata.labels["scaledobject.keda.sh/name"]
-        - .metadata.annotations["scaledobject.keda.sh/name"]
-
   syncPolicy:
     automated:
       selfHeal: true
       prune: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
-This is the most common approach because it is explicit and targeted. You keep values in Git for documentation and bootstrapping, but ArgoCD does not fight the autoscaler.
+This is the most common approach because it is explicit and targeted. You keep values in Git for documentation and bootstrapping, but ArgoCD does not fight the autoscaler. The `RespectIgnoreDifferences=true` sync option is important when ignored fields should also be left out of ArgoCD's sync operation, not just its diff calculation.
 
 ## Strategy 3: Server-Side Diff with Field Ownership
 
@@ -180,7 +175,7 @@ spec:
         - keda-operator              # KEDA changes
 ```
 
-With server-side diff, ArgoCD only compares fields that it owns (managed by `argocd-application-controller`). Fields managed by other controllers are ignored. This is more dynamic than listing specific field paths because it automatically handles any field the autoscaler touches.
+Server-side diff asks the Kubernetes API server to calculate the predicted live object with a dry-run server-side apply. Combined with `managedFieldsManagers`, ArgoCD can ignore fields owned by the listed controllers. This is more dynamic than listing specific field paths because it can cover any field the autoscaler owns in `metadata.managedFields`.
 
 ## Strategy 4: Separate Applications
 
@@ -239,7 +234,7 @@ spec:
         - /status
 ```
 
-Argo Rollouts has native HPA support. It pauses the HPA during rollouts to prevent interference:
+Argo Rollouts has native HPA support. The HPA targets the Rollout's `/scale` subresource and writes the desired total replica count to `.spec.replicas`; the Rollouts controller then distributes those replicas across stable and canary ReplicaSets. With traffic routing, `dynamicStableScale` can reduce the stable ReplicaSet as canary traffic increases:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -249,8 +244,7 @@ metadata:
 spec:
   strategy:
     canary:
-      scaleDownDelaySeconds: 30
-      # HPA is paused during canary analysis
+      # Requires canary traffic routing to be configured
       dynamicStableScale: true
 ```
 
@@ -293,7 +287,7 @@ spec:
 
 ## Global Configuration for Organizations
 
-For organizations with many services, set ignore rules at the ArgoCD project level:
+For organizations with many services, use AppProjects to group the services that share autoscaling rules:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -309,7 +303,7 @@ spec:
       server: "*"
 ```
 
-And in argocd-cm, set global resource customizations:
+Then in `argocd-cm`, set global resource customizations:
 
 ```yaml
 apiVersion: v1
