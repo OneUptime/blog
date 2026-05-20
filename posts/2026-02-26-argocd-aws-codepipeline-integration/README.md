@@ -12,7 +12,7 @@ AWS CodePipeline is a popular CI/CD service for teams that run their infrastruct
 
 ## Why Combine AWS CodePipeline with ArgoCD
 
-AWS CodePipeline excels at orchestrating build and test stages using CodeBuild, CodeDeploy, and other AWS services. However, when it comes to Kubernetes deployments, using kubectl or Helm directly from CodePipeline introduces several problems. You lose visibility into what is running in the cluster, there is no drift detection, and rollbacks become manual operations.
+AWS CodePipeline excels at orchestrating source, build, test, and deployment stages using CodeBuild, CodeDeploy, and other AWS services. However, when it comes to Kubernetes deployments, using kubectl or Helm directly from CodePipeline introduces several problems. You lose visibility into what is running in the cluster, there is no drift detection, and rollbacks become manual operations.
 
 ArgoCD fills this gap by owning the deployment step. Your CodePipeline handles the CI portion - building images, running tests, pushing to ECR - and then updates a Git repository that ArgoCD watches. ArgoCD then reconciles the cluster state to match what is in Git.
 
@@ -39,6 +39,7 @@ version: 0.2
 
 env:
   variables:
+    ECR_REGISTRY: "123456789012.dkr.ecr.us-east-1.amazonaws.com"
     ECR_REPO: "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app"
     MANIFEST_REPO: "https://github.com/my-org/k8s-manifests.git"
     APP_NAME: "my-app"
@@ -49,7 +50,7 @@ phases:
   pre_build:
     commands:
       # Login to ECR
-      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REPO
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin $ECR_REGISTRY
       # Set image tag to commit hash
       - export IMAGE_TAG=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
   build:
@@ -78,26 +79,32 @@ Create the pipeline using CloudFormation or Terraform. Here is a CloudFormation 
 ```yaml
 # codepipeline.yaml
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  GitHubConnectionArn:
+    Type: String
 Resources:
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
       Name: my-app-pipeline
       RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
       Stages:
         - Name: Source
           Actions:
             - Name: SourceAction
               ActionTypeId:
                 Category: Source
-                Owner: ThirdParty
-                Provider: GitHub
+                Owner: AWS
+                Provider: CodeStarSourceConnection
                 Version: '1'
               Configuration:
-                Owner: my-org
-                Repo: my-app
-                Branch: main
-                OAuthToken: !Ref GitHubToken
+                ConnectionArn: !Ref GitHubConnectionArn
+                FullRepositoryId: my-org/my-app
+                BranchName: main
+                OutputArtifactFormat: CODE_ZIP
               OutputArtifacts:
                 - Name: SourceOutput
         - Name: Build
@@ -148,11 +155,15 @@ With auto-sync enabled, ArgoCD will detect the Git commit from CodeBuild within 
 
 Sometimes you want CodePipeline to know whether the ArgoCD deployment succeeded. You can add a post-deployment stage in CodePipeline that checks ArgoCD sync status via its API.
 
+Pass the manifest commit SHA that CodeBuild pushed as `EXPECTED_REVISION` so the verification stage does not pass on an older, already healthy deployment.
+
 ```yaml
 # buildspec-verify.yml
 version: 0.2
 
 env:
+  variables:
+    EXPECTED_REVISION: "replace-with-manifest-commit-sha"
   parameter-store:
     ARGOCD_TOKEN: "/codebuild/argocd-token"
     ARGOCD_SERVER: "/codebuild/argocd-server"
@@ -169,8 +180,11 @@ phases:
           HEALTH=$(curl -s -H "Authorization: Bearer $ARGOCD_TOKEN" \
             "https://$ARGOCD_SERVER/api/v1/applications/my-app" | \
             jq -r '.status.health.status')
-          echo "Sync: $STATUS, Health: $HEALTH"
-          if [ "$STATUS" = "Synced" ] && [ "$HEALTH" = "Healthy" ]; then
+          REVISION=$(curl -s -H "Authorization: Bearer $ARGOCD_TOKEN" \
+            "https://$ARGOCD_SERVER/api/v1/applications/my-app" | \
+            jq -r '.status.sync.revision')
+          echo "Sync: $STATUS, Health: $HEALTH, Revision: $REVISION"
+          if [ "$STATUS" = "Synced" ] && [ "$HEALTH" = "Healthy" ] && [ "$REVISION" = "$EXPECTED_REVISION" ]; then
             echo "Deployment successful"
             exit 0
           fi
@@ -182,7 +196,7 @@ phases:
 
 ## Handling ECR Authentication in ArgoCD
 
-If your ArgoCD Image Updater needs to pull from ECR, you need to configure ECR credentials. The simplest approach on EKS is to use IAM Roles for Service Accounts (IRSA).
+If your ArgoCD Image Updater needs to read tags from ECR, you need to configure ECR registry credentials. On EKS, a common approach is to use IAM Roles for Service Accounts (IRSA) for the Image Updater pod and an external credential script that returns a short-lived ECR login token.
 
 ```yaml
 # argocd-image-updater-sa.yaml
@@ -194,7 +208,23 @@ metadata:
   annotations:
     # Associate with IAM role that has ECR read access
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/argocd-image-updater-role
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
+  namespace: argocd
+data:
+  registries.conf: |
+    registries:
+    - name: ECR
+      api_url: https://123456789012.dkr.ecr.us-east-1.amazonaws.com
+      prefix: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+      credentials: ext:/scripts/ecr-login.sh
+      credsexpire: 11h
 ```
+
+The `/scripts/ecr-login.sh` script should be mounted into the Image Updater pod, marked executable, and output `AWS:<password>` using `aws ecr get-login-password --region us-east-1`.
 
 ## Webhook Configuration for Faster Syncs
 
@@ -220,13 +250,13 @@ When integrating CodePipeline with ArgoCD, keep these security practices in mind
 
 1. **Store secrets in Parameter Store or Secrets Manager** - Never hardcode tokens in buildspec files. Use SSM Parameter Store for the ArgoCD API token and GitHub token.
 
-2. **Use IRSA for ECR access** - Instead of storing ECR credentials, use IAM Roles for Service Accounts so pods authenticate natively.
+2. **Use IAM roles for ECR access** - Instead of storing long-lived ECR credentials, use the EKS node IAM role or Fargate pod execution role for image pulls, and IRSA for tools such as ArgoCD Image Updater.
 
 3. **Limit CodeBuild IAM role** - The CodeBuild role should only have permissions to push to ECR and read from Parameter Store. It should not have kubectl access to your cluster.
 
 4. **Use separate repositories** - Keep your application source code and Kubernetes manifests in separate repositories. This enforces the separation between CI and CD concerns.
 
-5. **Enable ArgoCD audit logging** - Track who and what triggered deployments by enabling ArgoCD's audit logging feature.
+5. **Capture ArgoCD audit data** - Track who and what triggered deployments by retaining Git history, ArgoCD application events, and Kubernetes audit logs.
 
 ## Monitoring the Integration
 
@@ -238,7 +268,7 @@ You can monitor your ArgoCD deployments alongside your AWS pipeline using OneUpt
 
 **ArgoCD does not detect the change** - Check that the ArgoCD Application is pointing to the correct branch and path. Run `argocd app get my-app` to verify the source configuration.
 
-**Image pull errors after deployment** - If the EKS nodes cannot pull from ECR, verify the node IAM role has the `AmazonEC2ContainerRegistryReadOnly` policy attached.
+**Image pull errors after deployment** - If the EKS nodes cannot pull from ECR, verify the node IAM role has the `AmazonEC2ContainerRegistryPullOnly` policy or an equivalent custom policy attached.
 
 **Sync takes too long** - Configure a webhook on the manifest repo so ArgoCD picks up changes immediately instead of waiting for the next poll cycle.
 
