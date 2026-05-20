@@ -52,10 +52,14 @@ kind: Application
 metadata:
   name: my-service-dev
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: main
     path: apps/my-service/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-service-dev
   syncPolicy:
     automated:
       prune: true
@@ -68,10 +72,14 @@ kind: Application
 metadata:
   name: my-service-production
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: main
     path: apps/my-service/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-service-production
   syncPolicy: {}  # Manual sync only
 ```
 
@@ -132,10 +140,14 @@ kind: Application
 metadata:
   name: my-service-dev
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: main
     path: apps/my-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-service-dev
 
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -143,10 +155,14 @@ kind: Application
 metadata:
   name: my-service-staging
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: staging
     path: apps/my-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-service-staging
 
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -154,10 +170,14 @@ kind: Application
 metadata:
   name: my-service-production
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: production
     path: apps/my-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-service-production
 ```
 
 ### Promotion with Environment Branches
@@ -219,19 +239,19 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install tools
         run: |
           curl -s https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash
-          curl -LO https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+          curl -LO https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
           tar xzf kubeconform-linux-amd64.tar.gz
 
       - name: Validate all overlays
         run: |
           for overlay in apps/*/overlays/*/; do
             echo "Validating $overlay"
-            kustomize build "$overlay" | ./kubeconform -strict -summary
+            ./kustomize build "$overlay" | ./kubeconform -strict -summary
           done
 ```
 
@@ -245,7 +265,7 @@ git tag -a v1.5.0 -m "Release v1.5.0: updated backend resources"
 git push origin v1.5.0
 ```
 
-Point production ArgoCD Applications at a tag pattern:
+Point production ArgoCD Applications at a specific tag:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -253,13 +273,17 @@ kind: Application
 metadata:
   name: my-service-production
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: v1.5.0    # Pin to specific tag
     path: apps/my-service/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: my-service-production
 ```
 
-This gives you an explicit, versioned release that you can roll back to by simply changing the tag reference.
+This gives you an explicit, versioned release that you can roll back by changing `targetRevision` to an earlier tag.
 
 ## Recommended Strategy by Team Size
 
