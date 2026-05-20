@@ -8,7 +8,7 @@ Description: Step-by-step guide to configuring ArgoCD with automatic Let's Encry
 
 ---
 
-Let's Encrypt provides free, automated TLS certificates that are trusted by every browser and HTTP client. Combined with cert-manager on Kubernetes, you get automatic certificate issuance and renewal for your ArgoCD server. No more expired certificates, no more manual rotation, no more self-signed certificate warnings.
+Let's Encrypt provides free, automated TLS certificates that are trusted by major browsers and HTTP clients. Combined with cert-manager on Kubernetes, you get automatic certificate issuance and renewal for your ArgoCD server. No more expired certificates, no more manual rotation, no more self-signed certificate warnings.
 
 This guide walks through the complete setup from installing cert-manager to verifying your ArgoCD instance serves a valid Let's Encrypt certificate.
 
@@ -28,7 +28,7 @@ cert-manager handles the Let's Encrypt ACME protocol, certificate issuance, and 
 ```bash
 # Install cert-manager using kubectl
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=Ready pods -l app.kubernetes.io/instance=cert-manager -n cert-manager --timeout=120s
@@ -43,7 +43,8 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --version v1.20.2 \
+  --set crds.enabled=true
 ```
 
 Verify the installation:
@@ -77,7 +78,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx  # Match your ingress controller
+            ingressClassName: nginx  # Match your ingress controller
 ```
 
 For testing, use the staging server first to avoid rate limits:
@@ -96,7 +97,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 Apply the ClusterIssuers:
@@ -174,7 +175,6 @@ spec:
     solvers:
       - dns01:
           cloudflare:
-            email: admin@company.com
             apiTokenSecretRef:
               name: cloudflare-api-token
               key: api-token
@@ -217,7 +217,7 @@ metadata:
     # Nginx specific settings
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
-    # Handle gRPC for ArgoCD CLI
+    # Redirect HTTP requests to HTTPS
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
@@ -306,7 +306,7 @@ kubectl describe challenge -n argocd
 
 Open `https://argocd.company.com` in a browser. You should see:
 - A valid HTTPS connection (green padlock)
-- Certificate issued by "Let's Encrypt" or "R3" (Let's Encrypt intermediate CA)
+- Certificate issued by a Let's Encrypt intermediate CA
 - No security warnings
 
 ### CLI Test
@@ -318,9 +318,9 @@ openssl s_client -connect argocd.company.com:443 -servername argocd.company.com 
 
 # Expected output:
 # subject=CN = argocd.company.com
-# issuer=C = US, O = Let's Encrypt, CN = R3
+# issuer=C = US, O = Let's Encrypt, CN = <intermediate CA name>
 # notBefore=...
-# notAfter=...  (about 90 days from now)
+# notAfter=...  (about 90 days from now for the default Let's Encrypt profile)
 ```
 
 ### ArgoCD CLI Test
@@ -332,7 +332,7 @@ argocd login argocd.company.com --grpc-web
 
 ## Automatic Certificate Renewal
 
-Let's Encrypt certificates are valid for 90 days. cert-manager automatically renews them 30 days before expiration (by default). You do not need to do anything.
+Let's Encrypt certificates are currently valid for 90 days with the default profile. cert-manager automatically renews them before expiration (by default, when two thirds of the certificate lifetime has elapsed). You do not need to do anything.
 
 Verify the renewal configuration:
 
@@ -345,7 +345,7 @@ To test renewal manually:
 
 ```bash
 # Trigger a manual renewal
-kubectl cert-manager renew argocd-server-tls -n argocd
+cmctl renew argocd-server-tls -n argocd
 ```
 
 ## Handling gRPC Traffic
@@ -361,7 +361,7 @@ argocd login argocd.company.com --grpc-web
 
 ### Option 2: Separate gRPC Ingress
 
-Create a second ingress with TLS passthrough for gRPC:
+Create a second ingress with TLS termination for gRPC:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -370,10 +370,14 @@ metadata:
   name: argocd-server-grpc
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
     nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - grpc.argocd.company.com
+      secretName: argocd-server-grpc-tls
   rules:
     - host: grpc.argocd.company.com
       http:
@@ -406,7 +410,7 @@ kubectl describe challenge <challenge-name> -n argocd
 
 Let's Encrypt has rate limits. If you hit them:
 - Use the staging server for testing
-- Wait before retrying (limits reset after a week)
+- Wait until the rate limit's retry time or refill window has passed
 - Check https://letsencrypt.org/docs/rate-limits/
 
 ### Certificate Not Updating After Renewal
