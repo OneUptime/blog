@@ -10,7 +10,7 @@ Description: Learn how to detect and respond to Application Created events in Ar
 
 When a new application is created in ArgoCD, it often needs to trigger downstream processes - registering with monitoring systems, creating DNS entries, provisioning secrets, or notifying teams. ArgoCD does not have a built-in plugin system for lifecycle hooks on application creation, but there are several effective patterns for detecting and responding to these events.
 
-This guide covers four approaches to handling Application Created events: ArgoCD Notifications, Kubernetes event watchers, custom controllers, and resource hooks.
+This guide covers four approaches to handling Application Created events: ArgoCD Notifications, Kubernetes event watchers, custom controllers, and ApplicationSet progressive sync.
 
 ## Why Handle Application Created Events?
 
@@ -27,7 +27,7 @@ In a platform engineering context, application creation is a trigger for many wo
 
 ArgoCD Notifications is the most native way to react to application lifecycle events. It watches for state changes and can trigger webhooks, send messages, or execute templates.
 
-First, install ArgoCD Notifications (included by default in ArgoCD 2.6+):
+First, configure ArgoCD Notifications (part of ArgoCD since ArgoCD 2.3):
 
 ```yaml
 # argocd/notifications-config.yaml
@@ -43,6 +43,7 @@ data:
     - description: Application is created
       when: app.metadata.creationTimestamp != nil and
             time.Now().Sub(time.Parse(app.metadata.creationTimestamp)).Minutes() < 5
+      oncePer: app.metadata.uid
       send:
         - app-created-webhook
         - app-created-slack
@@ -125,35 +126,38 @@ spec:
       serviceAccountName: argocd-event-watcher
       containers:
         - name: watcher
-          image: bitnami/kubectl:1.30
+          # Use an image that includes kubectl, jq, and curl.
+          image: alpine/k8s:1.30.0
           command:
-            - /bin/bash
+            - /bin/sh
             - -c
             - |
               echo "Starting ArgoCD Application watcher..."
               kubectl get applications.argoproj.io \
                 -n argocd \
-                --watch \
-                -o json | while read -r event; do
+                --watch-only \
+                --output-watch-events \
+                -o json | jq -c 'select(.type == "ADDED") | .object | {
+                  name: .metadata.name,
+                  namespace: (.spec.destination.namespace // "default"),
+                  project: (.spec.project // "default")
+                }' | while read -r app; do
 
-                TYPE=$(echo "$event" | jq -r '.type // "MODIFIED"')
-                NAME=$(echo "$event" | jq -r '.metadata.name')
-                NAMESPACE=$(echo "$event" | jq -r '.spec.destination.namespace')
-                PROJECT=$(echo "$event" | jq -r '.spec.project')
+                NAME=$(echo "$app" | jq -r '.name')
+                NAMESPACE=$(echo "$app" | jq -r '.namespace')
+                PROJECT=$(echo "$app" | jq -r '.project')
 
-                if [ "$TYPE" = "ADDED" ]; then
-                  echo "Application created: $NAME in namespace $NAMESPACE"
+                echo "Application created: $NAME in namespace $NAMESPACE"
 
-                  # Call platform API
-                  curl -s -X POST \
-                    https://platform-api.internal/api/v1/apps/register \
-                    -H "Content-Type: application/json" \
-                    -d "{
-                      \"name\": \"$NAME\",
-                      \"namespace\": \"$NAMESPACE\",
-                      \"project\": \"$PROJECT\"
-                    }"
-                fi
+                # Call platform API
+                curl -s -X POST \
+                  https://platform-api.internal/api/v1/apps/register \
+                  -H "Content-Type: application/json" \
+                  -d "{
+                    \"name\": \"$NAME\",
+                    \"namespace\": \"$NAMESPACE\",
+                    \"project\": \"$PROJECT\"
+                  }"
               done
 ```
 
@@ -192,14 +196,17 @@ roleRef:
 
 ## Approach 3: Custom Controller with Python
 
-For more complex logic, write a custom controller using the Kubernetes Python client.
+For more complex logic, write a custom controller using Kopf, a Python framework for Kubernetes operators.
 
 ```python
 # platform/event-watcher/controller.py
 import kopf
 import requests
-import json
+import os
 from datetime import datetime
+
+ONEUPTIME_API_KEY = os.environ['ONEUPTIME_API_KEY']
+SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
 
 @kopf.on.create('argoproj.io', 'v1alpha1', 'applications')
 def on_application_created(spec, meta, namespace, logger, **kwargs):
@@ -261,11 +268,22 @@ def notify_team(app_name, project, repo_url):
             'channel': f'#{project}-notifications'
         }
     )
+
+
+def log_audit_event(event_type, payload):
+    """Write audit events to your audit sink."""
+    requests.post(
+        'https://platform-api.internal/api/v1/audit-events',
+        json={
+            'event': event_type,
+            'payload': payload
+        }
+    )
 ```
 
 ## Approach 4: ApplicationSet with Progressive Sync
 
-If applications are created through ApplicationSets, you can use progressive sync to control rollout and trigger events at each stage.
+If applications are created through ApplicationSets, you can use progressive sync to control rollout and combine it with notifications at each stage. Progressive syncs must be enabled on the ApplicationSet controller before using the `RollingSync` strategy.
 
 ```yaml
 # argocd/appset-with-events.yaml
