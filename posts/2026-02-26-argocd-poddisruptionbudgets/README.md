@@ -44,11 +44,11 @@ spec:
       app.kubernetes.io/name: argocd-server
 ```
 
-With 3 replicas and minAvailable 2, Kubernetes can drain one node at a time while keeping the API server accessible.
+With 3 replicas and minAvailable 2, Kubernetes can drain one node at a time while keeping the API server accessible when replicas are spread across nodes.
 
 ### Application Controller PDB
 
-The controller uses leader election. With 2 replicas, keep at least 1 running:
+The controller can shard managed clusters across replicas. With 2 replicas, keep at least 1 running:
 
 ```yaml
 apiVersion: policy/v1
@@ -174,7 +174,11 @@ repoServer:
 redis-ha:
   enabled: true
   replicas: 3
-  # Redis HA chart manages its own PDBs
+  podDisruptionBudget:
+    minAvailable: 2
+  haproxy:
+    podDisruptionBudget:
+      minAvailable: 1
 
 applicationSet:
   replicas: 2
@@ -297,7 +301,7 @@ server:
             topologyKey: kubernetes.io/hostname
 ```
 
-Without anti-affinity, all API server pods might end up on the same node. When that node is drained, the PDB blocks the drain entirely because evicting any pod would violate minAvailable: 2 (all 3 are on the same node).
+Without anti-affinity, all API server pods might end up on the same node. When that node is drained, Kubernetes can evict only one pod before the PDB blocks the rest of the drain because evicting another pod would violate minAvailable: 2.
 
 With anti-affinity, pods are spread across different nodes. Draining any single node only affects one pod, staying within the PDB limits.
 
@@ -343,10 +347,13 @@ For the notifications controller (typically 1 replica), a PDB with minAvailable:
 # Do NOT do this for single-replica components:
 # minAvailable: 1 with replicas: 1 = no disruption ever allowed
 
-# Instead, skip the PDB or set maxUnavailable: 1
+# Instead, skip the PDB or enable one only if you explicitly allow eviction
 notifications:
   pdb:
-    enabled: false  # Or maxUnavailable: 1
+    enabled: false
+    # Or:
+    # enabled: true
+    # maxUnavailable: 1
 ```
 
 PodDisruptionBudgets are a simple but essential configuration for production ArgoCD. They prevent cluster maintenance from accidentally taking down your deployment pipeline. Configure them alongside pod anti-affinity and topology spread constraints for the most resilient setup. For monitoring ArgoCD during maintenance windows, see our guide on [monitoring ArgoCD component health](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-component-health/view).
