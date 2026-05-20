@@ -105,7 +105,7 @@ spec:
 
 ## MQTT Broker Deployment
 
-The MQTT broker is the central nervous system of factory IoT. Deploy it with high availability:
+The MQTT broker is the central nervous system of factory IoT. Deploy it with persistent storage and TLS:
 
 ```yaml
 # mqtt/mosquitto-deployment.yaml
@@ -141,6 +141,9 @@ spec:
         - name: tls
           mountPath: /mosquitto/certs
           readOnly: true
+        - name: auth
+          mountPath: /mosquitto/auth
+          readOnly: true
         resources:
           requests:
             cpu: 100m
@@ -155,6 +158,9 @@ spec:
       - name: tls
         secret:
           secretName: mosquitto-tls
+      - name: auth
+        secret:
+          secretName: mosquitto-auth
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -178,6 +184,7 @@ data:
     keyfile /mosquitto/certs/tls.key
     cafile /mosquitto/certs/ca.crt
     require_certificate false
+    password_file /mosquitto/auth/passwords
     persistence true
     persistence_location /mosquitto/data/
     # Bridge to plant-level MQTT for data forwarding
@@ -212,6 +219,11 @@ spec:
       - name: processor
         image: manufacturing/stream-processor:v2.5.0
         env:
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: iot-db-credentials
+              key: DB_PASSWORD
         - name: MQTT_BROKER
           value: "tcp://mosquitto.iot-gateway:1883"
         - name: SUBSCRIBE_TOPICS
@@ -226,9 +238,6 @@ spec:
           value: "kafka.plant-datacenter:9092"
         - name: KAFKA_TOPIC
           value: "sensor-events-raw"
-        envFrom:
-        - secretRef:
-            name: iot-db-credentials
         resources:
           requests:
             cpu: 500m
