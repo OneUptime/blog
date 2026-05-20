@@ -63,7 +63,7 @@ flowchart TD
     H --> I[Render templates]
 ```
 
-By default, ArgoCD caches Helm repository indexes and refreshes them based on a configurable interval. The key settings are:
+By default, ArgoCD caches Helm repository indexes. Cache expiration and repository polling are configured separately. The key settings are:
 
 ### Repo Server Cache Settings
 
@@ -80,7 +80,7 @@ data:
   reposerver.repo.cache.expiration: "1h"
 ```
 
-You can also configure it through ArgoCD's main ConfigMap:
+Repository polling is configured separately through ArgoCD's main ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -89,8 +89,9 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Timeout for fetching repository data (default: 60s)
-  timeout.reconciliation: "180s"
+  # Repository polling interval (default: 120s plus up to 60s jitter)
+  timeout.reconciliation: "120s"
+  timeout.reconciliation.jitter: "60s"
 ```
 
 ## Forcing an Index Refresh
@@ -216,31 +217,32 @@ spec:
     # Exact version
     targetRevision: 1.2.3
     # Semver range - resolves to highest matching version from the index
-    targetRevision: ">=1.0.0 <2.0.0"
+    # targetRevision: ">=1.0.0 <2.0.0"
     # Wildcard - latest in the 1.x series
-    targetRevision: "1.*"
+    # targetRevision: "1.*"
     # Latest version (use with caution)
-    targetRevision: "*"
+    # targetRevision: "*"
 ```
 
 When using semver ranges or wildcards, index freshness becomes even more critical because ArgoCD resolves the version from the cached index. A stale index means ArgoCD might deploy an older version even though a newer one has been published.
 
 ## Monitoring Index Health
 
-Set up monitoring to detect stale indexes early. Check the repo-server metrics:
+Set up monitoring to understand repo-server activity while troubleshooting stale indexes. Check the repo-server metrics:
 
 ```bash
 # Port-forward to the repo-server metrics endpoint
 kubectl -n argocd port-forward svc/argocd-repo-server 8084:8084
 
-# Check cache-related metrics
-curl -s localhost:8084/metrics | grep repo_server
+# Check repository-related metrics
+curl -s localhost:8084/metrics | grep -E 'argocd_git_request|argocd_repo_pending'
 ```
 
 Key metrics to watch:
 
-- `argocd_repo_server_git_request_total` - Total number of repository requests
-- `argocd_repo_server_git_request_duration_seconds` - Duration of repository fetches
+- `argocd_git_request_total` - Total number of Git requests performed by repo-server
+- `argocd_git_request_duration_seconds` - Duration of Git requests
+- `argocd_repo_pending_request_total` - Pending requests waiting on a repository lock
 
 ## Troubleshooting Index Issues
 
@@ -265,7 +267,7 @@ kubectl -n argocd logs deploy/argocd-repo-server | grep "my-app"
 
 Symptom: Large repositories with thousands of charts cause timeout errors.
 
-Solution: Increase the repo-server timeout:
+Solution: If the error is an Argo CD repo-server RPC deadline, increase the repo-server RPC timeout used by the controller:
 
 ```yaml
 apiVersion: v1
@@ -274,8 +276,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Increase timeout for slow repositories
-  reposerver.repo.cache.expiration: "2h"
+  # Increase timeout for slow manifest generation through repo-server
+  controller.repo.server.timeout.seconds: "180"
 ```
 
 Also consider splitting large repositories into smaller, focused ones.
