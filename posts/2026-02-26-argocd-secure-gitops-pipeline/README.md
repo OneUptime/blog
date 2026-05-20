@@ -33,19 +33,20 @@ graph LR
 
 ### Enable Commit Signing
 
-Require signed commits so ArgoCD can verify that manifests come from trusted contributors:
+Require signed commits so ArgoCD can verify that manifests come from trusted contributors. GnuPG verification is enabled by default, but it is only enforced after you import trusted public keys and configure an AppProject to require them.
 
 ```yaml
-# argocd-cm ConfigMap
-
+# argocd-gpg-keys-cm ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-gpg-keys-cm
   namespace: argocd
 data:
-  # Enable GPG signature verification
-  gpg.verification.enabled: "true"
+  ABC123DEF456: |
+    -----BEGIN PGP PUBLIC KEY BLOCK-----
+    ...
+    -----END PGP PUBLIC KEY BLOCK-----
 ```
 
 Add trusted GPG keys:
@@ -57,7 +58,7 @@ argocd gpg add --from /path/to/public-key.asc
 # List trusted keys
 argocd gpg list
 
-# Configure per-project signature requirements
+# Configure per-project signature requirements in the AppProject manifest
 ```
 
 Configure the AppProject to require signatures:
@@ -68,9 +69,16 @@ kind: AppProject
 metadata:
   name: production
 spec:
-  signatureKeys:
-    - keyID: "ABC123DEF456"
-    - keyID: "789GHI012JKL"
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/org/config-repo.git
+          gpg:
+            mode: strict
+            keys:
+              - ABC123DEF456
+              - 789GHI012JKL
 ```
 
 ### Repository Access Controls
@@ -88,7 +96,7 @@ metadata:
     argocd.argoproj.io/secret-type: repository
 type: Opaque
 stringData:
-  url: https://github.com/org/config-repo.git
+  url: git@github.com:org/config-repo.git
   sshPrivateKey: |
     -----BEGIN OPENSSH PRIVATE KEY-----
     ...read-only deploy key...
@@ -339,10 +347,14 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable TLS for repo server
-  reposerver.tls.enabled: "true"
-  # Enable TLS for Redis
-  redis.tls.enabled: "true"
+  # Keep TLS enabled for repo server connections
+  reposerver.disable.tls: "false"
+  server.repo.server.plaintext: "false"
+  controller.repo.server.plaintext: "false"
+  notificationscontroller.repo.server.plaintext: "false"
+  # Optionally require strict certificate validation
+  server.repo.server.strict.tls: "true"
+  controller.repo.server.strict.tls: "true"
 ```
 
 ## Container Image Security
@@ -357,30 +369,33 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: enforce
   rules:
     - name: validate-registries
       match:
-        resources:
-          kinds:
-            - Pod
+        any:
+          - resources:
+              kinds:
+                - Pod
       validate:
+        failureAction: Enforce
         message: "Images must come from approved registries"
         pattern:
           spec:
+            "=(ephemeralContainers)":
+              - image: "org/*.io/*"
+            "=(initContainers)":
+              - image: "org/*.io/*"
             containers:
               - image: "org/*.io/*"
 ```
 
 ## Audit and Compliance
 
-Enable comprehensive logging:
+Use ArgoCD's application events and API logs for auditing:
 
-```yaml
-# argocd-cm ConfigMap
-data:
-  # Enable audit logging
-  server.audit.enabled: "true"
+```bash
+# View ArgoCD application events
+kubectl get events -A --field-selector involvedObject.kind=Application
 ```
 
 Monitor ArgoCD events:
