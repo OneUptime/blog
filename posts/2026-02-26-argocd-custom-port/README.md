@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD to listen on custom ports for both HT
 
 ---
 
-By default, ArgoCD server listens on port 8080 for HTTP and port 8083 for gRPC metrics. The Kubernetes Service exposes it on ports 80 (HTTP) and 443 (HTTPS). In some environments, you need to change these - maybe port 443 conflicts with another service, your security team requires a non-standard port, or your load balancer is configured to route traffic on a specific port.
+By default, ArgoCD server listens on port 8080 for HTTP/HTTPS and gRPC API traffic and port 8083 for metrics. The Kubernetes Service exposes it on ports 80 (HTTP) and 443 (HTTPS/gRPC). In some environments, you need to change these - maybe port 443 conflicts with another service, your security team requires a non-standard port, or your load balancer is configured to route traffic on a specific port.
 
 This guide covers changing ports at every level: the container port, the Service port, and the external-facing port through LoadBalancer or Ingress.
 
@@ -26,7 +26,7 @@ graph LR
 
 | Port | Component | Purpose | Default |
 |---|---|---|---|
-| 8080 | argocd-server container | HTTP/HTTPS API and UI | 8080 |
+| 8080 | argocd-server container | HTTP/HTTPS API, UI, and gRPC | 8080 |
 | 8083 | argocd-server container | Metrics endpoint | 8083 |
 | 80 | argocd-server Service | HTTP (redirects to HTTPS) | 80 |
 | 443 | argocd-server Service | HTTPS for UI and gRPC | 443 |
@@ -44,10 +44,10 @@ The most common need is to expose ArgoCD on a different Service port. This does 
 
 kubectl patch svc argocd-server -n argocd --type='json' \
   -p='[
-    {"op": "replace", "path": "/spec/ports/0/port", "value": 8443},
-    {"op": "replace", "path": "/spec/ports/0/name", "value": "https"},
-    {"op": "replace", "path": "/spec/ports/1/port", "value": 8080},
-    {"op": "replace", "path": "/spec/ports/1/name", "value": "http"}
+    {"op": "replace", "path": "/spec/ports/0/port", "value": 8080},
+    {"op": "replace", "path": "/spec/ports/0/name", "value": "http"},
+    {"op": "replace", "path": "/spec/ports/1/port", "value": 8443},
+    {"op": "replace", "path": "/spec/ports/1/name", "value": "https"}
   ]'
 ```
 
@@ -103,12 +103,22 @@ kubectl patch deployment argocd-server -n argocd --type='json' \
   -p='[
     {
       "op": "replace",
-      "path": "/spec/template/spec/containers/0/command",
-      "value": ["argocd-server", "--port", "9090"]
+      "path": "/spec/template/spec/containers/0/args",
+      "value": ["/usr/local/bin/argocd-server", "--port", "9090"]
     },
     {
       "op": "replace",
       "path": "/spec/template/spec/containers/0/ports/0/containerPort",
+      "value": 9090
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/port",
+      "value": 9090
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/port",
       "value": 9090
     }
   ]'
@@ -126,25 +136,40 @@ kubectl patch svc argocd-server -n argocd --type='json' \
 
 ## Configure via argocd-cmd-params-cm
 
-ArgoCD reads command parameters from a ConfigMap. This is the cleanest way to change the server port.
+ArgoCD reads many command parameters from a ConfigMap. Current upstream manifests do not map `server.port` or `server.metrics.port` from `argocd-cmd-params-cm`, so use the Deployment args when you need to change the listen ports.
 
-```yaml
-# argocd-cmd-params-cm.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Change the server listen port
-  server.port: "9090"
-  # Change the metrics port
-  server.metrics.port: "9091"
+```bash
+kubectl patch deployment argocd-server -n argocd --type='json' \
+  -p='[
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/args",
+      "value": ["/usr/local/bin/argocd-server", "--port", "9090", "--metrics-port", "9091"]
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/ports/0/containerPort",
+      "value": 9090
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/ports/1/containerPort",
+      "value": 9091
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/port",
+      "value": 9090
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/port",
+      "value": 9090
+    }
+  ]'
 ```
 
 ```bash
-kubectl apply -f argocd-cmd-params-cm.yaml
-
 # Restart the server to pick up the change
 kubectl rollout restart deployment argocd-server -n argocd
 ```
@@ -294,12 +319,30 @@ metadata:
 data:
   # Disable TLS on the server
   server.insecure: "true"
-  # Custom port
-  server.port: "9090"
 ```
 
 ```bash
 kubectl apply -f argocd-cmd-params-cm.yaml
+
+kubectl patch deployment argocd-server -n argocd --type='json' \
+  -p='[
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/args",
+      "value": ["/usr/local/bin/argocd-server", "--port", "9090"]
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/livenessProbe/httpGet/port",
+      "value": 9090
+    },
+    {
+      "op": "replace",
+      "path": "/spec/template/spec/containers/0/readinessProbe/httpGet/port",
+      "value": 9090
+    }
+  ]'
+
 kubectl rollout restart deployment argocd-server -n argocd
 ```
 
