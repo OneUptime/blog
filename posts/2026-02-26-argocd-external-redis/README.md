@@ -51,8 +51,8 @@ externalRedis:
   # Optional: password for AUTH
   password: ""
   # Optional: reference to an existing secret containing the password
+  # The secret must contain a key named redis-password
   existingSecret: "argocd-redis-password"
-  secretKey: "redis-password"
 ```
 
 ### ConfigMap Configuration (Without Helm)
@@ -161,14 +161,17 @@ externalRedis:
   host: argocd-redis.abcdef.ng.0001.use1.cache.amazonaws.com
   port: 6379
   existingSecret: argocd-redis-password
-  secretKey: redis-password
 
 # If using TLS (transit encryption enabled)
-configs:
-  params:
-    redis.tls.enabled: "true"
-    # ElastiCache uses Amazon-signed certificates
-    redis.tls.insecure: "false"
+server:
+  extraArgs:
+    - --redis-use-tls
+repoServer:
+  extraArgs:
+    - --redis-use-tls
+controller:
+  extraArgs:
+    - --redis-use-tls
 ```
 
 Create the password Secret:
@@ -191,7 +194,7 @@ gcloud redis instances create argocd-redis \
   --redis-version=redis_7_0 \
   --tier=standard \
   --reserved-ip-range=redis-range \
-  --auth-enabled \
+  --enable-auth \
   --transit-encryption-mode=SERVER_AUTHENTICATION
 
 # Get the connection details
@@ -209,9 +212,18 @@ redis-ha:
 
 externalRedis:
   host: 10.0.0.3  # Memorystore private IP
-  port: 6379
+  port: 6378  # Memorystore uses 6378 when in-transit encryption is enabled
   existingSecret: argocd-redis-password
-  secretKey: redis-password
+
+server:
+  extraArgs:
+    - --redis-use-tls
+repoServer:
+  extraArgs:
+    - --redis-use-tls
+controller:
+  extraArgs:
+    - --redis-use-tls
 ```
 
 ## Azure Cache for Redis Configuration
@@ -225,9 +237,8 @@ az redis create \
   --resource-group myResourceGroup \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
+  --vm-size p1 \
   --replicas-per-master 2 \
-  --enable-non-ssl-port false \
   --minimum-tls-version 1.2
 
 # Get the connection string
@@ -255,11 +266,16 @@ externalRedis:
   host: argocd-redis.redis.cache.windows.net
   port: 6380  # Azure uses 6380 for TLS
   existingSecret: argocd-redis-password
-  secretKey: redis-password
 
-configs:
-  params:
-    redis.tls.enabled: "true"
+server:
+  extraArgs:
+    - --redis-use-tls
+repoServer:
+  extraArgs:
+    - --redis-use-tls
+controller:
+  extraArgs:
+    - --redis-use-tls
 ```
 
 ## Self-Hosted External Redis
@@ -277,7 +293,6 @@ externalRedis:
   host: redis.infrastructure.svc.cluster.local
   port: 6379
   existingSecret: argocd-redis-password
-  secretKey: redis-password
 ```
 
 ## TLS Configuration
@@ -285,21 +300,54 @@ externalRedis:
 Most managed Redis services require or strongly recommend TLS. Configure ArgoCD to use TLS:
 
 ```yaml
-configs:
-  params:
-    # Enable Redis TLS
-    redis.tls.enabled: "true"
-    # Set to true only for self-signed certs in development
-    redis.tls.insecure: "false"
+server:
+  extraArgs:
+    - --redis-use-tls
+    # Use only for self-signed certs in development
+    # - --redis-insecure-skip-tls-verify
+repoServer:
+  extraArgs:
+    - --redis-use-tls
+    # - --redis-insecure-skip-tls-verify
+controller:
+  extraArgs:
+    - --redis-use-tls
+    # - --redis-insecure-skip-tls-verify
 ```
 
 If using a custom CA for your Redis TLS:
 
 ```yaml
+global:
+  extraVolumes:
+    - name: redis-ca
+      configMap:
+        name: argocd-redis-ca
+        items:
+          - key: redis-ca.pem
+            path: ca.crt
+  extraVolumeMounts:
+    - name: redis-ca
+      mountPath: /etc/argocd/redis
+      readOnly: true
+
+server:
+  extraArgs:
+    - --redis-use-tls
+    - --redis-ca-certificate=/etc/argocd/redis/ca.crt
+repoServer:
+  extraArgs:
+    - --redis-use-tls
+    - --redis-ca-certificate=/etc/argocd/redis/ca.crt
+controller:
+  extraArgs:
+    - --redis-use-tls
+    - --redis-ca-certificate=/etc/argocd/redis/ca.crt
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-tls-certs-cm
+  name: argocd-redis-ca
   namespace: argocd
 data:
   redis-ca.pem: |
