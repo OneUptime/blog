@@ -224,9 +224,9 @@ count(argocd_app_info{health_status="Progressing"})
 count(argocd_app_info{health_status="Missing"})
 ```
 
-**Stat Panel - Time Since Last Degraded:**
+**Stat Panels - Degraded Count and Healthy Percentage:**
 
-This requires a recording rule to track state changes:
+Use recording rules to make these health summary values easy to reuse:
 
 ```yaml
 groups:
@@ -247,13 +247,13 @@ When metrics show degraded applications, use ArgoCD CLI to investigate:
 
 ```bash
 # List all degraded applications
-argocd app list --health-status Degraded
+argocd app list -o wide | grep Degraded
 
 # Get details on a specific degraded app
 argocd app get my-degraded-app
 
 # Check the resource tree for unhealthy resources
-argocd app resources my-degraded-app --health-status Degraded
+argocd app resources my-degraded-app --output tree=detailed
 
 # View events that might explain the degradation
 kubectl get events -n production --sort-by='.lastTimestamp' | head -20
