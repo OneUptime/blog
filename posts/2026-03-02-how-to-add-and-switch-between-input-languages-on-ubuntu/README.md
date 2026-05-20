@@ -8,7 +8,7 @@ Description: A complete guide to adding multiple input languages and keyboard la
 
 ---
 
-Working in multiple languages on Ubuntu involves adding the right keyboard layouts and input methods. Whether you need to switch between English and French, or between Latin-script languages and complex script languages like Arabic or Japanese, Ubuntu has the tools to handle it. This guide covers both simple keyboard layout switching and more advanced input method frameworks.
+Working in multiple languages on Ubuntu involves adding the right keyboard layouts and input methods. Whether you need to switch between English and French, or between Latin-script languages and IME-based languages like Chinese or Japanese, Ubuntu has the tools to handle it. This guide covers both simple keyboard layout switching and more advanced input method frameworks.
 
 ## Adding Keyboard Layouts via GNOME Settings
 
@@ -50,7 +50,7 @@ gsettings get org.gnome.desktop.wm.keybindings switch-input-source
 # Change to Alt+Shift (common in many setups)
 gsettings set org.gnome.desktop.wm.keybindings switch-input-source "['<Alt>Shift_L']"
 
-# Or use the GNOME Settings > Keyboard > Keyboard Shortcuts > Typing section
+# Or use the GNOME Settings > Keyboard > Keyboard Shortcuts > View and Customize Shortcuts > Typing section
 # to configure it graphically
 ```
 
@@ -71,7 +71,7 @@ localectl list-x11-keymap-variants de
 
 ## Using IBus for Complex Script Input
 
-For languages that require an input method engine (IME) - such as Chinese, Japanese, Korean, or Thai - IBus is the standard framework on Ubuntu.
+For languages that require an input method engine (IME) - such as Chinese, Japanese, or Korean - IBus is the standard framework on Ubuntu GNOME.
 
 ```bash
 # Install IBus
@@ -80,8 +80,8 @@ sudo apt install ibus
 # Install IBus for a specific language (e.g., Pinyin for Chinese)
 sudo apt install ibus-pinyin
 
-# Install IBus for Japanese (Anthy)
-sudo apt install ibus-anthy
+# Install IBus for Japanese (Mozc)
+sudo apt install ibus-mozc
 
 # Install IBus for Korean (Hangul)
 sudo apt install ibus-hangul
@@ -106,7 +106,7 @@ In the IBus preferences window, go to the **Input Method** tab and add your desi
 im-config -n ibus
 
 # Verify the setting
-cat ~/.config/im-config/70_user.conf
+cat ~/.xinputrc
 ```
 
 Log out and back in after changing this setting for it to take effect.
@@ -138,8 +138,10 @@ For Wayland sessions (which is the default in Ubuntu 22.04+), these environment 
 
 ## Checking Current Keyboard Layout via Command Line
 
+On X11 sessions, `setxkbmap` can show the current X keyboard configuration. On Wayland sessions, prefer `gsettings get org.gnome.desktop.input-sources sources` for GNOME input sources.
+
 ```bash
-# Show current keyboard layout
+# Show current X11 keyboard layout
 setxkbmap -query
 
 # Output example:
@@ -175,11 +177,11 @@ Note that `localectl` affects the system-wide default, while GNOME Settings mana
 When multiple layouts are active, GNOME automatically shows a language indicator in the top bar. If you want more detailed information or a persistent indicator even with one layout, consider GNOME Shell extensions like "Keyboard Indicator" or "Input Method Panel."
 
 ```bash
-# Install GNOME Shell integration for extensions (if not present)
-sudo apt install gnome-shell-extensions
+# Install the native browser connector for extensions.gnome.org (if needed)
+sudo apt install gnome-browser-connector
 ```
 
-Then visit extensions.gnome.org in Firefox to install additional panel applets.
+Then visit extensions.gnome.org and install the browser extension if prompted to install additional panel applets.
 
 ## Automating Layout Configuration for New Users
 
@@ -219,7 +221,7 @@ ibus restart
 
 # Check for conflicting keyboard shortcuts
 gsettings get org.gnome.desktop.wm.keybindings switch-input-source
-gsettings get org.gnome.shell.keybindings switch-input-source
+gsettings get org.gnome.desktop.wm.keybindings switch-input-source-backward
 ```
 
-Having multiple input languages configured does not noticeably impact system performance. Ubuntu handles layout switching efficiently at the kernel and X11/Wayland compositor level.
+Having multiple input languages configured does not noticeably impact system performance. Ubuntu handles layout switching efficiently through XKB, IBus, and the X11 or Wayland desktop session.
