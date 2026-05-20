@@ -148,7 +148,7 @@ The Baseline level prevents the most common privilege escalations. Workloads mus
 - Run privileged containers
 - Use hostNetwork, hostPID, or hostIPC
 - Use hostPath volumes
-- Add Linux capabilities beyond the default set
+- Add Linux capabilities beyond the allowed Baseline set
 - Set the sysctl interface to unsafe values
 
 ### Restricted Level
@@ -156,7 +156,7 @@ The Baseline level prevents the most common privilege escalations. Workloads mus
 The Restricted level requires workloads to be explicitly secure. In addition to Baseline requirements, workloads must:
 
 - Run as non-root
-- Use a read-only root filesystem (recommended but not required)
+- Avoid setting `runAsUser` to 0
 - Drop ALL capabilities and only add NET_BIND_SERVICE if needed
 - Set seccompProfile to RuntimeDefault or Localhost
 - Not allow privilege escalation
@@ -239,7 +239,7 @@ spec:
 
 ### Enforce with Exceptions
 
-Allow specific workloads to bypass certain restrictions using PolicyExceptions.
+Allow specific workloads to bypass certain restrictions using PolicyExceptions. PolicyExceptions must be enabled in Kyverno before they can be used.
 
 ```yaml
 # pod-security/kyverno-policies/enforce-restricted.yaml
@@ -248,7 +248,6 @@ kind: ClusterPolicy
 metadata:
   name: enforce-restricted-pss
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: restricted-containers
@@ -261,6 +260,7 @@ spec:
                 matchLabels:
                   pod-security.kubernetes.io/enforce: restricted
       validate:
+        failureAction: Enforce
         message: "Container must set allowPrivilegeEscalation to false."
         pattern:
           spec:
@@ -271,7 +271,7 @@ spec:
 
 ```yaml
 # Exception for a specific workload
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: allow-istio-init
@@ -313,8 +313,7 @@ labels:
 Review audit logs to identify non-compliant workloads.
 
 ```bash
-# Check audit events
-kubectl get events --field-selector reason=FailedCreate -A
+# Check audit logs for pod-security.kubernetes.io/audit-violations annotations
 ```
 
 ### Phase 2: Add Warnings
