@@ -75,15 +75,23 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  subscriptions: |
+    - recipients:
+      - cfr-tracker
+      triggers:
+      - on-sync-succeeded
+      - on-health-degraded
+
   # Track successful deployments
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       oncePer: app.status.sync.revision
       send: [record-deployment]
 
   # Track post-deployment failures
   trigger.on-health-degraded: |
     - when: app.status.health.status == 'Degraded'
+      oncePer: app.status.sync.revision
       send: [record-failure]
 
   template.record-deployment: |
@@ -107,7 +115,7 @@ data:
             "type": "failure",
             "app": "{{.app.metadata.name}}",
             "revision": "{{.app.status.sync.revision}}",
-            "timestamp": "{{now}}"
+            "timestamp": "{{(call .time.Now).Format `2006-01-02T15:04:05Z07:00`}}"
           }
 
   service.webhook.cfr-tracker: |
@@ -227,14 +235,15 @@ if __name__ == "__main__":
 Another approach uses rollback operations as a proxy for change failures. If someone rolls back a deployment, the previous change likely failed:
 
 ```promql
-# Count rollback operations as failures
-# ArgoCD records rollbacks in the operation history
+# ArgoCD does not expose a rollback-specific Prometheus metric.
+# Use this as the deployment denominator and record rollback
+# events separately from your rollback workflow or notifications.
 sum(increase(
   argocd_app_sync_total{phase="Succeeded"}[7d]
 )) by (name)
 ```
 
-Track rollbacks with a recording rule:
+Track degraded transitions with a recording rule:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -261,7 +270,7 @@ spec:
               argocd_app_sync_total{phase="Succeeded"}[1h]
             )) by (name)
 
-        # Calculate hourly CFR
+        # Calculate hourly CFR from degraded transitions
         - record: argocd:change_failure_rate:ratio
           expr: >
             argocd:app_degraded_transitions:sum
@@ -325,10 +334,10 @@ spec:
 
 | Performance Level | Change Failure Rate |
 |---|---|
-| Elite | 0-15% |
-| High | 16-30% |
-| Medium | 16-30% |
-| Low | 46-60% |
+| Elite | 5% |
+| High | 10% |
+| Medium | 15% |
+| Low | 64% |
 
 ## Reducing Change Failure Rate
 
