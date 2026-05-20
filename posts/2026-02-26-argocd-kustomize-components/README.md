@@ -91,7 +91,7 @@ spec:
 
 ## Creating a Network Policy Component
 
-This component adds a default-deny network policy and allows only required traffic:
+This component adds a default-deny network policy and allows only required ingress traffic:
 
 ```yaml
 # components/network-policy/kustomization.yaml
@@ -139,7 +139,7 @@ spec:
 
 ## Creating a Debug Tools Component
 
-A component that adds debug containers for development environments:
+A component that adds debug sidecar containers for development environments:
 
 ```yaml
 # components/debug-tools/kustomization.yaml
