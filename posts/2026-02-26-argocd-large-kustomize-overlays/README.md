@@ -96,7 +96,7 @@ platform/
         kustomization.yaml
 ```
 
-Create separate ArgoCD Applications with sync waves to control ordering:
+If you manage these Applications with an app-of-apps parent, put sync waves on the child Application resources to control the order in which the parent syncs them:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -168,25 +168,28 @@ spec:
 Configure ArgoCD to allow more time for large builds:
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-cmd-params-cm ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Timeout for exec commands (kustomize build)
-  exec.timeout: "300"
+  # Repo server RPC timeout for the application controller
+  controller.repo.server.timeout.seconds: "300"
 
-  # Timeout for repo server operations
-  timeout.reconciliation: "300s"
+  # Repo server RPC timeout for the API server and CLI/UI requests
+  server.repo.server.timeout.seconds: "300"
 ```
+
+For the Kustomize process itself, set `ARGOCD_EXEC_TIMEOUT` on the `argocd-repo-server` container. The value uses Go duration syntax, such as `300s` or `5m`.
 
 ## Strategy 4: Repo Server Scaling
 
 Run multiple repo server replicas to handle concurrent builds:
 
 ```yaml
+# argocd-repo-server Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -194,14 +197,18 @@ metadata:
   namespace: argocd
 spec:
   replicas: 3  # Scale horizontally
-  template:
-    spec:
-      containers:
-        - name: repo-server
-          env:
-            # Enable parallel manifest generation
-            - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
-              value: "5"
+```
+
+Use `argocd-cmd-params-cm` to cap concurrent manifest generation per repo server pod. This helps avoid OOMKills while still allowing controlled concurrency:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  reposerver.parallelism.limit: "5"
 ```
 
 ## Strategy 5: Optimize Kustomize Build
@@ -210,13 +217,15 @@ Reduce build time by optimizing the Kustomize configuration:
 
 ### Remove Unnecessary Generators
 
-ConfigMap and Secret generators with hash suffixes force ArgoCD to diff every resource on every check:
+ConfigMap and Secret generators with hash suffixes change the generated resource name when generator input changes. That is useful for rollout triggers, but it can also increase churn in large applications:
 
 ```yaml
-# If hash suffixes cause issues, disable them
+# If hash suffixes cause unacceptable churn, disable them
 generatorOptions:
   disableNameSuffixHash: true
 ```
+
+Only use this when your workloads have another way to pick up ConfigMap or Secret changes, because disabling the suffix removes Kustomize's automatic name change on data updates.
 
 ### Reduce Patch Complexity
 
@@ -237,10 +246,10 @@ patches:
 
 ### Avoid Remote Bases in Large Overlays
 
-Remote bases require Git clones, adding significant time:
+Remote bases can require additional fetches during manifest generation, adding significant time:
 
 ```yaml
-# Slow: remote base cloned every build
+# Slower: remote base may be fetched during builds
 resources:
   - https://github.com/myorg/shared-base//k8s?ref=v1.0.0
 
@@ -251,7 +260,7 @@ resources:
 
 ## Strategy 6: Use Server-Side Diff
 
-ArgoCD 2.5+ supports server-side diff, which offloads comparison to the Kubernetes API server:
+ArgoCD 2.10+ supports server-side diff, which uses server-side apply dry-run requests against the Kubernetes API server to calculate differences:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -264,7 +273,7 @@ spec:
   # ...
 ```
 
-This reduces memory usage in the ArgoCD application controller for large applications.
+This can reduce client-side diff work in the ArgoCD application controller for large applications.
 
 ## Strategy 7: Resource Tracking Optimization
 
@@ -276,36 +285,37 @@ data:
   application.resourceTrackingMethod: annotation
 ```
 
-Annotation-based tracking is more efficient for applications with many resources because it does not rely on label matching.
+Annotation-based tracking avoids ownership conflicts caused by shared labels such as `app.kubernetes.io/instance`, and it supports application names longer than the 63-character label value limit.
 
 ## Monitoring Build Performance
 
-Track build times to catch regressions:
+Track repo server metrics to catch regressions:
 
 ```bash
 # Check repo server metrics
 kubectl port-forward -n argocd svc/argocd-repo-server 8084:8084
 
 # Prometheus metrics endpoint
-curl http://localhost:8084/metrics | grep argocd_repo_server
+curl http://localhost:8084/metrics | grep -E "argocd_git_request|argocd_repo_pending"
 
 # Key metrics to watch:
-# argocd_repo_server_git_request_duration_seconds
-# argocd_repo_server_git_request_total
+# argocd_git_request_duration_seconds
+# argocd_git_request_total
+# argocd_repo_pending_request_total
 ```
 
-Set up alerts for builds that take longer than expected:
+Set up alerts for slow repo server Git operations:
 
 ```yaml
 # Prometheus alert
-- alert: ArgocdSlowBuild
+- alert: ArgocdSlowRepoServerGitOperation
   expr: |
-    histogram_quantile(0.95, argocd_repo_server_git_request_duration_seconds_bucket) > 60
+    histogram_quantile(0.95, argocd_git_request_duration_seconds_bucket) > 60
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "ArgoCD builds taking longer than 60 seconds"
+    summary: "ArgoCD repo server Git operations taking longer than 60 seconds"
 ```
 
 ## When to Split vs When to Tune
