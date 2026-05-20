@@ -8,7 +8,7 @@ Description: Learn how to track and monitor deployment frequency in ArgoCD using
 
 ---
 
-Deployment frequency measures how often your team ships changes to production. It is one of the four DORA metrics and a strong predictor of engineering team performance. High-performing teams deploy on demand, sometimes multiple times per day. Low performers might deploy once a month or less.
+Deployment frequency measures how often your team ships changes to production. It is one of DORA's software delivery performance metrics and a strong predictor of engineering team performance. High-performing teams deploy on demand, sometimes multiple times per day. Low performers might deploy once a month or less.
 
 ArgoCD makes tracking deployment frequency straightforward because every sync operation is recorded in application history and exposed through Prometheus metrics.
 
@@ -36,7 +36,7 @@ argocd_app_sync_total
 # - name: application name
 # - namespace: application namespace
 # - project: ArgoCD project
-# - phase: Succeeded, Failed, Error
+# - phase: Succeeded, Failed, Error, Running, Terminating
 ```
 
 ## Basic Deployment Frequency Queries
@@ -74,9 +74,9 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  # Only trigger on syncs that are NOT self-heal
+  # Count each successfully synced revision once
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [deployment-event]
 
@@ -97,9 +97,17 @@ data:
     headers:
       - name: Content-Type
         value: application/json
+
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-app
+  annotations:
+    notifications.argoproj.io/subscribe.on-deployed.deployment-counter: ""
 ```
 
-The `oncePer: app.status.sync.revision` ensures you only count each unique revision once, filtering out self-heal repeats.
+The `oncePer: app.status.sync.revision` ensures you only count each unique revision once, filtering out self-heal repeats for the same revision.
 
 ## Building a Deployment Frequency Exporter
 
@@ -108,7 +116,6 @@ For more control, build a custom Prometheus exporter:
 ```python
 # deployment_frequency_exporter.py
 import json
-import time
 import subprocess
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
@@ -119,6 +126,8 @@ daily_deployments = defaultdict(lambda: defaultdict(int))
 
 def fetch_app_history():
     """Fetch sync history from all ArgoCD applications."""
+    daily_deployments.clear()
+
     result = subprocess.run(
         ["argocd", "app", "list", "-o", "json"],
         capture_output=True, text=True
@@ -195,6 +204,9 @@ class MetricsHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "text/plain")
             self.end_headers()
             self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
 
 if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", 8080), MetricsHandler)
@@ -295,14 +307,14 @@ spec:
 
 ## Interpreting Deployment Frequency
 
-According to DORA research:
+According to DORA's 2019 research:
 
 | Performance Level | Deployment Frequency |
 |---|---|
 | Elite | On-demand (multiple per day) |
 | High | Between once per day and once per week |
 | Medium | Between once per week and once per month |
-| Low | Less than once per month |
+| Low | Between once per month and once every six months |
 
 When analyzing your ArgoCD deployment frequency, consider:
 
