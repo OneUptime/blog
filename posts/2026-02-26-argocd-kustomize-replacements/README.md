@@ -8,9 +8,9 @@ Description: Learn how to use Kustomize replacements with ArgoCD to dynamically 
 
 ---
 
-Kustomize `replacements` let you copy a value from one resource and inject it into another. Need the Service name from one manifest to appear as an environment variable in a Deployment? Need the ConfigMap name (including any hash suffix) to appear in an annotation? Replacements handle cross-resource value propagation that patches cannot.
+Kustomize `replacements` let you copy a value from one resource and inject it into another. Need the Service name from one manifest to appear as an environment variable in a Deployment? Need the ConfigMap name to appear in an annotation? Replacements handle cross-resource value propagation that patches cannot.
 
-Replacements replaced the deprecated `vars` feature in Kustomize 4.5.0+ with a more explicit, debuggable mechanism. ArgoCD processes replacements as part of the standard `kustomize build`, so no special configuration is needed.
+Replacements are the recommended migration path for the deprecated `vars` feature, which was deprecated in Kustomize v5.0.0. They provide a more explicit, debuggable mechanism. ArgoCD processes replacements as part of the standard `kustomize build`, so no special configuration is needed.
 
 ## How Replacements Work
 
@@ -28,7 +28,7 @@ graph LR
 
 ## Basic Replacement Example
 
-Copy a Service's cluster IP into a Deployment's environment variable:
+Copy a Service's name into a Deployment's environment variable:
 
 ```yaml
 # kustomization.yaml
@@ -39,7 +39,6 @@ kind: Kustomization
 resources:
   - deployment.yaml
   - service.yaml
-  - configmap.yaml
 
 replacements:
   - source:
@@ -278,8 +277,8 @@ kustomize build overlays/production --stack-trace 2>&1
 ```
 
 Common errors:
-- `fieldPath not found` - The source resource does not have the specified field
-- `unable to find target` - No resource matches the target selector
-- `array index out of bounds` - The field path array selector does not match
+- `fieldPath ... is missing for replacement source` - The source resource does not have the specified field
+- `unable to find field ... in replacement target` - The target resource exists, but the target field path does not
+- `unable to find field ... in replacement target` - The field path array selector does not match an existing list item
 
 For more on Kustomize replacements, see our [replacements for advanced field substitution guide](https://oneuptime.com/blog/post/2026-02-09-kustomize-replacements-substitution/view).
