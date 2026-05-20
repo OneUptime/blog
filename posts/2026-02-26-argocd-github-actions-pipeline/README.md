@@ -58,10 +58,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22'
 
@@ -70,7 +70,7 @@ jobs:
           go test ./... -v -coverprofile=coverage.out
 
       - name: Run linter
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v8
         with:
           version: latest
 
@@ -84,10 +84,10 @@ jobs:
     outputs:
       image-tag: ${{ steps.meta.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Log in to Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -95,7 +95,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -103,7 +103,7 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           push: true
@@ -117,7 +117,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Checkout deployment repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: myorg/k8s-deployments
           token: ${{ secrets.DEPLOYMENT_REPO_TOKEN }}
@@ -132,10 +132,9 @@ jobs:
           sed -i "s|image: ghcr.io/myorg/api-service:.*|image: ghcr.io/myorg/api-service:${SHORT_SHA}|" \
             apps/api-service/deployment.yaml
 
-          # Or if using Kustomize
-          cd apps/api-service
-          kustomize edit set image \
-            "ghcr.io/myorg/api-service=ghcr.io/myorg/api-service:${SHORT_SHA}"
+          # If using Kustomize instead, install kustomize and replace the sed command with:
+          # kustomize edit set image \
+          #   "ghcr.io/myorg/api-service=ghcr.io/myorg/api-service:${SHORT_SHA}"
 
       - name: Commit and push
         run: |
@@ -296,9 +295,19 @@ on:
 jobs:
   preview:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     if: github.event.action != 'closed'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push preview image
         run: |
@@ -306,7 +315,7 @@ jobs:
           docker push ghcr.io/myorg/api-service:pr-${{ github.event.pull_request.number }}
 
       - name: Create preview environment
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: myorg/k8s-deployments
           token: ${{ secrets.DEPLOYMENT_REPO_TOKEN }}
@@ -330,6 +339,8 @@ jobs:
               newTag: pr-${PR_NUM}
           EOF
 
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "Create preview for PR #${PR_NUM}"
           git push
@@ -338,7 +349,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.action == 'closed'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           repository: myorg/k8s-deployments
           token: ${{ secrets.DEPLOYMENT_REPO_TOKEN }}
@@ -347,6 +358,8 @@ jobs:
         run: |
           PR_NUM=${{ github.event.pull_request.number }}
           rm -rf apps/api-service/previews/pr-${PR_NUM}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "Remove preview for PR #${PR_NUM}"
           git push
@@ -363,7 +376,7 @@ metadata:
   name: api-service
   annotations:
     argocd-image-updater.argoproj.io/image-list: app=ghcr.io/myorg/api-service
-    argocd-image-updater.argoproj.io/app.update-strategy: latest
+    argocd-image-updater.argoproj.io/app.update-strategy: newest-build
     argocd-image-updater.argoproj.io/app.allow-tags: regexp:^[a-f0-9]{7}$
     argocd-image-updater.argoproj.io/write-back-method: git
 ```
@@ -378,7 +391,7 @@ Protect the deployment repository token:
 # Use a GitHub App token instead of a PAT for better security
 - name: Generate token
   id: generate-token
-  uses: actions/create-github-app-token@v1
+  uses: actions/create-github-app-token@v2
   with:
     app-id: ${{ secrets.APP_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
