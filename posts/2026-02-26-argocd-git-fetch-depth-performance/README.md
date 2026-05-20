@@ -8,7 +8,7 @@ Description: Learn how to configure Git fetch depth in ArgoCD to speed up reposi
 
 ---
 
-When ArgoCD clones a Git repository, it fetches the entire commit history by default. For repositories with thousands of commits and years of history, this means downloading megabytes or gigabytes of data that ArgoCD never actually uses. ArgoCD only needs the manifests at a specific revision, not the entire history of how those manifests evolved over time.
+When ArgoCD clones a Git repository, it performs a full clone by default unless the repository is configured with a clone depth. For repositories with thousands of commits and years of history, this means downloading megabytes or gigabytes of data that ArgoCD usually never needs for manifest generation. ArgoCD needs the manifests at a specific revision, not the entire history of how those manifests evolved over time.
 
 Configuring a shallow fetch depth tells Git to only download a limited number of recent commits. This reduces clone time, network bandwidth, and disk usage on the repo server, especially for large or long-lived repositories.
 
@@ -16,7 +16,7 @@ Configuring a shallow fetch depth tells Git to only download a limited number of
 
 Consider a repository with 10,000 commits over 5 years. Every file ever added, modified, or deleted is stored in the Git history. When ArgoCD performs a full clone:
 
-- It downloads all 10,000 commits with their full diffs
+- It downloads the objects needed for the repository's full commit history
 - It stores the complete object database on disk
 - It transfers far more data than needed over the network
 - The clone operation can take minutes on large repos
@@ -38,67 +38,30 @@ flowchart LR
 
 ## Configuring Fetch Depth in ArgoCD
 
-ArgoCD does not have a built-in flag specifically for fetch depth in its Application spec. However, you can configure Git behavior at the repo server level through environment variables and Git configuration.
+ArgoCD does not have a built-in flag specifically for fetch depth in its Application spec. Configure shallow cloning on the repository entry instead.
 
-Set the GIT_DEPTH environment variable on the repo server:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-      - name: argocd-repo-server
-        env:
-        # Enable shallow clones
-        - name: ARGOCD_GIT_SHALLOW_CLONE
-          value: "true"
-```
-
-For more explicit control, configure Git defaults:
+If you manage repositories declaratively, add the `depth` repository option to the ArgoCD repository Secret:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-repo-server-gitconfig
+  name: my-repo
   namespace: argocd
-data:
-  gitconfig: |
-    [clone]
-      defaultRemoteName = origin
-    [fetch]
-      # Configure default fetch behavior
-      prune = true
-    [advice]
-      detachedHead = false
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/example/platform-manifests.git
+  # Enable shallow clones
+  depth: "1"
+type: Opaque
 ```
 
-Mount this into the repo server:
+If you add repositories with the ArgoCD CLI, use `--depth`:
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-      - name: argocd-repo-server
-        volumeMounts:
-        - name: gitconfig
-          mountPath: /home/argocd/.gitconfig
-          subPath: gitconfig
-      volumes:
-      - name: gitconfig
-        configMap:
-          name: argocd-repo-server-gitconfig
+```bash
+argocd repo add https://github.com/example/platform-manifests.git --depth 1
 ```
 
 ## Using Helm Values for Fetch Depth Configuration
@@ -108,20 +71,12 @@ If you manage ArgoCD via Helm:
 ```yaml
 # values.yaml
 
-repoServer:
-  env:
-    - name: ARGOCD_GIT_SHALLOW_CLONE
-      value: "true"
-
-  volumes:
-    - name: gitconfig
-      configMap:
-        name: argocd-repo-server-gitconfig
-
-  volumeMounts:
-    - name: gitconfig
-      mountPath: /home/argocd/.gitconfig
-      subPath: gitconfig
+configs:
+  repositories:
+    platform-manifests:
+      type: git
+      url: https://github.com/example/platform-manifests.git
+      depth: "1"
 ```
 
 ## Understanding Fetch Depth Trade-offs
@@ -132,19 +87,19 @@ Shallow clones have trade-offs you need to understand before enabling them unive
 - Dramatically faster initial clones
 - Lower network bandwidth usage
 - Less disk space on the repo server
-- Faster reconciliation cycles
+- Faster reconciliation cycles when Git clone or fetch time is a bottleneck
 
 **Limitations:**
-- Cannot resolve Git tags that reference old commits
-- Some diff operations may fail if the target commit is outside the shallow depth
-- Tracking specific commit SHAs older than the depth will fail
+- Only the shallow history is available in the local repository clone
+- Manual inspection and Git operations inside the cached clone cannot see commits outside the shallow history
+- Workflows that depend on local Git history may need a larger depth or a full clone
 
 ### When Shallow Clones Work Well
 
 Shallow clones work perfectly when your ArgoCD applications track:
 - A branch HEAD (main, develop, staging)
 - Recent tags
-- Recent commit SHAs
+- Recent commit SHAs or fully qualified refs
 
 ```yaml
 # These work fine with shallow clones
@@ -159,13 +114,13 @@ spec:
 
 ### When Shallow Clones Cause Problems
 
-Shallow clones can fail when applications track:
-- Old commit SHAs that fall outside the depth
-- Tags pointing to old commits
-- Semantic version constraints that resolve to old tags
+Shallow clones can fail when applications require:
+- Revisions that require history outside the configured depth
+- Workflows that inspect older commits in the cached clone
+- Tools that expect a complete Git history during manifest generation
 
 ```yaml
-# These might fail with depth=1
+# These might need a larger depth or a full clone
 spec:
   source:
     targetRevision: abc123def  # Old commit SHA
@@ -179,15 +134,18 @@ For applications that might reference slightly older commits, use a depth greate
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-repo-server-gitconfig
+  name: my-repo
   namespace: argocd
-data:
-  gitconfig: |
-    [fetch]
-      # Fetch the last 10 commits
-      depth = 10
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/example/platform-manifests.git
+  # Fetch with a depth of 10
+  depth: "10"
+type: Opaque
 ```
 
 A depth of 10 to 50 covers most use cases while still providing significant performance improvement over full clones.
@@ -204,7 +162,7 @@ metadata:
   namespace: argocd
 data:
   # Keep the repo cache for 24 hours
-  reposerver.default.cache.expiration: "24h"
+  reposerver.repo.cache.expiration: "24h0m0s"
 ```
 
 With persistent caching (PVC-backed storage), the repo server retains its local clones across restarts:
@@ -248,12 +206,14 @@ Before and after configuring fetch depth, measure the impact:
 ```promql
 # Git request duration - should decrease with shallow clones
 histogram_quantile(0.99,
-  rate(argocd_git_request_duration_seconds_bucket[10m])
+  sum by (le) (
+    rate(argocd_git_request_duration_seconds_bucket[10m])
+  )
 )
 
 # Average Git fetch time
-rate(argocd_git_request_duration_seconds_sum{request_type="fetch"}[5m])
-  / rate(argocd_git_request_duration_seconds_count{request_type="fetch"}[5m])
+sum(rate(argocd_git_request_duration_seconds_sum{request_type="fetch"}[5m]))
+  / sum(rate(argocd_git_request_duration_seconds_count{request_type="fetch"}[5m]))
 ```
 
 Check disk usage on the repo server:
@@ -274,9 +234,8 @@ No need to configure fetch depth. The default full clone works fine.
 **Medium teams, 50-200 applications, mixed repository sizes:**
 
 ```yaml
-env:
-  - name: ARGOCD_GIT_SHALLOW_CLONE
-    value: "true"
+stringData:
+  depth: "1"
 ```
 
 Shallow cloning provides noticeable improvement with minimal risk.
@@ -292,7 +251,7 @@ Use a moderate depth (10-50) instead of depth 1. Monitor for fetch failures and 
 
 **"fatal: couldn't find remote ref" errors:**
 
-The target revision is outside the shallow depth. Increase the depth or switch to tracking a branch instead of a specific commit:
+ArgoCD cannot resolve the target revision from the remote repository. Verify the revision exists and use a fully qualified ref when branch and tag names may be ambiguous:
 
 ```bash
 # Check if the commit exists in the shallow clone
@@ -302,7 +261,7 @@ kubectl exec -n argocd deployment/argocd-repo-server -- \
 
 **Repository size not decreasing:**
 
-The repo server might be converting shallow clones to full clones during fetch operations. Check the Git configuration:
+Check whether the cached repository is shallow:
 
 ```bash
 kubectl exec -n argocd deployment/argocd-repo-server -- \
