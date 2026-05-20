@@ -8,15 +8,15 @@ Description: Learn how to configure ArgoCD to track Git tags for controlled prod
 
 ---
 
-Tracking a Git tag in ArgoCD is one of the most reliable patterns for production deployments. Unlike branch tracking, which continuously follows the latest commits, tag tracking locks your application to a specific, immutable point in your Git history. This gives you explicit control over what is deployed and makes rollbacks trivial.
+Tracking a Git tag in ArgoCD is one of the most reliable patterns for production deployments. Unlike branch tracking, which continuously follows the latest commits, tag tracking locks your application to a specific point in your Git history when tags are treated as immutable. This gives you explicit control over what is deployed and makes rollbacks trivial.
 
-In this guide, we will cover how to set up tag-based tracking, how to use tag patterns with glob expressions, and how to build a promotion workflow around tags.
+In this guide, we will cover how to set up tag-based tracking, how ArgoCD handles tag ranges, and how to build a promotion workflow around tags.
 
 ## Why Track Tags Instead of Branches
 
 When you track a branch, every push to that branch can trigger a sync. That is great for development but risky for production. Tags provide several advantages:
 
-- **Immutability**: Once a tag is created, it points to a fixed commit. Your production state is deterministic.
+- **Immutability**: When tags are not moved after creation, they point to fixed commits. Your production state is deterministic.
 - **Auditability**: You can see exactly which version is deployed by looking at the tag name.
 - **Rollback simplicity**: Rolling back means changing the `targetRevision` to a previous tag.
 - **Release gating**: Deploying requires the deliberate act of creating a tag.
@@ -80,9 +80,9 @@ spec:
 
 ## Using Tag Glob Patterns
 
-ArgoCD does not natively support glob patterns in the `targetRevision` field for standard Application resources. However, ApplicationSets with the Git generator can detect new tags and create applications automatically.
+ArgoCD does not natively support glob patterns in the `targetRevision` field for standard Application resources. ApplicationSets with the Git generator generate applications from files or directories in a Git repository; they do not enumerate Git tags as generator input.
 
-That said, you can use a semver-based approach with Helm chart versions in source configurations, which we cover in our guide on [semantic versioning for tracking in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-semantic-versioning-tracking/view).
+That said, ArgoCD does support semantic version constraints for Git tags and Helm chart versions, which we cover in our guide on [semantic versioning for tracking in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-semantic-versioning-tracking/view).
 
 ## Tag-Based Promotion Workflow
 
@@ -149,7 +149,8 @@ name: Promote to Production
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'  # Matches v1.2.3 (no pre-release suffix)
+      - 'v[0-9]*.[0-9]*.[0-9]*'   # Matches release tags such as v1.2.3
+      - '!v[0-9]*.[0-9]*.[0-9]*-*' # Excludes pre-release suffixes such as v1.2.3-rc.1
 
 jobs:
   promote:
@@ -215,7 +216,7 @@ git push origin v1.6.0
 
 ## Handling Moved Tags
 
-In general, you should treat tags as immutable. However, if someone force-pushes a tag (moves it to a different commit), ArgoCD will detect this on its next poll and show the application as OutOfSync.
+In general, you should treat tags as immutable. However, if someone force-pushes a tag (moves it to a different commit), ArgoCD will detect the new meaning of the tag when it performs comparison or sync. If the rendered manifests differ, the application will become OutOfSync.
 
 This is considered bad practice. If you need to change what is deployed for a version, create a new tag (e.g., `v1.6.1`) rather than moving an existing tag.
 
