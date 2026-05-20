@@ -73,7 +73,7 @@ type: application
 version: 1.0.0
 dependencies:
   - name: teleport-cluster
-    version: "16.4.6"
+    version: "18.8.1"
     repository: "https://charts.releases.teleport.dev"
 ```
 
@@ -84,6 +84,7 @@ dependencies:
 teleport-cluster:
   # Cluster name must be a valid DNS name
   clusterName: teleport.example.com
+  kubeClusterName: platform-cluster
 
   # Authentication configuration
   authentication:
@@ -94,9 +95,13 @@ teleport-cluster:
   # Proxy service configuration
   proxyListenerMode: multiplex
 
-  # High availability
+  # Operator for managing Teleport resources as Kubernetes CRDs
+  operator:
+    enabled: true
+
+  # TLS/cert-manager configuration
   highAvailability:
-    replicaCount: 2
+    replicaCount: 1
     certManager:
       enabled: true
       issuerName: letsencrypt-prod
@@ -109,13 +114,17 @@ teleport-cluster:
     volumeSize: 50Gi
 
   # Ingress
+  service:
+    type: ClusterIP
+
   ingress:
     enabled: true
     spec:
       ingressClassName: nginx
-      annotations:
-        nginx.ingress.kubernetes.io/backend-protocol: HTTPS
-        nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+  annotations:
+    ingress:
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+      nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 
   # Resources
   resources:
@@ -125,39 +134,36 @@ teleport-cluster:
     limits:
       memory: 1Gi
 
-  # Session recording to S3
+  # Session recording
   sessionRecording: node-sync
   chartMode: standalone
 
   # Teleport configuration
-  teleportConfig:
-    teleport:
-      log:
-        severity: INFO
-        format:
-          output: json
-    auth_service:
-      enabled: true
-      listen_addr: 0.0.0.0:3025
-      cluster_name: teleport.example.com
-      session_recording: node-sync
-      authentication:
-        type: github
-        second_factor: "on"
-        webauthn:
-          rp_id: teleport.example.com
-    proxy_service:
-      enabled: true
-      listen_addr: 0.0.0.0:3023
-      web_listen_addr: 0.0.0.0:3080
-      tunnel_listen_addr: 0.0.0.0:3024
-      public_addr: teleport.example.com:443
-      https_keypairs: []
-      kube_listen_addr: 0.0.0.0:3026
-    kubernetes_service:
-      enabled: true
-      listen_addr: 0.0.0.0:3027
+  auth:
+    teleportConfig:
+      teleport:
+        log:
+          severity: INFO
+          format:
+            output: json
+      auth_service:
+        authentication:
+          type: github
+          second_factor: "on"
+          webauthn:
+            rp_id: teleport.example.com
+  proxy:
+    teleportConfig:
+      teleport:
+        log:
+          severity: INFO
+          format:
+            output: json
+      proxy_service:
+        https_keypairs: []
 ```
+
+For multi-replica Auth Service deployments, use one of the chart's HA backend modes such as `aws`, `gcp`, or `azure`. Standalone mode with a single persistent volume is appropriate for a simple single-replica deployment.
 
 ### ArgoCD Application
 
@@ -204,17 +210,28 @@ spec:
 
 ## Configuring GitHub SSO
 
-Create a GitHub OAuth application and configure the connector.
+Create a GitHub OAuth application and configure the connector. The connector and roles below use the Teleport Kubernetes Operator CRDs enabled in the chart values, and should be applied in the Teleport namespace where the operator watches resources.
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: teleport-github-connector
+  annotations:
+    resources.teleport.dev/allow-lookup-from-cr: "*"
+stringData:
+  githubSecret: your-github-client-secret
+```
 
 ```yaml
 # access/teleport-agents/github-connector.yaml
-kind: github
-version: v3
+apiVersion: resources.teleport.dev/v3
+kind: TeleportGithubConnector
 metadata:
   name: github
 spec:
   client_id: your-github-client-id
-  client_secret: your-github-client-secret  # Use a Secret reference
+  client_secret: secret://teleport-github-connector/githubSecret
   display: GitHub
   redirect_url: https://teleport.example.com/v1/webapi/github/callback
   teams_to_roles:
@@ -236,8 +253,8 @@ Manage Teleport roles as Kubernetes custom resources through ArgoCD.
 
 ```yaml
 # access/teleport-roles/developer-role.yaml
-kind: role
-version: v7
+apiVersion: resources.teleport.dev/v5
+kind: TeleportRole
 metadata:
   name: developer
 spec:
@@ -275,7 +292,7 @@ spec:
 
   options:
     # Force MFA for sensitive actions
-    require_session_mfa: true
+    require_session_mfa: yes
     # Session recording
     enhanced_recording:
       - command
@@ -284,8 +301,8 @@ spec:
 
 ```yaml
 # access/teleport-roles/sre-role.yaml
-kind: role
-version: v7
+apiVersion: resources.teleport.dev/v5
+kind: TeleportRole
 metadata:
   name: sre
 spec:
@@ -303,7 +320,7 @@ spec:
     max_session_ttl: 4h
 
   options:
-    require_session_mfa: true
+    require_session_mfa: yes
     enhanced_recording:
       - command
       - network
@@ -327,14 +344,15 @@ spec:
   source:
     repoURL: https://charts.releases.teleport.dev
     chart: teleport-kube-agent
-    targetRevision: "16.4.6"
+    targetRevision: "18.8.1"
     helm:
       values: |
         proxyAddr: teleport.example.com:443
-        roles: kube,app,discovery
+        roles: kube,discovery
         joinParams:
           method: kubernetes
           tokenName: kube-agent-token
+        teleportClusterName: teleport.example.com
         kubeClusterName: production-cluster
         labels:
           environment: production
