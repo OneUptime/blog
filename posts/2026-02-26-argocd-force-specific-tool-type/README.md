@@ -32,8 +32,6 @@ argocd app create my-app \
   --path apps/my-app \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace my-app \
-  --config-management-plugin ""  # Clear any plugin
-  # Kustomize-specific parameters force Kustomize detection
   --kustomize-image nginx=nginx:1.25
 
 # Force Helm
@@ -171,7 +169,7 @@ When you explicitly specify a tool type in the Application spec, it completely o
 | `source.plugin` | Named Plugin | Skipped |
 | None of the above | Auto-detected | Used |
 
-If you specify multiple tool types (which is technically possible but incorrect), ArgoCD's behavior is undefined and should be avoided.
+If you specify multiple tool types in the same source (which is technically possible but incorrect), ArgoCD returns an error instead of choosing one, so it should be avoided.
 
 ## Common Scenarios
 
@@ -272,7 +270,7 @@ When you force a tool type, ArgoCD does not validate that the source directory a
 
 - Forcing Helm on a directory without `Chart.yaml`: Helm will fail with "Chart.yaml not found"
 - Forcing Kustomize on a directory without `kustomization.yaml`: Kustomize will fail with "unable to find kustomization"
-- Forcing Directory on a Helm chart: ArgoCD will try to apply the Helm templates as raw YAML, which will fail because template variables are not rendered
+- Forcing Directory on a Helm chart: ArgoCD will process matching files as plain manifests instead of rendering Helm templates, which will fail if Helm template files are included
 
 Make sure the directory actually supports the tool you are forcing.
 
