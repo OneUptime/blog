@@ -36,22 +36,23 @@ When Git LFS is properly configured, the `git checkout` and `git pull` commands 
 
 ## Enabling Git LFS in ArgoCD
 
-ArgoCD supports Git LFS through the `--enable-git-lfs` flag on the repo server. Enable it by modifying the repo server deployment:
+ArgoCD supports Git LFS as a per-repository setting. Enable it by setting `enableLfs: "true"` on the repository secret:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Secret
 metadata:
-  name: argocd-repo-server
+  name: repo-with-lfs
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-      - name: argocd-repo-server
-        command:
-        - argocd-repo-server
-        - --enable-git-lfs
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/myorg/myrepo.git
+  username: x-access-token
+  password: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  enableLfs: "true"
 ```
 
 If you installed ArgoCD with Helm, enable LFS in your values file:
@@ -59,9 +60,14 @@ If you installed ArgoCD with Helm, enable LFS in your values file:
 ```yaml
 # values.yaml
 
-repoServer:
-  extraArgs:
-    - --enable-git-lfs
+configs:
+  repositories:
+    repo-with-lfs:
+      type: git
+      url: https://github.com/myorg/myrepo.git
+      username: x-access-token
+      password: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+      enableLfs: "true"
 ```
 
 Apply the change:
@@ -78,22 +84,25 @@ Git LFS uses a separate authentication mechanism from Git itself. When your LFS 
 
 For HTTPS repositories, the credentials stored in ArgoCD's repository secrets are automatically passed to the LFS client. No additional configuration is needed.
 
-For SSH repositories, LFS still uses HTTPS for file transfers. You might need to configure additional credentials:
+For SSH repositories, enable LFS on the repository secret the same way. If your Git host exposes LFS through a separate HTTPS endpoint, make sure that endpoint can authenticate with the credentials available to the repo server:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-repo-server-gitconfig
+  name: ssh-repo-with-lfs
   namespace: argocd
-data:
-  gitconfig: |
-    [lfs]
-      # Configure LFS to use the same authentication as Git
-      locksverify = false
-
-    [lfs "https://github.com/myorg/myrepo.git/info/lfs"]
-      access = basic
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: ssh://git@github.com/myorg/myrepo.git
+  sshPrivateKey: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  enableLfs: "true"
 ```
 
 ## Handling LFS with Private Repositories
@@ -114,15 +123,15 @@ stringData:
   url: https://github.com/myorg/myrepo.git
   username: x-access-token
   password: ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  enableLfs: "true"
 ```
 
-The same credentials are used for both Git operations and LFS operations when the LFS server is on the same host. If your LFS objects are hosted on a different server (like a custom LFS server), configure the LFS URL in your gitconfig:
+The same credentials are used for both Git operations and LFS operations when the LFS server is on the same host. If your LFS objects are hosted on a different server (like a custom LFS server), configure the LFS URL in `.lfsconfig`:
 
-```yaml
-data:
-  gitconfig: |
-    [lfs]
-      url = https://lfs.internal.example.com/myorg/myrepo
+```ini
+# .lfsconfig
+[lfs]
+  url = https://lfs.internal.example.com/myorg/myrepo/info/lfs
 ```
 
 ## Storage Considerations for LFS
@@ -140,9 +149,6 @@ spec:
     spec:
       containers:
       - name: argocd-repo-server
-        command:
-        - argocd-repo-server
-        - --enable-git-lfs
         resources:
           requests:
             memory: 512Mi
@@ -202,17 +208,11 @@ The best practice is to separate your Kubernetes manifests from large binary fil
 
 If your repository tracks many large files with LFS but only a few are needed for manifest generation, you can configure selective LFS fetching:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-repo-server-gitconfig
-  namespace: argocd
-data:
-  gitconfig: |
-    [lfs]
-      fetchinclude = "k8s/**,manifests/**"
-      fetchexclude = "models/**,data/**"
+```ini
+# .lfsconfig
+[lfs]
+  fetchinclude = "k8s/**,manifests/**"
+  fetchexclude = "models/**,data/**"
 ```
 
 This tells Git LFS to only download files matching the include patterns and skip everything else. This can dramatically reduce download time and disk usage.
@@ -227,22 +227,16 @@ This usually means LFS is not properly installed in the repo server container. V
 kubectl exec -n argocd deployment/argocd-repo-server -- git lfs version
 ```
 
-If the command fails, the repo server image might not include Git LFS. You may need a custom image or an init container that installs it:
+If the command fails, the repo server image might not include Git LFS. The official ArgoCD image includes `git-lfs`; if you use a custom repo server image, build `git-lfs` into that image:
 
-```yaml
-initContainers:
-- name: install-git-lfs
-  image: alpine/git
-  command:
-  - sh
-  - -c
-  - |
-    apk add git-lfs
-    git lfs install --system
-  volumeMounts:
-  - name: gitconfig
-    mountPath: /etc/gitconfig
-    subPath: gitconfig
+```dockerfile
+FROM quay.io/argoproj/argocd:v3.4.1
+USER root
+RUN apt-get update && \
+    apt-get install --no-install-recommends -y git-lfs && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+USER 999
 ```
 
 **"Repository or object not found" LFS errors:**
