@@ -18,13 +18,24 @@ Red Hat packages ArgoCD as the OpenShift GitOps operator. It is supported by Red
 
 ```bash
 # Install OpenShift GitOps operator via the CLI
+oc create namespace openshift-gitops-operator
+
+oc apply -f - <<EOF
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-gitops-operator
+  namespace: openshift-gitops-operator
+spec:
+  upgradeStrategy: Default
+EOF
 
 oc apply -f - <<EOF
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: openshift-gitops-operator
-  namespace: openshift-operators
+  namespace: openshift-gitops-operator
 spec:
   channel: latest
   installPlanApproval: Automatic
@@ -33,11 +44,8 @@ spec:
   sourceNamespace: openshift-marketplace
 EOF
 
-# Wait for the operator to be ready
-oc wait --for=condition=Ready pods -l control-plane=gitops-operator -n openshift-operators --timeout=300s
-
-# The operator creates an ArgoCD instance in openshift-gitops namespace
-oc get pods -n openshift-gitops
+# The operator creates an ArgoCD instance in the openshift-gitops namespace
+oc wait --for=condition=Ready pods --all -n openshift-gitops --timeout=300s
 ```
 
 ### Path 2: Upstream ArgoCD
@@ -66,8 +74,10 @@ If using upstream ArgoCD, you may need to grant SCCs to the service accounts.
 ```bash
 # Grant the anyuid SCC to ArgoCD service accounts (if needed)
 oc adm policy add-scc-to-user anyuid -z argocd-application-controller -n argocd
+oc adm policy add-scc-to-user anyuid -z argocd-applicationset-controller -n argocd
 oc adm policy add-scc-to-user anyuid -z argocd-server -n argocd
 oc adm policy add-scc-to-user anyuid -z argocd-dex-server -n argocd
+oc adm policy add-scc-to-user anyuid -z argocd-notifications-controller -n argocd
 oc adm policy add-scc-to-user anyuid -z argocd-redis -n argocd
 oc adm policy add-scc-to-user anyuid -z argocd-repo-server -n argocd
 ```
@@ -103,9 +113,11 @@ volumes:
   - secret
 users:
   - system:serviceaccount:argocd:argocd-application-controller
+  - system:serviceaccount:argocd:argocd-applicationset-controller
   - system:serviceaccount:argocd:argocd-server
   - system:serviceaccount:argocd:argocd-repo-server
   - system:serviceaccount:argocd:argocd-dex-server
+  - system:serviceaccount:argocd:argocd-notifications-controller
   - system:serviceaccount:argocd:argocd-redis
 ```
 
@@ -165,8 +177,10 @@ metadata:
   name: openshift-gitops
   namespace: openshift-gitops
 spec:
-  dex:
-    openShiftOAuth: true
+  sso:
+    provider: dex
+    dex:
+      openShiftOAuth: true
   rbac:
     defaultPolicy: 'role:readonly'
     policy: |
@@ -325,7 +339,7 @@ spec:
 
 ## Cluster-Scoped Resource Management
 
-OpenShift restricts who can manage cluster-scoped resources. The default ArgoCD instance from the GitOps operator can only manage resources in its own namespace. To manage cluster-scoped resources, grant additional permissions.
+OpenShift restricts who can manage cluster-scoped resources. The default ArgoCD instance from the GitOps operator includes permissions for certain cluster-scoped resources, while user-defined ArgoCD instances can manage resources only in their own namespace by default. To manage additional cluster-scoped resources, grant additional permissions.
 
 ```bash
 # Grant the ArgoCD controller cluster-admin (use carefully)
