@@ -74,6 +74,9 @@ spec:
     matchLabels:
       app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: myapp
@@ -87,7 +90,7 @@ spec:
 
 ### Option B: Pin to Specific Architecture
 
-If some images only support one architecture, use node affinity to ensure pods are scheduled on compatible nodes.
+If some images only support one architecture, use a node selector to ensure pods are scheduled on compatible nodes.
 
 ```yaml
 apiVersion: apps/v1
@@ -100,6 +103,9 @@ spec:
     matchLabels:
       app: legacy-app
   template:
+    metadata:
+      labels:
+        app: legacy-app
     spec:
       # Only schedule on AMD64 nodes
       nodeSelector:
@@ -111,7 +117,7 @@ spec:
 
 ### Option C: Use Topology Spread with Architecture Awareness
 
-For high availability across architectures, use topology spread constraints.
+To prefer spreading replicas across architectures, use topology spread constraints.
 
 ```yaml
 apiVersion: apps/v1
@@ -124,6 +130,9 @@ spec:
     matchLabels:
       app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       topologySpreadConstraints:
         - maxSkew: 1
@@ -157,7 +166,7 @@ spec:
         image:
           repository: myregistry.com/myapp
           tag: v1.0.0
-        # Use node affinity for mixed clusters
+        # Use a node selector for mixed clusters
         nodeSelector:
           kubernetes.io/arch: amd64
   destination:
@@ -194,26 +203,29 @@ spec:
 
 ## Step 4: ArgoCD Image Updater with Multi-Arch
 
-If you use the ArgoCD Image Updater to automatically update image tags, it works with multi-arch images without any special configuration. The Image Updater checks for new tags and updates the Git repository - it does not care about the image architecture.
+If you use the ArgoCD Image Updater to automatically update image tags, it can work with multi-arch images. For the `semver` strategy, Image Updater checks tags and updates your Application or Git repository, so the important requirement is still that your CI pipeline builds multi-arch images for every tag.
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  name: myapp
+  name: myapp-image-updater
   namespace: argocd
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp
-    argocd-image-updater.argoproj.io/myapp.update-strategy: semver
 spec:
-  # ...
+  applicationRefs:
+    - namePattern: myapp
+      images:
+        - alias: myapp
+          imageName: myregistry.com/myapp
+          commonUpdateSettings:
+            updateStrategy: semver
 ```
 
-However, make sure your CI pipeline builds multi-arch images for every tag. If a new tag only has an AMD64 image, ARM64 nodes will fail to pull it.
+If you use an Image Updater strategy that inspects image metadata, such as `newest-build` or `digest`, configure the allowed platforms when Image Updater runs on a different architecture than your workload. If a new tag only has an AMD64 image, ARM64 nodes will fail to pull it.
 
 ## Step 5: CI Pipeline for Multi-Arch Images
 
-Here is a GitHub Actions workflow that builds multi-arch images and triggers ArgoCD sync.
+Here is a GitHub Actions workflow that builds multi-arch images for ArgoCD to deploy.
 
 ```yaml
 name: Build and Deploy
