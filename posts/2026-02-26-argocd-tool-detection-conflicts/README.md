@@ -8,11 +8,11 @@ Description: Learn how to identify and resolve tool detection conflicts in ArgoC
 
 ---
 
-Tool detection conflicts happen when an ArgoCD application's source directory contains marker files for more than one tool. A directory with both `Chart.yaml` and `kustomization.yaml` is the classic example, but conflicts can also involve Jsonnet files, CMP plugin discovery patterns, or accidental marker files left from migrations. When detection conflicts occur, ArgoCD silently picks one tool based on its priority order, which might not be what you intended. This guide helps you identify, understand, and resolve these conflicts.
+Tool detection conflicts happen when an ArgoCD application's source directory contains marker files for more than one tool. A directory with both `Chart.yaml` and `kustomization.yaml` is the classic example, but conflicts can also involve Jsonnet files, CMP plugin discovery patterns, or accidental marker files left from migrations. When detection conflicts occur, ArgoCD may select a source type you did not intend. This guide helps you identify, understand, and resolve these conflicts.
 
 ## Identifying Conflicts
 
-The first sign of a tool detection conflict is usually an unexpected error. For example, you expect Kustomize to render your manifests, but ArgoCD tries to use Helm instead because a `Chart.yaml` happens to exist in the same directory.
+The first sign of a tool detection conflict is usually an unexpected error. For example, you expect Helm to render your chart, but ArgoCD detects Kustomize instead because a `kustomization.yaml` happens to exist in the same directory.
 
 ### Check What ArgoCD Detected
 
@@ -43,7 +43,7 @@ ls -la Chart.yaml 2>/dev/null && echo "HELM: Chart.yaml found"
 # Kustomize markers
 ls -la kustomization.yaml kustomization.yml Kustomization 2>/dev/null && echo "KUSTOMIZE: kustomization file found"
 
-# Jsonnet markers
+# Jsonnet files
 find . -maxdepth 2 -name "*.jsonnet" -o -name "*.libsonnet" 2>/dev/null | head -5 && echo "JSONNET: jsonnet files found"
 
 # Check for CMP plugin marker files
@@ -62,8 +62,8 @@ This is the most common conflict. It happens when:
 
 ```text
 my-app/
-  Chart.yaml            # ArgoCD picks Helm (higher priority)
-  kustomization.yaml    # Kustomize is ignored
+  Chart.yaml            # Helm marker
+  kustomization.yaml    # Kustomize marker
   values.yaml
   overlays/
 ```
@@ -98,7 +98,7 @@ spec:
 
 ### Conflict 2: Kustomize + Jsonnet
 
-When both `kustomization.yaml` and `.jsonnet` files exist, Kustomize wins:
+Jsonnet files are handled as part of the Directory source type. When both `kustomization.yaml` and `.jsonnet` files exist, ArgoCD detects Kustomize because `kustomization.yaml` is a built-in tool marker:
 
 ```text
 monitoring/
@@ -110,21 +110,21 @@ monitoring/
 
 **Resolution:**
 
-If you want Jsonnet, remove or rename the kustomization file. If you want Kustomize, ensure the Jsonnet files are not in the same directory or use the `directory.exclude` pattern.
+If you want Jsonnet, remove or rename the kustomization file and use a Directory source. If you want Kustomize, ensure the Jsonnet files are not meant to be rendered by ArgoCD from the same source directory.
 
 ### Conflict 3: Built-in Tool + CMP Plugin
 
-CMP plugins are always checked after built-in tools. If your plugin matches a directory that also has `Chart.yaml`:
+CMP plugin discovery can match a directory that also has built-in tool markers. If your plugin matches a directory that also has `Chart.yaml`:
 
 ```text
 my-app/
-  Chart.yaml          # Helm wins over CMP plugin
-  *.cue               # CUE plugin discovery ignored
+  Chart.yaml          # Helm marker
+  *.cue               # CUE plugin discovery marker
 ```
 
 **Resolution:**
 
-Use explicit plugin specification:
+Use explicit source configuration for the tool you intend. For example, use explicit plugin specification when the plugin should render the application:
 
 ```yaml
 spec:
@@ -274,4 +274,4 @@ After debugging, remember to set the log level back to `info`.
 
 ## Summary
 
-Tool detection conflicts arise when multiple tool marker files coexist in the same source directory. ArgoCD resolves them silently using its priority order (Helm > Kustomize > Jsonnet > CMP > Directory), which might not match your intent. The best prevention is to structure repositories with one tool per directory and always specify the tool type explicitly in Application specs. When conflicts do occur, either remove the conflicting marker file, use explicit tool specification, or restructure the directory layout.
+Tool detection conflicts arise when multiple tool marker files coexist in the same source directory. ArgoCD resolves explicit source configuration first, then uses implicit detection for configured CMP plugins, Helm, Kustomize, or a plain Directory source. The best prevention is to structure repositories with one tool per directory and always specify the tool type explicitly in Application specs. When conflicts do occur, either remove the conflicting marker file, use explicit tool specification, or restructure the directory layout.
