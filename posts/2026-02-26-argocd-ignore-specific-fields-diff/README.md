@@ -26,14 +26,14 @@ The output shows the differences in a unified diff format:
 ===== apps/Deployment my-namespace/my-app ======
   spec:
     replicas: 3
-+   revisionHistoryLimit: 10
+-   revisionHistoryLimit: 10
     template:
       metadata:
         annotations:
-+         sidecar.istio.io/status: '{"version":"..."}'
+-         sidecar.istio.io/status: '{"version":"..."}'
 ```
 
-Lines with `+` indicate fields present in the live state but not in Git. Lines with `-` indicate fields in Git but not in the live state.
+Lines with `-` indicate fields present in the live state but not in Git. Lines with `+` indicate fields in Git but not in the live state.
 
 ## Ignoring metadata.generation
 
@@ -90,7 +90,7 @@ ignoreDifferences:
     kind: Deployment
     jqPathExpressions:
       # Ignore all annotations from a specific controller
-      - '.metadata.annotations | to_entries[] | select(.key | startswith("my-controller.example.com/"))'
+      - '.metadata.annotations[((.metadata.annotations // {}) | keys[] | select(startswith("my-controller.example.com/")))]'
 
       # Ignore a specific annotation
       - '.metadata.annotations["my-controller.example.com/last-reconcile"]'
@@ -138,7 +138,7 @@ ignoreDifferences:
       - '.spec.template.spec.initContainers[] | select(.name == "vault-agent-init")'
       - '.spec.template.spec.containers[] | select(.name == "vault-agent")'
       - '.spec.template.spec.volumes[] | select(.name | startswith("vault"))'
-      - '.spec.template.metadata.annotations | to_entries[] | select(.key | startswith("vault.hashicorp.com/"))'
+      - '.spec.template.metadata.annotations[((.spec.template.metadata.annotations // {}) | keys[] | select(startswith("vault.hashicorp.com/")))]'
 ```
 
 ### Linkerd Sidecar Injection
@@ -150,7 +150,7 @@ ignoreDifferences:
     jqPathExpressions:
       - '.spec.template.spec.containers[] | select(.name == "linkerd-proxy")'
       - '.spec.template.spec.initContainers[] | select(.name | startswith("linkerd"))'
-      - '.spec.template.metadata.annotations | to_entries[] | select(.key | startswith("linkerd.io/"))'
+      - '.spec.template.metadata.annotations[((.spec.template.metadata.annotations // {}) | keys[] | select(startswith("linkerd.io/")))]'
 ```
 
 ## Ignoring Controller-Managed Fields
@@ -293,8 +293,8 @@ metadata:
 data:
   # Global ignores for all resource types
   resource.customizations.ignoreDifferences.all: |
-    managedFields:
-      - manager: kube-controller-manager
+    managedFieldsManagers:
+      - kube-controller-manager
     jsonPointers:
       - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
 
