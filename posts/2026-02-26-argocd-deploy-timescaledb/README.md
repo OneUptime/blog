@@ -92,10 +92,6 @@ data:
     timescaledb.max_background_workers = 16
     timescaledb.last_tuned = '2024-01-15T00:00:00Z'
 
-    # Compression settings
-    timescaledb.compress_orderby = 'time DESC'
-    timescaledb.compress_segmentby = 'device_id'
-
     # Parallel query
     max_parallel_workers_per_gather = 4
     max_parallel_workers = 8
@@ -115,9 +111,9 @@ data:
 
   pg_hba.conf: |
     local   all   all                 trust
-    host    all   all   0.0.0.0/0     md5
-    host    all   all   ::/0          md5
-    host    replication  replicator  0.0.0.0/0  md5
+    host    all   all   0.0.0.0/0     scram-sha-256
+    host    all   all   ::/0          scram-sha-256
+    host    replication  replicator  0.0.0.0/0  scram-sha-256
 ```
 
 ## Step 2: Deploy TimescaleDB StatefulSet
@@ -147,15 +143,21 @@ spec:
       initContainers:
         - name: init-chmod
           image: busybox:1.36
-          command: ['sh', '-c', 'chown -R 999:999 /var/lib/postgresql/data /var/lib/postgresql/wal']
+          command: ['sh', '-c', 'chown -R 999:999 /pgdata /pgwal']
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /pgdata
             - name: wal
-              mountPath: /var/lib/postgresql/wal
+              mountPath: /pgwal
       containers:
         - name: timescaledb
-          image: timescale/timescaledb-ha:pg16-ts2.14.1
+          image: timescale/timescaledb-ha:pg16
+          args:
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
+            - -c
+            - hba_file=/etc/postgresql/pg_hba.conf
           ports:
             - containerPort: 5432
               name: postgresql
@@ -166,9 +168,9 @@ spec:
                   name: timescaledb-secret
                   key: POSTGRES_PASSWORD
             - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
+              value: /pgdata/pgdata
             - name: POSTGRES_INITDB_WALDIR
-              value: /var/lib/postgresql/wal/pg_wal
+              value: /pgwal/pg_wal
           readinessProbe:
             exec:
               command:
@@ -194,9 +196,9 @@ spec:
               memory: "32Gi"
           volumeMounts:
             - name: data
-              mountPath: /var/lib/postgresql/data
+              mountPath: /pgdata
             - name: wal
-              mountPath: /var/lib/postgresql/wal
+              mountPath: /pgwal
             - name: config
               mountPath: /etc/postgresql/postgresql.conf
               subPath: postgresql.conf
@@ -210,13 +212,13 @@ spec:
             - containerPort: 9187
               name: metrics
           env:
-            - name: DATA_SOURCE_NAME
-              value: "postgresql://postgres:$(POSTGRES_PASSWORD)@localhost:5432/postgres?sslmode=disable"
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: timescaledb-secret
                   key: POSTGRES_PASSWORD
+            - name: DATA_SOURCE_NAME
+              value: "postgresql://postgres:$(POSTGRES_PASSWORD)@localhost:5432/postgres?sslmode=disable"
           resources:
             requests:
               cpu: "100m"
@@ -278,6 +280,10 @@ spec:
               value: timescaledb
             - name: POSTGRESQL_PORT
               value: "5432"
+            - name: POSTGRESQL_USERNAME
+              value: postgres
+            - name: POSTGRESQL_DATABASE
+              value: metrics
             - name: POSTGRESQL_PASSWORD
               valueFrom:
                 secretKeyRef:
@@ -285,6 +291,8 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: PGBOUNCER_POOL_MODE
               value: transaction
+            - name: PGBOUNCER_DATABASE
+              value: metrics
             - name: PGBOUNCER_MAX_CLIENT_CONN
               value: "1000"
             - name: PGBOUNCER_DEFAULT_POOL_SIZE
@@ -307,7 +315,7 @@ spec:
 
 ## Step 4: Schema Initialization Hook
 
-Use an ArgoCD pre-sync hook to manage schema and policies:
+Use an ArgoCD post-sync hook to manage schema and policies after the database StatefulSet is healthy:
 
 ```yaml
 # base/schema-init.yaml
@@ -324,7 +332,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: init
-          image: timescale/timescaledb-ha:pg16-ts2.14.1
+          image: timescale/timescaledb-ha:pg16
           command:
             - psql
             - -h
@@ -371,9 +379,9 @@ data:
         tags        JSONB DEFAULT '{}'
     );
 
-    SELECT create_hypertable('device_metrics', 'time',
-        if_not_exists => TRUE,
-        chunk_time_interval => INTERVAL '1 day'
+    SELECT create_hypertable('device_metrics',
+        by_range('time', INTERVAL '1 day'),
+        if_not_exists => TRUE
     );
 
     -- Create continuous aggregate
@@ -414,6 +422,8 @@ data:
 
 ## Step 5: Backup CronJob
 
+Use a backup image that includes both the PostgreSQL client tools and the AWS CLI:
+
 ```yaml
 # base/backup/cronjob.yaml
 apiVersion: batch/v1
@@ -430,7 +440,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: timescale/timescaledb-ha:pg16-ts2.14.1
+              image: your-registry/postgres-awscli:pg16
               command:
                 - /bin/sh
                 - -c
