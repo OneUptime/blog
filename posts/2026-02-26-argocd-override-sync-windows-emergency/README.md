@@ -70,16 +70,18 @@ If `manualSync` is set to `false` (the strictest setting), you need to modify th
 argocd proj get production --output json > /tmp/project-backup.json
 
 # Update the sync window to allow manual syncs
-argocd proj windows update production 0 --manual-sync
+argocd proj windows enable-manual-sync production 0
 
 # Perform the emergency sync
 argocd app sync my-critical-app
 
 # Restore the original setting after the emergency
-argocd proj windows update production 0 --manual-sync=false
+argocd proj windows disable-manual-sync production 0
 ```
 
 ### Option 2: Add a temporary allow window
+
+This only helps when syncs are blocked because the project requires an active allow window. It will not bypass an active deny window, because deny windows take precedence over allow windows.
 
 ```bash
 # Add a temporary allow window that covers the current time
@@ -174,7 +176,7 @@ else
   WINDOW_COUNT=$(argocd proj windows list "$PROJECT" --output json | jq 'length')
 
   for i in $(seq 0 $((WINDOW_COUNT - 1))); do
-    argocd proj windows update "$PROJECT" "$i" --manual-sync 2>/dev/null || true
+    argocd proj windows enable-manual-sync "$PROJECT" "$i" 2>/dev/null || true
   done
 
   echo "Retrying sync..."
