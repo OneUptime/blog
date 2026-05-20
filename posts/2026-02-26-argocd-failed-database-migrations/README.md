@@ -132,7 +132,7 @@ containers:
       - |
         # Set lock timeout to prevent indefinite waiting
         export PGOPTIONS="-c lock_timeout=30s -c statement_timeout=300s"
-        ./migrate up
+        migrate -path ./migrations -database "$DATABASE_URL" up
 ```
 
 ### 4. Out of Memory
@@ -151,7 +151,8 @@ resources:
 The migration tool marks the database as "dirty" after a partial failure:
 
 ```bash
-# For golang-migrate, force a specific version
+# For golang-migrate, after cleaning up any partial changes from version 42,
+# force the last known-good version
 migrate -path ./migrations -database "$DATABASE_URL" force 41
 
 # Then re-run
@@ -186,22 +187,21 @@ spec:
               echo "=== Migration Recovery ==="
 
               # Check current migration state
-              CURRENT=$(./migrate version 2>&1)
-              DIRTY=$(./migrate version 2>&1 | grep -c "dirty")
+              CURRENT=$(migrate -path ./migrations -database "$DATABASE_URL" version 2>&1)
+              DIRTY=$(echo "$CURRENT" | grep -c "dirty")
 
               echo "Current version: $CURRENT"
               echo "Dirty state: $DIRTY"
 
               if [ "$DIRTY" -gt "0" ]; then
-                # Extract the version number from dirty state
-                VERSION=$(echo "$CURRENT" | grep -oP '\d+')
-                echo "Forcing clean state at version $VERSION..."
-                ./migrate force $VERSION
-                echo "State cleaned. Manual re-run needed."
+                VERSION=$(echo "$CURRENT" | grep -Eo '[0-9]+' | head -n 1)
+                echo "Dirty migration detected at version $VERSION."
+                echo "Do not force the dirty version clean until the partial changes are completed or rolled back."
+                echo "Manual recovery is required before re-running the migration."
               fi
 
               # Log the database state for debugging
-              PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -U $DB_USER -d $DB_NAME \
+              PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -U "$DB_USER" -d "$DB_NAME" \
                 -c "SELECT * FROM schema_migrations ORDER BY version DESC LIMIT 5;"
 
               echo "=== Recovery Complete ==="
@@ -239,22 +239,26 @@ argocd app set my-app --sync-policy none
 # Step 2: Connect to the database and assess damage
 kubectl port-forward svc/postgres -n database 5432:5432 &
 psql -h localhost -U app -d mydb
+export DATABASE_URL="postgres://app:YOUR_PASSWORD@localhost:5432/mydb?sslmode=disable"
 
 # Step 3: Check what was applied
-SELECT * FROM schema_migrations WHERE version >= 42;
+psql -h localhost -U app -d mydb -c "SELECT * FROM schema_migrations WHERE version >= 42;"
 
 # Step 4: Manually fix the partial migration
 # If migration 42 partially applied, complete it manually or roll it back:
 
 # Option A: Complete the remaining statements
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR(50);
+psql -h localhost -U app -d mydb -c "ALTER TABLE orders ADD COLUMN IF NOT EXISTS status VARCHAR(50);"
 
 # Option B: Roll back what was applied
-DROP TABLE IF EXISTS new_table_that_was_partially_created;
+psql -h localhost -U app -d mydb -c "DROP TABLE IF EXISTS new_table_that_was_partially_created;"
 
 # Step 5: Fix the migration version tracking
-UPDATE schema_migrations SET dirty = false WHERE version = 42;
--- OR: DELETE FROM schema_migrations WHERE version = 42;
+# If you completed migration 42 manually, mark version 42 clean:
+migrate -path ./migrations -database "$DATABASE_URL" force 42
+
+# If you rolled migration 42 back, mark the previous version clean so it can rerun:
+migrate -path ./migrations -database "$DATABASE_URL" force 41
 
 # Step 6: Fix the migration script in Git and push
 # Step 7: Re-enable ArgoCD sync
@@ -291,7 +295,7 @@ initContainers:
         pg_isready -h $DB_HOST -p 5432 -U $DB_USER || exit 1
 
         # Check current migration version
-        CURRENT=$(./migrate version 2>&1)
+        CURRENT=$(migrate -path ./migrations -database "$DATABASE_URL" version 2>&1)
         echo "Current migration version: $CURRENT"
 
         # Check for dirty state
@@ -333,8 +337,8 @@ spec:
                 PGPASSWORD=$DB_PASSWORD psql -h postgres -U app test_migration
 
               # Run migration against test database
-              DATABASE_URL="postgres://app:$DB_PASSWORD@postgres:5432/test_migration?sslmode=disable" \
-                ./migrate up
+              TEST_DATABASE_URL="postgres://app:$DB_PASSWORD@postgres:5432/test_migration?sslmode=disable"
+              migrate -path ./migrations -database "$TEST_DATABASE_URL" up
 
               echo "Test migration passed"
 
@@ -355,7 +359,7 @@ Configure ArgoCD notifications for immediate alerts:
 # argocd-notifications-cm
 data:
   trigger.on-presync-failed: |
-    - when: app.status.operationState.phase == 'Failed'
+    - when: app.status?.operationState.phase == 'Failed'
       send: [migration-failed-alert]
   template.migration-failed-alert: |
     message: |
