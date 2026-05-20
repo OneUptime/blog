@@ -28,7 +28,7 @@ p, <role>, <resource>, <action>, <object>, <effect>
 g, <subject>, <role>
 ```
 
-The `subject` in a `g` rule can be a username, email, or group name from the OIDC token.
+The `subject` in a `g` rule can be a local user, SSO user, or a value from the OIDC token scopes ArgoCD is configured to inspect, such as a group name or email address.
 
 ## Built-in Roles
 
@@ -113,6 +113,7 @@ Here are the available resources and actions for building custom roles:
 | gpgkeys | get, create, delete | `*` |
 | logs | get | `<project>/<application>` |
 | exec | create | `<project>/<application>` |
+| extensions | invoke | `<extension-name>` |
 | certificates | get, create, delete | `*` |
 
 ## Wildcard Patterns
@@ -270,13 +271,12 @@ kubectl -n argocd logs deploy/argocd-server | grep -i "rbac\|denied\|policy"
 
 ## Common Mistakes
 
-### 1. Forgetting scopes in argocd-rbac-cm
+### 1. Not checking scopes in argocd-rbac-cm
 
-Without the `scopes` field, ArgoCD does not know which token claim contains the groups:
+By default, ArgoCD checks the `groups` scope in addition to the token subject. If your provider puts group data in a different claim, or if you also want to match email addresses, configure `scopes` explicitly:
 
 ```yaml
-# This is required!
-scopes: '[groups]'
+scopes: '[groups, email]'
 ```
 
 ### 2. Group Names Do Not Match
