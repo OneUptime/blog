@@ -96,15 +96,19 @@ metadata:
   namespace: argocd
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-repo-server
     spec:
       containers:
         - name: argocd-repo-server
           command:
             - argocd-repo-server
-            - --parallelism-limit=10
-            - --git-shallow-clone
-            - --redis-compress=gzip
+            - --parallelismlimit=10
             - --logformat=json
           resources:
             requests:
@@ -141,9 +145,6 @@ data:
   # Operation processors: handle burst sync requests
   controller.operation.processors: "25"
 
-  # Slightly increase reconciliation interval
-  timeout.reconciliation: "180s"
-
   # Increase repo server timeout for large repos
   controller.repo.server.timeout.seconds: "120"
 
@@ -152,6 +153,15 @@ data:
 
   # Redis compression
   redis.compression: "gzip"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Slightly increase reconciliation interval
+  timeout.reconciliation: "180s"
 ```
 
 ### Controller Resource Sizing
@@ -205,11 +215,11 @@ data:
 
 At 500 applications, Git operations become a significant part of the workload.
 
-### Enable Shallow Cloning
+### Disable Git Submodules If You Do Not Use Them
 
 ```yaml
 data:
-  reposerver.git.shallow.clone: "true"
+  reposerver.enable.git.submodule: "false"
 ```
 
 ### Use Webhook-Based Refresh
