@@ -63,8 +63,15 @@ The typical images for ArgoCD v2.13.x are:
 
 ```text
 quay.io/argoproj/argocd:v2.13.3
-ghcr.io/dexidp/dex:v2.38.0
+ghcr.io/dexidp/dex:v2.41.1
 redis:7.0.15-alpine
+```
+
+If you use the HA manifest, also include the HA Redis and HAProxy images referenced by that manifest:
+
+```text
+public.ecr.aws/docker/library/redis:7.0.15-alpine
+public.ecr.aws/docker/library/haproxy:2.6.17-alpine
 ```
 
 ## Step 3: Pull and Save Images
@@ -74,14 +81,16 @@ On the connected machine, pull each image and save them to tar files.
 ```bash
 # Pull all required images
 docker pull quay.io/argoproj/argocd:v2.13.3
-docker pull ghcr.io/dexidp/dex:v2.38.0
+docker pull ghcr.io/dexidp/dex:v2.41.1
 docker pull redis:7.0.15-alpine
 
 # Save images to tar files
 docker save quay.io/argoproj/argocd:v2.13.3 -o argocd.tar
-docker save ghcr.io/dexidp/dex:v2.38.0 -o dex.tar
+docker save ghcr.io/dexidp/dex:v2.41.1 -o dex.tar
 docker save redis:7.0.15-alpine -o redis.tar
 ```
+
+If you are installing the HA manifest, pull and save the HA Redis and HAProxy images from the previous step too.
 
 Alternatively, bundle everything into a single archive.
 
@@ -89,7 +98,7 @@ Alternatively, bundle everything into a single archive.
 # Save all images into one tar
 docker save \
   quay.io/argoproj/argocd:v2.13.3 \
-  ghcr.io/dexidp/dex:v2.38.0 \
+  ghcr.io/dexidp/dex:v2.41.1 \
   redis:7.0.15-alpine \
   -o argocd-images.tar
 
@@ -131,17 +140,19 @@ PRIVATE_REGISTRY=registry.internal.example.com
 docker tag quay.io/argoproj/argocd:v2.13.3 \
   ${PRIVATE_REGISTRY}/argoproj/argocd:v2.13.3
 
-docker tag ghcr.io/dexidp/dex:v2.38.0 \
-  ${PRIVATE_REGISTRY}/dexidp/dex:v2.38.0
+docker tag ghcr.io/dexidp/dex:v2.41.1 \
+  ${PRIVATE_REGISTRY}/dexidp/dex:v2.41.1
 
 docker tag redis:7.0.15-alpine \
   ${PRIVATE_REGISTRY}/library/redis:7.0.15-alpine
 
 # Push to private registry
 docker push ${PRIVATE_REGISTRY}/argoproj/argocd:v2.13.3
-docker push ${PRIVATE_REGISTRY}/dexidp/dex:v2.38.0
+docker push ${PRIVATE_REGISTRY}/dexidp/dex:v2.41.1
 docker push ${PRIVATE_REGISTRY}/library/redis:7.0.15-alpine
 ```
+
+If you are installing the HA manifest, tag and push its `public.ecr.aws/docker/library/redis` and `public.ecr.aws/docker/library/haproxy` images to the same private registry as well.
 
 ## Step 7: Modify ArgoCD Manifests
 
@@ -154,6 +165,13 @@ PRIVATE_REGISTRY=registry.internal.example.com
 sed -i "s|quay.io/argoproj/argocd|${PRIVATE_REGISTRY}/argoproj/argocd|g" argocd-install.yaml
 sed -i "s|ghcr.io/dexidp/dex|${PRIVATE_REGISTRY}/dexidp/dex|g" argocd-install.yaml
 sed -i "s|redis:7.0.15-alpine|${PRIVATE_REGISTRY}/library/redis:7.0.15-alpine|g" argocd-install.yaml
+```
+
+If you are using `argocd-ha-install.yaml`, patch the HA-only image references as well.
+
+```bash
+sed -i "s|public.ecr.aws/docker/library/redis|${PRIVATE_REGISTRY}/library/redis|g" argocd-ha-install.yaml
+sed -i "s|public.ecr.aws/docker/library/haproxy|${PRIVATE_REGISTRY}/library/haproxy|g" argocd-ha-install.yaml
 ```
 
 Verify the changes.
@@ -251,7 +269,9 @@ MANIFEST=$2
 
 sed -i "s|quay.io/argoproj/argocd|${PRIVATE_REGISTRY}/argoproj/argocd|g" ${MANIFEST}
 sed -i "s|ghcr.io/dexidp/dex|${PRIVATE_REGISTRY}/dexidp/dex|g" ${MANIFEST}
-sed -i "s|redis:|${PRIVATE_REGISTRY}/library/redis:|g" ${MANIFEST}
+sed -i "s|public.ecr.aws/docker/library/redis|${PRIVATE_REGISTRY}/library/redis|g" ${MANIFEST}
+sed -i "s|public.ecr.aws/docker/library/haproxy|${PRIVATE_REGISTRY}/library/haproxy|g" ${MANIFEST}
+sed -i "s|image: redis:|image: ${PRIVATE_REGISTRY}/library/redis:|g" ${MANIFEST}
 
 echo "Patched ${MANIFEST} to use ${PRIVATE_REGISTRY}"
 ```
