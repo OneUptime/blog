@@ -142,7 +142,7 @@ spec:
 
 ## Step 3: Progressive Multi-Region Rollout
 
-Do not deploy to all regions simultaneously. Use a progressive rollout strategy:
+Do not deploy to all regions simultaneously. Use a progressive rollout strategy. Progressive Syncs are experimental in ArgoCD and must be enabled on the ApplicationSet controller before using `RollingSync`.
 
 ```yaml
 # argocd/applicationsets/progressive-rollout.yaml
@@ -207,13 +207,9 @@ spec:
       destination:
         server: "{{server}}"
         namespace: api-service
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
 ```
 
-This rolls out to one region at a time. If the deployment fails in US-East, it stops and does not propagate to other regions.
+This rolls out to one region at a time. If the deployment fails in US-East or does not become healthy, it stops and does not propagate to other regions. RollingSync triggers syncs itself and disables automated sync on the generated Applications while it manages the rollout.
 
 ## Step 4: Region-Specific Overlays with Kustomize
 
@@ -285,7 +281,7 @@ spec:
 
 ## Step 5: Global Health Monitoring
 
-Monitor application health across all regions from a single dashboard:
+Monitor application health across all regions from a single dashboard. To alert by the generated Application's `region` label, enable ArgoCD's `argocd_app_labels` metric for the `region` Application label.
 
 ```yaml
 # monitoring/global-service-monitor.yaml
@@ -298,37 +294,35 @@ spec:
   groups:
     - name: multi-region.rules
       rules:
-        # Alert if a region has no healthy instances
+        # Alert if a regional ArgoCD application is not healthy
         - alert: RegionDown
           expr: |
-            count by (region) (
-              argocd_app_health_status{
-                health_status="Healthy",
-                name=~"api-service-.*"
-              }
-            ) == 0
+            argocd_app_info{
+              name=~"api-service-.*",
+              health_status!="Healthy"
+            }
+            * on (name, namespace, project) group_left(label_region)
+            argocd_app_labels{label_region!=""}
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "No healthy api-service in region {{ $labels.region }}"
+            summary: "api-service is not healthy in region {{ $labels.label_region }}"
 
-        # Alert if deployment is not consistent across regions
-        - alert: RegionVersionDrift
+        # Alert if a regional deployment is out of sync
+        - alert: RegionSyncDrift
           expr: |
-            count(
-              count by (revision) (
-                argocd_app_info{
-                  name=~"api-service-.*",
-                  sync_status="Synced"
-                }
-              )
-            ) > 1
+            argocd_app_info{
+              name=~"api-service-.*",
+              sync_status!="Synced"
+            }
+            * on (name, namespace, project) group_left(label_region)
+            argocd_app_labels{label_region!=""}
           for: 30m
           labels:
             severity: warning
           annotations:
-            summary: "api-service running different versions across regions"
+            summary: "api-service is out of sync in region {{ $labels.label_region }}"
 ```
 
 Integrate with [OneUptime](https://oneuptime.com) for global uptime monitoring that checks each region independently and alerts on regional outages.
