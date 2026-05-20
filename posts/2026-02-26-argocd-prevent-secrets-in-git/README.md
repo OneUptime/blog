@@ -33,7 +33,7 @@ The first line of defense is preventing secrets from being committed in the firs
 
 repos:
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.0
+    rev: v8.30.1
     hooks:
       - id: gitleaks
 ```
@@ -69,7 +69,7 @@ description = "Generic password pattern"
 regex = '''(?i)(password|passwd|pwd)\s*[:=]\s*['"]?[^\s'"]{8,}'''
 tags = ["password"]
 
-[allowlist]
+[[allowlists]]
 paths = [
   '''.*_test\.go''',
   '''.*\.md''',
@@ -86,6 +86,7 @@ brew install kubeseal
 
 # Create a regular secret
 kubectl create secret generic db-creds \
+  --namespace production \
   --from-literal=username=admin \
   --from-literal=password=supersecret \
   --dry-run=client -o yaml > secret.yaml
@@ -145,7 +146,7 @@ The External Secrets Operator (ESO) creates Kubernetes Secrets from external sto
 
 ```yaml
 # This is safe to commit - no secrets here
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -172,7 +173,7 @@ spec:
 The ClusterSecretStore points to your vault:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -190,7 +191,7 @@ spec:
 
 ## Strategy 4: SOPS Encryption
 
-Mozilla SOPS encrypts specific values in YAML files while leaving keys readable. Combined with an ArgoCD plugin, you can commit encrypted files:
+SOPS encrypts specific values in YAML files while leaving keys readable. Combined with an ArgoCD plugin, you can commit encrypted files:
 
 ```bash
 # Create a SOPS configuration
@@ -203,7 +204,8 @@ creation_rules:
 EOF
 
 # Encrypt a secret file
-sops --encrypt --in-place secrets.yaml
+sops --encrypt secrets.yaml > secrets.enc.yaml
+rm secrets.yaml
 ```
 
 The encrypted file looks like this in Git:
@@ -228,25 +230,23 @@ sops:
   version: 3.8.0
 ```
 
-Configure ArgoCD to decrypt with a Config Management Plugin:
+Configure ArgoCD to decrypt with a Config Management Plugin sidecar:
 
 ```yaml
-# argocd-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
+# plugin.yaml mounted at /home/argocd/cmp-server/config/plugin.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
 metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  configManagementPlugins: |
-    - name: sops
-      generate:
-        command: ["bash", "-c"]
-        args:
-          - |
-            for f in $(find . -name '*.enc.yaml'); do
-              sops --decrypt "$f"
-            done
+  name: sops
+spec:
+  generate:
+    command: ["bash", "-c"]
+    args:
+      - |
+        for f in $(find . -name '*.enc.yaml'); do
+          printf -- '---\n'
+          sops --decrypt "$f"
+        done
 ```
 
 ## Strategy 5: Git Repository Scanning in CI
@@ -270,15 +270,22 @@ jobs:
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Required for repositories owned by a GitHub Organization
+          # GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: Scan for Kubernetes secrets
         run: |
-          # Find any plaintext Kubernetes Secret manifests
-          if grep -r "kind: Secret" --include="*.yaml" --include="*.yml" . | \
-             grep -v "SealedSecret" | \
-             grep -v "ExternalSecret" | \
-             grep -v "SecretStore"; then
-            echo "ERROR: Plaintext Kubernetes Secret found!"
+          # Find Kubernetes Secret manifests that are not SOPS-encrypted
+          found=0
+          while IFS= read -r file; do
+            if grep -qE '^[[:space:]]*kind:[[:space:]]*Secret[[:space:]]*$' "$file" && \
+               ! grep -qE '^[[:space:]]*sops:' "$file"; then
+              echo "ERROR: Plaintext Kubernetes Secret found in $file"
+              found=1
+            fi
+          done < <(find . -type f \( -name '*.yaml' -o -name '*.yml' \))
+
+          if [ "$found" -eq 1 ]; then
             exit 1
           fi
 ```
@@ -321,6 +328,9 @@ spec:
     spec:
       names:
         kind: K8sBlockRawSecrets
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -331,6 +341,16 @@ spec:
           not input.review.object.metadata.ownerReferences
           msg := "Direct Secret creation is blocked. Use SealedSecrets or ExternalSecrets instead."
         }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sBlockRawSecrets
+metadata:
+  name: block-raw-secrets
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Secret"]
 ```
 
 ## Putting It All Together
@@ -366,17 +386,11 @@ If a secret does get committed despite your best efforts, act fast:
 # This is the most important step
 
 # Remove the secret from Git history
-git filter-branch --force --index-filter \
-  'git rm --cached --ignore-unmatch path/to/secret.yaml' \
-  --prune-empty --tag-name-filter cat -- --all
+brew install git-filter-repo
+git filter-repo --sensitive-data-removal --invert-paths --path path/to/secret.yaml
 
 # Force push (coordinate with your team)
 git push origin --force --all
-
-# Clean up local references
-git for-each-ref --format='delete %(refname)' refs/original | git update-ref --stdin
-git reflog expire --expire=now --all
-git gc --prune=now --aggressive
 ```
 
 Remember: rotating the credential is more important than cleaning Git history. Assume the secret has been compromised the moment it was pushed.
