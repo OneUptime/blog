@@ -46,6 +46,7 @@ metadata:
   name: payment-service-secrets
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/payment-service
     path: k8s/secrets
@@ -63,7 +64,7 @@ The Git repository contains ExternalSecret resources, not actual secret values:
 ```yaml
 # k8s/secrets/database-credentials.yaml
 # This is safe to store in Git - it references a secret, not the value
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -109,7 +110,7 @@ The SecretStore defines how ESO connects to the secret provider:
 
 ```yaml
 # ClusterSecretStore for Vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-backend
@@ -144,16 +145,18 @@ The ExternalSecret in Git triggers automatic syncing to Kubernetes. Rotation hap
 
 Deletion:
 ```yaml
-# Control what happens when the ExternalSecret is deleted
+# Control what happens when provider-side data is deleted
 spec:
   target:
-    # Retain: Keep the Kubernetes secret when ExternalSecret is removed
+    # Retain: Keep the Kubernetes secret if provider data is removed
     deletionPolicy: Retain
-    # Delete: Remove the Kubernetes secret when ExternalSecret is removed
+    # Delete: Remove the Kubernetes secret if all provider data is removed
     # deletionPolicy: Delete
-    # Merge: Only remove keys managed by this ExternalSecret
+    # Merge: Only remove keys whose provider data was removed
     # deletionPolicy: Merge
 ```
+
+With `creationPolicy: Owner`, ESO sets an owner reference on the generated Kubernetes Secret, so deleting the `ExternalSecret` normally garbage-collects the owned Secret. Use `creationPolicy: Orphan` if the generated Secret should remain after the `ExternalSecret` is removed.
 
 ## Approach 2: Sealed Secrets
 
@@ -214,11 +217,11 @@ git commit -m "Rotate API keys for payment service"
 git push
 ```
 
-Deletion: Remove the SealedSecret from Git. ArgoCD's prune policy will delete it from the cluster.
+Deletion: Remove the SealedSecret from Git. ArgoCD will delete it from the cluster when pruning is enabled for the application or the sync operation.
 
 ## Approach 3: SOPS with ArgoCD
 
-Mozilla SOPS encrypts specific values in YAML files, allowing encrypted secrets in Git:
+SOPS encrypts specific values in YAML files, allowing encrypted secrets in Git:
 
 ```yaml
 # secrets.enc.yaml - encrypted with SOPS
@@ -238,21 +241,25 @@ sops:
   version: 3.8.0
 ```
 
-Configure ArgoCD to decrypt SOPS files using the Helm secrets plugin or kustomize-sops:
+Configure ArgoCD to decrypt SOPS files using the Helm secrets plugin or a kustomize-sops/KSOPS sidecar plugin:
 
 ```yaml
-# ArgoCD ConfigMap for SOPS decryption
+# ConfigManagementPlugin mounted into the Argo CD repo-server sidecar
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: kustomize-sops-plugin
   namespace: argocd
 data:
-  configManagementPlugins: |
-    - name: kustomize-sops
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: kustomize-sops
+    spec:
       generate:
         command: ["sh", "-c"]
-        args: ["kustomize build . | ksops"]
+        args: ["kustomize build --enable-alpha-plugins --enable-exec ."]
 ```
 
 ## Secret Lifecycle Automation
@@ -297,12 +304,12 @@ spec:
       restartPolicy: Never
 ```
 
-### Tracking Secret Freshness
+### Tracking Secret Object Age
 
-Monitor how old your secrets are:
+Monitor how old your Kubernetes Secret objects are:
 
 ```yaml
-# PrometheusRule for secret age monitoring
+# PrometheusRule for secret object age monitoring
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -311,15 +318,17 @@ spec:
   groups:
     - name: secret-age
       rules:
-        - alert: SecretNotRotated
+        - alert: SecretObjectTooOld
           expr: |
             (time() - kube_secret_created) > 7776000
           for: 1h
           labels:
             severity: warning
           annotations:
-            summary: "Secret {{ $labels.namespace }}/{{ $labels.secret }} has not been rotated in 90 days"
+            summary: "Secret object {{ $labels.namespace }}/{{ $labels.secret }} is older than 90 days"
 ```
+
+`kube_secret_created` tracks the Kubernetes object's creation timestamp. If your rotation process updates an existing Secret in place, add a rotation timestamp annotation or provider-side metric and alert on that instead.
 
 ### Cleanup Orphaned Secrets
 
@@ -335,6 +344,7 @@ metadata:
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
+  project: default
   syncPolicy:
     automated:
       prune: true  # Delete resources removed from Git
@@ -372,10 +382,10 @@ spec:
 
 1. **Never store plain-text secrets in Git** - Use ESO, Sealed Secrets, or SOPS
 2. **Set refresh intervals** - ESO should check for updates regularly (every 1 to 6 hours)
-3. **Use deletion policies** - Control what happens when ExternalSecret resources are removed
-4. **Monitor secret age** - Alert when secrets have not been rotated within your policy window
+3. **Use lifecycle policies** - Control what happens when provider-side data or ExternalSecret resources are removed
+4. **Monitor secret freshness** - Alert when secrets exceed your age or rotation policy window
 5. **Automate rotation** - Manual rotation is error-prone; automate it
-6. **Test rotation** - Ensure applications handle secret changes gracefully (no restarts needed, or graceful restarts)
+6. **Test rotation** - Ensure applications handle secret changes gracefully (reload mounted secrets, or use graceful restarts when values are consumed from environment variables)
 7. **Audit access** - Log who reads and modifies secrets
 
 ## Summary
