@@ -16,7 +16,7 @@ This guide walks through the complete migration process, from capturing your cur
 
 When ArgoCD deploys a Helm chart, it renders the templates and applies the resulting manifests using `kubectl apply`. It does not use `helm install` or `helm upgrade` under the hood. This means ArgoCD does not create or manage Helm release secrets (the `sh.helm.release.v1.*` secrets in the namespace). Your existing Helm release metadata and ArgoCD's management model are fundamentally different.
 
-The key challenge: resources already exist in the cluster. If ArgoCD tries to create them, you get conflicts. If you delete them first, you get downtime.
+The key challenge: resources already exist in the cluster. If ArgoCD's rendered manifests do not match what Helm deployed, the first sync can change live resources unexpectedly. If you delete them first, you get downtime.
 
 ```mermaid
 graph TD
@@ -63,13 +63,13 @@ k8s-deployments/
       values-prod.yaml  # Production overrides
 ```
 
-If your chart comes from a Helm repository, the ArgoCD Application will reference the repo directly. If it is a local chart in Git, commit the chart source.
+If your chart comes from a Helm repository, the ArgoCD Application will reference the repo directly. Put values in the Application with `valuesObject` or `values`, or use ArgoCD multi-source Applications if you want values files from a separate Git repository. If it is a local chart in Git, commit the chart source.
 
 For a chart from a repository:
 
 ```yaml
 # No Chart.yaml needed - ArgoCD pulls directly from the repo
-# Just commit the values files
+# Use valuesObject/values, or multi-source Applications for separate Git values files
 ```
 
 For a chart from Git:
@@ -81,9 +81,9 @@ name: my-app
 version: 1.2.3  # Match current deployed version
 ```
 
-## Step 3: Create ArgoCD Application with Replace Sync
+## Step 3: Create ArgoCD Application with Server-Side Apply
 
-The critical step is telling ArgoCD to adopt existing resources instead of failing on conflicts. Use the `Replace` or `ServerSideApply` sync option:
+The critical step is telling ArgoCD to patch existing resources using server-side apply. Do not use `Replace=true` for adoption unless you have tested it carefully, because ArgoCD implements that option with `kubectl replace` or `kubectl create` and it can be disruptive.
 
 ```yaml
 # argocd-application.yaml
@@ -100,10 +100,7 @@ spec:
     chart: my-app
     targetRevision: 1.2.3
     helm:
-      valueFiles:
-        - values.yaml
-      # Inline values if needed
-      values: |
+      valuesObject:
         replicaCount: 3
   destination:
     server: https://kubernetes.default.svc
@@ -111,14 +108,14 @@ spec:
   syncPolicy:
     # Do NOT enable automated sync yet
     syncOptions:
-      - ServerSideApply=true  # Allows adopting existing resources
+      - ServerSideApply=true  # Patch existing resources with server-side apply
       - CreateNamespace=false  # Namespace already exists
 ```
 
 Apply the Application but do not sync yet:
 
 ```bash
-# Create the ArgoCD application in a paused state
+# Create the ArgoCD application in manual sync mode
 kubectl apply -f argocd-application.yaml
 ```
 
@@ -148,7 +145,7 @@ Helm CLI adds management labels that ArgoCD does not use. Tell ArgoCD to ignore 
 ```yaml
 spec:
   ignoreDifferences:
-    - group: ""
+    - group: "*"
       kind: "*"
       jsonPointers:
         - /metadata/labels/app.kubernetes.io~1managed-by
@@ -172,7 +169,7 @@ argocd app sync my-app --server-side
 argocd app get my-app
 ```
 
-ArgoCD now manages the resources. The existing Pods continue running - no restart, no downtime.
+ArgoCD now manages the resources. If the diff did not change Deployment pod templates or other rollout-triggering fields, the existing Pods continue running without a restart.
 
 ## Step 7: Clean Up Helm Release Secrets
 
@@ -241,6 +238,7 @@ argocd app delete my-app --cascade=false
 # Re-import into Helm if needed
 helm upgrade my-app my-chart -n production \
   --install \
+  --take-ownership \
   --values my-app-values.yaml \
   --description "Re-imported after ArgoCD migration rollback"
 ```
