@@ -10,13 +10,18 @@ Description: Configure systemd RestartSec for service restart timing and Watchdo
 
 When a systemd service fails, it can be automatically restarted. How quickly it restarts and under what conditions are controlled by a handful of related directives. Getting these settings right matters for service reliability - too aggressive and you create a restart storm that worsens an underlying problem; too conservative and your service is down longer than necessary.
 
-WatchdogSec adds a different dimension: it allows services to report their own health via a heartbeat mechanism, and systemd kills and restarts a service if the heartbeat stops. This is useful when a service might be alive as a process but stuck and unresponsive.
+WatchdogSec adds a different dimension: it allows services to report their own health via a heartbeat mechanism, and systemd can kill and restart a service if the heartbeat stops. This is useful when a service might be alive as a process but stuck and unresponsive.
 
 ## Restart Fundamentals
 
 Three directives control the basic restart behavior:
 
 ```ini
+[Unit]
+# Maximum number of start attempts within a time window
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
 [Service]
 # When to restart (on-failure, always, on-abnormal, on-abort, on-watchdog, on-success, no)
 
@@ -24,10 +29,6 @@ Restart=on-failure
 
 # How long to wait before restarting
 RestartSec=5s
-
-# Maximum number of restart attempts within a time window
-StartLimitIntervalSec=60s
-StartLimitBurst=5
 ```
 
 ### Restart= Options
@@ -37,8 +38,8 @@ StartLimitBurst=5
 | `no` | Never (default) |
 | `always` | Service exits for any reason including clean exit |
 | `on-success` | Only when exit code is 0 |
-| `on-failure` | Exit code non-zero, signal, or watchdog timeout |
-| `on-abnormal` | Signal, watchdog timeout, or timeout exceeded |
+| `on-failure` | Exit code non-zero, unclean signal, timeout, or watchdog timeout |
+| `on-abnormal` | Unclean signal, watchdog timeout, or timeout exceeded |
 | `on-abort` | Unclean signal only |
 | `on-watchdog` | Watchdog timeout only |
 
@@ -92,7 +93,7 @@ StartLimitIntervalSec=60s
 StartLimitBurst=5
 
 # Action when the burst limit is exceeded
-# options: none (default), reboot, reboot-force, poweroff, exit, exit-force
+# examples: none (default), reboot, reboot-force, poweroff, exit, exit-force
 StartLimitAction=none
 ```
 
@@ -100,7 +101,7 @@ With these settings:
 1. Service fails and restarts after 5 seconds
 2. After 5 restarts within 60 seconds, systemd stops trying
 3. The service enters a "failed" state
-4. Manual intervention is required: `sudo systemctl reset-failed myservice && sudo systemctl start myservice`
+4. You can retry manually after the interval has passed, or clear the failed state and counters immediately: `sudo systemctl reset-failed myservice && sudo systemctl start myservice`
 
 ### Implementing Exponential Backoff
 
@@ -118,16 +119,47 @@ sudo nano /usr/local/lib/restart-with-backoff.sh
 
 BACKOFF_FILE="/run/myservice-backoff"
 MAX_BACKOFF=300  # 5 minutes maximum
+child=""
+
+forward_term() {
+    if [ -n "$child" ]; then
+        kill -TERM "$child" 2>/dev/null
+        wait "$child"
+        exit $?
+    fi
+    exit 143
+}
+
+trap forward_term TERM INT
 
 # Read current backoff value
 if [ -f "$BACKOFF_FILE" ]; then
     BACKOFF=$(cat "$BACKOFF_FILE")
 else
-    BACKOFF=1
+    BACKOFF=0
 fi
 
-# Execute the actual service
-exec "$@"
+if [ "$BACKOFF" -gt 0 ]; then
+    sleep "$BACKOFF"
+fi
+
+"$@" &
+child=$!
+wait "$child"
+STATUS=$?
+child=""
+
+if [ "$STATUS" -eq 0 ]; then
+    rm -f "$BACKOFF_FILE"
+else
+    NEXT_BACKOFF=$((BACKOFF > 0 ? BACKOFF * 2 : 1))
+    if [ "$NEXT_BACKOFF" -gt "$MAX_BACKOFF" ]; then
+        NEXT_BACKOFF=$MAX_BACKOFF
+    fi
+    echo "$NEXT_BACKOFF" > "$BACKOFF_FILE"
+fi
+
+exit "$STATUS"
 ```
 
 Alternatively, use the `RestartSteps` and `RestartMaxDelaySec` directives available in systemd 254+:
@@ -138,7 +170,7 @@ Restart=on-failure
 RestartSec=1s
 
 # Gradually increase restart delay (systemd 254+)
-# Start at 1s, double each time up to 60s
+# Increase from 1s toward 60s over 6 restart steps
 RestartSteps=6
 RestartMaxDelaySec=60s
 ```
@@ -171,7 +203,7 @@ TimeoutStartSec=infinity
 
 ## WatchdogSec: Service Self-Monitoring
 
-`WatchdogSec` enables a heartbeat mechanism. The service must send `sd_notify(STATUS=WATCHDOG=1)` (or equivalent) to systemd within the watchdog timeout period, or systemd kills and restarts it.
+`WatchdogSec` enables a heartbeat mechanism. The service must send `sd_notify("WATCHDOG=1")` (or equivalent) to systemd within the watchdog timeout period, or systemd marks it failed and terminates it. It is restarted if `Restart=` is set to `on-failure`, `on-watchdog`, `on-abnormal`, or `always`.
 
 This catches "zombie" scenarios: the service process is alive but stuck - not processing requests, stuck in a lock, or in an infinite loop that is not doing useful work.
 
@@ -188,7 +220,7 @@ Restart=on-watchdog
 RestartSec=5s
 ```
 
-`Type=notify` is required for watchdog functionality. With this type, systemd waits for the service to send a `READY=1` notification before considering it started.
+`Type=notify` is not strictly required for watchdog functionality, but it is required if you want systemd to wait for the service to send a `READY=1` notification before considering it started. With `Type=notify`, the watchdog starts after the service reports readiness.
 
 ### Implementing Watchdog in Applications
 
