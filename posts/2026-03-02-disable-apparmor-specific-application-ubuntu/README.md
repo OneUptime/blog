@@ -17,7 +17,7 @@ This post covers several methods for doing that safely.
 AppArmor profiles can be in three states:
 
 - **enforce** - the profile is active and access violations are blocked
-- **complain** - violations are logged but not blocked (useful for debugging)
+- **complain** - violations are logged but not blocked, except for explicit `deny` rules (useful for debugging)
 - **disabled** - the profile is not loaded at all
 
 Disabling a profile completely means the application runs without any AppArmor restrictions. This is different from complain mode, which still tracks everything.
@@ -48,7 +48,7 @@ The `aa-disable` command from `apparmor-utils` is the cleanest way to disable a 
 sudo apt install apparmor-utils
 
 # Disable AppArmor for a specific application
-# The argument is the profile file path, not the binary path
+# The argument is the executable path
 sudo aa-disable /usr/sbin/nginx
 
 # Disable for MySQL
@@ -58,7 +58,7 @@ sudo aa-disable /usr/sbin/mysqld
 sudo aa-disable /usr/lib/cups/backend/cups-pdf
 ```
 
-`aa-disable` creates a symlink from the profile file to `/dev/null` in `/etc/apparmor.d/disable/`, which tells AppArmor to skip that profile on next load.
+`aa-disable` creates a symlink in `/etc/apparmor.d/disable/` that points to the profile file, unloads the profile from the kernel, and prevents it from being loaded on AppArmor startup.
 
 ### Verify It Worked
 
@@ -70,13 +70,10 @@ ls -la /etc/apparmor.d/disable/
 sudo aa-status | grep nginx
 ```
 
-After running `aa-disable`, you need to either reload AppArmor or reboot for the change to take effect on a running system:
+By default, `aa-disable` unloads the profile immediately. If you used `aa-disable --no-reload` or created the disable symlink manually, you can apply the change to a running system by unloading the profile:
 
 ```bash
-# Reload AppArmor to apply the disable immediately
-sudo systemctl reload apparmor
-
-# Or reload a specific profile
+# Unload a specific profile
 sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.nginx
 ```
 
@@ -98,7 +95,7 @@ sudo aa-status | grep nginx
 ```
 
 The difference between complain and disabled:
-- Complain: AppArmor profile is loaded, violations are logged, nothing is blocked
+- Complain: AppArmor profile is loaded, violations are logged, and normal policy denials are not blocked, though explicit `deny` rules are still enforced
 - Disabled: AppArmor profile is not loaded, application runs completely unrestricted
 
 For most troubleshooting scenarios, complain mode is the safer option.
@@ -132,11 +129,11 @@ sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.nginx
 A less elegant but functional approach is to rename the profile file so AppArmor can't find it:
 
 ```bash
-# Move the profile out of the apparmor.d directory
-sudo mv /etc/apparmor.d/usr.sbin.nginx /etc/apparmor.d/usr.sbin.nginx.disabled
+# Unload the running profile first
+sudo apparmor_parser -R /etc/apparmor.d/usr.sbin.nginx
 
-# Reload AppArmor
-sudo systemctl reload apparmor
+# Move the profile out of the apparmor.d directory so it is not loaded later
+sudo mv /etc/apparmor.d/usr.sbin.nginx /etc/apparmor.d/usr.sbin.nginx.disabled
 ```
 
 This works, but it's harder to track and re-enable later. The `aa-disable` method is better for this reason.
@@ -181,14 +178,14 @@ If the output shows `unconfined`, AppArmor is not restricting it.
 
 ## Disabling AppArmor for Snap Applications
 
-Snap packages have their own AppArmor profiles managed by snapd. To allow a specific snap to run without restrictions:
+Snap packages have their own AppArmor profiles managed by snapd. Instead of disabling those profiles directly, adjust the snap's interface connections:
 
 ```bash
 # List snap connections and interfaces
 snap connections myapp
 
-# Remove a specific interface restriction
-snap disconnect myapp:home
+# Grant access through a specific interface
+snap connect myapp:home
 
 # For troubleshooting, check snap logs
 snap logs myapp
