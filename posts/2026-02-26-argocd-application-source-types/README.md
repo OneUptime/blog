@@ -123,7 +123,7 @@ ArgoCD auto-detects Helm when it finds a `Chart.yaml` in the specified path. For
 
 ## Source Type 3: Kustomize
 
-Kustomize is natively supported by ArgoCD. When ArgoCD finds a `kustomization.yaml` (or `kustomization.yml` or `Kustomize`) file in the target path, it automatically runs `kustomize build`.
+Kustomize is natively supported by ArgoCD. When ArgoCD finds a `kustomization.yaml` (or `kustomization.yml` or `Kustomization`) file in the target path, it automatically runs `kustomize build`.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -202,7 +202,7 @@ Jsonnet is less common than Helm or Kustomize, but it is powerful for teams that
 When none of the built-in source types fit your needs, you can use Config Management Plugins (CMP). Plugins run as sidecar containers to the repo-server and can execute arbitrary commands to generate manifests.
 
 ```yaml
-# First, define the plugin in a ConfigMap or sidecar
+# First, define the plugin in a sidecar
 # Then reference it in the Application
 apiVersion: argoproj.io/v1alpha1
 kind: Application
