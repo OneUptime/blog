@@ -228,8 +228,7 @@ Updating cluster credentials is an `update` operation on the clusters resource. 
 
 ```bash
 # Rotate cluster credentials (requires clusters update permission)
-argocd cluster set https://production.k8s.local \
-  --kubeconfig /path/to/new-kubeconfig
+argocd cluster rotate-auth https://production.k8s.local
 ```
 
 RBAC policy:
@@ -245,7 +244,7 @@ policy.csv: |
 
 ## Viewing Cluster Health
 
-ArgoCD tracks cluster health including connectivity status, Kubernetes version, and resource usage. Viewing this requires `get` permission on the clusters resource:
+ArgoCD tracks cluster health including connectivity status and Kubernetes version. Viewing this requires `get` permission on the clusters resource:
 
 ```yaml
 policy.csv: |
