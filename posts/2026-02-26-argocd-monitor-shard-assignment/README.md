@@ -12,15 +12,21 @@ When you run ArgoCD with multiple application controller shards, monitoring the 
 
 ## Checking Current Shard Assignments
 
-The primary way to see shard assignments is through cluster secrets. ArgoCD stores cluster connection details as Kubernetes secrets, and each secret has a shard annotation when sharding is enabled.
+The primary way to see explicit shard assignments is through cluster secrets. ArgoCD stores cluster connection details as Kubernetes secrets, and each secret can include a `shard` data field when a cluster is manually assigned. If no shard is set, the application controller calculates the shard assignment at runtime.
 
 ```bash
 # List all clusters and their shard assignments
 
-kubectl get secrets -n argocd \
-  -l argocd.argoproj.io/secret-type=cluster \
-  -o custom-columns=\
-'CLUSTER:.metadata.name,SHARD:.metadata.annotations.argocd\.argoproj\.io/shard'
+(
+  printf 'CLUSTER\tSHARD\n'
+  kubectl get secrets -n argocd \
+    -l argocd.argoproj.io/secret-type=cluster \
+    -o json | jq -r '
+    .items[] |
+    [.metadata.name, (.data.shard // "" | if . == "" then "auto" else @base64d end)] |
+    @tsv
+  '
+) | column -t
 ```
 
 Example output:
@@ -42,20 +48,20 @@ kubectl get secrets -n argocd \
   -l argocd.argoproj.io/secret-type=cluster \
   -o json | jq -r '
   .items[] |
-  "\(.metadata.annotations["argocd.argoproj.io/shard"] // "unassigned") | \(.metadata.name) | \(.data.server | @base64d)"
+  "\((.data.shard // "" | if . == "" then "auto" else @base64d end)) | \(.metadata.name) | \(.data.server | @base64d)"
 ' | sort | column -t -s '|'
 ```
 
 ## Monitoring Shard Distribution Balance
 
-An uneven distribution means some shards do more work than others. To check balance:
+An uneven distribution means some shards do more work than others. To check explicit shard assignments:
 
 ```bash
 # Count clusters per shard
 kubectl get secrets -n argocd \
   -l argocd.argoproj.io/secret-type=cluster \
   -o json | jq '
-  [.items[].metadata.annotations["argocd.argoproj.io/shard"] // "unassigned"] |
+  [.items[] | (.data.shard // "" | if . == "" then "auto" else @base64d end)] |
   group_by(.) |
   map({shard: .[0], count: length}) |
   sort_by(.shard)
@@ -72,7 +78,7 @@ This outputs something like:
 ]
 ```
 
-A good distribution has roughly equal counts across shards. If one shard has significantly more clusters, it may become a bottleneck.
+A good runtime distribution has roughly equal counts across shards. If one shard has significantly more clusters, it may become a bottleneck.
 
 ```mermaid
 flowchart TD
@@ -116,7 +122,7 @@ If one pod shows significantly higher CPU or memory than others, its shard may b
 
 ## Prometheus Metrics for Shard Monitoring
 
-ArgoCD exposes detailed metrics that you can scrape with Prometheus. Here are the most important ones for shard monitoring.
+ArgoCD exposes detailed metrics that you can scrape with Prometheus. The examples below assume your Prometheus scrape configuration adds a `pod` label for each controller pod, which is common with Kubernetes service discovery.
 
 ### Application Reconciliation Metrics
 
@@ -129,8 +135,8 @@ histogram_quantile(0.95,
   sum(rate(argocd_app_reconcile_bucket[5m])) by (le, pod)
 )
 
-# Failed reconciliations per shard
-sum(rate(argocd_app_reconcile_count{result="error"}[5m])) by (pod)
+# Kubernetes API errors seen during reconciliation per shard
+sum(rate(argocd_app_k8s_request_total{response_code=~"5.."}[5m])) by (pod)
 ```
 
 ### Workqueue Metrics
@@ -148,22 +154,24 @@ rate(workqueue_adds_total{
 }[5m])
 
 # Queue processing latency
-workqueue_queue_duration_seconds{
-  name="app_reconciliation_queue"
-}
+histogram_quantile(0.95,
+  sum(rate(workqueue_queue_duration_seconds_bucket{
+    name="app_reconciliation_queue"
+  }[5m])) by (le, pod)
+)
 ```
 
 ### Cluster Metrics
 
 ```promql
-# Number of clusters per shard
-count(argocd_cluster_info) by (shard)
+# Number of clusters per controller pod (shard)
+count(argocd_cluster_info) by (pod)
 
 # Cluster connection status
-argocd_cluster_info{connection_status!="Successful"}
+argocd_cluster_connection_status == 0
 
 # API server request rate per cluster
-sum(rate(argocd_cluster_api_request_total[5m])) by (server)
+sum(rate(argocd_app_k8s_request_total[5m])) by (server)
 ```
 
 ## Building a Grafana Dashboard
@@ -177,7 +185,7 @@ Create a Grafana dashboard that gives you a complete view of shard health. Here 
       "title": "Clusters per Shard",
       "type": "stat",
       "targets": [{
-        "expr": "count(argocd_cluster_info) by (shard)"
+        "expr": "count(argocd_cluster_info) by (pod)"
       }]
     },
     {
@@ -263,7 +271,7 @@ Controller logs provide real-time visibility into shard behavior:
 ```bash
 # Check which clusters a specific shard is processing
 kubectl logs argocd-application-controller-0 -n argocd \
-  --tail=200 | grep "Processing cluster"
+  --tail=200 | grep -E "Ignoring cluster|Reconciliation completed|cluster"
 
 # Check for errors on a specific shard
 kubectl logs argocd-application-controller-1 -n argocd \
@@ -278,12 +286,12 @@ kubectl logs -f argocd-application-controller-2 -n argocd \
 
 ### Cluster Showing as Unknown
 
-If a cluster shows Unknown health status, check whether its assigned shard is running:
+If a manually assigned cluster shows Unknown health status, check whether its assigned shard is running:
 
 ```bash
 # Find the cluster's shard
 kubectl get secret cluster-prod-us -n argocd \
-  -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/shard}'
+  -o jsonpath='{.data.shard}' | base64 -d
 
 # Check if that shard pod is running
 kubectl get pod argocd-application-controller-<shard-id> -n argocd
