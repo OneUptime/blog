@@ -106,7 +106,7 @@ With this configuration:
 
 ### The Default Project
 
-Pay special attention to the `default` project. By default, it has no restrictions on source namespaces. Lock it down:
+Pay special attention to the `default` project. By default, it permits deployments from any source repository to any destination. Do not add tenant namespaces to its `sourceNamespaces`, and lock down its permissions:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -115,9 +115,8 @@ metadata:
   name: default
   namespace: argocd
 spec:
-  # Restrict default project to argocd namespace only
-  sourceNamespaces:
-    - argocd
+  # Do not allow Application resources outside the ArgoCD namespace to use this project
+  sourceNamespaces: []
 
   # Restrict what the default project can do
   sourceRepos: []        # No repos allowed
@@ -128,8 +127,7 @@ Or if you still use the default project for some applications:
 
 ```yaml
 spec:
-  sourceNamespaces:
-    - argocd              # Only allow from argocd namespace
+  sourceNamespaces: []    # No additional Application namespaces outside argocd
   sourceRepos:
     - 'https://github.com/myorg/infrastructure-*'
   destinations:
@@ -154,12 +152,12 @@ data:
 
   policy.csv: |
     # Team frontend can manage their applications
-    p, role:team-frontend, applications, *, team-frontend/*, allow
-    p, role:team-frontend, logs, get, team-frontend/*, allow
+    p, role:team-frontend, applications, *, team-frontend/team-frontend/*, allow
+    p, role:team-frontend, logs, get, team-frontend/team-frontend/*, allow
 
     # Team backend can manage their applications
-    p, role:team-backend, applications, *, team-backend/*, allow
-    p, role:team-backend, logs, get, team-backend/*, allow
+    p, role:team-backend, applications, *, team-backend/team-backend/*, allow
+    p, role:team-backend, logs, get, team-backend/team-backend/*, allow
 
     # Map SSO groups to roles
     g, frontend-developers, role:team-frontend
@@ -205,19 +203,13 @@ subjects:
     apiGroup: rbac.authorization.k8s.io
 ```
 
-For namespaces that should NOT have Application resources, explicitly deny:
+For namespaces that should NOT have Application resources, remember that Kubernetes RBAC is allow-only. Do not bind any Role or ClusterRole that grants `argoproj.io` `applications` permissions in those namespaces, and verify access instead:
 
-```yaml
-# NetworkPolicy or RBAC that prevents Application creation in non-team namespaces
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: deny-argocd-apps
-  namespace: monitoring  # Should not have ArgoCD Application resources
-rules:
-  - apiGroups: ['argoproj.io']
-    resources: ['applications']
-    verbs: []  # No permissions
+```bash
+# Should return "no" for users or groups that must not create Applications here
+kubectl auth can-i create applications.argoproj.io \
+  -n monitoring \
+  --as-group=frontend-developers
 ```
 
 ## Validation with Admission Controllers
@@ -308,7 +300,7 @@ When restricting application namespaces, verify each layer:
 5. **AppProject resource whitelists** - Each project limits which Kubernetes resource types can be created
 6. **ArgoCD RBAC** - Default policy is deny, explicit allow for each team/role
 7. **Kubernetes RBAC** - Teams only have Application CRUD in their own namespaces
-8. **Default project** - Locked down or sourceNamespaces restricted to argocd only
+8. **Default project** - Locked down and not granted tenant namespaces in sourceNamespaces
 
 Missing any one of these layers can create a security gap. Defense in depth is the key principle - assume any single layer might be misconfigured and rely on the others as backup.
 
