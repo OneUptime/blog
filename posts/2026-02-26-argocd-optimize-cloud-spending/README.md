@@ -140,8 +140,9 @@ metadata:
   name: scale-down-non-prod
   namespace: argocd
 spec:
-  # Scale down at 7 PM EST (midnight UTC)
-  schedule: "0 0 * * 1-5"
+  # Scale down at 7 PM Eastern Time
+  schedule: "0 19 * * 1-5"
+  timeZone: America/New_York
   jobTemplate:
     spec:
       template:
@@ -149,37 +150,34 @@ spec:
           serviceAccountName: argocd-scaler
           containers:
             - name: scale-down
-              image: argoproj/argocd:v2.10.0
+              image: alpine/k8s:1.29.15
               command:
                 - /bin/sh
                 - -c
                 - |
-                  # Login to ArgoCD
-                  argocd login argocd-server --core
-
                   # Get all non-production apps
-                  argocd app list -l environment=development -o name | while read app; do
+                  kubectl get applications.argoproj.io -n argocd \
+                    -l environment=development \
+                    -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.destination.namespace}{"\n"}{end}' | while read app namespace; do
                     echo "Disabling auto-sync for $app"
-                    argocd app set "$app" --sync-policy none
+                    kubectl patch application "$app" -n argocd --type merge -p '{"spec":{"syncPolicy":null}}'
 
                     # Scale deployments to 0
-                    NAMESPACE=$(argocd app get "$app" -o json | jq -r '.spec.destination.namespace')
-                    kubectl get deployments -n "$NAMESPACE" \
-                      -l "app.kubernetes.io/instance=$(basename $app)" \
-                      --no-headers -o name | while read deploy; do
-                        kubectl scale "$deploy" -n "$NAMESPACE" --replicas=0
-                    done
+                    kubectl scale deployment -n "$namespace" \
+                      -l "app.kubernetes.io/instance=$app" \
+                      --replicas=0
                   done
           restartPolicy: OnFailure
 ---
-# Scale back up at 7 AM EST (noon UTC)
+# Scale back up at 7 AM Eastern Time
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: scale-up-non-prod
   namespace: argocd
 spec:
-  schedule: "0 12 * * 1-5"
+  schedule: "0 7 * * 1-5"
+  timeZone: America/New_York
   jobTemplate:
     spec:
       template:
@@ -187,17 +185,17 @@ spec:
           serviceAccountName: argocd-scaler
           containers:
             - name: scale-up
-              image: argoproj/argocd:v2.10.0
+              image: alpine/k8s:1.29.15
               command:
                 - /bin/sh
                 - -c
                 - |
-                  argocd login argocd-server --core
-
                   # Re-enable auto-sync - ArgoCD will restore desired state
-                  argocd app list -l environment=development -o name | while read app; do
+                  kubectl get applications.argoproj.io -n argocd \
+                    -l environment=development \
+                    -o name | while read app; do
                     echo "Re-enabling auto-sync for $app"
-                    argocd app set "$app" --sync-policy automated --self-heal --auto-prune
+                    kubectl patch "$app" -n argocd --type merge -p '{"spec":{"syncPolicy":{"automated":{"prune":true,"selfHeal":true}}}}'
                   done
           restartPolicy: OnFailure
 ```
@@ -236,8 +234,16 @@ spec:
           container := input.review.object.spec.template.spec.containers[_]
           cpu := container.resources.requests.cpu
           max_cpu := input.parameters.maxCpu
-          # Simple string comparison - in production, parse units properly
+          cpu_millicores(cpu) > cpu_millicores(max_cpu)
           msg := sprintf("Container %v requests %v CPU, maximum allowed is %v", [container.name, cpu, max_cpu])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.template.spec.containers[_]
+          memory := container.resources.requests.memory
+          max_memory := input.parameters.maxMemory
+          memory_mebibytes(memory) > memory_mebibytes(max_memory)
+          msg := sprintf("Container %v requests %v memory, maximum allowed is %v", [container.name, memory, max_memory])
         }
 
         violation[{"msg": msg}] {
@@ -245,6 +251,26 @@ spec:
           max_replicas := input.parameters.maxReplicas
           replicas > max_replicas
           msg := sprintf("Deployment requests %v replicas, maximum allowed is %v", [replicas, max_replicas])
+        }
+
+        cpu_millicores(cpu) = value {
+          endswith(cpu, "m")
+          value := to_number(replace(cpu, "m", ""))
+        }
+
+        cpu_millicores(cpu) = value {
+          not endswith(cpu, "m")
+          value := to_number(cpu) * 1000
+        }
+
+        memory_mebibytes(memory) = value {
+          endswith(memory, "Mi")
+          value := to_number(replace(memory, "Mi", ""))
+        }
+
+        memory_mebibytes(memory) = value {
+          endswith(memory, "Gi")
+          value := to_number(replace(memory, "Gi", "")) * 1024
         }
 ---
 # Apply constraints to non-production namespaces
@@ -271,7 +297,7 @@ spec:
 Control storage costs by restricting which storage classes teams can use:
 
 ```yaml
-# ArgoCD Project restricting storage classes via OPA
+# Gatekeeper policy restricting storage classes
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -330,7 +356,7 @@ Enforce that non-critical workloads run on cheaper spot instances:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ANY_DEPLOYMENT
+  name: payment-service
 spec:
   template:
     spec:
@@ -359,6 +385,7 @@ kind: Application
 metadata:
   name: payment-service-dev
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/payment-service
     path: k8s/development
@@ -368,17 +395,31 @@ spec:
             kind: Deployment
           patch: |
             - op: add
+              path: /spec/template/spec/affinity
+              value:
+                nodeAffinity:
+                  requiredDuringSchedulingIgnoredDuringExecution:
+                    nodeSelectorTerms:
+                      - matchExpressions:
+                          - key: node.kubernetes.io/lifecycle
+                            operator: In
+                            values:
+                              - spot
+            - op: add
               path: /spec/template/spec/tolerations
               value:
                 - key: node.kubernetes.io/lifecycle
                   operator: Equal
                   value: spot
                   effect: NoSchedule
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payment-service-dev
 ```
 
 ## Strategy 7: Cost Alerts Through ArgoCD
 
-Set up alerts when applications exceed cost thresholds:
+Set up alerts when your cost exporter publishes application cost metrics with ArgoCD labels:
 
 ```yaml
 # Prometheus alert for cost thresholds
@@ -392,7 +433,7 @@ spec:
       rules:
         - alert: ApplicationCostExceedsThreshold
           expr: |
-            argocd_app_total_cost_monthly > 500
+            application_cost_monthly_usd{label_app_kubernetes_io_instance!=""} > 500
           for: 1h
           labels:
             severity: warning
@@ -401,7 +442,7 @@ spec:
 
         - alert: TeamCostExceedsThreshold
           expr: |
-            argocd_team_total_cost_monthly > 5000
+            team_cost_monthly_usd{label_team!=""} > 5000
           for: 1h
           labels:
             severity: warning
