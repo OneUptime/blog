@@ -10,7 +10,7 @@ Description: A practical guide to enabling full disk encryption on an already-in
 
 Full disk encryption protects your data when a machine is lost or stolen. Ubuntu's installer makes it easy to enable encryption during setup, but what if you already have a running system? Adding LUKS encryption to an existing Ubuntu installation requires careful planning and a willingness to back up your data first - there is no in-place encryption path that is completely risk-free, but there are practical approaches depending on your partition layout.
 
-This guide covers the two main strategies: encrypting a secondary data partition in-place, and doing a proper encrypted reinstall while preserving your data.
+This guide covers the two main strategies: recreating a secondary data partition as encrypted storage from backup, and doing a proper encrypted reinstall while preserving your data.
 
 ## Understanding What Full Disk Encryption Actually Covers
 
@@ -125,7 +125,7 @@ sudo borg create --stats --progress \
 
 ### Install Ubuntu with Encryption
 
-Boot the Ubuntu installer, and when you reach the "Installation type" screen, choose "Erase disk and install Ubuntu" and check the "Encrypt the new Ubuntu installation for security" option. Set a strong passphrase.
+Boot the Ubuntu installer, choose the guided whole-disk installation option, and enable LUKS encryption for the new Ubuntu installation. Depending on the installer version, this may appear as an encryption checkbox or as an LVM option with encryption. Set a strong passphrase.
 
 ### Restore Your Data
 
@@ -154,18 +154,19 @@ Once encrypted, you can add additional unlock keys - useful for recovery scenari
 sudo cryptsetup luksAddKey /dev/sda3
 
 # See how many key slots are in use
-sudo cryptsetup luksDump /dev/sda3 | grep "Key Slot"
+sudo cryptsetup luksDump /dev/sda3
 
-# Remove a key slot (be careful - you can lock yourself out)
+# Remove a key by entering the passphrase to remove (be careful - you can lock yourself out)
 sudo cryptsetup luksRemoveKey /dev/sda3
 ```
 
 ## Adding a Key File for Automatic Unlocking
 
-If you have multiple encrypted partitions, typing a password for each one at boot gets tedious. A key file stored on the root partition can unlock secondary volumes automatically.
+If you have multiple encrypted partitions, typing a password for each one at boot gets tedious. A key file stored on an encrypted root partition can unlock secondary volumes automatically. Do not store the key file on an unencrypted root partition if the secondary volume needs protection against physical theft.
 
 ```bash
 # Generate a random key file
+sudo mkdir -m 700 -p /etc/luks-keys
 sudo dd if=/dev/urandom of=/etc/luks-keys/home.key bs=4096 count=1
 sudo chmod 400 /etc/luks-keys/home.key
 
