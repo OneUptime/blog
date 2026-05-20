@@ -209,7 +209,7 @@ spec:
   activeDeadlineSeconds: 600
 ```
 
-Init containers run sequentially before the main container. If any init container fails, the Pod restarts (subject to the Job's backoffLimit).
+Init containers run sequentially before the main container. With `restartPolicy: Never`, if any init container fails, the Pod fails and the Job controller creates a replacement Pod subject to the Job's `backoffLimit`.
 
 ### Parallel Execution Job
 
@@ -227,6 +227,7 @@ spec:
   # Run 3 Pods in parallel, all must succeed
   completions: 3
   parallelism: 3
+  completionMode: Indexed
   template:
     spec:
       containers:
@@ -238,15 +239,10 @@ spec:
             - |
               # Each Pod checks a different service based on Pod index
               case $JOB_COMPLETION_INDEX in
-                0) curl -sf http://database:5432/ && echo "Database OK" ;;
-                1) curl -sf http://redis:6379/ && echo "Redis OK" ;;
-                2) curl -sf http://rabbitmq:15672/ && echo "RabbitMQ OK" ;;
+                0) curl -sf http://api:8080/health && echo "API OK" ;;
+                1) curl -sf http://worker:8080/health && echo "Worker OK" ;;
+                2) curl -sf http://rabbitmq:15672/api/health/checks/node && echo "RabbitMQ OK" ;;
               esac
-          env:
-            - name: JOB_COMPLETION_INDEX
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.annotations['batch.kubernetes.io/job-completion-index']
       restartPolicy: Never
   backoffLimit: 1
   activeDeadlineSeconds: 60
@@ -291,9 +287,9 @@ spec:
 
 ArgoCD determines Job health as follows:
 
-- **Healthy**: Job completed with `status.succeeded >= 1`
-- **Progressing**: Job is still running (Pods are active)
-- **Degraded**: Job failed (all Pods failed, `status.failed >= backoffLimit`)
+- **Healthy**: Job has a `Complete` condition
+- **Progressing**: Job does not have a terminal condition yet
+- **Degraded**: Job has a `Failed` condition
 
 During a sync, ArgoCD waits for hook Jobs to become either Healthy or Degraded before proceeding.
 
