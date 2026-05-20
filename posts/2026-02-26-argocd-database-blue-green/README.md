@@ -17,7 +17,7 @@ Blue-green database deployments are appropriate when:
 - Schema changes are too complex for online migration
 - You need to test the new schema with production data before switching
 - Downtime for migration is unacceptable
-- You want instant rollback capability
+- You want fast traffic rollback capability with a clear data-reconciliation plan
 
 ```mermaid
 graph TD
@@ -73,27 +73,22 @@ spec:
     size: 50Gi
     storageClassName: gp3
 
-  # Bootstrap from the blue database backup
+  # Bootstrap from the blue database backup.
+  # Omit recoveryTarget to recover through the latest available WAL.
   bootstrap:
     recovery:
       source: production-db-blue
-      recoveryTarget:
-        targetTime: "2026-02-26T02:00:00Z"  # Recover to latest consistent point
 
   # External cluster reference for recovery
+  # For CloudNativePG 1.26 and later, prefer the Barman Cloud Plugin ObjectStore
+  # resource (not shown here) over the deprecated native barmanObjectStore fields.
   externalClusters:
     - name: production-db-blue
-      barmanObjectStore:
-        destinationPath: s3://database-backups/production/blue
-        s3Credentials:
-          accessKeyId:
-            name: backup-credentials
-            key: access-key
-          secretAccessKey:
-            name: backup-credentials
-            key: secret-key
-        wal:
-          maxParallel: 4
+      plugin:
+        name: barman-cloud.cloudnative-pg.io
+        parameters:
+          barmanObjectName: production-db-blue-backup
+          serverName: production-db-blue
 
   postgresql:
     parameters:
@@ -108,9 +103,6 @@ spec:
       cpu: 2
       memory: 4Gi
 
-  monitoring:
-    enablePodMonitor: true
-
   affinity:
     enablePodAntiAffinity: true
     topologyKey: kubernetes.io/hostname
@@ -120,7 +112,7 @@ Commit this to Git and let ArgoCD create the green database. The bootstrap secti
 
 ## Phase 2: Apply Schema Changes to Green
 
-Run migrations on the green database using a PreSync hook:
+Run migrations on the green database using a PostSync hook after the green cluster has been created:
 
 ```yaml
 # hooks/green-migration.yaml
@@ -167,6 +159,8 @@ spec:
 ## Phase 3: Data Synchronization
 
 Set up continuous replication from blue to green to keep data in sync:
+
+Before running this job, configure the blue PostgreSQL cluster with `wal_level = logical`, use a replication-capable role with the required privileges, and make sure the schema changes are compatible with PostgreSQL logical replication. The `copy_data = false` example is only safe when the green database already contains the same data as blue at the point the replication slot is created, such as after a brief write freeze or a pre-created logical replication slot. Otherwise, use `copy_data = true` into compatible empty tables or a CDC tool that can bridge the backup-to-subscription gap.
 
 ```yaml
 # For PostgreSQL, use logical replication
@@ -261,7 +255,7 @@ spec:
             - |
               echo "=== Green Database Verification ==="
 
-              # Compare row counts between blue and green
+              # Compare approximate row counts between blue and green
               BLUE_COUNTS=$(PGPASSWORD=$BLUE_PASSWORD psql \
                 -h $BLUE_HOST -U $BLUE_USER -d mydb -t \
                 -c "SELECT tablename, n_live_tup FROM pg_stat_user_tables ORDER BY tablename;")
@@ -293,7 +287,7 @@ spec:
 
 ## Phase 5: Switch Traffic
 
-Switch the application to the green database by updating the service endpoints:
+Switch the application to the green database by updating a Service alias:
 
 ```yaml
 # services/db-service.yaml
@@ -325,7 +319,7 @@ data:
   DB_COLOR: "green"
 ```
 
-Commit this change to Git. ArgoCD syncs the updated configuration, and the application pods restart with the new database connection.
+Commit this change to Git. ArgoCD syncs the updated configuration; application pods use the new database connection after a rollout, a checksum annotation change, or a reloader controller restarts them.
 
 ## Phase 6: Rollback (If Needed)
 
@@ -339,7 +333,7 @@ git push
 # ArgoCD automatically syncs back to blue
 ```
 
-The blue database is still running with the original schema and data, so the rollback is instant.
+The blue database is still running with the original schema and pre-switch data, so rolling application traffic back is quick if you have not accepted writes on green yet. After green accepts writes, plan reverse replication, dual writes, or another reconciliation step before treating rollback as data-safe.
 
 ## Phase 7: Decommission Blue
 
@@ -354,6 +348,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: cleanup-replication
+  namespace: database
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
@@ -373,6 +368,17 @@ spec:
                 -c "DROP SUBSCRIPTION IF EXISTS green_sub;"
 
               echo "Replication cleanup complete"
+          env:
+            - name: GREEN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: green-db-credentials
+                  key: username
+            - name: GREEN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: green-db-credentials
+                  key: password
       restartPolicy: Never
 ```
 
@@ -392,7 +398,7 @@ spec:
     - name: blue-green-database
       rules:
         - alert: ReplicationLag
-          expr: pg_replication_lag > 10
+          expr: cnpg_pg_replication_lag > 10
           for: 5m
           labels:
             severity: warning
@@ -409,4 +415,4 @@ Use [OneUptime](https://oneuptime.com) for comprehensive monitoring during the b
 
 ## Summary
 
-Database blue-green deployments with ArgoCD follow a phased approach: deploy the green database from a blue backup, apply schema migrations to green, set up data synchronization, verify data integrity, switch traffic through a Git commit, and decommission blue after a confidence period. Every phase is a Git commit, giving you a complete audit trail and instant rollback capability. This pattern is best suited for complex schema changes that cannot use the simpler expand-contract approach, and the cost is running two database instances during the transition period.
+Database blue-green deployments with ArgoCD follow a phased approach: deploy the green database from a blue backup, apply schema migrations to green, set up data synchronization, verify data integrity, switch traffic through a Git commit, and decommission blue after a confidence period. Every phase is a Git commit, giving you a complete audit trail and a fast traffic rollback path when paired with a data-reconciliation plan. This pattern is best suited for complex schema changes that cannot use the simpler expand-contract approach, and the cost is running two database instances during the transition period.
