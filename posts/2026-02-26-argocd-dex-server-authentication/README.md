@@ -14,7 +14,7 @@ This post explains how Dex works, how it integrates with ArgoCD, and how to conf
 
 ## What Is Dex?
 
-Dex is an open-source OIDC identity service that acts as a "federation hub." It does not store users or passwords itself. Instead, it delegates authentication to upstream identity providers and issues its own OIDC tokens.
+Dex is an open-source OIDC identity service that acts as a "federation hub." In a typical ArgoCD SSO setup, it does not store users or passwords itself. Instead, it delegates authentication to upstream identity providers and issues its own OIDC tokens.
 
 Think of Dex as a universal translator. Your identity provider speaks its own language (SAML, LDAP, OAuth2), and ArgoCD speaks OIDC. Dex translates between them.
 
@@ -39,9 +39,9 @@ When a user logs into ArgoCD through Dex, this is the complete flow:
 3. Dex shows the configured identity provider options
 4. User selects their provider and authenticates (enters credentials at GitHub, Okta, etc.)
 5. The identity provider redirects back to Dex with the user's identity
-6. Dex creates an OIDC ID token containing the user's email and group memberships
-7. Dex redirects back to ArgoCD with the token
-8. ArgoCD validates the token and creates a session
+6. Dex redirects back to ArgoCD with an authorization code
+7. ArgoCD exchanges that code with Dex for OIDC tokens
+8. ArgoCD validates the ID token and creates a session
 
 ```mermaid
 sequenceDiagram
@@ -59,8 +59,10 @@ sequenceDiagram
     U->>D: Auth code callback
     D->>IDP: Exchange code for tokens
     IDP->>D: User info + groups
-    D->>U: Redirect with OIDC token
-    U->>A: Present OIDC token
+    D->>U: Redirect with auth code
+    U->>A: Auth code callback
+    A->>D: Exchange code for OIDC tokens
+    D->>A: ID token and related OAuth tokens
     A->>A: Validate token, create session
     A->>U: Authenticated - show dashboard
 ```
@@ -163,7 +165,7 @@ dex.config: |
         nameAttr: cn
 ```
 
-The LDAP connector searches for users and their group memberships. Groups found in LDAP are passed through as ArgoCD groups in the OIDC token.
+The LDAP connector searches for users and their group memberships. When the `groups` scope is requested, groups found in LDAP are passed through as ArgoCD groups in the OIDC token.
 
 ### Okta
 
@@ -245,7 +247,7 @@ kubectl get deployment argocd-dex-server -n argocd
 # View Dex logs for authentication debugging
 kubectl logs -l app.kubernetes.io/name=argocd-dex-server -n argocd
 
-# Dex exposes port 5556 (HTTP) and 5557 (gRPC)
+# Dex exposes port 5556 (HTTP), 5557 (gRPC), and 5558 (metrics)
 kubectl get svc argocd-dex-server -n argocd
 ```
 
