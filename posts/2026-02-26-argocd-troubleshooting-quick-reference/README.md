@@ -68,8 +68,9 @@ argocd app terminate-op <app-name>
 # Force a fresh sync
 argocd app sync <app-name> --force
 
-# If hooks are stuck, skip them
-argocd app sync <app-name> --prune --force
+# If a hook Job is stuck, delete it after terminating the operation, then sync again
+kubectl delete job <hook-job-name> -n <namespace>
+argocd app sync <app-name> --prune
 ```
 
 ### Symptom: "ComparisonError" on Application
@@ -128,8 +129,8 @@ Common causes:
 # See what is different
 argocd app diff <app-name>
 
-# Check specific resource diffs
-argocd app diff <app-name> --resource <group>:<kind>:<name>
+# List resource-level sync and health details
+argocd app resources <app-name> --output tree=detailed
 
 # Check if ignore differences is configured
 argocd app get <app-name> -o json | jq '.spec.ignoreDifferences'
@@ -181,14 +182,14 @@ kubectl get configmap argocd-cm -n argocd -o yaml | grep -A 20 "oidc.config"
 
 # Reset the admin password
 kubectl patch secret argocd-secret -n argocd -p \
-  '{"stringData": {"admin.password": "'$(htpasswd -bnBC 10 "" "newpassword" | tr -d ':\n')'"}}'
+  '{"stringData": {"admin.password": "'$(argocd account bcrypt --password "newpassword")'", "admin.passwordMtime": "'$(date +%FT%T%Z)'"}}'
 ```
 
 ### Symptom: "Permission Denied" in UI or CLI
 
 ```bash
-# Check what groups the user belongs to
-argocd account get --account <username>
+# Check the current user's claims and groups
+argocd account get-user-info -o yaml
 
 # Review RBAC policies
 kubectl get configmap argocd-rbac-cm -n argocd -o yaml
