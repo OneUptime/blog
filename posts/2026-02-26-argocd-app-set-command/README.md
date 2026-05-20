@@ -245,11 +245,12 @@ argocd app set my-app --helm-set replicaCount=10
 # Enable debug logging
 argocd app set my-app --helm-set logLevel=debug
 
-# After debugging, restore from Git
+# After debugging, remove the temporary overrides and sync again
+argocd app unset my-app -p replicaCount -p logLevel
 argocd app sync my-app
 ```
 
-Note: If auto-sync is enabled, temporary changes through `argocd app set` will be overwritten by the next reconciliation unless they match what is in Git. To make temporary changes stick, either disable auto-sync first or commit the changes to Git.
+Note: Changes made through `argocd app set` modify the Application spec, so they remain until you unset them, change them again, or a declarative Application definition overwrites them. To make production changes durable in a GitOps workflow, commit the corresponding Application or manifest changes to Git.
 
 ## Understanding app set vs Git Changes
 
@@ -291,7 +292,7 @@ To remove a previously set value, you often need to use `argocd app unset`:
 
 ```bash
 # Remove a Helm parameter
-argocd app unset my-app --helm-set image.tag
+argocd app unset my-app -p image.tag
 
 # Remove a values file
 argocd app unset my-app --values values-override.yaml
