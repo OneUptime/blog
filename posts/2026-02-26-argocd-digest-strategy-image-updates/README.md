@@ -10,6 +10,8 @@ Description: Learn how to use the digest update strategy in ArgoCD Image Updater
 
 The digest strategy in ArgoCD Image Updater solves a specific problem: tracking mutable tags. A mutable tag like `latest` or `stable` can point to different image contents over time without the tag name changing. The digest strategy detects when the actual image behind a tag changes by comparing SHA256 digests, and then updates your deployment to pin to the new digest.
 
+The examples below use the legacy Argo CD Application annotations. In current Argo CD Image Updater versions, configure an `ImageUpdater` custom resource to select these Applications with `useAnnotations: true`, or translate the same image settings into the `ImageUpdater` resource.
+
 ## Understanding the Problem
 
 Consider this scenario. Your deployment uses the image `myapp:latest`. The CI pipeline builds a new image and pushes it with the `latest` tag. Kubernetes does not redeploy because the image reference in the manifest has not changed - it still says `myapp:latest`. Even with `imagePullPolicy: Always`, you lose the GitOps guarantee of knowing exactly what is running.
@@ -60,7 +62,7 @@ spec:
       selfHeal: true
 ```
 
-Note the key difference from other strategies: you specify the tag directly in the image reference (`myapp:latest`), not as a constraint.
+Note the key difference from tag-scanning strategies: you specify the tag directly in the image-list entry (`myapp:latest`). That tag is the version constraint Image Updater watches for digest changes, rather than a tag filter such as `allow-tags`.
 
 ## Tracking Different Tags
 
@@ -93,7 +95,7 @@ annotations:
 
 ## What Gets Written to Git
 
-When Image Updater detects a digest change, it writes the full digest reference to your manifests.
+When Image Updater detects a digest change, it writes the new digest through the configured write-back method. With the default Git write-back target it writes Argo CD parameter overrides to `.argocd-source-<appName>.yaml`; with `write-back-target: kustomization` or `helmvalues:<file>`, it updates the Kustomize or Helm values file instead.
 
 ### Before Update (Kustomize)
 
@@ -115,6 +117,8 @@ images:
 ```
 
 ### Helm Values Write-Back
+
+For Helm charts, the chart must render the digest as a digest reference, for example `repository@digest`. If your chart has a separate digest value, point the Helm image-tag annotation at that value:
 
 ```yaml
 annotations:
@@ -170,14 +174,16 @@ annotations:
 
 ## Digest Strategy vs Other Strategies
 
-| Feature | Digest | Latest | Semver |
-|---------|--------|--------|--------|
-| Tracks a single tag | Yes | No (scans all tags) | No (scans all tags) |
-| Detects content changes | Yes | No (uses timestamps) | No (uses version numbers) |
+| Feature | Digest | Newest-build | Semver |
+|---------|--------|--------------|--------|
+| Tracks a single tag | Yes | No (scans all tags unless filtered) | No (scans semver tags matching the version constraint) |
+| Detects content changes | Yes | No (uses image creation dates) | No (uses version numbers) |
 | Works with mutable tags | Yes | Partially | No |
 | Output format | `image@sha256:...` | `image:tag` | `image:tag` |
 | Immutable references | Yes | No | No |
-| Supports multi-arch | Yes | Yes | Yes |
+| Supports multi-arch filtering | Yes | Yes | No |
+
+The `newest-build` strategy was previously named `latest`; current Image Updater documentation recommends the new name because the old name is retained only for backward compatibility.
 
 ## Platform-Specific Digest Tracking
 
