@@ -30,7 +30,7 @@ Before setting up monitoring, you can check current Redis memory usage with a qu
 ```bash
 # Connect to the ArgoCD Redis pod and check memory stats
 
-kubectl exec -n argocd deploy/argocd-redis -- redis-cli INFO memory
+kubectl exec -n argocd deploy/argocd-redis -- sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" INFO memory'
 ```
 
 This returns output like:
@@ -64,15 +64,11 @@ If you are using the ArgoCD Helm chart, you can enable the Redis exporter in you
 ```yaml
 # values.yaml for ArgoCD Helm chart
 redis:
-  metrics:
+  exporter:
     enabled: true
     image:
-      repository: oliver006/redis_exporter
-      tag: v1.58.0
-    serviceMonitor:
-      enabled: true
-      namespace: argocd
-      interval: 30s
+      repository: ghcr.io/oliver006/redis_exporter
+      tag: v1.83.0
     resources:
       requests:
         cpu: 10m
@@ -80,6 +76,12 @@ redis:
       limits:
         cpu: 100m
         memory: 64Mi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: argocd
+      interval: 30s
 ```
 
 If you installed ArgoCD with plain manifests, add the exporter as a sidecar to the Redis deployment:
@@ -91,7 +93,13 @@ metadata:
   name: argocd-redis
   namespace: argocd
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-redis
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-redis
     spec:
       containers:
         - name: redis
@@ -99,18 +107,35 @@ spec:
           ports:
             - containerPort: 6379
           args:
-            - --save ""
-            - --appendonly no
-            - --maxmemory 256mb
-            - --maxmemory-policy allkeys-lru
+            - --save
+            - ""
+            - --appendonly
+            - "no"
+            - --maxmemory
+            - 256mb
+            - --maxmemory-policy
+            - allkeys-lru
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: argocd-redis
+                  key: auth
         - name: redis-exporter
-          image: oliver006/redis_exporter:v1.58.0
+          image: ghcr.io/oliver006/redis_exporter:v1.83.0
           ports:
             - containerPort: 9121
               name: metrics
           env:
             - name: REDIS_ADDR
               value: "redis://localhost:6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: argocd-redis
+                  key: auth
           resources:
             requests:
               cpu: 10m
@@ -163,6 +188,9 @@ Once the exporter is running, you get access to dozens of Redis metrics. Here ar
 redis_memory_used_bytes
 
 # Peak memory usage
+redis_memory_used_peak_bytes
+
+# Configured maxmemory limit
 redis_memory_max_bytes
 
 # Memory fragmentation ratio
@@ -209,8 +237,12 @@ Here is a practical Grafana dashboard configuration with the panels that matter 
           "legendFormat": "Used Memory"
         },
         {
+          "expr": "redis_memory_used_peak_bytes{namespace=\"argocd\"}",
+          "legendFormat": "Peak Memory"
+        },
+        {
           "expr": "redis_memory_max_bytes{namespace=\"argocd\"}",
-          "legendFormat": "Max Memory"
+          "legendFormat": "Max Memory Limit"
         }
       ]
     },
@@ -270,8 +302,10 @@ spec:
         # Alert when Redis memory usage exceeds 80% of limit
         - alert: ArgoCDRedisHighMemoryUsage
           expr: |
-            redis_memory_used_bytes{namespace="argocd"} /
-            redis_memory_max_bytes{namespace="argocd"} > 0.8
+            (redis_memory_used_bytes{namespace="argocd"} /
+             redis_memory_max_bytes{namespace="argocd"} > 0.8)
+            and
+            redis_memory_max_bytes{namespace="argocd"} > 0
           for: 10m
           labels:
             severity: warning
@@ -323,10 +357,14 @@ For ArgoCD, configure Redis with these arguments:
 ```yaml
 # In the Redis deployment args
 args:
-  - --maxmemory 256mb
-  - --maxmemory-policy allkeys-lru
-  - --save ""
-  - --appendonly no
+  - --maxmemory
+  - 256mb
+  - --maxmemory-policy
+  - allkeys-lru
+  - --save
+  - ""
+  - --appendonly
+  - "no"
 ```
 
 The `allkeys-lru` policy ensures that when Redis hits the memory limit, it evicts the least recently used keys rather than rejecting writes entirely. This is the right policy for a cache layer like ArgoCD uses.
