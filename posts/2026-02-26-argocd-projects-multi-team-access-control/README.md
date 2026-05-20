@@ -72,7 +72,7 @@ Each team gets their own project with appropriate restrictions:
 
 Some organizations create separate projects per team per environment:
 
-```yaml
+```text
 # Per team per environment
 backend-dev      # Loose restrictions
 backend-staging  # Moderate restrictions
@@ -83,7 +83,7 @@ backend-prod     # Strict restrictions
 
 One project per team with sync windows controlling environment access:
 
-```yaml
+```text
 # One project per team
 backend    # Source/destination restrictions handle environments
 frontend   # Sync windows control production deployment timing
@@ -255,6 +255,13 @@ spec:
       groups:
         - my-org:backend-leads
 
+    - name: viewer
+      description: "Read-only for backend resources"
+      policies:
+        - p, proj:backend:viewer, applications, get, backend/*, allow
+      groups:
+        - my-org:all-engineering
+
     - name: ci-pipeline
       description: "CI/CD automation"
       policies:
@@ -404,6 +411,12 @@ spec:
         - p, proj:TEAM_NAME:lead, logs, get, TEAM_NAME/*, allow
       groups:
         - my-org:TEAM_NAME-leads
+
+    - name: viewer
+      policies:
+        - p, proj:TEAM_NAME:viewer, applications, get, TEAM_NAME/*, allow
+      groups:
+        - my-org:all-engineering
 ```
 
 ### Onboarding Script
@@ -436,11 +449,11 @@ echo "SSO groups needed: my-org:${TEAM}-developers, my-org:${TEAM}-leads"
 
 ```bash
 # Check what a specific role can do
-argocd admin rbac can role:sre sync applications backend/api-service
-argocd admin rbac can role:sre delete applications backend/api-service
+argocd admin settings rbac can role:sre sync application backend/api-service --namespace argocd
+argocd admin settings rbac can role:sre delete application backend/api-service --namespace argocd
 
 # Validate the complete policy
-argocd admin rbac validate --policy-file policy.csv
+argocd admin settings rbac validate --policy-file policy.csv
 ```
 
 ### Monitor Access Patterns
