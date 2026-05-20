@@ -8,7 +8,7 @@ Description: Learn how to use labels and annotations on ArgoCD cluster secrets t
 
 ---
 
-Labels and annotations on ArgoCD cluster secrets are the foundation for scalable multi-cluster management. They determine which clusters ApplicationSets target, help organize your fleet, and enable environment-based deployment patterns. Without proper labeling, managing more than a handful of clusters becomes chaotic.
+Labels and annotations on ArgoCD cluster secrets are the foundation for scalable multi-cluster management. Labels determine which clusters ApplicationSets target, while annotations add useful metadata for humans, templates, and automation. Together, they help organize your fleet and enable environment-based deployment patterns. Without proper labeling, managing more than a handful of clusters becomes chaotic.
 
 In this guide, I will show you how to effectively label and annotate clusters, and how those labels drive your deployment automation.
 
@@ -44,7 +44,11 @@ stringData:
   name: production-east
   server: "https://prod-east.k8s.example.com"
   config: |
-    { ... }
+    {
+      "tlsClientConfig": {
+        "insecure": false
+      }
+    }
 ```
 
 ## Adding Labels via CLI
@@ -52,14 +56,14 @@ stringData:
 ```bash
 # Add labels to an existing cluster
 
-argocd cluster set https://prod-east.k8s.example.com \
+argocd cluster set production-east \
   --label environment=production \
   --label region=us-east-1 \
   --label provider=aws \
   --label tier=critical
 
 # View cluster labels
-argocd cluster get https://prod-east.k8s.example.com -o json | jq '.labels'
+argocd cluster get production-east -o json | jq '.labels'
 ```
 
 ## Adding Labels via kubectl
@@ -210,7 +214,7 @@ spec:
               selector:
                 matchLabels:
                   environment: production
-              # Cluster label values available in templates
+              # Additional generator values available in templates
               values:
                 ingress-class: "nginx"
           - list:
@@ -284,7 +288,7 @@ annotations:
   argocd.example.com/created-at: "2025-06-15T10:00:00Z"
 ```
 
-These annotations do not affect ApplicationSet generators but are useful for documentation, automation scripts, and debugging.
+These annotations are not used for label selection, but ApplicationSet cluster generators expose them as `metadata.annotations.<key>` template parameters. They are useful for documentation, automation scripts, and debugging.
 
 ## Automating Label Management
 
@@ -328,7 +332,7 @@ development,https://dev.k8s.example.com,development,us-east-1,aws,development
 # List clusters with specific labels
 kubectl get secrets -n argocd \
   -l argocd.argoproj.io/secret-type=cluster,environment=production \
-  -o custom-columns='NAME:.metadata.name,CLUSTER:.data.name'
+  -o json | jq -r '.items[] | [.metadata.name, (.data.name | @base64d)] | @tsv'
 
 # Using ArgoCD CLI
 argocd cluster list -o json | jq '.[] | select(.labels.environment == "production") | .name'
