@@ -50,7 +50,7 @@ stringData:
   password: your_azure_devops_pat_here
 ```
 
-An important quirk of Azure DevOps: the username can be anything when using a PAT. Azure DevOps ignores the username field and only validates the token. Some people use their email, some use an empty string, some use a placeholder like `argocd`. It does not matter.
+An important quirk of Azure DevOps: the username can be any non-empty string when using a PAT. Azure DevOps validates the token as the password. Some people use their email, and some use a placeholder like `argocd`.
 
 ```bash
 kubectl apply -f azure-devops-pat.yaml
@@ -80,10 +80,10 @@ Azure DevOps supports SSH authentication. Add your public key at https://dev.azu
 First, generate the key:
 
 ```bash
-ssh-keygen -t rsa -b 4096 -C "argocd@company.com" -f argocd-azdo-key -N ""
+ssh-keygen -t rsa-sha2-256 -C "argocd@company.com" -f argocd-azdo-key -N ""
 ```
 
-Note: Azure DevOps requires RSA keys. ED25519 keys are supported on Azure DevOps Services but may not work on older Azure DevOps Server installations.
+Note: Azure DevOps requires RSA keys. The `rsa-sha2-256` and `rsa-sha2-512` key types generate RSA keys that use the supported RSA SHA-2 signature algorithms.
 
 The SSH URL format for Azure DevOps is different:
 
@@ -107,19 +107,19 @@ stringData:
   type: git
   url: git@ssh.dev.azure.com:v3/your-organization
   sshPrivateKey: |
-    -----BEGIN RSA PRIVATE KEY-----
-    MIIEpAIBAAKCAQEA...
-    -----END RSA PRIVATE KEY-----
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
 ```
 
 Add Azure DevOps SSH host key to ArgoCD:
 
 ```bash
-# Get the Azure DevOps SSH host key
-ssh-keyscan ssh.dev.azure.com
+# Get the Azure DevOps SSH host key and add it to ArgoCD
+ssh-keyscan ssh.dev.azure.com | argocd cert add-ssh --batch
 ```
 
-Update the known hosts ConfigMap:
+Or update the known hosts ConfigMap declaratively:
 
 ```yaml
 apiVersion: v1
@@ -129,45 +129,38 @@ metadata:
   namespace: argocd
 data:
   ssh_known_hosts: |
-    ssh.dev.azure.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC7Hr1oTWqNqOlzGJOfGJ4NakVyIzf1rXYd4d7wo6jBlkLvCA4odBlL0mDUyZ0/QUfTTqeu+tm22gOsv+VrVTMk6vwRU75gY/y9ut5Mb3bR5BV58dKXyq9A9UeB5Cakehn5Zgm6x1mKoVyf+FFn26iYqXJRgzIZZcZ5V6hrE0Qg39kZm4az48o0AUbf6Sp4SLdvnuMa2sVNwHBboS7EJkm57XQPVU3/QpyNLHbWDdzwtrlS+ez30S3AdYhLKEOxAG8weOnyrtLJAUen9mTkol8oII1edf7mWWbWVf0nBmly21+nZcmCTISQBtdcyPaEno7fFQMDD26/s0lfKob4Kw8H
-    github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+    ssh.dev.azure.com ssh-rsa <host-public-key-from-ssh-keyscan>
 ```
 
 ## Method 3: Azure Managed Identity (Advanced)
 
-If your ArgoCD cluster runs on AKS, you can use Azure Managed Identity with the Azure DevOps REST API. This requires a custom approach since ArgoCD does not natively support managed identity authentication for Git.
+If your ArgoCD cluster runs on AKS, you can use Azure Workload Identity with Azure Repos. This is the native ArgoCD approach for using a managed identity-style authentication flow with Azure DevOps Git repositories.
 
-The typical pattern is to use a sidecar or init container that generates PATs from the managed identity:
+Before using this, label the repo-server pods with `azure.workload.identity/use: "true"`, add the `azure.workload.identity/client-id` annotation to the repo-server service account, create a federated identity credential for that service account, and grant the workload identity access to Azure Repos.
 
 ```yaml
-# This is a conceptual example - requires custom implementation
-apiVersion: apps/v1
-kind: Deployment
+# azure-devops-workload-identity.yaml
+apiVersion: v1
+kind: Secret
 metadata:
-  name: argocd-repo-server
+  name: azure-devops-workload-identity
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          # ... standard configuration
-        - name: token-refresher
-          image: your-registry/azure-pat-refresher:latest
-          env:
-            - name: AZURE_CLIENT_ID
-              value: "managed-identity-client-id"
-            - name: AZURE_DEVOPS_ORG
-              value: "your-organization"
-          volumeMounts:
-            - name: token
-              mountPath: /tmp/token
-      volumes:
-        - name: token
-          emptyDir: {}
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://your-organization@dev.azure.com/your-organization/your-project/_git/k8s-manifests
+  useAzureWorkloadIdentity: "true"
 ```
 
-For most teams, a long-lived PAT from a service account is simpler and works well.
+You can also add the repository with the ArgoCD CLI:
+
+```bash
+argocd repo add "https://your-organization@dev.azure.com/your-organization/your-project/_git/k8s-manifests" \
+  --use-azure-workload-identity
+```
+
+For most teams, a regularly rotated PAT from a service account is simpler and works well.
 
 ## Azure DevOps Server (On-Premises)
 
@@ -256,16 +249,17 @@ Azure DevOps supports service hooks that can notify ArgoCD of pushes:
 3. Select "Code pushed" as the trigger
 4. Set the URL to `https://argocd.company.com/api/webhook`
 
-In ArgoCD, configure the webhook secret:
+In ArgoCD, configure the same Azure DevOps webhook basic authentication username and password in the `argocd-secret` Secret:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
-  webhook.azuredevops.secret: your-webhook-secret
+stringData:
+  webhook.azuredevops.username: argocd-webhook
+  webhook.azuredevops.password: your-webhook-password
 ```
 
 ## Troubleshooting
