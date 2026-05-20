@@ -123,7 +123,7 @@ Add kubeconform as a local hook:
             -summary \
             -strict \
             "$@"
-        '
+        ' --
         language: system
         files: \.(yaml|yml)$
         exclude: (charts/.*/templates/|kustomization\.yaml|.yamllint|.pre-commit|values)
@@ -153,7 +153,7 @@ Validate that Kustomize overlays build successfully:
               echo "OK: $dir"
             fi
           done
-        '
+        ' --
         language: system
         files: \.(yaml|yml)$
         pass_filenames: true
@@ -177,7 +177,7 @@ For Helm charts in your repository:
               if [ -f "$chart_dir/Chart.yaml" ]; then
                 if [ -z "${checked_charts[$chart_dir]+x}" ]; then
                   echo "Linting chart: $chart_dir"
-                  helm lint "$chart_dir" --strict
+                  helm lint "$chart_dir" --strict || exit 1
                   checked_charts[$chart_dir]=1
                 fi
                 break
@@ -185,7 +185,7 @@ For Helm charts in your repository:
               chart_dir=$(dirname "$chart_dir")
             done
           done
-        '
+        ' --
         language: system
         files: charts/.*\.(yaml|yml|tpl)$
         pass_filenames: true
@@ -218,7 +218,7 @@ Enforce policies on every commit:
           if [ ${#files[@]} -gt 0 ]; then
             conftest test --policy policy/ "${files[@]}"
           fi
-        '
+        ' --
         language: system
         files: \.(yaml|yml)$
         pass_filenames: true
@@ -268,7 +268,7 @@ repos:
             -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
             -summary \
             "$@"
-        '
+        ' --
         language: system
         files: (apps|argocd-apps)/.*\.(yaml|yml)$
         exclude: kustomization\.yaml
@@ -292,7 +292,7 @@ repos:
               dir=$(dirname "$dir")
             done
           done
-        '
+        ' --
         language: system
         files: \.(yaml|yml)$
         pass_filenames: true
@@ -311,7 +311,7 @@ repos:
               dir=$(dirname "$dir")
             done
           done
-        '
+        ' --
         language: system
         files: charts/.*\.(yaml|yml|tpl)$
         pass_filenames: true
@@ -328,7 +328,7 @@ repos:
             esac
           done
           [ ${#valid_files[@]} -eq 0 ] || conftest test --policy policy/ "${valid_files[@]}"
-        '
+        ' --
         language: system
         files: (apps|argocd-apps)/.*\.(yaml|yml)$
         pass_filenames: true
@@ -362,7 +362,7 @@ Update the kubeconform hook to use local schemas:
             -schema-location ".schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json" \
             -summary \
             "$@"
-        '
+        ' --
         language: system
         files: (apps|argocd-apps)/.*\.(yaml|yml)$
         exclude: kustomization\.yaml
