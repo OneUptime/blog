@@ -25,8 +25,8 @@ You can use ArgoCD's built-in OIDC for simple setups, but Dex is recommended whe
 1. Log into GitLab.com
 2. For group-level applications (recommended):
    - Go to your group settings: **Settings > Applications**
-3. For instance-level applications (admin only):
-   - Go to **Admin Area > Applications**
+3. For user-owned applications:
+   - Go to your profile: **Edit profile > Access > Applications**
 4. Click **New application**
 5. Configure:
    - **Name**: `ArgoCD`
@@ -39,7 +39,7 @@ Note the **Application ID** (Client ID) and **Secret** (Client Secret).
 
 ### For Self-Hosted GitLab
 
-The steps are the same, but you navigate to your GitLab instance's admin area. The URLs will use your self-hosted domain.
+The steps are the same for user-owned and group-owned applications. If you want an instance-wide application and you have administrator access, navigate to your GitLab instance's admin area. The URLs will use your self-hosted domain.
 
 ## Step 2: Configure Dex with GitLab Connector
 
@@ -208,32 +208,18 @@ kubectl -n argocd create configmap argocd-tls-certs-cm \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-For Dex, mount the CA certificate:
+For Dex, store the base64-encoded CA certificate in `argocd-secret`:
 
-```yaml
-# In the Dex deployment, mount the CA cert
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-dex-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      volumes:
-        - name: gitlab-ca
-          configMap:
-            name: gitlab-tls-ca
-      containers:
-        - name: dex
-          volumeMounts:
-            - name: gitlab-ca
-              mountPath: /etc/ssl/certs/gitlab-ca.crt
-              subPath: ca.crt
-              readOnly: true
+```bash
+kubectl -n argocd patch secret argocd-secret --type merge -p "
+{
+  \"stringData\": {
+    \"dex.gitlab.rootCAData\": \"$(base64 -w0 /path/to/gitlab-ca.crt)\"
+  }
+}"
 ```
 
-And reference it in the Dex config:
+And reference it in the Dex config with `rootCAData`:
 
 ```yaml
   dex.config: |
@@ -246,8 +232,8 @@ And reference it in the Dex config:
           clientSecret: $dex.gitlab.clientSecret
           redirectURI: https://argocd.example.com/api/dex/callback
           baseURL: https://gitlab.internal.example.com
-          # Path to the CA certificate inside the Dex container
-          rootCA: /etc/ssl/certs/gitlab-ca.crt
+          # Base64-encoded PEM CA certificate
+          rootCAData: $dex.gitlab.rootCAData
 ```
 
 ## GitLab Subgroups
