@@ -8,7 +8,7 @@ Description: Learn how to use the HookSucceeded delete policy in ArgoCD to autom
 
 ---
 
-The `HookSucceeded` delete policy is the most commonly used hook cleanup strategy in ArgoCD. When a sync hook (like a migration Job or a notification task) finishes successfully, ArgoCD automatically deletes the hook resource. If the hook fails, the resource is preserved so you can inspect logs and debug the failure.
+The `HookSucceeded` delete policy is a commonly used hook cleanup strategy in ArgoCD. When a sync hook (like a migration Job or a notification task) finishes successfully, ArgoCD automatically deletes the hook resource. If the hook fails, the resource is preserved so you can inspect logs and debug the failure.
 
 This policy strikes the right balance between keeping your cluster clean and retaining useful debugging information.
 
@@ -18,7 +18,7 @@ The lifecycle with `HookSucceeded` is straightforward:
 
 1. ArgoCD creates the hook resource (Job, Pod, etc.)
 2. The hook runs
-3. If the hook succeeds: ArgoCD deletes the resource immediately
+3. If the hook succeeds: ArgoCD deletes the resource
 4. If the hook fails: ArgoCD leaves the resource in the cluster
 
 ```mermaid
@@ -151,7 +151,7 @@ spec:
 
 ### Health Verification
 
-Check that dependent services are healthy before deploying:
+Check that dependent HTTP services are healthy before deploying:
 
 ```yaml
 apiVersion: batch/v1
@@ -172,10 +172,10 @@ spec:
             - -c
             - |
               echo "Checking database..."
-              curl -sf http://postgres:5432/ || { echo "Database unavailable"; exit 1; }
+              curl -sf http://db-health:8080/healthz || { echo "Database unavailable"; exit 1; }
 
               echo "Checking cache..."
-              curl -sf http://redis:6379/ || { echo "Cache unavailable"; exit 1; }
+              curl -sf http://cache-api:8080/healthz || { echo "Cache unavailable"; exit 1; }
 
               echo "Checking message queue..."
               curl -sf http://rabbitmq:15672/api/health/checks/alarms || { echo "MQ unavailable"; exit 1; }
@@ -188,10 +188,10 @@ spec:
 
 ## Handling the Accumulation of Failed Hooks
 
-The downside of using only `HookSucceeded` is that failed hooks accumulate. If a hook fails repeatedly across multiple sync attempts, you end up with multiple failed Jobs:
+The downside of using only `HookSucceeded` with a named hook is that a failed hook remains in place. Because ArgoCD only creates a named hook once unless `BeforeHookCreation` is used, the remaining failed Job can block the next sync attempt until it is cleaned up:
 
 ```bash
-# After several failed sync attempts
+# After a failed sync attempt
 
 kubectl get jobs -n my-app
 # NAME              COMPLETIONS   DURATION   AGE
@@ -207,15 +207,15 @@ annotations:
 ```
 
 This way:
-- Successful hooks are deleted immediately
+- Successful hooks are deleted after they succeed
 - Failed hooks stick around for debugging
 - Before the next sync, any remaining hooks (including failed ones) are cleaned up
 
 ## Timing of Deletion
 
-When ArgoCD detects that a hook Job has succeeded, it sends a delete request to the Kubernetes API. The deletion happens quickly - typically within a few seconds of the Job completing.
+When ArgoCD detects that a hook Job has succeeded, it sends a delete request to the Kubernetes API. The deletion usually happens soon after the Job completes.
 
-However, there can be a brief delay between the Job completing and ArgoCD detecting the completion. ArgoCD polls Job status periodically during the sync operation. In practice, the hook resource usually exists for 5 to 15 seconds after completion before being deleted.
+However, there can be a brief delay between the Job completing and ArgoCD detecting the completion. Do not rely on the hook resource staying available for post-success inspection when `HookSucceeded` is enabled.
 
 ## Debugging Before Deletion
 
@@ -236,4 +236,4 @@ annotations:
 
 ## Summary
 
-`HookSucceeded` is the default choice for most hook delete policies. It keeps your cluster clean by removing successful hooks while preserving failed ones for debugging. For the best of both worlds, combine it with `BeforeHookCreation` to ensure even failed hooks are eventually cleaned up. The key insight is that successful hooks rarely need inspection - you only care about the output when something goes wrong.
+`HookSucceeded` is a good choice for many hook delete policies. It keeps your cluster clean by removing successful hooks while preserving failed ones for debugging. For the best of both worlds, combine it with `BeforeHookCreation` to ensure even failed hooks are eventually cleaned up and named hooks can be recreated on later syncs. The key insight is that successful hooks rarely need inspection - you only care about the output when something goes wrong.
