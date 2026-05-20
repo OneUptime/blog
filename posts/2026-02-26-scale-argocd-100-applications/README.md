@@ -120,9 +120,6 @@ data:
   # Increase operation processors from default 10 to 15
   controller.operation.processors: "15"
 
-  # Keep default reconciliation interval
-  timeout.reconciliation: "180s"
-
   # Set repo server parallelism
   reposerver.parallelism.limit: "5"
 
@@ -133,6 +130,19 @@ data:
   controller.log.format: "json"
   reposerver.log.format: "json"
   server.log.format: "json"
+```
+
+Keep the reconciliation interval in `argocd-cm` at the current default of 120 seconds plus up to 60 seconds of jitter:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  timeout.reconciliation: 120s
+  timeout.reconciliation.jitter: 60s
 ```
 
 ## Step 3: Organize with AppProjects
@@ -201,6 +211,8 @@ metadata:
   name: backend-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/my-org/app-manifests
@@ -209,16 +221,16 @@ spec:
           - path: services/*
   template:
     metadata:
-      name: "{{path.basename}}"
+      name: "{{.path.basename}}"
     spec:
       project: backend-services
       source:
         repoURL: https://github.com/my-org/app-manifests
         targetRevision: main
-        path: "{{path}}"
+        path: "{{.path.path}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "backend-{{path.basename}}"
+        namespace: "backend-{{.path.basename}}"
       syncPolicy:
         automated:
           prune: true
@@ -307,7 +319,7 @@ manifests/
 ```
 
 Pros: Simple to manage, single webhook
-Cons: Repo server processes the entire repo for each app
+Cons: Shared commits can invalidate manifest caches for many apps, and repo server work can become a bottleneck unless you use techniques like manifest path annotations and concurrency-safe manifest generation
 
 ### Multi-Repo Approach
 
@@ -322,7 +334,7 @@ github.com/my-org/platform-manifests/
 Pros: Better isolation, parallel processing
 Cons: More repositories to manage
 
-For 100 applications, either approach works. The monorepo becomes a problem closer to 500+ applications.
+For 100 applications, either approach can work, but monorepos need extra care once many applications share the same repository.
 
 ## Architecture at 100 Applications
 
@@ -345,8 +357,8 @@ flowchart TD
 ## What You Do NOT Need at 100 Applications
 
 At this scale, you do not need:
-- Controller sharding (that is for 500+ applications)
-- Multiple repo server replicas (one is usually enough)
+- Controller sharding (that is for large multi-cluster installs or cases where a single controller cannot meet resource demands)
+- Multiple repo server replicas (one is usually enough unless manifest generation is the bottleneck)
 - HA Redis (single instance is fine)
 - Separate clusters for ArgoCD management
 
