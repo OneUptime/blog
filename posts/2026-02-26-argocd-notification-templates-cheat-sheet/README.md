@@ -25,7 +25,7 @@ Or install it separately:
 
 ```bash
 # Install ArgoCD Notifications
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/notifications_catalog/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/notifications_catalog/install.yaml
 ```
 
 ## ConfigMap Structure
@@ -53,7 +53,7 @@ data:
     - description: Application is synced and healthy
       send:
         - app-deployed
-      when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
 ```
 
 ## Slack Templates
@@ -196,25 +196,11 @@ template.webhook-generic: |
 
 ```yaml
 template.pagerduty-trigger: |
-  webhook:
-    pagerduty:
-      method: POST
-      body: |
-        {
-          "routing_key": "your-pagerduty-routing-key",
-          "event_action": "trigger",
-          "payload": {
-            "summary": "ArgoCD: {{ .app.metadata.name }} is {{ .app.status.health.status }}",
-            "severity": "critical",
-            "source": "argocd",
-            "component": "{{ .app.metadata.name }}",
-            "custom_details": {
-              "sync_status": "{{ .app.status.sync.status }}",
-              "health_status": "{{ .app.status.health.status }}",
-              "namespace": "{{ .app.spec.destination.namespace }}"
-            }
-          }
-        }
+  pagerdutyv2:
+    summary: "ArgoCD: {{ .app.metadata.name }} is {{ .app.status.health.status }}"
+    severity: "critical"
+    source: "argocd"
+    component: "{{ .app.metadata.name }}"
 ```
 
 ## Common Triggers
@@ -224,12 +210,12 @@ Here are the triggers that pair with the templates above:
 ```yaml
 # Trigger on successful sync
 trigger.on-sync-succeeded: |
-  - when: app.status.operationState.phase in ['Succeeded']
+  - when: app.status?.operationState.phase in ['Succeeded']
     send: [slack-sync-success, email-sync-status]
 
 # Trigger on sync failure
 trigger.on-sync-failed: |
-  - when: app.status.operationState.phase in ['Error', 'Failed']
+  - when: app.status?.operationState.phase in ['Error', 'Failed']
     send: [slack-sync-failed, email-sync-status, pagerduty-trigger]
 
 # Trigger on health degraded
@@ -270,7 +256,7 @@ ArgoCD notifications use Go templates. Here are the most useful functions:
 {{ end }}
 
 # Time formatting
-{{ .app.status.operationState.finishedAt | toDate "2006-01-02T15:04:05Z07:00" | formatTime "Jan 02, 2006 15:04" }}
+{{ (call .time.Parse .app.status.operationState.finishedAt).Format "Jan 02, 2006 15:04" }}
 ```
 
 ## Annotation-Based Subscriptions
@@ -286,7 +272,7 @@ metadata:
     # Subscribe to specific triggers and services
     notifications.argoproj.io/subscribe.on-sync-succeeded.slack: my-channel
     notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts-channel
-    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.pagerdutyv2: my-service
     notifications.argoproj.io/subscribe.on-sync-failed.email: team@example.com
 ```
 
@@ -315,10 +301,15 @@ service.webhook.app-status: |
     - name: Content-Type
       value: application/json
 
-# Microsoft Teams
-service.teams: |
+# PagerDuty V2
+service.pagerdutyv2: |
+  serviceKeys:
+    my-service: $pagerduty-key-my-service
+
+# Microsoft Teams Workflows
+service.teams-workflows: |
   recipientUrls:
-    my-channel: $teams-webhook-url
+    my-channel: $teams-workflows-url
 ```
 
 ## Debugging Tips
