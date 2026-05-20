@@ -17,7 +17,7 @@ This guide provides a step-by-step migration strategy, covering preparation, exe
 Migrating from individual Applications to ApplicationSets is not just about creating an ApplicationSet that matches your existing apps. There are several complications:
 
 1. **Ownership conflict** - You cannot have both an individual Application and an ApplicationSet-managed Application with the same name
-2. **Settings preservation** - Sync policies, annotations, and health status must be preserved
+2. **Settings preservation** - Sync policies, labels, annotations, and destinations must be preserved, and health status must be re-verified after migration
 3. **Zero downtime** - Running workloads must not be affected
 4. **Rollback capability** - You need a way to undo the migration if something goes wrong
 
@@ -120,16 +120,25 @@ spec:
             path: deploy
             revision: HEAD
             namespace: frontend
+            autoSync: true
+            prune: true
+            selfHeal: true
           - name: backend-api
             repo: https://github.com/myorg/backend.git
             path: deploy
             revision: main
             namespace: backend
+            autoSync: true
+            prune: true
+            selfHeal: true
           - name: worker
             repo: https://github.com/myorg/worker.git
             path: deploy
             revision: main
             namespace: worker
+            autoSync: false
+            prune: false
+            selfHeal: false
   template:
     metadata:
       name: '{{.name}}'
@@ -144,10 +153,14 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{.namespace}}'
+  templatePatch: |
+    {{- if .autoSync }}
+    spec:
       syncPolicy:
         automated:
-          prune: true
-          selfHeal: true
+          prune: {{ .prune }}
+          selfHeal: {{ .selfHeal }}
+    {{- end }}
   # CRITICAL: Start with create-only to prevent conflicts
   syncPolicy:
     applicationsSync: create-only
@@ -159,6 +172,8 @@ If your applications follow a pattern, create config files for the Git file gene
 
 ```bash
 # Create config files from existing applications
+mkdir -p configs
+
 for app in $(argocd app list -o name); do
   app_name=$(echo "$app" | sed 's|.*/||')
   argocd app get "$app_name" -o json | jq '{
@@ -174,7 +189,7 @@ done
 
 ## Step 3: Test the ApplicationSet
 
-Apply the ApplicationSet with `create-only` policy to verify it would generate the correct Applications WITHOUT touching existing ones.
+Apply the ApplicationSet with `create-only` policy in staging, or temporarily use a different naming convention, to verify it generates the correct Applications. If you use the same names as existing Applications in the same namespace, `create-only` prevents the ApplicationSet controller from modifying them, but it also cannot create duplicate Applications with those names.
 
 ```bash
 # Apply with a different naming convention to test
@@ -281,7 +296,7 @@ kubectl patch applicationset migrated-apps -n argocd \
 
 ### Applications with Different Sync Policies
 
-If some applications have auto-sync and others do not, use Go template conditionals.
+If some applications have auto-sync and others do not, use `templatePatch`. Go templates are evaluated per string field, so conditionals cannot wrap YAML object fields directly in `template`.
 
 ```yaml
 spec:
@@ -291,17 +306,31 @@ spec:
     - list:
         elements:
           - name: frontend
-            auto_sync: "true"
+            autoSync: true
+            prune: true
+            selfHeal: true
           - name: worker
-            auto_sync: "false"
+            autoSync: false
+            prune: false
+            selfHeal: false
   template:
     spec:
+      project: default
+      source:
+        repoURL: 'https://github.com/myorg/{{.name}}.git'
+        targetRevision: main
+        path: deploy
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.name}}'
+  templatePatch: |
+    {{- if .autoSync }}
+    spec:
       syncPolicy:
-        {{- if eq .auto_sync "true"}}
         automated:
-          prune: true
-          selfHeal: true
-        {{- end}}
+          prune: {{ .prune }}
+          selfHeal: {{ .selfHeal }}
+    {{- end }}
 ```
 
 ### Applications from Different Repositories
