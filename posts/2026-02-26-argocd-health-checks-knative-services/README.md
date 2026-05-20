@@ -129,11 +129,22 @@ Revisions represent immutable snapshots of your application code and configurati
       return hs
     end
 
+    activeNoTraffic = false
+    for i, condition in ipairs(obj.status.conditions) do
+      if condition.type == "Active" and condition.status == "False" and condition.reason == "NoTraffic" then
+        activeNoTraffic = true
+      end
+    end
+
     for i, condition in ipairs(obj.status.conditions) do
       if condition.type == "Ready" then
         if condition.status == "True" then
           hs.status = "Healthy"
-          hs.message = "Revision is ready and serving traffic"
+          if activeNoTraffic then
+            hs.message = "Revision is ready and scaled to zero (no traffic)"
+          else
+            hs.message = "Revision is ready and serving traffic"
+          end
         elseif condition.status == "False" then
           -- Check for specific failure reasons
           if condition.reason == "ContainerMissing" then
@@ -154,17 +165,6 @@ Revisions represent immutable snapshots of your application code and configurati
           hs.message = condition.message or "Revision is being deployed"
         end
         return hs
-      end
-    end
-
-    -- Check Active condition for scale-to-zero
-    for i, condition in ipairs(obj.status.conditions) do
-      if condition.type == "Active" then
-        if condition.status == "False" and condition.reason == "NoTraffic" then
-          hs.status = "Healthy"
-          hs.message = "Revision is scaled to zero (no traffic)"
-          return hs
-        end
       end
     end
 
@@ -315,10 +315,9 @@ If you also use Knative Eventing, add health checks for Broker, Trigger, and oth
 
 Deploy a test Knative service and verify the health reporting:
 
-```bash
-# Create a Knative Service through ArgoCD
+Add this Knative Service manifest to the Git repository tracked by your ArgoCD application:
 
-kubectl apply -f - <<EOF
+```yaml
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -331,9 +330,12 @@ spec:
         - image: gcr.io/knative-samples/helloworld-go
           ports:
             - containerPort: 8080
-EOF
+```
 
-# Refresh ArgoCD and check health
+Then sync or refresh ArgoCD and check health:
+
+```bash
+argocd app sync my-knative-app
 argocd app get my-knative-app --refresh
 ```
 
