@@ -30,7 +30,7 @@ Notice the `/scm/` in HTTPS URLs and the custom SSH port (7999 by default). Thes
 
 ## Method 1: HTTP Access Token (Recommended)
 
-Bitbucket Server 7.6+ supports HTTP access tokens, which are the best option for ArgoCD because they are not tied to a user account and can be scoped to specific projects or repositories.
+Bitbucket Data Center supports HTTP access tokens, which are the best option for ArgoCD when you can create project or repository tokens because they are not tied to a user account and can be scoped to specific projects or repositories. Project and repository HTTP access tokens require Bearer authentication for Git operations.
 
 Create a token at Project Settings > HTTP access tokens > Create token with `Repository read` permission.
 
@@ -46,11 +46,10 @@ metadata:
 stringData:
   type: git
   url: https://bitbucket.company.com/scm
-  username: x-token-auth
-  password: your_http_access_token_here
+  bearerToken: your_http_access_token_here
 ```
 
-The username `x-token-auth` is the standard Bitbucket Server convention for token-based authentication.
+ArgoCD's `bearerToken` field maps to the Bearer authentication mode required by Bitbucket Data Center project and repository HTTP access tokens.
 
 ```bash
 kubectl apply -f bitbucket-http-token.yaml
@@ -70,8 +69,7 @@ metadata:
 stringData:
   type: git
   url: https://bitbucket.company.com/scm/PLATFORM
-  username: x-token-auth
-  password: project_scoped_http_token
+  bearerToken: project_scoped_http_token
 ```
 
 ## Method 2: Personal Access Token
@@ -145,6 +143,8 @@ kind: ConfigMap
 metadata:
   name: argocd-ssh-known-hosts-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   ssh_known_hosts: |
     [bitbucket.company.com]:7999 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
@@ -184,6 +184,8 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   bitbucket.company.com: |
     -----BEGIN CERTIFICATE-----
@@ -201,13 +203,11 @@ kubectl rollout restart deployment/argocd-repo-server -n argocd
 ```bash
 # Add a specific Bitbucket Server repo
 argocd repo add https://bitbucket.company.com/scm/PLATFORM/k8s-manifests.git \
-  --username x-token-auth \
-  --password your_http_token
+  --bearer-token your_http_token
 
 # Add a credential template for all repos
 argocd repocreds add https://bitbucket.company.com/scm \
-  --username x-token-auth \
-  --password your_http_token
+  --bearer-token your_http_token
 
 # Add with SSH
 argocd repo add ssh://git@bitbucket.company.com:7999/PLATFORM/k8s-manifests.git \
@@ -248,13 +248,13 @@ spec:
 Bitbucket Server supports webhooks that can notify ArgoCD of repository changes:
 
 ```yaml
-# In argocd-cm ConfigMap
+# In argocd-secret Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+stringData:
   webhook.bitbucketserver.secret: your-webhook-secret
 ```
 
@@ -291,7 +291,8 @@ argocd repo get https://bitbucket.company.com/scm/PROJECT/repo.git
 
 # Verify connectivity from the repo-server pod
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-  git ls-remote https://x-token-auth:token@bitbucket.company.com/scm/PROJECT/repo.git
+  git -c http.extraHeader="Authorization: Bearer token" \
+  ls-remote https://bitbucket.company.com/scm/PROJECT/repo.git
 ```
 
 ### SSH Connection Refused
