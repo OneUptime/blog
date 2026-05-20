@@ -14,7 +14,7 @@ Zero-downtime deployments sound simple in theory but are surprisingly hard to ge
 
 Before diving into solutions, let us understand why downtime happens during deployments:
 
-1. **Pod termination before connection draining** - Kubernetes removes pods from service endpoints and sends SIGTERM simultaneously. In-flight requests get terminated.
+1. **Pod termination before connection draining** - Kubernetes starts pod termination and updates EndpointSlices at roughly the same time. If the application exits too quickly, in-flight requests can be terminated or load balancers can briefly send traffic to a pod that is already shutting down.
 2. **Readiness probe gaps** - New pods pass readiness checks before they have warmed up caches or established connections.
 3. **Insufficient replicas during rollout** - With `maxUnavailable: 1`, you temporarily lose capacity.
 4. **Database migrations** - Schema changes break old code before new code is ready.
@@ -31,14 +31,22 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-server
+  labels:
+    app: api-server
 spec:
   replicas: 4
+  selector:
+    matchLabels:
+      app: api-server
   strategy:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1        # Add 1 extra pod during rollout
       maxUnavailable: 0  # Never remove a pod until the new one is ready
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -89,18 +97,19 @@ sequenceDiagram
     participant I as Ingress
     participant P as Pod
 
-    K->>P: Send SIGTERM
+    K->>P: Start pod termination
     K->>E: Remove pod from endpoints
     Note over E,I: Endpoints update propagates<br/>Takes 1-10 seconds
     Note over P: preStop sleep 15s<br/>Still handling requests
     I->>I: Updates backend pool
     Note over P: Sleep finished<br/>Now gracefully shuts down
+    K->>P: Send SIGTERM
     P->>P: Stop accepting new connections
     P->>P: Drain existing connections
     P->>P: Exit
 ```
 
-Without the preStop sleep, the pod starts shutting down immediately after SIGTERM, but the ingress controller might still be sending traffic to it.
+Without the preStop sleep, the pod can receive SIGTERM almost immediately after termination starts, while the ingress controller might still be sending traffic to it. Kubernetes runs the `preStop` hook before sending SIGTERM, and the hook time counts against `terminationGracePeriodSeconds`.
 
 ## Pod Disruption Budgets
 
@@ -155,11 +164,11 @@ spec:
         maxDuration: 5m
 ```
 
-The `ApplyOutOfSyncOnly=true` option is important for zero-downtime. It tells ArgoCD to only apply resources that have actually changed, avoiding unnecessary restarts of healthy pods.
+The `ApplyOutOfSyncOnly=true` option is useful for large applications because it tells ArgoCD to only apply resources that have actually changed, reducing API server load during sync. It is not a substitute for correct rollout settings, and selective sync operations do not run hooks, so do not rely on it for migration hooks that must run on every release.
 
 ## Health Checks in ArgoCD
 
-ArgoCD has its own health assessment for Deployments. Make sure ArgoCD waits for rollouts to complete before declaring the sync healthy:
+ArgoCD has its own built-in health assessment for Deployments. If you want ArgoCD to require all updated replicas to be available before declaring the sync healthy, you can override the Deployment health check:
 
 ```yaml
 # argocd-cm ConfigMap
@@ -171,23 +180,29 @@ metadata:
 data:
   resource.customizations.health.apps_Deployment: |
     hs = {}
+    desired = 1
+    if obj.spec ~= nil and obj.spec.replicas ~= nil then
+      desired = obj.spec.replicas
+    end
     if obj.status ~= nil then
+      if obj.metadata ~= nil and obj.metadata.generation ~= nil and obj.status.observedGeneration ~= nil then
+        if obj.status.observedGeneration < obj.metadata.generation then
+          hs.status = "Progressing"
+          hs.message = "Waiting for controller to observe the latest generation"
+          return hs
+        end
+      end
       if obj.status.conditions ~= nil then
         for i, condition in ipairs(obj.status.conditions) do
-          if condition.type == "Available" and condition.status == "False" then
+          if condition.type == "Progressing" and condition.status == "False" then
             hs.status = "Degraded"
             hs.message = condition.message
             return hs
           end
-          if condition.type == "Progressing" and condition.status == "True" and condition.reason == "ReplicaSetUpdated" then
-            hs.status = "Progressing"
-            hs.message = "Waiting for rollout to finish"
-            return hs
-          end
         end
       end
-      if obj.status.replicas ~= nil and obj.status.updatedReplicas ~= nil and obj.status.availableReplicas ~= nil then
-        if obj.status.updatedReplicas == obj.status.replicas and obj.status.availableReplicas == obj.status.replicas then
+      if obj.status.updatedReplicas ~= nil and obj.status.availableReplicas ~= nil then
+        if obj.status.updatedReplicas == desired and obj.status.availableReplicas == desired then
           hs.status = "Healthy"
           hs.message = "All replicas updated and available"
           return hs
@@ -210,6 +225,9 @@ metadata:
   name: api-server
 spec:
   replicas: 4
+  selector:
+    matchLabels:
+      app: api-server
   strategy:
     canary:
       canaryService: api-server-canary
@@ -226,12 +244,16 @@ spec:
         nginx:
           stableIngress: api-server-ingress
   template:
-    # Same as Deployment template
+    metadata:
+      labels:
+        app: api-server
     spec:
       terminationGracePeriodSeconds: 60
       containers:
         - name: api
           image: myregistry/api:v2.0.0
+          ports:
+            - containerPort: 8080
           lifecycle:
             preStop:
               exec:
@@ -293,7 +315,6 @@ Your application code needs to handle SIGTERM properly:
 ```python
 # Python example with graceful shutdown
 import signal
-import sys
 from threading import Event
 
 shutdown_event = Event()
@@ -301,7 +322,7 @@ shutdown_event = Event()
 def handle_sigterm(signum, frame):
     print("Received SIGTERM, starting graceful shutdown")
     # Stop accepting new requests
-    server.stop_accepting()
+    # server.stop_accepting()
     # Wait for in-flight requests to complete (max 45 seconds)
     shutdown_event.set()
 
@@ -325,7 +346,7 @@ Here is a complete checklist for zero-downtime deployments:
 5. Pod Disruption Budget with appropriate `minAvailable`
 6. Graceful shutdown handler in your application
 7. Health endpoint that returns 503 during shutdown
-8. `ApplyOutOfSyncOnly: true` in ArgoCD sync options
+8. `ApplyOutOfSyncOnly=true` in ArgoCD sync options
 
 ## Best Practices
 
