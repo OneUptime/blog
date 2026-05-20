@@ -52,7 +52,7 @@ spec:
     command: [sh, -c]
     args:
       - |
-        # If there is no Chart.yaml but there is a helmChart in kustomization
+        # If there is no Chart.yaml but there are helmCharts in kustomization
         # let kustomize handle the helm inflation
         if [ ! -f "Chart.yaml" ] && grep -q "helmCharts" kustomization.yaml 2>/dev/null; then
           echo "Using kustomize helm inflation mode"
@@ -75,7 +75,7 @@ spec:
 
         # Mode 2: helm template then kustomize
         # Determine the release name
-        RELEASE_NAME=${ARGOCD_APP_NAME:-release}
+        RELEASE_NAME=${ARGOCD_ENV_HELM_RELEASE_NAME:-${ARGOCD_APP_NAME:-release}}
         NAMESPACE=${ARGOCD_APP_NAMESPACE:-default}
 
         # Find values files
@@ -86,32 +86,37 @@ spec:
           fi
         done
 
-        # Render Helm chart to a temporary directory
-        mkdir -p /tmp/helm-output
+        # Copy the source directory so Kustomize can still resolve patches,
+        # components, and other files relative to kustomization.yaml
+        TMP_DIR=$(mktemp -d)
+        trap 'rm -rf "$TMP_DIR"' EXIT
+        cp -a . "$TMP_DIR/src"
+        cd "$TMP_DIR/src"
+
+        # Render Helm chart into the copied source directory
         helm template "$RELEASE_NAME" . \
           --namespace "$NAMESPACE" \
           $VALUES_ARGS \
           --include-crds \
-          > /tmp/helm-output/all.yaml
+          > all.yaml
 
         # If there is a kustomization.yaml, use it
         # Otherwise just output the Helm result
         if [ -f "kustomization.yaml" ]; then
           # Create a kustomization that references the Helm output
           # if it does not already reference it
-          if ! grep -q "helm-output" kustomization.yaml; then
-            cp kustomization.yaml /tmp/helm-output/
-            cd /tmp/helm-output
+          if ! grep -q "all.yaml" kustomization.yaml; then
             kustomize edit add resource all.yaml 2>/dev/null || true
           fi
-          kustomize build /tmp/helm-output
+          kustomize build .
         else
-          cat /tmp/helm-output/all.yaml
+          cat all.yaml
         fi
   discover:
     find:
-      # Match directories that have both Chart.yaml and kustomization.yaml
-      glob: "**/kustomization.yaml"
+      # Match directories with Chart.yaml plus kustomization.yaml,
+      # or kustomization.yaml files that use helmCharts
+      command: [sh, -c, 'if [ -f "Chart.yaml" ] && [ -f "kustomization.yaml" ]; then echo match; elif [ -f "kustomization.yaml" ] && grep -q "helmCharts" kustomization.yaml; then echo match; fi']
 ```
 
 ### Building the Sidecar Image
@@ -129,16 +134,10 @@ RUN apk add --no-cache curl bash git && \
 RUN curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash && \
     mv kustomize /usr/local/bin/
 
-# Copy ArgoCD CMP server
-COPY --from=quay.io/argoproj/argocd:v2.10.0 \
-    /usr/local/bin/argocd-cmp-server \
-    /usr/local/bin/argocd-cmp-server
-
 # Plugin configuration
 COPY plugin.yaml /home/argocd/cmp-server/config/plugin.yaml
 
 USER 999
-ENTRYPOINT ["/usr/local/bin/argocd-cmp-server"]
 ```
 
 ### Adding to repo-server
@@ -156,6 +155,7 @@ spec:
       containers:
         - name: kustomized-helm
           image: my-registry/argocd-kustomized-helm:v1.0
+          command: ["/var/run/argocd/argocd-cmp-server"]
           securityContext:
             runAsNonRoot: true
             runAsUser: 999
@@ -177,6 +177,8 @@ spec:
             - name: helm-cache
               mountPath: /home/argocd/.cache/helm
       volumes:
+        - name: cmp-tmp
+          emptyDir: {}
         - name: helm-cache
           emptyDir: {}
 ```
@@ -236,9 +238,11 @@ kind: Kustomization
 #   - all.yaml
 
 # Add common labels to all resources
-commonLabels:
-  team: platform
-  cost-center: engineering
+labels:
+  - pairs:
+      team: platform
+      cost-center: engineering
+    includeSelectors: true
 
 # Add common annotations
 commonAnnotations:
@@ -293,7 +297,7 @@ spec:
     targetRevision: main
     path: apps/nginx-production
     plugin:
-      name: kustomized-helm
+      name: kustomized-helm-v1.0
       env:
         - name: HELM_RELEASE_NAME
           value: nginx-prod
@@ -331,9 +335,11 @@ The multi-source approach works better when the Helm chart and Kustomize overlay
 # Debug locally by simulating what the plugin does
 cd my-nginx-deployment/
 helm dependency build .
-helm template my-release . -f values.yaml > /tmp/all.yaml
-cp kustomization.yaml /tmp/
-cd /tmp
+TMP_DIR=$(mktemp -d)
+cp -a . "$TMP_DIR/src"
+cd "$TMP_DIR/src"
+helm template my-release . -f values.yaml --include-crds > all.yaml
+kustomize edit add resource all.yaml 2>/dev/null || true
 kustomize build .
 ```
 
