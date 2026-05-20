@@ -50,7 +50,7 @@ pavucontrol
 3. Each playing application shows with a dropdown for its output device
 4. Change the dropdown for each app to the desired output
 
-This setting is persistent - the application remembers its assigned output.
+This setting is usually persistent - PulseAudio's stream-restore module or WirePlumber's stream restore remembers the assigned output for matching future streams.
 
 ### Using pactl (Command Line)
 
@@ -69,47 +69,14 @@ pactl move-sink-input 34 1
 pactl move-sink-input 34 alsa_output.usb-Creative_SB_X-Fi_Surround-00.analog-stereo
 ```
 
-### Setting Per-Application Defaults with PipeWire
+### Persistent Per-Application Defaults with PipeWire
 
-With PipeWire, you can set persistent per-application routing using WirePlumber rules:
+With PipeWire and WirePlumber, per-application routing is normally persisted by moving the application once in pavucontrol or with `pactl move-sink-input`. WirePlumber stores the target for client streams when `node.stream.restore-target` is enabled, which is the default on current WirePlumber releases.
 
-```bash
-mkdir -p ~/.config/wireplumber/main.lua.d/
-
-nano ~/.config/wireplumber/main.lua.d/50-app-routing.lua
-```
-
-```lua
--- Route specific applications to specific audio sinks
--- This example sends Firefox to the built-in speakers
--- and Spotify to Bluetooth headphones
-
-table.insert(alsa_monitor.rules, {
-  matches = {
-    {
-      { "application.name", "equals", "Firefox" },
-    },
-  },
-  apply_properties = {
-    ["target.object"] = "alsa_output.pci-0000_00_1f.3.analog-stereo",
-  },
-})
-
-table.insert(alsa_monitor.rules, {
-  matches = {
-    {
-      { "application.name", "equals", "Spotify" },
-    },
-  },
-  apply_properties = {
-    ["target.object"] = "bluez_output.AA_BB_CC_DD_EE_FF.1",
-  },
-})
-```
-
-Restart WirePlumber:
+If an application keeps returning to the wrong saved output, clear WirePlumber's saved stream state and restart WirePlumber:
 
 ```bash
+rm -f ~/.local/state/wireplumber/stream-properties
 systemctl --user restart wireplumber
 ```
 
@@ -183,21 +150,29 @@ context.modules = [
   {
     name = libpipewire-module-combine-stream
     args = {
+      combine.mode = sink
       combine.props = {
         node.name = "combined_output"
         node.description = "Combined Output (Speakers + Headphones)"
         media.class = "Audio/Sink"
       }
-      stream.props = {
-        media.class = "Audio/Sink"
-      }
       stream.rules = [
         {
-          matches = [ { node.name = "alsa_output.pci-0000_00_1f.3.analog-stereo" } ]
+          matches = [
+            {
+              media.class = "Audio/Sink"
+              node.name = "alsa_output.pci-0000_00_1f.3.analog-stereo"
+            }
+          ]
           actions = { create-stream = { } }
         }
         {
-          matches = [ { node.name = "bluez_output.AA_BB_CC_DD_EE_FF.1" } ]
+          matches = [
+            {
+              media.class = "Audio/Sink"
+              node.name = "bluez_output.AA_BB_CC_DD_EE_FF.1"
+            }
+          ]
           actions = { create-stream = { } }
         }
       ]
@@ -336,4 +311,4 @@ pactl move-sink-input <stream_id> <sink_name>
 
 ## Summary
 
-Ubuntu's audio system provides several ways to manage multiple outputs. For routing different applications to different devices, pavucontrol's Playback tab provides the simplest interface, while `pactl move-sink-input` handles the same task from the command line. For simultaneous playback through multiple outputs, the module-combine-sink module (PulseAudio) or PipeWire's combine-stream module creates a virtual combined device. WirePlumber rules enable persistent per-application routing that survives reboots without manual intervention.
+Ubuntu's audio system provides several ways to manage multiple outputs. For routing different applications to different devices, pavucontrol's Playback tab provides the simplest interface, while `pactl move-sink-input` handles the same task from the command line. For simultaneous playback through multiple outputs, the module-combine-sink module (PulseAudio) or PipeWire's combine-stream module creates a virtual combined device. PulseAudio stream-restore and WirePlumber stream restore enable persistent per-application routing that survives reboots without manual intervention.
