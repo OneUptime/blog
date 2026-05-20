@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD PostSync hooks to send deployment not
 
 ---
 
-After a deployment completes, your team needs to know about it. What version was deployed? Which environment? Did everything go smoothly? ArgoCD PostSync hooks let you run notification jobs that fire after all application resources are successfully deployed, giving you reliable deployment notifications without any external CI/CD integration.
+After a deployment completes, your team needs to know about it. What version was deployed? Which environment? Did everything go smoothly? ArgoCD PostSync hooks let you run notification jobs that fire after all application resources are successfully deployed and healthy, giving you reliable deployment notifications without any external CI/CD integration.
 
 While ArgoCD has a built-in notifications system (argocd-notifications), PostSync hooks give you complete flexibility to run any notification logic you want, including custom formatting, aggregating deployment info, and hitting APIs that the built-in system does not support.
 
@@ -410,4 +410,4 @@ ArgoCD has a built-in notification system (argocd-notifications-controller) that
 
 ## Summary
 
-PostSync notification hooks give you full control over deployment notifications. They run after all resources are deployed, support any notification channel reachable via HTTP, and integrate naturally with the ArgoCD sync lifecycle. Keep notification hooks non-critical by handling errors gracefully, and use `BeforeHookCreation` delete policy to automatically clean up previous notification Jobs.
+PostSync notification hooks give you full control over deployment notifications. They run after all resources are deployed and healthy, support any notification channel reachable via HTTP, and integrate naturally with the ArgoCD sync lifecycle. Keep notification hooks non-critical by handling errors gracefully, and use `BeforeHookCreation` delete policy to automatically clean up previous notification Jobs.
