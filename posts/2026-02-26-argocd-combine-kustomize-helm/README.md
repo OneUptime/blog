@@ -32,7 +32,7 @@ graph LR
 
 ## Approach 1: ArgoCD Multi-Source Applications
 
-ArgoCD 2.6+ supports multi-source applications that combine different source types. This is the cleanest way to use Helm with Kustomize:
+ArgoCD 2.6+ supports multi-source applications that combine different source types. This is a clean way to use a Helm chart with Git-hosted values:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -59,7 +59,7 @@ spec:
     namespace: ingress-nginx
 ```
 
-To add Kustomize patches on top, use a multi-source setup where the Kustomize source references the Helm output:
+You can also combine a Helm source with a Kustomize source that renders additional manifests. ArgoCD renders each source separately and then combines the resulting manifests, so this does not let the Kustomize source patch the Helm source output directly:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -78,10 +78,11 @@ spec:
         values: |
           installCRDs: true
           replicaCount: 2
-    # Kustomize overlay that patches the Helm output
+    # Kustomize source for additional manifests.
+    # This does not patch the Helm output directly.
     - repoURL: https://github.com/myorg/k8s-configs.git
       targetRevision: main
-      path: patches/cert-manager
+      path: overlays/cert-manager-addons
       kustomize:
         commonAnnotations:
           custom.myorg.com/team: platform
@@ -89,6 +90,8 @@ spec:
     server: https://kubernetes.default.svc
     namespace: cert-manager
 ```
+
+If multiple sources generate the same resource, ArgoCD uses the last source's version and reports a `RepeatedResourceWarning`. Use the `helmCharts` approach below when you need true Kustomize patches on top of Helm-rendered output.
 
 ## Approach 2: Kustomize helmCharts Field
 
@@ -199,7 +202,7 @@ EOF
 kustomize build /tmp/kustomize-work
 ```
 
-This approach works for local Helm usage but is harder to integrate with ArgoCD because ArgoCD does not use `helm install` directly. Use the helmCharts approach or multi-source approach instead.
+This approach works for local Helm usage but is harder to integrate with ArgoCD because ArgoCD's Helm Application source does not expose the `--post-renderer` flag directly. Use the helmCharts approach, multi-source approach, or a config management plugin instead.
 
 ## Practical Example: Customizing a Third-Party Chart
 
