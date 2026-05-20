@@ -90,7 +90,7 @@ argocd app create my-app \
   --path charts/my-app \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace my-app-ns \
-  --helm-version 3
+  --helm-version v3
 
 # Deploy from a Helm repository
 argocd app create my-app \
@@ -344,31 +344,18 @@ This is particularly useful in CI/CD scripts where you want idempotent behavior.
 
 ## Dry Run
 
-Preview what would be created without actually creating it:
+The `argocd app create` command does not currently support a `--dry-run` flag or `-o yaml` output. To produce declarative YAML, write an Application manifest directly. If you have already created the application in a non-production Argo CD instance, you can inspect it as YAML:
 
 ```bash
-argocd app create my-app \
-  --repo https://github.com/my-org/manifests.git \
-  --path apps/my-app \
-  --dest-server https://kubernetes.default.svc \
-  --dest-namespace my-app-ns \
-  --dry-run -o yaml
+argocd app get my-app -o yaml
 ```
 
-This outputs the Application YAML that would be created, which you can redirect to a file for declarative management:
+You can redirect that output to a file for review before adapting it for declarative management:
 
 ```bash
-argocd app create my-app \
-  --repo https://github.com/my-org/manifests.git \
-  --path apps/my-app \
-  --dest-server https://kubernetes.default.svc \
-  --dest-namespace my-app-ns \
-  --sync-policy automated \
-  --auto-prune \
-  --self-heal \
-  --dry-run -o yaml > application.yaml
+argocd app get my-app -o yaml > application.yaml
 ```
 
 ## Summary
 
-The `argocd app create` command is a versatile tool for creating applications with precise control over every aspect of the configuration. Use it for quick prototyping and one-off application creation, or combine it with `--dry-run -o yaml` to generate declarative Application manifests. For production use, the declarative approach (YAML in Git) is preferred, but understanding every flag in `argocd app create` directly translates to understanding the Application CRD spec.
+The `argocd app create` command is a versatile tool for creating applications with precise control over every aspect of the configuration. Use it for quick prototyping and one-off application creation. For production use, the declarative approach (YAML in Git) is preferred, but understanding every flag in `argocd app create` directly translates to understanding the Application CRD spec.
