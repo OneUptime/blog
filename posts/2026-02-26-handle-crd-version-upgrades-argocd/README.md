@@ -64,12 +64,13 @@ Here is the safe sequence for upgrading a CRD version with ArgoCD:
 ```mermaid
 graph TD
     A[Start: v1 served + stored] --> B[Add v2 as served, keep v1 as storage]
-    B --> C[Deploy conversion webhook if needed]
-    C --> D[Migrate existing resources to v2]
+    B --> C[Deploy conversion webhook first if needed]
+    C --> D[Migrate clients and manifests to v2]
     D --> E[Switch storage to v2]
-    E --> F[Test everything thoroughly]
-    F --> G[Stop serving v1]
-    G --> H[Done: v2 served + stored]
+    E --> F[Rewrite stored objects and update storedVersions]
+    F --> G[Test everything thoroughly]
+    G --> H[Stop serving v1]
+    H --> I[Done: v2 served + stored]
 ```
 
 ## Step 1: Add the New Version
@@ -120,7 +121,7 @@ spec:
     kind: MyResource
 ```
 
-Commit this to Git and let ArgoCD sync it. At this point, both v1 and v2 API endpoints work, but data is stored as v1.
+Commit this to Git and let ArgoCD sync it. At this point, both v1 and v2 API endpoints work, but data is stored as v1. If the new version needs a conversion webhook, deploy the webhook before applying the CRD change that references it.
 
 ## Step 2: Update Your Custom Resources
 
@@ -186,12 +187,14 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Read each resource and write it back to trigger storage migration
-              kubectl get myresources --all-namespaces -o json | \
-                jq -c '.items[]' | \
-                while read -r item; do
-                  echo "$item" | kubectl apply -f -
+              # Read each resource and write it back to trigger storage migration.
+              kubectl get myresources --all-namespaces \
+                -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | \
+                while read -r namespace name; do
+                  kubectl get myresources "$name" -n "$namespace" -o yaml | kubectl replace -f -
                 done
+              kubectl patch crd myresources.example.com --subresource=status --type=merge \
+                -p '{"status":{"storedVersions":["v2"]}}'
               echo "Migration complete"
       restartPolicy: Never
   backoffLimit: 3
