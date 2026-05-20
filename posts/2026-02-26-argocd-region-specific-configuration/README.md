@@ -77,9 +77,11 @@ deploy/
 
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-commonLabels:
-  app: order-service
-  managed-by: argocd
+labels:
+  - pairs:
+      app: order-service
+      managed-by: argocd
+    includeSelectors: true
 resources:
   - deployment.yaml
   - service.yaml
@@ -294,47 +296,64 @@ metadata:
   name: order-service-global
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
-    - clusters:
-        selector:
-          matchLabels:
-            environment: production
-        # Region-specific values from cluster labels
-        values:
-          replicaCount: "3"  # Default
-    - clusters:
-        selector:
-          matchLabels:
-            region: us-east-1
-        values:
-          replicaCount: "5"
-          databaseHost: orders-db.us-east-1.rds.amazonaws.com
-          cacheEndpoint: redis.us-east-1.cache.amazonaws.com:6379
-          featureFlags: "new-checkout=true"
-    - clusters:
-        selector:
-          matchLabels:
-            region: eu-west-1
-        values:
-          replicaCount: "3"
-          databaseHost: orders-db.eu-west-1.rds.amazonaws.com
-          cacheEndpoint: redis.eu-west-1.cache.amazonaws.com:6379
-          gdprMode: "strict"
-          dataResidency: "eu"
+    - merge:
+        mergeKeys:
+          - server
+        generators:
+          - clusters:
+              selector:
+                matchLabels:
+                  environment: production
+              # Defaults derived from cluster labels
+              values:
+                region: '{{index .metadata.labels "region"}}'
+                replicaCount: "3"
+                databaseHost: 'orders-db.{{index .metadata.labels "region"}}.rds.amazonaws.com'
+                cacheEndpoint: 'redis.{{index .metadata.labels "region"}}.cache.amazonaws.com:6379'
+                featureNewCheckout: "false"
+                gdprMode: ""
+                dataResidency: ""
+          - clusters:
+              selector:
+                matchLabels:
+                  region: us-east-1
+              values:
+                replicaCount: "5"
+                featureNewCheckout: "true"
+          - clusters:
+              selector:
+                matchLabels:
+                  region: eu-west-1
+              values:
+                gdprMode: "strict"
+                dataResidency: "eu"
   template:
     metadata:
-      name: "order-service-{{name}}"
+      name: 'order-service-{{.name}}'
+      labels:
+        region: '{{.values.region}}'
     spec:
       project: global-apps
       source:
-        repoURL: https://github.com/company/order-service.git
-        targetRevision: main
-        path: deploy/base
-        kustomize:
-          commonAnnotations:
-            region: "{{metadata.labels.region}}"
+        chart: order-service
+        repoURL: https://charts.company.com
+        targetRevision: 2.1.0
+        helm:
+          valueFiles:
+            - values.yaml
+          values: |
+            replicaCount: {{.values.replicaCount}}
+            config:
+              region: "{{.values.region}}"
+              databaseHost: "{{.values.databaseHost}}"
+              cacheEndpoint: "{{.values.cacheEndpoint}}"
+              featureNewCheckout: {{.values.featureNewCheckout}}
+              gdprMode: "{{.values.gdprMode}}"
+              dataResidency: "{{.values.dataResidency}}"
       destination:
-        server: "{{server}}"
+        server: '{{.server}}'
         namespace: order-service
 ```
 
@@ -343,21 +362,27 @@ spec:
 For complex configuration that comes from external systems (Vault, AWS Parameter Store), use ArgoCD Config Management Plugins:
 
 ```yaml
-# argocd-cm ConfigMap
+# region-config-plugin ConfigMap mounted at /home/argocd/cmp-server/config/plugin.yaml in the CMP sidecar
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: region-config-plugin
   namespace: argocd
 data:
-  configManagementPlugins: |
-    - name: region-config
+  plugin.yaml: |
+    apiVersion: argoproj.io/v1alpha1
+    kind: ConfigManagementPlugin
+    metadata:
+      name: region-config
+    spec:
       generate:
         command: ["/bin/bash", "-c"]
         args:
           - |
+            set -euo pipefail
+
             # Fetch region-specific config from Parameter Store
-            REGION=$(echo $ARGOCD_APP_PARAMETERS | jq -r '.region')
+            REGION=$(echo "$ARGOCD_APP_PARAMETERS" | jq -r '.[] | select(.name == "region") | .string')
 
             # Get all parameters for this region
             aws ssm get-parameters-by-path \
@@ -397,7 +422,7 @@ jobs:
         run: |
           # Ensure every region has required config values
           CONFIG=$(kustomize build deploy/overlays/${{ matrix.region }} | \
-            yq eval-all 'select(.kind == "ConfigMap" and .metadata.name == "order-service-config")' -)
+            yq eval-all 'select(.kind == "ConfigMap" and (.metadata.name | startswith("order-service-config")))' -)
 
           for KEY in REGION DATABASE_HOST CACHE_ENDPOINT; do
             if ! echo "$CONFIG" | grep -q "$KEY"; then
