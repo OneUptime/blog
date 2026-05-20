@@ -28,8 +28,8 @@ local kp = (import 'kube-prometheus/main.libsonnet')
     },
   };
 
-// Output all Kubernetes objects
-{ [name]: kp[name] for name in std.objectFields(kp) }
+// Output all Kubernetes objects as a YAML stream
+[kp[name] for name in std.objectFields(kp)]
 ```
 
 This imports `kube-prometheus/main.libsonnet`, which is an external dependency defined in `jsonnetfile.json` and downloaded by `jb install`. Without running `jb install` first, ArgoCD's built-in Jsonnet support cannot find these imports.
@@ -48,7 +48,7 @@ metadata:
 spec:
   version: v1.0
   init:
-    command: [sh, -c]
+    command: [bash, -c]
     args:
       - |
         set -euo pipefail
@@ -65,13 +65,13 @@ spec:
           jb install
         fi
   generate:
-    command: [sh, -c]
+    command: [bash, -c]
     args:
       - |
         set -euo pipefail
 
         # Determine the main Jsonnet file
-        MAIN_FILE="${JSONNET_MAIN:-main.jsonnet}"
+        MAIN_FILE="${ARGOCD_ENV_JSONNET_MAIN:-${JSONNET_MAIN:-main.jsonnet}}"
 
         # Build library path arguments
         # Include vendor directory and lib directory
@@ -80,24 +80,27 @@ spec:
         [ -d "lib" ] && JPATH_ARGS="$JPATH_ARGS -J lib"
 
         # Add any custom JPATH entries
-        if [ -n "${JSONNET_JPATH:-}" ]; then
-          for p in $(echo "$JSONNET_JPATH" | tr ":" " "); do
+        JSONNET_JPATH_VALUE="${ARGOCD_ENV_JSONNET_JPATH:-${JSONNET_JPATH:-}}"
+        if [ -n "$JSONNET_JPATH_VALUE" ]; then
+          for p in $(echo "$JSONNET_JPATH_VALUE" | tr ":" " "); do
             JPATH_ARGS="$JPATH_ARGS -J $p"
           done
         fi
 
         # Handle external variables from environment
         EXT_STR_ARGS=""
-        if [ -n "${JSONNET_EXT_STR_VARS:-}" ]; then
-          for var in $(echo "$JSONNET_EXT_STR_VARS" | tr "," " "); do
+        JSONNET_EXT_STR_VARS_VALUE="${ARGOCD_ENV_JSONNET_EXT_STR_VARS:-${JSONNET_EXT_STR_VARS:-}}"
+        if [ -n "$JSONNET_EXT_STR_VARS_VALUE" ]; then
+          for var in $(echo "$JSONNET_EXT_STR_VARS_VALUE" | tr "," " "); do
             EXT_STR_ARGS="$EXT_STR_ARGS --ext-str $var"
           done
         fi
 
         # Handle TLA (top-level arguments)
         TLA_ARGS=""
-        if [ -n "${JSONNET_TLA_STR_VARS:-}" ]; then
-          for var in $(echo "$JSONNET_TLA_STR_VARS" | tr "," " "); do
+        JSONNET_TLA_STR_VARS_VALUE="${ARGOCD_ENV_JSONNET_TLA_STR_VARS:-${JSONNET_TLA_STR_VARS:-}}"
+        if [ -n "$JSONNET_TLA_STR_VARS_VALUE" ]; then
+          for var in $(echo "$JSONNET_TLA_STR_VARS_VALUE" | tr "," " "); do
             TLA_ARGS="$TLA_ARGS --tla-str $var"
           done
         fi
@@ -116,7 +119,7 @@ spec:
 ### Building the Container Image
 
 ```dockerfile
-FROM golang:1.21-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install jsonnet-bundler
 RUN go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@latest
@@ -254,7 +257,7 @@ local all = [kp[name] for name in std.objectFields(kp)
              && std.objectHas(kp[name], 'apiVersion')];
 
 // Output as YAML stream
-{ ['%s-%s' % [obj.kind, obj.metadata.name]]: obj for obj in all }
+all
 ```
 
 ## Using the Plugin in an Application
@@ -272,7 +275,7 @@ spec:
     targetRevision: main
     path: monitoring-stack
     plugin:
-      name: jsonnet-bundler
+      name: jsonnet-bundler-v1.0
       env:
         # Specify the main file if not main.jsonnet
         - name: JSONNET_MAIN
@@ -303,11 +306,16 @@ containers:
       # Configure Git credentials for jb install
       - name: GIT_ASKPASS
         value: /usr/local/bin/git-askpass.sh
-    volumeMounts:
-      - name: git-credentials
-        mountPath: /home/argocd/.git-credentials
-        subPath: .git-credentials
-        readOnly: true
+      - name: GIT_USERNAME
+        valueFrom:
+          secretKeyRef:
+            name: jsonnet-git-credentials
+            key: username
+      - name: GIT_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: jsonnet-git-credentials
+            key: password
 ```
 
 Create a git-askpass helper script in your container image:
@@ -315,7 +323,10 @@ Create a git-askpass helper script in your container image:
 ```bash
 #!/bin/sh
 # git-askpass.sh
-cat /home/argocd/.git-credentials
+case "$1" in
+  *Username*) printf '%s\n' "$GIT_USERNAME" ;;
+  *Password*) printf '%s\n' "$GIT_PASSWORD" ;;
+esac
 ```
 
 ## Vendoring vs Dynamic Install
