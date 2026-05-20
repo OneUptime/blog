@@ -72,7 +72,8 @@ If the application has a cascade finalizer, check which resources are preventing
 kubectl get all -n my-app-namespace
 
 # Look for resources stuck in Terminating state
-kubectl get all -n my-app-namespace --field-selector metadata.deletionTimestamp!=''
+kubectl get all -n my-app-namespace -o json | \
+  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | "\(.kind)/\(.metadata.name)"'
 
 # Check for non-standard resources that might be stuck
 kubectl get pvc,configmap,secret,ingress -n my-app-namespace
@@ -118,7 +119,7 @@ kubectl get namespace my-app-namespace -o jsonpath='{.status}'
 kubectl get namespace my-app-namespace -o json | jq '.status.conditions'
 
 # Check for apiservices that might be unavailable
-kubectl get apiservices | grep -v Available
+kubectl get apiservices | grep False
 
 # Force namespace deletion by removing its finalizer (last resort)
 kubectl get namespace my-app-namespace -o json | \
@@ -156,9 +157,9 @@ kubectl get validatingwebhookconfigurations
 
 # Temporarily disable the problematic webhook
 kubectl delete validatingwebhookconfiguration my-webhook
-# OR add a namespace exclusion
+# OR add a namespace exclusion if the webhook does not already have a namespaceSelector
 kubectl patch validatingwebhookconfiguration my-webhook --type json \
-  -p '[{"op": "add", "path": "/webhooks/0/namespaceSelector/matchExpressions/-", "value": {"key": "kubernetes.io/metadata.name", "operator": "NotIn", "values": ["my-app-namespace"]}}]'
+  -p '[{"op": "add", "path": "/webhooks/0/namespaceSelector", "value": {"matchExpressions": [{"key": "kubernetes.io/metadata.name", "operator": "NotIn", "values": ["my-app-namespace"]}]}}]'
 ```
 
 ## Fix: RBAC preventing resource deletion
@@ -201,23 +202,21 @@ metadata:
     - resources-finalizer.argocd.argoproj.io/background
 ```
 
-### Set resource deletion timeouts
+### Set pruning propagation policy
 
-```bash
-# In argocd-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Timeout for individual resource deletion (default: no timeout)
-  timeout.reconciliation: "180s"
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  syncPolicy:
+    syncOptions:
+      # Use background propagation when pruning resources during sync
+      - PrunePropagationPolicy=background
 ```
 
 ### Monitor deletion operations
 
-Set up alerts for applications that have been in Deleting state for too long:
+Set up alerts for Kubernetes delete request failures from the ArgoCD application controller:
 
 ```yaml
 # PrometheusRule for stuck deletions
@@ -229,14 +228,14 @@ spec:
   groups:
     - name: argocd-deletion
       rules:
-        - alert: ArgocdApplicationDeletionStuck
+        - alert: ArgocdApplicationDeleteFailures
           expr: |
-            time() - argocd_app_info{deletion_timestamp!=""} > 600
+            increase(argocd_app_k8s_request_total{verb="Delete",code!~"2.."}[5m]) > 0
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "ArgoCD application {{ $labels.name }} stuck in deletion for over 10 minutes"
+            summary: "ArgoCD application {{ $labels.name }} has Kubernetes delete request failures"
 ```
 
 ## Complete recovery script
@@ -261,7 +260,8 @@ echo "Application stuck since: $DELETION_TS"
 
 # Check for stuck resources in target namespace
 echo "Checking for stuck resources in namespace $NAMESPACE..."
-STUCK=$(kubectl get all -n $NAMESPACE --field-selector metadata.deletionTimestamp!='' -o name 2>/dev/null)
+STUCK=$(kubectl get all -n $NAMESPACE -o json 2>/dev/null | \
+  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | "\(.kind | ascii_downcase)/\(.metadata.name)"')
 
 if [ -n "$STUCK" ]; then
   echo "Found stuck resources:"
