@@ -114,7 +114,7 @@ When cluster credentials expire or need rotation:
 
 ```bash
 # Rotate credentials for a cluster
-argocd cluster rotate-auth my-context-name
+argocd cluster rotate-auth staging-cluster
 ```
 
 This recreates the ServiceAccount token in the target cluster and updates it in ArgoCD.
@@ -171,7 +171,7 @@ argocd cluster set https://staging.example.com \
 # Remove a cluster
 argocd cluster rm https://staging.example.com
 
-# This also cleans up the ServiceAccount in the target cluster
+# This removes the cluster entry from ArgoCD
 ```
 
 **Important**: Removing a cluster does not delete applications targeting that cluster. Those applications will show as unable to connect. Remove or migrate applications before removing the cluster.
@@ -182,10 +182,11 @@ EKS requires special handling because it uses IAM authentication:
 
 ```bash
 # First, ensure your kubeconfig has the EKS context
-aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
+aws eks update-kubeconfig --name my-eks-cluster --region us-east-1 --alias my-eks-cluster
 
 # Then add it to ArgoCD
-argocd cluster add arn:aws:eks:us-east-1:123456789012:cluster/my-eks-cluster \
+argocd cluster add my-eks-cluster \
+  --aws-cluster-name my-eks-cluster \
   --name eks-production
 ```
 
@@ -295,15 +296,15 @@ kubectl --context my-context cluster-info
 # Check the ArgoCD service account exists in the target cluster
 kubectl --context my-context get serviceaccount argocd-manager -n kube-system
 
-# Check the token is valid
-kubectl --context my-context get secret -n kube-system | grep argocd-manager
+# Check the registered cluster status from ArgoCD
+argocd cluster get staging-cluster
 ```
 
 ### Permission Denied
 
 ```bash
 # Check the ClusterRoleBinding
-kubectl --context my-context get clusterrolebinding argocd-manager-role
+kubectl --context my-context get clusterrolebinding argocd-manager-role-binding
 
 # Check what permissions the service account has
 kubectl --context my-context auth can-i --list --as system:serviceaccount:kube-system:argocd-manager
@@ -312,11 +313,10 @@ kubectl --context my-context auth can-i --list --as system:serviceaccount:kube-s
 ### Certificate Issues
 
 ```bash
-# If the cluster uses a custom CA
-argocd cert add-tls my-cluster.example.com --from /path/to/ca.crt
+# If the cluster uses a custom CA, make sure the kubeconfig context has the CA data
+kubectl config view --raw --minify --context my-context
 
-# Or skip TLS verification (development only)
-argocd cluster add my-context --name dev-cluster --insecure
+# Or, for declarative cluster secrets, set tlsClientConfig.caData
 ```
 
 ### Reconnecting a Cluster
