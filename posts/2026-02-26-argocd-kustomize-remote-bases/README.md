@@ -8,7 +8,7 @@ Description: Learn how to use Kustomize remote bases from Git repositories with 
 
 ---
 
-Kustomize remote bases let you reference kustomization directories from other Git repositories as your base layer. Instead of copying shared manifests into every project, you point to a central repository and build on top of it with overlays. This promotes reuse across teams and projects. ArgoCD supports remote bases but requires specific configuration for authentication and load restrictions.
+Kustomize remote bases let you reference kustomization directories from other Git repositories as your base layer. Instead of copying shared manifests into every project, you point to a central repository and build on top of it with overlays. This promotes reuse across teams and projects. ArgoCD supports remote bases, but private repositories require specific authentication configuration.
 
 This guide covers remote base syntax, version pinning, private repo access through ArgoCD, and the security considerations.
 
@@ -57,7 +57,7 @@ resources:
   - https://github.com/myorg/platform-base//k8s/base?ref=main
 
   # Using a commit SHA
-  - https://github.com/myorg/platform-base//k8s/base?ref=a1b2c3d4
+  - https://github.com/myorg/platform-base//k8s/base?ref=a1b2c3d4e5f678901234567890abcdef12345678
 ```
 
 ## SSH URLs
@@ -87,7 +87,7 @@ resources:
 
 # Good - pinned to a commit SHA (most immutable)
 resources:
-  - https://github.com/myorg/platform-base//k8s/base?ref=a1b2c3d4e5f6
+  - https://github.com/myorg/platform-base//k8s/base?ref=a1b2c3d4e5f678901234567890abcdef12345678
 
 # Risky - tracks a branch (can change without notice)
 resources:
@@ -110,7 +110,7 @@ graph TD
 
 ## ArgoCD Load Restrictor Configuration
 
-By default, Kustomize restricts file access to prevent loading resources from outside the kustomization root. Remote bases require relaxing this restriction:
+By default, Kustomize restricts local file access to prevent loading resources from outside the kustomization root. Remote bases do not require relaxing this restriction, but you may need this setting if the kustomization or a base references local files outside its root:
 
 ```yaml
 # argocd-cm ConfigMap
@@ -123,24 +123,24 @@ data:
   kustomize.buildOptions: "--load-restrictor LoadRestrictionsNone"
 ```
 
-Without this, you get errors like:
+Without this, those local file references can produce errors like:
 
 ```text
-security; file 'https://github.com/...' is not in or below '/tmp/...'
+security; file '../shared/config.yaml' is not in or below '/tmp/...'
 ```
 
 ## ArgoCD Authentication for Private Repos
 
-When remote bases point to private repositories, ArgoCD's repo server needs access. Register the repository with ArgoCD:
+When remote bases point to private repositories, ArgoCD's repo server needs access. ArgoCD remote bases inherit credentials from the application's source repository. This works when the application repository credentials can also read the remote base. It does not work by registering an unrelated private repository with different credentials.
 
 ```bash
-# Add a private repo with HTTPS credentials
-argocd repo add https://github.com/myorg/platform-base.git \
+# Add the application repo with HTTPS credentials that can also read the remote base
+argocd repo add https://github.com/myorg/my-api-configs.git \
   --username git \
   --password <token>
 
-# Add with SSH key
-argocd repo add git@github.com:myorg/platform-base.git \
+# Add the application repo with an SSH key that can also read the remote base
+argocd repo add git@github.com:myorg/my-api-configs.git \
   --ssh-private-key-path ~/.ssh/id_rsa
 ```
 
@@ -151,14 +151,14 @@ Or declaratively:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: platform-base-repo
+  name: my-api-configs-repo
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: repository
 type: Opaque
 stringData:
   type: git
-  url: https://github.com/myorg/platform-base.git
+  url: https://github.com/myorg/my-api-configs.git
   username: git
   password: ghp_xxxxxxxxxxxxxxxxxxxx
 ```
@@ -251,11 +251,11 @@ spec:
 ArgoCD's repo server caches cloned repositories. When a remote base is pinned to a branch, the cache may serve stale content. Force a refresh:
 
 ```bash
-# Hard refresh forces re-cloning
+# Hard refresh refreshes application data and the target manifests cache
 argocd app get my-api-production --hard-refresh
 ```
 
-For tag-based pins, caching is not a problem since tags point to fixed commits.
+For tag-based pins, caching is less likely to surprise you if your team treats release tags as immutable. Commit SHA pins remain the most reproducible option.
 
 ## Updating Remote Base Versions
 
@@ -282,11 +282,11 @@ kubectl exec -n argocd deploy/argocd-repo-server -- \
   git ls-remote https://github.com/myorg/platform-base.git
 ```
 
-**Authentication errors**: Verify credentials are registered correctly:
+**Authentication errors**: Verify the application repository credentials or matching repository credential template are registered correctly:
 
 ```bash
 argocd repo list
-argocd repo get https://github.com/myorg/platform-base.git
+argocd repo get https://github.com/myorg/my-api-configs.git
 ```
 
 **Slow builds**: Remote bases require cloning, which adds latency. Pin to tags or SHAs to leverage ArgoCD's cache effectively.
