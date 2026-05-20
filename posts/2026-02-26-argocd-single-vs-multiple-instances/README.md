@@ -160,7 +160,7 @@ Each instance is independent with its own configuration, RBAC, and cluster regis
 # values-team-a.yaml
 global:
   image:
-    tag: v2.10.2
+    tag: v3.4.1
 
 server:
   ingress:
@@ -178,9 +178,9 @@ configs:
 
 ```bash
 # Deploy multiple instances in different namespaces
-helm install argocd-team-a argo/argo-cd -n argocd-team-a -f values-team-a.yaml
-helm install argocd-team-b argo/argo-cd -n argocd-team-b -f values-team-b.yaml
-helm install argocd-platform argo/argo-cd -n argocd-platform -f values-platform.yaml
+helm install argocd-team-a argo/argo-cd -n argocd-team-a --create-namespace -f values-team-a.yaml
+helm install argocd-team-b argo/argo-cd -n argocd-team-b --create-namespace -f values-team-b.yaml
+helm install argocd-platform argo/argo-cd -n argocd-platform --create-namespace -f values-platform.yaml
 ```
 
 ### Advantages
@@ -190,10 +190,10 @@ helm install argocd-platform argo/argo-cd -n argocd-platform -f values-platform.
 **Independent lifecycle.** Each team can upgrade their ArgoCD instance on their own schedule.
 
 ```bash
-# Team A upgrades to v2.11 immediately
-helm upgrade argocd-team-a argo/argo-cd -n argocd-team-a --version 6.6.0
+# Team A upgrades to Argo CD v3.4.1 immediately
+helm upgrade argocd-team-a argo/argo-cd -n argocd-team-a --version 9.5.13 -f values-team-a.yaml
 
-# Team B stays on v2.10 until they're ready
+# Team B stays on its current tested version until they're ready
 # No coordination needed
 ```
 
@@ -209,8 +209,8 @@ helm upgrade argocd-team-a argo/argo-cd -n argocd-team-a --version 6.6.0
 
 ```bash
 # Upgrading 10 ArgoCD instances
-for ns in argocd-team-{a,b,c,d,e,f,g,h,i,j}; do
-  helm upgrade argocd argo/argo-cd -n $ns -f values-$ns.yaml
+for team in a b c d e f g h i j; do
+  helm upgrade argocd-team-$team argo/argo-cd -n argocd-team-$team -f values-team-$team.yaml
 done
 # 10x the upgrade work, 10x the testing, 10x the monitoring
 ```
@@ -277,6 +277,7 @@ metadata:
   name: argocd-team-a
   namespace: argocd-meta
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/platform-gitops.git
     path: argocd-instances/team-a
