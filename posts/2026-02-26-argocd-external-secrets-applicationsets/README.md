@@ -48,7 +48,7 @@ First, ensure each cluster has its own ClusterSecretStore. This is typically dep
 ```yaml
 # clusters/staging/external-secrets-store.yaml
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -65,7 +65,7 @@ spec:
 
 ---
 # clusters/production/external-secrets-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-store
@@ -92,6 +92,7 @@ repo/
       base/
         deployment.yaml
         service.yaml
+        kustomization.yaml
         external-secret.yaml    # Templated ExternalSecret
       overlays/
         staging/
@@ -102,6 +103,7 @@ repo/
       base/
         deployment.yaml
         service.yaml
+        kustomization.yaml
         external-secret.yaml
       overlays/
         staging/
@@ -112,11 +114,11 @@ repo/
 
 ## The Templated ExternalSecret
 
-The base ExternalSecret uses Kustomize variables that will be set per environment:
+The base ExternalSecret uses placeholder values that Kustomize overlays patch per environment:
 
 ```yaml
 # apps/service-a/base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: service-a-secrets
@@ -183,13 +185,13 @@ patches:
         value: vault-store
       - op: replace
         path: /spec/data/0/remoteRef/key
-        value: secret/data/production/services/service-a/database-url
+        value: production/services/service-a/database-url
       - op: replace
         path: /spec/data/1/remoteRef/key
-        value: secret/data/production/services/service-a/api-key
+        value: production/services/service-a/api-key
       - op: replace
         path: /spec/data/2/remoteRef/key
-        value: secret/data/production/services/service-a/jwt-secret
+        value: production/services/service-a/jwt-secret
 ```
 
 ## ApplicationSet with Matrix Generator
@@ -203,6 +205,8 @@ metadata:
   name: services-with-secrets
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - matrix:
         generators:
@@ -226,17 +230,17 @@ spec:
                   secretStore: vault-store
   template:
     metadata:
-      name: '{{service}}-{{environment}}'
+      name: '{{.service}}-{{.environment}}'
       namespace: argocd
     spec:
-      project: '{{environment}}'
+      project: '{{.environment}}'
       source:
         repoURL: https://github.com/your-org/apps-repo.git
         targetRevision: main
-        path: 'apps/{{service}}/overlays/{{environment}}'
+        path: 'apps/{{.service}}/overlays/{{.environment}}'
       destination:
-        server: '{{cluster}}'
-        namespace: '{{namespace}}'
+        server: '{{.cluster}}'
+        namespace: '{{.namespace}}'
       syncPolicy:
         automated:
           selfHeal: true
@@ -256,6 +260,8 @@ metadata:
   name: auto-discover-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - matrix:
         generators:
@@ -270,20 +276,20 @@ spec:
           - clusters:
               selector:
                 matchLabels:
-                  environment: '{{path[3]}}'
+                  environment: '{{index .path.segments 3}}'
   template:
     metadata:
-      name: '{{path[1]}}-{{path[3]}}'
+      name: '{{index .path.segments 1}}-{{index .path.segments 3}}'
       namespace: argocd
     spec:
-      project: '{{path[3]}}'
+      project: '{{index .path.segments 3}}'
       source:
         repoURL: https://github.com/your-org/apps-repo.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
-        server: '{{server}}'
-        namespace: '{{path[1]}}'
+        server: '{{.server}}'
+        namespace: '{{index .path.segments 1}}'
       syncPolicy:
         automated:
           selfHeal: true
@@ -303,6 +309,8 @@ metadata:
   name: services-custom-stores
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -315,7 +323,7 @@ spec:
             environment: production
             cluster: https://prod.k8s.example.com
             secretStore: vault-store
-            secretPath: secret/data/production/services/user-api
+            secretPath: production/services/user-api
           - service: analytics
             environment: production
             cluster: https://prod.k8s.example.com
@@ -323,30 +331,30 @@ spec:
             secretPath: production/services/analytics
   template:
     metadata:
-      name: '{{service}}-{{environment}}'
+      name: '{{.service}}-{{.environment}}'
       namespace: argocd
     spec:
-      project: '{{environment}}'
+      project: '{{.environment}}'
       source:
         repoURL: https://github.com/your-org/apps-repo.git
         targetRevision: main
-        path: 'apps/{{service}}'
+        path: 'apps/{{.service}}'
         helm:
           parameters:
             - name: externalSecret.store
-              value: '{{secretStore}}'
+              value: '{{.secretStore}}'
             - name: externalSecret.path
-              value: '{{secretPath}}'
+              value: '{{.secretPath}}'
       destination:
-        server: '{{cluster}}'
-        namespace: '{{service}}'
+        server: '{{.cluster}}'
+        namespace: '{{.service}}'
 ```
 
 With a Helm chart that templates the ExternalSecret:
 
 ```yaml
 # apps/service-template/templates/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: {{ .Release.Name }}-secrets
@@ -371,7 +379,7 @@ spec:
 
 ## Ignoring Secret Data in ArgoCD Diffs
 
-When ESO creates the actual Kubernetes Secret, ArgoCD might flag it as OutOfSync because the Secret's data fields differ from what is in Git. Configure ignoreDifferences to handle this:
+When ESO creates the actual Kubernetes Secret, ArgoCD normally tracks the ExternalSecret rather than the generated Secret. If your application also renders a Secret manifest or a chart-managed placeholder Secret, ArgoCD might flag it as OutOfSync because the Secret's data fields differ from what is in Git. Configure ignoreDifferences to handle this:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -388,7 +396,6 @@ spec:
           kind: Secret
           jsonPointers:
             - /data
-            - /metadata/labels/reconcile.external-secrets.io
             - /metadata/annotations
 ```
 
