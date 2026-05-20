@@ -13,19 +13,21 @@ Rocket.Chat is another popular open-source messaging platform that many organiza
 ## Setting Up Rocket.Chat Incoming Webhook
 
 1. Log into Rocket.Chat as an admin
-2. Go to Administration and then Integrations
-3. Click "New Integration"
-4. Select "Incoming WebHook"
+2. Go to Manage Workspace and then Integrations
+3. Click "New"
+4. Select "Incoming"
 5. Configure it:
    - **Enabled**: True
    - **Name**: ArgoCD Notifications
    - **Post to Channel**: #deployments (or your preferred channel)
-   - **Post as**: ArgoCD
+   - **Post as**: argocd-bot (an existing Rocket.Chat user in the destination channel)
+   - **Alias**: ArgoCD
    - **Avatar URL**: https://argoproj.github.io/argo-cd/assets/logo.png
+   - **Allow to overwrite destination channel in the body parameters**: True (needed if you use the channel overrides below)
    - **Script Enabled**: False (we handle formatting in ArgoCD templates)
 6. Save and copy the "Webhook URL"
 
-The URL looks like: `https://rocketchat.example.com/hooks/token/webhook-id`
+The URL looks like: `https://rocketchat.example.com/hooks/integration-id/token`
 
 ## Configuring ArgoCD
 
@@ -34,7 +36,7 @@ Store the webhook URL:
 ```bash
 kubectl patch secret argocd-notifications-secret -n argocd \
   --type merge \
-  -p '{"stringData": {"rocketchat-webhook-url": "https://rocketchat.example.com/hooks/your-token/your-webhook-id"}}'
+  -p '{"stringData": {"rocketchat-webhook-url": "https://rocketchat.example.com/hooks/your-integration-id/your-token"}}'
 ```
 
 Configure the webhook service:
@@ -184,12 +186,12 @@ Override the default channel in the message:
 
 ```yaml
   trigger.on-deployed-rocketchat: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [rocketchat-deploy-card]
 
   trigger.on-sync-failed-rocketchat: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [rocketchat-sync-failed]
 
   trigger.on-health-degraded-rocketchat: |
@@ -212,7 +214,7 @@ For default subscriptions:
 ```yaml
   subscriptions: |
     - recipients:
-        - rocketchat:
+        - rocketchat
       triggers:
         - on-deployed-rocketchat
         - on-sync-failed-rocketchat
@@ -258,7 +260,7 @@ To get the auth token and user ID, create a bot user in Rocket.Chat and use the 
 ```bash
 curl -X POST https://rocketchat.example.com/api/v1/login \
   -H "Content-Type: application/json" \
-  -d '{"username": "argocd-bot", "password": "bot-password"}'
+  -d '{"user": "argocd-bot", "password": "bot-password"}'
 ```
 
 ## Debugging
