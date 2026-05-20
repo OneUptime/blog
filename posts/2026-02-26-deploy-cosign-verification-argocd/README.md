@@ -31,8 +31,8 @@ security/
       verify-images.yaml
       verify-attestations.yaml
     gatekeeper/
-      template-verify-image.yaml
-      constraint-verify-image.yaml
+      ratify-application.yaml
+      verifier-cosign.yaml
     configmap-public-keys.yaml
 ```
 
@@ -57,8 +57,9 @@ metadata:
       Verifies that all container images are signed with Cosign.
       Images without valid signatures are blocked.
 spec:
-  validationFailureAction: Enforce
-  webhookTimeoutSeconds: 30
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 30
   background: false
   rules:
     # Verify with static key
@@ -78,6 +79,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "your-registry.com/*"
+          failureAction: Enforce
           attestors:
             - entries:
                 - keys:
@@ -106,6 +108,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "ghcr.io/your-org/*"
+          failureAction: Enforce
           attestors:
             - entries:
                 - keyless:
@@ -133,8 +136,9 @@ metadata:
     policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Audit
-  webhookTimeoutSeconds: 30
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 30
   background: false
   rules:
     - name: verify-slsa-provenance
@@ -153,6 +157,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "your-registry.com/*"
+          failureAction: Audit
           attestations:
             - type: https://slsa.dev/provenance/v0.2
               attestors:
@@ -178,6 +183,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "your-registry.com/*"
+          failureAction: Audit
           attestations:
             - type: https://spdx.dev/Document
               attestors:
@@ -191,62 +197,58 @@ spec:
 
 ## Approach 2: Cosign Verification with Gatekeeper
 
-If you use Gatekeeper instead of Kyverno, you need an external data provider for Cosign verification.
+If you use Gatekeeper instead of Kyverno, you need Gatekeeper external data enabled and an external data provider for Cosign verification. The older `sigstore/cosign-gatekeeper-provider` project has been archived, so use a maintained provider such as Ratify for current deployments.
 
-### Deploy the Cosign GateKeeper Provider
+### Deploy the Ratify Gatekeeper Provider
 
 ```yaml
-# security/cosign-policies/gatekeeper/cosign-provider.yaml
-apiVersion: apps/v1
-kind: Deployment
+# security/cosign-policies/gatekeeper/ratify-application.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: cosign-gatekeeper-provider
+  name: ratify
+  namespace: argocd
+spec:
+  project: security
+  source:
+    repoURL: https://ratify-project.github.io/ratify
+    chart: ratify
+    targetRevision: 1.15.2
+    helm:
+      values: |
+        featureFlags:
+          RATIFY_CERT_ROTATION: true
+        cosign:
+          enabled: true
+        cosignKeys:
+          - |
+            -----BEGIN PUBLIC KEY-----
+            MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE...
+            -----END PUBLIC KEY-----
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gatekeeper-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# security/cosign-policies/gatekeeper/verifier-cosign.yaml
+apiVersion: config.ratify.deislabs.io/v1beta1
+kind: Verifier
+metadata:
+  name: verifier-cosign
   namespace: gatekeeper-system
 spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: cosign-gatekeeper-provider
-  template:
-    metadata:
-      labels:
-        app: cosign-gatekeeper-provider
-    spec:
-      containers:
-        - name: provider
-          image: ghcr.io/sigstore/cosign-gatekeeper-provider:latest
-          ports:
-            - containerPort: 8090
-          args:
-            - --log-level=info
-          volumeMounts:
-            - name: cosign-keys
-              mountPath: /etc/cosign-keys
-              readOnly: true
-      volumes:
-        - name: cosign-keys
-          configMap:
-            name: cosign-public-keys
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: cosign-gatekeeper-provider
-  namespace: gatekeeper-system
-spec:
-  selector:
-    app: cosign-gatekeeper-provider
-  ports:
-    - port: 8090
-      targetPort: 8090
----
-apiVersion: externaldata.gatekeeper.sh/v1beta1
-kind: Provider
-metadata:
-  name: cosign-provider
-spec:
-  url: http://cosign-gatekeeper-provider.gatekeeper-system.svc.cluster.local:8090/validate
-  timeout: 10
+  name: cosign
+  artifactTypes: application/vnd.dev.cosign.artifact.sig.v1+json
+  parameters:
+    trustPolicies:
+      - name: default
+        scopes:
+          - "your-registry.com/*"
+        keys:
+          - provider: inline-keymanagementprovider-1
 ```
 
 ## Storing Public Keys
@@ -267,7 +269,7 @@ data:
     -----END PUBLIC KEY-----
 ```
 
-For production, use Sealed Secrets or an external secrets operator for the keys.
+For production, keep Cosign private keys out of the cluster. Public verification keys can be stored in Git if changes are reviewed, or managed through your external secrets system if that is how your platform distributes trust material.
 
 ## Signing Images in CI/CD
 
@@ -276,7 +278,7 @@ Before verification works, you need to sign images in your CI pipeline. Here is 
 ```yaml
 # .github/workflows/build.yaml
 - name: Sign image with Cosign
-  uses: sigstore/cosign-installer@v3
+  uses: sigstore/cosign-installer@v4.0.0
 - run: |
     # Keyless signing using GitHub OIDC
     cosign sign --yes ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
@@ -286,10 +288,12 @@ Before verification works, you need to sign images in your CI pipeline. Here is 
 
     # Attach SBOM attestation
     cosign attest --predicate sbom.spdx.json \
-      --type spdxjson \
+      --type https://spdx.dev/Document \
       --key cosign.key \
       ${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
 ```
+
+For keyless signing in GitHub Actions, the signing job must grant `id-token: write` so Cosign can request a GitHub OIDC token.
 
 ## ArgoCD Application for Cosign Policies
 
@@ -339,19 +343,25 @@ Do not enable enforcement immediately. Follow this progression:
 ```yaml
 # Phase 1: Audit
 spec:
-  validationFailureAction: Audit
-
-# Phase 2: Warn (Kyverno only)
-spec:
-  validationFailureAction: Audit
   rules:
     - name: verify-signature
-      validate:
-        message: "WARNING: Image is not signed"
+      verifyImages:
+        - failureAction: Audit
+
+# Phase 2: Warn in admission responses (Kyverno only)
+spec:
+  emitWarning: true
+  rules:
+    - name: verify-signature
+      verifyImages:
+        - failureAction: Audit
 
 # Phase 3: Enforce
 spec:
-  validationFailureAction: Enforce
+  rules:
+    - name: verify-signature
+      verifyImages:
+        - failureAction: Enforce
 ```
 
 ## Summary
