@@ -47,19 +47,19 @@ To re-enable auto-sync:
 argocd app set my-app --sync-policy automated --self-heal --auto-prune
 ```
 
-## Method 2: Use the Refresh Annotation to Pause Reconciliation
+## Method 2: Do Not Use the Refresh Annotation to Pause Reconciliation
 
-You can set a special annotation to prevent ArgoCD from refreshing the application entirely:
+The `argocd.argoproj.io/refresh` annotation is not a pause mechanism. ArgoCD uses it to request a refresh, and the supported values are `normal` and `hard`:
 
 ```bash
-# Pause reconciliation by setting the refresh annotation to a high value
+# Request a normal refresh
 kubectl annotate application my-app -n argocd \
-  argocd.argoproj.io/refresh="-1" --overwrite
+  argocd.argoproj.io/refresh="normal" --overwrite
 ```
 
-Note: This approach is not officially documented and behavior may vary between ArgoCD versions. A more reliable approach is to use the operation lock described below.
+Do not set this annotation to values like `-1` or `86400` to pause reconciliation. Use the skip-reconcile annotation or a sync window instead.
 
-## Method 3: Use the Ignore Annotation
+## Method 3: Use the Skip-Reconcile Annotation
 
 Mark the application so ArgoCD skips it during reconciliation:
 
@@ -76,7 +76,7 @@ spec:
   # ... rest of spec
 ```
 
-Note: This annotation is supported in ArgoCD v2.8+. For older versions, use the sync window approach.
+Note: This annotation is an alpha feature supported in ArgoCD v2.7+. For older versions, use the sync window approach.
 
 ## Method 4: Create a Deny Sync Window
 
@@ -126,7 +126,7 @@ For a cluster-wide reconciliation pause, scale down the ArgoCD application contr
 
 ```bash
 # Scale down the controller
-kubectl scale deployment argocd-application-controller -n argocd --replicas=0
+kubectl scale statefulset argocd-application-controller -n argocd --replicas=0
 
 # No applications will be reconciled until you scale back up
 ```
@@ -135,20 +135,22 @@ This is a heavy-handed approach that affects all applications. Use it only for e
 
 ```bash
 # Scale back up
-kubectl scale deployment argocd-application-controller -n argocd --replicas=1
+kubectl scale statefulset argocd-application-controller -n argocd --replicas=1
 ```
 
-## Method 6: Per-Application Reconciliation Frequency
+## Method 6: Global Reconciliation Frequency
 
-Instead of completely stopping reconciliation, you can dramatically slow it down:
+Instead of completely stopping reconciliation, you can slow down ArgoCD's global application reconciliation interval:
 
 ```bash
-# Set reconciliation to once per day (86400 seconds)
-kubectl annotate application my-app -n argocd \
-  argocd.argoproj.io/refresh="86400" --overwrite
+# Set the default reconciliation interval to 1 hour
+kubectl patch configmap argocd-cm -n argocd --type merge \
+  -p '{"data":{"timeout.reconciliation":"1h"}}'
 ```
 
-This way the application still reconciles, but so infrequently that it is effectively paused for most purposes.
+This affects the default polling interval for all applications. It does not stop refreshes triggered by watched resource changes, webhooks, or manual refreshes, so use it only when you want to reduce background reconciliation pressure globally.
+
+Restart the repo server and application controller after changing this setting so the new interval is picked up.
 
 ## Automating Maintenance Mode
 
@@ -204,8 +206,8 @@ Usage:
 Even during maintenance, you might need to deploy a critical fix. If you used sync windows with `manualSync: true`, you can still sync manually:
 
 ```bash
-# Force a manual sync even during a deny window
-argocd app sync my-app --force
+# Run a manual sync during a deny window that allows manual syncs
+argocd app sync my-app
 ```
 
 If you used `manualSync: false` in the sync window, you need to temporarily modify the window:
@@ -229,9 +231,9 @@ When reconciliation is paused, it is important to know which applications are af
 
 ```bash
 # List all applications with auto-sync disabled
-argocd app list -o json | jq '.[] | select(.spec.syncPolicy.automated == null) | .metadata.name'
+argocd app list -o json | jq '.[] | select((.spec.syncPolicy.automated == null) or (.spec.syncPolicy.automated.enabled == false)) | .metadata.name'
 
-# Check for active deny sync windows
+# Check for configured sync windows
 kubectl get appprojects -n argocd -o json | \
   jq '.items[] | select(.spec.syncWindows != null) | {name: .metadata.name, windows: .spec.syncWindows}'
 ```
@@ -257,7 +259,8 @@ For tracking maintenance windows and ensuring applications return to normal oper
 
 ## Key Takeaways
 
-- Use `argocd app set --sync-policy none` for per-application pause (quick and reversible)
+- Use `argocd app set --sync-policy none` to disable automated syncs for a single application
+- Use `argocd.argoproj.io/skip-reconcile: "true"` when you need ArgoCD to stop reconciling a single application
 - Use deny sync windows for project-wide or scheduled maintenance
 - Scale down the controller only for cluster-wide emergencies
 - Always keep manual sync available for emergency deployments
