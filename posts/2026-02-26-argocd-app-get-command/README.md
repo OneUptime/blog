@@ -40,27 +40,26 @@ apps   Deployment  my-app-ns   my-app         Synced  Healthy        deployment.
 
 ## The Refresh Flag
 
-By default, `argocd app get` returns the cached state. To force a fresh comparison against the Git repository:
+By default, `argocd app get` returns the current application details known to Argo CD. To ask Argo CD to refresh application data while retrieving it:
 
 ```bash
-# Normal refresh - compare against cached Git state
-
+# Normal refresh - refresh application data
 argocd app get my-app --refresh
 
-# Hard refresh - re-fetch from Git, re-render manifests, then compare
+# Hard refresh - refresh application data and the target manifests cache
 argocd app get my-app --hard-refresh
 ```
 
 The difference matters:
 
-- **--refresh**: Uses the locally cached Git checkout but re-runs the diff against live state
-- **--hard-refresh**: Pulls the latest from the Git repository, regenerates all manifests (Helm template, Kustomize build, etc.), and then compares
+- **--refresh**: Refreshes application data when retrieving the application
+- **--hard-refresh**: Refreshes application data and the target manifests cache
 
 Use `--hard-refresh` when you suspect the cache is stale, or after pushing changes to Git and not wanting to wait for the polling interval.
 
 ## Output Formats
 
-### Table (Default)
+### Wide (Default)
 
 ```bash
 argocd app get my-app
@@ -116,10 +115,10 @@ my-app
 └── ConfigMap/my-app-ns/my-app-config
 ```
 
-### Wide Tree
+### Detailed Tree
 
 ```bash
-argocd app get my-app -o tree --show-operation
+argocd app get my-app -o tree=detailed
 ```
 
 The tree view with additional columns for sync and health information.
@@ -217,8 +216,11 @@ argocd app get my-app -o json | jq '.status.operationState.syncResult.resources[
 ### Checking Sync Windows
 
 ```bash
-# Check if sync is currently allowed
-argocd app get my-app -o json | jq '.status.summary'
+# Check if sync is currently allowed in the default output
+argocd app get my-app
+
+# List the sync windows configured on the project
+argocd proj windows list default
 ```
 
 ## Practical Diagnostic Script
@@ -292,7 +294,7 @@ echo "Message: $OP_MSG"
 
 ## Watching Application State Changes
 
-The `--watch` flag (available on some ArgoCD versions) lets you watch for real-time changes, but the more reliable approach is a polling loop:
+The current `argocd app get` command does not provide a `--watch` flag, but you can use a polling loop:
 
 ```bash
 # Poll for state changes every 5 seconds
@@ -320,4 +322,4 @@ echo "Target:   $TARGET"
 
 ## Summary
 
-The `argocd app get` command is your primary diagnostic tool for individual applications. Use the default table output for quick visual checks, the `-o json` format for scripting and automation, and the `--hard-refresh` flag when you need the most current state. Combined with `jq`, it gives you the ability to extract any piece of information about an application's configuration, sync state, health, and operation history.
+The `argocd app get` command is your primary diagnostic tool for individual applications. Use the default wide output for quick visual checks, the `-o json` format for scripting and automation, and the `--hard-refresh` flag when you need the most current state. Combined with `jq`, it gives you the ability to extract any piece of information about an application's configuration, sync state, health, and operation history.
