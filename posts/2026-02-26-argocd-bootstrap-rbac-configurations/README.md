@@ -10,7 +10,7 @@ Description: Learn how to bootstrap Kubernetes RBAC configurations using ArgoCD 
 
 Kubernetes RBAC (Role-Based Access Control) determines who can do what in your cluster. Without proper RBAC from the start, teams end up with cluster-admin access because "it was easier." Then someone accidentally deletes a production namespace and suddenly RBAC becomes a priority.
 
-Bootstrapping RBAC through ArgoCD ensures that access controls exist before any applications deploy. Every role, every binding, and every service account is tracked in Git. Changes go through pull requests. And if someone manually grants themselves extra permissions, ArgoCD reverts it.
+Bootstrapping RBAC through ArgoCD ensures that access controls exist before any applications deploy. Every role, every binding, and every service account is tracked in Git. Changes go through pull requests. And if someone manually changes a managed RBAC resource, ArgoCD reverts it.
 
 ## Why Manage RBAC with ArgoCD
 
@@ -143,10 +143,10 @@ metadata:
   labels:
     rbac.myorg.io/type: custom
 rules:
-  # Minimal permissions for CI/CD service accounts
+  # Minimal permissions for CI/CD service accounts updating ArgoCD Application objects
   - apiGroups: ["argoproj.io"]
     resources: ["applications"]
-    verbs: ["get", "list", "sync"]
+    verbs: ["get", "list", "watch", "update", "patch"]
   - apiGroups: [""]
     resources: ["configmaps"]
     verbs: ["get", "update"]
