@@ -99,11 +99,11 @@ metadata:
 stringData:
   type: git
   url: https://gitlab.company.com/infrastructure
-  username: group_42_bot
+  username: argocd
   password: glpat-group_access_token_value
 ```
 
-Create group access tokens at Group > Settings > Access Tokens. The bot username is shown during creation.
+Create group access tokens at Group > Settings > Access Tokens. For Git over HTTPS, GitLab accepts any non-blank username and the group access token as the password.
 
 ## Method 4: Project Access Token
 
@@ -121,7 +121,7 @@ metadata:
 stringData:
   type: git
   url: https://gitlab.company.com/infrastructure/k8s-manifests.git
-  username: project_123_bot
+  username: argocd
   password: glpat-project_access_token_value
 ```
 
@@ -177,6 +177,8 @@ kind: ConfigMap
 metadata:
   name: argocd-ssh-known-hosts-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   ssh_known_hosts: |
     github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
@@ -194,6 +196,8 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   gitlab.company.com: |
     -----BEGIN CERTIFICATE-----
@@ -279,13 +283,14 @@ argocd repo list
 Instead of waiting for ArgoCD's polling interval, configure a webhook in GitLab to notify ArgoCD of pushes:
 
 ```yaml
-# In argocd-cm ConfigMap
+# In argocd-secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   webhook.gitlab.secret: your-webhook-secret
 ```
 
@@ -329,6 +334,6 @@ argocd repo list
 # Look for "401 Unauthorized" or "403 Forbidden" in the status
 ```
 
-Set calendar reminders to rotate tokens before they expire, or use tokens without expiration dates for service accounts.
+Set calendar reminders to rotate tokens before they expire, or use deploy tokens without expiration dates where your policy allows. For service account personal access tokens, non-expiring tokens are available only when the relevant GitLab setting allows them.
 
 For a broader overview of repository credential management in ArgoCD, see the [repository credentials guide](https://oneuptime.com/blog/post/2026-01-25-repository-credentials-argocd/view).
