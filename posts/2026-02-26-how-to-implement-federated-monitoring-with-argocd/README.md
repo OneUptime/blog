@@ -8,7 +8,7 @@ Description: Learn how to implement federated monitoring across multiple Kuberne
 
 ---
 
-When you run applications across multiple Kubernetes clusters, monitoring each cluster independently creates blind spots. You need a unified view of metrics, logs, and alerts across all clusters. Federated monitoring solves this by aggregating observability data from all clusters into a central location. Managing this infrastructure with ArgoCD means your entire monitoring stack is GitOps-controlled.
+When you run applications across multiple Kubernetes clusters, monitoring each cluster independently creates blind spots. You need a unified view of metrics and alerts across all clusters. Federated monitoring solves this by aggregating observability data from all clusters into a central location. Managing this infrastructure with ArgoCD means your entire monitoring stack is GitOps-controlled.
 
 This guide covers implementing federated monitoring with ArgoCD using Prometheus, Thanos, and Grafana.
 
@@ -70,13 +70,13 @@ spec:
           clusterName: '{{name}}'
   template:
     metadata:
-      name: 'prometheus-{{name}}'
+      name: 'prometheus-{{nameNormalized}}'
     spec:
       project: default
       source:
         repoURL: https://prometheus-community.github.io/helm-charts
         chart: kube-prometheus-stack
-        targetRevision: 55.5.0
+        targetRevision: 84.5.0
         helm:
           values: |
             prometheus:
@@ -85,9 +85,6 @@ spec:
                 externalLabels:
                   cluster: "{{values.clusterName}}"
                   region: "{{values.region}}"
-                # Expose federation endpoint
-                enableFeatures:
-                  - remote-write-receiver
                 storageSpec:
                   volumeClaimTemplate:
                     spec:
@@ -131,7 +128,7 @@ spec:
   source:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: kube-prometheus-stack
-    targetRevision: 55.5.0
+    targetRevision: 84.5.0
     helm:
       values: |
         prometheus:
@@ -147,10 +144,11 @@ spec:
                     requests:
                       storage: 500Gi
             additionalScrapeConfigs:
-              # Federate from cluster A
+              # Federate from a routable endpoint for cluster A
               - job_name: 'federate-cluster-a'
                 scrape_interval: 30s
                 honor_labels: true
+                scheme: https
                 metrics_path: '/federate'
                 params:
                   'match[]':
@@ -161,13 +159,14 @@ spec:
                     - 'container_memory_working_set_bytes'
                 static_configs:
                   - targets:
-                      - 'prometheus-cluster-a.monitoring.svc:9090'
+                      - 'prometheus-cluster-a.example.com:443'
                     labels:
                       cluster: 'cluster-a'
-              # Federate from cluster B
+              # Federate from a routable endpoint for cluster B
               - job_name: 'federate-cluster-b'
                 scrape_interval: 30s
                 honor_labels: true
+                scheme: https
                 metrics_path: '/federate'
                 params:
                   'match[]':
@@ -178,7 +177,7 @@ spec:
                     - 'container_memory_working_set_bytes'
                 static_configs:
                   - targets:
-                      - 'prometheus-cluster-b.monitoring.svc:9090'
+                      - 'prometheus-cluster-b.example.com:443'
                     labels:
                       cluster: 'cluster-b'
         grafana:
@@ -223,13 +222,13 @@ spec:
           clusterName: '{{name}}'
   template:
     metadata:
-      name: 'prometheus-{{name}}'
+      name: 'prometheus-{{nameNormalized}}'
     spec:
       project: default
       source:
         repoURL: https://prometheus-community.github.io/helm-charts
         chart: kube-prometheus-stack
-        targetRevision: 55.5.0
+        targetRevision: 84.5.0
         helm:
           values: |
             prometheus:
@@ -240,7 +239,7 @@ spec:
                   region: "{{values.region}}"
                 # Thanos sidecar configuration
                 thanos:
-                  image: quay.io/thanos/thanos:v0.34.0
+                  image: quay.io/thanos/thanos:v0.41.0
                   objectStorageConfig:
                     existingSecret:
                       name: thanos-objstore-config
@@ -252,6 +251,11 @@ spec:
                       resources:
                         requests:
                           storage: 50Gi
+              thanosService:
+                enabled: true
+              thanosServiceExternal:
+                enabled: true
+                type: LoadBalancer
             grafana:
               enabled: false
       destination:
@@ -312,16 +316,17 @@ spec:
   source:
     repoURL: https://charts.bitnami.com/bitnami
     chart: thanos
-    targetRevision: 14.0.0
+    targetRevision: 17.3.1
     helm:
+      releaseName: thanos
       values: |
         query:
           enabled: true
           replicaCount: 2
           stores:
-            # Thanos sidecars on each cluster
-            - "prometheus-thanos-sidecar.monitoring.cluster-a.svc:10901"
-            - "prometheus-thanos-sidecar.monitoring.cluster-b.svc:10901"
+            # Routable Thanos sidecar gRPC endpoints on each cluster
+            - "thanos-sidecar-cluster-a.example.com:10901"
+            - "thanos-sidecar-cluster-b.example.com:10901"
             # Thanos store gateway for historical data
             - "thanos-storegateway.monitoring.svc:10901"
           resources:
@@ -376,9 +381,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://grafana.github.io/helm-charts
+    repoURL: https://grafana-community.github.io/helm-charts
     chart: grafana
-    targetRevision: 7.3.0
+    targetRevision: 12.1.1
     helm:
       values: |
         persistence:
@@ -390,7 +395,7 @@ spec:
             datasources:
               - name: Thanos
                 type: prometheus
-                url: http://thanos-query.monitoring.svc:9090
+                url: http://thanos-query-frontend.monitoring.svc:9090
                 isDefault: true
                 jsonData:
                   httpMethod: POST
@@ -428,6 +433,7 @@ alertmanager:
   config:
     global:
       resolve_timeout: 5m
+      slack_api_url_file: /etc/alertmanager/secrets/slack-webhook-url
     route:
       group_by: ['alertname', 'cluster', 'namespace']
       group_wait: 30s
@@ -435,11 +441,11 @@ alertmanager:
       repeat_interval: 12h
       receiver: 'default'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'pagerduty'
-        - match:
-            severity: warning
+        - matchers:
+            - severity="warning"
           receiver: 'slack'
     receivers:
       - name: 'default'
@@ -447,7 +453,7 @@ alertmanager:
           - channel: '#alerts'
       - name: 'pagerduty'
         pagerduty_configs:
-          - service_key_file: /etc/alertmanager/secrets/pagerduty-key
+          - routing_key_file: /etc/alertmanager/secrets/pagerduty-routing-key
       - name: 'slack'
         slack_configs:
           - channel: '#alerts-warning'
@@ -480,4 +486,4 @@ Create Grafana dashboards that show data from all clusters with cluster selector
 
 ## Summary
 
-Federated monitoring with ArgoCD gives you a unified observability platform across all your Kubernetes clusters. For small deployments, Prometheus federation is sufficient. For production scale, Thanos with object storage provides unlimited retention and global query capabilities. Deploy everything through ApplicationSets for consistency, and add cross-cluster dashboards and alert aggregation for a complete picture. For more on multi-cluster management, see our guide on [active-active deployments](https://oneuptime.com/blog/post/2026-02-26-how-to-implement-active-active-deployments-across-clusters-with-argocd/view).
+Federated monitoring with ArgoCD gives you a unified observability platform across all your Kubernetes clusters. For small deployments, Prometheus federation is sufficient. For production scale, Thanos with object storage provides long-term retention and global query capabilities. Deploy everything through ApplicationSets for consistency, and add cross-cluster dashboards and alert aggregation for a complete picture. For more on multi-cluster management, see our guide on [active-active deployments](https://oneuptime.com/blog/post/2026-02-26-how-to-implement-active-active-deployments-across-clusters-with-argocd/view).
