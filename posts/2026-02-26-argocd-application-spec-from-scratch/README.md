@@ -33,10 +33,11 @@ Let us break down each section in detail.
 
 ```yaml
 metadata:
-  # Required: unique name within the ArgoCD namespace
+  # Required: unique name within the Application namespace
   name: my-application
 
-  # Required: must be the ArgoCD installation namespace
+  # Usually the ArgoCD installation namespace.
+  # Other namespaces require Argo CD's "applications in any namespace" feature.
   namespace: argocd
 
   # Optional: labels for filtering and selection
@@ -75,7 +76,7 @@ spec:
   project: default
 ```
 
-Projects define what repositories, clusters, and namespaces an application can use. The `default` project allows everything. Production environments should use custom projects with restrictions:
+Projects define what repositories, clusters, and namespaces an application can use. The `default` project allows everything by default. Production environments should use custom projects with restrictions:
 
 ```bash
 # List available projects
@@ -117,7 +118,7 @@ spec:
       # Exclude files matching pattern
       exclude: "test-*"
 
-      # Process YAML as Jsonnet
+      # Jsonnet-specific options
       jsonnet:
         tlas:
           - name: env
@@ -300,6 +301,7 @@ spec:
       - ServerSideApply=true
       - ApplyOutOfSyncOnly=true
       - Validate=false
+      - SkipDryRunOnMissingResource=true
       - Replace=true
       - FailOnSharedResource=true
       - RespectIgnoreDifferences=true
@@ -331,9 +333,10 @@ spec:
 |--------|---------|
 | `CreateNamespace=true` | Create target namespace if missing |
 | `PruneLast=true` | Delete removed resources after all others sync |
-| `ServerSideApply=true` | Use Kubernetes server-side apply (better for CRDs) |
+| `ServerSideApply=true` | Use Kubernetes server-side apply |
 | `ApplyOutOfSyncOnly=true` | Skip resources already in sync |
-| `Validate=false` | Skip schema validation (for CRDs not yet installed) |
+| `Validate=false` | Skip kubectl schema validation |
+| `SkipDryRunOnMissingResource=true` | Skip dry-run for custom resources whose CRDs are not yet known to the cluster |
 | `Replace=true` | Replace resources instead of apply (destructive) |
 | `FailOnSharedResource=true` | Fail if resource belongs to another app |
 | `RespectIgnoreDifferences=true` | Respect ignoreDifferences during sync |
