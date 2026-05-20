@@ -146,7 +146,7 @@ syncWindows:
 
 ## Regional Deployment Strategy
 
-A common pattern is deploying to regions sequentially, using staggered sync windows to create a natural rollout.
+A common pattern is deploying to regions sequentially, using staggered sync windows to create a natural rollout. Fixed UTC schedules do not track daylight saving time, so adjust the UTC offsets seasonally or use local `timeZone` values as shown earlier.
 
 ```mermaid
 gantt
@@ -180,7 +180,7 @@ syncWindows:
     manualSync: true
     timeZone: 'UTC'
 
-  # EU second (2 AM London = 2 AM UTC)
+  # EU second (2 AM London = 2 AM UTC during GMT)
   - kind: allow
     schedule: '0 2 * * *'
     duration: 4h
@@ -191,7 +191,7 @@ syncWindows:
     manualSync: true
     timeZone: 'UTC'
 
-  # US East third (2 AM Eastern = 7 AM UTC)
+  # US East third (2 AM Eastern = 7 AM UTC during EST)
   - kind: allow
     schedule: '0 7 * * *'
     duration: 4h
@@ -202,7 +202,7 @@ syncWindows:
     manualSync: true
     timeZone: 'UTC'
 
-  # US West last (2 AM Pacific = 10 AM UTC)
+  # US West last (2 AM Pacific = 10 AM UTC during PST)
   - kind: allow
     schedule: '0 10 * * *'
     duration: 4h
@@ -333,7 +333,7 @@ argocd app get my-us-app --output json | \
   jq '{
     name: .metadata.name,
     destinationCluster: .spec.destination.server,
-    conditions: [.status.conditions[] | select(.type | contains("Sync"))]
+    conditions: [(.status.conditions // [])[] | select(.type | contains("Sync"))]
   }'
 
 # List all applications targeting a specific cluster
