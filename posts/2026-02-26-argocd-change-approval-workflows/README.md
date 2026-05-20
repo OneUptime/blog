@@ -83,6 +83,7 @@ spec:
         - production
       clusters:
         - https://kubernetes.default.svc
+      manualSync: true          # Permit approved manual syncs outside the allow window
     # Deny syncs during end-of-quarter freeze
     - kind: deny
       schedule: "0 0 25 3,6,9,12 *"  # 25th of quarter-end months
@@ -91,13 +92,7 @@ spec:
         - "*"
       namespaces:
         - production
-    # Allow emergency syncs with manual override
-    - kind: allow
-      schedule: "* * * * *"  # Always
-      duration: 24h
-      applications:
-        - "*"
-      manualSync: true  # Only manual syncs allowed outside windows
+      manualSync: true          # Permit approved manual syncs during the freeze
   sourceRepos:
     - https://github.com/myorg/*
   destinations:
@@ -137,7 +132,7 @@ infrastructure/ @myorg/devops-team
 
 Use ArgoCD's RBAC system to control who can trigger syncs.
 
-```csv
+```yaml
 # argocd-rbac-cm.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -177,7 +172,7 @@ For organizations using ServiceNow, Jira Service Management, or similar ITSM too
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: validate-change-request
+  generateName: validate-change-request-
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
@@ -192,32 +187,43 @@ spec:
             - -c
             - |
               import os
-              import requests
               import sys
               import json
+              import urllib.parse
+              import urllib.request
 
               # Check for approved change request
               servicenow_url = os.environ['SERVICENOW_URL']
               app_name = os.environ.get('APP_NAME', 'unknown')
+              query = urllib.parse.urlencode({
+                  "sysparm_query": f"cmdb_ci.name={app_name}^state=scheduled^approval=approved",
+                  "sysparm_limit": 1
+              })
+              password_mgr = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+              password_mgr.add_password(
+                  None,
+                  servicenow_url,
+                  os.environ['SN_USER'],
+                  os.environ['SN_PASS']
+              )
+              opener = urllib.request.build_opener(
+                  urllib.request.HTTPBasicAuthHandler(password_mgr)
+              )
 
               # Query ServiceNow for approved change requests
-              response = requests.get(
-                  f"{servicenow_url}/api/now/table/change_request",
-                  params={
-                      "sysparm_query": f"cmdb_ci.name={app_name}^state=scheduled^approval=approved",
-                      "sysparm_limit": 1
-                  },
-                  auth=(os.environ['SN_USER'], os.environ['SN_PASS']),
+              request = urllib.request.Request(
+                  f"{servicenow_url}/api/now/table/change_request?{query}",
                   headers={"Accept": "application/json"}
               )
 
-              result = response.json()
+              with opener.open(request) as response:
+                  result = json.load(response)
+
               if result.get('result'):
                   print(f"Approved change request found: {result['result'][0]['number']}")
                   sys.exit(0)
-              else:
-                  print("ERROR: No approved change request found. Sync blocked.")
-                  sys.exit(1)
+              print("ERROR: No approved change request found. Sync blocked.")
+              sys.exit(1)
           env:
             - name: SERVICENOW_URL
               valueFrom:
@@ -243,40 +249,24 @@ spec:
 
 For high-security environments, implement a two-person rule where one person commits the change and a different person approves the sync.
 
-Enforce this at the Git level through branch protection requiring reviews from someone other than the author, and at the ArgoCD level by mapping RBAC so that the person who merged the PR cannot also sync.
+Enforce this at the Git level through branch protection requiring reviews from someone other than the author, and at the ArgoCD level by routing production syncs through a small approval service. Static ArgoCD RBAC can control who may sync, but it cannot compare the current sync initiator with the commit author for each change by itself.
 
-```yaml
-# Use a webhook to check the sync initiator
-# differs from the last commit author
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: two-person-check
-  annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
-spec:
-  template:
-    spec:
-      containers:
-        - name: checker
-          image: bitnami/git:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Get the last commit author
-              COMMIT_AUTHOR=$(git log -1 --format='%ae' HEAD)
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-              # Get the ArgoCD sync initiator from the annotation
-              SYNC_INITIATOR="${ARGOCD_APP_SYNC_INITIATOR}"
+APP_NAME="api-production"
+REVISION="$(git rev-parse origin/main)"
+COMMIT_AUTHOR="$(git show -s --format='%ae' "$REVISION")"
+SYNC_INITIATOR="${APPROVER_EMAIL:?APPROVER_EMAIL is required}"
 
-              if [ "$COMMIT_AUTHOR" = "$SYNC_INITIATOR" ]; then
-                echo "ERROR: Same person cannot commit and approve deployment"
-                exit 1
-              fi
-              echo "Two-person rule satisfied: committed by $COMMIT_AUTHOR, synced by $SYNC_INITIATOR"
-      restartPolicy: Never
+if [ "$COMMIT_AUTHOR" = "$SYNC_INITIATOR" ]; then
+  echo "ERROR: Same person cannot commit and approve deployment"
+  exit 1
+fi
+
+argocd app sync "$APP_NAME" --revision "$REVISION" --info "approved-by=$SYNC_INITIATOR"
+echo "Two-person rule satisfied: committed by $COMMIT_AUTHOR, synced by $SYNC_INITIATOR"
 ```
 
 ## Emergency Change Process
@@ -284,11 +274,11 @@ spec:
 Even with strict approval workflows, you need an escape valve for emergencies.
 
 ```yaml
-# Emergency sync window - always allows manual sync
+# Emergency manual sync override on the restrictive window
 syncWindows:
   - kind: allow
-    schedule: "* * * * *"
-    duration: 24h
+    schedule: "0 9 * * 1-5"
+    duration: 8h
     applications:
       - "*"
     manualSync: true
