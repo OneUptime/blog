@@ -12,7 +12,7 @@ If you have ever watched an ArgoCD sync fail because a custom resource tried to 
 
 ## Why Ordering Matters
 
-When you apply a bunch of manifests to a Kubernetes cluster, kubectl processes them in a somewhat random order. ArgoCD does the same unless you tell it otherwise. If your Application includes both CRDs and the custom resources that depend on those CRDs, you will hit race conditions.
+When you apply a bunch of manifests to a Kubernetes cluster, the apply order is not dependency-aware. ArgoCD also has a default ordering by phase, wave, kind, and name, but it cannot infer every CRD dependency for you. If your Application includes both CRDs and the custom resources that depend on those CRDs, you can hit race conditions.
 
 The typical error looks like this:
 
@@ -78,7 +78,7 @@ The CRD is in wave -1, so it deploys first. The custom resource is in wave 1, so
 
 ## Using Sync Phases for Even More Control
 
-Sync waves work within sync phases. ArgoCD has three phases: PreSync, Sync, and PostSync. You can put your CRDs in the PreSync phase to guarantee they exist before the main Sync phase runs.
+Sync waves work within sync phases. ArgoCD supports several hook phases; for normal deployment ordering, the important ones are PreSync, Sync, and PostSync. You can put your CRDs in the PreSync phase to make ArgoCD apply them before the main Sync phase runs.
 
 ```yaml
 # crd in PreSync phase
@@ -104,13 +104,13 @@ spec:
     kind: MyResource
 ```
 
-However, using hooks for CRDs has a caveat: hook resources are not tracked as part of the Application by default. You would need to set `argocd.argoproj.io/hook-delete-policy` carefully to avoid the CRD being cleaned up.
+However, using hooks for CRDs has a caveat: hook resources follow ArgoCD hook lifecycle rules instead of the normal resource lifecycle. If no hook delete policy is set, ArgoCD assumes `BeforeHookCreation`, and hook resources are also skipped during selective syncs.
 
 For most teams, sync waves are the better approach for CRDs because the CRD stays managed as a regular Application resource.
 
 ## A Complete Multi-Wave Example
 
-Here is a real-world pattern for deploying a cert-manager setup where you need the CRDs, then the controller, then the certificate resources:
+Here is a simplified pattern for deploying a cert-manager setup where you need the CRDs, then the controller, then the certificate resources. The CRD definitions below are abbreviated to show ordering; in production, use the full CRDs from the cert-manager release you are installing.
 
 ```yaml
 # Wave -2: Namespace
@@ -145,6 +145,28 @@ spec:
     kind: Certificate
 
 ---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusterissuers.cert-manager.io
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  group: cert-manager.io
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+  scope: Cluster
+  names:
+    plural: clusterissuers
+    singular: clusterissuer
+    kind: ClusterIssuer
+
+---
 # Wave 0: Controller deployment (default wave)
 apiVersion: apps/v1
 kind: Deployment
@@ -166,7 +188,7 @@ spec:
           image: quay.io/jetstack/cert-manager-controller:v1.14.0
 
 ---
-# Wave 1: ClusterIssuer (needs CRD and running controller)
+# Wave 1: ClusterIssuer (needs the ClusterIssuer CRD and running controller)
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -182,7 +204,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 
 ---
 # Wave 2: Certificate resources (needs ClusterIssuer)
@@ -237,7 +259,7 @@ This Lua script checks the CRD status conditions for "Established". Until it see
 
 ## Splitting CRDs into a Separate Application
 
-For large projects, many teams keep CRDs in a dedicated ArgoCD Application and the custom resources in another. This gives you independent lifecycle management.
+For large projects, many teams keep CRDs in a dedicated ArgoCD Application and the custom resources in another. This gives you independent lifecycle management. If these Application manifests are managed by a parent app, sync waves can order the Application resources themselves.
 
 ```yaml
 # App for CRDs only
@@ -291,8 +313,8 @@ If your sync still fails with CRD ordering issues, check these common problems:
 
 1. **Missing sync wave annotations** - Every resource that depends on a CRD needs a higher wave number than the CRD itself.
 2. **CRD not fully established** - Add the custom health check shown above to wait for the Established condition.
-3. **Helm chart CRDs** - Helm puts CRDs in a special `crds/` directory. ArgoCD handles these differently. You might need to use `--skip-crds` in Helm and manage CRDs separately.
-4. **Server-side apply conflicts** - If multiple tools manage the same CRD, you will see conflict errors. Use `argocd.argoproj.io/sync-options: ServerSideApply=true` to handle this.
+3. **Helm chart CRDs** - Helm puts CRDs in a special `crds/` directory. ArgoCD handles these differently. You might need to use ArgoCD's `--helm-skip-crds` option, or `spec.source.helm.skipCrds: true`, and manage CRDs separately.
+4. **Server-side apply conflicts** - If multiple tools manage the same CRD, you can see conflict errors. Consider `argocd.argoproj.io/sync-options: ServerSideApply=true` when you intentionally want ArgoCD to use server-side apply for that resource.
 
 ```yaml
 metadata:
