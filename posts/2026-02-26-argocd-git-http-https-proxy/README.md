@@ -43,10 +43,10 @@ spec:
       - name: argocd-repo-server
         env:
         # HTTP proxy for non-TLS traffic
-        - name: HTTP_PROXY
+        - name: http_proxy
           value: "http://proxy.corp.example.com:8080"
         # HTTPS proxy for TLS traffic (most Git operations)
-        - name: HTTPS_PROXY
+        - name: https_proxy
           value: "http://proxy.corp.example.com:8080"
         # Hosts that should bypass the proxy
         - name: NO_PROXY
@@ -69,9 +69,9 @@ If you manage ArgoCD with Helm, set the proxy in your values file:
 
 repoServer:
   env:
-    - name: HTTP_PROXY
+    - name: http_proxy
       value: "http://proxy.corp.example.com:8080"
-    - name: HTTPS_PROXY
+    - name: https_proxy
       value: "http://proxy.corp.example.com:8080"
     - name: NO_PROXY
       value: "kubernetes.default.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.corp.example.com"
@@ -80,9 +80,9 @@ repoServer:
 # if it needs to reach external clusters
 controller:
   env:
-    - name: HTTP_PROXY
+    - name: http_proxy
       value: "http://proxy.corp.example.com:8080"
-    - name: HTTPS_PROXY
+    - name: https_proxy
       value: "http://proxy.corp.example.com:8080"
     - name: NO_PROXY
       value: "kubernetes.default.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.corp.example.com"
@@ -90,9 +90,9 @@ controller:
 # And the API server for webhook callbacks
 server:
   env:
-    - name: HTTP_PROXY
+    - name: http_proxy
       value: "http://proxy.corp.example.com:8080"
-    - name: HTTPS_PROXY
+    - name: https_proxy
       value: "http://proxy.corp.example.com:8080"
     - name: NO_PROXY
       value: "kubernetes.default.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.corp.example.com"
@@ -106,50 +106,23 @@ helm upgrade argocd argo/argo-cd \
   -f values.yaml
 ```
 
-## Configuring Proxy via Git Configuration
+## Configuring Proxy per Repository
 
-For more granular control over which repositories use a proxy, you can configure proxy settings in the Git configuration file directly:
+For more granular control over which repositories use a proxy, configure the proxy settings on the ArgoCD repository Secret:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-repo-server-gitconfig
+  name: github-repo
   namespace: argocd
-data:
-  gitconfig: |
-    [http "https://github.com"]
-      proxy = http://proxy.corp.example.com:8080
-
-    [http "https://gitlab.com"]
-      proxy = http://proxy.corp.example.com:8080
-
-    [http "https://git.internal.corp.com"]
-      # No proxy for internal Git servers
-      proxy = ""
-```
-
-Mount this ConfigMap in the repo server:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-      - name: argocd-repo-server
-        volumeMounts:
-        - name: gitconfig
-          mountPath: /home/argocd/.gitconfig
-          subPath: gitconfig
-      volumes:
-      - name: gitconfig
-        configMap:
-          name: argocd-repo-server-gitconfig
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/argoproj/argocd-example-apps.git
+  proxy: http://proxy.corp.example.com:8080
+  noProxy: ".internal.corp.com,git.internal.corp.com,10.0.0.0/8"
 ```
 
 This approach lets you route traffic to GitHub through the proxy while keeping traffic to your internal GitLab instance direct. It is more flexible than blanket environment variables.
@@ -160,7 +133,7 @@ Many corporate proxies require authentication. You can include credentials direc
 
 ```yaml
 env:
-  - name: HTTPS_PROXY
+  - name: https_proxy
     value: "http://username:password@proxy.corp.example.com:8080"
 ```
 
@@ -174,8 +147,8 @@ metadata:
   namespace: argocd
 type: Opaque
 stringData:
-  HTTPS_PROXY: "http://username:password@proxy.corp.example.com:8080"
-  HTTP_PROXY: "http://username:password@proxy.corp.example.com:8080"
+  https_proxy: "http://username:password@proxy.corp.example.com:8080"
+  http_proxy: "http://username:password@proxy.corp.example.com:8080"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -208,8 +181,8 @@ metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
 data:
-  # Add your corporate CA certificate
-  proxy.corp.example.com: |
+  # Use the Git server hostname as the key
+  github.com: |
     -----BEGIN CERTIFICATE-----
     MIIDkTCCAnmgAwIBAgIUB... (your CA cert)
     -----END CERTIFICATE-----
@@ -265,14 +238,14 @@ argocd repo list
 
 **"proxyconnect tcp: tls: first record does not look like a TLS handshake"**
 
-This happens when you use `https://` in the proxy URL but the proxy expects plain HTTP. Change HTTPS_PROXY to use `http://` instead (the proxy URL protocol is separate from the target URL protocol):
+This happens when you use `https://` in the proxy URL but the proxy expects plain HTTP. Change `https_proxy` to use `http://` instead (the proxy URL protocol is separate from the target URL protocol):
 
 ```yaml
 # Correct - proxy itself uses HTTP even for proxying HTTPS traffic
-HTTPS_PROXY: "http://proxy.corp.example.com:8080"
+https_proxy: "http://proxy.corp.example.com:8080"
 
 # Wrong - unless your proxy requires TLS connections to itself
-HTTPS_PROXY: "https://proxy.corp.example.com:8080"
+https_proxy: "https://proxy.corp.example.com:8080"
 ```
 
 **"x509: certificate signed by unknown authority"**
@@ -297,10 +270,12 @@ Once the proxy is configured, monitor Git operation success rates to catch proxy
 
 ```promql
 # Track Git operation success rate
-rate(argocd_git_request_total{grpc_code="OK"}[5m])
+1 - (
+  rate(argocd_git_fetch_fail_total[5m])
   / rate(argocd_git_request_total[5m])
+)
 ```
 
-A sudden drop in this metric often indicates proxy issues. Combine this with monitoring your proxy infrastructure to get end-to-end visibility into the connectivity chain.
+A sudden drop in this calculated success rate often indicates proxy issues. Combine this with monitoring your proxy infrastructure to get end-to-end visibility into the connectivity chain.
 
 Proxy configuration in ArgoCD is mostly about getting the environment variables and NO_PROXY list right. Once configured correctly, it works transparently and you should not need to touch it again unless your network topology changes.
