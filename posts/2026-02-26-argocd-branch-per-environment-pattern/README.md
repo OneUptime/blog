@@ -338,11 +338,16 @@ To mitigate the drawbacks:
 ```bash
 # Regularly sync branches to prevent drift
 # Merge main back into staging, staging back into develop
-git checkout develop
+git checkout staging
 git merge main
+git push origin staging
+
+git checkout develop
+git merge staging
 git push origin develop
 
 # Use merge commits (not squash) to preserve promotion history
+git checkout main
 git merge --no-ff staging
 
 # Tag production releases for easy reference
