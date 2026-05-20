@@ -28,7 +28,7 @@ The `argocd app manifests` command can show two different views:
 
 ```bash
 # Show what ArgoCD generates from the Git source (default)
-argocd app manifests my-app --source
+argocd app manifests my-app --source git
 ```
 
 These are the manifests as generated from your repository - this is the "desired state."
@@ -129,7 +129,7 @@ This is one of the most powerful debugging techniques - comparing what ArgoCD wa
 
 APP_NAME="${1:?Usage: compare-states.sh <app-name>}"
 
-DESIRED=$(argocd app manifests "$APP_NAME" --source)
+DESIRED=$(argocd app manifests "$APP_NAME" --source git)
 LIVE=$(argocd app manifests "$APP_NAME" --source live)
 
 # Save to temp files for diff
