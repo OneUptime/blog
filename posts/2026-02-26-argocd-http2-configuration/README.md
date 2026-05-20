@@ -8,7 +8,7 @@ Description: A practical guide to configuring ArgoCD with HTTP/2 for optimal gRP
 
 ---
 
-ArgoCD relies heavily on gRPC for communication between its components - the CLI, web UI, API server, repo server, and application controller. Since gRPC is built on top of HTTP/2, getting HTTP/2 working correctly through your entire network path is essential for native gRPC performance. This guide walks through configuring HTTP/2 end-to-end with ArgoCD.
+ArgoCD exposes a gRPC/REST API through the API server, and the CLI uses native gRPC by default. Since gRPC is built on top of HTTP/2, getting HTTP/2 working correctly through your external network path is essential for native CLI performance. This guide walks through configuring HTTP/2 end-to-end with ArgoCD.
 
 ## Why HTTP/2 Matters for ArgoCD
 
@@ -16,7 +16,7 @@ HTTP/2 provides several features that gRPC depends on:
 
 - Multiplexed streams over a single TCP connection
 - Binary framing for efficient data transfer
-- Server push and bidirectional streaming
+- Full-duplex streaming
 - Header compression via HPACK
 
 When any component in the network path downgrades to HTTP/1.1, gRPC connections will fail unless you have gRPC-Web configured as a fallback. Understanding where HTTP/2 is needed and where it can be negotiated helps you build a reliable ArgoCD deployment.
@@ -24,25 +24,27 @@ When any component in the network path downgrades to HTTP/1.1, gRPC connections 
 ```mermaid
 graph TD
     A[ArgoCD CLI] -->|gRPC / HTTP/2| B[Load Balancer]
-    B -->|HTTP/2 or HTTP/1.1| C[Ingress Controller]
+    B -->|TCP/TLS passthrough or HTTP/2| C[Ingress Controller]
     C -->|HTTP/2| D[ArgoCD API Server]
     D -->|gRPC / HTTP/2| E[Repo Server]
-    D -->|gRPC / HTTP/2| F[App Controller]
+    F[App Controller] -->|gRPC / HTTP/2| E
+    D -->|Kubernetes API| G[Kubernetes API Server]
+    F -->|Kubernetes API| G
 ```
 
 ## ArgoCD's Internal HTTP/2 Communication
 
-ArgoCD components communicate with each other using gRPC over HTTP/2 by default. The internal connections are:
+ArgoCD components use gRPC for several internal API calls. The key internal connections include:
 
 - **API Server to Repo Server**: gRPC over HTTP/2 on port 8081
-- **API Server to Application Controller**: gRPC over HTTP/2 (via Kubernetes API)
 - **Application Controller to Repo Server**: gRPC over HTTP/2 on port 8081
+- **Application Controller and API Server to Kubernetes**: Kubernetes API calls, not ArgoCD gRPC
 
 These internal connections typically work without any special configuration because they communicate directly within the cluster. The challenge arises with external access to the API server.
 
 ## Configuring NGINX Ingress for HTTP/2
 
-NGINX Ingress Controller supports HTTP/2 backend connections. You need to tell it that the ArgoCD server speaks gRPC:
+NGINX Ingress Controller supports HTTP/2 backend connections. If you terminate TLS at ingress-nginx, run the ArgoCD API server with TLS disabled (`--insecure` or `server.insecure: "true"`), then tell ingress-nginx which backend protocol to use:
 
 ```yaml
 # NGINX Ingress with HTTP/2 backend for ArgoCD gRPC
@@ -55,14 +57,13 @@ metadata:
   annotations:
     # Tell NGINX the backend speaks gRPC (HTTP/2)
     nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
-    # Enable SSL passthrough for true end-to-end HTTP/2
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   tls:
     - hosts:
         - grpc.argocd.example.com
-      secretName: argocd-tls
+      secretName: argocd-ingress-grpc
   rules:
     - host: grpc.argocd.example.com
       http:
@@ -73,10 +74,10 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
-For the web UI, you need a separate ingress since the web UI serves HTML over HTTPS:
+For the web UI, you need a separate ingress since ingress-nginx allows only one backend protocol annotation per Ingress object:
 
 ```yaml
 # NGINX Ingress for ArgoCD Web UI (HTTPS backend)
@@ -86,15 +87,15 @@ metadata:
   name: argocd-server-https
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     # Important: force SSL redirect
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
 spec:
   ingressClassName: nginx
   tls:
     - hosts:
         - argocd.example.com
-      secretName: argocd-tls
+      secretName: argocd-ingress-http
   rules:
     - host: argocd.example.com
       http:
@@ -105,7 +106,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: http
 ```
 
 Then configure the CLI to use the gRPC endpoint:
@@ -127,6 +128,7 @@ metadata:
   name: argocd-server-passthrough
   namespace: argocd
   annotations:
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     # Enable SSL passthrough - the ingress does not terminate TLS
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
 spec:
@@ -141,7 +143,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
 With SSL passthrough, the ArgoCD server handles TLS termination and ALPN negotiation directly. This is the simplest way to get HTTP/2 working end-to-end, but it means the ingress controller cannot inspect or route traffic based on HTTP headers.
@@ -161,7 +163,7 @@ kubectl patch deploy -n ingress-nginx ingress-nginx-controller \
 
 ## Configuring Traefik for HTTP/2
 
-Traefik supports HTTP/2 and works well with ArgoCD. Create an IngressRoute:
+Traefik supports HTTP/2 and works well with ArgoCD. Run the API server with TLS disabled (`--insecure` or `server.insecure: "true"`), then create an IngressRoute:
 
 ```yaml
 # Traefik IngressRoute for ArgoCD with HTTP/2
@@ -178,15 +180,21 @@ spec:
       kind: Rule
       services:
         - name: argocd-server
-          port: 443
-          # Enable HTTP/2 to the backend
+          port: 80
+      middlewares: []
+    - match: Host(`argocd.example.com`) && Header(`Content-Type`, `application/grpc`)
+      kind: Rule
+      services:
+        - name: argocd-server
+          port: 80
+          # Enable cleartext HTTP/2 to the backend for gRPC
           scheme: h2c
       middlewares: []
   tls:
     certResolver: letsencrypt
 ```
 
-If your ArgoCD server has TLS disabled (running with `--insecure`), use `h2c` (HTTP/2 cleartext):
+For the gRPC route, `h2c` means HTTP/2 cleartext to the backend:
 
 ```yaml
 # Traefik with h2c for insecure ArgoCD backend
@@ -198,7 +206,7 @@ services:
 
 ## Configuring Istio for HTTP/2
 
-Istio natively supports HTTP/2 and gRPC. Configure a VirtualService and Gateway:
+Istio natively supports HTTP/2 and gRPC. If you terminate TLS at the Istio gateway, run the ArgoCD API server with TLS disabled (`--insecure` or `server.insecure: "true"`), then configure a VirtualService, Gateway, and DestinationRule:
 
 ```yaml
 # Istio Gateway for ArgoCD
@@ -241,15 +249,28 @@ spec:
         - destination:
             host: argocd-server
             port:
-              number: 443
+              number: 80
     - route:
         - destination:
             host: argocd-server
             port:
-              number: 443
+              number: 80
+---
+# Istio DestinationRule to use HTTP/2 to the backend
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  host: argocd-server
+  trafficPolicy:
+    connectionPool:
+      http:
+        h2UpgradePolicy: UPGRADE
 ```
 
-Istio's Envoy sidecar automatically handles HTTP/2 negotiation, making it one of the easiest options for gRPC-native ArgoCD access.
+Istio can automatically detect HTTP/2 in sidecars, but gateways forward HTTP requests to backends as HTTP/1.1 unless you explicitly select HTTP/2 or gRPC for the backend service port, or configure the gateway to use the client protocol.
 
 ## Configuring AWS Network Load Balancer
 
@@ -264,11 +285,12 @@ metadata:
   namespace: argocd
   annotations:
     # Use NLB instead of CLB
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
     # Use external scheme for public access
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     # Enable cross-zone load balancing
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 spec:
   type: LoadBalancer
   selector:
