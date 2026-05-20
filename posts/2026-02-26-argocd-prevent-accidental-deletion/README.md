@@ -51,11 +51,11 @@ Test the RBAC policy before applying:
 
 ```bash
 # Verify a developer cannot delete
-argocd admin settings rbac can role:developer delete applications 'default/prod-web'
+argocd admin settings rbac can role:developer delete application 'default/prod-web' --policy-file argocd-rbac-cm.yaml
 # Output: No
 
 # Verify a platform-admin can delete
-argocd admin settings rbac can role:platform-admin delete applications 'default/prod-web'
+argocd admin settings rbac can role:platform-admin delete application 'default/prod-web' --policy-file argocd-rbac-cm.yaml
 # Output: Yes
 ```
 
@@ -157,12 +157,12 @@ metadata:
 
 A simple webhook implementation can require a specific header or annotation before allowing deletion, or require approval from a second person.
 
-## Layer 5: Protect managed resources with prevent-delete annotation
+## Layer 5: Protect managed resources with prune and delete sync options
 
-ArgoCD supports a resource-level annotation that prevents specific resources from being pruned or deleted:
+ArgoCD supports resource-level annotations that prevent specific resources from being pruned or deleted. Use `Prune=false` to prevent pruning during sync:
 
 ```yaml
-# Deployment that ArgoCD will never delete
+# Deployment that ArgoCD will not prune during sync
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -185,7 +185,26 @@ spec:
           image: myorg/critical-service:v1.2.3
 ```
 
-You can also apply this at the application level for all resources:
+Use `Delete=false` for resources that should be retained when the application itself is deleted:
+
+```yaml
+# PVC that ArgoCD will not delete during application deletion
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: critical-data
+  namespace: production
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Gi
+```
+
+You can also apply these at the application level for all resources:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -197,6 +216,7 @@ spec:
   syncPolicy:
     syncOptions:
       - Prune=false  # Never prune any resources in this application
+      - Delete=false # Keep resources when this application is deleted
 ```
 
 ## Layer 6: Git branch protection
@@ -229,17 +249,7 @@ apps/production/ @platform-team
 
 While not prevention, having a clear audit trail deters careless deletions and helps with recovery:
 
-```yaml
-# Enable ArgoCD audit logging
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Enable server audit logging
-  server.audit.enabled: "true"
-```
+ArgoCD Application deletions are Kubernetes API delete operations against the `applications.argoproj.io` resource. Capture them with your cluster's Kubernetes audit logging and centralize the `argocd-server` and `argocd-application-controller` logs.
 
 Set up alerts for deletion events:
 
@@ -258,18 +268,22 @@ data:
       when: app.metadata.deletionTimestamp != nil
   template.app-deleted: |
     message: |
-      Application {{.app.metadata.name}} is being deleted by {{.app.status.operationState.operation.initiatedBy.username}}
+      Application {{.app.metadata.name}} has been deleted.
       Project: {{.app.spec.project}}
       Cluster: {{.app.spec.destination.server}}
       Namespace: {{.app.spec.destination.namespace}}
   service.slack: |
     token: $slack-token
-    channel: argocd-alerts
+  subscriptions: |
+    - recipients:
+        - slack:argocd-alerts
+      triggers:
+        - on-deleted
 ```
 
 ## Layer 8: ApplicationSet deletion protection
 
-If you use ApplicationSets, configure them to prevent accidental deletion of generated applications:
+If you use ApplicationSets, configure them to prevent accidental deletion of the resources managed by generated applications:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -298,10 +312,10 @@ spec:
         server: https://kubernetes.default.svc
         namespace: '{{path.basename}}'
   syncPolicy:
-    preserveResourcesOnDeletion: true  # Keep generated apps if ApplicationSet is deleted
+    preserveResourcesOnDeletion: true  # Keep managed resources if ApplicationSet is deleted
 ```
 
-The `preserveResourcesOnDeletion: true` setting ensures that if the ApplicationSet itself is deleted, all the Applications it generated continue to exist.
+The `preserveResourcesOnDeletion: true` setting prevents the ApplicationSet controller from adding the ArgoCD resource finalizer to generated Applications, so if the ApplicationSet is deleted, the generated Applications may be removed but their managed Kubernetes resources remain.
 
 ## Combining layers for maximum protection
 
@@ -330,7 +344,8 @@ spec:
     namespace: payment
   syncPolicy:
     syncOptions:
-      - Prune=false                               # Layer 5: Resource-level protection
+      - Prune=false                               # Layer 5: App-level prune protection
+      - Delete=false                              # Layer 5: App deletion resource protection
 ```
 
 ## Summary
