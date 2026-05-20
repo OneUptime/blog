@@ -53,7 +53,7 @@ At the top of the dashboard, you can:
 - **Search by name** - type part of the application name to filter
 - **Filter by project** - show only applications in a specific project
 - **Filter by sync status** - show only Synced, OutOfSync, or Unknown applications
-- **Filter by health** - show only Healthy, Degraded, Progressing, or Missing applications
+- **Filter by health** - show only Healthy, Degraded, Progressing, Suspended, Missing, or Unknown applications
 - **Filter by cluster** - useful when managing multiple clusters
 - **Filter by namespace** - show applications targeting a specific namespace
 
@@ -63,7 +63,7 @@ These filters are essential when you manage dozens or hundreds of applications.
 
 The sync status tells you whether the cluster state matches what is in Git. You will see one of these:
 
-**Synced (green checkmark)** - The cluster matches Git exactly. Everything that is declared in Git is deployed, and nothing extra exists that should not be there.
+**Synced (green checkmark)** - The live Kubernetes resources tracked by the application match the desired manifests from Git.
 
 **OutOfSync (yellow arrow)** - The cluster does not match Git. This can mean:
 - New changes were committed to Git but not yet applied
@@ -78,7 +78,7 @@ For a deeper understanding of sync status, see [understanding sync status in Arg
 
 Health status tells you whether the application is actually working, regardless of whether it matches Git. The possible statuses are:
 
-**Healthy (green heart)** - All resources are running correctly. Deployments have all replicas available, Services have endpoints, and Jobs have completed successfully.
+**Healthy (green heart)** - All resources with health checks are running correctly. For example, Deployments have the desired updated replicas, LoadBalancer Services have an assigned ingress address, and Jobs have completed successfully.
 
 **Progressing (blue spinning)** - Resources are in the process of becoming healthy. A Deployment might be rolling out new pods, or a StatefulSet might be starting up replicas. This is normal during and right after a sync.
 
@@ -156,7 +156,7 @@ For most cases, the default sync settings are fine. Check "Prune" if you want to
 
 ### Rolling Back
 
-Click the "History and Rollback" button to see previous sync operations. Each entry shows the Git revision, sync time, and status. You can select any previous revision and click "Rollback" to revert to that state.
+Click the "History and Rollback" button to see previous sync operations. Each entry shows the Git revision, sync time, and status. You can select any previous revision and click "Rollback" to revert to that state. Rollback is not available while automated sync is enabled for the application.
 
 For more on rollbacks, see [rollback strategies in ArgoCD](https://oneuptime.com/blog/post/2026-01-25-rollback-strategies-argocd/view).
 
@@ -170,15 +170,17 @@ Navigate to a Pod in the resource tree and click on it. Switch to the "Logs" tab
 
 This is incredibly useful for debugging - you do not need to switch to kubectl to read logs.
 
-## Application List View Modes
+## Application Detail View Modes
 
-The application list supports three view modes:
+The application detail page supports several resource view modes:
 
-**Tiles** - each application as a card with sync and health status. Good for a quick visual overview.
+**Tree** - shows managed resources in a parent-child hierarchy. Good for understanding ownership and relationships.
 
-**List** - a compact table view showing all applications with their key properties. Good when you have many applications.
+**List** - a compact table view showing resources with their key properties. Good when you have many resources.
 
-**Tree** - groups applications by project, cluster, or namespace in a hierarchical view. Good for understanding organizational structure.
+**Pods** - focuses on pods and can group them by node, parent resource, or top-level resource.
+
+**Network** - shows network-related relationships between application resources.
 
 ## The Settings Page
 
