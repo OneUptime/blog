@@ -30,6 +30,8 @@ Understanding what needs to be recovered:
 - RBAC policies
 - Notification configurations
 - Application sync history
+
+**Ephemeral (normally rebuilt):**
 - Redis cache state
 
 ## Backup strategy
@@ -39,7 +41,7 @@ Understanding what needs to be recovered:
 ```bash
 # Export all ArgoCD resources
 
-argocd admin export > argocd-backup-$(date +%Y%m%d-%H%M%S).yaml
+argocd admin export -n argocd > argocd-backup-$(date +%Y%m%d-%H%M%S).yaml
 
 # This exports:
 # - Applications
@@ -68,10 +70,7 @@ spec:
           serviceAccountName: argocd-backup-sa
           containers:
             - name: backup
-              image: argoproj/argocd:v2.13.0
-              env:
-                - name: ARGOCD_SERVER
-                  value: argocd-server.argocd.svc.cluster.local
+              image: myorg/argocd-backup-tools:v2.13.0  # Includes argocd, kubectl, and aws CLI
               command: ["/bin/sh", "-c"]
               args:
                 - |
@@ -79,7 +78,7 @@ spec:
                   BACKUP_FILE="/backup/argocd-export-$TIMESTAMP.yaml"
 
                   # Export ArgoCD state
-                  argocd admin export > $BACKUP_FILE
+                  argocd admin export -n argocd > $BACKUP_FILE
 
                   # Also backup raw Kubernetes resources
                   kubectl get applications -n argocd -o yaml > /backup/applications-$TIMESTAMP.yaml
@@ -89,6 +88,7 @@ spec:
 
                   # Upload to remote storage
                   aws s3 sync /backup/ s3://argocd-backups/$(date +%Y%m%d)/
+                  aws s3 cp $BACKUP_FILE s3://argocd-backups/latest/argocd-export.yaml
 
                   # Clean up old local backups
                   find /backup/ -mtime +7 -delete
@@ -154,7 +154,7 @@ if [ ! -s "$LATEST_BACKUP" ]; then
 fi
 
 # Validate YAML syntax
-if ! python3 -c "import yaml; yaml.safe_load_all(open('$LATEST_BACKUP'))" 2>/dev/null; then
+if ! python3 -c "import yaml; list(yaml.safe_load_all(open('$LATEST_BACKUP')))" 2>/dev/null; then
   echo "ERROR: Backup file has invalid YAML"
   exit 1
 fi
@@ -186,7 +186,7 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=300s
 
 # Restore from backup
-argocd admin import < argocd-backup-latest.yaml
+argocd admin import -n argocd - < argocd-backup-latest.yaml
 
 # Verify
 argocd app list
@@ -207,7 +207,7 @@ kubectl wait --for=condition=available deployment/argocd-server -n argocd --time
 
 # 3. Restore ArgoCD configuration
 aws s3 cp s3://argocd-backups/latest/argocd-export.yaml /tmp/
-argocd admin import < /tmp/argocd-export.yaml
+argocd admin import -n argocd - < /tmp/argocd-export.yaml
 
 # 4. Re-register clusters (credentials may need updating)
 argocd cluster add prod-cluster --name prod-cluster
@@ -229,7 +229,7 @@ kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-redis
 argocd app list -o name | xargs -I {} argocd app get {} --hard-refresh
 
 # If applications are still corrupted, restore from backup
-argocd admin import < argocd-backup-latest.yaml
+argocd admin import -n argocd - < argocd-backup-latest.yaml
 ```
 
 ## Declarative setup for faster recovery
@@ -349,7 +349,7 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 
 # 4. Restore from replicated backup
 aws s3 cp s3://argocd-backups-secondary/latest/argocd-export.yaml /tmp/ --region us-west-2
-argocd admin import < /tmp/argocd-export.yaml
+argocd admin import -n argocd - < /tmp/argocd-export.yaml
 
 # 5. Update cluster endpoints if needed
 argocd cluster rm https://old-cluster.example.com
@@ -378,11 +378,11 @@ kubectl apply -n argocd-dr-test -f argocd-install.yaml
 kubectl wait --for=condition=available deployment/argocd-server -n argocd-dr-test --timeout=300s
 
 # 4. Import backup
-argocd admin import --namespace argocd-dr-test < latest-backup.yaml
+argocd admin import -n argocd-dr-test - < latest-backup.yaml
 
 # 5. Verify application count
-ORIGINAL_COUNT=$(argocd app list --namespace argocd -o json | jq length)
-RESTORED_COUNT=$(argocd app list --namespace argocd-dr-test -o json | jq length)
+ORIGINAL_COUNT=$(kubectl get applications.argoproj.io -n argocd -o json | jq '.items | length')
+RESTORED_COUNT=$(kubectl get applications.argoproj.io -n argocd-dr-test -o json | jq '.items | length')
 
 echo "Original apps: $ORIGINAL_COUNT"
 echo "Restored apps: $RESTORED_COUNT"
