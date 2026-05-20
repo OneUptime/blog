@@ -47,25 +47,26 @@ spec:
               revision: HEAD
               directories:
                 - path: 'services/*'
+              values:
+                targetRevision: HEAD
+                project: default
           # Override: custom config for specific services
           - list:
               elements:
                 - path.basename: payment-service
-                  targetRevision: release-2.0
-                  project: pci-compliant
-                  replicas: "5"
+                  values.targetRevision: release-2.0
+                  values.project: pci-compliant
                 - path.basename: auth-service
-                  targetRevision: stable
-                  project: security
-                  replicas: "3"
+                  values.targetRevision: stable
+                  values.project: security
   template:
     metadata:
       name: '{{path.basename}}'
     spec:
-      project: '{{project}}'
+      project: '{{values.project}}'
       source:
         repoURL: https://github.com/myorg/services.git
-        targetRevision: '{{targetRevision}}'
+        targetRevision: '{{values.targetRevision}}'
         path: '{{path}}'
       destination:
         server: https://kubernetes.default.svc
@@ -76,7 +77,7 @@ For `payment-service` and `auth-service`, the custom `targetRevision` and `proje
 
 ## Setting Default Values
 
-The key challenge with merge is providing defaults for parameters that only some entries have. Use a third generator layer for defaults.
+The key challenge with merge is providing defaults for parameters that only some entries have. Use Go template fallbacks for defaults.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -114,21 +115,21 @@ spec:
       labels:
         team: '{{.team}}'
     spec:
-      project: '{{default "default" .project}}'
+      project: '{{dig "project" "default" .}}'
       source:
         repoURL: '{{.repo_url}}'
-        targetRevision: '{{default "HEAD" .target_revision}}'
+        targetRevision: '{{dig "target_revision" "HEAD" .}}'
         path: '{{.deploy_path}}'
         helm:
           parameters:
             - name: replicaCount
-              value: '{{default "2" .replicas}}'
+              value: '{{dig "replicas" "2" .}}'
       destination:
-        server: '{{default "https://kubernetes.default.svc" .cluster_url}}'
+        server: '{{dig "cluster_url" "https://kubernetes.default.svc" .}}'
         namespace: '{{.namespace}}'
 ```
 
-The `default` Go template function fills in values when the override generator does not provide them.
+The `dig` Go template function fills in values when the override generator does not provide them, without failing when `missingkey=error` is enabled.
 
 ## Multi-Key Merging
 
@@ -250,11 +251,11 @@ spec:
         helm:
           parameters:
             - name: ingressClass
-              value: '{{default "nginx" .ingress_class}}'
+              value: '{{dig "ingress_class" "nginx" .}}'
             - name: dnsZone
-              value: '{{default "default.example.com" .dns_zone}}'
+              value: '{{dig "dns_zone" "default.example.com" .}}'
             - name: storageClass
-              value: '{{default "standard" .storage_class}}'
+              value: '{{dig "storage_class" "standard" .}}'
       destination:
         server: '{{.server}}'
         namespace: platform
@@ -293,7 +294,6 @@ spec:
               elements:
                 - app_name: troubled-service
                   replicas: "1"
-                  auto_sync: "false"
   template:
     metadata:
       name: '{{app_name}}'
@@ -303,12 +303,16 @@ spec:
         repoURL: https://github.com/myorg/apps.git
         targetRevision: HEAD
         path: '{{app_name}}'
+        helm:
+          parameters:
+            - name: replicaCount
+              value: '{{replicas}}'
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{namespace}}'
 ```
 
-Layer 3 (the list) takes highest priority, then layer 2, then layer 1. For `troubled-service`, the emergency override sets replicas to 1 and disables auto-sync regardless of what the base or team configs say.
+Layer 3 (the list) takes highest priority, then layer 2, then layer 1. For `troubled-service`, the emergency override sets replicas to 1 regardless of what the base or team configs say.
 
 ## Merge vs Matrix: When to Use Which
 
@@ -335,7 +339,7 @@ kubectl describe applicationset merged-services -n argocd
 
 # Verify merge key values match between generators
 # A common issue is a typo in the merge key value
-argocd appset get merged-services
+argocd appset get merged-services --show-params
 ```
 
 The most common merge issue is a merge key value in the override generator that does not match any entry in the primary generator. That override entry is silently ignored.
