@@ -8,7 +8,7 @@ Description: Set up VS Code Remote SSH to develop directly on Ubuntu servers, co
 
 ---
 
-VS Code Remote SSH lets you open a folder on a remote Ubuntu server and work with it as if it were local. The editor, IntelliSense, debugging, and extensions run on the remote machine while the VS Code window runs on your local workstation. This means you get full IDE features against code that lives on the server - no more editing in vim over SSH or syncing files manually.
+VS Code Remote SSH lets you open a folder on a remote Ubuntu server and work with it as if it were local. The VS Code window runs on your local workstation, while commands, IntelliSense, debugging, and most extensions run on the remote machine. This means you get full IDE features against code that lives on the server - no more editing in vim over SSH or syncing files manually.
 
 ## Prerequisites
 
@@ -158,7 +158,7 @@ VS Code detects when a process on the remote machine starts listening on a port 
 3. Click "Forward a Port"
 4. Enter the port number (e.g., 3000 for a Node.js dev server)
 
-The port is now accessible at `localhost:3000` on your local machine.
+The port is now accessible on your local machine. If local port 3000 is available, VS Code maps it to `localhost:3000`; otherwise, the Ports view and notification show the local port that was assigned.
 
 ### Forwarding from the Command Line
 
@@ -306,4 +306,4 @@ Host devserver
 
 ## Summary
 
-VS Code Remote SSH turns a remote Ubuntu server into a local development environment. After installing the Remote - SSH extension, setting up SSH key authentication, and creating an entry in `~/.ssh/config`, connecting to the server is a single command palette action. Port forwarding makes locally-running dev servers accessible in your local browser. Extensions, tasks, and the debugger all run on the server side, giving you full IDE capabilities against server-resident code without the latency of remote desktop solutions.
+VS Code Remote SSH turns a remote Ubuntu server into a local development environment. After installing the Remote - SSH extension, setting up SSH key authentication, and creating an entry in `~/.ssh/config`, connecting to the server is a single command palette action. Port forwarding makes remote-running dev servers accessible in your local browser. Extensions, tasks, and the debugger all run on the server side, giving you full IDE capabilities against server-resident code without the latency of remote desktop solutions.
