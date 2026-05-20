@@ -61,23 +61,18 @@ kubectl get events -n argocd --sort-by='.lastTimestamp' | grep -i oom
 kubectl top pods -n argocd -l app.kubernetes.io/name=argocd-application-controller
 ```
 
-Also check the current memory limits:
+Also check the current memory limits. Most ArgoCD installations run the application controller as a StatefulSet; if yours uses a Deployment, replace `statefulset` with `deployment`:
 
 ```bash
-kubectl get deployment argocd-application-controller -n argocd \
+kubectl get statefulset argocd-application-controller -n argocd \
   -o jsonpath='{.spec.template.spec.containers[0].resources}'
 ```
 
 ## Fix 1: Increase Memory Limits
 
-The most immediate fix - give the controller more memory:
+The most immediate fix - give the controller more memory. Patch the existing controller workload rather than applying a partial Deployment manifest:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-application-controller
-  namespace: argocd
 spec:
   template:
     spec:
@@ -105,8 +100,12 @@ spec:
 Apply the change:
 
 ```bash
-kubectl apply -f controller-deployment.yaml
-# Or patch directly
+# Patch a StatefulSet-based installation
+kubectl patch statefulset argocd-application-controller -n argocd \
+  --type json \
+  -p '[{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"8Gi"}]'
+
+# If your installation uses a Deployment instead
 kubectl patch deployment argocd-application-controller -n argocd \
   --type json \
   -p '[{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"8Gi"}]'
@@ -128,23 +127,24 @@ data:
   controller.sharding.algorithm: "round-robin"
 ```
 
+The `round-robin` sharding algorithm is currently an alpha feature in ArgoCD. For production environments, review the supported sharding algorithms for your ArgoCD version before enabling it.
+
 Then scale the controller:
 
 ```bash
-# If using a StatefulSet (HA mode)
+# StatefulSet-based controller sharding
 kubectl scale statefulset argocd-application-controller -n argocd --replicas=3
-
-# If using a Deployment (non-HA mode), switch to StatefulSet first
-# or use the environment variable approach
 ```
 
-**For Deployment-based installations, set the shard count:**
+**For StatefulSet-based installations, set the shard count to match the replica count:**
 
 ```yaml
 env:
   - name: ARGOCD_CONTROLLER_REPLICAS
     value: "3"
 ```
+
+For ArgoCD's alpha dynamic cluster distribution mode with a Deployment-based controller, enable `ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION` instead; that mode reads the shard count from the Deployment replica count.
 
 Each shard handles a subset of clusters, significantly reducing per-instance memory usage.
 
@@ -153,9 +153,9 @@ Each shard handles a subset of clusters, significantly reducing per-instance mem
 More frequent reconciliation means more work and more memory:
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
+# argocd-cm ConfigMap
 data:
-  # Increase reconciliation interval (default is 180s)
+  # Increase reconciliation interval (default is 120s plus up to 60s of jitter)
   timeout.reconciliation: "300s"
 
   # Add jitter to spread reconciliations
@@ -267,20 +267,11 @@ This tells the Go runtime to be more aggressive with garbage collection before h
 
 If you do not use certain features, disable them to save memory:
 
-```yaml
-# argocd-cmd-params-cm ConfigMap
-data:
-  # Disable orphaned resource monitoring if not needed
-  # (This feature tracks all resources in managed namespaces)
-```
-
-In the AppProject, disable orphaned resource monitoring:
+In the AppProject, disable orphaned resource monitoring by removing `spec.orphanedResources` from projects that do not need it:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: AppProject
 spec:
-  orphanedResources: null  # Disable orphaned resource monitoring
+  # Do not set orphanedResources unless you need orphaned resource monitoring.
 ```
 
 ## Fix 9: Check for Memory Leaks
@@ -292,7 +283,7 @@ If memory grows steadily over time without stabilizing, there might be a memory 
 kubectl top pods -n argocd -l app.kubernetes.io/name=argocd-application-controller
 
 # Check the controller metrics
-kubectl port-forward -n argocd deployment/argocd-application-controller 8082:8082
+kubectl port-forward -n argocd service/argocd-metrics 8082:8082
 curl localhost:8082/metrics | grep process_resident_memory_bytes
 ```
 
