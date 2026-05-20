@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Kustomize, Configuration Management
 
-Description: Learn how to use ArgoCD parameter overrides with Kustomize to dynamically adjust image tags, replicas, namespaces, and patches without modifying your Git repository.
+Description: Learn how to use ArgoCD parameter overrides with Kustomize to dynamically adjust image tags, namespaces, name prefixes, labels, and annotations without modifying your Git repository.
 
 ---
 
@@ -122,7 +122,7 @@ source:
   repoURL: https://github.com/myorg/app-config.git
   path: overlays/staging
   kustomize:
-    version: v5.3.0                    # Use a specific Kustomize version
+    version: v5.3.0                    # Use a specific Kustomize version configured in argocd-cm
     commonLabels:
       app: my-app
     images:
@@ -150,11 +150,11 @@ argocd app set my-app-staging \
 
 # Override name prefix
 argocd app set my-app-staging \
-  --kustomize-name-prefix "v2-"
+  --nameprefix "v2-"
 
 # Override name suffix
 argocd app set my-app-staging \
-  --kustomize-name-suffix "-canary"
+  --namesuffix "-canary"
 
 # Add common labels
 argocd app set my-app-staging \
@@ -176,13 +176,8 @@ curl -X PATCH \
   -H "Authorization: Bearer $ARGOCD_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "spec": {
-      "source": {
-        "kustomize": {
-          "images": ["myregistry/my-app:v1.2.3"]
-        }
-      }
-    }
+    "patch": "{\"spec\":{\"source\":{\"kustomize\":{\"images\":[\"myregistry/my-app:v1.2.3\"]}}}}",
+    "patchType": "merge"
   }'
 ```
 
@@ -277,14 +272,14 @@ The ideal pattern is using overrides for image tag updates (since those change f
 To remove overrides and revert to the values defined in Git:
 
 ```bash
-# Remove all Kustomize overrides
+# Remove an image override
 argocd app unset my-app-staging --kustomize-image myregistry/my-app
 
 # Remove namespace override
 argocd app unset my-app-staging --kustomize-namespace
 
 # Remove name prefix
-argocd app unset my-app-staging --kustomize-name-prefix
+argocd app unset my-app-staging --nameprefix
 ```
 
 After removing overrides, ArgoCD will use whatever is defined in the kustomization.yaml in your Git repository.
