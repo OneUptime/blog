@@ -63,34 +63,37 @@ sudo nano /etc/x2go/x2goserver.conf
 
 ```ini
 [security]
-# Restrict x2go to a specific group (optional)
-# AllowedUsers = x2gogroup
+# SSHFS umask for client-side folder sharing
+# umask="0117"
 
-[nxserver]
-# NX server configuration
-nxport = 4000  # Not directly exposed - x2go uses SSH tunneling
+[limit groups]
+# Limit members of a group to one simultaneous x2go session
+# x2gogroup=1
 
-[logfile]
-logfile = /var/log/x2goserver.log
+[x2goagent]
+# Randomize tunnel ports used by x2goagent
+port_randomization="pure-random"
+
+[log]
+# possible levels: emerg, alert, crit, err, warning, notice, info, debug
+loglevel=notice
 ```
 
 ### Configure SSH for x2go
 
-x2go requires some SSH settings. Verify `/etc/ssh/sshd_config` has:
+x2go requires SSH login and TCP forwarding. If you have hardened SSH, verify `/etc/ssh/sshd_config` has not disabled forwarding:
 
 ```bash
-sudo grep -E "X11Forwarding|AllowTcpForwarding" /etc/ssh/sshd_config
+sudo grep -E "AllowTcpForwarding" /etc/ssh/sshd_config
 ```
 
-Add or ensure these lines exist:
+Add or ensure this line exists:
 
 ```bash
 sudo nano /etc/ssh/sshd_config
 ```
 
 ```text
-# x2go requires X11 forwarding
-X11Forwarding yes
 AllowTcpForwarding yes
 ```
 
@@ -115,6 +118,12 @@ sudo apt install x2goclient
 Download from https://wiki.x2go.org/doku.php/doc:installation:x2goclient
 
 ### macOS Client
+
+x2go Client for macOS requires XQuartz. Install XQuartz first if it is not already installed:
+
+```bash
+brew install --cask xquartz
+```
 
 ```bash
 brew install --cask x2goclient
@@ -152,20 +161,17 @@ In the x2go client session settings, under SSH, point to your private key file.
 
 ## Configuring Default Session Type
 
-For headless Ubuntu servers where you always want XFCE sessions:
+The session type is normally selected in the x2go client profile. If you use an Xsession/custom desktop profile and want a user-level startup script, x2goserver-xsession reads `~/.xsession-x2go`:
 
-Create a user-level autostart configuration:
+Create a user-level Xsession configuration:
 
 ```bash
-mkdir -p ~/.config/x2go
-
-# Set default session type
-cat > ~/.x2gosession << 'EOF'
+cat > ~/.xsession-x2go << 'EOF'
 #!/bin/bash
 export DESKTOP_SESSION=xfce
-startxfce4
+exec xfce4-session
 EOF
-chmod +x ~/.x2gosession
+chmod +x ~/.xsession-x2go
 ```
 
 ## Shared Folders (Shared Desktop)
@@ -176,7 +182,7 @@ x2go supports mounting local folders in the remote session. In the x2go client:
 2. Click "Shared Folders" tab
 3. Add local directories to share
 
-In the x2go session, the folder appears under the session's "Shared Folders" in the file manager.
+In the x2go session, shared folders are mounted under `~/media/disk/`.
 
 ## Multiple Sessions and Session Resumption
 
@@ -192,20 +198,15 @@ x2goterminate-session SESSION_ID
 
 Sessions persist until explicitly terminated or the server restarts (unless you configure otherwise).
 
-## x2go with Persistent Virtual Desktop
+## x2go Desktop Sharing (Shadow Sessions)
 
-For a persistent virtual display that multiple users can access:
+To connect to an existing local X11 desktop instead of starting a new x2go desktop session, install the desktop sharing component:
 
 ```bash
-# Install virtual framebuffer
-sudo apt install xvfb
-
-# Start a persistent XFCE session on display :1
-Xvfb :1 -screen 0 1920x1080x24 &
-DISPLAY=:1 startxfce4 &
-
-# x2go can then shadow this display
+sudo apt install x2goserver-desktopsharing
 ```
+
+Start `x2godesktopsharing` inside the desktop you want to share, enable sharing from its tray icon, then create a client session with Session Type set to "Connect to local desktop".
 
 ## Performance Tuning
 
@@ -228,17 +229,9 @@ These settings control how aggressively NX compresses screen updates.
 
 Compositing effects consume extra bandwidth. Disabling them significantly improves remote session performance.
 
-### Adjust NX Cache Size
+### Adjust NX Compression
 
-```bash
-sudo nano /etc/x2go/x2goserver.conf
-```
-
-```ini
-[nxproxy]
-# Increase cache for better image caching (in KB)
-cacheSize = 16384
-```
+NX cache settings are negotiated by the client and x2go server. To tune performance, change the connection speed and compression method in the x2go client session settings rather than adding unsupported `cacheSize` settings to `x2goserver.conf`.
 
 ## Audio Support
 
@@ -278,13 +271,16 @@ Create a group for x2go users:
 sudo groupadd x2gousers
 sudo usermod -aG x2gousers username
 
-# Restrict x2go to members of this group
-sudo nano /etc/x2go/x2goserver.conf
+# Restrict SSH login to members of this group
+sudo nano /etc/ssh/sshd_config
 ```
 
-```ini
-[security]
-AllowedUsers = @x2gousers
+```text
+AllowGroups x2gousers
+```
+
+```bash
+sudo systemctl reload ssh
 ```
 
 ## Troubleshooting
@@ -295,17 +291,17 @@ This usually indicates the session type doesn't match the installed desktop envi
 
 ```bash
 # Check if XFCE is properly installed
-which startxfce4
+which xfce4-session
 
-# Test starting XFCE locally
-DISPLAY=:0 startxfce4
+# Check that the x2go XFCE command target exists
+ls -l /usr/bin/xfce4-session
 ```
 
 **Session dies immediately:**
 
 ```bash
-# Check x2go server logs
-sudo tail -f /var/log/x2goserver.log
+# Check x2go messages in syslog
+sudo journalctl -t x2goserver -t x2goruncommand -t x2gostartagent -f
 
 # Check user session log (in home directory after an attempt)
 cat ~/.x2go/C-$USER-*/session.log
@@ -316,7 +312,7 @@ cat ~/.x2go/C-$USER-*/session.log
 - Check network bandwidth with `iperf3`
 - Lower JPEG quality in client settings
 - Disable compositing in XFCE
-- Increase NX cache size in server config
+- Try a different compression method in the client settings
 
 **Connection refused:**
 
