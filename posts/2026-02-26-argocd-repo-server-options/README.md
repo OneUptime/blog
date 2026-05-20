@@ -46,7 +46,7 @@ patches:
         path: /spec/template/spec/containers/0/command
         value:
           - argocd-repo-server
-          - --parallelism-limit=5
+          - --parallelismlimit=5
           - --logformat=json
           - --loglevel=info
 ```
@@ -56,20 +56,20 @@ patches:
 ```yaml
 repoServer:
   extraArgs:
-    - --parallelism-limit=5
+    - --parallelismlimit=5
     - --logformat=json
 ```
 
 ## Core Processing Options
 
-### --parallelism-limit
+### --parallelismlimit
 
 The most important tuning parameter. Controls how many manifest generation operations can run concurrently. Default is 0 (unlimited).
 
 ```yaml
 command:
   - argocd-repo-server
-  - --parallelism-limit=5
+  - --parallelismlimit=5
 ```
 
 Setting a limit prevents the repo server from being overwhelmed when many applications sync simultaneously.
@@ -91,40 +91,52 @@ command:
   - --repo-cache-expiration=12h
 ```
 
-Lower values mean more frequent Git clones and manifest generation. Higher values reduce load but delay detection of changes in non-webhook setups.
+Lower values mean more frequent manifest generation and repo-state cache refreshes. Higher values reduce load but can delay detecting changes that do not come from a new Git commit, such as Kustomize remote bases or a Helm chart changed without a version bump.
 
 ## Git Operations
 
-### --git-request-timeout
+### reposerver.git.request.timeout
 
 Timeout for Git operations. Default is 15 seconds.
 
 ```yaml
-command:
-  - argocd-repo-server
-  - --git-request-timeout=30
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  reposerver.git.request.timeout: "30s"
 ```
 
 Increase this for large repositories or slow network connections to your Git provider.
 
-### --git-retry-max-duration
+### ARGOCD_GIT_ATTEMPTS_COUNT
 
-Maximum duration for retrying failed Git operations. Default is 10 seconds.
+Number of attempts for retrying failed Git requests.
 
 ```yaml
-command:
-  - argocd-repo-server
-  - --git-retry-max-duration=30s
+env:
+  - name: ARGOCD_GIT_ATTEMPTS_COUNT
+    value: "3"
 ```
 
-### --git-shallow-clone
+### Repository depth
 
-Enable shallow cloning to speed up Git operations for large repositories.
+Enable shallow cloning per repository to speed up Git operations for large repositories.
 
 ```yaml
-command:
-  - argocd-repo-server
-  - --git-shallow-clone
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/example/my-repo.git
+  depth: "1"
 ```
 
 This reduces the amount of Git history downloaded, significantly speeding up clone operations for repositories with many commits.
@@ -165,15 +177,20 @@ command:
   - --disable-tls
 ```
 
-### --tls-cert-file and --tls-key-file
+### argocd-repo-server-tls
 
-Custom TLS certificates for the gRPC server.
+Custom TLS certificates for the gRPC server are configured with a Secret named `argocd-repo-server-tls`.
 
 ```yaml
-command:
-  - argocd-repo-server
-  - --tls-cert-file=/tls/tls.crt
-  - --tls-key-file=/tls/tls.key
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-repo-server-tls
+  namespace: argocd
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64-encoded-certificate>
+  tls.key: <base64-encoded-private-key>
 ```
 
 ## Logging
@@ -209,7 +226,7 @@ command:
 
 This can significantly reduce Redis memory usage, especially for large manifests.
 
-Resource Configuration
+## Resource Configuration
 
 The repo server's resource needs depend on how many concurrent operations it handles and the size of your repositories.
 
@@ -285,22 +302,34 @@ spec:
         - name: argocd-repo-server
           command:
             - argocd-repo-server
-            - --parallelism-limit=5
+            - --parallelismlimit=5
         # Custom plugin sidecar
         - name: my-plugin
           image: my-registry/my-plugin:latest
           command: ["/var/run/argocd/argocd-cmp-server"]
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
           volumeMounts:
             - name: var-files
               mountPath: /var/run/argocd
             - name: plugins
               mountPath: /home/argocd/cmp-server/plugins
             - name: cmp-config
-              mountPath: /home/argocd/cmp-server/config
+              mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: plugin.yaml
+            - name: cmp-tmp
+              mountPath: /tmp
       volumes:
+        - name: var-files
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
         - name: cmp-config
           configMap:
             name: my-plugin-config
+        - name: cmp-tmp
+          emptyDir: {}
 ```
 
 ## Full Production Configuration
@@ -317,14 +346,11 @@ spec:
     spec:
       containers:
         - name: argocd-repo-server
-          image: quay.io/argoproj/argocd:v2.10.0
+          image: quay.io/argoproj/argocd:v3.4.1
           command:
             - argocd-repo-server
             # Concurrency control
-            - --parallelism-limit=10
-            # Git optimization
-            - --git-request-timeout=30
-            - --git-shallow-clone
+            - --parallelismlimit=10
             # Caching
             - --repo-cache-expiration=12h
             - --redis-compress=gzip
@@ -361,13 +387,13 @@ curl localhost:8084/metrics | grep argocd_git
 Key metrics:
 - `argocd_git_request_total` - Total Git requests
 - `argocd_git_request_duration_seconds` - Git operation duration
-- `argocd_repo_pending_request_total` - Pending manifest generation requests
+- `argocd_repo_pending_request_total` - Pending requests waiting on a repository lock
 
 ### Identifying Bottlenecks
 
-If `argocd_repo_pending_request_total` is consistently high, increase `--parallelism-limit` or add more replicas.
+If `argocd_repo_pending_request_total` is consistently high, add more replicas or reduce repository lock contention in monorepos.
 
-If `argocd_git_request_duration_seconds` is high, check your network connectivity to Git or enable shallow cloning.
+If `argocd_git_request_duration_seconds` is high, check your network connectivity to Git or configure shallow cloning with repository `depth: "1"`.
 
 ## Scaling the Repo Server
 
@@ -402,12 +428,12 @@ Large Helm charts can cause OOM kills. Increase memory limits.
 
 ### Git Clone Timeout
 
-Large repositories with deep history time out. Use `--git-shallow-clone` and increase `--git-request-timeout`.
+Large repositories with deep history time out. Configure repository `depth: "1"` and increase `reposerver.git.request.timeout`.
 
 ### Cache Miss Storm
 
-When the cache expires, all applications try to regenerate manifests simultaneously. Use staggered cache expiration or set `--parallelism-limit`.
+When the cache expires, all applications try to regenerate manifests simultaneously. Use staggered cache expiration or set `--parallelismlimit`.
 
 ## Conclusion
 
-The argocd-repo-server is the performance bottleneck in most ArgoCD deployments. The key options to tune are `--parallelism-limit` to prevent overload, `--git-shallow-clone` to speed up cloning, and resource limits to prevent OOM kills. For large deployments, scaling horizontally with multiple replicas is more effective than running a single large instance. Monitor the Git request duration and pending request count metrics to identify when tuning is needed.
+The argocd-repo-server is the performance bottleneck in most ArgoCD deployments. The key options to tune are `--parallelismlimit` to prevent overload, repository `depth: "1"` to speed up cloning, and resource limits to prevent OOM kills. For large deployments, scaling horizontally with multiple replicas is more effective than running a single large instance. Monitor the Git request duration and pending request count metrics to identify when tuning is needed.
