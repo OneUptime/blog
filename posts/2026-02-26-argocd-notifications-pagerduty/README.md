@@ -20,7 +20,7 @@ You need a PagerDuty integration key for ArgoCD to create incidents.
 4. Click "Add an integration"
 5. Search for "Events API v2" and select it
 6. Click "Add"
-7. Copy the "Integration Key" (a 32-character hex string)
+7. Copy the "Integration Key"
 
 This integration key is what ArgoCD uses to send events to PagerDuty.
 
@@ -31,10 +31,10 @@ Store the integration key in the ArgoCD notifications secret:
 ```bash
 kubectl patch secret argocd-notifications-secret -n argocd \
   --type merge \
-  -p '{"stringData": {"pagerduty-integration-key": "your-32-char-integration-key"}}'
+  -p '{"stringData": {"pagerduty-integration-key": "your-pagerduty-integration-key"}}'
 ```
 
-Configure the PagerDuty service:
+Configure a webhook service for the PagerDuty Events API v2 endpoint:
 
 ```yaml
 apiVersion: v1
@@ -43,9 +43,11 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  service.pagerduty: |
-    token: $pagerduty-integration-key
-    # Optional: use a specific PagerDuty API URL (default is events API v2)
+  service.webhook.pagerduty: |
+    url: https://events.pagerduty.com/v2/enqueue
+    headers:
+      - name: Content-Type
+        value: application/json
 ```
 
 ## Creating PagerDuty Notification Templates
@@ -54,27 +56,32 @@ data:
 
 ```yaml
   template.pagerduty-sync-failed: |
-    pagerduty:
-      # "trigger" creates a new incident, "resolve" resolves it
-      routing_key: $pagerduty-integration-key
-      event_action: trigger
-      # Dedup key prevents duplicate incidents for the same app
-      dedup_key: "argocd-{{ .app.metadata.name }}-sync-failed"
-      payload:
-        summary: "ArgoCD sync failed: {{ .app.metadata.name }} in {{ .app.spec.destination.namespace }}"
-        severity: critical
-        source: argocd
-        component: "{{ .app.metadata.name }}"
-        group: "{{ .app.spec.project }}"
-        class: deployment-failure
-        custom_details:
-          application: "{{ .app.metadata.name }}"
-          project: "{{ .app.spec.project }}"
-          namespace: "{{ .app.spec.destination.namespace }}"
-          cluster: "{{ .app.spec.destination.server }}"
-          revision: "{{ .app.status.sync.revision }}"
-          error_message: "{{ .app.status.operationState.message }}"
-          argocd_url: "https://argocd.example.com/applications/{{ .app.metadata.name }}"
+    webhook:
+      pagerduty:
+        method: POST
+        body: |
+          {
+            "routing_key": {{ index .secrets "pagerduty-integration-key" | toJson }},
+            "event_action": "trigger",
+            "dedup_key": {{ printf "argocd-%s-sync-failed" .app.metadata.name | toJson }},
+            "payload": {
+              "summary": {{ printf "ArgoCD sync failed: %s in %s" .app.metadata.name .app.spec.destination.namespace | toJson }},
+              "severity": "critical",
+              "source": "argocd",
+              "component": {{ .app.metadata.name | toJson }},
+              "group": {{ .app.spec.project | toJson }},
+              "class": "deployment-failure",
+              "custom_details": {
+                "application": {{ .app.metadata.name | toJson }},
+                "project": {{ .app.spec.project | toJson }},
+                "namespace": {{ .app.spec.destination.namespace | toJson }},
+                "cluster": {{ .app.spec.destination.server | toJson }},
+                "revision": {{ .app.status.sync.revision | toJson }},
+                "error_message": {{ .app.status.operationState.message | toJson }},
+                "argocd_url": {{ printf "https://argocd.example.com/applications/%s" .app.metadata.name | toJson }}
+              }
+            }
+          }
 ```
 
 ### Auto-Resolve on Successful Sync
@@ -83,50 +90,56 @@ This is one of the most useful features - automatically resolving PagerDuty inci
 
 ```yaml
   template.pagerduty-sync-succeeded: |
-    pagerduty:
-      routing_key: $pagerduty-integration-key
-      event_action: resolve
-      # Must match the dedup_key used in the trigger event
-      dedup_key: "argocd-{{ .app.metadata.name }}-sync-failed"
-      payload:
-        summary: "ArgoCD sync succeeded: {{ .app.metadata.name }}"
-        severity: info
-        source: argocd
-        component: "{{ .app.metadata.name }}"
+    webhook:
+      pagerduty:
+        method: POST
+        body: |
+          {
+            "routing_key": {{ index .secrets "pagerduty-integration-key" | toJson }},
+            "event_action": "resolve",
+            "dedup_key": {{ printf "argocd-%s-sync-failed" .app.metadata.name | toJson }}
+          }
 ```
 
 ### Incident for Health Degradation
 
 ```yaml
   template.pagerduty-health-degraded: |
-    pagerduty:
-      routing_key: $pagerduty-integration-key
-      event_action: trigger
-      dedup_key: "argocd-{{ .app.metadata.name }}-health-degraded"
-      payload:
-        summary: "ArgoCD application unhealthy: {{ .app.metadata.name }} is {{ .app.status.health.status }}"
-        severity: warning
-        source: argocd
-        component: "{{ .app.metadata.name }}"
-        group: "{{ .app.spec.project }}"
-        class: health-degradation
-        custom_details:
-          application: "{{ .app.metadata.name }}"
-          health_status: "{{ .app.status.health.status }}"
-          sync_status: "{{ .app.status.sync.status }}"
-          namespace: "{{ .app.spec.destination.namespace }}"
-          argocd_url: "https://argocd.example.com/applications/{{ .app.metadata.name }}"
+    webhook:
+      pagerduty:
+        method: POST
+        body: |
+          {
+            "routing_key": {{ index .secrets "pagerduty-integration-key" | toJson }},
+            "event_action": "trigger",
+            "dedup_key": {{ printf "argocd-%s-health-degraded" .app.metadata.name | toJson }},
+            "payload": {
+              "summary": {{ printf "ArgoCD application unhealthy: %s is %s" .app.metadata.name .app.status.health.status | toJson }},
+              "severity": "warning",
+              "source": "argocd",
+              "component": {{ .app.metadata.name | toJson }},
+              "group": {{ .app.spec.project | toJson }},
+              "class": "health-degradation",
+              "custom_details": {
+                "application": {{ .app.metadata.name | toJson }},
+                "health_status": {{ .app.status.health.status | toJson }},
+                "sync_status": {{ .app.status.sync.status | toJson }},
+                "namespace": {{ .app.spec.destination.namespace | toJson }},
+                "argocd_url": {{ printf "https://argocd.example.com/applications/%s" .app.metadata.name | toJson }}
+              }
+            }
+          }
 
   template.pagerduty-health-resolved: |
-    pagerduty:
-      routing_key: $pagerduty-integration-key
-      event_action: resolve
-      dedup_key: "argocd-{{ .app.metadata.name }}-health-degraded"
-      payload:
-        summary: "ArgoCD application healthy: {{ .app.metadata.name }}"
-        severity: info
-        source: argocd
-        component: "{{ .app.metadata.name }}"
+    webhook:
+      pagerduty:
+        method: POST
+        body: |
+          {
+            "routing_key": {{ index .secrets "pagerduty-integration-key" | toJson }},
+            "event_action": "resolve",
+            "dedup_key": {{ printf "argocd-%s-health-degraded" .app.metadata.name | toJson }}
+          }
 ```
 
 ## Configuring Triggers
@@ -136,12 +149,12 @@ Set up triggers that fire the PagerDuty templates at the right times:
 ```yaml
   # Trigger incident on sync failure
   trigger.on-sync-failed-pagerduty: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
       send: [pagerduty-sync-failed]
 
   # Auto-resolve incident on sync success
   trigger.on-sync-succeeded-pagerduty: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded']
       send: [pagerduty-sync-succeeded]
 
   # Trigger incident on health degradation
@@ -209,14 +222,14 @@ If you have different PagerDuty services for different teams, use the webhook se
         method: POST
         body: |
           {
-            "routing_key": "$pagerduty-backend-key",
+            "routing_key": {{ index .secrets "pagerduty-backend-key" | toJson }},
             "event_action": "trigger",
-            "dedup_key": "argocd-{{ .app.metadata.name }}",
+            "dedup_key": {{ printf "argocd-%s" .app.metadata.name | toJson }},
             "payload": {
-              "summary": "{{ .app.metadata.name }} sync failed",
+              "summary": {{ printf "%s sync failed" .app.metadata.name | toJson }},
               "severity": "critical",
               "source": "argocd",
-              "component": "{{ .app.metadata.name }}"
+              "component": {{ .app.metadata.name | toJson }}
             }
           }
 ```
