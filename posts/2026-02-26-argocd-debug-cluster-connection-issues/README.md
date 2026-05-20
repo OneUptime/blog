@@ -37,11 +37,11 @@ The application controller logs are your first source of truth:
 
 ```bash
 # Get recent controller logs filtered for cluster errors
-kubectl logs deployment/argocd-application-controller -n argocd \
+kubectl logs statefulset/argocd-application-controller -n argocd \
   --since=10m | grep -E "cluster|connection|x509|unauthorized|timeout"
 
 # For more detailed logs, increase verbosity
-kubectl logs deployment/argocd-application-controller -n argocd \
+kubectl logs statefulset/argocd-application-controller -n argocd \
   --since=10m | grep -i "error\|fail\|warn"
 ```
 
@@ -62,10 +62,11 @@ Common error patterns you will see:
 Test if the ArgoCD pods can actually reach the cluster API server:
 
 ```bash
-# Run a debug pod in the argocd namespace with the same network context
+# Run a debug pod in the argocd namespace with similar labels and service account
 kubectl run debug-net --rm -it \
   --namespace=argocd \
   --image=nicolaka/netshoot \
+  --labels=app.kubernetes.io/name=argocd-application-controller \
   --restart=Never \
   --overrides='{"spec": {"serviceAccountName": "argocd-application-controller"}}' \
   -- bash
@@ -194,7 +195,7 @@ kubectl get serviceaccount argocd-manager -n kube-system
 # Create a new token
 kubectl create token argocd-manager \
   -n kube-system \
-  --duration=8760h  # 1 year
+  --duration=8760h  # requests 1 year; the API server may cap the actual expiration
 
 # Or create a long-lived secret-based token
 cat <<EOF | kubectl apply -f -
@@ -264,15 +265,15 @@ roleRef:
 EOF
 ```
 
-## Step 6: Force Refresh Cluster Connection
+## Step 6: Refresh or Verify Cluster Connection
 
-After fixing the underlying issue, force ArgoCD to refresh its cluster connection:
+After fixing the underlying issue, refresh or verify ArgoCD's cluster connection:
 
 ```bash
 # Restart the application controller to pick up new credentials
-kubectl rollout restart deployment/argocd-application-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 
-# Or use the CLI to force a refresh
+# Or use the CLI to verify ArgoCD can read cluster details
 argocd cluster get https://10.1.0.1:6443
 
 # Verify the connection is restored
@@ -283,7 +284,7 @@ argocd cluster list
 
 ```mermaid
 flowchart TD
-    A[Cluster Connection Failed] --> B{Can ping API server?}
+    A[Cluster Connection Failed] --> B{Can reach API server?}
     B -->|No| C[Check network/firewall/VPN]
     B -->|Yes| D{TLS handshake OK?}
     D -->|No| E{Certificate expired?}
@@ -300,7 +301,7 @@ flowchart TD
 ## Preventive Measures
 
 1. **Monitor cluster connections**: Set up alerts when any cluster transitions to "Unknown" status
-2. **Use long-lived authentication**: Prefer IAM-based auth over token-based auth for cloud clusters
+2. **Use managed authentication**: Prefer cloud IAM-based auth over static token-based auth for cloud clusters
 3. **Automate certificate updates**: Use CronJobs to refresh credentials before they expire
 4. **Test connectivity regularly**: Run automated health checks from within the ArgoCD namespace
 5. **Keep ArgoCD updated**: Newer versions have improved error messages and connection handling
