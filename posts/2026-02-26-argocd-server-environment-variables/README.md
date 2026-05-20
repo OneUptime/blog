@@ -35,7 +35,7 @@ spec:
           env:
             - name: ARGOCD_SERVER_INSECURE
               value: "true"
-            - name: ARGOCD_LOG_LEVEL
+            - name: ARGOCD_SERVER_LOG_LEVEL
               value: "info"
 ```
 
@@ -94,11 +94,11 @@ These are needed when ArgoCD runs behind a reverse proxy at a non-root path.
 
 ```yaml
 # Set log level (debug, info, warn, error)
-- name: ARGOCD_LOG_LEVEL
+- name: ARGOCD_SERVER_LOG_LEVEL
   value: "info"
 
 # Set log format (text or json)
-- name: ARGOCD_LOG_FORMAT
+- name: ARGOCD_SERVER_LOGFORMAT
   value: "json"
 
 # Or via ConfigMap
@@ -112,14 +112,14 @@ Use `json` format for production environments where logs are collected by Fluent
 ### gRPC Settings
 
 ```yaml
-# Set the gRPC maximum message size (in bytes)
+# Set the gRPC maximum message size (in MB)
 # Default is 100MB, increase for large applications
-- name: ARGOCD_SERVER_MAX_GRPC_MESSAGE_SIZE
-  value: "209715200"    # 200MB
+- name: ARGOCD_GRPC_MAX_SIZE_MB
+  value: "200"
 
 # Or via ConfigMap
 data:
-  server.grpc.max-size-mb: "200"
+  reposerver.grpc.max.size: "200"
 ```
 
 Increase this if you have applications with very large manifests that exceed the default 100MB gRPC message limit.
@@ -127,11 +127,11 @@ Increase this if you have applications with very large manifests that exceed the
 ### Connection Settings
 
 ```yaml
-# Set the server listen port (default 8080 for HTTP, 8083 for metrics)
+# Set the server listen address
 - name: ARGOCD_SERVER_LISTEN_ADDRESS
   value: "0.0.0.0"
 
-# Set the server port
+# Or via ConfigMap
 data:
   server.listen.address: "0.0.0.0"
 ```
@@ -140,10 +140,22 @@ data:
 
 ```yaml
 # Disable built-in admin user
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
 data:
   admin.enabled: "false"
+```
 
+```yaml
 # Set default RBAC policy
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
 data:
   policy.default: "role:readonly"
 ```
@@ -157,14 +169,15 @@ data:
 
 # Set repo server connection timeout
 data:
+  repo.server: "argocd-repo-server:8081"
   server.repo.server.timeout.seconds: "60"
 ```
 
 ## Advanced Server Configuration
 
-### Rate Limiting
+### Compression
 
-Protect the API server from excessive requests:
+Enable gzip compression for API server responses:
 
 ```yaml
 apiVersion: v1
@@ -173,7 +186,7 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable rate limiting
+  # Enable gzip compression
   server.enable.gzip: "true"
 ```
 
@@ -182,19 +195,24 @@ data:
 Configure how user sessions are handled:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
 data:
-  # Session token expiration (default 24h)
-  server.session.maxage: "86400"
+  # User session duration (default 24h)
+  users.session.duration: "24h"
 ```
 
 ### Static Assets and UI
 
 ```yaml
 data:
-  # Enable or disable the UI
+  # Set the static assets directory
   server.staticassets: "/shared/app"
 
-  # Disable the UI entirely (API-only mode)
+  # Keep client authentication enabled
   server.disable.auth: "false"
 ```
 
@@ -205,12 +223,13 @@ If you installed ArgoCD with Helm, set environment variables through values:
 ```yaml
 # values.yaml for argo-cd Helm chart
 server:
-  extraEnv:
+  env:
     - name: ARGOCD_SERVER_INSECURE
       value: "true"
 
-  # Or use the configmap
-  config:
+# Or use the configmap
+configs:
+  params:
     server.insecure: "true"
     server.log.level: "info"
     server.log.format: "json"
@@ -240,7 +259,7 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
-          name: ARGOCD_LOG_LEVEL
+          name: ARGOCD_SERVER_LOG_LEVEL
           value: "info"
 
   - target:
@@ -248,11 +267,14 @@ patches:
       name: argocd-cmd-params-cm
     patch: |
       - op: add
-        path: /data
-        value:
-          server.insecure: "true"
-          server.log.level: "info"
-          server.log.format: "json"
+        path: /data/server.insecure
+        value: "true"
+      - op: add
+        path: /data/server.log.level
+        value: "info"
+      - op: add
+        path: /data/server.log.format
+        value: "json"
 ```
 
 ## Environment Variables from Secrets
@@ -271,7 +293,7 @@ spec:
         - name: argocd-server
           env:
             # Load from secret
-            - name: ARGOCD_SERVER_DEX_SERVER_PLAINTEXT
+            - name: ARGOCD_SERVER_DEX_SERVER
               valueFrom:
                 secretKeyRef:
                   name: argocd-server-secrets
@@ -329,7 +351,7 @@ data:
   server.log.format: "json"
 
   # Increase gRPC message size for large apps
-  server.grpc.max-size-mb: "200"
+  reposerver.grpc.max.size: "200"
 
   # Enable gzip compression
   server.enable.gzip: "true"
