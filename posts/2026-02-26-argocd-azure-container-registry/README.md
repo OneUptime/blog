@@ -59,7 +59,7 @@ stringData:
   type: helm
   name: my-acr-charts
   enableOCI: "true"
-  url: myacregistry.azurecr.io
+  url: myacregistry.azurecr.io/helm
   username: "<SERVICE_PRINCIPAL_APP_ID>"
   password: "<SERVICE_PRINCIPAL_PASSWORD>"
 ```
@@ -86,7 +86,7 @@ spec:
   source:
     # Reference the chart in ACR using OCI
     chart: my-helm-chart
-    repoURL: myacregistry.azurecr.io
+    repoURL: myacregistry.azurecr.io/helm
     targetRevision: 1.0.0
     helm:
       values: |
@@ -143,7 +143,8 @@ stringData:
   type: helm
   name: my-acr-charts
   enableOCI: "true"
-  url: myacregistry.azurecr.io
+  useAzureWorkloadIdentity: "true"
+  url: myacregistry.azurecr.io/helm
 ```
 
 ## Pushing Helm Charts to ACR
@@ -173,17 +174,24 @@ az acr repository show-tags --name myacregistry --repository helm/my-chart --out
 
 ## Working with ACR Geo-Replication
 
-If you are using ACR geo-replication for multi-region deployments, ArgoCD in each region should point to the regional endpoint for best performance.
+If you are using ACR geo-replication for multi-region deployments, ArgoCD can usually keep using the global login server. Azure routes requests to an appropriate geo-replica automatically.
 
 ```yaml
-# Use regional login server for lower latency
+# Use the global endpoint for geo-replicated registries
+stringData:
+  url: myacregistry.azurecr.io/helm
+```
+
+ACR also has regional geo-replica endpoints for cases where you need predictable routing or client-side failover, but these endpoints are currently in private preview.
+
+```yaml
 # East US replica
 stringData:
-  url: myacregistry.eastus.data.azurecr.io
+  url: myacregistry.eastus.geo.azurecr.io/helm
 
 # West Europe replica
 stringData:
-  url: myacregistry.westeurope.data.azurecr.io
+  url: myacregistry.westeurope.geo.azurecr.io/helm
 ```
 
 ## Architecture: ArgoCD and ACR Integration
@@ -207,8 +215,8 @@ If ArgoCD cannot find your chart, check the URL format. A common mistake is incl
 # Wrong - do not include https://
 url: https://myacregistry.azurecr.io
 
-# Correct - just the registry hostname
-url: myacregistry.azurecr.io
+# Correct - omit the protocol and include the chart namespace
+url: myacregistry.azurecr.io/helm
 ```
 
 ### Authentication Errors
@@ -252,7 +260,7 @@ For scenarios where you need repository-level access control, ACR supports scope
 az acr scope-map create \
   --name argocd-read-charts \
   --registry myacregistry \
-  --repository helm/my-chart content/read
+  --repository helm/my-chart content/read metadata/read
 
 # Create a token using the scope map
 az acr token create \
