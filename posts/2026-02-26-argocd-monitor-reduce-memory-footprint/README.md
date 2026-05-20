@@ -27,7 +27,7 @@ The application controller is almost always the largest consumer because it cach
 
 ## Monitoring Memory with Prometheus
 
-Set up Prometheus to scrape ArgoCD metrics and create dashboards for memory tracking.
+Set up Prometheus to scrape ArgoCD metrics and create dashboards for memory tracking. ArgoCD exposes component metrics through separate Services, so create ServiceMonitors for the components you want to scrape.
 
 ```yaml
 # ServiceMonitor for ArgoCD components
@@ -35,12 +35,12 @@ Set up Prometheus to scrape ArgoCD metrics and create dashboards for memory trac
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: argocd-metrics
+  name: argocd-application-controller-metrics
   namespace: argocd
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: argocd
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
   - port: metrics
     interval: 30s
@@ -56,8 +56,12 @@ container_memory_working_set_bytes{
 }
 
 # Memory usage as percentage of limit
-container_memory_working_set_bytes{namespace="argocd"} /
-container_spec_memory_limit_bytes{namespace="argocd"} * 100
+sum by (pod, container) (
+  container_memory_working_set_bytes{namespace="argocd", container!="", container!="POD"}
+) /
+sum by (pod, container) (
+  container_spec_memory_limit_bytes{namespace="argocd", container!="", container!="POD"} > 0
+) * 100
 
 # Go runtime memory stats (heap, stack, etc.)
 go_memstats_heap_alloc_bytes{namespace="argocd"}
@@ -83,8 +87,13 @@ spec:
     # Alert when memory usage exceeds 80% of limit
     - alert: ArgoCDHighMemoryUsage
       expr: |
-        container_memory_working_set_bytes{namespace="argocd"} /
-        container_spec_memory_limit_bytes{namespace="argocd"} > 0.8
+        sum by (pod, container) (
+          container_memory_working_set_bytes{namespace="argocd", container!="", container!="POD"}
+        )
+        /
+        sum by (pod, container) (
+          container_spec_memory_limit_bytes{namespace="argocd", container!="", container!="POD"} > 0
+        ) > 0.8
       for: 10m
       labels:
         severity: warning
@@ -110,7 +119,7 @@ The application controller is the biggest memory consumer. Here is how to reduce
 
 ### Enable Controller Sharding
 
-Sharding distributes applications across multiple controller replicas. Each shard only holds state for its assigned applications.
+Sharding distributes clusters across multiple controller replicas. Each shard only holds state for its assigned clusters and the applications targeting those clusters.
 
 ```yaml
 apiVersion: apps/v1
@@ -134,7 +143,7 @@ spec:
             memory: "4Gi"
 ```
 
-With 3 shards managing 500 applications, each shard handles roughly 167 applications instead of all 500. Memory usage per shard drops proportionally.
+With 3 shards managing 500 applications spread evenly across clusters, each shard handles roughly a third of the applications instead of all 500. Memory usage per shard drops as the cluster and application load is distributed.
 
 ### Reduce Managed Resources per Application
 
@@ -142,7 +151,7 @@ Each managed resource consumes memory in the controller's cache. Applications th
 
 ```yaml
 # Check how many resources each app manages
-# argocd app get my-app --show-resources | wc -l
+# argocd app resources my-app | wc -l
 
 # If an app manages too many resources, consider splitting it
 # Before: One monolithic Helm release
@@ -161,9 +170,9 @@ spec:
 # etc.
 ```
 
-### Disable Resource Caching for Non-Critical Apps
+### Exclude High-Churn Resource Types
 
-For applications that do not need real-time drift detection, you can disable the resource cache.
+For resource types that do not need ArgoCD drift detection or sync management, you can exclude them from discovery globally.
 
 ```yaml
 # argocd-cm ConfigMap
@@ -189,7 +198,7 @@ data:
       - "*"
 ```
 
-Excluding Events from tracking reduces memory significantly because Events are numerous and change frequently.
+If your installation does not already exclude Events, excluding them from tracking reduces memory because Events are numerous and change frequently.
 
 ## Reducing Repo Server Memory
 
@@ -211,7 +220,7 @@ spec:
         args:
         - /usr/local/bin/argocd-repo-server
         # Limit concurrent manifest generations
-        - --parallelism-limit=5
+        - --parallelismlimit=5
         resources:
           requests:
             memory: "1Gi"
@@ -233,7 +242,7 @@ volumes:
     sizeLimit: 5Gi  # Cap clone cache size
 ```
 
-The repo server automatically evicts old clones when space is needed, but the sizeLimit ensures it cannot consume all available disk space.
+ArgoCD repo server maintains local repository clones and generated manifest caches, and the sizeLimit ensures that temporary storage cannot consume all available disk space.
 
 ### Use Smaller Base Images
 
@@ -248,7 +257,7 @@ FROM alpine:3.19
 RUN apk add --no-cache git helm kubectl
 ```
 
-Smaller images mean less memory overhead for the container runtime.
+Smaller images reduce disk usage and pull time. Memory savings come from keeping plugin images minimal so they run fewer tools and background processes during manifest generation.
 
 ## Reducing Redis Memory
 
@@ -272,8 +281,6 @@ spec:
         - --maxmemory=1gb
         # Use LRU eviction to stay within limits
         - --maxmemory-policy=allkeys-lru
-        # Compress large values
-        - --rdbcompression=yes
         resources:
           requests:
             memory: "1Gi"
@@ -281,7 +288,7 @@ spec:
             memory: "1.5Gi"
 ```
 
-The `allkeys-lru` eviction policy ensures Redis stays within memory limits by evicting the least recently used keys.
+The `allkeys-lru` eviction policy tells Redis to evict the least recently used keys when it reaches the configured maxmemory threshold.
 
 ## Reducing API Server Memory
 
@@ -330,9 +337,9 @@ Create a Grafana dashboard that shows memory trends over time.
 deriv(container_memory_working_set_bytes{namespace="argocd"}[1h])
 
 # Memory usage per application (approximate)
-container_memory_working_set_bytes{
+sum(container_memory_working_set_bytes{
   container="argocd-application-controller"
-} / argocd_app_info
+}) / count(argocd_app_info)
 
 # GC pressure (high GC frequency indicates memory pressure)
 rate(go_gc_duration_seconds_count{namespace="argocd"}[5m])
@@ -342,4 +349,4 @@ If memory grows linearly over time without plateauing, you likely have a memory 
 
 ## Summary
 
-Monitor ArgoCD memory with Prometheus alerts before problems occur. The biggest memory reductions come from controller sharding (splits memory across replicas), excluding unnecessary resource types like Events, splitting large applications into smaller ones, and setting appropriate Redis eviction policies. Set memory limits on all components and configure alerts at 80% utilization to catch issues before OOMKills disrupt deployments.
+Monitor ArgoCD memory with Prometheus alerts before problems occur. The biggest memory reductions come from controller sharding across clusters, excluding unnecessary resource types like Events, splitting large applications into smaller ones, and setting appropriate Redis eviction policies. Set memory limits on all components and configure alerts at 80% utilization to catch issues before OOMKills disrupt deployments.
