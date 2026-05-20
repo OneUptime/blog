@@ -156,7 +156,7 @@ If `kubectl diff` shows changes, fix your manifests until the diff is clean. Thi
 
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for everything to start
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/part-of=argocd -n argocd --timeout=300s
@@ -272,7 +272,7 @@ git push
 
 ## Step 9: Handle the "Quick Fix" Problem
 
-The biggest cultural challenge is stopping people from running `kubectl edit` or `kubectl apply` directly. With `selfHeal: true`, ArgoCD will revert manual changes within its reconciliation interval (default 3 minutes).
+The biggest cultural challenge is stopping people from running `kubectl edit` or `kubectl apply` directly. With `selfHeal: true`, ArgoCD will revert manual changes after it detects drift. The self-heal retry timeout is 5 seconds by default, while the normal application reconciliation interval defaults to 3 minutes.
 
 This is a feature, not a bug. But you need to communicate it to the team:
 
@@ -301,7 +301,7 @@ A reasonable timeline:
 
 ## Setting Up Notifications
 
-Replace your "I deployed X" Slack messages with automated notifications:
+Replace your "I deployed X" Slack messages with automated notifications. Store the Slack OAuth token in the `argocd-notifications-secret` Secret with the key `slack-token`, then configure the notification service:
 
 ```yaml
 apiVersion: v1
@@ -313,13 +313,19 @@ data:
   service.slack: |
     token: $slack-token
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+      oncePer: app.status.sync.revision
       send: [app-deployed]
   template.app-deployed: |
     message: |
       *{{.app.metadata.name}}* has been deployed.
       Revision: {{.app.status.sync.revision}}
       <{{.context.argocdUrl}}/applications/{{.app.metadata.name}}|View in ArgoCD>
+  subscriptions: |
+    - recipients:
+      - slack:deployments
+      triggers:
+      - on-deployed
 ```
 
 ## Conclusion
