@@ -61,8 +61,8 @@ ArgoCD applications have conditions that indicate problems:
 
 ```bash
 # Check application conditions
-kubectl get application my-app -n argocd \
-  -o jsonpath='{.status.conditions[*]}' | python3 -m json.tool
+kubectl get application my-app -n argocd -o json | \
+  jq '.status.conditions // []'
 
 # Find applications with error conditions
 kubectl get applications -n argocd -o json | \
@@ -163,11 +163,11 @@ When a sync is stuck or failed, use kubectl to inspect the operation:
 ```bash
 # Check the current operation state
 kubectl get application my-app -n argocd \
-  -o jsonpath='{.status.operationState}' | python3 -m json.tool
+  -o json | jq '.status.operationState // {}'
 
 # Check which resources failed to sync
 kubectl get application my-app -n argocd -o json | \
-  jq '.status.operationState.syncResult.resources[] | select(.status != "Synced")'
+  jq '(.status.operationState.syncResult.resources // [])[] | select(.status != "Synced")'
 
 # Check if a sync operation is currently running
 kubectl get application my-app -n argocd \
@@ -233,7 +233,7 @@ kubectl exec -n argocd deploy/argocd-server -- \
 kubectl exec -n argocd deploy/argocd-repo-server -- df -h
 
 # Check memory usage inside the controller
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+kubectl exec -n argocd pod/argocd-application-controller-0 -- \
   cat /proc/meminfo | head -5
 ```
 
