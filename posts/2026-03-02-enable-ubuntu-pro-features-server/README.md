@@ -68,8 +68,8 @@ sudo apt upgrade
 The ESM repositories appear in your apt sources:
 
 ```bash
-cat /etc/apt/sources.list.d/ubuntu-esm-apps.list
-cat /etc/apt/sources.list.d/ubuntu-esm-infra.list
+ls /etc/apt/sources.list.d/*esm*
+cat /etc/apt/sources.list.d/*esm*
 ```
 
 ## Livepatch: Kernel Updates Without Reboots
@@ -150,11 +150,8 @@ Enable FIPS only if you have a compliance requirement for it. It is not a net se
 ### Enabling FIPS
 
 ```bash
-# Preview what FIPS enablement will change
-sudo pro enable fips --dry-run
-
-# Enable FIPS (requires reboot to take effect)
-sudo pro enable fips
+# Enable FIPS with stable security updates (requires reboot to take effect)
+sudo pro enable fips-updates
 
 # Reboot
 sudo reboot
@@ -166,13 +163,13 @@ cat /proc/sys/crypto/fips_enabled
 
 ### FIPS Updates
 
-Standard FIPS packages are the certified versions, which may lag behind the latest upstream. FIPS-updates adds security patches while maintaining certification:
+The legacy `fips` service provides certified packages, but it is not available on Ubuntu 22.04 LTS and later. FIPS-updates adds stable security updates and is the recommended option for production:
 
 ```bash
 # Check both options
 pro status | grep fips
 
-# Enable FIPS with updates (recommended over base FIPS for production)
+# Enable FIPS with updates
 sudo pro enable fips-updates
 ```
 
@@ -192,9 +189,6 @@ sudo apt install usg
 ### Auditing Against CIS Benchmarks
 
 ```bash
-# List available profiles
-sudo usg audit --list
-
 # Common profiles:
 # cis_level1_server - CIS Level 1 for server environments
 # cis_level2_server - CIS Level 2 (more restrictive)
@@ -211,9 +205,6 @@ sudo usg audit cis_level1_server --html-file /tmp/cis-audit.html
 ### Applying CIS Hardening
 
 ```bash
-# Preview what changes would be made
-sudo usg fix cis_level1_server --dry-run
-
 # Apply the hardening rules
 sudo usg fix cis_level1_server
 
@@ -230,13 +221,13 @@ Not every CIS rule may apply to your environment. Create a tailoring file to exc
 
 ```bash
 # Generate a default tailoring file
-sudo usg generate-tailoring cis_level1_server --tailoring-file /etc/usg/custom-tailoring.xml
+sudo usg generate-tailoring cis_level1_server /etc/usg/custom-tailoring.xml
 
 # Edit the tailoring file to disable specific rules
 sudo nano /etc/usg/custom-tailoring.xml
 
 # Apply with the custom tailoring
-sudo usg fix cis_level1_server --tailoring-file /etc/usg/custom-tailoring.xml
+sudo usg fix --tailoring-file /etc/usg/custom-tailoring.xml
 ```
 
 ## Real-Time Kernel
@@ -256,18 +247,15 @@ This is primarily for industrial control systems, audio production, and financia
 
 ## Managing Services Centrally
 
-For organizations managing many servers, Ubuntu Pro services can be configured via a configuration file:
+For organizations managing many servers, Ubuntu Pro settings can be configured through the Pro client:
 
 ```bash
 # View the current configuration
-cat /etc/ubuntu-advantage/uaclient.conf
+pro config show
 
-# Example configuration for automated setups
-sudo tee /etc/ubuntu-advantage/uaclient.conf << 'EOF'
-contract_url: https://contracts.canonical.com
-data_dir: /var/lib/ubuntu-advantage
-log_level: debug
-EOF
+# Example configuration for automated setups behind a proxy
+sudo pro config set http_proxy=http://proxy.example.com:3128
+sudo pro config set https_proxy=http://proxy.example.com:3128
 ```
 
 ### Enabling Services via Cloud-Init
@@ -277,11 +265,10 @@ For automated deployments, configure Pro in cloud-init:
 ```yaml
 #cloud-config
 
-ubuntu_advantage:
+ubuntu_pro:
   token: YOUR_TOKEN_HERE
   enable:
     - esm-infra
-    - esm-apps
     - livepatch
 ```
 
