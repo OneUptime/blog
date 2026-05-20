@@ -41,7 +41,7 @@ sequenceDiagram
 
 ## Using Kubernetes ValidatingAdmissionPolicy
 
-Starting with Kubernetes 1.28, ValidatingAdmissionPolicy is GA. It is a built-in alternative to external webhook-based admission controllers.
+ValidatingAdmissionPolicy became beta in Kubernetes 1.28 and GA in Kubernetes 1.30. It is a built-in alternative to external webhook-based admission controllers.
 
 ```yaml
 # Require resource limits on all Deployments
@@ -138,7 +138,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-labels
       match:
@@ -155,6 +154,7 @@ spec:
                 - gatekeeper-system
                 - kyverno
       validate:
+        failureAction: Enforce
         message: "Label 'app.kubernetes.io/name' is required"
         pattern:
           metadata:
@@ -165,17 +165,26 @@ spec:
 ### With OPA Gatekeeper
 
 ```yaml
-# Gatekeeper Helm values - exempt ArgoCD
-exemptNamespaces:
-  - kube-system
-  - gatekeeper-system
-  - argocd
+# Gatekeeper Config - exempt ArgoCD
+apiVersion: config.gatekeeper.sh/v1alpha1
+kind: Config
+metadata:
+  name: config
+  namespace: gatekeeper-system
+spec:
+  match:
+    - excludedNamespaces:
+        - kube-system
+        - gatekeeper-system
+        - argocd
+      processes:
+        - "*"
 ```
 
 ### With ValidatingAdmissionPolicy
 
 ```yaml
-# Use namespace selectors to exclude system namespaces
+# Use namespace selectors on the binding to exclude system namespaces
 spec:
   matchResources:
     namespaceSelector:
@@ -197,8 +206,7 @@ spec:
   syncPolicy:
     syncOptions:
       - ServerSideApply=true
-      # Force conflicts resolution in favor of ArgoCD
-      - ServerSideApply=true
+      # ArgoCD uses kubectl apply --server-side --force-conflicts for this option
 ```
 
 If your admission controller has issues with server-side apply, you can fall back to client-side apply for specific applications.
@@ -207,7 +215,7 @@ If your admission controller has issues with server-side apply, you can fall bac
 
 ### Require Network Policies
 
-Ensure every namespace has at least one NetworkPolicy.
+Ensure a namespace has at least one NetworkPolicy before accepting workload deployments.
 
 ```yaml
 # policies/require-network-policy.yaml
@@ -216,7 +224,6 @@ kind: ClusterPolicy
 metadata:
   name: require-network-policy
 spec:
-  validationFailureAction: Audit  # Start with audit, move to enforce
   background: true
   rules:
     - name: check-network-policy
@@ -238,6 +245,7 @@ spec:
             urlPath: "/apis/networking.k8s.io/v1/namespaces/{{request.object.metadata.namespace}}/networkpolicies"
             jmesPath: "items | length(@)"
       validate:
+        failureAction: Audit  # Start with audit, move to enforce
         message: "Namespace {{request.object.metadata.namespace}} must have at least one NetworkPolicy before deploying workloads"
         deny:
           conditions:
@@ -256,7 +264,6 @@ kind: ClusterPolicy
 metadata:
   name: require-pdb-for-ha-deployments
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-pdb-exists
@@ -268,15 +275,16 @@ spec:
       preconditions:
         all:
           # Only enforce for deployments with 2+ replicas
-          - key: "{{request.object.spec.replicas}}"
+          - key: "{{ request.object.spec.replicas || `1` }}"
             operator: GreaterThan
             value: 1
       context:
         - name: pdbs
           apiCall:
             urlPath: "/apis/policy/v1/namespaces/{{request.object.metadata.namespace}}/poddisruptionbudgets"
-            jmesPath: "items[?spec.selector.matchLabels == `{{request.object.spec.selector.matchLabels}}`] | length(@)"
+            jmesPath: "items[?label_match(spec.selector.matchLabels, `{{request.object.spec.template.metadata.labels}}`)] | length(@)"
       validate:
+        failureAction: Enforce
         message: "Deployments with more than 1 replica must have a PodDisruptionBudget"
         deny:
           conditions:
@@ -295,7 +303,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-loadbalancer-services
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: block-loadbalancer
       match:
@@ -310,10 +317,14 @@ spec:
                 - ingress-nginx
                 - istio-system
       validate:
+        failureAction: Enforce
         message: "LoadBalancer services are only allowed in ingress namespaces. Use Ingress or ClusterIP services instead."
-        pattern:
-          spec:
-            type: "!LoadBalancer"
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.spec.type || 'ClusterIP' }}"
+                operator: Equals
+                value: LoadBalancer
 ```
 
 ## Gradual Rollout Strategy
@@ -325,8 +336,8 @@ Do not enable enforcement all at once. Use a graduated approach.
 Start with policies in audit mode to see what would be blocked without actually blocking anything.
 
 ```yaml
-spec:
-  validationFailureAction: Audit
+validate:
+  failureAction: Audit
 ```
 
 Check violations.
@@ -356,8 +367,8 @@ spec:
 Once teams have fixed existing violations, switch to enforcement.
 
 ```yaml
-spec:
-  validationFailureAction: Enforce
+validate:
+  failureAction: Enforce
 ```
 
 ## Custom Health Checks for Policy Resources
