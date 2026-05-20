@@ -8,15 +8,15 @@ Description: Learn how hash-based sharding works in ArgoCD controllers to automa
 
 ---
 
-When you need to scale ArgoCD's application controller across multiple replicas, hash-based sharding is the algorithm that decides which controller instance manages which cluster. Understanding how this algorithm works helps you predict cluster assignments, troubleshoot uneven distributions, and plan capacity effectively.
+When you need to scale ArgoCD's application controller across multiple replicas, the legacy hash-based sharding algorithm is one option that decides which controller instance manages which cluster. Understanding how this algorithm works helps you predict cluster assignments, troubleshoot uneven distributions, and plan capacity effectively.
 
 ## What Is Hash-Based Sharding?
 
-Hash-based sharding is a technique where a hash function maps each cluster to a specific controller shard. The cluster's server URL is hashed to produce a number, and that number is divided by the total shard count to determine the assignment.
+Hash-based sharding is a technique where a hash function maps each cluster to a specific controller shard. In ArgoCD's legacy algorithm, the cluster ID is hashed to produce a number, and that number is divided by the total shard count to determine the assignment.
 
 ```mermaid
 flowchart LR
-    URL["Cluster Server URL<br/>https://k8s.prod.example.com"] --> Hash["FNV Hash Function"]
+    URL["Cluster ID<br/>cluster-secret UID"] --> Hash["FNV Hash Function"]
     Hash --> Mod["hash % shard_count"]
     Mod --> Shard["Shard Assignment<br/>e.g., Shard 2"]
 ```
@@ -24,10 +24,10 @@ flowchart LR
 The formula is straightforward:
 
 ```text
-shard_id = fnv32a(cluster.server) % controller_replicas
+shard_id = fnv32a(cluster.id) % controller_replicas
 ```
 
-ArgoCD uses the FNV-1a (Fowler-Noll-Vo) 32-bit hash function, which is fast and produces a reasonably uniform distribution for typical URL inputs.
+ArgoCD uses the FNV-1a (Fowler-Noll-Vo) 32-bit hash function for the legacy algorithm, which is fast but does not guarantee an even distribution across shards.
 
 ## How ArgoCD Implements Hash-Based Sharding
 
@@ -37,9 +37,9 @@ Here is a simplified version of the logic:
 
 ```go
 // Pseudocode for ArgoCD's sharding logic
-func getShardForCluster(clusterServer string, replicas int) int {
+func getShardForCluster(clusterID string, replicas int) int {
     h := fnv.New32a()
-    h.Write([]byte(clusterServer))
+    h.Write([]byte(clusterID))
     return int(h.Sum32()) % replicas
 }
 
@@ -47,7 +47,7 @@ func getShardForCluster(clusterServer string, replicas int) int {
 func (c *Controller) getAssignedClusters(allClusters []Cluster) []Cluster {
     var assigned []Cluster
     for _, cluster := range allClusters {
-        if getShardForCluster(cluster.Server, c.replicas) == c.shardID {
+        if getShardForCluster(cluster.ID, c.replicas) == c.shardID {
             assigned = append(assigned, cluster)
         }
     }
@@ -63,12 +63,12 @@ To use hash-based sharding, you need to:
 
 1. Deploy the application controller as a StatefulSet
 2. Set the replica count
-3. Enable dynamic cluster distribution
+3. Set `ARGOCD_CONTROLLER_REPLICAS` to the same replica count
 
 Here is the complete configuration:
 
 ```yaml
-# ConfigMap to enable dynamic distribution
+# Optional: set the sharding algorithm explicitly
 
 apiVersion: v1
 kind: ConfigMap
@@ -76,9 +76,7 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  controller.dynamic.cluster.distribution.enabled: "true"
-  # Optional: set the sharding algorithm explicitly
-  controller.sharding.algorithm: "legacy"  # or "round-robin"
+  controller.sharding.algorithm: "legacy"  # or "round-robin", "consistent-hashing"
 ---
 # StatefulSet with multiple replicas
 apiVersion: apps/v1
@@ -109,21 +107,27 @@ spec:
 
 ### Sharding Algorithm Options
 
-ArgoCD supports two sharding algorithms:
+ArgoCD supports these sharding algorithms:
 
-**Legacy (hash-based)** - The default. Uses FNV-1a hashing on the cluster server URL:
+**Legacy (hash-based)** - The default. Uses FNV-1a hashing on the cluster ID:
 
 ```yaml
 controller.sharding.algorithm: "legacy"
 ```
 
-**Round-robin** - Assigns clusters sequentially based on their creation order:
+**Round-robin** - Assigns clusters by their rank in the cluster list sorted by UID:
 
 ```yaml
 controller.sharding.algorithm: "round-robin"
 ```
 
-The legacy hash-based approach is generally preferred because it is deterministic. The same cluster always maps to the same shard regardless of when other clusters were added or removed. Round-robin can produce better balance but is sensitive to cluster ordering.
+**Consistent hashing** - Uses consistent hashing with bounded loads to reduce reshuffling when shards or clusters are added or removed:
+
+```yaml
+controller.sharding.algorithm: "consistent-hashing"
+```
+
+The legacy hash-based approach is deterministic for a given cluster ID and replica count. The same cluster always maps to the same shard regardless of when other clusters were added or removed. Round-robin can produce better balance but is sensitive to cluster ordering.
 
 ## Predicting Shard Assignments
 
@@ -131,7 +135,7 @@ You can predict which shard a cluster will be assigned to using a simple script.
 
 ```python
 #!/usr/bin/env python3
-"""Predict ArgoCD shard assignments using FNV-1a hash."""
+"""Predict ArgoCD legacy shard assignments using FNV-1a hash."""
 
 import sys
 
@@ -145,23 +149,23 @@ def fnv1a_32(data: bytes) -> int:
         hash_value = (hash_value * FNV_PRIME) & 0xFFFFFFFF
     return hash_value
 
-def get_shard(server_url: str, replicas: int) -> int:
-    """Calculate shard for a cluster server URL."""
-    return fnv1a_32(server_url.encode()) % replicas
+def get_shard(cluster_id: str, replicas: int) -> int:
+    """Calculate shard for a cluster ID."""
+    return fnv1a_32(cluster_id.encode()) % replicas
 
-# Example: predict assignments for your clusters
+# Example: predict assignments for your cluster IDs
 clusters = [
-    "https://kubernetes.prod-us.example.com",
-    "https://kubernetes.prod-eu.example.com",
-    "https://kubernetes.staging.example.com",
-    "https://kubernetes.dev.example.com",
-    "https://kubernetes.prod-apac.example.com",
+    "7b4982e5-5e54-4d7a-a278-4c3a77b8a61f",
+    "de74261b-99fa-40bb-88a4-b5d3fd24e1a9",
+    "6bcbd124-b913-4e12-8487-a7952f080817",
+    "6821e9f4-8b44-4db8-857d-66e7cb42f202",
+    "b946ec0f-3ce3-4b21-9df8-4bc13dfb54f1",
 ]
 
-replicas = 3
-for cluster in clusters:
-    shard = get_shard(cluster, replicas)
-    print(f"Shard {shard}: {cluster}")
+replicas = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+for cluster_id in clusters:
+    shard = get_shard(cluster_id, replicas)
+    print(f"Shard {shard}: {cluster_id}")
 ```
 
 Running this script helps you see the distribution before deploying changes.
@@ -184,7 +188,7 @@ done
 
 ### Option 2: Use Static Overrides for Outliers
 
-Even with dynamic sharding, you can override specific clusters with static assignments:
+Even with sharding enabled, you can override specific clusters with static assignments:
 
 ```yaml
 apiVersion: v1
@@ -192,11 +196,16 @@ kind: Secret
 metadata:
   name: heavy-cluster
   namespace: argocd
-  annotations:
-    # Force this cluster to shard 2 regardless of hash
-    argocd.argoproj.io/shard: "2"
   labels:
     argocd.argoproj.io/secret-type: cluster
+type: Opaque
+stringData:
+  # Force this cluster to shard 2 regardless of hash
+  shard: "2"
+  name: heavy-cluster
+  server: https://kubernetes.example.com
+  config: |
+    {}
 ```
 
 This is useful when one cluster has significantly more applications than others and you want to dedicate a shard to it.
@@ -212,20 +221,24 @@ controller.sharding.algorithm: "round-robin"
 
 ## What Happens During Scaling Events
 
-When you change the replica count, the hash modulo changes, which means clusters get reassigned. Here is what happens step by step:
+When you change the replica count and update `ARGOCD_CONTROLLER_REPLICAS` to match, the hash modulo changes after the controllers restart, which means some clusters get reassigned. Here is what happens step by step:
 
-1. You scale from 3 to 4 replicas
+1. You update the controller from 3 to 4 replicas and set `ARGOCD_CONTROLLER_REPLICAS=4`
 2. The new pod `argocd-application-controller-3` starts
 3. All pods recalculate their cluster assignments using `hash % 4` instead of `hash % 3`
-4. Roughly 25% of clusters move to the new shard
+4. Some clusters move to the new shard
 5. The old shards stop watching moved clusters
 6. The new shard starts watching its assigned clusters
-7. There is a brief period (30 to 60 seconds) where moved clusters show as Unknown
+7. Moved clusters can temporarily show as Unknown while watches and caches settle
 
 To minimize disruption during scaling:
 
 ```bash
-# Scale up gradually and monitor
+# Update the shard count used by the controller
+kubectl set env statefulset/argocd-application-controller \
+  -n argocd ARGOCD_CONTROLLER_REPLICAS=4
+
+# Scale up and monitor
 kubectl scale statefulset argocd-application-controller \
   -n argocd --replicas=4
 
