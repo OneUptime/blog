@@ -43,19 +43,19 @@ metadata:
 data:
   application.links: |
     # Link to the application's runbook
-    - url: https://wiki.example.com/runbooks/{{.metadata.name}}
+    - url: https://wiki.example.com/runbooks/{{.app.metadata.name}}
       title: Runbook
       description: View the operational runbook for this application
       icon.class: "fa fa-book"
 
     # Link to architecture documentation
-    - url: https://wiki.example.com/architecture/{{.metadata.name}}
+    - url: https://wiki.example.com/architecture/{{.app.metadata.name}}
       title: Architecture Docs
       description: View architecture documentation
       icon.class: "fa fa-sitemap"
 
     # Link to the README in the source repository
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/blob/{{.spec.source.targetRevision}}/{{.spec.source.path}}/README.md
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/blob/{{.app.spec.source.targetRevision}}/{{.app.spec.source.path}}/README.md'
       title: README
       description: View the application README
       icon.class: "fa fa-file-alt"
@@ -63,25 +63,25 @@ data:
 
 ## Links to Confluence
 
-Confluence uses page IDs and space keys in its URLs:
+Confluence URLs commonly use space keys, page titles, or page IDs:
 
 ```yaml
   application.links: |
     # Link to a Confluence space filtered by application name
-    - url: https://confluence.example.com/dosearchsite.action?queryString={{.metadata.name}}+runbook&where=TEAM
+    - url: https://confluence.example.com/dosearchsite.action?queryString={{.app.metadata.name}}+runbook&where=TEAM
       title: Search Confluence
       description: Search Confluence for application documentation
       icon.class: "fa fa-search"
 
     # Link to a specific Confluence space
-    - url: https://confluence.example.com/display/DEVOPS/{{.metadata.name}}
+    - url: https://confluence.example.com/display/DEVOPS/{{.app.metadata.name}}
       title: Confluence Docs
       description: View application page in Confluence
       icon.class: "fa fa-book"
 
   project.links: |
     # Link to project-level documentation
-    - url: https://confluence.example.com/display/DEVOPS/Project+{{.metadata.name}}
+    - url: https://confluence.example.com/display/DEVOPS/Project+{{.project.metadata.name}}
       title: Project Docs
       description: View project documentation in Confluence
       icon.class: "fa fa-book"
@@ -94,7 +94,7 @@ Notion has a different URL pattern. Since Notion page URLs are not as predictabl
 ```yaml
   application.links: |
     # Search Notion for application docs
-    - url: https://www.notion.so/my-workspace/search?q={{.metadata.name}}
+    - url: https://www.notion.so/my-workspace/search?q={{.app.metadata.name}}
       title: Notion Docs
       description: Search for application docs in Notion
       icon.class: "fa fa-book"
@@ -105,11 +105,11 @@ For a more reliable approach, store the Notion page URL in an annotation:
 ```yaml
   resource.links: |
     # Link using a Notion URL stored in an annotation
-    - url: "{{.metadata.annotations.docs/notion-url}}"
+    - url: '{{ index .resource.metadata.annotations "docs/notion-url" }}'
       title: Notion Page
       description: View documentation in Notion
       icon.class: "fa fa-book"
-      if: metadata.annotations.docs/notion-url != nil
+      if: resource.metadata.annotations["docs/notion-url"] != nil
 ```
 
 ## Links to GitHub Wiki
@@ -119,14 +119,14 @@ If your documentation lives alongside your code in GitHub Wiki:
 ```yaml
   application.links: |
     # Link to GitHub Wiki home page
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/wiki
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/wiki'
       title: GitHub Wiki
       description: View application wiki
       icon.class: "fa fa-wikipedia-w"
 
     # Link to a specific wiki page (using application name as page title)
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/wiki/{{.metadata.name}}
-      title: Wiki: {{.metadata.name}}
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/wiki/{{.app.metadata.name}}'
+      title: Application Wiki
       description: View application-specific wiki page
       icon.class: "fa fa-file-alt"
 ```
@@ -138,22 +138,22 @@ For services with API documentation:
 ```yaml
   resource.links: |
     # Link to Swagger/OpenAPI docs for a service
-    - url: https://{{.metadata.name}}.example.com/swagger-ui/
+    - url: https://{{.resource.metadata.name}}.example.com/swagger-ui/
       title: API Docs
       description: View Swagger API documentation
       icon.class: "fa fa-plug"
-      if: kind == "Service"
+      if: resource.kind == "Service"
 
     # Link to internal API catalog
-    - url: https://api-catalog.example.com/services/{{.metadata.name}}
+    - url: https://api-catalog.example.com/services/{{.resource.metadata.name}}
       title: API Catalog
       description: View in API catalog
       icon.class: "fa fa-list"
-      if: kind == "Service"
+      if: resource.kind == "Service"
 
   application.links: |
     # Link to Stoplight or similar API documentation tool
-    - url: https://stoplight.example.com/docs/{{.metadata.name}}
+    - url: https://stoplight.example.com/docs/{{.app.metadata.name}}
       title: API Reference
       description: View API reference documentation
       icon.class: "fa fa-plug"
@@ -195,39 +195,39 @@ metadata:
 data:
   resource.links: |
     # Runbook link from annotation
-    - url: "{{.metadata.annotations.docs/runbook}}"
+    - url: '{{ index .resource.metadata.annotations "docs/runbook" }}'
       title: Runbook
       description: View operational runbook
       icon.class: "fa fa-book"
-      if: metadata.annotations.docs/runbook != nil
+      if: resource.metadata.annotations["docs/runbook"] != nil
 
     # Architecture docs from annotation
-    - url: "{{.metadata.annotations.docs/architecture}}"
+    - url: '{{ index .resource.metadata.annotations "docs/architecture" }}'
       title: Architecture
       description: View architecture documentation
       icon.class: "fa fa-sitemap"
-      if: metadata.annotations.docs/architecture != nil
+      if: resource.metadata.annotations["docs/architecture"] != nil
 
     # API docs from annotation
-    - url: "{{.metadata.annotations.docs/api}}"
+    - url: '{{ index .resource.metadata.annotations "docs/api" }}'
       title: API Docs
       description: View API documentation
       icon.class: "fa fa-plug"
-      if: metadata.annotations.docs/api != nil
+      if: resource.metadata.annotations["docs/api"] != nil
 
     # On-call schedule
-    - url: "{{.metadata.annotations.docs/oncall}}"
+    - url: '{{ index .resource.metadata.annotations "docs/oncall" }}'
       title: On-Call Schedule
       description: View on-call schedule for this service
       icon.class: "fa fa-phone"
-      if: metadata.annotations.docs/oncall != nil
+      if: resource.metadata.annotations["docs/oncall"] != nil
 
     # SLA documentation
-    - url: "{{.metadata.annotations.docs/sla}}"
+    - url: '{{ index .resource.metadata.annotations "docs/sla" }}'
       title: SLA
       description: View SLA requirements
       icon.class: "fa fa-balance-scale"
-      if: metadata.annotations.docs/sla != nil
+      if: resource.metadata.annotations["docs/sla"] != nil
 ```
 
 This approach has several advantages:
@@ -243,19 +243,19 @@ During incidents, quick access to incident management tools is critical:
 ```yaml
   application.links: |
     # Create a new incident
-    - url: https://pagerduty.example.com/incidents/new?service={{.metadata.name}}
+    - url: https://pagerduty.example.com/incidents/new?service={{.app.metadata.name}}
       title: Create Incident
       description: Create a PagerDuty incident for this application
       icon.class: "fa fa-exclamation-circle"
 
     # View recent incidents
-    - url: https://pagerduty.example.com/incidents?service={{.metadata.name}}&time_range=past_week
+    - url: https://pagerduty.example.com/incidents?service={{.app.metadata.name}}&time_range=past_week
       title: Recent Incidents
       description: View recent incidents
       icon.class: "fa fa-history"
 
     # Link to OneUptime incident tracking
-    - url: https://oneuptime.com/dashboard/project/incidents?search={{.metadata.name}}
+    - url: https://oneuptime.com/dashboard/project/incidents?search={{.app.metadata.name}}
       title: OneUptime Incidents
       description: View incidents in OneUptime
       icon.class: "fa fa-fire"
@@ -274,40 +274,40 @@ metadata:
 data:
   application.links: |
     # Source code and README
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/blob/{{.spec.source.targetRevision}}/{{.spec.source.path}}/README.md
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/blob/{{.app.spec.source.targetRevision}}/{{.app.spec.source.path}}/README.md'
       title: README
       icon.class: "fa fa-file-alt"
 
     # Wiki
-    - url: {{.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/wiki
+    - url: '{{.app.spec.source.repoURL | replace ".git" "" | replace "git@github.com:" "https://github.com/"}}/wiki'
       title: Wiki
       icon.class: "fa fa-wikipedia-w"
 
     # Search Confluence
-    - url: https://confluence.example.com/dosearchsite.action?queryString={{.metadata.name}}
+    - url: https://confluence.example.com/dosearchsite.action?queryString={{.app.metadata.name}}
       title: Confluence
       icon.class: "fa fa-search"
 
   resource.links: |
     # Annotation-driven documentation links
-    - url: "{{.metadata.annotations.docs/runbook}}"
+    - url: '{{ index .resource.metadata.annotations "docs/runbook" }}'
       title: Runbook
       icon.class: "fa fa-book"
-      if: metadata.annotations.docs/runbook != nil
+      if: resource.metadata.annotations["docs/runbook"] != nil
 
-    - url: "{{.metadata.annotations.docs/architecture}}"
+    - url: '{{ index .resource.metadata.annotations "docs/architecture" }}'
       title: Architecture
       icon.class: "fa fa-sitemap"
-      if: metadata.annotations.docs/architecture != nil
+      if: resource.metadata.annotations["docs/architecture"] != nil
 
-    - url: "{{.metadata.annotations.docs/api}}"
+    - url: '{{ index .resource.metadata.annotations "docs/api" }}'
       title: API Docs
       icon.class: "fa fa-plug"
-      if: metadata.annotations.docs/api != nil
+      if: resource.metadata.annotations["docs/api"] != nil
 
   project.links: |
     # Project documentation
-    - url: https://confluence.example.com/display/DEVOPS/{{.metadata.name}}
+    - url: https://confluence.example.com/display/DEVOPS/{{.project.metadata.name}}
       title: Project Docs
       icon.class: "fa fa-book"
 ```
