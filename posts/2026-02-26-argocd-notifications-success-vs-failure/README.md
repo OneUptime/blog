@@ -76,7 +76,7 @@ Success notifications should be brief and non-intrusive. Include just enough con
             {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
             {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
             {"title": "Revision", "value": "{{.app.status.sync.revision | trunc 7}}", "short": true},
-            {"title": "Duration", "value": "{{.app.status.operationState.finishedAt}} - {{.app.status.operationState.startedAt}}", "short": true}
+            {"title": "Sync Window", "value": "{{.app.status.operationState.startedAt}} - {{.app.status.operationState.finishedAt}}", "short": true}
           ]
         }]
 ```
@@ -155,10 +155,10 @@ metadata:
     notifications.argoproj.io/subscribe.on-deployed.slack: deployments
     # Failures go to critical alerts
     notifications.argoproj.io/subscribe.on-deploy-failed.slack: alerts-critical
-    notifications.argoproj.io/subscribe.on-deploy-failed.pagerduty: payment-team-oncall
+    notifications.argoproj.io/subscribe.on-deploy-failed.pagerduty: P123456
     # Degraded goes to both
     notifications.argoproj.io/subscribe.on-deploy-degraded.slack: alerts-critical
-    notifications.argoproj.io/subscribe.on-deploy-degraded.pagerduty: payment-team-oncall
+    notifications.argoproj.io/subscribe.on-deploy-degraded.pagerduty: P123456
 ```
 
 This setup means your `#deployments` channel gets a steady stream of green success messages (useful for audit trails), while `#alerts-critical` only lights up when something is actually wrong.
@@ -264,7 +264,7 @@ Beyond Slack, you might want to update external systems differently for success 
 
 **Make failure notifications actionable**: Include the error message, the revision (so engineers can find the commit), and the repository URL. Link to the ArgoCD UI if possible.
 
-**Use oncePer consistently**: Without it, you will get duplicate notifications. Key success on `finishedAt`, failure on `finishedAt`, and degraded on `finishedAt + health.status`.
+**Use oncePer consistently**: Without it, you will get duplicate notifications. Key success, failure, and degraded notifications on `finishedAt` so each completed operation sends each matching notification only once.
 
 **Separate PagerDuty from Slack**: Use PagerDuty only for failures and degradations. Never page someone for a successful deployment.
 
