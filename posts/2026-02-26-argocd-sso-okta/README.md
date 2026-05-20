@@ -44,28 +44,27 @@ Click **Save** and note the following values:
 
 By default, Okta does not include group membership in the OIDC token. You need to configure it.
 
-### Option A: Using the Default Authorization Server
+### Option A: Using the Okta Org Authorization Server
 
-1. Navigate to **Security > API > Authorization Servers**
-2. Select the **default** authorization server
-3. Go to the **Claims** tab
-4. Click **Add Claim**
-5. Configure:
-   - **Name**: `groups`
-   - **Include in token type**: **ID Token** and **Always**
-   - **Value type**: **Groups**
-   - **Filter**: **Matches regex** with value `.*` (includes all groups)
-   - **Include in**: Select **The following scopes** and add `openid`
-6. Click **Create**
+If your ArgoCD issuer is `https://your-org.okta.com`, configure the groups claim on the OIDC application:
+
+1. Navigate to **Applications > Applications**
+2. Select the `ArgoCD` OIDC application
+3. Go to the **Sign On** tab
+4. In the **OpenID Connect ID Token** section, click **Edit**
+5. Set **Group claim type** to **Filter**
+6. In **Group claims filter**, set the claim name to `groups`, select **Matches regex**, and enter `.*` (includes all groups)
+7. Click **Save**
 
 ### Option B: Using a Custom Authorization Server
 
-If you use a custom authorization server (common in production Okta setups):
+If you use a custom authorization server such as `default` (common in production Okta setups):
 
 1. Navigate to **Security > API > Authorization Servers**
 2. Select your custom authorization server
-3. Add the same claim as above
-4. Note the **Issuer URI** (e.g., `https://your-org.okta.com/oauth2/aus1bcde2fghij3klmn4`)
+3. Go to the **Claims** tab and click **Add Claim**
+4. Name the claim `groups` and configure it to be included in the **ID Token**, with **Value type** set to **Groups** and **Filter** set to **Matches regex** with value `.*`
+5. Note the **Issuer URI** (e.g., `https://your-org.okta.com/oauth2/default` or `https://your-org.okta.com/oauth2/aus1bcde2fghij3klmn4`)
 
 ## Step 3: Configure ArgoCD for Okta OIDC
 
@@ -231,7 +230,7 @@ The redirect URI configured in ArgoCD does not match what Okta expects. Check:
 
 ### PKCE Errors
 
-If you see PKCE-related errors, enable PKCE in the OIDC configuration:
+If you see PKCE-related errors, make sure PKCE is enabled for the Okta OIDC application and register the PKCE callback URI `https://argocd.example.com/pkce/verify`. Then enable PKCE in the ArgoCD OIDC configuration:
 
 ```yaml
   oidc.config: |
