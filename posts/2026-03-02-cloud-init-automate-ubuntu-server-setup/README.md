@@ -28,7 +28,7 @@ cloud-init accepts several user-data formats. The most common is cloud-config (Y
 ```yaml
 #cloud-config
 # This line is required - cloud-init identifies the format from it
-
+hostname: my-server
 ```
 
 Other formats include shell scripts (starting with `#!/bin/sh`), and multi-part MIME archives combining multiple formats.
@@ -128,6 +128,7 @@ Use `runcmd` for commands that need to run after packages are installed and file
 packages:
   - nginx
   - ufw
+  - fail2ban
 
 runcmd:
   # Configure UFW firewall
@@ -230,7 +231,7 @@ runcmd:
 
 final_message: |
   App server is ready. SSH in with: ssh app@<IP>
-  Setup took $UPTIME seconds.
+  Setup took $uptime.
 ```
 
 ## cloud-init on Different Platforms
