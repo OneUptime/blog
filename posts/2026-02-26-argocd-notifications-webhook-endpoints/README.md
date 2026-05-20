@@ -14,7 +14,7 @@ Webhook notifications are the most flexible option in ArgoCD's notification syst
 
 When a trigger fires, ArgoCD sends an HTTP request to the configured URL with a body that you define in the template. You control:
 
-- The HTTP method (POST, PUT, PATCH)
+- The HTTP method (GET, POST, PUT, PATCH)
 - The URL and path
 - Custom headers
 - The request body (with access to application data through Go templates)
@@ -193,15 +193,15 @@ A single template can fan out to multiple webhook endpoints simultaneously.
 
 ```yaml
   trigger.on-sync-completed: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [deploy-event]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [deploy-event]
 
   trigger.on-health-change: |
-    - when: app.status.health.status in ['Degraded', 'Missing']
+    - when: app.status?.operationState.phase != nil and app.status.health.status in ['Degraded', 'Missing']
       send: [deploy-event]
 ```
 
@@ -269,16 +269,16 @@ Post deployment events to a custom dashboard API:
 
 ### Sending Events to AWS EventBridge
 
-Use the API Gateway endpoint for EventBridge:
+Use an API Gateway or Lambda endpoint that forwards events to EventBridge:
 
 ```yaml
   service.webhook.eventbridge: |
-    url: https://events.us-east-1.amazonaws.com
+    url: https://api.example.com/argocd/eventbridge
     headers:
       - name: Content-Type
-        value: application/x-amz-json-1.1
-      - name: X-Amz-Target
-        value: AWSEvents.PutEvents
+        value: application/json
+      - name: Authorization
+        value: Bearer $eventbridge-webhook-token
 
   template.eventbridge-deploy: |
     webhook:
@@ -296,9 +296,9 @@ Use the API Gateway endpoint for EventBridge:
 
 ## Error Handling and Retries
 
-ArgoCD webhook notifications do not have built-in retries. If the endpoint is temporarily down, the notification is lost. To handle this:
+ArgoCD webhook notifications retry network errors and 5xx responses by default. The webhook service supports `retryMax`, `retryWaitMin`, and `retryWaitMax` settings for tuning retry behavior. To add more durable delivery guarantees:
 
-1. Use a message queue (like AWS SQS or RabbitMQ) as the webhook target
+1. Use a small HTTP ingestion service backed by a message queue (like AWS SQS or RabbitMQ) as the webhook target
 2. Have your consumer process messages from the queue with retry logic
 3. This adds reliability without depending on ArgoCD's notification system
 
