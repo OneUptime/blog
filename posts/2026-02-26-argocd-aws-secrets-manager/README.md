@@ -33,14 +33,17 @@ You need:
 ### Verify OIDC Provider
 
 ```bash
-# Check if OIDC is enabled
+# Check whether an IAM OIDC provider exists for the cluster
 
-aws eks describe-cluster --name my-cluster \
-  --query "cluster.identity.oidc.issuer" --output text
+cluster_name=my-cluster
+oidc_id=$(aws eks describe-cluster --name $cluster_name \
+  --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
 
-# If not enabled, create it
+aws iam list-open-id-connect-providers | grep $oidc_id | cut -d "/" -f4
+
+# If no output is returned, create it
 eksctl utils associate-iam-oidc-provider \
-  --cluster my-cluster \
+  --cluster $cluster_name \
   --approve
 ```
 
@@ -58,8 +61,7 @@ cat > eso-policy.json <<EOF
       "Effect": "Allow",
       "Action": [
         "secretsmanager:GetSecretValue",
-        "secretsmanager:DescribeSecret",
-        "secretsmanager:ListSecrets"
+        "secretsmanager:DescribeSecret"
       ],
       "Resource": [
         "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/*",
@@ -141,7 +143,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.10.0
+    targetRevision: 2.5.0
     helm:
       values: |
         installCRDs: true
@@ -164,7 +166,7 @@ spec:
 ## Creating the ClusterSecretStore
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -207,7 +209,7 @@ aws secretsmanager create-secret \
 ### Single Secret with Selected Keys
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -236,7 +238,7 @@ spec:
 ### All Properties from a Secret
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-all-secrets
@@ -256,7 +258,7 @@ spec:
 ### Multiple AWS Secrets Combined
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-combined
@@ -292,7 +294,7 @@ Structure your repository with environment-specific ExternalSecrets:
 
 ```yaml
 # base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
