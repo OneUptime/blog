@@ -63,9 +63,9 @@ kubectl get appprojects -n argocd -o json | \
   jq -r '.items[] | select(.spec.syncWindows != null) | "\(.metadata.name): \(.spec.syncWindows)"'
 ```
 
-### Step 3: Create a Sync Window to Block Deploys
+### Step 3: Create Sync Windows to Block Deploys
 
-During ArgoCD maintenance, block all application syncs.
+During ArgoCD maintenance, block application syncs in each affected AppProject. The example below applies to the `default` project; repeat it for any other projects that contain applications you want to block.
 
 ```yaml
 # Apply a deny-all sync window during maintenance
@@ -87,7 +87,7 @@ spec:
         - '*'
       namespaces:
         - '*'
-      manualSync: true  # Also block manual syncs
+      manualSync: false  # Block manual syncs too
 ```
 
 For an immediate one-time block, apply and remove it manually.
@@ -97,16 +97,17 @@ For an immediate one-time block, apply and remove it manually.
 # Calculate the cron expression for the current time
 CURRENT_MIN=$(date +%M)
 CURRENT_HOUR=$(date +%H)
-CURRENT_DOW=$(date +%u)
+CURRENT_DOM=$(date +%d)
+CURRENT_MONTH=$(date +%m)
 
 kubectl patch appproject default -n argocd --type merge -p "{
   \"spec\": {
     \"syncWindows\": [{
       \"kind\": \"deny\",
-      \"schedule\": \"$CURRENT_MIN $CURRENT_HOUR * * *\",
+      \"schedule\": \"$CURRENT_MIN $CURRENT_HOUR $CURRENT_DOM $CURRENT_MONTH *\",
       \"duration\": \"2h\",
       \"applications\": [\"*\"],
-      \"manualSync\": true
+      \"manualSync\": false
     }]
   }
 }"
@@ -143,7 +144,7 @@ echo "Backup saved to $BACKUP_DIR"
 
 # Step 3: Apply the upgrade
 echo "Step 3: Applying upgrade"
-kubectl apply -n argocd -f "https://raw.githubusercontent.com/argoproj/argo-cd/$TARGET_VERSION/manifests/install.yaml"
+kubectl apply -n argocd --server-side --force-conflicts -f "https://raw.githubusercontent.com/argoproj/argo-cd/$TARGET_VERSION/manifests/install.yaml"
 
 # Step 4: Wait for rollout
 echo "Step 4: Waiting for rollout"
@@ -257,7 +258,7 @@ kubectl patch appproject default -n argocd --type merge -p '{
 
 # Send completion notification
 echo "ArgoCD maintenance completed. All systems operational."
-echo "  Version: $(argocd version --server --short)"
+echo "  Version: $(argocd version --short)"
 echo "  Apps: $(argocd app list -o json | jq length) total"
 echo "  Healthy: $(argocd app list -o json | jq '[.[] | select(.status.health.status == "Healthy")] | length')"
 ```
@@ -271,7 +272,7 @@ Always have a rollback plan before maintenance.
 ```bash
 # Apply the previous version's manifests
 PREVIOUS_VERSION="v2.9.5"
-kubectl apply -n argocd -f "https://raw.githubusercontent.com/argoproj/argo-cd/$PREVIOUS_VERSION/manifests/install.yaml"
+kubectl apply -n argocd --server-side --force-conflicts -f "https://raw.githubusercontent.com/argoproj/argo-cd/$PREVIOUS_VERSION/manifests/install.yaml"
 
 # Wait for rollback
 kubectl rollout status deployment/argocd-server -n argocd --timeout=300s
@@ -342,7 +343,7 @@ echo ""
 
 # Check for recent errors
 echo "7. Recent Errors"
-kubectl logs deployment/argocd-application-controller -n argocd --since=30m | grep -i error | tail -5
+kubectl logs statefulset/argocd-application-controller -n argocd --since=30m | grep -i error | tail -5
 echo ""
 
 echo "=== Validation Complete ==="
