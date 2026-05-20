@@ -69,13 +69,13 @@ systemd-analyze security myservice.service
 
 ```ini
 [Service]
-# strict: makes /usr, /boot, /efi read-only AND makes /etc read-only
-# full: makes /usr, /boot, /efi read-only but /etc remains writable
-# true: makes /usr and /boot read-only
+# strict: makes the entire filesystem read-only except /dev, /proc, and /sys
+# full: makes /usr, /boot, /efi, and /etc read-only
+# true: makes /usr, /boot, and /efi read-only
 ProtectSystem=strict
 ```
 
-Most services should use `strict`. Services that need to write to `/etc` should use `full`.
+Most services should use `strict`. Services that need to write outside their application data directories should explicitly allow only the required paths with `ReadWritePaths`.
 
 ### ProtectHome
 
@@ -140,7 +140,7 @@ If a service needs specific device access, explicitly list allowed devices:
 
 ```ini
 [Service]
-PrivateDevices=true
+DevicePolicy=closed
 
 # Allow read/write access to a specific device
 DeviceAllow=/dev/sda rw
@@ -174,11 +174,11 @@ RestrictAddressFamilies=AF_INET AF_INET6
 # Allow only Unix domain sockets (no network)
 RestrictAddressFamilies=AF_UNIX
 
-# Deny all network sockets
+# Deny creating sockets for all address families
 RestrictAddressFamilies=none
 ```
 
-For a service that only needs to listen on TCP/UDP:
+For a service that only needs TCP/UDP plus local Unix sockets:
 
 ```ini
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
@@ -188,7 +188,7 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 
 ### PrivateUsers
 
-Creates a new user namespace where the service cannot see or interact with system users:
+Creates a new user namespace where users and groups other than root, nobody, and the service's own user are mapped to nobody:
 
 ```ini
 [Service]
@@ -302,7 +302,7 @@ ProtectKernelModules=true
 
 ### ProtectKernelLogs
 
-Prevents read access to kernel logs:
+Prevents access to kernel logs:
 
 ```ini
 [Service]
