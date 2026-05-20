@@ -58,11 +58,11 @@ jobs:
       - name: Install tools
         run: |
           # Install Syft for SBOM generation
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sudo sh -s -- -b /usr/local/bin
 
           # Install Cosign for signing
-          curl -sSfL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /usr/local/bin/cosign
-          chmod +x /usr/local/bin/cosign
+          sudo curl -sSfL https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64 -o /usr/local/bin/cosign
+          sudo chmod +x /usr/local/bin/cosign
 
       - name: Build and push image
         run: |
@@ -75,11 +75,11 @@ jobs:
           IMAGE=registry.example.com/myapp:${{ github.sha }}
 
           # Generate SPDX SBOM
-          syft packages "$IMAGE" \
+          syft "$IMAGE" \
             --output spdx-json=/tmp/sbom-spdx.json
 
           # Generate CycloneDX SBOM (alternative)
-          syft packages "$IMAGE" \
+          syft "$IMAGE" \
             --output cyclonedx-json=/tmp/sbom-cyclonedx.json
 
           echo "SBOM generated with $(jq '.packages | length' /tmp/sbom-spdx.json) packages"
@@ -93,12 +93,21 @@ jobs:
 
           # Attach SPDX SBOM as attestation
           cosign attest \
+            --yes \
             --key env://COSIGN_KEY \
             --predicate /tmp/sbom-spdx.json \
-            --type spdx \
+            --type https://spdx.dev/Document \
             "$IMAGE"
 
-          echo "SBOM attestation attached to image"
+          # Attach CycloneDX SBOM as attestation for tools like Dependency-Track
+          cosign attest \
+            --yes \
+            --key env://COSIGN_KEY \
+            --predicate /tmp/sbom-cyclonedx.json \
+            --type cyclonedx \
+            "$IMAGE"
+
+          echo "SBOM attestations attached to image"
 
       - name: Store SBOM in artifact storage
         run: |
@@ -125,11 +134,13 @@ spec:
     spec:
       containers:
         - name: verify
-          image: bitnami/cosign:latest
+          image: alpine:3.22
           command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache cosign jq
+
               IMAGES="
               registry.example.com/api:v2.1.0
               registry.example.com/web:v3.0.1
@@ -144,14 +155,14 @@ spec:
                 # Verify SBOM attestation exists and is signed
                 if cosign verify-attestation \
                   --key /keys/cosign.pub \
-                  --type spdx \
+                  --type https://spdx.dev/Document \
                   "$IMAGE" > /dev/null 2>&1; then
                   echo "  SBOM: Present and verified"
 
                   # Extract and display SBOM summary
                   SBOM=$(cosign verify-attestation \
                     --key /keys/cosign.pub \
-                    --type spdx \
+                    --type https://spdx.dev/Document \
                     "$IMAGE" 2>/dev/null | jq -r '.payload' | base64 -d)
 
                   PKG_COUNT=$(echo "$SBOM" | jq '.predicate.packages | length')
@@ -165,7 +176,7 @@ spec:
               if [ -n "$MISSING_SBOM" ]; then
                 echo ""
                 echo "WARNING: The following images are missing SBOM attestations:"
-                echo -e "$MISSING_SBOM"
+                printf "%b\n" "$MISSING_SBOM"
                 # Decide whether to block or warn
                 # exit 1  # Uncomment to block deployment
                 echo "Proceeding with warning (SBOM not required yet)"
@@ -210,7 +221,7 @@ spec:
         - imageReferences:
             - "registry.example.com/*"
           attestations:
-            - type: spdx
+            - predicateType: https://spdx.dev/Document
               conditions:
                 - all:
                     # Verify SBOM has at least one package listed
@@ -244,19 +255,20 @@ spec:
     spec:
       containers:
         - name: checker
-          image: aquasec/trivy:latest
+          image: alpine:3.22
           command:
             - /bin/sh
             - -c
             - |
-              apk add --no-cache curl jq
+              apk add --no-cache cosign curl jq
+              curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
 
               IMAGE="registry.example.com/myapp:v2.1.0"
 
               # Download the SBOM from the registry
               cosign verify-attestation \
                 --key /keys/cosign.pub \
-                --type spdx \
+                --type https://spdx.dev/Document \
                 "$IMAGE" 2>/dev/null | \
                 jq -r '.payload' | base64 -d | \
                 jq '.predicate' > /tmp/sbom.json
@@ -371,25 +383,29 @@ spec:
     spec:
       containers:
         - name: uploader
-          image: curlimages/curl:latest
+          image: alpine:3.22
           command:
             - /bin/sh
             - -c
             - |
-              # Extract SBOM from image attestation
+              apk add --no-cache cosign curl jq
+
+              # Extract CycloneDX SBOM from image attestation
               cosign verify-attestation \
                 --key /keys/cosign.pub \
-                --type spdx \
+                --type cyclonedx \
                 registry.example.com/myapp:v2.1.0 2>/dev/null | \
                 jq -r '.payload' | base64 -d | \
-                jq '.predicate' > /tmp/sbom.json
+                jq '.predicate' > /tmp/sbom-cyclonedx.json
 
               # Upload to Dependency-Track
               curl -X POST \
                 "http://dependency-track.dependency-track:8080/api/v1/bom" \
                 -H "X-Api-Key: $DT_API_KEY" \
-                -H "Content-Type: application/json" \
-                -d @/tmp/sbom.json
+                -F "autoCreate=true" \
+                -F "projectName=myapp" \
+                -F "projectVersion=v2.1.0" \
+                -F "bom=@/tmp/sbom-cyclonedx.json"
 
               echo "SBOM uploaded to Dependency-Track"
           env:
