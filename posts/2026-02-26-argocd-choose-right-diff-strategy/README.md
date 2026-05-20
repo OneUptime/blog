@@ -85,6 +85,8 @@ kind: Application
 metadata:
   name: my-app
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   source:
     repoURL: https://github.com/myorg/app.git
@@ -92,10 +94,6 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: my-app
-  # Enable server-side diff
-  syncPolicy:
-    syncOptions:
-      - ServerSideApply=true
 ```
 
 Or enable it at the global level:
@@ -113,15 +111,17 @@ data:
 
 **Pros:**
 - Accurate diffs that account for API server defaulting
-- Properly handles admission controller modifications
+- Can include admission controller behavior in diff calculation
 - Uses field ownership to determine what ArgoCD manages
 - Fewer false OutOfSync reports
 - Better handling of CRDs and operator-managed resources
 
 **Cons:**
+- Requires Argo CD 2.10+ (stable since Argo CD 3.1)
 - Requires Kubernetes 1.22+ (server-side apply GA)
 - Slightly higher API server load (dry-run requests)
 - Behavior depends on API server version and configuration
+- Mutating webhooks are not included by default unless `IncludeMutationWebhook=true` is configured
 
 ## When to Use Each Strategy
 
@@ -136,7 +136,7 @@ data:
 
 - Running Kubernetes 1.22 or later (recommended)
 - You see frequent false OutOfSync reports
-- Admission controllers or operators modify resources after apply
+- You want API server defaulting and admission validation to participate in diff calculation
 - You use CRDs that have complex defaulting behavior
 - You want to reduce `ignoreDifferences` configuration
 
@@ -144,7 +144,7 @@ Most teams in 2025 and beyond should use server-side diff as the default.
 
 ## Comparing Results: A Practical Example
 
-Consider a Deployment where you do not specify resource requests. With client-side diff, the API server adds default values (like the default service account), but ArgoCD's rendered manifest does not have them, causing a false diff.
+Consider a Deployment where you omit optional fields. With client-side diff, the API server adds default values, but ArgoCD's rendered manifest does not have them, which can cause a false diff.
 
 **Your manifest in Git:**
 
@@ -155,7 +155,13 @@ metadata:
   name: web-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: web
@@ -173,6 +179,9 @@ metadata:
   name: web-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: web-app
   revisionHistoryLimit: 10        # defaulted
   progressDeadlineSeconds: 600    # defaulted
   strategy:
@@ -181,6 +190,9 @@ spec:
       maxSurge: 25%               # defaulted
       maxUnavailable: 25%         # defaulted
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       terminationGracePeriodSeconds: 30  # defaulted
       dnsPolicy: ClusterFirst            # defaulted
@@ -210,10 +222,15 @@ kind: Application
 metadata:
   name: complex-app
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
-  syncPolicy:
-    syncOptions:
-      - ServerSideApply=true
+  source:
+    repoURL: https://github.com/myorg/app.git
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: complex-app
 ---
 # App using client-side diff (default)
 apiVersion: argoproj.io/v1alpha1
@@ -221,8 +238,14 @@ kind: Application
 metadata:
   name: simple-app
   namespace: argocd
+  # No ServerSideDiff compare option - uses client-side diff
 spec:
-  # No ServerSideApply option - uses client-side diff
+  source:
+    repoURL: https://github.com/myorg/app.git
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: simple-app
 ```
 
 ## Global Default with Per-App Override
@@ -240,7 +263,7 @@ data:
   controller.diff.server.side: "true"
 ```
 
-For applications that need client-side diff, there is no explicit opt-out flag. Instead, those applications would need to work with the server-side diff or have appropriate `ignoreDifferences` configurations.
+After changing `argocd-cmd-params-cm`, restart the `argocd-application-controller`. For applications that need client-side diff, add the application-level compare option `argocd.argoproj.io/compare-options: ServerSideDiff=false`.
 
 ## Combining Diff Strategy with ignoreDifferences
 
@@ -252,6 +275,8 @@ kind: Application
 metadata:
   name: my-app
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   ignoreDifferences:
     # Ignore HPA-managed replicas
@@ -264,9 +289,6 @@ spec:
       kind: Service
       jqPathExpressions:
         - '.metadata.annotations["service.beta.kubernetes.io/aws-load-balancer-internal"]'
-  syncPolicy:
-    syncOptions:
-      - ServerSideApply=true
 ```
 
 With server-side diff, you typically need fewer `ignoreDifferences` entries because the strategy naturally handles many of the fields that cause false diffs with client-side diff.
