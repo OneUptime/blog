@@ -16,7 +16,7 @@ This is one of the most common issues ArgoCD users face, and it can be caused by
 
 ArgoCD marks a resource as "Progressing" when it detects that the resource is being created or updated but has not yet reached its desired state. For a Deployment, this means replicas are being rolled out. For a Service of type LoadBalancer, this means the external IP has not been assigned yet.
 
-The problem occurs when the resource can never reach its desired state. ArgoCD keeps waiting, and the status stays "Progressing" because the resource never transitions to a terminal state (Healthy or Degraded).
+The problem occurs when the resource can never reach its desired state. ArgoCD keeps waiting, and the status stays "Progressing" because the resource never transitions to a clearer health state such as "Healthy" or "Degraded".
 
 Common causes include:
 
@@ -27,7 +27,7 @@ Common causes include:
 5. Node scheduling problems
 6. Resource quota limits exceeded
 7. Network policy blocking required traffic
-8. Kubernetes progress deadline not configured
+8. Very high progress deadline or a paused Deployment
 
 ## Step 1: Identify Which Resource Is Stuck
 
@@ -36,10 +36,10 @@ First, find which specific resource in your application is preventing the health
 ```bash
 # List all resources in the application with health status
 
-argocd app resources my-app
+argocd app resources my-app --output tree=detailed
 
 # Filter for non-healthy resources
-argocd app resources my-app -o json | jq '.[] | select(.health.status != "Healthy") | {kind: .kind, name: .name, health: .health}'
+argocd app get my-app -o json | jq '.status.resources[] | select(.health.status != "Healthy") | {kind: .kind, namespace: .namespace, name: .name, health: .health}'
 ```
 
 This will show you exactly which Deployment, StatefulSet, or other resource is stuck in Progressing.
@@ -52,8 +52,8 @@ Once you know the resource, check the Kubernetes events for clues:
 # Get events for the specific resource
 kubectl events -n <namespace> --for=deployment/<deployment-name>
 
-# Get all recent events in the namespace sorted by time
-kubectl events -n <namespace> --sort-by='.lastTimestamp'
+# Get all events in the namespace sorted by time
+kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 
 # Check pod events for the stuck deployment
 kubectl get pods -n <namespace> -l app=<app-name>
@@ -66,7 +66,7 @@ Events will often tell you directly what is wrong: "Failed to pull image", "Insu
 
 ### Deployments Stuck in Progressing
 
-The most common scenario. A Deployment stays "Progressing" when pods cannot reach a Running state.
+The most common scenario. A Deployment stays "Progressing" when ArgoCD sees that the Deployment has not finished rolling out, such as when updated replicas are not yet available or the controller has not observed the latest generation.
 
 ```bash
 # Check the rollout status
@@ -193,8 +193,10 @@ kubectl get configmap argocd-cm -n argocd -o yaml | grep "resource.customization
 Common Lua bugs that cause permanent "Progressing":
 
 ```lua
+hs = {}
+
 -- Bug: condition not found in the loop, falls through to "Progressing"
-for i, condition in ipairs(obj.status.conditions) do
+for i, condition in ipairs(obj.status and obj.status.conditions or {}) do
   if condition.type == "Ready" then
     if condition.status == "True" then
       hs.status = "Healthy"
@@ -211,7 +213,9 @@ return hs
 Fix the Lua script to handle all possible condition states:
 
 ```lua
-for i, condition in ipairs(obj.status.conditions) do
+hs = {}
+
+for i, condition in ipairs(obj.status and obj.status.conditions or {}) do
   if condition.type == "Ready" then
     if condition.status == "True" then
       hs.status = "Healthy"
@@ -226,6 +230,10 @@ for i, condition in ipairs(obj.status.conditions) do
     return hs
   end
 end
+
+hs.status = "Progressing"
+hs.message = "Waiting for Ready condition"
+return hs
 ```
 
 ## Step 6: Force a Hard Refresh
