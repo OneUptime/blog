@@ -8,13 +8,13 @@ Description: Learn how to integrate the helm-secrets plugin with ArgoCD to decry
 
 ---
 
-Storing secrets in Git is a GitOps requirement, but storing them in plaintext is a security disaster. The helm-secrets plugin solves this by encrypting values files with Mozilla SOPS, letting you commit encrypted secrets alongside your Helm charts. Integrating this with ArgoCD means your entire deployment - including sensitive values like database passwords and API keys - lives in Git while remaining encrypted at rest.
+Storing secrets in Git is common in GitOps workflows, but storing them in plaintext is a security disaster. The helm-secrets plugin solves this by encrypting values files with SOPS, letting you commit encrypted secrets alongside your Helm charts. Integrating this with ArgoCD means your entire deployment - including sensitive values like database passwords and API keys - lives in Git while remaining encrypted at rest.
 
 This guide covers installing the helm-secrets plugin in ArgoCD, configuring encryption providers, creating encrypted values files, and troubleshooting common issues.
 
 ## How It Works
 
-The helm-secrets plugin wraps standard Helm commands. When ArgoCD renders a Helm chart, it can use helm-secrets to decrypt values files before passing them to `helm template`. The decryption happens inside the ArgoCD repo server pod, and decrypted values never touch disk in plaintext.
+The helm-secrets plugin wraps standard Helm commands. When ArgoCD renders a Helm chart, it can use helm-secrets to decrypt values files before passing them to `helm template`. The decryption happens inside the ArgoCD repo server pod; configure helm-secrets to decrypt into a temporary directory so plaintext values are not written next to the encrypted file in the checked-out repository.
 
 ```mermaid
 sequenceDiagram
@@ -40,19 +40,28 @@ Create a Dockerfile:
 ```dockerfile
 # Dockerfile for custom ArgoCD repo server
 
-FROM quay.io/argoproj/argocd:v2.9.3
+FROM quay.io/argoproj/argocd:v3.4.2
+
+ARG SOPS_VERSION=3.13.0
+ARG AGE_VERSION=1.3.1
+ARG HELM_SECRETS_VERSION=4.7.6
+
+ENV HELM_SECRETS_WRAPPER_ENABLED=true \
+    HELM_SECRETS_VALUES_ALLOW_ABSOLUTE_PATH=true \
+    HELM_SECRETS_DECRYPT_SECRETS_IN_TMP_DIR=true \
+    HELM_SECRETS_HELM_PATH=/usr/local/bin/helm
 
 # Switch to root to install tools
 USER root
 
 # Install SOPS
 RUN curl -Lo /usr/local/bin/sops \
-    https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64 && \
+    https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.amd64 && \
     chmod +x /usr/local/bin/sops
 
 # Install AGE (encryption tool)
 RUN curl -Lo /tmp/age.tar.gz \
-    https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz && \
+    https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-amd64.tar.gz && \
     tar xf /tmp/age.tar.gz -C /tmp && \
     mv /tmp/age/age /usr/local/bin/ && \
     mv /tmp/age/age-keygen /usr/local/bin/ && \
@@ -60,15 +69,19 @@ RUN curl -Lo /tmp/age.tar.gz \
 
 # Install helm-secrets plugin
 USER argocd
-RUN helm plugin install https://github.com/jkroepke/helm-secrets --version v4.5.1
+RUN helm plugin install https://github.com/jkroepke/helm-secrets --version v${HELM_SECRETS_VERSION}
+
+USER root
+RUN ln -sf /home/argocd/.local/share/helm/plugins/helm-secrets/scripts/wrapper/helm.sh /usr/local/sbin/helm
+USER argocd
 ```
 
 Build and push the image:
 
 ```bash
 # Build the custom repo server image
-docker build -t myorg/argocd-repo-server:v2.9.3-secrets .
-docker push myorg/argocd-repo-server:v2.9.3-secrets
+docker build -t myorg/argocd-repo-server:v3.4.2-secrets .
+docker push myorg/argocd-repo-server:v3.4.2-secrets
 ```
 
 ## Alternative: Init Container Approach
@@ -94,33 +107,53 @@ spec:
             - |
               # Install SOPS
               wget -O /custom-tools/sops \
-                https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
+                https://github.com/getsops/sops/releases/download/v3.13.0/sops-v3.13.0.linux.amd64
               chmod +x /custom-tools/sops
 
               # Install AGE
               wget -O /tmp/age.tar.gz \
-                https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz
+                https://github.com/FiloSottile/age/releases/download/v1.3.1/age-v1.3.1-linux-amd64.tar.gz
               tar xf /tmp/age.tar.gz -C /tmp
               mv /tmp/age/age /custom-tools/
               mv /tmp/age/age-keygen /custom-tools/
               chmod +x /custom-tools/age /custom-tools/age-keygen
+
+              # Install helm-secrets
+              mkdir -p /custom-tools/helm-plugins
+              wget -qO- https://github.com/jkroepke/helm-secrets/releases/download/v4.7.6/helm-secrets.tar.gz \
+                | tar -C /custom-tools/helm-plugins -xzf-
+              cp /custom-tools/helm-plugins/helm-secrets/scripts/wrapper/helm.sh /custom-tools/helm
+              chmod +x /custom-tools/helm
           volumeMounts:
             - name: custom-tools
               mountPath: /custom-tools
       containers:
-        - name: repo-server
+        - name: argocd-repo-server
           env:
             - name: HELM_PLUGINS
               value: /custom-tools/helm-plugins
             - name: SOPS_AGE_KEY_FILE
               value: /sops-age/keys.txt
+            - name: HELM_SECRETS_WRAPPER_ENABLED
+              value: "true"
+            - name: HELM_SECRETS_VALUES_ALLOW_ABSOLUTE_PATH
+              value: "true"
+            - name: HELM_SECRETS_DECRYPT_SECRETS_IN_TMP_DIR
+              value: "true"
+            - name: HELM_SECRETS_HELM_PATH
+              value: /usr/local/bin/helm
           volumeMounts:
+            - name: custom-tools
+              mountPath: /custom-tools
             - name: custom-tools
               mountPath: /usr/local/bin/sops
               subPath: sops
             - name: custom-tools
               mountPath: /usr/local/bin/age
               subPath: age
+            - name: custom-tools
+              mountPath: /usr/local/sbin/helm
+              subPath: helm
             - name: sops-age
               mountPath: /sops-age
       volumes:
@@ -129,6 +162,21 @@ spec:
         - name: sops-age
           secret:
             secretName: sops-age-key
+```
+
+Allow the helm-secrets value file schemes in the `argocd-cm` ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  helm.valuesFileSchemes: >-
+    secrets+gpg-import, secrets+gpg-import-kubernetes,
+    secrets+age-import, secrets+age-import-kubernetes,
+    secrets, secrets+literal, https
 ```
 
 ## Setting Up Encryption with AGE
@@ -153,7 +201,7 @@ Create a `.sops.yaml` configuration in your Git repo:
 ```yaml
 # .sops.yaml - SOPS configuration
 creation_rules:
-  # Encrypt only the 'data' and 'stringData' keys in secrets files
+  # Encrypt Helm secrets values files
   - path_regex: .*secrets.*\.yaml$
     age: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
@@ -207,7 +255,7 @@ sops:
             ...
             -----END AGE ENCRYPTED FILE-----
     lastmodified: "2026-02-26T10:00:00Z"
-    version: 3.8.1
+    version: 3.13.0
 ```
 
 Commit the encrypted file to Git:
