@@ -17,7 +17,7 @@ This guide shows you how to build automated health report generation for ArgoCD 
 A useful ArgoCD health report should cover:
 
 - Application sync status (Synced, OutOfSync, Unknown)
-- Application health status (Healthy, Degraded, Progressing, Missing, Suspended)
+- Application health status (Healthy, Degraded, Progressing, Missing, Suspended, Unknown)
 - Applications with sync errors
 - Drift detection - resources that have diverged from Git
 - Cluster connectivity status
@@ -38,6 +38,7 @@ REPORT_DIR="${REPORT_DIR:-/reports}"
 REPORT_FILE="${REPORT_DIR}/argocd-health-$(date +%Y%m%d-%H%M%S).txt"
 NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
 STALE_THRESHOLD_HOURS="${STALE_THRESHOLD:-24}"
+ARGOCD_OPTS="${ARGOCD_OPTS:-}"
 
 mkdir -p "${REPORT_DIR}"
 
@@ -53,7 +54,7 @@ report "============================================="
 report ""
 
 # Collect application data
-APPS_JSON=$(argocd app list -o json)
+APPS_JSON=$(argocd ${ARGOCD_OPTS} app list -o json)
 TOTAL_APPS=$(echo "${APPS_JSON}" | jq 'length')
 
 report "SUMMARY"
@@ -77,6 +78,7 @@ DEGRADED=$(echo "${APPS_JSON}" | jq '[.[] | select(.status.health.status == "Deg
 PROGRESSING=$(echo "${APPS_JSON}" | jq '[.[] | select(.status.health.status == "Progressing")] | length')
 MISSING=$(echo "${APPS_JSON}" | jq '[.[] | select(.status.health.status == "Missing")] | length')
 SUSPENDED=$(echo "${APPS_JSON}" | jq '[.[] | select(.status.health.status == "Suspended")] | length')
+UNKNOWN_HEALTH=$(echo "${APPS_JSON}" | jq '[.[] | select(.status.health.status == "Unknown")] | length')
 
 report ""
 report "Health Status:"
@@ -85,6 +87,7 @@ report "  Degraded:    ${DEGRADED}"
 report "  Progressing: ${PROGRESSING}"
 report "  Missing:     ${MISSING}"
 report "  Suspended:   ${SUSPENDED}"
+report "  Unknown:     ${UNKNOWN_HEALTH}"
 
 # Calculate health percentage
 if [[ ${TOTAL_APPS} -gt 0 ]]; then
@@ -142,7 +145,7 @@ report "============================================="
 
 THRESHOLD_EPOCH=$(date -d "-${STALE_THRESHOLD_HOURS} hours" +%s 2>/dev/null || date -v-${STALE_THRESHOLD_HOURS}H +%s)
 
-echo "${APPS_JSON}" | jq -r '.[] | "\(.metadata.name)\t\(.status.operationState.finishedAt // "never")"' | \
+echo "${APPS_JSON}" | jq -r '.[] | "\(.metadata.name)\t\(.status.operationState.finishedAt // (.status.history // [] | max_by(.id).deployedAt) // "never")"' | \
   while IFS=$'\t' read -r name last_sync; do
     if [[ "${last_sync}" == "never" || "${last_sync}" == "null" ]]; then
       report "  ${name}: never synced"
@@ -160,7 +163,7 @@ report "============================================="
 report "CLUSTER CONNECTIVITY"
 report "============================================="
 
-argocd cluster list -o json | jq -r '.[] | "\(.name)\t\(.server)\t\(.connectionState.status)"' | \
+argocd ${ARGOCD_OPTS} cluster list -o json | jq -r '.[] | "\(.name)\t\(.server)\t\(.connectionState.status)"' | \
   while IFS=$'\t' read -r name server status; do
     STATUS_ICON=$([[ "${status}" == "Successful" ]] && echo "OK" || echo "FAIL")
     report "  [${STATUS_ICON}] ${name} (${server})"
@@ -183,9 +186,10 @@ set -euo pipefail
 
 REPORT_DIR="${REPORT_DIR:-/reports}"
 REPORT_FILE="${REPORT_DIR}/argocd-health-$(date +%Y%m%d-%H%M%S).json"
+ARGOCD_OPTS="${ARGOCD_OPTS:-}"
 mkdir -p "${REPORT_DIR}"
 
-APPS_JSON=$(argocd app list -o json)
+APPS_JSON=$(argocd ${ARGOCD_OPTS} app list -o json)
 
 # Build JSON report using jq
 jq -n \
@@ -205,7 +209,8 @@ jq -n \
         degraded: ([$apps[] | select(.status.health.status == "Degraded")] | length),
         progressing: ([$apps[] | select(.status.health.status == "Progressing")] | length),
         missing: ([$apps[] | select(.status.health.status == "Missing")] | length),
-        suspended: ([$apps[] | select(.status.health.status == "Suspended")] | length)
+        suspended: ([$apps[] | select(.status.health.status == "Suspended")] | length),
+        unknown: ([$apps[] | select(.status.health.status == "Unknown")] | length)
       }
     },
     outOfSync: [$apps[] | select(.status.sync.status == "OutOfSync") | {name: .metadata.name, project: .spec.project, health: .status.health.status}],
@@ -236,9 +241,12 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: report
-              image: bitnami/kubectl:1.28
+              # Use an image that includes bash, jq, and the argocd CLI.
+              image: your-registry/argocd-report-runner:latest
               command: ["/bin/bash", "/scripts/argocd-health-report.sh"]
               env:
+                - name: ARGOCD_OPTS
+                  value: "--core"
                 - name: REPORT_DIR
                   value: "/reports"
                 - name: STALE_THRESHOLD
@@ -268,7 +276,8 @@ Integrate with Slack to deliver reports directly to your team channel:
 set -euo pipefail
 
 SLACK_WEBHOOK="${SLACK_WEBHOOK_URL:?SLACK_WEBHOOK_URL is required}"
-APPS_JSON=$(argocd app list -o json)
+ARGOCD_OPTS="${ARGOCD_OPTS:-}"
+APPS_JSON=$(argocd ${ARGOCD_OPTS} app list -o json)
 
 TOTAL=$(echo "${APPS_JSON}" | jq 'length')
 HEALTHY=$(echo "${APPS_JSON}" | jq '[.[] | select(.status.health.status == "Healthy")] | length')
@@ -287,19 +296,26 @@ else
   COLOR="warning"
 fi
 
+PAYLOAD=$(jq -n \
+  --arg color "${COLOR}" \
+  --arg text "Total: ${TOTAL} | Healthy: ${HEALTHY} | Degraded: ${DEGRADED} | OutOfSync: ${OUT_OF_SYNC}" \
+  --arg degraded "${DEGRADED_LIST:-None}" \
+  --arg footer "Generated $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{
+    attachments: [{
+      color: $color,
+      title: "ArgoCD Health Report",
+      text: $text,
+      fields: [
+        {title: "Degraded Apps", value: $degraded, short: false}
+      ],
+      footer: $footer
+    }]
+  }')
+
 curl -s -X POST "${SLACK_WEBHOOK}" \
   -H "Content-Type: application/json" \
-  -d "{
-    \"attachments\": [{
-      \"color\": \"${COLOR}\",
-      \"title\": \"ArgoCD Health Report\",
-      \"text\": \"Total: ${TOTAL} | Healthy: ${HEALTHY} | Degraded: ${DEGRADED} | OutOfSync: ${OUT_OF_SYNC}\",
-      \"fields\": [
-        {\"title\": \"Degraded Apps\", \"value\": \"${DEGRADED_LIST:-None}\", \"short\": false}
-      ],
-      \"footer\": \"Generated $(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-    }]
-  }"
+  -d "${PAYLOAD}"
 
 echo "Slack notification sent"
 ```
