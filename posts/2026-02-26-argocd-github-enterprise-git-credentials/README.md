@@ -120,6 +120,8 @@ kind: ConfigMap
 metadata:
   name: argocd-ssh-known-hosts-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   ssh_known_hosts: |
     github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
@@ -177,6 +179,8 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   github.company.com: |
     -----BEGIN CERTIFICATE-----
@@ -303,6 +307,6 @@ Check your GHE version at `https://github.company.com/enterprise/admin` and ensu
 
 ## Security Best Practices for GHE
 
-Create a dedicated service account on GHE rather than using a personal account. Use GitHub Apps when possible for automatic token rotation. Store credentials using SealedSecrets or an external secrets manager. Regularly rotate PATs and SSH keys. Use the principle of least privilege - grant only `repo` read access. Monitor the GHE audit log for ArgoCD access patterns.
+Create a dedicated service account on GHE rather than using a personal account. Use GitHub Apps when possible for automatic token rotation. Store credentials using SealedSecrets or an external secrets manager. Regularly rotate PATs and SSH keys. Use the principle of least privilege - grant only the minimum access needed, such as read-only repository contents access with a GitHub App or fine-grained PAT. Use the classic `repo` scope only when necessary. Monitor the GHE audit log for ArgoCD access patterns.
 
 For more details on managing ArgoCD repository credentials, check out the comprehensive guide on [repository credentials in ArgoCD](https://oneuptime.com/blog/post/2026-01-25-repository-credentials-argocd/view).
