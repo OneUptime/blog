@@ -300,8 +300,7 @@ metadata:
 data:
   # Sessions expire after 24 hours (default is 24h)
   # For tighter security, reduce to 8 hours
-  timeout.session: "8h"
-  timeout.session.maxlifetime: "24h"
+  users.session.duration: "8h"
 ```
 
 ### Enable Audit Logging
