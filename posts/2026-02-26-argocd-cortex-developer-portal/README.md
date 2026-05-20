@@ -33,22 +33,25 @@ graph LR
 
 ## Setting Up the Cortex Integration
 
-Cortex integrates with ArgoCD through its custom integration framework. You will need to push ArgoCD data to Cortex via its API.
+Cortex integrates with ArgoCD through ArgoCD notification webhooks and Cortex API endpoints. You can also push ArgoCD application status into Cortex custom data for scorecard rules.
 
-### Create a Custom Integration in Cortex
+### Create Custom Data in Cortex
 
-First, define a custom integration in Cortex for ArgoCD data:
+First, add an ArgoCD custom data key to a Cortex entity:
 
 ```bash
-# Create a custom integration for ArgoCD in Cortex
+# Add ArgoCD custom data to a Cortex entity
 
-curl -X POST "https://api.getcortexapp.com/catalog/custom-integrations" \
+curl -X POST "https://api.getcortexapp.com/api/v1/catalog/payment-service/custom-data" \
   -H "Authorization: Bearer ${CORTEX_API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
   "key": "argocd",
-  "title": "ArgoCD",
-  "description": "ArgoCD deployment status and configuration"
+  "description": "ArgoCD deployment status and configuration",
+  "value": {
+    "sync_status": "Synced",
+    "health_status": "Healthy"
+  }
 }'
 ```
 
@@ -58,15 +61,15 @@ Create a service that periodically syncs ArgoCD application data to Cortex:
 
 ```python
 # argocd_cortex_sync.py
-# Syncs ArgoCD application data to Cortex custom integration
+# Syncs ArgoCD application data to Cortex custom data
 import requests
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 ARGOCD_URL = os.environ["ARGOCD_URL"]
 ARGOCD_TOKEN = os.environ["ARGOCD_TOKEN"]
 CORTEX_API_KEY = os.environ["CORTEX_API_KEY"]
-CORTEX_API_URL = "https://api.getcortexapp.com"
+CORTEX_API_URL = "https://api.getcortexapp.com/api/v1"
 
 def get_argocd_applications():
     """Fetch all ArgoCD applications."""
@@ -74,39 +77,42 @@ def get_argocd_applications():
         f"{ARGOCD_URL}/api/v1/applications",
         headers={"Authorization": f"Bearer {ARGOCD_TOKEN}"}
     )
+    resp.raise_for_status()
     return resp.json().get("items", [])
 
 def sync_to_cortex(app):
-    """Push ArgoCD app data to Cortex custom integration."""
+    """Push ArgoCD app data to Cortex custom data."""
     app_name = app["metadata"]["name"]
     sync_status = app["status"]["sync"]["status"]
     health_status = app["status"]["health"]["status"]
 
     spec = app.get("spec", {})
     sync_policy = spec.get("syncPolicy", {})
-    automated = sync_policy.get("automated", {})
+    automated = sync_policy.get("automated")
+    automated_options = automated or {}
 
     custom_data = {
         "key": "argocd",
-        "values": {
+        "description": "ArgoCD deployment status and configuration",
+        "value": {
             "sync_status": sync_status,
             "health_status": health_status,
             "repo_url": spec.get("source", {}).get("repoURL", ""),
             "revision": app["status"]["sync"].get("revision", ""),
             "target_revision": spec.get("source", {}).get("targetRevision", ""),
             "destination_namespace": spec.get("destination", {}).get("namespace", ""),
-            "auto_sync_enabled": automated is not None and len(automated) > 0,
-            "self_heal_enabled": automated.get("selfHeal", False),
-            "auto_prune_enabled": automated.get("prune", False),
+            "auto_sync_enabled": automated is not None,
+            "self_heal_enabled": automated_options.get("selfHeal", False),
+            "auto_prune_enabled": automated_options.get("prune", False),
             "project": spec.get("project", "default"),
             "last_sync_time": app.get("status", {}).get("operationState", {}).get("finishedAt", ""),
             "sync_phase": app.get("status", {}).get("operationState", {}).get("phase", ""),
-            "last_updated": datetime.utcnow().isoformat()
+            "last_updated": datetime.now(timezone.utc).isoformat()
         }
     }
 
     # Push to Cortex
-    resp = requests.put(
+    resp = requests.post(
         f"{CORTEX_API_URL}/catalog/{app_name}/custom-data",
         headers={
             "Authorization": f"Bearer {CORTEX_API_KEY}",
@@ -191,8 +197,7 @@ info:
       repository: myorg/payment-service
   x-cortex-k8s:
     deployment:
-      - identifier: payment-service
-        namespace: payments
+      - identifier: payments/payment-service
         cluster: production
 ```
 
@@ -224,46 +229,46 @@ rules:
   # Level 1 - Beginner: Basic ArgoCD adoption
   - title: Managed by ArgoCD
     description: Service is deployed via ArgoCD
-    expression: custom("argocd", "sync_status") != null
+    expression: custom("argocd").sync_status != null
     level: Beginner
     weight: 1
 
   # Level 2 - Intermediate: Proper configuration
   - title: Auto-sync enabled
     description: ArgoCD auto-sync is configured
-    expression: custom("argocd", "auto_sync_enabled") == true
+    expression: custom("argocd").auto_sync_enabled == true
     level: Intermediate
     weight: 1
 
   - title: Application is synced
     description: No drift from Git
-    expression: custom("argocd", "sync_status") == "Synced"
+    expression: custom("argocd").sync_status == "Synced"
     level: Intermediate
     weight: 1
 
   # Level 3 - Advanced: Self-healing and pruning
   - title: Self-heal enabled
     description: ArgoCD automatically corrects drift
-    expression: custom("argocd", "self_heal_enabled") == true
+    expression: custom("argocd").self_heal_enabled == true
     level: Advanced
     weight: 1
 
   - title: Auto-prune enabled
     description: Removed resources are automatically cleaned up
-    expression: custom("argocd", "auto_prune_enabled") == true
+    expression: custom("argocd").auto_prune_enabled == true
     level: Advanced
     weight: 1
 
   # Level 4 - Expert: Full health and project isolation
   - title: Application is healthy
     description: All resources report healthy status
-    expression: custom("argocd", "health_status") == "Healthy"
+    expression: custom("argocd").health_status == "Healthy"
     level: Expert
     weight: 1
 
   - title: Uses non-default project
     description: Application uses a dedicated ArgoCD project
-    expression: custom("argocd", "project") != "default"
+    expression: custom("argocd").project != "default"
     level: Expert
     weight: 1
 ```
@@ -274,19 +279,19 @@ Cortex Query Language (CQL) lets you write custom rules for scorecards. Here are
 
 ```text
 # Check if service is managed by ArgoCD
-custom("argocd", "sync_status") != null
+custom("argocd").sync_status != null
 
 # Check if application is synced and healthy
-custom("argocd", "sync_status") == "Synced" AND custom("argocd", "health_status") == "Healthy"
+custom("argocd").sync_status == "Synced" AND custom("argocd").health_status == "Healthy"
 
 # Check if automated sync with self-heal is configured
-custom("argocd", "auto_sync_enabled") == true AND custom("argocd", "self_heal_enabled") == true
+custom("argocd").auto_sync_enabled == true AND custom("argocd").self_heal_enabled == true
 
 # Check if service uses a specific ArgoCD project
-custom("argocd", "project") != "default"
+custom("argocd").project != "default"
 
 # Check if last sync was within 24 hours
-custom("argocd", "last_sync_time") > relative_time("-24h")
+datetime(custom("argocd").last_sync_time).fromNow() > duration("P-1D")
 ```
 
 ## Sending Deployment Events to Cortex
@@ -305,10 +310,11 @@ data:
     webhook:
       cortex:
         method: POST
+        path: /api/v1/catalog/{{.app.metadata.name}}/deploys
         body: |
           {
             "title": "ArgoCD Sync: {{.app.metadata.name}}",
-            "sha": "{{.app.status.sync.revision}}",
+            "sha": "{{.app.status.operationState.operation.sync.revision}}",
             "type": "DEPLOY",
             "timestamp": "{{.app.status.operationState.finishedAt}}",
             "environment": "production"
@@ -319,12 +325,24 @@ data:
       send: [cortex-deploy]
 
   service.webhook.cortex: |
-    url: https://api.getcortexapp.com/catalog/{{.app.metadata.name}}/deploys
+    url: https://api.getcortexapp.com
     headers:
       - name: Content-Type
         value: application/json
+      - name: Accept
+        value: application/json
       - name: Authorization
-        value: Bearer ${CORTEX_API_KEY}
+        value: Bearer $cortex-token
+```
+
+Subscribe each ArgoCD Application to the notification trigger:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.cortex: ""
 ```
 
 ## Reporting and Dashboards
@@ -341,4 +359,4 @@ These metrics are available in Cortex's dashboard and can be exported for execut
 
 ## Summary
 
-Integrating ArgoCD with Cortex brings deployment health into your engineering standards framework. Push ArgoCD data via the custom integration API, define scorecards that measure GitOps maturity, and use CQL rules for custom checks. The combination of ArgoCD's GitOps automation with Cortex's standards tracking creates a feedback loop that drives continuous improvement in deployment practices. For other developer portal options, see our guides on [integrating ArgoCD with Backstage](https://oneuptime.com/blog/post/2026-02-26-argocd-backstage-service-catalog/view) and [building a self-service deployment catalog](https://oneuptime.com/blog/post/2026-02-26-argocd-self-service-deployment-catalog/view).
+Integrating ArgoCD with Cortex brings deployment health into your engineering standards framework. Push ArgoCD data via Cortex API endpoints, define scorecards that measure GitOps maturity, and use CQL rules for custom checks. The combination of ArgoCD's GitOps automation with Cortex's standards tracking creates a feedback loop that drives continuous improvement in deployment practices. For other developer portal options, see our guides on [integrating ArgoCD with Backstage](https://oneuptime.com/blog/post/2026-02-26-argocd-backstage-service-catalog/view) and [building a self-service deployment catalog](https://oneuptime.com/blog/post/2026-02-26-argocd-self-service-deployment-catalog/view).
