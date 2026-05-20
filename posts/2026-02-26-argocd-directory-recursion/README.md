@@ -130,7 +130,7 @@ apps/
       servicemonitor-frontend.yaml
 ```
 
-The ArgoCD Application with recursion picks up all 12 files:
+The ArgoCD Application with recursion picks up all 14 files:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -211,9 +211,9 @@ The directory names (base, backend, frontend) have no effect on ordering - only 
 
 ## Recursion with Jsonnet and Kustomize
 
-An important thing to know: `directory.recurse` only works with the directory source type (plain YAML). If ArgoCD detects a `kustomization.yaml` file in any directory, it switches to Kustomize mode for that directory. Similarly, a `Chart.yaml` triggers Helm mode.
+An important thing to know: `directory.recurse` only works with the directory source type (plain YAML). When you explicitly configure the directory source, ArgoCD expects plain manifest files. If it encounters Kustomize, Helm, or Jsonnet source files such as `kustomization.yaml`, `Chart.yaml`, or `.jsonnet` files in the directory tree, manifest generation can fail instead of recursively reading them as plain YAML.
 
-This means if your recursive directory tree contains a `kustomization.yaml` somewhere, things can get confusing. The best practice is to keep your directory source purely plain YAML when using recursion.
+This means if your recursive directory tree contains a `kustomization.yaml` somewhere, the directory source can fail to render. The best practice is to keep your directory source purely plain YAML when using recursion.
 
 ```yaml
 # This works - pure YAML directory with recursion
@@ -224,7 +224,7 @@ spec:
       recurse: true
 
 # This could cause issues - if any subdirectory has kustomization.yaml,
-# ArgoCD may try to run kustomize build instead of reading plain YAML
+# ArgoCD can fail the directory render instead of reading it as plain YAML
 ```
 
 If you need Kustomize in some subdirectories and plain YAML in others, use separate ArgoCD Applications for each.
@@ -287,8 +287,8 @@ Common issues include:
 - **Forgetting to set `recurse: true`** - The default is `false`
 - **Files with wrong extensions** - ArgoCD looks for `.yaml`, `.yml`, and `.json`
 - **Empty YAML files** - Files that are empty or only contain comments are silently skipped
-- **Hidden files** - Files starting with `.` are ignored
-- **Symlinks** - Symbolic links may not be followed depending on the Git server
+- **Skipped files** - Files with `# +argocd:skip-file-rendering` are ignored
+- **Symlinks** - Broken symlinks, symlinks pointing outside the repository, or symlinks to non-regular files cannot be rendered as manifests
 
 ## Best Practices
 
