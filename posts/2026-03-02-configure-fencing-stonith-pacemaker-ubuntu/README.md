@@ -37,7 +37,7 @@ Pacemaker uses fence agents - programs that implement the actual fencing action.
 - `fence_aws` - fences via AWS EC2 API
 - `fence_azure_arm` - fences via Azure Resource Manager
 - `fence_virsh` - fences KVM virtual machines via libvirt
-- `fence_sbd` - uses SCSI-based disk fencing
+- `fence_sbd` - uses SBD shared block-device fencing
 
 Install the fence agents package:
 
@@ -74,37 +74,37 @@ sudo pcs host auth node1 node2 -u hacluster -p yourpassword
 # Create STONITH resource for node1's fence agent pointing at node2's BMC
 sudo pcs stonith create fence-node2 fence_ipmilan \
   pcmk_host_list="node2" \
-  ipaddr="192.168.1.102" \
-  login="admin" \
-  passwd="secretpassword" \
+  ip="192.168.1.102" \
+  username="admin" \
+  password="secretpassword" \
   lanplus=1 \
   op monitor interval=60s
 
 # Create STONITH resource for node2's fence agent pointing at node1's BMC
 sudo pcs stonith create fence-node1 fence_ipmilan \
   pcmk_host_list="node1" \
-  ipaddr="192.168.1.101" \
-  login="admin" \
-  passwd="secretpassword" \
+  ip="192.168.1.101" \
+  username="admin" \
+  password="secretpassword" \
   lanplus=1 \
   op monitor interval=60s
 ```
 
 ## Configuring SBD Fencing for Virtual Environments
 
-In virtualized or cloud environments without IPMI, SBD (SCSI-Based Death) fencing uses a shared disk as a watchdog mechanism:
+In virtualized environments without IPMI, SBD (STONITH Block Device) fencing uses shared block storage with a watchdog mechanism:
 
 ```bash
 # Install SBD
 sudo apt install -y sbd
 
-# Initialize SBD on a shared disk (run on one node)
-# /dev/sdc should be a shared disk accessible by both nodes
-sudo sbd -d /dev/sdc create
+# Initialize SBD on a shared block device (run on one node)
+# Use a stable /dev/disk/by-id/... path accessible by both nodes
+sudo sbd -d /dev/disk/by-id/your-sbd-device create
 
 # Configure SBD in /etc/default/sbd
 sudo tee /etc/default/sbd << 'EOF'
-SBD_DEVICE="/dev/sdc"
+SBD_DEVICE="/dev/disk/by-id/your-sbd-device"
 SBD_PACEMAKER=yes
 SBD_STARTMODE=always
 SBD_DELAY_START=no
@@ -112,12 +112,12 @@ SBD_WATCHDOG_DEV=/dev/watchdog
 SBD_WATCHDOG_TIMEOUT=5
 EOF
 
-# Enable SBD service
-sudo systemctl enable sbd
+# Enable and start SBD service on each node
+sudo systemctl enable --now sbd
 
 # Add SBD STONITH to Pacemaker
 sudo pcs stonith create sbd-fencing fence_sbd \
-  devices="/dev/sdc" \
+  devices="/dev/disk/by-id/your-sbd-device" \
   pcmk_reboot_action="off"
 ```
 
@@ -141,7 +141,7 @@ fence_virsh \
 sudo pcs stonith create fence-node2-virsh fence_virsh \
   pcmk_host_list="node2" \
   ip="192.168.1.1" \
-  login="root" \
+  username="root" \
   identity_file="/root/.ssh/id_rsa" \
   plug="node2" \
   op monitor interval=60s
@@ -177,8 +177,7 @@ sudo pcs stonith fence node2
 # Check status after fencing
 sudo pcs status
 
-# Bring node2 back online after testing
-# On node2, once it boots:
+# If node2 was previously put in standby, clear standby after it boots:
 sudo pcs node unstandby node2
 ```
 
