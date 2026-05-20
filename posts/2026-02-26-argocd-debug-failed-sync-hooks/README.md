@@ -72,7 +72,7 @@ The real diagnostic information is in the Pod logs:
 # Find the hook Pods
 kubectl get pods -n my-app -l job-name=db-migrate
 
-# View logs from the most recent Pod
+# View logs from matching hook Pods
 kubectl logs -n my-app -l job-name=db-migrate --tail=100
 
 # If the Pod crashed and restarted, check previous logs
@@ -93,11 +93,11 @@ Pod events reveal issues that happen before your code runs:
 kubectl describe pod -n my-app -l job-name=db-migrate
 ```
 
-Common event messages:
+Common event messages and status reasons:
 - `Failed to pull image`: Image does not exist or registry auth failed
 - `Back-off pulling image`: Repeated image pull failures
 - `FailedScheduling`: No nodes available (resource constraints)
-- `OOMKilled`: Container ran out of memory
+- `OOMKilled`: Container ran out of memory, shown in the container state or last state
 - `Error`: Container exited with non-zero code
 
 ## Step 5: Check Namespace Events
@@ -144,10 +144,9 @@ kubectl get serviceaccount default -n my-app -o yaml
 The hook container exceeded its memory limit:
 
 ```text
-Events:
-  Type     Reason    Age   Message
-  ----     ------    ----  -------
-  Warning  OOMKilled  30s  Container migrate was OOMKilled
+State:          Terminated
+  Reason:       OOMKilled
+  Exit Code:    137
 ```
 
 **Fix**: Increase the memory limit:
@@ -194,7 +193,7 @@ kubectl run debug --rm -it --image=postgres:15 -n my-app -- \
 
 # Check the database service
 kubectl get svc postgres -n my-app
-kubectl get endpoints postgres -n my-app
+kubectl get endpointslice -n my-app -l kubernetes.io/service-name=postgres
 ```
 
 ### Permission Denied
@@ -283,7 +282,7 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller -
 kubectl get events -n argocd --sort-by='.lastTimestamp'
 ```
 
-To prevent this in the future, use `BeforeHookCreation` instead so hook resources persist until the next sync:
+To keep failed hook resources around for debugging, avoid `HookFailed` while you investigate. Use `BeforeHookCreation` so hook resources persist until the next hook creation:
 
 ```yaml
 argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
@@ -292,7 +291,7 @@ argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 Or combine policies:
 
 ```yaml
-argocd.argoproj.io/hook-delete-policy: HookSucceeded, BeforeHookCreation
+argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 ```
 
 ## Reproducing Hook Failures Locally
@@ -359,4 +358,4 @@ python manage.py migrate --no-input
 
 ## Summary
 
-Debugging failed sync hooks follows a consistent pattern: identify which hook failed, check the Job status, read the Pod logs, examine events, and trace the root cause. Most failures fall into a few categories - image pull issues, resource limits, connectivity problems, permissions, and script errors. Use `BeforeHookCreation` delete policy to ensure hook resources are always available for debugging, and build hooks with verbose logging to make diagnosis faster.
+Debugging failed sync hooks follows a consistent pattern: identify which hook failed, check the Job status, read the Pod logs, examine events, and trace the root cause. Most failures fall into a few categories - image pull issues, resource limits, connectivity problems, permissions, and script errors. Use `BeforeHookCreation` delete policy to keep hook resources available between syncs, and build hooks with verbose logging to make diagnosis faster.
