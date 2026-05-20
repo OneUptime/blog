@@ -75,6 +75,11 @@ on:
       - 'services/**'
       - 'platform/**'
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
 jobs:
   # Job 1: Validate YAML and Kubernetes manifests
   validate:
@@ -89,12 +94,17 @@ jobs:
 
       - name: Build and validate manifests
         run: |
-          find . -name kustomization.yaml -exec dirname {} \; | while read dir; do
+          failed=0
+          while IFS= read -r dir; do
             echo "Building $dir..."
             kustomize build "$dir" > /tmp/manifests.yaml
             echo "Validating $dir..."
-            kubectl apply --dry-run=client -f /tmp/manifests.yaml 2>&1 || echo "FAILED: $dir"
-          done
+            if ! kubectl apply --dry-run=client -f /tmp/manifests.yaml 2>&1; then
+              echo "FAILED: $dir"
+              failed=1
+            fi
+          done < <(find . -name kustomization.yaml -exec dirname {} \;)
+          exit "$failed"
 
   # Job 2: Security scanning
   security:
@@ -105,7 +115,7 @@ jobs:
       - name: Scan for secrets
         uses: trufflesecurity/trufflehog@main
         with:
-          extra_args: --only-verified
+          extra_args: --results=verified
 
       - name: Policy checks
         run: |
@@ -183,6 +193,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   argocd-diff:
     runs-on: ubuntu-latest
@@ -190,6 +204,8 @@ jobs:
       ARGOCD_SERVER: argocd.example.com
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install ArgoCD CLI
         run: |
@@ -217,9 +233,16 @@ jobs:
               if echo "$changed" | grep -q "$app_path"; then
                 echo "### $app" >> argocd-diff.md
                 echo '```diff' >> argocd-diff.md
+                set +e
                 argocd app diff "$app" \
                   --revision "${{ github.event.pull_request.head.sha }}" \
-                  2>&1 >> argocd-diff.md || echo "No diff available" >> argocd-diff.md
+                  2>&1 >> argocd-diff.md
+                diff_status=$?
+                set -e
+                if [ "$diff_status" -eq 2 ]; then
+                  echo "Failed to generate diff" >> argocd-diff.md
+                  exit 1
+                fi
                 echo '```' >> argocd-diff.md
                 echo "" >> argocd-diff.md
               fi
@@ -275,9 +298,9 @@ Required for:
 - Secret management configuration
 - Policy engine rules
 
-## Implementing Approval Gates with Labels
+## Implementing Approval Gates with Reviews
 
-Use GitHub labels to track approval status:
+Use a GitHub Actions check to track approval status:
 
 ```yaml
 # .github/workflows/approval-gate.yaml
@@ -285,6 +308,10 @@ name: Approval Gate
 on:
   pull_request_review:
     types: [submitted]
+
+permissions:
+  contents: read
+  pull-requests: read
 
 jobs:
   check-approvals:
@@ -341,6 +368,11 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
 jobs:
   check-critical:
     runs-on: ubuntu-latest
@@ -350,6 +382,8 @@ jobs:
           fetch-depth: 0
 
       - name: Check for critical changes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           critical=false
 
@@ -373,8 +407,9 @@ jobs:
 
           if [ "$critical" = true ]; then
             echo "This PR contains critical changes and requires manual review"
-            # Add a label to prevent auto-merge
+            # Add a label and fail this required check to prevent auto-merge
             gh pr edit ${{ github.event.pull_request.number }} --add-label "critical-review-needed"
+            exit 1
           fi
 ```
 
