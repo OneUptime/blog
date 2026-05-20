@@ -99,6 +99,8 @@ jobs:
             up
 
       - name: Dump schema
+        env:
+          PGPASSWORD: test
         run: |
           pg_dump \
             -h localhost \
@@ -115,13 +117,12 @@ jobs:
         run: |
           migrate -path database/migrations \
             -database "postgres://test:test@localhost:5432/test_schema?sslmode=disable" \
-            version 2>&1 | head -1 > database/VERSION
+            version 2>&1 | head -1 | awk '{print $1}' > database/VERSION
 
       - name: Check for schema changes
         run: |
-          if git diff --name-only | grep -q "database/schema/schema.sql"; then
-            echo "Schema has changed - updating schema.sql"
-            git add database/schema/schema.sql database/VERSION
+          if git diff --name-only -- database/schema/schema.sql database/VERSION | grep -q .; then
+            echo "Schema or version has changed"
             echo "SCHEMA_CHANGED=true" >> $GITHUB_ENV
           else
             echo "Schema unchanged"
@@ -134,7 +135,7 @@ jobs:
           echo "Please run the schema dump locally and commit the updated schema.sql"
           echo ""
           echo "Schema diff:"
-          git diff database/schema/schema.sql
+          git diff -- database/schema/schema.sql database/VERSION
           exit 1
 ```
 
@@ -166,7 +167,7 @@ data:
   version: "42"
   last-migration: "003_add_user_email_index"
   last-updated: "2026-02-26"
-  schema-hash: "sha256:abc123..."  # Hash of schema.sql for drift detection
+  schema-hash: "abc123..."  # sha256sum of schema.sql for drift detection
 ```
 
 Applications can read this ConfigMap to verify they are compatible with the current schema:
@@ -200,7 +201,7 @@ spec:
         spec:
           containers:
             - name: drift-checker
-              image: postgres:16
+              image: registry.example.com/postgres-curl:16
               command:
                 - /bin/sh
                 - -c
@@ -335,7 +336,7 @@ spec:
               echo "Verifying schema version..."
 
               # Check migration version
-              CURRENT=$(./migrate version 2>&1 | head -1)
+              CURRENT=$(./migrate version 2>&1 | head -1 | awk '{print $1}')
               EXPECTED=$(cat /version/VERSION)
 
               echo "Current DB version: $CURRENT"
@@ -393,7 +394,7 @@ containers:
       - -c
       - |
         APP_VERSION="v2.3.0"
-        CURRENT_SCHEMA=$(./migrate version 2>&1 | head -1)
+        CURRENT_SCHEMA=$(./migrate version 2>&1 | head -1 | awk '{print $1}')
 
         MIN=$(jq -r ".app_versions.\"$APP_VERSION\".min_schema" /config/compatibility.json)
         MAX=$(jq -r ".app_versions.\"$APP_VERSION\".max_schema" /config/compatibility.json)
