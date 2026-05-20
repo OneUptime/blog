@@ -58,7 +58,7 @@ secret:
     portClientSecret: ""
 
 configMap:
-  config:
+  config: |
     resources:
       - kind: argoproj.io/v1alpha1/applications
         selector:
@@ -87,13 +87,13 @@ configMap:
 
 ## Creating Blueprints in Port
 
-Before the exporter can send data, you need to create the blueprints in Port. Use the Port API or the Port UI.
+Before the exporter can send data, you need to create the blueprints in Port. Use the Port API or the Port UI. The examples below assume the related `service` and `cluster` blueprints already exist.
 
 ### ArgoCD Application Blueprint
 
 ```bash
 # Create the ArgoCD Application blueprint via Port API
-curl -X POST "https://api.getport.io/v1/blueprints" \
+curl -X POST "https://api.port.io/v1/blueprints" \
   -H "Authorization: Bearer ${PORT_ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -186,7 +186,7 @@ curl -X POST "https://api.getport.io/v1/blueprints" \
 
 ```bash
 # Create or update the Service blueprint to include ArgoCD relation
-curl -X PATCH "https://api.getport.io/v1/blueprints/service" \
+curl -X PATCH "https://api.port.io/v1/blueprints/service" \
   -H "Authorization: Bearer ${PORT_ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -207,7 +207,7 @@ One of Port's key features is self-service actions. Create actions that trigger 
 
 ```bash
 # Create a sync action for ArgoCD applications
-curl -X POST "https://api.getport.io/v1/blueprints/argocd_application/actions" \
+curl -X POST "https://api.port.io/v1/actions" \
   -H "Authorization: Bearer ${PORT_ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -215,26 +215,37 @@ curl -X POST "https://api.getport.io/v1/blueprints/argocd_application/actions" \
   "title": "Sync Application",
   "icon": "Argo",
   "description": "Trigger an ArgoCD sync for this application",
-  "trigger": "DAY-2",
+  "trigger": {
+    "type": "self-service",
+    "operation": "DAY-2",
+    "blueprintIdentifier": "argocd_application",
+    "userInputs": {
+      "properties": {
+        "prune": {
+          "type": "boolean",
+          "title": "Prune Resources",
+          "description": "Delete resources that are no longer defined in Git",
+          "default": false
+        },
+        "force": {
+          "type": "boolean",
+          "title": "Force Sync",
+          "description": "Force sync even if already synced",
+          "default": false
+        }
+      }
+    }
+  },
   "invocationMethod": {
     "type": "WEBHOOK",
     "url": "https://your-webhook-handler.example.com/argocd/sync",
-    "agent": false
-  },
-  "userInputs": {
-    "properties": {
-      "prune": {
-        "type": "boolean",
-        "title": "Prune Resources",
-        "description": "Delete resources that are no longer defined in Git",
-        "default": false
-      },
-      "force": {
-        "type": "boolean",
-        "title": "Force Sync",
-        "description": "Force sync even if already synced",
-        "default": false
-      }
+    "agent": false,
+    "synchronized": true,
+    "method": "POST",
+    "body": {
+      "appName": "{{ .entity.identifier }}",
+      "prune": "{{ .inputs.prune }}",
+      "force": "{{ .inputs.force }}"
     }
   }
 }'
@@ -256,9 +267,13 @@ ARGOCD_TOKEN = os.environ["ARGOCD_TOKEN"]
 @app.route("/argocd/sync", methods=["POST"])
 def sync_application():
     payload = request.json
-    app_name = payload["context"]["entity"]
-    prune = payload["payload"]["properties"].get("prune", False)
-    force = payload["payload"]["properties"].get("force", False)
+    app_name = payload["appName"]
+    prune = payload.get("prune", False)
+    force = payload.get("force", False)
+    if isinstance(prune, str):
+        prune = prune.lower() == "true"
+    if isinstance(force, str):
+        force = force.lower() == "true"
 
     # Trigger ArgoCD sync
     response = requests.post(
@@ -287,7 +302,7 @@ Port scorecards let you measure and track the quality of your ArgoCD deployments
 
 ```bash
 # Create a deployment health scorecard
-curl -X POST "https://api.getport.io/v1/blueprints/argocd_application/scorecards" \
+curl -X POST "https://api.port.io/v1/blueprints/argocd_application/scorecards" \
   -H "Authorization: Bearer ${PORT_ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -326,16 +341,16 @@ curl -X POST "https://api.getport.io/v1/blueprints/argocd_application/scorecards
     },
     {
       "identifier": "recent_sync",
-      "title": "Synced in Last 24 Hours",
+      "title": "Synced Today",
       "level": "Silver",
       "query": {
         "combinator": "and",
         "conditions": [
           {
             "property": "lastSyncTime",
-            "operator": ">",
+            "operator": "between",
             "value": {
-              "jqQuery": "now - 86400 | todate"
+              "preset": "today"
             }
           }
         ]
@@ -351,10 +366,10 @@ The Port Kubernetes exporter watches ArgoCD Application resources and pushes upd
 
 ```yaml
 # port-exporter-values.yaml
+resyncInterval: 1
+
 configMap:
-  config:
-    # Resync interval in minutes
-    resyncIntervalMinutes: 1
+  config: |
     resources:
       - kind: argoproj.io/v1alpha1/applications
         selector:
