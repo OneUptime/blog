@@ -37,10 +37,9 @@ graph TD
     A[API Server] -->|Session cache| R[Redis]
     B[Repo Server] -->|Manifest cache| R
     C[Controller] -->|App state cache| R
-    D[Dex] -->|Token cache| R
 ```
 
-All ArgoCD components connect to Redis. If Redis is down:
+The core ArgoCD components connect to Redis. If Redis is down:
 - The API server cannot cache responses (slow UI)
 - The repo server cannot cache manifests (slow reconciliation)
 - The controller recalculates state from scratch (high CPU)
@@ -198,7 +197,7 @@ If using a password:
 
 ```bash
 # Create a secret for the Redis password
-kubectl create secret generic argocd-redis-password \
+kubectl create secret generic argocd-redis \
   -n argocd \
   --from-literal=auth=your-redis-password
 ```
@@ -206,12 +205,12 @@ kubectl create secret generic argocd-redis-password \
 Then configure ArgoCD to use it:
 
 ```yaml
-# In ArgoCD component deployments
+# In ArgoCD component workloads
 env:
   - name: REDIS_PASSWORD
     valueFrom:
       secretKeyRef:
-        name: argocd-redis-password
+        name: argocd-redis
         key: auth
 ```
 
@@ -227,7 +226,7 @@ containers:
       - name: REDIS_PASSWORD
         valueFrom:
           secretKeyRef:
-            name: argocd-redis-password
+            name: argocd-redis
             key: auth
 ```
 
@@ -285,7 +284,8 @@ containers:
 **Check current connection count:**
 
 ```bash
-kubectl exec -n argocd deployment/argocd-redis -- redis-cli info clients
+kubectl exec -n argocd deployment/argocd-redis -- \
+  sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" info clients'
 ```
 
 If `connected_clients` is near `maxclients`, you need to increase the limit or reduce the number of ArgoCD replicas competing for connections.
@@ -306,16 +306,15 @@ data:
 
 ```yaml
 data:
-  redis.server: "rediss://my-redis.xxxxxx.cache.amazonaws.com:6380"
-  # Note: 'rediss://' (with double s) means TLS
+  redis.server: "my-redis.xxxxxx.cache.amazonaws.com:6380"
 ```
 
-Or set the TLS flag:
+Then enable Redis TLS on the ArgoCD components that connect to Redis:
 
 ```yaml
-data:
-  redis.server: "my-redis.xxxxxx.cache.amazonaws.com:6379"
-  redis.tls.enabled: "true"
+args:
+  - "--redis-use-tls"
+  # Use "--repo-server-redis-use-tls" for repo-server Redis settings where that flag applies.
 ```
 
 2. **VPC or security group blocking access:**
@@ -339,19 +338,32 @@ If running Redis in HA mode with Sentinel:
 # argocd-cmd-params-cm
 data:
   redis.server: "argocd-redis-ha-haproxy:6379"
-  # Or for Sentinel
-  redis.sentinels: "argocd-redis-ha-announce-0:26379,argocd-redis-ha-announce-1:26379,argocd-redis-ha-announce-2:26379"
-  redis.sentinel.master: "argocd"
+```
+
+If you configure ArgoCD components to connect to Sentinel directly, use the component command-line flags instead of `redis.server`:
+
+```yaml
+args:
+  - "--sentinel"
+  - "argocd-redis-ha-announce-0:26379"
+  - "--sentinel"
+  - "argocd-redis-ha-announce-1:26379"
+  - "--sentinel"
+  - "argocd-redis-ha-announce-2:26379"
+  - "--sentinelmaster"
+  - "argocd"
 ```
 
 **Common Sentinel issues:**
 
 ```bash
 # Check sentinel status
-kubectl exec -n argocd argocd-redis-ha-server-0 -- redis-cli -p 26379 sentinel masters
+kubectl exec -n argocd argocd-redis-ha-server-0 -- \
+  sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" -p 26379 sentinel masters'
 
 # Check which node is the master
-kubectl exec -n argocd argocd-redis-ha-server-0 -- redis-cli -p 26379 sentinel get-master-addr-by-name argocd
+kubectl exec -n argocd argocd-redis-ha-server-0 -- \
+  sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" -p 26379 sentinel get-master-addr-by-name argocd'
 ```
 
 If the Sentinel configuration is wrong, ArgoCD cannot find the Redis master.
@@ -362,7 +374,8 @@ In rare cases, Redis data corruption can cause connection issues:
 
 ```bash
 # Flush the Redis cache (this is safe - ArgoCD rebuilds the cache)
-kubectl exec -n argocd deployment/argocd-redis -- redis-cli FLUSHALL
+kubectl exec -n argocd deployment/argocd-redis -- \
+  sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" FLUSHALL'
 ```
 
 After flushing:
@@ -371,7 +384,7 @@ After flushing:
 # Restart ArgoCD components to rebuild the cache
 kubectl rollout restart deployment argocd-server -n argocd
 kubectl rollout restart deployment argocd-repo-server -n argocd
-kubectl rollout restart deployment argocd-application-controller -n argocd
+kubectl rollout restart statefulset argocd-application-controller -n argocd
 ```
 
 ## Fix 9: DNS Resolution Failure
@@ -397,7 +410,8 @@ Set up monitoring to catch Redis issues early:
 
 ```bash
 # Check Redis health metrics
-kubectl exec -n argocd deployment/argocd-redis -- redis-cli info | grep -E "used_memory|connected_clients|rejected_connections|keyspace"
+kubectl exec -n argocd deployment/argocd-redis -- \
+  sh -c 'redis-cli --no-auth-warning -a "$REDIS_PASSWORD" info' | grep -E "used_memory|connected_clients|rejected_connections|keyspace"
 ```
 
 **Prometheus monitoring:**
@@ -426,10 +440,10 @@ groups:
 
 1. Is the Redis pod running? `kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis`
 2. Does the service have endpoints? `kubectl get endpoints argocd-redis -n argocd`
-3. Can ArgoCD pods reach Redis? Test with `redis-cli ping` from an ArgoCD pod
+3. Can ArgoCD pods reach Redis? Check component logs and, if the image has `redis-cli`, test with `redis-cli ping` using the Redis password
 4. Is authentication configured correctly? Check for NOAUTH errors
 5. Are network policies blocking traffic? Check `kubectl get networkpolicies -n argocd`
-6. Is Redis out of memory? Check `redis-cli info memory`
+6. Is Redis out of memory? Check `redis-cli --no-auth-warning -a "$REDIS_PASSWORD" info memory`
 
 ## Summary
 
