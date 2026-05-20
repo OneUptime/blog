@@ -16,13 +16,13 @@ This guide covers the different methods for controlling which resource actions a
 
 ArgoCD provides three layers of control for resource actions:
 
-1. **Discovery scripts** determine which actions appear for a resource type
+1. **Built-in actions and discovery scripts** determine which actions appear for a resource type
 2. **RBAC policies** determine which users can execute actions
 3. **Resource action configuration** determines which resource types have actions at all
 
 ```mermaid
 flowchart TD
-    A[User clicks resource] --> B{Discovery script defined?}
+    A[User clicks resource] --> B{Built-in or custom actions defined?}
     B -->|No| C[No actions shown]
     B -->|Yes| D[Run discovery.lua]
     D --> E{Action returned as enabled?}
@@ -34,7 +34,7 @@ flowchart TD
 
 ## Method 1: Remove Actions via ConfigMap
 
-The simplest way to disable all actions for a resource type is to not define them. If there is no `resource.customizations.actions.<group>_<kind>` entry in `argocd-cm`, no actions will appear.
+The simplest way to disable custom actions for a resource type is to not define them. If there is no `resource.customizations.actions.<group>_<kind>` entry in `argocd-cm`, no custom actions from that ConfigMap will appear. Resource types with built-in actions can still show those actions unless you override them.
 
 To remove existing actions:
 
@@ -210,11 +210,11 @@ Use the ArgoCD admin CLI to test whether a user has permission to execute an act
 
 ```bash
 # Test if a user in 'developer' role can restart deployments
-argocd admin settings rbac can role:developer action/apps/Deployment/restart '*/*' \
+argocd admin settings rbac can role:developer action/apps/Deployment/restart applications '*/*' \
   --policy-file policy.csv
 
 # Test if a user can scale
-argocd admin settings rbac can role:developer action/apps/Deployment/scale-up '*/*' \
+argocd admin settings rbac can role:developer action/apps/Deployment/scale-up applications '*/*' \
   --policy-file policy.csv
 ```
 
@@ -301,16 +301,8 @@ data:
   resource.customizations.actions.apps_StatefulSet: |
     discovery.lua: |
       actions = {}
-      actions["restart"] = {["disabled"] = false}
       return actions
-    definitions:
-      - name: restart
-        action.lua: |
-          local os = require("os")
-          if obj.spec.template.metadata == nil then obj.spec.template.metadata = {} end
-          if obj.spec.template.metadata.annotations == nil then obj.spec.template.metadata.annotations = {} end
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
-          return obj
+    definitions: []
 ```
 
 The combination of discovery scripts and RBAC gives you fine-grained control over who can do what to which resources. For writing the Lua scripts themselves, see [how to write Lua scripts for custom resource actions](https://oneuptime.com/blog/post/2026-02-26-argocd-lua-scripts-resource-actions/view). For RBAC configuration details, check out how to configure RBAC policies in ArgoCD.
