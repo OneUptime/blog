@@ -204,7 +204,7 @@ spec:
       - ServerSideApply=true
 ```
 
-Setting `prune: false` is essential. Accidentally deleting a namespace deletes everything inside it. Namespace removal should always be manual and intentional.
+Setting `prune: false` is essential because it prevents automated sync from pruning namespaces. Accidentally deleting a namespace deletes everything inside it. For manual pruning or Application deletion, use ArgoCD's `Prune=confirm` or `Delete=confirm` sync options on namespace resources. Namespace removal should always be manual and intentional.
 
 ## Using Kustomize for Namespace Templates
 
@@ -280,7 +280,7 @@ patches:
 
 ## ApplicationSet for Dynamic Namespace Creation
 
-For organizations that onboard teams frequently, use an ApplicationSet with a Git file generator. Each team gets a JSON config file, and the ApplicationSet creates their namespace automatically.
+For organizations that onboard teams frequently, use an ApplicationSet with a Git file generator. Each team gets a JSON config file and matching namespace overlay, and the ApplicationSet creates their ArgoCD Application automatically.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -325,7 +325,7 @@ A team config file looks like:
 }
 ```
 
-New teams submit a pull request adding their config file, and the namespace is created after merge.
+New teams submit a pull request adding their config file and overlay, and the namespace is created after merge.
 
 ## Environment-Specific Namespace Variants
 
