@@ -104,7 +104,7 @@ spec:
 
 ## Method 2: OPA Gatekeeper Policies
 
-Open Policy Agent (OPA) Gatekeeper provides cluster-wide enforcement. First, deploy the constraint template:
+Open Policy Agent (OPA) Gatekeeper provides cluster-wide enforcement for image reference policies that support vulnerability gates. First, deploy the constraint template:
 
 ```yaml
 # policies/image-vulnerability-template.yaml
@@ -125,29 +125,22 @@ spec:
               type: array
               items:
                 type: string
-            maxCritical:
-              type: integer
-            maxHigh:
-              type: integer
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package k8simagevulnerabilities
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
-          image := container.image
+          image := container_images[_]
 
           # Check if image is from an allowed registry
-          allowed := {r | r := input.parameters.allowedRegistries[_]}
-          not image_from_allowed_registry(image, allowed)
+          not image_from_allowed_registry(image)
 
           msg := sprintf("Image '%v' is not from an allowed registry", [image])
         }
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
-          image := container.image
+          image := container_images[_]
 
           # Check for latest tag
           endswith(image, ":latest")
@@ -155,8 +148,7 @@ spec:
         }
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
-          image := container.image
+          image := container_images[_]
 
           # Check that image has a digest
           not contains(image, "@sha256:")
@@ -164,13 +156,33 @@ spec:
           msg := sprintf("Image '%v' must have an explicit tag or digest", [image])
         }
 
-        image_from_allowed_registry(image, allowed) {
-          some registry
-          startswith(image, allowed[registry])
+        container_images[image] {
+          container := input.review.object.spec.containers[_]
+          image := container.image
+        }
+
+        container_images[image] {
+          container := input.review.object.spec.initContainers[_]
+          image := container.image
+        }
+
+        container_images[image] {
+          container := input.review.object.spec.template.spec.containers[_]
+          image := container.image
+        }
+
+        container_images[image] {
+          container := input.review.object.spec.template.spec.initContainers[_]
+          image := container.image
+        }
+
+        image_from_allowed_registry(image) {
+          registry := input.parameters.allowedRegistries[_]
+          startswith(image, registry)
         }
 
         image_has_tag(image) {
-          contains(image, ":")
+          regex.match("^[^@]+:[^/]+$", image)
         }
 ```
 
@@ -200,8 +212,6 @@ spec:
     allowedRegistries:
       - "registry.example.com/"
       - "docker.io/library/"
-    maxCritical: 0
-    maxHigh: 5
 ```
 
 ## Method 3: Kyverno Image Verification
@@ -234,15 +244,15 @@ spec:
         - imageReferences:
             - "registry.example.com/*"
           attestations:
-            - type: https://cosign.sigstore.dev/attestation/vuln/v1
+            - predicateType: https://cosign.sigstore.dev/attestation/vuln/v1
               conditions:
                 - all:
                     # Ensure the scan is recent (within 7 days)
-                    - key: "{{ time_since('', '{{ scan_timestamp }}', '') }}"
-                      operator: LessThan
+                    - key: "{{ time_diff('{{ metadata.scanFinishedOn }}','{{ time_now_utc() }}') }}"
+                      operator: LessThanOrEquals
                       value: "168h"
                     # Zero critical vulnerabilities
-                    - key: "{{ result[?(@.severity=='CRITICAL')].count | sum(@) }}"
+                    - key: "{{ scanner.result.Results[].Vulnerabilities[?Severity=='CRITICAL'][] | length(@) }}"
                       operator: Equals
                       value: 0
               attestors:
@@ -293,11 +303,10 @@ spec:
               apk add --no-cache curl jq
 
               IMAGE="registry.example.com/myapp:v2.1.0"
-              DIGEST=$(crane digest "$IMAGE" 2>/dev/null || echo "")
-
               # Query external scan API
-              RESPONSE=$(curl -s -H "Authorization: Bearer $API_TOKEN" \
-                "https://scan-api.example.com/v1/images?digest=$DIGEST")
+              RESPONSE=$(curl -sG -H "Authorization: Bearer $API_TOKEN" \
+                --data-urlencode "image=$IMAGE" \
+                "https://scan-api.example.com/v1/images")
 
               STATUS=$(echo "$RESPONSE" | jq -r '.scan_status')
               CRITICAL=$(echo "$RESPONSE" | jq -r '.vulnerability_counts.critical')
@@ -326,7 +335,7 @@ Not every vulnerability can be fixed immediately. Create exception policies for 
 
 ```yaml
 # policies/vulnerability-exceptions.yaml
-apiVersion: kyverno.io/v1
+apiVersion: kyverno.io/v2beta1
 kind: PolicyException
 metadata:
   name: allow-known-cve-2024-1234
