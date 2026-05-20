@@ -8,11 +8,11 @@ Description: Compare ArgoCD open source with the Akuity Platform enterprise offe
 
 ---
 
-The Akuity Platform is the enterprise version of ArgoCD, built by the same team that created and maintains the open source project. Founded by Hong Wang and Jesse Suen (ArgoCD's original creators at Intuit), Akuity provides a managed ArgoCD experience with enterprise features that go beyond what the community edition offers. This article helps you evaluate whether the open source version meets your needs or if upgrading to the Akuity Platform is worth the investment.
+The Akuity Platform is a fully managed Kubernetes application delivery platform powered by Argo, built by ArgoCD's original creators. Founded by Hong Wang and Jesse Suen (ArgoCD's original creators at Intuit), Akuity provides a managed ArgoCD experience with enterprise features that go beyond what the community edition offers. This article helps you evaluate whether the open source version meets your needs or if upgrading to the Akuity Platform is worth the investment.
 
 ## Understanding the Relationship
 
-Akuity is not a fork of ArgoCD. The Akuity Platform runs the same ArgoCD you already know, but as a managed service with additional enterprise capabilities. Your ArgoCD Application manifests, Projects, and configurations work identically on both.
+Akuity is not a fork of ArgoCD. The Akuity Platform automates deployment of upstream ArgoCD, with an optional Akuity-maintained ArgoCD version for platform-specific features. Your ArgoCD Application manifests and Projects use the same API, though some platform and in-cluster configuration details differ.
 
 ```mermaid
 graph TD
@@ -79,14 +79,13 @@ Community features include:
 
 The Akuity Platform adds capabilities focused on operations, scale, and enterprise requirements.
 
-**Managed Control Plane.** Akuity runs the ArgoCD control plane (API server, repo server, controllers) as a managed service. The agent running in your cluster only needs outbound connectivity to the Akuity control plane.
+**Managed Control Plane.** Akuity hosts and manages the ArgoCD frontend/control plane and uses an agent-based architecture for connected clusters. The application controller and repo server can run in managed clusters, close to the workloads, while the agent only needs outbound connectivity to the Akuity control plane.
 
 ```bash
 # Akuity installation - lightweight agent in your cluster
-# No need to manage ArgoCD server, repo-server, or controllers
-akuity agent install \
-  --instance-id my-instance \
-  --cluster-name production
+# No need to expose the Kubernetes API server publicly
+akuity argocd cluster get-agent-manifests \
+  --instance-name=my-instance production | kubectl apply -f -
 ```
 
 Compare this to self-managed ArgoCD where you handle:
@@ -109,7 +108,7 @@ kubectl get pods -n argocd
 - Network isolation between tenants
 - Vulnerability scanning of managed components
 
-**Enterprise SSO.** While community ArgoCD uses Dex, Akuity integrates directly with enterprise identity providers without the Dex intermediary.
+**Enterprise SSO.** Community ArgoCD supports SSO through bundled Dex or an existing OIDC provider. Akuity adds platform-level SSO for enterprise identity providers such as Microsoft Entra ID, Google Workspace, Okta, OIDC, and SAML.
 
 **Advanced RBAC.** Akuity extends ArgoCD's RBAC with organization-level and instance-level permissions, making it easier to manage access at scale.
 
@@ -128,7 +127,7 @@ kubectl get pods -n argocd
 # 3. Plan maintenance window
 # 4. Execute upgrade
 helm upgrade argocd argo/argo-cd -n argocd \
-  --version 6.5.0 \
+  --version 9.5.14 \
   -f values.yaml
 
 # 5. Verify all components are healthy
@@ -153,9 +152,6 @@ Upgrades are handled by Akuity. You receive notifications about upcoming upgrade
 # controller-values.yaml
 controller:
   replicas: 3
-  env:
-    - name: ARGOCD_CONTROLLER_REPLICAS
-      value: "3"
   resources:
     requests:
       cpu: 2000m
@@ -197,7 +193,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: argocd
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
     - port: metrics
 
@@ -251,9 +247,9 @@ Total: ~$3,835/month
 
 ```text
 Akuity subscription: Varies by tier
-  Starter: Free (limited features)
-  Pro: Starting at ~$500/month
-  Enterprise: Custom pricing
+  Free trial: Available
+  Pro: Starting at $495/month
+  Enterprise: Contact sales
 
 Infrastructure costs:
   Agent pods (lightweight): ~$50/month
