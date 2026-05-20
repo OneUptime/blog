@@ -17,7 +17,7 @@ Auditing in ArgoCD covers several layers: the ArgoCD API server logs, Kubernetes
 ```mermaid
 flowchart TD
     A[User Action] --> B[ArgoCD API Server]
-    B --> C[ArgoCD Audit Log]
+    B --> C[ArgoCD API Logs and Events]
     B --> D[Kubernetes Audit Log]
     A --> E[Git Commit]
 
@@ -33,7 +33,7 @@ flowchart TD
 
 ## Enabling ArgoCD Audit Logging
 
-ArgoCD logs every API call by default. To get useful audit data, increase the log level and structure the output.
+ArgoCD logs payloads for most API requests, except sensitive requests such as session creation. To get useful audit data, use structured output and keep the standard `info` log level unless you are troubleshooting.
 
 ```yaml
 apiVersion: v1
@@ -50,15 +50,17 @@ data:
   controller.log.level: info
 ```
 
-ArgoCD API server logs include:
+ArgoCD API server logs and application events can include:
 
 - User identity (from SSO or local accounts)
 - Action performed (create, update, delete, sync)
 - Target resource (application name, project)
 - Timestamp
-- Source IP address
+- Application log fields such as application name, application namespace, and project
 
-Example log entry:
+ArgoCD does not log client IP addresses directly because the API server is usually behind a proxy. Log source IP addresses at the ingress or proxy layer in front of ArgoCD.
+
+Representative parsed event/log entry:
 
 ```json
 {
@@ -104,7 +106,22 @@ data:
         essential: true
 ```
 
-With SSO configured, every API call in the audit log includes the authenticated user's email and group memberships.
+With SSO configured, ArgoCD can attribute user actions to the authenticated username where applicable, and RBAC can use group claims when your identity provider returns them. Some providers, including Okta, may return groups from the UserInfo endpoint instead of the ID token; enable UserInfo group lookup if needed:
+
+```yaml
+oidc.config: |
+  name: Okta
+  issuer: https://myorg.okta.com/oauth2/default
+  clientID: argocd-client-id
+  clientSecret: $oidc.okta.clientSecret
+  requestedScopes:
+    - openid
+    - profile
+    - email
+    - groups
+  enableUserInfoGroups: true
+  userInfoPath: /userinfo
+```
 
 ## Kubernetes Audit Logging
 
@@ -150,7 +167,7 @@ ArgoCD generates Kubernetes events for significant application lifecycle changes
 
 ```bash
 # View recent ArgoCD events
-kubectl get events -n argocd --sort-by='.lastTimestamp' | grep -E "Sync|Health|Created|Deleted"
+kubectl get events -n argocd --sort-by='.metadata.creationTimestamp' | grep -E "Sync|Health|Created|Deleted"
 ```
 
 Events include:
@@ -171,7 +188,13 @@ metadata:
   name: event-exporter
   namespace: monitoring
 spec:
+  selector:
+    matchLabels:
+      app: event-exporter
   template:
+    metadata:
+      labels:
+        app: event-exporter
     spec:
       containers:
         - name: event-exporter
@@ -204,10 +227,10 @@ git log --format="%h %an %ad %s" -- k8s/overlays/prod/deployment.yaml
 git show abc1234 -- k8s/overlays/prod/
 ```
 
-Enforce commit signing for stronger auditability:
+Enforce commit signing for stronger auditability. On ArgoCD versions that use project-level GnuPG verification, import the trusted public key into ArgoCD first, then require it on the project:
 
 ```yaml
-# ArgoCD project with signature verification
+# ArgoCD project with legacy GnuPG signature verification
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
@@ -216,6 +239,8 @@ spec:
   signatureKeys:
     - keyID: "ABC123DEF456"
 ```
+
+In newer ArgoCD versions, check the Source Integrity Verification documentation because GnuPG verification is being replaced by the expanded source integrity policy.
 
 ## Building an Audit Dashboard
 
@@ -279,7 +304,7 @@ Create a Grafana dashboard with these panels:
       "title": "Recent Sync Failures",
       "type": "table",
       "targets": [{
-        "expr": "argocd_app_sync_total{phase='Error'}"
+        "expr": "argocd_app_sync_total{phase=\"Error\"}"
       }]
     }
   ]
@@ -335,7 +360,7 @@ groups:
 
       - alert: AfterHoursDeployment
         expr: |
-          increase(argocd_app_sync_total{dest_namespace=~".*-prod"}[1h]) > 0
+          increase(argocd_app_sync_total{name=~".*-prod"}[1h]) > 0
           and on() (hour() < 8 or hour() > 20)
         labels:
           severity: warning
@@ -360,16 +385,15 @@ For compliance, audit data must be retained for a specific period (typically 1 t
 - **Git history**: Preserved automatically in your Git repository
 - **ArgoCD events**: Export before the default Kubernetes retention expires
 
-Configure your log aggregator's retention policy to match your compliance requirements:
+Configure your log aggregator's retention policy to match your compliance requirements. For example, an Elasticsearch ILM policy can roll over, move, mark read-only, and delete older indices:
 
-```yaml
-# Example: Elasticsearch ILM policy
+```json
 {
   "policy": {
     "phases": {
       "hot": {"actions": {"rollover": {"max_size": "50GB", "max_age": "30d"}}},
       "warm": {"min_age": "30d", "actions": {"shrink": {"number_of_shards": 1}}},
-      "cold": {"min_age": "90d", "actions": {"freeze": {}}},
+      "cold": {"min_age": "90d", "actions": {"readonly": {}}},
       "delete": {"min_age": "365d", "actions": {"delete": {}}}
     }
   }
