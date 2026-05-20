@@ -8,7 +8,7 @@ Description: Learn how to implement dry-run syncs in ArgoCD to preview what chan
 
 ---
 
-A dry-run sync lets you see exactly what ArgoCD will do when it syncs an application - without actually doing it. This is invaluable for validating changes before they hit your cluster, especially for production environments where you want to review every modification before it goes live.
+A dry-run sync lets you preview what ArgoCD plans to do when it syncs an application - without actually doing it. This is invaluable for validating changes before they hit your cluster, especially for production environments where you want to review every modification before it goes live.
 
 This guide covers the different ways to implement dry-run syncs in ArgoCD.
 
@@ -37,8 +37,8 @@ argocd app sync my-app --dry-run
 
 # Dry-run with specific resources
 argocd app sync my-app --dry-run \
-  --resource apps/Deployment/my-app \
-  --resource /Service/my-app
+  --resource apps:Deployment:my-app \
+  --resource :Service:my-app
 
 # Dry-run with prune preview
 argocd app sync my-app --dry-run --prune
@@ -64,7 +64,7 @@ argocd app manifests my-app --source git > /tmp/desired-manifests.yaml
 # Server-side dry-run against the cluster
 kubectl apply --dry-run=server -f /tmp/desired-manifests.yaml
 
-# Client-side dry-run (no cluster needed)
+# Client-side dry-run (does not submit the object to the API server)
 kubectl apply --dry-run=client -f /tmp/desired-manifests.yaml
 ```
 
@@ -72,7 +72,7 @@ Server-side dry-run is more thorough because it processes the request through ad
 
 ```bash
 # Server-side dry-run with diff output
-kubectl diff -f /tmp/desired-manifests.yaml
+kubectl diff --server-side -f /tmp/desired-manifests.yaml
 ```
 
 The `kubectl diff` command shows exactly what would change:
@@ -116,7 +116,7 @@ spec:
     namespace: production
 ```
 
-With server-side diff enabled, the diff shown in the ArgoCD UI and CLI is exactly what would change on sync. This eliminates false positives from client-side diffing.
+With server-side diff enabled, the diff shown in the ArgoCD UI and CLI is computed from a server-side apply dry-run against the Kubernetes API server. This eliminates many false positives from client-side diffing, though ArgoCD does not use server-side diff for new resources and does not include mutation webhook changes unless `IncludeMutationWebhook=true` is also set.
 
 ## Method 4: Preview Environments
 
@@ -152,7 +152,7 @@ This deploys your changes to an isolated namespace where you can verify behavior
 
 ## Method 5: Sync Hooks for Validation
 
-Use ArgoCD sync hooks to run validation before the actual sync:
+Use ArgoCD sync hooks to run validation before ArgoCD applies the rest of the manifests during a sync:
 
 ```yaml
 # pre-sync-validate.yaml
@@ -213,12 +213,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install ArgoCD CLI
         run: |
-          curl -sSL -o /usr/local/bin/argocd \
+          curl -sSL -o argocd-linux-amd64 \
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x /usr/local/bin/argocd
+          sudo install -m 0755 argocd-linux-amd64 /usr/local/bin/argocd
 
       - name: Login to ArgoCD
         run: |
@@ -273,6 +275,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 0755 argocd-linux-amd64 /usr/local/bin/argocd
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login $ARGOCD_SERVER \
+            --username $ARGOCD_USER \
+            --password $ARGOCD_PASSWORD \
+            --grpc-web
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_USER: ${{ secrets.ARGOCD_USER }}
+          ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+
       - name: Generate diff
         id: diff
         run: |
@@ -291,6 +310,23 @@ jobs:
     environment: production  # Requires manual approval
     runs-on: ubuntu-latest
     steps:
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd-linux-amd64 \
+            https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          sudo install -m 0755 argocd-linux-amd64 /usr/local/bin/argocd
+
+      - name: Login to ArgoCD
+        run: |
+          argocd login $ARGOCD_SERVER \
+            --username $ARGOCD_USER \
+            --password $ARGOCD_PASSWORD \
+            --grpc-web
+        env:
+          ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+          ARGOCD_USER: ${{ secrets.ARGOCD_USER }}
+          ARGOCD_PASSWORD: ${{ secrets.ARGOCD_PASSWORD }}
+
       - name: Sync application
         run: argocd app sync my-app
 ```
