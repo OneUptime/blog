@@ -18,7 +18,7 @@ The Plugin generator sends an HTTP POST request to a configured endpoint. The en
 
 ```mermaid
 graph TD
-    A[ApplicationSet Controller] -->|POST /api/v1/getparams| B[Plugin Server]
+    A[ApplicationSet Controller] -->|POST /api/v1/getparams.execute| B[Plugin Server]
     B --> C[External Data Source]
     C --> D[CMDB / Service Registry / API]
     B --> E["JSON Response: [{params}]"]
@@ -29,25 +29,12 @@ graph TD
 
 ## Enabling the Plugin Generator
 
-The Plugin generator is not enabled by default. You need to configure it in the ApplicationSet controller.
+The Plugin generator is available in current ArgoCD versions that include ApplicationSet Plugin generator support. There is no separate `applicationsetcontroller.enable.plugin` flag in the current ApplicationSet controller configuration.
 
-```yaml
-# argocd-cmd-params-cm ConfigMap
-
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Enable plugin generators
-  applicationsetcontroller.enable.plugin: "true"
-```
-
-Restart the ApplicationSet controller after changing the ConfigMap.
+Make sure the ApplicationSet controller is running before applying a Plugin generator.
 
 ```bash
-kubectl rollout restart deployment argocd-applicationset-controller -n argocd
+kubectl get deployment argocd-applicationset-controller -n argocd
 ```
 
 ## Configuring a Plugin Generator
@@ -62,8 +49,9 @@ metadata:
   name: applicationset-plugin-config
   namespace: argocd
 data:
-  token: "$plugin.token"
+  token: "$argocd-appset-plugin-token:plugin.token"
   baseUrl: "http://plugin-server.argocd.svc.cluster.local:8080"
+  requestTimeout: "60"
 ```
 
 Then reference the plugin in your ApplicationSet.
@@ -108,15 +96,21 @@ spec:
 
 ## Building a Plugin Server
 
-The plugin server must implement a single endpoint that accepts POST requests and returns parameter sets.
+The plugin server must implement the getparams endpoint that accepts POST requests and returns parameter sets.
 
 Here is a minimal plugin server in Python.
 
 ```python
 # plugin_server.py
+import os
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({"status": "ok"})
 
 @app.route('/api/v1/getparams.execute', methods=['POST'])
 def get_params():
@@ -210,6 +204,11 @@ spec:
             secretKeyRef:
               name: plugin-db-creds
               key: url
+        - name: PLUGIN_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: argocd-appset-plugin-token
+              key: plugin.token
         readinessProbe:
           httpGet:
             path: /health
@@ -245,9 +244,12 @@ The plugin server should validate the token.
 ```python
 @app.before_request
 def verify_token():
+    if request.path == '/health':
+        return
+
     token = request.headers.get('Authorization', '').replace('Bearer ', '')
     if token != os.environ.get('PLUGIN_TOKEN'):
-        return jsonify({"error": "unauthorized"}), 401
+        return jsonify({"error": "unauthorized"}), 403
 ```
 
 ## CMDB Integration Example
