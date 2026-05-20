@@ -8,16 +8,16 @@ Description: Learn how to configure ArgoCD Image Updater with Google Container R
 
 ---
 
-Google Cloud offers two container registries: the older Google Container Registry (GCR) and the newer Artifact Registry. Both work with ArgoCD Image Updater, but require Google Cloud authentication. This guide covers configuration for both registries, with a focus on Workload Identity for GKE clusters - the recommended authentication approach.
+Google Cloud historically offered two container registry options: the older Google Container Registry (GCR) and the newer Artifact Registry. Container Registry is deprecated and shut down for writes, but `gcr.io` URLs can continue to work when they are hosted by Artifact Registry `gcr.io` repositories. Both `gcr.io` repositories and `*.pkg.dev` Artifact Registry repositories work with ArgoCD Image Updater, but require Google Cloud authentication. This guide covers configuration for both endpoint styles, with a focus on Workload Identity for GKE clusters - the recommended authentication approach.
 
 ## GCR vs Artifact Registry
 
 Google recommends Artifact Registry over GCR for new projects. The key differences:
 
-- **GCR**: `gcr.io/project-id/image` - legacy, uses Cloud Storage buckets
+- **GCR-style URLs**: `gcr.io/project-id/image` - legacy URL format, now supported through Artifact Registry `gcr.io` repositories for migrated projects
 - **Artifact Registry**: `us-docker.pkg.dev/project-id/repo-name/image` - newer, more features
 
-Both use the same authentication mechanisms, so the Image Updater setup is similar.
+Both use Google Cloud IAM, so the Image Updater setup is similar. For Artifact Registry-hosted repositories, including Artifact Registry `gcr.io` repositories, grant Artifact Registry roles instead of Cloud Storage bucket roles.
 
 ## Authentication Options
 
@@ -39,10 +39,11 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:argocd-image-updater@my-project.iam.gserviceaccount.com" \
   --role="roles/artifactregistry.reader"
 
-# For GCR, grant Storage Object Viewer instead
+# For Artifact Registry-hosted gcr.io repositories, use the same Artifact Registry Reader role.
+# Storage Object Viewer only applied to legacy Container Registry buckets.
 # gcloud projects add-iam-policy-binding my-project \
 #   --member="serviceAccount:argocd-image-updater@my-project.iam.gserviceaccount.com" \
-#   --role="roles/storage.objectViewer"
+#   --role="roles/artifactregistry.reader"
 ```
 
 #### Step 2: Bind Workload Identity
@@ -82,11 +83,16 @@ For clusters not running on GKE, use a service account key:
 gcloud iam service-accounts keys create key.json \
   --iam-account=argocd-image-updater@my-project.iam.gserviceaccount.com
 
-# Create a Kubernetes secret from the key
-kubectl create secret generic gcr-credentials \
+# Create a Kubernetes Docker config secret from the key
+kubectl create secret docker-registry gcr-credentials \
   -n argocd \
-  --from-file=credentials=key.json
+  --docker-server=https://us-docker.pkg.dev \
+  --docker-username=_json_key \
+  --docker-password="$(cat key.json)" \
+  --docker-email=argocd-image-updater@my-project.iam.gserviceaccount.com
 ```
+
+Use the registry hostname you configure in `registries.conf` as `--docker-server`, for example `https://gcr.io` for a `gcr.io` repository. Create one secret per registry hostname if you use multiple Artifact Registry locations.
 
 ## Registry Configuration
 
@@ -109,7 +115,7 @@ data:
         default: false
 ```
 
-When using Workload Identity, you may not need explicit credentials in the config. The Image Updater pod will use the Workload Identity token automatically:
+When using Workload Identity, configure Image Updater to retrieve a short-lived token from the GKE metadata server. The credential script should print Docker credentials in `username:password` format, such as `oauth2accesstoken:<access-token>`, and the registry config should use the `ext:` credential source:
 
 ```yaml
 data:
@@ -118,10 +124,22 @@ data:
       - name: Google Artifact Registry
         api_url: https://us-docker.pkg.dev
         prefix: us-docker.pkg.dev
+        credentials: ext:/app/auth/gcp-token.sh
+        credsexpire: 50m
         default: false
 ```
 
-### For Google Container Registry
+For the script, retrieve the token from the metadata server and print it in Docker's access-token format:
+
+```sh
+#!/bin/sh
+TOKEN="$(wget -q -O - --header 'Metadata-Flavor: Google' \
+  http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token \
+  | sed -n 's/.*"access_token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+printf 'oauth2accesstoken:%s\n' "$TOKEN"
+```
+
+### For GCR-Style `gcr.io` Repositories
 
 ```yaml
 data:
@@ -136,6 +154,8 @@ data:
 
 ## Configuring Applications for GCR/Artifact Registry
 
+The Application annotations below are the legacy annotation format. With ArgoCD Image Updater v1, create an `ImageUpdater` custom resource with `useAnnotations: true`, or translate the same settings into the `ImageUpdater` resource.
+
 ### Artifact Registry Example
 
 ```yaml
@@ -146,9 +166,8 @@ metadata:
   namespace: argocd
   annotations:
     # Track image in Artifact Registry
-    argocd-image-updater.argoproj.io/image-list: myapp=us-docker.pkg.dev/my-project/my-repo/myapp
+    argocd-image-updater.argoproj.io/image-list: myapp=us-docker.pkg.dev/my-project/my-repo/myapp:>=1.0.0
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.0.0"
     # Write back to Git
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/git-branch: main
@@ -173,7 +192,7 @@ spec:
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=gcr.io/my-project/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-[a-f0-9]{7}$"
 ```
 
@@ -221,7 +240,7 @@ gcloud projects add-iam-policy-binding source-project \
 
 ## Complete Working Example
 
-Here is a full setup for a production application on GKE using Artifact Registry:
+Here is a setup for a production application on GKE using Artifact Registry. This assumes the `gcp-token.sh` script from the Workload Identity section is mounted into the Image Updater pod at `/app/auth/gcp-token.sh` and is executable:
 
 ```yaml
 # 1. Service Account with Workload Identity
@@ -245,18 +264,30 @@ data:
       - name: Google Artifact Registry
         api_url: https://us-docker.pkg.dev
         prefix: us-docker.pkg.dev
+        credentials: ext:/app/auth/gcp-token.sh
+        credsexpire: 50m
   log.level: info
 ---
-# 3. ArgoCD Application
+# 3. Image Updater selector for legacy annotations
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
+metadata:
+  name: production-updater
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: webapp-production
+      useAnnotations: true
+---
+# 4. ArgoCD Application
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: webapp-production
   namespace: argocd
   annotations:
-    argocd-image-updater.argoproj.io/image-list: webapp=us-docker.pkg.dev/my-project/production/webapp
+    argocd-image-updater.argoproj.io/image-list: webapp=us-docker.pkg.dev/my-project/production/webapp:>=1.0.0
     argocd-image-updater.argoproj.io/webapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/webapp.semver-constraint: ">=1.0.0"
     argocd-image-updater.argoproj.io/webapp.allow-tags: "regexp:^[0-9]+\\.[0-9]+\\.[0-9]+$"
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/git-branch: main
