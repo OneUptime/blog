@@ -14,12 +14,12 @@ Jsonnet is a data templating language that extends JSON with variables, conditio
 
 Jsonnet sits in a sweet spot between plain YAML and full-blown Helm charts. Here is why teams choose it:
 
-- **No package manager needed** - Unlike Helm, there is no tiller, no release state, no chart repository to manage.
-- **Pure functional language** - Every Jsonnet file evaluates to JSON (or YAML), making it predictable and testable.
+- **No package manager needed** - Unlike Helm charts, there is no chart repository or Helm release state to manage.
+- **Pure functional language** - Every Jsonnet file evaluates to JSON, which ArgoCD can parse into Kubernetes manifests, making it predictable and testable.
 - **Strong composition** - You can import, merge, and override objects cleanly using Jsonnet's `+` operator.
-- **ArgoCD native support** - ArgoCD understands Jsonnet natively as a source type. No plugins required.
+- **ArgoCD native support** - ArgoCD supports Jsonnet natively in directory applications. No plugins required.
 
-ArgoCD's repo server runs `jsonnet` internally to render your manifests before applying them to the cluster. This means your Git repository contains Jsonnet files, and ArgoCD handles the rendering transparently.
+ArgoCD's repo server evaluates Jsonnet to generate your manifests, and ArgoCD applies the generated manifests during sync. This means your Git repository contains Jsonnet files, and ArgoCD handles the rendering transparently.
 
 ## Prerequisites
 
@@ -142,7 +142,7 @@ argocd app create nginx-jsonnet \
 
 ## How ArgoCD Renders Jsonnet
 
-When ArgoCD encounters a directory containing `.jsonnet` files, it processes them through this pipeline:
+When ArgoCD processes `.jsonnet` files in a directory application, it processes them through this pipeline:
 
 ```mermaid
 graph LR
@@ -153,28 +153,27 @@ graph LR
     E --> F[Kubernetes Apply]
 ```
 
-The repo server looks for a file named `main.jsonnet` by default. If your entry point has a different name, you need to specify it in the application source configuration.
+ArgoCD treats any file matching `*.jsonnet` in the application directory as a Jsonnet file and evaluates it. If you want ArgoCD to evaluate only one Jsonnet file, keep only that renderable file in the application path or use directory include/exclude patterns.
 
-## Specifying the Jsonnet Entry Point
+## Including a Specific Jsonnet File
 
-If your main Jsonnet file is not called `main.jsonnet`, tell ArgoCD which file to use:
+If your application directory contains multiple Jsonnet files but only one should be rendered directly, tell ArgoCD which file to include:
 
 ```yaml
-# Custom Jsonnet entry point
+# Include only one Jsonnet file for rendering
 spec:
   source:
     repoURL: https://github.com/your-org/your-repo.git
     targetRevision: main
     path: apps/nginx
     directory:
+      include: custom.jsonnet
       jsonnet:
-        # Override the default entry point
-        # ArgoCD will evaluate this file instead of main.jsonnet
         extVars: []
         tlas: []
 ```
 
-Note that by default ArgoCD uses the directory source type and looks for files with `.jsonnet`, `.libsonnet`, or `.json` extensions. You do not need to explicitly declare the source type as Jsonnet - ArgoCD detects it automatically.
+Note that ArgoCD uses the directory source type for Jsonnet and evaluates files matching `*.jsonnet`. Files such as `.libsonnet` libraries are intended to be imported by Jsonnet files rather than rendered directly.
 
 ## Multi-Environment Deployments with Jsonnet
 
@@ -274,7 +273,7 @@ argocd app history nginx-jsonnet
 
 **Import paths matter** - Jsonnet resolves imports relative to the file being evaluated. If your imports fail, check that the library paths are configured correctly in ArgoCD. See our post on [configuring Jsonnet library paths in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-jsonnet-library-paths/view) for details.
 
-**Hidden fields are stripped** - Jsonnet fields starting with `::` (hidden fields) do not appear in the output. This is a feature, not a bug - use hidden fields for internal helper values.
+**Hidden fields are stripped** - Jsonnet fields declared with `::` (hidden fields) do not appear in the output. This is a feature, not a bug - use hidden fields for internal helper values.
 
 **Large manifests can be slow** - If your Jsonnet generates hundreds of resources, the rendering step can take time. Consider splitting into multiple ArgoCD Applications.
 
@@ -292,4 +291,4 @@ Helm remains better for third-party chart consumption, and Kustomize excels at p
 
 ## Summary
 
-Deploying Jsonnet applications with ArgoCD is straightforward - ArgoCD natively supports Jsonnet as a source type, so you just point your Application at a directory containing `.jsonnet` files. The key steps are: structure your Jsonnet project with a clear entry point, create an ArgoCD Application manifest pointing to the directory, and let ArgoCD handle the rendering and deployment. For more advanced Jsonnet usage, check out our guides on [external variables](https://oneuptime.com/blog/post/2026-02-26-argocd-jsonnet-external-variables/view) and [top-level arguments](https://oneuptime.com/blog/post/2026-02-26-argocd-jsonnet-tla-top-level-arguments/view).
+Deploying Jsonnet applications with ArgoCD is straightforward - ArgoCD natively supports Jsonnet in directory applications, so you just point your Application at a directory containing `.jsonnet` files. The key steps are: structure your Jsonnet project with a clear renderable file, create an ArgoCD Application manifest pointing to the directory, and let ArgoCD handle the rendering and deployment. For more advanced Jsonnet usage, check out our guides on [external variables](https://oneuptime.com/blog/post/2026-02-26-argocd-jsonnet-external-variables/view) and [top-level arguments](https://oneuptime.com/blog/post/2026-02-26-argocd-jsonnet-tla-top-level-arguments/view).
