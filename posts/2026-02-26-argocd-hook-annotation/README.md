@@ -12,7 +12,7 @@ The `argocd.argoproj.io/hook` annotation transforms a Kubernetes resource into a
 
 ## Hook phases
 
-ArgoCD defines five hook phases:
+ArgoCD defines seven hook phases:
 
 ```yaml
 # PreSync - runs BEFORE the main sync operation
@@ -27,6 +27,12 @@ argocd.argoproj.io/hook: PostSync
 
 # SyncFail - runs ONLY when the sync operation fails
 argocd.argoproj.io/hook: SyncFail
+
+# PreDelete - runs BEFORE Application resources are deleted
+argocd.argoproj.io/hook: PreDelete
+
+# PostDelete - runs AFTER Application resources are deleted
+argocd.argoproj.io/hook: PostDelete
 
 # Skip - this resource is never applied (useful for temporarily disabling)
 argocd.argoproj.io/hook: Skip
@@ -99,8 +105,8 @@ spec:
             - |
               # Check cluster capacity
               echo "Checking cluster capacity..."
-              AVAILABLE_CPU=$(kubectl top nodes --no-headers | awk '{sum+=$3} END {print sum}')
-              if [ "$AVAILABLE_CPU" -gt 90 ]; then
+              AVERAGE_CPU=$(kubectl top nodes --no-headers | awk '{gsub(/%/, "", $3); sum+=$3; count++} END {if (count > 0) print int(sum/count); else print 0}')
+              if [ "$AVERAGE_CPU" -gt 90 ]; then
                 echo "ERROR: Cluster CPU usage too high for deployment"
                 exit 1
               fi
@@ -391,7 +397,7 @@ metadata:
 
 ArgoCD determines hook completion using resource health:
 
-- **Job** - Healthy when `.status.succeeded >= 1`. Failed when `.status.failed > backoffLimit`
+- **Job** - Healthy when the Job has a `Complete` condition. Failed when the Job has a `Failed` condition, such as when it exceeds `backoffLimit` or `activeDeadlineSeconds`
 - **Pod** - Healthy when phase is Succeeded. Failed when phase is Failed
 - Other resource types use their standard health check
 
@@ -411,9 +417,10 @@ kubectl logs job/db-migrate -n my-app
 kubectl describe job db-migrate -n my-app
 
 # Check if old hook resources are lingering
-kubectl get jobs -n my-app -l argocd.argoproj.io/hook
+kubectl get jobs -n my-app -o json | \
+  jq '.items[] | select(.metadata.annotations["argocd.argoproj.io/hook"] != null) | .metadata.name'
 ```
 
 ## Summary
 
-The `argocd.argoproj.io/hook` annotation enables running tasks at specific points in the sync lifecycle: PreSync for migrations and validation, Sync for tasks that run alongside deployments, PostSync for smoke tests and notifications, and SyncFail for failure alerting. Use Jobs as the resource type for hooks since they provide retry logic and timeout control. Combine hooks with sync waves for precise ordering, and always pair hooks with appropriate hook-delete-policy annotations to manage cleanup. Hooks are the mechanism that turns ArgoCD from a simple resource applier into a full deployment orchestration platform.
+The `argocd.argoproj.io/hook` annotation enables running tasks at specific points in the sync lifecycle: PreSync for migrations and validation, Sync for tasks that run alongside deployments, PostSync for smoke tests and notifications, SyncFail for failure alerting, and PreDelete and PostDelete for tasks around Application deletion. Use Jobs as the resource type for hooks since they provide retry logic and timeout control. Combine hooks with sync waves for precise ordering, and always pair hooks with appropriate hook-delete-policy annotations to manage cleanup. Hooks are the mechanism that turns ArgoCD from a simple resource applier into a full deployment orchestration platform.
