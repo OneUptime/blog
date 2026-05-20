@@ -46,18 +46,20 @@ Use the `--resource` flag with the exact group, kind, and name.
 argocd app sync my-large-app --resource apps:Deployment:web-frontend
 ```
 
-ArgoCD will apply only this Deployment. All other resources remain untouched. The sync operation is fast because it only involves one API call to the Kubernetes cluster.
+ArgoCD will apply only this Deployment. All other resources remain untouched. The sync operation is faster because ArgoCD limits the operation to the selected resource instead of applying the entire application.
+
+Selective sync has two important caveats: ArgoCD does not record selective syncs in application history, and sync hooks are not run during selective sync.
 
 ## Previewing the Change First
 
 Always preview what will change before syncing, especially in production.
 
 ```bash
-# See the diff for the specific resource
-argocd app diff my-large-app --resource apps:Deployment:web-frontend
+# See the diff for the application and review the target resource section
+argocd app diff my-large-app
 ```
 
-The diff shows you exactly what fields will change. Common changes include:
+The diff shows you what fields will change. ArgoCD's `app diff` command does not support the `--resource` selector, so review the section for the resource you plan to sync. Common changes include:
 
 - Image tag updates (deploying a new version)
 - Environment variable changes
@@ -71,7 +73,7 @@ argocd app sync my-large-app \
   --dry-run
 ```
 
-The dry run applies the change in a test mode and reports what would happen without actually modifying the cluster.
+The dry run previews the apply operation and reports what would happen without actually modifying the cluster.
 
 ## Scenario: Hotfix Deployment
 
@@ -85,8 +87,8 @@ argocd app get my-large-app | grep "Target"
 argocd app diff my-large-app
 
 # Step 3: Confirm only the Deployment changed
-argocd app resources my-large-app --output json | \
-  jq '.[] | select(.status == "OutOfSync")'
+argocd app get my-large-app --output json | \
+  jq '.status.resources[] | select(.status == "OutOfSync")'
 
 # Step 4: Sync just the fixed Deployment
 argocd app sync my-large-app --resource apps:Deployment:api-backend
@@ -144,7 +146,7 @@ argocd app sync my-large-app --resource networking.k8s.io:Ingress:main-ingress
 kubectl describe ingress main-ingress -n production
 ```
 
-Ingress changes are low-risk for workloads since they only affect routing at the ingress controller level. Syncing just the Ingress is a safe targeted operation.
+Ingress changes do not restart workloads, but they can affect traffic routing immediately. Syncing just the Ingress is a targeted operation that still deserves the same review as any production routing change.
 
 ## Scenario: Updating RBAC for a Service Account
 
@@ -157,25 +159,23 @@ argocd app sync my-large-app \
   --resource rbac.authorization.k8s.io:RoleBinding:app-sa-binding
 ```
 
-RBAC changes take effect immediately for new API calls. Running pods continue with their existing token until it expires or the pod is restarted.
+RBAC changes are evaluated by the Kubernetes API server on API requests. Running pods do not need to be restarted just for updated Role or RoleBinding permissions to apply to future API calls made with their existing service account identity.
 
 ## Working with Resources That Have the Same Name
 
-In multi-namespace applications, you might have resources with the same kind and name in different namespaces. Use the namespace filter to target the correct one.
+In multi-namespace applications, you might have resources with the same kind and name in different namespaces. Include the namespace in the resource selector to target the correct one.
 
 ```bash
 # Sync the web-server Deployment in the staging namespace
 argocd app sync my-app \
-  --resource apps:Deployment:web-server \
-  --namespace staging
+  --resource apps:Deployment:staging/web-server
 
 # Sync the same-named Deployment in production
 argocd app sync my-app \
-  --resource apps:Deployment:web-server \
-  --namespace production
+  --resource apps:Deployment:production/web-server
 ```
 
-Without the `--namespace` flag, ArgoCD syncs all resources matching the group, kind, and name across all namespaces in the application.
+Without the namespace in the resource selector, ArgoCD syncs resources matching the group, kind, and name across namespaces in the application.
 
 ## Monitoring After Single-Resource Sync
 
@@ -183,8 +183,8 @@ After syncing a single resource, verify the operation succeeded and the applicat
 
 ```bash
 # Check the sync result for the specific resource
-argocd app resources my-large-app --output json | \
-  jq '.[] | select(.kind == "Deployment" and .name == "web-frontend") | {status, health: .health.status}'
+argocd app get my-large-app --output json | \
+  jq '.status.resources[] | select(.kind == "Deployment" and .name == "web-frontend") | {status, health: .health.status}'
 
 # Check the overall application status
 argocd app get my-large-app --output json | \
