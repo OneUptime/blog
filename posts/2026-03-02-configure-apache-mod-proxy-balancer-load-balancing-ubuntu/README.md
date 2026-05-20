@@ -29,6 +29,7 @@ sudo a2enmod lbmethod_bytraffic
 sudo a2enmod lbmethod_bybusyness
 sudo a2enmod headers
 sudo a2enmod rewrite
+sudo a2enmod status
 
 # Restart Apache to load modules
 sudo systemctl restart apache2
@@ -64,7 +65,7 @@ sudo nano /etc/apache2/sites-available/loadbalancer.conf
         # Set a timeout for backend connections
         ProxySet timeout=60
 
-        # Maximum number of requests before recycling the connection
+        # Maximum number of failover attempts before giving up
         ProxySet maxattempts=3
     </Proxy>
 
@@ -132,7 +133,7 @@ ProxySet lbmethod=bybusyness
 
 ### heartbeat
 
-Routes based on heartbeat information from backends. Requires `mod_heartbeat` and `mod_heartmonitor` on the backend servers.
+Routes based on heartbeat information from backends. Requires `mod_lbmethod_heartbeat` and `mod_heartmonitor` on the proxy server, and `mod_heartbeat` on the backend servers.
 
 ## Sticky Sessions
 
@@ -238,6 +239,7 @@ Terminate SSL at the load balancer and forward plain HTTP to backends:
 
 ```apache
 # Install certbot for SSL if needed
+# sudo a2enmod ssl
 # sudo certbot --apache -d lb.example.com
 
 <VirtualHost *:443>
@@ -273,7 +275,7 @@ for i in {1..10}; do
 done
 
 # Watch the Apache access log to verify distribution
-sudo tail -f /var/log/apache2/lb-access.log | grep BALANCER_WORKER
+sudo tail -f /var/log/apache2/lb-access.log
 ```
 
 Apache mod_proxy_balancer is a solid choice for medium-traffic sites that need load balancing without adding a dedicated appliance. For very high traffic or advanced routing, a dedicated load balancer like HAProxy will offer better performance and more features, but for many environments Apache handles the job without any additional infrastructure.
