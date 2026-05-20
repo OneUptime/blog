@@ -48,7 +48,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
         - name: myapp
@@ -72,7 +78,7 @@ spec:
 
 ## The ConfigMap Update Problem
 
-Here is the most common issue with ConfigMaps and ArgoCD: when you update a ConfigMap, Kubernetes does not automatically restart pods that reference it. Your pods continue running with the old configuration until they are restarted.
+Here is the most common issue with ConfigMaps and ArgoCD: when you update a ConfigMap, Kubernetes does not automatically restart pods that reference it. ConfigMaps consumed as environment variables stay unchanged until the pods are restarted. ConfigMaps mounted as volumes are updated eventually, unless they are mounted with `subPath`, but your application still needs to reload the changed files.
 
 ### Solution 1: Checksum Annotations
 
@@ -84,14 +90,20 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
     metadata:
+      labels:
+        app: myapp
       annotations:
         # Update this when ConfigMap changes
         checksum/config: "abc123def456"
     spec:
       containers:
         - name: myapp
+          image: myapp:1.0.0
           envFrom:
             - configMapRef:
                 name: myapp-config
@@ -113,6 +125,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: myapp-config-v3
+immutable: true
 data:
   LOG_LEVEL: "debug"  # Changed from "info"
 ```
@@ -210,7 +223,7 @@ External Secrets Operator (ESO) syncs secrets from external providers (Vault, AW
 
 ```yaml
 # apps/myapp/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-creds
@@ -248,7 +261,7 @@ graph LR
 
 ### Option 3: SOPS-Encrypted Secrets
 
-Mozilla SOPS encrypts Secret values in-place while keeping keys readable:
+SOPS encrypts Secret values in-place while keeping keys readable:
 
 ```yaml
 # apps/myapp/secret.enc.yaml
@@ -267,16 +280,18 @@ sops:
   version: 3.7.3
 ```
 
-ArgoCD has a SOPS plugin that decrypts during sync:
+ArgoCD can use a config management plugin sidecar to decrypt during sync:
 
 ```yaml
-# In argocd-cm ConfigMap
-data:
-  configManagementPlugins: |
-    - name: sops
-      generate:
-        command: ["sh", "-c"]
-        args: ["sops -d secret.enc.yaml"]
+# /home/argocd/cmp-server/config/plugin.yaml in the plugin sidecar
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
+metadata:
+  name: sops
+spec:
+  generate:
+    command: ["sh", "-c"]
+    args: ["sops -d secret.enc.yaml"]
 ```
 
 ## Organizing ConfigMaps Across Environments
