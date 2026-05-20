@@ -92,7 +92,7 @@ kubectl logs -n external-secrets \
 
 ```yaml
 # Fix 1: Wrong secretStoreRef name
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 spec:
   secretStoreRef:
@@ -103,15 +103,14 @@ spec:
   data:
     - secretKey: password
       remoteRef:
-        key: secret/data/production/db  # v2 KV needs "data" in path
+        key: production/db  # Relative to the Vault provider path
         property: password               # Must match the key in Vault
 
-# Fix 3: Missing property field
-  data:
-    - secretKey: password
-      remoteRef:
-        key: database/creds/myapp  # Dynamic secrets use different path
-        # No property needed for dynamic secrets - use dataFrom instead
+# Fix 3: Fetching all properties from a structured secret
+  dataFrom:
+    - extract:
+        key: production/db
+        # property can point to a nested map when needed
 ```
 
 ## Issue 2: SealedSecret Not Decrypting
@@ -230,7 +229,7 @@ Ensure the secret is created before the Deployment that uses it:
 
 ```yaml
 # ExternalSecret deploys first
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secrets
@@ -239,7 +238,7 @@ metadata:
 
 ---
 # Secret store config deploys even earlier
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-store
@@ -289,8 +288,9 @@ stringData:
 When ArgoCD keeps showing a Secret as OutOfSync:
 
 ```bash
-# View the diff
-argocd app diff myapp --resource :Secret:app-secrets
+# View the application diff
+# Note: the Argo CD CLI does not print Kubernetes Secret contents in diffs.
+argocd app diff myapp
 
 # If the diff shows metadata fields changing:
 # - resourceVersion
@@ -324,9 +324,8 @@ kubectl run vault-test --rm -it --image=curlimages/curl -- \
 kubectl exec -n vault vault-0 -- vault status
 
 # Test authentication
-kubectl exec -n vault vault-0 -- vault login -method=kubernetes \
-  role=external-secrets \
-  jwt=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+kubectl exec -n vault vault-0 -- sh -c \
+  'vault login -method=kubernetes role=external-secrets jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)"'
 ```
 
 ## Debugging Checklist
@@ -337,8 +336,8 @@ When you hit a secret-related sync failure, go through this checklist:
 # 1. Check ArgoCD application status
 argocd app get myapp
 
-# 2. Check for sync errors
-argocd app get myapp --show-conditions
+# 2. Check for sync errors and conditions
+argocd app get myapp -o yaml
 
 # 3. Check resource health
 argocd app resources myapp | grep -i secret
