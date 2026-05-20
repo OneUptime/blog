@@ -121,23 +121,29 @@ With webhooks, ArgoCD receives a notification within seconds of a merge and imme
 For application code changes (not infrastructure changes), ArgoCD Image Updater automatically watches container registries and updates image tags:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
   name: myapp
   namespace: argocd
-  annotations:
-    # Watch for new images matching semver
-    argocd-image-updater.argoproj.io/image-list: myapp=registry.example.com/myapp
-    argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/myapp.allow-tags: regexp:^v[0-9]+\.[0-9]+\.[0-9]+$
-
-    # Write changes back to Git (instead of just overriding in-cluster)
-    argocd-image-updater.argoproj.io/write-back-method: git
-    argocd-image-updater.argoproj.io/write-back-target: kustomization
-    argocd-image-updater.argoproj.io/git-branch: main
 spec:
-  # ... standard app spec
+  applicationRefs:
+  - namePattern: myapp
+    images:
+    - alias: myapp
+      imageName: registry.example.com/myapp:v1.0.0
+      commonUpdateSettings:
+        updateStrategy: semver
+        allowTags: regexp:^v[0-9]+\.[0-9]+\.[0-9]+$
+      manifestTargets:
+        kustomize:
+          name: registry.example.com/myapp
+  writeBackConfig:
+    # Write changes back to Git (instead of just overriding in-cluster)
+    method: git
+    gitConfig:
+      branch: main
+      writeBackTarget: kustomization
 ```
 
 The flow becomes:
@@ -170,14 +176,14 @@ spec:
       prune: true
       selfHeal: true
 ---
-# Staging: auto-sync but watches a staging branch
+# Staging: auto-sync but watches staging manifests updated by CI
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: myapp-staging
 spec:
   source:
-    targetRevision: release
+    targetRevision: HEAD
     path: environments/staging
   syncPolicy:
     automated:
@@ -245,8 +251,14 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  subscriptions: |
+    - recipients:
+      - slack:deploy-alerts
+      triggers:
+      - on-sync-failed
+
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [slack-alert]
 
   template.slack-alert: |
