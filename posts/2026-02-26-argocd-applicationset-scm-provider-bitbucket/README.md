@@ -55,6 +55,7 @@ For Bitbucket Server, use a personal access token or HTTP access token.
 # Required permissions: Repository - Read
 
 kubectl create secret generic bitbucket-server-creds -n argocd \
+  --from-literal=username=your-bitbucket-username \
   --from-literal=token=your-personal-access-token
 ```
 
@@ -79,7 +80,7 @@ spec:
         appPasswordRef:
           secretName: bitbucket-creds
           key: password
-        # Scan all repos, not just the default branch
+        # Scan only the main branch of each repository
         allBranches: false
       filters:
       # Only repositories matching the pattern
@@ -127,6 +128,7 @@ spec:
         api: https://bitbucket.mycompany.com
         # Authentication
         basicAuth:
+          username: deploy-bot
           passwordRef:
             secretName: bitbucket-server-creds
             key: token
@@ -193,12 +195,14 @@ filters:
   - helm/Chart.yaml
 ```
 
-For Bitbucket Cloud, you can also filter by topics if your repositories have been tagged.
+Bitbucket Cloud and Bitbucket Server do not support label filtering, so use repository, path, and branch filters instead.
 
 ```yaml
 filters:
-- labelMatch: "kubernetes"
-  repositoryMatch: ".*"
+- repositoryMatch: ".*"
+  branchMatch: "^main$"
+  pathsExist:
+  - k8s/
 ```
 
 ## Multiple Bitbucket Projects
@@ -219,6 +223,7 @@ spec:
         project: BACKEND
         api: https://bitbucket.mycompany.com
         basicAuth:
+          username: deploy-bot
           passwordRef:
             secretName: bitbucket-server-creds
             key: token
@@ -232,6 +237,7 @@ spec:
         project: FRONTEND
         api: https://bitbucket.mycompany.com
         basicAuth:
+          username: deploy-bot
           passwordRef:
             secretName: bitbucket-server-creds
             key: token
@@ -272,6 +278,7 @@ spec:
             project: SVC
             api: https://bitbucket.mycompany.com
             basicAuth:
+              username: deploy-bot
               passwordRef:
                 secretName: bitbucket-server-creds
                 key: token
@@ -323,12 +330,21 @@ spec:
       port: 443
 ```
 
-Also ensure TLS certificates are trusted if using self-signed certificates.
+Also ensure TLS certificates are trusted if using self-signed certificates. Reference the CA from the `bitbucketServer` provider with `caRef`.
 
 ```bash
-# Add custom CA to ArgoCD
+# Add custom CA for the SCM provider
 kubectl create configmap argocd-tls-certs-cm -n argocd \
-  --from-file=bitbucket.mycompany.com=ca-cert.pem
+  --from-file=bitbucket-ca=ca-cert.pem
+```
+
+```yaml
+bitbucketServer:
+  project: SVC
+  api: https://bitbucket.mycompany.com
+  caRef:
+    configMapName: argocd-tls-certs-cm
+    key: bitbucket-ca
 ```
 
 ## Debugging and Monitoring
@@ -341,7 +357,8 @@ kubectl logs -n argocd deployment/argocd-applicationset-controller \
   | grep -i "bitbucket\|scm"
 
 # Verify the secret exists and has correct keys
-kubectl get secret bitbucket-server-creds -n argocd -o jsonpath='{.data}' | base64 -d
+kubectl get secret bitbucket-server-creds -n argocd -o jsonpath='{.data.username}' | base64 -d
+kubectl get secret bitbucket-server-creds -n argocd -o jsonpath='{.data.token}' | base64 -d
 
 # Test Bitbucket API connectivity from the controller pod
 kubectl exec -n argocd deployment/argocd-applicationset-controller -- \
