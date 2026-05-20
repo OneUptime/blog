@@ -71,10 +71,10 @@ version: 2.0.0
 type: application
 ```
 
-```yaml
-# charts/platform-app/values.schema.json
+```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
   "required": ["app"],
   "properties": {
     "app": {
@@ -83,15 +83,19 @@ type: application
       "properties": {
         "name": {
           "type": "string",
-          "pattern": "^[a-z][a-z0-9-]{2,62}$",
+          "minLength": 3,
+          "maxLength": 63,
+          "pattern": "^[a-z][a-z0-9-]*[a-z0-9]$",
           "description": "Application name (lowercase, alphanumeric, hyphens)"
         },
         "team": {
           "type": "string",
+          "minLength": 1,
           "description": "Owning team name"
         },
         "image": {
           "type": "string",
+          "minLength": 1,
           "description": "Full container image with tag"
         },
         "port": {
@@ -152,6 +156,7 @@ autoscaling:
 
 # Service configuration
 service:
+  enabled: true
   type: ClusterIP
   port: 80
 
@@ -228,8 +233,6 @@ spec:
     metadata:
       labels:
         {{- include "platform-app.labels" . | nindent 8 }}
-      annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ .Values.app.name }}
       securityContext:
@@ -322,7 +325,7 @@ spec:
               sum(rate(http_request_duration_seconds_bucket{
                 job="{{ .Values.app.name }}"
               }[5m])) by (le)
-            ) > {{ div .Values.monitoring.alerts.latencyP99Threshold 1000 }}
+            ) > {{ divf .Values.monitoring.alerts.latencyP99Threshold 1000 }}
           for: 5m
           labels:
             severity: warning
@@ -351,11 +354,7 @@ apiVersion: v2
 name: platform-cronjob
 description: Platform template for scheduled jobs
 version: 1.0.0
-dependencies:
-  - name: platform-app
-    version: "2.0.0"
-    repository: "file://../platform-app"
-    condition: baseApp.enabled
+type: application
 ```
 
 ```yaml
