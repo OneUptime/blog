@@ -23,7 +23,7 @@ With ArgoCD managing your NetworkPolicies, every change goes through code review
 
 ## NetworkPolicy Fundamentals
 
-By default, Kubernetes allows all traffic between pods. NetworkPolicies are additive - they define what is allowed. Once you create a NetworkPolicy that selects a pod, all other traffic to that pod is denied unless explicitly allowed.
+By default, Kubernetes allows all traffic between pods. NetworkPolicies are additive - they define what is allowed. Once you create a NetworkPolicy that selects a pod for ingress or egress, other traffic in that direction is denied unless explicitly allowed.
 
 Important prerequisites:
 
@@ -118,7 +118,9 @@ spec:
     - Egress
   egress:
     - to:
-        - namespaceSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
           podSelector:
             matchLabels:
               k8s-app: kube-dns
@@ -238,7 +240,7 @@ security/
 
 ## Sync Waves for NetworkPolicies
 
-NetworkPolicies should be created early in the sync process, before the pods they protect:
+NetworkPolicies should be created early in the sync process, before the pods they protect. Sync waves order resources within the same ArgoCD Application, or within a parent app that syncs child Applications:
 
 ```yaml
 # Wave -5: Default deny (lock everything down)
@@ -309,9 +311,9 @@ patches:
           # No egress restriction in staging
 ```
 
-## Validating NetworkPolicies Before Sync
+## Validating NetworkPolicies After Sync
 
-Use a PreSync hook to validate that your NetworkPolicies will not break connectivity:
+Use a PostSync hook to validate critical connectivity after ArgoCD applies your NetworkPolicies:
 
 ```yaml
 apiVersion: batch/v1
@@ -319,50 +321,89 @@ kind: Job
 metadata:
   name: network-policy-validation
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   template:
     spec:
+      serviceAccountName: netassert
       containers:
         - name: validator
-          image: controlplane/netassert:latest
+          image: ghcr.io/myorg/netassert-runner:latest  # Contains the netassert binary
           command: [sh, -c]
           args:
             - |
               # Test that critical paths will remain open
-              netassert test \
-                --from frontend \
-                --to backend:8080 \
-                --expect allow
+              cat > /tmp/network-tests.yaml <<'EOF'
+              - name: frontend-to-backend
+                type: k8s
+                protocol: tcp
+                targetPort: 8080
+                timeoutSeconds: 30
+                attempts: 3
+                exitCode: 0
+                src:
+                  k8sResource:
+                    kind: deployment
+                    name: frontend
+                    namespace: production
+                dst:
+                  k8sResource:
+                    kind: deployment
+                    name: backend
+                    namespace: production
 
-              netassert test \
-                --from backend \
-                --to database:5432 \
-                --expect allow
+              - name: backend-to-database
+                type: k8s
+                protocol: tcp
+                targetPort: 5432
+                timeoutSeconds: 30
+                attempts: 3
+                exitCode: 0
+                src:
+                  k8sResource:
+                    kind: deployment
+                    name: backend
+                    namespace: production
+                dst:
+                  k8sResource:
+                    kind: deployment
+                    name: database
+                    namespace: production
+              EOF
+
+              netassert run --input-file /tmp/network-tests.yaml
 
               echo "Network policy validation passed"
       restartPolicy: Never
 ```
 
+Bind the `netassert` ServiceAccount to the RBAC permissions required by your validation tool, such as reading workloads and patching pod ephemeral containers for NetAssert.
+
 ## Monitoring NetworkPolicy Effectiveness
 
-Track which policies are active and how they affect traffic:
+Track which policies are active and how they affect traffic. With Calico, use temporary `Log` rules for troubleshooting and remove them after testing:
 
 ```yaml
-# Deploy a network policy logging sidecar
-# (Works with Calico or Cilium)
-apiVersion: v1
-kind: ConfigMap
+# Calico-specific policy logging rule for troubleshooting
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
 metadata:
-  name: calico-config
-  namespace: kube-system
-data:
-  # Enable logging for denied traffic
-  calicoNetwork: |
-    logSeverityScreen: Info
-    logSeverityFile: Warning
+  name: log-production-traffic
+  namespace: production
+spec:
+  order: 100001
+  selector: all()
+  types:
+    - Ingress
+    - Egress
+  ingress:
+    - action: Log
+  egress:
+    - action: Log
 ```
+
+Place Calico log policies at a high order after your normal policies, and pair `Log` rules with explicit `Allow` rules where needed, so troubleshooting policies do not unexpectedly change enforcement.
 
 With Cilium, you can use Hubble for NetworkPolicy observability:
 
