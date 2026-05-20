@@ -104,7 +104,6 @@ Alertmanager expects alerts in a specific format. Each alert has labels (for rou
               "app": "{{ .app.metadata.name }}",
               "project": "{{ .app.spec.project }}",
               "namespace": "{{ .app.spec.destination.namespace }}",
-              "health_status": "{{ .app.status.health.status }}",
               "source": "argocd"
             },
             "annotations": {
@@ -154,13 +153,12 @@ Alertmanager supports resolving alerts by sending the same alert with an `endsAt
               "app": "{{ .app.metadata.name }}",
               "project": "{{ .app.spec.project }}",
               "namespace": "{{ .app.spec.destination.namespace }}",
-              "health_status": "Healthy",
               "source": "argocd"
             },
             "annotations": {
               "summary": "ArgoCD app {{ .app.metadata.name }} health recovered"
             },
-            "endsAt": "{{ .app.status.operationState.finishedAt }}"
+            "endsAt": "{{ (call .time.Now).Format \"2006-01-02T15:04:05Z07:00\" }}"
           }]
 ```
 
@@ -197,8 +195,8 @@ route:
   receiver: default
   routes:
     # ArgoCD alerts get their own routing
-    - match:
-        source: argocd
+    - matchers:
+        - source = argocd
       receiver: argocd-alerts
       group_by: ['alertname', 'app']
       group_wait: 30s
@@ -206,14 +204,14 @@ route:
       repeat_interval: 4h
       routes:
         # Critical sync failures go to PagerDuty
-        - match:
-            alertname: ArgoCDSyncFailed
-            severity: critical
+        - matchers:
+            - alertname = ArgoCDSyncFailed
+            - severity = critical
           receiver: pagerduty-argocd
 
         # Health degradations go to Slack
-        - match:
-            alertname: ArgoCDHealthDegraded
+        - matchers:
+            - alertname = ArgoCDHealthDegraded
           receiver: slack-argocd
 
 receivers:
@@ -243,10 +241,10 @@ Suppress health degradation alerts when a sync failure is already firing for the
 ```yaml
 # alertmanager.yml
 inhibit_rules:
-  - source_match:
-      alertname: ArgoCDSyncFailed
-    target_match:
-      alertname: ArgoCDHealthDegraded
+  - source_matchers:
+      - alertname = ArgoCDSyncFailed
+    target_matchers:
+      - alertname = ArgoCDHealthDegraded
     equal: ['app', 'namespace']
 ```
 
