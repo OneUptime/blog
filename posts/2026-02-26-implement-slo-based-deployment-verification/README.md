@@ -31,7 +31,7 @@ graph TD
     E -->|No| H
     F -->|Yes| G[Verification PASSED]
     F -->|No| H
-    H --> I[Trigger Rollback]
+    H --> I[Mark Sync Failed]
 ```
 
 ## Setting Up Prometheus Metrics
@@ -60,7 +60,7 @@ Your application should expose these standard metrics:
 
 ```text
 # Request rate
-http_requests_total{method="GET", path="/api/v1/products", status="200"} 15234
+http_requests_total{method="GET", path="/api/v1/products", code="200"} 15234
 
 # Request duration histogram
 http_request_duration_seconds_bucket{method="GET", path="/api/v1/products", le="0.05"} 14500
@@ -89,7 +89,7 @@ spec:
     spec:
       containers:
         - name: slo-check
-          image: curlimages/curl:latest
+          image: alpine:3.23
           command:
             - /bin/sh
             - -c
@@ -97,6 +97,8 @@ spec:
               PROMETHEUS="http://prometheus.monitoring.svc.cluster.local:9090"
               SERVICE="backend-api"
               NAMESPACE="production"
+
+              apk add --no-cache curl jq bc >/dev/null
 
               # Wait for new pods to receive traffic and generate metrics
               echo "Waiting 120 seconds for metrics to stabilize..."
@@ -337,13 +339,15 @@ spec:
     spec:
       containers:
         - name: compare
-          image: curlimages/curl:latest
+          image: alpine:3.23
           command:
             - /bin/sh
             - -c
             - |
               PROMETHEUS="http://prometheus.monitoring.svc.cluster.local:9090"
               SERVICE="backend-api"
+
+              apk add --no-cache curl jq bc >/dev/null
 
               # Wait for post-deploy metrics
               sleep 120
@@ -389,12 +393,14 @@ spec:
     spec:
       containers:
         - name: budget-check
-          image: curlimages/curl:latest
+          image: alpine:3.23
           command:
             - /bin/sh
             - -c
             - |
               PROMETHEUS="http://prometheus.monitoring.svc.cluster.local:9090"
+
+              apk add --no-cache curl jq bc >/dev/null
 
               # Check 30-day error budget
               BUDGET_REMAINING=$(curl -s "$PROMETHEUS/api/v1/query" \
