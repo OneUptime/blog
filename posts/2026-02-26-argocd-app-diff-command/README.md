@@ -121,13 +121,13 @@ This ensures you are comparing against the absolute latest state from both Git a
 Use the Kubernetes API server to compute the diff, which can be more accurate for resources with defaulted fields:
 
 ```bash
-argocd app diff my-app --server-side
+argocd app diff my-app --server-side-diff
 ```
 
 Server-side diff accounts for:
 - Default values the API server would set
-- Mutating webhook modifications
-- Field ownership via server-side apply
+- Admission controller validation during the diff stage
+- Mutating webhook modifications when `IncludeMutationWebhook=true` is enabled on the application
 
 ## Diff Output for Specific Resources
 
@@ -240,11 +240,11 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const diff = `${{ steps.diff.outputs.diff }}`;
+            const diff = ${{ toJSON(steps.diff.outputs.diff) }};
             const body = diff.trim() === ''
               ? '### ArgoCD Diff Preview\nNo changes detected.'
-              : `### ArgoCD Diff Preview\n```diff\n${diff}\n````;
-            github.rest.issues.createComment({
+              : ['### ArgoCD Diff Preview', '```diff', diff, '```'].join('\n');
+            await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
