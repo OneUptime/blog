@@ -8,9 +8,9 @@ Description: Learn how to use ArgoCD environment variables as feature flags to e
 
 ---
 
-ArgoCD uses environment variables as feature flags to control experimental features, enable optional functionality, and customize component behavior. Understanding these flags lets you opt into new capabilities before they become defaults, or disable features that are not relevant to your deployment.
+ArgoCD uses environment variables and ConfigMap settings as feature flags to control experimental features, enable optional functionality, and customize component behavior. Understanding these flags lets you opt into new capabilities before they become defaults, or disable features that are not relevant to your deployment.
 
-This guide covers the feature flag environment variables available in ArgoCD, how to set them, and when to use each one.
+This guide covers the feature flag settings available in ArgoCD, how to set them, and when to use each one.
 
 ## How Feature Flags Work in ArgoCD
 
@@ -19,7 +19,7 @@ ArgoCD implements feature flags through two mechanisms:
 1. **Environment variables** on individual components (server, controller, repo server)
 2. **ConfigMap settings** in `argocd-cm` and `argocd-cmd-params-cm`
 
-Feature flags typically start as opt-in experimental features and eventually become defaults in later releases. Setting them through environment variables lets you test new behavior before upgrading.
+Feature flags typically start as opt-in experimental features and eventually become defaults in later releases. Setting them through environment variables or ConfigMaps lets you test new behavior before upgrading.
 
 ## Server Feature Flags
 
@@ -43,12 +43,13 @@ This is a security best practice for production. Once SSO is configured, disable
 ### Enable gRPC Web
 
 ```yaml
-data:
-  # Enable gRPC-Web protocol (needed for some ingress controllers)
-  server.enable.grpc-web: "true"
+env:
+  # Use gRPC-Web from the Argo CD CLI when a proxy does not support HTTP/2
+  - name: ARGOCD_OPTS
+    value: "--grpc-web"
 ```
 
-Required when using ingress controllers that do not support HTTP/2 or native gRPC.
+Required for CLI clients when using ingress controllers or proxies that do not support HTTP/2 or native gRPC.
 
 ### Enable Status Badge
 
@@ -63,12 +64,17 @@ This enables the `/api/badge` endpoint that returns SVG badges showing applicati
 ### Enable Proxy Extension
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
 data:
   # Enable the proxy extension feature
-  extension.enabled: "true"
+  server.enable.proxy.extension: "true"
 ```
 
-Allows ArgoCD to proxy requests to backend services, enabling custom UI extensions.
+Allows ArgoCD to proxy requests to backend services, enabling custom UI extensions. Configure the actual extension backends separately with `extension.config` or `extension.config.<name>` in `argocd-cm`.
 
 ### Anonymous Access
 
@@ -111,33 +117,34 @@ data:
   application.resourceTrackingMethod: "annotation"
 ```
 
-- **label**: Uses `app.kubernetes.io/instance` label (default, has size limitations)
-- **annotation**: Uses an annotation (no size limit, but requires migration)
+- **label**: Uses `app.kubernetes.io/instance` label (default in older releases, has size limitations)
+- **annotation**: Uses an annotation (default in current releases, no size limit, but requires migration from label tracking)
 - **annotation+label**: Uses both (best compatibility, smooth migration)
 
 ### Dynamic Cluster Distribution
 
 ```yaml
-data:
+env:
   # Enable dynamic cluster distribution across controller shards
-  controller.dynamic.cluster.distribution.enabled: "true"
+  - name: ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION
+    value: "true"
 ```
 
-Automatically distributes clusters across controller shards using a hash-based algorithm. Required for horizontal scaling of the controller.
+When running the application controller as a Deployment, this re-runs the sharding algorithm when controller replicas change. It is most useful with round-robin or custom shard assignment algorithms.
 
 ### Ignore Resource Updates
 
 ```yaml
 data:
-  # Enable resource update detection ignoring
+  # Keep resource update detection ignoring enabled
   resource.ignoreResourceUpdatesEnabled: "true"
 ```
 
-When enabled, you can configure specific resource fields to ignore during reconciliation, reducing unnecessary reconciliation cycles.
+In current ArgoCD releases this is enabled by default. When enabled, you can configure specific resource fields to ignore during reconciliation, reducing unnecessary reconciliation cycles.
 
 ## Repo Server Feature Flags
 
-### Helm Registry
+### Helm Registry (Older Helm Versions)
 
 ```yaml
 env:
@@ -146,17 +153,17 @@ env:
     value: "1"
 ```
 
-Required for pulling Helm charts from OCI-compatible container registries.
+Only required when ArgoCD is using a Helm version older than 3.8.0. Helm OCI support is enabled by default in Helm 3.8.0 and later.
 
-### Allow Concurrent Manifest Generation
+### Limit Concurrent Manifest Generation
 
 ```yaml
 data:
-  # Allow multiple manifest generation for the same app
-  reposerver.allow.concurrent.generation: "true"
+  # Limit concurrent manifest generation requests; values less than 1 mean no limit
+  reposerver.parallelism.limit: "20"
 ```
 
-This can speed up reconciliation but may increase memory usage.
+This can reduce repo-server memory spikes when many manifests are generated at once, but setting it too low can slow reconciliation.
 
 ## Application-Level Feature Flags
 
@@ -213,6 +220,7 @@ data:
 ```
 
 This feature flag enables multi-tenant ArgoCD where different teams manage their Applications in their own namespaces.
+Each `AppProject` must also allow the relevant namespaces in `spec.sourceNamespaces`, and the server may need additional Kubernetes RBAC to manage `Application` resources outside the ArgoCD control plane namespace.
 
 ## Enabling Notifications
 
@@ -246,7 +254,7 @@ configs:
 
   params:
     controller.diff.server.side: "true"
-    controller.dynamic.cluster.distribution.enabled: "true"
+    server.enable.proxy.extension: "true"
     application.namespaces: "team-*"
     reposerver.parallelism.limit: "20"
 
@@ -259,11 +267,13 @@ controller:
   extraEnv:
     - name: ARGOCD_K8S_CLIENT_QPS
       value: "50"
+    - name: ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION
+      value: "true"
 
 repoServer:
   extraEnv:
-    - name: HELM_EXPERIMENTAL_OCI
-      value: "1"
+    - name: ARGOCD_EXEC_TIMEOUT
+      value: "2m30s"
 ```
 
 ## Setting Feature Flags with Kustomize
@@ -336,8 +346,8 @@ kubectl get statefulset argocd-application-controller -n argocd -o json | \
 kubectl get deployment argocd-repo-server -n argocd -o json | \
   jq '.spec.template.spec.containers[0].env'
 
-# Use the admin CLI
-argocd admin settings resource-overrides list
+# Use the admin CLI to test resource update ignore rules from a local argocd-cm
+argocd admin settings resource-overrides ignore-resource-updates ./deploy.yaml --argocd-cm-path ./argocd-cm.yaml
 ```
 
 ## Recommended Feature Flags for Production
@@ -350,6 +360,7 @@ data:
   admin.enabled: "false"                           # Use SSO instead
   statusbadge.enabled: "true"                      # Enable status badges
   application.resourceTrackingMethod: "annotation"  # Better tracking
+  resource.ignoreResourceUpdatesEnabled: "true"     # Default in current releases
 
 # argocd-cmd-params-cm
 data:
