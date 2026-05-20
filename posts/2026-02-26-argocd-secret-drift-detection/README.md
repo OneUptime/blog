@@ -45,20 +45,15 @@ By default, ArgoCD will show Secrets as OutOfSync if any field differs from what
 ```bash
 # Check for out-of-sync resources
 
-argocd app get myapp --show-diff
+argocd app get myapp
 
-# Get detailed diff for a specific resource
-argocd app diff myapp --resource :Secret:my-secret
+# Get the live state of a specific Secret resource
+argocd app get-resource myapp --kind Secret --resource-name my-secret -o yaml
 ```
 
-The diff output will show something like:
+ArgoCD redacts Kubernetes Secret values in API responses, logs, and CLI output, so you should not expect `argocd app diff` to print secret data. Use `argocd app get myapp` or the UI to see whether the Secret resource is Synced or OutOfSync, and use `argocd app get-resource` to inspect its live metadata and redacted fields.
 
-```diff
-===== /v1, Kind=Secret, Namespace=production, Name=db-creds =====
-  data:
--   password: b2xkX3Bhc3N3b3Jk  # Base64: old_password
-+   password: bmV3X3Bhc3N3b3Jk  # Base64: new_password
-```
+If you need to compare the actual encoded Secret value during an incident, compare the Git manifest against the live object with `kubectl get secret my-secret -n production -o yaml` and handle that output as sensitive data.
 
 ## Strategy 1: Ignore Differences for Managed Secrets
 
@@ -87,10 +82,9 @@ spec:
         - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
     - group: ""
       kind: Secret
-      name: managed-by-eso-*
       jqPathExpressions:
-        - .data
-        - .metadata.labels."reconcile.external-secrets.io/data-hash"
+        - select(.metadata.labels."reconcile.external-secrets.io/managed" == "true") | .data
+        - .metadata.annotations."reconcile.external-secrets.io/data-hash"
 ```
 
 For a global configuration that applies to all applications, use the `argocd-cm` ConfigMap:
@@ -125,16 +119,16 @@ spec:
       kind: Secret
       jqPathExpressions:
         - select(.metadata.ownerReferences != null) | select(.metadata.ownerReferences[].kind == "ExternalSecret") | .data
-    # Ignore data changes for secrets with sealed-secrets labels
+    # Ignore data changes for secrets with sealed-secrets annotations
     - group: ""
       kind: Secret
       jqPathExpressions:
-        - select(.metadata.labels."sealedsecrets.bitnami.com/managed" == "true") | .data
+        - select(.metadata.annotations."sealedsecrets.bitnami.com/managed" == "true") | .data
 ```
 
-## Strategy 3: Custom Drift Detection with Resource Hooks
+## Strategy 3: Custom Drift Detection with Resource Customizations
 
-For more sophisticated drift detection, use ArgoCD resource customizations to define custom health checks that detect unwanted drift:
+For more sophisticated drift detection, use ArgoCD resource customizations to define custom health checks that surface a drift marker written by a separate controller or admission process:
 
 ```yaml
 apiVersion: v1
@@ -143,19 +137,15 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations.health.v1_Secret: |
+  resource.customizations.health._Secret: |
     hs = {}
     if obj.metadata ~= nil and obj.metadata.annotations ~= nil then
       -- Check if the secret has a drift-detection annotation
-      local expectedHash = obj.metadata.annotations["app.example.com/expected-hash"]
-      if expectedHash ~= nil then
-        local crypto = require("crypto")
-        local actualHash = crypto.sha256(obj.data)
-        if actualHash ~= expectedHash then
-          hs.status = "Degraded"
-          hs.message = "Secret data has drifted from expected hash"
-          return hs
-        end
+      local driftStatus = obj.metadata.annotations["app.example.com/drift-status"]
+      if driftStatus == "drifted" then
+        hs.status = "Degraded"
+        hs.message = "Secret data has drifted from expected state"
+        return hs
       end
     end
     hs.status = "Healthy"
@@ -180,25 +170,21 @@ spec:
         - alert: SecretDriftDetected
           expr: |
             argocd_app_info{sync_status="OutOfSync"} == 1
-            and on(name, namespace)
-            argocd_app_resource_info{kind="Secret", health_status!="Healthy"} == 1
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "Secret drift detected in ArgoCD app {{ $labels.name }}"
-            description: "A Secret in application {{ $labels.name }} has been out of sync for 15 minutes"
+            summary: "ArgoCD app {{ $labels.name }} is OutOfSync"
+            description: "Application {{ $labels.name }} has been out of sync for 15 minutes. Check the application resource tree for Secret drift."
 
-        - alert: UnexpectedSecretModification
+        - alert: FrequentArgoCDReconcile
           expr: |
-            increase(argocd_app_reconcile_count{dest_server!=""}[5m]) > 0
-            and on(name)
-            argocd_app_info{sync_status="OutOfSync"} == 1
+            increase(argocd_app_reconcile_count[5m]) > 10
           for: 5m
           labels:
-            severity: critical
+            severity: warning
           annotations:
-            summary: "Unexpected secret modification in {{ $labels.name }}"
+            summary: "Frequent ArgoCD reconciliation for {{ $labels.name }}"
 ```
 
 ## Strategy 5: Self-Healing for Intentional Drift
@@ -220,35 +206,24 @@ spec:
       - RespectIgnoreDifferences=true
 ```
 
-The `RespectIgnoreDifferences=true` option is crucial. It tells the self-heal mechanism to not sync resources where the only differences are in ignored fields. Without this, ArgoCD might continuously try to sync secrets that are legitimately different due to operator management.
+The `RespectIgnoreDifferences=true` option is crucial. It tells ArgoCD to apply `ignoreDifferences` during the sync stage, not only when computing sync status. Without this, ArgoCD might still apply the desired manifest as-is during sync. This option only affects resources that already exist in the cluster.
 
 ## Strategy 6: Audit Trail for Secret Changes
 
-Track who changes secrets and when by enabling ArgoCD audit logging:
+Track ArgoCD application activity with Kubernetes Events. ArgoCD emits events for actions such as sync operations and sync-status changes, including the responsible actor when applicable:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Enable resource-level events
-  resource.events.enable: "true"
-```
-
-Then query the audit log:
+Then query the events:
 
 ```bash
-# View recent sync events for secrets
+# View recent ArgoCD application events
 kubectl get events -n argocd --field-selector reason=ResourceUpdated \
-  --sort-by='.lastTimestamp' | grep Secret
+  --sort-by='.lastTimestamp'
 
 # Check ArgoCD application history
 argocd app history myapp
 ```
 
-For a comprehensive approach, use the Kubernetes audit policy:
+For a comprehensive audit trail of direct Secret modifications in the cluster, use the Kubernetes audit policy:
 
 ```yaml
 # audit-policy.yaml
@@ -281,15 +256,12 @@ data:
   config.yaml: <base64-encoded>
 
 ---
-# 2. ExternalSecret-managed secret (ESO adds labels automatically)
-apiVersion: external-secrets.io/v1beta1
+# 2. ExternalSecret-managed secret
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-credentials
   namespace: production
-  labels:
-    secret-manager: "eso"
-    drift-detection: "disabled"  # ESO handles this
 spec:
   refreshInterval: 15m
   secretStoreRef:
@@ -297,6 +269,11 @@ spec:
     kind: ClusterSecretStore
   target:
     name: api-credentials
+    template:
+      metadata:
+        labels:
+          secret-manager: "eso"
+          drift-detection: "disabled"  # ESO handles this
 ```
 
 ```yaml
