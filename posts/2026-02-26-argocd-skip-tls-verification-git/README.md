@@ -106,6 +106,9 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-tls-certs-cm
+    app.kubernetes.io/part-of: argocd
 data:
   # The key must be the Git server hostname
   git.internal.example.com: |
@@ -119,23 +122,23 @@ data:
 kubectl apply -f argocd-tls-certs-cm.yaml
 ```
 
-You do not need to restart ArgoCD after adding the ConfigMap. The repo-server watches this ConfigMap and picks up new certificates automatically.
+You do not need to restart ArgoCD after adding the ConfigMap. ArgoCD mounts this ConfigMap into the server and repo-server pods, and Kubernetes should update the mounted files after a short delay.
 
 ### Get Your CA Certificate
 
-If you do not have the CA certificate handy, you can extract it from the Git server.
+If you do not have the CA certificate handy, you can inspect the certificate chain presented by the Git server.
 
 ```bash
-# Download the certificate chain from the server
+# Download the first certificate presented by the server
 openssl s_client -connect git.internal.example.com:443 \
   -showcerts </dev/null 2>/dev/null | \
-  openssl x509 -outform PEM > ca-cert.pem
+  openssl x509 -outform PEM > server-cert.pem
 
 # View the certificate details
-openssl x509 -in ca-cert.pem -text -noout
+openssl x509 -in server-cert.pem -text -noout
 ```
 
-If the server uses an intermediate CA, you may need to include the full certificate chain.
+For a self-signed server certificate, you can add the server certificate itself. If the server uses an internal CA or an intermediate CA, use the CA certificate from your PKI team, or include the relevant CA chain in PEM format.
 
 ```bash
 # Get the full certificate chain
@@ -158,37 +161,29 @@ argocd cert add-tls git.internal.example.com --from ca-cert.pem
 argocd cert list --cert-type https
 ```
 
-## Method 3: Mount CA Certificates in the Repo-Server
+## Method 3: Add the Same CA for Multiple Git Hosts
 
-For organizations with many internal services using the same CA, you can mount the CA certificate bundle directly into the repo-server pod.
+For organizations with many internal Git services using the same CA, add the CA certificate to `argocd-tls-certs-cm` once for each Git server hostname. ArgoCD expects repository TLS certificates in that ConfigMap with the hostname as the key.
 
 ```yaml
-# Patch the repo-server deployment
-apiVersion: apps/v1
-kind: Deployment
+# Add one data key per Git server hostname
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-repo-server
+  name: argocd-tls-certs-cm
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          volumeMounts:
-            - name: custom-ca
-              mountPath: /etc/ssl/certs/internal-ca.crt
-              subPath: ca.crt
-      volumes:
-        - name: custom-ca
-          configMap:
-            name: internal-ca-bundle
-```
-
-Create the ConfigMap with your CA bundle.
-
-```bash
-kubectl -n argocd create configmap internal-ca-bundle \
-  --from-file=ca.crt=/path/to/your/ca-cert.pem
+  labels:
+    app.kubernetes.io/name: argocd-tls-certs-cm
+    app.kubernetes.io/part-of: argocd
+data:
+  git.internal.example.com: |
+    -----BEGIN CERTIFICATE-----
+    (your CA certificate in PEM format)
+    -----END CERTIFICATE-----
+  git2.internal.example.com: |
+    -----BEGIN CERTIFICATE-----
+    (the same CA certificate in PEM format)
+    -----END CERTIFICATE-----
 ```
 
 ## Security Considerations
