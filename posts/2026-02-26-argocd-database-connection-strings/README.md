@@ -16,7 +16,7 @@ GitOps requires everything to be in Git, but you cannot store plain-text databas
 
 1. Reference database credentials in your Kubernetes manifests
 2. Store the encrypted or referenced version in Git
-3. Have ArgoCD sync the decrypted credentials to your cluster
+3. Have ArgoCD sync the secret management resources that create the Kubernetes Secret in your cluster
 
 ```mermaid
 graph LR
@@ -51,7 +51,7 @@ spec:
   source:
     repoURL: https://bitnami-labs.github.io/sealed-secrets
     chart: sealed-secrets
-    targetRevision: 2.15.0
+    targetRevision: 2.18.5
     helm:
       values: |
         fullnameOverride: sealed-secrets-controller
@@ -68,6 +68,7 @@ spec:
 ```bash
 # Create the plain secret first (locally, never commit this)
 kubectl create secret generic db-credentials \
+  --namespace production \
   --from-literal=url="postgres://app:MySecretP4ss@postgres.database.svc:5432/mydb?sslmode=require" \
   --from-literal=username="app" \
   --from-literal=password="MySecretP4ss" \
@@ -154,7 +155,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.9.11
+    targetRevision: 2.5.0
     helm:
       values: |
         installCRDs: true
@@ -172,7 +173,7 @@ spec:
 
 ```yaml
 # secrets/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -192,7 +193,7 @@ spec:
 
 ```yaml
 # secrets/db-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -205,6 +206,7 @@ spec:
   target:
     name: db-credentials
     template:
+      engineVersion: v2
       type: Opaque
       data:
         # Construct the connection URL from individual fields
@@ -250,7 +252,7 @@ spec:
   source:
     repoURL: https://helm.releases.hashicorp.com
     chart: vault-secrets-operator
-    targetRevision: 0.4.0
+    targetRevision: 1.4.0
   destination:
     server: https://kubernetes.default.svc
     namespace: vault-secrets-operator
@@ -281,7 +283,7 @@ spec:
       excludeRaw: true
       templates:
         url:
-          text: "postgres://{{ .Secrets.username }}:{{ .Secrets.password }}@{{ .Secrets.host }}:{{ .Secrets.port }}/{{ .Secrets.database }}?sslmode=require"
+          text: 'postgres://{{ get .Secrets "username" }}:{{ get .Secrets "password" }}@{{ get .Secrets "host" }}:{{ get .Secrets "port" }}/{{ get .Secrets "database" }}?sslmode=require'
   refreshAfter: 30s
   vaultAuthRef: vault-auth
 ```
@@ -330,7 +332,7 @@ Handle automatic credential rotation without downtime:
 
 ```yaml
 # External Secret with automatic refresh
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -377,7 +379,7 @@ spec:
   source:
     repoURL: https://stakater.github.io/stakater-charts
     chart: reloader
-    targetRevision: 1.0.63
+    targetRevision: 2.2.11
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
@@ -389,7 +391,7 @@ Use Kustomize overlays for different environments:
 
 ```yaml
 # base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
