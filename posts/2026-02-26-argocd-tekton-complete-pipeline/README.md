@@ -141,9 +141,10 @@ spec:
   workspaces:
     - name: source
     - name: docker-config
+      mountPath: /kaniko/.docker
   steps:
     - name: build-and-push
-      image: gcr.io/kaniko-project/executor:latest
+      image: ghcr.io/osscontainertools/kaniko:latest
       args:
         - --dockerfile=$(workspaces.source.path)/source/Dockerfile
         - --context=$(workspaces.source.path)/source/$(params.context)
@@ -151,9 +152,6 @@ spec:
         - --destination=$(params.image):latest
         - --cache=true
         - --cache-repo=$(params.image)/cache
-      volumeMounts:
-        - name: docker-config
-          mountPath: /kaniko/.docker
 ```
 
 Run tests task:
@@ -333,6 +331,8 @@ spec:
       interceptors:
         - ref:
             name: github
+            kind: ClusterInterceptor
+            apiVersion: triggers.tekton.dev
           params:
             - name: secretRef
               value:
@@ -356,7 +356,7 @@ metadata:
 spec:
   params:
     - name: repo-url
-      value: $(body.repository.ssh_url)
+      value: $(body.repository.clone_url)
     - name: revision
       value: $(body.after)
     - name: repo-name
