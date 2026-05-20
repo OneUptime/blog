@@ -12,7 +12,7 @@ Sync windows in ArgoCD control when applications can be synced. They are defined
 
 ## Sync Window Configuration Structure
 
-Every sync window has five fields.
+Every sync window has a kind, a schedule, a duration, and one or more selectors.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -41,9 +41,9 @@ Let us break down each field.
 
 Two values: `allow` or `deny`.
 
-An `allow` window means syncs are permitted only during the window. Outside an allow window, syncs are blocked.
+An `allow` window means syncs are permitted during the window. If an application matches any allow window, syncs are blocked outside active allow windows.
 
-A `deny` window means syncs are blocked during the window. Outside a deny window, syncs are permitted.
+A `deny` window means syncs are blocked during the window. Outside a deny window, syncs are permitted unless a matching allow window also restricts syncing.
 
 ### schedule
 
@@ -121,35 +121,23 @@ syncWindows:
     duration: 8h
     applications:
       - 'production-*'
-    namespaces:
-      - '*'
-    clusters:
-      - '*'
 
   # Matches by namespace
   - kind: deny
     schedule: '0 9 * * 1-5'
     duration: 8h
-    applications:
-      - '*'
     namespaces:
       - 'production'
-    clusters:
-      - '*'
 
   # Matches by cluster
   - kind: deny
     schedule: '0 9 * * 1-5'
     duration: 8h
-    applications:
-      - '*'
-    namespaces:
-      - '*'
     clusters:
       - 'https://prod-cluster.example.com'
 ```
 
-All three windows achieve a similar effect but through different matching dimensions. An application is affected if it matches any of the criteria in any window.
+All three windows achieve a similar effect but through different matching dimensions. An application is affected if it matches any of the configured criteria in any window. If you configure more than one selector type on the same window, ArgoCD ORs them by default. Use `useAndOperator: true` if the application must match the configured application, namespace, and cluster selectors together.
 
 ## Managing Sync Windows with the CLI
 
@@ -188,11 +176,7 @@ To check if sync is currently allowed or denied for an application:
 
 ```bash
 # Check application sync status including window information
-argocd app get my-app --output json | \
-  jq '{
-    syncAllowed: .status.operationState.syncResult,
-    conditions: [.status.conditions[] | select(.type == "SyncWindow")]
-  }'
+argocd app get my-app
 
 # Check project windows and their current state
 argocd proj windows list my-project
