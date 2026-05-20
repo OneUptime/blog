@@ -113,9 +113,6 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Global settings
-  server.diff.serverSideDiff: "true"
-
   # Ignore last-applied-configuration on all resources
   resource.customizations.ignoreDifferences.all: |
     jsonPointers:
@@ -165,13 +162,13 @@ Instead of configuring many ignore rules, enable server-side diff globally to ha
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  server.diff.serverSideDiff: "true"
+  controller.diff.server.side: "true"
 ```
 
-This changes the diff strategy for all applications. Individual applications can override this with annotations:
+Restart the `argocd-application-controller` after changing `argocd-cmd-params-cm`. This changes the diff strategy for all applications. Individual applications can override this with annotations:
 
 ```yaml
 # Disable server-side diff for a specific app
@@ -204,8 +201,9 @@ If you install ArgoCD with Helm, include the diff defaults in your values file:
 ```yaml
 # values.yaml for ArgoCD Helm chart
 configs:
+  params:
+    controller.diff.server.side: "true"
   cm:
-    server.diff.serverSideDiff: "true"
     resource.customizations.ignoreDifferences.all: |
       jsonPointers:
         - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
@@ -234,7 +232,6 @@ patches:
       metadata:
         name: argocd-cm
       data:
-        server.diff.serverSideDiff: "true"
         resource.customizations.ignoreDifferences.all: |
           jsonPointers:
             - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
@@ -263,33 +260,51 @@ spec:
       selfHeal: true
 ```
 
-## System-Level Sync Options
+## Sync Options Related to Diff Behavior
 
-In addition to diff ignore rules, you can configure system-level sync options:
+In addition to diff ignore rules, ArgoCD sync options can be configured at the application level or on individual resources:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: argocd-cm
+  name: my-app
   namespace: argocd
-data:
-  # Force replace for all Jobs (handles immutable fields)
-  resource.customizations.syncOptions.batch_Job: |
-    - Replace=true
+spec:
+  syncPolicy:
+    syncOptions:
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+```
 
-  # Server-side apply for all Deployments
-  resource.customizations.syncOptions.apps_Deployment: |
-    - ServerSideApply=true
+For a single resource, use the `argocd.argoproj.io/sync-options` annotation:
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-migration
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migration
+          image: myorg/migration:latest
 ```
 
 ## Testing System-Level Changes
 
-After modifying `argocd-cm`, verify the changes take effect:
+After modifying `argocd-cm`, verify the changes take effect. If you changed `argocd-cmd-params-cm` to enable server-side diff globally, restart the `argocd-application-controller` first:
 
 ```bash
 # Apply the ConfigMap changes
 kubectl apply -f argocd-cm.yaml
+
+# Restart after argocd-cmd-params-cm changes
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 
 # Wait for ArgoCD to pick up the new config (usually within 30 seconds)
 sleep 30
@@ -326,7 +341,7 @@ data:
 ## Best Practices
 
 1. **Start minimal** - Only add system-level rules for issues that affect many applications. Keep application-specific rules at the application level
-2. **Enable server-side diff first** - It eliminates most default value diffs without needing ignore rules
+2. **Consider server-side diff first** - It eliminates most default value diffs without needing ignore rules
 3. **Track configuration in Git** - Manage argocd-cm through your ArgoCD bootstrap process
 4. **Document every rule** - Include comments or annotations explaining what each rule addresses
 5. **Review after upgrades** - Check if new ArgoCD or Kubernetes versions change diff behavior
