@@ -16,7 +16,7 @@ The architectural differences between ArgoCD and FluxCD influence everything fro
 
 ### ArgoCD Architecture
 
-ArgoCD runs as a set of Kubernetes deployments in a dedicated namespace. It uses a centralized controller model with a web UI, API server, repository server, and application controller.
+ArgoCD runs as a set of Kubernetes workloads in a dedicated namespace. It uses a centralized control-plane model with a web UI, API server, repository server, and application controller.
 
 ```mermaid
 graph TD
@@ -49,7 +49,7 @@ graph TD
     end
 ```
 
-**Key difference:** ArgoCD is a monolithic application with a centralized server. FluxCD is a set of independent controllers that work together through the Kubernetes API.
+**Key difference:** ArgoCD is a component-based application with a centralized API server and application controller. FluxCD is a set of independent controllers that work together through the Kubernetes API.
 
 ## User Interface
 
@@ -57,7 +57,7 @@ This is the most visible difference between the two tools.
 
 **ArgoCD** ships with a full-featured web UI that displays application status, resource trees, diff views, sync history, and logs. The UI is production-ready and often the primary way teams interact with ArgoCD.
 
-**FluxCD** has no built-in web UI. It is CLI-first and API-first. Third-party dashboards like Weave GitOps (now part of the Flux project) and Capacitor provide UI capabilities, but they are separate installations.
+**FluxCD** has no built-in web UI. It is CLI-first and API-first. Third-party dashboards like Weave GitOps and Capacitor provide UI capabilities, but they are separate installations.
 
 | Feature | ArgoCD | FluxCD |
 |---------|--------|--------|
@@ -134,7 +134,7 @@ spec:
 
 Both tools handle Helm charts, but differently.
 
-**ArgoCD** renders Helm charts during sync using its built-in Helm support. It stores rendered manifests and tracks them like any other Kubernetes resource.
+**ArgoCD** renders Helm charts during comparison and sync using its built-in Helm support. It treats Helm as a manifest generation step and tracks the resulting resources like any other Kubernetes resource.
 
 ```yaml
 # ArgoCD Helm Application
@@ -162,6 +162,7 @@ kind: HelmRelease
 metadata:
   name: my-chart
 spec:
+  interval: 5m
   chart:
     spec:
       chart: my-chart
@@ -180,7 +181,7 @@ spec:
       remediateLastFailure: true
 ```
 
-**Key difference:** FluxCD manages actual Helm releases (you can see them with `helm list`), while ArgoCD renders Helm templates and manages the resulting resources directly. This means FluxCD supports Helm hooks and rollback natively, while ArgoCD treats Helm as a template engine.
+**Key difference:** FluxCD manages actual Helm releases (you can see them with `helm list`), while ArgoCD renders Helm templates and manages the resulting resources directly. This means FluxCD supports Helm release lifecycle features like tests, hooks, and rollback natively, while ArgoCD treats Helm as a template engine and maps many Helm hooks to Argo CD sync hooks.
 
 ## Multi-Cluster Management
 
@@ -191,7 +192,7 @@ spec:
 argocd cluster add my-remote-cluster
 ```
 
-**FluxCD** typically runs in each cluster independently. For multi-cluster management, you use a "management cluster" pattern where FluxCD in the management cluster deploys FluxCD and its configuration to other clusters.
+**FluxCD** typically runs in each cluster independently. For multi-cluster management, you can use a "management cluster" pattern where FluxCD in the management cluster deploys FluxCD and its configuration to other clusters, or configure Flux Kustomizations and HelmReleases to reconcile against remote clusters.
 
 **Key difference:** ArgoCD has a hub-and-spoke model that is simpler for centralized management. FluxCD's distributed model is more resilient but requires more initial setup.
 
@@ -206,7 +207,7 @@ argocd cluster add my-remote-cluster
 | Metric | ArgoCD | FluxCD |
 |--------|--------|--------|
 | Applications tested | 10,000+ per instance | Scales with cluster resources |
-| Clusters | 100+ per instance | One instance per cluster |
+| Clusters | 100+ per instance | Usually one instance per cluster; remote reconciliation is supported |
 | Reconciliation model | Centralized controller | Distributed controllers |
 | Bottleneck | API server, repo server | Individual controller limits |
 
