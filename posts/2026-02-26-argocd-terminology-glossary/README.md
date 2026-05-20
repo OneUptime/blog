@@ -40,6 +40,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: production
+  namespace: argocd
 spec:
   sourceRepos:
   - 'https://github.com/myorg/*'
@@ -84,11 +85,11 @@ A specific instance of a sync process. Each operation has a status (Succeeded, F
 
 ### Sync Policy
 
-Configuration that determines how and when syncs happen. Can be **manual** (user-triggered) or **automated** (ArgoCD syncs automatically when it detects differences).
+Configuration that determines how and when syncs happen. Can be **manual** (user-triggered) or **automated** (ArgoCD syncs automatically when an Application is OutOfSync).
 
 ### Auto-Sync
 
-Automated sync that triggers when ArgoCD detects the live state does not match the desired state. Configured in the Application's sync policy.
+Automated sync that triggers when ArgoCD detects an OutOfSync Application, typically after the target Git revision changes. Live-cluster drift is corrected automatically only when self-healing is enabled. Configured in the Application's sync policy.
 
 ### Self-Heal
 
@@ -136,7 +137,7 @@ Resource Terminology
 
 Resource Hook
 
-A mechanism for running tasks at specific points during the sync lifecycle. Hooks are annotated with `argocd.argoproj.io/hook` and can be PreSync, Sync, PostSync, or SyncFail.
+A mechanism for running tasks at specific points during the sync lifecycle. Hooks are annotated with `argocd.argoproj.io/hook` and include PreSync, Sync, PostSync, SyncFail, Skip, and delete hooks such as PostDelete.
 
 ### PreSync Hook
 
@@ -156,7 +157,7 @@ Controls when hook resources are cleaned up. Options: `HookSucceeded` (delete af
 
 ### Finalizer
 
-A Kubernetes mechanism used by ArgoCD to control deletion behavior. The `resources-finalizer.argocd.argoproj.io` finalizer ensures that deleting an Application also deletes its managed Kubernetes resources.
+A Kubernetes mechanism used by ArgoCD to control deletion behavior. When present, the `resources-finalizer.argocd.argoproj.io` finalizer ensures that deleting an Application also deletes its managed Kubernetes resources.
 
 Resource Tracking
 
