@@ -42,11 +42,12 @@ Install MicroK8s and enable required addons.
 ```bash
 # Install MicroK8s
 
-sudo snap install microk8s --classic --channel=1.28/stable
+sudo snap install microk8s --classic --channel=1.35/stable
 
 # Add your user to the microk8s group
 sudo usermod -a -G microk8s $USER
-sudo chown -R $USER ~/.kube
+mkdir -p ~/.kube
+chmod 0700 ~/.kube
 newgrp microk8s
 
 # Wait for MicroK8s to be ready
@@ -54,8 +55,8 @@ microk8s status --wait-ready
 
 # Enable required addons
 microk8s enable dns          # CoreDNS for service discovery
-microk8s enable storage      # Local storage provisioner
-microk8s enable ingress      # Nginx ingress controller
+microk8s enable hostpath-storage # Local storage provisioner
+microk8s enable ingress      # Ingress controller
 microk8s enable rbac         # RBAC for security
 ```
 
@@ -89,7 +90,7 @@ microk8s kubectl get pods -n argocd
 
 ## Exposing ArgoCD with MicroK8s Ingress
 
-MicroK8s uses the Nginx ingress controller when you enable the ingress addon.
+MicroK8s 1.35 and later use Traefik for the ingress addon, with backward-compatible `nginx` and `public` IngressClass options. Earlier MicroK8s releases used the NGINX ingress controller.
 
 ```yaml
 # ArgoCD Ingress for MicroK8s
@@ -172,7 +173,7 @@ argocd login argocd.local --username admin --password <password> --insecure
 
 ## MicroK8s Storage with ArgoCD
 
-MicroK8s storage addon provides a hostpath-based StorageClass.
+MicroK8s hostpath-storage addon provides a hostpath-based StorageClass.
 
 ```bash
 # Verify the storage class is available
@@ -186,8 +187,7 @@ microk8s kubectl get storageclass
 This storage class works for ArgoCD's needs, but it is not suitable for production. For production MicroK8s clusters, consider using OpenEBS or Rook-Ceph.
 
 ```bash
-# Enable the community OpenEBS addon for production storage
-microk8s enable community
+# Enable the OpenEBS addon for production storage
 microk8s enable openebs
 ```
 
@@ -263,14 +263,11 @@ microk8s enable dns
 
 ### Snap Confinement and File Access
 
-MicroK8s runs inside a snap, which limits file access. If you use local Git repositories or custom CA certificates, you need to place them in accessible paths.
+MicroK8s runs inside a snap, which limits file access. If you use local Git repositories, expose them over a network URL instead of relying on arbitrary host paths. For custom CA certificates used by Git repositories, configure ArgoCD's repository TLS trust.
 
 ```bash
-# Custom CA certificates should go here
-sudo cp my-ca.crt /var/snap/microk8s/current/certs/
-
-# Refresh MicroK8s to pick up new certificates
-sudo snap restart microk8s
+# Add a custom CA certificate for a Git repository server
+argocd cert add-tls git.internal.example.com --from my-ca.crt
 ```
 
 For ArgoCD to trust custom CAs, add them to the ArgoCD TLS configuration.
@@ -351,7 +348,7 @@ MicroK8s upgrades through snap channels.
 microk8s version
 
 # Switch to a newer channel
-sudo snap refresh microk8s --channel=1.29/stable
+sudo snap refresh microk8s --channel=<newer-channel>/stable
 
 # After Kubernetes upgrade, verify ArgoCD is healthy
 microk8s kubectl get pods -n argocd
@@ -361,7 +358,7 @@ microk8s kubectl rollout status deployment/argocd-server -n argocd
 For ArgoCD upgrades, apply the new manifests.
 
 ```bash
-microk8s kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.0/manifests/install.yaml
+microk8s kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/<version>/manifests/install.yaml
 ```
 
 ## Summary
