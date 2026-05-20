@@ -143,10 +143,10 @@ repository not accessible: Host key verification failed
 
 ```bash
 # Get the host key
-ssh-keyscan github.com
+ssh-keyscan github.com > /tmp/github_known_hosts
 
 # Add it to ArgoCD
-argocd cert add-ssh --batch --from /path/to/known_hosts
+argocd cert add-ssh --batch --from /tmp/github_known_hosts
 ```
 
 **Or add it to the ConfigMap:**
@@ -162,6 +162,8 @@ kind: ConfigMap
 metadata:
   name: argocd-ssh-known-hosts-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   ssh_known_hosts: |
     github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
@@ -284,6 +286,8 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   git.internal.com: |
     -----BEGIN CERTIFICATE-----
