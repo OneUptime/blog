@@ -89,10 +89,11 @@ If you deploy ArgoCD with Helm, the configuration is cleaner:
 
 ```yaml
 # values.yaml for the ArgoCD Helm chart
-server:
-  config:
+configs:
+  cm:
     ui.cssurl: "./custom/custom.css"
 
+server:
   volumes:
     - name: custom-css
       configMap:
@@ -126,17 +127,16 @@ data:
   ui.cssurl: "https://cdn.example.com/argocd/custom.css"
 ```
 
-Make sure the hosting server includes proper CORS headers if it is on a different domain:
+Make sure the hosting server serves the file with the right content type and caching headers:
 
 ```text
-Access-Control-Allow-Origin: *
 Content-Type: text/css
 Cache-Control: public, max-age=3600
 ```
 
 ## Hosting Strategy 3: Inline Data URI
 
-For small CSS changes, you can embed the CSS directly as a data URI:
+For small CSS changes, you can embed the CSS directly as a data URI if your browser and Content Security Policy allow `data:` stylesheet URLs:
 
 ```yaml
 apiVersion: v1
@@ -337,7 +337,7 @@ kubectl create configmap argocd-custom-css \
   --from-file=custom.css=./updated-custom.css \
   -n argocd --dry-run=client -o yaml | kubectl apply -f -
 
-# The volume mount will pick up changes within a minute
+# The volume mount will pick up changes after the kubelet syncs the projected ConfigMap
 # Users just need to refresh their browser
 ```
 
@@ -353,7 +353,7 @@ ui.cssurl: "https://cdn.example.com/argocd/custom.css?v=2"
 
 **Validate CSS content**: If multiple teams can modify the CSS ConfigMap, review changes carefully. Malicious CSS can overlay fake UI elements or hide important information.
 
-**CSP headers**: ArgoCD includes Content Security Policy headers. Make sure your custom CSS URL is allowed by the CSP configuration.
+**CSP headers**: ArgoCD sets a `Content-Security-Policy` header by default. If you customize it, make sure your custom CSS URL is allowed by the CSP configuration.
 
 ## Conclusion
 
