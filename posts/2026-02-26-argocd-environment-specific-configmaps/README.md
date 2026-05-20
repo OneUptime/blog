@@ -250,7 +250,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -270,9 +276,9 @@ spec:
             name: my-app-config-file
 ```
 
-## Handling ConfigMap Updates Without Restarts
+## Handling ConfigMap Updates With Rollouts
 
-If your application can reload configuration at runtime, you can use a sidecar or annotation-based approach instead of relying on Kustomize hash suffixes:
+If you use Helm instead of relying on Kustomize hash suffixes, you can add a checksum annotation so the Deployment rolls out when the ConfigMap template changes:
 
 ```yaml
 # Add a checksum annotation to trigger rolling update on ConfigMap change
@@ -289,9 +295,9 @@ spec:
 
 This Helm approach recalculates the checksum whenever the ConfigMap template changes, triggering a new rollout.
 
-## Validating ConfigMaps Before Deployment
+## Validating ConfigMaps After Deployment
 
-Add a pre-sync hook to validate configuration before it is applied:
+Add a post-sync hook to validate that the ConfigMap was applied successfully:
 
 ```yaml
 apiVersion: batch/v1
@@ -299,7 +305,7 @@ kind: Job
 metadata:
   name: validate-config
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   template:
@@ -307,14 +313,20 @@ spec:
       containers:
         - name: validator
           image: myregistry/config-validator:latest
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           command:
             - /bin/sh
             - -c
             - |
-              # Validate that required configuration keys exist
+              # Validate that required configuration keys exist and are non-empty
               REQUIRED_KEYS="LOG_LEVEL DATABASE_POOL_SIZE CACHE_TTL"
               for key in $REQUIRED_KEYS; do
-                if ! kubectl get configmap my-app-config -n $NAMESPACE -o jsonpath="{.data.$key}" 2>/dev/null; then
+                value=$(kubectl get configmap my-app-config -n "$NAMESPACE" -o "jsonpath={.data.$key}" 2>/dev/null)
+                if [ -z "$value" ]; then
                   echo "Missing required config key: $key"
                   exit 1
                 fi
@@ -323,6 +335,8 @@ spec:
       restartPolicy: Never
   backoffLimit: 0
 ```
+
+Make sure the hook's service account has permission to read ConfigMaps in the target namespace.
 
 ## Sharing Common Configuration Across Environments
 
