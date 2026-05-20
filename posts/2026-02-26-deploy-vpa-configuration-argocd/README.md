@@ -8,7 +8,7 @@ Description: Learn how to deploy Vertical Pod Autoscaler configurations with Arg
 
 ---
 
-The Vertical Pod Autoscaler (VPA) adjusts container CPU and memory requests based on actual usage. Unlike HPA which scales the number of pods, VPA scales the size of individual pods. This is especially useful for workloads where adding more replicas does not help - think single-threaded batch jobs or databases. Deploying VPA with ArgoCD has its own set of challenges because VPA modifies pod specs that ArgoCD tracks.
+The Vertical Pod Autoscaler (VPA) adjusts container CPU and memory requests based on actual usage. Unlike HPA which scales the number of pods, VPA scales the size of individual pods. This is especially useful for workloads where adding more replicas does not help - think single-threaded batch jobs or databases. Deploying VPA with ArgoCD has its own set of challenges when ArgoCD directly manages Pod manifests or when another controller writes autoscaler-managed resources back into workload templates.
 
 ## How VPA Works
 
@@ -41,7 +41,7 @@ spec:
   project: platform
   source:
     repoURL: https://github.com/kubernetes/autoscaler
-    targetRevision: vpa-release-1.0
+    targetRevision: vpa-release-1.6
     path: vertical-pod-autoscaler/deploy
   destination:
     server: https://kubernetes.default.svc
@@ -64,7 +64,7 @@ spec:
   source:
     repoURL: https://charts.fairwinds.com/stable
     chart: vpa
-    targetRevision: 4.4.0
+    targetRevision: 4.11.0
     helm:
       values: |
         recommender:
@@ -107,7 +107,7 @@ spec:
     kind: Deployment
     name: backend-api
   updatePolicy:
-    updateMode: "Auto"  # Or "Off" for recommendation-only mode
+    updateMode: "Recreate"  # Or "Off" for recommendation-only mode
   resourcePolicy:
     containerPolicies:
       - containerName: api
@@ -123,7 +123,7 @@ spec:
 
 ## VPA Update Modes
 
-VPA has three update modes, each with different ArgoCD implications:
+VPA has several update modes, each with different ArgoCD implications:
 
 ### Mode 1: Off (Recommendation Only)
 
@@ -167,18 +167,20 @@ updatePolicy:
 
 VPA sets resources only when pods are first created. It does not evict running pods. This has minimal conflict with ArgoCD because VPA only acts during pod creation.
 
-### Mode 3: Auto
+### Mode 3: Recreate
 
 ```yaml
 updatePolicy:
-  updateMode: "Auto"
+  updateMode: "Recreate"
 ```
 
-VPA actively evicts and recreates pods with new resource values. This conflicts with ArgoCD because the live pod spec differs from what is in Git.
+VPA actively evicts and recreates pods with new resource values. If ArgoCD directly manages those Pod manifests, the live pod spec can differ from what is in Git.
+
+`Auto` is still accepted by the VPA API as an alias for `Recreate`, but it is deprecated. On clusters that support in-place pod resizing, `InPlaceOrRecreate` can try to update pod resources in place and fall back to eviction when needed.
 
 ## Handling the ArgoCD Diff Problem
 
-When VPA is in Auto or Initial mode, it modifies the pod resource requests. ArgoCD sees this as a diff and reports the Application as OutOfSync.
+When VPA is in Recreate, Initial, or InPlaceOrRecreate mode, it modifies pod resource requests. For the common Deployment or StatefulSet case, VPA mutates the created Pods and does not rewrite the Deployment or StatefulSet template that ArgoCD tracks. If ArgoCD directly manages Pod manifests, or if another controller writes resource changes back into workload templates, ArgoCD can see a diff and report the Application as OutOfSync.
 
 Configure ignoreDifferences to handle this:
 
@@ -187,32 +189,34 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: backend-api
+  namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/backend-api-config
     targetRevision: main
     path: overlays/production
   ignoreDifferences:
-    - group: apps
-      kind: Deployment
+    - group: ""
+      kind: Pod
       jqPathExpressions:
-        - .spec.template.spec.containers[].resources
+        - .spec.containers[].resources
   destination:
     server: https://kubernetes.default.svc
     namespace: production
 ```
 
-The `jqPathExpressions` format is more flexible than `jsonPointers` for matching nested array elements. This ignores all resource changes on all containers.
+The `jqPathExpressions` format is more flexible than `jsonPointers` for matching nested array elements. This ignores all resource changes on all containers for directly managed Pod manifests.
 
 For more precision, ignore only specific containers:
 
 ```yaml
 ignoreDifferences:
-  - group: apps
-    kind: Deployment
+  - group: ""
+    kind: Pod
     name: backend-api
     jqPathExpressions:
-      - '.spec.template.spec.containers[] | select(.name == "api") | .resources.requests'
+      - '.spec.containers[] | select(.name == "api") | .resources.requests'
 ```
 
 ## Combining VPA with HPA
@@ -253,7 +257,7 @@ spec:
     kind: Deployment
     name: backend-api
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: api
@@ -303,7 +307,7 @@ metadata:
   name: backend-api
 spec:
   updatePolicy:
-    updateMode: "Auto"  # Auto-adjust in production
+    updateMode: "Recreate"  # Eviction-based adjustment in production
   resourcePolicy:
     containerPolicies:
       - containerName: api
@@ -387,7 +391,7 @@ resource.customizations.health.autoscaling.k8s.io_VerticalPodAutoscaler: |
 1. **Start with Off mode** - Get comfortable with VPA recommendations before enabling auto-updates
 2. **Set minAllowed and maxAllowed** - Prevent VPA from setting resources too low or too high
 3. **Use controlledValues: RequestsOnly** - Let VPA adjust requests but keep limits from Git
-4. **Monitor pod restarts** - VPA in Auto mode evicts pods. Watch restart counts.
+4. **Monitor pod restarts** - VPA in Recreate mode evicts pods. Watch restart counts.
 5. **Exclude sidecar containers** - If you have sidecars, exclude them from VPA or set separate policies
 
 ```yaml
@@ -401,4 +405,4 @@ resourcePolicy:
 
 ## Summary
 
-VPA with ArgoCD requires managing the tension between GitOps-defined resource specs and autoscaler-managed resources. Start with VPA in "Off" mode to get recommendations, then graduate to "Initial" or "Auto" mode. Use ignoreDifferences to prevent ArgoCD from fighting VPA changes. When combining VPA with HPA, ensure they control different scaling dimensions - HPA for replica count based on business metrics, VPA for resource requests based on actual usage. The result is pods that are automatically right-sized while maintaining GitOps control over the autoscaling policies themselves.
+VPA with ArgoCD requires managing the tension between GitOps-defined resource specs and autoscaler-managed resources. Start with VPA in "Off" mode to get recommendations, then graduate to "Initial" or "Recreate" mode. Use ignoreDifferences only for resources that ArgoCD manages directly and that are actually mutated after sync. When combining VPA with HPA, ensure they control different scaling dimensions - HPA for replica count based on business metrics, VPA for resource requests based on actual usage. The result is pods that are automatically right-sized while maintaining GitOps control over the autoscaling policies themselves.
