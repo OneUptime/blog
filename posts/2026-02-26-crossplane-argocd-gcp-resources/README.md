@@ -46,6 +46,13 @@ metadata:
   name: provider-gcp-cloudplatform
 spec:
   package: xpkg.upbound.io/upbound/provider-gcp-cloudplatform:v1.0.0
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-gcp-servicenetworking
+spec:
+  package: xpkg.upbound.io/upbound/provider-gcp-servicenetworking:v1.0.0
 ```
 
 ## Configuring GCP Authentication
@@ -81,7 +88,12 @@ stringData:
       "private_key_id": "...",
       "private_key": "...",
       "client_email": "crossplane@my-gcp-project.iam.gserviceaccount.com",
-      ...
+      "client_id": "...",
+      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+      "token_uri": "https://oauth2.googleapis.com/token",
+      "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+      "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/crossplane%40my-gcp-project.iam.gserviceaccount.com",
+      "universe_domain": "googleapis.com"
     }
 ---
 apiVersion: gcp.upbound.io/v1beta1
@@ -404,7 +416,7 @@ Check the status of your GCP resources:
 
 ```bash
 # List all managed GCP resources
-kubectl get managed -l crossplane.io/provider-gcp
+kubectl get managed
 
 # Check a specific resource
 kubectl describe databaseinstance app-database
