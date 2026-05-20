@@ -20,7 +20,7 @@ There are three categories of PVCs to consider:
 
 1. **PVCs defined in application manifests** - Directly tracked by ArgoCD
 2. **PVCs created by StatefulSets** - Created dynamically, may or may not be tracked
-3. **PVCs created by other controllers** - PVCs from operators or volume expansion
+3. **PVCs created by other controllers** - PVCs from operators or external provisioners
 
 ```bash
 # Check which PVCs are tracked by your ArgoCD application
@@ -63,7 +63,7 @@ graph TD
     E --> H[Unrecoverable without backups]
 ```
 
-## Strategy 1: Exclude PVCs from ArgoCD pruning
+## Strategy 1: Exclude PVCs from ArgoCD pruning and deletion
 
 The simplest approach is to prevent ArgoCD from ever deleting PVCs:
 
@@ -85,7 +85,7 @@ spec:
   storageClassName: gp3
 ```
 
-Or apply at the application level to protect all PVCs:
+Or apply at the application level to prevent pruning during sync operations:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -109,8 +109,10 @@ spec:
         - /spec/resources/requests/storage  # Ignore storage resize diffs
   syncPolicy:
     syncOptions:
-      - Prune=false  # Never prune any resources
+      - Prune=false  # Never prune resources during sync
 ```
+
+Application-level `Prune=false` prevents pruning during sync, but it does not replace the per-resource `Delete=false` annotation for preserving PVCs during ArgoCD application deletion.
 
 ## Strategy 2: Use Retain reclaim policy on StorageClass
 
@@ -165,21 +167,19 @@ spec:
             storage: 100Gi
 ```
 
-## Strategy 3: Remove PVCs from ArgoCD tracking before deletion
+## Strategy 3: Protect PVCs before deletion
 
-Before deleting the application, remove PVCs from ArgoCD management:
+Before deleting the application, make sure PVCs are protected from ArgoCD deletion:
 
 ```bash
-# Option 1: Remove PVC manifests from Git before deleting the app
-# This makes PVCs "orphaned" from ArgoCD's perspective
-git rm manifests/pvc-data.yaml
-git commit -m "Remove PVCs from ArgoCD management before app deletion"
-git push
+# Option 1: Add Delete=false to PVCs before deleting the app
+kubectl annotate pvc data-postgres-0 -n production \
+  argocd.argoproj.io/sync-options=Prune=false,Delete=false --overwrite
 
-# Sync without pruning to keep existing PVCs
+# Sync so ArgoCD sees the updated protection before deletion
 argocd app sync my-app --prune=false
 
-# Now delete the application - PVCs are not tracked, so they survive
+# Now delete the application - protected PVCs survive
 argocd app delete my-app -y
 ```
 
@@ -220,36 +220,53 @@ StatefulSets create PVCs dynamically through `volumeClaimTemplates`. These PVCs 
 # StatefulSet PVCs follow the naming pattern: <volume-name>-<statefulset-name>-<ordinal>
 # Example: data-postgres-0, data-postgres-1, data-postgres-2
 
-# Kubernetes does NOT automatically delete StatefulSet PVCs when the StatefulSet is deleted
-# This is by design - it prevents data loss
+# By default, Kubernetes retains StatefulSet PVCs when the StatefulSet is deleted
+# This is controlled by spec.persistentVolumeClaimRetentionPolicy
 
-# However, ArgoCD tracks these PVCs and WILL delete them during cascade delete
+# However, ArgoCD can delete tracked PVCs during cascade delete unless they are protected
 # Check tracking:
 argocd app resources my-db-app | grep PersistentVolumeClaim
 ```
 
-To prevent ArgoCD from deleting StatefulSet PVCs, use the ignore differences approach:
+To prevent Kubernetes and ArgoCD from deleting StatefulSet PVCs, set the StatefulSet retention policy and add ArgoCD delete protection to the PVC template:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: apps/v1
+kind: StatefulSet
 metadata:
-  name: database
-  namespace: argocd
+  name: postgres
+  namespace: database
 spec:
-  source:
-    repoURL: https://github.com/myorg/database.git
-    targetRevision: main
-    path: manifests
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: database
-  # Exclude PVCs from sync/prune operations
-  ignoreDifferences:
-    - group: ""
-      kind: PersistentVolumeClaim
-      jsonPointers:
-        - /spec/resources
+  serviceName: postgres
+  replicas: 3
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        annotations:
+          argocd.argoproj.io/sync-options: Prune=false,Delete=false
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: gp3-retain
+        resources:
+          requests:
+            storage: 100Gi
 ```
 
 ## Recovering data from retained PVs
@@ -352,4 +369,4 @@ echo "Safe to proceed with application deletion"
 
 ## Summary
 
-PVC retention during ArgoCD application deletion requires proactive planning. The safest approaches are: annotating PVCs with `Prune=false` to prevent ArgoCD from deleting them, using StorageClasses with `Retain` reclaim policy, backing up data before any deletion, and using non-cascade delete when in doubt. For StatefulSet workloads, remember that while Kubernetes preserves PVCs by default when a StatefulSet is deleted, ArgoCD's cascade delete overrides this behavior and will remove tracked PVCs. Always verify your reclaim policies and PVC tracking before deleting any stateful application.
+PVC retention during ArgoCD application deletion requires proactive planning. The safest approaches are: annotating PVCs with `Delete=false` to prevent ArgoCD from deleting them during application deletion, using `Prune=false` to prevent pruning during sync, using StorageClasses with `Retain` reclaim policy, backing up data before any deletion, and using non-cascade delete when in doubt. For StatefulSet workloads, remember that Kubernetes preserves PVCs by default when a StatefulSet is deleted, but ArgoCD can remove tracked PVCs during cascade deletion unless they are protected. Always verify your reclaim policies and PVC tracking before deleting any stateful application.
