@@ -14,16 +14,16 @@ Helm charts stored in OCI container registries are the modern way to distribute 
 
 Before starting, you need:
 
-- ArgoCD v2.4 or later (OCI support was added in v2.4)
+- ArgoCD v2.8 or later for the examples below (`valuesObject` is used); OCI Helm registry support was added in v2.4
 - A Helm chart published to an OCI registry
 - Registry credentials (for private registries)
-- The ArgoCD CLI installed
+- The ArgoCD CLI installed and logged in
 
-Verify your ArgoCD version supports OCI:
+Verify your ArgoCD server version supports these examples:
 
 ```bash
-argocd version --client
-# Should be v2.4.0 or later
+argocd version
+# Server should be v2.8.0 or later
 
 ```
 
@@ -312,10 +312,10 @@ source:
         value: v2.1.0
 
     # Skip CRD installation
-    skipCrds: false
+    skipCrds: true
 
-    # Pass --atomic to Helm
-    # (not directly supported in source, but available via sync options)
+    # Helm install/upgrade flags such as --atomic are not supported here
+    # because ArgoCD renders with helm template and applies manifests during sync
 ```
 
 ## Troubleshooting OCI Chart Pull Issues
