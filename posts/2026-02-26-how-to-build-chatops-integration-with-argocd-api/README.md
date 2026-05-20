@@ -262,6 +262,8 @@ def parse_command(text: str) -> Command:
 
     if positional:
         cmd.app_name = positional[0]
+    if action == 'rollback' and len(positional) > 1:
+        cmd.options['id'] = positional[1]
 
     # Map options to command fields
     cmd.project = cmd.options.get('project')
@@ -366,6 +368,9 @@ Wire everything together with a command executor.
 ```python
 # executor.py
 # Executes parsed commands against ArgoCD API
+import requests
+
+from formatter import ResponseFormatter
 
 class CommandExecutor:
     """Executes ChatOps commands against ArgoCD."""
@@ -442,10 +447,9 @@ class CommandExecutor:
     def _handle_rollback(self, cmd):
         if not cmd.app_name:
             return "Usage: rollback <app-name> <history-id>"
-        options = cmd.options
         history_id = int(cmd.options.get('id', 0)) if cmd.options else 0
         if not history_id:
-            return "Usage: rollback <app-name> --id <history-id>"
+            return "Usage: rollback <app-name> <history-id>"
         self.client.rollback_app(cmd.app_name, history_id)
         return f"Rollback triggered for {cmd.app_name} to history #{history_id}"
 
@@ -472,12 +476,10 @@ data:
   service.slack: |
     token: $slack-token
 
-  # Microsoft Teams webhook
-  service.webhook.teams: |
-    url: https://outlook.office.com/webhook/...
-    headers:
-      - name: Content-Type
-        value: application/json
+  # Microsoft Teams Workflows
+  service.teams-workflows: |
+    recipientUrls:
+      deployments: $teams-workflows-url
 
   # Sync succeeded template
   template.sync-succeeded: |
@@ -490,6 +492,18 @@ data:
             {"title": "Revision", "value": "{{.app.status.sync.revision | trunc 7}}", "short": true},
             {"title": "Project", "value": "{{.app.spec.project}}", "short": true}
           ]
+        }]
+    teams-workflows:
+      themeColor: "Good"
+      title: "Deployment Succeeded: {{.app.metadata.name}}"
+      summary: "{{.app.metadata.name}} sync succeeded"
+      facts: |
+        [{
+          "name": "Revision",
+          "value": "{{.app.status.sync.revision | trunc 7}}"
+        }, {
+          "name": "Project",
+          "value": "{{.app.spec.project}}"
         }]
 
   # Sync failed template
@@ -505,13 +519,26 @@ data:
             {"title": "Project", "value": "{{.app.spec.project}}", "short": true}
           ]
         }]
+    teams-workflows:
+      themeColor: "Attention"
+      title: "Deployment Failed: {{.app.metadata.name}}"
+      text: "{{.app.status.operationState.message}}"
+      summary: "{{.app.metadata.name}} sync failed"
+      facts: |
+        [{
+          "name": "Revision",
+          "value": "{{.app.status.sync.revision | trunc 7}}"
+        }, {
+          "name": "Project",
+          "value": "{{.app.spec.project}}"
+        }]
 
   # Trigger definitions
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [sync-succeeded]
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Failed', 'Error']
+    - when: app.status?.operationState.phase in ['Failed', 'Error']
       send: [sync-failed]
 ```
 
