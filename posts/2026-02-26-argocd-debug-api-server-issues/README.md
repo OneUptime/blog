@@ -115,23 +115,10 @@ If the server is overloaded with legitimate traffic:
 # Scale to multiple replicas
 kubectl scale deployment argocd-server -n argocd --replicas=3
 
-# Set resource limits
-kubectl patch deployment argocd-server -n argocd --type json -p '[
-  {
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources",
-    "value": {
-      "requests": {
-        "cpu": "500m",
-        "memory": "512Mi"
-      },
-      "limits": {
-        "cpu": "2",
-        "memory": "2Gi"
-      }
-    }
-  }
-]'
+# Set resource requests and limits
+kubectl set resources deployment argocd-server -n argocd \
+  --requests=cpu=500m,memory=512Mi \
+  --limits=cpu=2,memory=2Gi
 ```
 
 ## Issue: API Server Returns 403/Permission Denied
@@ -171,19 +158,10 @@ data:
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server -o json | \
   jq '.items[].status.containerStatuses[] | {name: .name, restartCount: .restartCount, lastTermination: .lastState.terminated}'
 
-# Increase memory limits
-kubectl patch deployment argocd-server -n argocd --type json -p '[
-  {
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources/limits/memory",
-    "value": "2Gi"
-  },
-  {
-    "op": "replace",
-    "path": "/spec/template/spec/containers/0/resources/requests/memory",
-    "value": "1Gi"
-  }
-]'
+# Increase memory requests and limits
+kubectl set resources deployment argocd-server -n argocd \
+  --requests=memory=1Gi \
+  --limits=memory=2Gi
 ```
 
 ## Issue: TLS/Certificate Errors
@@ -197,21 +175,25 @@ kubectl get secret argocd-server-tls -n argocd -o jsonpath='{.data.tls\.crt}' | 
 kubectl get secret argocd-server-tls -n argocd -o jsonpath='{.data.tls\.crt}' | \
   base64 -d | openssl x509 -noout -enddate
 
-# Check if the server is running in insecure mode
+# Check if the server is configured to run in insecure mode
+kubectl get configmap argocd-cmd-params-cm -n argocd \
+  -o jsonpath='{.data.server\.insecure}{"\n"}'
+
+# Check for an explicit --insecure argument
 kubectl get deploy argocd-server -n argocd \
-  -o jsonpath='{.spec.template.spec.containers[0].command}' | tr ',' '\n' | grep insecure
+  -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ' ' '\n' | grep insecure
 ```
 
 ## Issue: Webhook Processing Not Working
 
 ```bash
 # Check webhook configuration
-kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data}' | \
-  python3 -c "import sys,json; d=json.load(sys.stdin); [print(f'{k}: {v}') for k,v in d.items() if 'webhook' in k.lower()]"
+kubectl get configmap argocd-cm -n argocd -o json | \
+  python3 -c "import sys,json; d=json.load(sys.stdin).get('data', {}); [print(f'{k}: {v}') for k,v in d.items() if 'webhook' in k.lower()]"
 
 # Check webhook secret
-kubectl get secret argocd-secret -n argocd -o jsonpath='{.data}' | \
-  python3 -c "import sys,json,base64; d=json.load(sys.stdin); [print(f'{k}') for k in d if 'webhook' in k.lower()]"
+kubectl get secret argocd-secret -n argocd -o json | \
+  python3 -c "import sys,json; d=json.load(sys.stdin).get('data', {}); [print(f'{k}') for k in d if 'webhook' in k.lower()]"
 
 # Watch for webhook events in logs
 kubectl logs -n argocd deploy/argocd-server -f --tail=0 | grep -i webhook
@@ -238,13 +220,13 @@ curl -s localhost:8083/metrics | grep -E "argocd_server|grpc_server"
 ## API Server Health Check Endpoint
 
 ```bash
-# Check the health endpoint
+# Check the readiness endpoint
 kubectl exec -n argocd deploy/argocd-server -- \
-  curl -sk https://localhost:8080/healthz
+  curl -s http://localhost:8080/healthz
 
-# Check readiness
+# Check the full health endpoint
 kubectl exec -n argocd deploy/argocd-server -- \
-  curl -sk https://localhost:8080/healthz?full=true
+  curl -s 'http://localhost:8080/healthz?full=true'
 ```
 
 ## Complete Debug Checklist
