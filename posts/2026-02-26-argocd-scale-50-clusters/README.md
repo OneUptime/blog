@@ -39,7 +39,7 @@ graph TD
 
 The single biggest improvement you can make is enabling controller sharding. Instead of one application controller processing all clusters, you split the workload across multiple controller replicas.
 
-Each shard is responsible for a subset of clusters, determined by a consistent hashing algorithm.
+Each shard is responsible for a subset of clusters, determined by the configured sharding algorithm.
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
@@ -50,7 +50,7 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable sharding with 3 controller replicas
+  # Use an even cluster distribution across controller shards
   controller.sharding.algorithm: "round-robin"
 ```
 
@@ -112,7 +112,7 @@ spec:
           limits:
             cpu: "4"
             memory: "4Gi"
-        # Use a persistent volume for the repo cache
+        # Give /tmp enough space for repository clones
         volumeMounts:
         - name: repo-cache
           mountPath: /tmp
@@ -129,39 +129,16 @@ The key settings here are the parallelism limit and giving each replica enough d
 At 50+ clusters, Redis handles an enormous amount of cache traffic. The default single-instance Redis will eventually become a bottleneck.
 
 ```yaml
-# Use Redis HA mode
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-redis-ha
-  namespace: argocd
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: redis
-        image: redis:7.2-alpine
-        args:
-        - redis-server
-        - --maxmemory
-        - "2gb"
-        - --maxmemory-policy
-        - "allkeys-lru"
-        - --save
-        - ""
-        - --appendonly
-        - "no"
-        resources:
-          requests:
-            cpu: "1"
-            memory: "2Gi"
-          limits:
-            cpu: "2"
-            memory: "3Gi"
+# Use Argo CD's HA manifests instead of scaling a plain Redis Deployment.
+# The HA bundle includes the Redis HA/Sentinel components Argo CD expects.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argocd
+resources:
+- https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
 
-Disable persistence in Redis since ArgoCD can rebuild its cache from live cluster state. This reduces I/O pressure significantly.
+Redis is used as a disposable cache by ArgoCD, so losing it does not lose application state. If you customize Redis beyond the HA manifests, keep that cache-only behavior in mind and avoid adding unnecessary persistence I/O.
 
 ## Step 4: Configure Cluster Connection Pooling
 
@@ -171,17 +148,18 @@ Each cluster connection consumes resources on the controller side. Configure con
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Reduce the frequency of cluster cache syncs
-  cluster.cache.resync.duration: "3m"
-  # Increase timeout for slow clusters
-  timeout.reconciliation: "300s"
   # Limit the number of concurrent status processors
   controller.status.processors: "50"
   # Limit concurrent operation processors
   controller.operation.processors: "25"
+  # Tune Kubernetes API client connection usage
+  controller.k8s.client.qps: "50"
+  controller.k8s.client.burst: "100"
+  controller.k8s.client.max.idle.connections: "500"
+  controller.k8s.tcp.timeout: "30s"
 ```
 
 The status and operation processor counts are critical. Too many concurrent processors will overwhelm the controller. For 50 clusters with moderate application counts, 50 status processors and 25 operation processors is a solid starting point.
@@ -222,20 +200,20 @@ spec:
 
 This single resource replaces 50 individual Application manifests and ensures consistent configuration across all clusters.
 
-## Step 6: Implement Resource Quotas for Reconciliation
+## Step 6: Tune Reconciliation Polling
 
-Not all applications need to be reconciled at the same frequency. Lower-priority applications can have their sync intervals extended:
+ArgoCD does not support a numeric per-Application reconcile interval through the `argocd.argoproj.io/refresh` annotation. That annotation is for one-time refresh requests and accepts `normal` or `hard`. If periodic Git polling is too frequent at this scale, tune the global reconciliation interval and jitter:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: legacy-reporting
-  annotations:
-    # Only reconcile every 10 minutes instead of default 3 minutes
-    argocd.argoproj.io/refresh: "600"
-spec:
-  # ... application spec
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Poll Git less frequently than the default 120s plus jitter
+  timeout.reconciliation: "10m"
+  timeout.reconciliation.jitter: "2m"
 ```
 
 For monitoring your ArgoCD deployment at this scale, consider integrating with [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-alerts-outofsync-applications/view) to get alerts when applications drift out of sync across your cluster fleet.
