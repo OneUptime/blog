@@ -56,10 +56,10 @@ If the application has many resources, find out which ones specifically are out 
 
 ```bash
 # List all resources and their sync status
-argocd app resources my-app
+argocd app get my-app --output tree=detailed
 
-# Filter to only out-of-sync resources
-argocd app resources my-app --orphaned
+# Filter to only out-of-sync resources from JSON output
+argocd app get my-app -o json | jq -r '.status.resources[] | select(.status == "OutOfSync") | "\(.kind)/\(.name)"'
 ```
 
 In the UI, out-of-sync resources are highlighted with a yellow indicator in the resource tree.
@@ -96,15 +96,17 @@ Someone used `kubectl` directly to modify a resource:
 
 The live state now differs from Git. ArgoCD correctly shows OutOfSync.
 
-To find who made the change:
+To investigate who made the change:
 
 ```bash
-# Check Kubernetes audit logs
+# Check recent Kubernetes events for clues about controller activity
 kubectl get events -n my-namespace --sort-by='.lastTimestamp'
 
-# Check for recent modifications
+# Check managedFields for recent field managers and timestamps
 kubectl get deployment my-deployment -n my-namespace -o yaml | grep -A 3 "managedFields"
 ```
+
+Kubernetes Events can help explain what happened to a resource, but they are not audit logs. To identify the user or client that made an API change, check your cluster's configured Kubernetes audit log backend.
 
 ### Default Values Added by Kubernetes
 
@@ -118,7 +120,7 @@ strategy:
     maxUnavailable: 25%
 ```
 
-This causes a diff because your Git manifest does not have these fields, but the live resource does. ArgoCD sees them as different.
+This can cause a diff because your Git manifest does not have these fields, but the live resource does. ArgoCD may see them as different depending on the resource and diff strategy.
 
 To handle this, use `ignoreDifferences`:
 
@@ -171,7 +173,7 @@ Some controllers modify resources they manage. For example:
 kubectl get deployment my-deployment -o yaml | grep -B 2 -A 10 "managedFields"
 ```
 
-Resource Version and Generation Changes
+### Resource Version and Generation Changes
 
 These fields change automatically and should never cause OutOfSync. If they do, it is usually a tracking configuration issue:
 
