@@ -8,9 +8,9 @@ Description: Learn how to scale ArgoCD to handle 1000 or more applications with 
 
 ---
 
-At 1,000 applications, you have crossed into large-scale ArgoCD territory. This is where the single application controller hits its limits and sharding becomes necessary. The repo server needs significant horizontal scaling, Redis needs careful sizing, and every configuration decision has measurable performance impact. Many organizations operate at this scale successfully - ArgoCD can handle it - but it requires intentional architecture.
+At 1,000 applications, you have crossed into large-scale ArgoCD territory. This is where the single application controller can hit its limits and cluster sharding becomes useful when those applications target multiple destination clusters. The repo server needs significant horizontal scaling, Redis needs careful sizing, and every configuration decision has measurable performance impact. Many organizations operate at this scale successfully - ArgoCD can handle it - but it requires intentional architecture.
 
-This guide covers the specific techniques needed to run ArgoCD at 1,000+ applications: controller sharding, aggressive caching, repository optimization, and the operational practices that keep everything running smoothly.
+This guide covers the specific techniques needed to run ArgoCD at 1,000+ applications: controller tuning and cluster sharding, aggressive caching, repository optimization, and the operational practices that keep everything running smoothly.
 
 ## The Challenge at 1,000 Applications
 
@@ -21,11 +21,11 @@ At this scale, the numbers become significant:
 - The repo server handles hundreds of manifest generation requests per cycle
 - Redis stores cached state for all 1,000 applications plus their resource trees
 
-A single controller instance simply cannot keep up. The reconciliation queue grows faster than it drains.
+A single controller instance may not keep up. The reconciliation queue can grow faster than it drains.
 
 ## Step 1: Enable Controller Sharding
 
-Controller sharding distributes applications across multiple controller instances. Each controller only manages its assigned subset of applications.
+Controller sharding distributes destination clusters across multiple controller instances. Each controller manages the applications that target its assigned clusters. If all 1,000 applications target one Kubernetes cluster, controller replicas do not split those applications across pods; in that case, tune the controller processors and repo server first.
 
 ### Configure Sharding
 
@@ -36,7 +36,7 @@ metadata:
   name: argocd-application-controller
   namespace: argocd
 spec:
-  # Number of shards - each gets ~333 applications
+  # Number of shards for destination clusters
   replicas: 3
   template:
     spec:
@@ -63,23 +63,23 @@ spec:
               memory: 4Gi
 ```
 
-Each controller replica automatically determines its shard based on its StatefulSet ordinal index. With 3 replicas and 1,000 applications:
-- Controller-0 handles ~333 applications
-- Controller-1 handles ~333 applications
-- Controller-2 handles ~334 applications
+Each controller replica automatically determines its shard based on its StatefulSet ordinal index. With 3 replicas, ArgoCD assigns destination clusters to shards. The application distribution depends on how many applications target each cluster:
+- Controller-0 handles applications targeting clusters assigned to shard 0
+- Controller-1 handles applications targeting clusters assigned to shard 1
+- Controller-2 handles applications targeting clusters assigned to shard 2
 
 ### Choosing the Number of Shards
 
-The right number depends on your reconciliation needs:
+The right number depends on your reconciliation needs and cluster distribution:
 
-| Applications | Recommended Shards | Apps per Shard |
-|-------------|-------------------|----------------|
-| 500-750     | 2                 | 250-375        |
-| 750-1000    | 3                 | 250-333        |
-| 1000-1500   | 4                 | 250-375        |
-| 1500-2000   | 5                 | 300-400        |
+| Applications | Recommended Shards | Notes |
+|-------------|-------------------|-------|
+| 500-750     | 2                 | Useful when apps span multiple clusters |
+| 750-1000    | 3                 | Keep cluster assignments balanced |
+| 1000-1500   | 4                 | Prefer round-robin or consistent-hashing sharding |
+| 1500-2000   | 5                 | Validate distribution with metrics and logs |
 
-Keep each shard under 400 applications for optimal performance.
+Keep the application load per shard balanced for optimal performance.
 
 ## Step 2: Scale the Repo Server Aggressively
 
@@ -99,8 +99,7 @@ spec:
         - name: argocd-repo-server
           command:
             - argocd-repo-server
-            - --parallelism-limit=10
-            - --git-shallow-clone
+            - --parallelismlimit=10
             - --redis-compress=gzip
             - --logformat=json
           resources:
@@ -192,8 +191,8 @@ data:
   # Increase to 5 minutes
   timeout.reconciliation: "300s"
 
-  # Hard resync every 2 hours
-  timeout.hard.reconciliation: "7200s"
+  # Add jitter to avoid all apps refreshing at the same time
+  timeout.reconciliation.jitter: "60s"
 ```
 
 This means drift detection is slightly slower (5 minutes instead of 3), but the reduction in API server load is substantial.
@@ -253,8 +252,8 @@ Some fields change frequently but are not meaningful for drift detection.
 ```yaml
 data:
   resource.customizations.ignoreDifferences.all: |
-    managedFields:
-      - manager: kube-controller-manager
+    managedFieldsManagers:
+      - kube-controller-manager
     jsonPointers:
       - /status
   resource.customizations.ignoreDifferences.apps_Deployment: |
@@ -332,6 +331,8 @@ stringData:
   password: ghp_xxxxxxxxxxxx
 ```
 
+For repositories with large histories, configure shallow cloning on the repository Secret with `depth: "1"` or add the repository with `argocd repo add <repo-url> --depth`.
+
 ## Architecture at 1,000 Applications
 
 ```mermaid
@@ -344,14 +345,14 @@ flowchart TD
     S1 & S2 --> C1[Controller Shard 1]
     S1 & S2 --> C2[Controller Shard 2]
 
-    C0 -->|~333 apps| RS[Repo Server Pool x5]
-    C1 -->|~333 apps| RS
-    C2 -->|~334 apps| RS
+    C0 -->|clusters assigned to shard 0| RS[Repo Server Pool x5]
+    C1 -->|clusters assigned to shard 1| RS
+    C2 -->|clusters assigned to shard 2| RS
 
     C0 & C1 & C2 --> RedisHA[Redis HA x3]
     RS --> RedisHA
 
-    C0 & C1 & C2 -->|deploy| Cluster[Kubernetes Cluster]
+    C0 & C1 & C2 -->|deploy| Clusters[Kubernetes Clusters]
 ```
 
 ## Step 8: Monitoring at Scale
@@ -360,13 +361,13 @@ flowchart TD
 
 ```yaml
 rules:
-  - alert: ArgocdShardUnbalanced
+  - alert: ArgocdClusterAppDistributionSkew
     expr: |
-      max(argocd_app_info) by (controller) /
-      min(argocd_app_info) by (controller) > 1.5
+      max(count by (dest_server) (argocd_app_info)) /
+      min(count by (dest_server) (argocd_app_info)) > 1.5
     for: 10m
     annotations:
-      summary: "Controller shards are significantly unbalanced"
+      summary: "Applications are unevenly distributed across destination clusters"
 
   - alert: ArgocdReconciliationBacklog
     expr: |
@@ -401,4 +402,4 @@ Store these backups in a separate Git repository that is managed independently o
 
 ## Conclusion
 
-Scaling ArgoCD to 1,000 applications requires controller sharding, significant repo server capacity, Redis HA, and careful tuning. The key architectural decision is sharding the controller into 3 or more replicas, each handling a subset of applications. Combined with 5 repo server replicas, Redis HA with compression, and aggressive caching, ArgoCD handles this load well. The investment in monitoring becomes critical at this scale - without it, you are flying blind. Plan for dedicated node pools, proper resource allocation, and disaster recovery. With these pieces in place, ArgoCD remains a reliable GitOps platform well beyond 1,000 applications.
+Scaling ArgoCD to 1,000 applications requires controller tuning, significant repo server capacity, Redis HA, and careful configuration. When applications target multiple destination clusters, the key architectural decision is sharding the controller into 3 or more replicas, each handling the clusters assigned to its shard. Combined with 5 repo server replicas, Redis HA with compression, and aggressive caching, ArgoCD handles this load well. The investment in monitoring becomes critical at this scale - without it, you are flying blind. Plan for dedicated node pools, proper resource allocation, and disaster recovery. With these pieces in place, ArgoCD remains a reliable GitOps platform well beyond 1,000 applications.
