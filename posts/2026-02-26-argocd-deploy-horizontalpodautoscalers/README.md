@@ -14,7 +14,7 @@ HorizontalPodAutoscalers (HPAs) automatically scale the number of pod replicas b
 
 Here is the problem. Your Git manifest says `replicas: 3`. The HPA scales the Deployment to 7 replicas based on load. ArgoCD detects a diff between Git (3 replicas) and the cluster (7 replicas) and shows the application as "OutOfSync."
 
-If automated sync is enabled, ArgoCD scales the Deployment back down to 3, and then the HPA scales it back up. You get a constant tug-of-war.
+If automated sync with self-healing is enabled, ArgoCD scales the Deployment back down to 3, and then the HPA scales it back up. You get a constant tug-of-war.
 
 The solution: tell ArgoCD to ignore the replica count field when an HPA is managing it.
 
@@ -316,11 +316,11 @@ This makes ArgoCD ignore replica count differences for all Deployments, Stateful
 
 ## HPA Health Checks
 
-ArgoCD considers an HPA healthy when:
+ArgoCD does not include HorizontalPodAutoscaler in its documented built-in health checks. If you want HPA health to affect Application health, customize it based on the HPA status conditions:
 
-- It has a target reference that exists
-- Current replicas are within min and max bounds
-- At least one metric is reportable
+- `AbleToScale=True` means the HPA can fetch and update the target scale
+- `ScalingActive=True` means the HPA can calculate a replica count from at least one metric
+- `ScalingLimited=True` means the desired replica count was capped by `minReplicas` or `maxReplicas`
 
 Customize the health check:
 
@@ -329,25 +329,43 @@ Customize the health check:
 data:
   resource.customizations.health.autoscaling_HorizontalPodAutoscaler: |
     hs = {}
-    if obj.status ~= nil then
-      if obj.status.currentReplicas ~= nil and
-         obj.status.desiredReplicas ~= nil then
-        if obj.status.currentReplicas == obj.status.desiredReplicas then
-          hs.status = "Healthy"
-          hs.message = "Scaled to " .. obj.status.currentReplicas .. " replicas"
-        else
+    hs.status = "Progressing"
+    hs.message = "Waiting for HPA status"
+
+    if obj.status ~= nil and obj.status.conditions ~= nil then
+      local ableToScale = false
+      local scalingActive = false
+      local scalingLimited = false
+      local message = ""
+
+      for _, condition in ipairs(obj.status.conditions) do
+        if condition.type == "AbleToScale" then
+          ableToScale = condition.status == "True"
+        elseif condition.type == "ScalingActive" then
+          scalingActive = condition.status == "True"
+        elseif condition.type == "ScalingLimited" then
+          scalingLimited = condition.status == "True"
+        end
+
+        if condition.status == "False" and condition.message ~= nil then
+          message = condition.message
+        end
+      end
+
+      if ableToScale and scalingActive then
+        if scalingLimited then
           hs.status = "Progressing"
-          hs.message = "Scaling from " .. obj.status.currentReplicas ..
-            " to " .. obj.status.desiredReplicas
+          hs.message = "HPA is limited by minReplicas or maxReplicas"
+        else
+          hs.status = "Healthy"
+          hs.message = "HPA is active and able to scale"
         end
       else
-        hs.status = "Progressing"
-        hs.message = "Waiting for metrics"
+        hs.status = "Degraded"
+        hs.message = message
       end
-    else
-      hs.status = "Progressing"
-      hs.message = "Initializing"
     end
+
     return hs
 ```
 
@@ -400,7 +418,7 @@ spec:
       app: myapp
 ```
 
-Using a percentage for `maxUnavailable` works well because the HPA changes the replica count. With 10 replicas, 25% allows 2 disruptions. With 20 replicas, it allows 5.
+Using a percentage for `maxUnavailable` works well because the HPA changes the replica count. Kubernetes rounds percentage values up, so 25% allows 3 disruptions with 10 replicas and 5 disruptions with 20 replicas.
 
 ## Troubleshooting HPA Issues
 
