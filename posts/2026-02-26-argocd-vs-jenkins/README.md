@@ -42,7 +42,7 @@ The push model worked fine when we deployed to a handful of servers. With Kubern
 
 **Credential sprawl.** Jenkins needs direct access to your Kubernetes cluster. That means storing kubeconfig files, service account tokens, or cloud credentials in Jenkins. Every Jenkins agent that can deploy becomes an attack surface. If Jenkins is compromised, your clusters are compromised.
 
-With ArgoCD, the tool runs inside the cluster. It does not need external credentials pushed in from outside. The blast radius of a compromise is fundamentally smaller.
+With ArgoCD, the deployment controller typically runs inside a Kubernetes cluster and uses Kubernetes service accounts or registered cluster credentials to apply changes. Your CI system no longer needs kubeconfig files or cluster admin credentials just to deploy. The blast radius of a CI compromise is fundamentally smaller.
 
 **Drift detection is nonexistent.** If someone runs a manual kubectl command that changes a deployment, Jenkins has no idea. The pipeline ran successfully last time, so Jenkins reports green. Meanwhile, your cluster has drifted from what Git says it should look like.
 
@@ -50,7 +50,7 @@ ArgoCD continuously compares live state against desired state. If someone makes 
 
 **No single source of truth.** In a Jenkins setup, the "truth" is scattered across Jenkinsfiles, pipeline configurations, shell scripts, and whatever the last person ran manually. Answering "what is currently deployed?" requires checking the cluster directly.
 
-With ArgoCD, Git is the single source of truth. If you want to know what is deployed, look at the Git repository. Every change is a commit with an author, timestamp, and message.
+With ArgoCD, Git is the single source of truth for the desired state. If you want to know what should be deployed, look at the Git repository; if you want to confirm what is actually deployed, check ArgoCD's sync status and history. Every desired-state change is a commit with an author, timestamp, and message.
 
 ## What Jenkins Does That ArgoCD Does Not
 
@@ -65,7 +65,7 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'docker build -t myapp:${BUILD_NUMBER} .'
+                sh 'docker build -t myregistry/myapp:${BUILD_NUMBER} .'
             }
         }
         stage('Test') {
@@ -97,7 +97,7 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh 'docker build -t myapp:${BUILD_NUMBER} .'
+                sh 'docker build -t myregistry/myapp:${BUILD_NUMBER} .'
             }
         }
         stage('Test') {
@@ -160,10 +160,10 @@ Jenkins' security model for Kubernetes deployments is fundamentally weaker becau
 - Pipeline scripts can execute arbitrary commands against the cluster
 
 **ArgoCD approach:**
-- ArgoCD runs inside the cluster with a Kubernetes service account
-- No external systems need cluster credentials for deployment
+- ArgoCD runs with Kubernetes permissions for the clusters it manages
+- CI systems do not need cluster credentials for deployment
 - RBAC controls who can sync which applications
-- Git is the only interface for making changes
+- Git is the normal interface for desired-state changes
 
 This does not mean ArgoCD is inherently more secure, but the attack surface for deployment operations is significantly reduced.
 
@@ -171,7 +171,7 @@ This does not mean ArgoCD is inherently more secure, but the attack surface for 
 
 Jenkins provides build logs that show what happened during a pipeline run. But if someone deploys outside the pipeline, there is no record in Jenkins.
 
-ArgoCD combined with Git gives you a complete audit trail. Every deployment corresponds to a Git commit. You know who changed what, when, and why. ArgoCD also tracks sync history, showing when each sync happened and what changed.
+ArgoCD combined with Git gives you a strong audit trail for desired-state changes. In the normal GitOps path, every deployment corresponds to a Git commit, so you know who changed what, when, and why. ArgoCD also tracks sync history, showing when each sync happened and what revision was applied.
 
 ## Multi-Environment Deployments
 
@@ -205,9 +205,13 @@ kind: Application
 metadata:
   name: my-app-staging
 spec:
+  project: default
   source:
+    repoURL: https://github.com/myorg/gitops-repo.git
+    targetRevision: main
     path: overlays/staging
   destination:
+    server: https://kubernetes.default.svc
     namespace: staging
 ---
 # Production application
@@ -216,9 +220,13 @@ kind: Application
 metadata:
   name: my-app-production
 spec:
+  project: default
   source:
+    repoURL: https://github.com/myorg/gitops-repo.git
+    targetRevision: main
     path: overlays/production
   destination:
+    server: https://kubernetes.default.svc
     namespace: production
 ```
 
