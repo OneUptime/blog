@@ -41,10 +41,10 @@ When the Repo Server receives a request for manifests, it follows this pipeline:
 **Step 2: Clone or update the repository.** If the cache miss occurs, the Repo Server clones the repository (or does a git fetch if it already has a local clone). It checks out the requested revision.
 
 **Step 3: Detect the configuration tool.** The Repo Server looks at the files in the application path to determine which tool to use:
+- If a Config Management Plugin is explicitly configured or matched by discovery, it uses that
 - If there is a `Chart.yaml` file, it uses Helm
-- If there is a `kustomization.yaml` file, it uses Kustomize
-- If there are only YAML/JSON files, it reads them directly
-- If a Config Management Plugin is configured, it uses that
+- If there is a `kustomization.yaml`, `kustomization.yml`, or `Kustomization` file, it uses Kustomize
+- Otherwise, it treats the path as a plain directory of Kubernetes manifests
 
 **Step 4: Generate manifests.** The Repo Server runs the appropriate tool:
 
@@ -66,7 +66,7 @@ kustomize build <path>
 
 For plain YAML:
 ```bash
-# Simply reads and concatenates all YAML/JSON files in the path
+# Reads Kubernetes manifest files from the directory source
 ```
 
 **Step 5: Return and cache.** The generated manifests are returned to the caller and stored in the cache for future requests.
@@ -166,16 +166,29 @@ spec:
       - name: jsonnet-plugin
         image: my-jsonnet-plugin:latest
         command: ["/var/run/argocd/argocd-cmp-server"]
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
         volumeMounts:
         - name: plugins
           mountPath: /home/argocd/cmp-server/plugins
         - name: var-files
           mountPath: /var/run/argocd
+        - name: jsonnet-plugin-config
+          mountPath: /home/argocd/cmp-server/config/plugin.yaml
+          subPath: plugin.yaml
+        - name: cmp-tmp
+          mountPath: /tmp
       volumes:
       - name: plugins
         emptyDir: {}
       - name: var-files
         emptyDir: {}
+      - name: cmp-tmp
+        emptyDir: {}
+      - name: jsonnet-plugin-config
+        configMap:
+          name: jsonnet-plugin-config
 ```
 
 ## Security Considerations
@@ -200,7 +213,7 @@ kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository
 
 **Problem: Manifest generation times out**
 
-The Repo Server has a default timeout of 60 seconds for manifest generation. Complex Helm charts with many dependencies can exceed this.
+The controller and API server have a default 60-second timeout for calls to the Repo Server, and the Repo Server also enforces a separate 90-second default execution timeout for manifest-generation tools. Complex Helm charts with many dependencies can exceed these.
 
 ```yaml
 # Increase the timeout in argocd-cmd-params-cm
@@ -210,9 +223,17 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  reposerver.default.cache.expiration: "24h"
-  # Timeout for generating manifests
-  timeout.reconciliation: "180"
+  # Timeout for controller calls to the repo server
+  controller.repo.server.timeout.seconds: "180"
+  # Timeout for API server calls to the repo server
+  server.repo.server.timeout.seconds: "180"
+```
+
+```yaml
+# Increase the tool execution timeout on the repo-server container
+env:
+- name: ARGOCD_EXEC_TIMEOUT
+  value: 180s
 ```
 
 **Problem: Repository cloning is slow**
@@ -255,10 +276,10 @@ kubectl port-forward deploy/argocd-repo-server -n argocd 8084:8084
 # Key metrics
 # argocd_git_request_total - Git operations count
 # argocd_git_request_duration_seconds - Git operation duration
-# argocd_repo_pending_request_total - Queue depth
+# argocd_repo_pending_request_total - Pending requests requiring a repository lock
 ```
 
-Watch the pending request count. If it is consistently high, you need more Repo Server replicas or higher parallelism limits.
+Watch the pending request count. If it is consistently high, you may need more Repo Server replicas, higher parallelism limits, or changes that reduce repository lock contention.
 
 ## The Bottom Line
 
