@@ -150,17 +150,22 @@ spec:
 For registries that use short-lived tokens (ECR, GCR, ACR), use the External Secrets Operator to auto-refresh credentials:
 
 ```yaml
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: ECRAuthorizationToken
+metadata:
+  name: ecr-token
+  namespace: myapp
+spec:
+  region: us-east-1
+---
 # ECR token refresh
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: ecr-credentials
   namespace: myapp
 spec:
   refreshInterval: 6h  # ECR tokens expire after 12 hours
-  secretStoreRef:
-    name: aws-secrets-store
-    kind: ClusterSecretStore
   target:
     name: ecr-registry-credentials
     creationPolicy: Owner
@@ -170,15 +175,19 @@ spec:
         .dockerconfigjson: |
           {
             "auths": {
-              "123456789.dkr.ecr.us-east-1.amazonaws.com": {
-                "auth": "{{ .token | b64enc }}"
+              "{{ .proxy_endpoint | replace "https://" "" }}": {
+                "username": "{{ .username }}",
+                "password": "{{ .password }}",
+                "auth": "{{ printf "%s:%s" .username .password | b64enc }}"
               }
             }
           }
-  data:
-    - secretKey: token
-      remoteRef:
-        key: ecr-token
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: ECRAuthorizationToken
+          name: ecr-token
 ```
 
 ## Prevention Strategy 4: Registry Mirror and Cache
@@ -213,6 +222,9 @@ spec:
     matchLabels:
       app: registry-mirror
   template:
+    metadata:
+      labels:
+        app: registry-mirror
     spec:
       containers:
         - name: registry
@@ -233,12 +245,22 @@ spec:
             sizeLimit: 50Gi
 ```
 
-Configure containerd to use the mirror:
+Expose the mirror through an endpoint that every node can reach, then configure containerd to use the mirror:
 
 ```toml
 # /etc/containerd/config.toml on each node
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-  endpoint = ["http://registry-mirror.registry-system:5000"]
+version = 3
+
+[plugins."io.containerd.cri.v1.images".registry]
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/certs.d/docker.io/hosts.toml on each node
+server = "https://registry-1.docker.io"
+
+[host."http://registry-mirror.example.internal:5000"]
+  capabilities = ["pull"]
 ```
 
 ## Prevention Strategy 5: CI Pipeline Image Validation
