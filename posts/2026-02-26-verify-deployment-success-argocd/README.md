@@ -40,12 +40,12 @@ argocd app get my-app
 # Health Status:  Healthy
 
 # Detailed resource health
-argocd app get my-app --show-resources
+argocd app resources my-app --output tree=detailed
 ```
 
 ## Using PostSync Hooks for Verification
 
-PostSync hooks run after ArgoCD finishes syncing. This is where you put verification jobs:
+PostSync hooks run after ArgoCD finishes the main sync successfully and all tracked resources are Healthy. This is where you put verification jobs:
 
 ```yaml
 # post-deploy-verification.yaml
@@ -55,18 +55,20 @@ metadata:
   name: verify-deployment
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 spec:
   backoffLimit: 2
   template:
     spec:
       containers:
         - name: verify
-          image: curlimages/curl:latest
+          image: alpine:3.20
           command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl jq
+
               echo "Waiting for service to be ready..."
               sleep 10
 
@@ -113,18 +115,19 @@ resource.customizations.health.apps_Deployment: |
        obj.metadata.generation ~= nil and
        obj.status.observedGeneration == obj.metadata.generation then
 
+      desiredReplicas = obj.spec.replicas or 1
+
       if obj.status.updatedReplicas ~= nil and
-         obj.status.replicas ~= nil and
          obj.status.availableReplicas ~= nil and
-         obj.status.updatedReplicas == obj.spec.replicas and
-         obj.status.availableReplicas == obj.spec.replicas then
+         obj.status.updatedReplicas == desiredReplicas and
+         obj.status.availableReplicas == desiredReplicas then
         hs.status = "Healthy"
         hs.message = "All replicas are updated and available"
       else
         hs.status = "Progressing"
         hs.message = string.format("Waiting for replicas: %d/%d updated, %d/%d available",
-          obj.status.updatedReplicas or 0, obj.spec.replicas,
-          obj.status.availableReplicas or 0, obj.spec.replicas)
+          obj.status.updatedReplicas or 0, desiredReplicas,
+          obj.status.availableReplicas or 0, desiredReplicas)
       end
     else
       hs.status = "Progressing"
@@ -149,7 +152,7 @@ metadata:
   name: verify-health
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
     argocd.argoproj.io/sync-wave: "0"
 spec:
   template:
@@ -168,7 +171,7 @@ metadata:
   name: verify-integration
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
     argocd.argoproj.io/sync-wave: "1"
 spec:
   template:
@@ -198,25 +201,29 @@ metadata:
   name: verify-metrics
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
     argocd.argoproj.io/sync-wave: "2"
 spec:
   template:
     spec:
       containers:
         - name: metrics
-          image: curlimages/curl:latest
+          image: alpine:3.20
           command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl jq bc
+
               # Wait for metrics to stabilize
               sleep 30
 
-              # Check error rate from Prometheus
-              ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=rate(http_requests_total{service=\"backend-api\",code=~\"5..\"}[5m])" | jq '.data.result[0].value[1] // "0"' -r)
+              # Check 5xx error ratio from Prometheus
+              ERROR_RATE=$(curl -sG \
+                --data-urlencode 'query=sum(rate(http_requests_total{service="backend-api",code=~"5.."}[5m])) / sum(rate(http_requests_total{service="backend-api"}[5m]))' \
+                http://prometheus:9090/api/v1/query | jq '.data.result[0].value[1] // "0"' -r)
 
-              echo "Current 5xx error rate: $ERROR_RATE"
+              echo "Current 5xx error ratio: $ERROR_RATE"
 
               # Fail if error rate is above 1%
               if [ "$(echo "$ERROR_RATE > 0.01" | bc -l)" = "1" ]; then
@@ -240,12 +247,13 @@ metadata:
   namespace: argocd
 data:
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and
+    - when: app.status?.operationState.phase in ['Succeeded'] and
             app.status.health.status == 'Healthy'
+      oncePer: app.status?.operationState.syncResult.revision
       send: [deployment-success]
 
   trigger.on-deploy-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed'] or
+    - when: app.status?.operationState.phase in ['Error', 'Failed'] or
             app.status.health.status in ['Degraded']
       send: [deployment-failed]
 
@@ -287,7 +295,7 @@ metadata:
   name: db-migrate
   annotations:
     argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,BeforeHookCreation
 spec:
   template:
     spec:
