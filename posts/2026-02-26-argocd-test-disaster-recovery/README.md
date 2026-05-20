@@ -174,7 +174,15 @@ fi
 
 # 4. Restore from backup
 echo "4. Restoring from backup..."
-kubectl apply -f /tmp/test-cm-backup.yaml -n "$NAMESPACE"
+python3 -c "
+import yaml
+with open('/tmp/test-cm-backup.yaml') as fh:
+    doc = yaml.safe_load(fh)
+meta = doc.get('metadata', {})
+for field in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
+    meta.pop(field, None)
+print(yaml.dump(doc))
+" | kubectl apply -f - -n "$NAMESPACE"
 
 # 5. Verify restoration
 echo "5. Verifying restoration..."
@@ -218,6 +226,9 @@ EXPORT_COUNT=$(python3 -c "
 import yaml
 with open('/tmp/test-repo-backup.yaml') as f:
     doc = yaml.safe_load(f)
+    if doc is None:
+        print(0)
+        raise SystemExit
     items = doc.get('items', [doc]) if doc.get('kind') == 'List' else [doc]
     print(len([i for i in items if i]))
 ")
@@ -245,6 +256,7 @@ Perform a complete restore in an isolated environment:
 # Use a separate namespace to avoid affecting production
 TEST_NS="argocd-dr-test"
 BACKUP_DIR="${1:-/backups/argocd/latest}"
+ARGOCD_VERSION="${ARGOCD_VERSION:-stable}"
 
 echo "=== Full ArgoCD Restore Drill ==="
 echo "Namespace: $TEST_NS"
@@ -258,7 +270,7 @@ kubectl create namespace "$TEST_NS" 2>/dev/null || true
 # Step 2: Install ArgoCD in test namespace
 echo "Step 2: Installing ArgoCD..."
 kubectl apply -n "$TEST_NS" \
-  -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.0/manifests/install.yaml
+  -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
 kubectl wait --for=condition=available deployment --all -n "$TEST_NS" --timeout=180s
 
 # Step 3: Import backup
@@ -302,6 +314,28 @@ for doc in yaml.safe_load_all(open('$BACKUP_DIR/projects.yaml')):
 " | kubectl apply -f - 2>&1 | sed 's/^/  /'
 fi
 
+# Import Applications
+if [ -f "$BACKUP_DIR/applications.yaml" ]; then
+  python3 -c "
+import yaml
+for doc in yaml.safe_load_all(open('$BACKUP_DIR/applications.yaml')):
+    if doc is None:
+        continue
+    if doc.get('kind') == 'List':
+        items = doc.get('items', [])
+    else:
+        items = [doc]
+    for item in items:
+        meta = item.get('metadata', {})
+        meta['namespace'] = '$TEST_NS'
+        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
+            meta.pop(f, None)
+        item.pop('status', None)
+        print('---')
+        print(yaml.dump(item))
+" | kubectl apply -f - 2>&1 | sed 's/^/  /'
+fi
+
 # Step 4: Verify
 echo ""
 echo "Step 4: Verification..."
@@ -310,6 +344,9 @@ kubectl get pods -n "$TEST_NS" --no-headers | sed 's/^/    /'
 echo ""
 echo "  Projects:"
 kubectl get appprojects.argoproj.io -n "$TEST_NS" --no-headers | sed 's/^/    /'
+echo ""
+echo "  Applications:"
+kubectl get applications.argoproj.io -n "$TEST_NS" --no-headers | sed 's/^/    /'
 
 # Step 5: Cleanup
 echo ""
@@ -411,6 +448,9 @@ jobs:
   backup-validation:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
       - name: Validate Backups
         run: |
           # Download latest backup
