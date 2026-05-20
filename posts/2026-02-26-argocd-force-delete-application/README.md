@@ -62,40 +62,42 @@ kubectl patch application my-app -n argocd \
   -p '[{"op": "remove", "path": "/metadata/finalizers/0"}]'
 ```
 
-Once the finalizer is removed, Kubernetes will immediately garbage-collect the Application resource. The managed resources in the cluster will NOT be deleted - they become orphaned.
+If deletion has already been requested, Kubernetes will remove the Application resource once the finalizer list is empty. The managed resources in the cluster will NOT be deleted - they become orphaned.
 
 ## Method 3: Force delete with kubectl delete
 
-If the Application is stuck even without finalizers:
+If the Application is stuck even after finalizers have been removed:
 
 ```bash
 # Standard kubectl delete
 kubectl delete application my-app -n argocd
 
-# With a timeout to prevent hanging
-kubectl delete application my-app -n argocd --timeout=30s
+# Do not wait for finalizers before returning
+kubectl delete application my-app -n argocd --wait=false
 
-# Absolute last resort: force delete
+# For resources that support graceful deletion, force delete with zero grace period
 kubectl delete application my-app -n argocd --grace-period=0 --force
 ```
 
-The `--force --grace-period=0` combination tells Kubernetes to remove the resource from etcd immediately without waiting for any graceful shutdown or finalizer processing.
+The `--force --grace-period=0` combination bypasses graceful deletion for resources that support it, but it does not replace removing finalizers. If a finalizer is still present, Kubernetes will keep the resource in deletion until that finalizer is removed or completed.
 
 ## Method 4: Direct API call
 
-When kubectl commands also hang (usually due to webhook issues), you can bypass everything with a direct API call:
+When kubectl commands hang because the client is waiting, you can send the delete request directly through the Kubernetes API:
 
 ```bash
 # Get the ArgoCD Application's resource version
 RESOURCE_VERSION=$(kubectl get application my-app -n argocd -o jsonpath='{.metadata.resourceVersion}')
 
-# Delete via API with zero grace period
+# Delete via API and orphan dependents
 kubectl proxy &
 curl -X DELETE \
   "http://localhost:8001/apis/argoproj.io/v1alpha1/namespaces/argocd/applications/my-app" \
   -H "Content-Type: application/json" \
   -d "{\"kind\":\"DeleteOptions\",\"apiVersion\":\"v1\",\"preconditions\":{\"resourceVersion\":\"$RESOURCE_VERSION\"},\"propagationPolicy\":\"Orphan\"}"
 ```
+
+This still goes through the Kubernetes API server and admission chain, and it still respects finalizers. Use the finalizer patch first if the Application is blocked by `resources-finalizer.argocd.argoproj.io`.
 
 ## Force deleting multiple stuck applications
 
@@ -132,11 +134,16 @@ sleep 5
 # Verify
 echo ""
 echo "Verification:"
-kubectl get applications -n argocd -o json | \
-  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name' | \
-  while read app; do
+REMAINING=$(kubectl get applications -n argocd -o json | \
+  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name')
+
+if [ -z "$REMAINING" ]; then
+  echo "  All stuck applications have been deleted"
+else
+  echo "$REMAINING" | while read app; do
     echo "  Still stuck: $app"
-  done || echo "  All stuck applications have been deleted"
+  done
+fi
 ```
 
 ## Cleaning up after force deletion
@@ -151,7 +158,7 @@ kubectl get all -n my-app-namespace
 
 **Option 2: Manually delete the orphaned resources**
 ```bash
-# Delete all resources in the namespace
+# Delete common workload and service resources in the namespace
 kubectl delete all --all -n my-app-namespace
 
 # Or delete the entire namespace if it is no longer needed
@@ -184,15 +191,16 @@ kubectl patch application parent-app -n argocd \
 # Step 2: Child applications are NOT automatically affected
 # They continue to exist and manage their resources independently
 
-# Step 3: If you also want to remove child applications
-argocd app list -o name | xargs -I {} argocd app delete {} --cascade=false -y
+# Step 3: If you also want to remove child applications labeled by the parent app
+argocd app delete -l app.kubernetes.io/instance=parent-app --cascade=false -y
 ```
 
 If child applications are also stuck:
 
 ```bash
 # Force delete all applications in a project
-kubectl get applications -n argocd -l argocd.argoproj.io/project=my-project -o name | \
+kubectl get applications -n argocd -o json | \
+  jq -r '.items[] | select(.spec.project == "my-project") | "application/" + .metadata.name' | \
   xargs -I {} kubectl patch {} -n argocd --type merge \
   -p '{"metadata":{"finalizers":null}}'
 ```
