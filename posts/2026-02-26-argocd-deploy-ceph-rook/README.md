@@ -42,7 +42,7 @@ Rook-Ceph has strict deployment ordering requirements:
 2. Ceph cluster next
 3. Storage pools and classes last
 
-Use ArgoCD sync waves to enforce this order.
+Use ArgoCD sync waves to enforce this order when these Application resources are managed by a parent app-of-apps Application.
 
 ## Step 1: Deploy Rook Operator
 
@@ -59,7 +59,7 @@ spec:
   source:
     repoURL: https://charts.rook.io/release
     chart: rook-ceph
-    targetRevision: v1.13.0
+    targetRevision: v1.19.4
     helm:
       releaseName: rook-ceph
       valuesObject:
@@ -148,7 +148,7 @@ metadata:
   namespace: rook-ceph
 spec:
   cephVersion:
-    image: quay.io/ceph/ceph:v18.2.1
+    image: quay.io/ceph/ceph:v19.2.3
     allowUnsupported: false
   dataDirHostPath: /var/lib/rook
   skipUpgradeChecks: false
@@ -278,11 +278,14 @@ parameters:
   clusterID: rook-ceph
   pool: replicapool
   imageFormat: "2"
+  # Use the full feature set on Linux kernels 5.4 or newer.
   imageFeatures: layering,fast-diff,object-map,deep-flatten,exclusive-lock
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
   csi.storage.k8s.io/fstype: ext4
@@ -331,6 +334,8 @@ parameters:
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-cephfs-provisioner
   csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-publish-secret-name: rook-csi-cephfs-provisioner
+  csi.storage.k8s.io/controller-publish-secret-namespace: rook-ceph
   csi.storage.k8s.io/node-stage-secret-name: rook-csi-cephfs-node
   csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
 reclaimPolicy: Delete
@@ -396,34 +401,40 @@ Rook-Ceph includes Prometheus metrics. Add ServiceMonitor:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: rook-ceph
+  name: rook-ceph-mgr
   namespace: rook-ceph
 spec:
+  namespaceSelector:
+    matchNames:
+      - rook-ceph
   selector:
     matchLabels:
       app: rook-ceph-mgr
+      rook_cluster: rook-ceph
   endpoints:
     - port: http-metrics
+      path: /metrics
       interval: 15s
+      honorLabels: true
 ```
 
 Key metrics to watch:
 
 ```promql
-# Ceph cluster health
-ceph_health_status
+# Active Ceph health checks
+ceph_health_detail
 
-# OSD utilization
-ceph_osd_utilization
+# Raw capacity consumed by the cluster
+sum(ceph_pool_bytes_used) / sum(ceph_osd_stat_bytes) * 100
 
 # Pool usage
-ceph_pool_stored_raw / ceph_pool_max_avail * 100
+sum(ceph_pool_bytes_used) by (pool_id) * on(pool_id) group_left(name) ceph_pool_metadata
 
 # IOPS
-rate(ceph_pool_rd[5m]) + rate(ceph_pool_wr[5m])
+sum(irate(ceph_osd_op_r[1m])) + sum(irate(ceph_osd_op_w[1m]))
 
-# Slow OSD operations
-ceph_osd_slow_ops
+# Unresponsive Ceph daemon sockets
+ceph_daemon_socket_up == 0 or min_over_time(ceph_daemon_socket_up[12h]) == 0
 ```
 
 ## Upgrade Strategy
@@ -436,11 +447,11 @@ When upgrading Ceph versions through ArgoCD:
 4. Sync manually (do not auto-sync Ceph version changes)
 
 ```yaml
-# Override auto-sync for Ceph upgrades
+# Disable auto-sync for Ceph upgrades
 syncPolicy:
   automated:
+    enabled: false
     selfHeal: true
-    # Set to false during upgrades
     prune: false
 ```
 
