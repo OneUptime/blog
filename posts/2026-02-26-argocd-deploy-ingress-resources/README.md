@@ -18,10 +18,10 @@ Ingress resources alone do nothing. They need an Ingress controller that watches
 graph LR
     A[Internet] --> B[Load Balancer]
     B --> C[Ingress Controller]
-    C --> D[Ingress Resource]
-    D --> E[Service A]
-    D --> F[Service B]
-    D --> G[Service C]
+    C -. watches .-> D[Ingress Resource]
+    C --> E[Service A]
+    C --> F[Service B]
+    C --> G[Service C]
 ```
 
 Popular Ingress controllers include NGINX, Traefik, HAProxy, and cloud-specific options like AWS ALB and GCE.
@@ -45,7 +45,7 @@ spec:
   source:
     repoURL: https://kubernetes.github.io/ingress-nginx
     chart: ingress-nginx
-    targetRevision: 4.9.0
+    targetRevision: 4.15.1
     helm:
       values: |
         controller:
@@ -186,7 +186,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ## Path-Based Routing
@@ -305,8 +305,6 @@ metadata:
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
 
     # Timeouts
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
 
     # Body size
@@ -317,12 +315,11 @@ metadata:
     nginx.ingress.kubernetes.io/cors-allow-origin: "https://frontend.example.com"
     nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
 
-    # WebSocket support
-    nginx.ingress.kubernetes.io/websocket-services: "websocket-service"
+    # Long-lived WebSocket connections
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
 
-    # Custom headers
+    # Custom headers (requires snippet annotations to be enabled on the controller)
     nginx.ingress.kubernetes.io/configuration-snippet: |
       more_set_headers "X-Frame-Options: DENY";
       more_set_headers "X-Content-Type-Options: nosniff";
@@ -427,9 +424,13 @@ data:
       if obj.status.loadBalancer ~= nil then
         if obj.status.loadBalancer.ingress ~= nil then
           if #obj.status.loadBalancer.ingress > 0 then
-            hs.status = "Healthy"
-            hs.message = "Load balancer provisioned"
-            return hs
+            for _, ingress in ipairs(obj.status.loadBalancer.ingress) do
+              if ingress.hostname ~= nil or ingress.ip ~= nil then
+                hs.status = "Healthy"
+                hs.message = "Load balancer provisioned"
+                return hs
+              end
+            end
           end
         end
       end
@@ -439,9 +440,9 @@ data:
     return hs
 ```
 
-## Ingress with AWS ALB Controller
+## Ingress with AWS Load Balancer Controller
 
-For AWS, you might use the ALB Ingress Controller instead of NGINX:
+For AWS, you might use the AWS Load Balancer Controller instead of NGINX:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -449,7 +450,6 @@ kind: Ingress
 metadata:
   name: myapp-ingress
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456:certificate/abc-123
@@ -458,6 +458,7 @@ metadata:
     alb.ingress.kubernetes.io/healthcheck-path: /health
     alb.ingress.kubernetes.io/group.name: production
 spec:
+  ingressClassName: alb
   rules:
     - host: myapp.example.com
       http:
