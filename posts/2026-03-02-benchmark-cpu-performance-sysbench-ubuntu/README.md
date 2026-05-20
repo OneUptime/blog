@@ -71,10 +71,10 @@ The key metric is **events per second** - higher is better. For a single-threade
 Most modern servers have multiple cores. Testing with all cores shows how well the system scales:
 
 ```bash
-# Get the number of CPU cores
+# Get the number of available CPU processing units
 nproc
 
-# Run multi-threaded test with all available cores
+# Run multi-threaded test with all available processing units
 THREADS=$(nproc)
 sysbench cpu \
     --cpu-max-prime=20000 \
@@ -108,7 +108,7 @@ The memory test measures raw memory bandwidth - how fast data can be read from a
 sysbench memory \
     --memory-block-size=1K \
     --memory-total-size=100G \
-    --memory-operation=write \
+    --memory-oper=write \
     --threads=1 \
     run
 
@@ -116,7 +116,7 @@ sysbench memory \
 sysbench memory \
     --memory-block-size=1K \
     --memory-total-size=100G \
-    --memory-operation=read \
+    --memory-oper=read \
     --threads=1 \
     run
 ```
@@ -187,7 +187,7 @@ echo "System Benchmark Report" > "$OUTPUT_FILE"
 echo "Host: $(hostname)" >> "$OUTPUT_FILE"
 echo "Date: $(date)" >> "$OUTPUT_FILE"
 echo "CPU: $(grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2 | xargs)" >> "$OUTPUT_FILE"
-echo "Cores: $THREADS" >> "$OUTPUT_FILE"
+echo "CPU processing units: $THREADS" >> "$OUTPUT_FILE"
 echo "RAM: $(free -h | awk '/^Mem:/ {print $2}')" >> "$OUTPUT_FILE"
 echo "---" >> "$OUTPUT_FILE"
 
@@ -200,7 +200,7 @@ sysbench cpu --cpu-max-prime=20000 --threads=$THREADS --time=30 run 2>&1 | tee -
 
 # Memory benchmark
 echo "=== Memory Write Benchmark ===" | tee -a "$OUTPUT_FILE"
-sysbench memory --memory-block-size=1K --memory-total-size=50G --memory-operation=write --threads=$THREADS run 2>&1 | tee -a "$OUTPUT_FILE"
+sysbench memory --memory-block-size=1K --memory-total-size=50G --memory-oper=write --threads=$THREADS run 2>&1 | tee -a "$OUTPUT_FILE"
 
 echo "Results saved to: $OUTPUT_FILE"
 ```
