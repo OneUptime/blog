@@ -61,7 +61,7 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: base
-    targetRevision: 1.21.0
+    targetRevision: 1.30.0
     helm:
       releaseName: istio-base
   destination:
@@ -86,17 +86,12 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: istiod
-    targetRevision: 1.21.0
+    targetRevision: 1.30.0
     helm:
       releaseName: istiod
       valuesObject:
         meshConfig:
           accessLogFile: /dev/stdout
-          enableTracing: true
-          defaultConfig:
-            tracing:
-              zipkin:
-                address: jaeger-collector.observability:9411
         pilot:
           resources:
             requests:
@@ -126,8 +121,13 @@ data:
     hs = {}
     if obj.spec ~= nil and obj.spec.hosts ~= nil then
       hs.status = "Healthy"
-      hs.message = "VirtualService configured for " ..
-        table.concat(obj.spec.hosts, ", ")
+      if #obj.spec.hosts == 1 then
+        hs.message = "VirtualService configured for " ..
+          obj.spec.hosts[1]
+      else
+        hs.message = "VirtualService configured for " ..
+          tostring(#obj.spec.hosts) .. " hosts"
+      end
     else
       hs.status = "Degraded"
       hs.message = "No hosts configured"
@@ -205,7 +205,7 @@ Base VirtualService example:
 
 ```yaml
 # base/virtual-services/api-gateway.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway
@@ -286,8 +286,8 @@ spec:
 Mesh resources have dependencies. Use sync waves to ensure correct ordering:
 
 ```yaml
-# Deploy CRDs first (wave -1)
-apiVersion: networking.istio.io/v1beta1
+# Deploy the Gateway before route bindings (wave -1)
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: main-gateway
@@ -308,31 +308,13 @@ spec:
         - "*.example.com"
 
 ---
-# Deploy VirtualServices after Gateway (wave 0)
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: api-gateway
-  annotations:
-    argocd.argoproj.io/sync-wave: "0"
-spec:
-  hosts:
-    - api.example.com
-  gateways:
-    - main-gateway
-  http:
-    - route:
-        - destination:
-            host: api-service
-
----
-# Deploy DestinationRules last (wave 1)
-apiVersion: networking.istio.io/v1beta1
+# Deploy DestinationRules before VirtualServices that may reference them (wave 0)
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   host: api-service
   trafficPolicy:
@@ -343,6 +325,24 @@ spec:
         h2UpgradePolicy: DEFAULT
     loadBalancer:
       simple: LEAST_REQUEST
+
+---
+# Deploy VirtualServices after Gateway and DestinationRule resources (wave 1)
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: api-gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  hosts:
+    - api.example.com
+  gateways:
+    - main-gateway
+  http:
+    - route:
+        - destination:
+            host: api-service
 ```
 
 ## Handling Mesh Upgrades
@@ -367,7 +367,7 @@ spec:
     spec:
       containers:
         - name: check
-          image: istio/istioctl:1.21.0
+          image: istio/istioctl:1.30.0
           command:
             - istioctl
             - analyze
