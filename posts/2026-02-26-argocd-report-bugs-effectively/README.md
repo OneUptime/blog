@@ -25,7 +25,7 @@ gh issue list --repo argoproj/argo-cd --state all --search "sync stuck degraded"
 # Visit https://argo-cd.readthedocs.io/en/stable/faq/
 ```
 
-**Check if you are on a supported version.** ArgoCD typically maintains the last two minor releases. If you are running an older version, try upgrading first.
+**Check if you are on a supported version.** ArgoCD typically maintains the three most recent minor releases. If you are running an older version, try upgrading first.
 
 ```bash
 # Check your ArgoCD version
@@ -49,7 +49,7 @@ Maintainers need specific information to diagnose and fix bugs. Collect all of t
 ```bash
 # Get detailed version info
 argocd version --client --short
-argocd version --server
+argocd version --short
 
 # Or check via kubectl
 kubectl get pods -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}'
@@ -59,7 +59,7 @@ kubectl get pods -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{
 
 ```bash
 # Kubernetes version
-kubectl version --short
+kubectl version
 
 # Cluster provider information
 kubectl get nodes -o wide
@@ -100,7 +100,7 @@ Logs from the relevant ArgoCD component are critical. Different bugs require log
 
 ```bash
 # Application controller logs - for sync, health, and reconciliation issues
-kubectl logs -n argocd deployment/argocd-application-controller --since=1h > controller.log
+kubectl logs -n argocd statefulset/argocd-application-controller --since=1h > controller.log
 
 # API server logs - for UI, CLI, and API issues
 kubectl logs -n argocd deployment/argocd-server --since=1h > server.log
@@ -131,7 +131,7 @@ kubectl patch configmap argocd-cmd-params-cm -n argocd \
   }}'
 
 # Restart components to pick up the change
-kubectl rollout restart deployment -n argocd argocd-application-controller
+kubectl rollout restart statefulset -n argocd argocd-application-controller
 kubectl rollout restart deployment -n argocd argocd-server
 kubectl rollout restart deployment -n argocd argocd-repo-server
 ```
@@ -162,7 +162,7 @@ Start with a one-paragraph summary of the bug, including what you expected to ha
 
 This is the most important section. Write steps that anyone can follow to reproduce the issue.
 
-```markdown
+````markdown
 1. Create an Application targeting a Helm chart with 500+ templates:
    ```yaml
    apiVersion: argoproj.io/v1alpha1
@@ -182,11 +182,11 @@ This is the most important section. Write steps that anyone can follow to reprod
      destination:
        server: https://kubernetes.default.svc
        namespace: production
-   ```bash
+   ```
 2. Click "Sync" in the ArgoCD UI
 3. Observe the repo-server pod getting OOMKilled after approximately 45 seconds
 4. Check pod events: `kubectl describe pod -n argocd -l app.kubernetes.io/name=argocd-repo-server`
-```text
+````
 
 ### Expected Behavior
 
@@ -196,38 +196,38 @@ Describe what should happen in clear terms.
 
 Describe what actually happens, including error messages and logs.
 
-```markdown
+````markdown
 The argocd-repo-server pod is OOMKilled during manifest generation.
 Memory usage spikes from 200Mi to over 1Gi within 30 seconds.
 
 Error from controller logs:
-```
-level=error msg="ComparisonError: rpc error: code = Unavailable desc = connection error"
 ```text
+level=error msg="ComparisonError: rpc error: code = Unavailable desc = connection error"
+```
 
 Pod events show:
-```
+```text
 Last State: Terminated
 Reason: OOMKilled
 Exit Code: 137
-```text
 ```
+````
 
 ### Attach Relevant Logs
 
 Paste sanitized logs inline or attach them as files. Use collapsible sections for long logs.
 
-```markdown
+````markdown
 <details>
 <summary>Repo Server Logs</summary>
 
-```
+```text
 time="2024-01-15T10:23:45Z" level=info msg="Generating manifests for app large-chart"
 time="2024-01-15T10:24:30Z" level=error msg="manifest generation error: signal: killed"
-```text
+```
 
 </details>
-```
+````
 
 ## Common Bug Categories
 
@@ -289,4 +289,4 @@ After filing your bug report, stay engaged.
 
 Effective bug reporting is a skill that improves with practice. The better your reports, the faster the ArgoCD community can identify and fix issues, benefiting everyone who depends on the tool for their Kubernetes deployments.
 
-For proactive monitoring that catches ArgoCD issues before they become bugs, check out how to set up [comprehensive ArgoCD monitoring](https://oneuptime.com/blog/post/2026-02-26-argocd-contribute-open-source/view) with integrated alerting.
+For proactive monitoring that catches ArgoCD issues before they become bugs, check out how to set up [comprehensive ArgoCD monitoring](https://oneuptime.com/blog/post/2026-02-06-monitor-argocd-deployments-opentelemetry/view) with integrated alerting.
