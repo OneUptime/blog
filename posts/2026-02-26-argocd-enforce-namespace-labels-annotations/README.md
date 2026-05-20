@@ -76,7 +76,6 @@ metadata:
     policies.kyverno.io/title: Require Namespace Labels
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-required-labels
@@ -96,10 +95,11 @@ spec:
                 - argocd
                 - kyverno
       validate:
+        failureAction: Enforce
         message: >-
           Namespace '{{request.object.metadata.name}}' must have the following
           labels: team, cost-center, environment, pod-security.kubernetes.io/enforce.
-          Missing labels: {{request.object.metadata.labels}}
+          Current labels: {{request.object.metadata.labels}}
         pattern:
           metadata:
             labels:
@@ -122,7 +122,9 @@ spec:
                 - kube-node-lease
                 - default
                 - argocd
+                - kyverno
       validate:
+        failureAction: Enforce
         message: >-
           Namespace must have team-contact and slack-channel annotations.
         pattern:
