@@ -48,7 +48,7 @@ Choose the right RAID level based on your requirements:
 
 ### RAID 10 (Striped Mirrors)
 
-- **Disks required**: 4 (even number)
+- **Disks required**: 4+ commonly; Linux md RAID 10 can also use an odd number of disks
 - **Usable capacity**: 50% of all disks
 - **Redundancy**: One disk per mirror can fail; potentially multiple disk failures
 - **Performance**: Best combination of reads and writes
@@ -145,7 +145,7 @@ sudo mdadm --create /dev/md0 \
     --raid-devices=4 \
     /dev/sdb /dev/sdc /dev/sdd /dev/sde
 
-# RAID 10 starts immediately without needing initial sync
+# RAID 10 is usable immediately, but an initial resync normally runs
 cat /proc/mdstat
 ```
 
@@ -312,13 +312,13 @@ cat /proc/mdstat
 # Stop a running check
 sudo mdadm --action=idle /dev/md0
 
-# Schedule monthly checks via cron (or use the built-in mdadm cron)
-cat /etc/cron.d/mdadm
+# Check the built-in mdadm systemd timers when present
+systemctl list-timers 'mdcheck*'
 ```
 
 ## Growing a RAID Array
 
-RAID 5 and RAID 6 can be grown by adding more disks (increasing redundancy or capacity):
+RAID 5 and RAID 6 can be grown by adding more disks (increasing capacity):
 
 ```bash
 # Add a new disk to an existing RAID 5 (growing from 3 to 4 disks)
