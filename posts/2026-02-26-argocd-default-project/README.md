@@ -32,7 +32,7 @@ spec:
       kind: "*"        # Any resource kind
 ```
 
-This means any user with access to ArgoCD can:
+This means any user with permission to create or manage applications in ArgoCD can:
 
 - Deploy from any Git repository, Helm registry, or OCI source
 - Deploy to any namespace on any registered cluster
@@ -60,7 +60,7 @@ Move away from the `default` project when:
 
 ## Strategy 1: Lock Down the Default Project
 
-Instead of deleting the `default` project (which ArgoCD will recreate), restrict it so no applications can use it:
+The `default` project can be modified, but not deleted. To prevent applications from using it, restrict it so no sources or destinations are allowed:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -73,6 +73,7 @@ spec:
 
   # No sources allowed
   sourceRepos: []
+  sourceNamespaces: []
 
   # No destinations allowed
   destinations: []
@@ -81,7 +82,9 @@ spec:
   clusterResourceWhitelist: []
 
   # No namespace resources
-  namespaceResourceWhitelist: []
+  namespaceResourceBlacklist:
+    - group: "*"
+      kind: "*"
 ```
 
 ```bash
