@@ -236,7 +236,7 @@ Configure your DNS provider for geolocation routing. Here are examples for commo
 
 ### AWS Route53 Geolocation
 
-```yaml
+```hcl
 # Managed via Terraform or Crossplane
 # US-East record for Americas
 resource "aws_route53_record" "api_americas" {
@@ -322,7 +322,7 @@ For Cloudflare, you can use the load balancing API with geo-steering:
 
 ## Step 5: Health Checks with Failover
 
-Geographic routing needs health checks. If a regional cluster goes down, traffic should automatically route to the next closest healthy cluster:
+Geographic routing needs health checks. If a regional cluster goes down, traffic should automatically route to the configured healthy fallback for that DNS provider:
 
 ```yaml
 # Health check endpoints deployed to each cluster
@@ -375,7 +375,7 @@ spec:
     # Only allow deployment to EU clusters
     - server: https://eu-west.k8s.example.com
       namespace: '*'
-  # Deny deployment to non-EU clusters
+  # The destinations allowlist denies deployment to non-EU clusters
   clusterResourceBlacklist: []
 ```
 
@@ -416,4 +416,4 @@ spec:
 
 ## Summary
 
-Geo-based routing with ArgoCD combines multi-cluster management with DNS geolocation to serve users from the closest regional cluster. Use ApplicationSets for consistent multi-cluster deployment, Kustomize overlays for region-specific configuration, and DNS geolocation policies for traffic steering. Health checks ensure automatic failover when a region becomes unhealthy. For more on multi-cluster patterns, see our guide on [active-active deployments across clusters](https://oneuptime.com/blog/post/2026-02-26-how-to-implement-active-active-deployments-across-clusters-with-argocd/view).
+Geo-based routing with ArgoCD combines multi-cluster management with DNS geolocation to serve users from the appropriate regional cluster. Use ApplicationSets for consistent multi-cluster deployment, Kustomize overlays for region-specific configuration, and DNS geolocation policies for traffic steering. Health checks ensure automatic failover to configured healthy fallbacks when a region becomes unhealthy. For more on multi-cluster patterns, see our guide on [active-active deployments across clusters](https://oneuptime.com/blog/post/2026-02-26-how-to-implement-active-active-deployments-across-clusters-with-argocd/view).
