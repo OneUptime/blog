@@ -8,7 +8,7 @@ Description: Secure ArgoCD components with Kubernetes Network Policies to contro
 
 ---
 
-Kubernetes Network Policies act as a firewall for pod-to-pod communication. By default, all pods can talk to all other pods in a cluster. In production, you want to lock this down so that only authorized traffic reaches your ArgoCD components. This guide shows you how to create Network Policies that secure ArgoCD without breaking its functionality.
+Kubernetes Network Policies act as a firewall for pod-to-pod communication when your cluster uses a network plugin that enforces them. By default, all pods can talk to all other pods in a cluster. In production, you want to lock this down so that only authorized traffic reaches your ArgoCD components. This guide shows you how to create Network Policies that secure ArgoCD without breaking its functionality.
 
 ## Understanding ArgoCD's Network Requirements
 
@@ -16,16 +16,16 @@ ArgoCD consists of several components that need to communicate with each other a
 
 ```mermaid
 graph TD
-    A[Ingress Controller] -->|Port 8080| B[ArgoCD Server]
+    A[Ingress Controller] -->|Service 80/443 to pod 8080| B[ArgoCD Server]
     B -->|Port 8081| C[Repo Server]
     B -->|Port 6379| D[Redis]
     B -->|Kubernetes API| E[API Server]
     C -->|Port 22/443| F[Git Repos]
+    C -->|Port 6379| D
     G[Application Controller] -->|Port 8081| C
     G -->|Port 6379| D
     G -->|Kubernetes API| E
-    H[Dex Server] -->|Port 5556| B
-    B -->|Port 5556| H
+    B -->|Port 5556/5557| H
     H -->|Port 443| I[Identity Provider]
 ```
 
@@ -38,6 +38,7 @@ Key traffic flows:
 - **Application Controller to Redis**: Caching
 - **Application Controller to Kubernetes API**: Managing resources
 - **Repo Server to Git Repos**: Cloning repositories
+- **Repo Server to Redis**: Repository and manifest caching
 - **Dex to Identity Providers**: SSO authentication
 
 ## Default Deny Policy
@@ -82,16 +83,6 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - port: 8080
-          protocol: TCP
-        - port: 8443
-          protocol: TCP
-    # Allow traffic from Dex for SSO callbacks
-    - from:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: argocd-dex-server
       ports:
         - port: 8080
           protocol: TCP
@@ -276,6 +267,14 @@ spec:
       ports:
         - port: 443
           protocol: TCP
+    # Redis
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-redis
+      ports:
+        - port: 6379
+          protocol: TCP
 ```
 
 ## Redis Network Policy
@@ -300,6 +299,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: argocd-server
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-repo-server
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: argocd-application-controller
@@ -355,14 +357,6 @@ spec:
       ports:
         - port: 443
           protocol: TCP
-    # ArgoCD Server callback
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: argocd-server
-      ports:
-        - port: 8080
-          protocol: TCP
 ```
 
 ## Testing Network Policies
@@ -375,8 +369,8 @@ After applying policies, verify ArgoCD still works:
 kubectl apply -f network-policies/
 
 # Check that ArgoCD server is still accessible
-kubectl port-forward svc/argocd-server -n argocd 8080:80
-curl http://localhost:8080/healthz
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+curl -k https://localhost:8080/healthz
 
 # Check that applications can sync
 argocd app sync my-app
