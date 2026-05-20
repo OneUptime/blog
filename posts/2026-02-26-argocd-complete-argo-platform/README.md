@@ -74,14 +74,7 @@ kubectl get pods -n argo-rollouts
 
 ```bash
 # Install Argo Workflows
-kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/latest/download/install.yaml
-
-# Patch the workflow controller to use the correct executor
-kubectl patch configmap workflow-controller-configmap -n argo --type merge -p '{
-  "data": {
-    "containerRuntimeExecutor": "emissary"
-  }
-}'
+kubectl apply --server-side -n argo -f https://github.com/argoproj/argo-workflows/releases/latest/download/install.yaml
 
 # Verify
 kubectl get pods -n argo
@@ -128,6 +121,12 @@ metadata:
   name: argo-platform-sa
   namespace: argo-events
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-platform-sa
+  namespace: argo
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -137,6 +136,9 @@ rules:
   - apiGroups: ["argoproj.io"]
     resources: ["workflows", "workflowtemplates", "cronworkflows"]
     verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["workflowtaskresults"]
+    verbs: ["create", "patch"]
   # ArgoCD permissions
   - apiGroups: ["argoproj.io"]
     resources: ["applications"]
@@ -158,6 +160,9 @@ subjects:
   - kind: ServiceAccount
     name: argo-platform-sa
     namespace: argo-events
+  - kind: ServiceAccount
+    name: argo-platform-sa
+    namespace: argo
 roleRef:
   kind: ClusterRole
   name: argo-platform-role
@@ -221,6 +226,8 @@ metadata:
   name: ci-trigger
   namespace: argo-events
 spec:
+  template:
+    serviceAccountName: argo-platform-sa
   dependencies:
     - name: push-event
       eventSourceName: github
@@ -246,6 +253,10 @@ spec:
               spec:
                 workflowTemplateRef:
                   name: ci-pipeline
+                arguments:
+                  parameters:
+                    - name: commit-sha
+                      value: ""
           parameters:
             - src:
                 dependencyName: push-event
@@ -282,10 +293,18 @@ spec:
             dependencies: [test]
 
     - name: build-image
+      inputs:
+        artifacts:
+          - name: source
+            path: /workspace
+            git:
+              repo: https://github.com/myorg/myapp.git
+              revision: "{{workflow.parameters.commit-sha}}"
       container:
         image: gcr.io/kaniko-project/executor:latest
         args:
-          - --dockerfile=Dockerfile
+          - --context=/workspace
+          - --dockerfile=/workspace/Dockerfile
           - "--destination=registry.example.com/myapp:{{workflow.parameters.commit-sha}}"
 
     - name: run-tests
@@ -335,6 +354,45 @@ spec:
 
 ```yaml
 # gitops/apps/myapp/rollout.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+spec:
+  metrics:
+    - name: success-rate
+      interval: 1m
+      successCondition: result[0] >= 0.95
+      failureLimit: 3
+      provider:
+        prometheus:
+          address: http://prometheus-server.monitoring.svc.cluster.local
+          query: |
+            sum(rate(http_requests_total{app="myapp",status!~"5.."}[5m])) /
+            sum(rate(http_requests_total{app="myapp"}[5m]))
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-stable
+spec:
+  selector:
+    app: myapp
+  ports:
+    - port: 80
+      targetPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-canary
+spec:
+  selector:
+    app: myapp
+  ports:
+    - port: 80
+      targetPort: 8080
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
@@ -390,6 +448,7 @@ spec:
     path: platform
   destination:
     server: https://kubernetes.default.svc
+    namespace: argocd
   syncPolicy:
     automated:
       prune: true
