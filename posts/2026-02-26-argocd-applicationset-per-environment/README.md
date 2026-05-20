@@ -267,7 +267,7 @@ This creates 12 applications (4 services x 3 environments) from a single Applica
 
 ## Environment-Specific Sync Policies
 
-Different environments typically need different sync policies. Go templates make this easy.
+Different environments typically need different sync policies. Go templates with `templatePatch` make this easy.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -283,16 +283,16 @@ spec:
         elements:
           - env: dev
             cluster: https://dev.example.com
-            auto_sync: "true"
-            prune: "true"
+            auto_sync: true
+            prune: true
           - env: staging
             cluster: https://staging.example.com
-            auto_sync: "true"
-            prune: "true"
+            auto_sync: true
+            prune: true
           - env: production
             cluster: https://prod.example.com
-            auto_sync: "false"
-            prune: "false"
+            auto_sync: false
+            prune: false
   template:
     metadata:
       name: 'webapp-{{.env}}'
@@ -315,15 +315,18 @@ spec:
         server: '{{.cluster}}'
         namespace: webapp
       syncPolicy:
-        {{- if eq .auto_sync "true"}}
-        automated:
-          prune: {{.prune}}
-          selfHeal: true
-        {{- end}}
         syncOptions:
           - CreateNamespace=true
+  templatePatch: |
+    spec:
+      syncPolicy:
+        {{ if .auto_sync }}
+        automated:
+          prune: {{ .prune }}
+          selfHeal: true
+        {{ end }}
         retry:
-          limit: {{if eq .env "production"}}5{{else}}3{{end}}
+          limit: {{ if eq .env "production" }}5{{ else }}3{{ end }}
           backoff:
             duration: 30s
             factor: 2
@@ -380,12 +383,9 @@ spec:
       destination:
         server: '{{cluster}}'
         namespace: myservice
-      syncPolicy:
-        automated:
-          selfHeal: true
 ```
 
-Changes first deploy to dev. Only after dev is healthy does staging sync. Production waits for staging to be healthy. A failure at any stage halts the progression.
+Changes first deploy to dev. Only after dev is healthy does staging sync. Production waits for staging to be healthy. A failure at any stage halts the progression. RollingSync disables autosync on the generated Applications and triggers sync operations in order, so enable progressive syncs on the ApplicationSet controller before relying on this behavior.
 
 ## Verifying Per-Environment Setup
 
