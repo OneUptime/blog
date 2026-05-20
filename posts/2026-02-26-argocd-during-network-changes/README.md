@@ -18,8 +18,8 @@ ArgoCD has several network dependencies that can be affected by changes.
 graph TD
     A[ArgoCD Repo Server] -->|HTTPS/SSH| B[Git Repositories]
     A -->|HTTPS| C[Helm Repositories]
-    D[ArgoCD Application Controller] -->|HTTPS:6443| E[Kubernetes API Server]
-    D -->|HTTPS:6443| F[Remote Clusters API]
+    D[ArgoCD Application Controller] -->|HTTPS:443/6443| E[Kubernetes API Server]
+    D -->|HTTPS:443/6443| F[Remote Clusters API]
     G[ArgoCD Server] -->|HTTP/HTTPS| H[User Browsers]
     G -->|gRPC| I[ArgoCD CLI]
     J[ArgoCD Dex] -->|HTTPS| K[Identity Providers]
@@ -77,7 +77,8 @@ for app in $(argocd app list -o name); do
   argocd app get "$app" --hard-refresh
 done
 
-# Step 4: Re-enable auto-sync
+# Step 4: Restore the sync policy you recorded before the migration
+# If these applications were all automated before, re-enable auto-sync
 for app in $(argocd app list -o name); do
   argocd app set "$app" --sync-policy automated
 done
@@ -167,7 +168,7 @@ Adding a service mesh like Istio or Linkerd adds sidecar proxies to all pods, ch
 It is often best to exclude ArgoCD from sidecar injection, especially during initial rollout.
 
 ```yaml
-# Label the ArgoCD namespace to opt out of injection
+# Configure the ArgoCD namespace to opt out of injection
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -175,6 +176,7 @@ metadata:
   labels:
     # For Istio
     istio-injection: disabled
+  annotations:
     # For Linkerd
     linkerd.io/inject: disabled
 ```
@@ -182,7 +184,7 @@ metadata:
 Or exclude specific pods.
 
 ```yaml
-# Pod annotation to skip sidecar injection
+# Pod metadata to skip sidecar injection
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -191,16 +193,17 @@ metadata:
 spec:
   template:
     metadata:
-      annotations:
+      labels:
         # Istio
         sidecar.istio.io/inject: "false"
+      annotations:
         # Linkerd
         linkerd.io/inject: disabled
 ```
 
 ### Handling ArgoCD-Managed Applications with Sidecars
 
-When ArgoCD deploys applications that get sidecar injection, it detects the injected containers as drift. Configure `ignoreDifferences` for sidecar fields.
+When ArgoCD manages resources that are mutated by sidecar injection, it can detect the injected fields as drift. For Istio automatic injection, injection normally happens at pod creation time, so you usually only need this when managing Pod manifests directly or using a workflow that mutates stored workload specs. Configure `ignoreDifferences` for sidecar fields.
 
 ```yaml
 # Global ignore for Istio sidecar injection
@@ -245,6 +248,8 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
       ports:
+        - port: 443
+          protocol: TCP
         - port: 6443
           protocol: TCP
 
@@ -345,7 +350,7 @@ spec:
     - name: argocd-network
       rules:
         - alert: ArgoCDGitConnectivityLost
-          expr: rate(argocd_git_request_total{grpc_code!="OK"}[5m]) > 0.5
+          expr: rate(argocd_git_fetch_fail_total[5m]) > 0
           for: 5m
           labels:
             severity: critical
@@ -353,7 +358,7 @@ spec:
             summary: "ArgoCD cannot reach Git repositories"
 
         - alert: ArgoCDClusterConnectivityLost
-          expr: argocd_cluster_info{connection_state!="Successful"} > 0
+          expr: argocd_cluster_connection_status == 0
           for: 3m
           labels:
             severity: critical
