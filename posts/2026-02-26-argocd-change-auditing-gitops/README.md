@@ -8,7 +8,7 @@ Description: Learn how to implement comprehensive change auditing in GitOps work
 
 ---
 
-One of the strongest selling points of GitOps is built-in auditing. Every change to your cluster starts as a Git commit, which means you have a complete, immutable record of who changed what, when, and why. But getting real value from this audit trail requires intentional design.
+One of the strongest selling points of GitOps is built-in auditing. Every intended change to your cluster starts as a Git commit, which means you have a reviewable record of who changed what, when, and why. But getting real value from this audit trail requires intentional design.
 
 This guide covers how to build a comprehensive change auditing system using ArgoCD and GitOps principles.
 
@@ -54,9 +54,16 @@ metadata:
   name: production
   namespace: argocd
 spec:
-  signatureKeys:
-    - keyID: "ABCD1234EFGH5678"
-    - keyID: "IJKL9012MNOP3456"
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: "https://github.com/myorg/config-repo.git"
+          gpg:
+            mode: "head"
+            keys:
+              - "ABCD1234EFGH5678"
+              - "IJKL9012MNOP3456"
   sourceRepos:
     - "https://github.com/myorg/config-repo.git"
   destinations:
@@ -78,14 +85,14 @@ Beyond Git, ArgoCD itself produces audit events for every operation. These inclu
 Check recent events via the CLI:
 
 ```bash
-# View application events
-argocd app get my-app --show-events
+# View application details and current operation
+argocd app get my-app --show-operation
 
 # View all application history
 argocd app history my-app
 ```
 
-The output shows each sync operation with the revision, date, and initiator:
+The output shows each sync operation with the revision and deployment date:
 
 ```text
 ID  DATE                           REVISION
@@ -139,9 +146,16 @@ rules:
   - level: RequestResponse
     resources:
       - group: ""
-        resources: ["pods", "services", "configmaps", "secrets"]
+        resources: ["pods", "services", "configmaps"]
       - group: "apps"
         resources: ["deployments", "statefulsets", "daemonsets"]
+    verbs: ["create", "update", "patch", "delete"]
+
+  # Avoid logging Secret request or response bodies
+  - level: Metadata
+    resources:
+      - group: ""
+        resources: ["secrets"]
     verbs: ["create", "update", "patch", "delete"]
 
   # Log ArgoCD Application changes
@@ -174,13 +188,13 @@ data:
     - description: Application synced successfully
       send:
         - audit-log
-      when: app.status.operationState.phase in ['Succeeded']
+      when: app.status?.operationState.phase in ['Succeeded']
 
   trigger.on-sync-failed: |
     - description: Application sync failed
       send:
         - audit-log
-      when: app.status.operationState.phase in ['Error', 'Failed']
+      when: app.status?.operationState.phase in ['Error', 'Failed']
 
   trigger.on-health-degraded: |
     - description: Application health degraded
@@ -246,6 +260,12 @@ When self-healing reverts a manual change, ArgoCD logs the event. You can trigge
 
 ```yaml
 trigger.on-sync-status-unknown: |
+  - description: Application sync status is unknown
+    send:
+      - manual-change-alert
+    when: app.status.sync.status == 'Unknown'
+
+trigger.on-out-of-sync: |
   - description: Application went out of sync (possible manual change)
     send:
       - manual-change-alert
@@ -263,8 +283,7 @@ With all data flowing into your audit system, you can answer critical questions:
 git log --since="1 week ago" --format="%H %an %ae %s" -- overlays/production/
 
 # From ArgoCD
-argocd app history production-backend --output json | \
-  jq '.[] | select(.deployedAt > "2024-03-11")'
+argocd app history production-backend
 ```
 
 **What changed in the last deployment?**
@@ -279,7 +298,7 @@ git diff abc123..def456 -- apps/my-app/
 
 **Were there any unauthorized changes?**
 
-Check ArgoCD's self-heal events in the logs. Any self-heal event means someone made a change outside of GitOps.
+Check ArgoCD's self-heal events in the logs. A self-heal event means the live cluster state drifted from Git and should be investigated.
 
 ## Compliance Report Generation
 
