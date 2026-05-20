@@ -10,7 +10,7 @@ Description: Step-by-step guide to encrypting individual partitions on an existi
 
 Enabling full disk encryption during installation is straightforward - the Ubuntu installer handles the LUKS setup automatically. Doing it after the fact is more involved but entirely possible. The general approach is to back up the data, wipe and re-create the partition as a LUKS container, format a filesystem inside it, restore the data, and update the system configuration so everything mounts correctly.
 
-This guide covers encrypting secondary partitions (data drives, home partitions) post-installation. Encrypting the root partition while the system is running requires additional steps involving a live environment, which is also covered.
+This guide covers encrypting secondary partitions (data drives, home partitions) post-installation. Encrypting the root partition while the system is running requires additional steps involving a live environment, which is not covered in detail here.
 
 ## Planning Your Encryption
 
@@ -35,7 +35,7 @@ Check existing partitions:
 
 ```bash
 lsblk -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT
-fdisk -l
+sudo fdisk -l
 ```
 
 ## Encrypting a Secondary Data Partition
@@ -110,7 +110,7 @@ sudo mkfs.xfs -L data /dev/mapper/data_encrypted
 ### Step 6: Restore the Data
 
 ```bash
-# Create a mount point and mount the encrypted partition
+# Create a temporary mount point and mount the encrypted partition
 sudo mkdir -p /mnt/data-new
 sudo mount /dev/mapper/data_encrypted /mnt/data-new
 
@@ -119,6 +119,10 @@ sudo rsync -av /backup/data-backup/ /mnt/data-new/
 
 # Verify data integrity
 diff -r /backup/data-backup/ /mnt/data-new/
+
+# Unmount the temporary restore location and create the final mount point
+sudo umount /mnt/data-new
+sudo mkdir -p /data
 ```
 
 ### Step 7: Configure Persistent Mounting
@@ -154,6 +158,8 @@ sudo nano /etc/fstab
 /dev/mapper/data_encrypted  /data  ext4  defaults  0  2
 ```
 
+Use the filesystem type you created in Step 5, such as `ext4` or `xfs`.
+
 Test the configuration without rebooting:
 
 ```bash
@@ -184,6 +190,7 @@ From the live environment:
 
 ```bash
 # Mount the existing home partition (if you need to back up data from it)
+sudo mkdir -p /mnt/home-backup
 sudo mount /dev/sda3 /mnt/home-backup
 
 # Backup home
@@ -196,6 +203,7 @@ sudo cryptsetup luksOpen /dev/sda3 home_encrypted
 sudo mkfs.ext4 /dev/mapper/home_encrypted
 
 # Restore data
+sudo mkdir -p /mnt/home-new
 sudo mount /dev/mapper/home_encrypted /mnt/home-new
 sudo rsync -av /backup/home/ /mnt/home-new/
 sudo umount /mnt/home-new
@@ -208,9 +216,9 @@ sudo cryptsetup luksClose home_encrypted
 ### Option B: Temporary /home on Another Partition
 
 ```bash
-# Create a temporary home location
-sudo mkdir /tmp/home-temp
-sudo rsync -av /home/ /tmp/home-temp/
+# Create a temporary home location on another mounted partition
+sudo mkdir -p /mnt/home-temp
+sudo rsync -av /home/ /mnt/home-temp/
 
 # Unmount /home if it is on its own partition
 sudo umount /home
@@ -222,7 +230,7 @@ sudo mkfs.ext4 /dev/mapper/home_encrypted
 sudo mount /dev/mapper/home_encrypted /home
 
 # Restore
-sudo rsync -av /tmp/home-temp/ /home/
+sudo rsync -av /mnt/home-temp/ /home/
 ```
 
 ## Using a Key File for Automated Unlocking
@@ -267,4 +275,4 @@ sudo hexdump -C /dev/sdb1 | head -5
 
 ## Summary
 
-Post-installation encryption of individual partitions follows a consistent pattern: back up the data, wipe the partition, create a LUKS container, format a filesystem inside it, restore the data, then update `/etc/crypttab` and `/etc/fstab`. Secondary data partitions can be handled while the system is running. Partitions that are mounted at boot (like `/home`) require working from a live environment or temporarily relocating the data. Using key files on the encrypted root filesystem enables automated unlocking of secondary partitions without storing plaintext keys or prompting for multiple passphrases at boot.
+Post-installation encryption of individual partitions follows a consistent pattern: back up the data, wipe the partition, create a LUKS container, format a filesystem inside it, restore the data, then update `/etc/crypttab` and `/etc/fstab`. Secondary data partitions can be handled while the system is running. Partitions that are mounted at boot (like `/home`) require working from a live environment or temporarily relocating the data. Using key files on the encrypted root filesystem enables automated unlocking of secondary partitions without storing keys on an unencrypted filesystem or prompting for multiple passphrases at boot.
