@@ -99,19 +99,16 @@ ignoreDifferences:
       # Leave sidecar container resources tracked
 ```
 
-## Ignoring KEDA-Added Metadata
+## Ignoring KEDA-Generated HPA Metadata
 
-KEDA adds labels and annotations to Deployments it manages. Ignore these:
+KEDA adds labels to the HPA it generates for a ScaledObject. If you manage an HPA manifest directly and KEDA also mutates it, ignore these:
 
 ```yaml
 ignoreDifferences:
-  - group: apps
-    kind: Deployment
-    jsonPointers:
-      - /spec/replicas
+  - group: autoscaling
+    kind: HorizontalPodAutoscaler
     jqPathExpressions:
       - .metadata.labels["scaledobject.keda.sh/name"]
-      - .metadata.annotations["scaledobject.keda.sh/name"]
 ```
 
 ## Global ignoreDifferences
@@ -171,9 +168,9 @@ spec:
         - .spec.template.spec.containers[].resources.requests
 ```
 
-## Server-Side Diff as an Alternative
+## Server-Side Diff as a Complement
 
-ArgoCD 2.5+ supports server-side diff, which uses Kubernetes field ownership to decide what to compare:
+ArgoCD supports server-side diff, which became stable in Argo CD 3.1. It runs a server-side apply dry run and compares the predicted object with the live object:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -192,7 +189,7 @@ spec:
         - keda-operator              # Manages replicas on behalf of KEDA
 ```
 
-With server-side diff, ArgoCD only compares fields that `argocd-application-controller` owns. Changes made by other field managers are automatically ignored without listing specific paths. This is the most maintainable approach because it adapts as autoscalers change different fields.
+Server-side diff improves how ArgoCD calculates the desired live state, but it does not automatically ignore every field changed by other controllers. The `managedFieldsManagers` entries above are still the part that tells ArgoCD to ignore fields owned by those managers. This can be more maintainable than listing every field path because it adapts as autoscalers change different fields.
 
 Enable server-side diff globally:
 
@@ -298,7 +295,7 @@ ignoreDifferences:
 When ignoreDifferences does not work as expected:
 
 ```bash
-# See the full diff including ignored fields
+# Compare the live app to locally generated manifests
 argocd app diff my-app --local overlays/production/
 
 # Check what ArgoCD thinks the desired state is
@@ -316,7 +313,7 @@ Common issues:
 1. **jsonPointer starts without /** - Must be `/spec/replicas`, not `spec/replicas`
 2. **Array index mismatch** - Use jqPathExpressions instead of jsonPointers for arrays
 3. **Group name wrong** - Use `apps` for Deployments, `autoscaling` for HPA, `keda.sh` for KEDA
-4. **CRD group format** - For `resource.customizations.ignoreDifferences`, replace dots with underscores only for the last segment: `keda.sh_ScaledObject`
+4. **CRD group format** - For `resource.customizations.ignoreDifferences`, keep dots in the API group and separate the group from the kind with an underscore: `keda.sh_ScaledObject`
 
 ## Complete Example
 
@@ -350,12 +347,11 @@ spec:
       jqPathExpressions:
         - '.spec.template.spec.containers[] | select(.name == "api") | .resources.requests'
 
-    # KEDA-added metadata
-    - group: apps
-      kind: Deployment
+    # KEDA-generated HPA metadata
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
       jqPathExpressions:
         - .metadata.labels["scaledobject.keda.sh/name"]
-        - .metadata.annotations["scaledobject.keda.sh/name"]
 
   syncPolicy:
     automated:
@@ -367,4 +363,4 @@ spec:
 
 ## Summary
 
-The `ignoreDifferences` feature is essential for running autoscalers with ArgoCD. Use `jsonPointers` for simple field paths like `/spec/replicas`. Use `jqPathExpressions` for complex patterns like container resource requests. Enable `RespectIgnoreDifferences=true` in syncOptions to prevent syncs from overriding autoscaler values. For organizations with many autoscaled workloads, set global ignoreDifferences in argocd-cm. For the most maintainable approach, use server-side diff with `managedFieldsManagers` to automatically ignore fields managed by autoscaler controllers. The goal is clear: Git defines the autoscaling policy, autoscalers control the runtime values.
+The `ignoreDifferences` feature is essential for running autoscalers with ArgoCD. Use `jsonPointers` for simple field paths like `/spec/replicas`. Use `jqPathExpressions` for complex patterns like container resource requests. Enable `RespectIgnoreDifferences=true` in syncOptions to prevent syncs from overriding autoscaler values. For organizations with many autoscaled workloads, set global ignoreDifferences in argocd-cm. For the most maintainable approach, use `managedFieldsManagers` to ignore fields managed by autoscaler controllers, and consider server-side diff when you want ArgoCD to compare against the Kubernetes server-side apply dry-run result. The goal is clear: Git defines the autoscaling policy, autoscalers control the runtime values.
