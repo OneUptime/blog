@@ -66,8 +66,8 @@ data:
         method: POST
         body: |
           {
-            "token": "$pushover-api-token",
-            "user": "$pushover-user-key",
+            "token": "{{ index .secrets "pushover-api-token" }}",
+            "user": "{{ index .secrets "pushover-user-key" }}",
             "title": "Deploy: {{ .app.metadata.name }}",
             "message": "Synced to {{ .app.status.sync.revision | trunc 7 }}\nNamespace: {{ .app.spec.destination.namespace }}\nHealth: {{ .app.status.health.status }}",
             "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}",
@@ -88,8 +88,8 @@ For sync failures, use a higher priority to ensure the notification is not misse
         method: POST
         body: |
           {
-            "token": "$pushover-api-token",
-            "user": "$pushover-user-key",
+            "token": "{{ index .secrets "pushover-api-token" }}",
+            "user": "{{ index .secrets "pushover-user-key" }}",
             "title": "FAILED: {{ .app.metadata.name }}",
             "message": "Sync failed!\nProject: {{ .app.spec.project }}\nRevision: {{ .app.status.sync.revision | trunc 7 }}\nError: {{ .app.status.operationState.message }}",
             "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}",
@@ -110,8 +110,8 @@ For production-critical failures, use emergency priority. This repeatedly sends 
         method: POST
         body: |
           {
-            "token": "$pushover-api-token",
-            "user": "$pushover-user-key",
+            "token": "{{ index .secrets "pushover-api-token" }}",
+            "user": "{{ index .secrets "pushover-user-key" }}",
             "title": "PRODUCTION: {{ .app.metadata.name }} FAILED",
             "message": "Critical production deployment failure!\nApp: {{ .app.metadata.name }}\nNamespace: {{ .app.spec.destination.namespace }}\nError: {{ .app.status.operationState.message }}",
             "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}",
@@ -139,8 +139,8 @@ Priority levels in Pushover:
         method: POST
         body: |
           {
-            "token": "$pushover-api-token",
-            "user": "$pushover-user-key",
+            "token": "{{ index .secrets "pushover-api-token" }}",
+            "user": "{{ index .secrets "pushover-user-key" }}",
             "title": "Health: {{ .app.metadata.name }}",
             "message": "Health status: {{ .app.status.health.status }}\nSync: {{ .app.status.sync.status }}\nNamespace: {{ .app.spec.destination.namespace }}",
             "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}",
@@ -154,17 +154,17 @@ Priority levels in Pushover:
 
 ```yaml
   trigger.on-deployed-pushover: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [pushover-sync-succeeded]
 
   trigger.on-sync-failed-pushover: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [pushover-sync-failed]
 
   # Emergency alert for production only
   trigger.on-prod-failed-pushover: |
-    - when: app.status.operationState.phase in ['Error', 'Failed'] and app.spec.project == 'production'
+    - when: app.status?.operationState.phase in ['Error', 'Failed'] and app.spec.project == 'production'
       send: [pushover-emergency]
 
   trigger.on-health-degraded-pushover: |
@@ -191,7 +191,7 @@ kubectl annotate app production-api -n argocd \
 
 ## Sending to Different Users
 
-For routing alerts to specific people, create separate templates with different user keys:
+For routing alerts to specific people, store the additional user or group keys in `argocd-notifications-secret`, then create separate templates that reference them:
 
 ```yaml
   template.pushover-alert-oncall: |
@@ -200,8 +200,8 @@ For routing alerts to specific people, create separate templates with different 
         method: POST
         body: |
           {
-            "token": "$pushover-api-token",
-            "user": "$pushover-oncall-key",
+            "token": "{{ index .secrets "pushover-api-token" }}",
+            "user": "{{ index .secrets "pushover-oncall-key" }}",
             "title": "{{ .app.metadata.name }} sync failed",
             "message": "{{ .app.status.operationState.message }}",
             "priority": 1
@@ -213,8 +213,8 @@ For routing alerts to specific people, create separate templates with different 
         method: POST
         body: |
           {
-            "token": "$pushover-api-token",
-            "user": "$pushover-team-group-key",
+            "token": "{{ index .secrets "pushover-api-token" }}",
+            "user": "{{ index .secrets "pushover-team-group-key" }}",
             "title": "{{ .app.metadata.name }} deployed",
             "message": "Revision: {{ .app.status.sync.revision | trunc 7 }}",
             "priority": -1
