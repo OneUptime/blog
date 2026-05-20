@@ -41,10 +41,16 @@ kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.resource\.customiz
 
 ### Verify the ConfigMap Key Format
 
-The key must exactly match this pattern:
+The key must exactly match this pattern for resources with an API group:
 
 ```text
 resource.customizations.actions.<group>_<kind>
+```
+
+For core API resources that do not have a group, use only the kind:
+
+```text
+resource.customizations.actions.<kind>
 ```
 
 Common mistakes:
@@ -59,11 +65,11 @@ resource.customizations.actions.apps_deployment: |
 # Wrong: including API version
 resource.customizations.actions.apps/v1_Deployment: |
 
-# Wrong: missing group for core resources
-resource.customizations.actions.Service: |
-
-# Correct: core API group uses v1
+# Wrong: adding v1 as the group for core resources
 resource.customizations.actions.v1_Service: |
+
+# Correct: core API resources omit the group
+resource.customizations.actions.Service: |
 
 # Correct: apps group
 resource.customizations.actions.apps_Deployment: |
@@ -81,10 +87,10 @@ The discovery script might return an empty table or have a syntax error. Test it
 argocd app actions list my-app --kind Deployment --resource-name my-deployment
 ```
 
-If this command returns nothing or errors, the discovery script has a problem. Check the controller logs:
+If this command returns nothing or errors, the discovery script has a problem. Check the Argo CD API server logs:
 
 ```bash
-kubectl logs -n argocd deployment/argocd-application-controller | grep -i "action\|lua\|error"
+kubectl logs -n argocd deployment/argocd-server | grep -i "action\|lua\|error"
 ```
 
 ### Common Discovery Script Errors
@@ -179,14 +185,14 @@ return obj  -- Always return
 ### Finding Lua Errors in Logs
 
 ```bash
-# Search for Lua errors in the application controller logs
-kubectl logs -n argocd deployment/argocd-application-controller --tail=200 | grep -i "lua"
+# Search for Lua errors in the Argo CD API server logs
+kubectl logs -n argocd deployment/argocd-server --tail=200 | grep -i "lua"
 
 # Search for action-specific errors
-kubectl logs -n argocd deployment/argocd-application-controller --tail=200 | grep -i "action"
+kubectl logs -n argocd deployment/argocd-server --tail=200 | grep -i "action"
 
 # Get the most recent errors
-kubectl logs -n argocd deployment/argocd-application-controller --tail=500 | grep -i "error" | tail -20
+kubectl logs -n argocd deployment/argocd-server --tail=500 | grep -i "error" | tail -20
 ```
 
 ## Debugging Actions That Do Nothing
@@ -259,8 +265,8 @@ obj.spec.maxRetries = "three"  -- Should be a number
 ### Check API Server Logs
 
 ```bash
-# Check the kube-apiserver audit logs for rejected patches
-kubectl logs -n kube-system kube-apiserver-<node> | grep "my-deployment" | tail -10
+# If API server audit logging is written to pod logs, check rejected patches
+kubectl logs -n kube-system pod/kube-apiserver-<node-name> | grep "my-deployment" | tail -10
 ```
 
 ## Debugging YAML Formatting Issues
@@ -287,7 +293,7 @@ resource.customizations.actions.apps_Deployment: |
 
 ```bash
 # Get the raw ConfigMap content
-kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data}' | python3 -m json.tool
+kubectl get configmap argocd-cm -n argocd -o json | jq '.data'
 
 # Check for YAML parsing issues
 kubectl get configmap argocd-cm -n argocd -o yaml > /tmp/argocd-cm.yaml
@@ -307,7 +313,7 @@ When an action fails, follow this checklist:
 
 3. **Does the user have permission?** Test RBAC policies.
 
-4. **Are there Lua errors?** Check controller logs.
+4. **Are there Lua errors?** Check Argo CD API server logs.
 
 5. **Is the ConfigMap key correct?** Verify the group and kind naming.
 
