@@ -23,10 +23,14 @@ metadata:
   name: backend-api-production    # This becomes ARGOCD_APP_NAME
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: main
     path: apps/backend-api
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backend-api
 ```
 
 In this example, `ARGOCD_APP_NAME` is `backend-api-production`.
@@ -44,6 +48,7 @@ metadata:
   name: backend-api-production
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/helm-charts.git
     targetRevision: main
@@ -71,6 +76,9 @@ metadata:
   annotations:
     argocd.argoproj.io/app-name: {{ .Values.argocdAppName | default "unknown" | quote }}
 spec:
+  selector:
+    matchLabels:
+      {{- include "backend-api.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
@@ -175,6 +183,7 @@ metadata:
   name: backend-api-staging
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: main
@@ -184,6 +193,9 @@ spec:
         extVars:
           - name: argocdAppName
             value: $ARGOCD_APP_NAME
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backend-api
 ```
 
 In your Jsonnet file:
@@ -195,35 +207,33 @@ local parts = std.split(appName, '-');
 local env = parts[std.length(parts) - 1];
 
 {
-  deployment: {
-    apiVersion: 'apps/v1',
-    kind: 'Deployment',
-    metadata: {
-      name: appName,
-      labels: {
+  apiVersion: 'apps/v1',
+  kind: 'Deployment',
+  metadata: {
+    name: appName,
+    labels: {
+      app: appName,
+      environment: env,
+    },
+  },
+  spec: {
+    replicas: if env == 'production' then 3 else 1,
+    selector: {
+      matchLabels: {
         app: appName,
-        environment: env,
       },
     },
-    spec: {
-      replicas: if env == 'production' then 3 else 1,
-      selector: {
-        matchLabels: {
+    template: {
+      metadata: {
+        labels: {
           app: appName,
         },
       },
-      template: {
-        metadata: {
-          labels: {
-            app: appName,
-          },
-        },
-        spec: {
-          containers: [{
-            name: 'app',
-            image: 'myorg/%s:latest' % appName,
-          }],
-        },
+      spec: {
+        containers: [{
+          name: 'app',
+          image: 'myorg/%s:latest' % appName,
+        }],
       },
     },
   },
@@ -253,6 +263,7 @@ spec:
     metadata:
       name: 'backend-api-{{env}}'
     spec:
+      project: default
       source:
         repoURL: https://github.com/myorg/config-repo.git
         targetRevision: main
@@ -276,7 +287,7 @@ Use the app name in monitoring labels so alerts include the ArgoCD application c
 # templates/deployment.yaml
 metadata:
   labels:
-    argocd-app: {{ .Values.argocdAppName | quote }}
+    argocd_app: {{ .Values.argocdAppName | quote }}
 ```
 
 Then in your Prometheus alerting rules:
