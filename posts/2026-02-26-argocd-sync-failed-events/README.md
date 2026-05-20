@@ -23,7 +23,7 @@ Before diving into event handling, understanding why syncs fail helps you build 
 - **RBAC insufficient**: ArgoCD service account lacks permissions
 - **CRD missing**: Custom Resource Definition not installed
 - **Immutable field changes**: Attempting to change fields that cannot be updated in place
-- **Image pull failures**: Container images that do not exist or require authentication
+- **Image pull secret issues**: Missing or invalid pull secrets can leave workloads unhealthy after sync
 
 ## Setting Up Sync Failure Notifications
 
@@ -41,8 +41,8 @@ data:
   # Trigger on sync failure
   trigger.on-sync-failed: |
     - description: Application sync has failed
-      when: app.status.operationState.phase in ['Error', 'Failed']
-      oncePer: app.status.operationState.syncResult.revision
+      when: app.status?.operationState.phase in ['Error', 'Failed']
+      oncePer: app.status?.operationState.syncResult.revision
       send:
         - sync-failed-alert
         - sync-failed-diagnostics
@@ -51,36 +51,39 @@ data:
   # Trigger on sync running too long
   trigger.on-sync-stuck: |
     - description: Sync is running longer than expected
-      when: app.status.operationState.phase == 'Running' and
-            time.Now().Sub(time.Parse(app.status.operationState.startedAt)).Minutes() > 30
+      when: app.status?.operationState.phase == 'Running' and
+            time.Now().Sub(time.Parse(app.status?.operationState.startedAt)).Minutes() > 30
       send:
         - sync-stuck-alert
 
   # Detailed failure alert
   template.sync-failed-alert: |
+    message: |
+      *Application*: {{.app.metadata.name}}
+      *Project*: {{.app.spec.project}}
+      *Namespace*: {{.app.spec.destination.namespace}}
+      *Revision*: `{{.app.status.operationState.syncResult.revision | trunc 8}}`
+      *Phase*: {{.app.status.operationState.phase}}
+      *Message*: {{.app.status.operationState.message}}
+      *Started*: {{.app.status.operationState.startedAt}}
+
+      *Failed Resources:*
+      {{range .app.status.operationState.syncResult.resources}}
+      {{if ne .status "Synced"}}
+      - {{.kind}}/{{.name}}: {{.message}}
+      {{end}}
+      {{end}}
+
+      *Initiated by*: {{.app.status.operationState.operation.initiatedBy.username | default "auto-sync"}}
+
+      <https://argocd.company.com/applications/{{.app.metadata.name}}|View in ArgoCD>
     slack:
-      channel: "{{index .app.metadata.labels "alert-channel" | default "platform-alerts"}}"
-      title: "SYNC FAILED: {{.app.metadata.name}}"
-      text: |
-        *Application*: {{.app.metadata.name}}
-        *Project*: {{.app.spec.project}}
-        *Namespace*: {{.app.spec.destination.namespace}}
-        *Revision*: `{{.app.status.operationState.syncResult.revision | truncate 8}}`
-        *Phase*: {{.app.status.operationState.phase}}
-        *Message*: {{.app.status.operationState.message}}
-        *Started*: {{.app.status.operationState.startedAt}}
-
-        *Failed Resources:*
-        {{range .app.status.operationState.syncResult.resources}}
-        {{if and (ne .status "Synced") (ne .status "Healthy")}}
-        - {{.kind}}/{{.name}}: {{.message}}
-        {{end}}
-        {{end}}
-
-        *Initiated by*: {{.app.status.operationState.operation.initiatedBy.username | default "auto-sync"}}
-
-        <https://argocd.company.com/applications/{{.app.metadata.name}}|View in ArgoCD>
-      color: "#FF0000"
+      attachments: |
+        [{
+          "title": "SYNC FAILED: {{.app.metadata.name}}",
+          "title_link": "https://argocd.company.com/applications/{{.app.metadata.name}}",
+          "color": "#ff0000"
+        }]
 
   # Webhook for diagnostics system
   template.sync-failed-diagnostics: |
@@ -132,15 +135,17 @@ data:
 
   # Stuck sync alert
   template.sync-stuck-alert: |
+    message: |
+      *Application*: {{.app.metadata.name}}
+      *Status*: Sync has been running for over 30 minutes
+      *Started*: {{.app.status.operationState.startedAt}}
+      This may indicate a resource that cannot finish applying.
     slack:
-      channel: platform-alerts
-      title: "SYNC STUCK: {{.app.metadata.name}}"
-      text: |
-        *Application*: {{.app.metadata.name}}
-        *Status*: Sync has been running for over 30 minutes
-        *Started*: {{.app.status.operationState.startedAt}}
-        This may indicate a resource that cannot reach ready state.
-      color: "#FFA500"
+      attachments: |
+        [{
+          "title": "SYNC STUCK: {{.app.metadata.name}}",
+          "color": "#ffa500"
+        }]
 
   # Services
   service.webhook.diagnostics-api: |
@@ -262,11 +267,19 @@ For more fine-grained control, handle retries programmatically:
 
 ```yaml
 # Custom retry logic in notifications
+service.webhook.argocd-api: |
+  url: https://argocd.company.com
+  headers:
+    - name: Content-Type
+      value: application/json
+    - name: Authorization
+      value: Bearer $argocd-api-token
+
 trigger.on-sync-failed-with-retry: |
   - description: Sync failed, assess retry
     when: >-
-      app.status.operationState.phase in ['Error', 'Failed'] and
-      app.status.operationState.retryCount < 3
+      app.status?.operationState.phase in ['Error', 'Failed'] and
+      app.status?.operationState.retryCount < 3
     send:
       - retry-sync
 
@@ -316,22 +329,22 @@ Build an escalation workflow based on failure duration:
 ```yaml
 # First failure: notify team channel
 trigger.sync-failed-initial: |
-  - when: app.status.operationState.phase in ['Error', 'Failed']
-    oncePer: app.status.operationState.syncResult.revision
+  - when: app.status?.operationState.phase in ['Error', 'Failed']
+    oncePer: app.status?.operationState.syncResult.revision
     send: [slack-team-channel]
 
 # Failed for 15+ minutes: page on-call
 trigger.sync-failed-escalate: |
   - when: >-
-      app.status.operationState.phase in ['Error', 'Failed'] and
-      time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 15
+      app.status?.operationState.phase in ['Error', 'Failed'] and
+      time.Now().Sub(time.Parse(app.status?.operationState.finishedAt)).Minutes() > 15
     send: [pagerduty-oncall]
 
 # Failed for 1+ hour: escalate to management
 trigger.sync-failed-critical: |
   - when: >-
-      app.status.operationState.phase in ['Error', 'Failed'] and
-      time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Hours() > 1
+      app.status?.operationState.phase in ['Error', 'Failed'] and
+      time.Now().Sub(time.Parse(app.status?.operationState.finishedAt)).Hours() > 1
     send: [slack-management, create-incident]
 ```
 
