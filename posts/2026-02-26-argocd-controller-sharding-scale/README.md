@@ -42,11 +42,11 @@ Each shard gets a unique ID (starting from 0). The sharding algorithm maps each 
 
 ArgoCD supports three sharding algorithms:
 
-**Legacy (default)**: Uses a simple modulo operation. Cluster assignment is based on the cluster's index in the sorted cluster list. Adding or removing clusters can cause significant reassignment.
+**Legacy (default)**: Uses a hash of the cluster ID modulo the shard count. It is stable, but the distribution can be uneven.
 
-**Round-robin**: Distributes clusters across shards in order. More predictable than legacy but still sensitive to cluster list changes.
+**Round-robin**: Distributes clusters across shards based on the cluster's rank in the cluster list sorted by UID. It gives an even distribution, but it is still sensitive to cluster list changes.
 
-**Consistent hashing**: Uses a hash ring to assign clusters. When you add a new shard, only a fraction of clusters get reassigned. This is the best choice for dynamic environments.
+**Consistent hashing**: Uses consistent hashing with bounded loads to assign clusters. When you add a new shard, only a fraction of clusters get reassigned. This is a good fit for dynamic environments.
 
 ```yaml
 apiVersion: v1
@@ -59,7 +59,7 @@ data:
   controller.sharding.algorithm: "consistent-hashing"
 ```
 
-For most production environments, I recommend consistent hashing. It minimizes disruption when scaling shards up or down.
+If you are comfortable using the newer sharding algorithms, consistent hashing is a good choice for dynamic environments. It minimizes disruption when scaling shards up or down.
 
 ## Step-by-Step Configuration
 
@@ -121,7 +121,7 @@ The controller uses status processors and operation processors. These should be 
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
   # Status processors handle reconciliation
@@ -138,11 +138,12 @@ After deploying, verify that clusters are properly distributed across shards:
 
 ```bash
 # Check which shard each cluster is assigned to
+# Set the controller log level to debug first to see these messages
 
 for i in 0 1 2; do
   echo "=== Shard $i ==="
   kubectl logs argocd-application-controller-$i -n argocd | \
-    grep "assigned" | head -5
+    grep "processed by shard" | head -5
 done
 ```
 
@@ -150,7 +151,7 @@ You can also check the controller's metrics endpoint:
 
 ```bash
 # Port-forward to a specific shard
-kubectl port-forward argocd-application-controller-0 -n argocd 8082:8082
+kubectl port-forward pod/argocd-application-controller-0 -n argocd 8082:8082
 
 # Check the cluster count for this shard
 curl -s localhost:8082/metrics | grep argocd_cluster_info
@@ -158,9 +159,9 @@ curl -s localhost:8082/metrics | grep argocd_cluster_info
 
 ## Handling Uneven Cluster Sizes
 
-Not all clusters are equal. A production cluster with 500 resources generates far more work than a development cluster with 50 resources. Consistent hashing distributes clusters evenly by count, but not by workload.
+Not all clusters are equal. A production cluster with 500 resources generates far more work than a development cluster with 50 resources. Consistent hashing with bounded loads accounts for cluster and application distribution, but not every kind of resource-level workload.
 
-To handle this, you can use explicit shard assignment by labeling cluster secrets:
+To handle this, you can use explicit shard assignment in cluster secrets:
 
 ```yaml
 apiVersion: v1
@@ -170,11 +171,10 @@ metadata:
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: cluster
-  annotations:
-    # Force this cluster to shard 0
-    argocd.argoproj.io/shard: "0"
 type: Opaque
 stringData:
+  # Force this cluster to shard 0
+  shard: "0"
   name: large-production
   server: https://large-prod.example.com
   config: |
@@ -183,7 +183,7 @@ stringData:
     }
 ```
 
-Using the `argocd.argoproj.io/shard` annotation overrides the automatic sharding algorithm for specific clusters. This lets you manually balance workload when automatic distribution is insufficient.
+Using the `shard` field in the cluster secret overrides the automatic sharding algorithm for specific clusters. This lets you manually balance workload when automatic distribution is insufficient.
 
 ## Scaling Shards Up and Down
 
@@ -199,7 +199,7 @@ kubectl scale statefulset argocd-application-controller \
   --replicas=5 -n argocd
 ```
 
-With consistent hashing, only about `1/new_shard_count` of clusters get reassigned. With 5 shards, roughly 20% of clusters move to the new shards.
+With consistent hashing, only a fraction of clusters get reassigned. With 5 shards, roughly 20% of clusters may move, though the exact number depends on the existing cluster and application distribution.
 
 When scaling down, the process is similar but requires extra caution. Clusters assigned to removed shards will be redistributed, causing a temporary spike in reconciliation activity on the remaining shards.
 
@@ -219,8 +219,8 @@ spec:
     rules:
     - alert: ArgocdShardImbalance
       expr: |
-        max(argocd_cluster_info) by (shard) /
-        min(argocd_cluster_info) by (shard) > 2
+        max(count by (pod) (argocd_cluster_info)) /
+        min(count by (pod) (argocd_cluster_info)) > 2
       for: 10m
       labels:
         severity: warning
