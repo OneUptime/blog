@@ -280,7 +280,7 @@ spec:
 To check what values ArgoCD is using:
 
 ```bash
-# See the effective values being passed to Helm
+# See the configured Helm values files and inline values
 argocd app get my-app -o json | jq '.spec.source.helm'
 
 # Preview what Helm would render with the current values
