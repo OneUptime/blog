@@ -16,7 +16,7 @@ Kubernetes defines three security levels:
 
 - **Privileged**: No restrictions. Allows anything.
 - **Baseline**: Prevents known privilege escalations. Blocks hostNetwork, hostPID, privileged containers, etc.
-- **Restricted**: The most secure. Requires running as non-root, drops all capabilities, and enforces read-only root filesystem.
+- **Restricted**: The most secure. Requires running as non-root, prevents privilege escalation, requires seccomp, and drops all capabilities.
 
 ```mermaid
 graph LR
@@ -52,7 +52,7 @@ This configuration enforces the Baseline standard (blocking obvious security iss
 
 ## Making ArgoCD Containers Restricted-Compliant
 
-To run ArgoCD under the Restricted policy, you need to configure security contexts for all components.
+To run ArgoCD under the Restricted policy, you need to configure security contexts for the core components. The following snippets show fields to merge into the existing ArgoCD workloads, not complete standalone manifests.
 
 ### ArgoCD Server
 
@@ -97,7 +97,7 @@ spec:
 
 ```yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -380,7 +380,7 @@ kubectl get pods -n argocd -o json | jq '
 
 ## Migrating from PodSecurityPolicy to Pod Security Standards
 
-If you are migrating from the deprecated PodSecurityPolicy (PSP) to Pod Security Standards:
+If you are migrating from the deprecated PodSecurityPolicy (PSP) to Pod Security Standards on a pre-1.25 cluster:
 
 ```bash
 # Step 1: Check existing PSPs
@@ -407,6 +407,6 @@ kubectl label namespace argocd \
 
 ## Conclusion
 
-Pod Security Standards provide a standardized way to enforce container security in Kubernetes. For ArgoCD, start with the Baseline standard in enforce mode and work toward Restricted. The key changes are running as non-root, dropping all capabilities, using read-only root filesystems, and enabling seccomp profiles. Apply the same standards to namespaces where ArgoCD deploys applications. Use the warn mode first to identify violations before switching to enforce mode.
+Pod Security Standards provide a standardized way to enforce container security in Kubernetes. For ArgoCD, start with the Baseline standard in enforce mode and work toward Restricted. The key changes are running as non-root, preventing privilege escalation, dropping all capabilities, and enabling seccomp profiles. Apply the same standards to namespaces where ArgoCD deploys applications. Use the warn mode first to identify violations before switching to enforce mode.
 
 For more security hardening, see our guide on [preventing privilege escalation in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-prevent-privilege-escalation/view).
