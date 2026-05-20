@@ -49,7 +49,7 @@ For GitHub, GitLab, and most Git providers, use a personal access token as the p
 ```bash
 # GitHub with personal access token
 argocd repo add https://github.com/my-org/private-repo.git \
-  --username oauth2 \
+  --username myuser \
   --password ghp_xxxxxxxxxxxx
 
 # GitLab with deploy token
@@ -94,8 +94,7 @@ argocd repo add https://github.mycompany.com/my-org/repo.git \
 
 ```bash
 argocd repo add https://source.developers.google.com/p/my-project/r/my-repo \
-  --username oauth2 \
-  --password "$(gcloud auth print-access-token)"
+  --gcp-service-account-key-path /path/to/service-account-key.json
 ```
 
 ### Azure DevOps Repos
@@ -103,7 +102,7 @@ argocd repo add https://source.developers.google.com/p/my-project/r/my-repo \
 ```bash
 argocd repo add https://dev.azure.com/my-org/my-project/_git/my-repo \
   --username oauth2 \
-  --password <personal-access-token>
+  --password "$AZURE_DEVOPS_PAT"
 ```
 
 ## Adding Helm Repositories
@@ -132,7 +131,7 @@ argocd repo add https://charts.mycompany.com \
   --type helm \
   --name internal \
   --tls-client-cert-path /path/to/cert.pem \
-  --tls-client-key-path /path/to/key.pem
+  --tls-client-cert-key-path /path/to/key.pem
 ```
 
 ### OCI Helm Registry
@@ -154,7 +153,7 @@ Instead of adding credentials per-repository, you can create templates that matc
 ```bash
 # Create a credential template for all repos under an org
 argocd repocreds add https://github.com/my-org/ \
-  --username oauth2 \
+  --username myuser \
   --password ghp_xxxxxxxxxxxx
 
 # Now any repository under https://github.com/my-org/ will use these creds
@@ -205,7 +204,7 @@ argocd repo get https://github.com/my-org/manifests.git
 argocd repo rm https://github.com/my-org/old-repo.git
 ```
 
-Note: You cannot remove a repository that is actively used by applications. Remove or update the applications first.
+Note: Removing a repository that is actively used by applications will cause those applications to fail when ArgoCD next tries to fetch manifests. Remove or update the applications first.
 
 ## TLS Configuration
 
@@ -249,7 +248,7 @@ GITHUB_TOKEN="${GITHUB_TOKEN:?Set GITHUB_TOKEN environment variable}"
 
 # Create credential template for GitHub org
 argocd repocreds add https://github.com/my-org/ \
-  --username oauth2 \
+  --username myuser \
   --password "$GITHUB_TOKEN"
 
 # Add all team repositories
@@ -305,8 +304,8 @@ ssh -T git@github.com
 # Re-add with correct credentials
 argocd repo rm https://github.com/my-org/repo.git
 argocd repo add https://github.com/my-org/repo.git \
-  --username oauth2 \
-  --password <correct-token>
+  --username myuser \
+  --password "$CORRECT_TOKEN"
 ```
 
 ### SSH Host Key Issues
@@ -336,7 +335,7 @@ echo "Rotating credentials for: $REPO_URL"
 # Remove and re-add with new credentials
 argocd repo rm "$REPO_URL"
 argocd repo add "$REPO_URL" \
-  --username oauth2 \
+  --username myuser \
   --password "$NEW_TOKEN"
 
 # Verify connection
