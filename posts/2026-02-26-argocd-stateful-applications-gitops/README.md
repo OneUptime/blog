@@ -34,7 +34,7 @@ metadata:
   name: postgresql
 spec:
   serviceName: postgresql
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: postgresql
@@ -116,12 +116,13 @@ spec:
       prune: false    # Never auto-prune stateful apps
       selfHeal: true
     syncOptions:
-      - PrunePropagationPolicy=orphan    # Orphan resources instead of deleting
+      - Prune=false    # Do not prune resources from this Application
+      - Delete=false   # Keep resources when the Application is deleted
 ```
 
 ### Use Resource Exclusions
 
-Configure ArgoCD globally to never prune PVCs:
+Configure ArgoCD globally to exclude PVCs from discovery and sync. This means ArgoCD will not manage or prune PVCs:
 
 ```yaml
 # argocd-cm ConfigMap
@@ -206,14 +207,30 @@ graph TD
 ### Example: Strimzi for Kafka
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: brokers
+  labels:
+    strimzi.io/cluster: production-kafka
+spec:
+  replicas: 3
+  roles:
+    - controller
+    - broker
+  storage:
+    type: persistent-claim
+    size: 100Gi
+    class: gp3
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: production-kafka
 spec:
   kafka:
-    version: 3.7.0
-    replicas: 3
+    version: 4.2.0
+    metadataVersion: 4.2
     listeners:
       - name: plain
         port: 9092
@@ -223,20 +240,12 @@ spec:
         port: 9093
         type: internal
         tls: true
-    storage:
-      type: persistent-claim
-      size: 100Gi
-      class: gp3
     config:
+      default.replication.factor: 3
+      min.insync.replicas: 2
       offsets.topic.replication.factor: 3
       transaction.state.log.replication.factor: 3
       transaction.state.log.min.isr: 2
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 20Gi
-      class: gp3
 ```
 
 ## Handling Updates to Stateful Applications
@@ -249,7 +258,7 @@ Updating the container image in a StatefulSet triggers a rolling update by defau
 
 1. Verify the new version supports in-place upgrades
 2. Take a backup before the upgrade
-3. Consider using sync waves to backup before updating
+3. Consider using sync hooks or sync waves to backup before updating
 
 ```yaml
 # Backup job runs first
@@ -271,6 +280,12 @@ spec:
             - -c
             - |
               pg_dumpall -h postgresql -U postgres > /backup/pre-upgrade.sql
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: password
           volumeMounts:
             - name: backup
               mountPath: /backup
@@ -283,18 +298,20 @@ spec:
 
 ### Storage Resizing
 
-PVC resizing is supported in most cloud providers but requires the StorageClass to have `allowVolumeExpansion: true`. Update the size in Git and let ArgoCD apply it:
+PVC resizing is supported in most cloud providers but requires the StorageClass to have `allowVolumeExpansion: true`. For existing StatefulSet volumes, resize the generated PVCs rather than changing the StatefulSet's `volumeClaimTemplates`. Keep the PVC manifests in Git if you want ArgoCD to apply the resize:
 
 ```yaml
-volumeClaimTemplates:
-  - metadata:
-      name: data
-    spec:
-      accessModes: ["ReadWriteOnce"]
-      storageClassName: gp3
-      resources:
-        requests:
-          storage: 100Gi    # Increased from 50Gi
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-postgresql-0
+  namespace: database
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: gp3
+  resources:
+    requests:
+      storage: 100Gi    # Increased from 50Gi
 ```
 
 Note that PVC size can only be increased, never decreased. ArgoCD will show the change as out-of-sync until the volume expansion completes.
@@ -309,7 +326,7 @@ Backups are critical for stateful workloads and must exist outside of the GitOps
 - Store backups in object storage (S3, GCS, Azure Blob)
 - Test restore procedures regularly
 
-A CronJob for PostgreSQL backups managed by ArgoCD:
+A CronJob for PostgreSQL backups managed by ArgoCD. Use an image that contains both PostgreSQL client tools and the AWS CLI:
 
 ```yaml
 apiVersion: batch/v1
@@ -324,7 +341,7 @@ spec:
         spec:
           containers:
             - name: backup
-              image: postgres:16.2
+              image: ghcr.io/yourorg/postgres-aws-cli:16.2
               command:
                 - /bin/sh
                 - -c
