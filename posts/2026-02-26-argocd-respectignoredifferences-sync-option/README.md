@@ -8,7 +8,7 @@ Description: Learn how to use the RespectIgnoreDifferences sync option in ArgoCD
 
 ---
 
-ArgoCD has a feature called `ignoreDifferences` that lets you tell ArgoCD to ignore certain fields when comparing live state to desired state. This is useful for fields that are modified by external controllers, admission webhooks, or Kubernetes itself. But there is a catch - by default, even though ArgoCD ignores these differences when computing sync status, it still overwrites those fields during the actual sync operation.
+ArgoCD has a feature called `ignoreDifferences` that lets you tell ArgoCD to ignore certain fields when comparing live state to desired state. This is useful for fields that are modified by external controllers, admission webhooks, or Kubernetes itself. But there is a catch - by default, even though ArgoCD ignores these differences when computing sync status, it can still overwrite ignored fields that are present in the desired manifest during the actual sync operation.
 
 The `RespectIgnoreDifferences` sync option changes this. When enabled, ArgoCD not only ignores the differences in its comparison, but also respects them during sync by not overwriting the fields you told it to ignore.
 
@@ -53,7 +53,7 @@ Without `RespectIgnoreDifferences`, here is what happens:
 
 1. HPA scales the Deployment to 7 replicas
 2. ArgoCD shows the app as "Synced" because it ignores the replicas difference
-3. Someone triggers a sync (or auto-sync runs)
+3. Someone triggers a sync (or auto-sync runs because of another change)
 4. ArgoCD applies the full manifest from Git, setting replicas back to 3
 5. The HPA immediately scales it back up, but there is a brief disruption
 
@@ -89,7 +89,7 @@ spec:
       - RespectIgnoreDifferences=true
 ```
 
-Now when ArgoCD syncs, it strips the `/spec/replicas` field from the manifest before applying it. The live value set by the HPA is preserved.
+Now when ArgoCD syncs an existing Deployment, it pre-patches the desired state so the `/spec/replicas` field is not applied. The live value set by the HPA is preserved. If the resource does not exist yet, ArgoCD applies the desired state as-is on the first sync.
 
 ## How It Works Internally
 
@@ -97,11 +97,11 @@ When `RespectIgnoreDifferences` is enabled, ArgoCD modifies the sync process:
 
 1. It reads the desired manifest from Git
 2. It looks at the `ignoreDifferences` configuration
-3. For each ignored field, it removes that field from the manifest to be applied
+3. For each ignored field, it pre-patches the desired state so that field is not applied
 4. It applies the modified manifest (without the ignored fields)
-5. Kubernetes merges the applied manifest with the existing resource, preserving the ignored fields
+5. For an existing resource, Kubernetes merges the applied manifest with the live resource, preserving the ignored fields
 
-This is fundamentally different from just hiding the diff in the UI. The field is actually removed from the apply operation.
+This is fundamentally different from just hiding the diff in the UI. For existing resources, the field is left out of the apply operation.
 
 ## Common Use Cases
 
@@ -143,7 +143,7 @@ spec:
 
 ### Webhook-Injected Fields
 
-Admission webhooks like Istio sidecar injection or Vault secret injection add fields to your resources. These fields do not exist in Git but should not be overwritten:
+Admission webhooks like Istio sidecar injection or Vault secret injection add fields to your resources. For fields that do not exist in Git, `ignoreDifferences` is what prevents those live-only changes from showing as drift. `RespectIgnoreDifferences` matters when the ignored field is also present in Git and would otherwise be applied during sync:
 
 ```yaml
 ignoreDifferences:
@@ -182,7 +182,7 @@ Note the `~1` in the JSON pointer - this is the JSON Pointer encoding for `/` in
 
 ### Mutating Default Values
 
-Kubernetes sometimes adds default values to fields you did not specify. For example, if you do not set a `strategy` on a Deployment, Kubernetes adds `RollingUpdate` with default values:
+Kubernetes sometimes adds default values to fields you did not specify. For example, if you do not set a `strategy` on a Deployment, Kubernetes adds `RollingUpdate` with default values. If a defaulted or mutated field is only in the live resource, `ignoreDifferences` handles the diff; `RespectIgnoreDifferences` matters when the ignored field is also present in Git:
 
 ```yaml
 ignoreDifferences:
@@ -209,7 +209,7 @@ ignoreDifferences:
       - .spec.template.spec.containers[].resources.requests
 ```
 
-Combined with `RespectIgnoreDifferences`, this ensures that resource limits set by a LimitRange admission controller are not overwritten by syncs.
+Combined with `RespectIgnoreDifferences`, this ensures that resource limits or requests managed by another controller are not overwritten by syncs when those fields are also present in Git.
 
 ## System-Level Configuration
 
@@ -240,7 +240,7 @@ When combined with `RespectIgnoreDifferences=true` on individual applications, t
 
 **Field removal.** If you later want ArgoCD to manage a previously ignored field, removing it from `ignoreDifferences` and syncing will start applying it again. But the first sync might cause unexpected changes if the live value has drifted significantly.
 
-**Replace sync option.** The `Replace=true` sync option is incompatible with `RespectIgnoreDifferences` because `replace` does a full resource replacement rather than a strategic merge patch.
+**Replace sync option.** Be careful with `Replace=true`: it makes ArgoCD use `kubectl replace` or `kubectl create`, which can be destructive and does not behave like the normal apply-based sync path.
 
 ## Debugging
 
@@ -256,4 +256,4 @@ argocd app diff web-app --local /path/to/manifests
 
 ## Summary
 
-`RespectIgnoreDifferences` bridges the gap between ArgoCD's diff display and its sync behavior. Without it, `ignoreDifferences` only hides differences in the UI while still overwriting them on sync. With it, ArgoCD truly respects those differences by removing the ignored fields from the apply operation. This is essential for any environment where external controllers, webhooks, or HPAs manage certain fields on your resources.
+`RespectIgnoreDifferences` bridges the gap between ArgoCD's diff display and its sync behavior. Without it, `ignoreDifferences` only hides differences in the UI while ignored fields that are also present in Git can still be overwritten on sync. With it, ArgoCD truly respects those differences by leaving the ignored fields out of the apply operation for existing resources. This is essential for any environment where external controllers, webhooks, or HPAs manage certain fields on your resources.
