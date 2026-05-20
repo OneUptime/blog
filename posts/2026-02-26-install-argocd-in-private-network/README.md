@@ -66,7 +66,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart containerd
 ```
 
-With this in place, standard `kubectl apply` commands will work because nodes can pull images through the proxy.
+With this in place, standard `kubectl apply` commands will work as long as the machine running `kubectl` can fetch the manifest, because nodes can pull images through the proxy.
 
 ### Install ArgoCD Normally
 
@@ -74,7 +74,8 @@ With this in place, standard `kubectl apply` commands will work because nodes ca
 # Create namespace
 kubectl create namespace argocd
 
-# Install ArgoCD - nodes will pull images through the proxy
+# Install ArgoCD - run this from a machine that can reach GitHub
+# Nodes will pull images through the proxy
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
@@ -129,18 +130,18 @@ If you have a bastion host with internet access, use it to pull images and push 
 ```bash
 # Pull ArgoCD images
 docker pull quay.io/argoproj/argocd:v2.13.3
-docker pull ghcr.io/dexidp/dex:v2.38.0
+docker pull ghcr.io/dexidp/dex:v2.41.1
 docker pull redis:7.0.15-alpine
 
 # Tag for private registry
 REGISTRY=registry.internal.example.com
 docker tag quay.io/argoproj/argocd:v2.13.3 ${REGISTRY}/argoproj/argocd:v2.13.3
-docker tag ghcr.io/dexidp/dex:v2.38.0 ${REGISTRY}/dexidp/dex:v2.38.0
+docker tag ghcr.io/dexidp/dex:v2.41.1 ${REGISTRY}/dexidp/dex:v2.41.1
 docker tag redis:7.0.15-alpine ${REGISTRY}/library/redis:7.0.15-alpine
 
 # Push to private registry
 docker push ${REGISTRY}/argoproj/argocd:v2.13.3
-docker push ${REGISTRY}/dexidp/dex:v2.38.0
+docker push ${REGISTRY}/dexidp/dex:v2.41.1
 docker push ${REGISTRY}/library/redis:7.0.15-alpine
 ```
 
@@ -171,14 +172,43 @@ If your container runtime supports registry mirrors, you can transparently redir
 ### Configure containerd Mirror
 
 ```toml
-# /etc/containerd/config.toml (add to the plugins section)
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."quay.io"]
-    endpoint = ["https://registry.internal.example.com"]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."ghcr.io"]
-    endpoint = ["https://registry.internal.example.com"]
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-    endpoint = ["https://registry.internal.example.com"]
+# /etc/containerd/config.toml for containerd 1.x
+[plugins."io.containerd.grpc.v1.cri".registry]
+  config_path = "/etc/containerd/certs.d"
+```
+
+For containerd 2.x, use the updated plugin path.
+
+```toml
+# /etc/containerd/config.toml for containerd 2.x
+[plugins."io.containerd.cri.v1.images".registry]
+  config_path = "/etc/containerd/certs.d"
+```
+
+Create a `hosts.toml` file for each upstream registry.
+
+```toml
+# /etc/containerd/certs.d/quay.io/hosts.toml
+server = "https://quay.io"
+
+[host."https://registry.internal.example.com"]
+  capabilities = ["pull", "resolve"]
+```
+
+```toml
+# /etc/containerd/certs.d/ghcr.io/hosts.toml
+server = "https://ghcr.io"
+
+[host."https://registry.internal.example.com"]
+  capabilities = ["pull", "resolve"]
+```
+
+```toml
+# /etc/containerd/certs.d/docker.io/hosts.toml
+server = "https://registry-1.docker.io"
+
+[host."https://registry.internal.example.com"]
+  capabilities = ["pull", "resolve"]
 ```
 
 Restart containerd on each node.
@@ -193,13 +223,25 @@ With mirrors configured, you can apply the unmodified ArgoCD manifests and the r
 
 In most private networks, you will use an internal Git server like GitLab, Gitea, or Bitbucket Server.
 
+```yaml
+# argocd-internal-repo.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: internal-git-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: https://gitlab.internal.example.com/team/manifests.git
+  username: deploy-token
+  password: "<token>"
+```
+
 ```bash
-# Add your internal Git repository
-kubectl -n argocd exec deployment/argocd-server -- \
-  argocd repo add https://gitlab.internal.example.com/team/manifests.git \
-  --username deploy-token \
-  --password <token> \
-  --insecure-skip-server-verification
+kubectl apply -f argocd-internal-repo.yaml
 ```
 
 If the Git server uses a self-signed TLS certificate, add the CA certificate to ArgoCD.
@@ -211,6 +253,8 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   gitlab.internal.example.com: |
     -----BEGIN CERTIFICATE-----
@@ -226,7 +270,7 @@ kubectl apply -f argocd-tls-certs.yaml
 
 If your cluster uses internal DNS that cannot resolve external hostnames, make sure ArgoCD pods can resolve your internal services.
 
-```yaml
+```bash
 # Check CoreDNS configuration
 kubectl get configmap coredns -n kube-system -o yaml
 ```
@@ -234,14 +278,29 @@ kubectl get configmap coredns -n kube-system -o yaml
 If needed, add custom DNS entries.
 
 ```yaml
-# coredns-custom.yaml - add to CoreDNS ConfigMap
+# coredns.yaml - add the server block to the Corefile in the coredns ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns-custom
+  name: coredns
   namespace: kube-system
 data:
-  internal.server: |
+  Corefile: |
+    .:53 {
+        errors
+        health
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+            pods insecure
+            fallthrough in-addr.arpa ip6.arpa
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf
+        cache 30
+        loop
+        reload
+        loadbalance
+    }
     internal.example.com:53 {
       forward . 10.0.0.2
     }
@@ -296,7 +355,7 @@ Self-signed certificates are common in private networks. Add them to the ArgoCD 
 
 ### Proxy Not Working for Pods
 
-Some Kubernetes network plugins do not forward proxy environment variables properly. Verify the environment is set.
+Pods do not automatically inherit node-level proxy environment variables. Verify the environment is set on the ArgoCD workload.
 
 ```bash
 kubectl exec -n argocd deployment/argocd-repo-server -- env | grep -i proxy
