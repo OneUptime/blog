@@ -179,10 +179,18 @@ kubectl rollout restart deployment/argocd-dex-server -n argocd
 Dex or the OIDC client cannot verify the identity provider's TLS certificate.
 
 ```bash
-# Add a custom CA certificate
-# Create a ConfigMap with the CA cert
-kubectl create configmap argocd-tls-certs-cm -n argocd \
-  --from-file=your-idp.example.com=/path/to/ca-cert.pem
+# For direct OIDC, add the custom CA certificate to oidc.config:
+# oidc.config: |
+#   ...
+#   rootCA: |
+#     -----BEGIN CERTIFICATE-----
+#     ... encoded certificate data here ...
+#     -----END CERTIFICATE-----
+
+# If you cannot fix the certificate chain immediately, Argo CD can skip
+# OIDC provider certificate verification, but this is not recommended:
+# kubectl patch configmap argocd-cm -n argocd --type merge \
+#   -p='{"data":{"oidc.tls.insecure.skip.verify":"true"}}'
 
 # Or if connecting to an LDAP server
 kubectl get configmap argocd-cm -n argocd -o yaml
@@ -279,8 +287,15 @@ kubectl patch configmap argocd-cm -n argocd --type merge \
 # Get or reset the admin password
 kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 
-# If the initial admin secret was deleted, reset the password
-argocd account update-password --account admin --new-password <new-password>
+# If the initial admin secret was deleted, generate a bcrypt hash
+argocd account bcrypt --password <new-password>
+
+# Then patch argocd-secret with the generated hash
+kubectl -n argocd patch secret argocd-secret \
+  -p '{"stringData": {
+    "admin.password": "<bcrypt-hash>",
+    "admin.passwordMtime": "'$(date +%FT%T%Z)'"
+  }}'
 ```
 
 ## Prevention
