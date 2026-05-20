@@ -58,7 +58,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/component: notifications-controller
+      app.kubernetes.io/name: argocd-notifications-controller-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -75,13 +75,14 @@ metadata:
   namespace: argocd
   labels:
     app.kubernetes.io/component: notifications-controller
+    app.kubernetes.io/name: argocd-notifications-controller-metrics
 spec:
   ports:
     - port: 9001
-      targetPort: metrics
+      targetPort: 9001
       name: metrics
   selector:
-    app.kubernetes.io/component: notifications-controller
+    app.kubernetes.io/name: argocd-notifications-controller
 ```
 
 ## Key Metrics to Monitor
@@ -99,7 +100,7 @@ curl -s localhost:9001/metrics | grep "argocd_notifications"
 Key metrics include:
 
 - `argocd_notifications_deliveries_total` - total notifications sent, labeled by trigger and service
-- `argocd_notifications_trigger_eval_total` - total trigger evaluations, labeled by trigger name and result (true/false)
+- `argocd_notifications_trigger_eval_total` - total trigger evaluations, labeled by trigger name and triggered status (true/false)
 
 ### Monitoring Delivery Success Rate
 
@@ -121,7 +122,7 @@ spec:
 
         # Trigger evaluation rate
         - record: argocd:notifications:trigger_eval_rate_1m
-          expr: sum(rate(argocd_notifications_trigger_eval_total[1m])) by (trigger, result)
+          expr: sum(rate(argocd_notifications_trigger_eval_total[1m])) by (name, triggered)
 ```
 
 ## Setting Up Alerts
@@ -187,14 +188,12 @@ spec:
   containers:
     - name: argocd-notifications-controller
       livenessProbe:
-        httpGet:
-          path: /healthz
+        tcpSocket:
           port: 9001
         initialDelaySeconds: 30
         periodSeconds: 10
       readinessProbe:
-        httpGet:
-          path: /healthz
+        tcpSocket:
           port: 9001
         initialDelaySeconds: 5
         periodSeconds: 5
@@ -255,8 +254,8 @@ Create a Grafana dashboard to visualize notification system health:
         "type": "graph",
         "targets": [
           {
-            "expr": "sum(rate(argocd_notifications_trigger_eval_total[1m])) by (trigger)",
-            "legendFormat": "{{trigger}}"
+            "expr": "sum(rate(argocd_notifications_trigger_eval_total[1m])) by (name)",
+            "legendFormat": "{{name}}"
           }
         ]
       },
@@ -320,7 +319,7 @@ kubectl get applications -n argocd -o json | \
 kubectl get applications -n argocd -o json | \
   jq '[.items[] |
     select(.metadata.annotations["notified.notifications.argoproj.io"] == null) |
-    select(.metadata.annotations | to_entries[] | .key | startswith("notifications.argoproj.io/subscribe"))
+    select((.metadata.annotations // {}) | to_entries[] | .key | startswith("notifications.argoproj.io/subscribe"))
   ] | .[].metadata.name'
 ```
 
