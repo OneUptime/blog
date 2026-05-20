@@ -58,6 +58,8 @@ kind: Application
 metadata:
   name: argocd-rbac
   namespace: argocd
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.slack: argocd-alerts
 spec:
   project: default
   source:
@@ -85,7 +87,7 @@ git diff HEAD~1 argocd-config/argocd-rbac-cm.yaml
 git blame argocd-config/argocd-rbac-cm.yaml
 ```
 
-With self-healing enabled, any manual changes to the ConfigMap via kubectl get automatically reverted, enforcing that all changes go through Git.
+With self-healing enabled, any manual changes to the ConfigMap via kubectl edit or kubectl apply are automatically reverted, enforcing that all changes go through Git.
 
 ## Method 2: Kubernetes Audit Logs
 
@@ -118,7 +120,7 @@ grep "argocd-rbac-cm" /var/log/kubernetes/audit.log | jq '.'
 
 # If using CloudWatch (EKS)
 aws logs filter-log-events \
-  --log-group-name /aws/eks/cluster/audit \
+  --log-group-name /aws/eks/my-cluster/cluster \
   --filter-pattern "argocd-rbac-cm"
 ```
 
@@ -128,39 +130,43 @@ Audit log entries include:
 - The request body (new policy)
 - The response (success or failure)
 
-## Method 3: Kubernetes Event Monitoring
+## Method 3: Kubernetes Resource Watch Monitoring
 
-Watch for events related to the RBAC ConfigMap:
+Kubernetes Events are not a reliable source for auditing generic ConfigMap data updates. If you want a live view of changes, watch the ConfigMap resource itself:
 
 ```bash
-# Watch for ConfigMap changes in the argocd namespace
-kubectl get events -n argocd --field-selector reason=Updated --watch
+# Watch the RBAC ConfigMap in the argocd namespace
+kubectl get configmap argocd-rbac-cm -n argocd --watch -o yaml
 ```
 
-For more detailed monitoring, use a tool like Kubernetes Event Exporter to ship events to a logging system:
+For more detailed monitoring, run a small watcher or controller that watches the ConfigMap and ships change notifications to a logging system:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: batch/v1
+kind: CronJob
 metadata:
-  name: event-exporter-config
-data:
-  config.yaml: |
-    logLevel: warning
-    route:
-      routes:
-        - match:
-            - receiver: "dump"
-              kind: "ConfigMap"
-              namespace: "argocd"
-    receivers:
-      - name: "dump"
-        stdout: {}
+  name: rbac-resource-watch
+  namespace: argocd
+spec:
+  schedule: "*/5 * * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: watch
+              image: bitnami/kubectl:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  kubectl get configmap argocd-rbac-cm -n argocd -o yaml
+          restartPolicy: OnFailure
 ```
 
 ## Method 4: ArgoCD Server Logs
 
-ArgoCD server logs RBAC policy reloads. When the `argocd-rbac-cm` ConfigMap changes, the server detects it and reloads the policy:
+ArgoCD server watches the RBAC ConfigMap and reloads the policy when the `argocd-rbac-cm` ConfigMap changes:
 
 ```bash
 # View RBAC reload events
@@ -172,7 +178,7 @@ kubectl logs -n argocd deployment/argocd-server | grep "policy"
 
 You should see messages like:
 ```text
-time="2024-01-15T10:00:00Z" level=info msg="RBAC policy reloaded"
+time="2024-01-15T10:00:00Z" level=info msg="RBAC ConfigMap 'argocd-rbac-cm' updated"
 ```
 
 However, server logs do not show what changed, only that a reload happened. Combine this with Git history or Kubernetes audit logs for full context.
@@ -193,7 +199,8 @@ metadata:
   namespace: argocd
 data:
   trigger.on-sync-succeeded: |
-    - when: app.metadata.name == 'argocd-rbac'
+    - when: app.metadata.name == 'argocd-rbac' and app.status?.operationState.phase in ['Succeeded']
+      oncePer: app.status?.operationState.syncResult.revision
       send: [rbac-changed]
 
   template.rbac-changed: |
