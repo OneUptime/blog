@@ -8,7 +8,7 @@ Description: Learn how to optimize ArgoCD reconciliation performance when workin
 
 ---
 
-Large Git repositories are a common performance bottleneck in ArgoCD. When your repo grows to hundreds of megabytes or contains thousands of manifest files, reconciliation slows to a crawl. The repo server spends excessive time cloning, the controller burns through CPU generating manifests, and your applications take forever to detect changes. This guide covers practical optimizations to keep ArgoCD fast even with large repositories.
+Large Git repositories are a common performance bottleneck in ArgoCD. When your repo grows to hundreds of megabytes or contains thousands of manifest files, reconciliation slows to a crawl. The repo server spends excessive time cloning and generating manifests, the controller burns through CPU diffing resources, and your applications take forever to detect changes. This guide covers practical optimizations to keep ArgoCD fast even with large repositories.
 
 ## Why Large Repos Slow Down ArgoCD
 
@@ -31,19 +31,22 @@ pie title Reconciliation Time Breakdown (Large Repo)
 
 ## Optimization 1: Enable Git Shallow Clone
 
-By default, ArgoCD clones the full Git history. For large repos with long histories, this is wasteful since ArgoCD only needs the latest commit.
+By default, ArgoCD clones the full Git history. For large repos with long histories, this is wasteful since ArgoCD only needs the target revision.
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
-
+# Repository Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cmd-params-cm
+  name: my-repo
   namespace: argocd
-data:
-  # Enable shallow clone with depth 1
-  reposerver.git.shallow.clone: "true"
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/org/monorepo.git
+  depth: "1"
 ```
 
 This dramatically reduces clone time and bandwidth for repositories with long histories. A repo with 10,000 commits might go from a 500MB clone to a 50MB shallow clone.
@@ -60,14 +63,14 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Cache expiration in seconds (default: 24h)
-  reposerver.repo.cache.expiration: "48h"
+  # Cache expiration for repo state, app details, manifests, and revision metadata
+  reposerver.repo.cache.expiration: "48h0m0s"
 
   # Parallelism limit for manifest generation (default: 0 = unlimited)
   reposerver.parallelism.limit: "5"
 ```
 
-You can also configure the repo cache size through Redis:
+If Redis is the bottleneck for ArgoCD's cached data, tune its memory limit and eviction policy:
 
 ```yaml
 # If using external Redis, tune max memory
@@ -92,6 +95,7 @@ kind: Application
 metadata:
   name: my-service
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/monorepo
     targetRevision: main
@@ -100,6 +104,9 @@ spec:
       recurse: true
       include: "*.yaml"
       exclude: "{test/**,docs/**,*.md}"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
 ```
 
 For Helm charts within a large repo:
@@ -110,6 +117,7 @@ kind: Application
 metadata:
   name: my-service
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/monorepo
     targetRevision: main
@@ -117,6 +125,9 @@ spec:
     helm:
       valueFiles:
         - values-production.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
 ```
 
 ## Optimization 4: Split Large Repos into Smaller Ones
@@ -141,18 +152,22 @@ org/worker-service/
 org/infrastructure/
 ```
 
-If splitting is not feasible, use Git sparse checkout (ArgoCD v2.8+):
+ArgoCD does not currently expose a native sparse checkout setting in the Application spec. If splitting is not feasible, keep each Application pointed at the narrowest possible `path` so ArgoCD only processes the files needed for that application:
 
 ```yaml
-# argocd-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Enable sparse checkout support
-  reposerver.enable.sparse.checkout: "true"
+  name: my-service
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/org/monorepo
+    targetRevision: main
+    path: services/my-service/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
 ```
 
 ## Optimization 5: Scale the Repo Server
@@ -167,7 +182,13 @@ metadata:
   namespace: argocd
 spec:
   replicas: 3  # Multiple replicas
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-repo-server
     spec:
       containers:
         - name: argocd-repo-server
@@ -205,7 +226,7 @@ spec:
 
 ## Optimization 6: Use Git Webhooks Instead of Polling
 
-With large repos, each polling cycle is expensive. Switch to webhook-based reconciliation to eliminate unnecessary polls.
+With large repos, each polling cycle is expensive. Switch to webhook-based reconciliation and increase the polling interval to reduce unnecessary polling.
 
 ```yaml
 # argocd-cm ConfigMap
@@ -216,7 +237,7 @@ metadata:
   namespace: argocd
 data:
   # Increase polling interval (rely on webhooks for immediate detection)
-  timeout.reconciliation: "600"  # 10 minutes
+  timeout.reconciliation: "600s"  # 10 minutes
 ```
 
 Set up webhooks in your Git provider to notify ArgoCD of changes. See our detailed guide on [configuring Git webhooks for ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-git-webhook-github/view).
@@ -251,23 +272,24 @@ data:
 
 ## Optimization 8: Enable Server-Side Diff
 
-Server-side diff offloads diff computation from the ArgoCD controller to the Kubernetes API server. This reduces controller CPU and memory usage.
+Server-side diff asks the Kubernetes API server to run server-side apply in dry-run mode and compares that predicted state with the live resource. This can improve diff accuracy and reduce some client-side diff work.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: my-app
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
-  syncPolicy:
-    syncOptions:
-      - ServerSideApply=true
-  # Use server-side diff
-  ignoreDifferences:
-    - group: "*"
-      kind: "*"
-      managedFieldsManagers:
-        - argocd-application-controller
+  project: default
+  source:
+    repoURL: https://github.com/org/monorepo
+    targetRevision: main
+    path: services/my-app/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
 ```
 
 ## Optimization 9: Monitor and Profile Reconciliation
@@ -295,12 +317,12 @@ groups:
       - record: argocd:git_request_duration:p99
         expr: |
           histogram_quantile(0.99,
-            rate(argocd_git_request_duration_seconds_bucket[5m])
+            sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
           )
-      - record: argocd:manifest_generation_duration:p99
+      - record: argocd:app_reconcile_duration:p99
         expr: |
           histogram_quantile(0.99,
-            rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+            sum by (le) (rate(argocd_app_reconcile_bucket[5m]))
           )
 ```
 
