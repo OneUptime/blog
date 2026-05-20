@@ -54,8 +54,8 @@ You can also achieve non-cascade behavior by removing the finalizer before delet
 ```bash
 # Remove the cascade finalizer first
 kubectl patch application my-app -n argocd \
-  --type json \
-  -p '[{"op": "remove", "path": "/metadata/finalizers"}]'
+  --type merge \
+  -p '{"metadata": {"finalizers": null}}'
 
 # Then delete the Application
 kubectl delete application my-app -n argocd
@@ -67,11 +67,11 @@ Without the `resources-finalizer.argocd.argoproj.io` finalizer, Kubernetes simpl
 
 When resources are orphaned, several things change:
 
-**ArgoCD tracking labels remain on the resources:**
+**ArgoCD tracking metadata remains on the resources:**
 ```bash
-# Orphaned resources still have ArgoCD labels
-kubectl get deployment my-app -n production -o jsonpath='{.metadata.labels}' | jq
-# Output includes: "app.kubernetes.io/instance": "my-app"
+# Orphaned resources may still have ArgoCD tracking annotations and labels
+kubectl get deployment my-app -n production -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/tracking-id}'
+kubectl get deployment my-app -n production -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}'
 ```
 
 **Resources continue running normally:**
@@ -90,27 +90,28 @@ The resources are no longer reconciled against a Git source. Manual changes will
 After a non-cascade delete, you may want to remove the ArgoCD tracking labels and annotations from orphaned resources:
 
 ```bash
-# Remove ArgoCD tracking annotation from all resources in the namespace
+# Remove ArgoCD tracking annotations from all common workload resources in the namespace
 kubectl get all -n production -o name | xargs -I {} kubectl annotate {} \
   argocd.argoproj.io/tracking-id- \
+  argocd.argoproj.io/installation-id- \
   kubectl.kubernetes.io/last-applied-configuration-
 
-# Remove ArgoCD instance labels
+# Remove common ArgoCD/Kubernetes app labels
 kubectl get all -n production -o name | xargs -I {} kubectl label {} \
   app.kubernetes.io/instance- \
   app.kubernetes.io/managed-by- \
   app.kubernetes.io/part-of-
 ```
 
-Here is a more targeted approach using label selectors:
+Here is a more targeted approach using label selectors for resources that have the instance label:
 
 ```bash
 # Only clean up resources that belonged to a specific application
 APP_NAME="my-app"
 kubectl get all -n production -l app.kubernetes.io/instance=$APP_NAME -o name | \
-  xargs -I {} kubectl label {} app.kubernetes.io/instance-
+  xargs -I {} kubectl annotate {} argocd.argoproj.io/tracking-id- argocd.argoproj.io/installation-id-
 kubectl get all -n production -l app.kubernetes.io/instance=$APP_NAME -o name | \
-  xargs -I {} kubectl annotate {} argocd.argoproj.io/tracking-id-
+  xargs -I {} kubectl label {} app.kubernetes.io/instance-
 ```
 
 ## Non-cascade delete in app-of-apps
@@ -195,7 +196,7 @@ argocd app sync service-c
 
 ## Orphaned resource monitoring
 
-After performing non-cascade deletions, you might end up with resources that are not managed by any ArgoCD application. ArgoCD can detect these:
+After performing non-cascade deletions, you might end up with top-level namespaced resources that are not managed by any ArgoCD application. ArgoCD can detect these in namespaces targeted by applications in the same project:
 
 ```yaml
 # Enable orphaned resource monitoring in your project
@@ -213,11 +214,11 @@ spec:
         name: kube-root-ca.crt  # Ignore system ConfigMaps
 ```
 
-This helps you track which resources in your cluster are not managed by any ArgoCD application, which is useful after performing several non-cascade deletions.
+This helps you track which top-level namespaced resources in application target namespaces are not managed by any ArgoCD application, which is useful after performing several non-cascade deletions.
 
 ## Common mistakes with non-cascade delete
 
-1. **Forgetting to update resource tracking** - If you create a new application that targets the same namespace, ArgoCD might flag orphaned resources as managed by the new app
+1. **Forgetting to update resource tracking** - If you create a new application that targets the same namespace, ArgoCD might flag the old resources as orphaned, or associate them unexpectedly if your tracking configuration and metadata overlap
 2. **Leaving stale ArgoCD labels** - Other tools might interpret ArgoCD labels incorrectly
 3. **Not removing the application from Git** - If you use a declarative setup, the parent app-of-apps might recreate the application you just deleted
 
