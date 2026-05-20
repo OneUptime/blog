@@ -8,7 +8,7 @@ Description: Learn how to identify and sync only the resources that are actually
 
 ---
 
-When an ArgoCD application has 100 resources and only 3 are out of sync, syncing all 100 is wasteful. ArgoCD provides ways to target only the resources that actually differ from the desired state. This approach reduces sync time, minimizes unnecessary API calls to the Kubernetes cluster, and avoids accidental disruption to resources that are already in the correct state.
+When an ArgoCD application has 100 resources and only 3 are out of sync, syncing all 100 is wasteful. ArgoCD provides ways to target only the resources that actually differ from the desired state. This approach reduces sync time, minimizes unnecessary apply operations against the Kubernetes cluster, and avoids accidental disruption to resources that are already in the correct state.
 
 ## Understanding OutOfSync Status
 
@@ -65,7 +65,7 @@ spec:
 
 With `ApplyOutOfSyncOnly=true`, when ArgoCD performs a sync (either manual or automatic), it skips resources that are already in sync. Only resources where the live state differs from Git are applied.
 
-This is different from selective sync. Selective sync requires you to specify which resources to sync. `ApplyOutOfSyncOnly` automatically determines which resources need updating.
+This is different from manually selecting resources with `--resource`. Manual selective sync requires you to specify which resources to sync. `ApplyOutOfSyncOnly` automatically determines which resources need updating.
 
 ## Enabling ApplyOutOfSyncOnly via CLI
 
@@ -97,9 +97,9 @@ Before manually syncing out-of-sync resources, you need to identify them.
 # List all resources and their sync status
 argocd app resources my-app
 
-# Filter to show only out-of-sync resources using JSON output
-argocd app resources my-app --output json | \
-  jq '.[] | select(.status == "OutOfSync") | {group: .group, kind: .kind, name: .name, namespace: .namespace}'
+# Filter to show only out-of-sync resources using the application JSON output
+argocd app get my-app --output json | \
+  jq '.status.resources[] | select(.status == "OutOfSync") | {group: .group, kind: .kind, name: .name, namespace: .namespace}'
 ```
 
 Example output:
@@ -125,17 +125,17 @@ Once you know which resources are out of sync, sync them specifically.
 
 ```bash
 # Step 1: Get the out-of-sync resources
-argocd app resources my-app --output json | \
-  jq -r '.[] | select(.status == "OutOfSync") | "\(.group):\(.kind):\(.name)"'
+argocd app get my-app --output json | \
+  jq -r '.status.resources[] | select(.status == "OutOfSync") | "\(.group):\(.kind):\((if (.namespace // "") != "" then .namespace + "/" else "" end) + .name)"'
 
 # Output:
-# :ConfigMap:app-config
-# networking.k8s.io:Ingress:web-ingress
+# :ConfigMap:production/app-config
+# networking.k8s.io:Ingress:production/web-ingress
 
 # Step 2: Sync only those resources
 argocd app sync my-app \
-  --resource :ConfigMap:app-config \
-  --resource networking.k8s.io:Ingress:web-ingress
+  --resource :ConfigMap:production/app-config \
+  --resource networking.k8s.io:Ingress:production/web-ingress
 ```
 
 ## Automating OutOfSync-Only Sync in CI/CD
@@ -154,8 +154,8 @@ APP_NAME="${1:?Usage: $0 APP_NAME}"
 echo "Checking sync status for $APP_NAME..."
 
 # Get out-of-sync resources
-OOS_RESOURCES=$(argocd app resources "$APP_NAME" --output json | \
-  jq -r '.[] | select(.status == "OutOfSync") | "\(.group):\(.kind):\(.name)"')
+OOS_RESOURCES=$(argocd app get "$APP_NAME" --output json | \
+  jq -r '.status.resources[] | select(.status == "OutOfSync") | "\(.group):\(.kind):\((if (.namespace // "") != "" then .namespace + "/" else "" end) + .name)"')
 
 if [ -z "$OOS_RESOURCES" ]; then
   echo "All resources are in sync. Nothing to do."
@@ -168,15 +168,15 @@ echo "Found $OOS_COUNT out-of-sync resources:"
 echo "$OOS_RESOURCES"
 
 # Build resource flags
-RESOURCE_FLAGS=""
+RESOURCE_FLAGS=()
 while IFS= read -r resource; do
-  RESOURCE_FLAGS="$RESOURCE_FLAGS --resource $resource"
+  RESOURCE_FLAGS+=(--resource "$resource")
 done <<< "$OOS_RESOURCES"
 
 # Sync only out-of-sync resources
 echo ""
 echo "Syncing out-of-sync resources..."
-eval argocd app sync "$APP_NAME" $RESOURCE_FLAGS
+argocd app sync "$APP_NAME" "${RESOURCE_FLAGS[@]}"
 
 # Wait for health
 echo "Waiting for application to be healthy..."
@@ -207,11 +207,11 @@ Before syncing, review what exactly is different for each out-of-sync resource.
 # Show diff for the entire application (only out-of-sync resources have diffs)
 argocd app diff my-app
 
-# Show diff for a specific resource
-argocd app diff my-app --resource :ConfigMap:app-config
+# Preview applying a specific resource without changing the cluster
+argocd app sync my-app --resource :ConfigMap:production/app-config --dry-run
 ```
 
-The diff output shows you the exact changes that will be applied. This is critical for verifying that you are not accidentally syncing an unintended change.
+The diff output shows you the exact changes that will be applied. For a specific resource, a dry-run sync previews the targeted operation without changing the cluster. This is critical for verifying that you are not accidentally syncing an unintended change.
 
 ## Performance Benefits
 
@@ -219,11 +219,11 @@ For large applications, `ApplyOutOfSyncOnly` significantly reduces sync time.
 
 | Scenario | Full Sync | OutOfSync Only |
 |---|---|---|
-| 100 resources, 3 out of sync | ~100 API calls | ~3 API calls |
-| 500 resources, 10 out of sync | ~500 API calls | ~10 API calls |
-| 1000 resources, 1 out of sync | ~1000 API calls | ~1 API call |
+| 100 resources, 3 out of sync | ~100 resources applied | ~3 resources applied |
+| 500 resources, 10 out of sync | ~500 resources applied | ~10 resources applied |
+| 1000 resources, 1 out of sync | ~1000 resources applied | ~1 resource applied |
 
-Each API call to the Kubernetes API server takes time and consumes resources. For clusters with many ArgoCD applications, reducing unnecessary API calls improves overall cluster performance.
+Each apply operation against the Kubernetes API server takes time and consumes resources. For clusters with many ArgoCD applications, reducing unnecessary apply operations improves overall cluster performance.
 
 ## Combining with Other Sync Options
 
@@ -253,4 +253,4 @@ When you suspect cluster state has drifted in ways ArgoCD did not detect (for ex
 
 When debugging, applying all resources gives you confidence that the entire desired state is in place, not just the parts ArgoCD flagged as out of sync.
 
-For the general selective sync approach, see the [selective sync CLI guide](https://oneuptime.com/blog/post/2026-02-26-argocd-selective-sync-cli/view). For understanding sync options, check the [ArgoCD sync options documentation](https://oneuptime.com/blog/post/2026-01-30-argocd-sync-windows/view).
+For the general selective sync approach, see the [selective sync CLI guide](https://oneuptime.com/blog/post/2026-02-26-argocd-selective-sync-cli/view). For understanding sync options, check the [ArgoCD sync options documentation](https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/).
