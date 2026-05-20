@@ -60,7 +60,20 @@ vault write auth/kubernetes/role/external-secrets \
   bound_service_account_names=external-secrets \
   bound_service_account_namespaces=external-secrets \
   policies=external-secrets \
-  ttl=1h
+  token_ttl=1h
+
+# Create a policy and role for the rotation job
+vault policy write secret-rotator - <<EOF
+path "secret/data/payments/database" {
+  capabilities = ["create", "read", "update"]
+}
+EOF
+
+vault write auth/kubernetes/role/secret-rotator \
+  bound_service_account_names=secret-rotator \
+  bound_service_account_namespaces=payments \
+  policies=secret-rotator \
+  token_ttl=1h
 ```
 
 ## Static Secret Rotation with ESO
@@ -81,7 +94,7 @@ vault kv put secret/payments/database \
 
 ```yaml
 # external-secret.yaml - managed by ArgoCD
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -151,7 +164,8 @@ spec:
           serviceAccountName: secret-rotator
           containers:
             - name: rotate
-              image: vault:latest
+              # Build this image with the vault CLI, jq, openssl, and psql.
+              image: myorg/vault-postgres-rotator:1.0.0
               command:
                 - /bin/sh
                 - -c
@@ -204,7 +218,7 @@ spec:
   source:
     repoURL: https://stakater.github.io/stakater-charts
     chart: reloader
-    targetRevision: 1.0.52
+    targetRevision: 2.2.11
   destination:
     server: https://kubernetes.default.svc
     namespace: reloader
@@ -257,13 +271,26 @@ vault write database/roles/payment-service \
   revocation_statements="DROP ROLE IF EXISTS \"{{name}}\";" \
   default_ttl="1h" \
   max_ttl="24h"
+
+# Allow the payment-service Kubernetes service account to read dynamic credentials
+vault policy write payment-service - <<EOF
+path "database/creds/payment-service" {
+  capabilities = ["read"]
+}
+EOF
+
+vault write auth/kubernetes/role/payment-service \
+  bound_service_account_names=payment-service \
+  bound_service_account_namespaces=payments \
+  policies=payment-service \
+  token_ttl=1h
 ```
 
 ### Use Dynamic Secrets with ESO
 
 ```yaml
 # ExternalSecret using Vault dynamic database credentials
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: dynamic-db-credentials
@@ -301,6 +328,7 @@ spec:
         # Vault Agent annotations
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "payment-service"
+        vault.hashicorp.com/agent-share-process-namespace: "true"
         # Inject database credentials
         vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/payment-service"
         vault.hashicorp.com/agent-inject-template-db-creds: |
@@ -319,7 +347,7 @@ spec:
           command:
             - /bin/sh
             - -c
-            - "source /vault/secrets/db-creds && exec /app/payment-service"
+            - ". /vault/secrets/db-creds && exec /app/payment-service"
 ```
 
 Deploy the Vault Agent Injector via ArgoCD:
@@ -335,7 +363,7 @@ spec:
   source:
     repoURL: https://helm.releases.hashicorp.com
     chart: vault
-    targetRevision: 0.27.0
+    targetRevision: 0.32.0
     helm:
       values: |
         injector:
@@ -361,23 +389,23 @@ spec:
   groups:
     - name: secret-rotation
       rules:
-        - alert: SecretRotationOverdue
+        - alert: ExternalSecretSyncErrors
           expr: |
-            (time() - kube_secret_created) > 2592000
+            increase(externalsecret_sync_calls_error[15m]) > 0
           for: 1h
           labels:
             severity: warning
           annotations:
-            summary: "Secret {{ $labels.secret }} in {{ $labels.namespace }} not rotated in 30 days"
+            summary: "External Secrets Operator sync errors detected"
 
-        - alert: VaultLeaseExpiringSoon
+        - alert: VaultLeaseExpirationErrors
           expr: |
-            vault_secret_lease_remaining_seconds < 300
+            increase(vault_expire_lease_expiration_error[5m]) > 0
           for: 1m
           labels:
             severity: critical
           annotations:
-            summary: "Vault lease expiring in less than 5 minutes"
+            summary: "Vault lease expiration errors detected"
 ```
 
 ## Summary
