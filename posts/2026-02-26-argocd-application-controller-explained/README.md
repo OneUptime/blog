@@ -8,7 +8,7 @@ Description: A clear explanation of how the ArgoCD Application Controller works,
 
 ---
 
-The Application Controller is the most important component in ArgoCD. It is the piece that watches your Git repos, compares the desired state with what is actually running, and makes sure your cluster matches what you have declared. If ArgoCD were a car, the Application Controller would be the engine.
+The Application Controller is the most important component in ArgoCD. It is the piece that monitors Applications, asks the repo server for the desired manifests from Git, compares that desired state with what is actually running, and makes sure your cluster matches what you have declared. If ArgoCD were a car, the Application Controller would be the engine.
 
 This post explains what it does, how it works internally, and how to tune it for production workloads.
 
@@ -56,11 +56,11 @@ The comparison step is more nuanced than it appears. ArgoCD does not simply do a
 
 When you write a Kubernetes Deployment, you might specify 10 fields. But the actual resource in the cluster has hundreds of fields, including defaults, status fields, managed fields, and fields injected by admission controllers. A naive diff would show hundreds of differences that do not matter.
 
-The controller normalizes both sides:
+The controller normalizes and compares the desired and live objects:
 
 1. **Removes server-side fields** - status, managedFields, creationTimestamp, uid, and similar fields that Kubernetes adds automatically
-2. **Applies defaults** - if your manifest omits a field that has a default value (like `imagePullPolicy: IfNotPresent`), the controller accounts for that
-3. **Handles strategic merge** - arrays and maps are compared using Kubernetes strategic merge logic, not raw string comparison
+2. **Uses diff strategies** - the default legacy diff uses live state, desired state, and the last-applied-configuration annotation; server-side diff can ask Kubernetes for a dry-run apply result so admission and defaulting behavior can participate in the comparison
+3. **Handles structured objects** - maps, lists, and known Kubernetes types are compared as Kubernetes objects, not raw strings
 
 This normalization is why ArgoCD can accurately show you "Synced" when your manifests match the cluster, even though the raw YAML looks different.
 
@@ -90,7 +90,7 @@ After all resources are applied and healthy, PostSync hooks run. These typically
 
 **Phase 4: Health assessment**
 
-The controller evaluates the health of every resource. Each resource type has a health check function. Deployments are healthy when all replicas are available. Services are healthy when they have endpoints. StatefulSets are healthy when all pods are ready.
+The controller evaluates the health of every resource it knows how to assess. Each supported resource type has a health check function. Deployments, ReplicaSets, StatefulSets, and DaemonSets are healthy when their observed generation matches the desired generation and their updated replicas match the desired replicas. LoadBalancer Services are healthy when `status.loadBalancer.ingress` has at least one hostname or IP.
 
 ## Status and Operation Processors
 
@@ -137,22 +137,22 @@ argocd app get my-app --hard-refresh
 
 The application controller runs as a StatefulSet, not a Deployment. This is important for two reasons:
 
-1. **Leader election** - only one controller replica is active at a time (without sharding). The StatefulSet ensures stable network identities for leader election.
-2. **Sharding** - when sharding is enabled, each replica gets a deterministic identity (controller-0, controller-1, etc.) so Applications can be consistently assigned to specific shards.
+1. **Stable identity** - the StatefulSet gives controller pods predictable names, such as `argocd-application-controller-0`.
+2. **Sharding** - when sharding is enabled, each replica uses that deterministic identity so cluster shards can be consistently assigned to specific controller pods.
 
 ```bash
 # Check the controller StatefulSet
 kubectl get statefulset argocd-application-controller -n argocd
 
-# See which pod is the current leader
-kubectl logs argocd-application-controller-0 -n argocd | grep "leader"
+# Inspect shard-related controller logs
+kubectl logs argocd-application-controller-0 -n argocd | grep -i "shard"
 ```
 
 ## Sharding for Scale
 
 When you manage hundreds or thousands of Applications, a single controller can become a bottleneck. Sharding distributes the load across multiple controller replicas.
 
-Each Application is assigned to a shard based on a hash of its name or the cluster it targets. Each controller replica only processes Applications assigned to its shard.
+Clusters are assigned to shards automatically unless you set a cluster's optional `shard` value manually. Each controller replica processes Applications that target clusters assigned to its shard.
 
 ```yaml
 # Enable sharding with 3 replicas
@@ -172,7 +172,7 @@ spec:
           value: "3"
 ```
 
-With sharding, if controller-0 goes down, the Applications it managed will not be reconciled until it comes back. The other controllers do not take over its shard automatically. This is a trade-off between even distribution and resilience.
+With static StatefulSet sharding, if controller-0 goes down, the cluster shard it handled will not be reconciled until it comes back. The other controllers do not take over that shard automatically. This is a trade-off between even distribution and resilience.
 
 Resource Limits and Performance
 
