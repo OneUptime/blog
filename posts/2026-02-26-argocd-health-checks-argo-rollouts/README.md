@@ -10,7 +10,7 @@ Description: Learn how to configure ArgoCD health checks for Argo Rollouts resou
 
 Argo Rollouts extends Kubernetes Deployments with progressive delivery strategies like canary and blue-green deployments. When you manage Rollouts with ArgoCD, the health status must accurately reflect the rollout's state - whether it is in the middle of a canary analysis, waiting for a manual promotion, paused at a step, or fully healthy.
 
-ArgoCD includes built-in health checks for Argo Rollouts starting from ArgoCD 2.4, but you may need to customize them for your specific workflow. This guide covers both the built-in behavior and custom health configurations.
+ArgoCD includes built-in health checks for Argo Rollouts, but you may need to customize them for your specific workflow. This guide covers both the built-in behavior and custom health configurations.
 
 ## Argo Rollouts Resource Types
 
@@ -52,11 +52,10 @@ The mapping is:
 | Paused (manual gate) | Suspended |
 | Degraded (analysis failed) | Degraded |
 | Aborted | Degraded |
-| ScaledDown | Suspended |
 
 ## Installing the Argo Rollouts Extension
 
-If your ArgoCD version does not include Argo Rollouts health checks, or you want the latest health check logic, install the resource customization:
+If your ArgoCD version does not include Argo Rollouts health checks, or you want to override the built-in logic for your workflow, install a resource customization:
 
 ```yaml
 apiVersion: v1
@@ -168,7 +167,7 @@ resource.customizations.health.argoproj.io_AnalysisRun: |
     hs.status = "Degraded"
     hs.message = obj.status.message or "Analysis encountered an error"
   elseif obj.status.phase == "Inconclusive" then
-    hs.status = "Progressing"
+    hs.status = "Unknown"
     hs.message = "Analysis results are inconclusive"
   elseif obj.status.phase == "Pending" then
     hs.status = "Progressing"
@@ -196,6 +195,9 @@ resource.customizations.health.argoproj.io_Experiment: |
   if obj.status.phase == "Successful" then
     hs.status = "Healthy"
     hs.message = "Experiment completed successfully"
+  elseif obj.status.phase == "Pending" then
+    hs.status = "Progressing"
+    hs.message = "Experiment is pending"
   elseif obj.status.phase == "Running" then
     hs.status = "Progressing"
     hs.message = "Experiment is running"
@@ -289,13 +291,14 @@ resource.customizations.health.argoproj.io_Rollout: |
 When a rollout is paused (waiting for manual promotion or at a pause step), ArgoCD shows it as Suspended. This is important for teams that use manual gates:
 
 ```yaml
-# Rollout with manual promotion gate
+# Rollout strategy excerpt with manual promotion gate
 
 apiVersion: argoproj.io/v1alpha1
 kind: Rollout
 metadata:
   name: my-app
 spec:
+  # selector and template omitted for brevity
   strategy:
     canary:
       steps:
