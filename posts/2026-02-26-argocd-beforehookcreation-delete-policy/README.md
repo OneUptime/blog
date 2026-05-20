@@ -8,7 +8,7 @@ Description: Learn how to use the BeforeHookCreation delete policy in ArgoCD to 
 
 ---
 
-The `BeforeHookCreation` delete policy is the most practical cleanup strategy for ArgoCD sync hooks. Instead of deleting hooks based on their success or failure status, it cleans up the previous hook resource right before creating a new one for the current sync. This means you always have exactly one instance of each hook in the cluster - the one from the most recent sync.
+The `BeforeHookCreation` delete policy is the most practical cleanup strategy for ArgoCD sync hooks. Instead of deleting hooks based on their success or failure status, it cleans up the previous hook resource right before creating a new one for the current sync. This means you keep at most one instance of each named hook in the cluster - the one from the most recent sync.
 
 This policy solves the naming collision problem that plagues Kubernetes Jobs and gives you a reliable way to inspect the latest hook result without accumulating old resources.
 
@@ -36,11 +36,11 @@ graph TD
 
 ## The Naming Problem It Solves
 
-Kubernetes Jobs must have unique names within a namespace. Once a Job exists, you cannot create another with the same name. Without `BeforeHookCreation`, you face a dilemma:
+Kubernetes Jobs must have unique names within a namespace. Once a Job exists, you cannot create another with the same name. Without this cleanup behavior, you face a dilemma:
 
-**Using static names**: The second sync fails because the Job already exists.
+**Using static names without hook cleanup**: The hook is not recreated on later syncs, or updates can fail if Kubernetes needs to replace immutable Job fields.
 ```yaml
-# This fails on the second sync without cleanup
+# This will not produce a fresh Job on every sync without cleanup
 
 metadata:
   name: db-migrate  # Already exists from the first sync
@@ -53,9 +53,9 @@ metadata:
   name: db-migrate-v42  # Must change with every version
 ```
 
-**Using generateName**: ArgoCD creates random names, and cleanup is unpredictable.
+**Using generateName**: Kubernetes creates a unique name from the prefix, and old hook resources can accumulate unless you use another cleanup policy.
 ```yaml
-# Random suffix - works but messy
+# Generated suffix - works, but there is no fixed name to inspect
 metadata:
   generateName: db-migrate-
 ```
@@ -81,7 +81,7 @@ spec:
   backoffLimit: 3
 ```
 
-ArgoCD deletes the old `db-migrate` Job before creating the new one. Simple and clean.
+ArgoCD deletes the old `db-migrate` Job before creating the new one. Simple and clean. If you omit `argocd.argoproj.io/hook-delete-policy`, ArgoCD currently assumes `BeforeHookCreation` by default, but setting it explicitly makes the lifecycle clear.
 
 ## Basic Configuration
 
@@ -118,7 +118,7 @@ kubectl logs job/db-migrate -n my-app
 kubectl get job db-migrate -n my-app -o jsonpath='{.status}'
 ```
 
-This is particularly valuable for debugging. If a migration ran 3 hours ago and your application has issues, you can still check the migration logs.
+This is particularly valuable for debugging. If a migration ran 3 hours ago and your application has issues, you can still check the migration logs as long as the Job's Pods and their log data have not been removed.
 
 ## Combining with HookSucceeded
 
@@ -211,7 +211,7 @@ spec:
   activeDeadlineSeconds: 120
 ```
 
-The smoke test results (pass or fail) are always available via `kubectl logs` until the next deployment.
+The smoke test results (pass or fail) remain available via `kubectl logs` until the next deployment, as long as the Job's Pods and their log data have not been removed.
 
 ### Configuration Validation
 
@@ -301,10 +301,10 @@ This is rare but can happen when the hook interacts with controllers that add fi
 
 ## BeforeHookCreation and generateName
 
-You can use `BeforeHookCreation` with `generateName`, but it is less useful because ArgoCD needs to match the existing resource by name. With `generateName`, the name changes each time, so the old resource might not be found:
+You can use hooks with `generateName`, but `BeforeHookCreation` is meant for hooks with `/metadata/name`. With `generateName`, the name changes each time, so the old resource is not the same named hook:
 
 ```yaml
-# Not recommended - BeforeHookCreation cannot find the old resource
+# Not recommended with BeforeHookCreation - use a static name instead
 metadata:
   generateName: db-migrate-  # Generates db-migrate-abc123, db-migrate-def456, etc.
   annotations:
@@ -325,4 +325,4 @@ Stick with static names when using `BeforeHookCreation`.
 
 ## Summary
 
-`BeforeHookCreation` is the most reliable hook delete policy for maintaining a clean cluster while preserving inspectability. It guarantees exactly one hook instance per name at any time, solves the Job naming collision problem, and ensures you can always inspect the most recent hook result. Combine it with `HookSucceeded` for the optimal strategy: immediate cleanup on success, preserved-until-next-sync on failure.
+`BeforeHookCreation` is the most reliable hook delete policy for maintaining a clean cluster while preserving inspectability. It keeps at most one hook instance per name, solves the Job naming collision problem, and ensures you can inspect the most recent hook result while the Job and its Pods remain available. Combine it with `HookSucceeded` for the optimal strategy: immediate cleanup on success, preserved-until-next-sync on failure.
