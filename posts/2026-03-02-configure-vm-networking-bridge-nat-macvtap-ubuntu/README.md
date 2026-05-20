@@ -155,7 +155,7 @@ sudo netplan apply
 
 # Verify bridge is up
 ip addr show br0
-brctl show br0
+bridge link show master br0
 ```
 
 ### Creating a libvirt Network for the Bridge
@@ -197,7 +197,7 @@ virsh attach-interface myvm \
 
 ## Macvtap Networking
 
-Macvtap creates a virtual interface directly on the physical NIC, bypassing the kernel network stack. It offers better performance than traditional bridges and doesn't require creating a bridge device.
+Macvtap creates a direct virtual interface on the physical NIC, avoiding a separate Linux bridge. It can reduce bridge overhead and doesn't require creating a bridge device.
 
 **Important limitation:** With macvtap, the VM can communicate with external hosts but cannot communicate with the host machine itself. If you need host-to-VM communication, use a bridge instead.
 
@@ -294,7 +294,7 @@ Add inside the `<dhcp>` section:
 <dhcp>
   <range start='192.168.122.100' end='192.168.122.200'/>
   <host mac='52:54:00:ab:cd:ef' name='myvm' ip='192.168.122.50'/>
-</network>
+</dhcp>
 ```
 
 ```bash
@@ -322,7 +322,8 @@ This is useful for firewall VMs that need interfaces on both the LAN and WAN, or
 
 ```bash
 # Check if the bridge exists and has interfaces
-brctl show
+ip link show type bridge
+bridge link
 
 # View iptables rules added by libvirt
 sudo iptables -L FORWARD -n -v | grep virbr
@@ -351,7 +352,7 @@ sudo sysctl -w net.ipv4.ip_forward=1
 ```bash
 ip addr show enp3s0    # Should show no IP address
 ip addr show br0       # Should show your LAN IP
-brctl show br0         # Should list enp3s0 as a bridge port
+bridge link show master br0  # Should list enp3s0 as a bridge port
 ```
 
 Each networking mode serves a purpose. NAT works well for development VMs that just need internet access. Bridge networking is necessary for VMs that need to be reachable from the network as if they were physical machines. Macvtap offers performance advantages in high-throughput scenarios where you can accept the host-to-VM communication limitation.
