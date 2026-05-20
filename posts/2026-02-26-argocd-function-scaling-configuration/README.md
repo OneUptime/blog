@@ -70,9 +70,6 @@ data:
   # Scaling rates
   max-scale-up-rate: "1000.0"
   max-scale-down-rate: "2.0"
-
-  # Activation scale (minimum when scaling from zero)
-  activation-scale: "1"
 ```
 
 Per-service scaling overrides:
@@ -135,7 +132,7 @@ spec:
         autoscaling.knative.dev/metric: "rps"
         autoscaling.knative.dev/target: "10"
 
-        # Scale to zero after 10 minutes of inactivity
+        # Keep the last pod for at least 10 minutes after scale-to-zero is selected
         autoscaling.knative.dev/min-scale: "0"
         autoscaling.knative.dev/max-scale: "20"
         autoscaling.knative.dev/scale-to-zero-pod-retention-period: "10m"
@@ -172,7 +169,6 @@ spec:
     kind: Deployment
   pollingInterval: 10
   cooldownPeriod: 120
-  idleReplicaCount: 0
   minReplicaCount: 0
   maxReplicaCount: 50
   fallback:
@@ -188,11 +184,6 @@ spec:
         value: "5"
       authenticationRef:
         name: rabbitmq-auth
-    # Also scale based on CPU during business hours
-    - type: cpu
-      metricType: Utilization
-      metadata:
-        value: "70"
 ```
 
 ```yaml
@@ -329,15 +320,12 @@ spec:
   template:
     metadata:
       annotations:
-        # High initial scale when coming from zero
-        autoscaling.knative.dev/initial-scale: "5"
+        # Scale up to at least 5 replicas when activating from zero
+        autoscaling.knative.dev/activation-scale: "5"
 
         # Aggressive panic scaling
         autoscaling.knative.dev/panic-window-percentage: "5.0"
         autoscaling.knative.dev/panic-threshold-percentage: "110.0"
-
-        # Fast scale-up rate
-        autoscaling.knative.dev/max-scale-up-rate: "2000.0"
 
         autoscaling.knative.dev/min-scale: "0"
         autoscaling.knative.dev/max-scale: "500"
@@ -367,16 +355,16 @@ spec:
       rules:
         - alert: FunctionAtMaxScale
           expr: |
-            kube_deployment_status_replicas{namespace="production"}
-            ==
-            kube_deployment_spec_replicas{namespace="production"}
-            and
-            kube_deployment_spec_replicas{namespace="production"} >= 45
+            (
+              kube_hpa_status_current_replicas{namespace="production"}
+              /
+              kube_hpa_spec_max_replicas{namespace="production"}
+            ) >= 0.9
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Function {{ $labels.deployment }} is near max scale"
+            summary: "Function autoscaler {{ $labels.hpa }} is near max scale"
 
         - alert: FunctionScaleFlapping
           expr: |
@@ -389,12 +377,12 @@ spec:
 
         - alert: KEDAScalerErrors
           expr: |
-            keda_scaler_errors_total > 0
+            keda_scaled_object_errors_total > 0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "KEDA scaler errors detected for {{ $labels.scaledObject }}"
+            summary: "KEDA ScaledObject errors detected for {{ $labels.scaledObject }}"
 ```
 
 ## Summary
