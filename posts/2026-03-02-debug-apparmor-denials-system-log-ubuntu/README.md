@@ -21,7 +21,7 @@ AppArmor writes denial messages to the kernel audit log. On Ubuntu systems, this
 - `/var/log/audit/audit.log` - if `auditd` is installed
 - `journalctl` output from systemd
 
-The most reliable place to check is the kernel log via journalctl:
+A good first place to check is the kernel log via journalctl:
 
 ```bash
 # Show all AppArmor denial messages from the current boot
@@ -39,10 +39,10 @@ If you have `auditd` installed:
 
 ```bash
 # Check audit log for AppArmor denials
-sudo ausearch -m AVC | grep apparmor
+sudo grep 'apparmor="DENIED"' /var/log/audit/audit.log
 
 # Filter by time range
-sudo ausearch -m AVC --start recent | grep apparmor
+sudo ausearch --start recent | grep 'apparmor="DENIED"'
 ```
 
 ## Reading a Denial Message
@@ -177,7 +177,7 @@ sudo aa-complain /etc/apparmor.d/usr.sbin.nginx
 sudo aa-enforce /usr/bin/myapp
 ```
 
-In complain mode, denials are logged but not enforced. If your application works in complain mode but not enforce mode, AppArmor is definitely the problem.
+In complain mode, most denials are logged but not enforced. Explicit `deny` rules are still enforced. If your application works in complain mode but not enforce mode, AppArmor is likely the problem.
 
 ## Practical Debugging Workflow
 
@@ -244,7 +244,7 @@ apparmor="DENIED" operation="exec" name="/usr/bin/helper" requested_mask="x"
 Add an exec rule:
 
 ```text
-/usr/bin/helper Px,   # execute with helper's own profile
+/usr/bin/helper Px,   # execute with helper's own profile; denied if no matching profile exists
 # or
 /usr/bin/helper ix,   # execute inheriting current profile
 ```
@@ -261,7 +261,7 @@ sudo apparmor_parser -r /etc/apparmor.d/usr.bin.myapp
 sudo systemctl reload apparmor
 
 # Check for syntax errors before reloading
-sudo apparmor_parser -p /etc/apparmor.d/usr.bin.myapp
+sudo apparmor_parser -Q /etc/apparmor.d/usr.bin.myapp
 ```
 
 AppArmor denials are often the silent culprit behind application failures on Ubuntu. The key is knowing where to look and how to read the log output. With `journalctl`, `aa-logprof`, and a bit of patience, you can track down and fix most denial issues without weakening your system's security posture.
