@@ -12,7 +12,7 @@ A single-instance ArgoCD deployment is fine for development but creates a danger
 
 ## HA vs Non-HA Installation
 
-The standard ArgoCD installation runs one replica of each component. The HA installation runs multiple replicas with leader election, load balancing, and Redis clustering:
+The standard ArgoCD installation runs one replica of each component. The HA installation runs multiple replicas with load balancing, controller sharding, and Redis HA with Sentinel:
 
 ```mermaid
 flowchart TB
@@ -27,7 +27,7 @@ flowchart TB
     subgraph "HA Installation"
         direction TB
         A2[API Server x3]
-        C2[Controller x2 - leader election]
+        C2[Controller x2 - sharding]
         R2[Repo Server x3]
         RE2[Redis HA x3 - Sentinel]
     end
@@ -51,11 +51,10 @@ kubectl get pods -n argocd
 ```
 
 The HA manifests include:
-- 3 API Server replicas with a Service for load balancing
-- 2 Application Controller replicas with leader election
-- 3 Repo Server replicas
-- 3 Redis replicas with Sentinel for automatic failover
-- PodDisruptionBudgets for all components
+- 2 API Server replicas with a Service for load balancing
+- 1 Application Controller replica, which can be scaled separately for controller sharding
+- 2 Repo Server replicas
+- 3 Redis replicas with Sentinel and 3 HAProxy replicas for automatic failover
 - Anti-affinity rules to spread pods across nodes
 
 ## Method 2: Install HA with Helm
@@ -79,6 +78,10 @@ global:
     - maxSkew: 1
       topologyKey: kubernetes.io/hostname
       whenUnsatisfiable: DoNotSchedule
+
+configs:
+  params:
+    applicationsetcontroller.enable.leader.election: true
 
 # API Server - Stateless, scale horizontally
 server:
@@ -110,7 +113,7 @@ server:
                 app.kubernetes.io/name: argocd-server
             topologyKey: kubernetes.io/hostname
 
-# Application Controller - Needs leader election
+# Application Controller - Supports sharding when replicas > 1
 controller:
   replicas: 2
   resources:
@@ -123,10 +126,6 @@ controller:
   pdb:
     enabled: true
     minAvailable: 1
-  env:
-    # Enable controller sharding for large deployments
-    - name: ARGOCD_CONTROLLER_REPLICAS
-      value: "2"
 
 # Repo Server - Stateless, scale horizontally
 repoServer:
@@ -168,9 +167,10 @@ redis-ha:
     enabled: true
     size: 10Gi
   topologySpreadConstraints:
-    - maxSkew: 1
-      topologyKey: kubernetes.io/hostname
-      whenUnsatisfiable: DoNotSchedule
+    enabled: true
+    maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: hard
 
 # Disable the single-instance Redis
 redis:
@@ -185,7 +185,7 @@ applicationSet:
 
 # Notifications Controller
 notifications:
-  replicas: 1
+  enabled: true
 ```
 
 Install with Helm:
@@ -225,22 +225,20 @@ kubectl get pods -n argocd -o wide
 # Verify PodDisruptionBudgets
 kubectl get pdb -n argocd
 
-# Check leader election for the controller
-kubectl get lease -n argocd
+# Check controller, server, and repo-server workloads
+kubectl get deploy,statefulset -n argocd
 ```
 
-## Configure Leader Election
+## Configure Controller Sharding
 
-The application controller uses Kubernetes lease-based leader election. Only one controller instance actively reconciles at a time, while others stand by:
+The application controller can shard managed clusters across multiple controller replicas. With the Helm chart, setting `controller.replicas` automatically sets the matching `ARGOCD_CONTROLLER_REPLICAS` environment variable:
 
 ```bash
-# Check which controller is the leader
-kubectl get lease argocd-application-controller -n argocd -o yaml
-
-# The holderIdentity field shows the current leader
+# Check the controller replica count
+kubectl get statefulset argocd-application-controller -n argocd
 ```
 
-If you need to adjust leader election settings:
+If you need to adjust the sharding algorithm:
 
 ```yaml
 # In argocd-cmd-params-cm ConfigMap
@@ -250,10 +248,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Leader election settings
-  controller.leader.election.lease.duration: "30s"
-  controller.leader.election.renew.deadline: "15s"
-  controller.leader.election.retry.period: "5s"
+  # Supported values include legacy, round-robin, and consistent-hashing
+  controller.sharding.algorithm: "consistent-hashing"
 ```
 
 ## Configure Ingress for HA
@@ -267,8 +263,8 @@ metadata:
   name: argocd-server-ingress
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     # Session affinity for the UI
     nginx.ingress.kubernetes.io/affinity: "cookie"
     nginx.ingress.kubernetes.io/affinity-mode: "persistent"
@@ -293,7 +289,7 @@ spec:
 
 ## Persistent Storage for Redis HA
 
-Redis HA needs persistent storage to survive pod restarts:
+ArgoCD stores its source of truth in Kubernetes objects, and Redis is a disposable cache. Redis HA can use persistent storage if you want Redis data to survive pod restarts:
 
 ```yaml
 # Storage class for Redis persistence
@@ -301,10 +297,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: argocd-redis-storage
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  iopsPerGB: "10"
+  iops: "3000"
   encrypted: "true"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Retain
@@ -322,8 +318,8 @@ ADMIN_PASS=$(kubectl get secret argocd-initial-admin-secret -n argocd \
 # Login via CLI
 argocd login argocd.example.com --username admin --password "$ADMIN_PASS"
 
-# Check system health
-argocd admin dashboard  # Opens the UI
+# Check that ArgoCD responds through the API server
+argocd app list
 
 # Verify cluster connections
 argocd cluster list
@@ -345,17 +341,21 @@ argocd app get ha-test
 Verify that the system survives component failures:
 
 ```bash
-# Delete an API server pod - UI should remain accessible
-kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-server --field-selector=status.phase=Running | head -1
+# Delete one API server pod - UI should remain accessible
+kubectl delete pod -n argocd \
+  "$(kubectl get pod -n argocd -l app.kubernetes.io/name=argocd-server \
+  --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')"
 
-# Delete the controller leader - another instance should take over
-kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-application-controller --field-selector=status.phase=Running | head -1
+# Delete one controller pod - the StatefulSet should recreate it
+kubectl delete pod -n argocd \
+  "$(kubectl get pod -n argocd -l app.kubernetes.io/name=argocd-application-controller \
+  --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')"
 
 # Check that sync still works
 argocd app sync ha-test
 
-# Verify leader election happened
-kubectl get lease argocd-application-controller -n argocd -o jsonpath='{.spec.holderIdentity}'
+# Verify the controller StatefulSet returns to the desired replica count
+kubectl rollout status statefulset/argocd-application-controller -n argocd
 ```
 
 Deploying ArgoCD in HA mode is essential for any production environment. The Helm approach gives you the most flexibility, but the official HA manifests work well for straightforward deployments. For ongoing monitoring of your HA setup, see our guide on [monitoring ArgoCD component health](https://oneuptime.com/blog/post/2026-02-26-argocd-monitor-component-health/view).
