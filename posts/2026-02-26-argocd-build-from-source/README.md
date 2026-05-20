@@ -15,12 +15,14 @@ Building ArgoCD from source is essential when you need to debug issues, test pat
 ArgoCD is written in Go (backend) and TypeScript/React (frontend). You need a specific set of tools installed before you can build.
 
 ```bash
-# Check Go version - ArgoCD requires Go 1.21+
+# Check Go version - for Argo CD v2.10.x, use Go 1.21
+# Current development branches may require a newer Go version; check go.mod.
 
 go version
 # go version go1.21.6 linux/amd64
 
-# Node.js 20+ and Yarn for the UI
+# Node.js 20+ and Yarn for the v2.10.x UI
+# Current development branches may use pnpm; check ui/package.json.
 node --version
 # v20.11.0
 yarn --version
@@ -28,7 +30,7 @@ yarn --version
 
 # protoc for Protocol Buffers compilation
 protoc --version
-# libprotoc 25.1
+# libprotoc 3.17.3
 
 # Docker or Podman for building container images
 docker version
@@ -43,7 +45,8 @@ kubectl version --client
 If you are on macOS, you can install most of these with Homebrew.
 
 ```bash
-brew install go node yarn protobuf docker make kubectl
+brew install go node yarn protobuf make kubectl
+brew install --cask docker
 ```
 
 ## Cloning and Preparing the Source
@@ -52,6 +55,9 @@ Start by cloning the ArgoCD repository.
 
 ```bash
 # Clone the repository
+# Argo CD v2.10.x code generation targets expect this GOPATH location.
+mkdir -p "$(go env GOPATH)/src/github.com/argoproj"
+cd "$(go env GOPATH)/src/github.com/argoproj"
 git clone https://github.com/argoproj/argo-cd.git
 cd argo-cd
 
@@ -69,11 +75,14 @@ Install the Go build tools that ArgoCD needs.
 make install-tools-local
 
 # This installs:
-# - protoc-gen-go (protobuf Go code generator)
+# - protoc and protobuf Go code generators
 # - protoc-gen-grpc-gateway (gRPC gateway generator)
-# - mockery (mock generator for tests)
-# - goreman (process manager for local development)
-# - swagger (API documentation generator)
+# - Kubernetes code generators
+# - controller-gen, goimports, kustomize, Helm, and gotestsum
+# - swagger/OpenAPI tools (API documentation generators)
+
+# Install goreman separately if it is not already on your PATH
+go install github.com/mattn/goreman@latest
 ```
 
 ## Generating Code
@@ -81,8 +90,8 @@ make install-tools-local
 ArgoCD uses code generation extensively for Protocol Buffers, mocks, and API clients. You must run code generation before building.
 
 ```bash
-# Generate all auto-generated code
-make generate-local
+# Generate all auto-generated code with the local toolchain
+make codegen-local
 
 # This runs several sub-targets:
 # - protobuf generation (gRPC services)
@@ -95,7 +104,7 @@ If you only changed protobuf files, you can regenerate just those.
 
 ```bash
 # Regenerate protobuf code only
-make protogen-local
+make protogen
 ```
 
 ## Building the CLI
@@ -128,39 +137,43 @@ CGO_ENABLED=0 go build \
 
 ## Building Container Images
 
-For deploying to Kubernetes, you need to build container images for each ArgoCD component.
+For deploying to Kubernetes, you need to build an ArgoCD container image that contains the component entrypoints.
 
 ```bash
 # Build all container images locally
-# This builds: argocd-server, argocd-repo-server, argocd-application-controller, argocd-dex
+# This builds a single argocd image with entrypoints for argocd-server,
+# argocd-repo-server, argocd-application-controller, argocd-dex, and other components.
 make image
 
 # Build with a custom tag
 IMAGE_TAG=custom-build make image
 
-# Build a specific component only
-make image-argocd
+# Build a development image using locally compiled binaries
+DEV_IMAGE=true IMAGE_TAG=custom-build make image
 ```
 
 The Dockerfile uses a multi-stage build process. Here is a simplified view of what happens.
 
 ```dockerfile
-# Stage 1: Build the Go binaries
-FROM golang:1.21 AS builder
-WORKDIR /src
-COPY . .
-RUN make build-all
-
-# Stage 2: Build the UI
+# Stage 1: Build the UI
 FROM node:20 AS ui-builder
 WORKDIR /src/ui
 COPY ui/ .
 RUN yarn install && yarn build
 
+# Stage 2: Build the Go binaries with the compiled UI assets
+FROM golang:1.21 AS argocd-build
+WORKDIR /src
+COPY . .
+COPY --from=ui-builder /src/ui/dist/app /src/ui/dist/app
+RUN make argocd-all
+
 # Stage 3: Final image
 FROM ubuntu:22.04
-COPY --from=builder /src/dist/* /usr/local/bin/
-COPY --from=ui-builder /src/ui/dist /shared/app
+COPY --from=argocd-build /src/dist/argocd* /usr/local/bin/
+RUN ln -s /usr/local/bin/argocd /usr/local/bin/argocd-server && \
+    ln -s /usr/local/bin/argocd /usr/local/bin/argocd-repo-server && \
+    ln -s /usr/local/bin/argocd /usr/local/bin/argocd-application-controller
 # ... additional runtime dependencies
 ```
 
@@ -200,7 +213,7 @@ The UI development server can be pointed at any ArgoCD instance.
 
 ```bash
 # Point the dev server at your ArgoCD instance
-ARGOCD_SERVER=https://argocd.example.com yarn start
+ARGOCD_API_URL=https://argocd.example.com yarn start
 ```
 
 ## Running a Local Build
@@ -211,20 +224,31 @@ You can run all ArgoCD components locally using goreman, which manages multiple 
 # Start a local Kubernetes cluster if you don't have one
 kind create cluster --name argocd-dev
 
-# Install ArgoCD CRDs
-kubectl apply -k manifests/crds
-
 # Create the argocd namespace
 kubectl create namespace argocd
 
+# Install ArgoCD resources from your checkout
+kubectl apply -n argocd --server-side --force-conflicts -f manifests/install.yaml
+kubectl config set-context --current --namespace=argocd
+
+# Stop the in-cluster ArgoCD pods before running local processes
+kubectl -n argocd scale statefulset/argocd-application-controller --replicas 0
+kubectl -n argocd scale deployment/argocd-dex-server --replicas 0
+kubectl -n argocd scale deployment/argocd-repo-server --replicas 0
+kubectl -n argocd scale deployment/argocd-server --replicas 0
+kubectl -n argocd scale deployment/argocd-redis --replicas 0
+kubectl -n argocd scale deployment/argocd-applicationset-controller --replicas 0
+kubectl -n argocd scale deployment/argocd-notifications-controller --replicas 0
+
 # Start all ArgoCD components locally
-make start-local
+make start-local ARGOCD_GPG_ENABLED=false
 
 # This uses goreman to start:
 # - argocd-server (API server + UI)
 # - argocd-repo-server (manifest generation)
 # - argocd-application-controller (sync engine)
 # - argocd-dex (authentication)
+# - redis, the UI dev server, and local test Git/Helm services
 ```
 
 The `Procfile` in the root directory defines how each component starts.
@@ -232,13 +256,13 @@ The `Procfile` in the root directory defines how each component starts.
 ```bash
 # You can also start components individually
 # Start just the API server
-go run ./cmd/argocd-server
+ARGOCD_BINARY_NAME=argocd-server go run ./cmd/main.go
 
 # Start just the controller
-go run ./cmd/argocd-application-controller
+ARGOCD_BINARY_NAME=argocd-application-controller go run ./cmd/main.go
 
 # Start just the repo server
-go run ./cmd/argocd-repo-server
+ARGOCD_BINARY_NAME=argocd-repo-server go run ./cmd/main.go
 ```
 
 ## Cross-Compilation
