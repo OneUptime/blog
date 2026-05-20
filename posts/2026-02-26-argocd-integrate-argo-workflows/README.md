@@ -32,7 +32,7 @@ This is a GitOps-native approach because the Git repository remains the single s
 
 ## Prerequisites
 
-Install both ArgoCD and Argo Workflows in your cluster:
+Install ArgoCD, Argo Workflows, and Argo Events in your cluster:
 
 ```bash
 # ArgoCD (if not already installed)
@@ -43,6 +43,12 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 # Argo Workflows
 kubectl create namespace argo
 kubectl apply -n argo -f https://github.com/argoproj/argo-workflows/releases/latest/download/install.yaml
+
+# Argo Events
+kubectl create namespace argo-events
+kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/install.yaml
+kubectl apply -n argo -f https://raw.githubusercontent.com/argoproj/argo-events/stable/examples/eventbus/native.yaml
+kubectl apply -n argo -f https://raw.githubusercontent.com/argoproj/argo-events/stable/examples/rbac/sensor-rbac.yaml
 ```
 
 You also need:
@@ -153,6 +159,9 @@ spec:
         - name: docker-config
           secret:
             secretName: docker-registry-credentials
+            items:
+              - key: .dockerconfigjson
+                path: config.json
 
     - name: test
       container:
@@ -213,8 +222,12 @@ apiVersion: argoproj.io/v1alpha1
 kind: EventSource
 metadata:
   name: github-webhook
-  namespace: argo-events
+  namespace: argo
 spec:
+  service:
+    ports:
+      - port: 12000
+        targetPort: 12000
   github:
     my-app:
       repositories:
@@ -225,6 +238,7 @@ spec:
         endpoint: /push
         port: "12000"
         method: POST
+        url: https://ci.example.com/push
       events:
         - push
       apiToken:
@@ -240,8 +254,10 @@ apiVersion: argoproj.io/v1alpha1
 kind: Sensor
 metadata:
   name: ci-trigger
-  namespace: argo-events
+  namespace: argo
 spec:
+  template:
+    serviceAccountName: operate-workflow-sa
   dependencies:
     - name: github-push
       eventSourceName: github-webhook
@@ -316,18 +332,21 @@ With `automated` sync enabled, ArgoCD detects the Git changes made by the workfl
 Instead of having the workflow update Git manifests directly, you can use ArgoCD Image Updater to detect new images in the registry:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  name: my-app
+  name: my-app-images
   namespace: argocd
-  annotations:
-    # ArgoCD Image Updater annotations
-    argocd-image-updater.argoproj.io/image-list: myapp=my-org/my-app
-    argocd-image-updater.argoproj.io/myapp.update-strategy: latest
-    argocd-image-updater.argoproj.io/write-back-method: git
 spec:
-  # ...
+  applicationRefs:
+    - namePattern: my-app
+      images:
+        - alias: myapp
+          imageName: my-org/my-app
+          commonUpdateSettings:
+            updateStrategy: newest-build
+  writeBackConfig:
+    method: git
 ```
 
 This eliminates the "update Git manifests" step from the workflow, making the CI pipeline simpler:
