@@ -45,44 +45,8 @@ graph TD
 
 Before deploying Longhorn, verify nodes meet the requirements:
 
-```yaml
-# Pre-install check job
-
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: longhorn-prereq-check
-  namespace: longhorn-system
-  annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
-spec:
-  template:
-    spec:
-      containers:
-        - name: check
-          image: longhornio/longhorn-manager:v1.6.0
-          command:
-            - sh
-            - -c
-            - |
-              # Check for required packages
-              echo "Checking prerequisites..."
-
-              # Verify open-iscsi is installed
-              if ! command -v iscsiadm &> /dev/null; then
-                echo "ERROR: open-iscsi not installed"
-                exit 1
-              fi
-
-              # Verify NFSv4 client (for backup)
-              if ! command -v mount.nfs4 &> /dev/null; then
-                echo "WARNING: NFSv4 client not available"
-              fi
-
-              echo "Prerequisites check passed"
-      restartPolicy: Never
-  backoffLimit: 1
+```bash
+curl -sSfL https://raw.githubusercontent.com/longhorn/longhorn/v1.6.0/scripts/environment_check.sh | bash
 ```
 
 ## Step 2: Deploy Longhorn with ArgoCD
@@ -102,6 +66,10 @@ spec:
     helm:
       releaseName: longhorn
       valuesObject:
+        preUpgradeChecker:
+          # Disable the Helm pre-upgrade hook when Longhorn is managed by ArgoCD
+          jobEnabled: false
+
         # Default settings
         defaultSettings:
           # Number of replicas for each volume
@@ -138,27 +106,17 @@ spec:
           tls: true
           tlsSecret: longhorn-tls
 
-        # Resource limits
+        # Node selector for Longhorn Manager nodes
         longhornManager:
-          resources:
-            requests:
-              cpu: 250m
-              memory: 256Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
+          nodeSelector:
+            storage-node: "true"
+          tolerations:
+            - key: "storage"
+              operator: "Equal"
+              value: "longhorn"
+              effect: "NoSchedule"
 
         longhornDriver:
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 250m
-              memory: 256Mi
-
-        # Node selector for storage nodes
-        longhornManager:
           nodeSelector:
             storage-node: "true"
           tolerations:
@@ -361,7 +319,7 @@ Key metrics:
 
 ```promql
 # Volume health
-longhorn_volume_state{state!="attached"}
+longhorn_volume_state{state!="attached"} == 1
 
 # Node storage capacity
 longhorn_node_storage_capacity_bytes
@@ -371,10 +329,10 @@ longhorn_node_storage_usage_bytes
   / longhorn_node_storage_capacity_bytes * 100
 
 # Replica rebuild status
-longhorn_volume_robustness{robustness="degraded"}
+longhorn_volume_robustness{state="degraded"} == 1
 
 # Backup status
-longhorn_backup_state{state="Error"}
+longhorn_backup_state == 4
 ```
 
 ## Disaster Recovery
@@ -382,7 +340,35 @@ longhorn_backup_state{state="Error"}
 Longhorn supports cross-cluster disaster recovery through S3 backups:
 
 ```yaml
-# On the DR cluster, create volumes from backups
+# On the DR cluster, restore the Longhorn volume from a backup
+apiVersion: longhorn.io/v1beta2
+kind: Volume
+metadata:
+  name: database-data-dr
+  namespace: longhorn-system
+spec:
+  size: "53687091200"
+  fromBackup: "s3://longhorn-backups@us-east-1/?backup=backup-abc123&volume=database-data"
+  numberOfReplicas: 3
+  frontend: blockdev
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: database-data-dr
+spec:
+  capacity:
+    storage: 50Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  csi:
+    driver: driver.longhorn.io
+    volumeHandle: database-data-dr
+
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -395,9 +381,7 @@ spec:
   resources:
     requests:
       storage: 50Gi
-  dataSource:
-    name: backup://s3://longhorn-backups@us-east-1/?backup=backup-abc123
-    kind: LonghornBackup
+  volumeName: database-data-dr
 ```
 
 ## Summary
