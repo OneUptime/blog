@@ -42,11 +42,12 @@ metadata:
   namespace: production
   annotations:
     # Use NLB instead of CLB
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
     # Internet-facing
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     # Cross-zone load balancing
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
     # Health check configuration
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "HTTP"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
@@ -87,7 +88,6 @@ metadata:
   name: api-alb
   namespace: production
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
@@ -102,6 +102,7 @@ metadata:
         {"serviceName":"api-canary","servicePort":"8080","weight":10}
       ]}}
 spec:
+  ingressClassName: alb
   rules:
     - host: api.example.com
       http:
@@ -124,10 +125,7 @@ metadata:
   name: api-gateway
   namespace: production
   annotations:
-    cloud.google.com/load-balancer-type: "Internal"
-    cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/backend-config: >
-      {"default": "api-backend-config"}
+    networking.gke.io/load-balancer-type: "Internal"
 spec:
   type: LoadBalancer
   selector:
@@ -135,29 +133,6 @@ spec:
   ports:
     - port: 443
       targetPort: 8443
-
----
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: api-backend-config
-  namespace: production
-spec:
-  healthCheck:
-    checkIntervalSec: 10
-    timeoutSec: 5
-    healthyThreshold: 2
-    unhealthyThreshold: 3
-    type: HTTP
-    requestPath: /health
-    port: 8080
-  connectionDraining:
-    drainingTimeoutSec: 30
-  cdn:
-    enabled: false
-  sessionAffinity:
-    affinityType: GENERATED_COOKIE
-    affinityCookieTtlSec: 3600
 ```
 
 ## In-Cluster Load Balancing with MetalLB
@@ -176,7 +151,7 @@ spec:
   source:
     repoURL: https://metallb.github.io/metallb
     chart: metallb
-    targetRevision: 0.14.0
+    targetRevision: 0.15.3
     helm:
       releaseName: metallb
   destination:
@@ -283,9 +258,10 @@ kind: Service
 metadata:
   name: api-gateway
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
 ```
 
 ```yaml
@@ -295,8 +271,7 @@ kind: Service
 metadata:
   name: api-gateway
   annotations:
-    cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/load-balancer-type: "External"
+    cloud.google.com/l4-rbs: "enabled"
 ```
 
 ## Custom Health Checks for LB Resources
