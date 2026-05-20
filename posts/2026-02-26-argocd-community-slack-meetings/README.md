@@ -28,7 +28,8 @@ The CNCF Slack workspace is open to everyone. Here is how to join:
 ```text
 #argo-cd              - Main channel for ArgoCD questions and discussion
 #argo-cd-contributors - For people contributing code or docs to ArgoCD
-#argo-cd-dev          - Development discussions and PR reviews
+#argo-sig-ui          - UI-focused discussions
+#argo-sig-scalability - Scalability and performance discussions
 #argo-rollouts        - Argo Rollouts progressive delivery discussions
 #argo-workflows       - Argo Workflows discussions
 #argo-events          - Argo Events discussions
@@ -54,13 +55,14 @@ Application type: Helm chart
 What I've tried: Hard refresh, manual sync with --force
 
 Here's the app status:
+```
+
 ```yaml
 status:
   health:
     status: Progressing
     message: "Waiting for rollout to finish: 0 of 3 updated replicas are available"
-```bash
-```text
+```
 
 **Search before asking.** The channel has years of history. Many common questions have been answered multiple times. Use Slack's search functionality first.
 
@@ -72,9 +74,9 @@ status:
 
 The ArgoCD project holds regular community meetings where users and contributors can discuss features, bugs, roadmap items, and share use cases.
 
-### Bi-Weekly Community Meeting
+### Monthly Community Meeting
 
-The main ArgoCD community meeting happens every other week. Here is how to participate:
+The main ArgoCD user community meeting happens on the first Wednesday of the month. Here is how to participate:
 
 1. **Find the schedule.** Check the ArgoCD community calendar at `https://calendar.google.com/calendar/embed?src=argoproj@gmail.com`
 2. **Join the call.** Meeting links are posted in the `#argo-cd` Slack channel before each meeting and are available on the calendar invite
@@ -85,7 +87,7 @@ The main ArgoCD community meeting happens every other week. Here is how to parti
 
 A typical community meeting follows this structure:
 
-```bash
+```text
 1. Welcome and introductions (5 minutes)
 2. Project updates from maintainers (10 minutes)
    - Recent releases
@@ -96,7 +98,7 @@ A typical community meeting follows this structure:
    - Bug reports needing attention
    - User presentations
 4. Open discussion (15 minutes)
-```text
+```
 
 ### Presenting at a Community Meeting
 
@@ -112,7 +114,7 @@ To present, add your topic to the meeting agenda with a brief description and ti
 
 ## Special Interest Groups (SIGs)
 
-ArgoCD has several SIGs that focus on specific areas of the project.
+The Argo project has several SIGs that focus on specific areas of the project.
 
 ### Security SIG
 
@@ -122,20 +124,19 @@ Focuses on security hardening, vulnerability management, and security-related fe
 
 Discusses performance optimization, large-scale deployment patterns, and resource management for ArgoCD installations with hundreds or thousands of applications.
 
-### UI/UX SIG
+### UI Channel
 
-Focuses on the ArgoCD web interface, discussing new features, usability improvements, and design patterns.
+The `#argo-sig-ui` Slack channel focuses on the ArgoCD web interface, discussing new features, usability improvements, and design patterns.
 
-To join a SIG, look for their dedicated Slack channels or meeting schedules in the `#argo-cd-contributors` channel.
+To join a SIG, look for their dedicated Slack channels or meeting schedules in the Argo Project public calendar.
 
 ## GitHub Discussions
 
 ArgoCD uses GitHub Discussions for longer-form conversations that do not fit into Slack or bug reports.
 
-```bash
-# Browse discussions
-
-gh browse --repo argoproj/argo-cd -- discussions
+```text
+Browse discussions at:
+https://github.com/argoproj/argo-cd/discussions
 
 # Common discussion categories:
 # - Q&A: Questions about ArgoCD usage
@@ -206,6 +207,6 @@ When you need help with ArgoCD, choose the right channel based on urgency and co
 | Bug report | GitHub Issue |
 | Feature request | GitHub Issue or Discussion |
 | Architecture discussion | Community Meeting or GitHub Discussion |
-| Security vulnerability | Email to security mailing list (private) |
+| Security vulnerability | Draft GitHub Security Advisory |
 
 The ArgoCD community is welcoming to newcomers and experienced users alike. Your participation - whether asking questions, answering them, or sharing your experiences - strengthens the project for everyone. For monitoring your ArgoCD deployment and catching issues early, integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-report-bugs-effectively/view) for real-time alerting and observability.
