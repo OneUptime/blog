@@ -12,39 +12,53 @@ When an ArgoCD Config Management Plugin takes too long to generate manifests, th
 
 ## Default Timeout Behavior
 
-ArgoCD has a default timeout of 90 seconds for manifest generation. This applies to the entire CMP pipeline - the init command and the generate command combined. If your plugin does not complete within this window, ArgoCD kills the operation and returns an error:
+ArgoCD has two timeout layers that matter for CMP sidecar plugins. The API server and application controller have repo-server RPC timeouts, which default to 60 seconds. The CMP command execution timeout is controlled by `ARGOCD_EXEC_TIMEOUT` on the CMP sidecar and defaults to 90 seconds. Each CMP command, such as `init` and `generate`, is timed independently. If the repo-server RPC deadline or the CMP command deadline is exceeded, ArgoCD returns an error:
 
 ```text
 rpc error: code = DeadlineExceeded desc = context deadline exceeded
 ```
 
-The timeout is enforced at the repo-server level, not within the plugin itself. Even if your plugin's shell script would eventually complete, the repo-server will cut the connection after the deadline.
+The repo-server RPC timeout is enforced by the ArgoCD components calling the repo-server, while `ARGOCD_EXEC_TIMEOUT` is enforced by the CMP sidecar process running `argocd-cmp-server`. Even if your plugin's shell script would eventually complete, ArgoCD can terminate the command after the execution deadline.
 
 ```mermaid
 sequenceDiagram
     participant RS as Repo Server
     participant CMP as CMP Plugin
-    participant Clock as Timeout (90s)
+    participant RPC as Repo RPC Timeout (60s)
+    participant Exec as Command Timeout (90s)
 
     RS->>CMP: Start init
-    activate Clock
+    activate Exec
     CMP->>CMP: Download dependencies (30s)
     CMP-->>RS: Init complete
+    deactivate Exec
     RS->>CMP: Start generate
+    activate RPC
+    activate Exec
     CMP->>CMP: Render templates (70s)
-    Clock->>RS: Deadline exceeded!
-    RS->>CMP: Kill process
+    RPC->>RS: Deadline exceeded!
     RS-->>RS: Return error
-    deactivate Clock
+    deactivate RPC
+    deactivate Exec
 ```
 
 ## Configuring the Timeout
 
 ### Global Timeout Setting
 
-The manifest generation timeout is configured on the repo-server through the `--cmp-timeout` flag or the `ARGOCD_EXEC_TIMEOUT` environment variable:
+For CMP sidecars, increase both the repo-server RPC timeout and the CMP command execution timeout. Configure the repo-server RPC timeout in `argocd-cmd-params-cm`, and set `ARGOCD_EXEC_TIMEOUT` on the CMP sidecar container:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Increase repo-server RPC timeouts to 180 seconds
+  server.repo.server.timeout.seconds: "180"
+  controller.repo.server.timeout.seconds: "180"
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,14 +68,9 @@ spec:
   template:
     spec:
       containers:
-        - name: argocd-repo-server
-          args:
-            - /usr/local/bin/argocd-repo-server
-            # Increase timeout to 180 seconds
-            - --cmp-timeout
-            - "180"
+        - name: my-custom-plugin
           env:
-            # Alternative: use environment variable
+            # Increase CMP command execution timeout to 180 seconds
             - name: ARGOCD_EXEC_TIMEOUT
               value: "180s"
 ```
@@ -72,13 +81,19 @@ If you are using Helm to deploy ArgoCD:
 # values.yaml for ArgoCD Helm chart
 
 repoServer:
-  extraArgs:
-    - --cmp-timeout
-    - "180"
-  # Or via environment variable
-  env:
-    - name: ARGOCD_EXEC_TIMEOUT
-      value: "180s"
+  extraContainers:
+    - name: cmp-my-plugin
+      command:
+        - /var/run/argocd/argocd-cmp-server
+      image: my-registry/argocd-cmp-plugin:v1.0
+      env:
+        - name: ARGOCD_EXEC_TIMEOUT
+          value: "180s"
+
+configs:
+  params:
+    server.repo.server.timeout.seconds: "180"
+    controller.repo.server.timeout.seconds: "180"
 ```
 
 ### What Timeout Value to Choose
@@ -223,9 +238,8 @@ generate:
   command: [sh, -c]
   args:
     - |
-      # Cache the KMS decryption key in a temp file
-      # SOPS caches the data key, so decrypting multiple files
-      # with the same key only requires one KMS call
+      # Use a local age key file so decryption does not depend on
+      # a network KMS call during manifest generation
       export SOPS_AGE_KEY_FILE=/home/argocd/.config/sops/age/keys.txt
 
       # Batch decrypt all files
@@ -254,16 +268,23 @@ spec:
         maxDuration: 1m
 ```
 
-This retries the sync (including manifest generation) up to 3 times with exponential backoff. It helps with transient timeout issues but does not fix systematic performance problems.
+This retries failed sync operations up to 3 times with exponential backoff. It can help if a timeout happens during an automated sync operation, but it does not fix systematic performance problems.
 
 ## Monitoring Plugin Duration
 
-Track manifest generation time with ArgoCD metrics to catch slowdowns before they cause timeouts:
+Track repo-server request time with ArgoCD metrics to catch slowdowns before they cause timeouts. ArgoCD does not expose a dedicated manifest generation duration metric in current releases, but you can enable the repo-server gRPC handling histogram and filter for `GenerateManifest`:
 
 ```bash
-# ArgoCD exposes manifest generation duration as a metric
+# Enable gRPC duration histograms on the repo-server
+ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true
+
 # Query it with PromQL
-argocd_repo_server_manifest_generation_duration_seconds{quantile="0.99"}
+histogram_quantile(0.99,
+  rate(grpc_server_handling_seconds_bucket{
+    grpc_service="repository.RepoServerService",
+    grpc_method="GenerateManifest"
+  }[5m])
+)
 ```
 
 Set up an alert for when generation time approaches your timeout:
@@ -276,7 +297,10 @@ groups:
       - alert: SlowManifestGeneration
         expr: |
           histogram_quantile(0.95,
-            rate(argocd_repo_server_manifest_generation_duration_seconds_bucket[5m])
+            rate(grpc_server_handling_seconds_bucket{
+              grpc_service="repository.RepoServerService",
+              grpc_method="GenerateManifest"
+            }[5m])
           ) > 60
         for: 10m
         labels:
@@ -298,8 +322,8 @@ Large Helm repository indexes (like the Bitnami repo) take time to download and 
 
 ### Git Clone Time
 
-For large repositories, the git clone phase (handled by the repo-server, not the plugin) can eat into the overall timeout. Consider using Git sparse checkout or separating large repos.
+For large repositories, the git clone or fetch phase is handled by the repo-server before the plugin runs. That work is not part of `ARGOCD_EXEC_TIMEOUT`, but it can still contribute to repo-server RPC timeouts. Consider using smaller repositories, plugin tar exclusions, or `argocd.argoproj.io/manifest-generate-paths` for CMP applications in monorepos.
 
 ## Summary
 
-Plugin timeouts in ArgoCD are controlled by the repo-server's `--cmp-timeout` flag, defaulting to 90 seconds. When your plugins need more time, increase the timeout to a reasonable value based on actual measurements. But more importantly, optimize your plugins to be faster - cache dependencies, skip unnecessary init steps, parallelize operations, and minimize network calls. Monitor manifest generation duration with Prometheus metrics to catch slowdowns before they turn into timeout failures.
+Plugin timeouts in ArgoCD are controlled by the repo-server RPC timeout settings and the CMP sidecar's `ARGOCD_EXEC_TIMEOUT`, which defaults to 90 seconds. When your plugins need more time, increase both timeout layers to reasonable values based on actual measurements. But more importantly, optimize your plugins to be faster - cache dependencies, skip unnecessary init steps, parallelize operations, and minimize network calls. Monitor repo-server `GenerateManifest` gRPC duration with Prometheus metrics to catch slowdowns before they turn into timeout failures.
