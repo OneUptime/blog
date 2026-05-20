@@ -143,6 +143,9 @@ spec:
     matchLabels:
       app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
       - name: my-app
