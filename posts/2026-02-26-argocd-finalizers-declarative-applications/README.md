@@ -12,7 +12,7 @@ When you delete an ArgoCD Application, what happens to the Kubernetes resources 
 
 ## What Are Finalizers in ArgoCD?
 
-A finalizer is a Kubernetes mechanism that tells the API server to run specific cleanup logic before deleting a resource. In ArgoCD, finalizers on Application resources control whether the managed Kubernetes resources (Deployments, Services, ConfigMaps, etc.) are deleted when the Application itself is deleted.
+A finalizer is a Kubernetes mechanism that tells the API server to wait before fully deleting a resource while the controller responsible for that finalizer performs cleanup. In ArgoCD, finalizers on Application resources control whether the managed Kubernetes resources (Deployments, Services, ConfigMaps, etc.) are deleted when the Application itself is deleted.
 
 ```mermaid
 flowchart TD
@@ -274,6 +274,9 @@ spec:
     syncOptions:
       - CreateNamespace=true
 EOF
+
+# Sync the application
+argocd app sync test-finalizer
 
 # Wait for sync
 argocd app wait test-finalizer
