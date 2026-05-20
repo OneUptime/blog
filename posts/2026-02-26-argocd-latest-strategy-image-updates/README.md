@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Image Updater, Container Image
 
-Description: Learn how to use the latest update strategy in ArgoCD Image Updater to automatically deploy the most recently pushed container image based on build timestamps and tag filtering.
+Description: Learn how to use the latest/newest-build update strategy in ArgoCD Image Updater to automatically deploy the most recently built container image based on build timestamps and tag filtering.
 
 ---
 
-The latest strategy in ArgoCD Image Updater selects the most recently built container image from a registry. Unlike the semver strategy that compares version numbers, the latest strategy looks at when images were pushed to the registry and picks the newest one. This is particularly useful for CI/CD workflows where images are tagged with commit hashes, build numbers, or branch names rather than semantic versions.
+The latest strategy in ArgoCD Image Updater selects the most recently built container image from a registry. The strategy has been renamed to `newest-build`; `latest` is still recognized but may be removed in a future release. Unlike the semver strategy that compares version numbers, the newest-build strategy looks at the image build date and picks the newest one. This is particularly useful for CI/CD workflows where images are tagged with commit hashes, build numbers, or branch names rather than semantic versions.
 
 ## How the Latest Strategy Works
 
@@ -16,21 +16,21 @@ The latest strategy works by:
 
 1. Listing all tags in the container registry for the specified image
 2. Filtering tags based on your allow/ignore patterns
-3. Sorting remaining tags by their creation timestamp (when they were pushed)
-4. Selecting the most recently created tag
+3. Sorting remaining tags by their image creation timestamp (build date)
+4. Selecting the tag whose image has the most recent creation timestamp
 
 ```mermaid
 graph TD
     A[Registry Tags] --> B{Tag Filter}
     B --> C[main-abc1234 - Feb 25]
     B --> D[main-def5678 - Feb 24]
-    B --> E[main-ghi9012 - Feb 26]
+    B --> E[main-cafe123 - Feb 26]
     B --> F[dev-xyz - Feb 26]
     C --> G{Sort by Date}
     D --> G
     E --> G
     F -.->|Filtered Out| H[Excluded]
-    G --> I[Selected: main-ghi9012]
+    G --> I[Selected: main-cafe123]
 ```
 
 ## Basic Configuration
@@ -43,7 +43,7 @@ metadata:
   namespace: argocd
   annotations:
     argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp
-    argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+    argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
 spec:
   project: default
   source:
@@ -59,7 +59,7 @@ spec:
       selfHeal: true
 ```
 
-Without any tag filters, Image Updater will consider every tag in the registry and pick the most recently pushed one. This is rarely what you want. Always add tag filters.
+Without any tag filters, Image Updater will consider every tag in the registry and pick the most recently built one. This is rarely what you want. Always add tag filters.
 
 ## Tag Filtering
 
@@ -72,7 +72,7 @@ The most common pattern is tagging images with the branch name and commit hash:
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   # Only consider tags from the main branch
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-[a-f0-9]{7}$"
 ```
@@ -85,7 +85,7 @@ If your CI uses incrementing build numbers:
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   # Match tags like build-1234
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^build-[0-9]+$"
 ```
@@ -94,8 +94,8 @@ annotations:
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
-  # Ignore these specific tags
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
+  # Ignore these specific tags with glob patterns
   argocd-image-updater.argoproj.io/myapp.ignore-tags: "latest, dev, staging, nightly"
 ```
 
@@ -103,11 +103,11 @@ annotations:
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   # Allow tags from main branch
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-"
-  # But ignore any debug builds
-  argocd-image-updater.argoproj.io/myapp.ignore-tags: "regexp:-debug$"
+  # But ignore any debug builds. ignore-tags uses glob patterns, not regex.
+  argocd-image-updater.argoproj.io/myapp.ignore-tags: "*-debug"
 ```
 
 ## Common CI Tag Patterns
@@ -168,7 +168,7 @@ When pushing multi-platform images, filter by platform:
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   argocd-image-updater.argoproj.io/myapp.platforms: "linux/amd64"
 ```
 
@@ -180,7 +180,7 @@ annotations:
 # dev-app.yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-[a-f0-9]{7}$"
 ```
 
@@ -190,7 +190,7 @@ annotations:
 # staging-app.yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^release-[0-9]+-[a-f0-9]{7}$"
 ```
 
@@ -214,7 +214,7 @@ annotations:
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/write-back-method: git
-  argocd-image-updater.argoproj.io/write-back-target: "helmvalues:values.yaml"
+  argocd-image-updater.argoproj.io/write-back-target: "helmvalues:./values.yaml"
   argocd-image-updater.argoproj.io/myapp.helm.image-name: image.repository
   argocd-image-updater.argoproj.io/myapp.helm.image-tag: image.tag
 ```
@@ -224,14 +224,14 @@ annotations:
 | Factor | Latest | Semver |
 |--------|--------|--------|
 | Tag format | Any (commit hash, build ID) | Must be semantic version |
-| Selection criteria | Push timestamp | Version number comparison |
+| Selection criteria | Image build timestamp | Version number comparison |
 | Best for | Dev/staging, CI-tagged images | Production, versioned releases |
 | Rollback control | Less precise | More precise |
 | Pre-release handling | Filter with regex | Built-in pre-release logic |
 
 ## Troubleshooting
 
-**Wrong image selected** - The latest strategy uses the image creation timestamp, not the tag name. If timestamps are unexpected:
+**Wrong image selected** - The latest/newest-build strategy uses the image creation timestamp, not the tag name or registry push time. If timestamps are unexpected:
 
 ```bash
 # Check image creation dates
@@ -248,7 +248,7 @@ crane ls myregistry.com/myapp
 kubectl logs -n argocd deployment/argocd-image-updater --tail=100 | grep "tag"
 ```
 
-**Old image being selected** - This usually means the timestamp on the old image is newer than expected. This can happen when images are rebuilt or when a registry mirror copies images asynchronously.
+**Old image being selected** - This usually means the timestamp on the old image is newer than expected. This can happen when images are rebuilt or when tags point to images built at different times than you expect.
 
 **Too many updates** - If Image Updater is updating too frequently, increase the check interval:
 
