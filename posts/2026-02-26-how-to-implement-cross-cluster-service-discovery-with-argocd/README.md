@@ -100,10 +100,17 @@ metadata:
   name: order-service
   namespace: orders
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
         - name: order-service
+          image: myorg/order-service:latest
           env:
             # Use global DNS name instead of cluster-local
             - name: PAYMENT_SERVICE_URL
@@ -122,11 +129,22 @@ Deploy a CoreDNS ConfigMap update via ArgoCD:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: coredns-custom
+  name: coredns
   namespace: kube-system
 data:
-  # Forward requests for remote clusters to their DNS servers
-  remote-clusters.server: |
+  Corefile: |
+    .:53 {
+      errors
+      health
+      ready
+      kubernetes cluster.local in-addr.arpa ip6.arpa {
+        pods insecure
+        fallthrough in-addr.arpa ip6.arpa
+      }
+      forward . /etc/resolv.conf
+      cache 30
+      reload
+    }
     cluster-b.local:53 {
       forward . 10.0.1.10 10.0.1.11 {
         force_tcp
@@ -143,7 +161,7 @@ data:
 
 This requires network connectivity between clusters (VPC peering, VPN, or interconnect).
 
-### Register Services with Custom DNS Suffixes
+### Use Remote Cluster DNS Names
 
 ```yaml
 apiVersion: v1
@@ -151,9 +169,6 @@ kind: Service
 metadata:
   name: payment-service
   namespace: payments
-  annotations:
-    # Additional DNS entry with cluster identifier
-    external-dns.alpha.kubernetes.io/hostname: payment.cluster-b.local
 spec:
   type: ClusterIP
   ports:
@@ -162,11 +177,13 @@ spec:
     app: payment-service
 ```
 
+If Cluster B uses `cluster-b.local` as its cluster domain, applications in Cluster A can call `payment-service.payments.svc.cluster-b.local` after CoreDNS forwards that zone to Cluster B's DNS servers.
+
 ## Approach 3: Kubernetes Multi-Cluster Services (MCS) API
 
 The MCS API is the Kubernetes-native approach to cross-cluster service discovery. It uses `ServiceExport` and `ServiceImport` resources.
 
-### Deploy MCS Controller
+### Deploy Your MCS Controller
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -216,19 +233,17 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 ```
 
-### Import a Service
+### Consume an Imported Service
 
-In the consuming cluster, import the service:
+The MCS controller creates `ServiceImport` resources in the consuming clusters for exported services. You should manage `ServiceExport` resources in Git and let your MCS implementation reconcile the imports.
 
 ```yaml
-# In Cluster A - import the payment service from Cluster B
+# In Cluster A - created by the MCS controller for the exported service
 apiVersion: multicluster.x-k8s.io/v1alpha1
 kind: ServiceImport
 metadata:
   name: payment-service
   namespace: payments
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
 spec:
   type: ClusterSetIP
   ports:
@@ -248,23 +263,22 @@ metadata:
   namespace: argocd
 spec:
   generators:
-    - git:
-        repoURL: https://github.com/myorg/service-mesh-config.git
-        revision: main
-        directories:
-          - path: 'exports/*'
+    - clusters:
+        selector:
+          matchLabels:
+            mcs-exports: "true"
   template:
     metadata:
-      name: 'exports-{{path.basename}}'
+      name: 'exports-{{name}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/service-mesh-config.git
         targetRevision: main
-        path: '{{path}}'
+        path: 'exports/{{name}}'
       destination:
-        server: '{{path.metadata.annotations.target-cluster}}'
-        namespace: '{{path.metadata.annotations.target-namespace}}'
+        server: '{{server}}'
+        namespace: payments
       syncPolicy:
         automated:
           prune: true
@@ -291,7 +305,7 @@ spec:
     targetRevision: main
     path: istio/multicluster
   destination:
-    server: '{{server}}'
+    server: https://kubernetes.default.svc
     namespace: istio-system
 ```
 
