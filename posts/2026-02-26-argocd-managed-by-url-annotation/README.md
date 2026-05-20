@@ -4,134 +4,138 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Annotation, UI
 
-Description: Learn how to use the ArgoCD managed-by URL annotation to link Kubernetes resources to external management tools and documentation for better traceability.
+Description: Learn how to use the ArgoCD managed-by URL annotation to link child Applications to the Argo CD instance that manages them for better traceability.
 
 ---
 
-When you look at a Kubernetes resource in the ArgoCD UI, it is not always clear who or what manages it. Is it part of a Helm chart? Managed by Terraform? Controlled by another team's operator? The "managed-by" URL annotation in ArgoCD solves this problem by adding a clickable link on resources that points to whichever external tool or document manages them. This simple annotation dramatically improves traceability and cross-team collaboration.
+When you look at an Argo CD Application in the UI, it is not always clear which Argo CD instance should manage it. This is especially common in app-of-apps setups, hub-and-spoke platforms, and multi-tenant clusters where one Argo CD instance creates Application resources that are reconciled by another Argo CD instance. The `managed-by-url` annotation in Argo CD solves this problem by making Application links point to the Argo CD instance that actually manages them.
 
 ## What Is the Managed-By Annotation?
 
-The `argocd.argoproj.io/managed-by` annotation lets you attach a URL to any Kubernetes resource managed by ArgoCD. When this annotation is present, the ArgoCD UI displays a link icon next to the resource, and clicking it opens the specified URL.
+The `argocd.argoproj.io/managed-by-url` annotation lets you attach the base URL of the managing Argo CD instance to an Argo CD `Application` resource. When this annotation is present, Argo CD uses that URL when it builds links to that Application in the UI.
 
-This annotation is different from the standard Kubernetes `app.kubernetes.io/managed-by` label. The ArgoCD managed-by annotation is specifically about providing a URL link in the ArgoCD UI, while the Kubernetes label is a plain string indicating which tool manages the resource.
+This annotation is different from the standard Kubernetes `app.kubernetes.io/managed-by` label. The Argo CD managed-by URL annotation is specifically about linking Applications to the correct Argo CD instance, while the Kubernetes label is a plain string indicating which tool manages the resource.
 
 ## Basic Usage
 
-Add the annotation to any Kubernetes resource in your manifests:
+Add the annotation to an Argo CD Application manifest:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
   name: api-server
   namespace: production
   annotations:
-    # Link to the source code repository
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/api-server"
+    # Base URL of the Argo CD instance that manages this Application
+    argocd.argoproj.io/managed-by-url: "https://argocd-production.example.com"
 spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: api-server
-  template:
-    metadata:
-      labels:
-        app: api-server
-    spec:
-      containers:
-        - name: api-server
-          image: myorg/api-server:v2.3.1
+  project: default
+  source:
+    repoURL: https://github.com/myorg/gitops-config.git
+    targetRevision: main
+    path: apps/api-server
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
-When viewing this deployment in the ArgoCD UI, you will see a link that opens the GitHub repository.
+When viewing a parent Application or resource tree in another Argo CD instance, links to this Application will open through the URL in the annotation.
 
 ## Common Use Cases
 
-### Link to Source Repository
+### Link to a Production Argo CD Instance
 
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/api-server"
+    argocd.argoproj.io/managed-by-url: "https://argocd-production.example.com"
 ```
 
-### Link to a Specific Config File
+### Link to a Staging Argo CD Instance
 
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/gitops-config/blob/main/apps/api-server/deployment.yaml"
+    argocd.argoproj.io/managed-by-url: "https://argocd-staging.example.com"
 ```
 
-### Link to Terraform State
+### Link to a Team-Specific Argo CD Instance
 
-For resources originally provisioned by Terraform:
+For Applications managed by a team's own Argo CD instance:
 
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://app.terraform.io/app/myorg/workspaces/production-infra"
+    argocd.argoproj.io/managed-by-url: "https://argocd-checkout.example.com"
 ```
 
-### Link to Internal Documentation
+### Link to a Local Development Argo CD Instance
 
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://wiki.internal.company/services/api-server"
+    argocd.argoproj.io/managed-by-url: "http://localhost:8081"
 ```
 
-### Link to Runbook
+### Link to a Secondary Cluster Argo CD Instance
 
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://runbooks.internal.company/api-server/operations"
+    argocd.argoproj.io/managed-by-url: "https://argocd-us-east.example.com"
 ```
 
-### Link to CI/CD Pipeline
+### Link to a Tenant Argo CD Instance
 
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/api-server/actions"
+    argocd.argoproj.io/managed-by-url: "https://tenant-a-argocd.example.com"
 ```
 
 ## Adding Managed-By to Helm Charts
 
-When using Helm, add the annotation in your chart templates:
+When using Helm to template Argo CD Applications, add the annotation in your chart templates:
 
 ```yaml
-# templates/deployment.yaml
+# templates/application.yaml
 
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
   name: {{ include "mychart.fullname" . }}
+  namespace: {{ .Values.argocdNamespace | default "argocd" | quote }}
   annotations:
-    argocd.argoproj.io/managed-by: {{ .Values.managedByUrl | default "https://github.com/myorg/charts" | quote }}
+    argocd.argoproj.io/managed-by-url: {{ .Values.managedByUrl | default "https://argocd.example.com" | quote }}
 spec:
-  # ... deployment spec
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | default "main" | quote }}
+    path: {{ .Values.path | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.destinationNamespace | quote }}
 ```
 
 Set the URL in your values file:
 
 ```yaml
 # values.yaml
-managedByUrl: "https://github.com/myorg/api-server"
+managedByUrl: "https://argocd-production.example.com"
 ```
 
 Or override it per environment:
 
 ```yaml
 # values-production.yaml
-managedByUrl: "https://github.com/myorg/gitops-config/tree/main/production/api-server"
+managedByUrl: "https://argocd-production.example.com"
 ```
 
 ## Adding Managed-By to Kustomize
 
-Use Kustomize's commonAnnotations to add the annotation across all resources:
+Use Kustomize's `commonAnnotations` when a kustomization contains only Application resources that should share the same managing Argo CD URL:
 
 ```yaml
 # kustomization.yaml
@@ -139,15 +143,13 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 commonAnnotations:
-  argocd.argoproj.io/managed-by: "https://github.com/myorg/platform-config"
+  argocd.argoproj.io/managed-by-url: "https://argocd-production.example.com"
 
 resources:
-  - deployment.yaml
-  - service.yaml
-  - configmap.yaml
+  - application.yaml
 ```
 
-Or use patches to add it to specific resources:
+Or use patches to add it to specific Applications:
 
 ```yaml
 # kustomization.yaml
@@ -155,36 +157,34 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
-  - deployment.yaml
-  - service.yaml
+  - application.yaml
 
 patches:
   - target:
-      kind: Deployment
+      group: argoproj.io
+      version: v1alpha1
+      kind: Application
       name: api-server
     patch: |
-      - op: add
-        path: /metadata/annotations/argocd.argoproj.io~1managed-by
-        value: "https://github.com/myorg/api-server"
+      apiVersion: argoproj.io/v1alpha1
+      kind: Application
+      metadata:
+        name: api-server
+        annotations:
+          argocd.argoproj.io/managed-by-url: "https://argocd-production.example.com"
 ```
-
-Note the `~1` in the patch path - this is the JSON Pointer encoding for `/` in annotation keys.
 
 ## Environment-Specific URLs
 
-Different environments often have different management URLs:
+Different environments often have different Argo CD instance URLs:
 
 ```yaml
 # base/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-commonAnnotations:
-  argocd.argoproj.io/managed-by: "https://github.com/myorg/platform-config"
-
 resources:
-  - deployment.yaml
-  - service.yaml
+  - application.yaml
 ```
 
 ```yaml
@@ -196,7 +196,7 @@ resources:
   - ../../base
 
 commonAnnotations:
-  argocd.argoproj.io/managed-by: "https://github.com/myorg/platform-config/tree/main/production"
+  argocd.argoproj.io/managed-by-url: "https://argocd-production.example.com"
 ```
 
 ```yaml
@@ -208,71 +208,96 @@ resources:
   - ../../base
 
 commonAnnotations:
-  argocd.argoproj.io/managed-by: "https://github.com/myorg/platform-config/tree/main/staging"
+  argocd.argoproj.io/managed-by-url: "https://argocd-staging.example.com"
 ```
 
 ## Combining with Other ArgoCD Annotations
 
-The managed-by annotation works alongside other ArgoCD annotations:
+The managed-by URL annotation works alongside other Argo CD annotations:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
   name: api-server
+  namespace: production
   annotations:
-    # Link to management tool
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/api-server"
-    # Sync wave for ordering
-    argocd.argoproj.io/sync-wave: "2"
+    # Link to managing Argo CD instance
+    argocd.argoproj.io/managed-by-url: "https://argocd-production.example.com"
+    # Force a refresh
+    argocd.argoproj.io/refresh: "normal"
     # Notification subscription
     notifications.argoproj.io/subscribe.on-sync-succeeded.slack: "deployments"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/myorg/gitops-config.git
+    targetRevision: main
+    path: apps/api-server
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 ## Using Managed-By for Multi-Team Visibility
 
-In organizations where multiple teams share a cluster, the managed-by annotation helps answer "who owns this resource?":
+In organizations where multiple teams have their own Argo CD instances, the managed-by URL annotation helps links point to the correct team instance:
 
 ```yaml
-# Team A's resources
-apiVersion: apps/v1
-kind: Deployment
+# Team A's Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
   name: checkout-service
-  labels:
-    team: checkout
+  namespace: argocd
   annotations:
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/checkout-team/wiki"
+    argocd.argoproj.io/managed-by-url: "https://argocd-checkout.example.com"
+spec:
+  project: checkout
+  source:
+    repoURL: https://github.com/myorg/checkout-team.git
+    targetRevision: main
+    path: apps/checkout-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: checkout
 ---
-# Team B's resources
-apiVersion: apps/v1
-kind: Deployment
+# Team B's Application
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
   name: payment-service
-  labels:
-    team: payments
+  namespace: argocd
   annotations:
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/payments-team/wiki"
+    argocd.argoproj.io/managed-by-url: "https://argocd-payments.example.com"
+spec:
+  project: payments
+  source:
+    repoURL: https://github.com/myorg/payments-team.git
+    targetRevision: main
+    path: apps/payment-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
 ```
 
 ## Automation: Adding Managed-By with Scripts
 
-Add the annotation to existing resources automatically:
+Add the annotation to existing Applications automatically:
 
 ```bash
 #!/bin/bash
-# add-managed-by.sh - Add managed-by annotation to all deployments
+# add-managed-by-url.sh - Add managed-by-url annotation to all Applications
 
-NAMESPACE="${1:-default}"
-BASE_URL="https://github.com/myorg/platform-config/tree/main"
+NAMESPACE="${1:-argocd}"
+ARGOCD_URL="${2:-https://argocd-production.example.com}"
 
-for DEPLOY in $(kubectl get deployments -n "$NAMESPACE" -o name); do
-  NAME=$(basename "$DEPLOY")
-  URL="$BASE_URL/$NAMESPACE/$NAME"
+for APP in $(kubectl get applications.argoproj.io -n "$NAMESPACE" -o name); do
+  NAME=$(basename "$APP")
 
-  echo "Adding managed-by to $NAME: $URL"
-  kubectl annotate "$DEPLOY" -n "$NAMESPACE" \
-    "argocd.argoproj.io/managed-by=$URL" --overwrite
+  echo "Adding managed-by-url to $NAME: $ARGOCD_URL"
+  kubectl annotate "$APP" -n "$NAMESPACE" \
+    "argocd.argoproj.io/managed-by-url=$ARGOCD_URL" --overwrite
 done
 ```
 
@@ -281,21 +306,21 @@ done
 Check that your annotations are set correctly:
 
 ```bash
-# Check a specific resource
-kubectl get deployment api-server -n production \
-  -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/managed-by}'
+# Check a specific Application
+kubectl get application api-server -n production \
+  -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/managed-by-url}'
 
-# List all resources with managed-by annotation
-kubectl get all -n production \
-  -o custom-columns="NAME:.metadata.name,MANAGED_BY:.metadata.annotations.argocd\.argoproj\.io/managed-by"
+# List all Applications with managed-by-url annotation
+kubectl get applications.argoproj.io -n production \
+  -o custom-columns="NAME:.metadata.name,MANAGED_BY_URL:.metadata.annotations.argocd\.argoproj\.io/managed-by-url"
 ```
 
 ## Best Practices
 
-1. **Be consistent** - Use the same URL pattern across all resources in a project
-2. **Link to specifics** - Link to the exact file or directory, not just the repo root
-3. **Keep URLs stable** - Avoid linking to branches that may be deleted
-4. **Use for all resource types** - Not just Deployments, but Services, ConfigMaps, CRDs, etc.
-5. **Document the convention** - Let teams know they should add managed-by annotations
+1. **Use a valid URL** - Include the `http://` or `https://` scheme
+2. **Point to the Argo CD base URL** - Use the managing Argo CD instance URL, not a repository or documentation URL
+3. **Keep URLs stable** - Avoid temporary hostnames that users cannot access from their browsers
+4. **Use for Application resources** - This annotation is documented for Argo CD `Application` resources
+5. **Document the convention** - Let teams know they should add managed-by URL annotations when Applications are managed by another Argo CD instance
 
-The managed-by URL annotation is a small addition that makes a big difference in traceability. By linking every resource to its source of management, you create a navigable web of ownership and documentation. When something goes wrong at 3 AM, knowing exactly where to look is invaluable.
+The managed-by URL annotation is a small addition that makes a big difference in traceability for multi-instance Argo CD setups. By linking each Application to the Argo CD instance that manages it, you help users navigate to the right place when they need to inspect or operate an application.
