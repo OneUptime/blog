@@ -8,19 +8,19 @@ Description: Learn how to preview and validate ApplicationSet changes before the
 
 ---
 
-ApplicationSets can create, modify, and delete dozens or hundreds of applications in a single reconciliation. Before applying changes to production, you need a way to preview what the ApplicationSet controller will do. While ArgoCD does not have a built-in `--dry-run` flag for ApplicationSets, there are several techniques to safely preview and validate changes before they take effect.
+ApplicationSets can create, modify, and delete dozens or hundreds of applications in a single reconciliation. Before applying changes to production, you need a way to preview what the ApplicationSet controller will do. ArgoCD includes ApplicationSet preview commands, and there are several additional techniques to safely validate changes before they take effect.
 
 This guide covers practical dry-run strategies, validation approaches, and safety mechanisms for ApplicationSets.
 
-## The Problem: No Native Dry-Run
+## The Problem: Limited Dry-Run Coverage
 
-Unlike `kubectl apply --dry-run`, ArgoCD ApplicationSets do not have an explicit dry-run mode. Once you apply an ApplicationSet manifest, the controller immediately starts reconciling - creating, updating, and potentially deleting Applications. This makes testing changes risky, especially at scale.
+Unlike `kubectl apply --dry-run`, ApplicationSet dry-run behavior is split across the ArgoCD CLI and controller settings. If you apply an ApplicationSet manifest directly to the cluster without using those preview paths, the controller starts reconciling - creating, updating, and potentially deleting Applications. This makes testing changes risky, especially at scale.
 
 The strategies below give you effective dry-run behavior through different approaches.
 
 ## Strategy 1: Create-Only Policy as Safe Mode
 
-The safest approach is to first apply your ApplicationSet with `create-only` policy. This prevents the controller from modifying or deleting existing Applications.
+The safest approach is to first apply your ApplicationSet with `create-only` policy. This prevents the ApplicationSet controller from modifying or deleting existing Applications. If the controller was started with a global `--policy`, that setting takes precedence over the per-ApplicationSet `applicationsSync` field unless policy override is enabled for the controller.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -52,7 +52,7 @@ spec:
     applicationsSync: create-only
 ```
 
-Once you verify the created Applications are correct, change to `create-update` or remove the policy for full management.
+Once you verify the created Applications are correct, change to `create-update` or `sync`, or remove the policy for the controller's default behavior.
 
 ## Strategy 2: kubectl Dry-Run with Server Validation
 
@@ -63,7 +63,7 @@ Use kubectl's server-side dry-run to validate the ApplicationSet manifest withou
 
 kubectl apply -f applicationset.yaml --dry-run=server -n argocd
 
-# Client-side dry run - validates YAML syntax only
+# Client-side dry run - renders the object locally but does not ask the API server to validate it
 kubectl apply -f applicationset.yaml --dry-run=client -n argocd -o yaml
 ```
 
@@ -71,7 +71,7 @@ This validates the ApplicationSet schema and RBAC permissions but does NOT show 
 
 ## Strategy 3: Preview in a Separate Namespace
 
-Create a copy of your ApplicationSet in a test namespace to see what it generates without affecting production.
+Create a copy of your ApplicationSet in a test namespace to see what it generates without affecting production. This requires ArgoCD's ApplicationSet-in-any-namespace support to be enabled and the test namespace to be allowed by the controller configuration; otherwise, create the preview ApplicationSet in the ArgoCD namespace with prefixed Application names.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -109,45 +109,23 @@ After inspecting the preview applications, delete the test ApplicationSet:
 
 ```bash
 # Check what was generated
-argocd app list -l app.kubernetes.io/managed-by=applicationset-controller
+argocd app list -l argocd.argoproj.io/application-set-name=test-appset-preview
 
 # Clean up
 kubectl delete applicationset test-appset-preview -n argocd-test
 ```
 
-## Strategy 4: Template Rendering with Go Templates
+## Strategy 4: Template Rendering with the ArgoCD CLI
 
-If you are using Go templates, you can test the template rendering locally before applying.
+Use the ArgoCD CLI to render the generated Applications before applying the ApplicationSet.
 
 ```bash
-# Install yq if not already available
-# brew install yq
+# Render generated Applications as YAML
+argocd appset generate my-applicationset.yaml -o yaml
 
-# Create a test script that simulates template rendering
-cat > test-template.sh << 'SCRIPT'
-#!/bin/bash
-# Render an ApplicationSet template with sample parameters
-
-APPSET_FILE=$1
-
-echo "=== ApplicationSet: $APPSET_FILE ==="
-echo ""
-
-# Extract the template
-yq '.spec.template' "$APPSET_FILE"
-
-echo ""
-echo "=== Generator Configuration ==="
-yq '.spec.generators' "$APPSET_FILE"
-
-echo ""
-echo "=== Expected Applications ==="
-# For list generators, show what would be created
-yq '.spec.generators[0].list.elements[] | .name // .app_name // .cluster' "$APPSET_FILE" 2>/dev/null
-SCRIPT
-
-chmod +x test-template.sh
-./test-template.sh my-applicationset.yaml
+# Or inspect the server-side dry-run result as JSON
+argocd appset create --dry-run my-applicationset.yaml -o json | \
+  jq '.status.resources'
 ```
 
 ## Strategy 5: Git Branch Testing
@@ -198,9 +176,9 @@ kubectl apply -f applicationset.yaml -n argocd
 # Immediately check status
 kubectl get applicationset my-appset -n argocd -o yaml | yq '.status'
 
-# List the resources it manages
+# List the resources reported in status
 kubectl get applicationset my-appset -n argocd -o json | \
-  jq '.status.resources[] | {name: .name, status: .status}'
+  jq '.status.resources[]? | {name: .name, status: .status}'
 
 # Check events for any issues
 kubectl get events -n argocd \
@@ -257,9 +235,9 @@ jobs:
           echo "This ApplicationSet will generate approximately $config_count applications"
 ```
 
-## Strategy 8: Annotation-Based Pause
+## Strategy 8: Application Skip-Reconcile Annotation
 
-Add an annotation to pause the ApplicationSet controller from processing your ApplicationSet.
+Add the skip-reconcile annotation to the generated Applications when you want ArgoCD to create Application resources without reconciling their workloads automatically. This is an alpha feature for Applications, not a pause annotation for the ApplicationSet controller itself.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -267,9 +245,6 @@ kind: ApplicationSet
 metadata:
   name: paused-appset
   namespace: argocd
-  annotations:
-    # This is not a built-in feature but a pattern
-    # using the create-only policy as a pause mechanism
 spec:
   syncPolicy:
     applicationsSync: create-only
@@ -280,6 +255,8 @@ spec:
   template:
     metadata:
       name: '{{name}}'
+      annotations:
+        argocd.argoproj.io/skip-reconcile: "true"
     spec:
       project: default
       source:
@@ -307,11 +284,11 @@ kubectl apply -f applicationset-safe.yaml -n argocd
 
 # Step 2: Verify
 argocd appset get my-appset
-argocd app list -l app.kubernetes.io/managed-by=applicationset-controller
+argocd app list -l argocd.argoproj.io/application-set-name=my-appset
 
 # Step 3: If good, switch to full management
 kubectl patch applicationset my-appset -n argocd \
   --type merge -p '{"spec":{"syncPolicy":{"applicationsSync":"sync"}}}'
 ```
 
-While ArgoCD lacks a native dry-run for ApplicationSets, combining these strategies gives you a robust safety net. For ongoing monitoring of your ApplicationSet changes and their impact, [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-applicationset-merge-generator-overrides/view) can track application creation, updates, and deletions across your fleet.
+While ApplicationSet dry-run coverage is split across CLI previews, kubectl validation, and controller safeguards, combining these strategies gives you a robust safety net. For ongoing monitoring of your ApplicationSet changes and their impact, [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-applicationset-merge-generator-overrides/view) can track application creation, updates, and deletions across your fleet.
