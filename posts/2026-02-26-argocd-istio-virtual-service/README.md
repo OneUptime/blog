@@ -14,7 +14,7 @@ If your Kubernetes cluster runs Istio service mesh, you can expose ArgoCD throug
 
 When you already have Istio running in your cluster, using it for ArgoCD ingress makes sense because:
 
-- You get mTLS encryption between the gateway and ArgoCD automatically
+- You can get Istio mTLS between the gateway and ArgoCD when ArgoCD is included in the mesh
 - Istio's telemetry gives you request-level metrics for ArgoCD traffic
 - You can apply Istio authorization policies for fine-grained access control
 - Traffic management features like fault injection and circuit breaking are available
@@ -92,7 +92,7 @@ spec:
         httpsRedirect: true
 ```
 
-Create the TLS secret in the `istio-system` namespace (where the ingress gateway runs):
+Create the TLS secret in the namespace where the ingress gateway workload runs, commonly `istio-system`:
 
 ```bash
 kubectl create secret tls argocd-server-tls \
@@ -244,7 +244,7 @@ spec:
             namespaces: ["argocd"]
 ```
 
-For IP-based restrictions:
+For IP-based restrictions with a network load balancer or `externalTrafficPolicy: Local`:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -265,6 +265,8 @@ spec:
         - operation:
             hosts: ["argocd.example.com"]
 ```
+
+If you rely on `X-Forwarded-For` or the PROXY Protocol for the original client IP, use `remoteIpBlocks` instead of `ipBlocks` and configure Istio gateway topology accordingly.
 
 ## Destination Rules
 
