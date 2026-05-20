@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Security, Auditing
 
-Description: Learn how to implement comprehensive secret access auditing in ArgoCD-managed Kubernetes clusters using audit logs, Falco, OPA, and secret provider audit trails.
+Description: Learn how to implement comprehensive secret access auditing in ArgoCD-managed Kubernetes clusters using audit logs, Falco, Kubernetes RBAC, and secret provider audit trails.
 
 ---
 
@@ -41,18 +41,17 @@ Kubernetes API audit logs capture all API requests, including secret access. Con
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Log all secret access at the RequestResponse level
-  - level: RequestResponse
+  # Log all secret access at the Metadata level to avoid recording secret data
+  - level: Metadata
     resources:
       - group: ""
         resources: ["secrets"]
-    # Exclude high-frequency system accounts
+    verbs: ["get", "create", "update", "patch", "delete"]
     omitStages:
       - RequestReceived
-    # But do not include the secret data in the log
     omitManagedFields: true
 
-  # Log all secret list operations
+  # Log all secret list/watch operations without response bodies
   - level: Metadata
     resources:
       - group: ""
@@ -110,7 +109,7 @@ Extract secret access events from audit logs:
 
 ```bash
 # Find all secret read operations in the last hour
-kubectl logs -n kube-system kube-apiserver | \
+kubectl logs -n kube-system kube-apiserver --since=1h | \
   jq 'select(.objectRef.resource == "secrets" and .verb == "get")' | \
   jq '{
     timestamp: .requestReceivedTimestamp,
@@ -139,8 +138,9 @@ data:
   # Enable server audit logging
   server.log.level: "info"
   server.log.format: "json"
-  # Enable RBAC logging
-  server.rbac.log.enforce.enable: "true"
+  # Emit controller logs in JSON for easier querying
+  controller.log.level: "info"
+  controller.log.format: "json"
 ```
 
 ArgoCD automatically logs these events:
@@ -260,7 +260,7 @@ spec:
     helm:
       values: |
         falco:
-          rulesFile:
+          rules_files:
             - /etc/falco/falco_rules.yaml
             - /etc/falco/rules.d/secret-access.yaml
         customRules:
@@ -278,8 +278,8 @@ spec:
               priority: WARNING
               tags: [secrets, filesystem]
 
-            - rule: Suspicious Secret Environment Variable Access
-              desc: Detect processes reading secret environment variables
+            - rule: Suspicious Secret Environment Dump
+              desc: Detect commands that may dump secret-like environment variables
               condition: >
                 spawned_process and
                 proc.cmdline contains "env" and
@@ -298,60 +298,82 @@ spec:
     namespace: falco
 ```
 
-## Layer 5: OPA-Based Access Control Auditing
+## Layer 5: RBAC-Based Access Control Auditing
 
-Use OPA Gatekeeper to enforce and audit who can access secrets:
+OPA Gatekeeper is an admission controller, so it cannot enforce or audit read requests such as `get`, `list`, or `watch` on Secrets. Use Kubernetes RBAC to enforce who can access secrets, then use Kubernetes audit logs to audit those reads:
 
 ```yaml
-# Gatekeeper constraint for secret access
+# RBAC policy for secret access
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: secret-reader
+  namespace: production
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: allow-external-secrets-read
+  namespace: production
+subjects:
+  - kind: ServiceAccount
+    name: external-secrets
+    namespace: external-secrets
+roleRef:
+  kind: Role
+  name: secret-reader
+  apiGroup: rbac.authorization.k8s.io
+```
+
+For ArgoCD-managed workloads, keep secret read permissions scoped to the namespace and service account that actually needs them. You can verify effective access with:
+
+```bash
+kubectl auth can-i get secrets \
+  --as system:serviceaccount:external-secrets:external-secrets \
+  -n production
+
+kubectl auth can-i list secrets \
+  --as system:serviceaccount:argocd:argocd-application-controller \
+  -n production
+```
+
+If you still want OPA/Gatekeeper coverage, use it for admission-time guardrails on Secret creation and updates, not for read access:
+
+```yaml
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
-  name: k8ssecretaccess
+  name: k8srequiresecretowner
 spec:
   crd:
     spec:
       names:
-        kind: K8sSecretAccess
-      validation:
-        openAPIV3Schema:
-          type: object
-          properties:
-            allowedServiceAccounts:
-              type: array
-              items:
-                type: string
+        kind: K8sRequireSecretOwner
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
-        package k8ssecretaccess
+        package k8srequiresecretowner
 
         violation[{"msg": msg}] {
-          input.review.resource.resource == "secrets"
-          input.review.operation == "get"
-          sa := input.review.userInfo.username
-          not sa_allowed(sa)
-          msg := sprintf("Service account %v is not authorized to read secrets", [sa])
-        }
-
-        sa_allowed(sa) {
-          input.parameters.allowedServiceAccounts[_] == sa
+          input.review.kind.kind == "Secret"
+          input.review.operation != "DELETE"
+          not input.review.object.metadata.labels.owner
+          msg := "Secret must have an owner label"
         }
 ---
 apiVersion: constraints.gatekeeper.sh/v1beta1
-kind: K8sSecretAccess
+kind: K8sRequireSecretOwner
 metadata:
-  name: restrict-secret-access
+  name: require-secret-owner
 spec:
   match:
     kinds:
       - apiGroups: [""]
         kinds: ["Secret"]
-  parameters:
-    allowedServiceAccounts:
-      - "system:serviceaccount:argocd:argocd-application-controller"
-      - "system:serviceaccount:argocd:argocd-server"
-      - "system:serviceaccount:external-secrets:external-secrets"
 ```
 
 ## Building a Centralized Audit Dashboard
@@ -384,14 +406,16 @@ data:
             value: kubernetes
             action: upsert
           - key: cluster.name
-            from_attribute: CLUSTER_NAME
+            value: "${env:CLUSTER_NAME}"
             action: upsert
 
     exporters:
       otlphttp:
         endpoint: "https://oneuptime.com/otlp"
+        encoding: json
         headers:
-          x-oneuptime-token: "${ONEUPTIME_TOKEN}"
+          Content-Type: "application/json"
+          x-oneuptime-token: "${env:ONEUPTIME_TOKEN}"
 
     service:
       pipelines:
@@ -441,4 +465,4 @@ done
 
 ## Summary
 
-Auditing secret access in ArgoCD-managed clusters requires a multi-layered approach. Use Kubernetes audit logs for API-level access tracking, ArgoCD's built-in audit logging for GitOps operations, secret provider audit trails (Vault audit log, CloudTrail) for external secret access, Falco for runtime monitoring, and OPA for access control enforcement. Ship all audit data to a centralized system for correlation and compliance reporting. The goal is a complete audit trail that answers who, what, when, and where for every secret access. For related security topics, see our guides on [managing secrets lifecycle with ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-secrets-lifecycle-management/view) and [handling secrets in multi-cluster setups](https://oneuptime.com/blog/post/2026-02-26-argocd-multi-cluster-secrets/view).
+Auditing secret access in ArgoCD-managed clusters requires a multi-layered approach. Use Kubernetes audit logs for API-level access tracking, ArgoCD's built-in audit logging for GitOps operations, secret provider audit trails (Vault audit log, CloudTrail) for external secret access, Falco for runtime monitoring, and Kubernetes RBAC for access control enforcement. Ship all audit data to a centralized system for correlation and compliance reporting. The goal is a complete audit trail that answers who, what, when, and where for every secret access. For related security topics, see our guides on [managing secrets lifecycle with ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-secrets-lifecycle-management/view) and [handling secrets in multi-cluster setups](https://oneuptime.com/blog/post/2026-02-26-argocd-multi-cluster-secrets/view).
