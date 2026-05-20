@@ -51,7 +51,7 @@ spec:
     spec:
       containers:
         - name: trivy
-          image: aquasec/trivy:latest
+          image: aquasec/trivy:0.70.0
           command: [sh, -c]
           args:
             - |
@@ -97,7 +97,7 @@ spec:
     spec:
       containers:
         - name: trivy
-          image: aquasec/trivy:latest
+          image: aquasec/trivy:0.70.0
           command: [sh, -c]
           args:
             - |
@@ -148,7 +148,7 @@ spec:
   source:
     repoURL: https://aquasecurity.github.io/helm-charts
     chart: trivy-operator
-    targetRevision: 0.20.0
+    targetRevision: 0.32.1
     helm:
       values: |
         trivy:
@@ -169,6 +169,8 @@ spec:
           scanJobTimeout: 10m
         compliance:
           failEntriesLimit: 10
+        serviceMonitor:
+          enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: trivy-system
@@ -261,7 +263,7 @@ spec:
     spec:
       containers:
         - name: trivy
-          image: aquasec/trivy:latest
+          image: aquasec/trivy:0.70.0
           command: [sh, -c]
           args:
             - |
@@ -287,7 +289,7 @@ spec:
 
 ## Alerting on Vulnerability Discoveries
 
-Configure ArgoCD notifications to alert when Trivy finds new vulnerabilities:
+Configure Prometheus alerts to notify you when Trivy finds new vulnerabilities:
 
 ```yaml
 # Using Prometheus alerts from Trivy Operator metrics
@@ -328,7 +330,7 @@ spec:
 
 Create a Trivy ignore file in your Git repository for known false positives:
 
-```yaml
+```text
 # .trivyignore in your application repo
 # CVE-2023-xxxx - False positive, not applicable to our use case
 CVE-2023-12345
