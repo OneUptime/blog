@@ -8,7 +8,7 @@ Description: Learn how to connect to Samba shares from Windows, macOS, and Linux
 
 ---
 
-Samba exposes file shares over the SMB protocol, which is natively supported on Windows and available on macOS and Linux through additional packages. Once your Ubuntu Samba server is configured, connecting from client machines involves a few consistent patterns regardless of the client OS. This guide covers practical steps for each platform.
+Samba exposes file shares over the SMB protocol, which is natively supported on Windows and macOS and available on Linux through additional packages. Once your Ubuntu Samba server is configured, connecting from client machines involves a few consistent patterns regardless of the client OS. This guide covers practical steps for each platform.
 
 ## Prerequisites
 
@@ -35,14 +35,10 @@ To make the share persistent across reboots, right-click on the share in File Ex
 Map a drive letter from the command line:
 
 ```cmd
-# Map Z: drive to the Samba share
-
 net use Z: \\192.168.1.50\data /user:sambauser yourpassword /persistent:yes
 
-# List currently mapped drives
 net use
 
-# Disconnect a mapped drive
 net use Z: /delete
 ```
 
@@ -77,7 +73,7 @@ smb://192.168.1.50/data
 
 Click Connect. macOS prompts for your Samba credentials. After connecting, the share mounts under `/Volumes/data` and appears on the Desktop and in Finder's sidebar.
 
-To reconnect automatically at login, go to System Preferences > Users & Groups > Login Items after mounting and add the share volume.
+To reconnect automatically at login, go to System Settings > General > Login Items & Extensions after mounting and add the share volume.
 
 ### Using the Terminal on macOS
 
