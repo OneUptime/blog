@@ -29,7 +29,7 @@ graph LR
 
 You need:
 - A GitLab personal access token or group access token with `read_api` scope
-- The GitLab group ID where your repositories live
+- The GitLab group ID or full namespaced group path where your repositories live
 - ArgoCD v2.5 or later (earlier versions had limited SCM provider support)
 
 ### Creating a GitLab Access Token
@@ -57,6 +57,8 @@ metadata:
 spec:
   generators:
     - scmProvider:
+        # Generate HTTPS clone URLs for the template repoURL
+        cloneProtocol: https
         gitlab:
           # GitLab group name or path
           group: "my-company/microservices"
@@ -84,7 +86,7 @@ spec:
 
 ## Available Parameters
 
-The GitLab SCM provider generator produces these parameters for each repository:
+The GitLab SCM provider generator produces parameters including these for each repository:
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
@@ -93,8 +95,10 @@ The GitLab SCM provider generator produces these parameters for each repository:
 | `url` | Full clone URL (HTTPS) | `https://gitlab.com/my-company/microservices/api-gateway.git` |
 | `branch` | Default branch | `main` |
 | `sha` | HEAD commit SHA | `abc1234` |
-| `short_sha` | Short HEAD commit SHA | `abc1234` |
+| `short_sha` | Short HEAD commit SHA (8 characters unless the SHA is shorter) | `abc12345` |
+| `short_sha_7` | Short HEAD commit SHA (7 characters unless the SHA is shorter) | `abc1234` |
 | `labels` | Repository topics/labels | `production,backend` |
+| `branchNormalized` | Branch name normalized for Kubernetes-safe names | `feature-login` |
 
 ## Filtering Repositories
 
@@ -197,12 +201,34 @@ For self-hosted GitLab instances, set the API URL and handle TLS:
 
 If your GitLab uses a self-signed certificate, add the CA certificate to ArgoCD:
 
-```bash
-# Add custom CA to ArgoCD
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gitlab-scm-ca
+  namespace: argocd
+data:
+  ca.pem: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
+```
 
+Then reference it from the GitLab SCM provider configuration:
+
+```yaml
+          caRef:
+            configMapName: gitlab-scm-ca
+            key: ca.pem
+```
+
+For HTTPS repository cloning, also add the same CA to ArgoCD's repository TLS trust store with the GitLab hostname as the key:
+
+```bash
 kubectl create configmap argocd-tls-certs-cm \
   -n argocd \
-  --from-file=gitlab.internal.company.com=/path/to/ca-cert.pem
+  --from-file=gitlab.internal.company.com=/path/to/ca-cert.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Complete Example with Helm Applications
@@ -218,6 +244,7 @@ metadata:
 spec:
   generators:
     - scmProvider:
+        cloneProtocol: https
         gitlab:
           group: "my-company/services"
           includeSubgroups: true
@@ -280,13 +307,21 @@ For groups with hundreds of repositories, be aware of:
 **API rate limits**: GitLab enforces rate limits on API calls. The SCM provider generator makes one or more API calls per reconciliation. If you hit limits:
 
 ```yaml
-# Increase ApplicationSet controller reconciliation period
-kubectl patch deployment argocd-applicationset-controller -n argocd --type json -p '[
-  {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--argocd-repo-server-plaintext"}
-]'
+  generators:
+    - scmProvider:
+        cloneProtocol: https
+        gitlab:
+          group: "my-company/microservices"
+          includeSubgroups: true
+          api: https://gitlab.company.com/
+          tokenRef:
+            secretName: gitlab-token
+            key: token
+      # Poll every 15 minutes instead of the default interval
+      requeueAfterSeconds: 900
 ```
 
-**Use group access tokens instead of personal tokens**: Group tokens have separate rate limits and are not affected by the user's other API activity.
+**Use group access tokens instead of personal tokens**: Group tokens are scoped to the group and avoid tying automation to an individual user's account.
 
 **Filter aggressively**: The more specific your filters, the fewer Applications are generated and the less API pressure on GitLab.
 
@@ -341,6 +376,6 @@ stringData:
   password: glpat-xxxxxxxxxxxxxxxxxxxx
 ```
 
-This credential template matches all repositories under `gitlab.company.com/`, so every generated Application can clone its repository.
+This credential template matches all repositories under `gitlab.company.com/`, so every generated Application can clone its repository. Use a token with `read_repository` scope for cloning; the `read_api` token used by the SCM generator only covers GitLab API discovery.
 
 The GitLab SCM provider generator is the best way to scale ArgoCD across a GitLab organization. Teams get automatic deployment pipelines just by creating repositories in the right group with the right topics. For GitHub integration, see the [SCM provider generator for GitHub](https://oneuptime.com/blog/post/2026-01-30-argocd-scm-provider-generator/view).
