@@ -32,6 +32,7 @@ You need:
 
 - ArgoCD running on a management cluster (separate from workload clusters)
 - At least two workload clusters registered with ArgoCD
+- Cluster secrets labeled with `environment=production` and `role=active` or `role=passive`
 - Applications deployed to both clusters via ApplicationSets
 - DNS or load balancer that supports health-based routing
 
@@ -82,7 +83,7 @@ AWS Route53 health checks can detect when a cluster is unhealthy and automatical
 ```yaml
 # Managed with Crossplane or Terraform
 
-apiVersion: route53.aws.upbound.io/v1beta1
+apiVersion: route53.aws.m.upbound.io/v1beta1
 kind: HealthCheck
 metadata:
   name: primary-cluster-health
@@ -196,7 +197,12 @@ spec:
           serviceAccountName: failover-controller
           containers:
             - name: controller
-              image: bitnami/kubectl:latest
+              image: myorg/failover-controller:v1.0  # Includes argocd, kubectl, and jq
+              env:
+                - name: PRIMARY_CLUSTER_SECRET
+                  value: "primary-cluster"
+                - name: SECONDARY_CLUSTER_SECRET
+                  value: "secondary-cluster"
               command:
                 - /bin/sh
                 - -c
@@ -216,7 +222,16 @@ spec:
                     if [ "$SECONDARY_HEALTH" = "Healthy" ]; then
                       echo "Primary unhealthy, failing over to secondary"
 
-                      # Scale up secondary
+                      # Switch the ApplicationSet role labels so ArgoCD renders
+                      # the secondary cluster from the active overlay.
+                      kubectl label secret "$SECONDARY_CLUSTER_SECRET" \
+                        -n argocd role=active --overwrite
+                      kubectl label secret "$PRIMARY_CLUSTER_SECRET" \
+                        -n argocd role=passive --overwrite
+
+                      argocd app sync web-app-secondary
+                      argocd app wait web-app-secondary --health --timeout 300
+
                       kubectl patch configmap failover-state \
                         -n argocd --type merge \
                         -p '{"data":{"active":"secondary","failover_time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}}'
@@ -241,6 +256,8 @@ set -e
 
 PRIMARY_APP="web-app-primary"
 SECONDARY_APP="web-app-secondary"
+PRIMARY_CLUSTER_SECRET="primary-cluster"
+SECONDARY_CLUSTER_SECRET="secondary-cluster"
 
 echo "=== Starting Manual Failover ==="
 echo "Time: $(date -u)"
@@ -256,7 +273,8 @@ echo "Secondary cluster is healthy."
 
 # Step 2: Scale up secondary to production capacity
 echo "Step 2: Scaling up secondary cluster..."
-argocd app set $SECONDARY_APP --path deploy/overlays/active
+kubectl label secret "$SECONDARY_CLUSTER_SECRET" -n argocd role=active --overwrite
+kubectl label secret "$PRIMARY_CLUSTER_SECRET" -n argocd role=passive --overwrite
 argocd app sync $SECONDARY_APP
 argocd app wait $SECONDARY_APP --health --timeout 300
 echo "Secondary cluster scaled up."
@@ -271,7 +289,6 @@ sleep 60
 
 # Step 4: Scale down primary (if reachable)
 echo "Step 4: Scaling down primary..."
-argocd app set $PRIMARY_APP --path deploy/overlays/passive || true
 argocd app sync $PRIMARY_APP || echo "Warning: Primary cluster may be unreachable"
 
 echo "=== Failover Complete ==="
@@ -298,7 +315,8 @@ argocd app wait web-app-primary --health --timeout 300
 
 # Step 2: Scale primary to production capacity
 echo "Step 2: Scaling up primary..."
-argocd app set web-app-primary --path deploy/overlays/active
+kubectl label secret primary-cluster -n argocd role=active --overwrite
+kubectl label secret secondary-cluster -n argocd role=passive --overwrite
 argocd app sync web-app-primary
 argocd app wait web-app-primary --health --timeout 300
 
@@ -315,7 +333,6 @@ echo "Step 5: Shifting traffic - 100% to primary..."
 
 # Step 6: Scale down secondary
 echo "Step 6: Scaling down secondary..."
-argocd app set web-app-secondary --path deploy/overlays/passive
 argocd app sync web-app-secondary
 
 echo "=== Failback Complete ==="
