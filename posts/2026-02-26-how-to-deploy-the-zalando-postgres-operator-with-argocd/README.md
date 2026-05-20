@@ -54,21 +54,21 @@ spec:
         configGeneral:
           # Watch all namespaces
           watched_namespace: "*"
+
+        configTeamsApi:
           # Enable team-based access
           enable_teams_api: false
-
-        # Kubernetes resources configuration
-        configKubernetes:
-          # Storage class for PVCs
-          ssd_storage_class: gp3
-          default_storage_class: gp3
 
         # AWS S3 backup configuration
         configAwsOrGcp:
           aws_region: us-east-1
           wal_s3_bucket: my-company-postgres-backups
-          # Use IRSA for S3 access
-          additional_secret_mount: ""
+
+        # Logical backup configuration
+        configLogicalBackup:
+          logical_backup_provider: "s3"
+          logical_backup_s3_bucket: my-company-postgres-logical-backups
+          logical_backup_s3_region: us-east-1
 
         # Connection pooler configuration
         configConnectionPooler:
@@ -78,7 +78,7 @@ spec:
           connection_pooler_default_memory_limit: 256Mi
 
         # Resource configuration
-        configPostgresPod:
+        configPostgresPodResources:
           default_cpu_request: 500m
           default_memory_request: 512Mi
           default_cpu_limit: "2"
@@ -205,6 +205,14 @@ metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: api-server
+  namespace: databases
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+---
 # Allow applications to access database secrets
 
 apiVersion: rbac.authorization.k8s.io/v1
@@ -217,15 +225,31 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list"]
+    verbs: ["get"]
     resourceNames:
       - "app-user.production-db.credentials.postgresql.acid.zalan.do"
       - "readonly-user.production-db.credentials.postgresql.acid.zalan.do"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: db-secret-reader-api-server
+  namespace: databases
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+subjects:
+  - kind: ServiceAccount
+    name: api-server
+    namespace: databases
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: db-secret-reader
 ```
 
 ## Step 4: Set Up Monitoring
 
-The Zalando Postgres Operator works well with the Prometheus Operator. Add a PodMonitor to scrape PostgreSQL metrics:
+The Zalando Postgres Operator works well with the Prometheus Operator. After you add a PostgreSQL exporter sidecar or custom Spilo image that exposes a named `exporter` port, add a PodMonitor to scrape PostgreSQL metrics:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -259,16 +283,16 @@ spec:
     - name: postgres.rules
       rules:
         - alert: PostgresReplicationLag
-          expr: pg_replication_lag > 30
+          expr: pg_stat_replication_pg_wal_lsn_diff > 31457280
           for: 5m
           labels:
             severity: warning
           annotations:
             summary: "Replication lag detected"
-            description: "Replication lag is {{ $value }} seconds"
+            description: "Replication lag is {{ $value }} bytes"
         - alert: PostgresConnectionsHigh
           expr: |
-            pg_stat_activity_count / pg_settings_max_connections > 0.8
+            sum(pg_stat_activity_count) by (server) / max(pg_settings_max_connections) by (server) > 0.8
           for: 10m
           labels:
             severity: warning
@@ -325,10 +349,11 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: api-server
-  namespace: default
+  namespace: databases
 spec:
   template:
     spec:
+      serviceAccountName: api-server
       containers:
         - name: api
           env:
@@ -353,7 +378,7 @@ spec:
 
 ## Handling Upgrades
 
-PostgreSQL major version upgrades with the Zalando operator involve creating a new cluster and migrating data. For minor version updates, the operator handles rolling updates automatically.
+PostgreSQL minor version updates are handled by updating the Spilo image, and the operator performs a rolling update. Major version upgrades can be handled by the operator's in-place upgrade workflow when `major_version_upgrade_mode` is configured, or by creating a new cluster and migrating data when you prefer a clone-based approach.
 
 To upgrade the operator itself:
 
@@ -361,7 +386,7 @@ To upgrade the operator itself:
 2. Review the changelog for breaking changes
 3. Let ArgoCD sync the new version
 
-The operator is designed for zero-downtime upgrades of itself. It will not restart PostgreSQL clusters when the operator version changes.
+Upgrading the operator controller itself should not restart PostgreSQL clusters just because the controller pod changes. Review release notes and CRD changes first, because Helm chart upgrades do not automatically update the `Postgresql` and `OperatorConfiguration` CRDs.
 
 ## Backup and Recovery
 
