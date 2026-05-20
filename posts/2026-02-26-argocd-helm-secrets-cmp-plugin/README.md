@@ -42,9 +42,8 @@ kind: ConfigManagementPlugin
 metadata:
   name: helm-secrets
 spec:
-  version: v1.0
   init:
-    command: [sh, -c]
+    command: [bash, -c]
     args:
       - |
         # Build Helm dependencies if Chart.yaml exists
@@ -52,7 +51,7 @@ spec:
           helm dependency build . 2>/dev/null || true
         fi
   generate:
-    command: [sh, -c]
+    command: [bash, -c]
     args:
       - |
         set -euo pipefail
@@ -62,12 +61,12 @@ spec:
         NAMESPACE=${ARGOCD_APP_NAMESPACE:-default}
 
         # Build the helm command with all values files
-        HELM_ARGS=""
+        HELM_ARGS=()
 
         # Add regular values files
         for f in values.yaml values-*.yaml; do
           if [ -f "$f" ]; then
-            HELM_ARGS="$HELM_ARGS -f $f"
+            HELM_ARGS+=("-f" "$f")
           fi
         done
 
@@ -75,7 +74,7 @@ spec:
         # Encrypted files follow the naming convention: secrets.yaml or secrets-*.yaml
         for f in secrets.yaml secrets-*.yaml; do
           if [ -f "$f" ]; then
-            HELM_ARGS="$HELM_ARGS -f secrets://$f"
+            HELM_ARGS+=("-f" "secrets://$f")
           fi
         done
 
@@ -83,7 +82,7 @@ spec:
         helm secrets template "$RELEASE" . \
           --namespace "$NAMESPACE" \
           --include-crds \
-          $HELM_ARGS
+          "${HELM_ARGS[@]}"
   discover:
     find:
       # Match directories with encrypted secrets files
@@ -96,7 +95,19 @@ spec:
 FROM alpine:3.19
 
 # Install base dependencies
-RUN apk add --no-cache curl bash git gnupg
+RUN apk add --no-cache curl bash git gnupg age
+
+ENV HELM_PLUGINS=/home/argocd/.local/share/helm/plugins \
+    HELM_CACHE_HOME=/home/argocd/.cache/helm \
+    HELM_CONFIG_HOME=/home/argocd/.config/helm \
+    HELM_DATA_HOME=/home/argocd/.local/share/helm
+
+RUN mkdir -p \
+      /home/argocd/cmp-server/config \
+      /home/argocd/.cache/helm \
+      /home/argocd/.config/helm \
+      /home/argocd/.local/share/helm/plugins && \
+    chown -R 999:999 /home/argocd
 
 # Install Helm
 RUN curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
@@ -108,20 +119,13 @@ RUN curl -fsSL "https://github.com/getsops/sops/releases/download/v${SOPS_VERSIO
     chmod +x /usr/local/bin/sops
 
 # Install helm-secrets plugin
-RUN helm plugin install https://github.com/jkroepke/helm-secrets --version v4.6.0
-
-# Install age for age-key encryption
-RUN apk add --no-cache age
-
-# Copy ArgoCD CMP server
-COPY --from=quay.io/argoproj/argocd:v2.10.0 \
-    /usr/local/bin/argocd-cmp-server \
-    /usr/local/bin/argocd-cmp-server
+RUN helm plugin install https://github.com/jkroepke/helm-secrets --version v4.6.0 && \
+    chown -R 999:999 /home/argocd
 
 COPY plugin.yaml /home/argocd/cmp-server/config/plugin.yaml
 
 USER 999
-ENTRYPOINT ["/usr/local/bin/argocd-cmp-server"]
+ENTRYPOINT ["/var/run/argocd/argocd-cmp-server"]
 ```
 
 ### Deploying the Sidecar
@@ -135,6 +139,8 @@ metadata:
 spec:
   template:
     spec:
+      securityContext:
+        fsGroup: 999
       containers:
         - name: helm-secrets-plugin
           image: my-registry/argocd-helm-secrets:v1.0
@@ -174,6 +180,8 @@ spec:
         - name: sops-age-key
           secret:
             secretName: sops-age-key
+        - name: cmp-tmp
+          emptyDir: {}
         - name: helm-cache
           emptyDir: {}
         - name: helm-config
@@ -229,8 +237,14 @@ database:
 api:
     key: ENC[AES256_GCM,data:aBcDeFgHiJ==,iv:...,tag:...,type:str]
 sops:
-    age: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+    age:
+        - recipient: age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            ...
+            -----END AGE ENCRYPTED FILE-----
     lastmodified: "2026-02-26T10:00:00Z"
+    mac: ENC[AES256_GCM,data:...,iv:...,tag:...,type:str]
     version: 3.8.1
 ```
 
@@ -246,10 +260,10 @@ metadata:
   name: {{ .Release.Name }}-credentials
 type: Opaque
 stringData:
-  DB_HOST: {{ .Values.database.host }}
-  DB_USER: {{ .Values.database.username }}
-  DB_PASS: {{ .Values.database.password }}
-  API_KEY: {{ .Values.api.key }}
+  DB_HOST: {{ .Values.database.host | quote }}
+  DB_USER: {{ .Values.database.username | quote }}
+  DB_PASS: {{ .Values.database.password | quote }}
+  API_KEY: {{ .Values.api.key | quote }}
 ```
 
 ## Encrypting Values Files
@@ -332,21 +346,21 @@ Update the plugin to accept an environment parameter:
 
 ```yaml
 generate:
-  command: [sh, -c]
+  command: [bash, -c]
   args:
     - |
       set -euo pipefail
-      ENV=${ENVIRONMENT:-production}
+      ENV=${ARGOCD_ENV_ENVIRONMENT:-production}
 
-      HELM_ARGS="-f values.yaml"
-      [ -f "secrets.yaml" ] && HELM_ARGS="$HELM_ARGS -f secrets://secrets.yaml"
-      [ -f "values-${ENV}.yaml" ] && HELM_ARGS="$HELM_ARGS -f values-${ENV}.yaml"
-      [ -f "secrets-${ENV}.yaml" ] && HELM_ARGS="$HELM_ARGS -f secrets://secrets-${ENV}.yaml"
+      HELM_ARGS=("-f" "values.yaml")
+      [ -f "secrets.yaml" ] && HELM_ARGS+=("-f" "secrets://secrets.yaml")
+      [ -f "values-${ENV}.yaml" ] && HELM_ARGS+=("-f" "values-${ENV}.yaml")
+      [ -f "secrets-${ENV}.yaml" ] && HELM_ARGS+=("-f" "secrets://secrets-${ENV}.yaml")
 
       helm secrets template "$ARGOCD_APP_NAME" . \
         --namespace "$ARGOCD_APP_NAMESPACE" \
         --include-crds \
-        $HELM_ARGS
+        "${HELM_ARGS[@]}"
 ```
 
 ## Troubleshooting
