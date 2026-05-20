@@ -17,11 +17,11 @@ Before diving into debugging steps, here are the most frequent symptoms and what
 | Symptom | Likely Cause |
 |---|---|
 | ComparisonError | One source fails to render manifests |
-| OutOfSync but sync succeeds | Resource conflict between sources |
+| RepeatedResourceWarning | Resource conflict between sources |
 | Missing resources | Wrong path in a source, or ref not resolving |
 | "values file not found" | Incorrect ref path or missing file |
-| "repository not found" | Source repo not registered with ArgoCD |
-| Partial sync | One source renders, another fails silently |
+| "repository not found" | Wrong repo URL or missing repository credentials |
+| Sync failure | One source renders, another fails during sync |
 | Unexpected resource state | Source ordering causing overwrites |
 
 ## Step 1: Get the Full Error Message
@@ -81,20 +81,20 @@ If one source renders but the other fails, you have isolated the problem.
 
 ## Step 3: Check Repository Access
 
-Multi-source applications require all repositories to be registered with ArgoCD:
+Multi-source applications require every private or authenticated repository to have credentials configured in ArgoCD, and every public repository must be reachable from the repo server:
 
 ```bash
 # List registered repositories
 argocd repo list
 
-# Check if a specific repo is accessible
+# Check if credentials are configured for a specific repo
 argocd repo get https://github.com/your-org/repo-a.git
 
-# Test connection to a repository
-argocd repo add https://github.com/your-org/repo-a.git --ssh-private-key-path ~/.ssh/id_rsa
+# Add a private repository over SSH
+argocd repo add git@github.com:your-org/repo-a.git --ssh-private-key-path ~/.ssh/id_rsa
 ```
 
-If a repository is not registered or credentials are expired, that source will fail silently or with an authentication error.
+If repository credentials are missing or expired, that source will fail with an authentication or repository access error.
 
 ## Step 4: Debug Ref Resolution
 
@@ -118,7 +118,7 @@ sources:
 Debug checklist:
 
 ```bash
-# 1. Verify the ref source repo is accessible
+# 1. Verify credentials are configured for the ref source repo, if needed
 argocd repo get https://github.com/your-org/config-repo.git
 
 # 2. Clone the repo and check the file exists at the specified revision
@@ -149,19 +149,16 @@ Common ref issues:
 When multiple sources define the same resource:
 
 ```bash
-# Render all manifests and find duplicates
-argocd app manifests my-multi-source-app -o json | \
-  jq -r '.[] | "\(.apiVersion)/\(.kind)/\(.metadata.namespace // "none")/\(.metadata.name)"' | \
-  sort | uniq -c | sort -rn
+# Check whether ArgoCD reported duplicate resources
+argocd app get my-multi-source-app -o json | \
+  jq -r '.status.conditions[]? | select(.type == "RepeatedResourceWarning") | .message'
 
-# Resources appearing more than once are conflicts
+# A RepeatedResourceWarning means the same group/kind/name/namespace appeared in multiple sources.
 # Example output:
-#   2 apps/v1/Deployment/default/my-app     <-- CONFLICT
-#   1 v1/Service/default/my-app
-#   1 v1/ConfigMap/default/my-config
+#   Resource apps/Deployment default/my-app appeared 2 times among application resources.
 ```
 
-Resolve conflicts by removing the duplicate from one source or renaming resources.
+ArgoCD syncs the resource from the last source in the `sources` list when this happens. Resolve conflicts by removing the duplicate from one source, renaming resources, or intentionally ordering the overriding source last.
 
 ## Step 6: Check Repo Server Logs
 
@@ -175,8 +172,8 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server -f
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --tail=200 | \
   grep -i "my-multi-source-app\|error\|failed"
 
-# If using multiple repo server replicas, check all of them
-kubectl logs -n argocd deployment/argocd-repo-server --all-containers --tail=100
+# If using multiple repo server replicas, check all matching pods
+kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --all-containers --tail=100
 ```
 
 Look for:
@@ -219,12 +216,12 @@ kubectl rollout restart deployment argocd-repo-server -n argocd
 
 ```bash
 # Test Helm rendering locally
-helm template my-release chart-name \
+helm repo add test-repo https://charts.example.com
+helm template my-release test-repo/my-chart \
   --version 1.0.0 \
   -f path/to/values.yaml
 
 # Check Helm chart availability
-helm repo add test-repo https://charts.example.com
 helm search repo test-repo/my-chart --versions
 
 # Verify values file YAML syntax
@@ -249,7 +246,8 @@ kustomize build . 2>&1 | grep -i "error\|not found\|missing"
 git ls-remote https://github.com/your-org/repo.git | grep main
 
 # Check if the path exists at the revision
-git archive --remote=https://github.com/your-org/repo.git main -- path/to/check
+git clone --depth 1 --branch main https://github.com/your-org/repo.git repo-check
+test -e repo-check/path/to/check
 ```
 
 ## Debugging Sync Failures
@@ -280,7 +278,7 @@ kubectl get configmap argocd-cmd-params-cm -n argocd -o yaml | \
 
 # If timeouts occur, increase the timeout
 kubectl patch configmap argocd-cmd-params-cm -n argocd \
-  --type merge -p '{"data":{"reposerver.timeout.seconds":"300"}}'
+  --type merge -p '{"data":{"controller.repo.server.timeout.seconds":"300","server.repo.server.timeout.seconds":"300"}}'
 
 # Check repo server resource usage
 kubectl top pods -n argocd -l app.kubernetes.io/name=argocd-repo-server
