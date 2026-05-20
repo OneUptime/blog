@@ -12,7 +12,7 @@ One of the operational benefits of Netplan over the older `/etc/network/interfac
 
 ## The Three Netplan Commands
 
-Netplan gives you three commands for managing configuration:
+Netplan gives you three commonly used commands for managing configuration:
 
 ```bash
 # 1. Generate - converts YAML to backend config files without applying
@@ -49,6 +49,8 @@ Changes will revert in 116 seconds
 ```
 
 This automatic rollback is what makes remote network configuration changes much safer.
+
+After a timeout or cancellation, verify that the network configuration was actually reverted, because Netplan documents known edge cases where rollback may need to be checked.
 
 ## Workflow for Remote Configuration Changes
 
@@ -92,11 +94,11 @@ sudo netplan try --timeout 600    # 10 minutes
 
 When you run `netplan apply`, it:
 
-1. Reads all YAML files in `/etc/netplan/`
+1. Reads YAML files from `/{lib,etc,run}/netplan/`
 2. Merges them (files processed in lexicographic order)
 3. Calls `netplan generate` to produce backend configuration files
-4. Signals the backend (systemd-networkd or NetworkManager) to reload
-5. For interfaces that changed, brings them down and back up with the new config
+4. Invokes the backend (systemd-networkd or NetworkManager) to bring up configured interfaces
+5. May reconfigure or briefly interrupt affected links, depending on the backend and the type of change
 
 ```bash
 # See what netplan generate produces before applying
@@ -104,7 +106,7 @@ sudo netplan generate
 
 # Check the generated backend configs
 ls /run/systemd/network/    # for networkd backend
-ls /etc/NetworkManager/system-connections/  # for NM backend
+ls /run/NetworkManager/system-connections/  # for NM backend
 
 # Then apply
 sudo netplan apply
@@ -115,7 +117,8 @@ sudo netplan apply
 Netplan applies the entire configuration, not individual interfaces. There is no way to apply only the change to one interface. However, you can work around this:
 
 ```bash
-# Restart a specific interface without applying the full Netplan config
+# Reconfigure a specific networkd-managed interface without applying the full Netplan config
+sudo networkctl reload
 sudo networkctl reconfigure enp3s0
 
 # Or with ip commands
@@ -198,7 +201,7 @@ sudo netplan generate 2>&1
 sudo apt install -y yamllint
 yamllint /etc/netplan/*.yaml
 
-# Check file permissions (must be 600 or 644, owned by root)
+# Check file permissions (recommended: owned by root and mode 600)
 ls -la /etc/netplan/
 
 # Check backend logs for errors
@@ -229,7 +232,7 @@ netplan --help
 
 ## Making Changes Idempotent
 
-Since `netplan apply` restarts affected interfaces, applying the same config twice has effects (brief network interruption). For automation:
+Since `netplan apply` can reconfigure or briefly interrupt affected interfaces, applying the same config twice can have effects. For automation:
 
 ```bash
 # Generate config to see if anything changed
@@ -239,8 +242,9 @@ sudo netplan generate
 # This is tricky to do precisely - usually it's fine to just apply
 # and accept the brief interruption
 
-# Alternatively, use systemd-networkd's reconfigure command
+# Alternatively, use systemd-networkd's reload and reconfigure commands
 # which is gentler than a full interface restart
+sudo networkctl reload
 sudo networkctl reconfigure enp3s0
 ```
 
@@ -250,7 +254,7 @@ When using the networkd renderer, Netplan generates `.network` files in `/run/sy
 
 ```bash
 # After netplan generate, manually reload networkd without the full apply
-sudo systemctl reload systemd-networkd
+sudo networkctl reload
 
 # This is gentler than netplan apply but achieves similar results
 # for configuration changes that don't require interface restarts
