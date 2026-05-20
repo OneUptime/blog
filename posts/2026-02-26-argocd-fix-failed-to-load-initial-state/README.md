@@ -57,11 +57,11 @@ The most fundamental cause - the controller cannot talk to the Kubernetes API.
 ```bash
 # Check the API server from within the cluster
 
-kubectl get --raw /healthz
+kubectl get --raw /readyz
 
 # Check from the controller pod specifically
-kubectl exec -n argocd deployment/argocd-application-controller -- \
-  wget -qO- https://kubernetes.default.svc/healthz --no-check-certificate
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
+  wget -qO- https://kubernetes.default.svc/readyz --no-check-certificate
 ```
 
 **Check if the controller's service account has proper access:**
@@ -106,7 +106,7 @@ failed to load initial state of resource: the server could not find the requeste
 kubectl get crd certificates.cert-manager.io
 
 # If missing, install the CRD first
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.crds.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.crds.yaml
 ```
 
 **Or exclude the resource type from ArgoCD's watch:**
@@ -152,10 +152,15 @@ kubectl exec -n kube-system etcd-master-node -- \
 **Mitigate by reducing ArgoCD's API load:**
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
+# argocd-cm ConfigMap
 data:
   # Increase reconciliation interval to reduce API load
   timeout.reconciliation: "300s"
+```
+
+```yaml
+# argocd-cmd-params-cm ConfigMap
+data:
   # Limit concurrent reconciliations
   controller.status.processors: "10"
   controller.operation.processors: "5"
@@ -174,7 +179,7 @@ kubectl top pods -n argocd -l app.kubernetes.io/name=argocd-application-controll
 **Increase controller memory limits:**
 
 ```yaml
-# In the controller deployment
+# In the controller StatefulSet
 resources:
   requests:
     cpu: "1"
@@ -196,7 +201,17 @@ Then scale the controller:
 
 ```bash
 # Scale to multiple replicas with sharding
-kubectl scale statefulset argocd-application-controller -n argocd --replicas=3
+kubectl patch statefulset argocd-application-controller -n argocd --type=strategic -p '
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_CONTROLLER_REPLICAS
+              value: "3"
+'
 ```
 
 ## Cause 5: Network Policies Blocking API Access
@@ -208,7 +223,7 @@ If network policies are in place, the controller pod might be blocked from reach
 kubectl get networkpolicies -n argocd
 
 # Test API connectivity from the controller
-kubectl exec -n argocd deployment/argocd-application-controller -- \
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
   wget -qO- --timeout=5 https://kubernetes.default.svc/api --no-check-certificate
 ```
 
@@ -281,7 +296,7 @@ kubectl describe pod -n argocd -l app.kubernetes.io/name=argocd-application-cont
 kubectl get events -n argocd --sort-by='.lastTimestamp' | grep controller
 ```
 
-**Fix by increasing memory and using progressive loading:**
+**Fix by increasing memory:**
 
 ```yaml
 # Increase resources significantly
@@ -300,13 +315,13 @@ After addressing the root cause, follow these steps to recover:
 
 ```bash
 # 1. Restart the controller
-kubectl rollout restart deployment argocd-application-controller -n argocd
+kubectl rollout restart statefulset argocd-application-controller -n argocd
 
 # 2. Wait for it to become ready
-kubectl rollout status deployment argocd-application-controller -n argocd
+kubectl rollout status statefulset argocd-application-controller -n argocd
 
 # 3. Check controller logs for successful startup
-kubectl logs -n argocd deployment/argocd-application-controller --tail=50
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=50
 
 # 4. Verify applications are loading
 argocd app list
