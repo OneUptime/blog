@@ -8,7 +8,7 @@ Description: Learn how to deploy and manage Kubernetes NetworkPolicy resources a
 
 ---
 
-Network Policies are Kubernetes' built-in mechanism for controlling pod-to-pod communication. They implement network segmentation at the cluster level, allowing you to define which pods can talk to which other pods. In a multi-cluster setup, maintaining consistent network policies is critical for security but challenging to manage manually.
+Network Policies are Kubernetes' built-in mechanism for controlling pod-to-pod communication when supported by your cluster's network plugin. They implement network segmentation at the cluster level, allowing you to define which pods can talk to which other pods. In a multi-cluster setup, maintaining consistent network policies is critical for security but challenging to manage manually.
 
 ArgoCD solves this by deploying NetworkPolicy resources from Git across all your clusters, ensuring consistent security posture everywhere.
 
@@ -357,10 +357,22 @@ metadata:
   name: validate-network-policies
   annotations:
     argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,HookFailed,BeforeHookCreation
 spec:
   template:
     spec:
+      initContainers:
+        - name: fetch-policies
+          image: alpine/git:2.45.2
+          command:
+            - sh
+            - -c
+            - |
+              git clone --depth=1 https://github.com/your-org/network-policies /repo
+              cp -R /repo/. /policies/
+          volumeMounts:
+            - name: policies
+              mountPath: /policies
       containers:
         - name: validate
           image: bitnami/kubectl:1.29
@@ -369,7 +381,7 @@ spec:
             - -c
             - |
               # Validate all NetworkPolicy manifests
-              for policy in /policies/*.yaml; do
+              for policy in $(find /policies -name '*.yaml' ! -name 'kustomization.yaml'); do
                 kubectl apply --dry-run=server -f "$policy"
                 if [ $? -ne 0 ]; then
                   echo "Validation failed for $policy"
@@ -377,6 +389,12 @@ spec:
                 fi
               done
               echo "All network policies valid"
+          volumeMounts:
+            - name: policies
+              mountPath: /policies
+      volumes:
+        - name: policies
+          emptyDir: {}
       restartPolicy: Never
   backoffLimit: 0
 ```
@@ -387,11 +405,13 @@ Use tools like `netpol-analyzer` to verify policies:
 
 ```bash
 # Install netpol-analyzer
-go install github.com/np-guard/netpol-analyzer/cmd/npa@latest
+git clone https://github.com/np-guard/netpol-analyzer.git
+cd netpol-analyzer
+make build
 
 # Analyze connectivity
-npa list --dirpath ./network-policies/base/ \
-  --output-format txt
+./bin/netpol-analyzer list --dirpath ../network-policies/base/ \
+  --output txt
 ```
 
 ## Monitoring Network Policy Effectiveness
@@ -401,18 +421,18 @@ Track policy enforcement with Cilium or Calico metrics:
 ```promql
 # Packets dropped by NetworkPolicy (Calico)
 sum(rate(
-  calico_denied_packets_total[5m]
+  calico_denied_packets[5m]
 )) by (policy)
 
-# Packets dropped by NetworkPolicy (Cilium)
+# Packets dropped by Cilium datapath policy enforcement
 sum(rate(
-  cilium_drop_count_total{reason="POLICY_DENIED"}[5m]
-)) by (direction)
+  drop_count_total[5m]
+)) by (reason, direction)
 
-# Connection attempts blocked
-sum(increase(
-  cilium_policy_l4_total{action="denied"}[1h]
-)) by (direction)
+# Policy-denied flows observed by Hubble (if Hubble drop metrics are enabled)
+sum(rate(
+  hubble_drop_total{reason="Policy denied"}[5m]
+)) by (protocol)
 ```
 
 ## Rollback Strategy
