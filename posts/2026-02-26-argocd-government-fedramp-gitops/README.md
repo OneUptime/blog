@@ -23,23 +23,23 @@ This maps directly to NIST 800-53 controls:
 - **AU-2 (Audit Events)**: Git history plus ArgoCD events provide comprehensive audit trails
 - **AC-6 (Least Privilege)**: RBAC policies enforce minimal access
 
-## FIPS 140-2 Compliant Deployment
+## FIPS 140-3 Compliant Deployment
 
-Government systems operating at moderate or high impact levels must use FIPS 140-2 validated cryptographic modules. The default ArgoCD container images use standard Go crypto libraries, which are not FIPS validated.
+Government systems operating at moderate or high impact levels must use FIPS 140 validated cryptographic modules. The default ArgoCD container images use standard Go crypto libraries unless you build and operate them with an approved FIPS module for your environment.
 
-You need to build ArgoCD with BoringCrypto (Go's FIPS-validated crypto module):
+For current Go toolchains, build ArgoCD with Go's native FIPS 140-3 support instead of the older, unsupported Go+BoringCrypto experiment:
 
-```yaml
+```dockerfile
 # Dockerfile.fips for ArgoCD with FIPS-compliant crypto
 
-FROM golang:1.22-bullseye AS builder
+FROM golang:1.26-bullseye AS builder
 
-# Enable FIPS-compliant BoringCrypto
-ENV GOEXPERIMENT=boringcrypto
+# Link a CMVP-certified Go Cryptographic Module and enable FIPS mode by default
+ENV GOFIPS140=certified
 ENV CGO_ENABLED=1
 
-# Build ArgoCD from source with BoringCrypto
-RUN git clone --branch v2.13.0 https://github.com/argoproj/argo-cd.git /src
+# Build ArgoCD from source with Go FIPS support
+RUN git clone --branch v3.4.1 https://github.com/argoproj/argo-cd.git /src
 WORKDIR /src
 RUN make argocd-all
 
@@ -61,56 +61,98 @@ spec:
     spec:
       containers:
       - name: argocd-server
-        image: your-registry.gov/argocd:v2.13.0-fips
+        image: your-registry.gov/argocd:v3.4.1-fips
         env:
         # Force TLS 1.2 minimum (FIPS requirement)
         - name: ARGOCD_TLS_MIN_VERSION
           value: "1.2"
         # Restrict to FIPS-approved cipher suites
         - name: ARGOCD_TLS_CIPHERS
-          value: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256"
+          value: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+```
+
+In a standard ArgoCD installation, set those same values through `argocd-cmd-params-cm` so the generated component environment variables stay in sync:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  server.tls.minversion: "1.2"
+  server.tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
+  reposerver.tls.minversion: "1.2"
+  reposerver.tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 ```
 
 ## Network Segmentation and Air-Gapped Operation
 
 Most government Kubernetes clusters operate in restricted networks. ArgoCD needs access to Git repositories and container registries, but these are typically internal mirrors rather than public services.
 
-Configure ArgoCD for air-gapped operation:
+Configure ArgoCD for air-gapped operation with repository Secrets:
 
 ```yaml
-# argocd-cm ConfigMap for air-gapped environments
+# Repository Secrets for air-gapped environments
+apiVersion: v1
+kind: Secret
+metadata:
+  name: internal-manifests
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  name: internal-manifests
+  url: https://gitlab.internal.gov/platform/manifests.git
+  type: git
+  username: <repo-username>
+  password: <repo-password>
+  # Optional client certificate authentication
+  tlsClientCertData: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
+  tlsClientCertKey: |
+    -----BEGIN PRIVATE KEY-----
+    ...
+    -----END PRIVATE KEY-----
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: internal-charts
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  name: internal-charts
+  url: https://charts.internal.gov
+  type: helm
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-tls-certs-cm
+  namespace: argocd
+data:
+  # Custom CA for internal PKI; key is the repository server hostname
+  gitlab.internal.gov: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
+  charts.internal.gov: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Internal Git server only
-  repositories: |
-    - url: https://gitlab.internal.gov/platform/manifests.git
-      type: git
-      passwordSecret:
-        name: repo-creds
-        key: password
-      usernameSecret:
-        name: repo-creds
-        key: username
-      # Custom CA for internal PKI
-      tlsClientCertDataSecret:
-        name: repo-tls
-        key: cert
-      tlsClientCertKeySecret:
-        name: repo-tls
-        key: key
-
-  # Disable external connectivity checks
+  # Disable external status badges
   statusbadge.enabled: "false"
-
-  # Use internal Helm registries
-  helm.repositories: |
-    - url: https://charts.internal.gov
-      name: internal-charts
-      type: helm
 ```
 
 For the Dex identity connector, point to your agency's internal identity provider:
@@ -199,7 +241,7 @@ data:
 
 ## Comprehensive Audit Logging
 
-Every FedRAMP system must log authentication events, authorization decisions, and configuration changes. ArgoCD produces these logs, but you need to ensure they are captured and forwarded to your SIEM.
+Every FedRAMP system must log authentication events, authorization decisions, and configuration changes. ArgoCD emits authentication, API, sync, and reconciliation logs, but you need to ensure they are captured and forwarded to your SIEM.
 
 ```yaml
 # argocd-cmd-params-cm for verbose audit logging
@@ -213,47 +255,47 @@ data:
   server.log.level: info
   server.log.format: json
 
-  # Log RBAC enforcement decisions
+  # Keep controller logs in JSON for SIEM ingestion
   controller.log.level: info
+  controller.log.format: json
 
-  # Log every repo access
+  # Keep repository server logs in JSON for SIEM ingestion
   reposerver.log.level: info
+  reposerver.log.format: json
 ```
 
-Ship these logs to your government-approved SIEM using a sidecar or DaemonSet-based log collector:
+Ship the component stdout and stderr streams to your government-approved SIEM using a DaemonSet-based log collector:
 
 ```yaml
-# Fluentd sidecar for ArgoCD server pod
-apiVersion: apps/v1
-kind: Deployment
+# Fluentd DaemonSet input for ArgoCD container logs
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-server
-spec:
-  template:
-    spec:
-      containers:
-      - name: argocd-server
-        # ... existing config ...
-        volumeMounts:
-        - name: audit-logs
-          mountPath: /var/log/argocd
-      - name: log-shipper
-        image: your-registry.gov/fluentd:fips
-        volumeMounts:
-        - name: audit-logs
-          mountPath: /var/log/argocd
-          readOnly: true
-        - name: fluentd-config
-          mountPath: /etc/fluentd
-        env:
-        - name: SIEM_ENDPOINT
-          value: "https://splunk.agency.gov:8088"
-      volumes:
-      - name: audit-logs
-        emptyDir: {}
-      - name: fluentd-config
-        configMap:
-          name: argocd-fluentd-config
+  name: argocd-fluentd-config
+  namespace: logging
+data:
+  fluent.conf: |
+    <source>
+      @type tail
+      path /var/log/containers/argocd-*.log
+      pos_file /var/log/fluentd-argocd.pos
+      tag kubernetes.argocd
+      read_from_head true
+      <parse>
+        @type regexp
+        expression /^(?<time>.+) (?<stream>stdout|stderr) (?<logtag>[FP]) (?<log>.*)$/
+        time_key time
+        time_format %Y-%m-%dT%H:%M:%S.%N%:z
+      </parse>
+    </source>
+
+    <match kubernetes.argocd>
+      @type splunk_hec
+      hec_host splunk.agency.gov
+      hec_port 8088
+      hec_token "#{ENV['SPLUNK_HEC_TOKEN']}"
+      use_ssl true
+    </match>
 ```
 
 ## Automated Compliance Scanning
@@ -267,7 +309,6 @@ kind: ClusterPolicy
 metadata:
   name: disa-stig-container-requirements
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: require-non-root
     match:
@@ -276,6 +317,7 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "STIG V-222387: Containers must run as non-root"
       pattern:
         spec:
@@ -290,6 +332,7 @@ spec:
           kinds:
           - Pod
     validate:
+      failureAction: Enforce
       message: "STIG V-222388: Root filesystem must be read-only"
       pattern:
         spec:
@@ -320,7 +363,7 @@ Every step in this pipeline generates auditable evidence. Git provides the chang
 
 Before going to production in a government environment, verify these settings:
 
-1. All ArgoCD binaries compiled with FIPS-validated crypto
+1. All ArgoCD binaries built and operated with a FIPS-validated cryptographic module
 2. TLS 1.2 minimum enforced on all endpoints
 3. Internal CA certificates configured for all connections
 4. RBAC default policy set to deny
