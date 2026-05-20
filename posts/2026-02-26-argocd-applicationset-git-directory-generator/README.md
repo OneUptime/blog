@@ -220,22 +220,23 @@ spec:
 The Git directory generator polls the repository periodically to detect new or removed directories. The default interval is 3 minutes.
 
 ```yaml
-# Adjust the poll interval in the ArgoCD ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Set Git generator poll interval to 60 seconds
-  timeout.reconciliation: "60"
+# Adjust the poll interval for this Git generator
+generators:
+- git:
+    repoURL: https://github.com/myorg/platform-repo
+    revision: main
+    requeueAfterSeconds: 60
+    directories:
+    - path: services/*
 ```
 
-For faster detection, you can configure webhooks so ArgoCD reconciles immediately when a push occurs.
+The generator uses ArgoCD Repo Server to retrieve directory lists, so the Repo Server revision cache expiration (`timeout.reconciliation` in `argocd-cm`) can also affect when new commits become visible.
+
+For faster detection, you can configure webhooks so the ApplicationSet controller refreshes when a push occurs.
 
 ```bash
 # Configure webhook in your Git provider pointing to:
-# https://argocd.example.com/api/webhook
+# https://applicationset.example.com/api/webhook
 ```
 
 ## Combining Directory Generator with Matrix
