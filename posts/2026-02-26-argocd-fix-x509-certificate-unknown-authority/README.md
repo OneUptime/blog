@@ -33,10 +33,10 @@ graph LR
 
 The most common case is connecting to a Git repository with a custom CA. ArgoCD stores trusted CA certificates in the `argocd-tls-certs-cm` ConfigMap.
 
-First, get the CA certificate from your Git server:
+First, get the server certificate or CA certificate from your Git server:
 
 ```bash
-# Extract the CA certificate from the server
+# Extract the certificate chain from the server
 
 openssl s_client -connect git.example.com:443 -showcerts < /dev/null 2>/dev/null | \
   awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/{print}' > git-ca.crt
@@ -45,14 +45,15 @@ openssl s_client -connect git.example.com:443 -showcerts < /dev/null 2>/dev/null
 openssl x509 -in git-ca.crt -noout -subject -issuer
 ```
 
-If the server uses a certificate chain, you need the root CA (the last certificate in the chain):
+If the server uses a certificate chain, you need the certificate that signed the server certificate. That may be an intermediate CA from the chain, or the root CA from your administrator if the server does not send it:
 
 ```bash
 # Extract all certificates in the chain
 openssl s_client -connect git.example.com:443 -showcerts < /dev/null 2>/dev/null | \
-  awk 'BEGIN{c=0} /BEGIN CERTIFICATE/{c++} c>0{print > "cert-" c ".pem"} /END CERTIFICATE/{}'
+  awk '/BEGIN CERTIFICATE/{n++; in_cert=1} in_cert{print > ("cert-" n ".pem")} /END CERTIFICATE/{in_cert=0}'
 
-# The last cert file is usually the root CA
+# Inspect each certificate and choose the issuing CA certificate
+for cert in cert-*.pem; do openssl x509 -in "$cert" -noout -subject -issuer; done
 ```
 
 Now add it to ArgoCD:
@@ -101,60 +102,42 @@ kubectl apply -f tls-certs-cm.yaml
 
 ## Fix 3: Adding CA Certificates for OIDC/SSO Providers
 
-If the error occurs during SSO login, you need to add the OIDC provider's CA certificate differently. ArgoCD uses the Dex server for OIDC, and Dex reads certificates from a specific location.
-
-Mount the CA certificate as a volume in the ArgoCD Dex server deployment:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-dex-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      volumes:
-        - name: custom-ca
-          configMap:
-            name: argocd-tls-certs-cm
-      containers:
-        - name: dex
-          volumeMounts:
-            - name: custom-ca
-              mountPath: /etc/ssl/certs/custom-ca.crt
-              subPath: keycloak.example.com
-```
-
-For the ArgoCD server itself (which also makes OIDC calls), add the `--oidc-ca` flag or set it in the ConfigMap:
+If the error occurs during SSO login and ArgoCD is configured directly with `oidc.config`, add the OIDC provider's CA certificate to `argocd-cm` as `rootCA`:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-cm
   namespace: argocd
 data:
-  server.oidc.tls.insecure: "false"  # Keep this false for security
+  oidc.config: |
+    name: Keycloak
+    issuer: https://keycloak.example.com/realms/argocd
+    clientID: argocd
+    clientSecret: $oidc.keycloak.clientSecret
+    rootCA: |
+      -----BEGIN CERTIFICATE-----
+      ... encoded certificate data here ...
+      -----END CERTIFICATE-----
 ```
 
-You can also add the CA to the ArgoCD server's trust store by mounting it:
+If you use a Dex connector in `dex.config`, mount the CA into the Dex container and reference the mounted file from the connector configuration:
 
 ```yaml
-# In the argocd-server deployment
-spec:
-  template:
-    spec:
-      volumes:
-        - name: custom-ca
-          secret:
-            secretName: oidc-ca-cert
-      containers:
-        - name: argocd-server
-          volumeMounts:
-            - name: custom-ca
-              mountPath: /etc/ssl/certs/oidc-ca.crt
-              subPath: ca.crt
+data:
+  dex.config: |
+    connectors:
+      - type: oidc
+        id: keycloak
+        name: Keycloak
+        config:
+          issuer: https://keycloak.example.com/realms/argocd
+          clientID: argocd
+          clientSecret: $oidc.keycloak.clientSecret
+          redirectURI: https://argocd.example.com/api/dex/callback
+          rootCAs:
+            - /etc/ssl/certs/keycloak-ca.crt
 ```
 
 ## Fix 4: System-Wide CA Certificate Bundle
@@ -177,8 +160,8 @@ spec:
       containers:
         - name: argocd-repo-server
           env:
-            - name: SSL_CERT_DIR
-              value: /etc/ssl/custom-certs
+            - name: SSL_CERT_FILE
+              value: /etc/ssl/custom-certs/ca-certificates.crt
           volumeMounts:
             - name: custom-ca-bundle
               mountPath: /etc/ssl/custom-certs
@@ -204,8 +187,14 @@ If the error occurs between ArgoCD components (API server to repo server, for ex
 kubectl get secret argocd-repo-server-tls -n argocd -o jsonpath='{.data.tls\.crt}' | \
   base64 -d | openssl x509 -noout -subject -issuer -dates
 
-# If the certificate is expired or invalid, delete and restart
-kubectl delete secret argocd-repo-server-tls -n argocd
+# If strict TLS is enabled and the certificate is expired or invalid, replace it
+kubectl create secret generic argocd-repo-server-tls \
+  --from-file=tls.crt=/path/to/tls.crt \
+  --from-file=tls.key=/path/to/tls.key \
+  --from-file=ca.crt=/path/to/ca.crt \
+  -n argocd \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 kubectl rollout restart deployment argocd-repo-server -n argocd
 ```
 
@@ -257,6 +246,6 @@ openssl verify -CAfile your-ca.crt server-cert.crt
 
 ## Conclusion
 
-The x509 unknown authority error always comes down to one thing: ArgoCD does not trust the CA that signed the server's certificate. The fix is always to add the correct CA certificate to ArgoCD's trust store. Use the `argocd-tls-certs-cm` ConfigMap for Git and Helm repositories, volume mounts for OIDC providers, and environment variables for system-wide trust. Avoid skipping TLS verification in production - it defeats the entire purpose of certificate-based security.
+The x509 unknown authority error always comes down to one thing: ArgoCD does not trust the CA that signed the server's certificate. The fix is always to add the correct CA certificate to ArgoCD's trust store. Use the `argocd-tls-certs-cm` ConfigMap for Git and Helm repositories, `rootCA` or Dex connector CA settings for OIDC providers, and environment variables for system-wide trust. Avoid skipping TLS verification in production - it defeats the entire purpose of certificate-based security.
 
 For more TLS configuration options, see our guide on [configuring ArgoCD with external certificate managers](https://oneuptime.com/blog/post/2026-02-26-argocd-external-certificate-managers/view).
