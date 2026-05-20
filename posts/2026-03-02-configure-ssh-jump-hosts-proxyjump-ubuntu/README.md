@@ -29,7 +29,7 @@ ssh -J user@jump-host user@target-server
 ssh -J jumpuser@bastion.example.com appuser@10.0.1.50
 
 # Specifying ports
-ssh -J jumpuser@bastion.example.com:22 appuser@10.0.1.50:2222
+ssh -J jumpuser@bastion.example.com:22 -p 2222 appuser@10.0.1.50
 ```
 
 The traffic is forwarded transparently. Your private key (if using key auth) is used end-to-end - the jump host only forwards the encrypted connection, it never sees your key or the decrypted session.
@@ -147,11 +147,11 @@ For more flexible access to an entire network:
 
 ```bash
 # Create a SOCKS5 proxy through the jump host
-# All traffic routed through the proxy goes through the bastion
+# All traffic routed through the proxy exits from internal-server after going through the bastion
 ssh -J user@bastion -D 1080 user@internal-server -N
 
 # Configure your browser or tool to use SOCKS5 proxy at 127.0.0.1:1080
-# Now you can reach any host in the internal network
+# Now you can reach any host in the internal network that internal-server can reach
 ```
 
 ## Troubleshooting Jump Host Connections
