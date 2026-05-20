@@ -10,6 +10,8 @@ Description: Learn how to configure rollout strategies for ArgoCD ApplicationSet
 
 When you update an ApplicationSet template, all generated applications get updated. Without a rollout strategy, this happens simultaneously - which is fine for development but dangerous for production. ArgoCD ApplicationSets offer rollout strategies that control how changes propagate, letting you stage updates across groups of applications with health checks between each stage.
 
+RollingSync is part of ApplicationSet Progressive Syncs, which must be explicitly enabled on the ApplicationSet controller before you use it.
+
 This guide covers the available rollout strategies, how to configure them, and production-ready patterns for safe deployments.
 
 ## Available Rollout Strategies
@@ -83,6 +85,8 @@ Use AllAtOnce for:
 
 RollingSync processes applications in sequential steps. Each step defines which applications to update using label selectors. The controller waits for all applications in a step to become healthy before proceeding.
 
+When RollingSync is enabled, the ApplicationSet controller disables autosync on generated Applications and triggers sync operations itself. Keep retry settings if you need them, but do not rely on `syncPolicy.automated` for RollingSync applications.
+
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
@@ -139,9 +143,6 @@ spec:
       destination:
         server: '{{cluster}}'
         namespace: myapp
-      syncPolicy:
-        automated:
-          selfHeal: true
 ```
 
 The flow is: update canary, wait for healthy, update staging, wait for healthy, update both production clusters.
@@ -238,8 +239,6 @@ spec:
         server: '{{server}}'
         namespace: api
       syncPolicy:
-        automated:
-          selfHeal: true
         retry:
           limit: 3
           backoff:
@@ -321,9 +320,6 @@ spec:
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{name}}'
-      syncPolicy:
-        automated:
-          selfHeal: true
 ```
 
 ## Monitoring Rollout Progress
@@ -337,7 +333,7 @@ kubectl get applicationset global-service -n argocd -o yaml | \
   yq '.status'
 
 # Watch applications status in real-time
-watch "argocd app list -l app.kubernetes.io/managed-by=applicationset-controller -o wide"
+watch "argocd app list -l rollout-phase -o wide"
 
 # Check which step is currently active
 kubectl describe applicationset global-service -n argocd | \
