@@ -30,9 +30,9 @@ flowchart LR
 
 ArgoCD supports three resource tracking methods:
 
-### 1. Label-Based Tracking (Legacy Default)
+### 1. Label-Based Tracking (Legacy)
 
-Resources are tracked using the `app.kubernetes.io/instance` label. This was the original tracking method and remains the default for backward compatibility.
+Resources are tracked using the `app.kubernetes.io/instance` label. This was the original tracking method and was the default before Argo CD 3.0.
 
 ```yaml
 metadata:
@@ -84,8 +84,8 @@ If you install ArgoCD with the community Helm chart:
 ```yaml
 # values.yaml
 
-server:
-  config:
+configs:
+  cm:
     application.resourceTrackingMethod: "annotation+label"
 ```
 
@@ -111,10 +111,10 @@ kubectl patch configmap argocd-cm -n argocd \
 **Cons**:
 - The `app.kubernetes.io/instance` label is commonly used by Helm charts, operators, and other tools, causing conflicts
 - Only stores the application name, not the full resource identity
-- Cannot distinguish between resources with the same name in different groups or namespaces
+- Does not encode the resource's group, kind, namespace, or name in the tracking metadata
 - If another tool sets this label, ArgoCD may incorrectly claim ownership
 
-```bash
+```yaml
 # Conflict example: Helm chart sets the same label
 # ArgoCD thinks this resource belongs to its app when it does not
 metadata:
@@ -150,7 +150,7 @@ metadata:
 **Pros**:
 - Best of both worlds: precise tracking via annotation, easy querying via label
 - Backward compatible with tools expecting the instance label
-- Recommended by the ArgoCD team for new installations
+- Useful when you need annotation-based tracking while keeping the instance label for other tooling
 
 **Cons**:
 - Adds both a label and an annotation to every resource
@@ -160,14 +160,14 @@ metadata:
 
 | Scenario | Recommended Method |
 |----------|-------------------|
-| New ArgoCD installation | `annotation+label` |
+| New ArgoCD installation | `annotation` |
 | Helm charts set `app.kubernetes.io/instance` | `annotation` or `annotation+label` |
 | Need kubectl label-based queries | `annotation+label` or `label` |
-| Multiple ArgoCD instances on same cluster | `annotation` or `annotation+label` |
+| Multiple ArgoCD instances on same cluster | `annotation` or `annotation+label`, plus a unique `installationID` |
 | Migration from another GitOps tool | `annotation+label` |
 | Minimal metadata footprint needed | `annotation` |
 
-For most production environments, `annotation+label` is the safest choice. It provides precise tracking through annotations while maintaining label compatibility.
+For most production environments, `annotation` is the safest default choice. Use `annotation+label` when you need precise tracking through annotations while maintaining label compatibility.
 
 ## Verifying the Current Tracking Method
 
@@ -177,7 +177,7 @@ Check what tracking method is currently configured:
 # Check the ConfigMap
 kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.application\.resourceTrackingMethod}'
 
-# If empty, the default is "label"
+# If empty, the default is "annotation" in Argo CD 3.0 and later
 ```
 
 Verify how resources are being tracked:
