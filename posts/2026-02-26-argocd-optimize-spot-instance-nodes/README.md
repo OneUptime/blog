@@ -14,11 +14,11 @@ In this guide, I will show you how to configure ArgoCD deployments to run effect
 
 ## Understanding Spot Instance Behavior
 
-Spot instances (called Preemptible VMs on GCP and Spot VMs on Azure) are spare cloud capacity offered at a steep discount. The trade-off is that the cloud provider can terminate them when demand increases.
+Spot instances (Spot VMs on GCP and Azure; GCP also still supports older Preemptible VMs) are spare cloud capacity offered at a steep discount. The trade-off is that the cloud provider can terminate them when demand increases.
 
 ```mermaid
 flowchart TD
-    A[Cloud Provider] -->|2 min warning| B[Node Termination]
+    A[Cloud Provider] -->|interruption notice| B[Node Termination]
     B --> C[Pod Eviction]
     C --> D[ArgoCD Detects Degraded Health]
     D --> E[Kubernetes Scheduler]
@@ -30,7 +30,7 @@ The key is designing your deployments so that pod evictions are non-events rathe
 
 ## Configuring Pod Disruption Budgets
 
-Every ArgoCD-managed application on spot instances needs a PodDisruptionBudget (PDB). This tells Kubernetes how many pods must remain available during disruptions.
+Most replicated ArgoCD-managed applications on spot instances should have a PodDisruptionBudget (PDB). This tells Kubernetes how many pods must remain available during voluntary evictions, such as node drains.
 
 ```yaml
 # pdb.yaml
@@ -66,7 +66,7 @@ spec:
     namespace: production
   syncPolicy:
     automated:
-      selfHeal: true  # Critical for spot - restores pods after eviction
+      selfHeal: true  # Reconciles out-of-band drift; Deployments recreate evicted pods
 ```
 
 ## Node Affinity and Tolerations
@@ -81,7 +81,13 @@ metadata:
   name: stateless-worker
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: stateless-worker
   template:
+    metadata:
+      labels:
+        app: stateless-worker
     spec:
       # Prefer spot instances but accept on-demand
       affinity:
@@ -90,22 +96,22 @@ spec:
             - weight: 80
               preference:
                 matchExpressions:
-                  - key: node.kubernetes.io/capacity-type
+                  - key: capacity-type
                     operator: In
                     values:
                       - spot
-          # Spread across availability zones
-          podAntiAffinity:
-            preferredDuringSchedulingIgnoredDuringExecution:
-              - weight: 100
-                podAffinityTerm:
-                  topologyKey: topology.kubernetes.io/zone
-                  labelSelector:
-                    matchLabels:
-                      app: stateless-worker
+        # Spread across availability zones
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: topology.kubernetes.io/zone
+                labelSelector:
+                  matchLabels:
+                    app: stateless-worker
       # Tolerate spot instance taints
       tolerations:
-        - key: "kubernetes.io/spot"
+        - key: "spot"
           operator: "Equal"
           value: "true"
           effect: "NoSchedule"
@@ -124,12 +130,14 @@ spec:
           lifecycle:
             preStop:
               exec:
-                command: ["/bin/sh", "-c", "sleep 5 && kill -SIGTERM 1"]
+                command: ["/bin/sh", "-c", "sleep 5"]
 ```
+
+Replace the example `capacity-type` label and `spot=true:NoSchedule` taint with the labels and taints used by your cluster. For example, EKS managed node groups use `eks.amazonaws.com/capacityType=SPOT`, GKE Spot nodes use `cloud.google.com/gke-spot=true`, and AKS Spot node pools use `kubernetes.azure.com/scalesetpriority=spot`.
 
 ## ArgoCD Self-Healing for Spot Interruptions
 
-Enable self-healing on applications running on spot instances. When a spot node is terminated and pods are evicted, ArgoCD detects the drift and ensures the desired state is restored.
+Enable self-healing on applications running on spot instances. When live resources drift from Git, ArgoCD detects the drift and ensures the desired state is restored. Kubernetes controllers such as Deployments are still responsible for creating replacement pods after eviction.
 
 ```yaml
 spec:
@@ -145,7 +153,7 @@ spec:
         maxDuration: 3m
 ```
 
-The retry configuration is important because during a spot interruption, the Kubernetes scheduler might need time to find available nodes. The exponential backoff prevents ArgoCD from hammering the API server.
+The retry configuration is important because sync operations can fail during transient API server, admission webhook, or capacity-related issues. The exponential backoff prevents ArgoCD from retrying failed syncs too aggressively.
 
 ## Workload Classification with ArgoCD Labels
 
@@ -173,7 +181,6 @@ kind: ClusterPolicy
 metadata:
   name: validate-spot-eligibility
 spec:
-  validationFailureAction: Audit
   rules:
     - name: warn-stateful-on-spot
       match:
@@ -182,6 +189,7 @@ spec:
               kinds:
                 - StatefulSet
       validate:
+        failureAction: Audit
         message: >-
           StatefulSets should not be scheduled on spot instances.
           Add nodeAffinity to prefer on-demand nodes.
@@ -194,7 +202,7 @@ spec:
                     requiredDuringSchedulingIgnoredDuringExecution:
                       nodeSelectorTerms:
                         - matchExpressions:
-                            - key: node.kubernetes.io/capacity-type
+                            - key: capacity-type
                               operator: NotIn
                               values:
                                 - spot
@@ -205,9 +213,9 @@ spec:
 ArgoCD itself should NOT run on spot instances. If the ArgoCD controller gets evicted, it cannot manage other applications during the interruption.
 
 ```yaml
-# argocd deployment with on-demand affinity
+# argocd application controller patch with on-demand affinity
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -219,7 +227,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
-                  - key: node.kubernetes.io/capacity-type
+                  - key: capacity-type
                     operator: In
                     values:
                       - on-demand
@@ -264,11 +272,12 @@ metadata:
   namespace: argocd
 spec:
   source:
-    repoURL: https://aws.github.io/eks-charts
+    repoURL: public.ecr.aws/aws-ec2/helm
     chart: aws-node-termination-handler
-    targetRevision: 0.21.0
+    targetRevision: 0.27.6
     helm:
       values: |
+        enableSqsTerminationDraining: false
         enableSpotInterruptionDraining: true
         enableRebalanceMonitoring: true
         enableScheduledEventDraining: true
@@ -292,9 +301,9 @@ spec:
     - name: spot-instances
       rules:
         - record: spot_node_count
-          expr: count(kube_node_labels{label_node_kubernetes_io_capacity_type="spot"})
+          expr: count(kube_node_labels{label_capacity_type="spot"})
         - record: ondemand_node_count
-          expr: count(kube_node_labels{label_node_kubernetes_io_capacity_type="on-demand"})
+          expr: count(kube_node_labels{label_capacity_type="on-demand"})
         - alert: HighSpotInterruptionRate
           expr: |
             rate(kube_pod_container_status_terminated_reason{reason="Evicted"}[1h]) > 0.1
