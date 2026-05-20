@@ -92,11 +92,11 @@ Register all service repos with ArgoCD. You can do this through the UI, CLI, or 
 ```bash
 # Register repos via CLI
 
-argocd repo add https://github.com/org/service-a-config.git \
+argocd repo add git@github.com:org/service-a-config.git \
   --ssh-private-key-path ~/.ssh/id_rsa \
   --name service-a
 
-argocd repo add https://github.com/org/service-b-config.git \
+argocd repo add git@github.com:org/service-b-config.git \
   --ssh-private-key-path ~/.ssh/id_rsa \
   --name service-b
 ```
@@ -104,7 +104,7 @@ argocd repo add https://github.com/org/service-b-config.git \
 Or use credential templates for repos that share the same auth pattern:
 
 ```yaml
-# In argocd-cm ConfigMap or as a Secret
+# As a Secret
 apiVersion: v1
 kind: Secret
 metadata:
@@ -309,7 +309,7 @@ With many repos, you need webhooks for each one. Use a GitHub organization-level
 gh api orgs/org/hooks --method POST \
   --field name=web \
   --field active=true \
-  --field events='["push"]' \
+  --field events[]=push \
   --field config[url]="https://argocd.example.com/api/webhook" \
   --field config[content_type]="json" \
   --field config[secret]="your-webhook-secret"
@@ -352,8 +352,8 @@ Track which repos have the latest changes deployed:
 # List all applications and their sync status
 argocd app list -o wide
 
-# Check a specific team's apps
-argocd app list -l team=team-a
+# Check a specific team's apps by project
+argocd app list -p team-a
 
 # Find apps that are out of sync
 argocd app list -o json | jq '.[] | select(.status.sync.status != "Synced") | .metadata.name'
