@@ -107,14 +107,14 @@ CI System --> needs credentials for --> Staging Cluster
 CI System --> needs credentials for --> Production Cluster
 ```
 
-GitOps inverts this. ArgoCD runs inside the cluster and only needs read access to Git repositories. No external system holds cluster credentials:
+GitOps inverts this. ArgoCD runs inside the cluster, reads the desired state from Git, and uses Kubernetes permissions from inside the cluster to apply changes. No external CI system needs cluster credentials:
 
 ```text
 GitOps Credential Flow:
 ArgoCD (in cluster) --> reads from --> Git Repository (read-only)
 ```
 
-This is a significant security improvement. If your CI system is compromised in a traditional setup, the attacker has deployment access to all environments. In GitOps, compromising the CI system only gives access to the source code, not the running infrastructure.
+This is a significant security improvement. If your CI system is compromised in a traditional setup, the attacker may have deployment access to all environments. In GitOps, compromising the CI system does not automatically grant direct access to the running infrastructure, although write access to the GitOps repository or image registry still needs to be protected.
 
 ## Key Difference 3: Drift Detection and Self-Healing
 
