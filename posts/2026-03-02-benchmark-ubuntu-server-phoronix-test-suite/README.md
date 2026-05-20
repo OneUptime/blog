@@ -105,7 +105,7 @@ phoronix-test-suite benchmark openssl
 # John the Ripper password hash performance
 phoronix-test-suite benchmark john-the-ripper
 
-# BLAS/LAPACK linear algebra (good for scientific computing)
+# Blender Cycles rendering benchmark
 phoronix-test-suite benchmark blender
 ```
 
@@ -156,9 +156,8 @@ For automated testing, use batch mode to avoid interactive prompts:
 # Set up batch mode (answer prompts once, then they are saved)
 phoronix-test-suite batch-setup
 
-# Alternatively, set environment variables for batch mode
-export PHORONIX_BATCH_MODE=TRUE
-export PHORONIX_BATCH_RESULT_SAVE_NAME="ubuntu_baseline_$(date +%Y%m%d)"
+# Alternatively, pre-fill the saved result name for batch mode
+export TEST_RESULTS_NAME="ubuntu_baseline_$(date +%Y%m%d)"
 
 # Run benchmark non-interactively
 phoronix-test-suite batch-benchmark compress-7zip
@@ -181,8 +180,7 @@ nano ~/.phoronix-test-suite/user-config.xml
         </OpenBenchmarking>
         <General>
             <DefaultBrowser></DefaultBrowser>
-            <UsePhpCli>TRUE</UsePhpCli>
-            <DefaultDisplayMode>ALL_RESULTS</DefaultDisplayMode>
+            <DefaultDisplayMode>DEFAULT</DefaultDisplayMode>
             <PhoromaticServers></PhoromaticServers>
         </General>
         <TestResultValidation>
@@ -209,7 +207,7 @@ You can define a custom suite of tests for repeatable benchmarks:
 
 ```bash
 # Create a custom test suite
-phoronix-test-suite make-test-suite
+phoronix-test-suite build-suite
 
 # Follow the prompts to name the suite and add tests
 # Or create the XML file directly:
@@ -222,16 +220,22 @@ nano ~/.phoronix-test-suite/test-suites/local/my-server-suite/suite-definition.x
 <?xml version="1.0"?>
 <PhoronixTestSuite>
     <SuiteInformation>
-        <SuiteName>My Server Benchmark Suite</SuiteName>
-        <SuiteVersion>1.0</SuiteVersion>
-        <SuiteType>Processor</SuiteType>
-        <SuiteDescription>Custom suite for Ubuntu server benchmarking</SuiteDescription>
+        <Title>My Server Benchmark Suite</Title>
+        <Version>1.0</Version>
+        <TestType>Processor</TestType>
+        <Description>Custom suite for Ubuntu server benchmarking</Description>
         <Maintainer>Admin</Maintainer>
     </SuiteInformation>
     <Execute>
         <Test>compress-7zip</Test>
+    </Execute>
+    <Execute>
         <Test>openssl</Test>
+    </Execute>
+    <Execute>
         <Test>ramspeed</Test>
+    </Execute>
+    <Execute>
         <Test>iozone</Test>
     </Execute>
 </PhoronixTestSuite>
@@ -258,7 +262,7 @@ phoronix-test-suite result-file-to-text result2
 phoronix-test-suite merge-results result1 result2
 
 # Generate an HTML report from saved results
-phoronix-test-suite result-file-to-pdf result_name
+phoronix-test-suite result-file-to-html result_name
 ```
 
 ## Uploading Results to OpenBenchmarking.org
@@ -289,8 +293,8 @@ LOG_FILE="/var/log/phoronix_${RESULT_NAME}.log"
 echo "Starting benchmark: $RESULT_NAME" >> "$LOG_FILE"
 date >> "$LOG_FILE"
 
-# Set batch mode variables
-export PHORONIX_BATCH_MODE=TRUE
+# Set batch mode result name
+export TEST_RESULTS_NAME="$RESULT_NAME"
 
 # Run benchmarks
 phoronix-test-suite batch-benchmark compress-7zip >> "$LOG_FILE" 2>&1
