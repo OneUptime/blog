@@ -24,25 +24,24 @@ Without metrics, platform decisions become opinion-based. With metrics, you can 
 
 ## ArgoCD's Built-In Metrics
 
-ArgoCD exposes Prometheus metrics on port 8082 (controller) and 8083 (server). Here are the most useful ones for platform adoption:
+ArgoCD exposes Prometheus metrics on port 8082 (application controller), 8083 (API server), and 8084 (repo server). Here are the most useful ones for platform adoption:
 
 ```yaml
 # Key ArgoCD metrics
 
 argocd_app_info                    # Application metadata (labels, project, health)
 argocd_app_sync_total              # Total sync operations
-argocd_app_reconcile_count         # Reconciliation counts
+argocd_app_reconcile               # Reconciliation duration histogram
 argocd_app_reconcile_bucket        # Reconciliation duration
-argocd_app_sync_status             # Current sync status per app
-argocd_app_health_status           # Current health status per app
+argocd_app_labels                  # Application labels exposed as metrics
 argocd_cluster_info                # Cluster connection info
 argocd_git_request_total           # Git operations
-argocd_git_request_duration        # Git operation duration
+argocd_git_request_duration_seconds # Git operation duration
 ```
 
 ## Step 1: Set Up Metric Collection
 
-Ensure ArgoCD metrics are being scraped by Prometheus:
+Ensure ArgoCD metrics are being scraped by Prometheus. For example, scrape the application controller metrics service:
 
 ```yaml
 # monitoring/argocd-service-monitor.yaml
@@ -56,11 +55,25 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: argocd
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
     - port: metrics
       interval: 30s
       path: /metrics
+```
+
+Add matching ServiceMonitors for `argocd-server-metrics` and `argocd-repo-server` if you use API server or repo server metrics such as `argocd_git_request_total`.
+
+If you use `argocd_app_labels` in queries, enable the application labels you need on the ArgoCD application controller:
+
+```yaml
+containers:
+  - command:
+      - argocd-application-controller
+      - --metrics-application-labels
+      - team
+      - --metrics-application-labels
+      - environment
 ```
 
 ## Step 2: Custom Metrics for Platform Adoption
@@ -70,8 +83,12 @@ ArgoCD's built-in metrics do not cover everything. Add custom metrics through a 
 ```python
 # platform/metrics-exporter/exporter.py
 from prometheus_client import start_http_server, Gauge, Counter, Histogram
+import os
 import requests
 import time
+
+ARGOCD_SERVER = os.environ['ARGOCD_SERVER']
+ARGOCD_TOKEN = os.environ['ARGOCD_TOKEN']
 
 # Custom platform metrics
 APPS_BY_TEAM = Gauge(
@@ -116,8 +133,10 @@ def collect_metrics():
     """Collect metrics from ArgoCD API."""
     response = requests.get(
         f'{ARGOCD_SERVER}/api/v1/applications',
-        headers={'Authorization': f'Bearer {ARGOCD_TOKEN}'}
+        headers={'Authorization': f'Bearer {ARGOCD_TOKEN}'},
+        timeout=10
     )
+    response.raise_for_status()
     apps = response.json().get('items', [])
 
     # Count apps by team and environment
@@ -168,21 +187,20 @@ if __name__ == '__main__':
 
 ## Step 3: DORA Metrics from ArgoCD
 
-Calculate the four DORA metrics using ArgoCD data:
+Calculate DORA metrics using ArgoCD data and custom instrumentation where ArgoCD only exposes current state:
 
 ### Deployment Frequency
 
 ```promql
 # Deployments per day per team
-sum by (team) (
+sum by (label_team) (
   increase(
     argocd_app_sync_total{
-      phase="Succeeded",
-      dest_namespace=~".*-production"
+      phase="Succeeded"
     }[24h]
   )
-  * on(name) group_left(team)
-  argocd_app_labels{label_team!=""}
+  * on(name, namespace) group_left(label_team)
+  argocd_app_labels{label_team!="", label_environment="production"}
 )
 ```
 
@@ -213,33 +231,41 @@ template.lead-time-metric: |
 ### Change Failure Rate
 
 ```promql
-# Percentage of deployments that result in degraded health
-sum by (team) (
-  increase(
-    argocd_app_sync_total{phase="Error"}[7d]
+# Percentage of deployments where the ArgoCD sync failed or errored
+sum by (label_team) (
+  (
+    increase(
+      argocd_app_sync_total{phase="Error"}[7d]
+    )
+    + increase(
+      argocd_app_sync_total{phase="Failed"}[7d]
+    )
   )
-  + increase(
-    argocd_app_sync_total{phase="Failed"}[7d]
-  )
+  * on(name, namespace) group_left(label_team)
+  argocd_app_labels{label_team!=""}
 )
 /
-sum by (team) (
+sum by (label_team) (
   increase(
     argocd_app_sync_total[7d]
   )
+  * on(name, namespace) group_left(label_team)
+  argocd_app_labels{label_team!=""}
 )
 ```
 
 ### Mean Time to Recovery
 
 ```promql
-# Average time applications spend in Degraded state
-avg by (team) (
-  argocd_app_health_status{health_status="Degraded"}
-  * on(name) group_left(team)
+# Current degraded applications by team
+sum by (label_team) (
+  argocd_app_info{health_status="Degraded"}
+  * on(name, namespace) group_left(label_team)
   argocd_app_labels{label_team!=""}
 )
 ```
+
+ArgoCD's current-state health metric does not store how long an application has been degraded. Capture recovery timestamps with notifications or your custom exporter to calculate true MTTR.
 
 ## Step 4: Build the Adoption Dashboard
 
@@ -283,7 +309,7 @@ count(argocd_app_info)
 Applications by health status:
 
 ```promql
-count by (health_status) (argocd_app_health_status)
+count by (health_status) (argocd_app_info)
 ```
 
 Sync operations over time:
@@ -333,6 +359,23 @@ Calculate time saved:
 
 ```python
 # Monthly time savings calculation
+from datetime import timedelta
+
+
+def parse_duration(value):
+    if value == 'instant':
+        return timedelta(0)
+    amount, unit = value.split()
+    amount = int(amount)
+    if unit.startswith('minute'):
+        return timedelta(minutes=amount)
+    if unit.startswith('hour'):
+        return timedelta(hours=amount)
+    if unit.startswith('day'):
+        return timedelta(days=amount)
+    raise ValueError(f'Unsupported duration: {value}')
+
+
 def calculate_time_savings(actions):
     total_hours_saved = 0
     for action in actions:
@@ -363,11 +406,11 @@ histogram_quantile(0.95,
 
 # Git request latency
 histogram_quantile(0.95,
-  sum(rate(argocd_git_request_duration_bucket[5m])) by (le)
+  sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le)
 )
 
-# Pending applications (queue depth)
-sum(argocd_app_sync_status{sync_status="OutOfSync"})
+# Out-of-sync applications
+sum(argocd_app_info{sync_status="OutOfSync"})
 
 # Controller memory usage
 process_resident_memory_bytes{job="argocd-application-controller"}
