@@ -81,8 +81,7 @@ spec:
         - name: argocd-repo-server
           command:
             - argocd-repo-server
-            - --parallelism-limit=10
-            - --git-shallow-clone
+            - --parallelismlimit=10
             - --redis-compress=gzip
             - --logformat=json
           resources:
@@ -108,24 +107,25 @@ spec:
               app.kubernetes.io/name: argocd-repo-server
 ```
 
-### Redis Cluster
+Configure shallow cloning per repository instead of on the repo server:
 
-At 5,000 applications, Redis HA Sentinel may not be enough. Consider Redis Cluster for horizontal scaling of the cache layer.
+```bash
+argocd repo add https://github.com/example/platform-config.git --depth 1
+```
+
+### Redis HA
+
+At 5,000 applications, Redis is still a disposable cache, but it needs to be sized and made highly available. Use ArgoCD's Redis HA/Sentinel support, or point ArgoCD at an external Redis endpoint if you operate Redis separately.
 
 ```yaml
-# redis-cluster configuration
+# Argo CD Helm chart Redis HA configuration
 
-redis:
-  cluster:
+redis-ha:
+  enabled: true
+  haproxy:
     enabled: true
-    replicas: 6
-    resources:
-      requests:
-        cpu: "1"
-        memory: 4Gi
-      limits:
-        cpu: "2"
-        memory: 8Gi
+    metrics:
+      enabled: true
 ```
 
 ### Maximum Reconciliation Tuning
@@ -134,7 +134,7 @@ redis:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-cm
   namespace: argocd
 data:
   # Longer reconciliation to spread the load
@@ -142,6 +142,15 @@ data:
 
   # Hard resync every 4 hours
   timeout.hard.reconciliation: "14400s"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Use a less skewed sharding algorithm for large installations
+  controller.sharding.algorithm: "consistent-hashing"
 
   # Controller settings per shard
   controller.status.processors: "50"
@@ -153,9 +162,6 @@ data:
 
   # Redis
   redis.compression: "gzip"
-
-  # Increase server replicas
-  server.replicas: "3"
 ```
 
 ### Infrastructure Requirements
@@ -303,13 +309,13 @@ spec:
 
 ### Application-Level Sync Optimization
 
-For applications that do not need frequent reconciliation:
+For applications that should be temporarily paused from reconciliation:
 
 ```yaml
 metadata:
   annotations:
-    # Disable auto-refresh for this app
-    argocd.argoproj.io/refresh: "normal"
+    # Skip reconciliation for this app until the annotation is removed
+    argocd.argoproj.io/skip-reconcile: "true"
 ```
 
 ### Cluster API Rate Limiting
@@ -418,4 +424,4 @@ Consider multiple instances when:
 
 ## Conclusion
 
-Scaling ArgoCD to 5,000 applications is achievable but requires significant infrastructure investment. The recommended approach for most organizations is multiple ArgoCD instances, each handling 1,000 to 2,000 applications. This provides better blast radius isolation, simpler operations, and more flexibility per team. If you choose the single-instance route, heavy controller sharding (10+ shards), a large repo server fleet, and Redis Cluster are the key architectural requirements. Regardless of approach, comprehensive monitoring, automated backups, and a documented recovery plan are non-negotiable at this scale.
+Scaling ArgoCD to 5,000 applications is achievable but requires significant infrastructure investment. The recommended approach for most organizations is multiple ArgoCD instances, each handling 1,000 to 2,000 applications. This provides better blast radius isolation, simpler operations, and more flexibility per team. If you choose the single-instance route, heavy controller sharding (10+ shards), a large repo server fleet, and properly sized Redis HA or external Redis are the key architectural requirements. Regardless of approach, comprehensive monitoring, automated backups, and a documented recovery plan are non-negotiable at this scale.
