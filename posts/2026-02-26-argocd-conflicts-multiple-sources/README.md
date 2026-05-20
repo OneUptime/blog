@@ -8,7 +8,7 @@ Description: Learn how to identify, prevent, and resolve resource conflicts when
 
 ---
 
-When an ArgoCD application pulls manifests from multiple sources, resource conflicts can occur. A conflict happens when two or more sources define the same Kubernetes resource - same API version, kind, name, and namespace. ArgoCD does not merge these definitions; it applies one and the other gets silently overridden. This can lead to unexpected behavior where changes from one team get overwritten by another source during sync.
+When an ArgoCD application pulls manifests from multiple sources, resource conflicts can occur. A conflict happens when two or more sources define the same Kubernetes resource - same API group, kind, name, and namespace. ArgoCD does not merge these definitions; the last source to produce the resource takes precedence and ArgoCD emits a `RepeatedResourceWarning`. This can lead to unexpected behavior where changes from one team get overwritten by another source during sync.
 
 ## How Conflicts Happen
 
@@ -42,26 +42,27 @@ spec:
     - Ingress  # Missing Egress - different from Source 1
 ```
 
-ArgoCD applies the version from whichever source appears last in the `sources` array. The "losing" source's definition is silently discarded.
+ArgoCD applies the version from whichever source appears last in the `sources` array. The "losing" source's definition is discarded from the generated output, and the application gets a `RepeatedResourceWarning`.
 
 ## Detecting Conflicts
 
-ArgoCD does not warn you about conflicts between sources proactively. You need to detect them yourself:
+ArgoCD reports duplicate resources as a `RepeatedResourceWarning` on the Application. Check for that condition and include it in monitoring:
 
 ```bash
-# Render all manifests and check for duplicates
-argocd app manifests my-app | \
-  grep -E "^(kind|  name:|  namespace:)" | \
-  paste - - - | \
-  sort | uniq -d
+# Check the warning condition through the ArgoCD CLI
+argocd app get my-app -o json | \
+  jq -r '.status.conditions[]? |
+    select(.type == "RepeatedResourceWarning") |
+    .message'
 
-# More precise: extract resource identifiers
-argocd app manifests my-app -o json | \
-  jq -r '.[] | "\(.kind)/\(.metadata.namespace)/\(.metadata.name)"' | \
-  sort | uniq -c | sort -rn | head -20
+# Or check the Application custom resource directly
+kubectl get application my-app -n argocd -o json | \
+  jq -r '.status.conditions[]? |
+    select(.type == "RepeatedResourceWarning") |
+    .message'
 ```
 
-Any resource appearing more than once has a conflict.
+Any `RepeatedResourceWarning` means more than one source produced the same resource identity.
 
 ## Prevention Strategy: Clear Ownership Boundaries
 
@@ -84,7 +85,7 @@ graph TD
     end
     subgraph Security Team
         J[RBAC Roles/Bindings]
-        K[PodSecurityPolicies]
+        K[Pod Security Admission namespace labels]
         L[OPA Constraints]
     end
     subgraph SRE Team
@@ -115,18 +116,19 @@ metadata:
 Use ArgoCD Projects to restrict which resource kinds each team can create:
 
 ```yaml
-# Platform project - can create cluster-wide resources
+# Platform project - can create platform-owned resources
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: platform
+  namespace: argocd
 spec:
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
+  namespaceResourceWhitelist:
     - group: networking.k8s.io
       kind: NetworkPolicy
-  namespaceResourceWhitelist:
     - group: ""
       kind: ResourceQuota
     - group: ""
@@ -139,6 +141,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: payments-app
+  namespace: argocd
 spec:
   clusterResourceWhitelist: []  # No cluster resources
   namespaceResourceWhitelist:
@@ -227,7 +230,7 @@ sources:
     path: configs
 ```
 
-Do not rely on this ordering as a merge strategy. It is undocumented behavior that could change, and it makes the system harder to understand.
+Do not rely on this ordering as a merge strategy. It is documented override behavior, but it is still fragile and makes the system harder to understand.
 
 ## Automated Conflict Detection in CI
 
@@ -237,11 +240,12 @@ Add a CI check that detects conflicts before they reach the cluster:
 #!/bin/bash
 # conflict-check.sh - Run in CI against all multi-source apps
 
-# For each multi-source application, render manifests and check for duplicates
+# For each multi-source application, check whether ArgoCD reported duplicates
 for app in $(argocd app list -o name); do
-  duplicates=$(argocd app manifests "$app" -o json | \
-    jq -r '.[] | "\(.apiVersion)/\(.kind)/\(.metadata.namespace // "cluster")/\(.metadata.name)"' | \
-    sort | uniq -d)
+  duplicates=$(argocd app get "$app" -o json | \
+    jq -r '.status.conditions[]? |
+      select(.type == "RepeatedResourceWarning") |
+      .message')
 
   if [ -n "$duplicates" ]; then
     echo "CONFLICT in $app:"
@@ -255,7 +259,7 @@ echo "No conflicts detected"
 
 ## Handling Partial Overlap
 
-Sometimes resources partially overlap - same name but different content. This is the most dangerous case because ArgoCD picks one version silently:
+Sometimes resources partially overlap - same name but different content. This is the most dangerous case because ArgoCD picks one version and reports only a warning:
 
 ```yaml
 # Source 1: ConfigMap with database config
