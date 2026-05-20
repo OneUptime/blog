@@ -77,7 +77,7 @@ data:
     p, role:backend-viewer, applications, get, backend/*, allow
     p, role:backend-viewer, logs, get, backend/*, allow
 
-    # Read-only access to everything
+    # Read-only access to common ArgoCD resources
     p, role:global-viewer, applications, get, */*, allow
     p, role:global-viewer, projects, get, *, allow
     p, role:global-viewer, repositories, get, *, allow
@@ -98,28 +98,30 @@ Verify that read-only users cannot perform write operations:
 ```bash
 # Test as a read-only user
 
-argocd account can-i get applications '*/*'
+argocd account can-i get applications '*'
 # Output: yes
 
-argocd account can-i sync applications '*/*'
+argocd account can-i sync applications '*'
 # Output: no
 
-argocd account can-i delete applications '*/*'
+argocd account can-i delete applications '*'
 # Output: no
 
-argocd account can-i create applications '*/*'
+argocd account can-i create applications '*'
 # Output: no
 ```
 
 You can also test with the admin RBAC validation tool:
 
 ```bash
-# Validate that a specific role has read-only access
+# Validate that the policy file is syntactically correct
 argocd admin settings rbac validate \
-  --policy-file policy.csv \
-  --subject role:frontend-viewer
+  --policy-file policy.csv
 
 # Test specific actions
+argocd admin settings rbac can role:frontend-viewer get applications 'frontend/*' \
+  --policy-file policy.csv
+
 argocd admin settings rbac can role:frontend-viewer sync applications 'frontend/*' \
   --policy-file policy.csv
 ```
@@ -161,54 +163,48 @@ data:
     # Cannot view logs or other sensitive information
 ```
 
-## Approach 3: ArgoCD Core Mode (Server-Side Read-Only)
+## Approach 3: ArgoCD Core Mode (Kubernetes RBAC Read-Only)
 
-ArgoCD Core mode runs without the UI and API server, using only the application controller. You can run a separate read-only API server instance:
+ArgoCD Core mode runs without the ArgoCD API server and ArgoCD RBAC. It relies on Kubernetes RBAC instead, so read-only access is controlled with Kubernetes `Role` and `RoleBinding` resources:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  name: argocd-server-readonly
+  name: argocd-core-readonly
   namespace: argocd
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app.kubernetes.io/name: argocd-server-readonly
-  template:
-    metadata:
-      labels:
-        app.kubernetes.io/name: argocd-server-readonly
-    spec:
-      containers:
-        - name: argocd-server
-          image: quay.io/argoproj/argocd:v2.13.0
-          command:
-            - argocd-server
-            - --staticassets
-            - /shared/app
-            - --loglevel
-            - info
-          env:
-            - name: ARGOCD_SERVER_DISABLE_AUTH
-              value: "true"  # Only for internal network
-          readinessProbe:
-            httpGet:
-              path: /healthz
-              port: 8080
+rules:
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - applications
+      - applicationsets
+      - appprojects
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-core-readonly
+  namespace: argocd
+subjects:
+  - kind: Group
+    name: developers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: argocd-core-readonly
+  apiGroup: rbac.authorization.k8s.io
 ```
 
-Pair this with a strict RBAC policy that only allows read operations:
+Users can then use the ArgoCD CLI in core mode:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-rbac-cm
-  namespace: argocd
-data:
-  policy.default: role:readonly
+```bash
+argocd login --core
+argocd app list
 ```
 
 ## Approach 4: Read-Only API Tokens
@@ -250,7 +246,7 @@ curl -H "Authorization: Bearer <token>" \
 
 ## Hiding Sensitive Information
 
-Even in read-only mode, ArgoCD might display sensitive information like repository URLs, cluster endpoints, or environment variables. You can configure what information is visible:
+Even in read-only mode, ArgoCD might display sensitive information like repository URLs, cluster endpoints, or Kubernetes resources that contain sensitive data. You can exclude resource kinds from ArgoCD discovery and sync:
 
 ```yaml
 apiVersion: v1
@@ -259,10 +255,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Hide repository credentials in the UI
-  oidc.config: |
-    # SSO configuration hidden from non-admin users
-  # Restrict what information is shown in application details
+  # Exclude Kubernetes Secrets from ArgoCD's application resource view
   resource.exclusions: |
     - apiGroups:
         - ""
