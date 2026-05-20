@@ -105,13 +105,16 @@ If your manifests are already in Git (which Harness supports), you may just need
 
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Get the initial admin password
 argocd admin initial-password -n argocd
 
-# Login
-argocd login localhost:8080 --username admin --password <password>
+# Expose the API server locally in another terminal
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+
+# Login to the local API server
+argocd login localhost:8080 --username admin --password <password> --insecure
 ```
 
 ## Step 4: Convert Harness Services to ArgoCD Applications
@@ -225,7 +228,7 @@ spec:
 
 ## Step 6: Handle Deployment Strategies
 
-Harness has built-in canary and blue-green strategies. ArgoCD delegates this to Argo Rollouts:
+Harness has built-in canary and blue-green strategies. With ArgoCD, you typically sync Argo Rollouts resources and let the Argo Rollouts controller manage these strategies:
 
 ```bash
 # Install Argo Rollouts
@@ -268,11 +271,11 @@ spec:
 
 ## Step 7: Migrate Secrets
 
-Harness has a built-in secret manager. ArgoCD does not manage secrets directly. Use External Secrets Operator:
+Harness has a built-in secret manager. ArgoCD can deploy Kubernetes Secret resources, but it does not include a built-in external secret manager. Use a tool like External Secrets Operator:
 
 ```yaml
-# Install External Secrets Operator
-# (assuming you use AWS Secrets Manager as your backend)
+# Example ExternalSecret
+# (assuming External Secrets Operator is installed and AWS Secrets Manager is your backend)
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
@@ -296,7 +299,7 @@ spec:
 
 ## Step 8: Replace Harness Approvals
 
-Harness approval steps become ArgoCD sync windows and manual sync:
+Harness approval steps can be approximated with ArgoCD sync windows and manual sync:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -319,7 +322,7 @@ spec:
       server: https://kubernetes.default.svc
 ```
 
-For critical deployments, disable automated sync and require manual approval:
+For critical deployments, disable automated sync so a user must trigger the sync manually:
 
 ```yaml
 spec:
