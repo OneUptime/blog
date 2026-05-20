@@ -8,7 +8,7 @@ Description: A step-by-step operational runbook for diagnosing and fixing ArgoCD
 
 ---
 
-Webhooks are ArgoCD's primary mechanism for detecting Git changes in real time. When webhooks stop working, ArgoCD falls back to polling, which means changes take minutes instead of seconds to be detected. If polling is also disabled, changes are not detected at all until the next reconciliation cycle. This runbook covers how to diagnose and fix webhook delivery failures.
+Webhooks are ArgoCD's primary mechanism for detecting Git changes in real time. When webhooks stop working, ArgoCD falls back to polling, which means changes take minutes instead of seconds to be detected. If automatic polling is also disabled, Git changes are not detected until a manual refresh or another reconciliation trigger occurs. This runbook covers how to diagnose and fix webhook delivery failures.
 
 ## Symptoms
 
@@ -59,6 +59,8 @@ kubectl logs -n argocd deployment/argocd-server --tail=500 | grep -i "webhook\|s
 
 ```bash
 # Test if the webhook endpoint is reachable
+# If a webhook secret is configured, use the Git provider's test/redelivery
+# feature instead so the request includes the provider's signature headers.
 curl -v -X POST https://argocd.example.com/api/webhook \
   -H "Content-Type: application/json" \
   -H "X-GitHub-Event: push" \
@@ -66,7 +68,7 @@ curl -v -X POST https://argocd.example.com/api/webhook \
 
 # Expected response: 200 OK
 # If you get 404: the endpoint path is wrong
-# If you get 403: the webhook secret is wrong
+# If you get 400/401: the payload, event headers, or signature are wrong
 # If you get 502/503: ArgoCD API server is down
 # If connection times out: network issue
 ```
@@ -89,12 +91,12 @@ kubectl get networkpolicy -n argocd
 
 ```bash
 # Check if a webhook secret is configured in ArgoCD
-kubectl get configmap argocd-cm -n argocd -o yaml | grep webhook
+kubectl get secret argocd-secret -n argocd -o yaml | grep webhook
 
 # Expected to see:
 # webhook.github.secret: <secret>
 # webhook.gitlab.secret: <secret>
-# webhook.bitbucket.secret: <secret>
+# webhook.bitbucket.uuid: <webhook UUID>
 # webhook.bitbucketserver.secret: <secret>
 
 # The secret in ArgoCD must match exactly what is configured in the Git provider
@@ -107,24 +109,22 @@ kubectl get configmap argocd-cm -n argocd -o yaml | grep webhook
 The most common issue. The secret configured in ArgoCD does not match the secret in the Git provider.
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-secret Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   # Secret must match what is configured in the Git provider
   webhook.github.secret: "my-webhook-secret-123"
 ```
 
 ```bash
 # Update the secret in ArgoCD
-kubectl patch configmap argocd-cm -n argocd --type merge \
-  -p='{"data":{"webhook.github.secret":"my-webhook-secret-123"}}'
-
-# Restart the API server to pick up the change
-kubectl rollout restart deployment/argocd-server -n argocd
+kubectl patch secret argocd-secret -n argocd --type merge \
+  -p='{"stringData":{"webhook.github.secret":"my-webhook-secret-123"}}'
 
 # Then update the same secret in your Git provider's webhook settings
 ```
@@ -133,8 +133,8 @@ If you are unsure of the secret, remove it from both sides temporarily to test w
 
 ```yaml
 # Temporarily remove webhook secret for testing
-# argocd-cm ConfigMap
-data:
+# argocd-secret Secret
+stringData:
   # Remove or comment out the webhook secret
   # webhook.github.secret: ""
 ```
@@ -182,7 +182,8 @@ spec:
       app.kubernetes.io/name: argocd-server
   ingress:
   - from:
-    # GitHub webhook IPs (check GitHub docs for current list)
+    # Example GitHub webhook IPs only; fetch the current hooks ranges
+    # from GitHub's /meta API before applying.
     - ipBlock:
         cidr: 140.82.112.0/20
     - ipBlock:
@@ -239,7 +240,8 @@ The Git provider is not sending the right event types.
 
 ```bash
 # GitHub requires at minimum: Push events
-# For ApplicationSets with pull request generators: Pull Request events
+# For ApplicationSets, configure the ApplicationSet webhook separately and
+# select the events required by that generator
 # For branch-based apps: Push events only
 
 # GitLab requires: Push events
@@ -263,16 +265,17 @@ kubectl logs -n argocd deployment/argocd-server --tail=50 | grep -i webhook
 git commit --allow-empty -m "Test webhook delivery"
 git push
 
-# Check the application refresh timestamp
-argocd app get <app-name> | grep "Last Synced"
-# Should show a timestamp within seconds of the push
+# Check whether ArgoCD refreshed the application and detected the new revision
+argocd app get <app-name>
+# The target revision/status should update within seconds of the push.
+# "Last Synced" changes only after a sync, such as when automated sync is enabled.
 ```
 
 ## Prevention
 
 1. Monitor webhook delivery success rate in your Git provider's settings
 2. Set up a synthetic webhook test that fires periodically and verifies ArgoCD responds
-3. Use IP allowlisting in ArgoCD's Ingress to only accept webhooks from your Git provider's IP ranges
+3. If IP allowlisting is required, use the current IP ranges published by your Git provider and monitor them for changes
 4. Document the exact webhook configuration (URL, secret, events) for each repository
 5. Include webhook verification in your ArgoCD upgrade checklist
 
