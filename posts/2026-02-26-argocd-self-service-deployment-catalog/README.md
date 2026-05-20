@@ -81,24 +81,22 @@ Here is the base template for a web service:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: SERVICE_NAME
+  name: app
   labels:
-    app: SERVICE_NAME
-    team: TEAM_NAME
+    app: web-service
     managed-by: deployment-catalog
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: SERVICE_NAME
+      app: web-service
   template:
     metadata:
       labels:
-        app: SERVICE_NAME
-        team: TEAM_NAME
+        app: web-service
     spec:
       containers:
-        - name: SERVICE_NAME
+        - name: app
           image: SERVICE_IMAGE
           ports:
             - containerPort: 8080
@@ -124,10 +122,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: SERVICE_NAME
+  name: app
 spec:
   selector:
-    app: SERVICE_NAME
+    app: web-service
   ports:
     - port: 80
       targetPort: 8080
@@ -145,33 +143,15 @@ resources:
 Define a service registry file where developers register their services. This can be a simple YAML file in Git:
 
 ```yaml
-# services/registry.yaml
-# Developers add their services here via pull request
-services:
-  - name: payment-api
-    team: payments
-    type: web-service
-    image: registry.example.com/payment-api
-    environments:
-      - development
-      - staging
-      - production
-
-  - name: email-worker
-    team: notifications
-    type: worker-service
-    image: registry.example.com/email-worker
-    environments:
-      - development
-      - staging
-      - production
-
-  - name: daily-report
-    team: analytics
-    type: cronjob-service
-    image: registry.example.com/daily-report
-    environments:
-      - production
+# services/payment-api/environments/development.yaml
+# Developers add service targets here via pull request
+name: payment-api
+team: payments
+type: web-service
+image: registry.example.com/payment-api
+tag: latest
+environment: development
+cluster: https://dev-cluster:6443
 ```
 
 ## Step 3: Create an ApplicationSet Generator
@@ -186,36 +166,41 @@ metadata:
   name: deployment-catalog
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     # Use a Git file generator to read the service registry
     - git:
         repoURL: https://github.com/myorg/deployment-catalog
         revision: main
         files:
-          - path: "services/*/config.yaml"
+          - path: "services/*/environments/*.yaml"
   template:
     metadata:
-      name: "{{name}}-{{environment}}"
+      name: "{{.name}}-{{.environment}}"
       labels:
-        team: "{{team}}"
-        service-type: "{{type}}"
-        environment: "{{environment}}"
+        service: "{{.name}}"
+        team: "{{.team}}"
+        service-type: "{{.type}}"
+        environment: "{{.environment}}"
         managed-by: deployment-catalog
     spec:
-      project: "{{team}}-project"
+      project: "{{.team}}-project"
       source:
         repoURL: https://github.com/myorg/deployment-catalog
         targetRevision: main
-        path: "templates/{{type}}/overlays/{{environment}}"
+        path: "templates/{{.type}}/overlays/{{.environment}}"
         kustomize:
+          namePrefix: "{{.name}}-"
           images:
-            - "SERVICE_IMAGE={{image}}:{{tag}}"
+            - "SERVICE_IMAGE={{.image}}:{{.tag}}"
           commonLabels:
-            app: "{{name}}"
-            team: "{{team}}"
+            app: "{{.name}}"
+            team: "{{.team}}"
+          forceCommonLabels: true
       destination:
-        server: "{{cluster}}"
-        namespace: "{{team}}-{{environment}}"
+        server: "{{.cluster}}"
+        namespace: "{{.team}}-{{.environment}}"
       syncPolicy:
         automated:
           selfHeal: true
@@ -237,15 +222,15 @@ type: web-service
 image: registry.example.com/payment-api
 tag: latest
 environments:
-  - name: development
+  - environment: development
     cluster: https://dev-cluster:6443
-    replicas: 1
-  - name: staging
+    replicas: "1"
+  - environment: staging
     cluster: https://staging-cluster:6443
-    replicas: 2
-  - name: production
+    replicas: "2"
+  - environment: production
     cluster: https://prod-cluster:6443
-    replicas: 3
+    replicas: "3"
 ```
 
 Use a matrix generator to expand environments:
@@ -258,6 +243,8 @@ metadata:
   name: deployment-catalog-matrix
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - matrix:
         generators:
@@ -269,19 +256,32 @@ spec:
                 - path: "services/*/config.yaml"
           # Second generator: expand environments
           - list:
-              elementsYaml: "{{environments}}"
+              elementsYaml: "{{ .environments | toJson }}"
   template:
     metadata:
-      name: "{{name}}-{{environment}}"
+      name: "{{.name}}-{{.environment}}"
+      labels:
+        service: "{{.name}}"
+        team: "{{.team}}"
+        service-type: "{{.type}}"
+        environment: "{{.environment}}"
     spec:
-      project: "{{team}}-project"
+      project: "{{.team}}-project"
       source:
         repoURL: https://github.com/myorg/deployment-catalog
         targetRevision: main
-        path: "templates/{{type}}/overlays/{{environment}}"
+        path: "templates/{{.type}}/overlays/{{.environment}}"
+        kustomize:
+          namePrefix: "{{.name}}-"
+          images:
+            - "SERVICE_IMAGE={{.image}}:{{.tag}}"
+          commonLabels:
+            app: "{{.name}}"
+            team: "{{.team}}"
+          forceCommonLabels: true
       destination:
-        server: "{{cluster}}"
-        namespace: "{{team}}-{{environment}}"
+        server: "{{.cluster}}"
+        namespace: "{{.team}}-{{.environment}}"
       syncPolicy:
         automated:
           selfHeal: true
@@ -327,12 +327,12 @@ type: $SERVICE_TYPE
 image: $IMAGE
 tag: latest
 environments:
-  - name: development
+  - environment: development
     cluster: https://dev-cluster:6443
-    replicas: 1
-  - name: staging
+    replicas: "1"
+  - environment: staging
     cluster: https://staging-cluster:6443
-    replicas: 2
+    replicas: "2"
 EOF
 
     # Create PR
@@ -409,7 +409,7 @@ spec:
       kind: ResourceQuota
     - group: ""
       kind: LimitRange
-  # Resource limits
+  # Project roles
   roles:
     - name: team-admin
       description: Payments team admin access
@@ -442,9 +442,9 @@ jobs:
           for config in services/*/config.yaml; do
             echo "Validating $config"
             # Check required fields
-            yq e '.name' "$config" > /dev/null || { echo "Missing name in $config"; exit 1; }
-            yq e '.team' "$config" > /dev/null || { echo "Missing team in $config"; exit 1; }
-            yq e '.type' "$config" > /dev/null || { echo "Missing type in $config"; exit 1; }
+            yq e -e '.name' "$config" > /dev/null || { echo "Missing name in $config"; exit 1; }
+            yq e -e '.team' "$config" > /dev/null || { echo "Missing team in $config"; exit 1; }
+            yq e -e '.type' "$config" > /dev/null || { echo "Missing type in $config"; exit 1; }
 
             # Validate service type exists
             TYPE=$(yq e '.type' "$config")
