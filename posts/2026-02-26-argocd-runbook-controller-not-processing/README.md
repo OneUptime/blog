@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Runbook, Troubleshooting
 
-Description: A step-by-step operational runbook for diagnosing and fixing an ArgoCD application controller that has stopped processing applications, covering resource exhaustion, leader election.
+Description: A step-by-step operational runbook for diagnosing and fixing an ArgoCD application controller that has stopped processing applications, covering resource exhaustion and shard configuration.
 
 ---
 
@@ -16,7 +16,7 @@ When the ArgoCD application controller stops processing applications, the entire
 - New commits to Git repositories are not detected
 - Manual sync requests from the UI or CLI do not start
 - The ArgoCD UI shows applications but status updates have stopped
-- Prometheus alerts fire for `argocd_app_reconcile_pending` being consistently high
+- Prometheus alerts fire for `argocd_app_reconcile` latency or `argocd_cluster_cache_age_seconds` being consistently high
 
 ## Impact Assessment
 
@@ -44,13 +44,13 @@ kubectl describe pod -n argocd -l app.kubernetes.io/name=argocd-application-cont
 
 ```bash
 # Get recent controller logs
-kubectl logs -n argocd deployment/argocd-application-controller --tail=200
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=200
 
 # Look for specific error patterns
-kubectl logs -n argocd deployment/argocd-application-controller --tail=500 | grep -i "error\|fatal\|panic\|timeout\|refused"
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | grep -i "error\|fatal\|panic\|timeout\|refused"
 
-# Check for leader election issues (if running multiple replicas)
-kubectl logs -n argocd deployment/argocd-application-controller --tail=500 | grep -i "leader\|election"
+# Check for sharding issues (if running multiple replicas)
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | grep -i "shard\|cluster"
 ```
 
 ### Step 3: Check Resource Usage
@@ -60,15 +60,16 @@ kubectl logs -n argocd deployment/argocd-application-controller --tail=500 | gre
 kubectl top pods -n argocd -l app.kubernetes.io/name=argocd-application-controller
 
 # Check resource limits
-kubectl get deployment argocd-application-controller -n argocd -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq .
+kubectl get statefulset argocd-application-controller -n argocd -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq .
 
 # Check if the pod was recently OOMKilled
-kubectl get events -n argocd --field-selector reason=OOMKilling --sort-by='.lastTimestamp'
+kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-application-controller \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[*].lastState.terminated.reason}{"\n"}{end}'
 ```
 
 ### Step 4: Check Redis Connectivity
 
-The controller depends on Redis for caching. If Redis is down, the controller may freeze or crash.
+The controller uses Redis for caching. If Redis is down, the controller may log Redis errors and fail to refresh cached state.
 
 ```bash
 # Check Redis pod
@@ -82,31 +83,33 @@ kubectl exec -n argocd deployment/argocd-redis -- redis-cli ping
 kubectl exec -n argocd deployment/argocd-redis -- redis-cli info memory | grep used_memory_human
 ```
 
-### Step 5: Check Kubernetes API Server Connectivity
+### Step 5: Check Kubernetes API Server Access
 
 The controller needs to reach the Kubernetes API server to compare live state.
 
 ```bash
-# Check if the controller can reach the API server
-kubectl exec -n argocd deployment/argocd-application-controller -- wget -qO- https://kubernetes.default.svc/healthz --no-check-certificate
+# Check if the controller service account has expected API access
+kubectl auth can-i list pods \
+  --as=system:serviceaccount:argocd:argocd-application-controller
 
 # Check for API server throttling
-kubectl logs -n argocd deployment/argocd-application-controller --tail=200 | grep -i "throttl\|rate.limit\|429"
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 | grep -i "throttl\|rate.limit\|429"
 ```
 
-### Step 6: Check Leader Election (Sharded Setup)
+### Step 6: Check Shard Configuration
 
-If you run multiple controller replicas with sharding, check leader election status.
+If you run multiple controller replicas with sharding, check that the StatefulSet replica count matches `ARGOCD_CONTROLLER_REPLICAS`.
 
 ```bash
-# Check the leader election lease
-kubectl get lease -n argocd
+# Check the controller replica count
+kubectl get statefulset argocd-application-controller -n argocd -o jsonpath='{.spec.replicas}'
 
-# Check which pod is the leader
-kubectl get lease argocd-application-controller -n argocd -o jsonpath='{.spec.holderIdentity}'
+# Check the configured controller replica count
+kubectl get statefulset argocd-application-controller -n argocd \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ARGOCD_CONTROLLER_REPLICAS")].value}'
 
-# If no leader is elected, all replicas will log:
-# "attempting to acquire leader lease"
+# Check for shard assignment messages
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | grep -i "shard"
 ```
 
 ## Root Causes and Resolutions
@@ -117,14 +120,14 @@ The controller was killed by the OOM killer and cannot stay running with current
 
 ```bash
 # Check for OOMKill
-kubectl get events -n argocd --field-selector reason=OOMKilling
+kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-application-controller \
+  -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.status.containerStatuses[*].lastState.terminated.reason}{"\n"}{end}'
 
 # Immediate fix: increase memory limits
-kubectl patch deployment argocd-application-controller -n argocd --type='json' \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/limits/memory", "value": "8Gi"}]'
+kubectl set resources statefulset/argocd-application-controller -n argocd --limits=memory=8Gi
 
 # Wait for rollout
-kubectl rollout status deployment/argocd-application-controller -n argocd
+kubectl rollout status statefulset/argocd-application-controller -n argocd
 ```
 
 For a permanent fix, either increase memory limits in your Helm values or ArgoCD installation manifests, or enable controller sharding to distribute the load.
@@ -139,8 +142,8 @@ kubectl rollout restart deployment/argocd-redis -n argocd
 kubectl rollout status deployment/argocd-redis -n argocd
 
 # Then restart the controller
-kubectl rollout restart deployment/argocd-application-controller -n argocd
-kubectl rollout status deployment/argocd-application-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
+kubectl rollout status statefulset/argocd-application-controller -n argocd
 ```
 
 If Redis keeps crashing, check its memory limits and eviction policy.
@@ -157,37 +160,41 @@ The Kubernetes API server is throttling the controller's requests, causing it to
 
 ```bash
 # Check for throttling messages in logs
-kubectl logs -n argocd deployment/argocd-application-controller --tail=500 | grep "Throttling"
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=500 | grep "Throttling"
 
 # Reduce controller's API server load
 # Option 1: Reduce status processors
-kubectl patch deployment argocd-application-controller -n argocd --type='json' \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/args", "value": ["/usr/local/bin/argocd-application-controller", "--status-processors=20", "--operation-processors=10"]}]'
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge \
+  -p='{"data":{"controller.status.processors":"10","controller.operation.processors":"5"}}'
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 
 # Option 2: Increase reconciliation interval
 kubectl patch configmap argocd-cm -n argocd --type merge \
-  -p='{"data":{"timeout.reconciliation":"300"}}'
+  -p='{"data":{"timeout.reconciliation":"5m"}}'
 ```
 
-### Cause 4: Leader Election Stuck
+### Cause 4: Shard Configuration Mismatch
 
-In a sharded setup, if the current leader crashes without releasing the lease, a new leader may take time to be elected.
+In a sharded setup, if the StatefulSet replica count and `ARGOCD_CONTROLLER_REPLICAS` do not match, clusters may not be assigned to the expected controller shard.
 
 ```bash
-# Check lease status
-kubectl get lease argocd-application-controller -n argocd -o yaml
+# Check replica and shard configuration
+kubectl get statefulset argocd-application-controller -n argocd -o jsonpath='{.spec.replicas}'
+kubectl get statefulset argocd-application-controller -n argocd \
+  -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="ARGOCD_CONTROLLER_REPLICAS")].value}'
 
-# If the lease holder is a dead pod, delete the lease to force re-election
-kubectl delete lease argocd-application-controller -n argocd
+# Make them match
+kubectl patch statefulset argocd-application-controller -n argocd --type='json' \
+  -p='[{"op": "replace", "path": "/spec/replicas", "value": 3}]'
+kubectl set env statefulset/argocd-application-controller -n argocd ARGOCD_CONTROLLER_REPLICAS=3
 
-# Wait for a new leader to be elected (usually within 15 seconds)
-sleep 20
-kubectl get lease argocd-application-controller -n argocd -o jsonpath='{.spec.holderIdentity}'
+# Wait for rollout
+kubectl rollout status statefulset/argocd-application-controller -n argocd
 ```
 
-### Cause 5: Too Many Applications
+### Cause 5: Too Many Applications or Clusters
 
-The controller simply cannot process all applications within the reconciliation interval.
+The controller simply cannot process all applications within the reconciliation interval. If the load spans multiple managed clusters, sharding can distribute clusters across controller replicas.
 
 ```bash
 # Check how many apps exist
@@ -195,14 +202,14 @@ argocd app list | wc -l
 
 # Check the reconciliation queue depth
 # If using Prometheus:
-# argocd_app_reconcile_pending > 100 is concerning
+# sustained high argocd_app_reconcile latency is concerning
 
 # Enable sharding
-kubectl patch deployment argocd-application-controller -n argocd --type='json' \
+kubectl patch statefulset argocd-application-controller -n argocd --type='json' \
   -p='[{"op": "replace", "path": "/spec/replicas", "value": 3}]'
 
 # Set the ARGOCD_CONTROLLER_REPLICAS environment variable
-kubectl set env deployment/argocd-application-controller -n argocd ARGOCD_CONTROLLER_REPLICAS=3
+kubectl set env statefulset/argocd-application-controller -n argocd ARGOCD_CONTROLLER_REPLICAS=3
 ```
 
 ### Cause 6: Corrupt Application State
@@ -235,7 +242,7 @@ kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-application-controll
 argocd app list | head -10
 
 # Watch the controller logs for normal operation
-kubectl logs -n argocd deployment/argocd-application-controller --tail=20 -f
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=20 -f
 
 # Trigger a manual sync to verify end-to-end
 argocd app sync <test-app-name>
@@ -253,6 +260,6 @@ argocd app sync <test-app-name>
 
 If the controller does not recover after a restart and the above diagnostic steps do not identify the cause:
 
-- Collect a goroutine dump: `kubectl exec -n argocd deployment/argocd-application-controller -- curl localhost:8082/debug/pprof/goroutine?debug=2 > goroutine-dump.txt`
+- If controller profiling is enabled, collect a goroutine dump: `kubectl exec -n argocd statefulset/argocd-application-controller -- curl localhost:8082/debug/pprof/goroutine?debug=2 > goroutine-dump.txt`
 - Check the ArgoCD GitHub issues for similar reports
 - Escalate to the platform engineering team with logs and the goroutine dump
