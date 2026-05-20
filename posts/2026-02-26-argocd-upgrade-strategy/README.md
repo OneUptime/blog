@@ -48,7 +48,7 @@ Each ArgoCD version supports specific Kubernetes versions. Verify compatibility.
 
 ```bash
 # Check your cluster version
-kubectl version --short
+kubectl version -o yaml
 
 # Compare against ArgoCD's compatibility matrix in the docs
 ```
@@ -110,7 +110,7 @@ Update the Helm chart version and let ArgoCD upgrade itself.
 # Update your ArgoCD Helm chart reference
 dependencies:
   - name: argo-cd
-    version: "7.3.0"  # New version
+    version: "7.4.3"  # New version
     repository: "https://argoproj.github.io/argo-helm"
 ```
 
@@ -136,9 +136,13 @@ metadata:
   name: argocd-v2-12
   namespace: argocd
 spec:
+  project: default
   source:
+    repoURL: https://github.com/example/platform.git
+    targetRevision: HEAD
     path: argocd-new-version
   destination:
+    server: https://kubernetes.default.svc
     namespace: argocd-v2-12
 ```
 
@@ -180,14 +184,14 @@ Prevent ArgoCD from making changes during the upgrade.
 argocd app set critical-app --sync-policy none
 ```
 
-Or set a maintenance window annotation.
+Or configure a sync window in the AppProject.
 
 ### Step 3: Scale Down Controllers
 
-Reduce the application controller to prevent sync operations during the upgrade.
+Reduce the application controller to prevent sync operations during the upgrade. Only do this when applying the upgrade from outside ArgoCD; if ArgoCD manages itself, the controller must stay running to apply the Git change.
 
 ```bash
-kubectl scale deployment argocd-application-controller -n argocd --replicas=0
+kubectl scale statefulset argocd-application-controller -n argocd --replicas=0
 ```
 
 ### Step 4: Upgrade Components
@@ -196,7 +200,7 @@ Update the Helm values or manifests with the new version and apply.
 
 ```bash
 # If managed with Helm directly
-helm upgrade argocd argo/argo-cd -n argocd -f values.yaml --version 7.3.0
+helm upgrade argocd argo/argo-cd -n argocd -f values.yaml --version 7.4.3
 
 # If ArgoCD manages itself, push the version change to Git
 # ArgoCD will detect the change and upgrade itself
@@ -265,17 +269,21 @@ spec:
     - list:
         elements:
           - cluster: staging
-            version: "7.3.0"  # Upgrade staging first
+            version: "7.4.3"  # Upgrade staging first
           - cluster: production
             version: "7.2.0"  # Keep production on old version until staging is verified
   template:
     metadata:
       name: "argocd-{{cluster}}"
     spec:
+      project: default
       source:
         chart: argo-cd
         repoURL: https://argoproj.github.io/argo-helm
         targetRevision: "{{version}}"
+      destination:
+        name: "{{cluster}}"
+        namespace: argocd
 ```
 
 ## Post-Upgrade Tasks
