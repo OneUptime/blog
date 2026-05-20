@@ -29,6 +29,7 @@ The simplest approach is creating an ECR image pull secret and refreshing it wit
 
 ```yaml
 # CronJob to refresh ECR token every 6 hours
+# The service account needs IRSA for ECR and Kubernetes RBAC to manage this Secret.
 
 apiVersion: batch/v1
 kind: CronJob
@@ -46,7 +47,7 @@ spec:
           serviceAccountName: ecr-refresh-sa  # With IRSA
           containers:
             - name: ecr-refresh
-              image: amazon/aws-cli:latest
+              image: your-registry/aws-cli-kubectl:latest  # Must include aws CLI and kubectl
               command:
                 - /bin/sh
                 - -c
@@ -157,13 +158,13 @@ type: Opaque
 stringData:
   type: helm
   name: ecr-helm
-  url: 123456789.dkr.ecr.us-east-1.amazonaws.com
+  url: 123456789.dkr.ecr.us-east-1.amazonaws.com/helm-charts
   enableOCI: "true"
   username: AWS
-  password: ""   # ECR token - managed by credential helper
+  password: "<ecr-login-password>"   # Refresh this before the 12-hour ECR token expires
 ```
 
-For ECR OCI authentication, ArgoCD's repo server needs IRSA with ECR permissions. See our guide on [ArgoCD with AWS IAM Roles for Service Accounts](https://oneuptime.com/blog/post/2026-02-26-argocd-aws-iam-roles-service-accounts/view) for setup details.
+For ECR OCI authentication without rotating repository passwords yourself, ArgoCD's repo server needs an integration that can exchange its IRSA credentials for ECR tokens. See our guide on [ArgoCD with AWS IAM Roles for Service Accounts](https://oneuptime.com/blog/post/2026-02-26-argocd-aws-iam-roles-service-accounts/view) for setup details.
 
 ## ArgoCD Image Updater with ECR
 
@@ -214,20 +215,20 @@ metadata:
 data:
   ecr-login.sh: |
     #!/bin/sh
-    aws ecr get-login-password --region us-east-1
+    echo "AWS:$(aws ecr get-login-password --region us-east-1)"
 ```
 
 Mount it in the Image Updater deployment:
 
 ```yaml
 # In the Helm values
-extraVolumes:
+volumes:
   - name: ecr-login
     configMap:
       name: ecr-login-script
       defaultMode: 0755
 
-extraVolumeMounts:
+volumeMounts:
   - name: ecr-login
     mountPath: /scripts
 ```
@@ -245,10 +246,9 @@ metadata:
   annotations:
     # Tell Image Updater to watch this image
     argocd-image-updater.argoproj.io/image-list: >-
-      main=123456789.dkr.ecr.us-east-1.amazonaws.com/my-api
+      main=123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:>=1.0.0
     # Use semver strategy - pick the latest semver tag
     argocd-image-updater.argoproj.io/main.update-strategy: semver
-    argocd-image-updater.argoproj.io/main.semver-constraint: ">=1.0.0"
     # Write changes back to Git
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/git-branch: main
@@ -267,18 +267,19 @@ spec:
 
 ```yaml
 # Semver: picks latest matching semantic version
+argocd-image-updater.argoproj.io/image-list: >-
+  main=123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:~1.5
 argocd-image-updater.argoproj.io/main.update-strategy: semver
-argocd-image-updater.argoproj.io/main.semver-constraint: "~1.5"  # >=1.5.0, <1.6.0
 
-# Latest: picks the most recently pushed tag
-argocd-image-updater.argoproj.io/main.update-strategy: latest
+# Newest build: picks the tag with the most recent image creation date
+argocd-image-updater.argoproj.io/main.update-strategy: newest-build
 argocd-image-updater.argoproj.io/main.allow-tags: "regexp:^v[0-9]+\\.[0-9]+\\.[0-9]+$"
 
 # Digest: updates when the image at a tag is updated (e.g., latest)
 argocd-image-updater.argoproj.io/main.update-strategy: digest
 
-# Name: lexicographic sorting of tags
-argocd-image-updater.argoproj.io/main.update-strategy: name
+# Alphabetical: lexicographic sorting of tags
+argocd-image-updater.argoproj.io/main.update-strategy: alphabetical
 ```
 
 ## Cross-Account ECR Access
