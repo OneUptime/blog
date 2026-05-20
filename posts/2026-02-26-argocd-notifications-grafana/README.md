@@ -19,17 +19,17 @@ graph LR
     A[ArgoCD Sync] --> B[Webhook Notification]
     B --> C[Grafana Annotations API]
     C --> D[Annotation on Dashboard]
-    D --> E[Visible on All Panels]
+    D --> E[Visible Where Queried]
 ```
 
 ## Setting Up Grafana API Access
 
-First, create a Grafana API key or service account token:
+First, create a Grafana service account token:
 
-1. In Grafana, go to Configuration and then API keys (or Service accounts)
-2. Click "Add API key" or "Create service account"
+1. In Grafana, go to Administration and then Users and access > Service accounts
+2. Click "Add service account" or select an existing service account
 3. Set the role to "Editor" (needs permission to create annotations)
-4. Copy the generated token
+4. Click "Add service account token" and copy the generated token
 
 Store it in the ArgoCD notifications secret:
 
@@ -75,7 +75,7 @@ data:
           }
 ```
 
-This creates a global annotation visible on all dashboards.
+This creates an organization annotation that can be queried from any dashboard using Grafana's built-in annotations data source.
 
 ### Dashboard-Specific Annotation
 
@@ -166,7 +166,7 @@ Create annotations that span the duration of a sync operation:
           {
             "text": "Sync started: {{ .app.metadata.name }}",
             "tags": ["argocd", "sync-start", "{{ .app.metadata.name }}"],
-            "time": {{ .app.status.operationState.startedAt | toUnixMilli }}
+            "time": {{ (call .time.Parse .app.status.operationState.startedAt).UnixMilli }}
           }
 
   template.grafana-sync-end-annotation: |
@@ -177,8 +177,8 @@ Create annotations that span the duration of a sync operation:
           {
             "text": "Sync completed: {{ .app.metadata.name }} ({{ .app.status.operationState.phase }})",
             "tags": ["argocd", "sync-end", "{{ .app.metadata.name }}"],
-            "time": {{ .app.status.operationState.finishedAt | toUnixMilli }},
-            "timeEnd": {{ .app.status.operationState.finishedAt | toUnixMilli }}
+            "time": {{ (call .time.Parse .app.status.operationState.startedAt).UnixMilli }},
+            "timeEnd": {{ (call .time.Parse .app.status.operationState.finishedAt).UnixMilli }}
           }
 ```
 
@@ -186,12 +186,12 @@ Create annotations that span the duration of a sync operation:
 
 ```yaml
   trigger.on-deployed-grafana: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [grafana-success-annotation]
 
   trigger.on-sync-failed-grafana: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [grafana-failure-annotation]
 
   trigger.on-health-degraded-grafana: |
@@ -213,7 +213,7 @@ For all applications:
 ```yaml
   subscriptions: |
     - recipients:
-        - grafana:
+        - grafana
       triggers:
         - on-deployed-grafana
         - on-sync-failed-grafana
@@ -231,7 +231,7 @@ In your Grafana dashboard settings:
 5. Set the color based on the tag
 6. Enable "Show in" for the panels where you want annotations
 
-You can also configure annotations directly in panel JSON:
+You can also configure annotations directly in dashboard JSON:
 
 ```json
 {
@@ -290,7 +290,7 @@ curl https://grafana.example.com/api/annotations?tags=argocd \
 ```
 
 Common issues:
-- **403 Forbidden**: API key does not have Editor role
+- **403 Forbidden**: Service account token does not have sufficient role or permissions
 - **404 Not Found**: Grafana URL is wrong or annotations API is at a different path
 - **Dashboard annotations not showing**: Check that the annotation query is enabled on the dashboard
 
