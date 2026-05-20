@@ -163,6 +163,9 @@ patches:
       name: sensor-collector
     patch: |
       - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: "https://site-001.ingest.cloud.company.com"
+      - op: replace
         path: /spec/template/spec/containers/0/env/1/value
         value: "site-001"
       - op: replace
@@ -174,11 +177,11 @@ patches:
 
 When you update the data format or API contract between edge and cloud, you need to deploy the cloud changes first (since the cloud should be backwards-compatible) and then roll out the edge updates.
 
-Use sync waves across your ApplicationSets to enforce ordering.
+Use sync-wave annotations on the generated Application resources, and sync those Applications from a parent app-of-apps workflow, to enforce ordering. If the generated Applications are syncing independently with automated sync, use explicit promotion, sync windows, or manual sync steps so edge apps do not update before the cloud side is healthy.
 
 ```yaml
 # appset-coordinated-rollout.yaml
-# Cloud services deploy first (wave 0), edge follows (wave 1)
+# Cloud Application resources are wave 0, edge Application resources are wave 1
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -224,7 +227,7 @@ Some configurations need to be consistent between edge and cloud - TLS certifica
 
 ```yaml
 # shared/tls-config/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
+apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 configMapGenerator:
   - name: tls-config
@@ -294,7 +297,7 @@ spec:
 
 ## Monitoring Sync Status Across Tiers
 
-You need visibility into whether edge and cloud are running compatible versions. Create a monitoring setup that tracks version parity.
+You need visibility into whether edge and cloud applications are synced in ArgoCD. Create a monitoring setup that tracks sync status across tiers.
 
 ```yaml
 # PrometheusRule for version sync monitoring
@@ -306,8 +309,8 @@ spec:
   groups:
     - name: edge-cloud-sync
       rules:
-        # Alert when edge and cloud pipeline versions diverge
-        - alert: EdgeCloudVersionMismatch
+        # Alert when edge and cloud pipeline sync states diverge
+        - alert: EdgeCloudSyncStatusMismatch
           expr: |
             count(
               count by (sync_status) (
@@ -318,7 +321,7 @@ spec:
           labels:
             severity: warning
           annotations:
-            summary: "Edge and cloud data pipeline versions are out of sync"
+            summary: "Edge and cloud data pipeline sync states differ"
 
         # Track how many edge sites are fully synced
         - record: edge_sites_synced_ratio
