@@ -10,16 +10,16 @@ Description: Configure ArgoCD notifications to alert only on failed syncs and de
 
 Nobody wants to be bombarded with Slack messages every time a deployment succeeds. What you actually want is to know when something goes wrong. Configuring ArgoCD notifications to fire only on failed syncs keeps your alert channels useful and prevents notification fatigue.
 
-ArgoCD Notifications is a separate controller that watches Application resources and sends alerts based on configurable triggers. Let me show you how to set it up to notify only on failures.
+ArgoCD Notifications is a controller that watches Application resources and sends alerts based on configurable triggers. Let me show you how to set it up to notify only on failures.
 
 ## Installing ArgoCD Notifications
 
-If you installed ArgoCD via Helm, notifications might already be included. Otherwise, install it separately.
+If you installed ArgoCD via Helm or the official installation manifests, the notifications controller is typically already included. You can install the catalog triggers and templates separately.
 
 ```bash
-# Install ArgoCD Notifications
+# Install ArgoCD Notifications catalog triggers and templates
 
-kubectl apply -n argocd \
+kubectl apply -n argocd --server-side --force-conflicts \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/notifications_catalog/install.yaml
 ```
 
@@ -78,7 +78,7 @@ data:
 
   # Trigger: fires when a sync operation fails
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send:
         - sync-failed-message
 
@@ -88,7 +88,7 @@ data:
       send:
         - health-degraded-message
 
-  # Trigger: fires when sync status is Unknown (usually means an error)
+  # Trigger: fires when sync status is Unknown (Argo CD cannot determine the sync state)
   trigger.on-sync-status-unknown: |
     - when: app.status.sync.status == 'Unknown'
       send:
@@ -195,12 +195,12 @@ The format is `notifications.argoproj.io/subscribe.<trigger>.<service>: <channel
 
 ### Global Subscription via Default Triggers
 
-To apply failure notifications to all applications without adding annotations to each one, use default triggers.
+To avoid naming triggers in every subscription, use default triggers. To apply failure notifications to all applications without adding annotations to each one, use global subscriptions.
 
 ```yaml
 # In argocd-notifications-cm
 data:
-  # Default triggers applied to all applications
+  # Default triggers used when a subscription does not specify triggers
   defaultTriggers: |
     - on-sync-failed
     - on-health-degraded
@@ -216,16 +216,16 @@ data:
 
 ## Adding Microsoft Teams Notifications
 
-If your team uses Microsoft Teams instead of Slack, configure the Teams webhook.
+If your team uses Microsoft Teams instead of Slack, configure Teams Workflows. The older Office 365 Connectors service is retired.
 
 ```yaml
 data:
-  service.teams: |
+  service.teams-workflows: |
     recipientUrls:
-      deployments-channel: https://outlook.office.com/webhook/xxx
+      deployments-channel: https://api.powerautomate.com/webhook/xxx
 
   template.sync-failed-message: |
-    teams:
+    teams-workflows:
       title: "Sync Failed: {{.app.metadata.name}}"
       text: |
         Application **{{.app.metadata.name}}** sync operation failed.
@@ -289,13 +289,13 @@ You can create more sophisticated triggers that only fire under specific conditi
 data:
   # Only notify for production applications
   trigger.on-prod-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed'] && app.spec.destination.namespace in ['production', 'prod']
+    - when: app.status?.operationState.phase in ['Error', 'Failed'] && app.spec.destination.namespace in ['production', 'prod']
       send:
         - sync-failed-message
 
-  # Notify when an app has been OutOfSync for more than 10 minutes
+  # Notify when an app is OutOfSync and its last operation finished more than 10 minutes ago
   trigger.on-prolonged-outofsync: |
-    - when: app.status.sync.status == 'OutOfSync' && time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 10
+    - when: app.status.sync.status == 'OutOfSync' && app.status?.operationState.finishedAt != nil && time.Now().Sub(time.Parse(app.status.operationState.finishedAt)).Minutes() > 10
       send:
         - prolonged-outofsync-message
 ```
