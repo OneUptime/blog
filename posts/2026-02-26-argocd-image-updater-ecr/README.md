@@ -76,6 +76,7 @@ cat > trust-policy.json <<EOF
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
+          "$OIDC_PROVIDER:aud": "sts.amazonaws.com",
           "$OIDC_PROVIDER:sub": "system:serviceaccount:argocd:argocd-image-updater"
         }
       }
@@ -148,6 +149,14 @@ aws ecr get-login-password --region us-east-1 | \
   awk '{print "AWS:" $0}'
 ```
 
+Create the ConfigMap for the script:
+
+```bash
+kubectl create configmap ecr-login-script \
+  --from-file=ecr-login.sh \
+  -n argocd
+```
+
 Mount this script in the Image Updater deployment:
 
 ```yaml
@@ -167,9 +176,9 @@ spec:
             defaultMode: 0755
 ```
 
-### Alternative: Using ECR Credential Helper
+### Alternative: Using a Pull Secret
 
-A simpler approach uses the ECR credential helper:
+If you cannot mount a script, you can use a Kubernetes pull secret instead. The secret still needs to be refreshed before the ECR token expires, so the external script approach is usually better on EKS:
 
 ```yaml
 # argocd-image-updater-config ConfigMap
@@ -184,7 +193,7 @@ data:
       - name: ECR
         api_url: https://123456789012.dkr.ecr.us-east-1.amazonaws.com
         prefix: 123456789012.dkr.ecr.us-east-1.amazonaws.com
-        credentials: env:AWS_ECR_TOKEN
+        credentials: pullsecret:argocd/ecr-pull-secret
         credsexpire: 10h
 ```
 
@@ -200,9 +209,8 @@ metadata:
   namespace: argocd
   annotations:
     # Track an ECR image
-    argocd-image-updater.argoproj.io/image-list: myapp=123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp
+    argocd-image-updater.argoproj.io/image-list: "myapp=123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:>=1.0.0"
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.0.0"
     # Write back to Git
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/git-branch: main
@@ -222,7 +230,7 @@ spec:
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-[a-f0-9]{7}$"
   argocd-image-updater.argoproj.io/write-back-method: git
   argocd-image-updater.argoproj.io/write-back-target: "helmvalues:values.yaml"
