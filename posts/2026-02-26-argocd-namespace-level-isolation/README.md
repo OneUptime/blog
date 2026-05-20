@@ -135,9 +135,31 @@ kind: ConfigMap
 metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   # Allow applications in these namespaces
   application.namespaces: "team-alpha-*, team-beta-*"
+```
+
+Restart `argocd-server` and `argocd-application-controller` after changing this ConfigMap so the new startup parameter is applied.
+
+The AppProject must also allow those namespaces as Application source namespaces:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: team-alpha
+  namespace: argocd
+spec:
+  sourceNamespaces:
+    - "team-alpha-*"
+  sourceRepos:
+    - https://github.com/myorg/team-alpha-*
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: "team-alpha-*"
 ```
 
 Then teams can create Application resources in their own namespaces:
@@ -161,19 +183,17 @@ spec:
 
 This gives teams self-service capability while the AppProject still enforces where they can deploy.
 
-## Namespace-Scoped ArgoCD Installation
+## Limiting Application Source Namespaces
 
-For maximum isolation, you can run ArgoCD in namespace-scoped mode where it only watches specific namespaces instead of the entire cluster.
+For maximum isolation with applications in any namespace, keep the allowed Application source namespaces as narrow as possible. This feature requires a cluster-scoped ArgoCD installation; a namespace-scoped ArgoCD install uses `namespace-install.yaml` and only has namespace-level privileges.
 
 ```yaml
-# In the ArgoCD deployment
-
-env:
-  - name: ARGOCD_APPLICATION_NAMESPACES
-    value: "team-alpha-dev,team-alpha-staging,team-alpha-prod"
+# In both argocd-server and argocd-application-controller
+args:
+  - --application-namespaces=team-alpha-dev,team-alpha-staging,team-alpha-prod
 ```
 
-This is useful when you have strict compliance requirements or when running multiple ArgoCD instances for different organizational units.
+This is useful when you want teams to manage Application objects in their own namespaces without allowing every namespace in the cluster.
 
 ## Combining with RBAC
 
@@ -181,8 +201,8 @@ Namespace isolation in AppProjects must be paired with ArgoCD RBAC to prevent us
 
 ```csv
 # ArgoCD RBAC policy
-# Team Alpha can only manage applications in their project
-p, role:team-alpha, applications, *, team-alpha/*, allow
+# Team Alpha can only manage applications in their project and source namespaces
+p, role:team-alpha, applications, *, team-alpha/team-alpha-*/*, allow
 p, role:team-alpha, repositories, get, *, allow
 p, role:team-alpha, clusters, get, *, allow
 
@@ -241,9 +261,9 @@ Run this test for every project after changes to ensure no gaps exist.
 
 ## Monitoring Namespace Isolation
 
-Track isolation violations through ArgoCD metrics and alerts. The `argocd_app_sync_total` metric with a `phase=Error` label catches sync failures, including those caused by namespace restriction violations.
+Track isolation violations through ArgoCD metrics and alerts. Destination restriction problems are usually reported as application spec errors before a sync operation runs, so expose the `InvalidSpecError` application condition with `--metrics-application-conditions=InvalidSpecError` if you want Prometheus alerts for those violations. The `argocd_app_sync_total` metric with a `phase=Error` label is still useful for failed sync attempts.
 
-Set up alerts for unexpected sync failures:
+Set up alerts for invalid application specs:
 
 ```yaml
 # Prometheus alert rule
@@ -252,12 +272,12 @@ groups:
     rules:
       - alert: ArgoCDNamespaceViolation
         expr: |
-          increase(argocd_app_sync_total{phase="Error"}[5m]) > 0
+          argocd_app_condition{condition="InvalidSpecError"} == 1
         for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "ArgoCD sync error detected - possible namespace violation"
+          summary: "ArgoCD application spec error detected - possible namespace violation"
 ```
 
-Namespace-level isolation in ArgoCD provides the security boundary that multi-tenant clusters need. Teams work independently within their spaces, the platform team controls the boundaries, and every restriction is enforced automatically on every sync. Combined with [RBAC bootstrapping](https://oneuptime.com/blog/post/2026-02-26-argocd-bootstrap-rbac-configurations/view) and [network policies](https://oneuptime.com/blog/post/2026-02-26-argocd-bootstrap-network-policies/view), this creates a defense-in-depth approach to cluster multi-tenancy.
+Namespace-level isolation in ArgoCD provides the security boundary that multi-tenant clusters need. Teams work independently within their spaces, the platform team controls the boundaries, and every restriction is enforced automatically during reconciliation and sync. Combined with [RBAC bootstrapping](https://oneuptime.com/blog/post/2026-02-26-argocd-bootstrap-rbac-configurations/view) and [network policies](https://oneuptime.com/blog/post/2026-02-26-argocd-bootstrap-network-policies/view), this creates a defense-in-depth approach to cluster multi-tenancy.
