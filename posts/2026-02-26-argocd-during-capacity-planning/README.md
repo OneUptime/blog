@@ -25,7 +25,7 @@ graph TD
     A --> D[Manifest Complexity]
     B --> E[Application Controller Load]
     C --> E
-    C --> F[API Server Connections]
+    C --> F[Kubernetes API Connections]
     D --> G[Repo Server Load]
     D --> H[Redis Cache Size]
     E --> I[CPU + Memory Scaling]
@@ -45,7 +45,7 @@ kubectl top pods -n argocd
 
 # Resource requests and limits
 kubectl get pods -n argocd -o json | \
-  jq -r '.items[] | "\(.metadata.name)\t CPU-req: \(.spec.containers[0].resources.requests.cpu // "none")\t MEM-req: \(.spec.containers[0].resources.requests.memory // "none")\t CPU-limit: \(.spec.containers[0].resources.limits.cpu // "none")\t MEM-limit: \(.spec.containers[0].resources.limits.memory // "none")"'
+  jq -r '.items[] as $pod | $pod.spec.containers[] | "\($pod.metadata.name)/\(.name)\t CPU-req: \(.resources.requests.cpu // "none")\t MEM-req: \(.resources.requests.memory // "none")\t CPU-limit: \(.resources.limits.cpu // "none")\t MEM-limit: \(.resources.limits.memory // "none")"'
 
 # Current application count
 argocd app list -o json | jq length
@@ -67,8 +67,8 @@ container_memory_working_set_bytes{namespace="argocd", container="argocd-applica
 rate(container_cpu_usage_seconds_total{namespace="argocd", container="argocd-repo-server"}[5m])
 container_memory_working_set_bytes{namespace="argocd", container="argocd-repo-server"}
 
-# Redis memory usage
-redis_memory_used_bytes{namespace="argocd"}
+# Redis container memory usage
+container_memory_working_set_bytes{namespace="argocd", container="redis"}
 
 # Reconciliation queue depth (indicates if controller is keeping up)
 workqueue_depth{name="app_reconciliation_queue"}
@@ -220,11 +220,14 @@ For large environments, shard the application controller so different replicas h
 kubectl patch statefulset argocd-application-controller -n argocd \
   --type merge -p '{"spec":{"replicas":3}}'
 
-# Configure the shard count in the controller
+# Match the controller replica count used by sharding
+kubectl set env statefulset/argocd-application-controller -n argocd \
+  ARGOCD_CONTROLLER_REPLICAS=3
+
+# Configure the shard distribution algorithm
 kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
   "data": {
-    "controller.sharding.algorithm": "round-robin",
-    "controller.replicas": "3"
+    "controller.sharding.algorithm": "round-robin"
   }
 }'
 ```
@@ -267,13 +270,18 @@ For large environments, switch to Redis HA with Sentinel.
 Monitor Redis memory to prevent cache eviction.
 
 ```bash
-# Check Redis memory usage
-kubectl exec -n argocd deployment/argocd-redis -- redis-cli info memory | grep used_memory_human
+# Check Redis memory usage in the standard install
+kubectl exec -n argocd deployment/argocd-redis -- \
+  sh -c 'redis-cli -a "$REDIS_PASSWORD" info memory | grep used_memory_human'
+
+# Check Redis memory usage in the HA install
+kubectl exec -n argocd pod/argocd-redis-ha-server-0 -c redis -- \
+  sh -c 'redis-cli -a "$AUTH" info memory | grep used_memory_human'
 ```
 
 ## Tuning Reconciliation Frequency
 
-As the number of applications grows, the default 3-minute reconciliation interval may be too aggressive.
+As the number of applications grows, the default reconciliation polling window of 120 seconds plus up to 60 seconds of jitter may be too aggressive.
 
 ```yaml
 # Increase reconciliation interval for large environments
@@ -283,11 +291,12 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Increase from default 180s to 300s
+  # Increase from the default 120s to 300s
   timeout.reconciliation: "300s"
+  timeout.reconciliation.jitter: "60s"
 ```
 
-For applications that do not change frequently, set per-application reconciliation.
+For applications that do not change frequently, use webhooks with a longer global reconciliation interval, or narrow webhook-triggered refreshes with `argocd.argoproj.io/manifest-generate-paths`. The `argocd.argoproj.io/refresh` annotation only accepts `normal` or `hard` for a one-time refresh and is not a per-application interval.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -296,8 +305,8 @@ metadata:
   name: stable-infra
   namespace: argocd
   annotations:
-    # This application only reconciles every 10 minutes
-    argocd.argoproj.io/refresh: "600"
+    # Only refresh this application from webhooks when relevant paths change
+    argocd.argoproj.io/manifest-generate-paths: "."
 spec:
   # ...
 ```
