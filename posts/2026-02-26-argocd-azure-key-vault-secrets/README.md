@@ -100,7 +100,7 @@ az identity federated-credential create \
   --resource-group my-rg \
   --issuer $AKS_OIDC_ISSUER \
   --subject system:serviceaccount:external-secrets:external-secrets \
-  --audience api://AzureADTokenExchange
+  --audiences api://AzureADTokenExchange
 ```
 
 ## Installing External Secrets Operator
@@ -118,7 +118,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.10.0
+    targetRevision: 2.4.1
     helm:
       values: |
         installCRDs: true
@@ -143,7 +143,7 @@ spec:
 ## Creating the SecretStore
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-key-vault
@@ -190,7 +190,7 @@ az keyvault secret set \
 ### Individual Secrets
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -217,7 +217,7 @@ spec:
 ### JSON Secret with Property Extraction
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -247,7 +247,7 @@ spec:
 ### Extracting All Properties
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-all-secrets
@@ -278,7 +278,7 @@ az keyvault secret set \
 ```
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-tagged-secrets
@@ -303,7 +303,7 @@ Use different Key Vaults for different environments:
 
 ```yaml
 # Production ClusterSecretStore
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-kv-production
@@ -317,7 +317,7 @@ spec:
         namespace: external-secrets
 ---
 # Staging ClusterSecretStore
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-kv-staging
@@ -335,7 +335,7 @@ Use Kustomize overlays to point to the right store:
 
 ```yaml
 # overlays/prod/external-secret-patch.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -347,10 +347,10 @@ spec:
 
 ## Syncing Certificates from Key Vault
 
-Azure Key Vault also stores certificates. Sync them as Kubernetes TLS secrets:
+Azure Key Vault also stores certificates. Sync a PFX certificate as a Kubernetes TLS secret:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-tls
@@ -364,18 +364,14 @@ spec:
     name: app-tls
     template:
       type: kubernetes.io/tls
+      engineVersion: v2
       data:
-        tls.crt: "{{ .cert }}"
-        tls.key: "{{ .key }}"
+        tls.crt: "{{ .tls | b64dec | pkcs12cert }}"
+        tls.key: "{{ .tls | b64dec | pkcs12key }}"
   data:
-    - secretKey: cert
+    - secretKey: tls
       remoteRef:
-        key: my-app-tls-cert
-        property: cert
-    - secretKey: key
-      remoteRef:
-        key: my-app-tls-cert
-        property: key
+        key: secret/my-app-tls-cert
 ```
 
 ## Monitoring and Troubleshooting
