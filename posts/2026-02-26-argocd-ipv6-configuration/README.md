@@ -41,7 +41,7 @@ If your cluster uses kubeadm, the cluster configuration should include both IPv4
 
 ```yaml
 # kubeadm cluster config with dual-stack
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 networking:
   podSubnet: "10.244.0.0/16,fd00:10:244::/48"
@@ -121,26 +121,22 @@ If you are using the ArgoCD Helm chart, configure it in values:
 
 ```yaml
 # Helm values for dual-stack ArgoCD services
-server:
-  service:
+global:
+  dualStack:
     ipFamilyPolicy: PreferDualStack
     ipFamilies:
       - IPv6
       - IPv4
+
+server:
+  extraArgs:
+    - --address
+    - "::"
 
 repoServer:
-  service:
-    ipFamilyPolicy: PreferDualStack
-    ipFamilies:
-      - IPv6
-      - IPv4
-
-controller:
-  service:
-    ipFamilyPolicy: PreferDualStack
-    ipFamilies:
-      - IPv6
-      - IPv4
+  extraArgs:
+    - --address
+    - "::"
 ```
 
 ## Configuring ArgoCD Server to Listen on IPv6
@@ -159,14 +155,14 @@ spec:
     spec:
       containers:
         - name: argocd-server
-          command:
-            - argocd-server
+          args:
+            - /usr/local/bin/argocd-server
             # Listen on all interfaces (IPv4 and IPv6)
             - --address
             - "::"
 ```
 
-The `::` address tells the server to listen on all IPv6 addresses, which on most systems also includes IPv4 through IPv4-mapped IPv6 addresses.
+The `::` address tells the server to listen on all IPv6 addresses. Whether the same listener also accepts IPv4 through IPv4-mapped IPv6 addresses depends on the container's operating system and IPv6 socket settings, so verify both families in dual-stack clusters.
 
 ## DNS Configuration for IPv6
 
@@ -193,24 +189,17 @@ metadata:
 
 ## Configuring Ingress for IPv6
 
-NGINX Ingress Controller supports IPv6 natively. Ensure the controller is configured to listen on IPv6:
+ingress-nginx supports IPv6 listeners by default. Ensure IPv6 has not been disabled in the controller ConfigMap:
 
 ```yaml
-# NGINX Ingress Controller with IPv6 support
-apiVersion: apps/v1
-kind: Deployment
+# ingress-nginx ConfigMap with IPv6 listening enabled
+apiVersion: v1
+kind: ConfigMap
 metadata:
   name: ingress-nginx-controller
   namespace: ingress-nginx
-spec:
-  template:
-    spec:
-      containers:
-        - name: controller
-          args:
-            - /nginx-ingress-controller
-            # Enable IPv6 in NGINX
-            - --enable-ipv6
+data:
+  disable-ipv6: "false"
 ```
 
 The ingress resource itself does not need any IPv6-specific configuration:
@@ -250,9 +239,14 @@ When adding remote clusters to ArgoCD that use IPv6 addresses, you need to ensur
 ```bash
 # Add a remote cluster with an IPv6 API server address
 # Note: IPv6 addresses in URLs must be enclosed in square brackets
-argocd cluster add my-ipv6-cluster \
-  --server https://[2001:db8::1]:6443 \
-  --name production-ipv6
+kubectl config set-cluster my-ipv6-cluster \
+  --server=https://[2001:db8::1]:6443 \
+  --certificate-authority=/path/to/ca.crt
+kubectl config set-context my-ipv6-cluster \
+  --cluster=my-ipv6-cluster \
+  --user=my-ipv6-user
+
+argocd cluster add my-ipv6-cluster --name production-ipv6
 
 # List clusters to verify
 argocd cluster list
@@ -277,32 +271,21 @@ For clusters running only IPv6 (no dual-stack), all ArgoCD components must be co
 
 ```yaml
 # Helm values for IPv6-only ArgoCD deployment
-server:
-  service:
+global:
+  dualStack:
     ipFamilyPolicy: SingleStack
     ipFamilies:
       - IPv6
+
+server:
   extraArgs:
     - --address
     - "::"
 
 repoServer:
-  service:
-    ipFamilyPolicy: SingleStack
-    ipFamilies:
-      - IPv6
-
-controller:
-  service:
-    ipFamilyPolicy: SingleStack
-    ipFamilies:
-      - IPv6
-
-redis:
-  service:
-    ipFamilyPolicy: SingleStack
-    ipFamilies:
-      - IPv6
+  extraArgs:
+    - --address
+    - "::"
 ```
 
 Make sure Redis is also configured to bind to IPv6:
@@ -312,7 +295,7 @@ Make sure Redis is also configured to bind to IPv6:
 redis:
   extraArgs:
     - --bind
-    - "::1"
+    - "::"
     - --protected-mode
     - "no"
 ```
