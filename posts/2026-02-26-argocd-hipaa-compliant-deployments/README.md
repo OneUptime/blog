@@ -131,25 +131,26 @@ metadata:
   namespace: argocd
 spec:
   encryptedData:
-    accounts.emergency-admin.password: AgBy3...encrypted...
+    accounts.emergency-admin.password: AgBy3...encrypted-bcrypt-hash...
+    accounts.emergency-admin.passwordMtime: AgBy3...encrypted-rfc3339-time...
 ```
 
 Store the emergency credentials in a physical safe or a separate secrets manager with its own audit trail. Document the procedure for when and how to use the emergency account.
 
 ### Session Management
 
-Configure automatic session timeouts to meet the automatic logoff requirement.
+Configure a short Argo CD user session token duration and pair it with your identity provider's inactivity timeout to meet the automatic logoff requirement.
 
 ```yaml
-# argocd-cmd-params-cm.yaml
+# argocd-cm.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-cm
   namespace: argocd
 data:
-  # Session timeout - 15 minutes of inactivity
-  server.sessionDuration: "15m"
+  # User session token duration
+  users.session.duration: "15m"
 ```
 
 ## Audit Controls (164.312(b))
@@ -196,12 +197,15 @@ data:
     - when: app.spec.project == 'phi-project' and app.status.operationState.phase in ['Succeeded', 'Failed', 'Error']
       send: [hipaa-audit-event]
 
-  # Annotate PHI applications to receive audit notifications
-  defaultTriggers: |
-    - on-phi-sync
+  # Centrally subscribe the audit webhook to PHI sync events
+  subscriptions: |
+    - recipients:
+        - hipaa-audit
+      triggers:
+        - on-phi-sync
 ```
 
-Configure audit log retention for 6 years as required by HIPAA.
+Retain the audit events according to your HIPAA documentation and retention policy. HIPAA requires covered entities to retain required Security Rule documentation for 6 years, but operational audit-log retention periods should be defined in your risk management and compliance program.
 
 ## Integrity Controls (164.312(c))
 
@@ -212,42 +216,36 @@ Ensure that ePHI is not altered or destroyed in an unauthorized manner.
 Require signed commits on repositories that contain PHI application configurations.
 
 ```yaml
-# Pre-sync hook to verify commit signatures
-apiVersion: batch/v1
-kind: Job
+# Add trusted GnuPG public keys to Argo CD
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: verify-commit-signature
-  annotations:
-    argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+  name: argocd-gpg-keys-cm
+  namespace: argocd
+data:
+  D56C4FCA57A46444: |
+    -----BEGIN PGP PUBLIC KEY BLOCK-----
+    ... trusted signer public key ...
+    -----END PGP PUBLIC KEY BLOCK-----
+---
+# Enforce signed Git sources in the PHI project
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: phi-project
+  namespace: argocd
 spec:
-  template:
-    spec:
-      containers:
-        - name: verifier
-          image: bitnami/git:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              # Clone the repo and verify the commit signature
-              git clone "$REPO_URL" /tmp/repo
-              cd /tmp/repo
-              git checkout "$REVISION"
-
-              # Verify GPG signature
-              if ! git verify-commit HEAD 2>/dev/null; then
-                echo "ERROR: Commit $REVISION is not signed. HIPAA compliance requires signed commits."
-                exit 1
-              fi
-
-              echo "Commit signature verified successfully"
-          env:
-            - name: REPO_URL
-              value: "https://github.com/myorg/phi-gitops.git"
-            - name: REVISION
-              value: "{{.app.status.operationState.syncResult.revision}}"
-      restartPolicy: Never
+  sourceRepos:
+    - https://github.com/myorg/phi-gitops.git
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: "https://github.com/myorg/phi-gitops.git"
+          gpg:
+            mode: "head"
+            keys:
+              - "D56C4FCA57A46444"
 ```
 
 ### Image Integrity Verification
@@ -286,7 +284,7 @@ spec:
 
 ## Transmission Security (164.312(e))
 
-All data in transit must be encrypted.
+HIPAA transmission security requires technical measures to guard against unauthorized access to ePHI transmitted over electronic networks. Encryption is an addressable implementation specification; for PHI deployment pipelines, treat TLS as the baseline unless your documented risk analysis justifies an equivalent control.
 
 ```yaml
 # ArgoCD TLS configuration
@@ -298,13 +296,15 @@ metadata:
 data:
   # Force TLS for all connections
   server.insecure: "false"
-  # Configure TLS for repo server communication
-  reposerver.tls.enabled: "true"
-  # Redis TLS
-  redis.tls.enabled: "true"
+  # Keep Argo CD component communication with repo-server on TLS
+  controller.repo.server.plaintext: "false"
+  server.repo.server.plaintext: "false"
+  notificationscontroller.repo.server.plaintext: "false"
+  # Keep the repo-server gRPC endpoint on TLS
+  reposerver.disable.tls: "false"
 ```
 
-Ensure your ArgoCD installation uses TLS for all internal communication between components.
+Ensure your ArgoCD installation uses TLS for all internal communication between components. Redis connections use plaintext by default, so enable Redis TLS with the Argo CD `--redis-use-tls` and, where applicable, `--repo-server-redis-use-tls` command-line options or the equivalent settings in your installation method.
 
 ```yaml
 # ingress-tls.yaml
@@ -352,6 +352,15 @@ spec:
   description: HIPAA-compliant PHI applications
   sourceRepos:
     - https://github.com/myorg/phi-gitops.git
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: "https://github.com/myorg/phi-gitops.git"
+          gpg:
+            mode: "head"
+            keys:
+              - "D56C4FCA57A46444"
   destinations:
     - namespace: "phi-*"
       server: https://phi-cluster.myorg.com
@@ -377,4 +386,4 @@ spec:
 
 ## Conclusion
 
-HIPAA-compliant deployments with ArgoCD require attention to five key areas: unique user identification through SSO, comprehensive audit logging with 6-year retention, integrity verification through signed commits and images, encryption for all data in transit, and strict access controls through RBAC and project isolation. The GitOps model actually makes HIPAA compliance easier because every change is version-controlled and auditable by default. The main work is configuring the additional controls around authentication, encryption, and audit log forwarding. Once set up, your deployment pipeline becomes a compliance asset rather than a liability.
+HIPAA-compliant deployments with ArgoCD require attention to five key areas: unique user identification through SSO, comprehensive audit logging with policy-driven retention, integrity verification through signed commits and images, transmission protection with TLS or equivalent documented controls, and strict access controls through RBAC and project isolation. The GitOps model actually makes HIPAA compliance easier because every change is version-controlled and auditable by default. The main work is configuring the additional controls around authentication, encryption, and audit log forwarding. Once set up, your deployment pipeline becomes a compliance asset rather than a liability.
