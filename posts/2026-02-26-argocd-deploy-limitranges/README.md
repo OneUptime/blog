@@ -285,7 +285,7 @@ spec:
         memory: 8Gi
 ```
 
-Important: When a ResourceQuota is present, every container must have resource requests and limits. The LimitRange's default values satisfy this requirement automatically.
+Important: When a ResourceQuota includes CPU or memory request/limit quotas, every container must specify the corresponding resource requests or limits. The LimitRange's default values satisfy this requirement automatically.
 
 ## Common LimitRange Scenarios
 
