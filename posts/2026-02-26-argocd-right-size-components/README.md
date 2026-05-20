@@ -34,10 +34,12 @@ flowchart TD
 
 Based on deployment experience across different organizations, here are recommended sizing tiers.
 
+The YAML snippets below are strategic merge patches for the standard ArgoCD manifests, not complete standalone Kubernetes resources.
+
 ### Small (up to 50 applications, 1-2 clusters)
 
 ```yaml
-# small-installation.yaml
+# small-installation-patch.yaml
 
 apiVersion: apps/v1
 kind: Deployment
@@ -58,7 +60,7 @@ spec:
               memory: "512Mi"
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
 spec:
@@ -118,7 +120,7 @@ spec:
 ### Medium (50 to 300 applications, 3-10 clusters)
 
 ```yaml
-# medium-installation.yaml
+# medium-installation-patch.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -138,7 +140,7 @@ spec:
               memory: "1Gi"
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
 spec:
@@ -198,7 +200,7 @@ spec:
 ### Large (300 to 1000+ applications, 10+ clusters)
 
 ```yaml
-# large-installation.yaml
+# large-installation-patch.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -260,7 +262,7 @@ spec:
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: argocd-redis-ha
+  name: argocd-redis-ha-server
 spec:
   replicas: 3
   template:
@@ -297,6 +299,11 @@ Helm chart rendering is more CPU-intensive than Kustomize or plain YAML. If you 
 
 ```yaml
 # Tune repo server for Helm-heavy workloads
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
 data:
   reposerver.parallelism.limit: "3"  # Limit concurrent Helm renders
 ```
@@ -319,7 +326,7 @@ metadata:
 spec:
   targetRef:
     apiVersion: apps/v1
-    kind: Deployment
+    kind: StatefulSet
     name: argocd-application-controller
   updatePolicy:
     updateMode: "Off"  # Recommendation only
@@ -382,17 +389,23 @@ Track these metrics to make informed sizing decisions.
 # Check current resource usage
 kubectl top pods -n argocd
 
-# Check controller queue depth (indicates if controller is keeping up)
-kubectl exec -n argocd deploy/argocd-application-controller -- \
-  curl -s localhost:8082/metrics | grep argocd_app_reconcile
+# Check controller reconciliation duration
+kubectl port-forward -n argocd svc/argocd-metrics 8082:8082 &
+PF_PID=$!
+sleep 2
+curl -s localhost:8082/metrics | grep argocd_app_reconcile
+kill "$PF_PID"
 
-# Check repo server request latency
-kubectl exec -n argocd deploy/argocd-repo-server -- \
-  curl -s localhost:8084/metrics | grep argocd_git_request_duration
+# Check repo server Git request latency
+kubectl port-forward -n argocd svc/argocd-repo-server 8084:8084 &
+PF_PID=$!
+sleep 2
+curl -s localhost:8084/metrics | grep argocd_git_request_duration_seconds
+kill "$PF_PID"
 ```
 
-High queue depth on the controller means it cannot keep up with reconciliation - add more replicas or increase CPU. High repo server latency means manifest generation is slow - add more replicas or increase CPU.
+High controller reconciliation duration means it cannot keep up with reconciliation - add more replicas or increase CPU. High repo server Git request latency means Git access is slow - add more replicas or increase CPU if the repo server is CPU-bound.
 
 ## Conclusion
 
-Right-sizing ArgoCD is not a one-time exercise. As your application count grows and usage patterns change, revisit your sizing. Start with the tier closest to your current scale, deploy VPA in recommendation mode to collect real usage data, and adjust from there. The key metrics to watch are controller memory usage, controller queue depth, repo server latency, and API server response time. When any of these start degrading, it is time to scale up the affected component.
+Right-sizing ArgoCD is not a one-time exercise. As your application count grows and usage patterns change, revisit your sizing. Start with the tier closest to your current scale, deploy VPA in recommendation mode to collect real usage data, and adjust from there. The key metrics to watch are controller memory usage, controller reconciliation duration, repo server latency, and API server response time. When any of these start degrading, it is time to scale up the affected component.
