@@ -12,7 +12,7 @@ BorgBackup (Borg) is a deduplicating backup program with optional compression an
 
 ## Installing BorgBackup
 
-Borg is available in the Ubuntu repositories, though the version there may be older. Installing from the official PPA gives you the latest stable release:
+Borg is available in the Ubuntu repositories, though the version there may be older. Installing from Ubuntu repositories is the simplest option:
 
 ```bash
 # Install from Ubuntu repositories (simpler, slightly older)
@@ -27,10 +27,13 @@ borg --version
 For the latest version, use pip in a virtual environment:
 
 ```bash
-sudo apt install python3-pip python3-venv
-python3 -m venv /opt/borg-env
-/opt/borg-env/bin/pip install borgbackup
-ln -s /opt/borg-env/bin/borg /usr/local/bin/borg
+sudo apt install python3 python3-dev python3-pip python3-venv \
+  libacl1-dev libssl-dev liblz4-dev libzstd-dev libxxhash-dev \
+  build-essential pkg-config fuse3 libfuse3-dev
+sudo python3 -m venv /opt/borg-env
+sudo /opt/borg-env/bin/pip install -U pip setuptools wheel
+sudo /opt/borg-env/bin/pip install 'borgbackup[pyfuse3]'
+sudo ln -s /opt/borg-env/bin/borg /usr/local/bin/borg
 ```
 
 ## Initializing a Borg Repository
@@ -130,6 +133,7 @@ cp /tmp/borg-mount/etc/nginx/nginx.conf /etc/nginx/nginx.conf
 borg umount /tmp/borg-mount
 
 # Extract an entire archive to current directory
+mkdir -p /tmp/restore
 cd /tmp/restore
 borg extract /mnt/backup/borg-repo::myserver-2026-03-02T14:30:00
 
@@ -145,8 +149,9 @@ Without pruning, archives accumulate forever. Borg's `prune` command removes old
 # Keep: 7 daily, 4 weekly, 6 monthly backups
 # --dry-run shows what would be deleted without actually deleting
 borg prune \
+  --dry-run \
   --list \
-  --prefix '{hostname}-' \
+  --glob-archives '{hostname}-*' \
   --show-rc \
   --keep-daily 7 \
   --keep-weekly 4 \
@@ -156,7 +161,7 @@ borg prune \
 # Run without --dry-run to actually prune
 borg prune \
   --list \
-  --prefix '{hostname}-' \
+  --glob-archives '{hostname}-*' \
   --keep-daily 7 \
   --keep-weekly 4 \
   --keep-monthly 6 \
@@ -214,7 +219,7 @@ log "Archive creation finished, starting prune"
 # Prune old archives
 borg prune \
     --list \
-    --prefix "$(hostname)-" \
+    --glob-archives "$(hostname)-*" \
     --show-rc \
     --keep-daily 7 \
     --keep-weekly 4 \
