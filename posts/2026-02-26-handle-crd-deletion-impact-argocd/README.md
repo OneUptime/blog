@@ -18,11 +18,10 @@ Here is what happens in sequence:
 
 ```mermaid
 graph TD
-    A[CRD deleted from cluster] --> B[API server removes type registration]
-    B --> C[Garbage collector finds orphaned resources]
-    C --> D[All CRs of that type are deleted]
-    D --> E[Finalizers on CRs are processed]
-    E --> F[Associated resources like PVCs may also be deleted]
+    A[CRD deleted from cluster] --> B[API server uninstalls the REST endpoint]
+    B --> C[Stored custom objects for that CRD are deleted]
+    C --> D[Finalizers on CRs may delay deletion]
+    D --> E[Associated resources like PVCs may also be deleted]
 ```
 
 This is especially dangerous with ArgoCD because automated pruning can delete CRDs without human intervention.
@@ -162,7 +161,7 @@ Key settings for CRD Applications:
 
 Many CRDs come from operators (cert-manager, Istio, Prometheus Operator). These operators often manage their own CRD lifecycle. When using ArgoCD to deploy operators, be careful about CRD ownership.
 
-Helm charts commonly put CRDs in the `crds/` directory. ArgoCD handles Helm CRDs with `--skip-crds` by default in some configurations. Check your setup:
+Helm charts commonly put CRDs in the `crds/` directory. Helm installs CRDs from that directory on first install, but does not upgrade or delete those CRDs later. ArgoCD can include those CRDs when it renders the Helm chart, or you can skip them with `skipCrds: true`. Check your setup:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -177,16 +176,16 @@ spec:
     helm:
       parameters:
         - name: installCRDs
-          value: "true"  # Let Helm manage CRDs
+          value: "true"  # Include cert-manager CRDs for this chart version
 ```
 
-If you let Helm manage CRDs through the chart, ArgoCD tracks them as part of the Application. If you use the `crds/` directory approach, Helm only installs CRDs on first install and never updates or deletes them.
+If the rendered chart includes CRDs, ArgoCD tracks them as part of the Application. If you use Helm's `crds/` directory behavior outside ArgoCD, Helm only installs CRDs on first install and never updates or deletes them.
 
 ## Recovery After Accidental CRD Deletion
 
 If a CRD does get deleted, here is your recovery path:
 
-1. **Immediately recreate the CRD** - Apply the CRD manifest directly with kubectl to stop further damage.
+1. **Immediately recreate the CRD** - Apply the CRD manifest directly with kubectl so the API endpoint exists again. Recreating the CRD does not restore deleted custom resources by itself.
 
 ```bash
 kubectl apply -f crd-definition.yaml
@@ -199,7 +198,7 @@ velero restore create --from-backup daily-backup \
   --include-resources certificates.cert-manager.io
 ```
 
-3. **If no backup exists** - Check if the resources are still in etcd. If the API server has not compacted yet, you might be able to recover using etcdctl.
+3. **If no Kubernetes backup exists** - Restore from an etcd snapshot if you have one. Direct recovery from live etcd is a last-resort operation and should only be attempted by cluster administrators who understand the risks.
 
 4. **Sync with ArgoCD** - Once the CRD is back, trigger an ArgoCD sync to recreate custom resources from Git.
 
@@ -219,8 +218,8 @@ metadata:
   namespace: argocd
 data:
   trigger.on-crd-change: |
-    - when: app.status.operationState.phase in ['Succeeded'] and
-            app.status.resources[*].kind == 'CustomResourceDefinition'
+    - when: app.status?.operationState.phase in ['Succeeded'] and
+            any(app.status?.operationState.syncResult.resources, {.kind == 'CustomResourceDefinition'})
       send: [slack-crd-alert]
   template.slack-crd-alert: |
     message: |
