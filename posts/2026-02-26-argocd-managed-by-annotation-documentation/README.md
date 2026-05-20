@@ -1,14 +1,14 @@
-# How to Use Managed By Annotation for Documentation
+# How to Use Argo CD Link Annotations for Documentation
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Annotation, Documentation
 
-Description: Learn how to use the ArgoCD managed-by annotation as a documentation bridge, linking resources to runbooks, architecture docs, and team wikis.
+Description: Learn how to use Argo CD link annotations as a documentation bridge, linking resources to runbooks, architecture docs, and team wikis.
 
 ---
 
-Documentation is most useful when it is discoverable at the point of need. When an on-call engineer is investigating a failing deployment at 2 AM, they should not have to search through Confluence, Google Docs, and Notion to find the relevant runbook. The ArgoCD managed-by annotation creates a direct link from the resource in question to its documentation, making critical information accessible in a single click from the ArgoCD UI.
+Documentation is most useful when it is discoverable at the point of need. When an on-call engineer is investigating a failing deployment at 2 AM, they should not have to search through Confluence, Google Docs, and Notion to find the relevant runbook. Argo CD link annotations create a direct link from the resource in question to its documentation, making critical information accessible in a single click from the ArgoCD UI.
 
 ## The Documentation Problem
 
@@ -23,11 +23,11 @@ graph TD
     B --> F[README in repo?]
     B --> G[Google Docs?]
 
-    H[With managed-by annotation] --> I[Click link in ArgoCD UI]
+    H[With link annotation] --> I[Click link in ArgoCD UI]
     I --> J[Go directly to the right doc]
 ```
 
-The managed-by annotation solves this by embedding the documentation URL directly on the resource.
+Link annotations solve this by embedding the documentation URL directly on the resource.
 
 ## Linking to Runbooks
 
@@ -41,7 +41,7 @@ metadata:
   namespace: production
   annotations:
     # Link directly to the runbook for this service
-    argocd.argoproj.io/managed-by: "https://runbooks.internal.company/services/payment-gateway"
+    link.argocd.argoproj.io/documentation: "https://runbooks.internal.company/services/payment-gateway"
 spec:
   replicas: 3
   selector:
@@ -61,7 +61,7 @@ For services with multiple runbooks, link to the index page:
 
 ```yaml
 annotations:
-  argocd.argoproj.io/managed-by: "https://runbooks.internal.company/services/payment-gateway/index"
+  link.argocd.argoproj.io/documentation: "https://runbooks.internal.company/services/payment-gateway/index"
 ```
 
 ## Linking to Architecture Documentation
@@ -76,7 +76,7 @@ kind: StatefulSet
 metadata:
   name: postgres-primary
   annotations:
-    argocd.argoproj.io/managed-by: "https://wiki.internal.company/architecture/data-layer/postgres"
+    link.argocd.argoproj.io/documentation: "https://wiki.internal.company/architecture/data-layer/postgres"
 ---
 # Message queue - link to async architecture docs
 apiVersion: apps/v1
@@ -84,7 +84,7 @@ kind: StatefulSet
 metadata:
   name: rabbitmq
   annotations:
-    argocd.argoproj.io/managed-by: "https://wiki.internal.company/architecture/messaging/rabbitmq"
+    link.argocd.argoproj.io/documentation: "https://wiki.internal.company/architecture/messaging/rabbitmq"
 ---
 # API gateway - link to networking architecture
 apiVersion: apps/v1
@@ -92,7 +92,7 @@ kind: Deployment
 metadata:
   name: api-gateway
   annotations:
-    argocd.argoproj.io/managed-by: "https://wiki.internal.company/architecture/networking/api-gateway"
+    link.argocd.argoproj.io/documentation: "https://wiki.internal.company/architecture/networking/api-gateway"
 ```
 
 ## Linking to Team Ownership
@@ -108,20 +108,20 @@ metadata:
     team: identity
   annotations:
     # Link to the team's service catalog page
-    argocd.argoproj.io/managed-by: "https://backstage.internal.company/catalog/default/component/user-service"
+    link.argocd.argoproj.io/documentation: "https://backstage.internal.company/catalog/default/component/user-service"
 ```
 
 If you use Backstage, OpsLevel, or Cortex as your service catalog:
 
 ```yaml
 # Backstage
-argocd.argoproj.io/managed-by: "https://backstage.example.com/catalog/default/component/my-service"
+link.argocd.argoproj.io/documentation: "https://backstage.example.com/catalog/default/component/my-service"
 
 # OpsLevel
-argocd.argoproj.io/managed-by: "https://app.opslevel.com/services/my-service"
+link.argocd.argoproj.io/documentation: "https://app.opslevel.com/services/my-service"
 
 # Cortex
-argocd.argoproj.io/managed-by: "https://app.cortex.io/catalog/my-service"
+link.argocd.argoproj.io/documentation: "https://app.cortex.io/catalog/my-service"
 ```
 
 ## Creating a Documentation Convention
@@ -142,7 +142,7 @@ Establish a standard pattern for your organization. Here is an example conventio
 
 ### Implementation with Kustomize
 
-Enforce the convention through Kustomize patches:
+Enforce the convention through Kustomize patches. This example assumes the target resources already have a `metadata.annotations` map:
 
 ```yaml
 # kustomization.yaml
@@ -160,7 +160,7 @@ patches:
       kind: Deployment
     patch: |
       - op: add
-        path: /metadata/annotations/argocd.argoproj.io~1managed-by
+        path: /metadata/annotations/link.argocd.argoproj.io~1documentation
         value: "https://runbooks.internal.company/services/REPLACE_WITH_NAME"
 
   # All StatefulSets link to data docs
@@ -168,13 +168,13 @@ patches:
       kind: StatefulSet
     patch: |
       - op: add
-        path: /metadata/annotations/argocd.argoproj.io~1managed-by
+        path: /metadata/annotations/link.argocd.argoproj.io~1documentation
         value: "https://wiki.internal.company/data/REPLACE_WITH_NAME"
 ```
 
 ## Using Deep Links for Multiple Documentation Types
 
-When a resource needs links to multiple types of documentation, combine managed-by with ArgoCD deep links:
+When a resource needs links to multiple types of documentation, combine link annotations with ArgoCD deep links:
 
 ```yaml
 apiVersion: v1
@@ -184,26 +184,26 @@ metadata:
   namespace: argocd
 data:
   resource.links: |
-    - url: "https://runbooks.internal.company/services/{{.Name}}"
+    - url: "https://runbooks.internal.company/services/{{.resource.metadata.name}}"
       title: Service Runbook
       description: Operational runbook for this service
-      icon: book
-      if: kind == "Deployment"
-    - url: "https://wiki.internal.company/architecture/services/{{.Name}}"
+      icon.class: "fa-book"
+      if: resource.kind == "Deployment"
+    - url: "https://wiki.internal.company/architecture/services/{{.resource.metadata.name}}"
       title: Architecture Docs
       description: Architecture documentation
-      icon: file-text
-      if: kind == "Deployment"
-    - url: "https://github.com/myorg/{{.Name}}/blob/main/README.md"
+      icon.class: "fa-file-text"
+      if: resource.kind == "Deployment"
+    - url: "https://github.com/myorg/{{.resource.metadata.name}}/blob/main/README.md"
       title: README
       description: Service README
-      icon: github
-      if: kind == "Deployment"
-    - url: "https://wiki.internal.company/slo/{{.Namespace}}/{{.Name}}"
+      icon.class: "fa-github"
+      if: resource.kind == "Deployment"
+    - url: "https://wiki.internal.company/slo/{{.resource.metadata.namespace}}/{{.resource.metadata.name}}"
       title: SLO Dashboard
       description: Service Level Objectives
-      icon: activity
-      if: kind == "Deployment"
+      icon.class: "fa-line-chart"
+      if: resource.kind == "Deployment"
 ```
 
 This gives each Deployment four documentation links in the ArgoCD UI.
@@ -231,11 +231,11 @@ for DEPLOY in $(kubectl get deployments -n "$NAMESPACE" -o name); do
   if [ "$HTTP_STATUS" = "200" ]; then
     echo "  $NAME -> $DOC_URL (page exists)"
     kubectl annotate "$DEPLOY" -n "$NAMESPACE" \
-      "argocd.argoproj.io/managed-by=$DOC_URL" --overwrite
+      "link.argocd.argoproj.io/documentation=$DOC_URL" --overwrite
   else
     echo "  $NAME -> $DOC_URL (page not found - $HTTP_STATUS, creating placeholder)"
     kubectl annotate "$DEPLOY" -n "$NAMESPACE" \
-      "argocd.argoproj.io/managed-by=$DOC_BASE/create?service=$NAME" --overwrite
+      "link.argocd.argoproj.io/documentation=$DOC_BASE/create?service=$NAME" --overwrite
   fi
 done
 ```
@@ -246,16 +246,16 @@ Enforce documentation links at commit time:
 
 ```bash
 #!/bin/bash
-# .git/hooks/pre-commit - Check that all Deployments have managed-by annotations
+# .git/hooks/pre-commit - Check that all Deployments have link annotations
 
 ERRORS=0
 
 for file in $(git diff --cached --name-only --diff-filter=ACM | grep -E '\.ya?ml$'); do
   # Check if file contains a Deployment
   if grep -q "kind: Deployment" "$file"; then
-    # Check for managed-by annotation
-    if ! grep -q "argocd.argoproj.io/managed-by" "$file"; then
-      echo "ERROR: $file contains a Deployment without argocd.argoproj.io/managed-by annotation"
+    # Check for link annotation
+    if ! grep -q "link.argocd.argoproj.io/documentation" "$file"; then
+      echo "ERROR: $file contains a Deployment without link.argocd.argoproj.io/documentation annotation"
       ERRORS=$((ERRORS + 1))
     fi
   fi
@@ -263,7 +263,7 @@ done
 
 if [ $ERRORS -gt 0 ]; then
   echo ""
-  echo "All Deployments must have an argocd.argoproj.io/managed-by annotation"
+  echo "All Deployments must have a link.argocd.argoproj.io/documentation annotation"
   echo "linking to their documentation."
   exit 1
 fi
@@ -281,9 +281,13 @@ NAMESPACE="${1:-production}"
 
 TOTAL=$(kubectl get deployments -n "$NAMESPACE" --no-headers | wc -l | tr -d ' ')
 WITH_DOCS=$(kubectl get deployments -n "$NAMESPACE" -o json | \
-  jq '[.items[] | select(.metadata.annotations["argocd.argoproj.io/managed-by"] != null)] | length')
+  jq '[.items[] | select(.metadata.annotations["link.argocd.argoproj.io/documentation"] != null)] | length')
 
-COVERAGE=$((WITH_DOCS * 100 / TOTAL))
+if [ "$TOTAL" -eq 0 ]; then
+  COVERAGE=0
+else
+  COVERAGE=$((WITH_DOCS * 100 / TOTAL))
+fi
 
 echo "Documentation Coverage for $NAMESPACE"
 echo "  Total Deployments: $TOTAL"
@@ -294,7 +298,7 @@ if [ $COVERAGE -lt 80 ]; then
   echo ""
   echo "Missing documentation links:"
   kubectl get deployments -n "$NAMESPACE" -o json | \
-    jq -r '.items[] | select(.metadata.annotations["argocd.argoproj.io/managed-by"] == null) |
+    jq -r '.items[] | select(.metadata.annotations["link.argocd.argoproj.io/documentation"] == null) |
       "  - \(.metadata.name)"'
 fi
 ```
@@ -312,17 +316,18 @@ BROKEN=0
 
 echo "Validating documentation links in $NAMESPACE..."
 
-kubectl get all -n "$NAMESPACE" -o json | \
+while read -r RESOURCE URL; do
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$URL" 2>/dev/null)
+  if [ "$STATUS" != "200" ] && [ "$STATUS" != "301" ] && [ "$STATUS" != "302" ]; then
+    echo "  BROKEN: $RESOURCE -> $URL (HTTP $STATUS)"
+    BROKEN=$((BROKEN + 1))
+  fi
+done < <(
+  kubectl get all -n "$NAMESPACE" -o json | \
   jq -r '.items[] |
-    select(.metadata.annotations["argocd.argoproj.io/managed-by"] != null) |
-    "\(.kind)/\(.metadata.name) \(.metadata.annotations["argocd.argoproj.io/managed-by"])"' | \
-  while read -r RESOURCE URL; do
-    STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "$URL" 2>/dev/null)
-    if [ "$STATUS" != "200" ] && [ "$STATUS" != "301" ] && [ "$STATUS" != "302" ]; then
-      echo "  BROKEN: $RESOURCE -> $URL (HTTP $STATUS)"
-      BROKEN=$((BROKEN + 1))
-    fi
-  done
+    select(.metadata.annotations["link.argocd.argoproj.io/documentation"] != null) |
+    "\(.kind)/\(.metadata.name) \(.metadata.annotations["link.argocd.argoproj.io/documentation"])"'
+)
 
 if [ $BROKEN -gt 0 ]; then
   echo ""
@@ -330,4 +335,4 @@ if [ $BROKEN -gt 0 ]; then
 fi
 ```
 
-Using the managed-by annotation as a documentation bridge transforms ArgoCD from a deployment tool into a knowledge hub. Every resource becomes a starting point for understanding not just what is deployed, but why it exists, how it works, and what to do when it breaks. Start with runbook links for your most critical services, then expand coverage across your entire infrastructure.
+Using link annotations as a documentation bridge transforms ArgoCD from a deployment tool into a knowledge hub. Every resource becomes a starting point for understanding not just what is deployed, but why it exists, how it works, and what to do when it breaks. Start with runbook links for your most critical services, then expand coverage across your entire infrastructure.
