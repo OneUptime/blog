@@ -14,7 +14,7 @@ This guide covers how to integrate these two tools for production-grade progress
 
 ## Why Argo Rollouts with ArgoCD
 
-A regular Kubernetes Deployment has one strategy: rolling update. It replaces pods gradually, but you cannot control what percentage of traffic goes to the new version, and you cannot automatically roll back based on error rates or latency metrics.
+A regular Kubernetes Deployment usually uses the default rolling update strategy. It replaces pods gradually, but you cannot control what percentage of traffic goes to the new version, and you cannot automatically roll back based on error rates or latency metrics.
 
 Argo Rollouts replaces the Deployment resource with a Rollout resource that supports:
 
@@ -114,11 +114,11 @@ spec:
           stableIngress: myapp-ingress
 ```
 
-The only changes are the `apiVersion`, `kind`, and the addition of the `strategy` section. Your pod template stays exactly the same.
+The core changes are the `apiVersion`, `kind`, and the addition of the `strategy` section. Your pod template stays exactly the same. When you use traffic routing, the referenced stable and canary Services and the NGINX Ingress also need to exist and point to the expected backends.
 
 ## Configuring ArgoCD for Argo Rollouts
 
-ArgoCD needs to know about the Rollout CRD to display health status correctly. The good news is that ArgoCD has built-in support for Argo Rollouts since version 2.0. It automatically recognizes Rollout resources and shows their health status.
+ArgoCD needs the Rollout CRD installed in the destination cluster before it can sync Rollout resources. The good news is that ArgoCD has built-in health support for Argo Rollouts since version 2.0. It automatically recognizes Rollout resources and shows their health status.
 
 Create an ArgoCD Application that manages your Rollout:
 
@@ -253,31 +253,7 @@ If the success rate drops below 95% or p99 latency exceeds 500ms during any step
 
 There is an important interaction between ArgoCD's sync and Argo Rollouts. When ArgoCD syncs a Rollout with a new image tag, it updates the Rollout spec, which triggers the progressive delivery process. ArgoCD shows the application as "Progressing" until the rollout completes.
 
-Configure ArgoCD to respect the rollout process:
-
-```yaml
-# In argocd-cm ConfigMap
-data:
-  # Tell ArgoCD not to diff on rollout status fields
-  resource.customizations.health.argoproj.io_Rollout: |
-    hs = {}
-    if obj.status ~= nil then
-      if obj.status.phase == "Healthy" then
-        hs.status = "Healthy"
-        hs.message = "Rollout is healthy"
-      elseif obj.status.phase == "Paused" then
-        hs.status = "Suspended"
-        hs.message = "Rollout is paused"
-      elseif obj.status.phase == "Degraded" then
-        hs.status = "Degraded"
-        hs.message = "Rollout is degraded"
-      else
-        hs.status = "Progressing"
-        hs.message = "Rollout is progressing"
-      end
-    end
-    return hs
-```
+In most ArgoCD 2.x installations, you do not need a custom `argocd-cm` entry for Rollout health. If you run an older ArgoCD version or a distribution without the bundled Rollout health customization, use the upstream ArgoCD `resource_customizations/argoproj.io/Rollout/health.lua` health check rather than replacing it with a minimal status-only script.
 
 ## Handling Rollback Scenarios
 
@@ -287,7 +263,7 @@ To do a Git-level rollback, revert the image tag change in your Git repository. 
 
 ## Monitoring Rollouts in ArgoCD UI
 
-The ArgoCD UI shows Argo Rollouts with their current step, weight, and health. You can also use the Argo Rollouts dashboard for a dedicated view:
+The ArgoCD UI shows Rollout health, and the optional Argo Rollouts UI extension can show richer rollout details. You can also use the Argo Rollouts dashboard for a dedicated view:
 
 ```bash
 # Open the Argo Rollouts dashboard
