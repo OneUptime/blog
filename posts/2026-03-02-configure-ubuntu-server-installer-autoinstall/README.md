@@ -96,7 +96,6 @@ storage:
     name: lvm
     match:
       size: largest  # Use the largest available disk
-    encrypted: true
     password: "luks-passphrase"
 ```
 
@@ -106,6 +105,7 @@ For full control, use the `config` key with explicit actions. This mirrors curti
 
 ```yaml
 storage:
+  version: 1
   config:
     # Disk reference
     - id: disk-sda
@@ -155,6 +155,7 @@ storage:
       type: partition
       device: disk-sda
       size: -1    # Use remaining space
+      flag: lvm
 
     # Volume group
     - id: vg-main
@@ -194,7 +195,7 @@ storage:
     - id: mount-swap
       type: mount
       device: format-swap
-      path: ""    # swap has no mount path
+      # swap has no mount path
 ```
 
 ## User Data and SSH Keys
@@ -282,13 +283,13 @@ Host the file on any web server reachable from the installing machine:
 python3 -m http.server 8080 --directory /path/to/autoinstall/
 
 # Verify it is reachable
-curl http://192.168.1.10:8080/autoinstall.yaml
+curl http://192.168.1.10:8080/user-data
 ```
 
 At the Ubuntu Server installer's GRUB menu, press `e` to edit the boot entry and append to the linux line:
 
 ```text
-autoinstall ds=nocloud-net;s=http://192.168.1.10:8080/
+autoinstall ds=nocloud-net\;s=http://192.168.1.10:8080/
 ```
 
 The `ds=nocloud-net;s=` part tells cloud-init where to find the config. The server must serve both `user-data` (your autoinstall config) and `meta-data` files at that URL:
@@ -330,7 +331,7 @@ touch /tmp/ubuntu-iso/nocloud/meta-data
 
 # Modify GRUB to boot with autoinstall
 # Edit /tmp/ubuntu-iso/boot/grub/grub.cfg
-# Add to the linux line: autoinstall ds=nocloud;s=/cdrom/nocloud/
+# Add to the linux line: autoinstall ds=nocloud\;s=/cdrom/nocloud/
 
 # Repack the ISO
 xorriso -as mkisofs -r -V "Ubuntu 24.04 AutoInstall" \
@@ -376,8 +377,8 @@ sudo cat /var/log/installer/curtin-install.log
 # Check what the installer actually applied
 sudo cat /var/log/installer/subiquity-server-debug.log.gz | zcat | tail -100
 
-# Validate autoinstall YAML syntax
-python3 -c "import yaml; yaml.safe_load(open('autoinstall.yaml'))"
+# Validate autoinstall user-data with Subiquity's validation script
+./scripts/validate-autoinstall-user-data.py user-data
 ```
 
 Autoinstall combined with a network config server or custom ISO gives you a powerful, maintainable automation pipeline that works equally well for a dozen machines in a rack or hundreds of nodes in a datacenter.
