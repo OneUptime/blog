@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD to trust custom Certificate Authority
 
 ---
 
-Enterprise environments almost always use private Certificate Authorities. Your Git server, Helm registry, container registry, and Kubernetes clusters all use certificates signed by an internal CA that ArgoCD does not trust by default. Every one of these connections will fail with "x509: certificate signed by unknown authority" until you tell ArgoCD to trust your CA.
+Enterprise environments almost always use private Certificate Authorities. Your Git server, Helm repository, OCI registry, and Kubernetes clusters all use certificates signed by an internal CA that ArgoCD does not trust by default. Any of these connections can fail with "x509: certificate signed by unknown authority" until you tell ArgoCD to trust your CA.
 
 This guide covers every method for adding custom CA trust to ArgoCD.
 
@@ -55,7 +55,7 @@ data:
     -----END CERTIFICATE-----
   registry.company.internal: |
     -----BEGIN CERTIFICATE-----
-    ... (CA certificate for your container registry) ...
+    ... (CA certificate for your OCI registry) ...
     -----END CERTIFICATE-----
 ```
 
@@ -130,11 +130,11 @@ spec:
             name: custom-ca-certs
 ```
 
-Apply the same patch to the repo server and application controller:
+Apply the same patch to the repo server:
 
 ```bash
-# Patch all ArgoCD components
-for deploy in argocd-server argocd-repo-server argocd-application-controller; do
+# Patch ArgoCD Deployments
+for deploy in argocd-server argocd-repo-server; do
   kubectl patch deployment $deploy -n argocd --type=json -p='[
     {
       "op": "add",
@@ -158,6 +158,33 @@ for deploy in argocd-server argocd-repo-server argocd-application-controller; do
     }
   ]'
 done
+```
+
+The application controller is installed as a StatefulSet in the upstream manifests, so patch it separately:
+
+```bash
+kubectl patch statefulset argocd-application-controller -n argocd --type=json -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/volumes/-",
+    "value": {
+      "name": "custom-ca",
+      "configMap": {
+        "name": "custom-ca-certs"
+      }
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/volumeMounts/-",
+    "value": {
+      "name": "custom-ca",
+      "mountPath": "/etc/ssl/certs/company-ca.crt",
+      "subPath": "company-ca.crt",
+      "readOnly": true
+    }
+  }
+]'
 ```
 
 ## Method 3: Custom ArgoCD Image with CA Certificates
@@ -202,14 +229,28 @@ When your identity provider uses a certificate signed by an internal CA, ArgoCD 
 # The OIDC provider hostname must be covered by the CA
 # Mount the CA into the argocd-server pod
 
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-server
   namespace: argocd
-data:
-  # If using Dex, also configure Dex to trust the CA
-  dex.server.tls.certificate: /etc/ssl/certs/custom-ca.crt
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          env:
+            - name: SSL_CERT_DIR
+              value: /etc/ssl/certs
+          volumeMounts:
+            - name: custom-ca
+              mountPath: /etc/ssl/certs/company-ca.crt
+              subPath: company-ca.crt
+              readOnly: true
+      volumes:
+        - name: custom-ca
+          configMap:
+            name: custom-ca-certs
 ```
 
 Also add the CA to the Dex server if you are using Dex for SSO:
@@ -225,10 +266,14 @@ spec:
     spec:
       containers:
         - name: dex
+          env:
+            - name: SSL_CERT_DIR
+              value: /etc/ssl/certs
           volumeMounts:
             - name: custom-ca
               mountPath: /etc/ssl/certs/company-ca.crt
               subPath: company-ca.crt
+              readOnly: true
       volumes:
         - name: custom-ca
           configMap:
