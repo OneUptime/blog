@@ -38,18 +38,23 @@ Debezium connectors need to be packaged into a Kafka Connect image. Use the Stri
 ```yaml
 # debezium/production/kafka-connect.yaml
 
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnect
 metadata:
   name: debezium-connect
   labels:
+    app: debezium-connect
     team: data-engineering
   annotations:
     strimzi.io/use-connector-resources: "true"
 spec:
-  version: 3.7.0
+  version: 4.2.0
   replicas: 3
   bootstrapServers: production-kafka-kafka-bootstrap:9092
+  groupId: debezium-connect
+  offsetStorageTopic: debezium-connect-offsets
+  configStorageTopic: debezium-connect-configs
+  statusStorageTopic: debezium-connect-status
 
   build:
     output:
@@ -59,38 +64,30 @@ spec:
     plugins:
       - name: debezium-postgres
         artifacts:
-          - type: maven
-            group: io.debezium
-            artifact: debezium-connector-postgres
-            version: 2.5.0
+          - type: tgz
+            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-postgres/3.5.1.Final/debezium-connector-postgres-3.5.1.Final-plugin.tar.gz
       - name: debezium-mysql
         artifacts:
-          - type: maven
-            group: io.debezium
-            artifact: debezium-connector-mysql
-            version: 2.5.0
+          - type: tgz
+            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-mysql/3.5.1.Final/debezium-connector-mysql-3.5.1.Final-plugin.tar.gz
       - name: debezium-mongodb
         artifacts:
-          - type: maven
-            group: io.debezium
-            artifact: debezium-connector-mongodb
-            version: 2.5.0
+          - type: tgz
+            url: https://repo1.maven.org/maven2/io/debezium/debezium-connector-mongodb/3.5.1.Final/debezium-connector-mongodb-3.5.1.Final-plugin.tar.gz
       - name: apicurio-converter
         artifacts:
-          - type: maven
-            group: io.apicurio
-            artifact: apicurio-registry-distro-connect-converter
-            version: 2.5.8
+          - type: tgz
+            url: https://repo1.maven.org/maven2/io/apicurio/apicurio-registry-distro-connect-converter/3.2.4/apicurio-registry-distro-connect-converter-3.2.4.tar.gz
 
   config:
     # Distributed mode settings
-    group.id: debezium-connect
-    offset.storage.topic: debezium-connect-offsets
     offset.storage.replication.factor: 3
-    config.storage.topic: debezium-connect-configs
     config.storage.replication.factor: 3
-    status.storage.topic: debezium-connect-status
     status.storage.replication.factor: 3
+
+    # Configuration providers
+    config.providers: directory
+    config.providers.directory.class: org.apache.kafka.common.config.provider.DirectoryConfigProvider
 
     # Converter settings
     key.converter: org.apache.kafka.connect.json.JsonConverter
@@ -117,8 +114,8 @@ spec:
       memory: "8Gi"
 
   jvmOptions:
-    -Xms: "2g"
-    -Xmx: "4g"
+    "-Xms": "2g"
+    "-Xmx": "4g"
 
   metricsConfig:
     type: jmxPrometheusExporter
@@ -129,6 +126,10 @@ spec:
 
   template:
     pod:
+      volumes:
+        - name: db-credentials
+          secret:
+            secretName: db-credentials
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -139,8 +140,12 @@ spec:
                     - key: strimzi.io/name
                       operator: In
                       values:
-                        - debezium-connect
+                        - debezium-connect-connect
                 topologyKey: kubernetes.io/hostname
+    connectContainer:
+      volumeMounts:
+        - name: db-credentials
+          mountPath: /mnt/db-credentials
 ```
 
 The `strimzi.io/use-connector-resources: "true"` annotation tells Strimzi to manage connectors through KafkaConnector CRs instead of the REST API.
@@ -151,7 +156,7 @@ Now define your Debezium connectors as Kubernetes resources:
 
 ```yaml
 # debezium/production/connectors/postgres-orders.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnector
 metadata:
   name: orders-db-connector
@@ -167,7 +172,7 @@ spec:
     database.hostname: orders-db.production.svc.cluster.local
     database.port: "5432"
     database.user: debezium
-    database.password: ${file:/opt/kafka/external-configuration/db-credentials/orders-password}
+    database.password: ${directory:/mnt/db-credentials:orders-password}
     database.dbname: orders
 
     # Naming
@@ -197,7 +202,7 @@ spec:
 
     # Heartbeat
     heartbeat.interval.ms: "10000"
-    heartbeat.action.query: "INSERT INTO debezium_heartbeat (last_heartbeat) VALUES (NOW()) ON CONFLICT (id) DO UPDATE SET last_heartbeat = NOW()"
+    heartbeat.action.query: "INSERT INTO debezium_heartbeat (id, last_heartbeat) VALUES (1, NOW()) ON CONFLICT (id) DO UPDATE SET last_heartbeat = NOW()"
 
     # Error handling
     errors.tolerance: all
@@ -207,7 +212,7 @@ spec:
 
 ```yaml
 # debezium/production/connectors/mysql-inventory.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaConnector
 metadata:
   name: inventory-db-connector
@@ -222,7 +227,7 @@ spec:
     database.hostname: inventory-db.production.svc.cluster.local
     database.port: "3306"
     database.user: debezium
-    database.password: ${file:/opt/kafka/external-configuration/db-credentials/inventory-password}
+    database.password: ${directory:/mnt/db-credentials:inventory-password}
     database.server.id: "10001"
     topic.prefix: cdc.inventory
     database.include.list: inventory
@@ -249,15 +254,23 @@ stringData:
   inventory-password: "changeme"
 ```
 
-Reference the secret in your KafkaConnect resource:
+Reference the secret in your KafkaConnect resource and enable the directory configuration provider:
 
 ```yaml
 spec:
-  externalConfiguration:
-    volumes:
-      - name: db-credentials
-        secret:
-          secretName: db-credentials
+  config:
+    config.providers: directory
+    config.providers.directory.class: org.apache.kafka.common.config.provider.DirectoryConfigProvider
+  template:
+    pod:
+      volumes:
+        - name: db-credentials
+          secret:
+            secretName: db-credentials
+    connectContainer:
+      volumeMounts:
+        - name: db-credentials
+          mountPath: /mnt/db-credentials
 ```
 
 In production, use Sealed Secrets or External Secrets Operator to manage these credentials securely.
@@ -342,14 +355,15 @@ data:
           context: "$4"
 ---
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: debezium-metrics
 spec:
   selector:
     matchLabels:
-      strimzi.io/name: debezium-connect
-  endpoints:
+      strimzi.io/cluster: debezium-connect
+      strimzi.io/kind: KafkaConnect
+  podMetricsEndpoints:
     - port: tcp-prometheus
       path: /metrics
       interval: 30s
@@ -359,7 +373,7 @@ Key metrics to watch:
 
 - `debezium_postgres_milliseconds_since_last_event` - replication lag
 - `debezium_postgres_total_number_of_events_seen` - throughput
-- `kafka_connect_task_status` - connector health
+- `kafka_connect_connector_task_status` - connector health
 - Dead letter queue topic message count
 
 ## Handling Connector Updates
