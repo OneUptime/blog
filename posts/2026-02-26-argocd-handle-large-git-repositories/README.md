@@ -8,7 +8,7 @@ Description: Learn how to optimize ArgoCD for large Git repositories with strate
 
 ---
 
-As organizations grow, their Git repositories grow too. Monorepos containing thousands of manifests, repositories with long histories spanning years, and repos with large binary assets can all cause performance problems in ArgoCD. The repo-server is the component that suffers most, as it clones and processes repositories on every sync. This guide covers practical strategies for handling large repositories without degrading ArgoCD performance.
+As organizations grow, their Git repositories grow too. Monorepos containing thousands of manifests, repositories with long histories spanning years, and repos with large binary assets can all cause performance problems in ArgoCD. The repo-server is the component that suffers most, as it clones or fetches repositories and generates manifests during reconciliation. This guide covers practical strategies for handling large repositories without degrading ArgoCD performance.
 
 ## Understanding the Problem
 
@@ -31,36 +31,42 @@ sequenceDiagram
     RS-->>App: Return generated manifests
 ```
 
-For large repositories, the clone/fetch step is the bottleneck. A 5 GB repository with 100,000 commits can take minutes to clone, and each ArgoCD application pointing to that repository may trigger its own clone operation.
+For large repositories, the clone/fetch step is the bottleneck. A 5 GB repository with 100,000 commits can take minutes to clone. The repo-server maintains a local repository clone and reuses it for manifest generation, but cache misses, new repo-server replicas, and new revisions still require Git network operations.
 
 ## Strategy 1: Shallow Clones
 
 Shallow clones fetch only recent history instead of the entire repository. This dramatically reduces clone time and disk usage.
 
-ArgoCD does not expose a direct "shallow clone" setting, but you can configure it by adjusting the Git fetch depth through environment variables:
+ArgoCD supports shallow clones by setting a repository depth. For repositories managed declaratively, add `depth: "1"` to the repository Secret:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Secret
 metadata:
-  name: argocd-repo-server
+  name: my-repo
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          env:
-            # Fetch only the last commit (depth=1)
-            - name: ARGOCD_GIT_SHALLOW_CLONE
-              value: "true"
+  labels:
+    argocd.argoproj.io/secret-type: repository
+  annotations:
+    managed-by: argocd.argoproj.io
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/company/monorepo.git
+  depth: "1"
 ```
 
-With shallow clones, ArgoCD fetches only the specific commit it needs rather than the full history. This can reduce clone time from minutes to seconds for large repositories.
+You can also configure this with the CLI:
+
+```bash
+argocd repo add https://github.com/company/monorepo.git --depth 1
+```
+
+With shallow clones, ArgoCD clones with depth 1 rather than the full history. This can reduce clone time from minutes to seconds for repositories with large histories.
 
 ## Strategy 2: Sparse Checkout
 
-If your monorepo contains many applications but each ArgoCD Application only needs a specific subdirectory, you do not need to check out the entire repository tree. While ArgoCD does not natively support sparse checkout, you can work around this by structuring your applications to reference specific paths:
+If your monorepo contains many applications but each ArgoCD Application only needs a specific subdirectory, you do not need to process the entire repository tree. While ArgoCD does not natively support sparse checkout, you can structure your applications to reference specific paths:
 
 ```yaml
 # ArgoCD Application pointing to a specific subdirectory
@@ -84,7 +90,7 @@ ArgoCD still clones the entire repository, but it only processes manifests from 
 
 ## Strategy 3: Increase Repo Server Cache
 
-ArgoCD caches repository clones. Increasing the cache duration reduces how often full clones happen:
+ArgoCD caches repository state and generated manifests. Increasing the reconciliation interval reduces how often ArgoCD polls repositories for changes when you are not relying on webhooks:
 
 ```yaml
 apiVersion: v1
@@ -93,26 +99,21 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Default is 180s (3 minutes). Increase for large repos.
+  # The default polling interval is about 3 minutes, including jitter.
   timeout.reconciliation: 600s
 ```
 
-You can also increase the repo cache expiration:
+You can also tune the repo cache expiration in `argocd-cmd-params-cm`:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-repo-server
+  name: argocd-cmd-params-cm
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          env:
-            - name: ARGOCD_REPO_CACHE_EXPIRATION
-              value: "24h"
+data:
+  # Cache expiration for repo state, app details, manifest generation, and revision metadata.
+  reposerver.repo.cache.expiration: "24h0m0s"
 ```
 
 ## Strategy 4: Increase Repo Server Resources
@@ -139,13 +140,13 @@ spec:
               cpu: "2"
 ```
 
-Also increase the temporary storage volume for repository clones:
+Also make sure the temporary storage volume for repository clones is large enough. The repo-server clones repositories into `/tmp` by default, or into the path set by `TMPDIR`:
 
 ```yaml
       volumes:
         - name: tmp
           emptyDir:
-            sizeLimit: 20Gi  # Default may be too small for large repos
+            sizeLimit: 20Gi
 ```
 
 ## Strategy 5: Scale Repo Server Horizontally
@@ -165,12 +166,12 @@ spec:
       containers:
         - name: argocd-repo-server
           env:
-            # Configure parallel operations per server
-            - name: ARGOCD_EXEC_TIMEOUT
-              value: "300s"
+            # Limit concurrent manifest generation operations per server
+            - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
+              value: "5"
 ```
 
-Each repo-server replica maintains its own cache, so you want sticky sessions or consistent hashing for optimal cache hit rates.
+Each repo-server replica maintains its own local repository clone cache, so new replicas may need to clone repositories before their caches warm up.
 
 ## Strategy 6: Split Monorepos
 
@@ -226,33 +227,38 @@ metadata:
 data:
   # Increase polling interval since webhooks handle change detection
   timeout.reconciliation: 1800s  # 30 minutes
+```
+
+The webhook shared secret is configured in `argocd-secret`, not `argocd-cm`:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-secret
+  namespace: argocd
+type: Opaque
+stringData:
   webhook.github.secret: your-webhook-secret
 ```
 
-With webhooks, ArgoCD only clones when a push event is received, drastically reducing the number of clone operations.
+With webhooks, ArgoCD receives repository change notifications instead of waiting for the next polling interval, reducing unnecessary repository checks.
 
 ## Strategy 8: Tune Git Operations
 
-Several Git-level settings can improve performance:
+Several repo-server settings can improve performance:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-repo-server
+  name: argocd-cmd-params-cm
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          env:
-            # Increase Git operation timeout
-            - name: ARGOCD_EXEC_TIMEOUT
-              value: "300s"
-            # Number of parallel manifest generation operations
-            - name: ARGOCD_REPO_SERVER_PARALLELISM_LIMIT
-              value: "5"
+data:
+  # Increase Git request timeout
+  reposerver.git.request.timeout: "300s"
+  # Number of parallel manifest generation operations
+  reposerver.parallelism.limit: "5"
 ```
 
 ## Monitoring Repository Performance
@@ -264,11 +270,12 @@ Track clone and manifest generation times to identify bottlenecks:
 kubectl port-forward svc/argocd-repo-server -n argocd 8084:8084
 
 # View Prometheus metrics
-curl http://localhost:8084/metrics | grep argocd_repo
+curl http://localhost:8084/metrics | grep -E 'argocd_git|argocd_repo_pending'
 
 # Key metrics to watch:
-# argocd_repo_server_git_request_total - Total Git requests
-# argocd_repo_server_git_request_duration_seconds - Clone/fetch duration
+# argocd_git_request_total - Total Git requests
+# argocd_git_request_duration_seconds - Git request duration
+# argocd_repo_pending_request_total - Pending requests requiring a repository lock
 ```
 
 For comprehensive monitoring of your ArgoCD instance including repo-server performance, consider integrating with [OneUptime](https://oneuptime.com/blog/post/2026-01-25-gitops-argocd-kubernetes/view) for alerting on slow syncs and repository timeouts.
@@ -281,8 +288,9 @@ For comprehensive monitoring of your ArgoCD instance including repo-server perfo
 # Check for timeout errors in logs
 kubectl logs -n argocd deployment/argocd-repo-server --tail=200 | grep -i "timeout\|deadline"
 
-# Increase the execution timeout
-kubectl set env deployment/argocd-repo-server -n argocd ARGOCD_EXEC_TIMEOUT=600s
+# Increase the Git request timeout in argocd-cmd-params-cm
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{"data":{"reposerver.git.request.timeout":"600s"}}'
+kubectl rollout restart deployment/argocd-repo-server -n argocd
 ```
 
 ### Out of Memory Kills
