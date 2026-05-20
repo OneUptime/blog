@@ -110,19 +110,15 @@ autologin-user=yourusername
 autologin-user-timeout=0
 
 # Optional: auto-login session type
-autologin-session=ubuntu  # or xfce, mate, gnome, etc.
+# Use a session name from /usr/share/xsessions/ without the .desktop suffix
+autologin-session=ubuntu
 EOF
 
 # Restart LightDM
 sudo systemctl restart lightdm
 ```
 
-Alternatively, use the `lightdm-set-defaults` command if available:
-
-```bash
-sudo lightdm-set-defaults --autologin yourusername
-sudo lightdm-set-defaults --session gnome
-```
+On older Ubuntu releases you may see references to `lightdm-set-defaults`, but current LightDM configurations should be edited directly or placed in `/etc/lightdm/lightdm.conf.d/`.
 
 ## Enabling Auto-Login with SDDM (KDE)
 
@@ -136,7 +132,7 @@ sudo nano /etc/sddm.conf
 sudo tee /etc/sddm.conf.d/autologin.conf << 'EOF'
 [Autologin]
 User=yourusername
-Session=plasma
+Session=plasma.desktop
 Relogin=false
 EOF
 
@@ -153,7 +149,7 @@ GNOME provides a graphical way to configure auto-login:
 3. Find the user you want to auto-login
 4. Toggle the "Automatic Login" switch to ON
 
-This modifies `/etc/gdm3/custom.conf` automatically.
+On newer Ubuntu releases, the Users panel is under Settings > System > Users. This modifies `/etc/gdm3/custom.conf` automatically.
 
 ## Auto-Login with a Delay (Timed Login)
 
@@ -166,7 +162,8 @@ sudo tee -a /etc/gdm3/custom.conf << 'EOF'
 AutomaticLoginEnable=false
 TimedLoginEnable=true
 TimedLogin=yourusername
-TimedLoginDelay=30  # Seconds before auto-login
+# Seconds before auto-login
+TimedLoginDelay=30
 EOF
 
 sudo systemctl restart gdm3
@@ -196,20 +193,18 @@ sudo chown yourusername:yourusername /home/yourusername/.dmrc
 
 ## Auto-Login for Root (Discouraged)
 
-Auto-login as root is strongly discouraged. If you absolutely need it (e.g., a dedicated single-purpose system):
+Auto-login as root is strongly discouraged, and modern Ubuntu/GDM installations do not support it as a normal configuration path. Use a dedicated non-root account instead:
 
 ```bash
-# GDM3 - allowing root login (NOT recommended for most systems)
-sudo nano /etc/gdm3/custom.conf
-# Add under [daemon]:
-# AllowRoot=true
+# Create a dedicated account for the task
+sudo useradd -m -s /bin/bash appuser
 
-# Only then will root auto-login work:
+# Configure auto-login for that account instead of root:
 # AutomaticLoginEnable=true
-# AutomaticLogin=root
+# AutomaticLogin=appuser
 ```
 
-A better approach is to auto-login as a dedicated non-root user and grant it the specific permissions it needs.
+Grant only the specific permissions that account needs.
 
 ## Disabling Auto-Login
 
@@ -293,10 +288,7 @@ AutomaticLogin=kiosk
 EOF
 
 # Restrict what the kiosk user can do
-sudo tee /etc/sudoers.d/kiosk << 'EOF'
-# Kiosk user cannot use sudo
-kiosk ALL=(ALL) NOPASSWD: NOPASSWD
-EOF
+# Do not add the kiosk user to the sudo group
 
 # Create a custom session that launches only the kiosk application
 sudo tee /usr/share/xsessions/kiosk.desktop << 'EOF'
