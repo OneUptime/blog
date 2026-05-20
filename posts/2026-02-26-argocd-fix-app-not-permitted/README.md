@@ -193,7 +193,7 @@ spec:
 cluster resource ClusterRole is not permitted in project 'team-a'
 ```
 
-By default, projects deny cluster-scoped resources (like ClusterRoles, ClusterRoleBindings, Namespaces, etc.).
+Custom projects restrict cluster-scoped resources through an allow list (like ClusterRoles, ClusterRoleBindings, Namespaces, etc.).
 
 **Allow specific cluster resources:**
 
