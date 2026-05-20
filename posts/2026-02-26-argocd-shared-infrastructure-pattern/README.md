@@ -57,7 +57,7 @@ platform-infra/
 ├── manifests/
 │   ├── ingress-nginx/
 │   │   ├── base/
-│   │   │   ├── helmrelease.yaml
+│   │   │   ├── values.yaml
 │   │   │   └── kustomization.yaml
 │   │   └── overlays/
 │   │       ├── staging/
@@ -188,20 +188,32 @@ spec:
       - CreateNamespace=true
 ```
 
-## Shared Redis Cluster Example
+## Shared Redis Instance Example
 
-A shared Redis cluster that multiple teams can use:
+A shared Redis instance that multiple teams can use:
 
 ```yaml
-# manifests/shared-redis/base/redis-cluster.yaml
+# manifests/shared-redis/base/redis.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: shared-redis-headless
+  namespace: shared-services
+spec:
+  clusterIP: None
+  ports:
+    - port: 6379
+  selector:
+    app: shared-redis
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: shared-redis
   namespace: shared-services
 spec:
-  serviceName: shared-redis
-  replicas: 3
+  serviceName: shared-redis-headless
+  replicas: 1
   selector:
     matchLabels:
       app: shared-redis
@@ -279,12 +291,16 @@ spec:
             matchLabels:
               shared-redis-access: "true"
       ports:
-        - port: 6379
+        - protocol: TCP
+          port: 6379
     # Allow access from monitoring
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 6379
 ```
 
 Teams label their namespace to get access:
@@ -410,18 +426,25 @@ Shared infrastructure upgrades need careful coordination:
 
 ```yaml
 # Pin versions in the infra manifests
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRelease
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
   name: cert-manager
+  namespace: argocd
 spec:
-  chart:
-    spec:
-      chart: cert-manager
-      version: "1.14.2"  # Pinned version
-      sourceRef:
-        kind: HelmRepository
-        name: jetstack
+  project: platform
+  source:
+    repoURL: quay.io/jetstack/charts
+    chart: cert-manager
+    targetRevision: v1.20.2  # Pinned chart version
+    helm:
+      releaseName: cert-manager
+      valuesObject:
+        crds:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
 ```
 
 ## Health Monitoring for Shared Infra
