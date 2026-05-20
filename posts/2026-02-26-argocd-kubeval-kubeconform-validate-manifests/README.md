@@ -19,11 +19,11 @@ kubeval was the original Kubernetes manifest validation tool. kubeconform is its
 | Feature | kubeval | kubeconform |
 |---------|---------|-------------|
 | Active development | Archived | Active |
-| CRD support | Limited | Full |
+| CRD support | Limited | Full with external schemas |
 | Performance | Good | Better (parallel) |
-| Schema sources | Built-in only | Multiple sources |
-| Output formats | JSON, TAP | JSON, TAP, JUnit |
-| K8s version range | Up to 1.24 | Up to latest |
+| Schema sources | Default/custom schema location | Multiple sources |
+| Output formats | stdout, JSON, TAP | text, pretty, JSON, TAP, JUnit |
+| K8s version range | Multiple versions, unmaintained | Current schemas |
 
 For new projects, use kubeconform. If you have existing kubeval pipelines, consider migrating.
 
@@ -36,7 +36,7 @@ brew install kubeconform
 
 # Linux
 curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
-  tar xz -C /usr/local/bin/
+  sudo tar xz -C /usr/local/bin/
 
 # Docker
 docker run --rm -v $(pwd):/manifests ghcr.io/yannh/kubeconform:latest /manifests/
@@ -206,7 +206,7 @@ jobs:
       - name: Install kubeconform
         run: |
           curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
-            tar xz -C /usr/local/bin/
+            sudo tar xz -C /usr/local/bin/
 
       - name: Validate plain manifests
         run: |
@@ -253,10 +253,10 @@ validate-manifests:
 Some resources might intentionally use features not in the schema, or you might have custom resources without published schemas:
 
 ```bash
-# Skip unknown resource types instead of failing
+# Skip resources with missing schemas instead of failing
 kubeconform \
   -kubernetes-version 1.29.0 \
-  -skip CustomResourceDefinition \
+  -ignore-missing-schemas \
   -summary \
   apps/
 
