@@ -73,7 +73,7 @@ The output tells you which resource types and namespaces the webhook targets. Th
 
 ## Ignoring Istio Sidecar Injector Fields
 
-The Istio sidecar injector is one of the most common sources of diff noise. It adds containers, volumes, init containers, and annotations to every Pod spec.
+The Istio sidecar injector is one of the most common sources of diff noise when ArgoCD is comparing Pod resources. It adds containers, volumes, init containers, and annotations to Pods at admission time. If your ArgoCD application only manages a Deployment, StatefulSet, or DaemonSet, the sidecar is usually added to the generated Pods rather than to the workload object itself, so confirm the exact resource that is OutOfSync before adding Deployment-level ignore rules.
 
 ### Application-Level Configuration
 
@@ -208,7 +208,7 @@ Without `RespectIgnoreDifferences`, ArgoCD's normalization step still detects ch
 
 ## Server-Side Diff for Better Webhook Handling
 
-ArgoCD 2.10+ supports server-side diff, which sends your manifests through the API server's admission pipeline before comparing. This means webhook modifications are already applied to both sides of the diff:
+ArgoCD 2.10+ supports server-side diff, which sends your manifests through the API server using server-side apply dry-run before comparing. Mutation webhooks are not included by default; add `IncludeMutationWebhook=true` when you want ArgoCD to include mutating webhook changes in the predicted live state:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -216,8 +216,8 @@ kind: Application
 metadata:
   name: my-app
   annotations:
-    # Enable server-side diff
-    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    # Enable server-side diff and include mutating webhook changes
+    argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
 spec:
   source:
     repoURL: https://github.com/myorg/my-app.git
@@ -228,7 +228,7 @@ spec:
     namespace: my-app
 ```
 
-Server-side diff often eliminates the need for `ignoreDifferences` rules for webhook-injected fields entirely, because the dry-run response already includes those fields. This is the recommended approach for new setups.
+Server-side diff with `IncludeMutationWebhook=true` often eliminates the need for `ignoreDifferences` rules for webhook-injected fields entirely, because the dry-run response includes those fields. This is the recommended approach for new setups when you want ArgoCD to account for mutating webhooks during comparison.
 
 For more on server-side diff, see [How to Use Server-Side Diff in ArgoCD](https://oneuptime.com/blog/post/2026-02-09-argocd-server-side-apply/view).
 
@@ -258,7 +258,7 @@ Common mistakes include:
 
 ## Best Practices
 
-1. **Start with server-side diff** - It handles most webhook scenarios automatically
+1. **Start with server-side diff** - Use `IncludeMutationWebhook=true` when you need mutating webhook changes included in the comparison
 2. **Scope rules narrowly** - Only ignore what you need to. Broad ignore rules can mask real drift
 3. **Document why** - Add comments in your Application manifests explaining which webhook causes each ignored field
 4. **Test after webhook updates** - When you upgrade Istio or Vault, the injected fields may change. Review your ignore rules after upgrades
