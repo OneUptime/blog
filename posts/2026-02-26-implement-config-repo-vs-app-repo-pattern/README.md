@@ -174,7 +174,7 @@ The biggest gotcha with this pattern is circular triggers. If your CI pipeline u
 
 Prevent this by:
 
-1. **Using a bot account** for config repo updates. ArgoCD should ignore commits from this account.
+1. **Using a bot account** for config repo updates. Any CI workflows in the config repo should ignore commits from this account.
 2. **Commit message conventions** - Skip CI on config repo commits:
 
 ```bash
@@ -230,7 +230,7 @@ shared-config/
 │   ├── base/
 │   └── overlays/
 └── security/
-    ├── pod-security-policies/
+    ├── pod-security-admission/
     └── rbac/
 ```
 
