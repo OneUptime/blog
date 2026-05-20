@@ -14,7 +14,7 @@ Cost allocation through labels solves this. By consistently labeling every resou
 
 ## The Cost Allocation Strategy
 
-Cost allocation in Kubernetes relies on labels attached to pods, since pods are what consume compute resources. But labels need to be on every resource for complete tracking. ArgoCD ensures these labels are consistently applied and prevents anyone from removing them.
+Cost allocation in Kubernetes relies on labels attached to pods, since pods are what consume compute resources. But labels need to be on every resource for complete tracking. ArgoCD ensures these labels are consistently applied and can restore them if they drift from the Git-defined state.
 
 ```mermaid
 flowchart TD
@@ -60,18 +60,20 @@ Document this standard and make it available to all teams. The labels that matte
 
 ## Enforcing Labels with Kustomize
 
-The most reliable way to enforce labels is through Kustomize common labels. When ArgoCD renders manifests through Kustomize, common labels are automatically applied to every resource.
+The most reliable way to enforce labels is through Kustomize labels. When ArgoCD renders manifests through Kustomize, labels are automatically applied to every resource.
 
 ```yaml
 # kustomization.yaml for team-alpha production
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-commonLabels:
-  team: alpha
-  cost-center: eng-alpha-001
-  environment: production
-  managed-by: argocd
+labels:
+  - includeTemplates: true
+    pairs:
+      team: alpha
+      cost-center: eng-alpha-001
+      environment: production
+      managed-by: argocd
 
 resources:
   - deployment.yaml
@@ -152,6 +154,8 @@ metadata:
   name: team-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/app-registry.git
@@ -160,26 +164,26 @@ spec:
           - path: "apps/*/config.yaml"
   template:
     metadata:
-      name: "{{app.name}}-{{app.environment}}"
+      name: "{{.app.name}}-{{.app.environment}}"
       labels:
-        team: "{{app.team}}"
-        cost-center: "{{app.costCenter}}"
-        environment: "{{app.environment}}"
-        department: "{{app.department}}"
+        team: "{{.app.team}}"
+        cost-center: "{{.app.costCenter}}"
+        environment: "{{.app.environment}}"
+        department: "{{.app.department}}"
     spec:
-      project: "{{app.team}}"
+      project: "{{.app.team}}"
       source:
-        repoURL: "{{app.repoURL}}"
-        path: "{{app.path}}"
-        targetRevision: "{{app.targetRevision}}"
+        repoURL: "{{.app.repoURL}}"
+        path: "{{.app.path}}"
+        targetRevision: "{{.app.targetRevision}}"
         kustomize:
           commonLabels:
-            team: "{{app.team}}"
-            cost-center: "{{app.costCenter}}"
-            environment: "{{app.environment}}"
+            team: "{{.app.team}}"
+            cost-center: "{{.app.costCenter}}"
+            environment: "{{.app.environment}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{app.team}}-{{app.environment}}"
+        namespace: "{{.app.team}}-{{.app.environment}}"
 ```
 
 Each app config file includes cost allocation data:
@@ -207,18 +211,19 @@ kind: ClusterPolicy
 metadata:
   name: require-cost-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-team-label
       match:
-        resources:
-          kinds:
-            - Deployment
-            - StatefulSet
-            - DaemonSet
-            - Job
-            - CronJob
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Job
+                - CronJob
       validate:
+        failureAction: Enforce
         message: "Resources must have team, cost-center, and environment labels"
         pattern:
           metadata:
@@ -228,12 +233,14 @@ spec:
               environment: "?*"
     - name: require-pod-labels
       match:
-        resources:
-          kinds:
-            - Deployment
-            - StatefulSet
-            - DaemonSet
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+                - DaemonSet
       validate:
+        failureAction: Enforce
         message: "Pod templates must include cost allocation labels"
         pattern:
           spec:
@@ -252,40 +259,39 @@ Kubecost reads pod labels to allocate costs. Configure it to use your custom lab
 
 ```yaml
 # kubecost values.yaml
-kubecostModel:
-  allocation:
-    labels:
-      - team
-      - cost-center
-      - environment
-      - department
-      - project
+kubecostProductConfigs:
+  labelMappingConfigs:
+    enabled: true
+    owner_label: team
+    department_label: cost-center
+    environment_label: environment
+    product_label: project
 ```
 
 ### OpenCost
 
 OpenCost provides the same functionality as an open-source alternative:
 
-```yaml
-# opencost configuration
-LABEL_MAPPING:
-  team: team
-  department: department
-  environment: environment
-  product: project
+```bash
+# Query OpenCost allocation by custom labels
+curl -G "http://opencost.opencost:9003/allocation" \
+  --data-urlencode "window=lastmonth" \
+  --data-urlencode "aggregate=label:team"
 ```
 
 ### Cloud Provider Tag Mapping
 
-For complete cost attribution, map Kubernetes labels to cloud provider tags. On AWS with EKS, enable tag propagation:
+For complete cost attribution, align Kubernetes labels with cloud provider tags. On AWS with EKS managed node groups, node group tags do not propagate to EC2 instances. To tag the backing instances, use a launch template with EC2 tag specifications:
 
 ```yaml
-# AWS EKS node group tags
-Tags:
-  kubernetes.io/cluster/my-cluster: owned
-  # These propagate to EC2 instances
-  team: platform
-  cost-center: platform-001
+# AWS launch template tag specifications
+TagSpecifications:
+  - ResourceType: instance
+    Tags:
+      - Key: team
+        Value: platform
+      - Key: cost-center
+        Value: platform-001
 ```
 
 For per-pod cost allocation on AWS, use split-cost allocation with pod-level resource tracking.
@@ -354,6 +360,6 @@ syncPolicy:
     selfHeal: true  # Reapplies labels if removed
 ```
 
-This is a key advantage of managing cost allocation through ArgoCD rather than through admission webhooks alone. Webhooks prevent creation without labels, but they cannot restore labels that are removed from existing resources.
+This is a key advantage of managing cost allocation through ArgoCD rather than through validation webhooks alone. Validation webhooks prevent noncompliant creates and updates, while ArgoCD restores labels that drift from the Git-defined state.
 
 Cost allocation with ArgoCD labels turns your cloud bill from a black box into a transparent, team-attributable expense report. The platform team defines the standard, ArgoCD enforces it on every deployment, and cost tools provide the visibility that finance and engineering leadership need to make informed decisions.
