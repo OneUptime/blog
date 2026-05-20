@@ -14,7 +14,7 @@ journald stores logs in a binary format that already provides some efficiency ov
 
 journald uses LZ4 compression by default when the `Compress` option is enabled. LZ4 is fast and lightweight, making it well-suited for log data since it adds minimal CPU overhead while achieving good compression ratios. Compressed journal files use the `.journal` extension just like uncompressed ones - the compression is transparent to all journalctl operations.
 
-Compression applies to journal files as they are written. Once a journal file is sealed (marked as complete), it remains in its compressed state. New entries written to active journal files are compressed on the fly.
+Compression applies to journal files as they are written. Once a journal file is rotated and archived, it is no longer written to. New entries written to active journal files are compressed on the fly.
 
 ## Check Current Configuration
 
@@ -25,8 +25,8 @@ Before making changes, look at what journald is currently doing:
 
 sudo journalctl --disk-usage
 
-# Check current journald configuration
-sudo systemctl cat systemd-journald | head -20
+# Check current journald configuration, including drop-ins
+systemd-analyze cat-config systemd/journald.conf
 
 # View the active configuration file
 cat /etc/systemd/journald.conf
@@ -44,7 +44,7 @@ sudo nano /etc/systemd/journald.conf
 
 ```ini
 [Journal]
-# Enable log compression
+# Enable log compression for data objects larger than the default threshold
 Compress=yes
 
 # Storage mode - persistent keeps logs across reboots
@@ -56,15 +56,11 @@ SystemMaxUse=10G
 # Space to keep free on the disk at all times
 SystemKeepFree=500M
 
-# Maximum size of a single journal file before it is rotated
-SystemMaxFileSize=200M
-
 # How long to keep old journal files
 MaxRetentionSec=3month
 
-# Compress journal files after they reach this size
-# This is the threshold at which LZ4 kicks in
-SystemMaxFileSize=128M
+# Maximum size of a single journal file before it is rotated
+SystemMaxFileSize=200M
 ```
 
 The critical setting is `Compress=yes`. The others are standard housekeeping settings that work alongside compression to control overall storage use.
@@ -163,7 +159,7 @@ RuntimeMaxUse=256M
 # Keep at least this free on the partition
 SystemKeepFree=1G
 
-# Rotate after this many journal files
+# Maximum number of journal files to keep
 SystemMaxFiles=100
 
 # Maximum retention period
