@@ -8,7 +8,7 @@ Description: Learn how to backup ArgoCD configuration, applications, projects, r
 
 ---
 
-ArgoCD stores its configuration and state as Kubernetes resources - primarily ConfigMaps, Secrets, and Custom Resources in the argocd namespace. Backing up this data is critical for disaster recovery, migration, and rollback scenarios. While your application manifests live in Git (that is the whole point of GitOps), the ArgoCD configuration that tells the system how to deploy those manifests needs its own backup strategy.
+ArgoCD stores its configuration and state as Kubernetes resources - primarily ConfigMaps, Secrets, and Custom Resources in the argocd namespace, unless you have configured ArgoCD to manage Applications or ApplicationSets in additional namespaces. Backing up this data is critical for disaster recovery, migration, and rollback scenarios. While your application manifests live in Git (that is the whole point of GitOps), the ArgoCD configuration that tells the system how to deploy those manifests needs its own backup strategy.
 
 ## What Needs to Be Backed Up
 
@@ -216,13 +216,24 @@ BACKUP_FILE="/tmp/argocd-backup-$(date +%Y%m%d-%H%M%S).yaml"
 GCS_BUCKET="gs://my-backups/argocd"
 
 argocd admin export -n argocd > "$BACKUP_FILE"
-gsutil cp "$BACKUP_FILE" "$GCS_BUCKET/"
+gcloud storage cp "$BACKUP_FILE" "$GCS_BUCKET/"
 
 # Set lifecycle policy for auto-cleanup
-gsutil lifecycle set '{"rule": [{"action": {"type": "Delete"}, "condition": {"age": 30}}]}' \
-  "$GCS_BUCKET"
+LIFECYCLE_FILE="/tmp/gcs-lifecycle-argocd-backups.json"
+cat > "$LIFECYCLE_FILE" << EOF
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {"age": 30}
+    }
+  ]
+}
+EOF
+gcloud storage buckets update "$GCS_BUCKET" --lifecycle-file="$LIFECYCLE_FILE"
 
 rm -f "$BACKUP_FILE"
+rm -f "$LIFECYCLE_FILE"
 ```
 
 ## Cleaning Up Backup Files for Restore
@@ -236,16 +247,22 @@ cat argocd-backup.yaml | \
   python3 -c "
 import sys, yaml
 
-for doc in yaml.safe_load_all(sys.stdin):
-    if doc is None:
-        continue
-    # Remove cluster-specific metadata
-    meta = doc.get('metadata', {})
+def clean(obj):
+    if not isinstance(obj, dict):
+        return
+    meta = obj.get('metadata', {})
     for field in ['resourceVersion', 'uid', 'creationTimestamp',
                   'generation', 'managedFields', 'selfLink']:
         meta.pop(field, None)
-    # Remove status
-    doc.pop('status', None)
+    obj.pop('status', None)
+
+for doc in yaml.safe_load_all(sys.stdin):
+    if doc is None:
+        continue
+    # Remove cluster-specific metadata from documents and kubectl List items.
+    clean(doc)
+    for item in doc.get('items', []):
+        clean(item)
     print('---')
     print(yaml.dump(doc, default_flow_style=False))
 " > argocd-backup-clean.yaml
