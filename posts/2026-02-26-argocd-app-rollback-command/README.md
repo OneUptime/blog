@@ -61,7 +61,7 @@ argocd app rollback my-app 3
 
 ## The Auto-Sync Problem
 
-This is the single most important thing to understand about ArgoCD rollbacks: if auto-sync is enabled, ArgoCD will immediately detect that the live state does not match the current Git HEAD and will re-sync, undoing your rollback.
+This is the single most important thing to understand about ArgoCD rollbacks: ArgoCD does not allow rollback operations while automated sync is enabled. If you re-enable auto-sync before fixing Git, ArgoCD can sync the current Git HEAD again and undo the emergency state you restored.
 
 You must disable auto-sync before rolling back:
 
@@ -105,13 +105,10 @@ echo ""
 
 # Step 3: Get target history ID
 if [ -z "$HISTORY_ID" ]; then
-  # Default to the previous deployment
-  HISTORY_ID=$(argocd app history "$APP_NAME" -o json | jq '.[1].id')
-  echo "No history ID specified. Defaulting to previous deployment: $HISTORY_ID"
+  echo "No history ID specified. ArgoCD will roll back to the previous deployed version."
+else
+  echo "Rolling back to history entry $HISTORY_ID"
 fi
-
-TARGET_REV=$(argocd app history "$APP_NAME" -o json | jq -r ".[] | select(.id == $HISTORY_ID) | .revision")
-echo "Rolling back to history entry $HISTORY_ID (revision: $TARGET_REV)"
 echo ""
 
 # Step 4: Disable auto-sync
@@ -122,7 +119,11 @@ echo ""
 
 # Step 5: Perform rollback
 echo "--- Performing rollback ---"
-argocd app rollback "$APP_NAME" "$HISTORY_ID"
+if [ -z "$HISTORY_ID" ]; then
+  argocd app rollback "$APP_NAME"
+else
+  argocd app rollback "$APP_NAME" "$HISTORY_ID"
+fi
 echo ""
 
 # Step 6: Wait for resources to stabilize
@@ -179,8 +180,8 @@ For production incidents, the recommended approach is:
 For Helm-based applications, the rollback restores the Helm values and chart version from the history entry:
 
 ```bash
-# Check history to see Helm parameters at each point
-argocd app history my-app -o json | jq '.[] | {id: .id, revision: .revision, helmValues: .source.helm}'
+# Check history to find the target Helm deployment
+argocd app history my-app
 
 # Rollback will restore those exact Helm parameters
 argocd app rollback my-app 3
