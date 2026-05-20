@@ -32,11 +32,8 @@ For ArgoCD, this means you never have to manually create or rotate TLS certifica
 
 ```bash
 # Install cert-manager with Helm
-
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
   --namespace cert-manager \
   --create-namespace \
   --set crds.enabled=true
@@ -85,7 +82,7 @@ kubectl delete namespace cert-manager-test
 A ClusterIssuer works across all namespaces. Create one for Let's Encrypt:
 
 ```yaml
-# Let's Encrypt staging (for testing - no rate limits)
+# Let's Encrypt staging (for testing - higher rate limits)
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -129,7 +126,7 @@ kubectl describe clusterissuer letsencrypt-prod
 
 ## Step 3: Configure ArgoCD Ingress with cert-manager
 
-Update your ArgoCD ingress to use cert-manager annotations:
+Update your ArgoCD ingress to use cert-manager annotations. This example terminates TLS at the ingress controller and sends HTTP to ArgoCD, so run `argocd-server` with TLS disabled by setting `server.insecure: "true"` in the `argocd-cmd-params-cm` ConfigMap or adding the `--insecure` flag:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -257,7 +254,6 @@ spec:
     solvers:
       - dns01:
           cloudflare:
-            email: admin@example.com
             apiTokenSecretRef:
               name: cloudflare-api-token
               key: api-token
@@ -347,11 +343,10 @@ curl http://argocd.example.com/.well-known/acme-challenge/test
 kubectl logs -n cert-manager -l app.kubernetes.io/name=cert-manager
 ```
 
-**Wrong Certificate Served**: The secret might not have been updated. Delete the secret and let cert-manager recreate it:
+**Wrong Certificate Served**: The secret might not have been updated. Trigger a renewal of the Certificate resource:
 
 ```bash
-kubectl delete secret argocd-server-tls -n argocd
-# cert-manager will automatically create a new certificate
+cmctl renew argocd-server-tls -n argocd
 ```
 
 ## Production Recommendations
