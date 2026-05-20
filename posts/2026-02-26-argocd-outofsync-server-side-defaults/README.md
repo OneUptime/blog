@@ -8,7 +8,7 @@ Description: Fix persistent ArgoCD OutOfSync status caused by Kubernetes server-
 
 ---
 
-Your ArgoCD application keeps showing OutOfSync even though you have not changed anything. You sync it, it goes to "Synced" for a moment, and then immediately flips back to OutOfSync. The diff shows fields you never set in your manifests - things like `strategy.rollingUpdate.maxUnavailable: 25%` or `resources.requests` that you did not specify.
+Your ArgoCD application keeps showing OutOfSync even though you have not changed anything. You sync it, it goes to "Synced" for a moment, and then immediately flips back to OutOfSync. The diff shows fields you never set in your manifests - things like `strategy.rollingUpdate.maxUnavailable: 25%` or `resources.requests` that a LimitRange or admission webhook added for you.
 
 This is one of the most frustrating ArgoCD issues, and it happens because Kubernetes adds default values to resources after they are created. Your Git manifest says nothing about `maxUnavailable`, but Kubernetes automatically sets it to `25%`. ArgoCD compares what is in Git (no field) with what is live (field present with a default value), sees a difference, and reports OutOfSync.
 
@@ -48,10 +48,14 @@ metadata:
   name: my-app
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/my-org/my-repo.git
     targetRevision: main
     path: manifests/
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
   ignoreDifferences:
     # Ignore rolling update defaults on all Deployments
     - group: apps
@@ -121,7 +125,7 @@ data:
 
 ## Solution 2: Use Server-Side Diff
 
-ArgoCD v2.5+ supports server-side diff, which uses the Kubernetes API server to compute the diff instead of doing it client-side. This is a game-changer because the server-side diff understands defaults and only shows actual meaningful differences.
+ArgoCD v2.10+ supports server-side diff, which uses Kubernetes Server-Side Apply in dry-run mode to generate the predicted live state before comparing it with the actual live object. This is a game-changer because the predicted object includes server-side defaults, so ArgoCD only shows actual meaningful differences.
 
 ### Enable Per-Application
 
@@ -150,7 +154,9 @@ data:
   controller.diff.server.side: "true"
 ```
 
-Server-side diff is the recommended approach for new installations. It dramatically reduces false OutOfSync detections because the Kubernetes API server knows which fields are defaulted and excludes them from the comparison.
+Restart the `argocd-application-controller` after applying this ConfigMap change so the new parameter is picked up.
+
+Server-side diff is a strong first option for ArgoCD 2.10 and later. It dramatically reduces false OutOfSync detections because ArgoCD compares live objects with the server-generated dry-run result rather than with a manifest that is missing defaulted fields.
 
 ## Solution 3: Explicitly Set Defaults in Your Manifests
 
@@ -163,6 +169,9 @@ metadata:
   name: my-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
   # Explicitly set defaults to prevent OutOfSync
   revisionHistoryLimit: 10
   strategy:
@@ -171,6 +180,9 @@ spec:
       maxUnavailable: 25%
       maxSurge: 25%
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       terminationGracePeriodSeconds: 30
       dnsPolicy: ClusterFirst
@@ -239,4 +251,4 @@ diff live.yaml git.yaml
 
 Monitoring your applications for unexpected OutOfSync states helps catch real drift from legitimate server-side default noise. [OneUptime](https://oneuptime.com) can track your ArgoCD sync status and help you distinguish between real issues and false positives.
 
-Server-side defaults causing OutOfSync is a known limitation of declarative GitOps, and the ArgoCD team has been steadily improving the tooling to handle it better. Server-side diff is the biggest improvement, and if you are running ArgoCD v2.5 or later, enabling it should be your first step.
+Server-side defaults causing OutOfSync is a known limitation of declarative GitOps, and the ArgoCD team has been steadily improving the tooling to handle it better. Server-side diff is the biggest improvement, and if you are running ArgoCD v2.10 or later, enabling it should be your first step.
