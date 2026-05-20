@@ -55,33 +55,7 @@ spec:
     - key encipherment
 ```
 
-Configure ArgoCD to use the cert-manager-managed secret:
-
-```yaml
-# argocd-server deployment patch
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-server
-          args:
-            - /usr/local/bin/argocd-server
-            - --tls-cert-file=/tls/tls.crt
-            - --tls-key-file=/tls/tls.key
-          volumeMounts:
-            - name: tls
-              mountPath: /tls
-              readOnly: true
-      volumes:
-        - name: tls
-          secret:
-            secretName: argocd-server-tls
-```
+ArgoCD automatically uses a valid `argocd-server-tls` secret in the `argocd` namespace, so no deployment patch is required.
 
 With this setup, cert-manager automatically renews the certificate before expiry.
 
@@ -97,7 +71,7 @@ metadata:
   namespace: argocd
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/backend-protocol: HTTP
     nginx.ingress.kubernetes.io/ssl-passthrough: "false"
 spec:
   tls:
@@ -114,7 +88,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  number: 80
 ```
 
 In this case, ArgoCD itself can run with `--insecure` flag and let the Ingress controller handle TLS termination:
@@ -141,6 +115,9 @@ set -euo pipefail
 NAMESPACE="${ARGOCD_NAMESPACE:-argocd}"
 DOMAIN="${ARGOCD_DOMAIN:?Set ARGOCD_DOMAIN}"
 CERT_DIR="/tmp/argocd-certs"
+CERTBOT_CONFIG_DIR="${CERT_DIR}/letsencrypt"
+CERTBOT_WORK_DIR="${CERT_DIR}/work"
+CERTBOT_LOGS_DIR="${CERT_DIR}/logs"
 BACKUP_DIR="/backups/certs"
 
 mkdir -p "${CERT_DIR}" "${BACKUP_DIR}"
@@ -167,14 +144,17 @@ if command -v certbot &>/dev/null; then
     --non-interactive \
     --agree-tos \
     --email "platform@example.com" \
-    --cert-path "${CERT_DIR}/tls.crt" \
-    --key-path "${CERT_DIR}/tls.key" \
-    --fullchain-path "${CERT_DIR}/fullchain.pem"
+    --cert-name "${DOMAIN}" \
+    --config-dir "${CERTBOT_CONFIG_DIR}" \
+    --work-dir "${CERTBOT_WORK_DIR}" \
+    --logs-dir "${CERTBOT_LOGS_DIR}"
 
-  CERT_FILE="${CERT_DIR}/fullchain.pem"
-  KEY_FILE="${CERT_DIR}/tls.key"
+  CERT_FILE="${CERTBOT_CONFIG_DIR}/live/${DOMAIN}/fullchain.pem"
+  KEY_FILE="${CERTBOT_CONFIG_DIR}/live/${DOMAIN}/privkey.pem"
 elif command -v acme.sh &>/dev/null; then
-  acme.sh --issue --dns dns_aws -d "${DOMAIN}" \
+  acme.sh --issue --dns dns_aws -d "${DOMAIN}" --server letsencrypt
+
+  acme.sh --install-cert -d "${DOMAIN}" \
     --cert-file "${CERT_DIR}/tls.crt" \
     --key-file "${CERT_DIR}/tls.key" \
     --fullchain-file "${CERT_DIR}/fullchain.pem"
@@ -194,10 +174,9 @@ kubectl create secret tls argocd-server-tls \
   --key="${KEY_FILE}" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Step 5: Restart ArgoCD server to pick up new cert
-echo "Restarting ArgoCD server..."
-kubectl rollout restart deployment argocd-server -n "${NAMESPACE}"
-kubectl rollout status deployment argocd-server -n "${NAMESPACE}" --timeout=120s
+# Step 5: Wait for ArgoCD server to pick up the updated secret
+echo "Waiting for ArgoCD server to reload certificate..."
+sleep 30
 
 # Step 6: Verify the new certificate
 echo "Verifying new certificate..."
@@ -247,10 +226,12 @@ openssl x509 -req -in "${CA_DIR}/repo-server.csr" \
   -extfile <(printf "subjectAltName=DNS:argocd-repo-server,DNS:argocd-repo-server.${NAMESPACE}.svc")
 
 # Update secrets
-kubectl create secret tls argocd-repo-server-tls \
+kubectl create secret generic argocd-repo-server-tls \
   -n "${NAMESPACE}" \
-  --cert="${CA_DIR}/repo-server.crt" \
-  --key="${CA_DIR}/repo-server.key" \
+  --type=kubernetes.io/tls \
+  --from-file=tls.crt="${CA_DIR}/repo-server.crt" \
+  --from-file=tls.key="${CA_DIR}/repo-server.key" \
+  --from-file=ca.crt="${CA_DIR}/ca.crt" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Restart affected components
@@ -272,6 +253,36 @@ echo "Internal certificate rotation complete"
 Set up a CronJob to check certificate expiry and alert before it is too late:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-cert-checker
+  namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-cert-checker
+  namespace: argocd
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-cert-checker
+  namespace: argocd
+subjects:
+  - kind: ServiceAccount
+    name: argocd-cert-checker
+    namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-cert-checker
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -287,28 +298,30 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: checker
-              image: bitnami/kubectl:1.28
+              image: alpine:3.20
               command:
-                - /bin/bash
+                - /bin/sh
                 - -c
                 - |
+                  apk add --no-cache bash coreutils jq kubectl openssl
+
                   WARN_DAYS=30
                   NAMESPACE=argocd
 
                   # Check all TLS secrets in argocd namespace
                   kubectl get secrets -n ${NAMESPACE} -o json | \
                     jq -r '.items[] | select(.type == "kubernetes.io/tls") | .metadata.name' | \
-                    while read secret; do
+                    while read -r secret; do
                       EXPIRY=$(kubectl get secret ${secret} -n ${NAMESPACE} \
                         -o jsonpath='{.data.tls\.crt}' | base64 -d | \
                         openssl x509 -enddate -noout 2>/dev/null | cut -d= -f2)
 
-                      if [[ -n "${EXPIRY}" ]]; then
+                      if [ -n "${EXPIRY}" ]; then
                         EXPIRY_EPOCH=$(date -d "${EXPIRY}" +%s 2>/dev/null || echo 0)
                         NOW_EPOCH=$(date +%s)
                         DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
 
-                        if [[ ${DAYS_LEFT} -lt ${WARN_DAYS} ]]; then
+                        if [ "${DAYS_LEFT}" -lt "${WARN_DAYS}" ]; then
                           echo "WARNING: ${secret} expires in ${DAYS_LEFT} days (${EXPIRY})"
                         else
                           echo "OK: ${secret} expires in ${DAYS_LEFT} days"
