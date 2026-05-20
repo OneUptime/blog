@@ -36,17 +36,17 @@ The high-level error message does not tell you which resource failed. You need t
 
 argocd app get my-app
 
-# Look at the resource status for "SyncFailed" entries
+# Look at resource status and messages for failed entries
 argocd app resources my-app
 ```
 
 The output will show each resource and its sync status:
 
 ```text
-GROUP  KIND        NAMESPACE   NAME           STATUS  HEALTH   HOOK  MESSAGE
-       ConfigMap   production  my-config      Synced  Healthy
-apps   Deployment  production  my-app         SyncFailed
-       Service     production  my-service     Synced  Healthy
+GROUP  KIND        NAMESPACE   NAME           STATUS     HEALTH   HOOK  MESSAGE
+       ConfigMap   production  my-config      Synced     Healthy
+apps   Deployment  production  my-app         OutOfSync  Degraded       apply failed
+       Service     production  my-service     Synced     Healthy
 ```
 
 **Using the UI:**
@@ -126,15 +126,15 @@ kubectl delete deployment my-app -n production
 argocd app sync my-app
 ```
 
-2. **Use the Replace sync strategy:**
+2. **Use force sync with replace for a resource that must be recreated:**
 
 ```yaml
-syncPolicy:
-  syncOptions:
-    - Replace=true
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 ```
 
-**Warning:** Replace deletes and recreates the resource, causing downtime.
+**Warning:** Force sync deletes and recreates the resource, causing downtime. `Replace=true` by itself uses `kubectl replace` or `kubectl create`, and does not fix immutable field changes that require deletion.
 
 3. **Use a new name and gradually migrate:**
 
@@ -165,6 +165,19 @@ rules:
   - apiGroups: ["*"]
     resources: ["*"]
     verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-application-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-application-controller
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd
 ```
 
 Or more granularly:
@@ -179,9 +192,11 @@ rules:
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 ```
 
+Remember to bind the `ClusterRole` or `Role` to the ArgoCD application controller service account with a `ClusterRoleBinding` or `RoleBinding`; the role alone does not grant permissions.
+
 ## Common Cause 4: Namespace Does Not Exist
 
-The target namespace for a resource does not exist:
+The Application destination namespace does not exist:
 
 ```text
 error creating resource: namespaces "production" not found
@@ -195,6 +210,8 @@ spec:
     syncOptions:
       - CreateNamespace=true
 ```
+
+`CreateNamespace=true` creates the namespace set in `spec.destination.namespace`. Resource manifests should omit `metadata.namespace` or use the same namespace.
 
 Or create the namespace in your manifests with a sync wave to ensure it is created first:
 
@@ -270,16 +287,16 @@ spec:
             allowPrivilegeEscalation: false
 ```
 
-## Common Cause 7: Conflict with Existing Resource
+## Common Cause 7: Conflict with an Existing or Modified Resource
 
-The resource exists but was not created by ArgoCD (or was created by a different application):
+The resource exists and has field ownership or resource version conflicts:
 
 ```text
 error applying resource: the object has been modified; please apply your changes
 to the latest version or use ServerSideApply
 ```
 
-**Fix by using ServerSideApply:**
+**Fix by using ServerSideApply when adopting or patching existing resources:**
 
 ```yaml
 syncPolicy:
@@ -287,10 +304,11 @@ syncPolicy:
     - ServerSideApply=true
 ```
 
-Or force the sync:
+If the resource is already managed by another ArgoCD Application, move it to a single owning Application instead of forcing both Applications to manage it. If the error was a transient resource version conflict, refresh and retry:
 
 ```bash
-argocd app sync my-app --force
+argocd app get my-app --refresh
+argocd app sync my-app
 ```
 
 ## Common Cause 8: CRD Not Installed
