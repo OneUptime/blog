@@ -28,7 +28,7 @@ Common use cases include:
 
 ## Basic Multi-Source Configuration
 
-Instead of the singular `source` field, use the plural `sources` field (note: you cannot use both `source` and `sources` in the same Application):
+Instead of the singular `source` field, use the plural `sources` field. If both `source` and `sources` are set, ArgoCD uses `sources` and ignores the singular `source` field:
 
 ```yaml
 # multi-source-app.yaml - Application with multiple sources
@@ -154,7 +154,7 @@ Important rules for `ref`:
 - A source with `ref` does not need a `path` field - it exposes the entire repository
 - Multiple sources can reference the same `ref`
 - A source with `ref` does not contribute manifests directly (unless it also has a `path`)
-- The `ref` name must be a valid identifier (letters, numbers, hyphens)
+- The `$ref` variable can only be used at the beginning of a Helm value file path
 
 ## Multiple Git Repositories as Sources
 
@@ -232,11 +232,11 @@ In the ArgoCD UI, multi-source applications show all sources in the application 
 
 **No per-source sync** - You cannot sync one source without syncing all of them. A change in any source triggers a full sync.
 
-**Resource conflicts** - If two sources define the same resource (same kind, name, and namespace), ArgoCD will detect a conflict. The last source in the array wins, but this is unpredictable and should be avoided.
+**Resource conflicts** - If two sources define the same resource (same group, kind, name, and namespace), the last source in the array takes precedence and ArgoCD emits a `RepeatedResourceWarning`. This can be useful for intentional overrides, but accidental duplicates should be avoided.
 
 **No source-level health** - Health status is computed for the entire application, not per source. If a resource from one source is unhealthy, the whole application shows as unhealthy.
 
-**CLI limitations** - Some CLI commands that reference `--source` may not work as expected with multi-source applications. Use the YAML-based approach for full control.
+**CLI support** - Some CLI commands support multi-source applications with source position or source name flags, but the YAML-based approach is still the clearest way to define all sources.
 
 **ApplicationSet compatibility** - Multi-source works with ApplicationSets, but template variable substitution applies to all sources equally.
 
