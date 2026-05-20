@@ -23,8 +23,8 @@ p, <subject>, <resource>, <action>, <object>, <effect>
 Here is what each field means:
 
 - **subject** - The role name (e.g., `role:deployer`) or a specific user/group
-- **resource** - The ArgoCD resource type: `applications`, `clusters`, `repositories`, `accounts`, `certificates`, `gpgkeys`, `logs`, `exec`
-- **action** - What the subject can do: `get`, `create`, `update`, `delete`, `sync`, `override`, `action`
+- **resource** - The ArgoCD resource type: `applications`, `applicationsets`, `clusters`, `projects`, `repositories`, `write-repositories`, `accounts`, `certificates`, `gpgkeys`, `logs`, `exec`, `extensions`
+- **action** - What the subject can do: `get`, `create`, `update`, `delete`, `sync`, `override`, `action`, `invoke`. Resource actions use the `action/<group>/<kind>/<action-name>` format, or `action/*` to allow all actions.
 - **object** - The specific resource, using format `<project>/<application>` for apps or `*` for all
 - **effect** - Either `allow` or `deny`
 
@@ -51,7 +51,7 @@ data:
     # Custom deployer role
     p, role:deployer, applications, get, */*, allow
     p, role:deployer, applications, sync, */*, allow
-    p, role:deployer, applications, action, */*, allow
+    p, role:deployer, applications, action/*, */*, allow
     p, role:deployer, logs, get, */*, allow
 
     # Assign users to the role
@@ -70,7 +70,7 @@ kubectl apply -f argocd-rbac-cm.yaml
 The deployer role above allows users to:
 - View all applications (`get`)
 - Trigger syncs (`sync`)
-- Perform resource actions like restart (`action`)
+- Perform resource actions like restart (`action/*`)
 - View application logs (`logs get`)
 
 But they cannot:
@@ -92,7 +92,7 @@ policy.csv: |
   # Can view all apps, but only sync apps in the "frontend" project
   p, role:frontend-deployer, applications, get, */*, allow
   p, role:frontend-deployer, applications, sync, frontend/*, allow
-  p, role:frontend-deployer, applications, action, frontend/*, allow
+  p, role:frontend-deployer, applications, action/*, frontend/*, allow
   p, role:frontend-deployer, logs, get, frontend/*, allow
 ```
 
@@ -108,7 +108,7 @@ policy.csv: |
   p, role:app-manager, applications, update, myproject/*, allow
   p, role:app-manager, applications, delete, myproject/*, allow
   p, role:app-manager, applications, sync, myproject/*, allow
-  p, role:app-manager, applications, action, myproject/*, allow
+  p, role:app-manager, applications, action/*, myproject/*, allow
   p, role:app-manager, applications, override, myproject/*, allow
   p, role:app-manager, logs, get, myproject/*, allow
   p, role:app-manager, exec, create, myproject/*, allow
@@ -129,9 +129,9 @@ policy.csv: |
   p, role:repo-manager, certificates, create, *, allow
 ```
 
-### Operations Viewer with Log Access
+### Operations Viewer with Log and Terminal Access
 
-A role for on-call engineers who need deep visibility but should not change anything:
+A role for on-call engineers who need deep visibility and emergency terminal access:
 
 ```yaml
 policy.csv: |
@@ -145,7 +145,7 @@ policy.csv: |
 
 ## Combining Multiple Roles
 
-A single user can be assigned multiple roles. ArgoCD evaluates all matching policies and allows the action if any role permits it:
+A single user can be assigned multiple roles. ArgoCD evaluates all matching policies and allows the action if any role permits it, as long as no matching deny rule applies:
 
 ```yaml
 policy.csv: |
@@ -168,7 +168,7 @@ ArgoCD supports explicit deny rules, which take precedence over allow rules. Thi
 
 ```yaml
 policy.csv: |
-  # Allow sync for all apps in production project
+  # Allow all application actions in the production project
   p, role:prod-deployer, applications, *, production/*, allow
 
   # But deny deletion
@@ -200,7 +200,7 @@ policy.csv: |
   p, role:viewer, logs, get, */*, allow
 ```
 
-The group names must match the group claims from your OIDC provider. Configure the group claim in `argocd-cm`:
+The group names must match the group claims from your OIDC provider. Make sure your OIDC config requests the groups scope in `argocd-cm`:
 
 ```yaml
 apiVersion: v1
@@ -267,7 +267,7 @@ data:
     # Deployer role - can sync and view
     p, role:deployer, applications, get, */*, allow
     p, role:deployer, applications, sync, */*, allow
-    p, role:deployer, applications, action, */*, allow
+    p, role:deployer, applications, action/*, */*, allow
     p, role:deployer, logs, get, */*, allow
 
     # Project-scoped app managers
