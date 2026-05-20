@@ -10,7 +10,7 @@ Description: Learn how to deploy Jaeger for distributed tracing using ArgoCD wit
 
 Jaeger is one of the most widely adopted distributed tracing systems, originally developed at Uber and now a graduated CNCF project. It helps you monitor and troubleshoot microservices by tracking requests as they flow through your system. Deploying Jaeger with ArgoCD means your entire tracing infrastructure is declared in Git, with automated deployment, drift detection, and self-healing.
 
-This guide covers deploying Jaeger using the Jaeger Operator through ArgoCD, with both in-memory and production-grade Elasticsearch or Cassandra backends.
+This guide covers deploying Jaeger using the Jaeger Operator through ArgoCD, with both in-memory and production-grade Elasticsearch backends.
 
 ## Jaeger Components
 
@@ -69,14 +69,8 @@ jaeger-operator:
     limits:
       memory: 256Mi
 
-  # Install CRDs
-  crd:
-    install: true
-
-  serviceMonitor:
-    enabled: true
-    additionalLabels:
-      release: kube-prometheus-stack
+  # Jaeger Operator uses admission webhooks, so install cert-manager 1.6.1+
+  # or provide webhook certificates before syncing this chart.
 ```
 
 ### ArgoCD Application for the Operator
@@ -198,6 +192,7 @@ spec:
           ca: /es/certificates/ca.crt
         num-shards: 3
         num-replicas: 1
+        use-aliases: true
     secretName: jaeger-es-credentials
     esIndexCleaner:
       enabled: true
@@ -224,7 +219,7 @@ spec:
       default_strategy:
         type: probabilistic
         param: 0.1  # Sample 10% of traces
-      per_operation_strategies:
+      service_strategies:
         - service: critical-api
           type: probabilistic
           param: 1.0  # Sample 100% of critical-api traces
@@ -259,7 +254,7 @@ spec:
 
 ### Using OpenTelemetry SDK
 
-Modern applications should use the OpenTelemetry SDK to send traces to Jaeger's OTLP endpoint.
+Modern applications should use the OpenTelemetry SDK to send traces to Jaeger's OTLP gRPC endpoint.
 
 ```yaml
 # Environment variables for your application
@@ -303,7 +298,7 @@ kube-prometheus-stack:
         url: http://jaeger-query.observability.svc.cluster.local:16686
         access: proxy
         jsonData:
-          tracesToLogs:
+          tracesToLogsV2:
             datasourceUid: loki
             tags: ['service.name']
             filterByTraceID: true
@@ -316,11 +311,12 @@ kube-prometheus-stack:
 ```mermaid
 graph TB
     subgraph Applications
-        A1[Service A] --> C[Collector]
+        A1[Service A] --> C
         A2[Service B] --> C
         A3[Service C] --> C
     end
     subgraph Jaeger
+        C[Collector]
         C --> ES[Elasticsearch]
         Q[Query/UI] --> ES
     end
