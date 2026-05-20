@@ -107,6 +107,7 @@ metadata:
   name: argocd-cluster-a
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/argocd-config.git
     path: argocd-install/cluster-a
@@ -155,7 +156,7 @@ Before adding more instances, make sure you have tuned the existing one. ArgoCD 
 
 ### Increase Controller Sharding
 
-The application controller can be sharded across multiple replicas, each handling a subset of Applications:
+The application controller can be sharded across multiple replicas, each handling a subset of managed clusters:
 
 ```yaml
 # ArgoCD Helm values
@@ -206,11 +207,9 @@ Control how many Applications the controller processes simultaneously:
 
 ```yaml
 controller:
-  env:
-    - name: ARGOCD_APPLICATION_CONTROLLER_STATUS_PROCESSORS
-      value: "50"
-    - name: ARGOCD_APPLICATION_CONTROLLER_OPERATION_PROCESSORS
-      value: "25"
+  extraArgs:
+    - --status-processors=50
+    - --operation-processors=25
 ```
 
 ## Performance Benchmarks
@@ -220,7 +219,7 @@ Here are rough numbers based on community reports and my experience:
 | Applications | Clusters | Recommended Setup |
 |-------------|----------|-------------------|
 | 1 to 100 | 1 to 5 | Single instance, default resources |
-| 100 to 500 | 5 to 20 | Single instance, scaled resources, controller sharding |
+| 100 to 500 | 5 to 20 | Single instance, scaled resources, controller sharding for many clusters |
 | 500 to 2000 | 20 to 50 | 2 to 3 instances (per environment or region) |
 | 2000+ | 50+ | Multiple instances with hub-and-spoke |
 
@@ -234,7 +233,7 @@ Ask these questions to decide:
    - Yes: Separate instances for prod vs non-prod at minimum
 
 2. **Do you have more than 500 Applications?**
-   - Yes: Consider sharding or multiple instances
+   - Yes: Tune controller processors and repo servers; consider multiple instances if resource tuning is not enough
 
 3. **Do different clusters need different ArgoCD versions?**
    - Yes: Per-cluster instances
