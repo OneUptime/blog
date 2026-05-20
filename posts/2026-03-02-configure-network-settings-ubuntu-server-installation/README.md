@@ -16,7 +16,7 @@ Ubuntu Server's installer (subiquity) detects all network interfaces and present
 
 ## DHCP Configuration (Default)
 
-The simplest option - let the installer configure DHCP on all detected interfaces. This is the default when you proceed without modifying the network screen.
+The simplest option - let the installer configure DHCP on detected wired interfaces. This is the default when you proceed without modifying the network screen.
 
 The resulting Netplan file looks like:
 
@@ -265,7 +265,7 @@ VMs configured to use `br0` will get addresses on the `192.168.1.0/24` network d
 
 ## WiFi Configuration
 
-Ubuntu Server supports WiFi through Netplan (useful for Raspberry Pi or NUC servers):
+Ubuntu Server supports WiFi through Netplan (useful for Raspberry Pi or NUC servers). With the default `networkd` renderer, WiFi also requires `wpasupplicant` to be installed:
 
 ```yaml
 network:
