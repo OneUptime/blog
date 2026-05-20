@@ -23,7 +23,7 @@ flowchart LR
 ```
 
 Dex runs as a separate deployment and serves two main functions:
-1. Acts as an OIDC provider for ArgoCD (port 5556 for HTTP, 5557 for gRPC)
+1. Acts as an OIDC provider for ArgoCD (port 5556 for HTTP/HTTPS, 5557 for gRPC, 5558 for telemetry)
 2. Proxies authentication to external identity providers via connectors
 
 ## Step 1: Check Dex Pod Health
@@ -99,7 +99,7 @@ print('Dex secrets found:', dex_keys if dex_keys else 'NONE')
 
 ### ArgoCD URL Not Set
 
-Dex derives its issuer URL from the ArgoCD URL. If it is not set, Dex crashes:
+ArgoCD uses its configured URL to generate Dex issuer and redirect URLs. If it is not set, bundled Dex SSO is not considered configured:
 
 ```bash
 # Check ArgoCD URL
@@ -124,10 +124,9 @@ kubectl rollout restart deployment argocd-dex-server -n argocd
 kubectl get configmap argocd-cm -n argocd -o jsonpath='{.data.dex\.config}' | \
   grep -E "type:|id:|name:"
 
-# Verify the connector ID matches what the UI sends
-# The Dex discovery endpoint shows available connectors
+# Verify Dex is serving discovery at the expected ArgoCD issuer path
 kubectl exec -n argocd deploy/argocd-dex-server -- \
-  curl -s http://localhost:5556/dex/.well-known/openid-configuration 2>/dev/null
+  curl -s http://localhost:5556/api/dex/.well-known/openid-configuration 2>/dev/null
 ```
 
 Example of a properly configured connector:
@@ -244,8 +243,8 @@ dex.config: |
         clientSecret: $dex.github.clientSecret
         orgs:
           - name: your-org
-        # Load teams as groups
-        loadAllGroups: true
+            teams:
+              - your-team
         teamNameField: slug
 ```
 
@@ -265,15 +264,14 @@ kubectl get serviceaccount argocd-dex-server -n argocd
 ```bash
 # Check Dex health
 kubectl exec -n argocd deploy/argocd-dex-server -- \
-  wget -qO- http://localhost:5556/dex/healthz 2>&1
+  wget -qO- http://localhost:5558/healthz/ready 2>&1
 
-# Check gRPC health (used by ArgoCD server)
-kubectl exec -n argocd deploy/argocd-server -- \
-  curl -s http://argocd-dex-server:5557/healthz 2>/dev/null
+# Check Dex service endpoints, including the gRPC port used by ArgoCD server
+kubectl get endpoints argocd-dex-server -n argocd -o wide
 
 # Check OIDC discovery
 kubectl exec -n argocd deploy/argocd-dex-server -- \
-  wget -qO- http://localhost:5556/dex/.well-known/openid-configuration 2>&1
+  wget -qO- http://localhost:5556/api/dex/.well-known/openid-configuration 2>&1
 ```
 
 ## Complete Debug Script
@@ -318,7 +316,7 @@ except: print('Could not read secrets')
 
 echo -e "\n--- Dex Health ---"
 kubectl exec -n $NS deploy/argocd-dex-server -- \
-  wget -qO- http://localhost:5556/dex/healthz 2>&1 || echo "Health check failed"
+  wget -qO- http://localhost:5558/healthz/ready 2>&1 || echo "Health check failed"
 
 echo -e "\n--- Recent Errors ---"
 kubectl logs -n $NS deploy/argocd-dex-server --tail=30 | \
