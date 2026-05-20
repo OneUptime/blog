@@ -8,7 +8,7 @@ Description: Learn how to deploy and configure ArgoCD on OVHcloud Managed Kubern
 
 ---
 
-OVHcloud Managed Kubernetes is a compelling option for teams that need a European cloud provider with GDPR compliance built in. It is fully CNCF-conformant, surprisingly affordable, and runs on OVHcloud's extensive infrastructure across Europe. Combining it with ArgoCD gives you a GitOps workflow that keeps your data and operations within European borders.
+OVHcloud Managed Kubernetes is a compelling option for teams that need a European cloud provider with GDPR compliance in mind. It is fully CNCF-conformant, surprisingly affordable, and runs on OVHcloud's extensive infrastructure across Europe. Combining it with ArgoCD gives you a GitOps workflow that can keep your data and operations within European regions when you choose EU-based clusters, registries, and Git repositories.
 
 This guide covers deploying ArgoCD on OVHcloud Managed Kubernetes, configuring load balancers, integrating with OVHcloud's private registry, and handling the platform-specific details.
 
@@ -17,9 +17,9 @@ This guide covers deploying ArgoCD on OVHcloud Managed Kubernetes, configuring l
 There are several reasons teams choose OVHcloud:
 
 - **Data sovereignty** - Data centers across Europe with GDPR compliance
-- **Predictable pricing** - No hidden egress fees between OVHcloud services
+- **Predictable pricing** - Clear Public Cloud pricing, with many network traffic costs included depending on the region and service
 - **CNCF conformant** - Standard Kubernetes, no vendor lock-in
-- **Free control plane** - You only pay for worker nodes
+- **Free control plane option** - OVHcloud offers a Free Managed Kubernetes control plane; worker nodes and related cloud resources are billed separately
 
 ## Prerequisites
 
@@ -68,9 +68,6 @@ kind: Service
 metadata:
   name: argocd-server-lb
   namespace: argocd
-  annotations:
-    # OVHcloud load balancer annotations
-    service.beta.kubernetes.io/ovh-loadbalancer-proxy-protocol: "v2"
 spec:
   type: LoadBalancer
   ports:
@@ -106,8 +103,14 @@ spec:
         controller:
           service:
             type: LoadBalancer
+            annotations:
+              loadbalancer.openstack.org/proxy-protocol: "v2"
+            externalTrafficPolicy: Local
+          extraArgs:
+            enable-ssl-passthrough: ""
           config:
             use-proxy-protocol: "true"
+            real-ip-header: "proxy_protocol"
   destination:
     server: https://kubernetes.default.svc
     namespace: ingress-nginx
@@ -148,26 +151,7 @@ spec:
 
 ## Step 4: Integrate with OVHcloud Private Registry
 
-OVHcloud offers a managed Harbor registry. To use it with ArgoCD for Helm charts:
-
-```yaml
-# ovh-registry-secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: ovh-registry
-  namespace: argocd
-  labels:
-    argocd.argoproj.io/secret-type: repository
-stringData:
-  type: helm
-  name: ovh-harbor
-  url: https://my-registry.c1.gra9.container-registry.ovh.net/chartrepo/my-project
-  username: "<HARBOR_USERNAME>"
-  password: "<HARBOR_PASSWORD>"
-```
-
-For OCI-based Helm charts in Harbor:
+OVHcloud offers a managed Harbor registry. Harbor stores Helm charts as OCI artifacts in current versions. To use OCI-based Helm charts with ArgoCD:
 
 ```yaml
 # ovh-oci-registry-secret.yaml
@@ -183,6 +167,25 @@ stringData:
   name: ovh-harbor-oci
   enableOCI: "true"
   url: my-registry.c1.gra9.container-registry.ovh.net
+  username: "<HARBOR_USERNAME>"
+  password: "<HARBOR_PASSWORD>"
+```
+
+If you still run an older Harbor deployment with ChartMuseum enabled, use the legacy chart repository endpoint:
+
+```yaml
+# ovh-chartmuseum-registry-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ovh-chartmuseum-registry
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: helm
+  name: ovh-harbor-chartmuseum
+  url: https://my-registry.c1.gra9.container-registry.ovh.net/chartrepo/my-project
   username: "<HARBOR_USERNAME>"
   password: "<HARBOR_PASSWORD>"
 ```
@@ -240,10 +243,11 @@ spec:
   source:
     repoURL: https://charts.jetstack.io
     chart: cert-manager
-    targetRevision: v1.14.x
+    targetRevision: v1.20.2
     helm:
       values: |
-        installCRDs: true
+        crds:
+          enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager
@@ -269,7 +273,7 @@ flowchart TD
 
 ## Multi-Region with OVHcloud
 
-OVHcloud has data centers across Europe, which makes multi-region deployments straightforward. You can use ArgoCD ApplicationSets to deploy across regions.
+OVHcloud has data centers across Europe, which makes multi-region deployments possible when you create and register a cluster in each target region. You can use ArgoCD ApplicationSets to deploy across regions.
 
 ```yaml
 # multi-region-appset.yaml
@@ -311,9 +315,9 @@ spec:
 
 ## OVHcloud-Specific Tips
 
-### Free Egress Between Services
+### Included Network Traffic
 
-One of OVHcloud's biggest advantages is free bandwidth between their services. This means ArgoCD pulling charts from OVHcloud Harbor, and pods pulling images from the same registry, costs nothing extra.
+One of OVHcloud's biggest advantages is predictable network pricing. Managed Private Registry plans include traffic, and many Public Cloud network traffic costs are included depending on the region and service, which can make frequent image and chart pulls cost-effective.
 
 ### Node Flavors for ArgoCD
 
@@ -323,9 +327,9 @@ OVHcloud offers various instance types. For ArgoCD:
 - **b2-15** (4 vCPU, 15GB RAM) - Suitable for medium deployments (50 to 200 apps)
 - **b2-30** (8 vCPU, 30GB RAM) - For larger deployments with many applications
 
-### ETCD Backup
+### Cluster State Backup
 
-OVHcloud automatically backs up the etcd database for your Kubernetes cluster. This means your ArgoCD Application resources are backed up as part of the cluster state.
+Do not rely on the managed control plane as your only backup for ArgoCD Application resources. Keep the desired state in Git, and use a Kubernetes backup tool such as Velero, CloudCasa, or TrilioVault if you need cluster-resource restore workflows.
 
 ## Troubleshooting on OVHcloud
 
@@ -354,4 +358,4 @@ kubectl describe node <NODE_NAME>
 
 ## Conclusion
 
-OVHcloud Managed Kubernetes is a strong choice for European teams that need data sovereignty and predictable pricing. ArgoCD runs perfectly on it with no special modifications needed. The integration with OVHcloud's Harbor registry and Cinder storage is seamless, and the free internal bandwidth makes it cost-effective for GitOps workflows that involve frequent image and chart pulls. If GDPR compliance is a priority for your organization, the OVHcloud and ArgoCD combination is hard to beat.
+OVHcloud Managed Kubernetes is a strong choice for European teams that need data sovereignty and predictable pricing. ArgoCD runs well on it with only the usual Kubernetes and ingress configuration. The integration with OVHcloud's Harbor registry and Cinder storage is straightforward, and the included network traffic on relevant services can make it cost-effective for GitOps workflows that involve frequent image and chart pulls. If GDPR compliance is a priority for your organization, the OVHcloud and ArgoCD combination is hard to beat when you choose the right regions and supporting services.
