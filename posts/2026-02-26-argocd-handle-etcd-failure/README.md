@@ -19,7 +19,7 @@ flowchart TD
         E2[ConfigMaps]
         E3[Secrets]
         E4[AppProjects]
-        E5[Deployed Resources<br/>Deployments, Services, etc.]
+        E5[Kubernetes Resource Objects<br/>Deployments, Services, etc.]
     end
 
     subgraph "etcd Failure Scenarios"
@@ -67,8 +67,7 @@ kubectl get applications -n argocd -o json | \
   jq -r '.items[] | select(.status.operationState.phase == "Running") | .metadata.name' | \
   while read app; do
     echo "Terminating stuck sync: $app"
-    kubectl patch application "$app" -n argocd --type json \
-      -p '[{"op": "remove", "path": "/operation"}]' 2>/dev/null
+    argocd app terminate-op "$app" >/dev/null 2>&1
   done
 ```
 
@@ -80,7 +79,7 @@ This is the most complex scenario. The etcd snapshot contains state from a point
 
 If etcd is restored from a snapshot taken 2 hours ago:
 - ArgoCD Application resources revert to their state from 2 hours ago
-- But actual deployed resources (Deployments, Services, etc.) may be at a newer state
+- Kubernetes resource objects revert to the snapshot state, while workloads or external resources that changed after the snapshot may still need reconciliation
 - Repository credentials may have been rotated since the snapshot
 - New applications created after the snapshot are gone
 - Applications deleted after the snapshot are back
@@ -125,7 +124,7 @@ kubectl get applications -n argocd \
   grep -v "Synced.*Healthy"
 ```
 
-If auto-sync is enabled, ArgoCD will automatically reconcile the differences. If manual sync is required, you may need to decide case by case whether the Git state or the live state is correct.
+If auto-sync is enabled, ArgoCD will automatically reconcile out-of-sync applications. Live cluster drift requires `selfHeal: true`, and deleting resources that no longer exist in Git requires `prune: true`. If manual sync is required, you may need to decide case by case whether the Git state or the live state is correct.
 
 ### Handle Ghost Applications
 
@@ -148,8 +147,9 @@ Applications created after the snapshot are now gone from etcd:
 
 ```bash
 # If you use declarative application management (recommended),
-# re-apply your application definitions from Git
-kubectl apply -f https://raw.githubusercontent.com/your-org/argocd-config/main/applications/
+# re-apply your application definitions from a local Git checkout
+git clone https://github.com/your-org/argocd-config.git
+kubectl apply -f argocd-config/applications/
 
 # If you use app-of-apps pattern, just re-apply the root app
 kubectl apply -f root-application.yaml
@@ -170,7 +170,7 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/part-of=argocd \
   -n argocd --timeout=300s
 
 # Step 3: Restore from ArgoCD backup (if available)
-argocd admin import --namespace argocd < argocd-export-backup.yaml
+argocd admin import - --namespace argocd < argocd-export-backup.yaml
 
 # Step 4: If no ArgoCD backup, restore configuration manually
 # Apply ConfigMaps
