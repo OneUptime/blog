@@ -15,7 +15,7 @@ The platform template pattern takes the application catalog concept further. Ins
 A developer wants to deploy a new service. Instead of filing tickets with the platform team, they fill in a simple config file:
 
 ```yaml
-# team-config/services/payment-service.yaml
+# team-config/services/payment-service/config.yaml
 
 name: payment-service
 team: payments
@@ -269,8 +269,11 @@ spec:
       rules:
         - alert: {{ .Values.name | title }}HighErrorRate
           expr: |
-            rate(http_requests_total{namespace="{{ .Values.name }}", code=~"5.."}[5m])
-            / rate(http_requests_total{namespace="{{ .Values.name }}"}[5m]) > 0.05
+            (
+              sum(rate(http_requests_total{namespace="{{ .Values.name }}", code=~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total{namespace="{{ .Values.name }}"}[5m]))
+            ) > 0.05
           for: 5m
           labels:
             severity: {{ if eq .Values.tier "critical" }}critical{{ else }}warning{{ end }}
@@ -282,7 +285,9 @@ spec:
         - alert: {{ .Values.name | title }}HighLatency
           expr: |
             histogram_quantile(0.95,
-              rate(http_request_duration_seconds_bucket{namespace="{{ .Values.name }}"}[5m])
+              sum by (le) (
+                rate(http_request_duration_seconds_bucket{namespace="{{ .Values.name }}"}[5m])
+              )
             ) > 1
           for: 10m
           labels:
@@ -304,6 +309,8 @@ metadata:
   name: platform-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/org/team-configs.git
@@ -312,22 +319,22 @@ spec:
           - path: "services/*/config.yaml"
   template:
     metadata:
-      name: '{{ index (fromJson .config) "name" }}'
+      name: '{{ .name }}'
     spec:
-      project: '{{ index (fromJson .config) "team" }}'
+      project: '{{ .team }}'
       sources:
         - repoURL: https://github.com/org/platform-templates.git
           targetRevision: v2.0.0
-          path: 'templates/{{ index (fromJson .config) "template" }}'
+          path: 'templates/{{ .template }}'
           helm:
             valueFiles:
-              - $values/services/{{ index (fromJson .config) "name" }}/config.yaml
+              - $values/{{ .path.path }}/{{ .path.filename }}
         - repoURL: https://github.com/org/team-configs.git
           targetRevision: main
           ref: values
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{ index (fromJson .config) "name" }}'
+        namespace: '{{ .name }}'
       syncPolicy:
         automated:
           selfHeal: true
@@ -391,8 +398,8 @@ Teams can adopt new versions at their own pace by updating the `targetRevision`:
 
 ```yaml
 # Update from v2.0.0 to v2.1.0
-source:
-  targetRevision: v2.1.0
+sources:
+  - targetRevision: v2.1.0
 ```
 
 ## Compliance and Guardrails
