@@ -65,7 +65,6 @@ metadata:
   namespace: argocd
   annotations:
     # IBM Cloud VPC load balancer annotations
-    service.kubernetes.io/ibm-load-balancer-cloud-provider-enable-features: "proxy-protocol"
     service.kubernetes.io/ibm-load-balancer-cloud-provider-ip-type: "public"
     service.kubernetes.io/ibm-load-balancer-cloud-provider-vpc-lb-name: "argocd-lb"
 spec:
@@ -81,7 +80,7 @@ spec:
 
 ### For Classic Infrastructure Clusters
 
-Classic clusters use Cloudflare-based Ingress ALBs that are built in.
+Classic clusters use IBM-provided NGINX Ingress ALBs that are built in.
 
 ```bash
 # Check the Ingress subdomain assigned to your cluster
@@ -130,7 +129,7 @@ kubectl get secrets -n default | grep all-icr-io
 # Copy the secret to the namespace where your apps will be deployed
 kubectl get secret all-icr-io -n default -o yaml | \
   sed 's/namespace: default/namespace: my-app/' | \
-  kubectl apply -f -
+  kubectl create -n my-app -f -
 ```
 
 ### Configure ArgoCD to Pull Helm Charts from ICR
@@ -149,7 +148,7 @@ stringData:
   name: icr-charts
   enableOCI: "true"
   # ICR endpoint varies by region
-  url: us.icr.io/my-namespace
+  url: us.icr.io/my-charts
   username: iamapikey
   password: "<IBM_CLOUD_API_KEY>"
 ```
@@ -185,7 +184,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.9.x
+    targetRevision: 2.x
     helm:
       values: |
         installCRDs: true
@@ -204,14 +203,14 @@ spec:
 
 ```yaml
 # ibm-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: ibm-secrets-manager
 spec:
   provider:
     ibm:
-      serviceUrl: https://us-south.secrets-manager.cloud.ibm.com
+      serviceUrl: https://<SECRETS_MANAGER_ID>.us-south.secrets-manager.appdomain.cloud
       auth:
         secretRef:
           secretApiKeySecretRef:
@@ -233,7 +232,7 @@ kubectl create secret generic ibm-cloud-creds \
 
 ```yaml
 # app-external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -249,12 +248,10 @@ spec:
   data:
     - secretKey: db-password
       remoteRef:
-        key: arbitrary/my-app/db-password
-        property: payload
+        key: arbitrary/<DB_PASSWORD_SECRET_ID>
     - secretKey: api-key
       remoteRef:
-        key: arbitrary/my-app/api-key
-        property: payload
+        key: arbitrary/<API_KEY_SECRET_ID>
 ```
 
 ## Architecture on IBM Cloud
@@ -351,7 +348,7 @@ ibmcloud cr images --restrict my-namespace
 
 ### Load Balancer Provisioning Issues
 
-VPC load balancers require the worker nodes to be in a subnet with a public gateway.
+Public VPC load balancers do not require a public gateway for inbound requests, but workloads that need to reach public URLs require a public gateway on the worker node subnets.
 
 ```bash
 # Check load balancer status
