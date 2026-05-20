@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, OCI, Security
 
-Description: Learn how to configure authentication for OCI container registries in ArgoCD, covering token-based auth, service accounts, credential helpers, and automated token refresh strategies.
+Description: Learn how to configure authentication for OCI container registries in ArgoCD, covering token-based auth, service accounts, cloud identity, and automated token refresh strategies.
 
 ---
 
-Private OCI registries require authentication before ArgoCD can pull Helm charts or other OCI artifacts. The authentication mechanism varies by registry provider - some use static tokens, others use short-lived credentials that need periodic refresh, and cloud providers often support IAM-based authentication. This guide covers all the common authentication patterns and how to configure them in ArgoCD.
+Private OCI registries require authentication before ArgoCD can pull Helm charts or other OCI artifacts. The authentication mechanism varies by registry provider - some use static tokens, others use short-lived credentials that need periodic refresh, and some cloud-provider integrations support workload identity. This guide covers all the common authentication patterns and how to configure them in ArgoCD.
 
 ## Authentication Architecture
 
@@ -112,7 +112,7 @@ spec:
           serviceAccountName: argocd-ecr-updater
           containers:
             - name: updater
-              image: amazon/aws-cli:latest
+              image: your-registry/aws-kubectl:latest  # Image must include aws and kubectl
               command:
                 - /bin/sh
                 - -c
@@ -137,16 +137,18 @@ spec:
           restartPolicy: OnFailure
 ```
 
-### Option B: IRSA (IAM Roles for Service Accounts)
+The `argocd-ecr-updater` ServiceAccount also needs Kubernetes RBAC permission to create, update, and patch the repository Secret.
 
-If ArgoCD runs on EKS, use IRSA to give the repo server direct ECR access:
+### Option B: IRSA for the credential updater
+
+If ArgoCD runs on EKS, use IRSA to let the credential updater call AWS without storing long-lived AWS keys. ArgoCD still reads the refreshed ECR authorization token from the repository secret:
 
 ```yaml
 # ServiceAccount with ECR access
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: argocd-repo-server
+  name: argocd-ecr-updater
   namespace: argocd
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/argocd-ecr-role
@@ -161,10 +163,7 @@ The IAM role needs this policy:
     {
       "Effect": "Allow",
       "Action": [
-        "ecr:GetAuthorizationToken",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage"
+        "ecr:GetAuthorizationToken"
       ],
       "Resource": "*"
     }
@@ -201,14 +200,14 @@ stringData:
 
 ### Using Workload Identity (GKE)
 
-Configure Workload Identity on GKE to avoid managing service account keys:
+Workload Identity can avoid managing service account keys for a separate token-refresh job. ArgoCD does not use Google Application Default Credentials directly for Helm OCI registry login, so the job should mint an Artifact Registry access token and update the ArgoCD repository secret with `username: oauth2accesstoken` and the token as `password`:
 
 ```yaml
-# ArgoCD repo server ServiceAccount with Workload Identity
+# Token refresher ServiceAccount with Workload Identity
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: argocd-repo-server
+  name: argocd-gar-updater
   namespace: argocd
   annotations:
     iam.gke.io/gcp-service-account: argocd-repo@my-project.iam.gserviceaccount.com
@@ -238,16 +237,18 @@ stringData:
   password: <service-principal-password>
 ```
 
-### Using Managed Identity (AKS)
+### Using Azure Workload Identity (AKS)
 
-On AKS with managed identities, attach the ACR to the AKS cluster:
+For ACR with Azure Workload Identity, configure the ArgoCD repo server for workload identity and add the repository with `--use-azure-workload-identity`:
 
 ```bash
-# Attach ACR to AKS (grants AcrPull role)
-az aks update -n myAKSCluster -g myResourceGroup --attach-acr myregistry
+argocd repo add myregistry.azurecr.io/charts \
+  --type helm \
+  --enable-oci \
+  --use-azure-workload-identity
 ```
 
-Then configure ArgoCD to use the kubelet identity for ACR authentication.
+The repo-server pods need the `azure.workload.identity/use: "true"` label, the repo-server ServiceAccount needs the `azure.workload.identity/client-id` annotation, and the repo-server environment should set `AZURE_ARM_TOKEN_RESOURCE=https://containerregistry.azure.net`. Grant the workload identity pull access to the ACR.
 
 ## Method 6: Docker Hub Authentication
 
@@ -327,7 +328,7 @@ Common authentication errors:
 
 ## Security Best Practices
 
-**Use short-lived tokens** - Prefer mechanisms like IRSA, Workload Identity, or Managed Identity over static tokens.
+**Use short-lived tokens** - Prefer mechanisms like IRSA-backed token refresh, Workload Identity-backed token refresh, or Azure Workload Identity over static tokens.
 
 **Rotate static credentials** - If you must use static tokens, rotate them regularly (at least every 90 days).
 
