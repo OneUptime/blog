@@ -43,9 +43,9 @@ metadata:
 spec:
   project: data-infrastructure
   source:
-    repoURL: https://docs.altinity.com/clickhouse-operator/
+    repoURL: https://helm.altinity.com
     chart: altinity-clickhouse-operator
-    targetRevision: 0.23.0
+    targetRevision: 0.27.0
     helm:
       values: |
         operator:
@@ -57,6 +57,8 @@ spec:
               cpu: "1"
               memory: "512Mi"
         metrics:
+          enabled: true
+        serviceMonitor:
           enabled: true
   destination:
     server: https://kubernetes.default.svc
@@ -76,7 +78,7 @@ ClickHouse Keeper is a lightweight alternative to ZooKeeper for cluster coordina
 
 ```yaml
 # clickhouse/production/keeper.yaml
-apiVersion: clickhouse.altinity.com/v1
+apiVersion: clickhouse-keeper.altinity.com/v1
 kind: ClickHouseKeeperInstallation
 metadata:
   name: keeper
@@ -96,13 +98,17 @@ spec:
       keeper_server/coordination_settings/operation_timeout_ms: "10000"
       keeper_server/coordination_settings/session_timeout_ms: "30000"
       keeper_server/raft_configuration/reserve_log_items: "200"
+  defaults:
+    templates:
+      podTemplate: default
+      dataVolumeClaimTemplate: default
   templates:
     podTemplates:
       - name: default
         spec:
           containers:
             - name: clickhouse-keeper
-              image: clickhouse/clickhouse-keeper:24.1
+              image: clickhouse/clickhouse-keeper:25.8
               resources:
                 requests:
                   cpu: "500m"
@@ -135,13 +141,8 @@ metadata:
 spec:
   configuration:
     zookeeper:
-      nodes:
-        - host: keeper-0.keeper.clickhouse.svc.cluster.local
-          port: 2181
-        - host: keeper-1.keeper.clickhouse.svc.cluster.local
-          port: 2181
-        - host: keeper-2.keeper.clickhouse.svc.cluster.local
-          port: 2181
+      keeper:
+        name: keeper
 
     clusters:
       - name: analytics
@@ -156,9 +157,6 @@ spec:
     settings:
       # Performance settings
       max_concurrent_queries: "200"
-      max_threads: "16"
-      max_memory_usage: "10000000000"  # 10GB per query
-      max_memory_usage_for_all_queries: "50000000000"  # 50GB total
 
       # Merge tree settings
       merge_tree/max_bytes_to_merge_at_max_space_in_pool: "161061273600"
@@ -174,6 +172,8 @@ spec:
 
     profiles:
       default/max_memory_usage: "10000000000"
+      default/max_memory_usage_for_all_queries: "50000000000"
+      default/max_threads: "16"
       default/max_execution_time: "600"
       default/load_balancing: random
       readonly/readonly: "1"
@@ -184,13 +184,17 @@ spec:
       default/interval/result_rows: "1000000000"
 
     users:
-      admin/password_sha256_hex: "..."
-      admin/networks/ip: "::/0"
+      admin/password_sha256_hex: "e2186dbdb1bb4193608605e84f33208765b5693b55edd4f730a719a100eeea6f"
+      admin/networks/ip:
+        - "0.0.0.0/0"
+        - "::/0"
       admin/profile: default
       admin/quota: default
 
-      readonly/password_sha256_hex: "..."
-      readonly/networks/ip: "::/0"
+      readonly/password_sha256_hex: "83467245be81de01fbb75f9ccb094840c32eb7c9f5d050fb05a91456c0bccbaf"
+      readonly/networks/ip:
+        - "0.0.0.0/0"
+        - "::/0"
       readonly/profile: readonly
       readonly/quota: default
 
@@ -200,7 +204,7 @@ spec:
         spec:
           containers:
             - name: clickhouse
-              image: clickhouse/clickhouse-server:24.1
+              image: clickhouse/clickhouse-server:25.8
               ports:
                 - name: http
                   containerPort: 8123
@@ -277,7 +281,7 @@ spec:
 
 ## Step 5: Schema Management
 
-Manage your ClickHouse schemas through a pre-sync hook:
+Manage your ClickHouse schemas through a post-sync hook:
 
 ```yaml
 # clickhouse/production/schema-migration.yaml
@@ -286,7 +290,7 @@ kind: Job
 metadata:
   name: clickhouse-schema-migration
   annotations:
-    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 spec:
   template:
@@ -297,9 +301,9 @@ spec:
           image: myregistry/clickhouse-migrations:v1.0.0
           env:
             - name: CLICKHOUSE_HOST
-              value: "analytics-clickhouse.clickhouse.svc.cluster.local"
+              value: "clickhouse-analytics.clickhouse.svc.cluster.local"
             - name: CLICKHOUSE_PORT
-              value: "8123"
+              value: "9000"
           command:
             - /bin/sh
             - -c
@@ -308,7 +312,7 @@ spec:
               for f in /migrations/*.sql; do
                 echo "Applying $f"
                 clickhouse-client --host $CLICKHOUSE_HOST \
-                  --port 9000 \
+                  --port $CLICKHOUSE_PORT \
                   --multiquery < "$f"
               done
           volumeMounts:
@@ -328,6 +332,8 @@ metadata:
   name: clickhouse-migrations
 data:
   001_events_table.sql: |
+    CREATE DATABASE IF NOT EXISTS analytics ON CLUSTER 'analytics';
+
     CREATE TABLE IF NOT EXISTS analytics.events ON CLUSTER 'analytics'
     (
         event_id UUID DEFAULT generateUUIDv4(),
@@ -349,7 +355,7 @@ data:
 
 ## Monitoring ClickHouse
 
-The operator exposes Prometheus metrics out of the box. Add a ServiceMonitor:
+The operator exposes Prometheus metrics out of the box. If you do not enable `serviceMonitor.enabled` in the Helm values, add a ServiceMonitor for the operator metrics service:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -359,9 +365,13 @@ metadata:
 spec:
   selector:
     matchLabels:
-      clickhouse.altinity.com/chi: analytics
+      app.kubernetes.io/name: altinity-clickhouse-operator
+      app.kubernetes.io/instance: clickhouse-operator
   endpoints:
-    - port: exporter
+    - port: ch-metrics
+      path: /metrics
+      interval: 30s
+    - port: op-metrics
       path: /metrics
       interval: 30s
 ```
