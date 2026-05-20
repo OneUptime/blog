@@ -18,8 +18,8 @@ Traditional DR requires maintaining runbooks, backup scripts, and manual procedu
 
 - **Everything is in Git** - Application definitions, configurations, and infrastructure are versioned
 - **Automatic reconstruction** - Point an ApplicationSet at a new cluster and all apps deploy automatically
-- **Tested continuously** - If your ApplicationSets work in production, they work in DR
-- **No drift** - The recovery environment matches the source of truth exactly
+- **Tested continuously** - If your ApplicationSets work in production and use the same cluster labels and projects, the same manifests can drive DR
+- **No drift** - The recovery environment matches the Git source of truth for application configuration
 
 ```mermaid
 flowchart TD
@@ -35,7 +35,7 @@ flowchart TD
 
 ## Pattern 1: Active-Passive DR with Cluster Labels
 
-Maintain a standby cluster that receives applications from the same ApplicationSet but with sync disabled.
+Maintain a standby cluster that receives applications from the same ApplicationSet but with automated sync disabled.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -55,6 +55,7 @@ spec:
               values:
                 - primary
                 - dr-standby
+                - failed
   template:
     metadata:
       name: 'myapp-{{.name}}'
@@ -75,13 +76,16 @@ spec:
         server: '{{.server}}'
         namespace: myapp
       syncPolicy:
-        {{- if eq (index .metadata.labels "role") "primary"}}
+        syncOptions:
+          - CreateNamespace=true
+  templatePatch: |
+    {{- if eq (index .metadata.labels "role") "primary" }}
+    spec:
+      syncPolicy:
         automated:
           prune: true
           selfHeal: true
-        {{- end}}
-        syncOptions:
-          - CreateNamespace=true
+    {{- end }}
 ```
 
 For the DR cluster, sync is manual (no `automated` block). During normal operation, the DR cluster has the Application resources but they are not syncing. During failover, you enable auto-sync.
@@ -225,6 +229,8 @@ spec:
   template:
     metadata:
       name: 'dr-{{name}}-apps'
+      labels:
+        dr-group: dr-apps
     spec:
       project: production
       source:
@@ -260,11 +266,11 @@ sleep 30
 
 # Step 3: Check application status
 echo "Application status:"
-argocd app list -l app.kubernetes.io/managed-by=applicationset-controller
+argocd app list -l dr-group=dr-apps
 
 # Step 4: Wait for all apps to sync
 echo "Waiting for applications to sync..."
-for app in $(argocd app list -l managed-by=dr-apps -o name); do
+for app in $(argocd app list -l dr-group=dr-apps -o name); do
   argocd app wait "$app" --sync --health --timeout 300
   echo "  $app: ready"
 done
@@ -384,6 +390,8 @@ spec:
   template:
     metadata:
       name: 'dr-test-{{name}}'
+      labels:
+        dr-test: "true"
     spec:
       project: dr-testing
       source:
@@ -409,8 +417,7 @@ argocd cluster set test-dr-cluster --label role=dr-test
 sleep 60
 
 # Step 3: Run health checks
-argocd app list -l app.kubernetes.io/managed-by=applicationset-controller | \
-  grep dr-test
+argocd app list -l dr-test=true
 
 # Step 4: Clean up
 argocd cluster set test-dr-cluster --label role=dr-test-inactive
@@ -421,10 +428,10 @@ argocd cluster set test-dr-cluster --label role=dr-test-inactive
 Monitor these metrics for DR readiness:
 
 - **Recovery Time Objective (RTO)** - How long it takes for ApplicationSets to fully deploy to a DR cluster
-- **Recovery Point Objective (RPO)** - How far behind the DR cluster is (should be zero with GitOps)
+- **Recovery Point Objective (RPO)** - How far behind the DR cluster is; Git-tracked configuration can be current, but application data still depends on your backup or replication strategy
 - **Application sync time** - How long until all applications are synced and healthy
 - **DR test frequency** - How often you test the failover process
 
 For monitoring your DR readiness and tracking these metrics in real-time, [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-migrate-apps-to-applicationsets/view) provides cross-cluster health monitoring and alerting that is essential for any disaster recovery strategy.
 
-ApplicationSets combined with GitOps give you the most reliable disaster recovery approach available for Kubernetes. Your entire platform is defined in Git, and recovering from a disaster is as simple as pointing a cluster generator at a new cluster.
+ApplicationSets combined with GitOps give you a reliable disaster recovery approach for Kubernetes. Your application manifests and platform configuration are defined in Git, and recovering from a disaster is as simple as pointing a cluster generator at a new cluster.
