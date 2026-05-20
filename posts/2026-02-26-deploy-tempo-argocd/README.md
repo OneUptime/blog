@@ -60,10 +60,8 @@ tempo-distributed:
     image:
       registry: docker.io
 
-  # Tempo configuration
-  tempo:
-    # Multitenancy - disable for simplicity
-    multitenancyEnabled: false
+  # Multitenancy - disable for simplicity
+  multitenancyEnabled: false
 
   # Storage configuration - S3
   storage:
@@ -78,6 +76,21 @@ tempo-distributed:
         secret_key: ""
         insecure: false
 
+  # Receivers configuration - accept all common formats
+  traces:
+    otlp:
+      grpc:
+        enabled: true
+      http:
+        enabled: true
+    jaeger:
+      thriftHttp:
+        enabled: true
+      grpc:
+        enabled: true
+    zipkin:
+      enabled: true
+
   # Distributor receives incoming traces
   distributor:
     replicas: 2
@@ -90,23 +103,6 @@ tempo-distributed:
     config:
       log_received_spans:
         enabled: false
-
-    # Receivers configuration - accept all common formats
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: 0.0.0.0:4317
-          http:
-            endpoint: 0.0.0.0:4318
-      jaeger:
-        protocols:
-          thrift_http:
-            endpoint: 0.0.0.0:14268
-          grpc:
-            endpoint: 0.0.0.0:14250
-      zipkin:
-        endpoint: 0.0.0.0:9411
 
   # Ingester buffers and writes to storage
   ingester:
@@ -160,7 +156,8 @@ tempo-distributed:
         memory: 512Mi
     config:
       search:
-        max_duration: 0s  # No limit on search duration
+        concurrent_jobs: 1000
+        target_bytes_per_job: 104857600
 
   # Metrics generator creates span metrics
   metricsGenerator:
@@ -186,6 +183,14 @@ tempo-distributed:
         service_graphs:
           dimensions:
             - service.namespace
+
+  # Enable metrics-generator processors for all tenants
+  overrides:
+    defaults:
+      metrics_generator:
+        processors:
+          - service-graphs
+          - span-metrics
 
   # Gateway - optional nginx proxy
   gateway:
@@ -294,12 +299,9 @@ kube-prometheus-stack:
         url: http://tempo-query-frontend.tracing.svc.cluster.local:3100
         access: proxy
         jsonData:
-          httpMethod: GET
-          tracesToLogs:
+          tracesToLogsV2:
             datasourceUid: loki
-            tags: ['service.name', 'service.namespace']
-            mappedTags: [{ key: 'service.name', value: 'app' }]
-            mapTagNamesEnabled: true
+            tags: [{ key: 'service.name', value: 'app' }, { key: 'service.namespace' }]
             filterByTraceID: true
           tracesToMetrics:
             datasourceUid: prometheus
@@ -313,8 +315,6 @@ kube-prometheus-stack:
             enabled: true
           search:
             hide: false
-          lokiSearch:
-            datasourceUid: loki
 ```
 
 This configuration enables powerful features in Grafana:
@@ -330,7 +330,7 @@ This configuration enables powerful features in Grafana:
 # Check Tempo components
 kubectl get pods -n tracing -l app.kubernetes.io/name=tempo
 
-# Test trace ingestion using the Tempo API
+# Test trace lookup using the Tempo API
 kubectl port-forward -n tracing svc/tempo-query-frontend 3200:3100
 
 # Query a specific trace ID
@@ -355,7 +355,7 @@ ingester:
       memory: 4Gi
 ```
 
-The compactor should be a single replica to avoid conflicts. If compaction falls behind, increase its resources rather than adding replicas.
+Tempo uses a compactor ring to shard compaction jobs and prevent race conditions when multiple compactors are running. If compaction falls behind, increase compactor resources first, then consider scaling replicas once you have confirmed the ring is healthy.
 
 ## Summary
 
