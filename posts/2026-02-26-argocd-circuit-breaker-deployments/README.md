@@ -69,8 +69,8 @@ spec:
     # Check 1: Error rate
     - name: error-rate-breaker
       interval: 1m
-      failureCondition: result[0] >= asFloat(args.error-threshold)
-      failureLimit: 2  # Trip after 2 consecutive failures
+      failureCondition: "result[0] >= {{args.error-threshold}}"
+      failureLimit: 2  # Trip after 2 failed measurements
       provider:
         prometheus:
           address: http://prometheus.monitoring:9090
@@ -88,7 +88,7 @@ spec:
     # Check 2: Latency spike
     - name: latency-breaker
       interval: 1m
-      failureCondition: result[0] >= asFloat(args.latency-threshold-ms)
+      failureCondition: "result[0] >= {{args.latency-threshold-ms}}"
       failureLimit: 2
       provider:
         prometheus:
@@ -124,7 +124,7 @@ spec:
         prometheus:
           address: http://prometheus.monitoring:9090
           query: |
-            sum(increase(kube_pod_container_status_last_terminated_reason{
+            sum(max_over_time(kube_pod_container_status_last_terminated_reason{
               namespace="{{args.namespace}}",
               container="{{args.service-name}}",
               reason="OOMKilled"
@@ -133,8 +133,8 @@ spec:
 
 This template checks four conditions, any one of which can trip the circuit breaker:
 
-1. **Error rate** exceeds threshold for 2 consecutive minutes
-2. **P99 latency** exceeds threshold for 2 consecutive minutes
+1. **Error rate** exceeds threshold for 2 failed measurements
+2. **P99 latency** exceeds threshold for 2 failed measurements
 3. **Pod crash loops** detected - trips immediately
 4. **OOM kills** detected - trips immediately
 
@@ -151,6 +151,9 @@ metadata:
     notifications.argoproj.io/subscribe.on-analysis-run-failed.slack: deployment-alerts
 spec:
   replicas: 6
+  selector:
+    matchLabels:
+      app: payment-service
   strategy:
     canary:
       canaryService: payment-service-canary
@@ -194,32 +197,18 @@ spec:
             - containerPort: 8080
 ```
 
-The `startingStep: 0` means the circuit breaker analysis starts running as soon as the first canary pod receives traffic.
+The `startingStep: 0` means the circuit breaker analysis starts as soon as the rollout reaches the first canary step.
 
-## Step 3: Background Analysis for Running Services
+## Step 3: One-Off Analysis for Running Services
 
-You can also run circuit breaker analysis on services that are not currently being deployed. This catches issues from infrastructure changes, dependency failures, or configuration drift:
+You can also run the circuit breaker analysis against a service outside an active rollout. This is useful for one-off checks after infrastructure changes, dependency failures, or configuration drift:
 
-```yaml
-# background-circuit-breaker.yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Rollout
-metadata:
-  name: payment-service
-spec:
-  strategy:
-    canary:
-      analysis:
-        templates:
-          - templateName: deployment-circuit-breaker
-        args:
-          - name: service-name
-            value: payment-service
-          - name: namespace
-            value: payments
-      # Background analysis runs continuously, not just during deployments
-      steps:
-        - setWeight: 100
+```bash
+kubectl argo rollouts create analysisrun \
+  --from deployment-circuit-breaker \
+  --argument service-name=payment-service \
+  --argument namespace=payments \
+  -n payments
 ```
 
 ## Step 4: Multi-Service Circuit Breaker
@@ -268,48 +257,59 @@ spec:
 
 ## Step 5: Manual Circuit Breaker Override
 
-Sometimes you need to manually trip or reset the circuit breaker. Use ArgoCD annotations:
+Sometimes you need to manually trip or reset the circuit breaker. Use the Argo Rollouts kubectl plugin:
 
 ```bash
 # Manually abort a rollout (trip the circuit breaker)
 kubectl argo rollouts abort payment-service -n payments
 
-# Resume a paused rollout (reset the circuit breaker)
+# Retry an aborted rollout after fixing the issue
 kubectl argo rollouts retry payment-service -n payments
 
-# Promote canary to stable (override the circuit breaker)
-kubectl argo rollouts promote payment-service -n payments
+# Fully promote canary to stable, skipping remaining analysis and steps
+kubectl argo rollouts promote payment-service --full -n payments
 ```
 
 ## Step 6: Notification Configuration
 
-Set up notifications so the team knows when the circuit breaker trips:
+Set up Argo Rollouts notifications so the team knows when the circuit breaker trips:
 
 ```yaml
-# argocd-notifications-cm
+# argo-rollouts-notification-configmap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-notifications-cm
-  namespace: argocd
+  name: argo-rollouts-notification-configmap
+  namespace: argo-rollouts
 data:
-  template.circuit-breaker-tripped: |
+  template.rollout-aborted: |
     message: |
-      Circuit breaker tripped for {{.app.metadata.name}}!
-      Analysis failed: {{range .app.status.operationState.syncResult.resources}}
-      {{.name}}: {{.status}}
-      {{end}}
+      Circuit breaker tripped for {{.rollout.metadata.name}}!
     slack:
       attachments: |
         [{
           "color": "#FF0000",
           "title": "Deployment Circuit Breaker Tripped",
-          "text": "Rollout {{.app.metadata.name}} was automatically rolled back",
+          "text": "Rollout {{.rollout.metadata.name}} was aborted",
           "fields": [
-            {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
-            {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true}
+            {"title": "Rollout", "value": "{{.rollout.metadata.name}}", "short": true},
+            {"title": "Namespace", "value": "{{.rollout.metadata.namespace}}", "short": true}
           ]
         }]
+  template.analysis-run-failed: |
+    message: |
+      Analysis failed for {{.rollout.metadata.name}}.
+    slack:
+      attachments: |
+        [{
+          "color": "#FF0000",
+          "title": "Rollout Analysis Failed",
+          "text": "Analysis failed for rollout {{.rollout.metadata.name}}"
+        }]
+  trigger.on-rollout-aborted: |
+    - send: [rollout-aborted]
+  trigger.on-analysis-run-failed: |
+    - send: [analysis-run-failed]
 ```
 
 ## Circuit Breaker Tuning
