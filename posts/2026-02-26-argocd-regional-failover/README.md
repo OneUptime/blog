@@ -55,12 +55,27 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  # Subscribe regional applications to these triggers globally
+  subscriptions: |
+    - recipients:
+        - failover-controller
+        - slack:incident-response
+      selector: region
+      triggers:
+        - on-region-failure
+    - recipients:
+        - failover-controller
+      selector: region
+      triggers:
+        - on-cluster-unreachable
+
   # Detect regional application failure
   trigger.on-region-failure: |
     - description: Application in a region has failed
       when: >-
         app.status.health.status == 'Degraded' and
-        app.metadata.labels.region != '' and
+        app.metadata.labels != nil and
+        app.metadata.labels['region'] != nil and
         time.Now().Sub(time.Parse(app.status.reconciledAt)).Minutes() < 10
       send:
         - region-failure-webhook
@@ -71,8 +86,9 @@ data:
     - description: Cluster connection lost
       when: >-
         app.status.conditions != nil and
-        app.status.conditions[0].type == 'ComparisonError' and
-        app.metadata.labels.region != ''
+        any(app.status.conditions, {.type == 'ComparisonError'}) and
+        app.metadata.labels != nil and
+        app.metadata.labels['region'] != nil
       send:
         - cluster-unreachable-webhook
 
@@ -99,7 +115,7 @@ data:
             "event": "cluster.unreachable",
             "region": "{{index .app.metadata.labels "region"}}",
             "application": "{{.app.metadata.name}}",
-            "condition": "{{.app.status.conditions[0].message}}",
+            "condition": "{{range .app.status.conditions}}{{if eq .type "ComparisonError"}}{{.message}}{{end}}{{end}}",
             "timestamp": "{{.app.status.reconciledAt}}"
           }
 
@@ -223,7 +239,7 @@ class FailoverController:
 
 ## Step 3: DNS-Based Traffic Shifting
 
-Use Route53 health checks (or equivalent) with ArgoCD-managed ExternalDNS:
+Use Route53 health checks (or equivalent) with ArgoCD-managed ExternalDNS. ExternalDNS can associate records with existing Route53 health checks, but it does not create the health checks for you:
 
 ```yaml
 # deploy/overlays/us-east-1/dns-records.yaml
@@ -245,7 +261,7 @@ spec:
         - name: aws/weight
           value: "30"
         - name: aws/health-check-id
-          value: "hc-us-east-1-api"
+          value: "<route53-health-check-id>"
 ```
 
 During failover, update the weight through Git:
