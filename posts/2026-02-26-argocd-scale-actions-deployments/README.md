@@ -24,6 +24,7 @@ metadata:
   namespace: argocd
 data:
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       -- Always allow scale up
@@ -58,12 +59,15 @@ data:
 
 This gives you two buttons in the ArgoCD UI: "scale-up" which is always available, and "scale-down" which is grayed out when there is only one replica.
 
+The `mergeBuiltinActions: true` setting keeps ArgoCD's built-in Deployment actions available alongside these custom actions on ArgoCD 2.13 and newer. If you are on an older ArgoCD version, omit that line and remember that defining custom actions for a resource kind replaces its built-in actions.
+
 ## Scale Actions with Preset Values
 
 Sometimes you want to scale to specific values rather than incrementing one at a time. Here is a version with preset scale targets:
 
 ```yaml
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       local current = obj.spec.replicas or 1
@@ -135,6 +139,7 @@ In production, you probably do not want someone accidentally scaling to zero or 
 
 ```yaml
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       local current = obj.spec.replicas or 1
@@ -217,6 +222,7 @@ StatefulSets scale differently from Deployments. Pods are created and destroyed 
 
 ```yaml
   resource.customizations.actions.apps_StatefulSet: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       local current = obj.spec.replicas or 1
@@ -326,7 +332,7 @@ After confirming the new scale is right, update your Git manifests to match and 
 
 **Option 3: Let auto-sync revert**
 
-If auto-sync is enabled and you do not ignore the replica difference, ArgoCD will revert the scale change on the next sync. Disable auto-sync temporarily if you need the scale change to persist.
+If auto-sync with self-heal is enabled and you do not ignore the replica difference, ArgoCD will revert the scale change when it detects live drift. If self-heal is not enabled, the change can still be reverted by a later sync triggered by a Git change or manual sync. Disable auto-sync temporarily if you need the scale change to persist.
 
 ## Combining with HPA Awareness
 
