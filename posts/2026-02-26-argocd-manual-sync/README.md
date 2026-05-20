@@ -18,7 +18,7 @@ Manual sync is appropriate when:
 - **Auto-sync is disabled** - Your policy requires explicit sync triggers
 - **Selective sync** - You want to sync only specific resources, not everything
 - **Dry run** - You want to preview what will change before applying
-- **Force sync** - You need to replace resources rather than patching them
+- **Force or replace sync** - You need force apply behavior or `kubectl replace/create` instead of the default apply behavior
 - **Debugging** - You want to watch the sync happen in real time with full control
 
 ## Method 1: Sync via the ArgoCD UI
@@ -42,11 +42,11 @@ Revision: abc1234def5678
 
 **Prune** - Check this to delete resources that exist in the cluster but not in Git. Useful for removing deprecated resources.
 
-**Dry Run** - Check this to see what would change without actually applying anything. The diff view updates to show planned changes.
+**Dry Run** - Check this to preview apply without actually changing the cluster.
 
-**Apply Only** - Skip the comparison phase and just apply manifests.
+**Apply Only** - Use the apply sync strategy rather than the default hook-aware strategy.
 
-**Force** - Replace resources instead of applying patches. This recreates resources, which can cause brief downtime but resolves certain conflict issues.
+**Force** - Use force apply behavior. If you need ArgoCD to use `kubectl replace/create` instead of `kubectl apply`, use the replace option where available.
 
 ### Selective Sync in the UI
 
@@ -89,8 +89,11 @@ argocd app sync my-app --prune
 # Sync in dry-run mode (preview changes without applying)
 argocd app sync my-app --dry-run
 
-# Force sync (replace instead of apply)
+# Force sync
 argocd app sync my-app --force
+
+# Replace resources using kubectl create/replace instead of apply
+argocd app sync my-app --replace
 
 # Sync a specific revision
 argocd app sync my-app --revision abc1234def5678
