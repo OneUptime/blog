@@ -47,7 +47,28 @@ Verify it is running:
 sudo systemctl status tangd.socket
 ```
 
-Tang listens on port 7500 by default. Allow this through the firewall:
+On Ubuntu, `tangd.socket` listens on port 80 by default. If you want to use port 7500 in the examples below, create a systemd socket override:
+
+```bash
+sudo systemctl edit tangd.socket
+```
+
+Add the following override:
+
+```ini
+[Socket]
+ListenStream=
+ListenStream=7500
+```
+
+Then reload systemd and restart the socket:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart tangd.socket
+```
+
+Allow the Tang port through the firewall:
 
 ```bash
 sudo ufw allow from 10.0.0.0/8 to any port 7500
@@ -55,10 +76,10 @@ sudo ufw allow from 10.0.0.0/8 to any port 7500
 
 ### Verifying Tang's Keys
 
-Tang generates its signing and exchange keys automatically in `/var/db/tang/`. View the public key:
+Tang generates its signing and exchange keys automatically in `/var/lib/tang/` on Ubuntu. View the public key thumbprint:
 
 ```bash
-sudo tang-show-keys
+sudo tang-show-keys 7500
 ```
 
 Note the key thumbprint - you will need it during Clevis enrollment on client machines.
@@ -68,21 +89,19 @@ Note the key thumbprint - you will need it during Clevis enrollment on client ma
 Rotate Tang keys periodically. Old keys continue to work while new bindings use the new keys:
 
 ```bash
-# Generate new keys
-
-sudo tangd-keygen /var/db/tang/
+# Generate new keys and hide the old keys from new advertisements
+sudo /usr/libexec/tangd-rotate-keys -d /var/lib/tang
 
 # The old keys remain for clients using them
 # After all clients are re-enrolled, remove old keys
-sudo ls -la /var/db/tang/
+sudo ls -la /var/lib/tang/
 ```
 
 Retired keys (starting with a dot) are kept for existing clients:
 
 ```bash
-# Advertise both old and new keys
 # Old key files are prefixed with '.' to mark them for rotation
-sudo mv /var/db/tang/old_key.jwk /var/db/tang/.old_key.jwk
+sudo ls -la /var/lib/tang/.*
 ```
 
 ## Setting Up the Clevis Client
@@ -112,9 +131,9 @@ During enrollment:
 
 The thumbprint verification step is critical. It prevents a rogue server from intercepting the enrollment.
 
-### Specifying a Key Slot
+### Specifying a Metadata Slot
 
-By default, Clevis uses the next available key slot. To use a specific slot:
+By default, Clevis uses the next available metadata slot. To use a specific metadata slot:
 
 ```bash
 sudo clevis luks bind -d /dev/sda3 -s 2 tang '{"url": "http://10.0.0.10:7500"}'
@@ -125,7 +144,7 @@ sudo clevis luks bind -d /dev/sda3 -s 2 tang '{"url": "http://10.0.0.10:7500"}'
 Test that Clevis can unlock the volume before relying on it:
 
 ```bash
-# Test without actually unlocking
+# Test by unlocking to a temporary mapper name
 sudo clevis luks unlock -d /dev/sda3 -n test_unlock
 sudo cryptsetup close test_unlock
 ```
