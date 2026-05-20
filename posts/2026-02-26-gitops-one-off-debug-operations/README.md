@@ -27,7 +27,7 @@ None of these operations belong in your Git repository permanently. So how do yo
 
 ## Strategy 1: Use Ephemeral Debug Pods
 
-Kubernetes natively supports ephemeral debug containers and one-off pods. These do not conflict with your GitOps state because they are not declared in your repository.
+Kubernetes natively supports ephemeral debug containers and one-off pods. They can be useful for troubleshooting without committing temporary debug manifests to your repository.
 
 You can spin up a debug pod using kubectl debug:
 
@@ -43,10 +43,12 @@ kubectl debug -it my-app-pod-abc123 \
 kubectl run debug-shell --rm -it \
   --image=nicolaka/netshoot \
   --namespace=production \
+  --restart=Never \
+  --command \
   -- /bin/bash
 ```
 
-These pods are transient. They do not appear in your Git manifests, and ArgoCD will not try to prune them (unless you have very aggressive prune policies). The key principle: if it is not in Git, ArgoCD does not manage it.
+The standalone debug pod is transient, and the ephemeral container is attached through Kubernetes' debugging flow rather than a Git manifest. These resources do not appear in your Git manifests, but you should still account for ArgoCD orphaned resource monitoring and your cluster's RBAC and audit policies.
 
 ## Strategy 2: Use ArgoCD Resource Exclusions
 
@@ -68,7 +70,6 @@ data:
         - Pod
       clusters:
         - "*"
-      # Exclude pods with a specific label
     - apiGroups:
         - "batch"
       kinds:
@@ -77,9 +78,9 @@ data:
         - "*"
 ```
 
-With this configuration, standalone Pods and Jobs are excluded from ArgoCD tracking. You can create debug Jobs and Pods without worrying about sync status.
+With this configuration, all Pods and Jobs are excluded from ArgoCD resource discovery and sync. This is a broad setting, so only use it if you are comfortable with ArgoCD no longer tracking those kinds at all.
 
-A more targeted approach is to use annotations:
+A more targeted approach for generated or temporary resources that are already part of an application is to use annotations:
 
 ```yaml
 apiVersion: v1
@@ -88,6 +89,7 @@ metadata:
   name: debug-session
   annotations:
     argocd.argoproj.io/compare-options: IgnoreExtraneous
+    argocd.argoproj.io/sync-options: Prune=false
 spec:
   containers:
     - name: debug
@@ -95,19 +97,18 @@ spec:
       command: ["sleep", "3600"]
 ```
 
-The `IgnoreExtraneous` annotation tells ArgoCD to ignore this resource during comparison, so it will not show up as out-of-sync.
+The `IgnoreExtraneous` annotation tells ArgoCD to ignore this resource when calculating sync status, so it will not show up as out-of-sync. The `Prune=false` sync option prevents ArgoCD from pruning it during sync.
 
 ## Strategy 3: Create a Dedicated Debug Namespace
 
 A clean pattern is to have a dedicated namespace for debug operations that ArgoCD does not manage at all.
 
 ```bash
-# Create a namespace that ArgoCD does not watch
+# Create a namespace reserved for debug work
 kubectl create namespace debug-zone
-kubectl label namespace debug-zone argocd.argoproj.io/managed-by-
 ```
 
-Then configure your ArgoCD project to exclude this namespace:
+Then configure your ArgoCD project so applications in that project cannot target this namespace:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -128,7 +129,7 @@ spec:
       kind: '*'
 ```
 
-Now engineers can freely create debug resources in the `debug-zone` namespace without any GitOps interference.
+Now engineers can create debug resources in the `debug-zone` namespace without interference from applications in the `production` project. In multi-project setups, also make sure no other ArgoCD project or Application targets that namespace.
 
 ## Strategy 4: Temporary Git Branches for Exploratory Changes
 
@@ -190,7 +191,7 @@ For example, you can restart a deployment:
 argocd app actions run my-app restart --kind Deployment --resource-name my-app
 ```
 
-This triggers a rollout restart by updating the pod template annotation, which is a safe operation that does not create drift because ArgoCD is the one performing it.
+This triggers a rollout restart by updating the pod template annotation through an ArgoCD resource action. It is safer than ad-hoc `kubectl patch` because it goes through ArgoCD RBAC and audit paths, but the live object can still differ from Git until the next sync reconciles it.
 
 ## Strategy 6: Use Port-Forwarding Instead of SSH
 
@@ -259,6 +260,8 @@ spec:
     - kind: deny
       schedule: '* * * * *'
       duration: 2h
+      applications:
+        - my-app
       manualSync: true  # Still allow manual syncs
 ```
 
