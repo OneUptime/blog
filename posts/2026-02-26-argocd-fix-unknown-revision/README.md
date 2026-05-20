@@ -36,10 +36,10 @@ The most common cause. Your application is tracking a branch that no longer exis
 ```bash
 # List remote branches
 
-git ls-remote --heads https://github.com/org/repo
+git ls-remote --branches https://github.com/org/repo
 
 # Check for a specific branch
-git ls-remote --heads https://github.com/org/repo | grep feature/my-branch
+git ls-remote --branches https://github.com/org/repo | grep feature/my-branch
 ```
 
 **Fix by updating the target revision:**
@@ -147,7 +147,7 @@ git ls-remote https://github.com/org/new-repo
 **Fix:** Push at least one commit to the repository:
 
 ```bash
-git init
+git init -b main
 git commit --allow-empty -m "Initial commit"
 git remote add origin https://github.com/org/new-repo
 git push -u origin main
@@ -155,20 +155,26 @@ git push -u origin main
 
 ### 7. Shallow Clone Limitations
 
-ArgoCD uses shallow clones by default for performance. Some revisions might not be available in a shallow clone:
+If shallow cloning is enabled for a repository, some historical revisions might not be available in the local clone:
 
-**Increase the fetch depth or disable shallow cloning:**
+**Disable shallow cloning for the repository:**
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
 apiVersion: v1
-kind: ConfigMap
+stringData:
+  # 0 = full clone
+  depth: "0"
+  type: "git"
+  url: "https://github.com/org/repo"
+kind: Secret
 metadata:
-  name: argocd-cmd-params-cm
+  annotations:
+    managed-by: argocd.argoproj.io
+  labels:
+    argocd.argoproj.io/secret-type: repository
+  name: repo
   namespace: argocd
-data:
-  # Increase Git fetch depth (0 = full clone)
-  reposerver.git.fetch.depth: "0"
+type: Opaque
 ```
 
 Restart the repo server:
@@ -246,7 +252,7 @@ kubectl logs -n argocd deployment/argocd-repo-server --tail=100 | \
   grep -A3 "unknown revision"
 ```
 
-The logs will show the exact Git command that failed and the repository it was targeting.
+The logs can show the Git error details and the repository it was targeting.
 
 ## Prevention Strategies
 
@@ -267,7 +273,7 @@ targetRevision: v1.2.3    # Immutable reference
 
 4. **Set up webhooks** to refresh ArgoCD when branches are deleted, so the error surfaces quickly
 
-5. **Use ApplicationSets with Git generators** to automatically clean up applications when branches are deleted:
+5. **Use ApplicationSets with pull request generators** to automatically clean up applications when pull requests are closed:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
