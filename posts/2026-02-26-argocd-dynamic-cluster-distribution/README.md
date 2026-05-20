@@ -14,7 +14,7 @@ When you manage hundreds of Kubernetes clusters with a single ArgoCD instance, t
 
 In a standard ArgoCD setup, one controller instance handles all the work. As your cluster count grows, you start noticing slower sync times, increased memory consumption, and higher CPU usage. The controller needs to watch resources across every cluster, maintain caches, and reconcile state. A single process doing all of this for 50+ clusters will eventually hit limits.
 
-The traditional approach was static sharding - you manually assign clusters to specific controller replicas. That works, but it creates operational overhead. Every time you add or remove a cluster, someone has to update the shard assignments. Dynamic cluster distribution automates this entirely.
+The traditional approach was static sharding - you set the number of controller replicas and ArgoCD keeps clusters assigned to those shards until the controllers restart or the cluster's `shard` field is changed manually. That works, but it creates operational overhead when you add or remove controller replicas. Dynamic cluster distribution automates this redistribution.
 
 ```mermaid
 flowchart LR
@@ -36,42 +36,34 @@ flowchart LR
     end
 ```
 
-With dynamic distribution, ArgoCD uses a consistent hashing algorithm to assign clusters to controller shards. When a new shard comes online or an existing one goes away, clusters are automatically redistributed.
+With dynamic distribution, ArgoCD re-runs the configured sharding algorithm when the number of controller replicas changes. When a new shard comes online or an existing one goes away, clusters are automatically redistributed.
 
 ## Enabling Dynamic Cluster Distribution
 
-Dynamic cluster distribution was introduced in ArgoCD 2.8 and requires you to configure the application controller as a StatefulSet rather than the default Deployment.
+Dynamic cluster distribution was introduced in ArgoCD 2.9 as an alpha feature. In current ArgoCD releases it uses the application controller as a Deployment, not the default StatefulSet.
 
-### Step 1: Update the argocd-cmd-params-cm ConfigMap
+### Step 1: Enable Dynamic Distribution on the Controller
 
-First, enable the feature through the ArgoCD configuration:
+First, enable the feature by setting `ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION` on the application controller. If you use the official manifests, apply the `manifests/ha/base/controller-deployment/` Kustomize overlay, which scales the StatefulSet to zero and deploys the application controller as a Deployment. Then patch the controller environment:
 
-```yaml
-# argocd-cmd-params-cm ConfigMap
-
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Enable dynamic cluster distribution
-  controller.dynamic.cluster.distribution.enabled: "true"
+```bash
+kubectl set env deployment/argocd-application-controller -n argocd \
+  ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION=true \
+  ARGOCD_CONTROLLER_HEARTBEAT_TIME=10
 ```
 
-### Step 2: Deploy the Application Controller as a StatefulSet
+### Step 2: Deploy the Application Controller as a Deployment
 
-The dynamic distribution feature relies on stable pod identities, which means you need a StatefulSet instead of a Deployment. Here is how the StatefulSet should look:
+The dynamic distribution feature does not rely on stable StatefulSet pod identities. It uses a ConfigMap named `argocd-app-controller-shard-cm` to map controller pods to shard numbers and to store controller heartbeats. Here is how the Deployment should look:
 
 ```yaml
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: argocd-application-controller
   namespace: argocd
 spec:
   replicas: 3  # Number of controller shards
-  serviceName: argocd-application-controller
   selector:
     matchLabels:
       app.kubernetes.io/name: argocd-application-controller
@@ -86,8 +78,10 @@ spec:
           command:
             - argocd-application-controller
           env:
-            - name: ARGOCD_CONTROLLER_REPLICAS
-              value: "3"
+            - name: ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION
+              value: "true"
+            - name: ARGOCD_CONTROLLER_HEARTBEAT_TIME
+              value: "10"
           # Resource limits should match your cluster scale
           resources:
             requests:
@@ -98,25 +92,20 @@ spec:
               memory: 4Gi
 ```
 
-The key difference from a Deployment is that each pod in the StatefulSet gets a stable identity (argocd-application-controller-0, argocd-application-controller-1, etc.). This stable identity is what allows the dynamic distribution algorithm to consistently assign clusters.
+The key difference from static StatefulSet sharding is that the controller reads the replica count from the Deployment and records controller-to-shard mappings in the `argocd-app-controller-shard-cm` ConfigMap. This is what allows ArgoCD to redistribute clusters without relying on `ARGOCD_CONTROLLER_REPLICAS`.
 
-### Step 3: Configure the Headless Service
+### Step 3: Configure the Sharding Algorithm
 
-A StatefulSet requires a headless service for DNS-based discovery between shards:
+Dynamic cluster distribution re-runs whichever sharding algorithm you configure. For balanced distribution, use `round-robin` or, in ArgoCD 2.12 and later, `consistent-hashing`:
 
 ```yaml
 apiVersion: v1
-kind: Service
+kind: ConfigMap
 metadata:
-  name: argocd-application-controller
+  name: argocd-cmd-params-cm
   namespace: argocd
-spec:
-  clusterIP: None
-  selector:
-    app.kubernetes.io/name: argocd-application-controller
-  ports:
-    - port: 8082
-      targetPort: 8082
+data:
+  controller.sharding.algorithm: round-robin
 ```
 
 ### Step 4: Verify the Configuration
@@ -124,67 +113,69 @@ spec:
 After applying these changes, confirm that all controller pods are running:
 
 ```bash
-# Check the StatefulSet status
-kubectl get statefulset argocd-application-controller -n argocd
+# Check the Deployment status
+kubectl get deployment argocd-application-controller -n argocd
 
 # Verify all pods are running
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-application-controller
 
-# Check the logs for shard assignment messages
-kubectl logs argocd-application-controller-0 -n argocd | grep "shard"
+# Check the dynamic shard mapping ConfigMap
+kubectl get configmap argocd-app-controller-shard-cm -n argocd -o yaml
 ```
 
-You should see log entries indicating which clusters have been assigned to each shard.
+You should see entries mapping shard numbers to application controller pod names and heartbeat timestamps.
 
 ## How the Distribution Algorithm Works
 
-ArgoCD uses a hash-based algorithm to distribute clusters. Each cluster's server URL is hashed, and the hash is mapped to a shard number using modulo arithmetic:
+ArgoCD's dynamic distribution feature does not introduce a separate distribution formula. It re-runs the configured controller sharding algorithm when replicas are added or removed. The supported algorithms include `legacy`, `round-robin`, and `consistent-hashing` in ArgoCD versions that support them.
 
 ```text
-shard = hash(cluster.server) % replicas
+controller.sharding.algorithm = legacy | round-robin | consistent-hashing
 ```
 
 This approach has several benefits:
 
-1. **Deterministic** - the same cluster always maps to the same shard given the same replica count
-2. **Balanced** - hash functions produce a roughly even distribution
-3. **Minimal disruption** - when adding or removing shards, only a fraction of clusters need to move
+1. **Adaptive** - the shard mapping is recalculated when the Deployment replica count changes
+2. **Balanced** - with `round-robin` or `consistent-hashing`, clusters are distributed more evenly across shards
+3. **Less disruptive** - changing the replica count does not require updating `ARGOCD_CONTROLLER_REPLICAS` and restarting all controller pods
 
-When you scale the StatefulSet from 3 to 4 replicas, roughly 25% of clusters will be reassigned. The rest stay on their current shard.
+When you scale the Deployment from 3 to 4 replicas, ArgoCD updates the shard mapping ConfigMap and redistributes clusters according to the selected sharding algorithm.
 
 ## Monitoring the Distribution
 
-You can monitor which shard owns which cluster by inspecting the cluster secrets:
+You can monitor which controller pod owns which shard by inspecting the dynamic shard mapping ConfigMap:
 
 ```bash
-# List all cluster secrets and their shard assignments
-kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=cluster \
-  -o jsonpath='{range .items[*]}{.metadata.name}: shard={.metadata.annotations.argocd\.argoproj\.io/shard}{"\n"}{end}'
+# Show controller-to-shard assignments and heartbeats
+kubectl get configmap argocd-app-controller-shard-cm -n argocd -o yaml
 ```
 
-ArgoCD also exposes Prometheus metrics for shard monitoring:
+ArgoCD also exposes Prometheus metrics that help with shard monitoring. Query `argocd_cluster_info` per controller metrics target to see how many clusters that controller reports. If your Prometheus scrape adds a `pod` target label, you can group by that label:
 
 ```promql
-# Number of clusters per shard
-argocd_cluster_info{shard!=""}
+# Number of clusters reported by each controller pod
+count by (pod) (argocd_cluster_info)
 
-# Controller workqueue depth per shard - useful for detecting overloaded shards
-workqueue_depth{name="app_operation"}
+# Controller workqueue depth - useful for detecting overloaded controllers
+workqueue_depth{name="app_operation_processing_queue"}
 ```
 
 ## Common Issues and Troubleshooting
 
 ### Uneven Distribution
 
-If some shards have significantly more clusters than others, it is usually because the hash function happens to cluster certain server URLs together. You can mitigate this by adjusting the replica count - sometimes going from 3 to 4 shards produces a more even spread.
+If some shards have significantly more clusters than others, check the configured `controller.sharding.algorithm`. The default `legacy` mode is not uniform; `round-robin` and `consistent-hashing` are designed to produce a more even spread.
 
 ### Controller Pods Not Picking Up Clusters
 
-If a new controller pod is not reconciling its assigned clusters, check that the environment variable `ARGOCD_CONTROLLER_REPLICAS` matches the actual StatefulSet replica count:
+If a new controller pod is not reconciling its assigned clusters, check that dynamic distribution is enabled and that the Deployment replica count is correct:
 
 ```bash
-kubectl get statefulset argocd-application-controller -n argocd \
+kubectl get deployment argocd-application-controller -n argocd \
   -o jsonpath='{.spec.replicas}'
+
+kubectl get deployment argocd-application-controller -n argocd \
+  -o jsonpath='{.spec.template.spec.containers[?(@.name=="argocd-application-controller")].env[?(@.name=="ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION")].value}'
 ```
 
 ### Shard Reassignment During Scaling
@@ -201,4 +192,4 @@ When scaling up or down, expect a brief period where some applications show as U
 
 If you are already running ArgoCD at scale, also check out our guide on [How to Distribute Clusters Across Controller Shards](https://oneuptime.com/blog/post/2026-02-26-argocd-distribute-clusters-across-shards/view) for a deeper dive into sharding strategies.
 
-Dynamic cluster distribution is one of the most impactful features for scaling ArgoCD in production. It removes the manual burden of shard assignment and ensures your controller fleet adapts automatically as your infrastructure grows.
+Dynamic cluster distribution is one of the most impactful features for scaling large ArgoCD installations, but it is still an alpha feature. It removes the manual burden of shard reassignment and ensures your controller fleet adapts automatically as your infrastructure grows.
