@@ -172,6 +172,7 @@ metadata:
   name: prod-web-frontend
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/platform.git
     targetRevision: main
@@ -203,7 +204,9 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: prod-web-frontend
+  namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/platform.git
     targetRevision: main
@@ -357,6 +360,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: shared-infrastructure
+  namespace: argocd
 spec:
   sourceRepos:
     - https://github.com/myorg/platform-config.git
