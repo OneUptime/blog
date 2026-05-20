@@ -54,7 +54,7 @@ spec:
   source:
     repoURL: https://argoproj.github.io/argo-helm
     chart: argo-cd
-    targetRevision: 5.51.0
+    targetRevision: 9.5.14
     helm:
       values: |
         server:
@@ -218,7 +218,7 @@ patches:
 
 ## Step 4: Implement Failover Automation
 
-Create a failover script or Job that switches roles:
+Create a failover script or Job that switches roles. Because the ApplicationSet template uses cluster Secret labels to choose the active or passive overlay, update those labels and let ApplicationSet reconcile the generated Applications:
 
 ```yaml
 # failover-job.yaml
@@ -233,34 +233,41 @@ spec:
       serviceAccountName: argocd-failover
       containers:
         - name: failover
-          image: argoproj/argocd:v2.10.0
+          image: bitnami/kubectl:1.34
           command:
             - /bin/sh
             - -c
             - |
-              # Step 1: Scale up passive cluster
-              echo "Scaling up passive cluster..."
-              argocd app set api-passive-us-west \
-                --path deploy/overlays/active
+              # Step 1: Swap cluster labels so ApplicationSet changes overlays
+              echo "Swapping cluster roles..."
+              kubectl label secret active-cluster -n argocd role=passive --overwrite
+              kubectl label secret passive-cluster -n argocd role=active --overwrite
 
-              # Step 2: Wait for passive to be healthy
+              # Step 2: Wait for the passive cluster app to use the active overlay
+              echo "Waiting for passive cluster to switch to the active overlay..."
+              kubectl wait applications.argoproj.io/api-passive-us-west -n argocd \
+                --for=jsonpath='{.spec.source.path}'=deploy/overlays/active \
+                --timeout=120s
+
+              # Step 3: Wait for passive to be synced and healthy
               echo "Waiting for passive cluster to be ready..."
-              argocd app wait api-passive-us-west --health --timeout 300
+              kubectl wait applications.argoproj.io/api-passive-us-west -n argocd \
+                --for=jsonpath='{.status.sync.status}'=Synced \
+                --timeout=300s
+              kubectl wait applications.argoproj.io/api-passive-us-west -n argocd \
+                --for=jsonpath='{.status.health.status}'=Healthy \
+                --timeout=300s
 
-              # Step 3: Update DNS to point to passive cluster
+              # Step 4: Update DNS to point to passive cluster
               echo "Updating DNS..."
               # This would call your DNS provider API
               # aws route53 change-resource-record-sets ...
 
-              # Step 4: Scale down old active
-              echo "Scaling down old active cluster..."
-              argocd app set api-active-us-east \
-                --path deploy/overlays/passive
-
-              # Step 5: Swap cluster labels
-              echo "Swapping cluster roles..."
-              kubectl label secret active-cluster -n argocd role=passive --overwrite
-              kubectl label secret passive-cluster -n argocd role=active --overwrite
+              # Step 5: Confirm the old active moved to the passive overlay
+              echo "Confirming old active cluster is in passive mode..."
+              kubectl wait applications.argoproj.io/api-active-us-east -n argocd \
+                --for=jsonpath='{.spec.source.path}'=deploy/overlays/passive \
+                --timeout=120s
 
               echo "Failover complete"
       restartPolicy: Never
@@ -269,7 +276,7 @@ spec:
 
 ## Step 5: DNS Configuration for Failover
 
-Use DNS with health checks to automate traffic routing:
+Use DNS with health checks to automate traffic routing. For `DNSEndpoint` resources, run ExternalDNS with the CRD source enabled, for example `--source=crd --crd-source-apiversion=externaldns.k8s.io/v1alpha1 --crd-source-kind=DNSEndpoint`:
 
 ```yaml
 # Primary DNS record pointing to active cluster
