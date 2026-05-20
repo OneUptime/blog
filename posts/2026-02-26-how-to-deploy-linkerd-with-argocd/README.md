@@ -122,12 +122,11 @@ spec:
   source:
     repoURL: https://helm.linkerd.io/stable
     chart: linkerd-control-plane
-    targetRevision: 1.16.0
+    targetRevision: 1.16.11
     helm:
       values: |
         # Use externally managed certificates
         identity:
-          externalCA: true
           issuer:
             scheme: kubernetes.io/tls
 
@@ -159,16 +158,13 @@ spec:
             limit: 256Mi
 
         # Destination controller
-        destination:
-          resources: *controller_resources
+        destinationResources: *controller_resources
 
         # Identity controller
-        identity:
-          resources: *controller_resources
+        identityResources: *controller_resources
 
         # Proxy injector
-        proxyInjector:
-          resources: *controller_resources
+        proxyInjectorResources: *controller_resources
 
         # High availability
         enablePodAntiAffinity: true
@@ -211,7 +207,7 @@ spec:
   source:
     repoURL: https://helm.linkerd.io/stable
     chart: linkerd-viz
-    targetRevision: 30.12.0
+    targetRevision: 30.12.11
     helm:
       values: |
         # Use existing Prometheus
@@ -327,7 +323,7 @@ Linkerd uses Server and ServerAuthorization resources for traffic policy:
 
 ```yaml
 # Allow only meshed traffic to the API service
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: Server
 metadata:
   name: api-server
@@ -341,7 +337,7 @@ spec:
   port: http
   proxyProtocol: HTTP/2
 ---
-apiVersion: policy.linkerd.io/v1beta2
+apiVersion: policy.linkerd.io/v1beta1
 kind: ServerAuthorization
 metadata:
   name: api-authz
