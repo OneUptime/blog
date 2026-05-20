@@ -25,8 +25,8 @@ The complication arises with two-node clusters, where any single node failure me
 
 sudo corosync-quorumtool -s
 
-# Check detailed quorum information
-sudo corosync-quorumtool -v
+# List cluster nodes and votes
+sudo corosync-quorumtool -l
 
 # Check status from pcs
 sudo pcs quorum status
@@ -109,8 +109,8 @@ logging {
 For two-node clusters, set `two_node: 1` in the quorum section. This tells Corosync that a single node can form a quorum (since you cannot have majority of two without one being able to proceed):
 
 ```bash
-# Configure two-node quorum via pcs
-sudo pcs quorum update two_node=1
+# Verify two-node quorum via pcs
+sudo pcs quorum config
 
 # Or configure via pcs for the Pacemaker no-quorum-policy
 sudo pcs property set no-quorum-policy=ignore
@@ -161,14 +161,14 @@ With this setup, node1 alone can form quorum (2 out of 3 expected votes).
 A quorum device is a third-party tiebreaker - a separate process running on a machine outside the cluster that can cast a deciding vote in split-brain scenarios:
 
 ```bash
-# Install quorum device package on the qdevice host (NOT a cluster node)
-sudo apt install -y corosync-qdevice corosync-qnetd
+# Install qnetd on the qdevice host (NOT a cluster node)
+sudo apt install -y pcs corosync-qnetd
 
-# On the qnetd host, initialize the qnetd
-sudo corosync-qnetd-certutil -i
+# Configure and start qnetd
+sudo pcs qdevice setup model net --enable --start
 
-# Start the qnetd service
-sudo systemctl enable --now corosync-qnetd
+# Install the qdevice client package on each cluster node
+sudo apt install -y corosync-qdevice
 
 # On the cluster nodes, add the qdevice
 sudo pcs quorum device add model net \
@@ -179,7 +179,7 @@ sudo pcs quorum device add model net \
 sudo corosync-quorumtool -s
 ```
 
-The `algorithm=lms` means "last man standing" - the side with the most recent communication with the qdevice wins.
+The `algorithm=lms` means "last man standing" - a node that is the only remaining cluster member that can still reach the qnetd server can receive the qdevice vote.
 
 ## Pacemaker No-Quorum Policy
 
@@ -187,14 +187,15 @@ Pacemaker has its own policy for what to do when quorum is lost:
 
 ```bash
 # Show current no-quorum-policy
-sudo pcs property show no-quorum-policy
+sudo pcs property config no-quorum-policy
 
 # Available options:
 # ignore  - continue managing resources regardless of quorum
 # freeze  - stop changing resource state but don't stop resources
 # stop    - stop all resources (safest, default)
-# demote  - demote promotable resources (for DRBD clusters)
-# suicide - fence the local node (with STONITH configured)
+# demote  - demote promotable resources and stop all other resources
+# fence   - fence all nodes in the affected partition (requires fencing)
+# suicide - same as fence, deprecated since Pacemaker 2.1.9
 
 # Set to stop (default and recommended for multi-node clusters)
 sudo pcs property set no-quorum-policy=stop
@@ -211,17 +212,17 @@ Understanding how the cluster behaves when quorum is lost is important:
 # Watch quorum status in real time
 watch -n1 corosync-quorumtool -s
 
-# In another terminal, simulate a node failure by putting it on standby
+# In another terminal, test Pacemaker resource evacuation without changing quorum
 sudo pcs node standby node2
 
-# Or stop corosync on node2 (from node2)
+# To test Corosync quorum behavior, stop corosync on node2 (from node2)
 sudo systemctl stop corosync
 
 # Observe the quorum status change on node1
 sudo corosync-quorumtool -s
 ```
 
-## Configuring Quorum Timeout
+## Configuring Membership Timeout
 
 The `token` timeout controls how long Corosync waits before declaring a node dead:
 
@@ -241,7 +242,7 @@ totem {
     # Token timeout in ms - how long before a node is declared dead
     token: 10000
 
-    # Token retransmit timeout
+    # Number of token retransmits before forming a new configuration
     token_retransmits_before_loss_const: 10
 
     # Join timeout - how long to wait for join messages
