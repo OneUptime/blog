@@ -19,26 +19,30 @@ Before creating custom metrics, understand what ArgoCD already provides:
 ```promql
 # Application health and sync status
 
-argocd_app_info{name, project, health_status, sync_status}
+argocd_app_info
 
 # Sync operation counts
-argocd_app_sync_total{name, project, phase}
+argocd_app_sync_total
 
 # Reconciliation performance
-argocd_app_reconcile_duration_seconds{name}
-argocd_app_reconcile_count{name}
+argocd_app_reconcile_bucket
+argocd_app_reconcile_sum
+argocd_app_reconcile_count
 
 # Git operations
-argocd_git_request_total{repo, request_type}
-argocd_git_request_duration_seconds{repo, request_type}
+argocd_git_request_total
+argocd_git_request_duration_seconds_bucket
+argocd_git_request_duration_seconds_sum
+argocd_git_request_duration_seconds_count
+argocd_git_fetch_fail_total
 
 # Repo server
-argocd_repo_pending_request_total{repo}
+argocd_repo_pending_request_total
 
 # Cluster connectivity
-argocd_cluster_api_resource_objects{server}
-argocd_cluster_api_resources{server}
-argocd_cluster_cache_age_seconds{server}
+argocd_cluster_api_resource_objects
+argocd_cluster_api_resources
+argocd_cluster_cache_age_seconds
 ```
 
 If your question can be answered by combining these with PromQL, start there before building custom exporters.
@@ -84,16 +88,10 @@ spec:
               argocd_app_sync_total{phase="Succeeded"}[1h]
             )) by (project) * 3600
 
-        # Git fetch error rate per repository
-        - record: argocd:repo_error_rate
+        # Git fetch failures per hour
+        - record: argocd:git_fetch_failures_per_hour
           expr: >
-            sum(rate(
-              argocd_git_request_total{request_type="fetch", status="error"}[1h]
-            )) by (repo)
-            /
-            clamp_min(sum(rate(
-              argocd_git_request_total{request_type="fetch"}[1h]
-            )) by (repo), 0.001)
+            rate(argocd_git_fetch_fail_total[1h]) * 3600
 
         # Number of out-of-sync apps (drift indicator)
         - record: argocd:drift_count
@@ -117,14 +115,13 @@ For metrics that require querying the ArgoCD API or processing application manif
 # argocd_custom_exporter.py
 import json
 import subprocess
-import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from collections import defaultdict
 
 def get_argocd_apps():
     """Fetch all ArgoCD applications."""
     result = subprocess.run(
-        ["argocd", "app", "list", "-o", "json"],
+        ["argocd", "app", "list", "--core", "-o", "json"],
         capture_output=True, text=True
     )
     return json.loads(result.stdout)
@@ -137,8 +134,6 @@ def calculate_custom_metrics(apps):
     source_types = defaultdict(int)
     # Count apps by destination namespace
     namespace_counts = defaultdict(int)
-    # Track revision age
-    revision_ages = {}
 
     for app in apps:
         name = app["metadata"]["name"]
@@ -146,7 +141,8 @@ def calculate_custom_metrics(apps):
         status = app.get("status", {})
 
         # Source type classification
-        source = spec.get("source", {})
+        sources = spec.get("sources") or []
+        source = spec.get("source") or (sources[0] if sources else {})
         if source.get("chart"):
             source_types["helm"] += 1
         elif source.get("kustomize"):
@@ -162,12 +158,6 @@ def calculate_custom_metrics(apps):
         dest = spec.get("destination", {})
         ns = dest.get("namespace", "default")
         namespace_counts[ns] += 1
-
-        # Sync wave count (complexity indicator)
-        annotations = app["metadata"].get("annotations", {})
-        sync_wave = annotations.get(
-            "argocd.argoproj.io/sync-wave", "0"
-        )
 
         # Track number of resources per app
         resource_count = len(
@@ -301,7 +291,7 @@ spec:
 
 ## Approach 3: ArgoCD Resource Customizations
 
-Use ArgoCD's resource customizations to add health checks that double as metric sources:
+Use ArgoCD's resource customizations to add health checks that feed the built-in application health metrics:
 
 ```yaml
 apiVersion: v1
@@ -310,6 +300,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
+  resource.customizations.useOpenLibs.apps_Deployment: "true"
   # Custom health check that exposes additional metadata
   resource.customizations.health.apps_Deployment: |
     hs = {}
@@ -368,6 +359,12 @@ data:
     headers:
       - name: Content-Type
         value: application/json
+
+  subscriptions: |
+    - recipients:
+        - custom-metrics
+      triggers:
+        - on-any-sync
 ```
 
 ## Useful Custom Metric Ideas
