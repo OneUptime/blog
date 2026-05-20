@@ -40,7 +40,7 @@ The application gets stuck: Git says one thing, the cluster has another, and Kub
 
 ## Solution 1: Replace Instead of Apply
 
-The `Replace=true` sync option tells ArgoCD to use `kubectl replace` instead of `kubectl apply`. Replace deletes and recreates the resource, which sidesteps the immutability constraint:
+The `Replace=true` sync option tells ArgoCD to use `kubectl replace` or `kubectl create` instead of `kubectl apply`. This can help when apply is the wrong operation for a resource, but it does not bypass every immutable field. For immutable changes that require deletion, combine it with force sync or delete and recreate the resource:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -53,7 +53,15 @@ spec:
       - Replace=true
 ```
 
-**Warning**: `Replace=true` affects all resources in the Application. This means brief downtime as resources are deleted and recreated. Use it selectively.
+**Warning**: `Replace=true` affects all resources in the Application. This can be destructive and may cause resources to be recreated. Use it selectively.
+
+You can also scope it to a single resource with an annotation:
+
+```yaml
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true
+```
 
 For a more targeted approach, use the CLI:
 
@@ -65,13 +73,19 @@ argocd app sync my-app --resource batch:Job:my-job --replace
 
 ## Solution 2: Force Sync
 
-Force sync deletes the resource before recreating it:
+Force sync deletes the resource before recreating it when used with replace:
 
-```bash
-argocd app sync my-app --force
+```yaml
+metadata:
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 ```
 
-This is essentially a delete-then-create operation. It works for any immutable field issue but causes brief downtime for the affected resources.
+This is a delete-then-create operation. It works for immutable field issues but causes brief downtime for the affected resources. You can also request this from the CLI for a targeted manual sync:
+
+```bash
+argocd app sync my-app --resource batch:Job:my-job --force --replace
+```
 
 ## Solution 3: Use Sync Waves to Delete and Recreate
 
@@ -85,9 +99,9 @@ metadata:
   name: my-job
   annotations:
     argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
-  selector: {}    # Let Kubernetes generate this
   template:
     metadata:
       labels:
@@ -142,15 +156,15 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 ```
 
-**Solution C**: Add the Replace sync option for Jobs only:
+**Solution C**: Add the Force and Replace sync options for Jobs only:
 
 ```bash
-argocd app sync my-app --resource batch:Job:my-job --replace
+argocd app sync my-app --resource batch:Job:my-job --force --replace
 ```
 
 ### StatefulSet Volume Claim Templates
 
-StatefulSet volumeClaimTemplates are immutable. You cannot change the storage size, access mode, or storage class:
+StatefulSet volumeClaimTemplates are immutable. You cannot change the template's storage size, access mode, or storage class in place:
 
 ```text
 The StatefulSet "my-db" is invalid: spec: Forbidden: updates to statefulset spec for fields other than ...
@@ -168,21 +182,20 @@ argocd app sync my-app
 
 The existing PVCs remain intact. The new StatefulSet adopts the existing pods and PVCs if the pod selector matches.
 
-For an automated approach, annotate the StatefulSet:
+For an automated approach, annotate the StatefulSet only if you accept a delete-and-create operation:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  syncPolicy:
-    syncOptions:
-      # Only use Replace for specific resource types
-      - Replace=true    # Be careful - this affects all resources
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: my-db
+  annotations:
+    argocd.argoproj.io/sync-options: Force=true,Replace=true
 ```
 
 ### Service Type Changes
 
-Changing a Service type (e.g., from ClusterIP to LoadBalancer) can hit immutability issues:
+Changing a Service type between `ClusterIP`, `NodePort`, and `LoadBalancer` is usually supported, but changing immutable allocated fields such as `clusterIP` or `clusterIPs` can fail:
 
 ```yaml
 # This can fail if clusterIP changes
@@ -193,6 +206,9 @@ spec:
       jsonPointers:
         - /spec/clusterIP
         - /spec/clusterIPs
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
 For Service type changes, you often need to delete and recreate:
@@ -248,8 +264,8 @@ spec:
 For storage class or access mode changes, the PVC must be deleted and recreated (which means data migration):
 
 ```bash
-# Backup data first
-kubectl exec my-pod -n my-namespace -- tar czf /tmp/backup.tar.gz /data
+# Backup data first to your local machine
+kubectl exec my-pod -n my-namespace -- tar czf - /data > backup.tar.gz
 
 # Delete the PVC
 kubectl delete pvc my-pvc -n my-namespace
@@ -257,8 +273,8 @@ kubectl delete pvc my-pvc -n my-namespace
 # Sync to create new PVC with updated spec
 argocd app sync my-app
 
-# Restore data
-kubectl exec my-pod -n my-namespace -- tar xzf /tmp/backup.tar.gz -C /
+# Restore data from your local machine
+kubectl exec -i my-pod -n my-namespace -- tar xzf - -C / < backup.tar.gz
 ```
 
 ## Server-Side Apply as a Solution
@@ -346,4 +362,4 @@ spec:
 
 ## Summary
 
-Immutable fields are one of the most common sources of ArgoCD sync failures. The key strategies are: use ArgoCD hooks with `BeforeHookCreation` for Jobs, use `Replace=true` or `--force` sync for resources that need to be recreated, use unique names for one-off resources like Jobs, and separate mutable and immutable resources into different Applications when possible. Always test these strategies in a non-production environment first, as delete-and-recreate operations can cause brief downtime.
+Immutable fields are one of the most common sources of ArgoCD sync failures. The key strategies are: use ArgoCD hooks with `BeforeHookCreation` for Jobs, use `Force=true,Replace=true` or `--force --replace` sync for resources that need to be recreated, use unique names for one-off resources like Jobs, and separate mutable and immutable resources into different Applications when possible. Always test these strategies in a non-production environment first, as delete-and-recreate operations can cause brief downtime.
