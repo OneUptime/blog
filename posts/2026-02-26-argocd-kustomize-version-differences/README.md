@@ -18,11 +18,11 @@ ArgoCD bundles a specific version of Kustomize in its repo server container. Eac
 
 | ArgoCD Version | Bundled Kustomize Version |
 |---------------|--------------------------|
-| 2.7.x | 5.1.x |
-| 2.8.x | 5.2.x |
-| 2.9.x | 5.3.x |
-| 2.10.x | 5.3.x |
-| 2.11.x | 5.4.x |
+| 2.7.x | 5.0.1 |
+| 2.8.x | 5.1.0 |
+| 2.9.x | 5.2.1 |
+| 2.10.x | 5.2.1 |
+| 2.11.x | 5.2.1 |
 
 Your local Kustomize might be a completely different version. Check both:
 
@@ -50,12 +50,12 @@ apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 ```
 
-If your ArgoCD ships with an older Kustomize, components silently fail or produce errors.
+If your ArgoCD ships with an older Kustomize, components fail during the build.
 
-### Replacements (v4.5.0+)
+### Replacements (v4.2.0+)
 
 ```yaml
-# Replacements replaced vars in Kustomize 4.5.0+
+# Use replacements instead of the deprecated vars field
 replacements:
   - source:
       kind: ConfigMap
@@ -92,14 +92,13 @@ This requires the `--enable-helm` build flag.
 
 ## Checking ArgoCD Kustomize Version
 
-The most reliable way to check:
+The most reliable way to check the Kustomize version is to run the binary in the repo server pod:
 
 ```bash
-# Get the ArgoCD server version info (includes tool versions)
-argocd version
-
-# Or check directly in the repo server pod
 kubectl exec -n argocd deploy/argocd-repo-server -- kustomize version
+
+# Get the ArgoCD server version info separately
+argocd version
 ```
 
 ## Matching Your Local Version
@@ -109,11 +108,11 @@ Install the same version locally that ArgoCD uses:
 ```bash
 # Install a specific Kustomize version
 # Using go install
-GOBIN=$(pwd) GO111MODULE=on go install sigs.k8s.io/kustomize/kustomize/v5@v5.3.0
+GOBIN=$(pwd) GO111MODULE=on go install sigs.k8s.io/kustomize/kustomize/v5@v5.2.1
 
 # Using curl (example for Linux)
 curl -Lo kustomize.tar.gz \
-  "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz"
+  "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.2.1/kustomize_v5.2.1_linux_amd64.tar.gz"
 tar xzf kustomize.tar.gz
 sudo mv kustomize /usr/local/bin/kustomize
 ```
@@ -123,8 +122,8 @@ Or use a version manager:
 ```bash
 # Using asdf
 asdf plugin add kustomize
-asdf install kustomize 5.3.0
-asdf local kustomize 5.3.0
+asdf install kustomize 5.2.1
+asdf local kustomize 5.2.1
 ```
 
 ## Configuring a Custom Kustomize Version in ArgoCD
@@ -141,9 +140,11 @@ FROM quay.io/argoproj/argocd:v2.9.3
 USER root
 
 # Replace the bundled Kustomize with a specific version
-RUN curl -Lo /usr/local/bin/kustomize \
+RUN apt-get update && apt-get install --no-install-recommends -y curl ca-certificates && \
+    curl -L \
     "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.4.1/kustomize_v5.4.1_linux_amd64.tar.gz" \
-    | tar xz -C /usr/local/bin/
+    | tar xz -C /usr/local/bin/ && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 USER argocd
 ```
@@ -198,7 +199,7 @@ Common build options:
 # Allow alpha plugins
 --enable-alpha-plugins
 
-# Disable file load restrictions (needed for remote bases)
+# Disable file load restrictions (needed when local files are loaded from outside the kustomization root)
 --load-restrictor LoadRestrictionsNone
 
 # Enable management of external plugins
@@ -210,7 +211,7 @@ Common build options:
 The `apiVersion` in kustomization.yaml matters:
 
 ```yaml
-# Old API version (deprecated but still works)
+# Current Kustomization API version
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -239,7 +240,7 @@ jobs:
       - name: Install Kustomize (matching ArgoCD version)
         run: |
           curl -Lo kustomize.tar.gz \
-            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz"
+            "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.2.1/kustomize_v5.2.1_linux_amd64.tar.gz"
           tar xzf kustomize.tar.gz
           sudo mv kustomize /usr/local/bin/
 
