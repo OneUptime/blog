@@ -72,7 +72,7 @@ spec:
       - CreateNamespace=true
 ```
 
-Then manage providers and infrastructure through additional Applications:
+Then manage providers and infrastructure through additional Applications. If these Application manifests are synced by a parent application, sync waves can order them:
 
 ```yaml
 # Provider installation
@@ -176,7 +176,7 @@ spec:
 
 ## Approach 2: Terraform Operator
 
-If you have existing Terraform modules, the Terraform Operator for Kubernetes lets you run Terraform through ArgoCD:
+If you have existing Terraform modules, tf-controller lets you run Terraform through ArgoCD. It also requires Flux's source-controller because the Terraform resource references Flux `GitRepository` sources:
 
 ```yaml
 # Install tf-controller
@@ -188,9 +188,9 @@ metadata:
 spec:
   project: infrastructure
   source:
-    repoURL: https://weaveworks.github.io/tf-controller
+    repoURL: https://flux-iac.github.io/tofu-controller
     chart: tf-controller
-    targetRevision: 0.16.0
+    targetRevision: 0.15.1
   destination:
     server: https://kubernetes.default.svc
     namespace: flux-system
@@ -202,7 +202,7 @@ spec:
       - CreateNamespace=true
 ```
 
-Define Terraform runs as Kubernetes resources:
+Define Terraform runs as Kubernetes resources. This example assumes a Flux `GitRepository` named `infra-repo` exists in the `terraform` namespace:
 
 ```yaml
 apiVersion: infra.contrib.fluxcd.io/v1alpha2
@@ -324,7 +324,7 @@ spec:
         targetRevision: main
         path: "{{path}}"
       destination:
-        server: "{{cluster}}"
+        name: "{{cluster}}"
       syncPolicy:
         automated:
           prune: false
@@ -342,7 +342,7 @@ syncPolicy:
     prune: false    # Do NOT auto-delete (safety for infra)
 ```
 
-ArgoCD checks for drift on a configurable interval (default 3 minutes). When it detects that the live state does not match the desired state in Git, it automatically reapplies the correct configuration.
+ArgoCD checks for drift on a configurable interval (by default, 120 seconds plus up to 60 seconds of jitter, for a maximum of 3 minutes). When it detects that the live state does not match the desired state in Git, it automatically reapplies the correct configuration.
 
 For infrastructure resources, set `prune: false` to prevent accidental deletion. If someone removes a database manifest from Git, you do not want ArgoCD to delete the database.
 
