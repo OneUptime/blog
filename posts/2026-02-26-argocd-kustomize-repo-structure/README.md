@@ -158,9 +158,9 @@ k8s-configs/
   environments/
     dev/
       frontend/
-        kustomization.yaml  # References ../../bases/frontend
+        kustomization.yaml  # References ../../../bases/frontend
       backend-api/
-        kustomization.yaml  # References ../../bases/backend-api
+        kustomization.yaml  # References ../../../bases/backend-api
     staging/
       frontend/
         kustomization.yaml
@@ -247,6 +247,7 @@ metadata:
   name: app-of-apps
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/k8s-configs.git
     targetRevision: main
@@ -277,13 +278,13 @@ k8s-configs/
   apps/
     frontend/
       base/
-        kustomization.yaml   # Resources: ../../shared/bases/web-app
+        kustomization.yaml   # Resources: ../../../shared/bases/web-app
       overlays/
         production/
           kustomization.yaml
     backend-api/
       base/
-        kustomization.yaml   # Resources: ../../shared/bases/microservice
+        kustomization.yaml   # Resources: ../../../shared/bases/microservice
       overlays/
         production/
           kustomization.yaml
@@ -300,6 +301,8 @@ metadata:
   name: all-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/k8s-configs.git
@@ -310,15 +313,16 @@ spec:
   template:
     metadata:
       # Extract app name from path
-      name: "{{path.basename}}-{{path[2]}}"
+      name: "{{index .path.segments 1}}-{{.path.basename}}"
     spec:
+      project: default
       source:
         repoURL: https://github.com/myorg/k8s-configs.git
         targetRevision: main
-        path: "{{path}}"
+        path: "{{.path.path}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{path[2]}}"
+        namespace: "{{.path.basename}}"
 ```
 
 This automatically creates an ArgoCD Application for every `apps/*/overlays/production` directory.
