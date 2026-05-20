@@ -8,7 +8,7 @@ Description: Learn how to use OCI artifacts and container registries as applicat
 
 ---
 
-OCI (Open Container Initiative) support in ArgoCD lets you use container registries as a source for your application manifests. Instead of pulling Helm charts from traditional Helm repositories or cloning Git repos, ArgoCD can pull OCI artifacts directly from registries like Docker Hub, GitHub Container Registry, AWS ECR, Google Artifact Registry, and Azure Container Registry. This unifies your artifact distribution by storing both container images and deployment configurations in the same registry infrastructure.
+OCI (Open Container Initiative) support in ArgoCD lets you use container registries as a source for your application manifests. Instead of pulling Helm charts from traditional Helm repositories or cloning Git repos, ArgoCD can pull OCI Helm charts and native OCI application sources directly from registries like Docker Hub, GitHub Container Registry, AWS ECR, Google Artifact Registry, and Azure Container Registry. This unifies your artifact distribution by storing both container images and deployment configurations in the same registry infrastructure.
 
 ## What Are OCI Artifacts
 
@@ -32,7 +32,7 @@ Traditional Helm repositories serve an `index.yaml` file that lists all charts a
 - **Unified infrastructure** - Use the same registry for container images and Helm charts
 - **Native authentication** - Leverage existing registry auth (IAM roles, service accounts, tokens)
 - **Content addressing** - OCI artifacts are content-addressed via digests for integrity
-- **Multi-architecture support** - OCI manifests can reference platform-specific artifacts
+- **Standard registry tooling** - Inspect tags and digests with tools like `crane`, `skopeo`, or the registry API
 - **Better caching** - Registry layers are cached and deduplicated
 
 ## Configuring an OCI Source in ArgoCD
@@ -70,14 +70,14 @@ spec:
       selfHeal: true
 ```
 
-Note the `repoURL` format - it is the registry URL without the `oci://` protocol prefix. ArgoCD determines it is an OCI source when the `chart` field is specified alongside a non-Git URL.
+Note the `repoURL` format for Helm charts - it is the registry URL without the `oci://` protocol prefix. When credentials are configured for this repository, the ArgoCD repository entry must be registered as a Helm repository with OCI support enabled.
 
 ## Registering an OCI Registry with ArgoCD
 
-Before ArgoCD can pull from an OCI registry, you need to register it:
+For private OCI registries, or when you want to manage the registry connection centrally, register it with ArgoCD:
 
 ```bash
-# Register a public OCI registry (no auth needed)
+# Register a public OCI Helm registry (no auth needed)
 argocd repo add registry.example.com/charts --type helm --name my-registry --enable-oci
 
 # Register a private OCI registry with username/password
@@ -160,7 +160,7 @@ spec:
 
 ## Version Management
 
-OCI artifacts use tags for versioning, similar to container images. In ArgoCD, the `targetRevision` field maps to the OCI tag:
+OCI artifacts use tags for versioning, similar to container images. For OCI Helm charts in ArgoCD, the `targetRevision` field maps to the Helm chart version tag:
 
 ```yaml
 # Specific version
@@ -169,11 +169,11 @@ source:
   chart: my-app
   targetRevision: 1.2.3  # Pulls the exact version
 
-# Semantic version range (if supported by your registry)
+# Semantic version range for Helm charts
 source:
   repoURL: registry.example.com/charts
   chart: my-app
-  targetRevision: ">=1.0.0 <2.0.0"  # Semver constraint
+  targetRevision: ">=1.0.0 <2.0.0"  # ArgoCD resolves the matching chart version
 
 # Latest (not recommended for production)
 source:
@@ -267,14 +267,13 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-repo-server --tail=100
 
 ## Security Considerations
 
-**Use image digests for production** - While tags can be overwritten, digests are immutable:
+**Use immutable references for production** - While tags can be overwritten, digests are immutable. For OCI Helm charts, pin exact chart versions. If you use ArgoCD's native OCI source format, you can target a digest:
 
 ```yaml
-# Tag-based (mutable)
-targetRevision: 1.2.3
-
-# Digest-based (immutable, more secure)
-targetRevision: sha256:abc123def456...
+source:
+  repoURL: oci://registry.example.com/manifests/my-app
+  targetRevision: sha256:abc123def456...
+  path: .
 ```
 
 **Rotate registry credentials** - Store credentials in Kubernetes Secrets and rotate them regularly.
