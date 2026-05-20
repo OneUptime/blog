@@ -40,15 +40,15 @@ ArgoCD exposes several metrics related to the controller queue:
 ```promql
 # Current queue depth
 
-workqueue_depth{namespace="argocd", name="app_operation"}
-workqueue_depth{namespace="argocd", name="app_reconciliation"}
+workqueue_depth{name="app_operation_processing_queue"}
+workqueue_depth{name="app_reconciliation_queue"}
 ```
 
 **workqueue_adds_total** - Total number of items added to the queue:
 
 ```promql
 # Rate of items being added to the queue
-rate(workqueue_adds_total{namespace="argocd", name="app_reconciliation"}[5m])
+rate(workqueue_adds_total{name="app_reconciliation_queue"}[5m])
 ```
 
 **workqueue_queue_duration_seconds** - How long items wait in the queue before processing:
@@ -56,10 +56,9 @@ rate(workqueue_adds_total{namespace="argocd", name="app_reconciliation"}[5m])
 ```promql
 # 95th percentile queue wait time
 histogram_quantile(0.95,
-  rate(workqueue_queue_duration_seconds_bucket{
-    namespace="argocd",
-    name="app_reconciliation"
-  }[5m])
+  sum by (le) (rate(workqueue_queue_duration_seconds_bucket{
+    name="app_reconciliation_queue"
+  }[5m]))
 )
 ```
 
@@ -68,10 +67,9 @@ histogram_quantile(0.95,
 ```promql
 # 95th percentile processing time
 histogram_quantile(0.95,
-  rate(workqueue_work_duration_seconds_bucket{
-    namespace="argocd",
-    name="app_reconciliation"
-  }[5m])
+  sum by (le) (rate(workqueue_work_duration_seconds_bucket{
+    name="app_reconciliation_queue"
+  }[5m]))
 )
 ```
 
@@ -107,10 +105,7 @@ groups:
   # Warning when queue depth is consistently above 10
   - alert: ArgocdControllerQueueHigh
     expr: |
-      workqueue_depth{
-        namespace="argocd",
-        name="app_reconciliation"
-      } > 10
+      workqueue_depth{name="app_reconciliation_queue"} > 10
     for: 10m
     labels:
       severity: warning
@@ -121,10 +116,7 @@ groups:
   # Critical when queue depth is very high
   - alert: ArgocdControllerQueueCritical
     expr: |
-      workqueue_depth{
-        namespace="argocd",
-        name="app_reconciliation"
-      } > 50
+      workqueue_depth{name="app_reconciliation_queue"} > 50
     for: 5m
     labels:
       severity: critical
@@ -136,10 +128,9 @@ groups:
   - alert: ArgocdControllerQueueSlow
     expr: |
       histogram_quantile(0.95,
-        rate(workqueue_queue_duration_seconds_bucket{
-          namespace="argocd",
-          name="app_reconciliation"
-        }[5m])
+        sum by (le) (rate(workqueue_queue_duration_seconds_bucket{
+          name="app_reconciliation_queue"
+        }[5m]))
       ) > 30
     for: 10m
     labels:
@@ -156,22 +147,22 @@ Create a Grafana dashboard focused on controller queue performance:
 **Queue Depth Over Time (Time Series):**
 
 ```promql
-workqueue_depth{namespace="argocd", name=~"app_.*"}
+workqueue_depth{name=~"app_.*"}
 ```
 
 **Queue Add Rate (Time Series):**
 
 ```promql
-rate(workqueue_adds_total{namespace="argocd", name=~"app_.*"}[5m])
+rate(workqueue_adds_total{name=~"app_.*"}[5m])
 ```
 
 **Queue Wait Time P95 (Time Series):**
 
 ```promql
 histogram_quantile(0.95,
-  rate(workqueue_queue_duration_seconds_bucket{
-    namespace="argocd", name=~"app_.*"
-  }[5m])
+  sum by (le, name) (rate(workqueue_queue_duration_seconds_bucket{
+    name=~"app_.*"
+  }[5m]))
 )
 ```
 
@@ -179,16 +170,16 @@ histogram_quantile(0.95,
 
 ```promql
 histogram_quantile(0.95,
-  rate(workqueue_work_duration_seconds_bucket{
-    namespace="argocd", name=~"app_.*"
-  }[5m])
+  sum by (le, name) (rate(workqueue_work_duration_seconds_bucket{
+    name=~"app_.*"
+  }[5m]))
 )
 ```
 
 **Queue Throughput - Items Processed Per Second (Time Series):**
 
 ```promql
-rate(workqueue_adds_total{namespace="argocd", name=~"app_.*"}[5m])
+sum by (name) (rate(workqueue_work_duration_seconds_count{name=~"app_.*"}[5m]))
 ```
 
 ## Diagnosing Queue Depth Issues
@@ -208,11 +199,11 @@ kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-application-controlle
 **Slow reconciliation due to large manifests:**
 
 ```promql
-# Find applications with slow reconciliation
+# Find namespaces and destination clusters with slow reconciliation
 topk(10,
   histogram_quantile(0.95,
-    rate(argocd_app_reconcile_duration_seconds_bucket[5m])
-  ) by (name)
+    sum by (le, namespace, dest_server) (rate(argocd_app_reconcile_bucket[5m]))
+  )
 )
 ```
 
@@ -220,7 +211,7 @@ topk(10,
 
 ```promql
 # Check for cluster connection errors
-argocd_cluster_api_server_connectivity
+argocd_cluster_connection_status == 0
 ```
 
 **Too many Git operations blocking the queue:**
@@ -228,7 +219,7 @@ argocd_cluster_api_server_connectivity
 ```promql
 # Git request duration - if this is high, it slows everything
 histogram_quantile(0.95,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
+  sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
 )
 ```
 
@@ -299,7 +290,7 @@ After scaling, monitor the queue depth to verify the changes had the desired eff
 
 ```promql
 # Compare queue depth before and after scaling
-workqueue_depth{namespace="argocd", name="app_reconciliation"}
+workqueue_depth{name="app_reconciliation_queue"}
 ```
 
 ## Correlation with Application Count
@@ -308,7 +299,7 @@ Plot queue depth against total application count to understand capacity:
 
 ```promql
 # Queue depth
-workqueue_depth{namespace="argocd", name="app_reconciliation"}
+workqueue_depth{name="app_reconciliation_queue"}
 
 # Application count
 count(argocd_app_info)
