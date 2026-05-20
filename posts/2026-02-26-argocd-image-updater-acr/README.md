@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Azure ACR, Image Updater
 
-Description: Learn how to configure ArgoCD Image Updater with Azure Container Registry for automatic image updates using managed identity, service principal authentication, and update strategies.
+Description: Learn how to configure ArgoCD Image Updater with Azure Container Registry for automatic image updates using workload identity, service principal authentication, and update strategies.
 
 ---
 
-Azure Container Registry (ACR) is the default container registry for teams running Kubernetes on Azure. Configuring ArgoCD Image Updater with ACR involves setting up authentication using Azure Managed Identity or service principals, configuring the registry endpoint, and defining update strategies. This guide walks you through the complete setup.
+Azure Container Registry (ACR) is a common container registry for teams running Kubernetes on Azure. Configuring ArgoCD Image Updater with ACR involves setting up authentication using Azure Workload Identity or service principals, configuring the registry endpoint, and defining update strategies. This guide walks you through the complete setup.
 
 ## Authentication Options
 
-ACR supports several authentication methods. For AKS clusters, Azure Managed Identity is the recommended approach as it avoids storing credentials entirely.
+ACR supports several authentication methods. For AKS clusters, Azure Workload Identity is the recommended approach as it avoids storing credentials entirely.
 
-### Option 1: Azure Managed Identity (Recommended for AKS)
+### Option 1: Azure Workload Identity (Recommended for AKS)
 
-When your AKS cluster has a managed identity, you can grant it pull access to ACR.
+When your AKS cluster uses Microsoft Entra Workload ID, you can grant a managed identity pull access to ACR without storing registry passwords.
 
 #### Step 1: Attach ACR to AKS
 
@@ -33,34 +33,90 @@ az aks update \
 
 This grants the AKS kubelet identity the AcrPull role on the ACR.
 
-#### Step 2: Grant Image Updater Additional Permissions
+#### Step 2: Grant Image Updater Access
 
-Image Updater needs to list tags, which requires more than pull access:
+The AKS-ACR attachment lets nodes pull images, but Image Updater runs as a pod and needs its own identity for registry API calls. Create or reuse a user-assigned managed identity and grant it AcrPull on the registry:
 
 ```bash
-# Get the AKS kubelet identity
-KUBELET_IDENTITY=$(az aks show \
-  --name my-aks-cluster \
+# Create a managed identity for Image Updater
+az identity create \
+  --name argocd-image-updater-mi \
   --resource-group my-rg \
-  --query "identityProfile.kubeletidentity.objectId" \
+  --location eastus
+
+UPDATER_CLIENT_ID=$(az identity show \
+  --name argocd-image-updater-mi \
+  --resource-group my-rg \
+  --query clientId \
+  --output tsv)
+
+UPDATER_PRINCIPAL_ID=$(az identity show \
+  --name argocd-image-updater-mi \
+  --resource-group my-rg \
+  --query principalId \
   --output tsv)
 
 # Get the ACR resource ID
 ACR_ID=$(az acr show --name myacrregistry --query id --output tsv)
 
-# Grant Reader role (for listing tags)
+# Grant pull access for registry reads
 az role assignment create \
-  --assignee "$KUBELET_IDENTITY" \
+  --assignee "$UPDATER_PRINCIPAL_ID" \
   --role "AcrPull" \
   --scope "$ACR_ID"
+
+# Federate the Kubernetes service account with the managed identity
+AKS_OIDC_ISSUER=$(az aks show \
+  --name my-aks-cluster \
+  --resource-group my-rg \
+  --query "oidcIssuerProfile.issuerUrl" \
+  --output tsv)
+
+az identity federated-credential create \
+  --name argocd-image-updater \
+  --identity-name argocd-image-updater-mi \
+  --resource-group my-rg \
+  --issuer "$AKS_OIDC_ISSUER" \
+  --subject system:serviceaccount:argocd:argocd-image-updater-controller \
+  --audience api://AzureADTokenExchange
 ```
 
-#### Step 3: Configure Image Updater for Managed Identity
+#### Step 3: Configure Image Updater for Workload Identity
 
-With managed identity, Image Updater can authenticate automatically:
+With workload identity, Image Updater can use an external credentials script to exchange the projected service account token for an ACR refresh token:
 
 ```yaml
-# argocd-image-updater-config ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-auth
+  namespace: argocd
+data:
+  auth.sh: |
+    #!/bin/sh
+    set -eo pipefail
+    AAD_ACCESS_TOKEN=$(cat "$AZURE_FEDERATED_TOKEN_FILE")
+    ACCESS_TOKEN=$(wget --output-document - --header "Content-Type: application/x-www-form-urlencoded" \
+      --post-data="grant_type=client_credentials&client_id=${AZURE_CLIENT_ID}&client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer&scope=https://management.azure.com/.default&client_assertion=${AAD_ACCESS_TOKEN}" \
+      "https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/token" \
+      | python3 -c "import sys, json; print(json.load(sys.stdin)['access_token'])")
+    ACR_REFRESH_TOKEN=$(wget --quiet --header="Content-Type: application/x-www-form-urlencoded" \
+      --post-data="grant_type=access_token&service=${ACR_NAME}&access_token=${ACCESS_TOKEN}" \
+      --output-document - \
+      "https://${ACR_NAME}/oauth2/exchange" \
+      | python3 -c "import sys, json; print(json.load(sys.stdin)['refresh_token'])")
+    echo "00000000-0000-0000-0000-000000000000:$ACR_REFRESH_TOKEN"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-image-updater-controller
+  namespace: argocd
+  labels:
+    azure.workload.identity/use: "true"
+  annotations:
+    azure.workload.identity/client-id: "<UPDATER_CLIENT_ID>"
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -72,8 +128,12 @@ data:
       - name: Azure Container Registry
         api_url: https://myacrregistry.azurecr.io
         prefix: myacrregistry.azurecr.io
+        credentials: ext:/app/auth/auth.sh
+        credsexpire: 1h
         default: false
 ```
+
+Mount `argocd-image-updater-auth` at `/app/auth`, set `ACR_NAME=myacrregistry.azurecr.io` on the Image Updater container, and add the `azure.workload.identity/use: "true"` label to the pod template.
 
 ### Option 2: Service Principal Authentication
 
@@ -154,9 +214,8 @@ metadata:
   namespace: argocd
   annotations:
     # Track image in ACR
-    argocd-image-updater.argoproj.io/image-list: myapp=myacrregistry.azurecr.io/myapp
+    argocd-image-updater.argoproj.io/image-list: myapp=myacrregistry.azurecr.io/myapp:>=1.0.0
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.0.0"
     # Filter to stable release tags only
     argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^[0-9]+\\.[0-9]+\\.[0-9]+$"
     # Write back to Git
@@ -178,12 +237,12 @@ spec:
       selfHeal: true
 ```
 
-### Latest Strategy with Branch Tags
+### Newest Build Strategy with Branch Tags
 
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=myacrregistry.azurecr.io/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-[a-f0-9]{7}$"
 ```
 
@@ -253,9 +312,9 @@ az role assignment list \
   --output table
 ```
 
-**Image Updater cannot list tags** - Check that the credentials have at least AcrPull role, which includes tag listing permissions.
+**Image Updater cannot list tags** - Check that the credentials have AcrPull in registry RBAC mode. For registries using RBAC plus ABAC repository permissions, use the Container Registry Repository Reader role for repository reads.
 
-**Managed identity not working** - Verify the AKS-ACR attachment:
+**Managed identity not working** - Verify the workload identity service account annotation, federated credential subject, and pod template label. You can still verify the AKS-ACR attachment for node image pulls:
 
 ```bash
 az aks check-acr --name my-aks-cluster --resource-group my-rg --acr myacrregistry.azurecr.io
@@ -269,4 +328,4 @@ kubectl rollout restart deployment argocd-image-updater -n argocd
 
 For monitoring your Image Updater operations on Azure, set up [ArgoCD notifications](https://oneuptime.com/blog/post/2026-01-25-notifications-argocd/view) to alert on update events and failures.
 
-ACR with ArgoCD Image Updater provides a seamless automated deployment pipeline for Azure-based Kubernetes workloads. The key is choosing the right authentication method - managed identity for AKS, service principals for everything else.
+ACR with ArgoCD Image Updater provides a seamless automated deployment pipeline for Azure-based Kubernetes workloads. The key is choosing the right authentication method - workload identity for AKS, service principals for everything else.
