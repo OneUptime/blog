@@ -47,9 +47,9 @@ metadata:
   namespace: argocd
 data:
   # API server cache expiration
-  server.app.state.cache.expiration: "1h"
+  server.app.state.cache.expiration: "1h0m0s"
 
-  # Connection pool size for Redis
+  # Redis server hostname and port
   redis.server: "argocd-redis:6379"
 ```
 
@@ -63,7 +63,13 @@ metadata:
   name: argocd-redis
   namespace: argocd
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-redis
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-redis
     spec:
       containers:
         - name: redis
@@ -88,10 +94,19 @@ metadata:
   namespace: argocd
 spec:
   replicas: 3  # Run multiple instances
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-server
     spec:
       containers:
         - name: argocd-server
+          env:
+            - name: ARGOCD_API_SERVER_REPLICAS
+              value: "3"
           resources:
             requests:
               cpu: "500m"
@@ -118,7 +133,7 @@ spec:
 
 ## Strategy 3: Optimize UI Settings
 
-The ArgoCD UI is one of the largest load generators. Configure it to reduce server-side processing:
+The ArgoCD UI is one of the largest load generators. Keep documented server cache and compression settings enabled so repeated UI requests reuse cached application state:
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
@@ -128,11 +143,11 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Disable server-side rendering for large application trees
-  server.disable.auth: "false"
+  # Keep response compression enabled for UI/API responses
+  server.enable.gzip: "true"
 
-  # Reduce the frequency of UI status updates
-  server.status.cache.expiration: "1m"
+  # Cache expiration for application state
+  server.app.state.cache.expiration: "1h0m0s"
 ```
 
 Educate users on UI best practices:
@@ -142,7 +157,7 @@ Educate users on UI best practices:
 
 ## Strategy 4: Rate Limit API Requests
 
-Protect the API server from excessive requests:
+ArgoCD can limit how many webhook requests it processes concurrently. For general HTTP API rate limiting, use an ingress or gateway in front of the API server:
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
@@ -152,8 +167,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Rate limit settings
-  server.api.content.types: "application/json"
+  # Number of webhook requests processed concurrently
+  server.webhook.parallelism.limit: "50"
 ```
 
 Use an ingress-level rate limit for external API access:
@@ -186,7 +201,7 @@ spec:
 
 CI/CD pipelines that poll ArgoCD for sync status are a major load source. Replace polling with more efficient patterns:
 
-### Use Webhooks Instead of Polling
+### Use Wait Instead of Polling
 
 Instead of polling `argocd app get` in a loop:
 
@@ -283,35 +298,28 @@ spec:
                   number: 443
 ```
 
-## Strategy 7: Use Read-Only Replicas
+## Strategy 7: Use Read-Only RBAC
 
 For monitoring and observability tools that only need read access:
 
 ```yaml
-# Read-only API server instances
-apiVersion: apps/v1
-kind: Deployment
+# argocd-rbac-cm ConfigMap
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-server-readonly
+  name: argocd-rbac-cm
   namespace: argocd
-spec:
-  replicas: 2
-  template:
-    spec:
-      containers:
-        - name: argocd-server
-          command:
-            - argocd-server
-            - --read-only
-          resources:
-            requests:
-              cpu: "250m"
-              memory: "256Mi"
+data:
+  policy.csv: |
+    p, role:monitoring-readonly, applications, get, */*, allow
+    p, role:monitoring-readonly, projects, get, *, allow
+    p, role:monitoring-readonly, clusters, get, *, allow
+    g, monitoring-tools, role:monitoring-readonly
 ```
 
 ## Monitoring API Server Load
 
-Set up monitoring to track API server health:
+Set up monitoring to track API server health. If you alert on gRPC latency histograms, enable `ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true` on the API server so the histogram buckets are exported:
 
 ```yaml
 # Prometheus alert rules for API server
@@ -345,7 +353,7 @@ groups:
 ```bash
 # Quick health check
 kubectl port-forward svc/argocd-server -n argocd 8080:443 &
-curl -sk https://localhost:8080/api/v1/session/userinfo
+curl -sk https://localhost:8080/healthz
 ```
 
 For comprehensive API server monitoring and alerting, [OneUptime](https://oneuptime.com) provides real-time dashboards that track response times, error rates, and connection counts across your ArgoCD deployment.
@@ -359,4 +367,4 @@ For comprehensive API server monitoring and alerting, [OneUptime](https://oneupt
 - Separate webhook traffic from user traffic with dedicated instances
 - Educate users to close unused UI tabs and use filters
 - Monitor gRPC request latency and error rates for early warning
-- Use read-only replicas for monitoring and observability integrations
+- Use read-only RBAC for monitoring and observability integrations
