@@ -21,10 +21,10 @@ In a template unit file, the `%i` specifier represents the instance name. The `%
 | `%i` | Instance name (encoded) |
 | `%I` | Instance name (decoded) |
 | `%n` | Full unit name with instance |
-| `%N` | Same as %n but unescaped |
+| `%N` | Full unit name with the type suffix removed |
 | `%p` | Prefix name (part before @) |
 | `%H` | Hostname |
-| `%u` | User the service runs as |
+| `%u` | User running the service manager |
 
 ## Creating a Basic Template Unit
 
@@ -87,7 +87,7 @@ sudo systemctl start worker@1
 # Enable instances to start at boot
 sudo systemctl enable worker@1 worker@2 worker@3
 
-# Check status of all instances
+# Check status of loaded instances
 sudo systemctl status "worker@*.service"
 
 # Check a specific instance
@@ -96,7 +96,7 @@ sudo systemctl status worker@2.service
 # Stop an instance
 sudo systemctl stop worker@2
 
-# Restart all instances matching the template
+# Restart loaded instances matching the template
 sudo systemctl restart "worker@*.service"
 ```
 
@@ -146,9 +146,9 @@ sudo systemctl start openvpn-client@datacenter
 sudo systemctl enable openvpn-client@office openvpn-client@datacenter
 ```
 
-## Real-World Example: Multiple PostgreSQL Databases
+## Real-World Example: Multiple PostgreSQL Clusters
 
-Running multiple PostgreSQL instances on different ports:
+Running multiple PostgreSQL instances, with each cluster configured to use a different port in its `postgresql.conf`:
 
 ```bash
 sudo nano /etc/systemd/system/postgresql-custom@.service
@@ -167,7 +167,6 @@ Group=postgres
 # Data directory includes instance name
 Environment=PGDATA=/var/lib/postgresql/%i
 
-ExecStartPre=/usr/bin/postgresql-check-db-dir ${PGDATA}
 ExecStart=/usr/lib/postgresql/16/bin/pg_ctl \
     -D ${PGDATA} \
     -l /var/log/postgresql/postgresql-%i.log \
@@ -234,7 +233,7 @@ sudo systemctl start http-server@8081
 
 ## Passing Complex Instance Parameters
 
-For instances that need more than a simple name, encode additional parameters in the instance name using URL encoding or separators:
+For instances that need more than a simple name, encode additional parameters in the instance name using `systemd-escape` or separators:
 
 ```bash
 # Service template that accepts host:port as instance
@@ -252,7 +251,7 @@ Type=simple
 # Split instance name on '-' to get source and destination
 # Instance: 8080-10.0.0.5-9090 means: local port 8080, target 10.0.0.5:9090
 ExecStart=/bin/bash -c 'IFS="-" read src host dst <<< "%i"; \
-    socat TCP4-LISTEN:$src,fork,reuseaddr TCP4:$host:$dst'
+    socat TCP4-LISTEN:$$src,fork,reuseaddr TCP4:$$host:$$dst'
 
 Restart=on-failure
 
