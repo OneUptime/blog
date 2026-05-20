@@ -27,7 +27,7 @@ flowchart TD
     E -->|No| G[Connection Failed]
 ```
 
-Both ArgoCD-level RBAC and Kubernetes-level RBAC must permit the exec operation. This dual-layer approach gives you multiple points of control.
+ArgoCD's web terminal must first be enabled with `exec.enabled: "true"` in the `argocd-cm` ConfigMap. ArgoCD-level RBAC must then allow the `exec/create` permission for the application. On Kubernetes versions before 1.31, the ArgoCD server also needs Kubernetes RBAC permission to create the `pods/exec` subresource; starting with Kubernetes 1.31, ArgoCD only requires its normal pod read access. This layered approach gives you multiple points of control.
 
 ## Restricting Access by Project
 
@@ -81,7 +81,7 @@ data:
     p, role:developer, exec, create, production/*, deny
 ```
 
-The glob patterns support `*` wildcards, which makes it possible to create flexible matching rules.
+The glob patterns support `*` wildcards, which makes it possible to create flexible matching rules. ArgoCD treats policy tokens as single strings during glob matching, so `/` is not a special separator.
 
 ## Restricting Access by Namespace
 
@@ -120,7 +120,7 @@ Since all applications in `staging-only` can only deploy to the staging namespac
 
 ## Using Kubernetes RBAC as a Second Layer
 
-For additional security, configure Kubernetes RBAC to restrict which service accounts can exec into pods. You can create a dedicated ServiceAccount for ArgoCD's exec operations:
+For additional security on Kubernetes versions before 1.31, configure Kubernetes RBAC to restrict which service accounts can exec into pods. You can scope the ArgoCD server ServiceAccount's exec permission to specific namespaces:
 
 ```yaml
 # Create a restricted ClusterRole for exec
@@ -152,11 +152,11 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-With this setup, the ArgoCD server can only exec into pods within the `staging` namespace at the Kubernetes level, regardless of what ArgoCD RBAC allows.
+With this setup, and assuming the `argocd-server` ServiceAccount does not have broader `pods/exec` permissions through another RoleBinding or ClusterRoleBinding, the ArgoCD server can only exec into pods within the `staging` namespace at the Kubernetes level, regardless of what ArgoCD RBAC allows.
 
 ## Restricting by Container Name
 
-Some pods run multiple containers, and you might want to allow terminal access only to specific containers. ArgoCD does not have built-in RBAC for container-level filtering, but you can use an admission webhook or OPA Gatekeeper policy to enforce this:
+Some pods run multiple containers, and you might want to allow terminal access only to specific containers. ArgoCD does not have built-in RBAC for container-level filtering, but you can use an admission webhook or OPA Gatekeeper policy to enforce this. For exec requests, make sure the policy evaluates the `pods/exec` subresource and the requested container:
 
 ```yaml
 # OPA Gatekeeper ConstraintTemplate example
@@ -184,8 +184,8 @@ spec:
 
         violation[{"msg": msg}] {
           input.review.resource.resource == "pods"
-          input.review.subresource == "exec"
-          container := input.review.object.container
+          input.review.subResource == "exec"
+          container := object.get(input.review.object, "container", "")
           not container_allowed(container)
           msg := sprintf("Exec into container %v is not allowed", [container])
         }
@@ -235,25 +235,16 @@ data:
 
 After configuring RBAC, test it before rolling out:
 
-```bash
-# Log in as a specific user to test permissions
-argocd login argocd.example.com --username test-user
-
-# Try to exec into a pod in an allowed project
-argocd app exec payments-app --pod payment-api-5d8f9c --container api
-
-# Try to exec into a pod in a disallowed project (should fail)
-argocd app exec orders-app --pod order-processor-7b3c --container worker
-```
+Log in to the ArgoCD UI as a test user, open an application in an allowed project, and confirm that the terminal action is available for one of its running pods. Then open an application in a disallowed project and confirm that terminal access is denied.
 
 You can also validate policies without logging in:
 
 ```bash
 # Check if a role has exec permission
-argocd admin settings rbac can role:team-payments exec create payments-project/*
+argocd admin settings rbac can role:team-payments create exec payments-project/payments-app
 # Expected: Yes
 
-argocd admin settings rbac can role:team-payments exec create orders-project/*
+argocd admin settings rbac can role:team-payments create exec orders-project/orders-app
 # Expected: No
 ```
 
