@@ -43,14 +43,17 @@ spec:
   source:
     repoURL: https://kubernetes-sigs.github.io/external-dns
     chart: external-dns
-    targetRevision: 1.14.0
+    targetRevision: 1.20.0
     helm:
       releaseName: external-dns
       valuesObject:
-        provider: aws
-        aws:
-          region: us-east-1
-          zoneType: public
+        provider:
+          name: aws
+        env:
+          - name: AWS_DEFAULT_REGION
+            value: us-east-1
+        extraArgs:
+          aws-zone-type: public
         domainFilters:
           - example.com
           - internal.example.com
@@ -90,15 +93,25 @@ spec:
   source:
     repoURL: https://kubernetes-sigs.github.io/external-dns
     chart: external-dns
-    targetRevision: 1.14.0
+    targetRevision: 1.20.0
     helm:
       releaseName: external-dns
       valuesObject:
-        provider: google
-        google:
-          project: my-gcp-project
-          serviceAccountSecret: external-dns-gcp-sa
-          serviceAccountSecretKey: credentials.json
+        provider:
+          name: google
+        extraArgs:
+          google-project: my-gcp-project
+        env:
+          - name: GOOGLE_APPLICATION_CREDENTIALS
+            value: /etc/secrets/service-account/credentials.json
+        extraVolumes:
+          - name: google-service-account
+            secret:
+              secretName: external-dns-gcp-sa
+        extraVolumeMounts:
+          - name: google-service-account
+            mountPath: /etc/secrets/service-account/
+            readOnly: true
         domainFilters:
           - example.com
         policy: sync
@@ -120,12 +133,25 @@ spec:
 source:
   helm:
     valuesObject:
-      provider: azure
-      azure:
-        resourceGroup: my-dns-rg
-        tenantId: "your-tenant-id"
-        subscriptionId: "your-subscription-id"
-        useManagedIdentityExtension: true
+      provider:
+        name: azure
+      extraArgs:
+        azure-resource-group: my-dns-rg
+      extraVolumes:
+        - name: azure-config-file
+          secret:
+            secretName: external-dns-azure
+      extraVolumeMounts:
+        - name: azure-config-file
+          mountPath: /etc/kubernetes
+          readOnly: true
+      serviceAccount:
+        labels:
+          azure.workload.identity/use: "true"
+        annotations:
+          azure.workload.identity/client-id: "your-managed-identity-client-id"
+      podLabels:
+        azure.workload.identity/use: "true"
       domainFilters:
         - example.com
       policy: sync
@@ -231,6 +257,7 @@ ExternalDNS also supports a dedicated CRD for DNS records that are not tied to I
 # Install the CRD source in ExternalDNS values
 
 # sources: [ingress, service, crd]
+# managedRecordTypes: [A, AAAA, CNAME, MX, TXT]
 
 apiVersion: externaldns.k8s.io/v1alpha1
 kind: DNSEndpoint
@@ -345,7 +372,7 @@ For production, start with `upsert-only` and switch to `sync` once you are confi
 
 ### Preventing Accidental Deletions
 
-Add ArgoCD sync options to prevent accidental DNS record deletion:
+Add ArgoCD sync options to require confirmation before pruning DNS records:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -355,9 +382,7 @@ metadata:
 spec:
   syncPolicy:
     syncOptions:
-      # Require manual approval for deletions
-      - PrunePropagationPolicy=foreground
-      - PruneLast=true
+      - Prune=confirm
 ```
 
 ## Monitoring ExternalDNS
@@ -371,11 +396,11 @@ external_dns_registry_endpoints_total
 # Source records discovered
 external_dns_source_endpoints_total
 
-# DNS provider errors
-external_dns_controller_last_sync_timestamp
+# Last successful DNS provider sync
+external_dns_controller_last_sync_timestamp_seconds
 
-# Record change rate
-rate(external_dns_registry_endpoints_total[1h])
+# Reconciliation loops with no provider-side changes
+rate(external_dns_controller_no_op_runs_total[1h])
 ```
 
 ## Summary
