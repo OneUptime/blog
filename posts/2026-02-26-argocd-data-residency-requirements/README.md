@@ -199,7 +199,7 @@ spec:
 
 ## Step 4: Network Policies for Data Boundaries
 
-Prevent data from leaving its jurisdiction through network policies:
+Restrict data egress paths with network policies:
 
 ```yaml
 # deploy/overlays/eu-west-1/network-policies/data-boundary.yaml
@@ -223,15 +223,13 @@ spec:
             matchLabels:
               data-jurisdiction: eu
 
-    # Allow EU-region AWS services
+    # Allow internal EU VPC and PrivateLink endpoint subnets
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8  # Internal EU VPC
     - to:
         - ipBlock:
-            cidr: 52.94.0.0/16  # AWS EU endpoints
-            except:
-              - 52.94.0.0/24  # Exclude US AWS endpoints
+            cidr: 10.50.0.0/16  # EU regional service endpoints
 
     # Allow DNS resolution
     - ports:
@@ -276,7 +274,6 @@ kind: ClusterPolicy
 metadata:
   name: require-data-residency-label
 spec:
-  validationFailureAction: enforce
   rules:
     - name: check-data-residency
       match:
@@ -289,6 +286,7 @@ spec:
                 - "*-pii-*"
                 - "*-personal-*"
       validate:
+        failureAction: Enforce
         message: >-
           Deployments in PII namespaces must have a data-residency
           label matching the cluster's data jurisdiction.
@@ -310,7 +308,6 @@ kind: ClusterPolicy
 metadata:
   name: enforce-regional-storage
 spec:
-  validationFailureAction: enforce
   rules:
     - name: check-storage-class
       match:
@@ -321,6 +318,7 @@ spec:
               annotations:
                 compliance.company.com/data-classification: "tier-1-*"
       validate:
+        failureAction: Enforce
         message: >-
           Tier 1 data must use region-specific encrypted storage.
           Use the appropriate regional storage class.
@@ -354,7 +352,7 @@ spec:
                 - audit.py
               env:
                 - name: ARGOCD_SERVER
-                  value: argocd-server.argocd.svc
+                  value: https://argocd-server.argocd.svc
                 - name: ARGOCD_TOKEN
                   valueFrom:
                     secretKeyRef:
@@ -366,8 +364,10 @@ spec:
 ```python
 # platform/compliance-auditor/audit.py
 import json
+import os
+import re
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 class DataResidencyAuditor:
     """Audit ArgoCD applications for data residency compliance."""
@@ -380,6 +380,20 @@ class DataResidencyAuditor:
         'ap-southeast-1': 'singapore',
     }
 
+    def __init__(self):
+        self.argocd_server = os.environ['ARGOCD_SERVER'].rstrip('/')
+        self.argocd_token = os.environ['ARGOCD_TOKEN']
+
+    def get_all_applications(self):
+        """Fetch all ArgoCD applications from the REST API."""
+        response = requests.get(
+            f'{self.argocd_server}/api/v1/applications',
+            headers={'Authorization': f'Bearer {self.argocd_token}'},
+            timeout=30,
+        )
+        response.raise_for_status()
+        return response.json().get('items', [])
+
     def audit_all_applications(self):
         """Check all applications for residency compliance."""
         apps = self.get_all_applications()
@@ -391,7 +405,7 @@ class DataResidencyAuditor:
 
         # Generate report
         report = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'total_applications': len(apps),
             'violations': violations,
             'compliant': len(violations) == 0
@@ -436,6 +450,28 @@ class DataResidencyAuditor:
 
         return violations
 
+    def get_region_from_server(self, server):
+        """Extract a cloud region name from a cluster API server URL."""
+        match = re.search(r'(eu|us|ap)-[a-z]+-\d', server)
+        return match.group(0) if match else 'unknown'
+
+    def check_configmap_references(self, resource, data_residency):
+        """Flag obvious cross-region references recorded in resource names."""
+        violations = []
+        resource_name = resource.get('name', '')
+
+        for region, jurisdiction in self.JURISDICTION_MAP.items():
+            if jurisdiction != data_residency and region in resource_name:
+                violations.append({
+                    'type': 'cross_region_reference',
+                    'resource': resource_name,
+                    'required': data_residency,
+                    'referenced_region': region,
+                    'severity': 'high'
+                })
+
+        return violations
+
     def send_report(self, report):
         """Send audit report to compliance system."""
         if report['violations']:
@@ -448,6 +484,9 @@ class DataResidencyAuditor:
                     'description': json.dumps(report['violations'], indent=2)
                 }
             )
+
+if __name__ == '__main__':
+    DataResidencyAuditor().audit_all_applications()
 ```
 
 ## Step 7: ArgoCD Configuration for Compliance
@@ -467,6 +506,7 @@ data:
 
   # Custom resource actions for compliance
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       actions["compliance-check"] = {}
