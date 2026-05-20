@@ -253,7 +253,7 @@ spec:
 
 ### Controller Sharding
 
-For more than 10-15 clusters, shard the application controller:
+When the controller is managing too many clusters and using too much memory, shard the application controller:
 
 ```yaml
 # argocd-cmd-params-cm ConfigMap
@@ -267,12 +267,24 @@ data:
   controller.sharding.algorithm: "round-robin"
 ```
 
-Scale the controller replicas:
+Scale the controller replicas and set `ARGOCD_CONTROLLER_REPLICAS` to the same value:
 
-```bash
-kubectl scale statefulset argocd-application-controller \
-  -n argocd \
-  --replicas=3
+```yaml
+# strategic merge patch for argocd-application-controller
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argocd-application-controller
+  namespace: argocd
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_CONTROLLER_REPLICAS
+              value: "3"
 ```
 
 Each controller replica manages a subset of clusters, distributing the load.
@@ -280,6 +292,7 @@ Each controller replica manages a subset of clusters, distributing the load.
 ### Repo Server Scaling
 
 ```yaml
+# strategic merge patch for argocd-repo-server
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -303,6 +316,7 @@ spec:
 ### API Server Scaling
 
 ```yaml
+# strategic merge patch for argocd-server
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -310,23 +324,22 @@ metadata:
   namespace: argocd
 spec:
   replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          env:
+            - name: ARGOCD_API_SERVER_REPLICAS
+              value: "3"
 ```
 
 ### Redis HA
 
-For high availability, use Redis Sentinel:
+For high availability, use the ArgoCD HA installation manifests, which include Redis HA:
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: argocd-redis-ha
-  namespace: argocd
-spec:
-  source:
-    repoURL: https://github.com/argoproj/argo-cd.git
-    targetRevision: v2.10.0
-    path: manifests/ha/install
+```bash
+kubectl apply -n argocd \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.0/manifests/ha/install.yaml
 ```
 
 ## Step 5: Git Repository Structure
@@ -399,7 +412,10 @@ spec:
       rules:
         - alert: ClusterDisconnected
           expr: |
-            argocd_cluster_info{server!="https://kubernetes.default.svc"} == 0
+            argocd_cluster_connection_status{
+              server!="https://kubernetes.default.svc",
+              connection_status!="Successful"
+            } == 1
           for: 5m
           labels:
             severity: critical
@@ -424,7 +440,7 @@ For a single ArgoCD instance managing all clusters, DR planning is critical:
 
 ```bash
 # Backup ArgoCD configuration
-argocd admin export > argocd-backup.yaml
+argocd admin export -n argocd > argocd-backup.yaml
 
 # This exports:
 # - Applications
@@ -434,7 +450,7 @@ argocd admin export > argocd-backup.yaml
 # - Settings
 
 # Restore from backup
-argocd admin import < argocd-backup.yaml
+argocd admin import -n argocd - < argocd-backup.yaml
 ```
 
 Automate backups:
@@ -458,7 +474,7 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  argocd admin export > /backup/argocd-$(date +%Y%m%d%H%M).yaml
+                  argocd admin export -n argocd > /backup/argocd-$(date +%Y%m%d%H%M).yaml
               volumeMounts:
                 - name: backup-volume
                   mountPath: /backup
