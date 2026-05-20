@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Nginx, Ingresses
 
-Description: Learn how to expose ArgoCD server through Nginx Ingress Controller with proper TLS, gRPC support, and authentication for production Kubernetes clusters.
+Description: Learn how to expose ArgoCD server through Nginx Ingress Controller with proper TLS, gRPC support, and production safeguards for Kubernetes clusters.
 
 ---
 
@@ -39,7 +39,7 @@ helm install ingress-nginx ingress-nginx/ingress-nginx \
 
 ## Option 1: TLS Termination at the Ingress
 
-This is the most common setup. The ingress terminates TLS and forwards plain HTTP to the ArgoCD server. For this to work, you need to configure the ArgoCD server to run in insecure mode (it still sits behind TLS at the ingress level).
+This is the most common setup for the UI and HTTP API. The ingress terminates TLS and forwards plain HTTP to the ArgoCD server. For this to work, you need to configure the ArgoCD server to run in insecure mode (it still sits behind TLS at the ingress level). For native gRPC CLI access, use the separate gRPC ingress in Option 3 or the SSL passthrough approach in Option 2.
 
 First, configure the ArgoCD server to run without TLS:
 
@@ -73,7 +73,7 @@ metadata:
   annotations:
     # Force HTTPS redirect
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    # Use the backend protocol as HTTPS if not running insecure
+    # Use plain HTTP to the backend because ArgoCD is running with server.insecure
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
     # Increase proxy buffer size for large ArgoCD responses
     nginx.ingress.kubernetes.io/proxy-buffer-size: "64k"
@@ -107,10 +107,10 @@ metadata:
   name: argocd-server-ingress
   namespace: argocd
   annotations:
+    # Force HTTPS redirect
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     # Enable SSL passthrough - traffic goes encrypted to ArgoCD
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    # Required for gRPC to work properly
-    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
 spec:
   ingressClassName: nginx
   rules:
@@ -142,6 +142,8 @@ helm upgrade ingress-nginx ingress-nginx/ingress-nginx \
 ## Option 3: Separate Ingresses for UI and gRPC
 
 If you need both the UI (HTTPS) and CLI (gRPC) to work through the ingress, the cleanest approach is to create two separate ingress rules. This avoids conflicts between the protocols.
+
+This option also requires the ArgoCD server to run with `server.insecure: "true"` so the ingress can terminate TLS and proxy HTTP and gRPC to the backend.
 
 ```yaml
 # Ingress for the ArgoCD UI (HTTPS)
@@ -202,7 +204,7 @@ Then configure the CLI to use the gRPC endpoint:
 
 ```bash
 # Login using the gRPC-specific hostname
-argocd login grpc.argocd.example.com --grpc-web
+argocd login grpc.argocd.example.com
 ```
 
 ## Verifying the Setup
@@ -220,7 +222,7 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/name=ingress-nginx
 curl -I https://argocd.example.com
 
 # Test CLI login
-argocd login argocd.example.com
+argocd login argocd.example.com --grpc-web
 ```
 
 ## Troubleshooting Common Issues
