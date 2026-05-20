@@ -12,7 +12,7 @@ The `argocd-tls-certs-cm` ConfigMap stores custom TLS CA certificates that ArgoC
 
 ## Why You Need Custom TLS Certificates
 
-ArgoCD, like most software, ships with a set of trusted public CA certificates (the Mozilla CA bundle). This covers public services like GitHub, GitLab.com, and Bitbucket Cloud. However, it does not cover:
+ArgoCD uses the container's system trust store for public CA certificates. This covers public services like GitHub, GitLab.com, and Bitbucket Cloud. However, it does not cover:
 
 - Self-hosted Git servers with self-signed certificates
 - Git servers behind corporate proxies with TLS inspection
@@ -58,10 +58,12 @@ Obtain the CA certificate from your infrastructure team, or extract it from the 
 openssl s_client -connect git.internal.example.com:443 -showcerts </dev/null 2>/dev/null | \
   openssl x509 -outform PEM > ca-cert.pem
 
-# If the server uses a certificate chain, get the root CA
+# If the server uses a certificate chain, inspect all certificates and save the CA certificate you need
 openssl s_client -connect git.internal.example.com:443 -showcerts </dev/null 2>/dev/null | \
-  awk '/-----BEGIN CERTIFICATE-----/{found=1} found{print} /-----END CERTIFICATE-----/{found=0}' | \
-  tail -n +$(grep -n "BEGIN CERTIFICATE" /dev/stdin | tail -1 | cut -d: -f1) > root-ca.pem
+  awk '/-----BEGIN CERTIFICATE-----/{i++; out=sprintf("cert-%d.pem", i)} out{print > out} /-----END CERTIFICATE-----/{out=""}'
+
+# Then inspect cert-2.pem, cert-3.pem, etc. and copy the appropriate CA certificate
+openssl x509 -in cert-2.pem -subject -issuer -noout > ca-cert-details.txt
 
 # Verify the certificate
 openssl x509 -in ca-cert.pem -text -noout | head -20
@@ -91,7 +93,7 @@ kubectl create configmap argocd-tls-certs-cm \
 
 ### Step 3: Verify
 
-No restart is needed. ArgoCD picks up the new certificates automatically. Test the connection:
+No restart is normally needed, but it can take a couple of minutes for the updated ConfigMap to propagate to the ArgoCD pods. Test the connection:
 
 ```bash
 argocd repo add https://git.internal.example.com/org/repo.git \
@@ -113,7 +115,7 @@ argocd cert list --cert-type https
 argocd cert add-tls git.internal.example.com --from ca-cert.pem
 
 # Remove a certificate
-argocd cert rm-tls git.internal.example.com
+argocd cert rm --cert-type https git.internal.example.com
 ```
 
 ## Certificate Chain Configuration
@@ -136,7 +138,7 @@ data:
     -----END CERTIFICATE-----
 ```
 
-The order matters: include the intermediate CA first, then the root CA.
+Include each CA certificate that ArgoCD should trust for that server.
 
 ## Multiple Servers with the Same CA
 
@@ -223,7 +225,7 @@ for host, cert in data.items():
 
 ### Certificate for Wrong Hostname
 
-If the certificate in the ConfigMap does not match the hostname ArgoCD is connecting to:
+If the server certificate does not match the hostname ArgoCD is connecting to, adding a CA certificate will not fix the error. Check the server certificate's Subject Alternative Names:
 
 ```bash
 # Check the certificate's Subject Alternative Names
@@ -307,8 +309,13 @@ spec:
                     CERT=$(echo | openssl s_client -connect ${host}:443 -showcerts 2>/dev/null | \
                       openssl x509 -outform PEM)
                     if [[ -n "${CERT}" ]]; then
+                      cat > /tmp/argocd-cert-patch.yaml <<EOF
+                  data:
+                    ${host}: |
+                  $(printf '%s\n' "${CERT}" | sed 's/^/    /')
+                  EOF
                       kubectl patch configmap argocd-tls-certs-cm -n argocd --type merge \
-                        -p "{\"data\":{\"${host}\": \"${CERT}\"}}"
+                        --patch-file /tmp/argocd-cert-patch.yaml
                       echo "Updated certificate for ${host}"
                     fi
                   done
