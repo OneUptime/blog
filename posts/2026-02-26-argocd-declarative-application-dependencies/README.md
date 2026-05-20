@@ -25,11 +25,11 @@ flowchart TD
     Ingress --> CM["cert-manager"]
 ```
 
-When deploying everything at once (like during cluster bootstrap), the order matters. If the database is not ready when the backend API starts, the API pods crash-loop. If the ingress controller is not deployed when ingress resources are created, those resources sit in a pending state.
+When deploying everything at once (like during cluster bootstrap), the order matters. If the database is not ready when the backend API starts, the API pods crash-loop. If the ingress controller is not deployed when ingress resources are created, those resources can be created but will not be served, and their status or load balancer address may remain empty.
 
 ## Strategy 1: Sync Waves
 
-Sync waves are the primary mechanism for ordering resources within an ArgoCD Application and across applications managed by the same parent (App-of-Apps).
+Sync waves are the primary mechanism for ordering resources within an ArgoCD Application. They can also order child Application resources in an App-of-Apps setup, but ArgoCD 1.8 and later require a custom health check for the `argoproj.io/Application` CRD if you want the parent app to wait for child applications to become healthy before moving to later waves.
 
 Assign different sync wave numbers to control deployment order:
 
@@ -104,7 +104,7 @@ spec:
     namespace: backend
 ```
 
-Sync waves work in ascending order. ArgoCD processes wave -5 first, then -3, then 0 (default), then 2. Within each wave, ArgoCD waits for all resources to be healthy before proceeding to the next wave.
+Sync waves work in ascending order during creation and updates. ArgoCD processes wave -5 first, then -3, then 0 (default), then 2. During pruning, higher waves are processed first. Within a sync operation, ArgoCD keeps applying the next wave that contains out-of-sync or unhealthy resources until all phases and waves are synced and healthy.
 
 ### Practical Wave Assignment
 
@@ -240,6 +240,8 @@ spec:
       selfHeal: true
 ```
 
+For this pattern to wait for `infrastructure-apps` before `platform-apps`, restore Application health assessment with a custom health check, and either enable automated sync on the parent applications or sync each parent application manually after the root app creates it.
+
 ## Strategy 4: Custom Health Checks
 
 For CRDs and operators, define custom health checks so ArgoCD knows when they are truly ready:
@@ -271,6 +273,8 @@ data:
 ```
 
 With this custom health check, ArgoCD considers a Certificate resource healthy only when its Ready condition is True. Sync waves then correctly wait for certificates to be issued before proceeding to the next wave.
+
+If you use sync waves to order child applications in an App-of-Apps setup, define a similar health customization for `argoproj.io/Application` so the parent can evaluate child application health.
 
 ## Handling Circular Dependencies
 
