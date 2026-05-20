@@ -87,10 +87,10 @@ argocd app sync my-app \
 argocd app sync my-app --resource ':ConfigMap:*'
 
 # Sync resources in a specific namespace
-argocd app sync my-app --resource ':Deployment:my-app:my-namespace'
+argocd app sync my-app --resource 'apps:Deployment:my-namespace/my-app'
 ```
 
-The resource format is `GROUP:KIND:NAME` or `GROUP:KIND:NAME:NAMESPACE`.
+The resource format is `GROUP:KIND:NAME`; for namespaced resources with duplicate names, use `GROUP:KIND:NAMESPACE/NAME`.
 
 ## Sync Only OutOfSync Resources
 
@@ -116,16 +116,16 @@ argocd app sync my-app --prune=false
 
 ## Force Sync
 
-Force apply resources, replacing them entirely:
+Force apply resources:
 
 ```bash
-# Force replace resources instead of applying
+# Force apply resources during sync
 argocd app sync my-app --force
 ```
 
-The `--force` flag causes ArgoCD to delete and recreate resources instead of using `kubectl apply`. This is useful when you encounter immutable field errors (like changing a Deployment's selector).
+The `--force` flag enables ArgoCD's force apply behavior. If the patch cannot be applied cleanly after retries, ArgoCD can delete and recreate the affected resource. This can help with conflicts that cannot be resolved through a normal apply.
 
-**Warning**: Force sync causes brief downtime for affected resources since they are deleted before recreation.
+**Warning**: Force sync can cause downtime for affected resources if they must be deleted and recreated.
 
 ## Server-Side Apply
 
@@ -143,7 +143,7 @@ Server-side apply handles field ownership better and avoids certain conflict iss
 # Apply sync strategy (default - uses kubectl apply)
 argocd app sync my-app --strategy apply
 
-# Hook sync strategy (run hooks but do not apply manifests)
+# Hook sync strategy (default - respects resource hooks)
 argocd app sync my-app --strategy hook
 ```
 
@@ -161,17 +161,19 @@ argocd app sync my-app \
 
 This retries the sync up to 5 times with exponential backoff, starting at 10 seconds and maxing out at 5 minutes.
 
-## Sync with Helm Parameters
+## Set Helm Parameters Before Sync
 
-Override Helm parameters for this sync only:
+Override Helm parameters, then sync:
 
 ```bash
-argocd app sync my-app \
+argocd app set my-app \
   --helm-set image.tag=v2.1.0 \
   --helm-set replicaCount=5
+
+argocd app sync my-app
 ```
 
-Note that these overrides are temporary and will not persist in the application spec.
+Note that these overrides are stored as application parameter overrides. Update Git or clear the override when it is no longer needed.
 
 ## Sync Workflow for CI/CD Pipelines
 
