@@ -12,7 +12,7 @@ ArgoCD uses Lua scripts to determine the health status of Kubernetes resources. 
 
 ## Where Health Checks Are Configured
 
-Custom health checks go in the `argocd-cm` ConfigMap under the `resource.customizations.health` key:
+Custom health checks go in the `argocd-cm` ConfigMap under data keys named `resource.customizations.health.<group>_<kind>`:
 
 ```yaml
 apiVersion: v1
@@ -40,7 +40,7 @@ resource.customizations.health.Job: |
 
 ## Health Status Values
 
-Every Lua health check must return an object with these fields:
+Every Lua health check must return an object with a `status` field and an optional `message` field:
 
 ```lua
 hs = {}
@@ -65,14 +65,27 @@ Here is what each status means:
 ```lua
 -- Check if a Kubernetes Job has completed successfully
 hs = {}
+if obj.spec ~= nil and obj.spec.suspend == true then
+  hs.status = "Suspended"
+  hs.message = "Job is suspended"
+  return hs
+end
 if obj.status ~= nil then
-  if obj.status.succeeded ~= nil and obj.status.succeeded > 0 then
-    hs.status = "Healthy"
-    hs.message = "Job completed successfully"
-  elseif obj.status.failed ~= nil and obj.status.failed > 0 then
-    hs.status = "Degraded"
-    hs.message = "Job failed with " .. obj.status.failed .. " failures"
-  elseif obj.status.active ~= nil and obj.status.active > 0 then
+  if obj.status.conditions ~= nil then
+    for i, condition in ipairs(obj.status.conditions) do
+      if condition.type == "Complete" and condition.status == "True" then
+        hs.status = "Healthy"
+        hs.message = condition.message or "Job completed successfully"
+        return hs
+      end
+      if condition.type == "Failed" and condition.status == "True" then
+        hs.status = "Degraded"
+        hs.message = condition.message or "Job failed"
+        return hs
+      end
+    end
+  end
+  if obj.status.active ~= nil and obj.status.active > 0 then
     hs.status = "Progressing"
     hs.message = "Job is running"
   else
@@ -266,7 +279,7 @@ hs = {}
 if obj.status ~= nil then
   if obj.status.validationMessages ~= nil then
     for i, msg in ipairs(obj.status.validationMessages) do
-      if msg.type == "ERROR" then
+      if msg.level == "Error" or msg.level == "ERROR" then
         hs.status = "Degraded"
         hs.message = msg.message or "VirtualService has validation errors"
         return hs
@@ -319,12 +332,12 @@ return hs
 
 ## Advanced Patterns
 
-### Timeout-Based Degradation
+### Long-Running Progressing State
 
-Sometimes a resource gets stuck in Progressing state forever. You can use the creation timestamp to set a timeout:
+Sometimes a resource gets stuck in Progressing state forever. Timeout-based degradation generally requires external policy or monitoring because ArgoCD disables standard Lua libraries by default; this pattern keeps resources Progressing until Ready:
 
 ```lua
--- Mark resource as degraded if it has been progressing too long
+-- Keep resource progressing until it becomes ready
 hs = {}
 if obj.status ~= nil and obj.status.conditions ~= nil then
   for i, condition in ipairs(obj.status.conditions) do
@@ -385,11 +398,13 @@ return hs
 
 ## Debugging Health Checks
 
-To test your Lua scripts before deploying them:
+To test your Lua scripts against a local manifest and inspect health checks after deploying them:
 
 ```bash
-# Check the current health assessment of an app
+# Test a health script configured in a local argocd-cm manifest
+argocd admin settings resource-overrides health ./resource.yaml --argocd-cm-path ./argocd-cm.yaml
 
+# Check the current health assessment of an app
 argocd app get my-app --output json | jq '.status.resources[] | {kind, name, health}'
 
 # View the ArgoCD application controller logs for health check errors
