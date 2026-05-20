@@ -43,7 +43,7 @@ metadata:
 spec:
   version: v1.0
   init:
-    command: [sh, -c]
+    command: [bash, -c]
     args:
       - |
         set -euo pipefail
@@ -54,15 +54,17 @@ spec:
         echo "Planning..." >&2
         terraform plan -out=tfplan -input=false \
           -var="namespace=${ARGOCD_APP_NAMESPACE:-default}" \
-          -var="app_name=${ARGOCD_APP_NAME:-app}" 2>&1 >&2
+          -var="app_name=${ARGOCD_APP_NAME:-app}" \
+          -var="replicas=${ARGOCD_ENV_TF_VAR_replicas:-3}" \
+          -var="image_tag=${ARGOCD_ENV_TF_VAR_image_tag:-latest}" 2>&1 >&2
   generate:
-    command: [sh, -c]
+    command: [bash, -c]
     args:
       - |
         set -euo pipefail
 
         # Apply to generate the local files
-        terraform apply -auto-approve tfplan 2>&1 >&2
+        terraform apply -input=false tfplan 2>&1 >&2
 
         # Output all generated YAML files
         for f in output/*.yaml output/*.yml; do
@@ -214,7 +216,7 @@ FROM hashicorp/terraform:1.7 AS terraform
 FROM alpine:3.19
 
 # Install runtime dependencies
-RUN apk add --no-cache bash git
+RUN apk add --no-cache bash git jq
 
 # Copy Terraform binary
 COPY --from=terraform /bin/terraform /usr/local/bin/terraform
@@ -222,12 +224,12 @@ COPY --from=terraform /bin/terraform /usr/local/bin/terraform
 # Copy ArgoCD CMP server
 COPY --from=quay.io/argoproj/argocd:v2.10.0 \
     /usr/local/bin/argocd-cmp-server \
-    /usr/local/bin/argocd-cmp-server
+    /var/run/argocd/argocd-cmp-server
 
 COPY plugin.yaml /home/argocd/cmp-server/config/plugin.yaml
 
 USER 999
-ENTRYPOINT ["/usr/local/bin/argocd-cmp-server"]
+ENTRYPOINT ["/var/run/argocd/argocd-cmp-server"]
 ```
 
 ### Approach 2: Terraform State Reader
@@ -243,7 +245,7 @@ metadata:
 spec:
   version: v1.0
   generate:
-    command: [sh, -c]
+    command: [bash, -c]
     args:
       - |
         set -euo pipefail
@@ -270,7 +272,7 @@ spec:
           labels:
             app.kubernetes.io/managed-by: argocd-terraform-plugin
         data:
-        $(echo "$OUTPUTS" | jq -r 'to_entries[] | "  \(.key): \"\(.value.value)\""')
+        $(echo "$OUTPUTS" | jq -r 'to_entries[] | "  \(.key): \(.value.value | tostring | @json)"')
         YAML
   discover:
     find:
@@ -281,7 +283,7 @@ spec:
 
 Running Terraform inside an ArgoCD plugin raises serious security concerns:
 
-**State management**: Never use local state in CMP plugins. The filesystem is ephemeral. If you need state, use a remote backend (S3, GCS, Terraform Cloud), but be very careful about what operations the plugin performs.
+**State management**: Do not use local state in CMP plugins for durable infrastructure management. The filesystem is ephemeral. Ephemeral local state can be acceptable for template-only `local_file` generation, but if you need persistent state, use a remote backend (S3, GCS, Terraform Cloud) and be very careful about what operations the plugin performs.
 
 **No apply for cloud resources**: The plugin should only use Terraform for template generation with `local_file` resources or state reading. Never run `terraform apply` against cloud providers from within ArgoCD - that creates a parallel infrastructure management path that bypasses GitOps principles.
 
@@ -300,16 +302,20 @@ containers:
         readOnly: true
 ```
 
+**Outputs**: `terraform output -json` includes sensitive outputs in plain text. Do not generate ConfigMaps from outputs that contain credentials or other secrets.
+
 **Provider caching**: Terraform downloads providers during `terraform init`, which can be slow. Cache providers in the container image:
 
 ```dockerfile
-# Pre-download providers at build time
+# Pre-download providers into the plugin cache at build time
 COPY providers.tf /tmp/
-RUN cd /tmp && terraform init && \
-    cp -r .terraform/providers /opt/terraform-providers
+RUN mkdir -p /opt/terraform-plugin-cache && \
+    cd /tmp && \
+    TF_PLUGIN_CACHE_DIR=/opt/terraform-plugin-cache terraform init -backend=false && \
+    chown -R 999:999 /opt/terraform-plugin-cache
 
-# Set the plugin filesystem mirror
-ENV TF_PLUGIN_CACHE_DIR=/opt/terraform-providers
+# Reuse the provider cache at runtime
+ENV TF_PLUGIN_CACHE_DIR=/opt/terraform-plugin-cache
 ```
 
 ## Using the Plugin
@@ -327,7 +333,7 @@ spec:
     targetRevision: main
     path: apps/my-app
     plugin:
-      name: terraform-manifests
+      name: terraform-manifests-v1.0
       env:
         - name: TF_VAR_replicas
           value: "5"
