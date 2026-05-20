@@ -8,13 +8,13 @@ Description: Learn how to handle resource comparison challenges for Custom Resou
 
 ---
 
-Custom Resource Definitions (CRDs) are the backbone of the Kubernetes operator ecosystem. From databases to message queues to service meshes, nearly every production Kubernetes cluster runs CRDs. ArgoCD handles built-in Kubernetes resources well out of the box, but CRDs present unique comparison challenges. Operators constantly update status fields, inject default values, and manage subresources in ways that cause false OutOfSync reports. This guide covers how to configure ArgoCD to handle CRD comparison correctly.
+Custom Resource Definitions (CRDs) are the backbone of the Kubernetes operator ecosystem. From databases to message queues to service meshes, nearly every production Kubernetes cluster runs CRDs. ArgoCD handles built-in Kubernetes resources well out of the box, but CRDs present unique comparison challenges. Operators constantly update status fields, inject default values, and manage subresources in ways that can cause false OutOfSync reports when the changed fields are part of the desired manifest comparison. This guide covers how to configure ArgoCD to handle CRD comparison correctly.
 
 ## Why CRDs Are Different
 
-Built-in Kubernetes resources like Deployments and Services follow well-known schemas. ArgoCD has built-in knowledge of which fields are server-managed (like `status`) and which are user-managed (like `spec`). CRDs do not have this luxury. ArgoCD treats CRD fields generically, which means:
+Built-in Kubernetes resources like Deployments and Services follow well-known schemas. ArgoCD has built-in knowledge of common Kubernetes types and can normalize some of their fields during comparison. CRDs do not always have this luxury. ArgoCD treats most custom resource fields generically, which means:
 
-- Status fields are compared even though they are managed by the operator
+- Status fields can become noisy if the default status-ignore compare option is changed
 - Default values injected by webhook conversions show up as drift
 - Operator-managed spec fields create persistent OutOfSync status
 - Version conversions between stored and served API versions cause phantom diffs
@@ -38,7 +38,7 @@ diff <(kubectl get postgresql my-db -n production -o yaml) \
 
 Common patterns you will see in the diff:
 
-- Entire `status` block appearing as a difference
+- Entire `status` block appearing as a difference if status diffing has been enabled
 - `.metadata.annotations` added by the operator
 - `.spec` fields with defaults filled in that you did not specify
 - `.metadata.finalizers` added by the operator
@@ -46,7 +46,7 @@ Common patterns you will see in the diff:
 
 ## Ignoring Status Fields on CRDs
 
-The most common CRD comparison issue is the status field. Unlike built-in resources where ArgoCD knows to skip status, CRD status fields are included in the comparison by default.
+ArgoCD's documented default is to ignore top-level `status` during diffing for all resources. If your installation changed `resource.compareoptions.ignoreResourceStatusField` to `none`, or if an operator writes status-like data outside the top-level `status` field, configure explicit ignore rules for the affected resource type.
 
 ### Per-Resource Type Configuration
 
@@ -85,9 +85,9 @@ data:
       - /status
 ```
 
-### Wildcard Configuration for All CRDs
+### Global Status Compare Option
 
-If you have many CRDs with status field issues, you can configure a blanket ignore rule:
+If you have many CRDs with status field issues because status diffing was enabled, restore the default status-ignore behavior:
 
 ```yaml
 apiVersion: v1
@@ -96,17 +96,17 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Ignore status on ALL resource types
-  resource.customizations.ignoreDifferences.all: |
-    jsonPointers:
-      - /status
+  resource.compareoptions: |
+    # Ignore top-level status during diffing for all resource types.
+    # This is ArgoCD's default behavior.
+    ignoreResourceStatusField: all
 ```
 
-Be cautious with this approach. Some resources use status fields for meaningful configuration, and ignoring them globally could mask real issues.
+Be cautious before changing this to `none`. Kubernetes treats `status` as controller-owned state rather than desired configuration, so comparing it usually creates noise rather than useful drift detection.
 
 ## Custom Health Checks for CRDs
 
-ArgoCD does not know how to assess the health of custom resources by default. Without a health check, CRDs show as "Healthy" even when the operator reports errors in the status. Configure custom health checks alongside your comparison rules:
+ArgoCD does not know how to assess every custom resource by default. Without a health check, a custom resource can be reported as healthy simply because it exists, even when the operator reports errors in the status. Configure custom health checks alongside your comparison rules:
 
 ```yaml
 apiVersion: v1
@@ -174,6 +174,7 @@ spec:
   teamId: myteam
   numberOfInstances: 2
 
+---
 # Do this (specify all fields the operator would default)
 apiVersion: acid.zalan.do/v1
 kind: postgresql
@@ -219,25 +220,26 @@ apiVersion: cert-manager.io/v1beta1
 kind: Certificate
 # ...
 
-# But the cluster stores it as v1
+# But the CRD now serves and stores v1
 apiVersion: cert-manager.io/v1
 kind: Certificate
 # ...
 ```
 
-The fix is to update your Git manifests to use the stored (preferred) version:
+The fix is to update your Git manifests to use the current storage version, which is normally also the preferred served version after an API migration:
 
 ```bash
-# Check which version is stored
-kubectl get crd certificates.cert-manager.io -o jsonpath='{.status.storedVersions}'
-# Output: ["v1"]
+# Check the current storage version
+kubectl get crd certificates.cert-manager.io \
+  -o jsonpath='{range .spec.versions[?(@.storage==true)]}{.name}{end}'
+# Output: v1
 
 # Update your manifests to use v1
 ```
 
 Resource Customization for CRD Comparison
 
-ArgoCD supports a `resource.customizations.knownTypeFields` configuration that tells ArgoCD which fields on a CRD are equivalent to built-in type fields:
+ArgoCD supports a `resource.customizations.knownTypeFields` configuration for CRDs that embed built-in Kubernetes types such as `core/v1/PodSpec`. This is useful when Kubernetes custom marshaling normalizes values like resource quantities and causes false diffs:
 
 ```yaml
 apiVersion: v1
@@ -246,17 +248,15 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Tell ArgoCD that this CRD has a status subresource
-  resource.customizations.knownTypeFields.acid.zalan.do_postgresql: |
-    - field: spec
-      type: Opaque
-    - field: status
-      type: Opaque
+  # Tell ArgoCD that this CRD field uses the built-in PodSpec type
+  resource.customizations.knownTypeFields.argoproj.io_Rollout: |
+    - field: spec.template.spec
+      type: core/v1/PodSpec
 ```
 
 ## Using Diff Normalization for CRDs
 
-For more advanced scenarios, ArgoCD supports diff normalization through custom Lua scripts. This lets you transform a resource before comparison:
+For more advanced scenarios, ArgoCD supports diff normalization with JSON pointers, JQ path expressions, and managed field managers. This lets you exclude specific fields before comparison:
 
 ```yaml
 apiVersion: v1
