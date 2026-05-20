@@ -8,7 +8,7 @@ Description: Learn how to force refresh application state in ArgoCD to trigger i
 
 ---
 
-ArgoCD continuously monitors your applications, comparing the live state in the cluster against the desired state in Git. But this monitoring happens on a polling interval - by default every 3 minutes. Sometimes you need ArgoCD to refresh its view of the application immediately, whether because you just pushed a change, you suspect stale cache data, or you need to verify the current state right now.
+ArgoCD continuously monitors your applications, comparing the live state in the cluster against the desired state in Git. But repository polling happens on an interval - by default up to every 3 minutes. Sometimes you need ArgoCD to refresh its view of the application immediately, whether because you just pushed a change, you suspect stale cache data, or you need to verify the current state right now.
 
 Force refreshing an application tells ArgoCD to re-fetch the desired state from Git and re-compare it against the live state in the cluster, without waiting for the next polling cycle.
 
@@ -36,13 +36,13 @@ This command does two things:
 1. Triggers an immediate refresh of the application
 2. Returns the current application state after the refresh completes
 
-You can also just trigger the refresh without waiting:
+You can also refresh as part of checking a diff:
 
 ```bash
 # Trigger refresh and get status in one command
 argocd app get my-app --refresh
 
-# Or use the dedicated command
+# Or refresh before showing the diff
 argocd app diff my-app --refresh
 ```
 
@@ -150,8 +150,8 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Default is 180 (3 minutes), reduce to 60 (1 minute)
-  timeout.reconciliation: "60"
+  # Default is 120s plus up to 60s of jitter; reduce to 60s (1 minute)
+  timeout.reconciliation: "60s"
 ```
 
 A shorter interval means ArgoCD picks up changes faster, but increases load on the Git server and the ArgoCD repo server.
