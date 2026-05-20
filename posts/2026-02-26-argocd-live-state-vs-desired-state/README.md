@@ -18,7 +18,7 @@ Before diving into the comparison, let us define the two states precisely.
 
 **Desired state** is the output of ArgoCD's manifest generation pipeline. It starts with your Git repository and passes through Helm, Kustomize, or plain YAML processing. The result is a list of fully rendered Kubernetes resource definitions.
 
-**Live state** is what the Kubernetes API reports. ArgoCD queries the cluster for each resource it manages and gets back the full resource specification, including all server-added fields, defaults, and status information.
+**Live state** is what the Kubernetes API reports. ArgoCD reads the cluster state, usually through its controller cache, and gets back the full resource specification, including server-added fields, defaults, and status information.
 
 These two representations are fundamentally different in structure and content, which is why ArgoCD cannot do a simple string comparison.
 
@@ -134,19 +134,19 @@ To produce meaningful comparisons, ArgoCD normalizes both sides through several 
 
 ### Step 1: Remove Server-Generated Fields
 
-ArgoCD strips these fields from the live state before comparison:
+ArgoCD removes or ignores these kinds of fields before comparison:
 
 - `metadata.uid`
 - `metadata.resourceVersion`
 - `metadata.generation`
 - `metadata.creationTimestamp`
 - `metadata.managedFields`
-- `status` (entire section)
+- `status` (ignored by default for resource comparison, unless configured otherwise)
 - `metadata.selfLink` (deprecated but still sometimes present)
 
 ### Step 2: Apply Known Defaults
 
-ArgoCD understands Kubernetes defaults and does not flag them as differences. For example:
+For built-in Kubernetes types, ArgoCD's diff normalization and diff strategies account for many values that Kubernetes defaults or normalizes. For example, these commonly defaulted fields should not normally cause drift by themselves:
 
 - `imagePullPolicy: IfNotPresent` (for tagged images)
 - `imagePullPolicy: Always` (for `:latest` tag)
@@ -157,7 +157,7 @@ ArgoCD understands Kubernetes defaults and does not flag them as differences. Fo
 - `strategy.type: RollingUpdate`
 - `revisionHistoryLimit: 10`
 
-This default normalization is built into ArgoCD and covers the most common Kubernetes resource types.
+This works best for built-in Kubernetes resource types. CRDs and custom marshalers can still produce false-positive diffs unless you configure resource customizations, known Kubernetes type fields, server-side diff, or explicit ignore rules.
 
 ### Step 3: Handle Annotation and Label Differences
 
@@ -165,7 +165,7 @@ If the live state has annotations or labels that were not in the desired state, 
 
 ### Step 4: Structured Comparison
 
-After normalization, ArgoCD performs a structured JSON/YAML comparison. It does not compare strings - it compares the parsed data structures. This means field ordering does not matter, and equivalent values in different formats are handled correctly.
+After normalization, ArgoCD performs a structured JSON/YAML comparison. It does not compare strings - it compares the parsed data structures. This means field ordering does not matter, and equivalent values in different formats are handled correctly for known Kubernetes types. For CRDs that reuse Kubernetes types, you may need `resource.customizations.knownTypeFields` so values such as resource quantities are normalized consistently.
 
 ## The Diff Output
 
@@ -237,17 +237,17 @@ resource.customizations.ignoreDifferences.apps_Deployment: |
 
 ## How the Cluster Cache Works
 
-ArgoCD does not query the Kubernetes API on every reconciliation. Instead, it maintains a cluster cache using Kubernetes informers (watch API).
+ArgoCD does not query the Kubernetes API for every resource on every reconciliation. Instead, the application controller maintains a lightweight cluster cache using Kubernetes watch APIs.
 
-When ArgoCD first connects to a cluster, it lists all the resources it manages and stores them in its cache (backed by Redis). After that, it watches for change events and updates the cache incrementally.
+When ArgoCD first connects to a cluster, it lists the resources it needs to monitor and stores them in the controller's cluster cache. After that, it watches for change events and updates the cache incrementally. Redis is also used by ArgoCD as a cache layer for application state, manifests, and UI operations, but the controller's Kubernetes watch cache is not something you validate simply by looking at Redis keys.
 
 This means ArgoCD usually has a near-real-time view of the live state, and comparisons are fast because they use cached data.
 
 ```bash
-# Check the cluster cache status
+# Check registered clusters and connection status
 argocd cluster list
 
-# The cache is stored in Redis
+# Inspect Redis only when troubleshooting ArgoCD's Redis-backed caches
 kubectl exec -it deploy/argocd-redis -n argocd -- redis-cli info keyspace
 ```
 
@@ -297,7 +297,7 @@ argocd app sync my-app --dry-run
 # Click on the app -> see the diff panel -> then decide to sync
 ```
 
-This preview uses the same comparison engine, so what you see in the preview is exactly what will be applied.
+This preview uses the same generated manifests and sync machinery, so it is a close preview of what ArgoCD would apply. The final result can still be affected by hooks, sync waves, admission controllers, and sync options.
 
 ## Performance Considerations
 
