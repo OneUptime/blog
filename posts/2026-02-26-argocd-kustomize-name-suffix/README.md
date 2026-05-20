@@ -57,7 +57,7 @@ Using the CLI:
 
 ```bash
 # Set nameSuffix on an existing application
-argocd app set api-server-canary --kustomize-name-suffix -canary
+argocd app set api-server-canary --namesuffix -canary
 
 # Verify
 argocd app get api-server-canary -o json | jq '.spec.source.kustomize.nameSuffix'
@@ -102,7 +102,7 @@ spec:
     namespace: production
 ```
 
-This creates `api-server-v1` and `api-server-v2` Deployments in the same namespace, each with their own Services, ConfigMaps, and other resources.
+This creates `api-server-v1` and `api-server-v2` Deployments in the same namespace, each with their own Services, ConfigMaps, and other resources. If both versions run in the same namespace, make sure your overlays also set distinct labels and Service selectors so each Service routes only to its intended pods.
 
 ## Use Case: Canary Alongside Stable
 
@@ -150,7 +150,7 @@ spec:
     namespace: production
 ```
 
-You need a traffic splitting mechanism (Istio VirtualService, Nginx canary annotations, or Argo Rollouts) to route traffic between the two.
+You need distinct labels and Service selectors for the stable and canary pods, plus a traffic splitting mechanism (Istio VirtualService, Nginx canary annotations, or Argo Rollouts) to route traffic between the two.
 
 ## Use Case: Parallel Testing Environments
 
@@ -167,7 +167,7 @@ argocd app create "api-server${SUFFIX}" \
   --path apps/api-server/base \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace "pr-testing" \
-  --kustomize-name-suffix "${SUFFIX}" \
+  --namesuffix "${SUFFIX}" \
   --kustomize-image "myorg/api-server:pr-${PR_NUMBER}" \
   --sync-policy automated \
   --auto-prune
