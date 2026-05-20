@@ -12,7 +12,7 @@ The `argocd-notifications-secret` Kubernetes Secret stores sensitive credentials
 
 ## How the Secret Works
 
-The notification system uses a simple variable substitution mechanism. Any value in the `argocd-notifications-cm` ConfigMap prefixed with `$` is looked up in the `argocd-notifications-secret`.
+The notification system uses a simple variable substitution mechanism for service configuration. Sensitive values in `argocd-notifications-cm` service definitions can be prefixed with `$` and looked up in the `argocd-notifications-secret`.
 
 For example, in the ConfigMap:
 
@@ -106,8 +106,8 @@ stringData:
 
 ```yaml
 stringData:
-  teams-webhook-url: "https://outlook.office.com/webhook/abc123..."
-  teams-channel-ops: "https://outlook.office.com/webhook/def456..."
+  teams-workflows-url: "https://prod-00.region.logic.azure.com/workflows/abc123..."
+  teams-workflows-ops: "https://prod-00.region.logic.azure.com/workflows/def456..."
 ```
 
 ### PagerDuty
@@ -177,7 +177,7 @@ stringData:
   email-password: "smtp-password"
   webhook-token: "bearer-token-value"
   pagerduty-service-key: "pd-integration-key"
-  teams-webhook-url: "https://outlook.office.com/webhook/..."
+  teams-workflows-url: "https://prod-00.region.logic.azure.com/workflows/..."
 ```
 
 ## Adding Keys to an Existing Secret
@@ -207,7 +207,7 @@ For production environments, consider using an external secret manager instead o
 ### With External Secrets Operator
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: argocd-notifications-secret
@@ -257,9 +257,9 @@ Check that all referenced variables exist in the Secret:
 # validate-notification-secrets.sh
 NAMESPACE="argocd"
 
-# Extract all $variable references from the notifications ConfigMap
+# Extract all $variable references from notification service definitions
 REFERENCED_VARS=$(kubectl get configmap argocd-notifications-cm -n "${NAMESPACE}" -o json | \
-  jq -r '.data | to_entries[] | .value' | \
+  jq -r '.data | to_entries[] | select(.key | startswith("service.")) | .value' | \
   grep -oP '\$[\w-]+' | \
   sed 's/\$//' | \
   sort -u)
