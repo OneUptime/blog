@@ -1,10 +1,10 @@
-# Understanding ArgoCD argocd-cmd-params-cm: Every Key Explained
+# Understanding ArgoCD argocd-cmd-params-cm: Key Parameters Explained
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration, Performance
 
-Description: A complete reference to every key in the ArgoCD argocd-cmd-params-cm ConfigMap, covering server flags, controller tuning, repo server settings, and performance optimization.
+Description: A practical reference to important keys in the ArgoCD argocd-cmd-params-cm ConfigMap, covering server flags, controller tuning, repo server settings, and performance optimization.
 
 ---
 
@@ -51,7 +51,7 @@ data:
 
 ### server.rootpath
 
-Root path for the ArgoCD API server:
+Root path when ArgoCD is running behind a reverse proxy under a subpath:
 
 ```yaml
 data:
@@ -130,15 +130,6 @@ data:
   server.repo.server.strict.tls: "false"
 ```
 
-### server.login.attempts.ratelimit
-
-Rate limit login attempts to prevent brute force:
-
-```yaml
-data:
-  server.login.attempts.ratelimit: "0"    # 0 = disabled
-```
-
 ### server.app.state.cache.expiration
 
 Cache duration for application state:
@@ -176,7 +167,7 @@ How long to wait before reverting manual changes (self-heal):
 
 ```yaml
 data:
-  controller.self.heal.timeout.seconds: "5"    # Default: 5
+  controller.self.heal.timeout.seconds: "0"    # Default: 0
 ```
 
 ### controller.repo.server.timeout.seconds
@@ -314,7 +305,7 @@ Timeout for Git operations:
 
 ```yaml
 data:
-  reposerver.git.request.timeout: "120"    # seconds
+  reposerver.git.request.timeout: "120s"
 ```
 
 ### reposerver.git.lsremote.parallelism.limit
@@ -341,7 +332,7 @@ File patterns to exclude when sending to config management plugins:
 
 ```yaml
 data:
-  reposerver.plugin.tar.exclusions: "node_modules,.git"
+  reposerver.plugin.tar.exclusions: "node_modules;.git"
 ```
 
 ## Redis Parameters
@@ -371,34 +362,6 @@ Redis database number:
 ```yaml
 data:
   redis.db: "0"
-```
-
-### redis.username and redis.password
-
-Redis authentication (better to use a Secret reference):
-
-```yaml
-data:
-  redis.username: ""
-  redis.password: ""
-```
-
-### redis.sentinels
-
-Redis Sentinel endpoints for high availability:
-
-```yaml
-data:
-  redis.sentinels: "redis-sentinel-0:26379,redis-sentinel-1:26379,redis-sentinel-2:26379"
-```
-
-### redis.sentinel.master
-
-Redis Sentinel master name:
-
-```yaml
-data:
-  redis.sentinel.master: "mymaster"
 ```
 
 ## ApplicationSet Controller Parameters
@@ -477,7 +440,7 @@ data:
 
   # Repo server optimization
   reposerver.parallelism.limit: "50"
-  reposerver.git.request.timeout: "180"
+  reposerver.git.request.timeout: "180s"
   reposerver.log.format: "json"
 
   # Redis compression
