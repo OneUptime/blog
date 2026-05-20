@@ -199,44 +199,58 @@ kind: ApplicationSet
 metadata:
   name: my-app
 spec:
+  goTemplate: true
   generators:
   - list:
       elements:
       - environment: dev
         cluster: dev-cluster
-        autoSync: "true"
+        autoSync: true
+        prune: true
       - environment: staging
         cluster: staging-cluster
-        autoSync: "true"
+        autoSync: true
+        prune: false
       - environment: production
         cluster: prod-cluster
-        autoSync: "false"  # Manual sync for production
+        autoSync: false  # Manual sync for production
   template:
+    metadata:
+      name: 'my-app-{{.environment}}'
     spec:
+      project: default
       source:
-        path: 'apps/my-app/overlays/{{environment}}'
+        repoURL: https://github.com/example/gitops-repo.git
+        targetRevision: main
+        path: 'apps/my-app/overlays/{{.environment}}'
       destination:
-        server: '{{cluster}}'
+        name: '{{.cluster}}'
+        namespace: my-app
+  templatePatch: |
+    {{- if .autoSync }}
+    spec:
       syncPolicy:
         automated:
-          prune: '{{autoSync}}'
+          prune: {{ .prune }}
+          selfHeal: true
+    {{- end }}
 ```
 
 Changes flow through environments in order. Production requires manual approval.
 
 ## Anti-Pattern 6: No Health Checks on Applications
 
-Teams sometimes deploy ArgoCD applications without custom health checks, relying on the default "resource exists" health assessment:
+Teams sometimes deploy ArgoCD applications without readiness probes or custom health checks for resources ArgoCD cannot assess, relying on default health assessment that may not reflect whether the application is actually ready:
 
 ```yaml
-# Anti-pattern: No health check - assumes healthy if pods exist
+# Anti-pattern: No readiness signal beyond the default resource status
 spec:
   source:
     path: apps/my-app
   # No health check configuration
 ```
 
-**The fix**: Define custom health checks that verify the application is actually working:
+**The fix**: Define custom health checks when the built-in assessment is not enough:
 
 ```yaml
 apiVersion: v1
@@ -247,6 +261,8 @@ metadata:
 data:
   resource.customizations.health.apps_Deployment: |
     hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for deployment status"
     if obj.status ~= nil then
       if obj.status.availableReplicas ~= nil then
         if obj.status.availableReplicas == obj.status.replicas then
