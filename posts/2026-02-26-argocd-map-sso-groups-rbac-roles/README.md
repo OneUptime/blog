@@ -8,7 +8,7 @@ Description: Complete guide to mapping Single Sign-On groups from OIDC providers
 
 ---
 
-Mapping SSO groups to RBAC roles is how you connect your identity provider's team structure to ArgoCD permissions. Instead of managing individual user permissions, you assign permissions to groups and let your identity provider handle who belongs to which group. When someone joins the frontend team in Okta, they automatically get frontend deployment access in ArgoCD.
+Mapping SSO groups to RBAC roles is how you connect your identity provider's team structure to ArgoCD permissions. Instead of managing individual user permissions, you assign permissions to groups and let your identity provider handle who belongs to which group. When someone joins the frontend team in Okta, they get frontend deployment access in ArgoCD after their next login or reauthentication.
 
 This guide covers the full setup from OIDC configuration through group mapping to troubleshooting.
 
@@ -66,6 +66,8 @@ data:
       - email
       - groups
 ```
+
+If Okta returns groups from the UserInfo endpoint instead of the ID token, add `enableUserInfoGroups: true` to the same OIDC configuration so ArgoCD queries UserInfo during login.
 
 ### Azure AD (Entra ID) Configuration
 
@@ -172,13 +174,13 @@ data:
   scopes: '[roles]'  # If your IdP puts groups in "roles" claim
 ```
 
-## Project-Scoped Group Mappings
+## Project-Limited Group Mappings
 
-For multi-team setups, map groups to project-scoped roles:
+For multi-team setups, map groups to global roles that are limited to specific ArgoCD projects:
 
 ```yaml
 policy.csv: |
-  # Project-scoped deployer roles
+  # Project-limited deployer roles
   p, role:frontend-deployer, applications, get, frontend/*, allow
   p, role:frontend-deployer, applications, sync, frontend/*, allow
   p, role:frontend-deployer, applications, action, frontend/*, allow
@@ -329,4 +331,4 @@ data:
 
 ## Summary
 
-Mapping SSO groups to ArgoCD RBAC roles connects your identity provider's team structure to ArgoCD permissions. Configure your OIDC provider to include groups in tokens, map those groups to roles in `argocd-rbac-cm` using `g` lines, and test with `argocd admin settings rbac can`. The result is automatic permission management - when HR adds someone to a team, they get the right ArgoCD access without any manual ArgoCD configuration.
+Mapping SSO groups to ArgoCD RBAC roles connects your identity provider's team structure to ArgoCD permissions. Configure your OIDC provider to include groups in tokens, map those groups to roles in `argocd-rbac-cm` using `g` lines, and test with `argocd admin settings rbac can`. The result is automatic permission management - when HR adds someone to a team, they get the right ArgoCD access after their next login or reauthentication without any manual ArgoCD configuration.
