@@ -12,7 +12,7 @@ ArgoCD serves two types of traffic on the same server: HTTPS for the web UI and 
 
 ## Understanding the Problem
 
-ArgoCD server listens on a single port and serves both protocols. When a request comes in, it checks the `Content-Type` header. If it is `application/grpc`, the request is handled as gRPC. Everything else is handled as HTTP.
+ArgoCD exposes both protocols on the `argocd-server` service. Port 443 handles gRPC and HTTPS, while port 80 handles HTTP and redirects to HTTPS unless you run the API server with TLS disabled. When a request comes in on the server, ArgoCD checks the `Content-Type` header. If it starts with `application/grpc`, the request is handled as gRPC. Everything else is handled as HTTP.
 
 This works perfectly with port-forwarding, but becomes complicated with ingress controllers because:
 
@@ -44,7 +44,7 @@ argocd app list
 argocd app sync my-app
 ```
 
-The ingress configuration is straightforward:
+The ingress configuration is straightforward. This Nginx example assumes the ingress terminates TLS and the ArgoCD server is running with TLS disabled by setting `server.insecure: "true"` in the `argocd-cmd-params-cm` ConfigMap:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -74,7 +74,7 @@ spec:
       secretName: argocd-tls
 ```
 
-The downside is that `--grpc-web` must be specified every time (or set in the ArgoCD config file), and it is slightly slower than native gRPC.
+The downside is that `--grpc-web` must be specified when you first log in, or set in the ArgoCD config file, and it is slightly slower than native gRPC.
 
 ## Option 2: Two Separate Hosts
 
@@ -135,6 +135,8 @@ spec:
         - grpc.argocd.example.com
       secretName: argocd-grpc-tls
 ```
+
+For this TLS-termination pattern, run the ArgoCD server with TLS disabled by setting `server.insecure: "true"` in the `argocd-cmd-params-cm` ConfigMap.
 
 Configure the CLI to use the gRPC host:
 
@@ -198,7 +200,7 @@ spec:
   routes:
     # gRPC route (higher priority)
     - kind: Rule
-      match: Host(`argocd.example.com`) && Headers(`Content-Type`, `application/grpc`)
+      match: Host(`argocd.example.com`) && Header(`Content-Type`, `application/grpc`)
       priority: 11
       services:
         - name: argocd-server
