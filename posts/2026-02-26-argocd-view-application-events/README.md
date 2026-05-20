@@ -169,7 +169,7 @@ The CLI provides access to resource events without needing the UI:
 argocd app get my-app
 
 # Get detailed info about a specific resource
-argocd app resources my-app --kind Pod --name web-abc123-x7k9l
+argocd app get-resource my-app --kind Pod --resource-name web-abc123-x7k9l
 ```
 
 For more detailed events, use kubectl against the target cluster:
