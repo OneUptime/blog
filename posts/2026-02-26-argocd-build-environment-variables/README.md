@@ -8,7 +8,7 @@ Description: Learn how to use ArgoCD build environment variables like ARGOCD_APP
 
 ---
 
-ArgoCD provides a set of built-in environment variables during the manifest generation phase. These variables expose metadata about the ArgoCD application - its name, namespace, target revision, and other context - that your Helm templates, Kustomize plugins, or config management plugins can use. This lets you create dynamic, context-aware manifests without hardcoding application-specific values. This guide covers all available build environment variables and practical patterns for using them.
+ArgoCD provides a set of built-in environment variables during the manifest generation phase. These variables expose metadata about the ArgoCD application - its name, namespace, target revision, and other context - that your Helm templates, Kustomize settings, or config management plugins can use. This lets you create dynamic, context-aware manifests without hardcoding application-specific values. This guide covers all available build environment variables and practical patterns for using them.
 
 ## What Are Build Environment Variables?
 
@@ -28,16 +28,19 @@ ArgoCD provides the following environment variables during manifest generation:
 |---|---|---|
 | `ARGOCD_APP_NAME` | The name of the ArgoCD Application | `my-app-production` |
 | `ARGOCD_APP_NAMESPACE` | The destination namespace | `production` |
+| `ARGOCD_APP_PROJECT_NAME` | The name of the ArgoCD project the Application belongs to | `default` |
 | `ARGOCD_APP_REVISION` | The resolved Git revision (commit SHA) | `abc123def456...` |
+| `ARGOCD_APP_REVISION_SHORT` | The resolved short Git revision | `abc123d` |
+| `ARGOCD_APP_REVISION_SHORT_8` | The resolved short Git revision with length 8 | `abc123de` |
 | `ARGOCD_APP_SOURCE_PATH` | The path within the Git repository | `apps/my-app/overlays/production` |
 | `ARGOCD_APP_SOURCE_REPO_URL` | The Git repository URL | `https://github.com/myorg/config.git` |
 | `ARGOCD_APP_SOURCE_TARGET_REVISION` | The target revision (branch/tag/commit) | `main` |
-| `KUBE_VERSION` | The Kubernetes version of the target cluster | `v1.28.0` |
+| `KUBE_VERSION` | The Kubernetes version of the target cluster, without trailing metadata | `1.28.0` |
 | `KUBE_API_VERSIONS` | The API versions available on the target cluster | `apps/v1,batch/v1,...` |
 
 ## Enabling Build Environment for Helm
 
-By default, ArgoCD does not pass build environment variables to Helm. You need to explicitly enable this in the Application spec:
+Helm templates do not read these variables directly from the shell environment. Pass the values through Helm parameters in the Application spec:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -55,7 +58,7 @@ spec:
         - name: global.argocdAppName
           value: $ARGOCD_APP_NAME
         - name: global.argocdRevision
-          value: $ARGOCD_APP_REVISION
+          value: $ARGOCD_APP_REVISION_SHORT
         - name: global.targetNamespace
           value: $ARGOCD_APP_NAMESPACE
   destination:
@@ -124,13 +127,13 @@ data:
             # Build environment variables are automatically available
             echo "Generating manifests for: $ARGOCD_APP_NAME"
             echo "Target namespace: $ARGOCD_APP_NAMESPACE"
-            echo "Git revision: $ARGOCD_APP_REVISION"
+            echo "Git revision: $ARGOCD_APP_REVISION_SHORT"
             echo "Source path: $ARGOCD_APP_SOURCE_PATH"
 
             # Use the variables in manifest generation
             cat manifests/*.yaml | \
               sed "s/PLACEHOLDER_NAMESPACE/$ARGOCD_APP_NAMESPACE/g" | \
-              sed "s/PLACEHOLDER_REVISION/${ARGOCD_APP_REVISION:0:7}/g"
+              sed "s/PLACEHOLDER_REVISION/$ARGOCD_APP_REVISION_SHORT/g"
 ```
 
 ## Dynamic Labels and Annotations
@@ -210,43 +213,28 @@ local revision = std.extVar('revision');
 }
 ```
 
-## Application-Aware Kustomize Plugins
+## Application-Aware Kustomize
 
-For Kustomize applications, build environment variables are available to exec plugins and KRM functions:
-
-```yaml
-# kustomization.yaml with a generator plugin
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-generators:
-  - deploy-info-generator.yaml
-```
+For Kustomize applications, ArgoCD can substitute build environment variables in common annotations when `commonAnnotationsEnvsubst` is enabled:
 
 ```yaml
-# deploy-info-generator.yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: deploy-info
-  annotations:
-    config.kubernetes.io/function: |
-      exec:
-        path: ./generate-deploy-info.sh
-```
-
-```bash
-#!/bin/bash
-# generate-deploy-info.sh - Has access to ArgoCD build env vars
-cat <<EOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: deploy-info
-data:
-  GIT_COMMIT: "${ARGOCD_APP_REVISION:-unknown}"
-  APP_NAME: "${ARGOCD_APP_NAME:-unknown}"
-  NAMESPACE: "${ARGOCD_APP_NAMESPACE:-unknown}"
-EOF
+  name: my-app-production
+  namespace: argocd
+spec:
+  source:
+    repoURL: https://github.com/myorg/app-config.git
+    path: kustomize/my-app
+    kustomize:
+      commonAnnotationsEnvsubst: true
+      commonAnnotations:
+        argocd.argoproj.io/app-name: ${ARGOCD_APP_NAME}
+        argocd.argoproj.io/revision: ${ARGOCD_APP_REVISION_SHORT}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 ## Conditional Logic Based on Build Variables
@@ -277,7 +265,7 @@ fi
 
 ## KUBE_VERSION and KUBE_API_VERSIONS
 
-The `KUBE_VERSION` and `KUBE_API_VERSIONS` variables are particularly useful for Helm charts that support multiple Kubernetes versions:
+The `KUBE_VERSION` and `KUBE_API_VERSIONS` variables are particularly useful for custom tooling and CMPs that support multiple Kubernetes versions. For Helm charts, ArgoCD also passes target cluster version and API information into Helm's `.Capabilities` object:
 
 ```yaml
 # templates/ingress.yaml
