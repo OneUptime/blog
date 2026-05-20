@@ -12,15 +12,15 @@ Storage migrations in Kubernetes happen when you switch storage providers, chang
 
 ## Why Storage Migrations Are Tricky with ArgoCD
 
-ArgoCD tracks the desired state of PersistentVolumeClaims (PVCs) in Git. During a storage migration, the live PVCs in the cluster may temporarily differ from what Git declares - different StorageClass names, different volume sizes, or transitional resources that are not in Git. If auto-sync is enabled, ArgoCD may try to "fix" these differences by reverting your migration.
+ArgoCD tracks the desired state of PersistentVolumeClaims (PVCs) in Git. During a storage migration, the live PVCs in the cluster may temporarily differ from what Git declares - different StorageClass names, different volume sizes, or transitional resources that are not in Git. If auto-sync is enabled, ArgoCD may try to "fix" these differences by applying the Git state again, which can fail on immutable PVC fields or prune transitional resources if pruning is enabled.
 
 ```mermaid
 graph TD
     A[Git: PVC with old StorageClass] --> B[ArgoCD]
     C[Cluster: PVC migrated to new StorageClass] --> B
     B -->|detects drift| D[OutOfSync]
-    D -->|auto-sync| E[Reverts to old StorageClass]
-    E --> F[Migration broken!]
+    D -->|auto-sync| E[Applies Git state]
+    E --> F[Migration interrupted!]
 ```
 
 ## Pre-Migration Planning
@@ -30,7 +30,7 @@ graph TD
 Identify which PVCs are managed by ArgoCD and which need migration.
 
 ```bash
-# List all PVCs with their StorageClass and ArgoCD management labels
+# List all PVCs with their StorageClass and the common ArgoCD tracking label
 
 kubectl get pvc --all-namespaces -o custom-columns=\
 NAMESPACE:.metadata.namespace,\
@@ -64,7 +64,7 @@ argocd app set my-stateful-app --sync-policy none
 
 ### Step 3: Set Up ignoreDifferences for PVC Fields
 
-Tell ArgoCD to ignore the StorageClass and volume name fields that will change during migration.
+Tell ArgoCD to ignore the StorageClass and volume name fields that will change during migration. `ignoreDifferences` affects diffing by default; add `RespectIgnoreDifferences=true` if you also need ArgoCD to honor those ignores during sync.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -89,6 +89,9 @@ spec:
         - /spec/storageClassName
         - /spec/volumeName
         - /spec/resources/requests/storage
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
 ## Migration Scenario 1: Changing StorageClass
@@ -132,7 +135,7 @@ spec:
             - -c
             - |
               echo "Starting data copy..."
-              cp -av /old-data/* /new-data/
+              cp -a /old-data/. /new-data/
               echo "Data copy complete."
               echo "Old data size: $(du -sh /old-data)"
               echo "New data size: $(du -sh /new-data)"
@@ -166,7 +169,7 @@ After data is copied, update the PVC definition in Git to use the new StorageCla
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: my-data
+  name: my-data-new
   namespace: database
 spec:
   storageClassName: new-storage-class
@@ -177,16 +180,16 @@ spec:
       storage: 50Gi
 ```
 
-Since PVCs are immutable (you cannot change the StorageClass of an existing PVC), you need to either:
+Since PVCs are immutable (you cannot change the StorageClass of a bound PVC), you need to either:
 
-1. Delete the old PVC and create a new one with the same name
+1. Stop the application, delete the old PVC, create a new PVC with the same name, and copy or restore the data into it
 2. Change the PVC name in your deployment and Git manifests
 
 ```bash
-# Option A: Delete old PVC, rename new one
+# Option A: Delete old PVC and create a replacement with the same name
 kubectl delete pvc my-data -n database
-# Rename the new PVC (Kubernetes does not support renaming, so create a new one)
-# This requires the application to be stopped
+# Kubernetes does not support renaming PVCs, so create a replacement PVC
+# with the original name and restore or copy the data before starting the app
 
 # Option B: Update the deployment to use the new PVC name
 # Update the volume reference in your Deployment YAML in Git
@@ -306,10 +309,10 @@ kubectl scale deployment my-app -n app-ns --replicas=0
 kubectl apply -f migration-job.yaml
 kubectl wait --for=condition=Complete job/migrate-data -n app-ns --timeout=3600s
 
-# 4. Update Git manifests with new PVC configuration
+# 4. Update Git manifests to reference the new PVC name and StorageClass
 # (commit and push the changes)
 
-# 5. Delete the old PVC
+# 5. Delete the old PVC after the data has been copied and Git no longer references it
 kubectl delete pvc old-data-pvc -n app-ns
 
 # 6. Sync the application from ArgoCD
@@ -347,4 +350,4 @@ argocd app list | grep -v "Healthy.*Synced"
 
 ## Summary
 
-Storage migrations with ArgoCD require careful coordination between the cluster state and Git state. The golden rule is: disable auto-sync before starting, perform the migration in the cluster, update Git to match the new state, then re-enable auto-sync. Use `ignoreDifferences` for PVC fields during the transition period, and always verify data integrity after copying. The biggest risk is ArgoCD reverting your migration by syncing back to the old state, which is why disabling auto-sync is the first and most critical step.
+Storage migrations with ArgoCD require careful coordination between the cluster state and Git state. The golden rule is: disable auto-sync before starting, perform the migration in the cluster, update Git to match the new state, then re-enable auto-sync. Use `ignoreDifferences` for PVC fields during the transition period, and always verify data integrity after copying. The biggest risk is ArgoCD applying the old Git state during your migration, which is why disabling auto-sync is the first and most critical step.
