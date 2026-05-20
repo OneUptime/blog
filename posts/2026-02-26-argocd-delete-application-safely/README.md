@@ -118,7 +118,7 @@ In the ArgoCD web interface:
 1. Navigate to the application you want to delete
 2. Click the **DELETE** button in the top-right corner
 3. A dialog appears asking you to type the application name
-4. Choose between **Foreground** (cascade) or **Non-cascade** deletion
+4. Choose **Foreground** (cascade), **Background** (cascade), or **Non-cascade** deletion
 5. Type the application name to confirm
 6. Click **OK**
 
@@ -149,7 +149,7 @@ git commit -m "Remove my-app application"
 git push
 ```
 
-When the parent application syncs, it will detect the missing manifest and delete the child application. Whether resources are cascade-deleted depends on the prune setting of the parent application.
+When the parent application syncs with pruning enabled, it will detect the missing manifest and delete the child Application resource. Whether the child application's managed resources are cascade-deleted depends on the finalizer on the child Application.
 
 ## Safe deletion workflow for production
 
@@ -206,9 +206,12 @@ argocd app list -p my-project -o name | xargs -I {} argocd app delete {} --casca
 # Remove ArgoCD tracking labels/annotations from resources
 argocd app delete my-app --cascade=false -y
 
-# Clean up ArgoCD-specific labels from remaining resources
+# Clean up ArgoCD-specific labels and annotations from remaining resources
 kubectl get all -n production -l app.kubernetes.io/instance=my-app -o name | \
   xargs -I {} kubectl label {} app.kubernetes.io/instance- app.kubernetes.io/managed-by-
+
+kubectl get all -n production -l app.kubernetes.io/instance=my-app -o name | \
+  xargs -I {} kubectl annotate {} argocd.argoproj.io/tracking-id-
 ```
 
 ## Preventing accidental deletion with RBAC
