@@ -29,7 +29,7 @@ data:
   ui.bannercontent: "Scheduled maintenance: Feb 28, 2026 from 2:00 AM to 4:00 AM UTC"
   # Banner URL (optional) - makes the banner clickable
   ui.bannerurl: "https://status.example.com/incidents/123"
-  # Position: top or bottom
+  # Position: top, bottom, or both
   ui.bannerposition: "top"
   # Make the banner permanent (does not dismiss)
   ui.bannerpermanent: "true"
@@ -41,7 +41,7 @@ data:
 |---------|-------------|--------|
 | `ui.bannercontent` | The text to display in the banner | Any string |
 | `ui.bannerurl` | Makes the banner a clickable link | URL string |
-| `ui.bannerposition` | Where to place the banner | `top` or `bottom` |
+| `ui.bannerposition` | Where to place the banner | `top`, `bottom`, or `both` |
 | `ui.bannerpermanent` | Whether the user can dismiss the banner | `true` or `false` |
 
 ### Adding a Banner with a Link
@@ -262,6 +262,7 @@ metadata:
   namespace: argocd
 spec:
   schedule: "0 1 28 2 *"  # Feb 28 at 1:00 AM UTC
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -286,6 +287,7 @@ metadata:
   namespace: argocd
 spec:
   schedule: "0 4 28 2 *"  # Feb 28 at 4:00 AM UTC
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -364,8 +366,8 @@ For Helm-based deployments:
 
 ```yaml
 # values.yaml
-server:
-  config:
+configs:
+  cm:
     ui.bannercontent: "PRODUCTION - All changes are monitored and audited"
     ui.bannerpermanent: "true"
     ui.bannerposition: "top"
