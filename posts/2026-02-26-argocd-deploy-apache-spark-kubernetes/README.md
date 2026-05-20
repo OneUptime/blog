@@ -44,7 +44,7 @@ spec:
   source:
     repoURL: https://kubeflow.github.io/spark-operator
     chart: spark-operator
-    targetRevision: 1.4.0
+    targetRevision: 2.5.0
     helm:
       values: |
         controller:
@@ -63,8 +63,7 @@ spec:
           jobNamespaces:
             - spark-jobs
             - spark-streaming
-        serviceAccounts:
-          spark:
+          serviceAccount:
             create: true
             name: spark
   destination:
@@ -211,9 +210,9 @@ spec:
   mainApplicationFile: local:///app/jars/order-stream.jar
   sparkVersion: "3.5.0"
   sparkConf:
-    spark.streaming.kafka.maxRatePerPartition: "1000"
     spark.sql.streaming.checkpointLocation: "s3a://spark-checkpoints/order-stream/"
     spark.sql.streaming.stateStore.providerClass: "org.apache.spark.sql.execution.streaming.state.RocksDBStateStoreProvider"
+    spark.sql.streaming.minBatchesToRetain: "100"
     spark.kubernetes.executor.deleteOnTermination: "false"
   driver:
     cores: 2
@@ -225,7 +224,6 @@ spec:
     instances: 5
   restartPolicy:
     type: Always
-    onFailureRetries: -1  # Unlimited retries for streaming
     onFailureRetryInterval: 30
 ```
 
@@ -286,31 +284,32 @@ COPY etl/ /app/etl/
 COPY config/ /app/config/
 
 # Add extra JARs for S3, Kafka, etc.
-RUN curl -o /opt/spark/jars/hadoop-aws-3.3.6.jar \
-    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.6/hadoop-aws-3.3.6.jar && \
-    curl -o /opt/spark/jars/aws-java-sdk-bundle-1.12.367.jar \
-    https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.367/aws-java-sdk-bundle-1.12.367.jar
+RUN curl -o /opt/spark/jars/hadoop-aws-3.3.4.jar \
+    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && \
+    curl -o /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar \
+    https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
 
 USER spark
 ```
 
-When the image is updated, ArgoCD detects the change in the SparkApplication manifest and triggers a new submission.
+When the image tag is updated in the SparkApplication manifest, ArgoCD detects the Git change and triggers a new submission.
 
 ## Dynamic Resource Allocation
 
 For workloads with varying resource needs, enable dynamic allocation:
 
 ```yaml
+dynamicAllocation:
+  enabled: true
+  initialExecutors: 2
+  minExecutors: 2
+  maxExecutors: 50
+  shuffleTrackingEnabled: true
 sparkConf:
-  spark.dynamicAllocation.enabled: "true"
-  spark.dynamicAllocation.initialExecutors: "2"
-  spark.dynamicAllocation.minExecutors: "2"
-  spark.dynamicAllocation.maxExecutors: "50"
   spark.dynamicAllocation.executorIdleTimeout: "120s"
-  spark.dynamicAllocation.shuffleTracking.enabled: "true"
 ```
 
-When using dynamic allocation with ArgoCD, make sure to add `ignoreDifferences` for the executor count since it changes at runtime.
+When using dynamic allocation with the Spark operator, avoid setting a fixed `executor.instances` higher than `dynamicAllocation.initialExecutors`, because the operator uses the larger value as the initial executor count.
 
 ## Spark History Server
 
@@ -328,19 +327,24 @@ spec:
     matchLabels:
       app: spark-history
   template:
+    metadata:
+      labels:
+        app: spark-history
     spec:
       serviceAccountName: spark
       containers:
         - name: history-server
-          image: apache/spark:3.5.0
+          image: myregistry/spark-etl:v2.3.0
           command:
-            - /opt/spark/sbin/start-history-server.sh
+            - /opt/spark/bin/spark-class
+            - org.apache.spark.deploy.history.HistoryServer
           env:
             - name: SPARK_HISTORY_OPTS
               value: >-
                 -Dspark.history.fs.logDirectory=s3a://spark-logs/event-logs/
                 -Dspark.history.ui.port=18080
                 -Dspark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem
+                -Dspark.hadoop.fs.s3a.aws.credentials.provider=com.amazonaws.auth.WebIdentityTokenCredentialsProvider
           ports:
             - containerPort: 18080
           resources:
