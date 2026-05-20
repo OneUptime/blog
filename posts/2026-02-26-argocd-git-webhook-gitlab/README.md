@@ -16,7 +16,7 @@ Before starting, you need:
 
 - ArgoCD installed and running in your cluster
 - The ArgoCD API server accessible from your GitLab instance
-- Admin or Maintainer access to the GitLab project or group
+- Maintainer or Owner access to the GitLab project, or Owner access to the GitLab group
 - ArgoCD server URL (e.g., `https://argocd.example.com`)
 
 ## Step 1: Generate a Webhook Secret
@@ -56,7 +56,7 @@ stringData:
   webhook.gitlab.secret: "your-generated-secret-here"
 ```
 
-After applying, restart the ArgoCD API server:
+After applying, the changes should take effect automatically. If the webhook secret is managed by another tool and ArgoCD does not pick it up, restart the ArgoCD API server:
 
 ```bash
 kubectl rollout restart deployment argocd-server -n argocd
@@ -87,7 +87,7 @@ To receive webhooks from all projects in a group:
 2. Go to Settings > Webhooks
 3. Use the same configuration as above
 
-Group-level webhooks fire for all projects within the group and any subgroups.
+Group-level webhooks require a GitLab Premium or Ultimate tier and fire for all projects within the group and any subgroups.
 
 ### Using the GitLab API
 
@@ -178,7 +178,7 @@ If your ArgoCD instance uses a self-signed or internal CA certificate:
 # Add your CA to the system trust store on the GitLab server
 ```
 
-On the ArgoCD side, if GitLab uses custom certificates:
+On the ArgoCD side, if GitLab uses custom certificates for repository access:
 
 ```yaml
 apiVersion: v1
@@ -186,6 +186,8 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   gitlab.internal.example.com: |
     -----BEGIN CERTIFICATE-----
@@ -251,7 +253,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  timeout.reconciliation: "600"  # 10 minutes
+  timeout.reconciliation: "10m"  # 10 minutes
 ```
 
 ## Handling Multiple GitLab Instances
@@ -335,6 +337,6 @@ For monitoring the health of your webhook delivery pipeline and ArgoCD sync perf
 - Use project-level webhooks for specific repos or group-level for entire groups
 - Enable push events at minimum, plus tag push events if you track tags
 - Test webhooks using GitLab's built-in test feature
-- Increase polling interval to 600s after confirming webhooks work
+- Increase polling interval to 10m after confirming webhooks work
 - For self-hosted GitLab, verify network connectivity and TLS trust
 - Check URL matching if webhooks are received but applications are not refreshed
