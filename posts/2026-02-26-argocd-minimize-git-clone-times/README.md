@@ -8,11 +8,11 @@ Description: Learn practical techniques to minimize Git clone times in ArgoCD, i
 
 ---
 
-Every time ArgoCD needs to generate manifests for an application, the repo server clones the Git repository. For small repos, this takes a fraction of a second. But if your repository is hundreds of megabytes or has tens of thousands of commits, the clone step alone can take 30 seconds or more. This directly delays every sync operation. This guide covers every technique available to minimize Git clone times in ArgoCD.
+When ArgoCD needs to generate manifests for an application, the repo server uses a local checkout of the Git repository and keeps it up to date. For small repos, the initial clone or later fetch takes a fraction of a second. But if your repository is hundreds of megabytes or has tens of thousands of commits, that Git step alone can take 30 seconds or more on a cold cache. This directly delays refresh and sync operations that need fresh repository data. This guide covers practical techniques to minimize Git clone and fetch times in ArgoCD.
 
 ## Understanding Why Clone Times Matter
 
-The Git clone happens in the critical path of every hard refresh and cache miss. Here is where it fits in the pipeline.
+The Git clone or fetch happens in the critical path of hard refreshes and cache misses. Here is where it fits in the pipeline.
 
 ```mermaid
 sequenceDiagram
@@ -31,14 +31,19 @@ sequenceDiagram
     RepoServer-->>Controller: Return manifests
 ```
 
-If your repo takes 30 seconds to clone and you have 100 applications pointing to it, even with caching, a cold start or cache invalidation means waiting 30 seconds per application.
+If your repo takes 30 seconds to clone and you have many applications pointing to it, a cold repo-server cache can delay the first applications that need that repository until the local checkout is available.
 
 ## Technique 1: Shallow Clones
 
-ArgoCD performs shallow clones by default when the `targetRevision` is a branch or tag. A shallow clone fetches only the latest commit instead of the entire history.
+ArgoCD performs a full clone by default unless shallow cloning is configured for the repository. A shallow clone with depth 1 fetches only the required commit instead of the entire history.
+
+```bash
+# Enable shallow cloning when adding a repository
+argocd repo add https://github.com/org/repo.git --depth 1
+```
 
 ```yaml
-# Good: branch reference supports shallow clone
+# Good: branch reference works well with shallow clone
 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -47,13 +52,13 @@ metadata:
 spec:
   source:
     repoURL: https://github.com/org/repo.git
-    targetRevision: main  # Branch name - shallow clone works
+    targetRevision: main  # Branch name - shallow clone works when repository depth is configured
     path: k8s/production
 
-# Also good: tag reference
+# Also good: recent tag reference
 spec:
   source:
-    targetRevision: v1.2.3  # Tag - shallow clone works
+    targetRevision: v1.2.3  # Recent tag - shallow clone works if the tag target can be fetched at that depth
 
 # Bad for clone performance: specific commit SHA
 spec:
@@ -61,7 +66,7 @@ spec:
     targetRevision: abc123def  # SHA - may need deeper fetch
 ```
 
-When you specify a commit SHA, ArgoCD may need to fetch more history to locate it, especially if the SHA is old. Prefer branch or tag references for faster cloning.
+When you specify a commit SHA or an old tag, ArgoCD may need to fetch more history to locate it. Prefer branch or recent tag references when using shallow clones.
 
 ## Technique 2: Sparse Checkout (via Directory Structure)
 
@@ -139,7 +144,7 @@ ArgoCD then points to the lightweight `app-manifests` repo instead of the monore
 
 ## Technique 4: Git Protocol Optimization
 
-Newer Git protocols are more efficient than the default. Git protocol v2 reduces the amount of negotiation between client and server.
+Git protocol v2 reduces the amount of negotiation between client and server. Modern Git clients default to protocol v2, but you can explicitly set it when you need to ensure that behavior in the repo server environment.
 
 ```yaml
 # Set on the repo server deployment
@@ -156,17 +161,14 @@ spec:
         env:
         # Use Git protocol v2 for better performance
         - name: GIT_PROTOCOL
-          value: "2"
-        # Increase the POST buffer for large repos
-        - name: GIT_HTTP_POST_BUFFER
-          value: "524288000"  # 500MB
+          value: "version=2"
 ```
 
-Git protocol v2 is supported by GitHub, GitLab, and Bitbucket. It reduces clone time by 10-30% for large repositories.
+Git protocol v2 is supported by major Git providers such as GitHub, GitLab, and Bitbucket. The impact varies by repository and server, so benchmark it in your environment.
 
 ## Technique 5: Use SSH Instead of HTTPS
 
-SSH connections are often faster than HTTPS for Git operations because they avoid the TLS handshake overhead and are better at persistent connections.
+SSH connections are not inherently faster than HTTPS, but they can be faster in environments where HTTPS proxies, authentication, or TLS inspection add overhead. Benchmark both transports with your Git provider before switching only for performance.
 
 ```yaml
 # Configure the repository to use SSH
@@ -193,7 +195,7 @@ argocd repo add git@github.com:org/repo.git \
 
 ## Technique 6: RAM-Backed Tmpfs for Clone Directory
 
-The repo server clones repositories to a temporary directory. Using a RAM-backed filesystem makes the I/O operations instant.
+The repo server clones repositories to a temporary directory. Using a RAM-backed filesystem can make local checkout I/O much faster.
 
 ```yaml
 apiVersion: apps/v1
@@ -216,7 +218,7 @@ spec:
           sizeLimit: 10Gi   # Size depends on your repos
 ```
 
-This eliminates disk I/O during clone operations. The tradeoff is that it consumes node memory. Size the volume to accommodate all your repositories multiplied by the number of concurrent clone operations.
+This reduces disk I/O during clone operations. The tradeoff is that it consumes node memory. Size the volume to accommodate all your repositories multiplied by the number of concurrent clone operations.
 
 ## Technique 7: Git Mirror or Proxy
 
@@ -275,16 +277,17 @@ Use ArgoCD metrics to measure the actual clone performance.
 ```promql
 # Git request duration (includes clone/fetch)
 histogram_quantile(0.95,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
+  sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le)
 )
 
-# Separate clone vs fetch operations
-argocd_git_request_duration_seconds_sum{request_type="ls-remote"}
-argocd_git_request_duration_seconds_sum{request_type="fetch"}
+# Average Git request duration by request type
+sum by (request_type) (rate(argocd_git_request_duration_seconds_sum[5m]))
+/
+sum by (request_type) (rate(argocd_git_request_duration_seconds_count[5m]))
 ```
 
 Track these metrics before and after each optimization to measure the impact.
 
 ## Summary
 
-The most impactful optimizations ranked by effectiveness are: splitting large monorepos (biggest impact), using RAM-backed tmpfs for clone directories, enabling Git protocol v2, using branch references for shallow clones, and running multiple repo server replicas. For most teams, the combination of shallow clones, RAM-backed tmpfs, and 3+ repo server replicas brings clone times under 5 seconds even for moderately large repositories.
+The most impactful optimizations ranked by effectiveness are: splitting large monorepos (biggest impact), configuring shallow clone depth for repositories that can use it, using RAM-backed tmpfs for clone directories, verifying Git protocol v2, and running multiple repo server replicas. For most teams, the combination of shallow clones, fast local storage, and enough repo server capacity brings clone times down significantly for moderately large repositories.
