@@ -21,9 +21,7 @@ ArgoCD inspects the source directory for a `kustomization.yaml`, `kustomization.
 
 spec:
   source:
-    directory:
-      recurse: false
-    # Or explicitly set the source type (usually not needed)
+    kustomize: {}
 ```
 
 ## Basic Kustomize Project
@@ -62,8 +60,10 @@ resources:
   - service.yaml
   - configmap.yaml
 
-commonLabels:
-  app: my-app
+labels:
+  - pairs:
+      app: my-app
+    includeSelectors: true
 ```
 
 The production overlay:
@@ -82,8 +82,10 @@ patches:
 
 namespace: production
 
-commonLabels:
-  environment: production
+labels:
+  - pairs:
+      environment: production
+    includeSelectors: true
 ```
 
 ## Creating the ArgoCD Application
@@ -138,6 +140,7 @@ metadata:
   name: my-app-dev
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/k8s-configs.git
     targetRevision: develop  # Track the develop branch for dev
@@ -163,13 +166,12 @@ graph TD
 
 ## Kustomize Build Options in ArgoCD
 
-ArgoCD lets you pass flags to the `kustomize build` command through the Application spec:
+ArgoCD lets you set Kustomize parameters through the Application spec:
 
 ```yaml
 spec:
   source:
     kustomize:
-      # Pass --enable-helm flag if using Helm chart inflator
       commonAnnotations:
         managed-by: argocd
       # Override namespace (takes precedence over kustomization.yaml)
@@ -189,8 +191,8 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Add build options for all Kustomize applications
-  kustomize.buildOptions: "--enable-helm --enable-alpha-plugins"
+  # Pass --enable-helm globally if using Helm chart inflation through Kustomize
+  kustomize.buildOptions: "--enable-helm"
 ```
 
 ## Handling Secrets with Kustomize and ArgoCD
@@ -207,7 +209,7 @@ resources:
 
 ```yaml
 # base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -258,11 +260,11 @@ argocd app get my-app-production --refresh
 
 **Pointing to the base instead of an overlay**: If you set `path` to `my-app/base`, ArgoCD deploys the un-customized base. Always point to the specific overlay for your environment.
 
-**Missing namespace in overlay**: If your overlay does not set a namespace and the ArgoCD Application destination namespace differs from what the manifests expect, resources end up in the wrong namespace. Set the namespace explicitly in either the overlay's `kustomization.yaml` or the ArgoCD Application spec.
+**Missing namespace in overlay**: If your overlay does not set a namespace and the ArgoCD Application destination namespace differs from what the manifests expect, resources can end up in the wrong namespace. Set the namespace explicitly in the overlay's `kustomization.yaml` or with `spec.source.kustomize.namespace`; `spec.destination.namespace` only fills in missing namespaces on generated namespace-scoped resources.
 
 **Relative path issues**: Kustomize resolves paths relative to the `kustomization.yaml` file. ArgoCD clones the entire repo, so paths like `../../base` work correctly as long as the base directory exists in the same repo.
 
-**Generator hash suffixes**: Kustomize appends hash suffixes to ConfigMaps and Secrets created by generators. This causes ArgoCD to detect changes on every sync if the content has not actually changed. Use `generatorOptions` to disable hashing if needed:
+**Generator hash suffixes**: Kustomize appends content hash suffixes to ConfigMaps and Secrets created by generators so new resource names are generated when the content changes. If you need predictable names instead, use `generatorOptions` to disable hashing:
 
 ```yaml
 generatorOptions:
