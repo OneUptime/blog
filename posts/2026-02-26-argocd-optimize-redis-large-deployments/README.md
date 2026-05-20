@@ -35,7 +35,13 @@ metadata:
   name: argocd-redis
   namespace: argocd
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-redis
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-redis
     spec:
       containers:
       - name: redis
@@ -48,6 +54,14 @@ spec:
         # Use LRU eviction when memory limit is reached
         - --maxmemory-policy
         - "allkeys-lru"
+        # Preserve Redis auth used by current Argo CD installations
+        - --requirepass $(REDIS_PASSWORD)
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: auth
+              name: argocd-redis
         resources:
           requests:
             cpu: "500m"
@@ -63,7 +77,7 @@ Set the container memory limit 50% higher than the Redis `maxmemory` to account 
 
 ## Step 2: Disable Persistence
 
-ArgoCD uses Redis purely as a cache. Everything stored in Redis can be regenerated from the application controller and repo server. Persistence adds unnecessary I/O overhead:
+ArgoCD uses Redis purely as a cache. Everything stored in Redis can be regenerated from the application controller and repo server. The default ArgoCD Redis manifest already disables RDB snapshots and AOF persistence; keep those settings when you add memory and eviction flags:
 
 ```yaml
 args:
@@ -79,9 +93,10 @@ args:
 # Disable AOF persistence
 - --appendonly
 - "no"
+- --requirepass $(REDIS_PASSWORD)
 ```
 
-This eliminates disk I/O entirely, which improves Redis throughput and reduces latency. If Redis restarts, it starts empty and ArgoCD rebuilds the cache within a few reconciliation cycles.
+This eliminates routine persistence I/O, which improves Redis throughput and reduces latency. If Redis restarts, it starts empty and ArgoCD rebuilds the cache within a few reconciliation cycles.
 
 ## Step 3: Connection Pool Optimization
 
@@ -105,6 +120,7 @@ args:
 - ""
 - --appendonly
 - "no"
+- --requirepass $(REDIS_PASSWORD)
 # Set max clients
 - --maxclients
 - "200"
@@ -160,7 +176,7 @@ graph TD
 
 ## Step 5: Network Optimization
 
-Redis performance is heavily influenced by network latency. Ensure Redis runs on the same node or in the same availability zone as the ArgoCD controller:
+Redis performance is heavily influenced by network latency. Prefer placing Redis in the same availability zone as the ArgoCD controller:
 
 ```yaml
 spec:
@@ -180,7 +196,7 @@ spec:
               topologyKey: topology.kubernetes.io/zone
 ```
 
-This ensures Redis and the controller are co-located, reducing round-trip latency for cache operations.
+This prefers Redis and the controller in the same zone, reducing round-trip latency for cache operations.
 
 ## Step 6: Cache Expiration Tuning
 
