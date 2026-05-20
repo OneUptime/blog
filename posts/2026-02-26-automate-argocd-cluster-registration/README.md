@@ -122,7 +122,7 @@ metadata:
   namespace: ${NAMESPACE}
   labels:
     argocd.argoproj.io/secret-type: cluster
-    environment: $(echo "${CLUSTER_NAME}" | grep -oP '(dev|staging|prod)' || echo "unknown")
+    environment: $(echo "${CLUSTER_NAME}" | grep -Eo -m1 '(dev|staging|prod)' || echo "unknown")
     cluster-name: ${CLUSTER_NAME}
 type: Opaque
 stringData:
@@ -265,17 +265,16 @@ TOTAL=0
 HEALTHY=0
 UNHEALTHY=0
 
-argocd cluster list -o json | jq -r '.[] | "\(.name)\t\(.server)\t\(.connectionState.status)"' | \
-  while IFS=$'\t' read -r name server status; do
-    TOTAL=$((TOTAL + 1))
-    if [[ "${status}" == "Successful" ]]; then
-      echo "  OK:   ${name} (${server})"
-      HEALTHY=$((HEALTHY + 1))
-    else
-      echo "  FAIL: ${name} (${server}) - Status: ${status}"
-      UNHEALTHY=$((UNHEALTHY + 1))
-    fi
-  done
+while IFS=$'\t' read -r name server status; do
+  TOTAL=$((TOTAL + 1))
+  if [[ "${status}" == "Successful" ]]; then
+    echo "  OK:   ${name} (${server})"
+    HEALTHY=$((HEALTHY + 1))
+  else
+    echo "  FAIL: ${name} (${server}) - Status: ${status}"
+    UNHEALTHY=$((UNHEALTHY + 1))
+  fi
+done < <(argocd cluster list -o json | jq -r '.[] | "\(.name)\t\(.server)\t\(.connectionState.status // "Unknown")"')
 
 echo ""
 echo "Validation complete"
