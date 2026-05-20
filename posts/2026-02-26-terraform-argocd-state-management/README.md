@@ -75,8 +75,6 @@ resource "kubernetes_secret" "db_credentials" {
     namespace = "default"
     labels = {
       "managed-by" = "terraform"
-      # Tell ArgoCD to ignore this resource
-      "argocd.argoproj.io/managed-by" = "terraform"
     }
   }
 
@@ -91,7 +89,7 @@ resource "kubernetes_secret" "db_credentials" {
 }
 ```
 
-The critical part is preventing ArgoCD from managing this Secret. Add it to the ignore list:
+The critical part is preventing ArgoCD from managing this Secret. Do not include the Secret itself in the manifests managed by the ArgoCD Application. If you keep a placeholder Secret manifest in Git and only want Terraform-owned fields to stay untouched, add the field to the ignore list and enable `RespectIgnoreDifferences`:
 
 ```yaml
 # ArgoCD Application configuration
@@ -102,9 +100,12 @@ spec:
       name: app-database-credentials
       jsonPointers:
         - /data
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
-Or use resource exclusion in ArgoCD:
+Or use resource exclusion in ArgoCD if you want ArgoCD to ignore an entire resource kind. Resource exclusions are global by API group, kind, and cluster; they do not target individual objects by label:
 
 ```yaml
 # argocd-cm ConfigMap
@@ -121,8 +122,6 @@ data:
         - Secret
       clusters:
         - "*"
-      labels:
-        managed-by: terraform
 ```
 
 ### Method 2: External Secrets Operator
@@ -151,7 +150,7 @@ ArgoCD manages the ExternalSecret resource that pulls from Secrets Manager:
 
 ```yaml
 # Managed by ArgoCD
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-database-credentials
@@ -183,7 +182,7 @@ spec:
         property: password
 ```
 
-This is the cleanest separation: Terraform writes to an external secret store, and ArgoCD reads from it. Neither tool touches the other's resources.
+This is the cleanest separation: Terraform writes to an external secret store, ArgoCD manages the `ExternalSecret` manifest, and External Secrets Operator reads from the store and writes the Kubernetes Secret.
 
 ### Method 3: ConfigMap Bridge
 
@@ -203,7 +202,7 @@ resource "kubernetes_config_map" "infrastructure_outputs" {
     database_host      = aws_db_instance.app_db.address
     redis_host         = aws_elasticache_cluster.redis.cache_nodes[0].address
     s3_bucket_name     = aws_s3_bucket.app_assets.id
-    s3_bucket_region   = aws_s3_bucket.app_assets.region
+    s3_bucket_region   = aws_s3_bucket.app_assets.bucket_region
     cdn_domain         = aws_cloudfront_distribution.cdn.domain_name
     vpc_id             = module.vpc.vpc_id
   }
@@ -296,7 +295,7 @@ terraform {
     bucket         = "terraform-state-prod"
     key            = "infrastructure/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-lock"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -313,11 +312,11 @@ graph LR
     A[Terraform PR Approved] --> B[Terraform Apply]
     B --> C[Resource Updated]
     C --> D[Secret/ConfigMap Updated]
-    D --> E[ArgoCD Detects Change]
-    E --> F[Apps Sync with New Config]
+    D --> E[Reload or rollout triggered]
+    E --> F[Apps use new config]
 ```
 
-If you are using External Secrets Operator, this happens automatically. The secret store value changes, ESO refreshes the Secret, and ArgoCD syncs the updated configuration.
+If you are using External Secrets Operator, the secret store value changes and ESO refreshes the Kubernetes Secret. Workloads that mount the Secret or ConfigMap as files can see updates eventually if the application reloads those files. Workloads that consume values through environment variables need a Pod restart or rollout, because Kubernetes does not update environment variables in running containers.
 
 For more on bootstrapping ArgoCD with Terraform, see our guide on [bootstrapping ArgoCD with Terraform](https://oneuptime.com/blog/post/2026-02-26-bootstrap-argocd-terraform/view). For the Terraform provider specifically, see [using the Terraform ArgoCD provider](https://oneuptime.com/blog/post/2026-02-26-terraform-argocd-provider/view).
 
@@ -327,7 +326,7 @@ For more on bootstrapping ArgoCD with Terraform, see our guide on [bootstrapping
 2. **Use External Secrets Operator** - It is the cleanest bridge between Terraform outputs and ArgoCD-managed applications.
 3. **Label everything** - Mark resources with `managed-by` labels.
 4. **Never store Terraform state in Git** - Use a secure remote backend.
-5. **Prefer ArgoCD exclusions over ignore** - Exclude Terraform-managed resources entirely from ArgoCD's scope.
+5. **Use ArgoCD exclusions carefully** - Exclusions remove entire resource kinds from ArgoCD's scope, so use `ignoreDifferences` plus `RespectIgnoreDifferences` when you only need field-level separation.
 6. **Coordinate upgrades** - When Terraform changes affect ArgoCD applications, ensure the update flow is automated.
 7. **Keep the boundary at the cluster level** - Terraform provisions the cluster. ArgoCD manages what runs in it.
 8. **Monitor for ownership conflicts** - Use OneUptime to alert when resources show signs of reconciliation loops between Terraform and ArgoCD.
