@@ -18,9 +18,9 @@ ArgoCD supports light and dark themes out of the box. Users can toggle between t
 
 ### Setting the Default Theme
 
-Unfortunately, there is no server-side ConfigMap setting to force a specific theme for all users. The theme preference is stored in the browser's local storage. However, you can influence the default through custom CSS or by modifying the ArgoCD server configuration.
+Unfortunately, there is no server-side ConfigMap setting to force a specific theme for all users. The theme preference is stored in the browser's local storage. However, you can influence the visual appearance with custom CSS.
 
-One approach is to set the initial theme preference using a custom CSS injection that overrides the default styling:
+One approach is to load custom CSS that overrides the default styling:
 
 ```yaml
 apiVersion: v1
@@ -35,38 +35,36 @@ data:
 
 We will cover the CSS approach in detail in the next sections.
 
-## Customizing Colors with CSS Variables
+## Customizing Colors with CSS Overrides
 
-ArgoCD uses CSS custom properties (variables) for its theming system. You can override these to change the entire color scheme.
+ArgoCD uses compiled styles from the Argo UI components and adds theme wrapper classes such as `.theme-light` and `.theme-dark`. Custom CSS is applied as an overlay, so target the rendered classes you want to change and test the selectors with your browser's developer tools.
 
 First, create a CSS file and host it somewhere accessible:
 
 ```css
 /* argocd-custom-theme.css */
 
-/* Override the primary brand color */
-:root {
-  --argo-color-teal-5: #1a73e8;  /* Primary brand color */
-  --argo-color-teal-6: #1565c0;  /* Darker variant */
-  --argo-color-teal-7: #0d47a1;  /* Even darker variant */
-}
-
-/* Override the header/toolbar color */
-.nav-bar {
+/* Override the sidebar color */
+.sidebar {
   background-color: #1a237e !important;
 }
 
 /* Custom color for the logo area */
-.nav-bar__logo {
+.sidebar__logo {
   background-color: #0d47a1 !important;
 }
 
+/* Custom color for active navigation icons */
+.sidebar__nav-item--active i {
+  color: #1a73e8 !important;
+}
+
 /* Change the sync status colors if needed */
-.application-status-panel__item--synced {
+i[qe-id="utils-sync-status-title"][title^="Synced"] {
   color: #2e7d32 !important;
 }
 
-.application-status-panel__item--out-of-sync {
+i[qe-id="utils-sync-status-title"][title^="OutOfSync"] {
   color: #f57f17 !important;
 }
 ```
@@ -85,10 +83,7 @@ metadata:
   namespace: argocd
 data:
   custom.css: |
-    :root {
-      --argo-color-teal-5: #1a73e8;
-    }
-    .nav-bar {
+    .sidebar {
       background-color: #1a237e !important;
     }
 ```
@@ -105,6 +100,8 @@ data:
   ui.cssurl: "./custom/custom.css"
 ```
 
+The CSS file must be mounted under a subdirectory of `/shared/app` in the `argocd-server` container, for example `/shared/app/custom/custom.css`, because `ui.cssurl` is resolved relative to `/shared/app`.
+
 **Option 2: Host on a CDN or static file server**
 
 ```yaml
@@ -117,9 +114,9 @@ data:
   ui.cssurl: "https://static.example.com/argocd/custom-theme.css"
 ```
 
-**Option 3: Use a data URI for small CSS changes**
+**Option 3: Use a small mounted CSS file**
 
-For minor tweaks, you can embed CSS directly:
+ArgoCD documents remote URLs and files mounted into the `argocd-server` container. For minor tweaks, keep the CSS small but still serve it using one of those supported methods:
 
 ```yaml
 apiVersion: v1
@@ -128,7 +125,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  ui.cssurl: "data:text/css,.nav-bar{background-color:%231a237e!important}"
+  ui.cssurl: "./custom/small-theme.css"
 ```
 
 ## Environment-Specific Themes
@@ -137,11 +134,11 @@ One of the most practical uses of custom themes is color-coding different enviro
 
 ```css
 /* production-theme.css - Red tinted to signal danger */
-.nav-bar {
+.sidebar {
   background-color: #b71c1c !important;
 }
 
-.nav-bar::after {
+.sidebar::after {
   content: "PRODUCTION";
   position: absolute;
   top: 50%;
@@ -157,14 +154,14 @@ One of the most practical uses of custom themes is color-coding different enviro
 
 ```css
 /* staging-theme.css - Yellow/amber tinted */
-.nav-bar {
+.sidebar {
   background-color: #f57f17 !important;
 }
 ```
 
 ```css
 /* development-theme.css - Green tinted */
-.nav-bar {
+.sidebar {
   background-color: #2e7d32 !important;
 }
 ```
@@ -177,23 +174,21 @@ If your team uses the dark theme, you can customize its colors specifically:
 
 ```css
 /* Custom dark theme overrides */
-body.theme-dark {
-  --argo-color-gray-1: #1a1a2e;    /* Background */
-  --argo-color-gray-2: #16213e;    /* Card background */
-  --argo-color-gray-3: #0f3460;    /* Borders */
-  --argo-color-gray-4: #e4e4e4;    /* Text */
+.theme-dark .cd-layout {
+  background-color: #1a1a2e !important;
 }
 
 /* Dark theme navigation */
-body.theme-dark .nav-bar {
+.theme-dark .sidebar {
   background-color: #0a1628 !important;
   border-right-color: #1a3050 !important;
 }
 
 /* Dark theme cards */
-body.theme-dark .white-box {
+.theme-dark .white-box {
   background-color: #162032 !important;
   border-color: #1a3050 !important;
+  color: #e4e4e4 !important;
 }
 ```
 
@@ -203,37 +198,47 @@ The resource tree is the most visual part of ArgoCD. You can customize the healt
 
 ```css
 /* Custom health status colors */
-.health-status-icon--healthy {
+i[qe-id="utils-health-status-title"][title^="Healthy"] {
   color: #00c853 !important;
 }
 
-.health-status-icon--degraded {
+i[qe-id="utils-health-status-title"][title^="Degraded"] {
   color: #ff1744 !important;
 }
 
-.health-status-icon--progressing {
+i[qe-id="utils-health-status-title"][title^="Progressing"],
+svg[qe-id="utils-health-status-title"] {
   color: #2979ff !important;
 }
 
-.health-status-icon--suspended {
+svg[qe-id="utils-health-status-title"] path {
+  fill: #2979ff !important;
+}
+
+i[qe-id="utils-health-status-title"][title^="Suspended"] {
   color: #9e9e9e !important;
 }
 
-.health-status-icon--missing {
+i[qe-id="utils-health-status-title"][title^="Missing"] {
   color: #ff9100 !important;
 }
 
 /* Custom sync status colors */
-.sync-status-icon--synced {
+i[qe-id="utils-sync-status-title"][title^="Synced"] {
   color: #00c853 !important;
 }
 
-.sync-status-icon--out-of-sync {
+i[qe-id="utils-sync-status-title"][title^="OutOfSync"] {
   color: #ffab00 !important;
 }
 
-.sync-status-icon--unknown {
+i[qe-id="utils-sync-status-title"][title^="Unknown"],
+svg[qe-id="utils-sync-status-title"] {
   color: #9e9e9e !important;
+}
+
+svg[qe-id="utils-sync-status-title"] path {
+  fill: #9e9e9e !important;
 }
 ```
 
@@ -273,9 +278,6 @@ If you deploy ArgoCD with Helm, configure the theme through values:
 # values.yaml
 
 server:
-  config:
-    ui.cssurl: "https://static.example.com/argocd/theme.css"
-
   # Mount custom CSS from a ConfigMap
   volumes:
     - name: custom-css
@@ -284,6 +286,10 @@ server:
   volumeMounts:
     - name: custom-css
       mountPath: /shared/app/custom
+
+configs:
+  cm:
+    ui.cssurl: "./custom/theme.css"
 ```
 
 ## Verifying Theme Changes
@@ -319,4 +325,4 @@ Access-Control-Allow-Origin: https://argocd.example.com
 
 ## Conclusion
 
-Customizing the ArgoCD UI theme is a straightforward way to improve the user experience and add visual safety cues to your deployment dashboard. Environment-specific color coding alone can prevent accidental production deployments. Start with the navbar color as the highest-impact, lowest-effort change, then expand to full branding if needed. For more CSS customization options, check our guide on [adding custom CSS to ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-css/view).
+Customizing the ArgoCD UI theme is a straightforward way to improve the user experience and add visual safety cues to your deployment dashboard. Environment-specific color coding alone can prevent accidental production deployments. Start with the sidebar color as the highest-impact, lowest-effort change, then expand to full branding if needed. For more CSS customization options, check our guide on [adding custom CSS to ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-css/view).
