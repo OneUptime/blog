@@ -30,7 +30,7 @@ flowchart TD
     end
 ```
 
-The key difference is that SOCKS5 proxies can handle SSH connections natively, while HTTP proxies only support HTTPS through the CONNECT method. If your team uses SSH keys for Git authentication, SOCKS5 is often the better choice.
+The key difference is that SOCKS5 proxies can handle SSH connections natively, while HTTP proxies are typically used for Git HTTP(S) remotes and CONNECT tunnels. If your team uses SSH keys for Git authentication, SOCKS5 is often the better choice.
 
 ## Configuring SOCKS5 for HTTPS Git Operations
 
@@ -56,7 +56,7 @@ spec:
           value: "kubernetes.default.svc,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,.corp.example.com"
 ```
 
-Alternatively, configure it via the Git configuration file for more control:
+Alternatively, configure it via the Git system configuration file for more control:
 
 ```yaml
 apiVersion: v1
@@ -73,7 +73,7 @@ data:
       proxy = ""
 ```
 
-Mount the gitconfig into the repo server:
+Mount the gitconfig into the repo server as the system Git config. ArgoCD runs Git with `HOME` set to `/dev/null`, so mounting a global config at `/home/argocd/.gitconfig` will not be used by repo-server Git operations:
 
 ```yaml
 apiVersion: apps/v1
@@ -88,7 +88,7 @@ spec:
       - name: argocd-repo-server
         volumeMounts:
         - name: gitconfig
-          mountPath: /home/argocd/.gitconfig
+          mountPath: /etc/gitconfig
           subPath: gitconfig
       volumes:
       - name: gitconfig
@@ -98,60 +98,36 @@ spec:
 
 ## Configuring SOCKS5 for SSH Git Operations
 
-SSH Git operations require a different configuration path. Git uses the SSH client's proxy settings rather than the http.proxy configuration. You configure this through the SSH configuration file:
+SSH Git operations require a different configuration path. Git's `http.proxy` configuration only applies to HTTP(S) remotes. For ArgoCD-managed SSH repositories, configure the proxy on the repository Secret:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-ssh-config
+  name: github-ssh-repo
   namespace: argocd
-data:
-  ssh_config: |
-    Host github.com
-      HostName github.com
-      User git
-      ProxyCommand /usr/bin/nc -X 5 -x socks-proxy.corp.example.com:1080 %h %p
-      IdentityFile /home/argocd/.ssh/id_rsa
-      StrictHostKeyChecking no
-
-    Host gitlab.com
-      HostName gitlab.com
-      User git
-      ProxyCommand /usr/bin/nc -X 5 -x socks-proxy.corp.example.com:1080 %h %p
-      IdentityFile /home/argocd/.ssh/id_rsa
-      StrictHostKeyChecking no
-
-    # Internal Git server - no proxy needed
-    Host git.internal.corp.com
-      HostName git.internal.corp.com
-      User git
-      IdentityFile /home/argocd/.ssh/id_rsa
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: ssh://git@github.com/argoproj/argocd-example-apps
+  proxy: socks5://socks-proxy.corp.example.com:1080
+  noProxy: "git.internal.corp.com"
+  sshPrivateKey: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
 ```
 
-The `ProxyCommand` uses netcat (`nc`) with the `-X 5` flag to specify SOCKS5 protocol and `-x` to specify the proxy address. This routes the SSH connection through the SOCKS5 proxy.
+The `proxy` field supports SOCKS5 proxy URLs for SSH repositories. Use `noProxy` for hosts that ArgoCD should reach directly.
 
-Mount this SSH config into the repo server:
+You can also configure the same setting with the ArgoCD CLI:
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: argocd-repo-server
-  namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-      - name: argocd-repo-server
-        volumeMounts:
-        - name: ssh-config
-          mountPath: /home/argocd/.ssh/config
-          subPath: ssh_config
-      volumes:
-      - name: ssh-config
-        configMap:
-          name: argocd-ssh-config
+```bash
+argocd repo add ssh://git@github.com/argoproj/argocd-example-apps \
+  --ssh-private-key-path ~/id_rsa \
+  --proxy socks5://socks-proxy.corp.example.com:1080
 ```
 
 ## SOCKS5 with Authentication
@@ -166,15 +142,17 @@ env:
     value: "socks5://username:password@socks-proxy.corp.example.com:1080"
 ```
 
-For SSH operations, use the connect-proxy utility or ncat which supports SOCKS5 authentication:
+For SSH operations, include the credentials in the ArgoCD repository proxy URL:
 
 ```yaml
-data:
-  ssh_config: |
-    Host github.com
-      HostName github.com
-      User git
-      ProxyCommand /usr/bin/ncat --proxy-type socks5 --proxy socks-proxy.corp.example.com:1080 --proxy-auth username:password %h %p
+stringData:
+  type: git
+  url: ssh://git@github.com/argoproj/argocd-example-apps
+  proxy: socks5://username:password@socks-proxy.corp.example.com:1080
+  sshPrivateKey: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
 ```
 
 For better security, store the credentials in a Kubernetes Secret:
@@ -232,11 +210,12 @@ spec:
 
       # Sidecar that creates a SOCKS5 proxy via SSH tunnel
       - name: ssh-tunnel
-        image: alpine/ssh
+        image: alpine:3.20
         command:
         - sh
         - -c
         - |
+          apk add --no-cache openssh-client
           ssh -N -D 0.0.0.0:1080 \
             -o StrictHostKeyChecking=no \
             -o ServerAliveInterval=60 \
@@ -275,7 +254,7 @@ env:
     value: "socks5h://socks-proxy.corp.example.com:1080"
 ```
 
-In the Git configuration:
+In the Git system configuration:
 
 ```ini
 [http]
@@ -295,9 +274,11 @@ kubectl exec -n argocd deployment/argocd-repo-server -- env | grep -i proxy
 kubectl exec -n argocd deployment/argocd-repo-server -- \
   git ls-remote https://github.com/argoproj/argocd-example-apps.git
 
-# Test SSH Git connectivity through the proxy
-kubectl exec -n argocd deployment/argocd-repo-server -- \
-  git ls-remote git@github.com:argoproj/argocd-example-apps.git
+# Test SSH repository connectivity through ArgoCD's repository proxy setting
+argocd repo add ssh://git@github.com/argoproj/argocd-example-apps \
+  --ssh-private-key-path ~/id_rsa \
+  --proxy socks5://socks-proxy.corp.example.com:1080 \
+  --upsert
 
 # Check for proxy-related errors in logs
 kubectl logs -n argocd deployment/argocd-repo-server --tail=100 | grep -i "socks\|proxy\|connect"
