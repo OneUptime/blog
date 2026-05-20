@@ -47,7 +47,7 @@ sudo ufw delete allow 22/tcp
 sudo ufw status
 ```
 
-**Important**: Do this from a console/out-of-band connection, not an existing SSH session. Blocking port 22 will immediately terminate your SSH session.
+**Important**: Do this from a console/out-of-band connection, not an existing SSH session. Blocking port 22 can lock you out of new SSH sessions if the knockd setup is not working yet.
 
 ## Configuring knockd
 
@@ -190,12 +190,10 @@ On the client:
 
 ```bash
 # Send a mix of UDP and TCP knocks
-knock -v -u server.example.com 7000  # UDP knock
-knock -v server.example.com 8000     # TCP knock
-knock -v -u server.example.com 9000  # UDP knock
+knock -v server.example.com 7000:udp 8000:tcp 9000:udp
 ```
 
-## One-Time Sequences with nftables
+## Auto-Closing Rules with nftables
 
 For more advanced setups using nftables instead of UFW:
 
@@ -207,7 +205,7 @@ For more advanced setups using nftables instead of UFW:
 [openSSH]
     sequence = 7000,8000,9000
     seq_timeout = 10
-    # Use nftables commands
+    # Use nftables commands; this assumes the inet filter table and input chain already exist
     start_command = nft add rule inet filter input ip saddr %IP% tcp dport 22 accept
     stop_command  = nft delete rule inet filter input handle $(nft -a list chain inet filter input | grep "%IP%" | grep -o 'handle [0-9]*' | awk '{print $2}')
     cmd_timeout   = 60
@@ -235,7 +233,8 @@ If your client IP changes frequently, the firewall rules from previous sessions 
 [openSSH]
     sequence = 7000,8000,9000
     seq_timeout = 10
-    command = ufw allow from %IP% to any port 22
+    start_command = ufw allow from %IP% to any port 22
+    stop_command = ufw delete allow from %IP% to any port 22
     cmd_timeout = 30
 
 [closeSSH]
@@ -251,7 +250,7 @@ Add a cron job to clean up old allow rules daily:
 #!/bin/bash
 # Remove all temporary SSH knock allow rules (be careful with this)
 # This assumes your permanent SSH rules look different from the knock rules
-ufw status numbered | grep "ALLOW IN.*22" | grep -v "Anywhere" | awk '{print $2}' | sort -rn | while read num; do
+ufw status numbered | sed -n '/ALLOW IN/ { /Anywhere/! s/^\[[[:space:]]*\([0-9][0-9]*\)\].*22.*/\1/p }' | sort -rn | while read num; do
     ufw --force delete "$num"
 done
 ```
