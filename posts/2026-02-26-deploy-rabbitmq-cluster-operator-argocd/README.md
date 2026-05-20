@@ -8,20 +8,21 @@ Description: Learn how to deploy the RabbitMQ Cluster Operator using ArgoCD for 
 
 ---
 
-RabbitMQ remains one of the most popular message brokers, and the RabbitMQ Cluster Operator makes running it on Kubernetes straightforward. It handles cluster formation, peer discovery, rolling upgrades, and quorum queue management. By deploying it through ArgoCD, you bring the same GitOps discipline to your messaging infrastructure that you already have for your applications.
+RabbitMQ remains one of the most popular message brokers, and the RabbitMQ Cluster Operator makes running it on Kubernetes straightforward. It handles cluster formation, peer discovery, and rolling upgrades. The Messaging Topology Operator manages queues, exchanges, bindings, users, permissions, and policies. By deploying them through ArgoCD, you bring the same GitOps discipline to your messaging infrastructure that you already have for your applications.
 
 This guide covers the complete setup: installing the operator, provisioning RabbitMQ clusters, configuring policies, and managing the entire lifecycle through Git.
 
 ## Prerequisites
 
-- Kubernetes cluster (1.24+)
+- Kubernetes cluster (1.25+ recommended)
 - ArgoCD installed and configured
 - A Git repository for manifests
 - Storage class with dynamic provisioning
+- cert-manager installed for the Messaging Topology Operator webhook certificates
 
-## Step 1: Deploy the RabbitMQ Cluster Operator
+## Step 1: Deploy the RabbitMQ Operators
 
-The operator is available through its own GitHub releases or through the VMware Tanzu Helm repository. Here we use the raw manifests approach with Kustomize.
+The operators are available through their GitHub release manifests. Here we use the raw manifests approach with Kustomize.
 
 ```yaml
 # argocd/rabbitmq-operator.yaml
@@ -29,7 +30,7 @@ The operator is available through its own GitHub releases or through the VMware 
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: rabbitmq-cluster-operator
+  name: rabbitmq-operators
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
@@ -59,6 +60,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - https://github.com/rabbitmq/cluster-operator/releases/download/v2.10.0/cluster-operator.yml
+  - https://github.com/rabbitmq/messaging-topology-operator/releases/latest/download/messaging-topology-operator-with-certmanager.yaml
 ```
 
 ## Step 2: Define a RabbitMQ Cluster
@@ -183,17 +185,15 @@ RabbitMQ policies control queue behavior. Define them alongside your cluster.
 apiVersion: rabbitmq.com/v1beta1
 kind: Policy
 metadata:
-  name: ha-policy
+  name: quorum-leader-policy
   namespace: messaging
 spec:
-  name: ha-policy
+  name: quorum-leader-policy
   vhost: /
   pattern: ".*"
-  applyTo: queues
+  applyTo: quorum_queues
   definition:
-    ha-mode: exactly
-    ha-params: 2
-    ha-sync-mode: automatic
+    queue-leader-locator: balanced
   rabbitmqClusterReference:
     name: production-rabbitmq
 ---
@@ -347,9 +347,9 @@ graph TD
 RabbitMQ exposes Prometheus metrics on port 15692. Create a ServiceMonitor or PodMonitor to scrape them. Pair this with [OneUptime](https://oneuptime.com) for alerting on queue depth, consumer lag, and cluster health.
 
 ```yaml
-# messaging/rabbitmq/pod-monitor.yaml
+# messaging/rabbitmq/service-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: PodMonitor
+kind: ServiceMonitor
 metadata:
   name: rabbitmq-monitor
   namespace: messaging
@@ -357,7 +357,8 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: production-rabbitmq
-  podMetricsEndpoints:
+      app.kubernetes.io/component: rabbitmq
+  endpoints:
     - port: prometheus
       interval: 15s
 ```
