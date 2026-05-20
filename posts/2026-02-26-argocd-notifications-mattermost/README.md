@@ -182,12 +182,12 @@ Override the default channel per notification:
 
 ```yaml
   trigger.on-deployed-mattermost: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [mattermost-deploy-card]
 
   trigger.on-sync-failed-mattermost: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [mattermost-sync-failed]
 
   trigger.on-health-degraded-mattermost: |
@@ -213,7 +213,7 @@ Default subscriptions for all applications:
 ```yaml
   subscriptions: |
     - recipients:
-        - mattermost:
+        - mattermost
       triggers:
         - on-deployed-mattermost
         - on-sync-failed-mattermost
@@ -241,7 +241,7 @@ Mattermost supports @mentions in webhook messages:
           }
 ```
 
-Note: For @mentions to work in webhook messages, the Mattermost system administrator must enable the "Enable integrations to override usernames" and "Enable integrations to override profile picture icons" settings.
+Note: To override the `username` and `icon_url` fields in webhook messages, the Mattermost system administrator must enable the "Enable integrations to override usernames" and "Enable integrations to override profile picture icons" settings.
 
 ## Using Mattermost Bot Account Instead
 
