@@ -29,7 +29,7 @@ graph TD
     C -->|Failure| D
 ```
 
-SyncFail hooks run as Kubernetes Jobs, just like PreSync and PostSync hooks. They have the same lifecycle - they are created, run to completion, and are cleaned up based on the delete policy.
+SyncFail hooks are often implemented as Kubernetes Jobs, just like PreSync and PostSync hook examples. Argo CD hooks can be any Kubernetes resource kind, but Jobs are a common choice for one-off cleanup and alerting. Job hooks are created, run to completion, and are cleaned up based on the delete policy.
 
 ## Basic SyncFail Alert Hook
 
@@ -178,7 +178,7 @@ spec:
               kubectl delete job -n my-app -l cleanup-on-fail=true --ignore-not-found
 
               # Scale down any partially deployed canary
-              kubectl scale deployment canary-web --replicas=0 -n my-app --ignore-not-found || true
+              kubectl scale deployment canary-web --replicas=0 -n my-app || true
 
               echo "Cleanup complete"
       restartPolicy: Never
@@ -202,13 +202,13 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["delete", "list"]
+    verbs: ["delete", "deletecollection", "list"]
   - apiGroups: ["batch"]
     resources: ["jobs"]
-    verbs: ["delete", "list"]
+    verbs: ["delete", "deletecollection", "list"]
   - apiGroups: ["apps"]
     resources: ["deployments/scale"]
-    verbs: ["update"]
+    verbs: ["get", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -281,6 +281,8 @@ spec:
 ```
 
 The logs from this Job can be retrieved for post-mortem analysis:
+
+Make sure `debug-sa` has permission to list Pods and Events and to read Pod logs in the target namespace.
 
 ```bash
 # After a sync failure, check the debug Job logs
