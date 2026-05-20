@@ -24,13 +24,12 @@ sequenceDiagram
 
     User->>Browser: Open terminal tab
     Browser->>ArgoCD Server: WebSocket upgrade request
-    ArgoCD Server->>K8s API: SPDY exec request
+    ArgoCD Server->>K8s API: Kubernetes exec streaming request
     K8s API->>Pod: Attach to container
     Note over Browser,Pod: Active session
     Note over Browser: User stops typing
-    Note over ArgoCD Server: Idle timer starts
-    Note over ArgoCD Server: Idle timeout reached
-    ArgoCD Server->>Browser: Close WebSocket
+    Note over Browser,Pod: Connection remains open until closed by user, shell, proxy, or network timeout
+    Browser->>ArgoCD Server: Close WebSocket
     ArgoCD Server->>K8s API: Close exec session
 ```
 
@@ -48,8 +47,8 @@ metadata:
   namespace: argocd
 data:
   # Server-side request timeout (applies to all API requests)
-  # Default: 60 (seconds)
-  server.request.timeout: "300"
+  # Default: 0 (no timeout)
+  server.request.timeout: "300s"
 ```
 
 For Helm-based installations:
@@ -60,10 +59,10 @@ For Helm-based installations:
 server:
   extraArgs:
     - --request-timeout
-    - "300"
+    - "300s"
 ```
 
-The `server.request.timeout` controls how long the server will keep a request open. For terminal sessions, this is less relevant because they use WebSocket connections, but it still affects the initial handshake.
+The `server.request.timeout` controls how long the server waits before giving up on a single server request. Non-zero values should include a time unit, such as `300s`. For terminal sessions, this is less relevant because they use WebSocket connections, but it can still affect ordinary API requests around the terminal workflow.
 
 ## WebSocket Connection Timeouts
 
@@ -86,11 +85,8 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     # Connection timeout
     nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
-    # WebSocket support
+    # HTTP/1.1 is the default in ingress-nginx, but is shown here explicitly
     nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      proxy_set_header Upgrade $http_upgrade;
-      proxy_set_header Connection "upgrade";
 spec:
   rules:
     - host: argocd.example.com
@@ -105,11 +101,23 @@ spec:
                   number: 443
 ```
 
-The `proxy-read-timeout` and `proxy-send-timeout` values determine how long the Nginx proxy will wait before closing an idle WebSocket connection. Setting them to 3600 means one hour of idle time before disconnection.
+The `proxy-read-timeout` and `proxy-send-timeout` values are measured between successive read or write operations. For a mostly idle WebSocket connection, these values determine how long Nginx can wait without traffic before closing the proxied connection. Setting them to 3600 allows up to one hour between read or write operations.
 
 ### Traefik Ingress
 
-For Traefik, configure equivalent settings:
+For Traefik, timeout settings such as `idleTimeout` are configured on entryPoints in Traefik's static configuration, not on an individual `IngressRoute` middleware:
+
+```yaml
+# traefik static configuration
+entryPoints:
+  websecure:
+    address: ":443"
+    transport:
+      respondingTimeouts:
+        idleTimeout: 3600s
+```
+
+The `IngressRoute` can then route ArgoCD normally:
 
 ```yaml
 apiVersion: traefik.io/v1alpha1
@@ -126,22 +134,6 @@ spec:
       services:
         - name: argocd-server
           port: 443
-      middlewares:
-        - name: argocd-timeout
----
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: argocd-timeout
-  namespace: argocd
-spec:
-  buffering:
-    # Allow large responses for terminal output
-    maxResponseBodyBytes: 0
-  headers:
-    customRequestHeaders:
-      Connection: "upgrade"
-      Upgrade: "websocket"
 ```
 
 ### AWS ALB Ingress
@@ -158,42 +150,35 @@ metadata:
     alb.ingress.kubernetes.io/scheme: internal
     # ALB idle timeout - max 4000 seconds
     alb.ingress.kubernetes.io/load-balancer-attributes: idle_timeout.timeout_seconds=3600
-    # Enable WebSocket stickiness
-    alb.ingress.kubernetes.io/target-group-attributes: stickiness.enabled=true,stickiness.lb_cookie.duration_seconds=3600
 ```
 
-AWS ALB has a maximum idle timeout of 4000 seconds. Set this to a reasonable value based on your debugging sessions.
+AWS ALB has a maximum idle timeout of 4000 seconds. Set this to a reasonable value based on your debugging sessions. You do not need cookie-based stickiness for the upgraded WebSocket connection itself because ALB keeps an accepted WebSocket connection on the selected target.
 
-## Kubernetes API Server Exec Timeout
+## Kubernetes Streaming Timeout
 
-The Kubernetes API server itself has timeout settings for exec operations:
+Kubernetes has historically exposed a kubelet streaming timeout for exec, attach, and port-forward operations:
 
 ```yaml
-# kube-apiserver configuration
-# This is usually set in the API server manifest
-# /etc/kubernetes/manifests/kube-apiserver.yaml
-spec:
-  containers:
-    - command:
-        - kube-apiserver
-        # Streaming connection idle timeout
-        # Default: 4h (14400s)
-        - --streaming-connection-idle-timeout=1h
+# kubelet configuration
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+# Streaming connection idle timeout
+# Default: 4h
+streamingConnectionIdleTimeout: 1h
 ```
 
-The `--streaming-connection-idle-timeout` setting controls how long the Kubernetes API server will keep an idle exec/attach/port-forward session open. The default is 4 hours, but you might want to reduce it for security:
+The `streamingConnectionIdleTimeout` field is documented as the maximum time a streaming connection can be idle before it is automatically closed, but current Kubernetes documentation marks it as deprecated and no longer effective. Do not rely on it as your primary timeout control on current clusters.
 
 ```bash
-# Check current setting on your cluster
-kubectl get pods -n kube-system -l component=kube-apiserver \
-  -o jsonpath='{.items[0].spec.containers[0].command}' | tr ',' '\n' | grep streaming
+# Check kubelet configuration on a node if your cluster exposes it
+kubectl get --raw /api/v1/nodes/<node-name>/proxy/configz | grep streamingConnectionIdleTimeout
 ```
 
-Setting this to `0` disables the timeout entirely, which is not recommended for production.
+If you manage kubelet configuration directly on an older cluster where this field still has effect, setting it to `0` disables the timeout entirely, which is not recommended for production.
 
 ## Configuring a Custom Idle Timeout Strategy
 
-Since ArgoCD does not have a built-in "terminal idle timeout" setting, you can implement one by combining ingress-level and Kubernetes-level timeouts:
+Since ArgoCD does not have a built-in "terminal idle timeout" setting, you can implement one primarily at the ingress or load-balancer layer:
 
 ```yaml
 # Recommended timeout configuration for production
@@ -208,14 +193,14 @@ metadata:
 ```
 
 ```yaml
-# 2. Kubernetes API server: 1 hour streaming timeout
-# In kube-apiserver manifest
-- --streaming-connection-idle-timeout=1h
+# 2. For older clusters only: kubelet streaming timeout as a backup
+# In kubelet configuration
+streamingConnectionIdleTimeout: 1h
 ```
 
 This creates a two-tier timeout:
 - After 30 minutes of inactivity, the ingress closes the WebSocket
-- After 1 hour of inactivity, the Kubernetes API server closes the exec session (backup)
+- On older clusters where the kubelet field is still effective, the kubelet can close an idle streaming connection as a backup
 
 ## Shell-Level Timeouts
 
@@ -258,21 +243,21 @@ Here is a summary of all timeout layers and their recommended values:
 flowchart LR
     A[Browser] -->|WebSocket| B[Ingress/LB]
     B -->|Proxy| C[ArgoCD Server]
-    C -->|SPDY| D[K8s API Server]
+    C -->|Exec stream| D[K8s API Server]
     D -->|Exec| E[Container Shell]
 
     A -.->|No built-in timeout| A
     B -.->|proxy-read-timeout: 1800s| B
     C -.->|request-timeout: 300s| C
-    D -.->|streaming-idle: 3600s| D
+    D -.->|kubelet streaming timeout: deprecated| D
     E -.->|TMOUT: 900s| E
 ```
 
 | Layer | Setting | Recommended Value | Purpose |
 |-------|---------|-------------------|---------|
 | Ingress | proxy-read-timeout | 1800s (30 min) | Kill idle WebSocket connections |
-| ArgoCD | request-timeout | 300s | Initial connection timeout |
-| K8s API | streaming-connection-idle-timeout | 3600s (1 hour) | Backup idle timeout |
+| ArgoCD | request-timeout | 300s | General server request timeout |
+| Kubernetes/Kubelet | streamingConnectionIdleTimeout | Do not rely on current clusters | Deprecated streaming timeout |
 | Shell | TMOUT | 900s (15 min) | User-facing auto-logout |
 
 ## Handling Timeout Errors
@@ -281,9 +266,9 @@ When a session times out, the browser will show a disconnection message. Common 
 
 **"WebSocket connection closed"**: The ingress or load balancer closed the connection. Increase `proxy-read-timeout` if sessions are timing out during active use.
 
-**"command terminated with exit code 137"**: The exec session was killed by the Kubernetes API server. Check `--streaming-connection-idle-timeout`.
+**"command terminated with exit code 137"**: The process inside the container was killed with SIGKILL, commonly because of an out-of-memory kill or another forced termination. This is not a reliable indicator of a terminal idle timeout.
 
-**"connection reset by peer"**: A network device between the client and server (firewall, NAT gateway) timed out the idle TCP connection. Configure TCP keepalive:
+**"connection reset by peer"**: A network device between the client and server (firewall, NAT gateway) closed the TCP connection. First verify that the terminal feature is enabled:
 
 ```yaml
 # In argocd-cm ConfigMap
@@ -300,9 +285,10 @@ For network-level keepalives, configure your ingress:
 
 ```yaml
 annotations:
-  nginx.ingress.kubernetes.io/upstream-keepalive-timeout: "900"
+  nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
+  nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
 ```
 
 ## Conclusion
 
-Terminal timeout configuration in ArgoCD spans multiple layers, from the ingress controller through the ArgoCD server, the Kubernetes API server, and down to the shell itself. A well-configured timeout strategy balances usability (sessions should not drop during active debugging) with security (abandoned sessions should be cleaned up promptly). Start with the recommended values in this guide and adjust based on your team's actual debugging session patterns.
+Terminal timeout configuration in ArgoCD spans multiple layers, from the ingress controller or load balancer through the ArgoCD server and down to the shell itself. A well-configured timeout strategy balances usability (sessions should not drop during active debugging) with security (abandoned sessions should be cleaned up promptly). Start with the recommended values in this guide and adjust based on your team's actual debugging session patterns.
