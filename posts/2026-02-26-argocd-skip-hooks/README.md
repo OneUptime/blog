@@ -10,17 +10,17 @@ Description: Learn how to use the Skip hook annotation in ArgoCD to exclude spec
 
 Sometimes you have resources in your Git repository that you do not want ArgoCD to sync to the cluster. Maybe it is a resource that is managed by another tool, a template that should only be applied manually, or a configuration that is environment-specific and should not be deployed everywhere.
 
-The `Skip` hook in ArgoCD does exactly this. When you annotate a resource with `argocd.argoproj.io/hook: Skip`, ArgoCD completely ignores it during sync operations. The resource stays in your Git repository for documentation or reference, but ArgoCD will not apply it, delete it, or track its status.
+The `Skip` hook in ArgoCD does exactly this. When you annotate a resource with `argocd.argoproj.io/hook: Skip`, ArgoCD skips applying it during sync operations. The resource stays in your Git repository for documentation or reference, but ArgoCD will not apply it or use it when deciding the application's sync and health status.
 
 ## How Skip Works
 
-The Skip annotation tells ArgoCD: "This resource exists in the repo, but pretend it does not when syncing." Specifically:
+The Skip annotation tells ArgoCD: "This resource exists in the repo, but do not apply it when syncing." Specifically:
 
 - The resource is not applied during any sync phase
-- The resource is not included in diff calculations
-- The resource does not affect sync status
-- The resource is not pruned if it exists in the cluster
-- The resource is invisible to ArgoCD's sync engine
+- The resource does not affect the application's overall sync status
+- The resource is skipped when ArgoCD calculates the application's health
+- If a matching resource exists in the cluster, it is not treated as an extra resource to prune just because the Git manifest is skipped
+- The manifest may still be detected by ArgoCD and shown in resource views, depending on the ArgoCD version and UI or CLI view
 
 ```yaml
 # This resource will be ignored by ArgoCD
@@ -150,7 +150,7 @@ spec:
 
 ArgoCD has several ways to handle resources you do not want to fully manage. Here is how they differ:
 
-**Skip (hook annotation)**: Resource is completely invisible to ArgoCD sync. It is not applied, not tracked, not diffed.
+**Skip (hook annotation)**: Resource is skipped during sync. It is not applied and does not affect the application's overall sync or health status.
 
 **Resource exclusions (argocd-cm)**: Resources matching certain patterns are excluded from ArgoCD's discovery. They are not visible in the UI at all.
 
@@ -222,8 +222,8 @@ metadata:
 # overlays/production/kustomization.yaml
 resources:
   - ../../base
-patchesStrategicMerge:
-  - skip-debug.yaml
+patches:
+  - path: skip-debug.yaml
 ```
 
 In development, the debug tools deploy normally. In production, the Skip annotation prevents deployment while keeping the manifest in the repository.
@@ -233,14 +233,14 @@ In development, the debug tools deploy normally. In production, the Skip annotat
 To confirm a resource is being skipped:
 
 ```bash
-# List managed resources - skipped resources will not appear
-argocd app resources my-app
+# Sync the application
+argocd app sync my-app
 
-# Check the app diff - skipped resources will not show diffs
-argocd app diff my-app
+# Confirm the skipped object was not created
+kubectl get configmap local-dev-config -n my-namespace
 ```
 
-If the resource appears in the resource list or diff output, the Skip annotation is not being applied correctly. Check that the annotation key and value are exact: `argocd.argoproj.io/hook: Skip` (capital S).
+If the resource is applied during sync, the Skip annotation is not being applied correctly. Check that the annotation key and value are exact: `argocd.argoproj.io/hook: Skip` (capital S). Do not rely only on `argocd app resources` output for verification, because skipped manifests can still be detected and shown as application resources.
 
 ## Removing the Skip Annotation
 
