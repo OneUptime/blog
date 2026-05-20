@@ -16,7 +16,7 @@ Deleting an ArgoCD application seems straightforward, but getting it wrong can e
 argocd app delete my-app
 ```
 
-This prompts for confirmation and then deletes the application. What happens to the managed resources depends on whether the application has a finalizer configured.
+This prompts for confirmation and then deletes the application. By default, this is a cascade delete; ArgoCD adds the resources finalizer automatically so the application resources are deleted too.
 
 ## Cascade vs Non-Cascade Delete
 
@@ -65,14 +65,14 @@ argocd app delete my-app --propagation-policy foreground
 # Background: Parent is deleted immediately, children are garbage collected
 argocd app delete my-app --propagation-policy background
 
-# Orphan: Parent is deleted, children are NOT garbage collected
-argocd app delete my-app --propagation-policy orphan
+# To orphan managed resources, use a non-cascade delete instead
+argocd app delete my-app --cascade=false
 ```
 
 The propagation policy matters for resources with owner references:
 - **foreground**: Slowest but safest. Pods are terminated before the Deployment is removed.
 - **background**: Fastest. Deployment is removed first, pods are cleaned up asynchronously.
-- **orphan**: Dependent resources (like ReplicaSets, Pods) are left behind.
+- **orphan**: For managed application resources, use `--cascade=false` to delete only the Application and leave the managed resources behind. The `argocd app delete --propagation-policy` flag supports `foreground` and `background`.
 
 ## Skip Confirmation
 
@@ -205,9 +205,9 @@ p, role:developer, applications, delete, production-project/*, deny
 p, role:admin, applications, delete, production-project/*, allow
 ```
 
-### Remove Finalizer for Critical Apps
+### Use Delete=false for Critical Apps
 
-For applications that should never be cascade-deleted:
+For applications whose resources should be retained if the Application is deleted:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -215,9 +215,6 @@ kind: Application
 metadata:
   name: critical-database
   namespace: argocd
-  # No finalizers - prevents accidental cascade delete
-  annotations:
-    argocd.argoproj.io/sync-options: "Delete=false"
 spec:
   project: production
   source:
@@ -227,11 +224,14 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: database
+  syncPolicy:
+    syncOptions:
+      - Delete=false
 ```
 
 ### Use Sync Option Delete=false
 
-The `Delete=false` sync option prevents ArgoCD from deleting specific resources during sync, but it also serves as a signal that these resources should be handled carefully.
+The `Delete=false` sync option prevents ArgoCD from deleting specific resources during Application deletion, but it also serves as a signal that these resources should be handled carefully.
 
 ## Cleanup After Deletion
 
