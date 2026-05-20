@@ -62,6 +62,8 @@ metadata:
   namespace: my-operator
   annotations:
     argocd.argoproj.io/sync-wave: "-2"
+  labels:
+    app: crd-converter
 spec:
   replicas: 2
   selector:
@@ -171,6 +173,8 @@ spec:
             - --host=crd-converter.my-operator.svc
             - --namespace=my-operator
             - --secret-name=crd-converter-tls
+            - --cert-name=tls.crt
+            - --key-name=tls.key
       restartPolicy: Never
 ```
 
@@ -307,7 +311,7 @@ func handleConvert(w http.ResponseWriter, r *http.Request) {
 
 ## Health Check for the Conversion Webhook
 
-Add a custom health check so ArgoCD waits for the webhook to be ready before syncing the CRD:
+ArgoCD already has a built-in health check for Deployments. If you need to override it, make sure the custom health check still returns valid health for other Deployments so ArgoCD waits for the webhook to be ready before syncing the CRD:
 
 ```yaml
 # In argocd-cm ConfigMap
@@ -327,6 +331,37 @@ resource.customizations.health.apps_Deployment: |
       hs.status = "Progressing"
       hs.message = "Waiting for deployment status"
     end
+    return hs
+  end
+
+  if obj.spec ~= nil and obj.spec.paused then
+    hs.status = "Suspended"
+    hs.message = "Deployment is paused"
+    return hs
+  end
+  if obj.status == nil or obj.status.observedGeneration == nil or obj.metadata.generation > obj.status.observedGeneration then
+    hs.status = "Progressing"
+    hs.message = "Waiting for deployment controller to observe the latest generation"
+    return hs
+  end
+  desired = 1
+  if obj.spec ~= nil and obj.spec.replicas ~= nil then
+    desired = obj.spec.replicas
+  end
+  updated = 0
+  if obj.status.updatedReplicas ~= nil then
+    updated = obj.status.updatedReplicas
+  end
+  available = 0
+  if obj.status.availableReplicas ~= nil then
+    available = obj.status.availableReplicas
+  end
+  if updated < desired or available < desired then
+    hs.status = "Progressing"
+    hs.message = "Waiting for deployment replicas to become available"
+  else
+    hs.status = "Healthy"
+    hs.message = "Deployment is healthy"
   end
   return hs
 ```
@@ -353,7 +388,7 @@ spec:
       app: crd-converter
 ```
 
-3. **Set failurePolicy on the CRD** to handle webhook unavailability:
+3. **Do not rely on `failurePolicy` for CRD conversion**:
 
 The CRD conversion configuration does not have a failurePolicy like admission webhooks. If the conversion webhook is unavailable, API requests for that resource type will fail. This is why high availability for the webhook service is critical.
 
@@ -364,12 +399,11 @@ Putting it all together, here is the recommended sync wave ordering:
 ```text
 Wave -3: Namespace, ClusterIssuer (cert-manager prereqs)
 Wave -2: Webhook Deployment, Service, Certificate, PDB
-Wave -1: (wait for webhook to be healthy)
 Wave  0: CRD with conversion config
 Wave  1: Custom resources using the CRD
 ```
 
-This ensures each component is healthy before the next wave begins, preventing the chicken-and-egg problem that makes conversion webhooks tricky with GitOps tools.
+ArgoCD applies the next wave only after earlier waves are in sync and healthy, preventing the chicken-and-egg problem that makes conversion webhooks tricky with GitOps tools.
 
 ## Summary
 
