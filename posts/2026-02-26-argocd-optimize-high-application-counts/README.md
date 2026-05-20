@@ -20,7 +20,7 @@ Before optimizing, measure. Find out exactly where time is being spent:
 kubectl exec -n argocd statefulset/argocd-application-controller -- \
   curl -s localhost:8082/metrics | grep argocd_app_reconcile
 
-# Check which applications take the longest
+# Inspect reconciliation histogram buckets
 kubectl exec -n argocd statefulset/argocd-application-controller -- \
   curl -s localhost:8082/metrics | \
   grep 'argocd_app_reconcile_bucket{.*le="30"' | \
@@ -28,7 +28,7 @@ kubectl exec -n argocd statefulset/argocd-application-controller -- \
 
 # Check Git operation times
 kubectl exec -n argocd deployment/argocd-repo-server -- \
-  curl -s localhost:8084/metrics | grep argocd_git_request_duration
+  curl -s localhost:8084/metrics | grep argocd_git_request_duration_seconds
 ```
 
 ## Optimization 1: Reduce Reconciliation Frequency
@@ -45,16 +45,21 @@ data:
   # Increase from default 180s to 300s
   timeout.reconciliation: "300s"
 
-  # Disable hard reconciliation (forces full comparison)
+  # Disable hard reconciliation of application data and target manifest cache
   # Only do this if you use webhooks
-  timeout.hard.reconciliation: "0"
+  timeout.hard.reconciliation: "0s"
 ```
 
 Combined with webhooks, this dramatically reduces unnecessary work:
 
 ```yaml
-# Enable webhooks to trigger reconciliation on Git push
-data:
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-secret
+  namespace: argocd
+type: Opaque
+stringData:
   webhook.github.secret: "your-webhook-secret"
   webhook.gitlab.secret: "your-webhook-secret"
   webhook.bitbucket.uuid: "your-bitbucket-uuid"
@@ -138,7 +143,7 @@ data:
 
 ## Optimization 4: Use Server-Side Diff
 
-Server-side diff offloads the comparison to the Kubernetes API server, which is much faster for large resource sets:
+Server-side diff asks the Kubernetes API server to calculate the predicted live object with a dry-run server-side apply, then caches the result between relevant changes:
 
 ```yaml
 apiVersion: v1
@@ -150,14 +155,14 @@ data:
   controller.diff.server.side: "true"
 ```
 
-Server-side diff is especially beneficial for:
+Server-side diff is especially useful for:
 - Applications with many resources (50+)
 - Resources with complex specifications
 - CRDs with large schemas
 
 ## Optimization 5: Optimize Repo Server Caching
 
-Reduce Git operations by extending cache duration:
+Reduce Git operations by extending cache duration and using shallow clones for large-history repositories:
 
 ```yaml
 apiVersion: v1
@@ -166,19 +171,32 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Cache manifests for 24 hours (default is 24h, but explicit is clearer)
-  reposerver.repo.cache.expiration: "24h"
+  # Cache repo state and manifest generation data for 24 hours
+  reposerver.repo.cache.expiration: "24h0m0s"
 
-  # Enable shallow clones
-  reposerver.git.shallow.clone: "true"
+  # Limit concurrent git ls-remote requests to prevent Git server overload
+  reposerver.git.lsremote.parallelism.limit: "15"
+```
 
-  # Limit parallelism to prevent Git server overload
-  reposerver.parallelism.limit: "15"
+Configure shallow clones per repository:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitops-config-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/myorg/gitops-config.git
+  depth: "1"
 ```
 
 ## Optimization 6: Use Resource Tracking with Annotations
 
-ArgoCD supports two resource tracking methods. The annotation-based method is more efficient for large deployments:
+ArgoCD supports three resource tracking methods. The annotation-based method is more reliable for large deployments:
 
 ```yaml
 apiVersion: v1
@@ -187,7 +205,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Use annotation-based tracking (default is "label")
+  # Use annotation-based tracking while keeping the instance label for tool compatibility
   application.resourceTrackingMethod: "annotation+label"
 ```
 
@@ -197,19 +215,10 @@ Annotation-based tracking avoids label size limitations and is more accurate for
 
 Turn off features you do not use:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Disable orphaned resource monitoring if not needed
-  # (reduces API calls significantly)
-  controller.resource.orphaned.check.disabled: "true"
-
-  # Disable self-heal for non-critical applications
-  # (configure per-application instead of globally)
+```bash
+# Remove orphaned resource monitoring from projects where you do not need it
+kubectl patch appproject default -n argocd --type=json \
+  -p='[{"op":"remove","path":"/spec/orphanedResources"}]'
 ```
 
 For applications that do not need real-time drift detection, disable auto-sync and self-heal:
@@ -228,7 +237,7 @@ spec:
 
 ## Optimization 8: Batch Operations with ApplicationSets
 
-Instead of managing individual Application resources, use ApplicationSets to reduce the number of unique manifests ArgoCD processes:
+Instead of hand-writing individual Application resources, use ApplicationSets to generate them from a smaller template:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -304,10 +313,10 @@ metadata:
   namespace: argocd
 data:
   # Queries per second to the K8s API
-  controller.k8s.client.config.qps: "100"
+  controller.k8s.client.qps: "100"
 
   # Burst above QPS limit
-  controller.k8s.client.config.burst: "200"
+  controller.k8s.client.burst: "200"
 
   # Number of status processors (parallel reconciliation)
   controller.status.processors: "100"
@@ -329,7 +338,7 @@ kubectl exec -n argocd statefulset/argocd-application-controller -- \
 # Before and after: Git request duration
 kubectl exec -n argocd deployment/argocd-repo-server -- \
   curl -s localhost:8084/metrics | \
-  grep "argocd_git_request_duration"
+  grep "argocd_git_request_duration_seconds"
 
 # Before and after: memory usage
 kubectl top pods -n argocd
