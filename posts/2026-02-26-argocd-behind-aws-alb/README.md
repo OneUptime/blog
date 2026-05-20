@@ -14,7 +14,7 @@ Running ArgoCD behind an AWS Application Load Balancer (ALB) is a common setup f
 
 The AWS ALB operates at Layer 7 (HTTP/HTTPS) and integrates with the AWS Load Balancer Controller for Kubernetes. It supports path-based routing, host-based routing, and can terminate TLS using ACM certificates. For ArgoCD, this means you can handle HTTPS at the load balancer level and route traffic to the ArgoCD server over HTTP internally.
 
-The main consideration with ALB is that ArgoCD uses both HTTPS (for the web UI and REST API) and gRPC (for the CLI). ALB supports gRPC natively as of late 2020, which makes this setup fully workable.
+The main consideration with ALB is that ArgoCD uses both HTTPS (for the web UI and REST API) and gRPC (for the CLI). ALB supports gRPC natively as of October 2020, which makes this setup fully workable.
 
 ## Prerequisites
 
@@ -22,10 +22,10 @@ Before starting, make sure you have:
 
 - An EKS cluster with ArgoCD installed
 - The AWS Load Balancer Controller deployed in your cluster
-- An ACM certificate for your ArgoCD domain
+- An ACM certificate for your ArgoCD domain in the same AWS Region as the ALB
 - A Route53 hosted zone (or equivalent DNS management)
 
-If you do not have the AWS Load Balancer Controller installed yet, deploy it using Helm.
+If you do not have the AWS Load Balancer Controller installed yet, create the required IAM policy and service account, then deploy it using Helm.
 
 ```bash
 # Add the EKS Helm repo
@@ -75,14 +75,12 @@ metadata:
   name: argocd-server-ingress
   namespace: argocd
   annotations:
-    # Use the ALB ingress class
-    kubernetes.io/ingress.class: alb
     # Internet-facing ALB (use "internal" for private)
     alb.ingress.kubernetes.io/scheme: internet-facing
     # Target type - use IP for direct pod routing
     alb.ingress.kubernetes.io/target-type: ip
-    # HTTPS listener on port 443
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    # HTTP and HTTPS listeners; HTTP is needed for ssl-redirect
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
     # ACM certificate ARN for TLS
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789012:certificate/abc-123-def
     # Backend protocol - HTTP since ArgoCD runs in insecure mode
@@ -90,11 +88,13 @@ metadata:
     # Health check configuration
     alb.ingress.kubernetes.io/healthcheck-path: /healthz
     alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
-    # Enable gRPC support for the ArgoCD CLI
-    alb.ingress.kubernetes.io/backend-protocol-version: HTTP2
     # Redirect HTTP to HTTPS
     alb.ingress.kubernetes.io/ssl-redirect: "443"
+    # Group with optional native gRPC ingress on the same ALB
+    alb.ingress.kubernetes.io/group.name: argocd
+    alb.ingress.kubernetes.io/group.order: "100"
 spec:
+  ingressClassName: alb
   rules:
     - host: argocd.example.com
       http:
@@ -129,7 +129,26 @@ argocd login argocd.example.com --grpc-web
 
 **Approach B: Separate gRPC Target Group**
 
-For teams that want native gRPC support without the `--grpc-web` flag, you can create a separate Ingress rule with gRPC-specific settings.
+For teams that want native gRPC support without the `--grpc-web` flag, create a separate Service so the ALB can build a separate gRPC target group. Make sure your ACM certificate covers both `argocd.example.com` and `grpc.argocd.example.com`.
+
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-server-grpc
+  namespace: argocd
+  annotations:
+    # Tell the ALB target group to use native gRPC
+    alb.ingress.kubernetes.io/backend-protocol-version: GRPC
+spec:
+  ports:
+    - name: grpc
+      port: 443
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app.kubernetes.io/name: argocd-server
+```
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -138,7 +157,6 @@ metadata:
   name: argocd-server-grpc-ingress
   namespace: argocd
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
@@ -146,12 +164,14 @@ metadata:
     # Use GRPC backend protocol for native gRPC
     alb.ingress.kubernetes.io/backend-protocol-version: GRPC
     alb.ingress.kubernetes.io/backend-protocol: HTTP
-    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-path: /grpc.health.v1.Health/Check
     alb.ingress.kubernetes.io/healthcheck-protocol: HTTP
+    alb.ingress.kubernetes.io/success-codes: "0"
     # Group this with the main ingress on the same ALB
     alb.ingress.kubernetes.io/group.name: argocd
     alb.ingress.kubernetes.io/group.order: "200"
 spec:
+  ingressClassName: alb
   rules:
     - host: grpc.argocd.example.com
       http:
@@ -160,9 +180,9 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: argocd-server
+                name: argocd-server-grpc
                 port:
-                  number: 80
+                  number: 443
 ```
 
 With this approach, the CLI connects to `grpc.argocd.example.com` and the web UI uses `argocd.example.com`.
@@ -207,7 +227,7 @@ kubectl -n argocd get pods -l app.kubernetes.io/name=argocd-server
 aws elbv2 describe-target-health --target-group-arn <tg-arn>
 ```
 
-**Mixed content warnings**: If you see mixed content warnings in the browser, make sure the ArgoCD server knows it is behind a proxy. The `server.insecure` setting should handle this, but you may also need to set the base URL.
+**Mixed content warnings**: If you see mixed content warnings in the browser, make sure the ArgoCD server knows its external URL.
 
 ```yaml
 # In argocd-cm ConfigMap
