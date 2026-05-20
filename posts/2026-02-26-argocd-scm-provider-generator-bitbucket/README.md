@@ -25,7 +25,7 @@ Make sure you use the right configuration block for your Bitbucket variant.
 
 For Bitbucket Cloud, you need:
 - A Bitbucket workspace
-- An app password with `repository:read` permission
+- An app password with `Repositories: Read` permission
 - The username associated with the app password
 
 Create an app password:
@@ -60,7 +60,7 @@ spec:
           appPasswordRef:
             secretName: bitbucket-creds
             key: password
-          # Only scan repos matching this pattern
+          # Scan only the main branch unless allBranches is true
           allBranches: false
         filters:
           - repositoryMatch: "^service-.*"
@@ -131,7 +131,7 @@ spec:
             passwordRef:
               secretName: bitbucket-server-token
               key: token
-          # Include all repos in the project
+          # Scan only the default branch unless allBranches is true
           allBranches: false
   template:
     metadata:
@@ -215,6 +215,24 @@ If your Bitbucket Server uses a self-signed certificate:
 kubectl create configmap argocd-tls-certs-cm \
   -n argocd \
   --from-file=bitbucket.company.com=/path/to/ca-cert.pem
+```
+
+Then reference that certificate from the SCM provider generator:
+
+```yaml
+  generators:
+    - scmProvider:
+        bitbucketServer:
+          api: https://bitbucket.company.com
+          project: PLATFORM
+          basicAuth:
+            username: argocd-service
+            passwordRef:
+              secretName: bitbucket-server-token
+              key: token
+          caRef:
+            configMapName: argocd-tls-certs-cm
+            key: bitbucket.company.com
 ```
 
 Or if you need to skip TLS verification temporarily (not recommended for production):
