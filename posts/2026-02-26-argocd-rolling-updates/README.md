@@ -10,7 +10,7 @@ Description: Learn how to configure and optimize rolling updates with ArgoCD usi
 
 Rolling updates are the default deployment strategy in Kubernetes. When you update a Deployment, Kubernetes gradually replaces old pods with new ones, ensuring that your application remains available throughout the process. Combined with ArgoCD's GitOps approach, rolling updates provide a straightforward, reliable way to deploy changes with zero downtime.
 
-Unlike blue-green or canary deployments that require Argo Rollouts, rolling updates work natively with standard Kubernetes Deployments. ArgoCD manages the desired state, and Kubernetes handles the rolling update mechanics.
+Unlike blue-green or canary deployments that often use Argo Rollouts for traffic shifting and automated analysis, rolling updates work natively with standard Kubernetes Deployments. ArgoCD manages the desired state, and Kubernetes handles the rolling update mechanics.
 
 ## How Rolling Updates Work
 
@@ -142,7 +142,7 @@ production/my-app/
 
 ## Triggering a Rolling Update
 
-To trigger a rolling update, change the image tag (or any other spec field) in your Deployment manifest and push to Git:
+To trigger a rolling update, change the image tag (or any other Pod template field) in your Deployment manifest and push to Git:
 
 ```yaml
 # Update image in deployment.yaml
@@ -178,7 +178,7 @@ In the ArgoCD UI, the application health status will show "Progressing" during t
 
 ## Ensuring Zero Downtime
 
-Rolling updates alone do not guarantee zero downtime. You need proper readiness probes, graceful shutdown, and pod disruption budgets:
+Rolling updates alone do not guarantee zero downtime. You need proper readiness probes and graceful shutdown handling. Pod disruption budgets add protection during voluntary disruptions such as node drains:
 
 ### Readiness Probes
 
@@ -216,7 +216,7 @@ spec:
 
 ### Pod Disruption Budget
 
-Prevent too many pods from being disrupted at once:
+Prevent too many pods from being evicted during voluntary disruptions:
 
 ```yaml
 # pdb.yaml
@@ -246,6 +246,7 @@ git push origin main
 # ArgoCD syncs the reverted manifest
 
 # Option 3: ArgoCD rollback to a previous sync
+# Note: disable automated sync first if it is enabled
 argocd app history my-app-production
 argocd app rollback my-app-production <HISTORY_ID>
 ```
@@ -315,4 +316,4 @@ This gives you a built-in observation window for each new pod before the update 
 
 ## Summary
 
-Rolling updates with ArgoCD provide zero-downtime deployments using native Kubernetes mechanics. Configure `maxSurge` and `maxUnavailable` to control the update speed, add proper readiness probes and graceful shutdown handling, and use Pod Disruption Budgets for safety. For more advanced deployment strategies with traffic shifting and automated analysis, consider [canary deployments](https://oneuptime.com/blog/post/2026-02-26-argocd-canary-deployments-argo-rollouts/view) or [blue-green deployments](https://oneuptime.com/blog/post/2026-02-26-argocd-blue-green-deployments/view) with Argo Rollouts.
+Rolling updates with ArgoCD provide zero-downtime deployments using native Kubernetes mechanics. Configure `maxSurge` and `maxUnavailable` to control the update speed, add proper readiness probes and graceful shutdown handling, and use Pod Disruption Budgets for voluntary disruption safety. For more advanced deployment strategies with traffic shifting and automated analysis, consider [canary deployments](https://oneuptime.com/blog/post/2026-02-26-argocd-canary-deployments-argo-rollouts/view) or [blue-green deployments](https://oneuptime.com/blog/post/2026-02-26-argocd-blue-green-deployments/view) with Argo Rollouts.
