@@ -8,7 +8,7 @@ Description: Learn how to properly configure CPU and memory requests and limits 
 
 ---
 
-Setting proper resource requests and limits for ArgoCD components is critical for both stability and efficiency. Without limits, a single runaway process can consume all node resources and impact other workloads. Without proper requests, Kubernetes cannot schedule pods effectively, leading to resource contention and poor performance. This guide covers every ArgoCD component with specific, tested recommendations.
+Setting proper resource requests and limits for ArgoCD components is critical for both stability and efficiency. Without limits, a single runaway process can consume all node resources and impact other workloads. Without proper requests, Kubernetes cannot schedule pods effectively, leading to resource contention and poor performance. This guide covers every ArgoCD component with practical starting recommendations.
 
 ## Understanding Requests vs Limits
 
@@ -30,7 +30,7 @@ flowchart LR
 - **Requests**: The minimum resources Kubernetes guarantees. The scheduler uses these to place pods on nodes.
 - **Limits**: The maximum resources a container can use. Exceeding CPU limits causes throttling; exceeding memory limits causes OOMKill.
 
-For ArgoCD, setting requests too low causes scheduling on inadequate nodes. Setting limits too low causes OOMKills and CPU throttling. Setting limits too high wastes cluster resources.
+For ArgoCD, setting requests too low causes scheduling on inadequate nodes. Setting limits too low causes OOMKills and CPU throttling. Setting limits too high can allow a pod to consume excessive node resources during spikes.
 
 ## Application Controller Resources
 
@@ -84,7 +84,7 @@ server:
       memory: 512Mi
 ```
 
-**CPU considerations**: CPU spikes during large API responses (listing many applications) and TLS handshakes. Running the API server in insecure mode behind a TLS-terminating load balancer reduces CPU usage by 20-30%.
+**CPU considerations**: CPU spikes during large API responses (listing many applications) and TLS handshakes. Running the API server in insecure mode behind a trusted TLS-terminating load balancer can reduce TLS work in the API server.
 
 **Memory considerations**: Each active WebSocket connection (for real-time UI updates) uses approximately 100 KB. Memory also depends on the size of API responses being marshalled.
 
@@ -112,7 +112,7 @@ repoServer:
 **CPU considerations**: CPU-intensive during Helm template rendering, especially with complex charts that use many functions and loops. Kustomize builds are generally faster.
 
 **Memory considerations**: Each concurrent manifest generation holds:
-- A Git clone of the repository in memory/disk
+- A Git clone of the repository on the repo server's local filesystem, `/tmp` by default
 - The Helm chart and all its dependencies
 - The rendered manifest output
 
@@ -247,7 +247,7 @@ notifications:
     limits: { cpu: 100m, memory: 128Mi }
 ```
 
-Total resource requests: ~750m CPU, ~1.2Gi memory
+Total resource requests: ~1 CPU, ~1.5Gi memory (across all replicas)
 
 ### Medium Deployment (50 to 200 apps)
 
@@ -281,7 +281,7 @@ notifications:
     limits: { cpu: 200m, memory: 256Mi }
 ```
 
-Total resource requests: ~2.5 CPU, ~3.5Gi memory (across all replicas)
+Total resource requests: ~3 CPU, ~3.7Gi memory (across all replicas)
 
 ### Large Deployment (200+ apps)
 
@@ -317,7 +317,7 @@ notifications:
     limits: { cpu: 500m, memory: 512Mi }
 ```
 
-Total resource requests: ~13 CPU, ~19Gi memory (across all replicas)
+Total resource requests: ~12 CPU, ~14.6Gi memory (across all replicas)
 
 ## Applying Resource Limits
 
@@ -353,10 +353,10 @@ kubectl set resources deployment/argocd-repo-server -n argocd \
 Set up alerts to know when you need to adjust:
 
 ```bash
-# Check current usage vs limits
+# Check current usage
 kubectl top pods -n argocd --containers
 
-# Check if any pod is being CPU-throttled
+# Check container readiness and restart counts
 kubectl get pod -n argocd -o json | \
   jq '.items[].status.containerStatuses[] |
     {name: .name, ready: .ready, restartCount: .restartCount}'
