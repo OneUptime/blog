@@ -68,11 +68,11 @@ This typically indicates a configuration error in the Application source (bad re
 
 ## Health Status Explained
 
-Health status is determined by examining the actual state of Kubernetes resources. ArgoCD has built-in health checks for standard Kubernetes resource types.
+Health status is determined by examining the actual state of Kubernetes resources. ArgoCD has built-in health checks for several standard Kubernetes resource types, and an application's health is based on the worst health of its immediate child resources.
 
 ### Healthy
 
-All resources are in their desired operational state. Deployments have the expected number of ready replicas. Services have endpoints. Ingresses have load balancers assigned.
+All resources with health checks are in their desired operational state. Deployments have completed their rollout. Non-LoadBalancer Services are considered healthy once created, while LoadBalancer Services and Ingresses are healthy when `status.loadBalancer.ingress` has an IP address or hostname.
 
 ### Progressing
 
@@ -81,7 +81,7 @@ Resources are moving toward a healthy state but are not there yet. This is norma
 - Initial deployment (pods being scheduled)
 - Scale-up operations
 
-ArgoCD will show Progressing for a Deployment when its observed generation does not match the desired generation, or when the number of ready replicas does not match the desired count.
+ArgoCD will show Progressing for a Deployment when its observed generation does not match the desired generation, when updated replicas have not reached the desired count, when old replicas are still terminating, or when updated replicas are not yet available.
 
 ### Degraded
 
@@ -89,8 +89,8 @@ Something is wrong. Resources are not functioning properly. Common Degraded scen
 
 - Pods in CrashLoopBackOff
 - Pods stuck in ImagePullBackOff
-- Deployments with zero ready replicas
-- StatefulSets with failed pods
+- Deployments that exceed their progress deadline
+- StatefulSets stuck waiting for pods to become ready or updated
 - Jobs that have exceeded their backoff limit
 
 ### Suspended
@@ -120,40 +120,42 @@ ArgoCD cannot determine health, usually because:
 ### Deployment Health
 
 ```text
-Healthy:      All desired replicas are ready and updated
-Progressing:  Rolling update in progress, or replicas not yet ready
-Degraded:     Available replicas < desired AND progress deadline exceeded
+Healthy:      Rollout complete and updated replicas are available
+Progressing:  Observed generation is behind, updated replicas are still rolling out,
+              old replicas are terminating, or updated replicas are not yet available
+Degraded:     Progress deadline exceeded
 ```
 
 ### Pod Health
 
 ```text
-Healthy:      All containers running and passing health checks
-Progressing:  Pod is Pending or containers are starting
-Degraded:     Any container in CrashLoopBackOff, OOMKilled, or Error state
+Healthy:      Pod is Succeeded, or Running and Ready for restartPolicy Always
+Progressing:  Pod is Pending, or Running but not Ready
+Degraded:     Pod failed, has an error/backoff waiting reason, or a running
+              restartPolicy Always pod has recent terminated containers
 ```
 
 ### Service Health
 
 ```text
 Healthy:      Always (Services are considered healthy once created)
-              For LoadBalancer type: healthy once external IP is assigned
-Progressing:  LoadBalancer type waiting for external IP
+              For LoadBalancer type: healthy once external IP or hostname is assigned
+Progressing:  LoadBalancer type waiting for external IP or hostname
 ```
 
 ### StatefulSet Health
 
 ```text
 Healthy:      All replicas ready and at current revision
-Progressing:  Rolling update in progress
-Degraded:     Replicas not becoming ready
+Progressing:  Observed generation is behind, replicas are not ready,
+              or a rolling update is in progress
 ```
 
 ### Ingress Health
 
 ```text
-Healthy:      Ingress has at least one active backend
-Progressing:  Waiting for load balancer
+Healthy:      status.loadBalancer.ingress has an IP address or hostname
+Progressing:  Waiting for load balancer status
 ```
 
 ### Job Health
@@ -289,6 +291,8 @@ For custom resources that ArgoCD does not have built-in health checks for, you c
 data:
   resource.customizations.health.mycrd.example.com_MyResource: |
     hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for resource to be ready"
     if obj.status ~= nil then
       if obj.status.phase == "Running" then
         hs.status = "Healthy"
@@ -296,9 +300,6 @@ data:
       elseif obj.status.phase == "Failed" then
         hs.status = "Degraded"
         hs.message = obj.status.message
-      else
-        hs.status = "Progressing"
-        hs.message = "Waiting for resource to be ready"
       end
     end
     return hs
