@@ -256,6 +256,8 @@ metadata:
   name: team-a-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/your-org/k8s-config.git
@@ -264,13 +266,13 @@ spec:
           - path: apps/*/overlays/production
   template:
     metadata:
-      name: "{{path[1]}}"
+      name: "{{index .path.segments 1}}"
     spec:
       project: team-a
       source:
         repoURL: https://github.com/your-org/k8s-config.git
         targetRevision: main
-        path: "{{path}}"
+        path: "{{.path.path}}"
       destination:
         server: https://kubernetes.default.svc
         namespace: production
@@ -354,6 +356,11 @@ data:
       Error: {{.app.status.operationState.message}}
   service.slack: |
     token: $slack-token
+  subscriptions: |
+    - recipients:
+      - slack:deployments
+      triggers:
+      - on-sync-failed
 ```
 
 ## Success Metrics
