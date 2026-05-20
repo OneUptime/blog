@@ -79,11 +79,11 @@ Filter: "ERROR"
 2026-02-26T10:23:50Z ERROR: Retry failed after 3 attempts
 ```
 
-This filter works client-side, searching through the logs already loaded in the browser. For large log volumes, this is faster than scrolling manually.
+This filter is sent to ArgoCD's log API and filters the streamed log output by simple text matching. The UI also highlights the matching text in the lines that are shown.
 
 ### Timestamp Display
 
-Logs are displayed with their Kubernetes timestamps. You can toggle timestamp display on/off for cleaner output when debugging.
+ArgoCD requests Kubernetes log timestamps and lets you toggle timestamp display on/off in the viewer.
 
 ### Wrapping and Formatting
 
@@ -92,7 +92,7 @@ Long log lines can be wrapped or shown in a single scrollable line. The viewer h
 ### Copy and Download
 
 You can:
-- Select and copy specific log lines
+- Copy the currently loaded log output
 - Use the download button to save the full log output as a text file
 
 ## Viewing Logs for Different Resource Types
@@ -110,7 +110,7 @@ flowchart LR
     RS2 --> P3[Pod old - logs still available]
 ```
 
-Click on any running Pod under the current ReplicaSet to see active logs. You can also check Pods from previous ReplicaSets if you need to compare behavior before and after a deployment.
+Click on any running Pod under the current ReplicaSet to see active logs. You can also check Pods from previous ReplicaSets if those Pods still exist and you need to compare behavior before and after a deployment.
 
 ### StatefulSet Logs
 
@@ -147,7 +147,7 @@ Common init container issues include failed database connectivity checks, missin
 
 ## Configuring Log Access in RBAC
 
-ArgoCD RBAC controls who can view logs. By default, the log viewing permission must be explicitly granted:
+ArgoCD RBAC controls who can view logs. For custom roles, grant the `logs, get` permission to allow log viewing:
 
 ```csv
 # In argocd-rbac-cm ConfigMap
@@ -171,11 +171,11 @@ p, role:developer, logs, get, staging/*, allow
 p, role:oncall, logs, get, */*, allow
 ```
 
-Without explicit log permissions, the Logs tab will either be hidden or show an access denied error.
+Without a `logs, get` permission, the Logs tab will either be hidden or show an access denied error.
 
 ## Enabling the Logs Feature
 
-If the Logs tab does not appear, you may need to enable it in the ArgoCD server configuration:
+There is no separate server-side switch that enables the basic Logs tab in current ArgoCD releases. If the Logs tab does not appear, first check ArgoCD RBAC and the Kubernetes permissions for the ArgoCD server.
 
 ```yaml
 # In argocd-cmd-params-cm ConfigMap
@@ -185,22 +185,22 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable the server-side streaming logs feature
+  # This only toggles HTTP gzip compression; it does not enable logs.
   server.enable.gzip: "true"
 ```
 
-Make sure the ArgoCD server has the necessary Kubernetes RBAC permissions to read Pod logs:
+Make sure the ArgoCD server has the necessary Kubernetes RBAC permissions to read Pods and Pod logs:
 
 ```yaml
 # ArgoCD needs these permissions on managed clusters
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: argocd-application-controller
+  name: argocd-server
 rules:
   - apiGroups: [""]
-    resources: ["pods/log"]
-    verbs: ["get", "list"]
+    resources: ["pods", "pods/log"]
+    verbs: ["get"]
 ```
 
 ## Limitations of the Built-In Log Viewer
@@ -209,7 +209,7 @@ While convenient, the ArgoCD log viewer has limitations:
 
 1. **No persistent log storage** - ArgoCD shows live logs from Kubernetes. Once a Pod is deleted, its logs are gone. For persistent logs, use a log aggregation system like Loki, Elasticsearch, or a cloud logging service.
 
-2. **No cross-pod aggregation** - You view logs one Pod at a time. There is no way to aggregate logs across all Pods of a Deployment in a single view.
+2. **Limited cross-pod aggregation** - Parent resources such as Deployments can show logs from multiple matching Pods, but ArgoCD caps how many Pod logs it will render in the UI using `server.maxPodLogsToRender` (default 10). For broad service-wide searches, use a log management tool.
 
 3. **Limited search** - The filter is a simple text match. For regex searches or complex queries, you need a proper log management tool.
 
