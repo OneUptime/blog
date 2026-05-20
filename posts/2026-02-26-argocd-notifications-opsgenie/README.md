@@ -24,7 +24,7 @@ The API key is what ArgoCD uses to create and manage alerts in Opsgenie.
 
 ## Configuring ArgoCD for Opsgenie
 
-ArgoCD does not have a built-in Opsgenie service, so you use the webhook notification service to send alerts via the Opsgenie REST API.
+ArgoCD has a built-in Opsgenie notification service, but you can also use the webhook notification service to send alerts via the Opsgenie REST API when you want direct control over the request payload and close endpoint.
 
 Store the API key in the secret:
 
@@ -157,11 +157,11 @@ Note: The auto-close approach above uses the alert alias to identify which alert
 
 ```yaml
   trigger.on-sync-failed-opsgenie: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [opsgenie-sync-failed]
 
   trigger.on-sync-succeeded-opsgenie: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [opsgenie-sync-resolved]
 
   trigger.on-health-degraded-opsgenie: |
@@ -176,7 +176,8 @@ Note: The auto-close approach above uses the alert alias to identify which alert
 ## Subscribing Applications
 
 ```bash
-# Subscribe critical applications
+# Subscribe critical applications.
+# The "app" shorthand works when the Argo CD Application CRD is installed.
 
 kubectl annotate app production-api -n argocd \
   notifications.argoproj.io/subscribe.on-sync-failed-opsgenie.opsgenie=""
