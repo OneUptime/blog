@@ -90,7 +90,7 @@ fluent-bit:
           Flush 5
           Log_Level info
           Parsers_File /fluent-bit/etc/parsers.conf
-          Parsers_File /fluent-bit/etc/custom_parsers.conf
+          Parsers_File /fluent-bit/etc/conf/custom_parsers.conf
           HTTP_Server On
           HTTP_Listen 0.0.0.0
           HTTP_Port 2020
@@ -127,7 +127,7 @@ fluent-bit:
           Match kube.*
           Merge_Log On
           Merge_Log_Key log_processed
-          Keep_Log Off
+          Keep_Log On
           K8S-Logging.Parser On
           K8S-Logging.Exclude On
           Labels On
@@ -157,7 +157,7 @@ fluent-bit:
       [OUTPUT]
           Name forward
           Match *
-          Host fluentd-aggregator.logging.svc.cluster.local
+          Host fluentd.logging.svc.cluster.local
           Port 24224
           Retry_Limit 5
           storage.total_limit_size 500M
@@ -180,15 +180,15 @@ fluent-bit:
   # Monitoring
   serviceMonitor:
     enabled: true
-    additionalLabels:
+    selector:
       release: kube-prometheus-stack
 
   # Persistent buffer storage
-  volumeMounts:
+  extraVolumeMounts:
     - name: flb-storage
       mountPath: /var/log/flb-storage/
 
-  volumes:
+  extraVolumes:
     - name: flb-storage
       hostPath:
         path: /var/log/flb-storage
@@ -244,7 +244,7 @@ dependencies:
 ```yaml
 # logging/fluentd/values.yaml
 fluentd:
-  kind: Deployment
+  kind: StatefulSet
   replicaCount: 2
 
   resources:
@@ -254,12 +254,16 @@ fluentd:
     limits:
       memory: 1Gi
 
+  plugins:
+    - fluent-plugin-grafana-loki
+    - fluent-plugin-s3
+
   # Receive from Fluent Bit
   service:
     type: ClusterIP
     ports:
       - name: forward
-        port: 24224
+        containerPort: 24224
         protocol: TCP
 
   # Buffer storage
@@ -302,18 +306,18 @@ fluentd:
       </filter>
 
     03_dispatch.conf: |
-      # Route logs to different outputs based on namespace
-      <match kube.monitoring.**>
+      # Route logs to multiple outputs
+      <match kube.**>
         @type copy
         <store>
           @type elasticsearch
           host elasticsearch.logging.svc.cluster.local
           port 9200
           logstash_format true
-          logstash_prefix monitoring
+          logstash_prefix kubernetes
           <buffer>
             @type file
-            path /var/log/fluentd/buffers/monitoring
+            path /var/log/fluent/buffers/elasticsearch
             flush_mode interval
             flush_interval 10s
             chunk_limit_size 10M
@@ -322,10 +326,6 @@ fluentd:
             retry_forever true
           </buffer>
         </store>
-      </match>
-
-      <match kube.**>
-        @type copy
         <store>
           @type loki
           url http://loki-gateway.logging.svc.cluster.local
@@ -337,7 +337,7 @@ fluentd:
           </label>
           <buffer>
             @type file
-            path /var/log/fluentd/buffers/loki
+            path /var/log/fluent/buffers/loki
             flush_mode interval
             flush_interval 10s
             chunk_limit_size 5M
@@ -354,7 +354,7 @@ fluentd:
           path logs/%Y/%m/%d/
           <buffer time>
             @type file
-            path /var/log/fluentd/buffers/s3
+            path /var/log/fluent/buffers/s3
             timekey 3600
             timekey_wait 10m
             chunk_limit_size 50M
@@ -374,10 +374,11 @@ fluentd:
         @type prometheus_output_monitor
       </source>
 
-  serviceMonitor:
-    enabled: true
-    additionalLabels:
-      release: kube-prometheus-stack
+  metrics:
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack
 ```
 
 ### ArgoCD Application for Fluentd
@@ -453,7 +454,7 @@ kubectl logs -n logging -l app.kubernetes.io/name=fluent-bit --tail=20
 kubectl logs -n logging -l app.kubernetes.io/name=fluentd --tail=20
 
 # Check buffer health
-kubectl exec -n logging -it deploy/fluentd -- ls -la /var/log/fluentd/buffers/
+kubectl exec -n logging -it sts/fluentd -- ls -la /var/log/fluent/buffers/
 ```
 
 ## Summary
