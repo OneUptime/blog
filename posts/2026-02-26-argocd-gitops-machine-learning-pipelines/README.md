@@ -191,7 +191,7 @@ spec:
     scaleMetric: concurrency
 ```
 
-Production overlay with higher resources and canary:
+Production overlay with a higher replica floor and canary:
 
 ```yaml
 # models/fraud-detection/overlays/production/kustomization.yaml
@@ -208,6 +208,9 @@ patches:
       - op: replace
         path: /spec/predictor/minReplicas
         value: 5
+      - op: replace
+        path: /spec/predictor/model/storageUri
+        value: "s3://models/fraud-detection/v1.3.0"
       - op: add
         path: /spec/predictor/canaryTrafficPercent
         value: 10
@@ -259,6 +262,8 @@ on:
 jobs:
   promote:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Update model version
@@ -272,6 +277,8 @@ jobs:
           sed -i "s|storageUri:.*|storageUri: \"s3://models/${MODEL}/${VERSION}\"|" \
             kustomization.yaml
 
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "Promote ${MODEL} ${VERSION} to ${ENV}"
           git push
@@ -288,7 +295,8 @@ kind: CronWorkflow
 metadata:
   name: fraud-detection-training
 spec:
-  schedule: "0 2 * * 0"  # Weekly retraining
+  schedules:
+    - "0 2 * * 0"  # Weekly retraining
   timezone: "UTC"
   workflowSpec:
     entrypoint: train-pipeline
@@ -358,6 +366,9 @@ spec:
     matchLabels:
       app: feast-server
   template:
+    metadata:
+      labels:
+        app: feast-server
     spec:
       containers:
         - name: feast
