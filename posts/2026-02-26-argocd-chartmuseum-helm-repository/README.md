@@ -37,11 +37,10 @@ spec:
             DISABLE_API: false
             # Enable basic auth
             AUTH_ANONYMOUS_GET: false
-            BASIC_AUTH_USER: admin
-            BASIC_AUTH_PASS: changeme
             # Storage backend
             STORAGE: local
           secret:
+            BASIC_AUTH_USER: admin
             BASIC_AUTH_PASS: secure-password-here
         persistence:
           enabled: true
@@ -208,7 +207,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4
       - name: Install cm-push plugin
         run: helm plugin install https://github.com/chartmuseum/helm-push
       - name: Add ChartMuseum repo
@@ -250,6 +249,9 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-tls-certs-cm
+    app.kubernetes.io/part-of: argocd
 data:
   charts.company.com: |
     -----BEGIN CERTIFICATE-----
@@ -259,7 +261,7 @@ data:
 
 ## ChartMuseum with Multiple Tenants
 
-ChartMuseum supports multi-tenancy through URL-based org separation. Configure separate repos for each team:
+ChartMuseum supports multi-tenancy through URL-based org separation when it is configured with `DEPTH` or `DEPTH_DYNAMIC`. Configure separate repos for each team:
 
 ```yaml
 # Team A charts
@@ -273,7 +275,7 @@ metadata:
 stringData:
   type: helm
   name: team-a-charts
-  url: https://charts.company.com/api/charts/team-a
+  url: https://charts.company.com/team-a
   username: team-a-reader
   password: team-a-token
 ---
@@ -288,7 +290,7 @@ metadata:
 stringData:
   type: helm
   name: team-b-charts
-  url: https://charts.company.com/api/charts/team-b
+  url: https://charts.company.com/team-b
   username: team-b-reader
   password: team-b-token
 ```
@@ -335,7 +337,7 @@ ChartMuseum caches its index. After pushing a new chart:
 
 ```bash
 # Force ArgoCD to refresh the repo
-argocd repo get https://charts.company.com --refresh
+argocd repo get https://charts.company.com --refresh hard
 ```
 
 ### Storage Backend Issues
