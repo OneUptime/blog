@@ -20,8 +20,8 @@ xrandr | grep '*'  # asterisk marks the current mode
 # Full display information
 xrandr
 
-# On Wayland, also use:
-xrandr  # Works via XWayland
+# On Wayland, use Settings > Displays. xrandr only sees the XWayland screen
+# and cannot configure physical Wayland outputs.
 
 # Check using xdpyinfo
 xdpyinfo | grep -E "dimensions|resolution"
@@ -106,14 +106,16 @@ gsettings set org.gnome.mutter experimental-features "[]"
 On X11, fractional scaling works differently and can cause blurriness in some applications:
 
 ```bash
-# X11 fractional scaling via GDM/GNOME
-# Note: this uses a different mechanism and may cause some blurriness
+# X11 fractional scaling via GNOME
+# Note: this uses xrandr scaling internally and may reduce performance
+gsettings set org.gnome.mutter experimental-features "['x11-randr-fractional-scaling']"
+
+# For GTK integer scaling overrides on X11
 gsettings set org.gnome.settings-daemon.plugins.xsettings overrides \
   "{'Gdk/WindowScalingFactor': <2>}"
 
 # For Qt applications (like KDE apps)
 export QT_SCALE_FACTOR=1.5
-export QT_AUTO_SCREEN_SCALE_FACTOR=0
 
 # For GTK applications
 export GDK_SCALE=2
@@ -126,7 +128,6 @@ export GDK_SCALE=2
 export GDK_DPI_SCALE=0.5
 # HiDPI scaling for Qt apps
 export QT_SCALE_FACTOR=2
-export QT_AUTO_SCREEN_SCALE_FACTOR=0
 EOF
 ```
 
@@ -151,13 +152,13 @@ sudo apt install -y gnome-tweaks
 xrandr's scale option transforms the output, useful for virtual resolution or working around driver limitations:
 
 ```bash
-# Scale down a 4K display to appear as 1080p (useful if UI elements are tiny)
-# This renders at 4K then scales down - crisp but uses GPU resources
-xrandr --output DP-1 --mode 3840x2160 --scale 2x2
+# Make a 4K display use a virtual 1920x1080 framebuffer
+# (makes everything appear larger but uses fewer effective desktop pixels)
+xrandr --output DP-1 --mode 3840x2160 --scale 0.5x0.5
 
-# This makes the display render at a virtual 1920x1080
-# (scale up - makes everything appear larger but at lower resolution)
-xrandr --output HDMI-1 --mode 1920x1080 --scale 0.5x0.5
+# Make a display use a larger virtual desktop than its physical mode
+# (makes everything appear smaller and can add blur or GPU overhead)
+xrandr --output HDMI-1 --mode 1920x1080 --scale 2x2
 
 # Physical size hint for correct DPI calculation
 xrandr --output HDMI-1 --mode 1920x1080 \
@@ -178,7 +179,7 @@ cvt 2560 1080 60
 # Some displays use GTF instead of CVT
 gtf 2560 1080 60
 # Output:
-# Modeline "2560x1080_60.00"  228.96  2560 2736 3016 3472  1080 1081 1084 1118 -hsync +vsync
+# Modeline "2560x1080_60.00"  230.76  2560 2728 3000 3440  1080 1081 1084 1118  -HSync +Vsync
 
 # Create the new mode
 xrandr --newmode "2560x1080_60.00" 230.00 2560 2720 2992 3424 1080 1083 1093 1120 -hsync +vsync
@@ -194,6 +195,7 @@ To persist custom modes across reboots:
 
 ```bash
 # Add to X configuration
+sudo mkdir -p /etc/X11/xorg.conf.d
 sudo tee /etc/X11/xorg.conf.d/10-custom-modes.conf << 'EOF'
 Section "Monitor"
     Identifier "HDMI-1"
@@ -212,19 +214,15 @@ Different applications may need different scaling approaches:
 # Force device pixel ratio
 code --force-device-scale-factor=1.5
 
-# For permanent VS Code scaling, add to argv.json:
-tee -a ~/.config/code/argv.json << 'EOF'
+# For permanent VS Code scaling, open "Preferences: Configure Runtime Arguments"
+# and add this property to argv.json:
 {
   "force-device-scale-factor": 1.5
 }
-EOF
 
 # Firefox HiDPI
 # In about:config, set:
 # layout.css.devPixelsPerPx = 1.5
-
-# Or set via environment variable
-MOZ_USE_XINPUT2=1 firefox &
 
 # Java applications (Swing/AWT)
 java -Dsun.java2d.uiScale=2 -jar application.jar
@@ -262,7 +260,7 @@ For X11 with xrandr, settings do not persist. Use autostart:
 
 ```bash
 # Create startup script
-tee /usr/local/bin/display-config.sh << 'EOF'
+sudo tee /usr/local/bin/display-config.sh << 'EOF'
 #!/bin/bash
 # Wait for display to be fully ready
 sleep 2
@@ -276,9 +274,10 @@ xrandr --output HDMI-1 --scale 1x1
 gsettings set org.gnome.desktop.interface text-scaling-factor 1.0
 EOF
 
-chmod +x /usr/local/bin/display-config.sh
+sudo chmod +x /usr/local/bin/display-config.sh
 
 # Add to GNOME autostart
+mkdir -p ~/.config/autostart
 tee ~/.config/autostart/display-config.desktop << 'EOF'
 [Desktop Entry]
 Type=Application
