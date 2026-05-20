@@ -178,6 +178,20 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  service.webhook.splunk-hec: |
+    url: https://splunk-hec.healthcare-org.com:8088/services/collector
+    headers:
+      - name: Authorization
+        value: Splunk $splunk-hec-token
+
+  subscriptions: |
+    - recipients:
+        - splunk-hec
+      triggers:
+        - on-deployed
+        - on-sync-failed
+        - on-health-degraded
+
   # Track all deployment activities
   trigger.on-deployed: |
     - when: app.status.operationState.phase in ['Succeeded']
@@ -185,18 +199,16 @@ data:
 
   trigger.on-sync-failed: |
     - when: app.status.operationState.phase in ['Failed', 'Error']
-      send: [hipaa-audit-log, security-alert]
+      send: [hipaa-audit-log]
 
   trigger.on-health-degraded: |
     - when: app.status.health.status == 'Degraded'
-      send: [hipaa-audit-log, ops-alert]
+      send: [hipaa-audit-log]
 
   template.hipaa-audit-log: |
     webhook:
       splunk-hec:
         method: POST
-        headers:
-          Authorization: Splunk $splunk-hec-token
         body: |
           {
             "event": {
@@ -219,18 +231,28 @@ data:
 
 ### Git-Based Audit Trail
 
-The GitOps repo itself serves as an audit trail. Configure branch protection to ensure this trail is immutable.
+The GitOps repo itself serves as an audit trail. Configure branch protection to make this trail harder to tamper with.
 
 ```bash
 # GitHub branch protection for the GitOps repository
 # Via GitHub CLI
 gh api repos/org/healthcare-gitops/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["ci/validate-manifests"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":2,"require_code_owner_reviews":true}' \
-  --field restrictions=null \
-  --field required_linear_history=true
+  --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["ci/validate-manifests"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 2,
+    "require_code_owner_reviews": true
+  },
+  "restrictions": null,
+  "required_linear_history": true
+}
+JSON
 ```
 
 ## Integrity Controls (164.312(c))
@@ -293,9 +315,23 @@ data:
   # Force TLS for all connections
   server.insecure: "false"
 
-  # TLS for repo server communication
-  reposerver.tls.cert: /app/config/reposerver/tls/tls.crt
-  reposerver.tls.key: /app/config/reposerver/tls/tls.key
+  # Strict TLS validation for repo server communication
+  server.repo.server.strict.tls: "true"
+  controller.repo.server.strict.tls: "true"
+  applicationsetcontroller.repo.server.strict.tls: "true"
+
+---
+# TLS certificate for ArgoCD repo server communication
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-repo-server-tls
+  namespace: argocd
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64-encoded-certificate>
+  tls.key: <base64-encoded-private-key>
+  ca.crt: <base64-encoded-ca-certificate>
 
 ---
 # Ingress with TLS
@@ -377,12 +413,7 @@ spec:
       duration: 16h             # Until 10 PM
       applications:
         - 'patient-*'           # Clinical applications
-    # Emergency deployments always allowed with manual sync
-    - kind: allow
-      schedule: '* * * * *'
-      duration: 24h
-      applications:
-        - '*'
+      # Emergency deployments can be manually synced with documented approval
       manualSync: true
 ```
 
