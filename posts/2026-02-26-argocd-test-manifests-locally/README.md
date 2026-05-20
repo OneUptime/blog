@@ -90,15 +90,18 @@ For ArgoCD-specific resources (Application, AppProject, ApplicationSet), you nee
 ```bash
 # Download ArgoCD CRD schemas
 mkdir -p /tmp/argocd-schemas
-curl -L https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/crds/application-crd.yaml \
-  -o /tmp/argocd-schemas/application-crd.yaml
+for crd in application appproject applicationset; do
+  curl -L "https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/crds/${crd}-crd.yaml" \
+    -o "/tmp/argocd-schemas/${crd}-crd.yaml"
+done
 
 # Convert CRD to JSON schema (using openapi2jsonschema)
 pip install openapi2jsonschema
-openapi2jsonschema /tmp/argocd-schemas/application-crd.yaml
+FILENAME_FORMAT='{kind}_{version}' openapi2jsonschema /tmp/argocd-schemas/*-crd.yaml
 
 # Validate ArgoCD resources
-kubeconform -schema-location 'file:///tmp/argocd-schemas/{{ .ResourceKind }}.json' \
+kubeconform -schema-location default \
+  -schema-location 'file:///tmp/argocd-schemas/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json' \
   argocd-apps/
 ```
 
@@ -135,7 +138,7 @@ Common Helm errors you will catch locally:
 # {{ required "image.tag is required" .Values.image.tag }}
 
 # Type mismatch
-# values.yaml: replicaCount: "3" (string, not int)
+# values.yaml: replicaCount: "three" (string, not int)
 # template: replicas: {{ .Values.replicaCount }}
 ```
 
@@ -159,15 +162,20 @@ kustomize build apps/my-app/overlays/production \
 
 ## Step 5: Use argocd CLI for Local Manifest Generation
 
-ArgoCD has a local mode that generates manifests exactly as the server would:
+ArgoCD can generate manifests from a local path using the same application settings, and it can also print the live and Git-generated manifests for a registered application:
 
 ```bash
-# Generate manifests locally using the same logic as ArgoCD
+# Generate manifests from your local checkout
+argocd app manifests my-app \
+  --local "$PWD/apps/my-app/production" \
+  --local-repo-root "$PWD" > /tmp/local.yaml
+
+# Print what ArgoCD has live and what it generates from Git
 argocd app manifests my-app --source live > /tmp/live.yaml
 argocd app manifests my-app --source git > /tmp/desired.yaml
 
 # Compare what ArgoCD would see
-diff /tmp/live.yaml /tmp/desired.yaml
+diff /tmp/desired.yaml /tmp/local.yaml
 ```
 
 For a more thorough local test, use `argocd app diff` with a local path:
@@ -235,6 +243,9 @@ echo "=== Dry Run (if cluster available) ==="
 if kubectl cluster-info &>/dev/null; then
     if [ -f "$APP_PATH/kustomization.yaml" ]; then
         kustomize build "$APP_PATH" | \
+            kubectl apply --dry-run=server -f -
+    elif [ -f "$APP_PATH/Chart.yaml" ]; then
+        helm template test "$APP_PATH" | \
             kubectl apply --dry-run=server -f -
     else
         kubectl apply --dry-run=server -R -f "$APP_PATH"
