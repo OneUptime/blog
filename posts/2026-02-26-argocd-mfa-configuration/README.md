@@ -98,17 +98,18 @@ data:
         insecureEnableGroups: true
         groupsKey: groups
 
-        # Request specific ACR (Authentication Context Class Reference)
-        # to ensure MFA was completed
-        # This is optional but adds verification
+        # MFA is enforced by Keycloak's browser flow.
+        # Use Keycloak ACR/LoA configuration if you need token-level evidence
+        # that a specific authentication level was completed.
 ```
 
 ### Verify MFA in Keycloak Token
 
-To verify that MFA was actually performed, check the `acr` (Authentication Context Class Reference) claim in the token. Keycloak sets this based on the authentication flow completed:
+To verify that MFA was actually performed, check the `acr` (Authentication Context Class Reference) claim in the token. In Keycloak, this requires configuring the ACR/LoA mapping and ensuring the client includes the `acr` client scope:
 
 ```yaml
-# In Keycloak, configure the client to include acr in tokens
+# In Keycloak, configure the client to include the acr client scope
+# and map the MFA authentication flow to the expected LoA/ACR value
 
 # Then in ArgoCD, you can log and monitor acr values
 ```
@@ -153,8 +154,9 @@ dex.config: |
       - email
       - groups
 
-      # Request MFA through ACR values
-      # Okta supports requesting specific assurance levels
+      # MFA is enforced by the Okta app sign-in policy.
+      # Direct OIDC clients can also request Okta ACR values,
+      # but this Dex connector config relies on the Okta policy.
       claimMapping:
         preferred_username: email
 ```
@@ -226,7 +228,8 @@ dex.config: |
       hostedDomains:
       - example.com
       serviceAccountFilePath: /tmp/google-sa.json
-      adminEmail: admin@example.com
+      domainToAdminEmail:
+        "*": admin@example.com
 ```
 
 ## Option 5: MFA with Self-Hosted Providers
@@ -245,7 +248,8 @@ totp:
 webauthn:
   display_name: ArgoCD Access
   attestation_conveyance_preference: indirect
-  user_verification: preferred
+  selection_criteria:
+    user_verification: preferred
 
 # Require 2FA for ArgoCD
 access_control:
@@ -311,28 +315,26 @@ Conditions:
 
 ## Monitoring MFA Compliance
 
-Track MFA adoption and failures to ensure compliance:
+ArgoCD application metrics do not report MFA challenge outcomes directly. Track MFA adoption and failures from your identity provider logs or metrics, then alert on the IdP metric for the ArgoCD application:
 
 ```yaml
-# PrometheusRule for auth monitoring
+# PrometheusRule for IdP-exported auth monitoring
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
-  name: argocd-auth-monitoring
+  name: argocd-mfa-monitoring
 spec:
   groups:
-  - name: argocd-authentication
+  - name: argocd-mfa
     rules:
-    - alert: HighAuthFailureRate
+    - alert: HighMFAFailureRate
       expr: |
-        rate(argocd_app_reconcile_count{dest_server!=""}[5m]) == 0
-        and
-        increase(argocd_app_sync_total{phase="Error"}[5m]) > 5
+        increase(idp_mfa_challenge_failures_total{application="argocd"}[5m]) > 5
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "High authentication failure rate detected"
+        summary: "High MFA failure rate detected for ArgoCD"
 ```
 
 Integrate authentication metrics with OneUptime to get alerts when MFA challenges fail at an unusual rate, which could indicate credential theft attempts.
