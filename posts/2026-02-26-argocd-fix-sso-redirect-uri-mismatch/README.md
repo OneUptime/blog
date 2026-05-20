@@ -30,7 +30,7 @@ sequenceDiagram
 
 The three places that must agree on the redirect URI:
 1. The ArgoCD server configuration (`url` in argocd-cm)
-2. The Dex connector configuration (auto-derived from ArgoCD URL)
+2. The SSO mode you are using (Dex callbacks use `/api/dex/callback`; direct OIDC callbacks use `/auth/callback`)
 3. The identity provider's allowed redirect URIs
 
 ## Step 1: Find the Exact Redirect URI ArgoCD Is Sending
@@ -46,7 +46,7 @@ echo ""
 
 The redirect URI that Dex uses follows this pattern:
 ```text
-<argocd-url>/auth/callback
+<argocd-url>/api/dex/callback
 ```
 
 For OIDC without Dex:
@@ -54,9 +54,14 @@ For OIDC without Dex:
 <argocd-url>/auth/callback
 ```
 
-So if your ArgoCD URL is `https://argocd.example.com`, the redirect URI is:
+So if your ArgoCD URL is `https://argocd.example.com`, the direct OIDC redirect URI is:
 ```text
 https://argocd.example.com/auth/callback
+```
+
+For Dex, the redirect URI is:
+```text
+https://argocd.example.com/api/dex/callback
 ```
 
 ## Step 2: Check the Identity Provider Configuration
@@ -64,23 +69,27 @@ https://argocd.example.com/auth/callback
 ### For Okta
 
 Navigate to Applications > Your ArgoCD App > General Settings > Login:
-- The "Sign-in redirect URIs" field must contain exactly: `https://argocd.example.com/auth/callback`
+- For direct OIDC, the "Sign-in redirect URIs" field must contain exactly: `https://argocd.example.com/auth/callback`
+- For Dex, use: `https://argocd.example.com/api/dex/callback`
 
 ### For Azure AD (Entra ID)
 
 Navigate to App registrations > Your App > Authentication:
-- Under "Redirect URIs," add: `https://argocd.example.com/auth/callback`
+- For direct OIDC, under "Redirect URIs," add: `https://argocd.example.com/auth/callback`
+- For Dex, add: `https://argocd.example.com/api/dex/callback`
 - Make sure the type is "Web" (not SPA or Mobile)
 
 ### For Google Workspace
 
 Navigate to Google Cloud Console > APIs & Services > Credentials > Your OAuth 2.0 Client:
-- Under "Authorized redirect URIs," add: `https://argocd.example.com/auth/callback`
+- For direct OIDC, under "Authorized redirect URIs," add: `https://argocd.example.com/auth/callback`
+- For Dex, add: `https://argocd.example.com/api/dex/callback`
 
 ### For Keycloak
 
 Navigate to Clients > Your ArgoCD Client:
-- Set "Valid redirect URIs" to: `https://argocd.example.com/auth/callback`
+- For direct OIDC, set "Valid redirect URIs" to: `https://argocd.example.com/auth/callback`
+- For Dex, use: `https://argocd.example.com/api/dex/callback`
 - You can also use a wildcard like `https://argocd.example.com/*` for testing, but be specific in production
 
 ## Step 3: Fix Common URL Mismatches
@@ -118,7 +127,7 @@ kubectl patch configmap argocd-cm -n argocd --type merge -p '{
 }'
 ```
 
-And the IdP must have: `https://argocd.example.com:8443/auth/callback`
+And the IdP must have `https://argocd.example.com:8443/auth/callback` for direct OIDC, or `https://argocd.example.com:8443/api/dex/callback` for Dex.
 
 ### Mismatch 4: Different Domain or Path
 
@@ -133,7 +142,7 @@ kubectl patch configmap argocd-cm -n argocd --type merge -p '{
 }'
 ```
 
-The redirect URI becomes: `https://platform.example.com/argocd/auth/callback`
+The redirect URI becomes `https://platform.example.com/argocd/auth/callback` for direct OIDC, or `https://platform.example.com/argocd/api/dex/callback` for Dex.
 
 ## Step 4: Using OIDC Directly (Without Dex)
 
@@ -158,15 +167,13 @@ data:
       - profile
       - email
       - groups
-    # Explicitly set redirect URI if needed
-    redirectURI: https://argocd.example.com/auth/callback
 ```
 
-The `redirectURI` field in the OIDC config overrides the auto-generated one. Use this when the automatic derivation does not work correctly.
+For direct OIDC, ArgoCD derives the callback from the `url` setting. If the generated callback is wrong, fix `url` and any relevant reverse proxy or root path settings rather than adding a `redirectURI` field to `oidc.config`.
 
 ## Step 5: Using Dex with Custom Callback
 
-For Dex-based SSO, the callback URL is derived from the ArgoCD URL. If you need to customize it:
+For Dex-based SSO, ArgoCD normally derives the callback URL from the ArgoCD URL. If you need to set the connector callback explicitly:
 
 ```yaml
 # argocd-cm ConfigMap with Dex
@@ -196,7 +203,7 @@ data:
 
 Note the different callback path for Dex: `/api/dex/callback` instead of `/auth/callback`.
 
-When using Dex, you need TWO redirect URIs registered in your IdP:
+When using Dex, register this redirect URI in your IdP:
 - `https://argocd.example.com/api/dex/callback` (Dex callback)
 
 ## Step 6: Debug with Browser Developer Tools
@@ -215,6 +222,8 @@ https://your-idp.com/authorize?
 
 The `redirect_uri` parameter shows exactly what ArgoCD is requesting. Copy this URL-decoded value and make sure it matches what is in your IdP.
 
+If you are using Dex, the decoded `redirect_uri` should use `/api/dex/callback` instead.
+
 ## Step 7: Fix After ArgoCD URL Change
 
 If you changed the ArgoCD domain name, you need to update everything:
@@ -227,9 +236,12 @@ kubectl patch configmap argocd-cm -n argocd --type merge -p '{
   }
 }'
 
-# 2. Restart ArgoCD server and Dex
+# 2. Restart ArgoCD server
 kubectl rollout restart deployment argocd-server -n argocd
-kubectl rollout restart deployment argocd-dex-server -n argocd
+
+# If you use Dex, restart Dex too
+kubectl get deployment argocd-dex-server -n argocd >/dev/null 2>&1 && \
+  kubectl rollout restart deployment argocd-dex-server -n argocd
 
 # 3. Update your IdP redirect URIs to use new-argocd.example.com
 
@@ -252,7 +264,7 @@ echo "=== SSO Redirect URI Debug ==="
 # Get ArgoCD URL
 ARGOCD_URL=$(kubectl get configmap argocd-cm -n $NAMESPACE -o jsonpath='{.data.url}')
 echo "ArgoCD URL: $ARGOCD_URL"
-echo "Expected callback: ${ARGOCD_URL}/auth/callback"
+echo "Direct OIDC callback: ${ARGOCD_URL}/auth/callback"
 
 # Check for Dex config
 DEX_CONFIG=$(kubectl get configmap argocd-cm -n $NAMESPACE -o jsonpath='{.data.dex\.config}')
@@ -281,4 +293,4 @@ kubectl get ingress -n $NAMESPACE -o jsonpath='{range .items[*]}{.spec.tls[*].ho
 
 ## Summary
 
-The redirect URI mismatch error in ArgoCD SSO boils down to one simple rule: the callback URL that ArgoCD sends must exactly match one of the allowed redirect URIs in your identity provider. Check the ArgoCD `url` in the ConfigMap, determine whether you are using Dex (`/api/dex/callback`) or direct OIDC (`/auth/callback`), and make sure the IdP has the exact same URI registered. Pay attention to protocol, port, domain, path, and trailing slashes - any difference will cause a mismatch.
+The redirect URI mismatch error in ArgoCD SSO boils down to one simple rule: the callback URL that ArgoCD sends must exactly match one of the allowed redirect URIs in your identity provider. Check the ArgoCD `url` in the ConfigMap, determine whether you are using Dex (`/api/dex/callback`) or direct OIDC (`/auth/callback`), and make sure the IdP has the exact same URI registered. Pay attention to protocol, port, domain, path, and trailing slashes - any difference can cause a mismatch.
