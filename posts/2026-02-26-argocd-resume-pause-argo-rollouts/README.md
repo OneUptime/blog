@@ -8,7 +8,7 @@ Description: Learn how to create custom resume, pause, promote, and abort action
 
 ---
 
-Argo Rollouts brings canary deployments and blue-green deployments to Kubernetes, and it integrates tightly with ArgoCD. But managing Rollout lifecycle operations - pausing a canary, promoting to the next step, aborting a bad release - requires either the Argo Rollouts kubectl plugin or the Argo Rollouts dashboard. If your team lives in the ArgoCD UI, they should not have to switch tools for these common operations.
+Argo Rollouts brings canary deployments and blue-green deployments to Kubernetes, and it integrates tightly with ArgoCD. ArgoCD includes built-in Rollout actions in current releases, but you can also define or customize resource actions for Rollout lifecycle operations - pausing a canary, promoting to the next step, aborting a bad release - directly in the ArgoCD UI. If your team lives in the ArgoCD UI, they should not have to switch tools for these common operations.
 
 Custom resource actions let you add pause, resume, promote, and abort buttons directly to Argo Rollouts resources in the ArgoCD dashboard. This guide shows you how to build all of them.
 
@@ -65,6 +65,14 @@ data:
           aborted = true
         end
       end
+      if obj.spec.paused == true then
+        paused = true
+      end
+
+      -- Pause: available while rollout is progressing
+      if phase == "Progressing" and not paused then
+        actions["pause"] = {["disabled"] = false}
+      end
 
       -- Resume: available when rollout is paused
       if paused then
@@ -90,12 +98,21 @@ data:
       return actions
 
     definitions:
+      - name: pause
+        action.lua: |
+          -- Manually pause a rollout
+          obj.spec.paused = true
+          return obj
+
       - name: resume
         action.lua: |
           -- Resume a paused rollout (advance to next step)
-          -- This works by clearing the pause conditions
+          -- This works by clearing pause conditions and manual pause state
           if obj.status ~= nil then
             obj.status.pauseConditions = nil
+          end
+          if obj.spec.paused ~= nil and obj.spec.paused then
+            obj.spec.paused = false
           end
           return obj
 
@@ -103,17 +120,7 @@ data:
         action.lua: |
           -- Full promotion: skip remaining steps and go to 100%
           if obj.status ~= nil then
-            obj.status.pauseConditions = nil
-          end
-          -- Set the full promotion status
-          if obj.metadata.annotations == nil then
-            obj.metadata.annotations = {}
-          end
-          local os = require("os")
-          obj.metadata.annotations["rollout.argoproj.io/fullPromote"] = tostring(os.time())
-          -- Clear any existing abort status
-          if obj.status ~= nil then
-            obj.status.abort = false
+            obj.status.promoteFull = true
           end
           return obj
 
@@ -130,31 +137,15 @@ data:
         action.lua: |
           -- Retry a failed or aborted rollout
           if obj.status ~= nil then
-            obj.status.abort = false
-            obj.status.pauseConditions = nil
+            obj.status.abort = nil
           end
-          -- Update template annotation to trigger new rollout
-          local os = require("os")
-          if obj.spec.template.metadata == nil then
-            obj.spec.template.metadata = {}
-          end
-          if obj.spec.template.metadata.annotations == nil then
-            obj.spec.template.metadata.annotations = {}
-          end
-          obj.spec.template.metadata.annotations["rollout.argoproj.io/retried-at"] = tostring(os.time())
           return obj
 
       - name: restart
         action.lua: |
           -- Restart all pods (rolling restart)
           local os = require("os")
-          if obj.spec.template.metadata == nil then
-            obj.spec.template.metadata = {}
-          end
-          if obj.spec.template.metadata.annotations == nil then
-            obj.spec.template.metadata.annotations = {}
-          end
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
+          obj.spec.restartAt = os.date("!%Y-%m-%dT%XZ")
           return obj
 ```
 
@@ -185,7 +176,7 @@ When the rollout reaches the first pause step:
 
 1. Open ArgoCD UI and navigate to your application
 2. Click on the Rollout resource
-3. You will see "resume" and "abort" actions available
+3. You will see "resume", "promote-full", and "abort" actions available
 4. If the canary looks good, click "resume" to advance to 50%
 5. If the canary is bad, click "abort" to roll back
 
@@ -194,29 +185,33 @@ When the rollout reaches the first pause step:
 ```bash
 # Check the rollout status
 
-argocd app resources my-app --kind Rollout
+argocd app resources my-app
 
 # Resume a paused rollout
 argocd app actions run my-app resume \
   --kind Rollout \
+  --group argoproj.io \
   --resource-name my-service \
   --namespace production
 
 # Abort a bad rollout
 argocd app actions run my-app abort \
   --kind Rollout \
+  --group argoproj.io \
   --resource-name my-service \
   --namespace production
 
 # Full promote (skip to 100%)
 argocd app actions run my-app promote-full \
   --kind Rollout \
+  --group argoproj.io \
   --resource-name my-service \
   --namespace production
 
 # Retry a failed rollout
 argocd app actions run my-app retry \
   --kind Rollout \
+  --group argoproj.io \
   --resource-name my-service \
   --namespace production
 ```
@@ -229,19 +224,19 @@ If you use Argo Rollouts analysis, you might also want actions on AnalysisRun re
   resource.customizations.actions.argoproj.io_AnalysisRun: |
     discovery.lua: |
       actions = {}
-      if obj.status ~= nil and obj.status.phase == "Running" then
-        actions["terminate"] = {["disabled"] = false}
-      end
+      local terminal = obj.status ~= nil and (
+        obj.status.phase == "Successful" or
+        obj.status.phase == "Failed" or
+        obj.status.phase == "Error" or
+        obj.status.phase == "Inconclusive"
+      )
+      actions["terminate"] = {["disabled"] = (obj.spec.terminate == true or terminal)}
       return actions
     definitions:
       - name: terminate
         action.lua: |
           -- Terminate a running analysis
-          if obj.spec.terminate == nil then
-            obj.spec.terminate = true
-          else
-            obj.spec.terminate = true
-          end
+          obj.spec.terminate = true
           return obj
 ```
 
@@ -261,7 +256,7 @@ To make the actions work well, you should also have a health check that accurate
     if obj.status.phase == "Healthy" then
       hs.status = "Healthy"
       hs.message = "Rollout is healthy"
-    elseif obj.status.phase == "Paused" then
+    elseif obj.status.phase == "Paused" or (obj.spec.paused ~= nil and obj.spec.paused) then
       -- Paused is a valid state, not degraded
       hs.status = "Suspended"
       if obj.status.pauseConditions ~= nil then
