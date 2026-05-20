@@ -14,7 +14,7 @@ This approach gives you the automation benefits of dynamic discovery with the fl
 
 ## How the Git File Generator Works
 
-The generator scans your repository for files matching a glob pattern, reads each file, and produces one parameter set per file (or per element within a file, if the file contains a list). Every key in the JSON or YAML file becomes a template variable.
+The generator scans your repository for files matching a glob pattern, reads each file, and produces one parameter set per file. Every key in the JSON or YAML file becomes a template variable.
 
 ```mermaid
 graph TD
@@ -49,7 +49,6 @@ config-repo/
 Each config file contains application-specific parameters.
 
 ```json
-// apps/api-gateway.json
 {
   "appName": "api-gateway",
   "repoPath": "deploy/api-gateway",
@@ -207,7 +206,6 @@ config-repo/
 Each config file includes environment-specific settings.
 
 ```json
-// environments/production/api.json
 {
   "appName": "api",
   "environment": "production",
@@ -234,7 +232,7 @@ spec:
       repoURL: https://github.com/myorg/config-repo
       revision: main
       files:
-      - path: "environments/*//*.json"
+      - path: "environments/*/*.json"
   template:
     metadata:
       name: '{{appName}}-{{environment}}'
@@ -273,7 +271,7 @@ spec:
       name: '{{ .appName }}'
       labels:
         team: '{{ .team }}'
-        tier: '{{ default "standard" .tier }}'
+        tier: '{{ dig "tier" "standard" . }}'
     spec:
       project: default
       source:
@@ -285,7 +283,7 @@ spec:
         namespace: '{{ .namespace }}'
 ```
 
-Go templates use `{{ .key }}` syntax instead of `{{key}}` and support functions like `default`, `upper`, `lower`, and conditional logic.
+Go templates use `{{ .key }}` syntax instead of `{{key}}` and support functions like `dig`, `default`, `upper`, `lower`, and conditional logic.
 
 ## Validating Config Files
 
