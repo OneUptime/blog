@@ -8,59 +8,56 @@ Description: Learn how to influence and configure the order in which ArgoCD eval
 
 ---
 
-ArgoCD's automatic tool detection follows a fixed priority order: Helm first, then Kustomize, Jsonnet, CMP plugins, and finally plain YAML. While you cannot change this built-in priority for the core tools, you can influence detection behavior through several configuration mechanisms. This guide covers how detection priority works internally, how to adjust CMP plugin ordering, and practical techniques to steer detection toward the tool you want.
+ArgoCD's automatic tool detection is intentionally limited: if a tool is explicitly configured, ArgoCD uses that tool; otherwise, repo-server checks for a matching CMP plugin, then detects Helm or Kustomize marker files, and finally falls back to plain directory processing. Jsonnet is processed as part of directory applications, not as a separately auto-detected source type. This guide covers how detection works internally, how to make CMP plugin matching predictable, and practical techniques to steer detection toward the tool you want.
 
 ## The Built-in Priority Order
 
-ArgoCD's core detection priority is hardcoded in the repo-server:
+ArgoCD's source type detection is hardcoded in the repo-server:
 
 ```text
-Priority 1: Helm        (Chart.yaml)
-Priority 2: Kustomize   (kustomization.yaml / kustomization.yml / Kustomization)
-Priority 3: Jsonnet      (*.jsonnet / *.libsonnet)
-Priority 4: CMP Plugins  (plugin discovery rules)
-Priority 5: Directory    (fallback - all YAML files)
+Step 1: Explicit source type (helm, kustomize, directory, or plugin)
+Step 2: CMP plugin discovery rules
+Step 3: Helm / Kustomize marker files
+Step 4: Directory fallback (YAML, JSON, and Jsonnet files)
 ```
 
-This order is part of ArgoCD's source code and cannot be changed through configuration. However, there are several ways to work around it.
+This detection logic is part of ArgoCD's source code and cannot be changed through configuration. However, there are several ways to work around it.
 
 ## CMP Plugin Priority
 
-Among CMP plugins, the order in which they are evaluated depends on the order the sidecar containers register with the repo-server. This is determined by:
+Among CMP plugins, ArgoCD lists the plugin socket directory and checks each socket until it finds a plugin whose discovery rule matches. In Go, `os.ReadDir` returns directory entries sorted by filename, so automatic CMP matching is effectively determined by plugin socket name, not by Kubernetes container order.
 
-1. The order sidecar containers are listed in the pod spec
-2. The order they finish starting up
-3. The order their socket files appear in the plugins directory
+The socket name is derived from the plugin name, or from the plugin name plus version when the plugin has a version. For predictable matching, give plugins names that sort in the order you want, or explicitly name the plugin in the Application spec.
 
-In practice, the pod spec order is what matters most:
+For example, these plugin names make the intended order visible:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: ConfigManagementPlugin
 metadata:
-  name: argocd-repo-server
-  namespace: argocd
+  # Checked before 20-sops-plain and 30-cue-manifests
+  name: 10-sops-kustomize
 spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          # Main repo-server container
-
-        # Plugin evaluated first (highest CMP priority)
-        - name: sops-kustomize
-          image: my-registry/argocd-cmp-sops-kustomize:v1.0
-
-        # Plugin evaluated second
-        - name: sops-plain
-          image: my-registry/argocd-cmp-sops-plain:v1.0
-
-        # Plugin evaluated third (lowest CMP priority)
-        - name: cue-manifests
-          image: my-registry/argocd-cmp-cue:v1.0
+  generate:
+    command: [sh, -c, "kustomize build ."]
+  discover:
+    find:
+      command: [sh, -c]
+      args:
+        - |
+          if [ -f kustomization.yaml ] && find . -name "*.enc.yaml" | grep -q .; then
+            echo "matched"
+          fi
 ```
 
-To change CMP plugin priority, reorder the sidecar containers in the deployment spec.
+To avoid depending on automatic CMP ordering, explicitly select the plugin in the Application spec:
+
+```yaml
+spec:
+  source:
+    plugin:
+      name: 10-sops-kustomize
+```
 
 ## Techniques for Influencing Detection
 
@@ -76,7 +73,7 @@ rm apps/my-app/Chart.yaml
 git add -A && git commit -m "Remove Chart.yaml to use Kustomize"
 ```
 
-### Technique 2: Use .argocd-source Configuration
+### Technique 2: Configure the Source Explicitly
 
 For applications that use the App-of-Apps pattern, you can set tool types at the source level in your ApplicationSet or parent application template:
 
@@ -111,22 +108,23 @@ Design your CMP plugin discovery rules to be very specific, using negative condi
 
 ```yaml
 # This plugin should only match when there are NO built-in tool markers
-discover:
-  find:
-    command: [sh, -c]
-    args:
-      - |
-        # Exclude directories meant for built-in tools
-        [ -f "Chart.yaml" ] && exit 0
-        [ -f "kustomization.yaml" ] && exit 0
-        [ -f "kustomization.yml" ] && exit 0
-        [ -f "Kustomization" ] && exit 0
-        find . -maxdepth 1 -name "*.jsonnet" | grep -q . && exit 0
+spec:
+  discover:
+    find:
+      command: [sh, -c]
+      args:
+        - |
+          # Exclude directories meant for built-in tools
+          [ -f "Chart.yaml" ] && exit 0
+          [ -f "kustomization.yaml" ] && exit 0
+          [ -f "kustomization.yml" ] && exit 0
+          [ -f "Kustomization" ] && exit 0
+          find . -maxdepth 1 -name "*.jsonnet" | grep -q . && exit 0
 
-        # Now check for our custom marker
-        if [ -f "custom-config.yaml" ]; then
-          echo "matched"
-        fi
+          # Now check for our custom marker
+          if [ -f "custom-config.yaml" ]; then
+            echo "matched"
+          fi
 ```
 
 ### Technique 4: Wrapper Directories
@@ -197,7 +195,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Set default Helm parameters
+  # Allow additional Helm values file URL schemes
   helm.valuesFileSchemes: >-
     secrets+gpg-import, secrets+gpg-import-kubernetes,
     secrets+age-import, secrets+age-import-kubernetes,
@@ -220,7 +218,7 @@ data:
   kustomize.path.v5.2.1: /custom/path/kustomize
 ```
 
-### Default Directory Behavior
+### Disabling Built-in Tools
 
 ```yaml
 apiVersion: v1
@@ -229,14 +227,11 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Configure directory tool defaults
-  resource.exclusions: |
-    - apiGroups:
-        - ""
-      kinds:
-        - "Event"
-      clusters:
-        - "*"
+  # Disable unused built-in generators.
+  # Disabled source types fall back to plain directory processing.
+  helm.enable: "true"
+  kustomize.enable: "true"
+  jsonnet.enable: "true"
 ```
 
 ## Priority with Multi-Source Applications
@@ -279,4 +274,4 @@ This gives you visibility into whether detection is working as expected across y
 
 ## Summary
 
-ArgoCD's built-in tool detection priority (Helm > Kustomize > Jsonnet > CMP > Directory) is fixed and cannot be reconfigured. However, you can influence detection through several practical techniques: remove conflicting marker files, structure directories for one tool each, make CMP plugin discovery rules precise, and - most importantly - always explicitly specify the tool type in production Application specs. For CMP plugins specifically, the sidecar container order in the pod spec determines which plugin gets evaluated first.
+ArgoCD's built-in tool detection logic is fixed and cannot be reconfigured. However, you can influence detection through several practical techniques: remove conflicting marker files, structure directories for one tool each, make CMP plugin discovery rules precise, and - most importantly - always explicitly specify the tool type in production Application specs. For CMP plugins specifically, automatic matching checks plugin sockets in sorted name order, so explicit plugin selection is the most reliable way to avoid ambiguity.
