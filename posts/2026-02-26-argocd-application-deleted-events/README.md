@@ -63,19 +63,23 @@ data:
         - app-deleted-audit
 
   template.app-deleted-alert: |
+    message: |
+      Application {{.app.metadata.name}} is being deleted.
     slack:
-      channel: "platform-alerts"
-      title: "APPLICATION DELETED: {{.app.metadata.name}}"
-      text: |
-        *Application*: {{.app.metadata.name}}
-        *Project*: {{.app.spec.project}}
-        *Namespace*: {{.app.spec.destination.namespace}}
-        *Cluster*: {{.app.spec.destination.server}}
-        *Had Cascade Finalizer*: {{if .app.metadata.finalizers}}Yes - managed resources will be deleted{{else}}No - resources will be orphaned{{end}}
-        *Deletion Timestamp*: {{.app.metadata.deletionTimestamp}}
-
-        This is an automated alert. If this deletion was unexpected, contact the platform team immediately.
-      color: "#FF0000"
+      attachments: |
+        [{
+          "title": "APPLICATION DELETED: {{.app.metadata.name}}",
+          "color": "#FF0000",
+          "fields": [
+            {"title": "Application", "value": "{{.app.metadata.name}}", "short": true},
+            {"title": "Project", "value": "{{.app.spec.project}}", "short": true},
+            {"title": "Namespace", "value": "{{.app.spec.destination.namespace}}", "short": true},
+            {"title": "Cluster", "value": "{{.app.spec.destination.server}}", "short": true},
+            {"title": "Had Cascade Finalizer", "value": "{{if or (has \"resources-finalizer.argocd.argoproj.io\" .app.metadata.finalizers) (has \"resources-finalizer.argocd.argoproj.io/background\" .app.metadata.finalizers)}}Yes - managed resources will be deleted{{else}}No - resources will be orphaned{{end}}", "short": false},
+            {"title": "Deletion Timestamp", "value": "{{.app.metadata.deletionTimestamp}}", "short": false}
+          ],
+          "text": "This is an automated alert. If this deletion was unexpected, contact the platform team immediately."
+        }]
 
   template.app-deleted-audit: |
     webhook:
@@ -88,7 +92,7 @@ data:
             "project": "{{.app.spec.project}}",
             "namespace": "{{.app.spec.destination.namespace}}",
             "cluster": "{{.app.spec.destination.server}}",
-            "cascade": {{if .app.metadata.finalizers}}true{{else}}false{{end}},
+            "cascade": {{if or (has "resources-finalizer.argocd.argoproj.io" .app.metadata.finalizers) (has "resources-finalizer.argocd.argoproj.io/background" .app.metadata.finalizers)}}true{{else}}false{{end}},
             "timestamp": "{{.app.metadata.deletionTimestamp}}",
             "source": {
               "repoURL": "{{.app.spec.source.repoURL}}",
@@ -106,6 +110,9 @@ data:
         value: application/json
       - name: Authorization
         value: $audit-api-token
+
+  service.slack: |
+    token: $slack-token
 ```
 
 ## Approach 2: Kubernetes Controller for Deletion Events
@@ -117,11 +124,11 @@ A more reliable approach is a Kubernetes controller that watches for Application
 import kopf
 import logging
 import requests
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-@kopf.on.delete('argoproj.io', 'v1alpha1', 'applications')
+@kopf.on.delete('argoproj.io', 'v1alpha1', 'applications', optional=True)
 def on_application_deleted(spec, meta, namespace, logger, **kwargs):
     """Handle ArgoCD Application deletion events."""
 
@@ -129,7 +136,10 @@ def on_application_deleted(spec, meta, namespace, logger, **kwargs):
     app_namespace = spec.get('destination', {}).get('namespace', 'default')
     project = spec.get('project', 'default')
     finalizers = meta.get('finalizers', [])
-    has_cascade = 'resources-finalizer.argocd.argoproj.io' in finalizers
+    has_cascade = (
+        'resources-finalizer.argocd.argoproj.io' in finalizers or
+        'resources-finalizer.argocd.argoproj.io/background' in finalizers
+    )
 
     logger.warning(
         f"Application deleted: {app_name}, "
@@ -157,7 +167,7 @@ def record_audit_event(app_name, namespace, project, cascade):
             'namespace': namespace,
             'project': project,
             'cascade': cascade,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         }
     )
 
@@ -292,22 +302,20 @@ def validate_deletion():
 
 ## Approach 4: Backup Before Delete
 
-Automatically backup application configuration before deletion using a pre-delete hook:
+Automatically backup application configuration before deletion by running a backup job from your deletion approval workflow or controller before allowing the Application delete request:
 
 ```yaml
-# This runs as a PreSync hook when the Application is being deleted
 apiVersion: batch/v1
 kind: Job
 metadata:
   name: app-backup-on-delete
-  annotations:
-    argocd.argoproj.io/hook: PreSync
 spec:
   template:
     spec:
       containers:
         - name: backup
-          image: bitnami/kubectl:1.30
+          # Use an image that includes both kubectl and the AWS CLI
+          image: platform/kubectl-awscli:1.30
           command:
             - /bin/bash
             - -c
@@ -349,7 +357,7 @@ graph TD
 ```yaml
 metadata:
   annotations:
-    notifications.argoproj.io/subscribe.on-app-deleted.slack: ""
+    notifications.argoproj.io/subscribe.on-app-deleted.slack: platform-alerts
     notifications.argoproj.io/subscribe.on-app-deleted.audit-api: ""
 ```
 
