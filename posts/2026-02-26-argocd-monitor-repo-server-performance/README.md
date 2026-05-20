@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Prometheus, Performance
 
-Description: Learn how to monitor ArgoCD repo server performance using Prometheus metrics, including tracking Git operations, manifest generation, cache efficiency, and resource utilization.
+Description: Learn how to monitor ArgoCD repo server performance using Prometheus metrics, including tracking Git operations, manifest generation, pending repo requests, and resource utilization.
 
 ---
 
@@ -35,46 +35,61 @@ flowchart TD
     E --> E2[Manifest Cache]
 ```
 
-Each of these operations has associated metrics that tell you where time is being spent.
+These operations expose metrics that tell you where time is being spent.
 
 ## Key Performance Metrics
 
 ### Git Operation Metrics
 
 ```promql
-# Git request count by type and status
+# Git request count by type
 
-rate(argocd_git_request_total[5m]) by (request_type, grpc_code)
+sum by (request_type) (rate(argocd_git_request_total[5m]))
 
 # Git request duration - 95th percentile
 histogram_quantile(0.95,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
+  sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
 )
 
 # Git request duration by request type
 histogram_quantile(0.95,
-  rate(argocd_git_request_duration_seconds_bucket[5m])
-) by (request_type)
+  sum by (request_type, le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
+)
 
 # Failed Git requests
-rate(argocd_git_request_total{grpc_code!="OK"}[5m])
+sum(rate(argocd_git_fetch_fail_total[5m]))
 ```
 
 ### Manifest Generation Metrics
 
+Repo server gRPC histograms are exposed only when `ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true` is enabled.
+
 ```promql
 # Repo server request duration for manifest generation
 histogram_quantile(0.95,
-  rate(argocd_repo_server_request_duration_seconds_bucket[5m])
+  sum by (le) (
+    rate(grpc_server_handling_seconds_bucket{
+      grpc_service="repository.RepoServerService",
+      grpc_method="GenerateManifest"
+    }[5m])
+  )
 )
 
-# Request duration by source type (Helm, Kustomize, etc.)
+# Repo server gRPC request duration by method
 histogram_quantile(0.95,
-  rate(argocd_repo_server_request_duration_seconds_bucket[5m])
-) by (request_type)
+  sum by (grpc_method, le) (
+    rate(grpc_server_handling_seconds_bucket{
+      grpc_service="repository.RepoServerService"
+    }[5m])
+  )
+)
 
 # Total repo server requests
-rate(argocd_repo_server_request_total[5m])
+sum by (grpc_method, grpc_code) (
+  rate(grpc_server_handled_total{
+    grpc_service="repository.RepoServerService"
+  }[5m])
+)
 ```
 
 Resource Utilization Metrics
@@ -112,27 +127,29 @@ sum(rate(argocd_git_request_total[5m]))
 
 Git error rate gauge:
 ```promql
-sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m]))
+sum(rate(argocd_git_fetch_fail_total[5m]))
 / sum(rate(argocd_git_request_total[5m])) * 100
 ```
 
 P95 Git duration stat:
 ```promql
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95,
+  sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
+)
 ```
 
 **Row 2: Git Operations**
 
 Time series - Git request duration percentiles:
 ```promql
-histogram_quantile(0.50, rate(argocd_git_request_duration_seconds_bucket[5m]))
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
-histogram_quantile(0.99, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.50, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
+histogram_quantile(0.95, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
+histogram_quantile(0.99, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
 ```
 
-Time series - Git request rate by status:
+Time series - Git request rate by type:
 ```promql
-sum(rate(argocd_git_request_total[5m])) by (grpc_code)
+sum by (request_type) (rate(argocd_git_request_total[5m]))
 ```
 
 **Row 3: Manifest Generation**
@@ -140,8 +157,13 @@ sum(rate(argocd_git_request_total[5m])) by (grpc_code)
 Time series - Manifest generation duration:
 ```promql
 histogram_quantile(0.95,
-  rate(argocd_repo_server_request_duration_seconds_bucket[5m])
-) by (request_type)
+  sum by (le) (
+    rate(grpc_server_handling_seconds_bucket{
+      grpc_service="repository.RepoServerService",
+      grpc_method="GenerateManifest"
+    }[5m])
+  )
+)
 ```
 
 **Row 4: Resource Usage**
@@ -164,7 +186,7 @@ groups:
   - alert: ArgocdRepoServerGitSlow
     expr: |
       histogram_quantile(0.95,
-        rate(argocd_git_request_duration_seconds_bucket[10m])
+        sum by (le) (rate(argocd_git_request_duration_seconds_bucket[10m]))
       ) > 30
     for: 15m
     labels:
@@ -176,8 +198,8 @@ groups:
   # Git operations are failing
   - alert: ArgocdRepoServerGitErrors
     expr: |
-      rate(argocd_git_request_total{grpc_code!="OK"}[5m])
-      / rate(argocd_git_request_total[5m]) > 0.1
+      sum(rate(argocd_git_fetch_fail_total[5m]))
+      / sum(rate(argocd_git_request_total[5m])) > 0.1
     for: 10m
     labels:
       severity: warning
@@ -189,7 +211,12 @@ groups:
   - alert: ArgocdRepoServerManifestGenSlow
     expr: |
       histogram_quantile(0.95,
-        rate(argocd_repo_server_request_duration_seconds_bucket[10m])
+        sum by (le) (
+          rate(grpc_server_handling_seconds_bucket{
+            grpc_service="repository.RepoServerService",
+            grpc_method="GenerateManifest"
+          }[10m])
+        )
       ) > 60
     for: 10m
     labels:
@@ -205,10 +232,11 @@ groups:
         namespace="argocd",
         container="argocd-repo-server"
       }
-      / on(pod) kube_pod_container_resource_limits{
+      / on(namespace, pod, container) kube_pod_container_resource_limits{
         namespace="argocd",
         container="argocd-repo-server",
-        resource="memory"
+        resource="memory",
+        unit="byte"
       } > 0.85
     for: 10m
     labels:
@@ -226,8 +254,8 @@ When repo server metrics show degraded performance, follow this investigation fl
 
 ```promql
 # Compare Git duration vs manifest generation duration
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
-histogram_quantile(0.95, rate(argocd_repo_server_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
+histogram_quantile(0.95, sum by (le) (rate(grpc_server_handling_seconds_bucket{grpc_service="repository.RepoServerService", grpc_method="GenerateManifest"}[5m])))
 ```
 
 If Git duration is high, the problem is network or Git server related. If manifest generation is high, the problem is Helm/Kustomize processing.
@@ -271,7 +299,7 @@ data:
 
 ```yaml
 data:
-  reposerver.default.cache.expiration: "24h"
+  reposerver.default.cache.expiration: "24h0m0s"
 ```
 
 **Scale horizontally:**
@@ -300,6 +328,11 @@ spec:
 **Use persistent storage for repo cache:**
 
 ```yaml
+containers:
+  - name: argocd-repo-server
+    volumeMounts:
+      - name: tmp
+        mountPath: /tmp
 volumes:
   - name: tmp
     persistentVolumeClaim:
@@ -317,19 +350,24 @@ groups:
   - record: argocd:git_request_latency_p95:5m
     expr: |
       histogram_quantile(0.95,
-        rate(argocd_git_request_duration_seconds_bucket[5m])
+        sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m]))
       )
 
   - record: argocd:manifest_gen_latency_p95:5m
     expr: |
       histogram_quantile(0.95,
-        rate(argocd_repo_server_request_duration_seconds_bucket[5m])
+        sum by (le) (
+          rate(grpc_server_handling_seconds_bucket{
+            grpc_service="repository.RepoServerService",
+            grpc_method="GenerateManifest"
+          }[5m])
+        )
       )
 
   - record: argocd:git_error_rate:5m
     expr: |
-      rate(argocd_git_request_total{grpc_code!="OK"}[5m])
-      / rate(argocd_git_request_total[5m])
+      sum(rate(argocd_git_fetch_fail_total[5m]))
+      / sum(rate(argocd_git_request_total[5m]))
 ```
 
 The repo server is often the first component to show performance degradation as your ArgoCD installation grows. Proactive monitoring of Git operations and manifest generation gives you the visibility to scale before users notice delays.
