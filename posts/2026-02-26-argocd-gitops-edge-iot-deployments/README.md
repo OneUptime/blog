@@ -65,7 +65,7 @@ Install ArgoCD on your central hub cluster:
 
 ```bash
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 ```
 
 Use the HA installation for the hub since it manages all your edge sites.
@@ -117,6 +117,7 @@ metadata:
   name: edge-monitoring-agent
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - clusters:
         selector:
@@ -124,7 +125,7 @@ spec:
             site-type: edge
   template:
     metadata:
-      name: "monitoring-{{name}}"
+      name: "monitoring-{{.name}}"
     spec:
       project: edge-sites
       source:
@@ -132,7 +133,7 @@ spec:
         targetRevision: main
         path: apps/monitoring-agent/overlays/edge
       destination:
-        server: "{{server}}"
+        server: "{{.server}}"
         namespace: monitoring
       syncPolicy:
         automated:
@@ -180,25 +181,26 @@ metadata:
   name: edge-apps
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - clusters:
         selector:
           matchLabels:
             site-type: edge
         values:
-          facility: "{{metadata.labels.facility-type}}"
-          region: "{{metadata.labels.region}}"
+          facility: '{{index .metadata.labels "facility-type"}}'
+          region: '{{index .metadata.labels "region"}}'
   template:
     metadata:
-      name: "edge-app-{{name}}"
+      name: "edge-app-{{.name}}"
     spec:
       project: edge-sites
       source:
         repoURL: https://github.com/your-org/edge-config.git
         targetRevision: main
-        path: "apps/edge-gateway/overlays/{{values.facility}}"
+        path: "apps/edge-gateway/overlays/{{.values.facility}}"
       destination:
-        server: "{{server}}"
+        server: "{{.server}}"
         namespace: edge-apps
 ```
 
@@ -217,12 +219,14 @@ kind: ConfigMap
 metadata:
   name: argocd-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
-  # Increase timeout for slow edge connections
-  timeout.reconciliation: 300s
+  # Poll Git less aggressively for large edge fleets
+  timeout.reconciliation: 5m
 
-  # Increase connection timeout for edge clusters
-  server.connection.timeout: 60s
+  # Spread refreshes out to avoid simultaneous hub load
+  timeout.reconciliation.jitter: 60s
 ```
 
 For the ArgoCD Application, configure generous retry policies:
@@ -252,6 +256,9 @@ spec:
     matchLabels:
       app: edge-gateway
   template:
+    metadata:
+      labels:
+        app: edge-gateway
     spec:
       containers:
         - name: gateway
