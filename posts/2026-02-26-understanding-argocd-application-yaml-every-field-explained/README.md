@@ -1,18 +1,18 @@
-# Understanding ArgoCD application.yaml: Every Field Explained
+# Understanding ArgoCD application.yaml: Key Fields Explained
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, YAML, Configuration
 
-Description: A comprehensive reference guide to every field in the ArgoCD Application YAML specification, with explanations, default values, and practical examples for each setting.
+Description: A comprehensive reference guide to the key fields in the ArgoCD Application YAML specification, with explanations, default values, and practical examples for common settings.
 
 ---
 
-The ArgoCD Application resource is the central building block of your GitOps workflow. It tells ArgoCD what to deploy, where to deploy it, and how to manage the sync lifecycle. While simple applications only need a few fields, the full Application spec has dozens of options that control everything from sync behavior to health checks and retry logic. This guide walks through every field in the Application YAML.
+The ArgoCD Application resource is the central building block of your GitOps workflow. It tells ArgoCD what to deploy, where to deploy it, and how to manage the sync lifecycle. While simple applications only need a few fields, the full Application spec has dozens of options that control everything from sync behavior to diff handling and retry logic. This guide walks through the key fields in the Application YAML.
 
 ## The Complete Application Structure
 
-Here is the full structure of an ArgoCD Application with every field populated:
+Here is a representative structure of an ArgoCD Application with common fields populated:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -89,7 +89,7 @@ annotations:
   notifications.argoproj.io/subscribe.on-sync-succeeded.slack: "#deploys"
   notifications.argoproj.io/subscribe.on-health-degraded.slack: "#alerts"
   # Custom annotations
-  argocd.argoproj.io/managed-by: platform-team
+  example.com/managed-by: platform-team
 ```
 
 ### metadata.finalizers
@@ -131,10 +131,8 @@ The Git repository URL or Helm chart repository URL:
 ```yaml
 source:
   repoURL: https://github.com/org/repo.git          # Git repo
-  # or
-  repoURL: https://charts.helm.sh/stable             # Helm chart repo
-  # or
-  repoURL: oci://registry.example.com/charts          # OCI Helm repo
+  # repoURL: https://charts.bitnami.com/bitnami      # Helm chart repo
+  # repoURL: oci://registry.example.com/charts        # OCI Helm repo
 ```
 
 ### targetRevision
@@ -144,10 +142,10 @@ The Git branch, tag, commit SHA, or Helm chart version:
 ```yaml
 source:
   targetRevision: HEAD          # Latest commit on default branch
-  targetRevision: main          # Specific branch
-  targetRevision: v1.2.3        # Git tag
-  targetRevision: abc1234       # Specific commit
-  targetRevision: "1.2.3"       # Helm chart version
+  # targetRevision: main        # Specific branch
+  # targetRevision: v1.2.3      # Git tag
+  # targetRevision: abc1234     # Specific commit
+  # targetRevision: "1.2.3"     # Helm chart version
 ```
 
 ### path
@@ -157,8 +155,8 @@ The directory within the Git repository containing the manifests:
 ```yaml
 source:
   path: k8s/overlays/production    # Kustomize overlay
-  path: helm/my-chart              # Helm chart in repo
-  path: manifests                  # Plain YAML manifests
+  # path: helm/my-chart            # Helm chart in repo
+  # path: manifests                # Plain YAML manifests
 ```
 
 Not used when deploying a Helm chart from a chart repository (use `chart` instead).
@@ -169,9 +167,9 @@ Used instead of `path` when deploying from a Helm chart repository:
 
 ```yaml
 source:
-  repoURL: https://charts.helm.sh/stable
-  chart: nginx-ingress
-  targetRevision: "4.0.0"
+  repoURL: https://charts.bitnami.com/bitnami
+  chart: nginx
+  targetRevision: "24.0.0"
 ```
 
 ### helm
@@ -200,7 +198,7 @@ source:
       - values.yaml
       - values-production.yaml
 
-    # Values from external ConfigMaps/Secrets
+    # Structured inline values
     valuesObject:
       replicaCount: 3
 
@@ -315,9 +313,9 @@ spec:
     - repoURL: https://github.com/org/manifests.git
       targetRevision: HEAD
       path: base
-    - repoURL: https://charts.helm.sh/stable
+    - repoURL: https://charts.bitnami.com/bitnami
       chart: redis
-      targetRevision: "17.0.0"
+      targetRevision: "25.5.3"
       helm:
         values: |
           replica:
@@ -335,7 +333,7 @@ The Kubernetes API server URL:
 ```yaml
 destination:
   server: https://kubernetes.default.svc    # In-cluster
-  server: https://remote-cluster.example.com  # Remote cluster
+  # server: https://remote-cluster.example.com  # Remote cluster
 ```
 
 ### name
