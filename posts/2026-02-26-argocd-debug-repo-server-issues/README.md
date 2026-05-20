@@ -111,8 +111,10 @@ argocd app get my-app -o json | \
   jq '{repoURL: .spec.source.repoURL, path: .spec.source.path, targetRevision: .spec.source.targetRevision}'
 
 # Check if the path exists in the repo
-kubectl exec -n argocd deploy/argocd-repo-server -- \
-  git ls-tree -r --name-only HEAD -- path/to/manifests 2>/dev/null
+git clone https://github.com/your-org/your-repo.git
+cd your-repo
+git checkout main
+git ls-tree -r --name-only HEAD -- path/to/manifests
 ```
 
 ## Issue: Git Clone/Fetch Failures
@@ -197,7 +199,7 @@ kubectl logs -n argocd deploy/argocd-repo-server --tail=500 | \
 kubectl exec -n argocd deploy/argocd-repo-server -- df -h /tmp
 ```
 
-Speed up manifest generation:
+Tune manifest generation:
 
 ```bash
 # Increase repo server parallelism
@@ -210,14 +212,8 @@ kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
 # Scale repo server replicas
 kubectl scale deployment argocd-repo-server -n argocd --replicas=3
 
-# Configure generation timeout
-kubectl patch configmap argocd-cm -n argocd --type merge -p '{
-  "data": {
-    "timeout.hard.reconciliation": "0s"
-  }
-}'
-
-kubectl rollout restart deployment argocd-repo-server -n argocd
+# If manifest generation is timing out, increase the tool execution timeout
+kubectl set env deployment/argocd-repo-server -n argocd ARGOCD_EXEC_TIMEOUT=3m
 ```
 
 ## Issue: Disk Space Exhaustion
