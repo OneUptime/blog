@@ -82,8 +82,6 @@ data:
   config.yaml: |
     tunnel: <your-tunnel-id>
     credentials-file: /etc/cloudflared/credentials.json
-    # No TLS verification needed since ArgoCD is in insecure mode
-    no-tls-verify: true
     ingress:
       - hostname: argocd.yourcompany.com
         service: http://argocd-server.argocd.svc.cluster.local:80
@@ -116,6 +114,8 @@ spec:
           image: cloudflare/cloudflared:latest
           args:
             - tunnel
+            - --metrics
+            - 0.0.0.0:2000
             - --config
             - /etc/cloudflared/config.yaml
             - run
@@ -188,7 +188,7 @@ Cloudflare Access adds an authentication layer in front of ArgoCD. Users must au
 
 ```bash
 # Using the Cloudflare dashboard:
-# 1. Go to Zero Trust > Access > Applications
+# 1. Go to Zero Trust > Access controls > Applications
 # 2. Create a new Self-hosted application
 # 3. Set the application domain: argocd.yourcompany.com
 # 4. Configure access policies
@@ -222,9 +222,9 @@ curl -X POST "https://api.cloudflare.com/client/v4/accounts/<account-id>/access/
   }'
 ```
 
-## Handling gRPC for CLI Access
+## Handling CLI Access
 
-The ArgoCD CLI uses gRPC, which Cloudflare Tunnel supports. Configure the CLI to use `--grpc-web`:
+The ArgoCD CLI normally uses gRPC. For this public hostname setup, configure the CLI to use `--grpc-web`:
 
 ```bash
 # Login through the tunnel
@@ -241,7 +241,7 @@ Create a Cloudflare Access service token for CI/CD:
 
 ```bash
 # In the Cloudflare dashboard:
-# Zero Trust > Access > Service Auth > Service Tokens
+# Zero Trust > Access controls > Service credentials > Service Tokens
 # Create a new service token and note the ID and secret
 ```
 
