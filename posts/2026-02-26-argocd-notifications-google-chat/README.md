@@ -74,67 +74,68 @@ Google Chat supports a card-based UI for richer messages:
         method: POST
         body: |
           {
-            "cards": [{
-              "header": {
-                "title": "ArgoCD Deployment",
-                "subtitle": "{{ .app.metadata.name }}",
-                "imageUrl": "https://argoproj.github.io/argo-cd/assets/logo.png"
-              },
-              "sections": [{
-                "header": "Deployment Details",
-                "widgets": [
-                  {
-                    "keyValue": {
-                      "topLabel": "Application",
-                      "content": "{{ .app.metadata.name }}"
-                    }
-                  },
-                  {
-                    "keyValue": {
-                      "topLabel": "Project",
-                      "content": "{{ .app.spec.project }}"
-                    }
-                  },
-                  {
-                    "keyValue": {
-                      "topLabel": "Revision",
-                      "content": "{{ .app.status.sync.revision | trunc 7 }}"
-                    }
-                  },
-                  {
-                    "keyValue": {
-                      "topLabel": "Namespace",
-                      "content": "{{ .app.spec.destination.namespace }}"
-                    }
-                  },
-                  {
-                    "keyValue": {
-                      "topLabel": "Health",
-                      "content": "{{ .app.status.health.status }}"
-                    }
-                  },
-                  {
-                    "keyValue": {
-                      "topLabel": "Sync Status",
-                      "content": "{{ .app.status.sync.status }}"
-                    }
-                  }
-                ]
-              },
-              {
-                "widgets": [{
-                  "buttons": [{
-                    "textButton": {
-                      "text": "VIEW IN ARGOCD",
-                      "onClick": {
-                        "openLink": {
-                          "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}"
-                        }
+            "cardsV2": [{
+              "cardId": "argocd-deploy-{{ .app.metadata.name }}",
+              "card": {
+                "header": {
+                  "title": "ArgoCD Deployment",
+                  "subtitle": "{{ .app.metadata.name }}",
+                  "imageUrl": "https://argoproj.github.io/argo-cd/assets/logo.png"
+                },
+                "sections": [{
+                  "header": "Deployment Details",
+                  "widgets": [
+                    {
+                      "decoratedText": {
+                        "topLabel": "Application",
+                        "text": "{{ .app.metadata.name }}"
+                      }
+                    },
+                    {
+                      "decoratedText": {
+                        "topLabel": "Project",
+                        "text": "{{ .app.spec.project }}"
+                      }
+                    },
+                    {
+                      "decoratedText": {
+                        "topLabel": "Revision",
+                        "text": "{{ .app.status.sync.revision | trunc 7 }}"
+                      }
+                    },
+                    {
+                      "decoratedText": {
+                        "topLabel": "Namespace",
+                        "text": "{{ .app.spec.destination.namespace }}"
+                      }
+                    },
+                    {
+                      "decoratedText": {
+                        "topLabel": "Health",
+                        "text": "{{ .app.status.health.status }}"
+                      }
+                    },
+                    {
+                      "decoratedText": {
+                        "topLabel": "Sync Status",
+                        "text": "{{ .app.status.sync.status }}"
+                      }
+                    },
+                    {
+                      "buttonList": {
+                        "buttons": [{
+                          "text": "View in ArgoCD",
+                          "onClick": {
+                            "openLink": {
+                              "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}"
+                            }
+                          }
+                        }]
                       }
                     }
-                  }]
+                  ]
                 }]
-              }]
+              }
             }]
           }
 ```
@@ -148,61 +149,62 @@ Google Chat supports a card-based UI for richer messages:
         method: POST
         body: |
           {
-            "cards": [{
-              "header": {
-                "title": "Sync Failed",
-                "subtitle": "{{ .app.metadata.name }}",
-                "imageUrl": "https://argoproj.github.io/argo-cd/assets/logo.png"
-              },
-              "sections": [{
-                "header": "Failure Details",
-                "widgets": [
-                  {
-                    "keyValue": {
-                      "topLabel": "Application",
-                      "content": "{{ .app.metadata.name }}"
-                    }
-                  },
-                  {
-                    "keyValue": {
-                      "topLabel": "Project",
-                      "content": "{{ .app.spec.project }}"
-                    }
-                  },
-                  {
-                    "keyValue": {
-                      "topLabel": "Revision",
-                      "content": "{{ .app.status.sync.revision | trunc 7 }}"
-                    }
-                  },
-                  {
-                    "textParagraph": {
-                      "text": "<b>Error:</b> {{ .app.status.operationState.message }}"
-                    }
-                  }
-                ]
-              },
-              {
-                "widgets": [{
-                  "buttons": [{
-                    "textButton": {
-                      "text": "INVESTIGATE",
-                      "onClick": {
-                        "openLink": {
-                          "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}"
-                        }
+            "cardsV2": [{
+              "cardId": "argocd-sync-failed-{{ .app.metadata.name }}",
+              "card": {
+                "header": {
+                  "title": "Sync Failed",
+                  "subtitle": "{{ .app.metadata.name }}",
+                  "imageUrl": "https://argoproj.github.io/argo-cd/assets/logo.png"
+                },
+                "sections": [{
+                  "header": "Failure Details",
+                  "widgets": [
+                    {
+                      "decoratedText": {
+                        "topLabel": "Application",
+                        "text": "{{ .app.metadata.name }}"
+                      }
+                    },
+                    {
+                      "decoratedText": {
+                        "topLabel": "Project",
+                        "text": "{{ .app.spec.project }}"
+                      }
+                    },
+                    {
+                      "decoratedText": {
+                        "topLabel": "Revision",
+                        "text": "{{ .app.status.sync.revision | trunc 7 }}"
+                      }
+                    },
+                    {
+                      "textParagraph": {
+                        "text": "<b>Error:</b> {{ .app.status.operationState.message }}"
+                      }
+                    },
+                    {
+                      "buttonList": {
+                        "buttons": [{
+                          "text": "Investigate",
+                          "onClick": {
+                            "openLink": {
+                              "url": "https://argocd.example.com/applications/{{ .app.metadata.name }}"
+                            }
+                          }
+                        }]
                       }
                     }
-                  }]
+                  ]
                 }]
-              }]
+              }
             }]
           }
 ```
 
-### Using Cards v2 Format
+### Using a Compact Cards v2 Format
 
-Google Chat also supports the newer Cards v2 format for more modern-looking cards:
+Google Chat uses Cards v2 for modern-looking card messages:
 
 ```yaml
   template.gchat-deploy-v2: |
@@ -304,7 +306,7 @@ For sending to different spaces, create separate webhook services:
 
 ## Threaded Messages
 
-Google Chat supports threaded conversations. To send follow-up messages in the same thread, you would need to capture the message ID from the initial response and reference it in subsequent messages. Since ArgoCD notifications are fire-and-forget, threading is not directly supported. Use the card format instead to pack all relevant information into a single message.
+Google Chat supports threaded conversations for incoming webhooks. To send follow-up messages in the same thread, add `messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD` to the webhook URL and include a stable `thread.threadKey` value in the message body, such as the ArgoCD application name. Without a stable thread key, each notification is sent as a separate message.
 
 ## Debugging
 
@@ -320,7 +322,7 @@ curl -X POST "$GOOGLE_CHAT_WEBHOOK_URL" \
 
 # Common errors:
 # "Webhook not found" - URL is invalid or webhook was deleted
-# "Request had invalid authentication credentials" - Token in URL expired
+# "Request had invalid authentication credentials" - Key or token in URL is invalid
 # "Invalid JSON payload" - Template generated invalid JSON
 ```
 
