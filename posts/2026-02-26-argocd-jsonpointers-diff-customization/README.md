@@ -14,7 +14,7 @@ This guide covers JSON Pointer syntax, common patterns, escape rules, and practi
 
 ## What Is a JSON Pointer?
 
-A JSON Pointer is a string that identifies a specific location in a JSON document. It uses forward slashes to navigate through the object hierarchy.
+A JSON Pointer is a string that identifies a specific location in a JSON document. The empty string points to the whole document, and field paths use forward slashes to navigate through the object hierarchy.
 
 Given this Kubernetes resource:
 
@@ -38,7 +38,7 @@ The JSON Pointer `/spec/replicas` points to the value `3`. The pointer `/metadat
 
 ```mermaid
 graph TD
-    Root["/"] --> metadata["/metadata"]
+    Root["document root"] --> metadata["/metadata"]
     Root --> spec["/spec"]
     metadata --> name["/metadata/name"]
     metadata --> annotations["/metadata/annotations"]
@@ -318,7 +318,7 @@ argocd app diff my-app
 
 1. **Forgetting to escape slashes**: `/metadata/annotations/app.kubernetes.io/name` should be `/metadata/annotations/app.kubernetes.io~1name`
 2. **Using dot notation**: `/spec.replicas` is wrong. Use `/spec/replicas`
-3. **Including the leading slash**: Every JSON pointer must start with `/`
+3. **Forgetting the leading slash**: Field paths such as `/spec/replicas` must start with `/`
 4. **Wrong API group**: Deployments use group `apps`, not empty string. Services use empty string `""`, not `core`
 
 ## Combining JSON Pointers with Other Strategies
