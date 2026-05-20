@@ -14,7 +14,7 @@ In this guide, we will explain how HEAD tracking works, when to use it, and the 
 
 ## What HEAD Means in ArgoCD
 
-In Git, `HEAD` is a symbolic reference that typically points to the default branch of a repository (usually `main` or `master`). When ArgoCD resolves `HEAD`, it queries the remote repository for the default branch and then resolves that to the latest commit.
+In Git, the remote repository's `HEAD` is a symbolic reference that typically points to the default branch of that repository (usually `main` or `master`). When ArgoCD resolves `HEAD`, it resolves the remote `HEAD` reference to the latest commit on that branch.
 
 This means:
 
@@ -74,7 +74,7 @@ On the surface, tracking `HEAD` and tracking `main` seem identical if `main` is 
 | Aspect | HEAD | Named Branch (e.g., main) |
 |--------|------|---------------------------|
 | Resolves to | Default branch (whatever it is) | Always the specified branch |
-| Survives branch rename | Yes - follows the new default | No - becomes broken |
+| Survives default branch rename | Yes - if the remote `HEAD` is updated | No - may break if the old branch is removed |
 | Explicit intent | Ambiguous | Clear |
 | ArgoCD UI display | Shows "HEAD" | Shows "main" |
 
@@ -84,8 +84,8 @@ Here is a practical example of when this matters:
 # Your app tracks HEAD, and your default branch is 'main'
 # Someone renames the default branch to 'trunk'
 
-# HEAD tracking: App continues working, now follows 'trunk'
-# Named branch tracking ('main'): App breaks because 'main' no longer exists
+# HEAD tracking: App continues working, now follows 'trunk' if remote HEAD is updated
+# Named branch tracking ('main'): App breaks if 'main' no longer exists
 ```
 
 ## When to Use HEAD Tracking
@@ -158,12 +158,11 @@ argocd app get my-app -o json | jq '.status.sync.status'
 
 ## HEAD Tracking with Webhooks
 
-When using webhooks for faster sync detection, HEAD tracking works seamlessly. ArgoCD's webhook handler knows how to resolve HEAD to the appropriate branch when processing push events:
+When using webhooks for faster sync detection, HEAD tracking works seamlessly. Webhooks tell ArgoCD to refresh applications related to the changed repository, and ArgoCD resolves `HEAD` during the normal refresh and comparison process:
 
 ```bash
 # GitHub webhook payload includes the ref (e.g., refs/heads/main)
-# ArgoCD matches this against applications tracking HEAD by checking
-# if the pushed branch matches the repository's default branch
+# ArgoCD refreshes related applications and resolves HEAD when comparing desired state
 ```
 
 No special webhook configuration is needed for HEAD tracking.
