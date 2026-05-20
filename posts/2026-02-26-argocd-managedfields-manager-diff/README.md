@@ -8,18 +8,18 @@ Description: Learn how to use Kubernetes managedFieldsManagers in ArgoCD to auto
 
 ---
 
-Kubernetes 1.18 introduced server-side apply with field ownership tracking. Every field in a resource is owned by a specific "manager" - the controller or tool that last set that field's value. ArgoCD can leverage this metadata to automatically ignore fields owned by other managers, eliminating the need to manually list every field path you want to skip.
+Kubernetes 1.18 expanded server-side apply field ownership tracking so new objects get `managedFields` by default. Each managed field can be owned by one or more "managers" - the controllers or tools that claim ownership of that field. ArgoCD can leverage this metadata to automatically ignore fields owned by other managers, eliminating the need to manually list every field path you want to skip.
 
 This approach is more maintainable than JSON Pointers or JQ expressions because it adapts automatically when an operator starts managing new fields.
 
 ## Understanding Managed Fields
 
-Every Kubernetes resource has a `metadata.managedFields` array that tracks which manager owns which fields:
+Kubernetes resources can have a `metadata.managedFields` array that tracks which manager owns which fields:
 
 ```bash
 # View managed fields for a Deployment
 
-kubectl get deployment my-app -o json | jq '.metadata.managedFields'
+kubectl get deployment my-app --show-managed-fields -o json | jq '.metadata.managedFields'
 ```
 
 Sample output:
@@ -103,7 +103,6 @@ spec:
       kind: Deployment
       managedFieldsManagers:
         - kube-controller-manager   # HPA
-        - vpa-recommender           # VPA
         - istio-sidecar-injector    # Istio
 ```
 
@@ -161,9 +160,6 @@ managedFieldsManagers:
   # Cert-manager
   - cert-manager-certificates-issuing
   - cert-manager-certificates-readiness
-  # VPA
-  - vpa-recommender
-  - vpa-updater
   # External DNS
   - external-dns
 ```
@@ -174,15 +170,15 @@ To discover the exact manager name an operator uses:
 
 ```bash
 # List all unique managers for a specific resource
-kubectl get deployment my-app -o json | \
+kubectl get deployment my-app --show-managed-fields -o json | \
   jq '[.metadata.managedFields[].manager] | unique'
 
 # List managers across all Deployments in a namespace
-kubectl get deployments -n production -o json | \
+kubectl get deployments -n production --show-managed-fields -o json | \
   jq '[.items[].metadata.managedFields[].manager] | unique'
 
 # Find managers for a specific CRD
-kubectl get certificates.cert-manager.io my-cert -o json | \
+kubectl get certificates.cert-manager.io my-cert --show-managed-fields -o json | \
   jq '[.metadata.managedFields[].manager] | unique'
 ```
 
@@ -226,14 +222,14 @@ This means if an operator starts managing a new field in a future version, ArgoC
 
 ## Prerequisites and Requirements
 
-### Server-Side Apply Required
+### Managed Fields Required
 
-For managed fields tracking to work reliably, the controllers modifying resources should use server-side apply. Older controllers that use client-side apply may not populate `managedFields` correctly.
+For managed fields tracking to work reliably, the live resource must include useful `managedFields` data. Server-side apply gives the most precise field ownership, but Kubernetes also records field management for update operations on newer objects. Older resources or clients that do not preserve managed fields may have incomplete data.
 
 Check if your resource has managed fields data:
 
 ```bash
-kubectl get deployment my-app -o jsonpath='{.metadata.managedFields}' | jq 'length'
+kubectl get deployment my-app --show-managed-fields -o jsonpath='{.metadata.managedFields}' | jq 'length'
 ```
 
 If the result is 0 or the field is missing, managed fields tracking is not active for that resource.
@@ -246,9 +242,9 @@ If the result is 0 or the field is missing, managed fields tracking is not activ
 argocd version --short
 ```
 
-## Real-World Example: HPA and VPA Together
+## Real-World Example: HPA
 
-A common scenario is running both HPA (scaling replicas) and VPA (adjusting resource requests) on the same Deployment:
+A common scenario is running HPA to scale replicas on a Deployment:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -269,9 +265,6 @@ spec:
       managedFieldsManagers:
         # HPA manages replicas
         - kube-controller-manager
-        # VPA manages container resources
-        - vpa-recommender
-        - vpa-updater
   syncPolicy:
     automated:
       selfHeal: true
@@ -315,7 +308,7 @@ spec:
 
 ```bash
 # Check what managers exist on your resource
-kubectl get deployment my-app -o json | \
+kubectl get deployment my-app --show-managed-fields -o json | \
   jq '.metadata.managedFields[] | {manager: .manager, operation: .operation}'
 ```
 
@@ -323,7 +316,7 @@ kubectl get deployment my-app -o json | \
 
 ```bash
 # See fields owned by a specific manager
-kubectl get deployment my-app -o json | \
+kubectl get deployment my-app --show-managed-fields -o json | \
   jq '.metadata.managedFields[] | select(.manager == "kube-controller-manager") | .fieldsV1'
 ```
 
@@ -346,15 +339,15 @@ argocd app diff my-app
 |---------|----------------------|---------------|----------------|
 | Auto-adapts to new fields | Yes | No | No |
 | Setup complexity | Low | Medium | High |
-| Requires SSA | Yes | No | No |
+| Requires managedFields data | Yes | No | No |
 | Precision | Manager-level | Field-level | Field-level |
-| Works with all controllers | Only SSA controllers | All | All |
+| Works with all controllers | Controllers with managedFields entries | All | All |
 
 ## Best Practices
 
-1. **Use managedFieldsManagers as your first choice** when the operator uses server-side apply
+1. **Use managedFieldsManagers as your first choice** when `managedFields` shows that the operator owns the relevant fields
 2. **Combine with RespectIgnoreDifferences** when using auto-sync to prevent self-heal from reverting ignored fields
-3. **Fall back to JQ/JSON Pointers** for controllers that do not use server-side apply
+3. **Fall back to JQ/JSON Pointers** for controllers or resources that do not have useful managed fields data
 4. **Audit managers periodically** to ensure you are not ignoring more than intended
 5. **Test in staging** before applying to production applications
 
