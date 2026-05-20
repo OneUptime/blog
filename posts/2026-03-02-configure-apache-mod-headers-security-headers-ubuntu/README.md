@@ -47,7 +47,7 @@ Forces browsers to always use HTTPS for your domain. Once a browser sees this he
 
     # max-age in seconds (63072000 = 2 years)
     # includeSubDomains - applies to all subdomains
-    # preload - submits to HSTS preload lists (hard to undo)
+    # preload - required for HSTS preload list eligibility (hard to undo)
     Header always set Strict-Transport-Security \
         "max-age=63072000; includeSubDomains; preload"
 ```
@@ -107,14 +107,14 @@ The empty parentheses `()` disable the feature entirely. `(self)` allows it for 
 
 ### X-XSS-Protection
 
-A legacy header for older IE and Chrome versions that enabled a built-in XSS filter. Modern browsers have removed this filter, but setting it to safe values does not hurt:
+A legacy header for older IE and Chrome versions that enabled a built-in XSS filter. Modern browsers have removed this filter, and Content-Security-Policy should be preferred:
 
 ```apache
 # Mode=block stops rendering if XSS is detected (rather than sanitizing)
 Header always set X-XSS-Protection "1; mode=block"
 ```
 
-This header has no effect on modern browsers, but it does not cause harm and may help legacy users.
+This header has no effect on modern browsers and is not a substitute for CSP. If you keep it for legacy browsers, use `1; mode=block` rather than the older sanitizing mode.
 
 ## Content-Security-Policy (CSP)
 
@@ -164,6 +164,9 @@ sudo nano /etc/apache2/sites-available/secure-site.conf
     RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 </VirtualHost>
 
+# ServerTokens is server-wide and cannot be set per virtual host.
+ServerTokens Prod
+
 <VirtualHost *:443>
     ServerName example.com
     DocumentRoot /var/www/html
@@ -172,10 +175,9 @@ sudo nano /etc/apache2/sites-available/secure-site.conf
     SSLCertificateFile /etc/letsencrypt/live/example.com/fullchain.pem
     SSLCertificateKeyFile /etc/letsencrypt/live/example.com/privkey.pem
 
-    # Remove headers that reveal server information
+    # Reduce headers that reveal server information
+    Header unset X-Powered-By
     Header always unset X-Powered-By
-    Header always unset Server
-    ServerTokens Prod
     ServerSignature Off
 
     # HSTS
@@ -209,6 +211,7 @@ sudo nano /etc/apache2/sites-available/secure-site.conf
 ```
 
 ```bash
+sudo a2enmod ssl rewrite
 sudo a2ensite secure-site.conf
 sudo apache2ctl configtest
 sudo systemctl reload apache2
