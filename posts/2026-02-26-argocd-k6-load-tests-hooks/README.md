@@ -52,6 +52,8 @@ data:
         http_req_duration: ['p(95)<500'],
         // Less than 1% error rate
         http_req_failed: ['rate<0.01'],
+        // At least 99% of checks must pass
+        checks: ['rate>0.99'],
         // At least 10 requests per second throughput
         http_reqs: ['rate>10'],
       },
@@ -175,6 +177,7 @@ data:
       thresholds: {
         http_req_duration: ['p(95)<500', 'p(99)<1000'],
         http_req_failed: ['rate<0.01'],
+        checks: ['rate>0.99'],
         api_latency: ['p(95)<300'],
         auth_latency: ['p(95)<800'],
         api_errors: ['count<5'],
@@ -258,7 +261,7 @@ data:
 
 ## Sending k6 Results to Prometheus and Grafana
 
-Track performance trends across deployments by pushing k6 metrics to Prometheus:
+Track performance trends across deployments by sending k6 metrics to a Prometheus remote-write endpoint. For Prometheus 2.x, make sure the remote-write receiver is enabled with `--web.enable-remote-write-receiver`:
 
 ```yaml
 containers:
@@ -296,6 +299,8 @@ For larger load tests, use the k6-operator to distribute the load across multipl
 ```bash
 # Install k6-operator
 
+helm repo add grafana https://grafana.github.io/helm-charts
+helm repo update
 helm install k6-operator \
   grafana/k6-operator \
   --namespace k6-operator \
@@ -355,6 +360,7 @@ export const options = {
       `p(99)<${__ENV.MAX_P99 || 1000}`,
     ],
     http_req_failed: [`rate<${__ENV.MAX_ERROR_RATE || 0.01}`],
+    checks: ['rate>0.99'],
   },
 };
 ```
@@ -390,25 +396,29 @@ You can add a result handler that parses the output and sends structured notific
 ```yaml
 containers:
   - name: k6
-    image: grafana/k6:0.49.0
+    image: your-registry/k6-curl:0.49.0 # image with k6 and curl installed
     command:
       - sh
       - -c
       - |
         # Run k6 and capture output
-        k6 run --summary-export=/tmp/results.json /scripts/test.js 2>&1 | tee /tmp/k6-output.txt
-        K6_EXIT=$?
+        (k6 run --summary-export=/tmp/results.json /scripts/test.js; echo $? > /tmp/k6-exit-code) 2>&1 | tee /tmp/k6-output.txt
+        K6_EXIT=$(cat /tmp/k6-exit-code)
 
         # Send results summary to Slack
         if [ $K6_EXIT -ne 0 ]; then
-          SUMMARY=$(grep -A 20 "THRESHOLDS" /tmp/k6-output.txt || echo "Threshold check failed")
+          SUMMARY=$(grep -A 20 "THRESHOLDS" /tmp/k6-output.txt | head -20 || true)
+          if [ -z "$SUMMARY" ]; then
+            SUMMARY="Threshold check failed"
+          fi
+          SUMMARY=$(printf '%s' "$SUMMARY" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
           curl -X POST "$SLACK_WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "{
               \"text\": \"k6 Load Test FAILED after deployment\",
               \"attachments\": [{
                 \"color\": \"danger\",
-                \"text\": \"$(echo "$SUMMARY" | head -20)\"
+                \"text\": \"$SUMMARY\"
               }]
             }"
         fi
