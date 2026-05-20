@@ -146,15 +146,26 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  service.webhook.siem: |
+    url: https://siem.example.com/argocd-events
+
+  subscriptions: |
+    - recipients:
+        - siem
+      triggers:
+        - on-sync-running
+        - on-sync-succeeded
+        - on-sync-failed
+
   trigger.on-sync-running: |
-    - when: app.status.operationState.phase in ['Running']
+    - when: app.status?.operationState.phase in ['Running']
       send: [compliance-log]
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [compliance-log]
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Failed', 'Error']
-      send: [compliance-log, alert-security]
+    - when: app.status?.operationState.phase in ['Failed', 'Error']
+      send: [compliance-log]
 
   template.compliance-log: |
     webhook:
@@ -202,13 +213,13 @@ spec:
       duration: 48h
       applications:
         - '*'
-    # Emergency window with manual override
-    - kind: allow
-      schedule: '* * * * *'     # Always
-      duration: 24h
+    # Block after-hours automated syncs, but allow manual emergency syncs
+    - kind: deny
+      schedule: '0 17 * * 1-5'  # Mon-Fri, 5 PM
+      duration: 16h             # Until 9 AM
       applications:
         - '*'
-      manualSync: true           # Only manual sync allowed
+      manualSync: true           # Manual sync override allowed
 ```
 
 ### Separation of Duties
@@ -245,7 +256,7 @@ Financial applications must never store secrets in Git. Use the External Secrets
 
 ```yaml
 # External Secret pulling from AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: payment-db-credentials
