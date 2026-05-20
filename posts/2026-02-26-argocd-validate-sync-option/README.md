@@ -8,7 +8,7 @@ Description: Learn how to use the Validate sync option in ArgoCD to skip or enab
 
 ---
 
-When ArgoCD syncs resources to your Kubernetes cluster, it validates each manifest against the Kubernetes API server's schema before applying it. This validation catches errors like invalid field names, wrong data types, and missing required fields. But sometimes this validation gets in the way - especially when dealing with Custom Resource Definitions, beta APIs, or resources with fields that the API server does not recognize.
+When ArgoCD syncs resources to your Kubernetes cluster, it validates each manifest before applying it, using behavior equivalent to `kubectl apply --validate=true`. This validation catches errors like invalid field names, wrong data types, and missing required fields. But sometimes this validation gets in the way - especially when dealing with Kubernetes types that use flexible schemas, beta APIs, or resources with fields that the local validation schema does not recognize.
 
 The `Validate=false` sync option tells ArgoCD to skip this client-side validation, applying resources directly without checking them against the schema first.
 
@@ -26,11 +26,11 @@ By default, ArgoCD performs client-side validation during sync, equivalent to ru
 
 There are several scenarios where client-side validation causes problems:
 
-**Custom Resource Definitions.** When you apply CRDs and their instances in the same sync, the client might not have the CRD schema available during validation. The CRD has not been applied yet, so the client does not know how to validate the custom resource.
+**Custom Resource Definitions with flexible schemas.** Some CRDs and Kubernetes types use flexible fields such as `RawExtension` or intentionally preserve unknown fields. Client-side validation can reject manifests for these resources even though the API server accepts them.
 
 **Beta or alpha APIs.** Some Kubernetes features are behind feature gates and use API versions that your client libraries might not know about.
 
-**Third-party operators with non-standard fields.** Some operators accept fields that are not part of the standard Kubernetes schema. Client-side validation rejects these even though the server accepts them.
+**Third-party operators with flexible custom resources.** Some operators accept fields through CRD schemas that are more flexible than the local validation schema. Client-side validation can reject these even though the server accepts them.
 
 **Schema version mismatches.** When your ArgoCD version bundles an older Kubernetes client library than your cluster version, the client might not know about newer fields.
 
@@ -62,11 +62,13 @@ spec:
 
 ## Disabling Validation via CLI
 
-For a one-time sync without validation:
+The ArgoCD CLI configures sync options with `argocd app set`. To temporarily disable validation from the CLI, add the sync option, sync the application, and then remove the option:
 
 ```bash
-# Skip validation for this sync only
-argocd app sync custom-operator-app --sync-option Validate=false
+# Temporarily skip validation for the application
+argocd app set custom-operator-app --sync-option Validate=false
+argocd app sync custom-operator-app
+argocd app set custom-operator-app --sync-option '!Validate=false'
 ```
 
 ## Per-Resource Validation Control
@@ -104,12 +106,12 @@ By applying the annotation only to resources that need it, you keep validation a
 
 ## Practical Example: CRD and CR in the Same Application
 
-A common pattern is deploying a CRD and its custom resources in the same ArgoCD application. Without `Validate=false`, this often fails because the custom resource cannot be validated against a CRD that has not been installed yet.
+A common pattern is deploying a CRD and its custom resources in the same ArgoCD application. ArgoCD automatically skips the dry run for a new custom resource type when the CRD is part of the same sync. If the custom resource itself still fails kubectl validation because of a flexible schema, add `Validate=false` to that custom resource.
 
 Here is how to handle it properly using sync waves and selective validation:
 
 ```yaml
-# CRD - deployed first via sync wave, validation skipped
+# CRD - deployed first via sync wave
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -151,7 +153,7 @@ spec:
   color: blue
 ```
 
-The sync wave ensures the CRD is created first (wave -1 before wave 0), and `Validate=false` on the custom resource prevents the client-side validation failure.
+The sync wave ensures the CRD is created first (wave -1 before wave 0), and `Validate=false` on the custom resource prevents kubectl validation failures that are specific to that resource's schema.
 
 ## Example: Third-Party Operator Resources
 
@@ -193,17 +195,17 @@ Skipping validation is not without tradeoffs:
 
 **Debugging becomes harder.** When validation is enabled, error messages are clear and point to the exact field that is wrong. Server-side errors can be less specific.
 
-**Silent field ignoring.** If you misspell a field name, Kubernetes might silently ignore it instead of rejecting it. Your resource gets created but without the configuration you intended.
+**Silent field ignoring.** If validation is disabled, unknown or duplicate fields can be silently dropped by kubectl or pruned by the API server instead of being rejected. Your resource might be created without the configuration you intended.
 
 ## Best Practices
 
 1. **Prefer per-resource annotation over application-level setting.** Only disable validation on the specific resources that need it.
 
-2. **Use sync waves to order CRD before CR.** This often eliminates the need for `Validate=false` entirely, since the CRD exists by the time the CR is validated.
+2. **Use sync waves to order CRD before CR.** This helps the API server know about the custom resource type before ArgoCD applies the custom resource.
 
 3. **Re-enable validation after initial deployment.** If you only needed `Validate=false` for the initial CRD setup, consider removing it afterward.
 
-4. **Combine with CI validation.** Even if ArgoCD skips validation, your CI pipeline can run `kubectl apply --dry-run=client --validate=true` against a cluster that already has the CRDs installed.
+4. **Combine with CI validation.** Even if ArgoCD skips validation, your CI pipeline can run `kubectl apply --dry-run=server --validate=true` against a cluster that already has the CRDs installed.
 
 ```bash
 # CI pipeline validation step
