@@ -42,9 +42,9 @@ Custom actions are defined in the `argocd-cm` ConfigMap using the key pattern:
 resource.customizations.actions.<group>_<kind>
 ```
 
-The value is a YAML document containing a list of actions, each with a name and a Lua action script.
+The value is a YAML document containing a discovery script and a list of action definitions, each with a name and a Lua action script.
 
-Here is a simple example that adds a "restart" action to Deployments:
+Here is a simple example that adds a "restart" action to Deployments while preserving ArgoCD's built-in Deployment actions:
 
 ```yaml
 apiVersion: v1
@@ -54,6 +54,7 @@ metadata:
   namespace: argocd
 data:
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       actions["restart"] = {
@@ -70,7 +71,7 @@ data:
           if obj.spec.template.metadata.annotations == nil then
             obj.spec.template.metadata.annotations = {}
           end
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
+          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%XZ")
           return obj
 ```
 
@@ -79,6 +80,8 @@ This action does two things:
 1. **discovery.lua** tells ArgoCD what actions are available for this resource type. It returns a table of action names and their properties.
 
 2. **definitions** contains the actual Lua scripts. Each definition has a `name` that matches a key from discovery and an `action.lua` script that receives the resource object and returns the modified object.
+
+In ArgoCD 2.13 and later, the `mergeBuiltinActions: true` setting keeps ArgoCD's built-in actions for the resource kind. Without it, custom action definitions override the built-in actions for that kind.
 
 ## Action Structure in Detail
 
@@ -95,15 +98,17 @@ actions["restart"] = {
   ["disabled"] = false
 }
 
+local replicas = obj.spec.replicas or 1
+
 -- Only show scale-up if replicas < 10
-if obj.spec.replicas < 10 then
+if replicas < 10 then
   actions["scale-up"] = {
     ["disabled"] = false
   }
 end
 
 -- Only show scale-down if replicas > 1
-if obj.spec.replicas > 1 then
+if replicas > 1 then
   actions["scale-down"] = {
     ["disabled"] = false
   }
@@ -129,6 +134,7 @@ The action script receives the Kubernetes resource object as `obj`, modifies it,
 
 ```lua
 -- action.lua for "scale-up"
+obj.spec.replicas = obj.spec.replicas or 1
 obj.spec.replicas = obj.spec.replicas + 1
 return obj
 ```
@@ -141,11 +147,13 @@ You can define many actions for a single resource type:
 
 ```yaml
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
+      local replicas = obj.spec.replicas or 1
       actions["restart"] = {["disabled"] = false}
       actions["scale-up"] = {["disabled"] = false}
-      actions["scale-down"] = {["disabled"] = obj.spec.replicas <= 1}
+      actions["scale-down"] = {["disabled"] = replicas <= 1}
       actions["pause"] = {["disabled"] = obj.spec.paused == true}
       actions["resume"] = {["disabled"] = obj.spec.paused ~= true}
       return actions
@@ -159,14 +167,16 @@ You can define many actions for a single resource type:
           if obj.spec.template.metadata.annotations == nil then
             obj.spec.template.metadata.annotations = {}
           end
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
+          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%XZ")
           return obj
       - name: scale-up
         action.lua: |
+          obj.spec.replicas = obj.spec.replicas or 1
           obj.spec.replicas = obj.spec.replicas + 1
           return obj
       - name: scale-down
         action.lua: |
+          obj.spec.replicas = obj.spec.replicas or 1
           if obj.spec.replicas > 1 then
             obj.spec.replicas = obj.spec.replicas - 1
           end
@@ -235,9 +245,10 @@ If you install ArgoCD via Helm:
 ```yaml
 # values.yaml for argo-cd chart
 
-server:
-  config:
+configs:
+  cm:
     "resource.customizations.actions.apps_Deployment": |
+      mergeBuiltinActions: true
       discovery.lua: |
         actions = {}
         actions["restart"] = {["disabled"] = false}
@@ -252,7 +263,7 @@ server:
             if obj.spec.template.metadata.annotations == nil then
               obj.spec.template.metadata.annotations = {}
             end
-            obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
+            obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%XZ")
             return obj
 ```
 
@@ -278,7 +289,7 @@ In the UI, navigate to your application, click on a Deployment resource, and loo
 Resource actions bypass Git. This is intentional but has security implications:
 
 - Actions cause drift between Git and live state
-- Anyone with ArgoCD UI/CLI access can trigger actions
+- Anyone with ArgoCD UI/CLI access and action permissions can trigger actions
 - Use RBAC to control who can execute actions
 
 ```csv
