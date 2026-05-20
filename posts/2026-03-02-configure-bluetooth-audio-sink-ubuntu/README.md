@@ -20,7 +20,7 @@ When you connect Bluetooth headphones, they support both profiles. Ubuntu defaul
 
 ## Choosing Your Audio Server
 
-Ubuntu 22.04+ ships with PipeWire as the default audio server. Ubuntu 20.04 uses PulseAudio. Check which one is running:
+Ubuntu 24.04 LTS ships with PipeWire as the default audio server. Ubuntu 20.04 and 22.04 LTS use PulseAudio by default. Check which one is running:
 
 ```bash
 # Check if PipeWire is running
@@ -96,12 +96,12 @@ pactl set-sink-mute bluez_sink.AA_BB_CC_DD_EE_FF.a2dp_sink toggle
 
 ## Setting Up Bluetooth Audio with PipeWire
 
-PipeWire includes Bluetooth support built-in through `pipewire-pulse` (PulseAudio compatibility layer):
+PipeWire handles Bluetooth audio through the SPA Bluetooth plugin and WirePlumber. The `pipewire-pulse` service provides PulseAudio compatibility for tools such as `pactl`:
 
 ```bash
 # Install PipeWire with Bluetooth support
 sudo apt install pipewire pipewire-pulse pipewire-audio-client-libraries \
-    wireplumber libspa-0.2-bluetooth -y
+    wireplumber libspa-0.2-bluetooth pulseaudio-utils -y
 
 # Restart PipeWire
 systemctl --user restart pipewire pipewire-pulse wireplumber
@@ -146,10 +146,10 @@ pactl list cards | grep -A 30 "bluez_card"
 # Set A2DP profile (high quality audio output)
 pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF a2dp_sink
 
-# Set HFP profile (headset with microphone)
+# Set the headset profile with microphone
 pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF headset_head_unit
 
-# Or HSP profile
+# Some PipeWire/PulseAudio compatibility setups show the same profile with hyphens
 pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF headset-head-unit
 ```
 
@@ -159,8 +159,8 @@ pactl set-card-profile bluez_card.AA_BB_CC_DD_EE_FF headset-head-unit
 # List device cards and their profiles
 wpctl status
 
-# Use pw-cli to list available profiles for a device
-pw-cli enum-params $(pw-cli ls | grep bluez | head -1 | awk '{print $1}') 12
+# Inspect the Bluetooth device or card ID from wpctl status
+wpctl inspect 45
 
 # Or use pactl (PulseAudio compatibility still works)
 pactl list cards | grep -E "Name:|active profile:|a2dp|hfp"
@@ -180,12 +180,12 @@ Modern Bluetooth audio supports various codecs that affect quality and latency:
 
 ```bash
 # Install codecs for PipeWire
-sudo apt install libfreeaptx0 -y  # aptX support
-sudo apt install libldac -y 2>/dev/null || true  # LDAC support
+sudo apt install libspa-0.2-bluetooth libfreeaptx0 libldacbt-abr2 libldacbt-enc2 -y
 
 # Check available codecs for a connected device
-# With PipeWire, use the pw-cli
-pw-cli dump short Node | grep bluez
+# With PipeWire, use pw-dump or pw-cli
+pw-dump | grep bluez
+pw-cli list-objects Node | grep bluez
 
 # In PulseAudio, check pactl output
 pactl list cards | grep "codec\|a2dp"
@@ -193,18 +193,17 @@ pactl list cards | grep "codec\|a2dp"
 
 ## Making Bluetooth Audio Connection Automatic
 
-Configure BlueZ to auto-connect audio devices:
+Configure BlueZ to power controllers automatically so paired audio devices can reconnect:
 
 ```bash
 # In /etc/bluetooth/main.conf, ensure AutoEnable is set
-sudo sed -i 's/#AutoEnable=false/AutoEnable=true/' /etc/bluetooth/main.conf
+sudo sed -i 's/^#\?AutoEnable=.*/AutoEnable=true/' /etc/bluetooth/main.conf
 
 # For PulseAudio, configure auto-switching to Bluetooth when device connects
-cat << 'EOF' | sudo tee /etc/pulse/default.pa.d/bluetooth-auto-switch.pa
-# Load Bluetooth discovery module with automatic profile switching
-load-module module-bluetooth-policy auto_switch=2
-load-module module-bluetooth-discover
-EOF
+sudo cp /etc/pulse/default.pa /etc/pulse/default.pa.backup
+sudo sed -i 's/^load-module module-bluetooth-policy.*/load-module module-bluetooth-policy auto_switch=2/' /etc/pulse/default.pa
+grep -q '^load-module module-bluetooth-policy' /etc/pulse/default.pa || \
+    echo 'load-module module-bluetooth-policy auto_switch=2' | sudo tee -a /etc/pulse/default.pa
 
 # Restart PulseAudio
 pulseaudio --kill && pulseaudio --start
@@ -214,11 +213,11 @@ For PipeWire, auto-switching is handled by WirePlumber configuration:
 
 ```bash
 # Check WirePlumber Bluetooth configuration
-cat /usr/share/wireplumber/bluetooth.lua.d/*.lua 2>/dev/null || \
-cat /usr/share/wireplumber/scripts/bluetooth/*.lua 2>/dev/null | head -50
+cat /usr/share/wireplumber/wireplumber.conf.d/*bluez*.conf 2>/dev/null || \
+cat /usr/share/wireplumber/bluetooth.lua.d/*.lua 2>/dev/null | head -50
 
 # To modify, copy to user config directory
-mkdir -p ~/.config/wireplumber/bluetooth.lua.d/
+mkdir -p ~/.config/wireplumber/wireplumber.conf.d/
 # Then edit the copied file to adjust auto-switch behavior
 ```
 
@@ -230,15 +229,16 @@ Make the Bluetooth audio device the default even after reconnecting:
 # For PulseAudio - save default sink persistently
 # Create or edit ~/.config/pulse/default.pa
 mkdir -p ~/.config/pulse
+cp /etc/pulse/default.pa ~/.config/pulse/default.pa
 cat << 'EOF' >> ~/.config/pulse/default.pa
 
-# Set Bluetooth speaker as default sink when it connects
+# Keep Bluetooth profile auto-switching enabled for this user
 .ifexists module-bluetooth-policy.so
 load-module module-bluetooth-policy auto_switch=2
 .endif
 EOF
 
-# Or set it in the system config
+# Set the default sink in the user startup script if it is available at startup
 echo "set-default-sink bluez_sink.AA_BB_CC_DD_EE_FF.a2dp_sink" >> ~/.config/pulse/default.pa
 ```
 
