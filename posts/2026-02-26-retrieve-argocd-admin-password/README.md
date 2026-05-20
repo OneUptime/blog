@@ -8,13 +8,13 @@ Description: Learn multiple methods to retrieve the ArgoCD admin password after 
 
 ---
 
-Every ArgoCD installation creates a default `admin` account with a randomly generated password. This password is stored in a Kubernetes Secret called `argocd-initial-admin-secret` in the `argocd` namespace. You need this password the first time you log into the ArgoCD UI or CLI.
+Default ArgoCD installations create an `admin` account with a randomly generated password. In Argo CD v1.9 and later, this password is stored in a Kubernetes Secret called `argocd-initial-admin-secret` in the ArgoCD installation namespace, which is often `argocd`. You need this password the first time you log into the ArgoCD UI or CLI.
 
-This sounds simple, but in practice people run into issues: the secret might have been deleted, the cluster might use different base64 encoding, or you might need to decode it on a system without the usual tools. This guide covers every way to get that password and what to do when the normal method does not work.
+This sounds simple, but in practice people run into issues: the secret might have been deleted, your local `base64` command might use different flags, or you might need to decode it on a system without the usual tools. This guide covers every way to get that password and what to do when the normal method does not work.
 
 ## Method 1: kubectl with jsonpath (Standard)
 
-This is the most common approach and works on all platforms.
+This is the most common approach on Linux and other Unix-like systems.
 
 ```bash
 # Retrieve and decode the initial admin password
@@ -88,23 +88,16 @@ echo "dGhlLXBhc3N3b3Jk" | base64 -d
 
 ## Method 5: From Inside a Pod
 
-If you have kubectl access only through a pod (like a bastion pod):
+If you need to run the Argo CD admin command from the server pod:
 
 ```bash
-# Exec into any pod in the argocd namespace
-kubectl exec -it -n argocd deployment/argocd-server -- bash
-
-# Read the secret from the mounted volume or use the API
-cat /run/secrets/kubernetes.io/serviceaccount/token
-# This won't directly give you the password, but you can use the Kubernetes API
-
-# Better approach: use argocd admin commands from inside the server pod
+# Use argocd admin commands from inside the server pod
 kubectl exec -n argocd deployment/argocd-server -- argocd admin initial-password -n argocd
 ```
 
 ## Method 6: ArgoCD CLI Built-in Command
 
-ArgoCD v2.6+ has a built-in command to retrieve the initial password.
+Current ArgoCD versions have a built-in command to retrieve the initial password.
 
 ```bash
 # Use the argocd CLI to get the initial password
@@ -137,9 +130,10 @@ If you set a custom password during Helm installation:
 configs:
   secret:
     argocdServerAdminPassword: "$2a$12$hashed_password_here"
+    argocdServerAdminPasswordMtime: "2026-02-26T00:00:00Z"
 ```
 
-In this case, the password is whatever you set before hashing. The `argocd-initial-admin-secret` may not exist.
+In this case, the password is whatever you set before hashing. The `argocd-initial-admin-secret` may not exist because Argo CD already has `admin.password` in `argocd-secret`.
 
 ## What the Password Looks Like
 
@@ -226,8 +220,7 @@ If the `argocd-initial-admin-secret` was deleted and you do not know the passwor
 
 ```bash
 # Generate a bcrypt hash of your new password
-# Using Python (most systems have this)
-NEW_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'my-new-password', bcrypt.gensalt()).decode())")
+NEW_HASH=$(argocd account bcrypt --password "my-new-password")
 
 # Update the admin password in argocd-secret
 kubectl -n argocd patch secret argocd-secret -p \
@@ -250,7 +243,7 @@ NEW_PASSWORD=$(openssl rand -base64 12)
 echo "New password: $NEW_PASSWORD"
 
 # Hash it with bcrypt
-BCRYPT_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'$NEW_PASSWORD', bcrypt.gensalt()).decode())")
+BCRYPT_HASH=$(argocd account bcrypt --password "$NEW_PASSWORD")
 
 # Update the argocd-secret
 kubectl -n argocd patch secret argocd-secret -p \
