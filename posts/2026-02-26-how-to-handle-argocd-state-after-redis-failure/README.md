@@ -8,7 +8,7 @@ Description: Learn how ArgoCD recovers from Redis failures, what symptoms to exp
 
 ---
 
-Redis is ArgoCD's cache layer - it stores cluster state, generated manifests, and session data. When Redis goes down, ArgoCD does not lose any persistent state (that is all in Kubernetes CRDs and ConfigMaps), but it does lose its cache. This means slower reconciliation, increased load on cluster API servers and Git repositories, and temporary UI issues.
+Redis is ArgoCD's cache layer - it stores cached application data, generated manifests, cluster state cache entries, and token/session-related cache data. When Redis goes down, ArgoCD does not lose any persistent state (that is stored as Kubernetes objects such as CRDs, ConfigMaps, and Secrets), but it does lose its shared cache. This means slower reconciliation, increased load on cluster API servers and Git repositories, and temporary UI issues.
 
 This post covers what happens during a Redis failure, how ArgoCD recovers, and what you can do to minimize the impact.
 
@@ -16,15 +16,16 @@ This post covers what happens during a Redis failure, how ArgoCD recovers, and w
 
 When Redis becomes unavailable, each ArgoCD component is affected differently.
 
-The **application controller** loses its cluster state cache. It falls back to querying each cluster's API server directly for every reconciliation cycle. This works but is significantly slower and generates much more API traffic. You will see increased reconciliation times and potentially API server throttling on managed clusters.
+The **application controller** loses shared cache entries used during comparison and refresh. It can rebuild state from the Kubernetes API server and the repo server, but cache misses and hard refreshes are significantly slower and generate more API traffic. You will see increased reconciliation times and potentially API server throttling on managed clusters.
 
-The **repo server** loses its manifest cache. Every reconciliation cycle requires re-fetching from Git and re-rendering Helm charts or Kustomize overlays. This increases Git clone operations and CPU usage on the repo server.
+The **repo server** loses its generated manifest and repository metadata cache. Cache misses require the repo server to refresh repository state and re-render Helm charts or Kustomize overlays. This can increase Git operations and CPU usage on the repo server.
 
 The **API server** loses session data. Active user sessions may be invalidated, requiring users to log in again. API responses that relied on cached data will be slower.
 
 ```mermaid
 sequenceDiagram
     participant AC as App Controller
+    participant RS as Repo Server
     participant Redis as Redis (Down)
     participant K8s as Cluster API
     participant Git as Git Repo
@@ -34,10 +35,12 @@ sequenceDiagram
     Note over AC: Cache miss, fall back to direct query
     AC->>K8s: List all resources (expensive)
     K8s-->>AC: Full resource list
-    AC->>Redis: Get cached manifests
-    Redis--xAC: Connection refused
-    AC->>Git: Clone and render manifests
-    Git-->>AC: Rendered manifests
+    AC->>RS: Request generated manifests
+    RS->>Redis: Get cached manifests
+    Redis--xRS: Connection refused
+    RS->>Git: Fetch and render manifests
+    Git-->>RS: Rendered manifests
+    RS-->>AC: Generated manifests
     Note over AC: Compare and reconcile (slower than normal)
 ```
 
@@ -51,7 +54,7 @@ Here are the signs that Redis is causing problems.
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis
 
 # Check application controller logs for Redis errors
-kubectl logs -n argocd deploy/argocd-application-controller | grep -i redis | tail -20
+kubectl logs -n argocd statefulset/argocd-application-controller | grep -i redis | tail -20
 
 # Check repo server logs
 kubectl logs -n argocd deploy/argocd-repo-server | grep -i redis | tail -20
@@ -79,7 +82,7 @@ kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis -o wide
 kubectl logs -n argocd deploy/argocd-redis --tail=50
 
 # Check if Redis is responding
-kubectl exec -n argocd deploy/argocd-redis -- redis-cli ping
+kubectl exec -n argocd deploy/argocd-redis -- sh -c 'redis-cli -a "$REDIS_PASSWORD" ping'
 # Expected: PONG
 ```
 
@@ -100,13 +103,13 @@ kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-redis -n
 
 ```bash
 # Verify Redis is healthy
-kubectl exec -n argocd deploy/argocd-redis -- redis-cli info server | head -10
+kubectl exec -n argocd deploy/argocd-redis -- sh -c 'redis-cli -a "$REDIS_PASSWORD" info server' | head -10
 
 # Check memory usage
-kubectl exec -n argocd deploy/argocd-redis -- redis-cli info memory | grep used_memory_human
+kubectl exec -n argocd deploy/argocd-redis -- sh -c 'redis-cli -a "$REDIS_PASSWORD" info memory' | grep used_memory_human
 
 # Verify ArgoCD components can reach Redis
-kubectl logs -n argocd deploy/argocd-application-controller --tail=10 | grep -i redis
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=10 | grep -i redis
 ```
 
 ### Step 4: Speed Up Cache Rebuilding
@@ -142,13 +145,13 @@ echo "All applications hard-refreshed"
 
 ### Use Redis HA
 
-The single biggest improvement is running Redis in HA mode with Sentinel or a Redis cluster.
+The single biggest improvement is running ArgoCD's HA manifests, which include Redis HA with Sentinel and HAProxy.
 
 ```yaml
 # Use ArgoCD's HA manifests which include Redis HA
-# Or deploy Redis Sentinel manually
+# Or point ArgoCD at an external Redis/Sentinel deployment
 
-# argocd-cmd-params-cm - point to Redis Sentinel
+# argocd-cmd-params-cm - point to the Redis HAProxy service
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -178,7 +181,7 @@ resources:
   requests:
     memory: 1Gi
   limits:
-    # Set 30% higher than Redis maxmemory to account for overhead
+    # Set higher than Redis maxmemory to account for overhead
     memory: 3Gi
 ```
 
@@ -235,6 +238,8 @@ containers:
       exec:
         command:
           - redis-cli
+          - -a
+          - $(REDIS_PASSWORD)
           - ping
       initialDelaySeconds: 15
       periodSeconds: 5
@@ -244,6 +249,8 @@ containers:
       exec:
         command:
           - redis-cli
+          - -a
+          - $(REDIS_PASSWORD)
           - ping
       initialDelaySeconds: 5
       periodSeconds: 3
@@ -258,7 +265,7 @@ If Redis data is completely lost (pod deleted without persistence, PVC lost), Ar
 ```bash
 # After Redis comes back empty, restart the application controller
 # This forces it to rebuild its entire cluster cache
-kubectl rollout restart deployment argocd-application-controller -n argocd
+kubectl rollout restart statefulset argocd-application-controller -n argocd
 
 # Restart the repo server to clear any stale connection state
 kubectl rollout restart deployment argocd-repo-server -n argocd
@@ -267,7 +274,7 @@ kubectl rollout restart deployment argocd-repo-server -n argocd
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/part-of=argocd -n argocd --timeout=300s
 
 # Monitor the cache rebuild progress
-watch kubectl exec -n argocd deploy/argocd-redis -- redis-cli dbsize
+watch "kubectl exec -n argocd deploy/argocd-redis -- sh -c 'redis-cli -a \"\$REDIS_PASSWORD\" dbsize'"
 ```
 
 The cache rebuild time depends on the number of managed clusters and applications. For a typical installation with 100 applications, expect the cache to be fully rebuilt within 10 to 15 minutes. For 1000+ applications, it can take 30 minutes or more.
@@ -289,10 +296,10 @@ kubectl scale deployment argocd-redis -n argocd --replicas=1
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/name=argocd-redis -n argocd --timeout=120s
 
 # Verify recovery
-kubectl exec -n argocd deploy/argocd-redis -- redis-cli ping
+kubectl exec -n argocd deploy/argocd-redis -- sh -c 'redis-cli -a "$REDIS_PASSWORD" ping'
 argocd app list --output json | jq '.[0:3] | .[] | {name: .metadata.name, health: .status.health.status}'
 ```
 
 ## Wrapping Up
 
-Redis failures in ArgoCD are disruptive but not catastrophic. ArgoCD's persistent state lives in Kubernetes CRDs and ConfigMaps, not in Redis. When Redis fails, ArgoCD falls back to direct API server queries and Git fetches, which is slower but functional. To minimize impact: run Redis in HA mode, set memory limits with LRU eviction, monitor proactively with alerts at 75% and 90% memory usage, and have a recovery playbook ready. After Redis comes back, force a hard refresh of all applications to speed up cache rebuilding. For rebuilding ArgoCD state from scratch in more extreme scenarios, see [how to rebuild ArgoCD state from scratch](https://oneuptime.com/blog/post/2026-02-26-how-to-rebuild-argocd-state-from-scratch/view).
+Redis failures in ArgoCD are disruptive but not catastrophic. ArgoCD's persistent state lives in Kubernetes objects such as CRDs, ConfigMaps, and Secrets, not in Redis. When Redis fails, ArgoCD rebuilds cache from the Kubernetes API and repo server, which is slower but functional. To minimize impact: run Redis in HA mode, set memory limits with LRU eviction, monitor proactively with alerts at 75% and 90% memory usage, and have a recovery playbook ready. After Redis comes back, force a hard refresh of all applications to speed up cache rebuilding. For rebuilding ArgoCD state from scratch in more extreme scenarios, see [how to rebuild ArgoCD state from scratch](https://oneuptime.com/blog/post/2026-02-26-how-to-rebuild-argocd-state-from-scratch/view).
