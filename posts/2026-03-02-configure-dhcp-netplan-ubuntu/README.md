@@ -47,7 +47,7 @@ network:
       dhcp6: true
 ```
 
-Or if you want only IPv6 with a static IPv6 prefix and DHCP for other configuration:
+Or if you want IPv6 DHCP with temporary/private IPv6 addresses:
 
 ```yaml
 network:
@@ -94,13 +94,15 @@ network:
   ethernets:
     enp3s0:
       dhcp4: true
+      dhcp4-overrides:
+        use-dns: false
       nameservers:
         addresses:
           - 1.1.1.1    # use Cloudflare DNS instead of DHCP-provided DNS
           - 8.8.8.8
 ```
 
-When you specify `nameservers.addresses`, Netplan uses those instead of what DHCP provides.
+When you specify `nameservers.addresses` and set `dhcp4-overrides.use-dns: false`, Netplan uses your static DNS servers instead of the DNS servers from DHCP.
 
 ### Use DHCP but Ignore the Default Route
 
@@ -116,7 +118,6 @@ network:
       dhcp4-overrides:
         use-routes: false       # ignore routes from DHCP
         use-dns: false          # ignore DNS from DHCP
-        route-metric: 200       # set a specific metric for DHCP routes
 ```
 
 ### Control Which DHCP Options Are Used
@@ -139,7 +140,7 @@ network:
 
 ### Set a Custom DHCP Client Identifier
 
-By default, the DHCP client uses the MAC address or DUID as its identifier. You can customize this:
+With the `networkd` backend, the default DHCPv4 client identifier is based on the interface IAID and system DUID. You can use the MAC address instead:
 
 ```yaml
 network:
@@ -148,9 +149,7 @@ network:
   ethernets:
     enp3s0:
       dhcp4: true
-      dhcp-identifier: mac    # use MAC address (default)
-      # or:
-      dhcp-identifier: duid   # use DUID (better for IPv6)
+      dhcp-identifier: mac    # use MAC address instead of IAID+DUID
 ```
 
 ## DHCP on Multiple Interfaces
@@ -168,7 +167,6 @@ network:
       dhcp4: true      # secondary interface
       dhcp4-overrides:
         use-routes: false    # don't add default route via this interface
-        route-metric: 200    # lower priority than primary
 ```
 
 This is common on servers with separate management and data interfaces.
@@ -195,15 +193,18 @@ The interface will have both the DHCP-assigned address and the static address si
 Some DHCP servers support client-requested addresses. While DHCP technically cannot guarantee a specific address, well-configured servers usually honor the request:
 
 ```bash
-# With systemd-networkd, you can set this in a .network file override
-# Netplan doesn't directly expose this option, so create a drop-in:
-sudo mkdir -p /etc/systemd/network/enp3s0.network.d/
+# With systemd-networkd 255 or newer, you can set this in a .network file drop-in.
+# Replace 10-netplan-enp3s0.network with the generated network file shown by:
+networkctl status enp3s0 | grep "Network File"
 
-cat << 'EOF' | sudo tee /etc/systemd/network/enp3s0.network.d/dhcp-request.conf
+sudo mkdir -p /etc/systemd/network/10-netplan-enp3s0.network.d/
+
+cat << 'EOF' | sudo tee /etc/systemd/network/10-netplan-enp3s0.network.d/dhcp-request.conf
 [DHCPv4]
 RequestAddress=192.168.1.100
 EOF
 
+sudo systemctl daemon-reload
 sudo systemctl restart systemd-networkd
 ```
 
@@ -263,20 +264,19 @@ nmcli -f DHCP4 device show enp3s0
 
 ## DHCP Timeout Configuration
 
-In environments where the DHCP server is sometimes slow to respond, you can increase the timeout before Netplan gives up:
+systemd-networkd retries DHCP by default; Netplan does not expose a DHCP response timeout setting. If the problem is boot waiting too long for network-online, adjust the `systemd-networkd-wait-online` timeout instead:
 
 ```bash
-# Create a systemd-networkd drop-in for DHCP timeout
-sudo mkdir -p /etc/systemd/network/enp3s0.network.d/
+# Override wait-online to wait up to 60 seconds
+sudo systemctl edit systemd-networkd-wait-online.service
 
-cat << 'EOF' | sudo tee /etc/systemd/network/enp3s0.network.d/dhcp-timeout.conf
-[DHCPv4]
-# Wait up to 60 seconds for a DHCP response
-RequestTimeout=60
-EOF
+# Add these lines in the editor:
+# [Service]
+# ExecStart=
+# ExecStart=/lib/systemd/systemd-networkd-wait-online --timeout=60
 
 sudo systemctl daemon-reload
-sudo systemctl restart systemd-networkd
+sudo systemctl restart systemd-networkd-wait-online
 ```
 
 ## Switching from Static to DHCP
