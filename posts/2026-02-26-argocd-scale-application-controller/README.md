@@ -25,7 +25,7 @@ Each of these tasks consumes CPU and memory proportional to the number of applic
 ```mermaid
 flowchart TD
     subgraph "Application Controller Workload"
-        A[Watch Git repos via Repo Server]
+        A[Poll Git repos via Repo Server]
         B[Fetch live state from K8s API]
         C[Compute diffs]
         D[Execute syncs]
@@ -46,7 +46,7 @@ flowchart TD
 Before horizontal scaling, try vertical scaling. Many controller performance issues stem from insufficient memory or CPU:
 
 ```yaml
-# Patch the controller deployment with more resources
+# Patch the controller StatefulSet with more resources
 
 apiVersion: apps/v1
 kind: StatefulSet
@@ -87,7 +87,7 @@ Resource guidelines based on application count:
 
 ## Horizontal Scaling with Sharding
 
-When a single controller instance cannot handle the load, you need to shard the workload across multiple controller replicas. Each shard manages a subset of clusters or applications.
+When a single controller instance cannot handle the load, you need to shard the workload across multiple controller replicas. Each shard manages a subset of clusters and the applications targeting those clusters.
 
 ### Enable Sharding by Cluster
 
@@ -101,7 +101,7 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Number of controller shards
+  # Sharding algorithm
   controller.sharding.algorithm: "round-robin"
 ```
 
@@ -149,12 +149,15 @@ data:
 
   # Legacy: hash-based distribution (default in older versions)
   # controller.sharding.algorithm: "legacy"
+
+  # Consistent hashing: reduces reshuffling when shards or clusters change
+  # controller.sharding.algorithm: "consistent-hashing"
 ```
 
 You can also explicitly assign clusters to specific shards:
 
 ```yaml
-# Annotate the cluster secret to assign it to a specific shard
+# Set the shard field in the cluster secret to assign it to a specific shard
 apiVersion: v1
 kind: Secret
 metadata:
@@ -162,10 +165,9 @@ metadata:
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: cluster
-  annotations:
-    # Assign to shard 0
-    argocd.argoproj.io/shard: "0"
 stringData:
+  # Assign to shard 0
+  shard: "0"
   server: "https://production-api:6443"
   name: "production"
   config: |
@@ -210,29 +212,35 @@ data:
   controller.repo.server.timeout.seconds: "180"
 
   # Kubernetes client QPS and burst
-  controller.k8s.client.config.qps: "50"
-  controller.k8s.client.config.burst: "100"
+  controller.k8s.client.qps: "50"
+  controller.k8s.client.burst: "100"
 ```
 
 Explanation of key parameters:
 
 - **status.processors**: How many applications are reconciled in parallel. Increase for faster status updates, but this increases CPU and API server load.
 - **operation.processors**: How many sync operations run in parallel. Increase for faster bulk syncs.
-- **k8s.client.config.qps**: Rate limit for Kubernetes API calls. Higher values mean faster reconciliation but more API server pressure.
+- **k8s.client.qps**: Rate limit for Kubernetes API calls. Higher values mean faster reconciliation but more API server pressure.
 
 ## Dynamic Cluster Distribution
 
-ArgoCD 2.8+ supports dynamic cluster distribution, which automatically rebalances clusters across controller shards when replicas scale up or down:
+ArgoCD 2.9+ supports dynamic cluster distribution, an alpha feature that automatically rebalances clusters across controller shards when replicas scale up or down. To use it, run the application controller as a Deployment and enable the feature on the controller:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-application-controller
   namespace: argocd
-data:
-  # Enable dynamic cluster distribution
-  controller.dynamic.cluster.distribution.enabled: "true"
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_ENABLE_DYNAMIC_CLUSTER_DISTRIBUTION
+              value: "true"
 ```
 
 With this enabled, you can use Horizontal Pod Autoscaler (HPA) on the controller:
@@ -246,7 +254,7 @@ metadata:
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
-    kind: StatefulSet
+    kind: Deployment
     name: argocd-application-controller
   minReplicas: 2
   maxReplicas: 5
@@ -274,10 +282,11 @@ Set up monitoring to know when scaling is needed:
 # argocd_app_reconcile_count - total reconciliations
 # argocd_app_reconcile_bucket - reconciliation duration histogram
 # argocd_app_sync_total - total sync operations
-# argocd_cluster_api_resource_actions_total - K8s API calls
-# argocd_cluster_api_resources_total - monitored resources count
+# argocd_app_k8s_request_total - K8s API calls during reconciliation
+# argocd_cluster_api_resources - monitored API resources count
+# argocd_cluster_api_resource_objects - cached resource objects count
 
-# Check current reconciliation queue length
+# Check current reconciliation metrics
 kubectl exec -n argocd statefulset/argocd-application-controller -- \
   curl -s localhost:8082/metrics | grep argocd_app_reconcile
 ```
