@@ -45,7 +45,11 @@ argocd app create my-app \
   --repo https://github.com/myorg/gitops-repo.git \
   --path apps/my-app \
   --dest-server https://kubernetes.default.svc \
-  --dest-namespace production
+  --dest-namespace production \
+  --sync-policy automated \
+  --auto-prune \
+  --self-heal \
+  --set-finalizer
 ```
 
 When the Application resource is created, the Application Controller picks it up within seconds. At this point, the Application exists in ArgoCD's tracking, but no Kubernetes resources have been deployed yet.
@@ -225,11 +229,11 @@ spec:
 
 ## Phase 7: Deletion
 
-When you are ready to remove an application, the deletion behavior depends on the finalizer configuration.
+When you are ready to remove an application, the deletion behavior depends on whether you choose cascading deletion. ArgoCD uses the resources finalizer to implement cascading deletion.
 
 ### With the Resources Finalizer
 
-If the Application has the `resources-finalizer.argocd.argoproj.io` finalizer (recommended), deleting the Application also deletes all managed Kubernetes resources:
+If the Application has the `resources-finalizer.argocd.argoproj.io` finalizer, deleting the Application also deletes all managed Kubernetes resources. The `argocd app delete` command uses cascading deletion by default:
 
 ```bash
 # Delete the Application AND its Kubernetes resources
@@ -250,8 +254,8 @@ graph TD
     A[Delete Application] --> B{Has resources finalizer?}
     B -->|Yes| C[Delete managed K8s resources]
     C --> D[Wait for resources to be gone]
-    D --> E[Remove Application CRD]
-    B -->|No| F[Remove Application CRD only]
+    D --> E[Remove Application resource]
+    B -->|No| F[Remove Application resource only]
     F --> G[K8s resources remain orphaned]
     E --> H[Application fully deleted]
     G --> H
@@ -259,7 +263,7 @@ graph TD
 
 ### Without the Finalizer
 
-If there is no finalizer, the Application resource is deleted but the Kubernetes resources remain running in the cluster. They become orphaned - no longer managed by ArgoCD but still running.
+If you use non-cascading deletion, ArgoCD removes the finalizer and deletes only the Application resource. The Kubernetes resources remain running in the cluster. They become orphaned - no longer managed by ArgoCD but still running.
 
 ```bash
 # Delete only the ArgoCD Application, keep the K8s resources
@@ -287,10 +291,10 @@ Here is a summary of the typical status at each lifecycle phase:
 | Phase | Sync Status | Health Status | Notes |
 |-------|-------------|---------------|-------|
 | Just created | OutOfSync | Missing | No resources deployed yet |
-| Initial sync in progress | Synced (at target rev) | Progressing | Resources being created |
+| Initial sync in progress | OutOfSync or Synced | Progressing | Resources being created and status updating |
 | Stable running | Synced | Healthy | Normal operating state |
 | Git change detected | OutOfSync | Healthy | New commit, not yet synced |
-| Sync in progress | Synced (at new rev) | Progressing | Resources being updated |
+| Sync in progress | OutOfSync or Synced | Progressing | Resources being updated and status updating |
 | Deployment issue | Synced | Degraded | Cluster matches Git but pods failing |
 | Drift detected | OutOfSync | Varies | Manual change detected |
 | Rollback in progress | OutOfSync | Progressing | Reverting to old revision |
@@ -298,7 +302,7 @@ Here is a summary of the typical status at each lifecycle phase:
 
 ## Best Practices for Application Lifecycle
 
-**Always use the resources finalizer.** Without it, deleting an Application leaves orphaned resources that you have to clean up manually.
+**Use the resources finalizer when you want cascading deletion.** Without it, deleting an Application leaves orphaned resources that you have to clean up manually, which is useful only when you intentionally want to stop managing resources without deleting them.
 
 **Use automated sync with self-healing for production.** This ensures drift is corrected automatically and Git remains the source of truth.
 
