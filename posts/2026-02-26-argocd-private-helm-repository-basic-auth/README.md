@@ -202,7 +202,7 @@ Storing passwords in plain-text YAML is not ideal. Use one of these approaches:
 ### External Secrets Operator
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: helm-repo-creds
