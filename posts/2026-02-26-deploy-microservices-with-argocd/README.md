@@ -172,6 +172,8 @@ metadata:
   name: microservices
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/microservices.git
@@ -182,14 +184,14 @@ spec:
   template:
     metadata:
       # Extract the service name from the path
-      name: '{{path[1]}}'
+      name: '{{index .path.segments 1}}'
       namespace: argocd
     spec:
       project: microservices
       source:
         repoURL: https://github.com/myorg/microservices.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
         namespace: microservices
@@ -214,6 +216,8 @@ metadata:
   name: microservices
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -231,14 +235,14 @@ spec:
             memory: "256Mi"
   template:
     metadata:
-      name: '{{service}}'
+      name: '{{.service}}'
       namespace: argocd
     spec:
       project: microservices
       source:
         repoURL: https://github.com/myorg/microservices.git
         targetRevision: main
-        path: 'services/{{service}}/overlays/production'
+        path: 'services/{{.service}}/overlays/production'
         kustomize:
           patches:
             - target:
@@ -246,7 +250,7 @@ spec:
               patch: |
                 - op: replace
                   path: /spec/replicas
-                  value: {{replicas}}
+                  value: {{.replicas}}
       destination:
         server: https://kubernetes.default.svc
         namespace: microservices
@@ -266,6 +270,8 @@ kind: Application
 metadata:
   name: shared-infrastructure
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
 spec:
   project: microservices
   source:
@@ -281,15 +287,15 @@ spec:
       selfHeal: true
 ```
 
-Use sync waves to ensure shared infrastructure deploys before the services that depend on it:
+If these Applications are managed by the same parent app, use sync waves on the child Application resources to ensure shared infrastructure deploys before the services that depend on it:
 
 ```yaml
-# In shared infrastructure manifests
+# In the shared-infrastructure Application manifest
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "-1"  # Deploy before services
 
-# In service manifests
+# In service Application manifests
 metadata:
   annotations:
     argocd.argoproj.io/sync-wave: "0"  # Deploy after infrastructure
