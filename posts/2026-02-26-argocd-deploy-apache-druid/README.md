@@ -73,7 +73,7 @@ metadata:
 data:
   common.runtime.properties: |
     # Extensions
-    druid.extensions.loadList=["druid-histogram", "druid-datasketches", "druid-lookups-cached-global", "postgresql-metadata-storage", "druid-s3-extensions", "druid-kafka-indexing-service", "druid-multi-stage-query"]
+    druid.extensions.loadList=["druid-datasketches", "druid-lookups-cached-global", "postgresql-metadata-storage", "druid-s3-extensions", "druid-kafka-indexing-service", "druid-multi-stage-query"]
 
     # ZooKeeper
     druid.zk.service.host=druid-zookeeper:2181
@@ -91,6 +91,7 @@ data:
     druid.storage.baseKey=segments
     druid.s3.accessKey=AKIAIOSFODNN7EXAMPLE
     druid.s3.secretKey=changeme
+    druid.s3.endpoint.signingRegion=us-east-1
 
     # Indexing log storage
     druid.indexer.logs.type=s3
@@ -135,7 +136,7 @@ spec:
     spec:
       containers:
         - name: coordinator
-          image: apache/druid:28.0.1
+          image: apache/druid:36.0.0
           command: ["/druid.sh", "coordinator"]
           ports:
             - containerPort: 8081
@@ -193,7 +194,7 @@ spec:
     spec:
       containers:
         - name: overlord
-          image: apache/druid:28.0.1
+          image: apache/druid:36.0.0
           command: ["/druid.sh", "overlord"]
           ports:
             - containerPort: 8090
@@ -250,7 +251,7 @@ spec:
     spec:
       containers:
         - name: broker
-          image: apache/druid:28.0.1
+          image: apache/druid:36.0.0
           command: ["/druid.sh", "broker"]
           ports:
             - containerPort: 8082
@@ -320,7 +321,7 @@ spec:
     spec:
       containers:
         - name: historical
-          image: apache/druid:28.0.1
+          image: apache/druid:36.0.0
           command: ["/druid.sh", "historical"]
           ports:
             - containerPort: 8083
