@@ -193,18 +193,20 @@ You can configure OpenVPN to enforce routing through the VPN and prevent leaks:
 
 ```conf
 # Add to your OpenVPN client config
-# Prevent DNS leaks
-block-outside-dns
+# Route IPv4 traffic through the VPN
+redirect-gateway def1
 
-# Use only VPN DNS servers pushed by server
+# Use a VPN DNS server. On Linux, this requires an OpenVPN DNS helper script or plugin
+# that applies the foreign_option_* environment variables to systemd-resolved or resolv.conf.
 dhcp-option DNS 10.8.0.1
 
-# Pull routes from server
-pull
+# Mark OpenVPN's encrypted packets so the firewall can allow the VPN connection itself
+mark 0x1
 
 # Script-based kill switch approach
 script-security 2
 up /etc/openvpn/client/kill-switch-up.sh
+down-pre
 down /etc/openvpn/client/kill-switch-down.sh
 ```
 
@@ -213,12 +215,16 @@ Create the scripts:
 ```bash
 # /etc/openvpn/client/kill-switch-up.sh
 #!/bin/bash
-iptables -I OUTPUT ! -o tun0 -m mark ! --mark $(cat /proc/sys/net/ipv4/conf/tun0/rp_filter) -m addrtype ! --dst-type LOCAL -j REJECT
+iptables -I OUTPUT ! -o "$dev" -m mark ! --mark 0x1 -m addrtype ! --dst-type LOCAL -j REJECT
+```
 
+```bash
 # /etc/openvpn/client/kill-switch-down.sh
 #!/bin/bash
-iptables -D OUTPUT ! -o tun0 -m mark ! --mark $(cat /proc/sys/net/ipv4/conf/tun0/rp_filter) -m addrtype ! --dst-type LOCAL -j REJECT
+iptables -D OUTPUT ! -o "$dev" -m mark ! --mark 0x1 -m addrtype ! --dst-type LOCAL -j REJECT 2>/dev/null || true
+```
 
+```bash
 sudo chmod +x /etc/openvpn/client/kill-switch-*.sh
 ```
 
@@ -247,8 +253,9 @@ sudo nano /etc/systemd/system/vpn-kill-switch.service
 ```ini
 [Unit]
 Description=VPN Kill Switch
-Before=network.target
 DefaultDependencies=no
+Before=network-pre.target
+Wants=network-pre.target
 
 [Service]
 Type=oneshot
@@ -264,7 +271,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable vpn-kill-switch.service
 ```
 
-This ensures the kill switch is active before any network traffic can flow, even at boot before the VPN connects.
+This orders the kill switch before the network pre-configuration target, so it can be applied before network interfaces are configured during boot.
 
 ## Testing the Kill Switch
 
@@ -297,8 +304,8 @@ Even with a VPN, DNS queries can still leak through your ISP's DNS servers. Prev
 
 ```bash
 # Block all DNS traffic except through VPN interface
-iptables -A OUTPUT -p udp --dport 53 ! -o tun0 -j DROP
-iptables -A OUTPUT -p tcp --dport 53 ! -o tun0 -j DROP
+iptables -A OUTPUT ! -o tun0 -p udp --dport 53 -j DROP
+iptables -A OUTPUT ! -o tun0 -p tcp --dport 53 -j DROP
 
 # Or specify VPN DNS only
 # Configure /etc/resolv.conf or use systemd-resolved
