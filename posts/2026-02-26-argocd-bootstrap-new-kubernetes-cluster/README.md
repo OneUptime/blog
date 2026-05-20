@@ -108,6 +108,8 @@ kind: ConfigMap
 metadata:
   name: argocd-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   url: "https://argocd.example.com"
   # Allow ArgoCD to manage itself
@@ -118,6 +120,8 @@ kind: ConfigMap
 metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   # Run in insecure mode initially (TLS will be handled by ingress later)
   server.insecure: "true"
@@ -183,7 +187,7 @@ spec:
     targetRevision: HEAD
     directory:
       recurse: true
-      include: 'application.yaml'
+      include: '*/application.yaml'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
@@ -197,7 +201,7 @@ spec:
 
 ## Step 5: Define Infrastructure Applications
 
-Each infrastructure component gets its own Application definition with sync waves to control ordering:
+Each infrastructure component gets its own Application definition with sync waves to control the order in which the root application creates those Application resources:
 
 ```yaml
 # infrastructure/ingress-nginx/application.yaml
@@ -287,7 +291,7 @@ ArgoCD will now:
 1. Read the root application
 2. Discover all Application YAML files in the infrastructure directory
 3. Create each application
-4. Sync them in order based on sync waves
+4. Create the Application resources in order based on sync waves; each child application then syncs according to its own sync policy
 
 ## Step 7: ArgoCD Self-Management
 
@@ -309,7 +313,7 @@ spec:
   source:
     repoURL: https://argoproj.github.io/argo-helm
     chart: argo-cd
-    targetRevision: 7.3.4
+    targetRevision: 7.7.21
     helm:
       values: |
         server:
@@ -377,4 +381,4 @@ echo "  argocd app list"
 
 ## Summary
 
-Bootstrapping a Kubernetes cluster with ArgoCD follows a simple pattern: install ArgoCD manually, then let ArgoCD manage everything else from Git. The key is structuring your repository with sync waves so components install in the right order (ingress before certificates, monitoring before applications). Use the app-of-apps pattern with a single root application as the entry point. Once bootstrapping is complete, ArgoCD manages itself along with all cluster infrastructure, making your cluster fully reproducible from Git. For monitoring the health of bootstrapped clusters, integrate with [OneUptime](https://oneuptime.com) to track component availability across all your environments.
+Bootstrapping a Kubernetes cluster with ArgoCD follows a simple pattern: install ArgoCD manually, then let ArgoCD manage everything else from Git. The key is structuring your repository with sync waves so Application resources are created in the right order (ingress before certificates, monitoring before applications). Use the app-of-apps pattern with a single root application as the entry point. Once bootstrapping is complete, ArgoCD manages itself along with all cluster infrastructure, making your cluster fully reproducible from Git. For monitoring the health of bootstrapped clusters, integrate with [OneUptime](https://oneuptime.com) to track component availability across all your environments.
