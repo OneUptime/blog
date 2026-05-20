@@ -8,7 +8,7 @@ Description: Learn how to monitor ArgoCD disk usage across the repo server, appl
 
 ---
 
-ArgoCD uses disk space in several components, and running out of storage can cause some of the most confusing failures you will encounter. The repo server clones Git repositories to local disk, the application controller writes temporary files during manifest generation, and even Redis (if persistence is enabled) can consume significant storage. This guide shows you how to monitor all of it.
+ArgoCD uses disk space in several components, and running out of storage can cause some of the most confusing failures you will encounter. The repo server clones Git repositories to local disk and generates manifests, the application controller uses temporary files for its working directory and Kubernetes client cache, and even Redis (if persistence is enabled) can consume significant storage. This guide shows you how to monitor all of it.
 
 ## Where ArgoCD Uses Disk
 
@@ -16,11 +16,11 @@ Understanding which components use disk and why helps you know what to monitor:
 
 **Repo Server**: This is the biggest disk consumer. It clones every Git repository that your applications reference. For large monorepos, this can be gigabytes of storage. The repo server also stores rendered manifests temporarily during the generation phase.
 
-**Application Controller**: The controller writes temporary files during diff calculations and sync operations. These are usually small but can accumulate if garbage collection is not working properly.
+**Application Controller**: The controller uses `/tmp` for temporary working files and its Kubernetes client cache. These are usually small but still count toward ephemeral storage usage.
 
 **Redis**: If you accidentally enabled persistence (RDB or AOF), Redis writes snapshots to disk. ArgoCD Redis should run without persistence, but misconfigurations happen.
 
-**Dex Server**: Stores its SQLite database for OAuth state. This is typically tiny but worth monitoring.
+**Dex Server**: The bundled ArgoCD Dex server uses in-memory storage, but it still has a writable `/tmp` directory that counts toward ephemeral storage usage.
 
 ## Checking Disk Usage Manually
 
@@ -33,7 +33,7 @@ kubectl exec -n argocd deploy/argocd-repo-server -- df -h /tmp
 kubectl exec -n argocd deploy/argocd-repo-server -- du -sh /tmp/_argocd-repo
 
 # Check application controller disk usage
-kubectl exec -n argocd deploy/argocd-application-controller -- df -h /tmp
+kubectl exec -n argocd statefulset/argocd-application-controller -- df -h /tmp
 
 # Check Redis disk usage (if using a PVC)
 kubectl exec -n argocd deploy/argocd-redis -- df -h /data
@@ -49,7 +49,7 @@ kubectl exec -n argocd deploy/argocd-repo-server -- \
 
 ## Monitoring with Prometheus
 
-Kubernetes exposes container filesystem metrics through the kubelet. You can use these to monitor ArgoCD disk usage without installing anything extra.
+Kubernetes exposes container filesystem metrics through the kubelet/cAdvisor metrics endpoint. If your Prometheus setup already scrapes kubelet/cAdvisor and kube-state-metrics or kube-scheduler metrics, you can use these to monitor ArgoCD disk usage without deploying an ArgoCD-specific exporter.
 
 ### Key Metrics
 
@@ -110,33 +110,35 @@ spec:
         - name: argocd-repo-server
           # ... existing config ...
         - name: disk-monitor
-          image: alpine:3.19
+          image: alpine:3.23
           command:
             - /bin/sh
             - -c
             - |
-              apk add --no-cache curl
+              mkdir -p /var/run/disk-monitor
               while true; do
-                REPO_SIZE=$(du -sb /tmp/_argocd-repo 2>/dev/null | cut -f1 || echo 0)
-                TMP_SIZE=$(du -sb /tmp 2>/dev/null | cut -f1 || echo 0)
-                echo "# HELP argocd_repo_server_repo_dir_bytes Size of cloned repos directory"
-                echo "# TYPE argocd_repo_server_repo_dir_bytes gauge"
-                echo "argocd_repo_server_repo_dir_bytes $REPO_SIZE"
-                echo "# HELP argocd_repo_server_tmp_dir_bytes Total tmp directory size"
-                echo "# TYPE argocd_repo_server_tmp_dir_bytes gauge"
-                echo "argocd_repo_server_tmp_dir_bytes $TMP_SIZE"
+                REPO_SIZE=$(du -sb /repo-tmp/_argocd-repo 2>/dev/null | cut -f1 || echo 0)
+                TMP_SIZE=$(du -sb /repo-tmp 2>/dev/null | cut -f1 || echo 0)
+                {
+                  echo "# HELP argocd_repo_server_repo_dir_bytes Size of cloned repos directory"
+                  echo "# TYPE argocd_repo_server_repo_dir_bytes gauge"
+                  echo "argocd_repo_server_repo_dir_bytes $REPO_SIZE"
+                  echo "# HELP argocd_repo_server_tmp_dir_bytes Total tmp directory size"
+                  echo "# TYPE argocd_repo_server_tmp_dir_bytes gauge"
+                  echo "argocd_repo_server_tmp_dir_bytes $TMP_SIZE"
+                } > /var/run/disk-monitor/metrics
                 sleep 60
-              done > /tmp/metrics &
+              done &
               # Simple HTTP server for metrics
               while true; do
-                { echo -ne "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"; cat /tmp/metrics; } | nc -l -p 9102 || true
+                { echo -ne "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"; cat /var/run/disk-monitor/metrics 2>/dev/null; } | nc -l -p 9102 || true
               done
           ports:
             - containerPort: 9102
               name: disk-metrics
           volumeMounts:
             - name: tmp
-              mountPath: /tmp
+              mountPath: /repo-tmp
               readOnly: true
           resources:
             requests:
@@ -279,7 +281,7 @@ resources:
 
 If your repo server is consuming too much disk, there are several strategies to reduce usage:
 
-**Reduce clone depth**: Configure shallow clones for repositories that do not need full history:
+**Disable Git submodules if you do not need them**: Submodules add extra clones under the repo cache. Disable them when your applications do not depend on submodule contents:
 
 ```yaml
 apiVersion: v1
@@ -288,15 +290,14 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Only fetch the latest commit
-  reposerver.git.request.timeout: "60"
+  reposerver.enable.git.submodule: "false"
 ```
 
-**Increase repo cache expiration**: Reduce how often repos are re-cloned by keeping them cached longer.
+**Tune repo cache expiration carefully**: The `reposerver.repo.cache.expiration` setting controls cached repo state, application details, manifest generation results, and revision metadata. It can reduce repeated Git and manifest-generation work, but it is not a direct disk cleanup setting.
 
-**Use Git subpath**: If you have a monorepo, configure your applications to use a specific path rather than cloning the entire repository.
+**Use smaller source repositories when possible**: Setting an Application `path` selects which directory ArgoCD renders, but the repo server still clones the Git repository. Splitting very large monorepos or removing large generated artifacts from Git is what reduces clone size.
 
-**Clean up unused repos**: Remove repository credentials for repos that are no longer referenced by any application. The repo server will clean up the clones.
+**Clean up stale repo-server caches during maintenance**: If a repo server has accumulated old cache directories, restart the repo-server pod or remove stale directories only after confirming no manifest generation is running.
 
 ## Monitoring the Repo Server Process
 
