@@ -67,6 +67,8 @@ metadata:
   name: all-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/platform-manifests.git
@@ -75,16 +77,16 @@ spec:
           - path: apps/*/overlays/dev
   template:
     metadata:
-      name: '{{path[1]}}-dev'
+      name: '{{index .path.segments 1}}-dev'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/platform-manifests.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path[1]}}-dev'
+        namespace: '{{index .path.segments 1}}-dev'
 ```
 
 **Easier dependency management.** When service A depends on service B's configuration, both are visible in the same repo. Pull requests can show the full picture.
@@ -108,26 +110,24 @@ With multi-repo, each application or team gets its own manifest repository:
 ```text
 # Repo: myorg/frontend-manifests
 
-frontend/
-  base/
-    deployment.yaml
-    service.yaml
-    kustomization.yaml
-  overlays/
-    dev/
-    staging/
-    production/
+base/
+  deployment.yaml
+  service.yaml
+  kustomization.yaml
+overlays/
+  dev/
+  staging/
+  production/
 
 # Repo: myorg/backend-api-manifests
-backend-api/
-  base/
-    deployment.yaml
-    service.yaml
-    kustomization.yaml
-  overlays/
-    dev/
-    staging/
-    production/
+base/
+  deployment.yaml
+  service.yaml
+  kustomization.yaml
+overlays/
+  dev/
+  staging/
+  production/
 
 # Repo: myorg/infrastructure-manifests
 infrastructure/
@@ -149,7 +149,7 @@ spec:
   source:
     repoURL: https://github.com/myorg/frontend-manifests.git
     targetRevision: main
-    path: frontend/overlays/dev
+    path: overlays/dev
   destination:
     server: https://kubernetes.default.svc
     namespace: frontend-dev
@@ -208,6 +208,8 @@ metadata:
   name: all-team-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - scmProvider:
         github:
@@ -215,18 +217,19 @@ spec:
           allBranches: false
         filters:
           - repositoryMatch: ".*-manifests$"
+            pathsExist: [overlays/dev]
   template:
     metadata:
-      name: '{{repository}}-dev'
+      name: '{{.repository}}-dev'
     spec:
       project: default
       source:
-        repoURL: '{{url}}'
-        targetRevision: main
+        repoURL: '{{.url}}'
+        targetRevision: '{{.branch}}'
         path: overlays/dev
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{repository}}-dev'
+        namespace: '{{.repository}}-dev'
 ```
 
 ## The Hybrid Approach
