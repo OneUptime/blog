@@ -38,17 +38,14 @@ Configure a webhook in your Git provider that points to your ArgoCD API server.
 # GitLab: https://argocd.example.com/api/webhook
 # Bitbucket: https://argocd.example.com/api/webhook
 
-# In your argocd-cm ConfigMap, ensure webhook is not disabled
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
-  # Do NOT set this to "true" - it disables webhooks
-  # webhook.disable: "false"
-
-  # Optional: restrict webhook payloads to specific IPs
+type: Opaque
+stringData:
+  # Optional but recommended when ArgoCD is publicly accessible
   webhook.github.secret: "your-webhook-secret"
 ```
 
@@ -56,7 +53,7 @@ With webhooks, ArgoCD detects changes within seconds of a push.
 
 ## Step 2: Reduce the Reconciliation Interval
 
-Even with webhooks, ArgoCD runs periodic reconciliation to catch any drift. The default interval is 3 minutes (`180s`). For faster detection of manual cluster changes, lower this value.
+Even with webhooks, ArgoCD runs periodic reconciliation to catch any drift. The current default interval is 2 minutes (`120s`) with additional jitter. For faster detection of manual cluster changes, lower this value.
 
 ```yaml
 # In argocd-cm ConfigMap
@@ -66,8 +63,8 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Reduce from default 180s to 60s for faster drift detection
-  timeout.reconciliation: "60"
+  # Reduce from default 120s to 60s for faster drift detection
+  timeout.reconciliation: "60s"
 ```
 
 Be cautious here - setting this too low increases load on the controller and Git server. For most teams, 60 seconds is a good balance.
@@ -90,13 +87,13 @@ spec:
       - name: argocd-application-controller
         args:
         - /usr/local/bin/argocd-application-controller
-        # Process more apps simultaneously (default: 10)
+        # Process more apps simultaneously (default: 20)
         - --status-processors=50
         # Run more sync operations in parallel (default: 10)
         - --operation-processors=25
-        # Increase the number of kubectl operations (default: 1)
+        # Keep or tune the number of concurrent kubectl fork/execs (default: 20)
         - --kubectl-parallelism-limit=20
-        # Self-heal check interval (default: 5s)
+        # Self-heal check interval
         - --self-heal-timeout-seconds=3
 ```
 
@@ -123,12 +120,12 @@ spec:
       - name: argocd-repo-server
         args:
         - /usr/local/bin/argocd-repo-server
-        # Increase parallelism for manifest generation (default: 0 = unlimited)
-        - --parallelism-limit=0
+        # Increase parallelism for manifest generation (values below 1 mean unlimited)
+        - --parallelismlimit=0
         env:
-        # Cache manifests longer to avoid regeneration
+        # Allow slow Helm/Kustomize/plugin commands to run longer than the default 90s
         - name: ARGOCD_EXEC_TIMEOUT
-          value: "180"
+          value: "180s"
         resources:
           requests:
             cpu: "2"
@@ -142,17 +139,17 @@ Increasing the repo server replica count is one of the most impactful changes yo
 
 ## Step 5: Increase Manifest Cache Duration
 
-ArgoCD caches generated manifests to avoid regenerating them on every reconciliation. The default cache duration is tied to the reconciliation interval. You can extend it.
+ArgoCD caches generated manifests to avoid regenerating them on every reconciliation. You can extend the repo server cache expiration.
 
 ```yaml
-# argocd-cm ConfigMap
+# argocd-cmd-params-cm ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Cache repo information longer (default: 180s)
+  # Cache repo state, application details, generated manifests, and revision metadata longer
   reposerver.repo.cache.expiration: "300s"
 ```
 
@@ -163,20 +160,21 @@ Longer cache durations mean fewer calls to the repo server, but they also mean c
 For large Git repositories, the initial clone can take minutes. Shallow clones fetch only the latest commit, which is usually all ArgoCD needs.
 
 ```yaml
-# In your Application spec
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+# Repository Secret with shallow clone depth
+apiVersion: v1
+kind: Secret
 metadata:
-  name: my-app
-spec:
-  source:
-    repoURL: https://github.com/org/repo.git
-    targetRevision: HEAD
-    # ArgoCD uses shallow clones by default for non-annotated tags
-    # Ensure your targetRevision supports shallow cloning
+  name: my-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/org/repo.git
+  depth: "1"
 ```
 
-ArgoCD performs shallow clones by default in recent versions, but if you are using specific commit SHAs as target revisions, it may need to fetch more history. Prefer branch references or tags when possible.
+Configure shallow cloning on the repository when large Git history is a bottleneck. If you are using specific commit SHAs as target revisions, ArgoCD may need to fetch more history. Prefer branch references or tags when possible.
 
 ## Step 7: Pre-generate Manifests
 
@@ -198,7 +196,7 @@ ArgoCD processes plain YAML manifests much faster than it generates them from He
 
 ## Step 8: Configure Resource-Level Tracking
 
-ArgoCD supports different tracking methods for resources. The `annotation` tracking method is faster than the default `label` method for large applications.
+ArgoCD supports different tracking methods for resources. The `annotation` tracking method avoids label length limits and ownership conflicts that can affect large or shared clusters.
 
 ```yaml
 # argocd-cm ConfigMap
@@ -211,7 +209,7 @@ data:
   application.resourceTrackingMethod: annotation
 ```
 
-The annotation method uses a JSON annotation on each resource instead of labels. It handles resources with the same name across different applications more efficiently.
+The annotation method uses the `argocd.argoproj.io/tracking-id` annotation on each resource instead of labels. It avoids collisions with other tools that also write the `app.kubernetes.io/instance` label.
 
 ## Putting It All Together
 
@@ -220,11 +218,11 @@ Here is a summary of the settings that have the biggest impact on sync speed, ra
 | Setting | Default | Recommended | Impact |
 |---------|---------|-------------|--------|
 | Webhooks | Polling (3m) | Enabled | Eliminates polling delay |
-| Status processors | 10 | 50+ | Faster app evaluation |
+| Status processors | 20 | 50+ | Faster app evaluation |
 | Repo server replicas | 1 | 3+ | Parallel manifest gen |
 | Operation processors | 10 | 25+ | Parallel syncs |
-| Reconciliation interval | 180s | 60s | Faster drift detection |
-| kubectl parallelism | 1 | 20 | Faster resource apply |
+| Reconciliation interval | 120s + jitter | 60s | Faster drift detection |
+| kubectl parallelism | 20 | 20+ after testing | Faster resource apply |
 
 ## Benchmarking Your Changes
 
@@ -232,17 +230,18 @@ After making changes, measure the impact. ArgoCD exports Prometheus metrics that
 
 ```bash
 # Key metrics to monitor
-# Time from git commit to sync completion
+# Sync counts and durations
 argocd_app_sync_total
+argocd_app_sync_duration_seconds_total
 
-# Controller queue depth - should stay low
-argocd_app_reconcile_count
+# Application reconciliation duration
+argocd_app_reconcile
 
 # Repo server request duration
 argocd_git_request_duration_seconds
 
-# Manifest generation time
-argocd_repo_server_request_duration_seconds
+# Repo server lock contention
+argocd_repo_pending_request_total
 ```
 
 Track these metrics before and after each change to quantify the improvement.
