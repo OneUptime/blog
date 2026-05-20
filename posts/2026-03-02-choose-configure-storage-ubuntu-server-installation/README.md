@@ -31,24 +31,24 @@ LVM concepts:
 Benefits of LVM:
 - Resize logical volumes without downtime (can extend while mounted)
 - Add disks to a volume group and immediately use the new space
-- Create LVM snapshots for consistent backups
-- Thin provisioning: allocate more space than physically exists
+- Create LVM snapshots for crash-consistent backups
+- Thin provisioning: allocate more space than physically exists when using LVM thin pools
 
 ## Default Guided Layout (with LVM)
 
 When you select "Use an entire disk with LVM", the installer creates:
 
 ```text
-Partition table: GPT (on UEFI) or MBR (on BIOS)
-/dev/sda1  1 MB    BIOS boot (BIOS systems) or EFI partition (UEFI)
+Partition table: GPT by default (MBR/MS-DOS only if explicitly selected)
+/dev/sda1  1 MB    BIOS boot (legacy BIOS systems) or 538+ MB EFI partition (UEFI)
 /dev/sda2  1 GB    ext4  -> /boot
 /dev/sda3  rest    LVM PV
   └── ubuntu-vg (volume group)
-      └── ubuntu-lv (logical volume, 100% of VG by default)
+      └── ubuntu-lv (logical volume, sized by the installer's LVM sizing policy)
               ext4  -> /
 ```
 
-The single root LV uses 100% of the VG by default - which means no spare capacity for LVM operations. A better approach is to leave 10-20% of the VG unallocated so you can:
+Current Subiquity releases use a scaled LVM sizing policy by default, leaving some VG space available on many disk sizes. If you choose an "all remaining space" policy or manually allocate 100% of the VG to a single LV, there is no spare capacity for LVM operations. A better approach is to leave 10-20% of the VG unallocated so you can:
 - Extend the LV if the root partition fills up
 - Create snapshots for backups
 - Add new LVs for new workloads without adding physical disk
@@ -105,7 +105,7 @@ Choose "Custom storage layout" on the storage screen to get full control.
 
 Click on your disk, select "Reformat". Choose:
 - GPT (for UEFI systems or disks over 2 TB)
-- MS-DOS/MBR (for BIOS systems on disks under 2 TB)
+- MS-DOS/MBR (only if you explicitly need legacy MBR compatibility on disks under 2 TB)
 
 ### Step 2: Create Partitions
 
@@ -221,7 +221,7 @@ sudo sysctl --system
 
 ### Swap File vs Swap Partition
 
-Ubuntu 24.04 often creates a swap file instead of a dedicated partition when using LVM. Swap files on ext4 work fine and are more flexible (easier to resize):
+Ubuntu Server installations commonly use curtin's swap file support unless you create a dedicated swap partition or LV. Swap files on ext4 work fine and are more flexible (easier to resize):
 
 ```bash
 # Create a swap file
@@ -251,6 +251,7 @@ sudo vgextend ubuntu-vg /dev/sdb
 # Create a new LV using the new space
 sudo lvcreate -L 100G -n lv-data ubuntu-vg
 sudo mkfs.ext4 /dev/ubuntu-vg/lv-data
+sudo mkdir -p /data
 sudo mount /dev/ubuntu-vg/lv-data /data
 ```
 
@@ -262,8 +263,8 @@ You will set a passphrase that must be entered at every boot. For unattended ser
 
 ```bash
 # After installation, verify encryption
-sudo cryptsetup status /dev/mapper/dm-0
 sudo lsblk -o NAME,TYPE,FSTYPE,MOUNTPOINT
+sudo cryptsetup status <crypt-name>
 ```
 
 ## Post-Installation Storage Management
@@ -292,7 +293,7 @@ df -h
 
 1. **Using 100% of the VG for a single LV** - Leaves no room for snapshots or expansion without downtime
 2. **Putting logs and OS on the same partition** - A runaway log fills the disk and takes down the OS
-3. **No swap** - A server that runs out of memory with no swap will kill processes randomly
+3. **No swap** - A server that runs out of memory with no swap may trigger the OOM killer to terminate processes
 4. **Too-small /boot partition** - Kernel updates accumulate in /boot; 512 MB fills up with 3-4 kernels
 5. **Using XFS for the root partition** - XFS cannot shrink, which is a problem if you ever need to reduce the root partition
 6. **Skipping encryption for sensitive workloads** - Encryption at rest should be the default for any server handling personal data
