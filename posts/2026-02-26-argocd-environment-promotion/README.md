@@ -43,33 +43,27 @@ config-repo/
       overlays/
         dev/
           kustomization.yaml
-          version.yaml
         staging/
           kustomization.yaml
-          version.yaml
         production/
           kustomization.yaml
-          version.yaml
 ```
 
-Each environment's `version.yaml` contains the image reference:
+Each environment's `kustomization.yaml` contains the image override:
 
 ```yaml
-# overlays/dev/version.yaml
+# overlays/dev/kustomization.yaml
 
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-spec:
-  template:
-    spec:
-      containers:
-        - name: my-app
-          image: myregistry/my-app:v1.3.0-rc.2
+resources:
+  - ../../base
+
+images:
+  - name: myregistry/my-app
+    newName: myregistry/my-app
+    newTag: v1.3.0-rc.2
 ```
 
-Promoting means updating the image tag in the next environment's `version.yaml`.
+Promoting means updating the image tag in the next environment's `kustomization.yaml`.
 
 ## Automated Promotion with CI Pipeline
 
@@ -127,6 +121,8 @@ For production promotions, you typically want a human review step. Instead of pu
 # Promotion step that creates a PR for production
 - name: Create promotion PR
   if: inputs.target_env == 'production'
+  env:
+    GH_TOKEN: ${{ secrets.GIT_TOKEN }}
   run: |
     BRANCH="promote/my-app-${{ inputs.version }}-to-production"
     git checkout -b "$BRANCH"
@@ -160,27 +156,24 @@ When the PR is merged, ArgoCD detects the change and syncs production.
 ArgoCD Image Updater can automate the first stage of promotion by watching a container registry for new tags:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  name: my-app-dev
+  name: my-app-dev-image-updater
   namespace: argocd
-  annotations:
-    # Automatically update to the latest dev tag
-    argocd-image-updater.argoproj.io/image-list: app=myregistry/my-app
-    argocd-image-updater.argoproj.io/app.update-strategy: latest
-    argocd-image-updater.argoproj.io/app.allow-tags: regexp:^dev-.*
-    argocd-image-updater.argoproj.io/write-back-method: git
-    argocd-image-updater.argoproj.io/write-back-target: kustomization
 spec:
-  project: default
-  source:
-    repoURL: https://github.com/myorg/app-config.git
-    path: apps/my-app/overlays/dev
-    targetRevision: main
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: dev
+  applicationRefs:
+    - namePattern: my-app-dev
+      writeBackConfig:
+        method: git
+        gitConfig:
+          writeBackTarget: kustomization
+      images:
+        - alias: app
+          imageName: myregistry/my-app
+          commonUpdateSettings:
+            updateStrategy: newest-build
+            allowTags: regexp:^dev-.*
 ```
 
 For staging and production, you would not use automatic image updates. Instead, promotion happens through deliberate Git commits or PRs.
