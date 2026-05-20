@@ -23,7 +23,7 @@ The passthrough process:
 ## Step 1: Enable IOMMU
 
 ```bash
-# Check CPU virtualization and IOMMU capability
+# Check IOMMU messages
 
 dmesg | grep -e DMAR -e IOMMU -e AMD-Vi
 
@@ -38,7 +38,7 @@ GRUB_CMDLINE_LINUX_DEFAULT="quiet splash intel_iommu=on iommu=pt"
 
 For AMD CPUs:
 ```text
-GRUB_CMDLINE_LINUX_DEFAULT="quiet splash amd_iommu=on iommu=pt"
+GRUB_CMDLINE_LINUX_DEFAULT="quiet splash iommu=pt"
 ```
 
 ```bash
@@ -46,7 +46,7 @@ sudo update-grub
 sudo reboot
 
 # Verify after reboot
-dmesg | grep -i "IOMMU enabled"
+dmesg | grep -Ei "DMAR|IOMMU|AMD-Vi"
 ```
 
 ## Step 2: Identify the Target Device
@@ -76,7 +76,7 @@ done | sort -n
 
 ## Step 3: Check IOMMU Groups
 
-Devices in the same IOMMU group must all be passed through to the same VM. If a GPU shares a group with other devices, you need to pass them all through together.
+Devices in the same IOMMU group share the same isolation boundary. Endpoint devices in the group must not remain in use by host drivers; pass related functions through together or detach unrelated endpoints from the host. Bridges may appear in the group and usually are not bound to `vfio-pci`.
 
 ```bash
 # Check which IOMMU group your device is in
@@ -89,10 +89,10 @@ for dev in $(ls /sys/bus/pci/devices/0000:01:00.0/iommu_group/devices/); do
 done
 ```
 
-If the GPU's PCIe root port or bridge is in the same IOMMU group, enable ACS (Access Control Services) to separate them:
+If the GPU's PCIe root port or bridge is in the same IOMMU group, first check whether your firmware has an ACS (Access Control Services) option. If not, an ACS override patched kernel may split groups, but it weakens the isolation guarantees that IOMMU groups normally represent:
 
 ```bash
-# Install the ACS override patch (use only if needed)
+# Use only if your kernel includes the ACS override patch and you understand the security implications
 # Add to GRUB_CMDLINE_LINUX_DEFAULT:
 pcie_acs_override=downstream,multifunction
 ```
@@ -131,7 +131,7 @@ sudo update-initramfs -u
 sudo reboot
 ```
 
-### Method 2: Using a Script at Boot
+### Method 2: Using a Manual Script
 
 ```bash
 sudo nano /usr/local/bin/vfio-bind.sh
@@ -140,7 +140,7 @@ sudo nano /usr/local/bin/vfio-bind.sh
 ```bash
 #!/bin/bash
 # Bind specific PCI devices to vfio-pci driver
-# Usage: List device addresses to bind
+# Usage: List device addresses to bind, then run this script before starting the VM
 
 # Devices to pass through (PCIe addresses)
 DEVICES=(
@@ -152,8 +152,14 @@ for DEVICE in "${DEVICES[@]}"; do
     echo "Binding $DEVICE to vfio-pci"
 
     # Find current driver
-    CURRENT_DRIVER=$(readlink /sys/bus/pci/devices/$DEVICE/driver | xargs basename 2>/dev/null || echo "none")
+    if [ -L "/sys/bus/pci/devices/$DEVICE/driver" ]; then
+        CURRENT_DRIVER=$(basename "$(readlink "/sys/bus/pci/devices/$DEVICE/driver")")
+    else
+        CURRENT_DRIVER="none"
+    fi
     echo "  Current driver: $CURRENT_DRIVER"
+
+    modprobe vfio-pci
 
     # Unbind from current driver
     if [ -e "/sys/bus/pci/devices/$DEVICE/driver/unbind" ]; then
@@ -165,12 +171,12 @@ for DEVICE in "${DEVICES[@]}"; do
     DEVICE_ID=$(cat /sys/bus/pci/devices/$DEVICE/device)
 
     # Register with vfio-pci
-    echo "$VENDOR $DEVICE_ID" > /sys/bus/pci/drivers/vfio-pci/new_id 2>/dev/null || true
+    echo "${VENDOR#0x} ${DEVICE_ID#0x}" > /sys/bus/pci/drivers/vfio-pci/new_id 2>/dev/null || true
 
     # Bind to vfio-pci
     echo "$DEVICE" > /sys/bus/pci/drivers/vfio-pci/bind 2>/dev/null || true
 
-    echo "  Done: $(ls /sys/bus/pci/devices/$DEVICE/driver/ | head -1)"
+    echo "  Done: $(basename "$(readlink "/sys/bus/pci/devices/$DEVICE/driver")")"
 done
 ```
 
@@ -216,13 +222,13 @@ Add the passthrough devices in the `<devices>` section:
 </hostdev>
 ```
 
-For GPU passthrough, also configure the display:
+For GPU passthrough, keep a console graphics device in the `<devices>` section for initial access, and add the `<features>` block as a top-level `<domain>` child outside `<devices>`:
 
 ```xml
-<!-- Use VNC or SPICE for initial access, then switch to GPU output -->
+<!-- In <devices>: use VNC or SPICE for initial access, then switch to GPU output -->
 <graphics type='vnc' port='-1' autoport='yes'/>
 
-<!-- Hide KVM hypervisor from GPU (helps with NVIDIA drivers) -->
+<!-- Outside <devices>: hide KVM hypervisor from the guest -->
 <features>
   <hyperv>
     <relaxed state='on'/>
@@ -290,7 +296,7 @@ dmesg | grep -i iommu
 
 **NVIDIA Error 43 in guest (Error Code 43):**
 
-This is NVIDIA's hypervisor detection. Add the KVM hidden feature shown above:
+With older NVIDIA guest drivers, this was often caused by hypervisor detection. Add the KVM hidden feature shown above:
 
 ```xml
 <kvm>
