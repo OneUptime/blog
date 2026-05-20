@@ -65,14 +65,13 @@ spec:
               # Scan the container image
               snyk container test my-org/my-app:v2.1.0 \
                 --severity-threshold=high \
-                --json > /tmp/scan-result.json
+                --json-file-output=/tmp/scan-result.json
 
               SCAN_EXIT=$?
 
               if [ $SCAN_EXIT -ne 0 ]; then
                 echo "=== Vulnerabilities Found ==="
-                cat /tmp/scan-result.json | \
-                  jq '.vulnerabilities[] | {title: .title, severity: .severity, package: .packageName, version: .version}'
+                cat /tmp/scan-result.json
                 echo "Deployment blocked due to high/critical vulnerabilities."
                 exit 1
               fi
@@ -173,21 +172,19 @@ spec:
   source:
     repoURL: https://snyk.github.io/kubernetes-monitor
     chart: snyk-monitor
-    targetRevision: 2.0.0
+    targetRevision: 2.23.3
     helm:
       values: |
         clusterName: production-cluster
-        policyOrgs: my-org-id
-        resources:
-          requests:
-            cpu: 100m
-            memory: 256Mi
-          limits:
-            memory: 512Mi
-        # Namespaces to monitor
-        scope: |
-          - production
-          - staging
+        policyOrgs:
+          - my-org-id
+        scope: Cluster
+        requests:
+          cpu: "250m"
+          memory: "400Mi"
+        limits:
+          cpu: "1"
+          memory: "2Gi"
   destination:
     server: https://kubernetes.default.svc
     namespace: snyk-monitor
@@ -205,7 +202,8 @@ Create the required secret:
 
 kubectl create secret generic snyk-monitor -n snyk-monitor \
   --from-literal=dockercfg.json='{}' \
-  --from-literal=integrationId=$SNYK_INTEGRATION_ID
+  --from-literal=integrationId=$SNYK_INTEGRATION_ID \
+  --from-literal=serviceAccountApiToken=$SNYK_SERVICE_ACCOUNT_TOKEN
 ```
 
 ## Snyk Policy Configuration in Git
@@ -257,15 +255,13 @@ spec:
               FAILED=0
 
               # Define images and their project names
-              declare -A IMAGES
-              IMAGES=(
-                ["my-org/frontend:v3.0.0"]="frontend-prod"
-                ["my-org/api:v2.5.0"]="api-prod"
-                ["my-org/worker:v1.8.0"]="worker-prod"
-              )
+              cat > /tmp/images.txt <<'EOF'
+              my-org/frontend:v3.0.0 frontend-prod
+              my-org/api:v2.5.0 api-prod
+              my-org/worker:v1.8.0 worker-prod
+              EOF
 
-              for IMAGE in "${!IMAGES[@]}"; do
-                PROJECT=${IMAGES[$IMAGE]}
+              while read -r IMAGE PROJECT; do
                 echo "=== Scanning $IMAGE ==="
 
                 snyk container test "$IMAGE" \
@@ -280,7 +276,7 @@ spec:
                   snyk container monitor "$IMAGE" \
                     --project-name="$PROJECT"
                 fi
-              done
+              done < /tmp/images.txt
 
               if [ $FAILED -ne 0 ]; then
                 exit 1
@@ -328,8 +324,8 @@ spec:
       eventName: snyk-alerts
       filters:
         data:
-          - path: body.newIssues
-            type: string
+          - path: body.newIssues.#
+            type: number
             comparator: ">"
             value:
               - "0"
