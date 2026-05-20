@@ -74,6 +74,7 @@ global:
 
 controller:
   replicas: 4
+  dynamicClusterDistribution: true
   resources:
     requests:
       cpu: "2"
@@ -81,9 +82,6 @@ controller:
     limits:
       cpu: "4"
       memory: 12Gi
-  env:
-    - name: ARGOCD_CONTROLLER_REPLICAS
-      value: "4"
   pdb:
     enabled: true
     minAvailable: 2
@@ -199,15 +197,12 @@ configs:
     controller.operation.processors: "50"
 
     # Kubernetes API rate limiting
-    controller.k8s.client.config.qps: "100"
-    controller.k8s.client.config.burst: "200"
+    controller.k8s.client.qps: "100"
+    controller.k8s.client.burst: "200"
 
     # Repo server settings
     reposerver.parallelism.limit: "20"
     controller.repo.server.timeout.seconds: "300"
-
-    # Enable dynamic cluster distribution
-    controller.dynamic.cluster.distribution.enabled: "true"
 
     # Enable server-side diff for better performance
     controller.diff.server.side: "true"
@@ -225,11 +220,9 @@ With 4 controller shards, clusters are distributed automatically. Verify the dis
 
 ```bash
 # Check shard assignments
-for i in 0 1 2 3; do
-  echo "=== Controller $i ==="
-  kubectl logs argocd-application-controller-$i -n argocd | \
-    grep "Cluster" | head -5
-done
+kubectl logs -n argocd \
+  -l app.kubernetes.io/name=argocd-application-controller \
+  --all-containers --prefix | grep -i "shard" | head -20
 ```
 
 For manual shard assignment based on cluster importance:
@@ -243,9 +236,8 @@ metadata:
   namespace: argocd
   labels:
     argocd.argoproj.io/secret-type: cluster
-  annotations:
-    argocd.argoproj.io/shard: "0"  # Dedicated shard for production
 stringData:
+  shard: "0"  # Dedicated shard for production
   server: "https://prod-1-api:6443"
   name: "production-1"
   config: |
@@ -263,11 +255,11 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Increase reconciliation timeout (default 180s)
+  # Increase reconciliation timeout (default 120s, plus up to 60s jitter)
   timeout.reconciliation: "300s"
 
   # Reduce hard refresh frequency
-  timeout.hard.reconciliation: "0"  # Disable hard reconciliation
+  timeout.hard.reconciliation: "0s"  # Disable hard reconciliation
 ```
 
 The reconciliation timeout controls how often ArgoCD re-checks each application even when no Git changes are detected. For 1000+ applications, setting this to 300 seconds (5 minutes) significantly reduces load.
@@ -278,11 +270,12 @@ At scale, polling Git repositories for changes is expensive. Use webhooks for in
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   # Configure webhook secret
   webhook.github.secret: "your-webhook-secret"
 ```
@@ -296,7 +289,7 @@ https://argocd.example.com/api/webhook
 # Events to send: push events only
 ```
 
-With webhooks, ArgoCD only reconciles applications when their Git source actually changes, instead of polling every 3 minutes.
+With webhooks, ArgoCD can refresh applications as soon as their Git source changes, while `timeout.reconciliation` controls the remaining periodic polling interval.
 
 ## ApplicationSet for Bulk Management
 
@@ -378,9 +371,9 @@ groups:
 
       - alert: ArgocdControllerShardImbalance
         expr: |
-          max(argocd_cluster_api_resources_total) by (shard)
+          max(sum by (pod) (argocd_cluster_api_resources))
           /
-          min(argocd_cluster_api_resources_total) by (shard)
+          min(sum by (pod) (argocd_cluster_api_resources))
           > 3
         for: 30m
         labels:
