@@ -132,14 +132,20 @@ spec:
 
 ## Configuration with HAProxy
 
+For the HAProxy Kubernetes Ingress Controller, enable passthrough on the backend Service:
+
+```bash
+kubectl annotate service argocd-server \
+  --namespace argocd \
+  haproxy.org/ssl-passthrough="true"
+```
+
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: argocd-server-ingress
   namespace: argocd
-  annotations:
-    haproxy.org/ssl-passthrough: "true"
 spec:
   ingressClassName: haproxy
   rules:
@@ -212,40 +218,11 @@ kubectl create secret tls argocd-server-tls \
   --key=tls.key
 ```
 
-Configure ArgoCD to use this certificate:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  server.tls.cert.file: /app/config/tls/tls.crt
-  server.tls.key.file: /app/config/tls/tls.key
-```
-
-Or mount the secret directly by patching the ArgoCD server deployment:
-
-```yaml
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-server
-          volumeMounts:
-            - name: tls-certs
-              mountPath: /app/config/tls
-              readOnly: true
-      volumes:
-        - name: tls-certs
-          secret:
-            secretName: argocd-server-tls
-```
+ArgoCD automatically uses the `argocd-server-tls` secret when it contains valid `tls.crt` and `tls.key` entries. It also picks up changes to this secret automatically, so renewed certificates do not require restarting the ArgoCD server.
 
 ## Using cert-manager with Passthrough
 
-You can still use cert-manager to manage ArgoCD's certificate, even with passthrough. The certificate is mounted into the ArgoCD server pod instead of being used by the ingress:
+You can still use cert-manager to manage ArgoCD's certificate, even with passthrough. The certificate is stored in the `argocd-server-tls` secret for ArgoCD instead of being used by the ingress:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -260,11 +237,11 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - argocd.example.com
-  # Use DNS01 challenge since HTTP01 won't work with passthrough
-  # (the ingress cannot handle ACME HTTP challenges in passthrough mode)
+  # DNS01 is the safest choice with passthrough because it does not
+  # require the ingress to serve an HTTP challenge response.
 ```
 
-Important: You must use DNS01 challenge with passthrough because the ACME HTTP01 challenge requires the ingress to serve a token at `/.well-known/acme-challenge/`, which passthrough mode cannot do.
+Important: Prefer DNS01 with passthrough. HTTP01 can work only if cert-manager can expose a separate HTTP solver on port 80 for `/.well-known/acme-challenge/`; it will not work if all challenge traffic is forced through the TLS passthrough route.
 
 ## Advantages of Passthrough for gRPC
 
