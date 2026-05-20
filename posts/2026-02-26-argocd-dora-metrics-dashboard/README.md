@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, DORA Metric, Grafana
 
-Description: Build a comprehensive DORA metrics dashboard for ArgoCD that tracks deployment frequency, lead time, change failure rate, and mean time to recovery in Grafana.
+Description: Build a DORA-style metrics dashboard for ArgoCD that tracks deployment frequency, deployment failures, reconciliation time, and application recovery indicators in Grafana.
 
 ---
 
-The four DORA metrics - Deployment Frequency, Lead Time for Changes, Change Failure Rate, and Mean Time to Recovery - are the industry standard for measuring software delivery performance. When you run ArgoCD as your deployment engine, all four metrics can be derived from ArgoCD's native telemetry combined with a few custom recording rules.
+The four DORA metrics - Deployment Frequency, Lead Time for Changes, Change Failure Rate, and Mean Time to Recovery - are the industry standard for measuring software delivery performance. When you run ArgoCD as your deployment engine, deployment frequency and deployment success/failure proxies can be derived from ArgoCD's native telemetry, while lead time and recovery time usually need Git, incident, or custom exporter data for exact DORA measurements.
 
-This guide walks through building a complete DORA metrics dashboard in Grafana that pulls data from ArgoCD's Prometheus metrics.
+This guide walks through building a DORA-style dashboard in Grafana that pulls data from ArgoCD's Prometheus metrics.
 
 ## Architecture Overview
 
@@ -46,17 +46,45 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: argocd
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
     - port: metrics
       interval: 30s
-    - port: server-metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-server-metrics
+  namespace: argocd
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server-metrics
+  endpoints:
+    - port: metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: argocd-repo-server-metrics
+  namespace: argocd
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
+  endpoints:
+    - port: metrics
       interval: 30s
 ```
 
 ## Recording Rules for DORA Metrics
 
-Create recording rules that pre-compute DORA metrics for dashboard efficiency:
+Create recording rules that pre-compute DORA-style metrics for dashboard efficiency:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -84,8 +112,8 @@ spec:
               argocd_app_sync_total{phase="Succeeded"}[7d]
             )) by (project)
 
-        # -- Change Failure Rate --
-        # CFR per application (7-day window)
+        # -- Sync Failure Rate (proxy for Change Failure Rate) --
+        # Failed or errored syncs per application (7-day window)
         - record: argocd:change_failure_rate:ratio
           expr: >
             sum(increase(
@@ -94,7 +122,7 @@ spec:
             /
             clamp_min(
               sum(increase(
-                argocd_app_sync_total[7d]
+                argocd_app_sync_total{phase=~"Succeeded|Failed|Error"}[7d]
               )) by (name),
               1
             )
@@ -108,24 +136,28 @@ spec:
             /
             clamp_min(
               sum(increase(
-                argocd_app_sync_total[7d]
+                argocd_app_sync_total{phase=~"Succeeded|Failed|Error"}[7d]
               )),
               1
             )
 
-        # -- Sync Duration (proxy for lead time) --
-        # Average sync duration per app
-        - record: argocd:sync_duration_avg:seconds
+        # -- Reconciliation Duration (proxy for lead time) --
+        # Average reconciliation duration per app
+        - record: argocd:reconcile_duration_avg:seconds
           expr: >
-            avg(argocd_app_reconcile_duration_seconds)
-            by (name)
+            sum(increase(argocd_app_reconcile_sum[1h])) by (name)
+            /
+            clamp_min(
+              sum(increase(argocd_app_reconcile_count[1h])) by (name),
+              1
+            )
 
-        # P95 sync duration
-        - record: argocd:sync_duration_p95:seconds
+        # P95 reconciliation duration
+        - record: argocd:reconcile_duration_p95:seconds
           expr: >
             histogram_quantile(0.95,
               sum(rate(
-                argocd_app_reconcile_duration_seconds_bucket[1h]
+                argocd_app_reconcile_bucket[1h]
               )) by (le, name)
             )
 
@@ -151,18 +183,17 @@ Here is the complete dashboard configuration. Import this into Grafana:
 
 ```json
 {
-  "dashboard": {
-    "title": "ArgoCD DORA Metrics",
-    "tags": ["argocd", "dora", "gitops"],
-    "timezone": "browser",
-    "panels": [
+  "title": "ArgoCD DORA Metrics",
+  "tags": ["argocd", "dora", "gitops"],
+  "timezone": "browser",
+  "panels": [
       {
-        "title": "DORA Performance Level",
+        "title": "Sync Failure Rate",
         "type": "stat",
         "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
         "targets": [{
           "expr": "argocd:change_failure_rate_overall:ratio * 100",
-          "legendFormat": "Change Failure Rate"
+          "legendFormat": "Sync Failure Rate"
         }],
         "fieldConfig": {
           "defaults": {
@@ -191,7 +222,7 @@ Here is the complete dashboard configuration. Import this into Grafana:
         }]
       },
       {
-        "title": "Change Failure Rate by Application",
+        "title": "Sync Failure Rate by Application",
         "type": "bargauge",
         "gridPos": {"h": 8, "w": 12, "x": 12, "y": 4},
         "targets": [{
@@ -206,11 +237,11 @@ Here is the complete dashboard configuration. Import this into Grafana:
         }
       },
       {
-        "title": "Sync Duration (Lead Time Proxy)",
+        "title": "Reconciliation Duration (Lead Time Proxy)",
         "type": "timeseries",
         "gridPos": {"h": 8, "w": 12, "x": 0, "y": 12},
         "targets": [{
-          "expr": "argocd:sync_duration_p95:seconds",
+          "expr": "argocd:reconcile_duration_p95:seconds",
           "legendFormat": "{{name}} P95"
         }],
         "fieldConfig": {
@@ -268,20 +299,19 @@ Here is the complete dashboard configuration. Import this into Grafana:
           "defaults": {"unit": "s"}
         }
       }
-    ],
-    "templating": {
-      "list": [{
-        "name": "project",
-        "type": "query",
-        "query": "label_values(argocd_app_info, project)",
-        "multi": true
-      }, {
-        "name": "app",
-        "type": "query",
-        "query": "label_values(argocd_app_info{project=~'$project'}, name)",
-        "multi": true
-      }]
-    }
+  ],
+  "templating": {
+    "list": [{
+      "name": "project",
+      "type": "query",
+      "query": "label_values(argocd_app_info, project)",
+      "multi": true
+    }, {
+      "name": "app",
+      "type": "query",
+      "query": "label_values(argocd_app_info{project=~'$project'}, name)",
+      "multi": true
+    }]
   }
 }
 ```
@@ -332,9 +362,9 @@ Use the DORA benchmarks to classify your team's performance:
 | Metric | Elite | High | Medium | Low |
 |---|---|---|---|---|
 | Deployment Frequency | Multiple/day | Weekly to daily | Monthly to weekly | Less than monthly |
-| Lead Time | Under 1 hour | 1 day to 1 week | 1 week to 1 month | Over 1 month |
-| Change Failure Rate | 0-15% | 16-30% | 16-30% | 46-60% |
-| MTTR | Under 1 hour | Under 1 day | 1 day to 1 week | Over 6 months |
+| Lead Time | Under 1 day | 1 day to 1 week | 1 week to 1 month | Over 1 month |
+| Change Failure Rate | 0-15% | 16-30% | 31-45% | 46% or higher |
+| MTTR | Under 1 hour | Under 1 day | 1 day to 1 week | Over 1 week |
 
 Focus on trends rather than absolute numbers. A team improving from "Low" to "Medium" is making real progress.
 
@@ -350,4 +380,4 @@ Consider adding:
 
 ## Summary
 
-A DORA metrics dashboard for ArgoCD gives engineering leadership visibility into delivery performance. By combining ArgoCD's native Prometheus metrics with recording rules and Grafana, you can track all four DORA metrics without expensive third-party tools. Start with the basic dashboard, then extend it with custom exporters for more accurate lead time and MTTR measurements as your observability practice matures.
+A DORA metrics dashboard for ArgoCD gives engineering leadership visibility into delivery performance. By combining ArgoCD's native Prometheus metrics with recording rules and Grafana, you can track deployment activity and useful proxies for DORA metrics without expensive third-party tools. Start with the basic dashboard, then extend it with custom exporters for more accurate lead time and MTTR measurements as your observability practice matures.
