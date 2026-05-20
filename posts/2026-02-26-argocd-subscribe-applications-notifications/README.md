@@ -68,11 +68,11 @@ An application can send notifications through multiple services for the same tri
     # Same trigger, different services
     notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts-critical
     notifications.argoproj.io/subscribe.on-sync-failed.email: oncall@company.com
-    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: ""
-    notifications.argoproj.io/subscribe.on-sync-failed.webhook.deployment-tracker: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: "<pagerduty-service-id>"
+    notifications.argoproj.io/subscribe.on-sync-failed.deployment-tracker: ""
 ```
 
-For services like PagerDuty and webhooks that do not need a recipient (the destination is configured in the service definition), use an empty string.
+For webhooks, the destination is configured in the service definition, so use the webhook service name in the annotation and an empty string as the value. PagerDuty subscriptions require the PagerDuty service ID as the recipient.
 
 ## Subscribing Declaratively in Application YAML
 
@@ -88,12 +88,11 @@ metadata:
     # Deployment lifecycle
     notifications.argoproj.io/subscribe.on-sync-running.slack: deployments
     notifications.argoproj.io/subscribe.on-deployed.slack: deployments
-    notifications.argoproj.io/subscribe.on-deploy-failed.slack: alerts-critical
-    notifications.argoproj.io/subscribe.on-deploy-failed.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts-critical
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: "<pagerduty-service-id>"
     # Health monitoring
     notifications.argoproj.io/subscribe.on-health-degraded.slack: alerts-critical
-    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
-    notifications.argoproj.io/subscribe.on-health-healthy.slack: deployments
+    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: "<pagerduty-service-id>"
 spec:
   project: production
   source:
@@ -154,7 +153,7 @@ metadata:
   name: api-gateway
   annotations:
     notifications.argoproj.io/subscribe.on-deployed.slack: team-backend-deploys
-    notifications.argoproj.io/subscribe.on-deploy-failed.slack: team-backend-alerts
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: team-backend-alerts
 
 ---
 # Frontend team's app
@@ -164,7 +163,7 @@ metadata:
   name: web-dashboard
   annotations:
     notifications.argoproj.io/subscribe.on-deployed.slack: team-frontend-deploys
-    notifications.argoproj.io/subscribe.on-deploy-failed.slack: team-frontend-alerts
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: team-frontend-alerts
 ```
 
 ### Tiered Alerting by Criticality
@@ -180,9 +179,9 @@ metadata:
   labels:
     criticality: high
   annotations:
-    notifications.argoproj.io/subscribe.on-deploy-failed.slack: alerts-critical
-    notifications.argoproj.io/subscribe.on-deploy-failed.pagerduty: ""
-    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: alerts-critical
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: "<pagerduty-service-id>"
+    notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: "<pagerduty-service-id>"
 
 ---
 # Non-critical service
@@ -193,7 +192,7 @@ metadata:
   labels:
     criticality: low
   annotations:
-    notifications.argoproj.io/subscribe.on-deploy-failed.slack: deployments
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: deployments
 ```
 
 ### Environment-Based Routing
@@ -207,8 +206,8 @@ kind: Application
 metadata:
   name: user-service-prod
   annotations:
-    notifications.argoproj.io/subscribe.on-deploy-failed.slack: prod-alerts
-    notifications.argoproj.io/subscribe.on-deploy-failed.pagerduty: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: prod-alerts
+    notifications.argoproj.io/subscribe.on-sync-failed.pagerduty: "<pagerduty-service-id>"
 
 ---
 # Staging
@@ -217,12 +216,12 @@ kind: Application
 metadata:
   name: user-service-staging
   annotations:
-    notifications.argoproj.io/subscribe.on-deploy-failed.slack: staging-deploys
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: staging-deploys
 ```
 
 ## Using Default Triggers
 
-ArgoCD supports a `defaultTriggers` configuration that automatically subscribes all applications to specified triggers:
+ArgoCD supports a `defaultTriggers` configuration that applies specified triggers when a subscription annotation omits the trigger name:
 
 ```yaml
 apiVersion: v1
@@ -236,7 +235,7 @@ data:
     - on-health-degraded
 ```
 
-With default triggers, every application that has any service subscription annotation will receive these triggers. This is useful for ensuring no application misses critical failure alerts.
+With default triggers, an application that has a service-only subscription annotation receives the default triggers for that service. This is useful for keeping common failure alerts consistent.
 
 An application can then subscribe with just the service:
 
