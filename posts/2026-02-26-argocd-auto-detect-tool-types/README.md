@@ -4,42 +4,39 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Tool Detection, Configuration
 
-Description: Understand how ArgoCD automatically detects whether an application uses Helm, Kustomize, Jsonnet, or plain YAML and how the detection logic works.
+Description: Understand how ArgoCD automatically detects whether an application uses Helm, Kustomize, a config management plugin, or plain YAML and how the detection logic works.
 
 ---
 
-When you create an ArgoCD application and point it at a Git repository path, you do not always have to specify whether the manifests use Helm, Kustomize, Jsonnet, or plain YAML. ArgoCD examines the repository contents and automatically determines the right tool to use for manifest generation. This auto-detection is convenient but can sometimes produce surprising results. Understanding exactly how it works helps you avoid unexpected behavior and debug issues when ArgoCD picks the wrong tool.
+When you create an ArgoCD application and point it at a Git repository path, you do not always have to specify whether the manifests use Helm, Kustomize, a config management plugin, or plain YAML. ArgoCD examines the repository contents and automatically determines the right tool to use for manifest generation. This auto-detection is convenient but can sometimes produce surprising results. Understanding exactly how it works helps you avoid unexpected behavior and debug issues when ArgoCD picks the wrong tool.
 
 ## The Detection Algorithm
 
-ArgoCD checks for specific marker files in the application's source path (the directory specified by `spec.source.path`). It evaluates them in a specific order, and the first match wins:
+ArgoCD first uses an explicitly configured source type if one is set in the Application spec. If no source type is specified, it checks plugin discovery rules and then checks for specific marker files in the application's source path (the directory specified by `spec.source.path`):
 
 ```mermaid
 flowchart TD
-    A[Examine source directory] --> B{Chart.yaml exists?}
-    B -->|Yes| C[Use Helm]
-    B -->|No| D{kustomization.yaml<br/>or kustomization.yml<br/>or Kustomization exists?}
-    D -->|Yes| E[Use Kustomize]
-    D -->|No| F{*.jsonnet or<br/>*.libsonnet exists?}
-    F -->|Yes| G[Use Jsonnet]
-    F -->|No| H{CMP plugin<br/>discovery matches?}
-    H -->|Yes| I[Use CMP Plugin]
-    H -->|No| J[Use Directory<br/>plain YAML]
+    A[Examine source directory] --> B{CMP plugin<br/>discovery matches?}
+    B -->|Yes| C[Use CMP Plugin]
+    B -->|No| D{Chart.yaml exists?}
+    D -->|Yes| E[Use Helm]
+    D -->|No| F{kustomization.yaml<br/>or kustomization.yml<br/>or Kustomization exists?}
+    F -->|Yes| G[Use Kustomize]
+    F -->|No| H[Use Directory<br/>plain YAML]
 ```
 
-The detection priority is:
+The implicit detection checks are:
 
-1. **Helm** - if `Chart.yaml` exists in the source path
-2. **Kustomize** - if `kustomization.yaml`, `kustomization.yml`, or `Kustomization` exists
-3. **Jsonnet** - if any `.jsonnet` or `.libsonnet` file exists
-4. **CMP Plugin** - if any installed plugin's discovery rule matches
-5. **Directory** (plain YAML) - the fallback when nothing else matches
+1. **CMP Plugin** - if any installed sidecar plugin's discovery rule matches
+2. **Helm** - if `Chart.yaml` exists in the source path
+3. **Kustomize** - if `kustomization.yaml`, `kustomization.yml`, or `Kustomization` exists
+4. **Directory** (plain YAML) - the fallback when nothing else matches
 
 ## What Each Detection Looks For
 
 ### Helm Detection
 
-ArgoCD looks for a `Chart.yaml` file in the root of the source path. It does not matter what is inside `Chart.yaml` - its mere presence triggers Helm detection:
+ArgoCD looks for a file matching `Chart.yaml` in the root of the source path. It does not matter what is inside the file - its presence is the Helm marker:
 
 ```text
 my-app/
@@ -50,7 +47,7 @@ my-app/
     service.yaml
 ```
 
-Even an empty `Chart.yaml` will cause ArgoCD to use Helm. This sometimes catches people off guard when they have a `Chart.yaml` in a directory that is primarily Kustomize-based.
+Even an empty `Chart.yaml` can cause ArgoCD to use Helm. This sometimes catches people off guard when they have a `Chart.yaml` in a directory that is primarily Kustomize-based.
 
 ### Kustomize Detection
 
@@ -70,20 +67,20 @@ my-app/
       patches.yaml
 ```
 
-### Jsonnet Detection
+### Jsonnet Files
 
-ArgoCD scans for files with `.jsonnet` or `.libsonnet` extensions:
+ArgoCD supports Jsonnet through directory applications rather than a separate detected `Jsonnet` source type in current releases. A plain directory application can evaluate `.jsonnet` files, and Jsonnet-specific options live under `spec.source.directory.jsonnet`:
 
 ```text
 my-app/
-  main.jsonnet        <-- This triggers Jsonnet detection
+  main.jsonnet        <-- Evaluated as part of a directory application
   lib/
     helpers.libsonnet
 ```
 
 ### CMP Plugin Detection
 
-After checking built-in tools, ArgoCD evaluates the `discover` rules of all installed CMP plugins. Each plugin can define a glob pattern or a command to check for matches:
+When no source type is explicitly configured, ArgoCD can evaluate the `discover` rules of installed sidecar CMP plugins. Each plugin can define a glob pattern or a command to check for matches:
 
 ```yaml
 # Example plugin discovery
@@ -95,7 +92,7 @@ discover:
 
 ### Directory (Plain YAML) Detection
 
-When no other tool matches, ArgoCD treats the source path as a directory of plain YAML manifests. It recursively reads all `.yaml`, `.yml`, and `.json` files and applies them directly.
+When no other tool matches, ArgoCD treats the source path as a directory of plain manifests. By default it reads `.yaml`, `.yml`, and `.json` files only from the root of the configured source path. To include subdirectories, set `spec.source.directory.recurse: true`.
 
 ## Detection in Practice
 
@@ -124,7 +121,7 @@ apps/web-app/
     deployment.yaml
 ```
 
-Detection result: **Helm**. Because `Chart.yaml` is checked first, Helm wins even though `kustomization.yaml` is also present. This is a common source of confusion.
+Detection result: **Ambiguous and version-sensitive**. ArgoCD detects both marker files in this layout, so do not rely on auto-detection when `Chart.yaml` and `kustomization.yaml` coexist in the same source path. Explicitly configure `spec.source.helm` or `spec.source.kustomize` to avoid surprises.
 
 ### Scenario 3: Kustomize Only
 
@@ -149,7 +146,7 @@ apps/monitoring/
     helpers.libsonnet
 ```
 
-Detection result: **Kustomize**. Because Kustomize is checked before Jsonnet, the presence of `kustomization.yaml` means Jsonnet files are ignored.
+Detection result: **Kustomize**. The `kustomization.yaml` marker makes this a Kustomize application. Jsonnet files are not a separate auto-detected source type in current ArgoCD releases.
 
 ### Scenario 5: Plain YAML
 
@@ -175,7 +172,7 @@ kubectl get application my-app -n argocd \
   -o jsonpath='{.status.sourceType}'
 ```
 
-The output will be one of: `Helm`, `Kustomize`, `Jsonnet`, `Plugin`, or `Directory`.
+The output will be one of: `Helm`, `Kustomize`, `Plugin`, or `Directory`.
 
 ## Common Detection Pitfalls
 
@@ -194,15 +191,15 @@ If you see unexpected Helm-related errors, check whether a `Chart.yaml` exists i
 
 ### Kustomize Overriding Jsonnet
 
-If you have both `kustomization.yaml` and `.jsonnet` files, Kustomize will always win because it is checked first. If you want Jsonnet, remove the `kustomization.yaml` or use explicit tool specification.
+If you have both `kustomization.yaml` and `.jsonnet` files, ArgoCD will detect Kustomize from the marker file. If you want directory-based Jsonnet rendering, remove the `kustomization.yaml` or explicitly configure the source as a directory.
 
 ### CMP Plugins and Built-in Conflicts
 
-CMP plugins are checked after all built-in tools. If your source directory has a `Chart.yaml` and a CMP plugin with a matching discovery rule, Helm will be used - not the plugin. To force the plugin, either remove the `Chart.yaml` or explicitly specify the plugin in the Application spec.
+CMP sidecar plugins can match through discovery when no source type is explicitly configured. If a source directory also has built-in tool marker files, avoid relying on implicit detection order. To force a plugin, explicitly specify the plugin in the Application spec.
 
 ### Case Sensitivity
 
-The detection is case-sensitive. `chart.yaml` (lowercase) will NOT trigger Helm detection. It must be `Chart.yaml`. Similarly, `Kustomization.yaml` will not trigger Kustomize detection, but `Kustomization` (without the .yaml extension) will.
+The detection is case-sensitive. `chart.yaml` (lowercase) will NOT trigger Helm detection. The Helm marker must match `Chart.yaml`. Similarly, `Kustomization.yaml` will not trigger Kustomize detection, but `Kustomization` (without the .yaml extension) will.
 
 ## How Detection Relates to Multi-Source Applications
 
@@ -235,7 +232,7 @@ The status includes:
 
 ```yaml
 status:
-  sourceType: Helm  # or Kustomize, Jsonnet, Plugin, Directory
+  sourceType: Helm  # or Kustomize, Plugin, Directory
   summary:
     images:
       - my-app:v1.0
@@ -243,4 +240,4 @@ status:
 
 ## Summary
 
-ArgoCD's auto-detection follows a strict priority order: Helm, Kustomize, Jsonnet, CMP Plugins, then plain YAML Directory. The detection is based on the presence of specific marker files in the source path. Understanding this order prevents surprises when multiple tool files coexist in the same directory. When detection picks the wrong tool, you can always override it by explicitly specifying the tool type in the Application spec, which we cover in the next article on [forcing a specific tool type](https://oneuptime.com/blog/post/2026-02-26-argocd-force-specific-tool-type/view).
+ArgoCD's auto-detection uses plugin discovery and built-in marker files for Helm and Kustomize, then falls back to a plain YAML Directory source. Understanding these checks prevents surprises when multiple tool files coexist in the same directory. When detection picks the wrong tool, you can always override it by explicitly specifying the tool type in the Application spec, which we cover in the next article on [forcing a specific tool type](https://oneuptime.com/blog/post/2026-02-26-argocd-force-specific-tool-type/view).
