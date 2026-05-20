@@ -23,7 +23,7 @@ ArgoCD reports these health statuses for applications:
 | **Missing** | Resources are not yet created |
 | **Unknown** | Health cannot be determined |
 
-Each resource within the application also has its own health status. The application-level health is an aggregate of all resource health statuses.
+Each immediate child resource within the application also has its own health status. The application-level health is the worst health of its immediate child resources.
 
 ```mermaid
 graph TD
@@ -244,7 +244,7 @@ PROJECT="${1:-default}"
 # Get all applications in the project
 APPS=$(curl -sf \
   -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://$ARGOCD_SERVER/api/v1/applications?project=$PROJECT" | \
+  "https://$ARGOCD_SERVER/api/v1/applications?projects=$PROJECT" | \
   jq -r '.items[].metadata.name')
 
 UNHEALTHY=0
@@ -289,8 +289,10 @@ esac
 
 # Post status to GitHub
 curl -X POST \
-  -H "Authorization: token $GITHUB_TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -H "Authorization: Bearer $GITHUB_TOKEN" \
   -H "Content-Type: application/json" \
+  -H "X-GitHub-Api-Version: 2022-11-28" \
   "https://api.github.com/repos/$REPO/statuses/$COMMIT_SHA" \
   -d "{
     \"state\": \"$STATE\",
