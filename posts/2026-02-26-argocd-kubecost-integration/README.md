@@ -45,7 +45,7 @@ spec:
   source:
     repoURL: https://kubecost.github.io/cost-analyzer/
     chart: cost-analyzer
-    targetRevision: 2.1.0
+    targetRevision: 2.9.6
     helm:
       values: |
         # Basic Kubecost configuration
@@ -57,21 +57,6 @@ spec:
           grafana:
             enabled: false
             proxy: false
-
-        # Cost allocation settings
-        kubecostModel:
-          # Enable allocation API
-          allocateIdle: true
-          # Cloud provider pricing
-          cloudCost:
-            enabled: true
-            # AWS pricing
-            provider: aws
-            region: us-east-1
-
-        # Savings recommendations
-        savings:
-          enabled: true
 
         # Network cost monitoring
         networkCosts:
@@ -85,7 +70,7 @@ spec:
             owner_label: "team"
             product_label: "service"
             environment_label: "environment"
-            department_label: "business-unit"
+            department_label: "cost-center"
   destination:
     server: https://kubernetes.default.svc
     namespace: kubecost
@@ -116,14 +101,8 @@ kubecostProductConfigs:
     namespace_external_label: "team"
 
   # Configure allocation for shared resources
-  sharedCosts:
-    # Split shared namespace costs proportionally
-    shareNamespaces:
-      - kube-system
-      - ingress-nginx
-      - monitoring
-    # Share by weighted allocation
-    shareBy: "weighted"
+  # Split shared namespace costs proportionally
+  sharedNamespaces: "kube-system,ingress-nginx,monitoring"
 ```
 
 ArgoCD applications should use matching labels (as described in the cost allocation labels guide):
@@ -136,7 +115,10 @@ metadata:
   name: payment-service
   namespace: argocd
 spec:
+  project: default
   source:
+    repoURL: https://github.com/example/platform-apps.git
+    targetRevision: HEAD
     path: k8s/production
     kustomize:
       commonLabels:
@@ -144,6 +126,9 @@ spec:
         service: payment-api
         environment: production
         cost-center: CC-1234
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: payments
 ```
 
 ## Querying Kubecost API for ArgoCD Applications
@@ -152,23 +137,23 @@ Kubecost provides an API for programmatic cost queries. Use it to get costs per 
 
 ```bash
 # Get cost allocation for the last 7 days, grouped by ArgoCD application label
-curl -s "http://kubecost.kubecost.svc.cluster.local:9090/model/allocation" \
+curl -s -G "http://kubecost.kubecost.svc.cluster.local:9090/model/allocation" \
   --data-urlencode 'window=7d' \
   --data-urlencode 'aggregate=label:app.kubernetes.io/instance' \
   --data-urlencode 'idle=true' \
   --data-urlencode 'accumulate=true' | jq '.data[0]'
 
 # Get cost per team
-curl -s "http://kubecost.kubecost.svc.cluster.local:9090/model/allocation" \
+curl -s -G "http://kubecost.kubecost.svc.cluster.local:9090/model/allocation" \
   --data-urlencode 'window=7d' \
   --data-urlencode 'aggregate=label:team' \
   --data-urlencode 'idle=true' | jq '.data[0]'
 
 # Get savings recommendations
-curl -s "http://kubecost.kubecost.svc.cluster.local:9090/model/savings/requestSizing" \
+curl -s -G "http://kubecost.kubecost.svc.cluster.local:9090/model/savings/requestSizingV2" \
   --data-urlencode 'window=7d' \
   --data-urlencode 'targetCPUUtilization=0.7' \
-  --data-urlencode 'targetMemoryUtilization=0.8' | jq '.[] | {container, recommendedRequest, currentRequest, monthlySavings}'
+  --data-urlencode 'targetRAMUtilization=0.8' | jq '.[] | {containerName, recommendedRequest, latestKnownRequest, monthlySavings}'
 ```
 
 ## Building a Cost Report Pipeline
@@ -200,11 +185,11 @@ def get_allocation_by_app(window="30d"):
 def get_savings_recommendations():
     """Get right-sizing recommendations."""
     resp = requests.get(
-        f"{KUBECOST_URL}/model/savings/requestSizing",
+        f"{KUBECOST_URL}/model/savings/requestSizingV2",
         params={
             "window": "7d",
             "targetCPUUtilization": "0.7",
-            "targetMemoryUtilization": "0.8"
+            "targetRAMUtilization": "0.8"
         }
     )
     return resp.json()
@@ -221,6 +206,12 @@ def generate_report():
         "total_cost": 0,
         "total_potential_savings": 0
     }
+
+    for rec in recommendations:
+        monthly_savings = rec.get("monthlySavings", {})
+        report["total_potential_savings"] += (
+            monthly_savings.get("cpu", 0) + monthly_savings.get("memory", 0)
+        )
 
     for app_name, data in allocations.items():
         if app_name == "__idle__":
@@ -265,21 +256,22 @@ spec:
   groups:
     - name: kubecost-argocd
       rules:
-        # Cost per ArgoCD application from Kubecost
-        - record: kubecost_argocd_app_monthly_cost
+        # CPU requested or used per ArgoCD application from Kubecost
+        - record: kubecost_argocd_app_cpu_allocation_cores
           expr: |
             sum by (label_app_kubernetes_io_instance) (
-              kubecost_allocation_cpu_cost_total
-              + kubecost_allocation_memory_cost_total
-              + kubecost_allocation_pv_cost_total
-            ) * 730  # Hours in a month
+              container_cpu_allocation
+              * on (namespace, pod) group_left(label_app_kubernetes_io_instance)
+                kube_pod_labels
+            )
 
-        # Efficiency per ArgoCD application
-        - record: kubecost_argocd_app_cpu_efficiency
+        # Memory requested or used per ArgoCD application from Kubecost
+        - record: kubecost_argocd_app_memory_allocation_bytes
           expr: |
-            avg by (label_app_kubernetes_io_instance) (
-              kubecost_allocation_cpu_usage_average
-              / kubecost_allocation_cpu_request_average
+            sum by (label_app_kubernetes_io_instance) (
+              container_memory_allocation_bytes
+              * on (namespace, pod) group_left(label_app_kubernetes_io_instance)
+                kube_pod_labels
             )
 ```
 
@@ -295,10 +287,10 @@ Use Kubecost recommendations to create automated right-sizing PRs:
 KUBECOST_URL="http://kubecost.kubecost.svc.cluster.local:9090"
 
 # Get right-sizing recommendations
-RECOMMENDATIONS=$(curl -s "$KUBECOST_URL/model/savings/requestSizing" \
+RECOMMENDATIONS=$(curl -s -G "$KUBECOST_URL/model/savings/requestSizingV2" \
   --data-urlencode 'window=14d' \
   --data-urlencode 'targetCPUUtilization=0.7' \
-  --data-urlencode 'targetMemoryUtilization=0.8')
+  --data-urlencode 'targetRAMUtilization=0.8')
 
 echo "$RECOMMENDATIONS" | jq -c '.[]' | while read rec; do
   CONTAINER=$(echo "$rec" | jq -r '.containerName')
@@ -306,7 +298,7 @@ echo "$RECOMMENDATIONS" | jq -c '.[]' | while read rec; do
   CONTROLLER=$(echo "$rec" | jq -r '.controllerName')
   REC_CPU=$(echo "$rec" | jq -r '.recommendedRequest.cpu')
   REC_MEM=$(echo "$rec" | jq -r '.recommendedRequest.memory')
-  SAVINGS=$(echo "$rec" | jq -r '.monthlySavings')
+  SAVINGS=$(echo "$rec" | jq -r '(.monthlySavings.cpu // 0) + (.monthlySavings.memory // 0)')
 
   if (( $(echo "$SAVINGS > 10" | bc -l) )); then
     echo "Potential savings: \$$SAVINGS/month for $NAMESPACE/$CONTROLLER/$CONTAINER"
@@ -324,31 +316,32 @@ Configure Kubecost alerts that trigger when application costs exceed thresholds:
 ```yaml
 # Kubecost alert configuration
 # values.yaml for Kubecost Helm chart
-kubecostProductConfigs:
-  alertConfigs:
-    enabled: true
-    alerts:
-      # Alert when any application exceeds $500/month
-      - type: budget
-        threshold: 500
-        window: 30d
-        aggregation: "label:app.kubernetes.io/instance"
-        slackWebhookUrl: "https://hooks.slack.com/services/xxx"
+global:
+  notifications:
+    alertConfigs:
+      alerts:
+        # Alert when any application exceeds $500/week
+        - type: budget
+          threshold: 500
+          window: 7d
+          aggregation: "label:app.kubernetes.io/instance"
+          slackWebhookUrl: "https://hooks.slack.com/services/xxx"
 
-      # Alert on cost anomalies
-      - type: anomaly
-        window: 7d
-        aggregation: "label:team"
-        baselineWindow: 30d
-        relativeThreshold: 0.3  # 30% increase
-        slackWebhookUrl: "https://hooks.slack.com/services/xxx"
+        # Alert on spend changes
+        - type: spendChange
+          window: 7d
+          aggregation: "label:team"
+          baselineWindow: 30d
+          relativeThreshold: 0.3  # 30% increase
+          slackWebhookUrl: "https://hooks.slack.com/services/xxx"
 
-      # Alert on low efficiency
-      - type: efficiency
-        efficiencyThreshold: 0.3  # Below 30% efficiency
-        window: 7d
-        aggregation: "label:app.kubernetes.io/instance"
-        slackWebhookUrl: "https://hooks.slack.com/services/xxx"
+        # Alert on low efficiency
+        - type: efficiency
+          efficiencyThreshold: 0.3  # Below 30% efficiency
+          spendThreshold: 100
+          window: 7d
+          aggregation: "label:app.kubernetes.io/instance"
+          slackWebhookUrl: "https://hooks.slack.com/services/xxx"
 ```
 
 ## Multi-Cluster Cost Aggregation
@@ -357,17 +350,20 @@ If you manage multiple clusters with ArgoCD, configure Kubecost for multi-cluste
 
 ```yaml
 # Kubecost primary cluster configuration
+global:
+  clusterId: "production-us-east"
+  federatedStorage:
+    config: |-
+      type: S3
+      config:
+        bucket: kubecost-federation
+        region: us-east-1
+        endpoint: s3.amazonaws.com
+federatedETL:
+  federatedCluster: true
+  readOnlyPrimary: false
 kubecostProductConfigs:
   clusterName: "production-us-east"
-  # Enable multi-cluster federation
-  federatedETL:
-    enabled: true
-    primary: true
-    # S3 bucket for cost data aggregation
-    federatedStore:
-      type: S3
-      bucket: kubecost-federation
-      region: us-east-1
 ```
 
 Deploy Kubecost agents on each cluster through ArgoCD ApplicationSets:
@@ -380,6 +376,8 @@ metadata:
   name: kubecost-agents
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -387,21 +385,35 @@ spec:
             kubecost: enabled
   template:
     metadata:
-      name: "kubecost-{{name}}"
+      name: "kubecost-{{.name}}"
     spec:
+      project: default
       source:
         repoURL: https://kubecost.github.io/cost-analyzer/
         chart: cost-analyzer
+        targetRevision: 2.9.6
         helm:
           values: |
+            global:
+              clusterId: "{{.name}}"
+              federatedStorage:
+                config: |-
+                  type: S3
+                  config:
+                    bucket: kubecost-federation
+                    region: us-east-1
+                    endpoint: s3.amazonaws.com
+            federatedETL:
+              agentOnly: true
+              federatedCluster: true
             kubecostProductConfigs:
-              clusterName: "{{name}}"
-              federatedETL:
-                enabled: true
-                primary: false
+              clusterName: "{{.name}}"
       destination:
-        server: "{{server}}"
+        server: "{{.server}}"
         namespace: kubecost
+      syncPolicy:
+        syncOptions:
+          - CreateNamespace=true
 ```
 
 ## Summary
