@@ -21,11 +21,11 @@ Service meshes touch every pod in your cluster through sidecar proxies. An upgra
 - Updating CRDs that define traffic rules
 - Migrating configuration between API versions
 
-If any of these steps fail or happen out of order, you can lose connectivity between services. ArgoCD helps by enforcing the correct order through sync waves and hooks.
+If any of these steps fail or happen out of order, you can lose connectivity between services. ArgoCD helps by enforcing the correct order through sync waves and hooks within a single sync operation.
 
 ## Setting Up Istio as ArgoCD Applications
 
-The key insight is to split your mesh into multiple ArgoCD Applications, each handling a different layer of the upgrade.
+The key insight is to split your mesh into multiple ArgoCD Applications, each handling a different layer of the upgrade. The sync-wave annotations below take effect when these `Application` manifests are managed by a parent app-of-apps Application. If you use ApplicationSet, configure progressive syncs for ordering; if you manage each Application independently, sync them in the same CRD, control plane, gateway order from your release process.
 
 Here is the base application for Istio CRDs:
 
@@ -44,11 +44,10 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: base
-    targetRevision: 1.21.0
+    targetRevision: 1.30.0
     helm:
       values: |
-        global:
-          istioNamespace: istio-system
+        defaultRevision: default
   destination:
     server: https://kubernetes.default.svc
     namespace: istio-system
@@ -76,7 +75,7 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: istiod
-    targetRevision: 1.21.0
+    targetRevision: 1.30.0
     helm:
       values: |
         pilot:
@@ -119,7 +118,7 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: gateway
-    targetRevision: 1.21.0
+    targetRevision: 1.30.0
     helm:
       values: |
         service:
@@ -154,10 +153,10 @@ spec:
   source:
     repoURL: https://istio-release.storage.googleapis.com/charts
     chart: istiod
-    targetRevision: 1.21.0
+    targetRevision: 1.30.0
     helm:
       values: |
-        revision: 1-21-0
+        revision: 1-30-0
         revisionTags:
           - canary
         pilot:
@@ -211,12 +210,18 @@ spec:
     spec:
       containers:
         - name: istioctl-check
-          image: istio/istioctl:1.21.0
+          image: istio/istioctl:1.30.0
           command:
             - /bin/sh
             - -c
             - |
               # Check current mesh health
+              istioctl x precheck
+              if [ $? -ne 0 ]; then
+                echo "Istio precheck failed. Aborting upgrade."
+                exit 1
+              fi
+
               istioctl analyze --all-namespaces
               if [ $? -ne 0 ]; then
                 echo "Mesh analysis found issues. Aborting upgrade."
@@ -259,8 +264,14 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Get all namespaces with istio injection
-              NAMESPACES=$(kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}')
+              # Get all namespaces with default or revision-based Istio injection
+              NAMESPACES="$(
+                {
+                  kubectl get ns -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'
+                  echo
+                  kubectl get ns -l istio.io/rev -o jsonpath='{.items[*].metadata.name}'
+                } | tr ' ' '\n' | sort -u
+              )"
 
               for NS in $NAMESPACES; do
                 echo "Rolling restart deployments in $NS"
@@ -278,7 +289,7 @@ spec:
 
 ## Rollback Strategy
 
-If something goes wrong, ArgoCD gives you instant rollback. In your Git repository, simply revert the version bump commit:
+If something goes wrong, ArgoCD gives you a clear rollback path. In your Git repository, revert the version bump commit:
 
 ```bash
 # Revert the upgrade commit
@@ -286,11 +297,11 @@ git revert HEAD
 git push origin main
 ```
 
-ArgoCD automatically detects the revert and syncs back to the previous version. For the canary approach, you just remove the canary revision Application and relabel namespaces.
+ArgoCD automatically detects the revert and syncs the managed manifests back to the previous version. For the canary approach, point revision tags back to the old revision or relabel namespaces, then restart affected workloads so they receive proxies from the previous control plane.
 
 ## Health Checks for Mesh Components
 
-Custom health checks in ArgoCD tell you whether the mesh is actually working, not just whether pods are running:
+Custom health checks in ArgoCD can surface Istio analysis status, not just whether pods are running. Istio writes these status fields only when status and analysis are enabled on the control plane:
 
 ```lua
 -- Custom health check for Istio VirtualService
@@ -298,9 +309,9 @@ hs = {}
 if obj.status ~= nil then
   if obj.status.validationMessages ~= nil then
     for _, msg in ipairs(obj.status.validationMessages) do
-      if msg.type == "ERROR" then
+      if msg.level == "Error" then
         hs.status = "Degraded"
-        hs.message = msg.documentation
+        hs.message = msg.message or msg.documentationUrl or "Istio validation error"
         return hs
       end
     end
