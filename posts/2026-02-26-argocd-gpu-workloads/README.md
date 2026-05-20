@@ -116,7 +116,6 @@ metadata:
 spec:
   hard:
     requests.nvidia.com/gpu: "8"
-    limits.nvidia.com/gpu: "8"
     requests.cpu: "64"
     requests.memory: "256Gi"
     pods: "20"
