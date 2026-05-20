@@ -127,7 +127,7 @@ kubectl auth can-i get <resource-type> --as=system:serviceaccount:argocd:argocd-
 argocd proj get <project-name> -o yaml
 ```
 
-If the project restricts resource kinds, the resource will show as "Missing" because ArgoCD is not allowed to manage it. Fix by updating the project configuration:
+If the project restricts resource kinds, ArgoCD may fail to sync the resource or leave it absent because ArgoCD is not allowed to manage it. Fix by updating the project configuration:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -200,7 +200,7 @@ kind: Ingress
 
 ### 8. Conditional Resources Not Generated
 
-If you use Helm or Kustomize and a resource is conditionally generated, it might be in Git but not rendered by the template engine.
+If you use Helm or Kustomize and a resource is conditionally generated, it might look like it is in Git but not be rendered by the template engine. ArgoCD tracks the rendered manifests, so a resource that is not rendered will not be deployed or marked as "Missing".
 
 For Helm:
 
@@ -216,7 +216,7 @@ For Kustomize:
 kustomize build overlays/production
 ```
 
-If the resource is not in the rendered output, it will not be deployed.
+If the resource is not in the rendered output, it will not be deployed. If it is rendered but still "Missing", continue checking the live cluster, destination, RBAC, and sync errors.
 
 ## Handling Missing Resources at Scale
 
@@ -225,7 +225,7 @@ When dealing with many "Missing" resources, you need a systematic approach:
 ```bash
 # List all missing resources across all applications
 for app in $(argocd app list -o name); do
-  MISSING=$(argocd app resources "$app" -o json | jq -r '.[] | select(.health.status == "Missing") | .name')
+  MISSING=$(argocd app get "$app" -o json | jq -r '.status.resources[]? | select(.health.status == "Missing") | .name')
   if [ -n "$MISSING" ]; then
     echo "=== $app ==="
     echo "$MISSING"
@@ -266,7 +266,7 @@ spec:
 
 Sometimes "Missing" is expected and not a problem:
 
-- **Sync hooks**: PreSync, PostSync, and SyncFail hook resources are created during sync and deleted after. They will briefly show as "Missing" between syncs.
+- **Sync hooks**: PreSync, PostSync, and SyncFail hook resources are created during sync. If a hook delete policy such as `HookSucceeded` removes them after sync, they can briefly show as "Missing" between syncs.
 - **Jobs with TTL**: Jobs with `ttlSecondsAfterFinished` get auto-deleted by Kubernetes.
 - **Intentionally deleted resources**: If you removed a resource from Git but have not synced with pruning yet.
 
