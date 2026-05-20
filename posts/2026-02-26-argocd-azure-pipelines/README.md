@@ -114,7 +114,7 @@ stages:
             inputs:
               command: build
               repository: $(imageName)
-              dockerfile: Dockerfile
+              Dockerfile: Dockerfile
               tags: |
                 $(imageTag)
                 latest
@@ -147,16 +147,16 @@ stages:
               git clone https://$(DEPLOYMENT_PAT)@dev.azure.com/myorg/k8s-deployments/_git/k8s-deployments
               cd k8s-deployments
 
-              # Get short SHA for the tag
-              SHORT_SHA=$(echo "$(Build.SourceVersion)" | cut -c1-7)
+              # Use the same tag that was pushed by the build stage
+              IMAGE_TAG="$(Build.SourceVersion)"
 
               # Update image tag in the deployment manifest
-              sed -i "s|image: $(acrName).azurecr.io/$(imageName):.*|image: $(acrName).azurecr.io/$(imageName):${SHORT_SHA}|" \
+              sed -i "s|image: $(acrName).azurecr.io/$(imageName):.*|image: $(acrName).azurecr.io/$(imageName):${IMAGE_TAG}|" \
                   apps/api-service/deployment.yaml
 
               # Commit and push
               git add .
-              git commit -m "Deploy $(imageName) ${SHORT_SHA}
+              git commit -m "Deploy $(imageName) ${IMAGE_TAG}
 
               Pipeline: $(System.CollectionUri)$(System.TeamProject)/_build/results?buildId=$(Build.BuildId)
               Commit: $(Build.SourceVersion)"
@@ -191,7 +191,7 @@ spec:
       serviceAccountName: api-service-sa
       containers:
         - name: api-service
-          image: myorgregistry.azurecr.io/api-service:abc1234
+          image: myorgregistry.azurecr.io/api-service:abc1234def567890abc1234def567890abc1234d
           ports:
             - containerPort: 8080
           env:
@@ -268,16 +268,23 @@ stringData:
 Configure ArgoCD Image Updater to watch Azure Container Registry for new images:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  name: api-service
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: >
-      app=myorgregistry.azurecr.io/api-service
-    argocd-image-updater.argoproj.io/app.update-strategy: latest
-    argocd-image-updater.argoproj.io/app.allow-tags: regexp:^[a-f0-9]{7}$
-    argocd-image-updater.argoproj.io/write-back-method: git
+  name: api-service-updater
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: api-service
+      images:
+        - alias: app
+          imageName: myorgregistry.azurecr.io/api-service
+          commonUpdateSettings:
+            updateStrategy: newest-build
+            allowTags: regexp:^[a-f0-9]{40}$
+            pullSecret: pullsecret:argocd/acr-credentials
+  writeBackConfig:
+    method: git
 ```
 
 ACR credentials for the Image Updater:
@@ -312,11 +319,11 @@ Extend the pipeline for staging and production with approval gates:
                 - script: |
                     # Update staging overlay
                     cd k8s-deployments
-                    SHORT_SHA=$(echo "$(Build.SourceVersion)" | cut -c1-7)
+                    IMAGE_TAG="$(Build.SourceVersion)"
                     cd apps/api-service/overlays/staging
                     kustomize edit set image \
-                        "myorgregistry.azurecr.io/api-service=myorgregistry.azurecr.io/api-service:${SHORT_SHA}"
-                    git commit -am "Deploy to staging: ${SHORT_SHA}"
+                        "myorgregistry.azurecr.io/api-service=myorgregistry.azurecr.io/api-service:${IMAGE_TAG}"
+                    git commit -am "Deploy to staging: ${IMAGE_TAG}"
                     git push
 
   - stage: DeployProduction
@@ -332,11 +339,11 @@ Extend the pipeline for staging and production with approval gates:
                 - script: |
                     # Update production overlay
                     cd k8s-deployments
-                    SHORT_SHA=$(echo "$(Build.SourceVersion)" | cut -c1-7)
+                    IMAGE_TAG="$(Build.SourceVersion)"
                     cd apps/api-service/overlays/production
                     kustomize edit set image \
-                        "myorgregistry.azurecr.io/api-service=myorgregistry.azurecr.io/api-service:${SHORT_SHA}"
-                    git commit -am "Deploy to production: ${SHORT_SHA}"
+                        "myorgregistry.azurecr.io/api-service=myorgregistry.azurecr.io/api-service:${IMAGE_TAG}"
+                    git commit -am "Deploy to production: ${IMAGE_TAG}"
                     git push
 ```
 
@@ -372,6 +379,22 @@ template.azure-deployment-event: |
           },
           "iKey": "$azure-instrumentation-key"
         }
+
+trigger.on-deployed: |
+  - when: app.status.operationState.phase in ['Succeeded']
+    send: [azure-deployment-event]
+```
+
+Subscribe the application to the notification trigger:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: api-service
+  namespace: argocd
+  annotations:
+    notifications.argoproj.io/subscribe.on-deployed.azure-monitor: ""
 ```
 
 ## Summary
