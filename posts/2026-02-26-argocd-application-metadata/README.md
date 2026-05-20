@@ -19,7 +19,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: my-app                    # Required: unique identifier
-  namespace: argocd               # Required: must be in ArgoCD namespace
+  namespace: argocd               # Required by default: ArgoCD control plane namespace
   labels:                         # Optional: for filtering and selection
     team: platform
     env: production
@@ -82,7 +82,7 @@ my_app          # underscores not allowed
 
 ## Application Namespace
 
-ArgoCD Applications themselves must be created in the ArgoCD namespace (usually `argocd`). This is different from the destination namespace where your application resources get deployed.
+By default, ArgoCD Applications themselves must be created in the ArgoCD namespace (usually `argocd`). This is different from the destination namespace where your application resources get deployed.
 
 ```yaml
 metadata:
@@ -98,7 +98,20 @@ Starting with ArgoCD v2.5, you can enable "applications in any namespace" by con
 ```yaml
 # In argocd-cmd-params-cm ConfigMap
 data:
-  application.namespaces: "team-a, team-b, team-c"
+  application.namespaces: "team-a,team-b,team-c"
+```
+
+You also need to allow those source namespaces on the AppProject the Applications will use:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: team-a
+  namespace: argocd
+spec:
+  sourceNamespaces:
+    - team-a
 ```
 
 Then teams can create Applications in their own namespaces:
@@ -201,14 +214,14 @@ metadata:
     notifications.argoproj.io/subscribe.on-sync-succeeded.slack: deploy-channel
     notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: ""
 
-    # Application description (shows in UI)
-    argocd.argoproj.io/description: "User authentication microservice"
+    # Application link (shows in UI)
+    link.argocd.argoproj.io/runbook: "https://wiki.example.com/runbooks/user-service"
 
-    # Refresh interval override
+    # Request a hard refresh
     argocd.argoproj.io/refresh: "hard"
 
-    # Managed by annotation (useful for tracking)
-    argocd.argoproj.io/managed-by: "applicationset-controller"
+    # Limit manifest regeneration in monorepos
+    argocd.argoproj.io/manifest-generate-paths: ".;../shared"
 ```
 
 ### Custom Annotations for Tooling
@@ -273,11 +286,10 @@ metadata:
     domain: authentication
     criticality: high
   annotations:
-    argocd.argoproj.io/description: "User authentication and authorization service"
     notifications.argoproj.io/subscribe.on-sync-succeeded.slack: identity-deploys
     notifications.argoproj.io/subscribe.on-health-degraded.slack: identity-alerts
-    runbook: "https://wiki.example.com/runbooks/user-service"
-    dashboard: "https://grafana.example.com/d/user-service"
+    link.argocd.argoproj.io/runbook: "https://wiki.example.com/runbooks/user-service"
+    link.argocd.argoproj.io/dashboard: "https://grafana.example.com/d/user-service"
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
