@@ -17,7 +17,7 @@ ArgoCD Application resources are Kubernetes custom resources, which means they s
 - Filtering applications in the UI by team, environment, or tier
 - Selecting applications for batch operations via the CLI
 - Organizing dashboards and monitoring by application category
-- Implementing RBAC policies based on application labels
+- Pairing project-based RBAC with label-based discoverability
 - Grouping applications for notification subscriptions
 
 ## Designing a Label Schema
@@ -58,7 +58,8 @@ spec:
 
 Follow Kubernetes label conventions:
 
-- Keys must be 63 characters or fewer
+- Label key name segments must be 63 characters or fewer
+- Label key prefixes, such as `mycompany.com/`, must be valid DNS subdomains of 253 characters or fewer
 - Values must be 63 characters or fewer
 - Use lowercase letters, numbers, hyphens, underscores, and dots
 - Prefix custom labels with your organization domain for clarity (optional but recommended for large orgs)
@@ -212,12 +213,12 @@ With a config file like:
 
 This automatically generates labeled applications that are immediately filterable.
 
-## Labels for RBAC Policies
+## Labels and RBAC Policies
 
-You can reference labels in RBAC policies to create flexible access controls:
+ArgoCD RBAC policies cannot reference application labels directly. Use AppProjects for access control, and use labels for discovery and filtering:
 
 ```csv
-# argocd-rbac-cm - Grant teams access based on labels
+# argocd-rbac-cm - Grant teams access by project
 # Note: RBAC policies use project/application patterns, not labels directly.
 # Use projects to group applications, then combine with labels for filtering.
 
@@ -225,11 +226,11 @@ p, role:backend-team, applications, get, backend-project/*, allow
 p, role:backend-team, applications, sync, backend-project/*, allow
 ```
 
-While ArgoCD RBAC does not directly support label selectors in policies, the combination of projects and labels gives you layered access control: projects for authorization, labels for discoverability.
+The combination of projects and labels gives you layered management: projects for authorization, labels for discoverability.
 
 ## Labels for Notification Subscriptions
 
-ArgoCD Notifications can use label selectors for subscription targeting:
+ArgoCD Notifications can subscribe individual applications through annotations. Labels are useful for identifying which applications should carry those subscriptions:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -240,12 +241,12 @@ metadata:
     team: payments
     tier: critical
   annotations:
-    # Subscribe based on labels/team
+    # Subscribe this application to team-specific notification recipients
     notifications.argoproj.io/subscribe.on-sync-succeeded.slack: payments-deploys
     notifications.argoproj.io/subscribe.on-health-degraded.pagerduty: payments-oncall
 ```
 
-You can also use default triggers that apply based on labels in the notification configuration.
+You can also use centrally managed notification subscriptions with a `selector` in the notification configuration to target applications by label.
 
 ## Practical Label Strategy by Organization Size
 
