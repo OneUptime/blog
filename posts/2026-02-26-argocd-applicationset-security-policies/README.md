@@ -137,16 +137,16 @@ data:
     p, role:platform-admin, applicationsets, *, */*, allow
 
     # Team leads can create/update ApplicationSets in their project
-    p, role:frontend-lead, applicationsets, get, argocd/frontend-*, allow
-    p, role:frontend-lead, applicationsets, create, argocd/frontend-*, allow
-    p, role:frontend-lead, applicationsets, update, argocd/frontend-*, allow
-    p, role:frontend-lead, applicationsets, delete, argocd/frontend-*, allow
+    p, role:frontend-lead, applicationsets, get, team-frontend/frontend-*, allow
+    p, role:frontend-lead, applicationsets, create, team-frontend/frontend-*, allow
+    p, role:frontend-lead, applicationsets, update, team-frontend/frontend-*, allow
+    p, role:frontend-lead, applicationsets, delete, team-frontend/frontend-*, allow
 
     # Developers can only view ApplicationSets
-    p, role:frontend-dev, applicationsets, get, argocd/frontend-*, allow
+    p, role:frontend-dev, applicationsets, get, team-frontend/frontend-*, allow
 
     # No one outside the team can manage their ApplicationSets
-    p, role:backend-lead, applicationsets, *, argocd/frontend-*, deny
+    p, role:backend-lead, applicationsets, *, team-frontend/frontend-*, deny
 
     # Map SSO groups to roles
     g, frontend-leads, role:frontend-lead
@@ -167,11 +167,11 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Restrict SCM providers that can be used
-  applicationsetcontroller.allowed-scm-providers: "https://github.com/myorg"
+  # Restrict custom SCM provider API URLs that can be used
+  applicationsetcontroller.allowed.scm.providers: "https://git.example.com/"
 
-  # Set global policy for ApplicationSet behavior
-  applicationsetcontroller.enable-scm-providers: "true"
+  # Enable SCM and PR generators
+  applicationsetcontroller.enable.scm.providers: "true"
 ```
 
 For environments where you want to disable certain generators entirely, configure the controller:
@@ -207,6 +207,7 @@ spec:
   sourceRepos:
     - 'https://github.com/myorg/approved-charts/*'
 
+  # Deny deployments to kube-system by allowing only team-* namespaces
   destinations:
     - server: https://kubernetes.default.svc
       namespace: 'team-*'
@@ -220,12 +221,6 @@ spec:
 
   # Prevent cluster-scoped resource creation
   clusterResourceWhitelist: []
-
-  # Deny managing resources in kube-system
-  destinations:
-    - server: '*'
-      namespace: 'kube-system'
-      deny: true
 ```
 
 Resource Quota Protection
@@ -243,21 +238,20 @@ metadata:
 spec:
   hard:
     # Limit total Application CRDs (not perfect but helps)
-    count/applicationsets.argoproj.io: "50"
+    count/applications.argoproj.io: "50"
 ```
 
-At the ApplicationSet level, use the global policy:
+You can also limit how many ApplicationSet CRs can exist in the ArgoCD namespace:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: ResourceQuota
 metadata:
-  name: argocd-cmd-params-cm
+  name: applicationset-count-limits
   namespace: argocd
-data:
-  # Limit applications per ApplicationSet
-  applicationsetcontroller.policy: |
-    maxApplications: 100
+spec:
+  hard:
+    count/applicationsets.argoproj.io: "10"
 ```
 
 ## Sync Policy Enforcement
@@ -295,12 +289,12 @@ spec:
   # Preserve fields that might be set manually
   preservedFields:
     annotations:
-      - notifications.argoproj.io/*
+      - my-custom-annotation
 ```
 
 ## Audit Logging
 
-Enable audit logging to track ApplicationSet changes.
+Use Kubernetes events and ArgoCD controller logs to track ApplicationSet changes.
 
 ```bash
 # Check ApplicationSet creation and modification events
@@ -313,8 +307,10 @@ kubectl logs -n argocd \
   -l app.kubernetes.io/name=argocd-applicationset-controller \
   --tail=200 | grep -iE "create|update|delete|generate"
 
-# Use ArgoCD audit log
-argocd admin settings resource-overrides list
+# Check ArgoCD API server logs for ApplicationSet API activity
+kubectl logs -n argocd \
+  -l app.kubernetes.io/name=argocd-server \
+  --tail=200 | grep -i applicationset
 ```
 
 ## Security Checklist
@@ -330,7 +326,7 @@ kubectl get applicationsets -n argocd -o json | \
 argocd proj list
 
 # 3. RBAC policies are configured
-argocd admin settings rbac validate
+argocd admin settings rbac validate --namespace argocd
 
 # 4. Generator restrictions are in place
 kubectl get cm argocd-cmd-params-cm -n argocd -o yaml
@@ -348,7 +344,7 @@ For production environments, start with this baseline:
 3. Cluster-scoped resources should be denied unless specifically needed
 4. RBAC should follow least-privilege per team
 5. ApplicationSet creation should be limited to team leads or platform engineers
-6. The SCM provider and PR generators should be restricted to approved organizations
-7. MaxApplications should be set globally
+6. The SCM provider and PR generators should be restricted to approved SCM API URLs and repository scopes
+7. ResourceQuotas should limit Application and ApplicationSet object counts
 
 Security policies are the guardrails that make ApplicationSets safe for multi-team environments. For monitoring security-relevant events across your ArgoCD installation, [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-applicationset-any-namespace/view) provides alerting on unexpected application creation, deletion, and configuration changes.
