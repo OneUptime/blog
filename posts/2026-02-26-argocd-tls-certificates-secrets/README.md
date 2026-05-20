@@ -223,7 +223,7 @@ spec:
 
 ## Approach 3: External Secrets for Vault-Stored Certificates
 
-If your organization stores certificates in HashiCorp Vault or AWS Certificate Manager:
+If your organization stores certificates in HashiCorp Vault or AWS Secrets Manager:
 
 ```yaml
 # Store certificate in Vault
@@ -232,7 +232,7 @@ If your organization stores certificates in HashiCorp Vault or AWS Certificate M
 #   tls.key=@wildcard.key \
 #   ca.crt=@ca.crt
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: wildcard-tls
@@ -247,6 +247,7 @@ spec:
     creationPolicy: Owner
     template:
       type: kubernetes.io/tls
+      engineVersion: v2
       data:
         tls.crt: "{{ .cert }}"
         tls.key: "{{ .key }}"
@@ -254,15 +255,15 @@ spec:
   data:
     - secretKey: cert
       remoteRef:
-        key: secret/data/tls/wildcard
+        key: tls/wildcard
         property: tls.crt
     - secretKey: key
       remoteRef:
-        key: secret/data/tls/wildcard
+        key: tls/wildcard
         property: tls.key
     - secretKey: ca
       remoteRef:
-        key: secret/data/tls/wildcard
+        key: tls/wildcard
         property: ca.crt
 ```
 
@@ -292,38 +293,52 @@ vault write pki/roles/internal-services \
 Use ESO to request certificates:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: service-tls-request
+  namespace: production
+spec:
+  path: "/pki/issue/internal-services"
+  method: "POST"
+  parameters:
+    common_name: "myapp.production.svc.cluster.local"
+    alt_names: "myapp.production.svc.cluster.local,myapp.internal.example.com"
+    ttl: "72h"
+  resultType: "Data"
+  provider:
+    server: "https://vault.example.com"
+    auth:
+      kubernetes:
+        mountPath: "kubernetes"
+        role: "external-secrets-operator"
+        serviceAccountRef:
+          name: external-secrets
+
+---
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: service-tls
   namespace: production
 spec:
   refreshInterval: 24h
-  secretStoreRef:
-    name: vault-pki
-    kind: ClusterSecretStore
   target:
     name: service-tls-cert
     creationPolicy: Owner
     template:
       type: kubernetes.io/tls
+      engineVersion: v2
       data:
         tls.crt: "{{ .certificate }}"
         tls.key: "{{ .private_key }}"
         ca.crt: "{{ .issuing_ca }}"
-  data:
-    - secretKey: certificate
-      remoteRef:
-        key: pki/issue/internal-services
-        property: certificate
-    - secretKey: private_key
-      remoteRef:
-        key: pki/issue/internal-services
-        property: private_key
-    - secretKey: issuing_ca
-      remoteRef:
-        key: pki/issue/internal-services
-        property: issuing_ca
+  dataFrom:
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: service-tls-request
 ```
 
 ## Using TLS Secrets with Ingress
