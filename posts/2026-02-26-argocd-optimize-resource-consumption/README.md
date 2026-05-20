@@ -50,9 +50,9 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Increase reconciliation timeout from 3m to 5m
+  # Increase repo-server RPC timeout for slow manifest generation
   controller.repo.server.timeout.seconds: "300"
-  # Reduce self-heal timeout
+  # Increase timeout between self-heal attempts
   controller.self.heal.timeout.seconds: "30"
 ```
 
@@ -91,6 +91,7 @@ data:
   resource.exclusions: |
     - apiGroups:
         - ""
+        - "events.k8s.io"
       kinds:
         - "Event"
       clusters:
@@ -127,12 +128,14 @@ This alone can reduce controller CPU usage by 20-30% because these resources cha
 
 The repo server clones Git repositories and generates manifests. This is I/O and CPU intensive.
 
-### Enable Manifest Caching
+### Tune Manifest Caching
+
+ArgoCD caches generated manifests by default. You can tune the cache expiration and disable features you do not use.
 
 ```yaml
 # argocd-cmd-params-cm.yaml
 data:
-  # Enable manifest caching
+  # Disable Git submodules if you do not use them
   reposerver.enable.git.submodule: "false"
   # Set repo cache expiration
   reposerver.repo.cache.expiration: "24h"
@@ -151,12 +154,17 @@ data:
 For large repositories, shallow clones save significant time and disk space.
 
 ```yaml
-# In ArgoCD Application spec
-spec:
-  source:
-    repoURL: https://github.com/myorg/gitops.git
-    targetRevision: main
-    # ArgoCD uses shallow clones by default for non-annotated tags
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitops-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/myorg/gitops.git
+  depth: "1"
 ```
 
 ### Shared Repository Credentials
@@ -164,16 +172,17 @@ spec:
 If multiple applications use the same repository, use credential templates to avoid redundant authentication.
 
 ```yaml
-# argocd-cm.yaml
-data:
-  repository.credentials: |
-    - url: https://github.com/myorg
-      passwordSecret:
-        name: github-creds
-        key: password
-      usernameSecret:
-        name: github-creds
-        key: username
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-creds
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repo-creds
+stringData:
+  url: https://github.com/myorg
+  username: my-username
+  password: my-token
 ```
 
 ## Optimizing Redis
@@ -200,22 +209,26 @@ spec:
               cpu: "500m"
               memory: "256Mi"
           args:
-            - --save ""  # Disable RDB persistence
-            - --appendonly no  # Disable AOF persistence
-            - --maxmemory 200mb
-            - --maxmemory-policy allkeys-lru
+            - --save
+            - ""  # Disable RDB persistence
+            - --appendonly
+            - "no"  # Disable AOF persistence
+            - --maxmemory
+            - 200mb
+            - --maxmemory-policy
+            - allkeys-lru
 ```
 
 Disabling persistence is safe because Redis is only used as a cache. If Redis restarts, ArgoCD simply regenerates the cache.
 
 ## Using ArgoCD Application Controller Sharding
 
-For large installations with hundreds of applications, shard the controller across multiple replicas.
+For large multi-cluster installations, shard the controller across multiple replicas.
 
 ```yaml
-# controller-deployment.yaml
+# controller-statefulset.yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -224,7 +237,7 @@ spec:
   template:
     spec:
       containers:
-        - name: controller
+        - name: argocd-application-controller
           env:
             - name: ARGOCD_CONTROLLER_REPLICAS
               value: "3"
@@ -237,7 +250,7 @@ spec:
               memory: "2Gi"
 ```
 
-Sharding distributes applications across controller replicas based on a hash of the application name. Each controller only watches the resources for its assigned applications.
+Sharding distributes managed clusters across controller replicas. Each controller watches the cluster resources for its assigned cluster shards.
 
 ## Optimizing Cluster Monitoring
 
@@ -246,7 +259,7 @@ If ArgoCD manages multiple clusters, each cluster connection adds resource overh
 ```yaml
 # argocd-cm.yaml
 data:
-  # Only watch specific namespaces instead of entire clusters
+  # Only watch specific resource types instead of every discovered type
   resource.inclusions: |
     - apiGroups:
         - "apps"
@@ -262,13 +275,13 @@ data:
         - "*"
 ```
 
-By including only the resource types you actually manage, you dramatically reduce the number of watches the controller maintains.
+By including only the resource types you actually manage, you dramatically reduce the number of resource watches the controller maintains.
 
 ## Memory Optimization Techniques
 
 ### Use Server-Side Diff
 
-Server-side diff offloads diff computation to the Kubernetes API server, reducing ArgoCD's memory usage.
+Server-side diff uses server-side apply dry-runs for diff calculation when the diff cache is unavailable, reducing local diff work at the cost of additional Kubernetes API server load.
 
 ```yaml
 # argocd-cmd-params-cm.yaml
@@ -278,7 +291,7 @@ data:
 
 ### Reduce Application History
 
-Each history entry consumes memory. Limit history for applications that do not need extensive rollback capability.
+Each history entry consumes storage in the Application status. Limit history for applications that do not need extensive rollback capability.
 
 ```yaml
 spec:
