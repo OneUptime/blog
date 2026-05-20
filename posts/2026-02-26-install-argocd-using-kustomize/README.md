@@ -31,6 +31,7 @@ argocd-install/
   overlays/
     dev/
       kustomization.yaml
+      repository.yaml
       patches/
         argocd-cm.yaml
         argocd-cmd-params-cm.yaml
@@ -74,6 +75,7 @@ namespace: argocd
 
 resources:
   - ../../base
+  - repository.yaml
 
 patches:
   # Run in insecure mode for local development
@@ -100,7 +102,7 @@ data:
   reposerver.parallelism.limit: "2"
 ```
 
-Configure ArgoCD settings.
+Configure the ArgoCD URL.
 
 ```yaml
 # argocd-install/overlays/dev/patches/argocd-cm.yaml
@@ -110,12 +112,24 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Allow local repositories
   url: http://localhost:8080
-  # Skip TLS verification for dev repos
-  repositories: |
-    - url: https://github.com/your-org/dev-manifests.git
-      insecure: "true"
+```
+
+Register a development repository as a repository Secret.
+
+```yaml
+# argocd-install/overlays/dev/repository.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dev-manifests-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/your-org/dev-manifests.git
+  insecure: "true"
 ```
 
 ## Step 3: Create a Production Overlay
@@ -235,8 +249,8 @@ metadata:
 data:
   # Enable server-side diff for better performance
   controller.diff.server.side: "true"
-  # Increase repo server timeout for large repos
-  reposerver.default.timeout: "180"
+  # Increase Git request timeout for large repos
+  reposerver.git.request.timeout: "180s"
   # Higher parallelism for production workloads
   reposerver.parallelism.limit: "10"
   # Enable gzip compression
@@ -314,7 +328,7 @@ apiVersion: kustomize.config.k8s.io/v1alpha1
 kind: Component
 
 resources:
-  - https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.3/manifests/notifications/install.yaml
+  - https://raw.githubusercontent.com/argoproj/argo-cd/v2.13.3/notifications_catalog/install.yaml
 
 patches:
   - path: notifications-cm.yaml
@@ -351,7 +365,7 @@ images:
     newTag: v2.13.3
   - name: ghcr.io/dexidp/dex
     newName: registry.internal.example.com/dexidp/dex
-    newTag: v2.38.0
+    newTag: v2.41.1
   - name: redis
     newName: registry.internal.example.com/library/redis
     newTag: 7.0.15-alpine
