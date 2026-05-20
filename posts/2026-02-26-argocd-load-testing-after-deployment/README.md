@@ -8,7 +8,7 @@ Description: Learn how to run automated load tests after ArgoCD deployments usin
 
 ---
 
-Performance regressions are some of the hardest bugs to catch. Your application passes all functional tests, the health checks look good, and then it falls over under real traffic because someone introduced a N+1 query or a memory leak. Running load tests after every deployment catches these issues before they reach users.
+Performance regressions are some of the hardest bugs to catch. Your application passes all functional tests, the health checks look good, and then it falls over under real traffic because someone introduced a N+1 query or a memory leak. Running load tests after every staging deployment, or as a gated production validation step, catches these issues before they reach users.
 
 ArgoCD PostSync hooks provide the perfect trigger for automated load testing. In this guide, I will show you how to set up load tests that run automatically after every deployment and fail the sync if performance degrades.
 
@@ -65,7 +65,7 @@ spec:
             - sh
             - -c
             - |
-              apk add --no-cache curl bc
+              apk add --no-cache curl
 
               URL="http://api-service.default.svc:8080/api/v1/health"
               CONCURRENT=10
@@ -78,30 +78,43 @@ spec:
               echo "Thresholds: avg < ${MAX_AVG_MS}ms, error rate < ${MAX_ERROR_RATE}%"
               echo ""
 
-              total_time=0
-              total_requests=0
-              errors=0
+              tmpdir=$(mktemp -d)
+              trap 'rm -rf "$tmpdir"' EXIT
 
               for worker in $(seq 1 $CONCURRENT); do
-                for req in $(seq 1 $REQUESTS_PER_WORKER); do
-                  start=$(date +%s%N)
-                  code=$(curl -s -o /dev/null -w "%{http_code}" \
-                    --connect-timeout 5 --max-time 10 "$URL")
-                  end=$(date +%s%N)
+                (
+                  for req in $(seq 1 $REQUESTS_PER_WORKER); do
+                    result=$(curl -s -o /dev/null -w "%{http_code} %{time_total}" \
+                      --connect-timeout 5 --max-time 10 "$URL" || echo "000 10")
+                    code=${result%% *}
+                    seconds=${result#* }
+                    elapsed_ms=$(awk -v seconds="$seconds" 'BEGIN { printf "%d", seconds * 1000 }')
 
-                  elapsed=$(( (end - start) / 1000000 ))
-                  total_time=$((total_time + elapsed))
-                  total_requests=$((total_requests + 1))
-
-                  if [ "$code" != "200" ]; then
-                    errors=$((errors + 1))
-                  fi
-                done &
+                    if [ "$code" = "200" ]; then
+                      echo "$elapsed_ms 0"
+                    else
+                      echo "$elapsed_ms 1"
+                    fi
+                  done > "$tmpdir/worker-$worker"
+                ) &
               done
               wait
 
+              set -- $(awk '
+                { total_time += $1; errors += $2; total_requests++ }
+                END {
+                  if (total_requests == 0) {
+                    print "0 0 0 100.00"
+                  } else {
+                    printf "%d %d %d %.2f", total_time, total_requests, errors, errors * 100 / total_requests
+                  }
+                }
+              ' "$tmpdir"/worker-*)
+              total_time=$1
+              total_requests=$2
+              errors=$3
+              error_rate=$4
               avg_ms=$((total_time / total_requests))
-              error_rate=$(echo "scale=2; $errors * 100 / $total_requests" | bc)
 
               echo "Results:"
               echo "  Total requests: $total_requests"
@@ -111,6 +124,11 @@ spec:
               # Check thresholds
               if [ "$avg_ms" -gt "$MAX_AVG_MS" ]; then
                 echo "FAIL: Average latency ${avg_ms}ms exceeds ${MAX_AVG_MS}ms"
+                exit 1
+              fi
+
+              if awk -v rate="$error_rate" -v max="$MAX_ERROR_RATE" 'BEGIN { exit !(rate > max) }'; then
+                echo "FAIL: Error rate ${error_rate}% exceeds ${MAX_ERROR_RATE}%"
                 exit 1
               fi
 
@@ -254,7 +272,7 @@ containers:
         value: "true"
 ```
 
-This sends all k6 metrics directly to Prometheus where you can visualize them in Grafana dashboards and set up alerts for performance trends.
+This sends all k6 metrics directly to a Prometheus remote write endpoint where you can visualize them in Grafana dashboards and set up alerts for performance trends. If you point this at Prometheus itself, enable the remote write receiver; if you keep `K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true`, Prometheus also needs native histograms enabled.
 
 ## Environment-Specific Load Test Profiles
 
@@ -302,7 +320,7 @@ data:
 
 ## Running Load Tests Only on Specific Deployments
 
-You might not want load tests on every single sync. Use ArgoCD sync waves to control when load tests run, and skip them for configuration-only changes:
+You might not want load tests on every single sync. Use ArgoCD sync waves to control the order of load-test hooks, and use a wrapper script to skip them for configuration-only changes:
 
 ```yaml
 apiVersion: batch/v1
