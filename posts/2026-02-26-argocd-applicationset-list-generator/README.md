@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, ApplicationSet
 
-Description: Complete guide to using the ArgoCD ApplicationSet List generator with static and dynamic elements, multi-cluster deployments, and advanced templating patterns.
+Description: Complete guide to using the ArgoCD ApplicationSet List generator with static and dynamic elements, multi-cluster deployments, and templating patterns.
 
 ---
 
 The List generator is the simplest and most explicit way to drive ApplicationSet template rendering. You provide a literal list of key-value pairs, and ApplicationSet creates one Application per entry. While other generators discover parameters dynamically from Git repos or cluster registries, the List generator gives you full control over exactly what gets deployed and where.
 
-This guide covers everything from basic usage to advanced patterns including element merging, conditional values, and integration with other generators.
+This guide covers everything from basic usage to patterns including dynamic list updates and integration with other generators.
 
 ## Basic List Generator Usage
 
@@ -72,7 +72,7 @@ kubectl get applications -n argocd
 
 ## Multi-Cluster Deployment with List Generator
 
-A common use case is deploying the same application to multiple clusters. The List generator lets you define cluster-specific parameters explicitly.
+A common use case is deploying the same application to multiple clusters. The List generator lets you define cluster-specific parameters explicitly. Each destination server must already be registered in Argo CD.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -172,7 +172,7 @@ spec:
         namespace: microservices
 ```
 
-## Dynamic List Elements from ConfigMaps
+## Dynamic List Elements from Config Files
 
 While the List generator is static by definition, you can use external tools to dynamically update the ApplicationSet resource. A common pattern is using a CI pipeline or a controller to patch the elements array.
 
@@ -197,7 +197,7 @@ kubectl patch applicationset team-apps -n argocd --type merge -p "{
 
 ## Combining List Generator with Other Generators
 
-The List generator becomes powerful when combined with the Matrix or Merge generators. For example, you can combine a List of environments with a Cluster generator to create environment-specific deployments per cluster.
+The List generator becomes powerful when combined with the Matrix or Merge generators. For example, you can combine a List of applications with a Cluster generator to create one deployment per application and cluster.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -242,7 +242,7 @@ This produces one Application per (app, cluster) combination. If you have 3 apps
 
 When you remove an element from the List generator, the corresponding Application gets deleted on the next reconciliation cycle. This is the expected behavior but can be surprising.
 
-To protect against accidental deletions, configure the ApplicationSet sync policy.
+To protect the child Kubernetes resources from being deleted with the generated Application, configure the ApplicationSet sync policy.
 
 ```yaml
 spec:
