@@ -94,6 +94,7 @@ dpkg -l | grep linux-image | grep "^ii" | awk '{print $2}'
 # Remove a specific old kernel version
 # Replace with the actual version numbers you want to remove
 sudo apt purge linux-image-5.15.0-91-generic \
+               linux-headers-5.15.0-91 \
                linux-headers-5.15.0-91-generic \
                linux-modules-5.15.0-91-generic \
                linux-modules-extra-5.15.0-91-generic
@@ -102,27 +103,24 @@ sudo apt purge linux-image-5.15.0-91-generic \
 sudo update-grub
 ```
 
-Always include all four package types for each kernel version: `linux-image`, `linux-headers`, `linux-modules`, and `linux-modules-extra`.
+Always include the matching package types that exist for each kernel version: `linux-image`, `linux-headers`, `linux-modules`, and `linux-modules-extra`. On Ubuntu, headers usually include both a version package such as `linux-headers-5.15.0-91` and a flavor package such as `linux-headers-5.15.0-91-generic`.
 
 ## Method 3: purge-old-kernels Script
 
-The `byobu` package includes a convenient script:
+The `byobu` package includes a `purge-old-kernels` script, but on current Ubuntu releases it is a deprecated wrapper around `apt-get autoremove`:
 
 ```bash
 # Install if not present
 sudo apt install byobu
 
-# Remove all but the two most recent kernels
+# Remove unused old kernels
 sudo purge-old-kernels
-
-# Keep only one previous kernel (more aggressive)
-sudo purge-old-kernels --keep 1
 
 # Dry run to see what it would remove
 sudo purge-old-kernels --dry-run
 ```
 
-`purge-old-kernels` is careful about the currently running kernel and is safe to use.
+`purge-old-kernels` relies on APT's autoremove logic, so it does not support a `--keep` option on current Ubuntu releases.
 
 ## Method 4: Using a Script for Automated Cleanup
 
@@ -168,6 +166,7 @@ echo "$TO_REMOVE"
 for kernel_pkg in $TO_REMOVE; do
     # Extract version from package name
     version=$(echo "$kernel_pkg" | sed 's/linux-image-//')
+    base_version=$(echo "$version" | sed 's/-[^-]*$//')
 
     # Don't remove if it matches the current running kernel
     if echo "$version" | grep -q "$CURRENT"; then
@@ -178,6 +177,7 @@ for kernel_pkg in $TO_REMOVE; do
     echo "Removing: $version"
     sudo apt purge -y \
         "linux-image-${version}" \
+        "linux-headers-${base_version}" \
         "linux-headers-${version}" \
         "linux-modules-${version}" \
         "linux-modules-extra-${version}" \
@@ -257,8 +257,11 @@ After removing kernels, GRUB needs to be updated:
 # Update GRUB menu
 sudo update-grub
 
-# Verify GRUB can find the current kernel
-sudo grub-install --dry-run 2>&1 | head -5
+# Check the generated GRUB config for syntax errors
+sudo grub-script-check /boot/grub/grub.cfg
+
+# Verify GRUB lists the current kernel
+grep "$(uname -r)" /boot/grub/grub.cfg | head
 
 # Check the GRUB config for the correct default kernel
 grep "menuentry\|GRUB_DEFAULT" /boot/grub/grub.cfg | head -20
@@ -270,7 +273,7 @@ Kernel cleanup on Ubuntu is a regular maintenance task for servers that receive 
 
 1. Check running kernel with `uname -r`
 2. Try `sudo apt autoremove --purge` first
-3. If that's insufficient, use `purge-old-kernels --keep 2` from the `byobu` package
+3. If that's insufficient, use `purge-old-kernels` from the `byobu` package or remove packages manually
 4. For manual control, `sudo apt purge linux-image-VERSION` for each old kernel
 5. Run `sudo update-grub` after any kernel removal
 6. Enable `Remove-Unused-Kernel-Packages` in unattended-upgrades for automatic cleanup
