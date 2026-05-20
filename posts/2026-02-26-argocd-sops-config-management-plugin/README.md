@@ -8,7 +8,7 @@ Description: Learn how to configure a SOPS Config Management Plugin for ArgoCD t
 
 ---
 
-Storing secrets in Git is one of the hardest problems in GitOps. You want everything in version control, but Kubernetes Secrets contain sensitive data that should never appear as plaintext in a repository. Mozilla SOPS solves this by encrypting only the values in your YAML files while keeping the keys readable, and with an ArgoCD Config Management Plugin, you can decrypt those secrets automatically during manifest generation.
+Storing secrets in Git is one of the hardest problems in GitOps. You want everything in version control, but Kubernetes Secrets contain sensitive data that should never appear as plaintext in a repository. SOPS solves this by encrypting only the values in your YAML files while keeping the keys readable, and with an ArgoCD Config Management Plugin, you can decrypt those secrets automatically during manifest generation.
 
 This guide shows you how to set up SOPS as a CMP sidecar in ArgoCD, covering key management with AWS KMS, GCP KMS, Azure Key Vault, and age/PGP keys.
 
@@ -28,8 +28,8 @@ sequenceDiagram
     Dev->>Git: Push encrypted secrets
     RS->>Git: Clone repo
     RS->>SOPS: Send encrypted files
-    SOPS->>KMS: Request decryption key
-    KMS-->>SOPS: Return decryption key
+    SOPS->>KMS: Request data key decryption
+    KMS-->>SOPS: Return decrypted data key
     SOPS->>SOPS: Decrypt values in YAML
     SOPS-->>RS: Return plaintext manifests
     RS->>K8s: Apply manifests
@@ -129,7 +129,19 @@ The deployment depends on which KMS provider you use. Here are configurations fo
 
 #### AWS KMS
 
-If you are using AWS KMS, the sidecar needs AWS credentials. The cleanest approach is IRSA (IAM Roles for Service Accounts):
+If you are using AWS KMS, the sidecar needs AWS credentials. The cleanest approach is IRSA (IAM Roles for Service Accounts). Annotate the repo-server ServiceAccount with the IAM role:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/argocd-sops-role
+```
+
+Then run the sidecar under that ServiceAccount:
 
 ```yaml
 apiVersion: apps/v1
@@ -139,10 +151,6 @@ metadata:
   namespace: argocd
 spec:
   template:
-    metadata:
-      annotations:
-        # Enable IRSA for AWS KMS access
-        eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/argocd-sops-role
     spec:
       serviceAccountName: argocd-repo-server
       containers:
@@ -283,7 +291,7 @@ sops secrets/database.yaml
 
 ## Combining SOPS with Helm or Kustomize
 
-For more advanced setups, you can chain SOPS decryption with Helm or Kustomize:
+For more advanced setups, you can chain SOPS decryption with Helm or Kustomize. Make sure the sidecar image also includes the tool you run, such as `kustomize`:
 
 ```yaml
 # plugin.yaml for sops + kustomize
@@ -298,9 +306,11 @@ spec:
     args:
       - |
         # Decrypt all SOPS-encrypted files in place before Kustomize runs
-        find . -name "*.enc.yaml" -o -name "*.enc.yml" | while read -r file; do
-          decrypted="${file%.enc.yaml}.yaml"
-          decrypted="${decrypted%.enc.yml}.yml"
+        find . -type f \( -name "*.enc.yaml" -o -name "*.enc.yml" \) | while read -r file; do
+          case "$file" in
+            *.enc.yaml) decrypted="${file%.enc.yaml}.yaml" ;;
+            *.enc.yml) decrypted="${file%.enc.yml}.yml" ;;
+          esac
           sops --decrypt "$file" > "$decrypted"
         done
   generate:
@@ -325,7 +335,7 @@ spec:
     targetRevision: main
     path: environments/production
     plugin:
-      name: sops-decrypt
+      name: sops-decrypt-v1.0
   destination:
     server: https://kubernetes.default.svc
     namespace: my-app
@@ -333,7 +343,7 @@ spec:
 
 ## Security Considerations
 
-- The decrypted secrets only exist in memory during manifest generation. They are never written to disk on the repo-server.
+- With the basic plugin, decrypted secrets are written only to stdout during manifest generation and are not written back into the Git working tree. If you decrypt files in an `init` step, write them only to the plugin sidecar's isolated workspace or temporary volume.
 - Use RBAC to restrict which ArgoCD projects can use the SOPS plugin.
 - Rotate your KMS keys regularly and re-encrypt your SOPS files when you do.
 - Consider using separate KMS keys for different environments (dev, staging, production).
