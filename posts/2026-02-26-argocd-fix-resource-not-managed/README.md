@@ -44,17 +44,17 @@ graph TD
 kubectl get configmap argocd-cm -n argocd -o yaml | grep resourceTrackingMethod
 ```
 
-If not set, ArgoCD defaults to label-based tracking using the `app.kubernetes.io/instance` label.
+If not set, current ArgoCD versions default to annotation-based tracking using the `argocd.argoproj.io/tracking-id` annotation. Older installations might still use label-based tracking with the `app.kubernetes.io/instance` label.
 
 ## Cause 1: Resource Was Created Outside ArgoCD
 
-If a resource was created manually with `kubectl apply` or by another tool, it will not have ArgoCD tracking labels:
+If a resource was created manually with `kubectl apply` or by another tool, it will not have ArgoCD tracking metadata:
 
 ```bash
-# Check if the resource has ArgoCD tracking labels
+# Check if the resource has ArgoCD tracking metadata
 
 kubectl get deployment my-deployment -n production -o yaml | \
-  grep "app.kubernetes.io/instance"
+  grep -E "argocd.argoproj.io/tracking-id|app.kubernetes.io/instance"
 ```
 
 **Fix by adding the resource to your Git manifests:**
@@ -62,7 +62,7 @@ kubectl get deployment my-deployment -n production -o yaml | \
 1. Add the resource definition to your application's Git source
 2. Sync the application
 
-ArgoCD will adopt the resource and add tracking labels during the sync.
+ArgoCD will adopt the resource and add tracking metadata during the sync.
 
 **If you want to adopt the resource without recreating it, use ServerSideApply:**
 
@@ -77,21 +77,22 @@ spec:
       - ServerSideApply=true
 ```
 
-This allows ArgoCD to take ownership of existing resources without deleting them first.
+This allows ArgoCD to apply changes to existing resources without deleting them first.
 
-## Cause 2: Tracking Labels Were Removed
+## Cause 2: Tracking Metadata Was Removed
 
-Another application or process might have removed the ArgoCD tracking labels:
+Another application or process might have removed the ArgoCD tracking metadata:
 
 ```bash
-# Check the resource's labels
-kubectl get deployment my-deployment -n production --show-labels
+# Check the resource's labels and annotations
+kubectl get deployment my-deployment -n production -o yaml | \
+  grep -E "argocd.argoproj.io/tracking-id|app.kubernetes.io/instance"
 ```
 
 **Fix by re-syncing the application:**
 
 ```bash
-# Force a sync to re-apply tracking labels
+# Force a sync to re-apply tracking metadata
 argocd app sync my-app --force
 ```
 
@@ -106,7 +107,7 @@ If you changed the tracking method (e.g., from label to annotation), existing re
 argocd app sync my-app --force
 ```
 
-Or use the migration tool:
+Or update the ConfigMap explicitly:
 
 ```bash
 # Check current tracking method
@@ -121,31 +122,35 @@ kubectl patch configmap argocd-cm -n argocd \
 argocd app sync my-app --force
 ```
 
-## Cause 4: Application Name Does Not Match Tracking Label
+## Cause 4: Application Name Does Not Match Tracking Metadata
 
-The `app.kubernetes.io/instance` label value must match the ArgoCD application name:
+For label-based tracking, the `app.kubernetes.io/instance` label value must match the ArgoCD application name. For annotation-based tracking, the application name is part of the `argocd.argoproj.io/tracking-id` value:
 
 ```bash
 # Check the label value
 kubectl get deployment my-deployment -n production \
   -o jsonpath='{.metadata.labels.app\.kubernetes\.io/instance}'
+
+# Check the annotation value
+kubectl get deployment my-deployment -n production \
+  -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/tracking-id}'
 ```
 
-If the label says `old-app-name` but your application is `new-app-name`, ArgoCD will not recognize the resource.
+If the tracking metadata says `old-app-name` but your application is `new-app-name`, ArgoCD will not recognize the resource.
 
-**Fix by updating the application name or the labels:**
+**Fix by updating the application name in Git or re-syncing the desired resource:**
 
 ```bash
-# Option 1: Rename the ArgoCD application
-argocd app set my-app --name old-app-name
+# Option 1: Update the Application manifest metadata.name in Git, then apply it
+kubectl apply -f application.yaml
 
-# Option 2: Force sync to update the labels
+# Option 2: Force sync to update the tracking metadata
 argocd app sync my-app --force
 ```
 
 ## Cause 5: Resource Created by an Operator
 
-Many Kubernetes operators create resources dynamically. These operator-created resources will not have ArgoCD tracking labels because ArgoCD did not create them.
+Many Kubernetes operators create resources dynamically. These operator-created resources will not have ArgoCD tracking metadata because ArgoCD did not create them.
 
 **For operator-managed resources, you have several options:**
 
@@ -178,7 +183,7 @@ spec:
 
 ## Cause 6: Resource in a Different Namespace
 
-ArgoCD applications target specific namespaces. If a resource exists in a different namespace than what the application manages, it will not be tracked:
+ArgoCD applications target a specific cluster and namespace. If a namespaced resource exists in a different namespace than the desired manifest or destination namespace, ArgoCD will treat it as a different resource:
 
 ```bash
 # Check which namespace the app targets
@@ -188,7 +193,7 @@ argocd app get my-app | grep Namespace
 kubectl get deployment my-deployment --all-namespaces
 ```
 
-**Fix by ensuring the resource is in the correct namespace or adding the namespace to the application:**
+**Fix by ensuring the resource manifest and application destination use the intended namespace:**
 
 ```yaml
 spec:
@@ -252,7 +257,7 @@ This is the cleanest approach as it does not require deleting the resource.
 ### Method 3: Label the Resource Manually
 
 ```bash
-# Add the tracking label manually
+# Add the tracking label manually if using label-based tracking
 kubectl label deployment my-deployment -n production \
   app.kubernetes.io/instance=my-app
 
@@ -277,4 +282,4 @@ argocd app resources my-app --output tree
 
 ## Summary
 
-The "resource is not managed" error means ArgoCD's tracking system does not associate the resource with any application. Fix it by ensuring the resource is defined in your application's Git source and syncing the application. For existing resources you want to adopt, use ServerSideApply to take ownership without recreation. If you changed the tracking method, force sync applications to update tracking identifiers. Always verify resource tracking with `kubectl get <resource> -o yaml | grep argocd`.
+The "resource is not managed" error means ArgoCD's tracking system does not associate the resource with any application. Fix it by ensuring the resource is defined in your application's Git source and syncing the application. For existing resources you want to adopt, use ServerSideApply to apply changes without recreation. If you changed the tracking method, force sync applications to update tracking identifiers. Always verify resource tracking with `kubectl get <resource> -o yaml | grep argocd`.
