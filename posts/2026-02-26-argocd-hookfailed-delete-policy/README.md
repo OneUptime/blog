@@ -35,7 +35,7 @@ graph TD
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: deploy-audit
+  generateName: deploy-audit-
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookFailed
@@ -108,7 +108,7 @@ When the hook produces output you want to review:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: security-scan
+  generateName: security-scan-
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookFailed
@@ -133,16 +133,16 @@ spec:
   backoffLimit: 1
 ```
 
-### Non-Critical Hooks Where Failures Are Expected
+### Non-Critical Hooks Where Failed Resources Do Not Need Retention
 
-If you have a hook that sometimes fails due to transient external dependencies and the failure is acceptable:
+If you have a hook that sometimes fails due to transient external dependencies and you do not need to keep failed Job objects:
 
 ```yaml
-# Try to update external dashboard - failure is acceptable
+# Try to update external dashboard - failed Jobs do not need retention
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: update-dashboard
+  generateName: update-dashboard-
   annotations:
     argocd.argoproj.io/hook: PostSync
     argocd.argoproj.io/hook-delete-policy: HookFailed
@@ -157,7 +157,7 @@ spec:
             - -c
             - |
               # Update Grafana dashboard annotation
-              curl -X POST "https://grafana.internal/api/annotations" \
+              curl -sf -X POST "https://grafana.internal/api/annotations" \
                 -H "Authorization: Bearer ${GRAFANA_TOKEN}" \
                 -H "Content-Type: application/json" \
                 -d "{
@@ -229,11 +229,11 @@ annotations:
   argocd.argoproj.io/hook-delete-policy: HookFailed, BeforeHookCreation
 ```
 
-Failed hooks are deleted immediately, and any remaining successful hooks are cleaned up before the next sync. Only the most recent successful hook exists at any time.
+Failed hooks are deleted immediately, and, when using a fixed `metadata.name`, any remaining successful hook is cleaned up before the next sync. Only the most recent successful hook exists at any time.
 
 ## Accumulation of Successful Hooks
 
-Be aware that with only `HookFailed` set, successful hook resources accumulate over time. If you sync frequently, you might end up with many completed Jobs:
+Be aware that with only `HookFailed` set, successful hook resources accumulate over time when you use unique names or `generateName`. If you sync frequently, you might end up with many completed Jobs:
 
 ```bash
 kubectl get jobs -n my-app
