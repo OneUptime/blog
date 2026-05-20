@@ -63,7 +63,7 @@ If you want to sync an application with this option on a one-time basis without 
 
 ```bash
 # Sync with ApplyOutOfSyncOnly using the CLI
-argocd app sync my-large-app --sync-option ApplyOutOfSyncOnly=true
+argocd app sync my-large-app --apply-out-of-sync-only
 ```
 
 This is handy for testing the behavior before committing it to your Application spec.
@@ -104,7 +104,7 @@ This option shines in several scenarios:
 
 **Large applications with many resources.** If your application has dozens or hundreds of Kubernetes resources, applying only what changed saves significant time.
 
-**Applications with resources that have side effects on apply.** Some resources trigger actions when applied, even if nothing changed. For example, applying a Job spec might cause Kubernetes to restart it. ApplyOutOfSyncOnly avoids this.
+**Applications with resources that have side effects on apply.** Some custom resources and controllers react to update requests even when the meaningful desired state has not changed. ApplyOutOfSyncOnly avoids sending unnecessary apply operations for resources that ArgoCD already considers synced.
 
 **High-frequency sync environments.** If you have auto-sync enabled and your team pushes to Git frequently, each sync should be as lean as possible.
 
@@ -132,6 +132,8 @@ metadata:
   name: microservices
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/microservices.git
@@ -140,16 +142,16 @@ spec:
           - path: services/*
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/microservices.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path.basename}}'
+        namespace: '{{.path.basename}}'
       syncPolicy:
         automated:
           prune: true
@@ -170,7 +172,7 @@ You can observe the effect of ApplyOutOfSyncOnly by watching the sync operation 
 argocd app get my-large-app --show-operation
 
 # Watch the sync in real time
-argocd app sync my-large-app --sync-option ApplyOutOfSyncOnly=true --dry-run
+argocd app sync my-large-app --apply-out-of-sync-only --dry-run
 ```
 
 The `--dry-run` flag shows you what would be synced without actually doing it. This lets you verify that only the expected resources are in the sync plan.
