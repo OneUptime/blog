@@ -54,7 +54,7 @@ The sync result tells you exactly which resources failed and why. Always start h
 If the sync status shows "ComparisonError," the problem is in generating manifests from your source.
 
 ```bash
-# Try generating manifests locally
+# View the manifests ArgoCD generated
 argocd app manifests my-app --source live
 argocd app manifests my-app --source git
 
@@ -126,7 +126,7 @@ Resource Conflicts
 
 ```bash
 # Check if another controller manages the resource
-kubectl get deployment my-deployment -n my-namespace -o jsonpath='{.metadata.annotations}' | jq .
+kubectl get deployment my-deployment -n my-namespace -o json | jq '.metadata.annotations'
 
 # Check for FailOnSharedResource
 argocd app get my-app -o json | jq '.spec.syncPolicy.syncOptions'
@@ -155,14 +155,18 @@ argocd app get my-app -o json | jq '
 '
 
 # Check hook pod logs
-kubectl get pods -n my-namespace -l argocd.argoproj.io/hook
-kubectl logs -n my-namespace <hook-pod-name>
+kubectl get jobs,pods -n my-namespace -o json | jq -r '
+  .items[] |
+  select(.metadata.annotations["argocd.argoproj.io/hook"] != null) |
+  "\(.kind)/\(.metadata.name): \(.metadata.annotations["argocd.argoproj.io/hook"])"
+'
+kubectl logs -n my-namespace job/<hook-job-name>
 ```
 
 Common hook issues:
 - Job fails because the container exits with non-zero code
 - Hook cannot pull the container image
-- Hook times out (default is 2 hours for sync operations)
+- Hook times out before completing
 - Hook has wrong RBAC to perform its task
 
 ## Step 5: Check Prune Failures
@@ -188,7 +192,7 @@ Sometimes sync failures are caused by ArgoCD infrastructure problems:
 kubectl get pods -n argocd
 
 # Check controller health - this is the component that does syncing
-kubectl logs -n argocd deploy/argocd-application-controller --tail=100 | grep -i "error\|fail\|oom"
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=100 | grep -i "error\|fail\|oom"
 
 # Check repo server - this generates manifests
 kubectl logs -n argocd deploy/argocd-repo-server --tail=100 | grep -i "error\|fail"
@@ -236,7 +240,7 @@ kubectl exec -n argocd deploy/argocd-repo-server -- \
   git ls-remote https://github.com/your-org/your-repo.git HEAD
 
 # Verify the controller can reach the target cluster
-kubectl exec -n argocd deploy/argocd-application-controller -- \
+kubectl exec -n argocd statefulset/argocd-application-controller -- \
   curl -sk https://kubernetes.default.svc/version
 ```
 
@@ -282,7 +286,7 @@ done
 
 # Recent controller errors
 echo -e "\n--- Recent Controller Errors ---"
-kubectl logs -n $NS deploy/argocd-application-controller --tail=30 2>/dev/null | \
+kubectl logs -n $NS statefulset/argocd-application-controller --tail=30 2>/dev/null | \
   grep -i "error.*$APP\|$APP.*error" || echo "No recent controller errors for $APP"
 
 # Recent repo server errors
