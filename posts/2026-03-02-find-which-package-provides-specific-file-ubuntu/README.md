@@ -31,7 +31,7 @@ dpkg -S /etc/ssh/sshd_config
 # openssh-server: /etc/ssh/sshd_config
 
 dpkg -S /usr/lib/x86_64-linux-gnu/libssl.so.3
-# libssl3:amd64: /usr/lib/x86_64-linux-gnu/libssl.so.3
+# libssl3t64:amd64: /usr/lib/x86_64-linux-gnu/libssl.so.3
 
 # Search by filename pattern (not full path)
 dpkg -S '*libssl*'
@@ -57,13 +57,13 @@ Now you can search:
 ```bash
 # Find which package provides a specific file path
 apt-file search /usr/bin/dig
-# dnsutils: /usr/bin/dig
+# bind9-dnsutils: /usr/bin/dig
 
 # Search by filename only (searches across all paths)
 apt-file search libpng.so
 # libpng-dev: /usr/lib/x86_64-linux-gnu/libpng.so
-# libpng16-16: /usr/lib/x86_64-linux-gnu/libpng16.so.16
-# libpng16-16: /usr/lib/x86_64-linux-gnu/libpng16.so.16.37.0
+# libpng16-16t64: /usr/lib/x86_64-linux-gnu/libpng16.so.16
+# libpng16-16t64: /usr/lib/x86_64-linux-gnu/libpng16.so.16.43.0
 
 # Find the package that provides a specific header file
 apt-file search curl/curl.h
@@ -83,7 +83,7 @@ apt-cache search "network traffic monitor"
 # Search for packages by name pattern
 apt-cache search nginx
 
-# Show detailed info about what files a package provides
+# Show package metadata, such as dependencies
 apt-cache show nginx | grep -A 5 "Depends"
 ```
 
@@ -107,7 +107,7 @@ dpkg -L curl
 # /usr/share/man/man1/curl.1.gz
 ```
 
-This is useful for understanding what a package will put on your filesystem before installing it.
+This is useful for understanding what an installed package put on your filesystem.
 
 ## Searching for a Command's Package
 
@@ -138,8 +138,8 @@ When a compiled application reports a missing shared library:
 apt-file search libreadline.so.8
 
 # Output:
-# libreadline8: /lib/x86_64-linux-gnu/libreadline.so.8
-# libreadline8: /lib/x86_64-linux-gnu/libreadline.so.8.2
+# libreadline8t64: /lib/x86_64-linux-gnu/libreadline.so.8
+# libreadline8t64: /lib/x86_64-linux-gnu/libreadline.so.8.2
 ```
 
 Install the indicated package to resolve it.
@@ -165,10 +165,10 @@ On a server where you're inheriting an existing setup:
 ```bash
 # Who owns this config file?
 dpkg -S /etc/logrotate.d/nginx
-# nginx: /etc/logrotate.d/nginx
+# nginx-common: /etc/logrotate.d/nginx
 
 # Find all config files from a package
-dpkg -L nginx | grep /etc/
+dpkg -L nginx-common | grep /etc/
 ```
 
 ### Verifying Package Integrity
@@ -177,13 +177,13 @@ dpkg -L nginx | grep /etc/
 
 ```bash
 # Find the package owning a file
-pkg=$(dpkg -S /usr/bin/sshd 2>/dev/null | cut -d: -f1)
+pkg=$(dpkg -S /usr/sbin/sshd 2>/dev/null | cut -d: -f1)
 
 # Then verify all files from that package
 sudo dpkg -V "$pkg"
 
 # dpkg -V shows nothing if files are intact
-# Modified files are listed with what changed (permissions, checksum, etc.)
+# Modified files are listed with what changed (for example, file contents)
 ```
 
 ## Using apt-cache showpkg for Reverse Dependencies
