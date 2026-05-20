@@ -101,7 +101,7 @@ From inside the ArgoCD repo-server pod, verify the Helm repository is reachable:
 
 ```bash
 # Get the repo-server pod name
-REPO_POD=$(kubectl -n argocd get pod -l app.kubernetes.io/component=repo-server -o jsonpath='{.items[0].metadata.name}')
+REPO_POD=$(kubectl -n argocd get pod -l app.kubernetes.io/name=argocd-repo-server -o jsonpath='{.items[0].metadata.name}')
 
 # Test DNS resolution
 kubectl -n argocd exec $REPO_POD -- nslookup charts.example.com
@@ -131,7 +131,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/component: repo-server
+      app.kubernetes.io/name: argocd-repo-server
   policyTypes:
     - Egress
   egress:
@@ -289,19 +289,22 @@ If new chart versions are not appearing, the repository server may not be regene
 
 ## Step 8: Proxy Issues
 
-If ArgoCD sits behind a corporate proxy, configure proxy settings:
+If ArgoCD sits behind a corporate proxy, configure proxy settings on the repository Secret:
 
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cmd-params-cm
+  name: helm-repo-with-proxy
   namespace: argocd
-data:
-  # HTTP proxy settings
-  reposerver.http.proxy: "http://proxy.example.com:8080"
-  reposerver.https.proxy: "http://proxy.example.com:8080"
-  reposerver.no.proxy: "kubernetes.default.svc,10.0.0.0/8"
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: helm
+  name: private-charts
+  url: https://charts.example.com
+  proxy: "http://proxy.example.com:8080"
+  noProxy: "kubernetes.default.svc,10.0.0.0/8"
 ```
 
 Alternatively, set environment variables on the repo-server deployment:
@@ -329,7 +332,7 @@ argocd repo get "$REPO_URL" 2>&1
 
 echo ""
 echo "=== Repo Server Pod Status ==="
-kubectl -n $NAMESPACE get pods -l app.kubernetes.io/component=repo-server
+kubectl -n $NAMESPACE get pods -l app.kubernetes.io/name=argocd-repo-server
 
 echo ""
 echo "=== Recent Repo Server Errors ==="
