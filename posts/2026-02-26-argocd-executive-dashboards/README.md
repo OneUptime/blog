@@ -129,9 +129,9 @@ The top row should give an instant health assessment. Use large stat panels with
 }
 ```
 
-## Tier 2: DORA Metrics with Trends
+## Tier 2: DORA-Style Metrics with Trends
 
-The middle section shows the four DORA metrics with week-over-week trend indicators.
+The middle section shows DORA-style deployment metrics with week-over-week trend indicators.
 
 ### Deployment Frequency with Trend
 
@@ -161,7 +161,7 @@ The middle section shows the four DORA metrics with week-over-week trend indicat
   "title": "Deployment Success Rate",
   "type": "gauge",
   "targets": [{
-    "expr": "sum(increase(argocd_app_sync_total{phase='Succeeded'}[30d])) / sum(increase(argocd_app_sync_total[30d])) * 100"
+    "expr": "sum(increase(argocd_app_sync_total{phase='Succeeded'}[30d])) / clamp_min(sum(increase(argocd_app_sync_total[30d])), 1) * 100"
   }],
   "fieldConfig": {
     "defaults": {
@@ -229,7 +229,7 @@ The bottom section lets executives drill into specific teams or projects.
       "format": "table"
     },
     {
-      "expr": "sum(increase(argocd_app_sync_total{phase='Succeeded'}[7d])) by (project)",
+      "expr": "sum by (project) (increase(argocd_app_sync_total{phase='Succeeded'}[7d]))",
       "legendFormat": "{{project}}",
       "instant": true,
       "format": "table"
@@ -276,9 +276,9 @@ spec:
 
         - record: argocd:exec_weekly_deploys_by_project
           expr: >
-            sum(increase(
+            sum by (project) (increase(
               argocd_app_sync_total{phase="Succeeded"}[7d]
-            )) by (project)
+            ))
 
         - record: argocd:exec_success_rate_30d
           expr: >
@@ -318,6 +318,14 @@ curl -X POST http://grafana:3000/api/annotations \
 Automate annotations from ArgoCD Notifications:
 
 ```yaml
+service.webhook.grafana: |
+  url: http://grafana:3000
+  headers:
+    - name: Authorization
+      value: Bearer $grafana-token
+    - name: Content-Type
+      value: application/json
+
 template.grafana-annotation: |
   webhook:
     grafana:
@@ -327,22 +335,22 @@ template.grafana-annotation: |
         {
           "dashboardUID": "argocd-executive",
           "tags": ["deployment", "{{.app.spec.project}}"],
-          "text": "Deployed {{.app.metadata.name}} revision {{.app.status.sync.revision | truncate 8}}"
+          "text": "Deployed {{.app.metadata.name}} revision {{.app.status.sync.revision | trunc 8}}"
         }
 ```
 
 ## Scheduled Reports
 
-For executives who prefer email reports, create a Grafana reporting schedule:
+For executives who prefer email reports, create a Grafana reporting schedule in Grafana Cloud or Grafana Enterprise:
 
-1. Install the Grafana Image Renderer plugin
+1. Set up the Grafana Image Renderer service if you use Grafana Enterprise
 2. Set up a Grafana Report with the executive dashboard
 3. Schedule weekly delivery to the leadership distribution list
 
-Alternatively, use the Grafana API to generate snapshots:
+Alternatively, use the Grafana API to generate snapshots that you email separately:
 
 ```bash
-# Generate a dashboard snapshot and email it
+# Generate a dashboard snapshot
 curl -X POST http://grafana:3000/api/snapshots \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $GRAFANA_TOKEN" \
