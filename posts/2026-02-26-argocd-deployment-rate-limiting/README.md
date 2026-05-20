@@ -42,6 +42,14 @@ metadata:
   name: db-migration
   annotations:
     argocd.argoproj.io/sync-wave: "1"
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: alpine:3.20
+          command: ["sh", "-c", "echo running migrations"]
 ---
 # Backend deployment (wave 2)
 apiVersion: apps/v1
@@ -50,6 +58,21 @@ metadata:
   name: api-server
   annotations:
     argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      containers:
+        - name: api-server
+          image: ghcr.io/myorg/api-server:1.0.0
+          ports:
+            - containerPort: 8080
 ---
 # Frontend deployment (wave 3)
 apiVersion: apps/v1
@@ -58,6 +81,21 @@ metadata:
   name: web-frontend
   annotations:
     argocd.argoproj.io/sync-wave: "3"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web-frontend
+  template:
+    metadata:
+      labels:
+        app: web-frontend
+    spec:
+      containers:
+        - name: web-frontend
+          image: ghcr.io/myorg/web-frontend:1.0.0
+          ports:
+            - containerPort: 8080
 ```
 
 Each wave completes (resources become healthy) before the next wave starts. This ensures orderly deployment within an application.
@@ -78,7 +116,7 @@ data:
   controller.status.processors: "20"
   controller.operation.processors: "10"
 
-  # Rate limit API calls
+  # Repo-server RPC timeout
   controller.repo.server.timeout.seconds: "60"
 
   # Limit concurrent manifest generations
@@ -90,8 +128,9 @@ The key settings:
 - `controller.operation.processors` limits how many applications can sync simultaneously. Default is 10.
 - `controller.status.processors` limits how many applications can have their status refreshed simultaneously.
 - `reposerver.parallelism.limit` limits concurrent manifest generation requests.
+- `controller.repo.server.timeout.seconds` controls how long the controller waits for repo-server RPC calls. It is not a rate limiter, but it can prevent long manifest generations from tying up controller workers indefinitely.
 
-For the controller deployment itself:
+For the controller deployment itself, patch the controller container args:
 
 ```yaml
 apiVersion: apps/v1
@@ -110,15 +149,23 @@ spec:
             - "5"    # Only 5 concurrent syncs
             - --status-processors
             - "10"
-            - --app-resync
-            - "180"  # Check for changes every 3 minutes instead of default
 ```
 
 Reducing `--operation-processors` is the most direct way to rate limit deployments.
 
 ## Strategy 3: ApplicationSet Progressive Rollout
 
-When managing multiple instances of the same application, use ApplicationSet's progressive sync:
+When managing multiple instances of the same application, enable ApplicationSet progressive syncs and use the RollingSync strategy:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  applicationsetcontroller.enable.progressive.syncs: "true"
+```
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -190,6 +237,19 @@ metadata:
   name: api-server
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+    spec:
+      containers:
+        - name: api-server
+          image: ghcr.io/myorg/api-server:1.0.0
+          ports:
+            - containerPort: 8080
   strategy:
     canary:
       steps:
@@ -238,7 +298,7 @@ spec:
             - -c
             - |
               # Check if we are allowed to deploy
-              RESPONSE=$(curl -s -w "%{http_code}" \
+              HTTP_CODE=$(curl -s -o /tmp/deployment-gate-response -w "%{http_code}" \
                 -X POST \
                 -H "Content-Type: application/json" \
                 -d '{
@@ -247,8 +307,6 @@ spec:
                   "requestor": "argocd"
                 }' \
                 http://deployment-gate.platform:8080/api/v1/request-deploy)
-
-              HTTP_CODE=$(echo "$RESPONSE" | tail -c 4)
 
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "Deployment approved"
@@ -329,17 +387,9 @@ spec:
       rules:
         - record: deployment:rate:1h
           expr: |
-            count(
-              argocd_app_sync_total{
-                phase="Succeeded"
-              } offset 1h
-            ) - count(
-              argocd_app_sync_total{
-                phase="Succeeded"
-              }
-            )
+            sum(rate(argocd_app_sync_total{phase="Succeeded"}[1h]))
         - alert: DeploymentStorm
-          expr: deployment:rate:1h > 10
+          expr: deployment:rate:1h * 3600 > 10
           for: 5m
           labels:
             severity: warning
