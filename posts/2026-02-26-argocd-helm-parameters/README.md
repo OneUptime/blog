@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Helm, CI/CD
 
-Description: Learn how to pass Helm parameters in ArgoCD applications using set parameters, set-string, set-json, and environment variables for dynamic configuration.
+Description: Learn how to pass Helm parameters in ArgoCD applications using set parameters, set-string, structured values, and environment variables for dynamic configuration.
 
 ---
 
 Helm parameters in ArgoCD map directly to Helm's `--set` flags. They let you override individual values without maintaining separate values files, making them particularly useful for CI/CD pipelines where you need to dynamically set values like image tags, build numbers, or feature flags.
 
-This guide covers all the ways to pass Helm parameters in ArgoCD, including standard parameters, string parameters, JSON parameters, and integration with CI/CD pipelines.
+This guide covers all the ways to pass Helm parameters in ArgoCD, including standard parameters, string parameters, structured values, and integration with CI/CD pipelines.
 
 ## Basic Helm Parameters
 
@@ -47,7 +47,7 @@ spec:
     namespace: production
 ```
 
-Each parameter is equivalent to running `helm install --set key=value`.
+Each parameter is equivalent to passing `--set key=value` when ArgoCD runs `helm template`.
 
 ## Using the CLI to Set Parameters
 
@@ -94,22 +94,9 @@ Using the CLI:
 argocd app set my-app --helm-set-string image.tag=1.0
 ```
 
-## JSON Parameters
+## Complex Values
 
-For complex values like arrays or nested objects, use JSON parameters:
-
-```yaml
-helm:
-  parameters:
-    # Set a JSON value
-    - name: resources.requests
-      value: '{"memory": "512Mi", "cpu": "500m"}'
-    # Set an array
-    - name: env
-      value: '[{"name": "LOG_LEVEL", "value": "info"}, {"name": "PORT", "value": "8080"}]'
-```
-
-Alternatively, use the `valuesObject` field for complex structures:
+ArgoCD Application parameters map to Helm's `--set` and `--set-string` behavior, not Helm's `--set-json`. For complex values like arrays or nested objects, use the `valuesObject` field:
 
 ```yaml
 helm:
@@ -203,7 +190,7 @@ jobs:
 
           # Set the image tag parameter
           argocd app set my-app-production \
-            -p image.tag=${{ env.IMAGE_TAG }}
+            -p image.tag=$IMAGE_TAG
 
           # Wait for sync
           argocd app sync my-app-production
@@ -229,19 +216,21 @@ deploy-production:
 
 ```groovy
 pipeline {
+    agent any
+
     stages {
         stage('Deploy') {
             steps {
-                sh """
-                    argocd login ${ARGOCD_SERVER} \
-                        --username ${ARGOCD_USER} \
-                        --password ${ARGOCD_PASSWORD} \
+                sh '''
+                    argocd login "$ARGOCD_SERVER" \
+                        --username "$ARGOCD_USER" \
+                        --password "$ARGOCD_PASSWORD" \
                         --grpc-web
                     argocd app set my-app-production \
-                        -p image.tag=${env.BUILD_NUMBER}
+                        -p image.tag="$BUILD_NUMBER"
                     argocd app sync my-app-production
                     argocd app wait my-app-production --health
-                """
+                '''
             }
         }
     }
