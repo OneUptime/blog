@@ -66,9 +66,9 @@ metadata:
   namespace: argocd
 data:
   service.github: |
-    appID: 0
-    installationID: 0
-    privateKey: ""
+    appID: <app-id>
+    installationID: <installation-id>
+    privateKey: $github-app-private-key
 ```
 
 Wait - the above is for GitHub App authentication. For personal access tokens, use the webhook approach instead, which gives you more control over the status format.
@@ -194,32 +194,39 @@ For organizations, a GitHub App is more secure than personal access tokens:
 Store the private key:
 
 ```bash
-kubectl patch secret argocd-notifications-secret -n argocd \
-  --type merge \
-  -p "{\"stringData\": {\"github-app-private-key\": \"$(cat private-key.pem)\"}}"
+kubectl create secret generic argocd-notifications-secret -n argocd \
+  --from-file=github-app-private-key=private-key.pem \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 With the GitHub App service, use the built-in template format:
 
 ```yaml
-  template.github-status-success: |
+  template.github-commit-status-success: |
     github:
       status:
         state: success
         label: "argocd/{{ .app.metadata.name }}"
         targetURL: "https://argocd.example.com/applications/{{ .app.metadata.name }}"
 
-  template.github-status-failure: |
+  template.github-commit-status-failure: |
     github:
       status:
         state: failure
         label: "argocd/{{ .app.metadata.name }}"
         targetURL: "https://argocd.example.com/applications/{{ .app.metadata.name }}"
 
-  template.github-status-pending: |
+  template.github-commit-status-pending: |
     github:
       status:
         state: pending
+        label: "argocd/{{ .app.metadata.name }}"
+        targetURL: "https://argocd.example.com/applications/{{ .app.metadata.name }}"
+
+  template.github-commit-status-degraded: |
+    github:
+      status:
+        state: error
         label: "argocd/{{ .app.metadata.name }}"
         targetURL: "https://argocd.example.com/applications/{{ .app.metadata.name }}"
 ```
@@ -255,20 +262,26 @@ kubectl annotate app my-app -n argocd \
   notifications.argoproj.io/subscribe.on-deployed-github.github-status=""
 kubectl annotate app my-app -n argocd \
   notifications.argoproj.io/subscribe.on-sync-failed-github.github-status=""
+kubectl annotate app my-app -n argocd \
+  notifications.argoproj.io/subscribe.on-health-degraded-github.github-status=""
 ```
+
+If you use the GitHub App service instead of the webhook service, replace `.github-status` with `.github` in the annotation keys.
 
 For default subscriptions:
 
 ```yaml
   subscriptions: |
     - recipients:
-        - github-status:
+        - github-status
       triggers:
         - on-sync-running-github
         - on-deployed-github
         - on-sync-failed-github
         - on-health-degraded-github
 ```
+
+If you use the GitHub App service instead, use `github` as the default subscription recipient.
 
 ## Branch Protection Integration
 
@@ -279,7 +292,7 @@ With commit statuses in place, you can use them in GitHub Branch Protection rule
 3. Enable "Require status checks to pass before merging"
 4. Search for and select your ArgoCD status context (`argocd/your-app-name`)
 
-This prevents merging until ArgoCD confirms the deployment succeeded.
+This prevents merging until ArgoCD confirms the deployment succeeded, as long as ArgoCD is setting the status on the same commit SHA that the pull request requires.
 
 ## Debugging
 
