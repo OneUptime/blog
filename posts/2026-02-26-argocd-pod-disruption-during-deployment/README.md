@@ -17,7 +17,7 @@ There are two types of pod disruptions:
 **Voluntary disruptions** (things you or the system intentionally trigger):
 - Node drains for maintenance
 - Cluster autoscaler scaling down
-- ArgoCD rolling updates
+- Kubernetes rolling updates triggered by an ArgoCD sync
 - Manual pod deletions
 
 **Involuntary disruptions** (things you cannot control):
@@ -26,7 +26,7 @@ There are two types of pod disruptions:
 - Spot instance reclamation
 - OOM kills
 
-During an ArgoCD deployment, a rolling update is already a voluntary disruption. If another voluntary disruption happens simultaneously, you can end up with fewer pods than your minimum availability requires.
+During an ArgoCD deployment, Kubernetes performs the rolling update after ArgoCD applies the desired Deployment spec. If another voluntary disruption happens simultaneously, you can end up with fewer pods than your minimum availability requires.
 
 ## Pod Disruption Budgets
 
@@ -53,10 +53,12 @@ spec:
 
 The choice between `minAvailable` and `maxUnavailable` matters:
 
-- `minAvailable: 3` with 4 replicas means only 1 can be down at a time (including during deployment)
+- `minAvailable: 3` with 4 replicas means only 1 can be unavailable for voluntary evictions
 - `maxUnavailable: 1` with 4 replicas also means only 1 can be down, but scales better when you change replica counts
 
 For most services, `maxUnavailable: 1` is the better choice because it adapts to replica count changes.
+
+Pods that are unavailable during a rolling update do count against the disruption budget, but PDBs do not limit the Deployment controller during the rollout. Use the Deployment rolling update settings to control rollout availability.
 
 ## Configuring PDB with Rolling Updates
 
@@ -74,7 +76,13 @@ spec:
     rollingUpdate:
       maxSurge: 2        # Create up to 2 extra pods
       maxUnavailable: 0  # Never remove a ready pod before its replacement is ready
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -106,8 +114,8 @@ With this configuration:
 
 - The deployment creates 2 new pods at a time (maxSurge: 2)
 - Old pods are not removed until new pods are ready (maxUnavailable: 0)
-- The PDB ensures that at most 1 pod is disrupted by external factors (node drain, etc.)
-- Combined, you might temporarily have 7 pods running (6 + 2 surge - 1 being removed)
+- The PDB allows at most 1 voluntary eviction by external factors that use the Eviction API (node drain, etc.)
+- Combined, you might temporarily have up to 8 pods during surge, or 7 running if one pod is evicted at the same time
 
 ## Handling Node Drains During Deployment
 
@@ -134,7 +142,7 @@ sequenceDiagram
     D->>D: Continue rolling update
 ```
 
-The PDB will block the node drain from evicting pods if it would violate the disruption budget. The drain will wait (with a timeout) until the PDB allows it.
+The PDB will block the node drain from evicting pods if it would violate the disruption budget. The drain will retry until the PDB allows it or until a configured timeout is reached.
 
 ## Configuring ArgoCD for Disruption Awareness
 
@@ -178,7 +186,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       # Spread pods across nodes and zones
       topologySpreadConstraints:
@@ -201,7 +215,8 @@ spec:
             - weight: 100
               preference:
                 matchExpressions:
-                  - key: node.kubernetes.io/lifecycle
+                  # Replace this with your provider-specific or custom node label.
+                  - key: capacity-type
                     operator: In
                     values:
                       - on-demand
@@ -220,7 +235,13 @@ kind: Deployment
 metadata:
   name: api-server
 spec:
+  selector:
+    matchLabels:
+      app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       terminationGracePeriodSeconds: 90
       containers:
@@ -239,7 +260,8 @@ spec:
                     sleep 20
 
                     # Check if there are still active connections
-                    ACTIVE=$(curl -s http://localhost:8080/admin/connections)
+                    ACTIVE=$(curl -s http://localhost:8080/admin/connections || echo 0)
+                    ACTIVE=${ACTIVE:-0}
                     if [ "$ACTIVE" -gt "0" ]; then
                       echo "Waiting for $ACTIVE connections to drain"
                       sleep 30
@@ -279,7 +301,7 @@ spec:
         maxDuration: 5m
 ```
 
-The retry configuration is important. If a sync fails because pods cannot be scheduled (due to node drain or resource pressure), ArgoCD will retry with exponential backoff.
+The retry configuration is important. If a sync operation fails while the cluster is under pressure or an API operation is temporarily rejected, ArgoCD will retry with exponential backoff.
 
 ## Multi-Replica Deployment with Disruption Protection
 
@@ -371,14 +393,14 @@ spec:
   groups:
     - name: pod_disruptions
       rules:
-        - alert: HighPodEvictionRate
+        - alert: HighEvictedPodCount
           expr: |
-            sum(increase(kube_pod_status_reason{reason="Evicted"}[1h])) by (namespace) > 5
+            sum(kube_pod_status_reason{reason="Evicted"}) by (namespace) > 5
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "High pod eviction rate in {{ $labels.namespace }}"
+            summary: "High evicted pod count in {{ $labels.namespace }}"
 
         - alert: PDBViolation
           expr: |
@@ -393,7 +415,7 @@ spec:
 
 ## Best Practices
 
-1. **Always create PDBs for production services** - Without PDBs, node drains can evict all pods of a service simultaneously.
+1. **Always create PDBs for production services** - Without PDBs, node drains can evict all matching pods on drained nodes.
 
 2. **Coordinate PDB with rolling update strategy** - If your PDB allows `maxUnavailable: 1` and your deployment has `maxUnavailable: 1`, a node drain during deployment could take 2 pods offline.
 
