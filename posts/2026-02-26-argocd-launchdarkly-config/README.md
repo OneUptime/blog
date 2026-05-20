@@ -79,15 +79,15 @@ spec:
     spec:
       containers:
         - name: ld-relay
-          image: launchdarkly/ld-relay:8
+          image: launchdarkly/ld-relay:v8-static-debian12-nonroot
+          args:
+            - --from-env
           ports:
             - containerPort: 8030
               name: http
             - containerPort: 8031
               name: metrics
           env:
-            - name: USE_ENVIRONMENT_VARIABLES
-              value: "true"
             # SDK key from secret
             - name: LD_ENV_production
               valueFrom:
@@ -100,13 +100,11 @@ spec:
                   name: ld-relay-keys
                   key: staging-sdk-key
             # Enable Prometheus metrics
-            - name: PROMETHEUS_ENABLED
+            - name: USE_PROMETHEUS
               value: "true"
             - name: PROMETHEUS_PORT
               value: "8031"
             # Connection settings
-            - name: MAX_CLIENT_CONNECTIONS
-              value: "500"
             - name: HEARTBEAT_INTERVAL
               value: "15s"
             # Redis for persistent storage
@@ -139,6 +137,8 @@ kind: Service
 metadata:
   name: ld-relay
   namespace: launchdarkly
+  labels:
+    app: ld-relay
 spec:
   selector:
     app: ld-relay
@@ -215,13 +215,19 @@ metadata:
   name: web-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: web-app
           image: ghcr.io/myorg/web-app:v3.0.0
           env:
-            # Point SDK to relay proxy instead of LaunchDarkly directly
+            # Example app-specific values; have the application pass these to the SDK's service endpoint configuration
             - name: LD_BASE_URI
               value: "http://ld-relay.launchdarkly.svc.cluster.local:8030"
             - name: LD_STREAM_URI
@@ -233,11 +239,6 @@ spec:
                 secretKeyRef:
                   name: ld-client-keys
                   key: sdk-key
-            # Flag defaults in case relay is unreachable
-            - name: LD_OFFLINE_MODE
-              value: "false"
-            - name: LD_INITIAL_RECONNECT_DELAY
-              value: "1000"
 ```
 
 ## Flag-Aware Deployment Strategy
@@ -256,7 +257,13 @@ metadata:
     launchdarkly.com/flags: "new-checkout-flow,express-payments"
     launchdarkly.com/deployment-strategy: "flag-first"
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
         - name: web-app
@@ -418,7 +425,7 @@ spec:
         - alert: LDRelayHighLatency
           expr: |
             histogram_quantile(0.99,
-              rate(ld_relay_request_duration_seconds_bucket[5m])
+              sum by (le) (rate(launchdarkly_relay_request_duration_bucket[5m]))
             ) > 0.5
           for: 5m
           labels:
@@ -427,7 +434,7 @@ spec:
             summary: "LaunchDarkly Relay Proxy P99 latency above 500ms"
 
         - alert: LDRelayConnectionLost
-          expr: ld_relay_stream_connections == 0
+          expr: launchdarkly_relay_connections{platformCategory="server"} == 0
           for: 1m
           labels:
             severity: critical
