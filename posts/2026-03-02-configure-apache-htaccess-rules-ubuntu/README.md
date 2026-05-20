@@ -124,7 +124,7 @@ RewriteRule ^ https://www.%{HTTP_HOST}%{REQUEST_URI} [R=301,L]
 ### Clean URL Extension Removal
 
 ```apache
-# Remove .html extension from URLs
+# Serve extensionless URLs for .html files
 RewriteEngine On
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.html -f
@@ -147,13 +147,17 @@ Redirect 301 /old-section/ /new-section/
 
 ```apache
 # Block a single IP
-Require all granted
-Require not ip 192.168.1.100
+<RequireAll>
+    Require all granted
+    Require not ip 192.168.1.100
+</RequireAll>
 
 # Block multiple IPs or subnets
-Require all granted
-Require not ip 10.0.0.5
-Require not ip 192.168.0.0/24
+<RequireAll>
+    Require all granted
+    Require not ip 10.0.0.5
+    Require not ip 192.168.0.0/24
+</RequireAll>
 ```
 
 ### Allow Only Specific IPs
@@ -342,7 +346,7 @@ Options -Indexes -ExecCGI +FollowSymLinks
 ## Testing .htaccess Rules
 
 ```bash
-# Test Apache configuration syntax (includes .htaccess parsing)
+# Test Apache main configuration syntax
 sudo apache2ctl configtest
 
 # Test rewrite rules with verbose output
