@@ -76,16 +76,19 @@ opentelemetry-operator:
       repository: otel/opentelemetry-collector-contrib
       tag: 0.112.0
 
+    # Allow the operator to create RBAC for collector Kubernetes receivers/processors
+    createRbacPermissions: true
+
+    # ServiceMonitor for operator metrics
+    serviceMonitor:
+      enabled: true
+      extraLabels:
+        release: kube-prometheus-stack
+
   # Admission webhooks
   admissionWebhooks:
     certManager:
       enabled: true
-
-  # ServiceMonitor for operator metrics
-  serviceMonitor:
-    enabled: true
-    extraLabels:
-      release: kube-prometheus-stack
 
   # Install CRDs
   crds:
@@ -170,6 +173,16 @@ spec:
     - effect: NoSchedule
       operator: Exists
 
+  volumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
+
+  volumes:
+    - name: varlogpods
+      hostPath:
+        path: /var/log/pods
+
   env:
     - name: K8S_NODE_NAME
       valueFrom:
@@ -196,30 +209,7 @@ spec:
         include_file_path: true
         include_file_name: false
         operators:
-          - type: router
-            id: get-format
-            routes:
-              - output: parser-docker
-                expr: 'body matches "^\\{"'
-              - output: parser-crio
-                expr: 'body matches "^[^ Z]+ "'
-          - type: json_parser
-            id: parser-docker
-            output: extract_metadata
-            timestamp:
-              parse_from: attributes.time
-              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-          - type: regex_parser
-            id: parser-crio
-            regex: '^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*) ?(?P<log>.*)$'
-            output: extract_metadata
-            timestamp:
-              parse_from: attributes.time
-              layout: '%Y-%m-%dT%H:%M:%S.%L%j'
-          - type: move
-            id: extract_metadata
-            from: attributes.log
-            to: body
+          - type: container
 
       # Collect Kubernetes events
       k8s_events:
@@ -233,6 +223,8 @@ spec:
       # Add Kubernetes metadata
       k8sattributes:
         auth_type: "serviceAccount"
+        filter:
+          node_from_env_var: K8S_NODE_NAME
         extract:
           metadata:
             - k8s.namespace.name
@@ -255,11 +247,9 @@ spec:
       filter:
         error_mode: ignore
         logs:
-          exclude:
-            match_type: regexp
-            bodies:
-              - '.*password.*'
-              - '.*secret.*'
+          log_record:
+            - 'IsMatch(body, "(?i).*password.*")'
+            - 'IsMatch(body, "(?i).*secret.*")'
 
       memory_limiter:
         check_interval: 5s
@@ -345,10 +335,8 @@ spec:
         endpoint: tempo-distributor.tracing.svc.cluster.local:4317
         tls:
           insecure: true
-      otlp/loki:
-        endpoint: loki-gateway.logging.svc.cluster.local:3100
-        tls:
-          insecure: true
+      otlphttp/loki:
+        endpoint: http://loki-gateway.logging.svc.cluster.local:3100/otlp/v1/logs
       prometheusremotewrite:
         endpoint: http://mimir-nginx.metrics.svc.cluster.local/api/v1/push
 
@@ -361,7 +349,7 @@ spec:
         logs:
           receivers: [otlp]
           processors: [batch]
-          exporters: [otlp/loki]
+          exporters: [otlphttp/loki]
         metrics:
           receivers: [otlp]
           processors: [batch]
@@ -370,7 +358,7 @@ spec:
 
 ## Setting Up Auto-Instrumentation
 
-The operator can automatically inject instrumentation sidecars into your application pods.
+The operator can automatically inject instrumentation into your application pods.
 
 ```yaml
 # telemetry/instrumentation/java-instrumentation.yaml
