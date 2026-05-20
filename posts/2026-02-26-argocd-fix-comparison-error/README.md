@@ -80,9 +80,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Increase timeout from default 60s to 300s
-  reposerver.default.cache.expiration: "5m"
-  timeout.reconciliation: "300s"
+  # Increase the application controller's repo-server RPC timeout from 60s to 300s
+  controller.repo.server.timeout.seconds: "300"
 ```
 
 You can also set the timeout directly on the repo server deployment:
@@ -92,6 +91,7 @@ You can also set the timeout directly on the repo server deployment:
 containers:
   - name: argocd-repo-server
     env:
+      # Increase the config-management tool execution timeout from the default 90s
       - name: ARGOCD_EXEC_TIMEOUT
         value: "300s"
 ```
@@ -122,7 +122,7 @@ resources:
 
 ### 4. Invalid CRDs or Missing Resource Types
 
-If your manifests reference Custom Resource Definitions that do not exist in the target cluster, ArgoCD will fail the comparison because it cannot validate the resource schema.
+If your manifests reference Custom Resource Definitions that do not exist in the target cluster, ArgoCD can fail the comparison or dry-run step because the API server cannot recognize that resource type.
 
 **Check if the CRD exists:**
 
@@ -226,7 +226,7 @@ To avoid ComparisonError in production, consider these practices:
 
 1. **Validate manifests in CI/CD** before pushing to Git. Run `helm template` or `kustomize build` as part of your pipeline.
 
-2. **Monitor repo server health** using ArgoCD's Prometheus metrics. The `argocd_repo_server_git_request_duration_seconds` metric can warn you about slow operations before they become timeouts.
+2. **Monitor repo server health** using ArgoCD's Prometheus metrics. The `argocd_git_request_duration_seconds` metric can warn you about slow Git operations before they become timeouts.
 
 3. **Set appropriate resource limits** for the repo server based on the size and complexity of your repositories.
 
