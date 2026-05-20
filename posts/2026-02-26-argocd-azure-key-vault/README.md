@@ -43,7 +43,7 @@ spec:
   source:
     repoURL: https://charts.external-secrets.io
     chart: external-secrets
-    targetRevision: 0.9.x
+    targetRevision: 2.x
     helm:
       values: |
         installCRDs: true
@@ -66,7 +66,16 @@ The SecretStore tells ESO how to connect to Azure Key Vault. With workload ident
 
 ```yaml
 # azure-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-secrets-sa
+  namespace: external-secrets
+  annotations:
+    azure.workload.identity/client-id: "<WORKLOAD_IDENTITY_CLIENT_ID>"
+    azure.workload.identity/tenant-id: "<TENANT_ID>"
+---
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-key-vault
@@ -85,7 +94,7 @@ If you are not using workload identity, you can use a service principal instead.
 
 ```yaml
 # azure-secret-store-sp.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: azure-key-vault
@@ -111,7 +120,7 @@ Now you can create ExternalSecret resources that ArgoCD manages. These are safe 
 
 ```yaml
 # my-app-secrets.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -184,9 +193,11 @@ spec:
   source:
     repoURL: https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
     chart: secrets-store-csi-driver
-    targetRevision: 1.4.x
+    targetRevision: 1.6.x
     helm:
       values: |
+        enableSecretRotation: true
+        rotationPollInterval: 5m
         syncSecret:
           enabled: true
   destination:
@@ -212,7 +223,7 @@ spec:
   source:
     repoURL: https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
     chart: csi-secrets-store-provider-azure
-    targetRevision: 1.5.x
+    targetRevision: 1.8.x
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
@@ -226,6 +237,14 @@ spec:
 
 ```yaml
 # secret-provider-class.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: my-app-sa
+  namespace: my-app
+  annotations:
+    azure.workload.identity/client-id: "<WORKLOAD_IDENTITY_CLIENT_ID>"
+---
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
 metadata:
@@ -235,7 +254,6 @@ spec:
   provider: azure
   parameters:
     usePodIdentity: "false"
-    useVMManagedIdentity: "false"
     clientID: "<WORKLOAD_IDENTITY_CLIENT_ID>"
     keyvaultName: "my-keyvault"
     tenantId: "<TENANT_ID>"
@@ -267,7 +285,9 @@ spec:
     metadata:
       labels:
         app: my-app
+        azure.workload.identity/use: "true"
     spec:
+      serviceAccountName: my-app-sa
       containers:
         - name: my-app
           image: myacr.azurecr.io/my-app:latest
