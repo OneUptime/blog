@@ -8,7 +8,7 @@ Description: Learn to encrypt external USB drives on Ubuntu using LUKS so your p
 
 ---
 
-USB drives get lost. They fall out of pockets, get left at conference rooms, forgotten in airport trays. If you carry sensitive data on portable storage, encryption is not optional - it is the minimum reasonable precaution. Ubuntu makes this easy with LUKS, and the encrypted drive will work on any Linux system (and with extra software, on Windows and macOS too).
+USB drives get lost. They fall out of pockets, get left at conference rooms, forgotten in airport trays. If you carry sensitive data on portable storage, encryption is not optional - it is the minimum reasonable precaution. Ubuntu makes this easy with LUKS, and the encrypted drive will work on any Linux system with LUKS support. Windows and macOS access is possible with extra software, but it is less straightforward.
 
 ## Identifying Your USB Drive
 
@@ -27,7 +27,7 @@ lsblk
 sudo fdisk -l
 
 # Or use dmesg to see what was just attached
-dmesg | tail -20
+sudo dmesg | tail -20
 ```
 
 Confirm the device size matches what you expect. Formatting the wrong device will destroy data.
@@ -83,6 +83,7 @@ sudo cryptsetup luksFormat --type luks2 /dev/sdb1
 
 ```bash
 # Open the LUKS container - creates /dev/mapper/usb_encrypted
+# Use /dev/sdb1 instead if you encrypted a partition
 sudo cryptsetup open /dev/sdb usb_encrypted
 
 # Create a filesystem inside the container
@@ -101,10 +102,13 @@ sudo mkfs.exfat -n "SecureUSB" /dev/mapper/usb_encrypted
 # Create a mount point
 sudo mkdir -p /mnt/usb_encrypted
 
-# Mount the filesystem
+# Mount an ext4 filesystem
 sudo mount /dev/mapper/usb_encrypted /mnt/usb_encrypted
 
-# Set permissions so your user can write to it
+# For exFAT, mount with your user as owner instead:
+# sudo mount -o uid=$(id -u),gid=$(id -g) /dev/mapper/usb_encrypted /mnt/usb_encrypted
+
+# For ext4, set permissions so your user can write to it
 sudo chown $USER:$USER /mnt/usb_encrypted
 
 # Now use it normally
@@ -132,14 +136,14 @@ To use this automatic flow, the drive needs to be formatted with the LUKS header
 
 ## Adding Multiple Passphrases
 
-LUKS supports up to 8 key slots by default (32 with LUKS2). This lets you give different people different passphrases, or have a backup passphrase stored securely:
+LUKS1 supports up to 8 key slots, while LUKS2 can support up to 32 depending on the keyslot area and key size. This lets you give different people different passphrases, or have a backup passphrase stored securely:
 
 ```bash
 # Add a second passphrase (you will be asked for an existing passphrase first)
 sudo cryptsetup luksAddKey /dev/sdb
 
-# List which key slots are active
-sudo cryptsetup luksDump /dev/sdb | grep "Key Slot"
+# List which key slots are active on a LUKS2 volume
+sudo cryptsetup luksDump /dev/sdb | grep -E "Keyslots:|^[[:space:]]+[0-9]+:"
 
 # Remove a passphrase (careful - do not remove all of them)
 # You will be prompted for the passphrase you want to remove
@@ -152,9 +156,9 @@ Typing a long passphrase every time gets tedious. A key file stored on your lapt
 
 ```bash
 # Generate a random key file
+sudo mkdir -p /etc/luks-keys
 sudo dd if=/dev/urandom of=/etc/luks-keys/usb.key bs=4096 count=1
 sudo chmod 400 /etc/luks-keys/usb.key
-sudo mkdir -p /etc/luks-keys
 
 # Add the key file as an authorized key
 sudo cryptsetup luksAddKey /dev/sdb /etc/luks-keys/usb.key
@@ -175,16 +179,16 @@ sudo cryptsetup isLuks /dev/sdb && echo "Is LUKS" || echo "Not LUKS"
 sudo cryptsetup luksDump /dev/sdb
 
 # Show cipher and key size
-sudo cryptsetup luksDump /dev/sdb | grep -E "Cipher|Key-Size"
+sudo cryptsetup luksDump /dev/sdb | grep -Ei "cipher|Key:"
 ```
 
 ## Cross-Platform Access
 
 If you need to access the encrypted drive from Windows or macOS:
 
-**Windows**: LibreCrypt or VeraCrypt can read LUKS2 volumes. Alternatively, use VeraCrypt format from the start if cross-platform access is a primary requirement.
+**Windows**: VeraCrypt does not read LUKS volumes; it uses its own volume format. LibreCrypt can read some LUKS volumes, but support is limited and dated. Use VeraCrypt format from the start if Windows access is a primary requirement.
 
-**macOS**: macFUSE with the cryptsetup port can handle LUKS volumes, though setup is involved.
+**macOS**: Dedicated tools such as Disk Decipher or LUKSbox can access some LUKS containers, though setup and compatibility vary.
 
 For purely cross-platform encrypted storage, VeraCrypt containers are often more practical than LUKS. But if your drive stays in the Linux ecosystem, LUKS is simpler and better-integrated.
 
@@ -215,7 +219,7 @@ USB drives are generally slower than internal SSDs, so encryption overhead is le
 # Check AES hardware acceleration
 grep -c aes /proc/cpuinfo
 
-# Benchmark encryption on your drive
+# Benchmark cryptographic algorithms on your system
 sudo cryptsetup benchmark
 ```
 
