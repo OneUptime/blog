@@ -56,7 +56,7 @@ If you do not want to install Python dependencies globally, you can use Docker.
 
 ```bash
 # Run MkDocs in a container
-docker run --rm -it -p 8000:8000 -v ${PWD}:/docs squidfunk/mkdocs-material serve -a 0.0.0.0:8000
+make serve-docs
 ```
 
 ## Finding Documentation Gaps
@@ -97,7 +97,7 @@ within the argocd-cm ConfigMap resource.
 
 All code examples should be complete, tested, and copy-paste ready. Include the language identifier for syntax highlighting.
 
-```markdown
+````markdown
 <!-- Good: complete, working example -->
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -114,14 +114,14 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: default
-```bash
+```
 
 <!-- Avoid: incomplete snippets without context -->
 ```yaml
 source:
   repoURL: https://github.com/example/app.git
-```bash
-```text
+```
+````
 
 ### Admonitions
 
@@ -192,15 +192,16 @@ nav:
 
 ArgoCD has many configuration options spread across ConfigMaps and command-line flags. When documenting these, use a consistent format.
 
-```markdown
+````markdown
 ## Configuration Reference
 
 ### `application.instanceLabelKey`
 
 **ConfigMap:** `argocd-cm`
 **Default:** `app.kubernetes.io/instance`
-**Description:** The label key used to track which ArgoCD Application
-manages a resource.
+**Description:** The label key ArgoCD uses for the application instance
+label. When `application.resourceTrackingMethod` is `label`, this label
+is used to track which Application manages a resource.
 
 ```yaml
 apiVersion: v1
@@ -210,18 +211,18 @@ metadata:
   namespace: argocd
 data:
   application.instanceLabelKey: my-company.com/argocd-instance
-```bash
+```
 
 !!! warning
-    Changing this value on an existing installation will cause ArgoCD
-    to lose track of previously managed resources.
-```text
+    Changing this value on an existing installation that uses label-based
+    tracking can cause ArgoCD to lose track of previously managed resources.
+````
 
 ## Adding Diagrams
 
 ArgoCD documentation uses Mermaid for diagrams. MkDocs Material has built-in Mermaid support.
 
-```markdown
+````markdown
 ```mermaid
 sequenceDiagram
     participant User
@@ -238,8 +239,8 @@ sequenceDiagram
     ArgoCD Server->>Kubernetes: Apply Resources
     Kubernetes-->>ArgoCD Server: Resource Status
     ArgoCD Server-->>User: Sync Complete
-```bash
-```text
+```
+````
 
 ## Submitting Documentation PRs
 
