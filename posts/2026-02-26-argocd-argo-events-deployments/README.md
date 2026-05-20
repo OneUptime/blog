@@ -44,10 +44,10 @@ Install Argo Events in its own namespace:
 kubectl create namespace argo-events
 
 # Install Argo Events
-kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/install.yaml -n argo-events
+kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/install.yaml
 
-# Install the EventBus (NATS-based)
-kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/install-validating-webhook.yaml -n argo-events
+# Install with a validating admission controller
+kubectl apply -f https://raw.githubusercontent.com/argoproj/argo-events/stable/manifests/install-validating-webhook.yaml
 
 # Verify installation
 kubectl get pods -n argo-events
@@ -108,15 +108,11 @@ spec:
         endpoint: /push
         port: "12000"
         method: POST
+        url: https://webhooks.example.com/push
       # GitHub webhook secret for validation
       webhookSecret:
         name: github-webhook-secret
         key: secret
-      # Filter to specific branches
-      filter:
-        branches:
-          - "main"
-          - "release/*"
       # Use API token for webhook management
       apiToken:
         name: github-token
@@ -176,6 +172,8 @@ metadata:
   name: argocd-sync-trigger
   namespace: argo-events
 spec:
+  template:
+    serviceAccountName: argo-events-sa
   dependencies:
     - name: github-push
       eventSourceName: github-webhook
@@ -276,10 +274,7 @@ spec:
             value:
               - "refs/heads/main"
         # Use a script filter for complex logic
-        script:
-          content: |
-            local json = require("json")
-            local event = json.decode(event)
+        script: |
             local commits = event.body.commits
             for _, commit in ipairs(commits) do
               for _, file in ipairs(commit.modified) do
@@ -326,8 +321,8 @@ ArgoCD has built-in webhook support for Git providers. Argo Events provides a mo
 ```bash
 # ArgoCD can be configured to accept webhooks directly
 # This refreshes the app faster than polling
-kubectl patch configmap argocd-cm -n argocd --type merge -p '{
-  "data": {
+kubectl patch secret argocd-secret -n argocd --type merge -p '{
+  "stringData": {
     "webhook.github.secret": "my-webhook-secret"
   }
 }'
