@@ -56,8 +56,8 @@ sysContact     ops-team@example.com
 sysName        ubuntu-server-01
 sysServices    72
 
-# Listen on all interfaces (restrict in production)
-agentAddress  udp:161,udp6:[::1]:161
+# Listen on all IPv4 and IPv6 interfaces (restrict in production)
+agentAddress  udp:161,udp6:161
 
 # =============================================================================
 # SNMPv2c Community Strings (use v3 in production)
@@ -86,7 +86,8 @@ view   systemonly  included   .1.3.6.1.2.1.25.1
 # Full access view
 view   allview    included   .1
 
-rouser authPrivUser authpriv -V allview
+# net-snmp-create-v3-user adds "rouser monitoruser" below.
+# Tighten that generated line to require encryption and use this view.
 
 # =============================================================================
 # Process Monitoring
@@ -101,7 +102,7 @@ proc  cron    2  1
 # =============================================================================
 # Monitor disk with minimum free space thresholds
 disk /     10%   # Warn if less than 10% free
-disk /var  500MB # Warn if less than 500MB free
+disk /var  512000 # Warn if less than 500MB free
 
 # =============================================================================
 # Load Average Monitoring
@@ -134,11 +135,14 @@ sudo net-snmp-create-v3-user -ro \
   -x AES \
   monitoruser
 
+# Require SNMPv3 privacy and use the full access view from this guide
+sudo sed -i 's/^rouser monitoruser$/rouser monitoruser authpriv -V allview/' /etc/snmp/snmpd.conf
+
 # Start snmpd
 sudo systemctl start snmpd
 
 # Verify the user was created
-sudo cat /var/lib/snmp/snmpd.conf | grep createUser
+sudo grep '^usmUser' /var/lib/snmp/snmpd.conf
 ```
 
 ## Enabling and Starting snmpd
@@ -280,10 +284,12 @@ sudo snmptrapd -f -Lo -c /etc/snmp/snmptrapd.conf
 
 ```bash
 # Install snmp_exporter
-SNMP_EXP_VERSION="0.24.1"
+SNMP_EXP_VERSION="0.30.1"
 wget "https://github.com/prometheus/snmp_exporter/releases/download/v${SNMP_EXP_VERSION}/snmp_exporter-${SNMP_EXP_VERSION}.linux-amd64.tar.gz"
 tar xzf "snmp_exporter-${SNMP_EXP_VERSION}.linux-amd64.tar.gz"
 sudo cp snmp_exporter-*/snmp_exporter /usr/local/bin/
+sudo mkdir -p /etc/snmp_exporter
+sudo cp snmp_exporter-*/snmp.yml /etc/snmp_exporter/snmp.yml
 
 # Create systemd service
 sudo tee /etc/systemd/system/snmp_exporter.service << 'EOF'
