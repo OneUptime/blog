@@ -90,8 +90,7 @@ metadata:
 provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-balanced
-  disk-encryption-kms-key: >
-    projects/my-project/locations/us-east1/keyRings/my-ring/cryptoKeys/my-key
+  disk-encryption-kms-key: projects/my-project/locations/us-east1/keyRings/my-ring/cryptoKeys/my-key
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -120,6 +119,12 @@ parameters:
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
+allowedTopologies:
+  - matchLabelExpressions:
+      - key: topology.gke.io/zone
+        values:
+          - us-east1-b
+          - us-east1-c
 ```
 
 ### Azure Managed Disk StorageClasses
@@ -134,7 +139,7 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: Premium_LRS
-  cachingmode: ReadOnly
+  cachingMode: ReadOnly
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -149,7 +154,7 @@ parameters:
   skuName: UltraSSD_LRS
   DiskIOPSReadWrite: "10000"
   DiskMBpsReadWrite: "256"
-  cachingmode: None
+  cachingMode: None
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -267,14 +272,37 @@ resources:
   - storage-classes/aws-sc1.yaml
 
 patches:
-  # Ensure only gp3 is the default
+  # Ensure gp3 is default and the alternatives are explicitly non-default
   - target:
       kind: StorageClass
       name: gp3
     patch: |
-      - op: add
-        path: /metadata/annotations/storageclass.kubernetes.io~1is-default-class
-        value: "true"
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: gp3
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "true"
+  - target:
+      kind: StorageClass
+      name: fast-ssd
+    patch: |
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: fast-ssd
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "false"
+  - target:
+      kind: StorageClass
+      name: cold-hdd
+    patch: |
+      apiVersion: storage.k8s.io/v1
+      kind: StorageClass
+      metadata:
+        name: cold-hdd
+        annotations:
+          storageclass.kubernetes.io/is-default-class: "false"
 ```
 
 ## Important Considerations
@@ -342,9 +370,8 @@ spec:
             - |
               # Check only one default StorageClass
               DEFAULT_COUNT=$(kubectl get storageclass \
-                -o json | jq '[.items[] |
-                select(.metadata.annotations["storageclass.kubernetes.io/is-default-class"]=="true")
-              ] | length')
+                -o go-template='{{range .items}}{{index .metadata.annotations "storageclass.kubernetes.io/is-default-class"}}{{"\n"}}{{end}}' \
+                | grep -c '^true$' || true)
 
               if [ "$DEFAULT_COUNT" -gt 1 ]; then
                 echo "ERROR: Multiple default StorageClasses detected"
