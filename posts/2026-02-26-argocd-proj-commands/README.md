@@ -114,7 +114,7 @@ argocd proj add-destination my-project https://kubernetes.default.svc my-namespa
 argocd proj add-destination my-project https://kubernetes.default.svc '*'
 
 # Add by cluster name
-argocd proj add-destination my-project production-cluster my-namespace
+argocd proj add-destination my-project production-cluster my-namespace --name
 ```
 
 ### Removing Destinations
@@ -213,7 +213,7 @@ argocd proj role create-token my-project deployer
 argocd proj role create-token my-project deployer --expires-in 24h
 
 # Generate a token with a specific ID (for tracking)
-argocd proj role create-token my-project deployer --token-id ci-pipeline-token
+argocd proj role create-token my-project deployer --id ci-pipeline-token
 ```
 
 The token can be used for API authentication:
