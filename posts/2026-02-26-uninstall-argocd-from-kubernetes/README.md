@@ -54,7 +54,9 @@ If you want ArgoCD to clean up all managed resources as it shuts down, keep the 
 
 ```bash
 # Delete all applications (ArgoCD will cascade-delete managed resources)
-argocd app delete --all --yes
+argocd app list -o name | while read app; do
+  argocd app delete "$app" --yes --wait
+done
 
 # Wait for applications to be fully deleted
 kubectl get applications -n argocd -w
@@ -208,6 +210,11 @@ echo "Namespace: $NAMESPACE"
 
 if [ "$DELETE_APPS" = "--delete-apps" ]; then
   echo "Mode: Delete all managed applications"
+  echo "Ensuring applications have the ArgoCD resource finalizer..."
+  kubectl get applications -n $NAMESPACE -o name 2>/dev/null | while read app; do
+    kubectl patch $app -n $NAMESPACE --type merge \
+      -p='{"metadata":{"finalizers":["resources-finalizer.argocd.argoproj.io"]}}' 2>/dev/null
+  done
   echo "Deleting applications with finalizers (cascading delete)..."
   kubectl delete applications --all -n $NAMESPACE --timeout=300s
 else
