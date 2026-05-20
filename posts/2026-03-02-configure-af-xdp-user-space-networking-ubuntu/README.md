@@ -10,7 +10,7 @@ Description: Configure AF_XDP sockets on Ubuntu to move packet processing into u
 
 AF_XDP is a socket type introduced in Linux 4.18 that allows user-space applications to process packets at extremely high speeds by bypassing most of the kernel networking stack. Unlike DPDK which requires dedicated drivers and full kernel bypass, AF_XDP works through the standard kernel driver model while still achieving near-line-rate performance.
 
-The key insight behind AF_XDP is a shared memory area (called UMEM) between the kernel and user space. Packets are placed directly into this memory by the NIC driver, and your application reads them without any copying. This eliminates the costly memory copies that dominate CPU usage in traditional socket I/O.
+The key insight behind AF_XDP is a shared memory area (called UMEM) between the kernel and user space. In zero-copy mode, packets are placed directly into this memory by the NIC driver, and your application reads them without a kernel-to-user copy. In copy mode, the kernel copies packets into UMEM, but the application still uses the same AF_XDP ring interface.
 
 ## How AF_XDP Works
 
@@ -70,6 +70,7 @@ Here is a basic AF_XDP application skeleton that receives packets into user spac
 #include <unistd.h>
 #include <errno.h>
 #include <poll.h>
+#include <stdint.h>
 #include <net/if.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -77,6 +78,7 @@ Here is a basic AF_XDP application skeleton that receives packets into user spac
 #include <linux/if_link.h>
 #include <bpf/bpf.h>
 #include <bpf/libbpf.h>
+#include <xdp/xsk.h>
 
 // UMEM configuration
 #define UMEM_FRAME_SIZE    4096
@@ -137,6 +139,23 @@ static struct xsk_umem_info *create_umem(void)
     return umem;
 }
 
+static int populate_fill_ring(struct xsk_umem_info *umem)
+{
+    uint32_t idx;
+    unsigned int i;
+    int ret;
+
+    ret = xsk_ring_prod__reserve(&umem->fq, UMEM_NUM_FRAMES, &idx);
+    if (ret != UMEM_NUM_FRAMES)
+        return -ENOSPC;
+
+    for (i = 0; i < UMEM_NUM_FRAMES; i++)
+        *xsk_ring_prod__fill_addr(&umem->fq, idx++) = i * UMEM_FRAME_SIZE;
+
+    xsk_ring_prod__submit(&umem->fq, UMEM_NUM_FRAMES);
+    return 0;
+}
+
 static struct xsk_socket_info *create_socket(struct xsk_umem_info *umem,
                                               const char *ifname, int queue_id)
 {
@@ -169,22 +188,24 @@ static void rx_and_process(struct xsk_socket_info *xsk)
 {
     unsigned int rcvd, i;
     uint32_t idx_rx = 0, idx_fq = 0;
+    uint64_t addrs[64];
 
     // Peek at received packets
     rcvd = xsk_ring_cons__peek(&xsk->rx, 64, &idx_rx);
     if (!rcvd) return;
 
     for (i = 0; i < rcvd; i++) {
-        uint64_t addr = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx)->addr;
-        uint32_t len  = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx)->len;
+        const struct xdp_desc *desc = xsk_ring_cons__rx_desc(&xsk->rx, idx_rx++);
+        uint64_t addr = desc->addr;
+        uint32_t len  = desc->len;
         char *pkt = xsk_umem__get_data(xsk->umem->buffer, addr);
+
+        addrs[i] = addr;
 
         // Process the packet - it's at pkt, len bytes long
         // Example: print first few bytes
         printf("Received packet: %u bytes, first byte: 0x%02x\n",
                len, (unsigned char)pkt[0]);
-
-        idx_rx++;
     }
 
     // Release consumed descriptors back to RX ring
@@ -192,12 +213,12 @@ static void rx_and_process(struct xsk_socket_info *xsk)
     xsk->rx_npkts += rcvd;
 
     // Refill the fill queue with free UMEM frames
-    // (simplified - production code needs proper frame tracking)
-    xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq);
-    for (i = 0; i < rcvd; i++) {
-        *xsk_ring_prod__fill_addr(&xsk->umem->fq, idx_fq++) =
-            i * UMEM_FRAME_SIZE;  // Simplified frame addressing
-    }
+    if (xsk_ring_prod__reserve(&xsk->umem->fq, rcvd, &idx_fq) != rcvd)
+        return;
+
+    for (i = 0; i < rcvd; i++)
+        *xsk_ring_prod__fill_addr(&xsk->umem->fq, idx_fq++) = addrs[i];
+
     xsk_ring_prod__submit(&xsk->umem->fq, rcvd);
 }
 
@@ -212,6 +233,11 @@ int main(int argc, char *argv[])
     struct xsk_umem_info *umem = create_umem();
     if (!umem) {
         perror("Failed to create UMEM");
+        return 1;
+    }
+
+    if (populate_fill_ring(umem)) {
+        fprintf(stderr, "Failed to populate fill ring\n");
         return 1;
     }
 
@@ -281,31 +307,32 @@ clang -O2 -g -target bpf \
 
 ## Using xdpsock Sample Application
 
-The Linux kernel source includes a full reference implementation:
+The xdp-project maintains a full `xdpsock` reference implementation that originally lived in the Linux kernel source tree under `samples/bpf`:
 
 ```bash
-# Install kernel source and build tools
-sudo apt install linux-source build-essential
+# Install build tools
+sudo apt install build-essential clang llvm libelf-dev libbpf-dev
 
-# Extract and find the sample
-cd /usr/src/linux-source-*/
-ls samples/bpf/xdpsock*.c
+# Clone and build the sample
+git clone https://github.com/xdp-project/bpf-examples.git
+cd bpf-examples/AF_XDP-example
+make
 
-# Build the sample
-make -C samples/bpf M=samples/bpf
+# Show all available options
+./xdpsock -h
 ```
 
 Run `xdpsock` to test AF_XDP:
 
 ```bash
 # Receive mode - dump packet statistics
-sudo ./samples/bpf/xdpsock -i eth0 -r
+sudo ./xdpsock -i eth0 -r
 
 # TX mode - transmit test packets
-sudo ./samples/bpf/xdpsock -i eth0 -t
+sudo ./xdpsock -i eth0 -t
 
 # Zero-copy mode (requires driver support)
-sudo ./samples/bpf/xdpsock -i eth0 -r -z
+sudo ./xdpsock -i eth0 -r -z
 ```
 
 ## Zero-Copy Mode
@@ -313,9 +340,9 @@ sudo ./samples/bpf/xdpsock -i eth0 -r -z
 Zero-copy mode is where AF_XDP really shines. It requires NIC driver support but eliminates all memory copies:
 
 ```bash
-# Check if driver supports zero-copy
+# Check the driver. Zero-copy support is driver- and version-specific.
 ethtool -i eth0 | grep driver
-# Drivers with zero-copy: mlx5, i40e, ixgbe, ice
+# Example drivers with AF_XDP zero-copy support include mlx5, i40e, ixgbe, and ice.
 
 # Enable zero-copy when creating socket
 # Change XDP_COPY to XDP_ZEROCOPY in bind_flags
