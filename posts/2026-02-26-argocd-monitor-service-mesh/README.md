@@ -66,13 +66,17 @@ spec:
       namespace: argocd
     spec:
       project: monitoring
-      source:
-        repoURL: "{{repo}}"
-        chart: "{{chart}}"
-        targetRevision: "{{version}}"
-        helm:
-          valueFiles:
-            - values.yaml
+      sources:
+        - repoURL: "{{repo}}"
+          chart: "{{chart}}"
+          targetRevision: "{{version}}"
+          helm:
+            valueFiles:
+              - $values/monitoring/{{name}}/values.yaml
+            ignoreMissingValueFiles: true
+        - repoURL: https://github.com/myorg/k8s-monitoring.git
+          targetRevision: main
+          ref: values
       destination:
         server: https://kubernetes.default.svc
         namespace: "{{namespace}}"
@@ -116,11 +120,16 @@ prometheus:
           - source_labels: [__meta_kubernetes_pod_container_name]
             action: keep
             regex: istio-proxy
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
+          - source_labels: [__meta_kubernetes_pod_ip]
             action: replace
             target_label: __address__
-            regex: (.+)
             replacement: $1:15090
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
 
     # Retention and storage
     retention: 30d
@@ -140,7 +149,7 @@ prometheus:
         matchExpressions:
           - key: istio
             operator: In
-            values: ["pilot", "mixer", "galley", "citadel"]
+            values: ["pilot"]
       namespaceSelector:
         matchNames:
           - istio-system
@@ -165,41 +174,41 @@ metadata:
 data:
   istio-mesh-dashboard.json: |
     {
-      "dashboard": {
-        "title": "Istio Mesh Dashboard",
-        "panels": [
-          {
-            "title": "Request Rate",
-            "type": "timeseries",
-            "targets": [
-              {
-                "expr": "sum(rate(istio_requests_total[5m])) by (destination_service_name)",
-                "legendFormat": "{{destination_service_name}}"
-              }
-            ]
-          },
-          {
-            "title": "P99 Latency",
-            "type": "timeseries",
-            "targets": [
-              {
-                "expr": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le, destination_service_name))",
-                "legendFormat": "{{destination_service_name}}"
-              }
-            ]
-          },
-          {
-            "title": "Error Rate",
-            "type": "stat",
-            "targets": [
-              {
-                "expr": "sum(rate(istio_requests_total{response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total[5m])) * 100",
-                "legendFormat": "5xx Error Rate %"
-              }
-            ]
-          }
-        ]
-      }
+      "title": "Istio Mesh Dashboard",
+      "schemaVersion": 39,
+      "version": 1,
+      "panels": [
+        {
+          "title": "Request Rate",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_requests_total[5m])) by (destination_service_name)",
+              "legendFormat": "{{destination_service_name}}"
+            }
+          ]
+        },
+        {
+          "title": "P99 Latency",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le, destination_service_name))",
+              "legendFormat": "{{destination_service_name}}"
+            }
+          ]
+        },
+        {
+          "title": "Error Rate",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(rate(istio_requests_total{response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total[5m])) * 100",
+              "legendFormat": "5xx Error Rate %"
+            }
+          ]
+        }
+      ]
     }
 ```
 
@@ -283,22 +292,22 @@ spec:
       rules:
         - alert: HighErrorRate
           expr: |
-            sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_service_name, namespace)
+            sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_service_name, destination_service_namespace)
             /
-            sum(rate(istio_requests_total[5m])) by (destination_service_name, namespace)
+            sum(rate(istio_requests_total[5m])) by (destination_service_name, destination_service_namespace)
             > 0.05
           for: 5m
           labels:
             severity: critical
           annotations:
             summary: "High 5xx error rate for {{ $labels.destination_service_name }}"
-            description: "Service {{ $labels.destination_service_name }} in {{ $labels.namespace }} has error rate above 5%"
+            description: "Service {{ $labels.destination_service_name }} in {{ $labels.destination_service_namespace }} has error rate above 5%"
 
         - alert: HighP99Latency
           expr: |
             histogram_quantile(0.99,
               sum(rate(istio_request_duration_milliseconds_bucket[5m]))
-              by (le, destination_service_name, namespace)
+              by (le, destination_service_name, destination_service_namespace)
             ) > 5000
           for: 10m
           labels:
@@ -378,19 +387,19 @@ spec:
       interval: 30s
       rules:
         - record: istio:request_rate:5m
-          expr: sum(rate(istio_requests_total[5m])) by (destination_service_name, namespace)
+          expr: sum(rate(istio_requests_total[5m])) by (destination_service_name, destination_service_namespace)
 
         - record: istio:error_rate:5m
           expr: |
-            sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_service_name, namespace)
+            sum(rate(istio_requests_total{response_code=~"5.*"}[5m])) by (destination_service_name, destination_service_namespace)
             /
-            sum(rate(istio_requests_total[5m])) by (destination_service_name, namespace)
+            sum(rate(istio_requests_total[5m])) by (destination_service_name, destination_service_namespace)
 
         - record: istio:p99_latency:5m
           expr: |
             histogram_quantile(0.99,
               sum(rate(istio_request_duration_milliseconds_bucket[5m]))
-              by (le, destination_service_name, namespace)
+              by (le, destination_service_name, destination_service_namespace)
             )
 ```
 
