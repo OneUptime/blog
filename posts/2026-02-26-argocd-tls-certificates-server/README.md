@@ -19,14 +19,14 @@ ArgoCD server handles two types of traffic:
 1. **HTTPS** - For the web UI and REST API
 2. **gRPC** - For CLI communication and inter-component traffic
 
-Both use TLS by default. The certificate is stored in a Kubernetes secret named `argocd-server-tls` in the argocd namespace.
+Both use TLS by default. ArgoCD uses the `argocd-server-tls` secret when it exists and contains a valid `tls.crt` and `tls.key` pair. Otherwise, it falls back to a certificate in `argocd-secret`, or generates a self-signed certificate and stores it in `argocd-secret`.
 
 ```mermaid
 graph LR
     A[Browser/CLI] -->|HTTPS/gRPC| B[Ingress/LB]
     B -->|TLS Termination or Passthrough| C[ArgoCD Server]
     C -->|Internal TLS| D[ArgoCD Repo Server]
-    C -->|Internal TLS| E[ArgoCD App Controller]
+    E[ArgoCD App Controller] -->|Internal TLS| D
 ```
 
 ## Method 1: Bring Your Own Certificate
@@ -77,17 +77,18 @@ kubectl get secret argocd-server-tls -n argocd -o jsonpath='{.data.tls\.crt}' | 
   base64 -d | openssl x509 -noout -text
 ```
 
-### Restart ArgoCD Server
+### Certificate Reload
 
-After creating or updating the TLS secret, restart the ArgoCD server to pick up the new certificate:
+ArgoCD server picks up changes to the `argocd-server-tls` secret automatically. You do not need to restart the server when this secret is renewed.
 
 ```bash
-kubectl rollout restart deployment argocd-server -n argocd
+# Optional: confirm the rollout is healthy
+kubectl rollout status deployment argocd-server -n argocd
 ```
 
 ## Method 2: TLS Termination at Ingress
 
-The most common production setup is to terminate TLS at the ingress controller and run ArgoCD server in insecure mode behind the ingress.
+The most common production setup is to terminate TLS at the ingress controller and run ArgoCD server in insecure mode behind the ingress. With ingress-nginx, a single HTTP ingress like the example below works for the web UI and for CLI access using gRPC-Web. Native gRPC usually needs either TLS passthrough or a separate gRPC ingress because ingress-nginx uses one backend protocol per Ingress.
 
 ### Configure ArgoCD for Insecure Mode
 
@@ -208,6 +209,8 @@ spec:
 
 With TLS passthrough, ArgoCD server uses its own certificate (`argocd-server-tls` secret), and the ingress controller does not decrypt the traffic.
 
+For ingress-nginx, SSL passthrough is disabled by default. Start the ingress controller with the `--enable-ssl-passthrough` flag before relying on this annotation.
+
 ## Method 4: Using cert-manager
 
 cert-manager can automatically issue and renew TLS certificates from Let's Encrypt or other CAs.
@@ -215,7 +218,7 @@ cert-manager can automatically issue and renew TLS certificates from Let's Encry
 ### Install cert-manager
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 ### Create a ClusterIssuer
@@ -234,7 +237,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ### Annotate the Ingress
@@ -323,7 +326,7 @@ Missing intermediate certificates cause "unable to verify the first certificate"
 ```bash
 # If using a custom CA, add it to the CLI
 argocd login argocd.company.com \
-  --certificate-authority /path/to/ca.crt
+  --server-crt /path/to/ca.crt
 
 # Or skip TLS verification (not recommended for production)
 argocd login argocd.company.com --insecure
