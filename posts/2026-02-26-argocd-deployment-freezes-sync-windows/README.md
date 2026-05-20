@@ -46,7 +46,7 @@ spec:
       duration: 48h             # Until Monday midnight
       applications:
         - '*'
-      manualSync: true          # Also block manual syncs
+      manualSync: false         # Also block manual syncs
 
     # Block deployments during business hours freeze
     - kind: deny
@@ -61,7 +61,7 @@ spec:
       duration: 8h              # Until 6 PM
       applications:
         - '*'
-      manualSync: false         # Allow manual syncs outside the window
+      manualSync: false         # Also block manual syncs outside the window
 ```
 
 ## Holiday Freeze Configuration
@@ -76,17 +76,17 @@ metadata:
   namespace: argocd
 spec:
   syncWindows:
-    # Black Friday to Cyber Monday freeze
+    # Late November holiday freeze
     - kind: deny
       schedule: '0 0 22 11 *'   # November 22
-      duration: 120h             # 5 days through Cyber Monday
+      duration: 120h             # 5 days
       applications:
         - '*'
       clusters:
         - 'https://kubernetes.default.svc'
       namespaces:
         - 'production-*'
-      manualSync: true
+      manualSync: false
 
     # End of year code freeze
     - kind: deny
@@ -94,36 +94,36 @@ spec:
       duration: 288h             # 12 days through January 1
       applications:
         - '*'
-      manualSync: true
+      manualSync: false
 
     # End of quarter freeze (last 3 days of quarter)
     - kind: deny
-      schedule: '0 0 28 3 *'    # March 28
-      duration: 96h
+      schedule: '0 0 29 3 *'    # March 29
+      duration: 72h
       applications:
         - 'finance-*'
-      manualSync: true
+      manualSync: false
 
     - kind: deny
       schedule: '0 0 28 6 *'    # June 28
       duration: 72h
       applications:
         - 'finance-*'
-      manualSync: true
+      manualSync: false
 
     - kind: deny
       schedule: '0 0 28 9 *'    # September 28
       duration: 72h
       applications:
         - 'finance-*'
-      manualSync: true
+      manualSync: false
 
     - kind: deny
       schedule: '0 0 29 12 *'   # December 29
       duration: 72h
       applications:
         - 'finance-*'
-      manualSync: true
+      manualSync: false
 ```
 
 ## Per-Team Deployment Windows
@@ -222,7 +222,7 @@ syncWindows:
       - 'app-*'
       - 'service-*'
       - 'frontend-*'
-    manualSync: true
+    manualSync: false
 
   # But allow monitoring and observability changes
   - kind: allow
@@ -247,7 +247,7 @@ syncWindows:
     namespaces:
       - 'production'
       - 'production-*'
-    manualSync: true
+    manualSync: false
 
   # Allow staging deployments anytime
   - kind: allow
@@ -275,7 +275,7 @@ kubectl get appproject production -n argocd -o jsonpath='{.spec.syncWindows}' | 
 
 ## Automating Freeze Announcements
 
-Use ArgoCD notifications to announce when freezes start and end:
+Use ArgoCD notifications to announce when sync attempts are blocked by a freeze:
 
 ```yaml
 apiVersion: v1
@@ -285,7 +285,7 @@ metadata:
   namespace: argocd
 data:
   trigger.sync-window-active: |
-    - when: app.status.operationState.phase == 'Failed' and app.status.operationState.message contains 'sync window'
+    - when: app.status?.operationState.phase == 'Failed' and (app.status?.operationState.message ?? '') contains 'sync window'
       send: [sync-blocked-notification]
 
   template.sync-blocked-notification: |
@@ -320,13 +320,13 @@ argocd app sync frontend
 
 ## Best Practices
 
-1. **Always set `manualSync: true` for critical freezes** - Without this, someone can bypass the freeze by manually clicking sync in the UI.
+1. **Set `manualSync: false` for critical freezes** - Setting `manualSync: true` allows someone to bypass the freeze by manually clicking sync in the UI.
 
 2. **Use allow windows for strict environments** - Instead of deny windows (which block specific times), use allow windows to only permit deployments during approved times.
 
 3. **Create an emergency override path** - Have a documented, RBAC-restricted process for emergency deployments during freezes.
 
-4. **Announce freezes automatically** - Use notifications to inform teams when freezes start and end.
+4. **Announce blocked sync attempts automatically** - Use notifications to inform teams when a freeze blocks a sync.
 
 5. **Plan for accumulated drift** - After long freezes, sync applications carefully in dependency order.
 
