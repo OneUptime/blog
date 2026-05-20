@@ -72,7 +72,7 @@ rules:
   - apiGroups: ["*"]
     resources: ["*"]
     verbs: ["get", "list", "watch"]
-  - apiGroups: ["apps", "extensions"]
+  - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
     verbs: ["create", "update", "patch", "delete"]
   - apiGroups: [""]
@@ -88,6 +88,27 @@ rules:
     resources: ["horizontalpodautoscalers"]
     verbs: ["create", "update", "patch", "delete"]
 EOF
+
+# Bind the role to the service account
+kubectl --context prod-us-east apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-manager-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: argocd-manager
+    namespace: kube-system
+EOF
+
+# Register the cluster using the dedicated service account
+argocd cluster add prod-us-east \
+  --name prod-us-east \
+  --service-account argocd-manager
 ```
 
 ### Label clusters for ApplicationSet generators
@@ -305,7 +326,7 @@ spec:
       rules:
         - alert: ArgocdClusterUnreachable
           expr: |
-            argocd_cluster_info{connection_status!="Successful"} == 1
+            argocd_cluster_connection_status == 0
           for: 5m
           labels:
             severity: critical
@@ -344,7 +365,10 @@ spec:
     metadata:
       name: '{{name}}-api'
     spec:
+      project: production
       source:
+        repoURL: https://github.com/myorg/platform.git
+        targetRevision: main
         path: manifests/api/overlays/production
       destination:
         server: '{{server}}'
