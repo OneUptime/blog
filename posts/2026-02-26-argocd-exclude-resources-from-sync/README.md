@@ -128,12 +128,16 @@ spec:
       jsonPointers:
         - /metadata/annotations
     # Ignore specific annotation on all resources
-    - kind: "*"
+    - group: "*"
+      kind: "*"
       jsonPointers:
         - /metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
-This is the most common exclusion pattern. The `replicas` field is a classic example because Horizontal Pod Autoscalers change it dynamically, and you do not want ArgoCD to revert it to the value in Git.
+This is the most common exclusion pattern. The `replicas` field is a classic example because Horizontal Pod Autoscalers change it dynamically. By default, `ignoreDifferences` affects diff calculation only; `RespectIgnoreDifferences=true` tells ArgoCD to also respect those ignored fields during sync for resources that already exist.
 
 ## Using jqPathExpressions for Advanced Exclusions
 
@@ -175,7 +179,7 @@ metadata:
     argocd.argoproj.io/sync-options: Prune=false
 ```
 
-For resources that should be completely excluded from ArgoCD management, use the `argocd.argoproj.io/compare-options: IgnoreExtraneous` annotation.
+For generated or extra resources that should not affect the application's overall sync status, use the `argocd.argoproj.io/compare-options: IgnoreExtraneous` annotation.
 
 ```yaml
 apiVersion: v1
@@ -187,19 +191,25 @@ metadata:
     argocd.argoproj.io/compare-options: IgnoreExtraneous
 ```
 
-Resources with `IgnoreExtraneous` are tracked by ArgoCD but their differences do not affect the application's sync status.
+Resources with `IgnoreExtraneous` do not affect the application's sync status, but the option only affects sync status. If you also need to prevent ArgoCD from pruning the resource, combine it with `Prune=false`.
 
 ## Excluding Resources from Specific Sync Operations
 
-During a sync operation (using the CLI), you can exclude resources by only including the ones you want. There is no direct `--exclude` flag, but you achieve exclusion by explicitly selecting what to include.
+During a sync operation (using the CLI), you can exclude resources by selecting only what you want or by using a negated `--resource` pattern. There is no separate `--exclude` flag, but `--resource` accepts entries prefixed with `!`.
 
 ```bash
-# Instead of excluding, select only what you want to sync
-
+# Select only what you want to sync
 argocd app sync my-app \
   --resource apps:Deployment:web-server \
   --resource :Service:api-svc
-# This effectively excludes everything else
+
+# Exclude one resource
+argocd app sync my-app \
+  --resource '!apps:Deployment:web-server'
+
+# Exclude all Services
+argocd app sync my-app \
+  --resource '!*:Service:*'
 ```
 
 ## Pattern: Exclude HPA-Managed Fields
@@ -230,9 +240,12 @@ spec:
       kind: StatefulSet
       jsonPointers:
         - /spec/replicas
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
-Without this configuration, every time the HPA scales your Deployment up or down, ArgoCD reports it as OutOfSync because the replica count in the cluster differs from the count in Git.
+Without `ignoreDifferences`, every time the HPA scales your Deployment up or down, ArgoCD reports it as OutOfSync because the replica count in the cluster differs from the count in Git. Without `RespectIgnoreDifferences=true`, ArgoCD can still apply the replica count from Git during sync.
 
 ## Pattern: Exclude Webhook CA Bundles
 
