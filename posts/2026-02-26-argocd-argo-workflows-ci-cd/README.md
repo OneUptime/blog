@@ -30,8 +30,8 @@ Here is how the two tools work together:
 ```mermaid
 graph LR
     A[Developer Push] --> B[Argo Workflows]
-    B --> C[Build Image]
-    C --> D[Run Tests]
+    B --> C[Run Tests]
+    C --> D[Build Image]
     D --> E[Push to Registry]
     E --> F[Update Git Manifests]
     F --> G[ArgoCD Detects Change]
@@ -71,7 +71,7 @@ sudo mv argo-linux-amd64 /usr/local/bin/argo
 
 ## Building the CI Workflow
 
-Here is a complete Argo Workflow that builds a Docker image, runs tests, pushes the image, and updates the GitOps repository:
+Here is a complete Argo Workflow that builds a Docker image, runs tests, pushes the image, and updates the GitOps repository. This example uses Kaniko for the image build step; the upstream Kaniko repository is archived, so consider a maintained builder such as BuildKit for new production pipelines.
 
 ```yaml
 # ci-workflow.yaml
@@ -90,6 +90,14 @@ spec:
         value: "main"
       - name: image-name
         value: "registry.example.com/myapp"
+  volumeClaimTemplates:
+    - metadata:
+        name: work
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
   volumes:
     - name: docker-config
       secret:
@@ -97,6 +105,9 @@ spec:
     - name: git-creds
       secret:
         secretName: git-credentials
+        items:
+          - key: .git-credentials
+            path: .git-credentials
 
   templates:
     - name: ci-pipeline
@@ -146,7 +157,7 @@ spec:
         args:
           - |
             git clone --branch {{inputs.parameters.branch}} \
-              {{inputs.parameters.repo-url}} /workspace
+              {{inputs.parameters.repo-url}} /workspace/src
         volumeMounts:
           - name: work
             mountPath: /workspace
@@ -157,7 +168,7 @@ spec:
         command: [sh, -c]
         args:
           - |
-            cd /workspace
+            cd /workspace/src
             npm install
             npm test
         volumeMounts:
@@ -171,8 +182,8 @@ spec:
       container:
         image: gcr.io/kaniko-project/executor:latest
         args:
-          - --dockerfile=/workspace/Dockerfile
-          - --context=/workspace
+          - --dockerfile=/workspace/src/Dockerfile
+          - --context=/workspace/src
           - "--destination={{inputs.parameters.image-name}}:{{workflow.name}}"
         volumeMounts:
           - name: work
@@ -189,6 +200,8 @@ spec:
         command: [sh, -c]
         args:
           - |
+            git config --global credential.helper store
+
             # Clone the GitOps repository
             git clone https://github.com/myorg/gitops-repo /gitops
             cd /gitops
@@ -206,6 +219,8 @@ spec:
         volumeMounts:
           - name: git-creds
             mountPath: /root/.git-credentials
+            subPath: .git-credentials
+            readOnly: true
 ```
 
 This workflow uses a DAG (directed acyclic graph) to define step dependencies. Tests must pass before the image is built, and the image must be pushed before manifests are updated.
@@ -277,7 +292,7 @@ spec:
         maxDuration: 3m
 ```
 
-With `automated` sync enabled, ArgoCD polls the Git repository (default every 3 minutes) and automatically syncs when it detects changes made by the Argo Workflows CI pipeline.
+With `automated` sync enabled, ArgoCD polls the Git repository (by default, every 120 seconds with up to 60 seconds of jitter) and automatically syncs when it detects changes made by the Argo Workflows CI pipeline.
 
 ## Using Workflow Status to Gate Deployments
 
@@ -304,7 +319,7 @@ For additional safety, add a verification step after the manifest update:
 
 ## Shared Artifact Storage
 
-Both tools can share artifacts through Kubernetes PVCs or S3-compatible storage. Configure Argo Workflows to store logs and artifacts in the same backend ArgoCD uses for its state:
+Argo Workflows can store artifacts through Kubernetes PVCs or S3-compatible storage. This is separate from ArgoCD's Git-based desired state, but it gives you a durable place to keep workflow logs and build artifacts:
 
 ```yaml
 # artifact-repository-config.yaml
@@ -313,6 +328,8 @@ kind: ConfigMap
 metadata:
   name: artifact-repositories
   namespace: argo
+  annotations:
+    workflows.argoproj.io/default-artifact-repository: default-v1
 data:
   default-v1: |
     archiveLogs: true
