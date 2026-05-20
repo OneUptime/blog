@@ -8,13 +8,13 @@ Description: Learn how to enable and configure GnuPG signature verification in A
 
 ---
 
-In a GitOps workflow, the Git repository is the single source of truth for your infrastructure. But what happens if someone gains unauthorized access to the repository and pushes malicious changes? GnuPG (GPG) signature verification adds a cryptographic guarantee that every commit deployed by ArgoCD was made by an authorized person. If a commit is not signed or signed by an untrusted key, ArgoCD refuses to sync it.
+In a GitOps workflow, the Git repository is the single source of truth for your infrastructure. But what happens if someone gains unauthorized access to the repository and pushes malicious changes? GnuPG (GPG) signature verification adds a cryptographic guarantee that the Git revision deployed by ArgoCD was signed by an authorized key. If a required commit is not signed or signed by an untrusted key, ArgoCD refuses to sync it.
 
 This guide walks through enabling GPG signature verification in ArgoCD from scratch, including key management, project configuration, and handling the operational aspects of running verified deployments.
 
 ## How GPG Verification Works in ArgoCD
 
-When GPG verification is enabled for an ArgoCD project, the system checks every commit before syncing:
+When GPG verification is enabled for an ArgoCD project, the system checks the target Git revision before syncing. In strict mode, ArgoCD can also verify the reachable commit history:
 
 ```mermaid
 sequenceDiagram
@@ -36,7 +36,7 @@ sequenceDiagram
     end
 ```
 
-ArgoCD maintains its own GPG keyring, separate from any system keyrings. You import the public keys of trusted signers, and ArgoCD verifies that each commit is signed by one of those keys.
+ArgoCD maintains its own GPG keyring, separate from any system keyrings. You import the public keys of trusted signers, and ArgoCD verifies that the required Git revision is signed by one of those keys.
 
 ## Prerequisites
 
@@ -108,7 +108,7 @@ Apply the ConfigMap:
 kubectl apply -f argocd-gpg-keys-cm.yaml
 ```
 
-After importing keys, the ArgoCD repo-server needs to restart to pick them up:
+After importing keys, it may take a short time for the keys to propagate. If the repo-server keyring stays out of sync, restart the ArgoCD repo-server:
 
 ```bash
 kubectl rollout restart deployment argocd-repo-server -n argocd
@@ -116,7 +116,7 @@ kubectl rollout restart deployment argocd-repo-server -n argocd
 
 ## Step 2: Enable Verification on a Project
 
-GPG verification is configured at the ArgoCD project level using the `signatureKeys` field:
+GPG verification is configured at the ArgoCD project level using source integrity policies:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -132,13 +132,19 @@ spec:
     - namespace: '*'
       server: https://kubernetes.default.svc
   # Enable GPG verification
-  signatureKeys:
-    # List the key IDs that are trusted for this project
-    - keyID: 3AA5C34371567BD2
-    - keyID: 9B2C5A6E8F3D1E7A
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/k8s-production.git
+          gpg:
+            mode: head
+            keys:
+              - "3AA5C34371567BD2"
+              - "9B2C5A6E8F3D1E7A"
 ```
 
-Once `signatureKeys` is set on a project, ALL applications in that project require valid signatures. There is no per-application toggle - it is all or nothing at the project level.
+Once the policy is set on a project, applications in that project that match the policy's repository rules require valid signatures. Older ArgoCD versions used the legacy `signatureKeys` field for project-wide verification, but current versions use `sourceIntegrity`.
 
 ## Step 3: Verify the Configuration
 
@@ -153,34 +159,35 @@ argocd app create test-gpg \
   --dest-namespace test \
   --project production
 
-# Try to sync - this should succeed if the latest commit is signed
+# Try to sync - this should succeed if the target revision is signed
 argocd app sync test-gpg
 
-# Check the verification status
-argocd app get test-gpg -o json | jq '.status.sourceType'
+# Check application status and conditions
+argocd app get test-gpg -o json | jq '.status.sync, .status.conditions'
 ```
 
-If the commit is not signed or signed by an untrusted key:
+If the commit is not signed or signed by an untrusted key, ArgoCD rejects the sync with an error similar to:
 
 ```text
-FATA[0001] rpc error: code = Unknown desc = application spec is invalid:
-InvalidSpecError: GnuPG verification required but commit is not signed
+rpc error: code = Unknown desc = failed to verify source:
+GnuPG verification failed for target revision
 ```
 
 ## Step 4: Check Verification Status
 
-ArgoCD shows GPG verification status in the application details:
+ArgoCD reports GPG verification failures in the application details:
 
 ```bash
-# Detailed GPG info for an application
-argocd app get my-app -o json | jq '.status.operationState.syncResult.source'
+# Refresh the application and check for sync errors or conditions
+argocd app get my-app --refresh
+argocd app get my-app -o json | jq '.status.conditions'
 
-# Check if the current revision has a valid signature
+# Check the current synced revision
 kubectl get application my-app -n argocd \
   -o jsonpath='{.status.sync.revision}'
 ```
 
-In the ArgoCD UI, applications with GPG verification show a lock icon or verification badge next to the commit SHA.
+In the ArgoCD UI, GPG verification failures appear in the application's sync or comparison errors.
 
 ## Handling Multiple Signers
 
@@ -189,14 +196,21 @@ In team environments, you typically have multiple developers who need to sign co
 ```yaml
 # Project with multiple trusted signers
 spec:
-  signatureKeys:
-    - keyID: 3AA5C34371567BD2   # Developer 1
-    - keyID: 9B2C5A6E8F3D1E7A   # Developer 2
-    - keyID: 1C4D5E6F7A8B9C0D   # CI Bot
-    - keyID: 2D3E4F5A6B7C8D9E   # Release Manager
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/k8s-production.git
+          gpg:
+            mode: head
+            keys:
+              - "3AA5C34371567BD2"   # Developer 1
+              - "9B2C5A6E8F3D1E7A"   # Developer 2
+              - "1C4D5E6F7A8B9C0D"   # CI Bot
+              - "2D3E4F5A6B7C8D9E"   # Release Manager
 ```
 
-A commit only needs to be signed by ANY ONE of the listed keys - not all of them.
+The target revision only needs to be signed by ANY ONE of the listed keys - not all of them.
 
 ## Signing Commits in CI/CD
 
@@ -246,9 +260,9 @@ jobs:
 
 ## Handling Merge Commits
 
-Merge commits on platforms like GitHub can be signed or unsigned depending on the platform settings:
+Merge commits on platforms like GitHub can be signed or unsigned depending on the platform and merge method:
 
-- **GitHub**: Merge commits are signed with GitHub's GPG key if the repository has vigilant mode enabled
+- **GitHub**: Commits created through GitHub's web interface and merge buttons are signed with GitHub's GPG key
 - **GitLab**: Merge commits can be signed if the server has GPG signing configured
 - **Bitbucket**: Merge commits are typically unsigned
 
@@ -257,16 +271,24 @@ If your workflow relies on merge commits, you may need to import the platform's 
 ```bash
 # Import GitHub's merge signing key
 # (Check GitHub docs for the current key)
-curl -s https://github.com/web-flow.gpg | argocd gpg add --from -
+curl -fsSL https://github.com/web-flow.gpg -o github-web-flow.gpg
+argocd gpg add --from github-web-flow.gpg
 ```
 
 And add GitHub's key ID to your project:
 
 ```yaml
 spec:
-  signatureKeys:
-    - keyID: 3AA5C34371567BD2   # Your developer
-    - keyID: 4AEE18F83AFDEB23   # GitHub web-flow (merge commits)
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/k8s-production.git
+          gpg:
+            mode: head
+            keys:
+              - "3AA5C34371567BD2"   # Your developer
+              - "B5690EEEBB952194"   # GitHub web-flow (merge commits)
 ```
 
 ## Key Rotation
@@ -282,26 +304,32 @@ argocd gpg add --from new-key.asc
 
 # Update the project
 kubectl edit appproject production -n argocd
-# Remove old keyID, add new keyID in signatureKeys
+# Remove old key ID, add new key ID in sourceIntegrity.git.policies[].gpg.keys
 ```
 
 ## Disabling Verification
 
-To disable GPG verification for a project, remove the `signatureKeys` field entirely:
+To disable GPG verification for a project, remove the `sourceIntegrity` field entirely:
 
 ```bash
 kubectl patch appproject production -n argocd \
   --type json \
-  -p '[{"op": "remove", "path": "/spec/signatureKeys"}]'
+  -p '[{"op": "remove", "path": "/spec/sourceIntegrity"}]'
 ```
 
-Or set it to an empty array:
+Or set the policy mode to `none` for the repositories you want to exempt:
 
 ```yaml
 spec:
-  signatureKeys: []
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/k8s-production.git
+          gpg:
+            mode: none
 ```
 
 ## Summary
 
-GnuPG signature verification in ArgoCD adds a critical security layer to your GitOps pipeline by ensuring only cryptographically signed commits from trusted keys can trigger deployments. Enable it by importing public GPG keys into ArgoCD's keyring, then configure the `signatureKeys` field on your ArgoCD projects. Make sure all developers and CI systems have GPG signing configured, and plan for key rotation and merge commit signing from your Git platform.
+GnuPG signature verification in ArgoCD adds a critical security layer to your GitOps pipeline by ensuring only cryptographically signed commits from trusted keys can trigger deployments. Enable it by importing public GPG keys into ArgoCD's keyring, then configure source integrity policies on your ArgoCD projects. Make sure all developers and CI systems have GPG signing configured, and plan for key rotation and merge commit signing from your Git platform.
