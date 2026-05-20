@@ -23,7 +23,7 @@ graph TD
     A[Git Repository] --> B[ArgoCD]
     B --> C[Strimzi Operator]
     C --> D[Kafka Cluster]
-    C --> E[ZooKeeper / KRaft]
+    C --> E[KRaft Metadata Quorum]
     C --> F[Kafka Topics]
     C --> G[Kafka Users]
     C --> H[Kafka Connect]
@@ -46,7 +46,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/strimzi/strimzi-kafka-operator.git
-    targetRevision: 0.39.0
+    targetRevision: 1.0.0
     path: install/cluster-operator/
     directory:
       include: '*Crd*'
@@ -57,7 +57,6 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      - Replace=true
       - Prune=false
 ```
 
@@ -78,7 +77,7 @@ spec:
   source:
     repoURL: https://strimzi.io/charts/
     chart: strimzi-kafka-operator
-    targetRevision: 0.39.0
+    targetRevision: 1.0.0
     helm:
       values: |
         # Watch all namespaces
@@ -95,8 +94,6 @@ spec:
         # Log level
         logLevel: INFO
 
-        # Feature gates
-        featureGates: "+UseKRaft,+KafkaNodePools"
   destination:
     server: https://kubernetes.default.svc
     namespace: strimzi-system
@@ -119,7 +116,68 @@ spec:
 Now define your Kafka cluster as a Custom Resource. This is the core of your GitOps-managed Kafka infrastructure:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: controller
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production-kafka
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 3
+  roles:
+    - controller
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 20Gi
+        class: gp3
+        kraftMetadata: shared
+        deleteClaim: false
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 2Gi
+---
+apiVersion: kafka.strimzi.io/v1
+kind: KafkaNodePool
+metadata:
+  name: broker
+  namespace: kafka
+  labels:
+    strimzi.io/cluster: production-kafka
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: 3
+  roles:
+    - broker
+  storage:
+    type: jbod
+    volumes:
+      - id: 0
+        type: persistent-claim
+        size: 100Gi
+        class: gp3
+        kraftMetadata: shared
+        deleteClaim: false
+  resources:
+    requests:
+      cpu: "1"
+      memory: 4Gi
+    limits:
+      memory: 6Gi
+  jvmOptions:
+    -Xms: 2048m
+    -Xmx: 4096m
+---
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: production-kafka
@@ -128,8 +186,8 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   kafka:
-    version: 3.6.1
-    replicas: 3
+    version: 4.2.0
+    metadataVersion: 4.2-IV1
     listeners:
       - name: plain
         port: 9092
@@ -158,44 +216,14 @@ spec:
       num.partitions: 12
       log.retention.hours: 168
       log.segment.bytes: 1073741824
-      # Inter-broker protocol
-      inter.broker.protocol.version: "3.6"
-    storage:
-      type: jbod
-      volumes:
-        - id: 0
-          type: persistent-claim
-          size: 100Gi
-          class: gp3
-          deleteClaim: false
-    resources:
-      requests:
-        cpu: "1"
-        memory: 4Gi
-      limits:
-        memory: 6Gi
-    jvmOptions:
-      -Xms: 2048m
-      -Xmx: 4096m
+    authorization:
+      type: simple
     metricsConfig:
       type: jmxPrometheusExporter
       valueFrom:
         configMapKeyRef:
           name: kafka-metrics
           key: kafka-metrics-config.yml
-  zookeeper:
-    replicas: 3
-    storage:
-      type: persistent-claim
-      size: 20Gi
-      class: gp3
-      deleteClaim: false
-    resources:
-      requests:
-        cpu: 500m
-        memory: 1Gi
-      limits:
-        memory: 2Gi
   entityOperator:
     topicOperator:
       resources:
@@ -251,7 +279,7 @@ data:
 Define topics as KafkaTopic resources:
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders
@@ -269,7 +297,7 @@ spec:
     cleanup.policy: delete
     min.insync.replicas: 2
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: events
@@ -286,7 +314,7 @@ spec:
     cleanup.policy: compact,delete
     min.insync.replicas: 2
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: audit-log
@@ -307,7 +335,7 @@ spec:
 ## Step 5: Manage Kafka Users
 
 ```yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: order-service
