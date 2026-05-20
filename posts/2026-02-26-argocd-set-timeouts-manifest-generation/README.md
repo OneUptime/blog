@@ -81,8 +81,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Git request timeout (default: 15s for ls-remote, 90s for clone)
-  reposerver.git.request.timeout: "120"
+  # Git request timeout (default: 15s)
+  reposerver.git.request.timeout: "120s"
 ```
 
 You can also configure Git-level timeouts through environment variables:
@@ -109,9 +109,27 @@ spec:
               value: "ssh -o ConnectTimeout=30 -o ServerAliveInterval=15"
 ```
 
-## Timeout 3: Helm Execution Timeout
+## Timeout 3: Manifest Tool Execution Timeout
 
-Helm template rendering has its own timeout, though it is not directly configurable through ArgoCD. It is bounded by the controller-to-repo-server timeout. However, you can influence it:
+Helm and Kustomize rendering are bounded by ArgoCD's config management tool execution timeout. The repo server defaults this timeout to 90 seconds, and you can increase it with the `ARGOCD_EXEC_TIMEOUT` environment variable:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-repo-server
+          env:
+            - name: ARGOCD_EXEC_TIMEOUT
+              value: "150s"
+```
+
+For Helm specifically, you can also avoid unnecessary network work by pinning chart versions:
 
 ```yaml
 # Speed up Helm operations by pinning versions
@@ -121,10 +139,11 @@ metadata:
   name: my-app
 spec:
   source:
+    repoURL: https://charts.example.com
     chart: my-chart
-    targetRevision: "1.2.3"  # Pinned version avoids index resolution
+    targetRevision: "1.2.3"  # Pinned version avoids resolving a moving target
     helm:
-      # Skip running helm dependency update
+      # Include CRDs from the chart in the rendered manifests
       skipCrds: false
 ```
 
@@ -132,10 +151,10 @@ For Helm charts that include network-dependent operations (like fetching depende
 
 ## Timeout 4: Config Management Plugin Timeout
 
-If you use Config Management Plugins (CMPs), they have their own execution timeout:
+If you use Config Management Plugins (CMPs), their commands also have their own execution timeout. The plugin configuration is stored as `plugin.yaml` in the CMP sidecar:
 
 ```yaml
-# CMP Plugin configuration
+# /home/argocd/cmp-server/config/plugin.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: ConfigManagementPlugin
 metadata:
@@ -153,7 +172,25 @@ spec:
       - "generate-manifests"
 ```
 
-The CMP execution timeout is inherited from the controller-to-repo-server timeout. If your CMP runs external tools, add internal timeouts:
+The CMP server respects `server.repo.server.timeout.seconds` and `controller.repo.server.timeout.seconds`, and each CMP command also independently times out using `ARGOCD_EXEC_TIMEOUT` in the CMP sidecar. The default `ARGOCD_EXEC_TIMEOUT` is 90 seconds, so increase it when you raise the repo-server timeout:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: my-plugin
+          env:
+            - name: ARGOCD_EXEC_TIMEOUT
+              value: "150s"
+```
+
+If your CMP runs external tools, add internal timeouts:
 
 ```yaml
 spec:
@@ -172,7 +209,19 @@ spec:
 
 ## Timeout 5: Sync Operation Timeout
 
-Separate from manifest generation, sync operations have their own timeout behavior. The sync operation timeout is not explicitly configurable as a single value, but you control it through retry policies:
+Separate from manifest generation, sync operations have their own timeout behavior. The controller supports a global sync timeout, and you can also control retries through Application retry policies:
+
+```yaml
+# argocd-cmd-params-cm ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # 0 means no sync timeout, which is the default
+  controller.sync.timeout.seconds: "600"
+```
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -205,7 +254,7 @@ data:
   controller.repo.server.timeout.seconds: "180"
 
   # Repo server waits 120s for Git operations
-  reposerver.git.request.timeout: "120"
+  reposerver.git.request.timeout: "120s"
 
   # Repo server parallelism (prevents resource exhaustion)
   reposerver.parallelism.limit: "5"
@@ -228,6 +277,8 @@ spec:
               value: "0"
             - name: GIT_HTTP_LOW_SPEED_TIME
               value: "0"
+            - name: ARGOCD_EXEC_TIMEOUT
+              value: "150s"
           resources:
             requests:
               cpu: "1"
@@ -242,15 +293,17 @@ spec:
 Your timeouts should follow this hierarchy to ensure proper error messages:
 
 ```text
-controller.repo.server.timeout.seconds > reposerver.git.request.timeout > internal tool timeouts
+controller.repo.server.timeout.seconds > ARGOCD_EXEC_TIMEOUT > internal tool timeouts
+controller.repo.server.timeout.seconds > reposerver.git.request.timeout
 ```
 
 For example:
 
 ```text
 Controller timeout: 180s
-  Git request timeout: 120s
+  Manifest tool execution timeout: 150s
     CMP tool timeout: 90s
+  Git request timeout: 120s
 ```
 
 If the inner timeout fires, you get a specific error ("Git fetch timed out"). If the outer timeout fires first, you get a generic error ("context deadline exceeded") which is harder to debug.
@@ -297,7 +350,7 @@ curl -s http://localhost:8084/metrics | grep argocd_repo_pending_request_total
 ```yaml
 data:
   controller.repo.server.timeout.seconds: "60"
-  reposerver.git.request.timeout: "30"
+  reposerver.git.request.timeout: "30s"
 ```
 
 Fast repos, simple manifests, tight timeouts catch issues early.
@@ -307,7 +360,7 @@ Fast repos, simple manifests, tight timeouts catch issues early.
 ```yaml
 data:
   controller.repo.server.timeout.seconds: "120"
-  reposerver.git.request.timeout: "60"
+  reposerver.git.request.timeout: "60s"
 ```
 
 Room for normal variation in network latency and repo size.
@@ -317,7 +370,7 @@ Room for normal variation in network latency and repo size.
 ```yaml
 data:
   controller.repo.server.timeout.seconds: "300"
-  reposerver.git.request.timeout: "120"
+  reposerver.git.request.timeout: "120s"
 ```
 
 Complex charts, large repos, and potential network congestion need longer timeouts.
@@ -328,7 +381,7 @@ Complex charts, large repos, and potential network congestion need longer timeou
 data:
   controller.repo.server.timeout.seconds: "180"
   # Git timeout can be shorter since repos are local
-  reposerver.git.request.timeout: "30"
+  reposerver.git.request.timeout: "30s"
 ```
 
 Local Git mirrors are fast, but manifest generation may still be complex.
@@ -343,9 +396,7 @@ groups:
     rules:
       - alert: ArgocdManifestGenerationTimeout
         expr: |
-          increase(argocd_app_reconcile_duration_seconds_count{
-            result="ComparisonError"
-          }[5m]) > 0
+          sum(argocd_app_condition{type="ComparisonError"}) > 0
         for: 5m
         labels:
           severity: warning
@@ -356,7 +407,7 @@ groups:
       - alert: ArgocdRepoServerSlowRequests
         expr: |
           histogram_quantile(0.99,
-            rate(argocd_git_request_duration_seconds_bucket[5m])
+            sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le)
           ) > 60
         for: 10m
         labels:
@@ -370,7 +421,7 @@ For comprehensive timeout monitoring and ArgoCD performance tracking, [OneUptime
 ## Key Takeaways
 
 - The controller-to-repo-server timeout is the most impactful setting (default 60s)
-- Follow the timeout hierarchy: controller > git > internal tool
+- Follow the timeout hierarchy: controller > execution timeout > internal tool, and controller > git
 - Inner timeouts should be shorter than outer timeouts for clear error messages
 - Increase timeouts for complex Helm charts, large repos, and CMPs
 - Measure actual generation time before setting timeouts
