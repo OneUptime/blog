@@ -12,7 +12,7 @@ Cosign is the industry-standard tool for signing and verifying container images.
 
 ## Cosign and ArgoCD: How They Work Together
 
-Cosign signs container images by attaching a signature to the image manifest in the registry. ArgoCD does not natively verify signatures, but you can integrate verification at two points:
+Cosign signs container images by storing signatures in the registry and associating them with the image digest. ArgoCD does not natively verify signatures, but you can integrate verification at two points:
 
 1. PreSync hooks that run `cosign verify` before deployment
 2. Admission controllers (Kyverno or Connaisseur) that verify signatures at the API server level
@@ -54,11 +54,11 @@ For production, use a cloud KMS:
 ```bash
 # AWS KMS
 cosign generate-key-pair \
-  --kms awskms:///arn:aws:kms:us-east-1:123456789012:key/my-signing-key
+  --kms awskms:///alias/my-signing-key
 
 # Google Cloud KMS
 cosign generate-key-pair \
-  --kms gcpkms://projects/myproject/locations/us/keyRings/myring/cryptoKeys/mykey
+  --kms gcpkms://projects/myproject/locations/us/keyRings/myring/cryptoKeys/mykey/versions/1
 
 # Azure Key Vault
 cosign generate-key-pair \
@@ -75,13 +75,13 @@ metadata:
   name: cosign-config
   namespace: security
 data:
-  KMS_KEY_REF: "awskms:///arn:aws:kms:us-east-1:123456789012:key/my-signing-key"
+  KMS_KEY_REF: "awskms:///alias/my-signing-key"
   REKOR_URL: "https://rekor.sigstore.dev"
 ```
 
 ## Signing Images in Your CI Pipeline
 
-Here is a complete CI pipeline that builds, tests, scans, and signs images:
+Here is an example Tekton Task that builds and signs images:
 
 ```yaml
 # Tekton Task for building and signing
@@ -96,6 +96,9 @@ spec:
     - name: context
       type: string
       default: "."
+    - name: commitSha
+      type: string
+      default: "unknown"
   steps:
     - name: build
       image: gcr.io/kaniko-project/executor:latest
@@ -109,14 +112,14 @@ spec:
       image: bitnami/cosign:latest
       env:
         - name: COSIGN_KEY
-          value: "awskms:///arn:aws:kms:us-east-1:123456789012:key/my-signing-key"
+          value: "awskms:///alias/my-signing-key"
       script: |
         #!/bin/sh
         DIGEST=$(cat /workspace/digest)
         IMAGE="$(params.image)@${DIGEST}"
 
         # Sign the image
-        cosign sign --key "$COSIGN_KEY" "$IMAGE"
+        cosign sign --yes --key "$COSIGN_KEY" "$IMAGE"
 
         # Attach build metadata as attestation
         cat > /tmp/build-provenance.json <<EOF
@@ -124,11 +127,11 @@ spec:
           "builder": "tekton",
           "buildTimestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
           "sourceRepo": "$(params.context)",
-          "commitSha": "${GIT_COMMIT}"
+          "commitSha": "$(params.commitSha)"
         }
         EOF
 
-        cosign attest --key "$COSIGN_KEY" \
+        cosign attest --yes --key "$COSIGN_KEY" \
           --predicate /tmp/build-provenance.json \
           --type custom \
           "$IMAGE"
@@ -200,7 +203,7 @@ spec:
               if [ -n "$FAILURES" ]; then
                 echo ""
                 echo "DEPLOYMENT BLOCKED - Failed signature verification:"
-                echo -e "$FAILURES"
+                printf '%b\n' "$FAILURES"
                 exit 1
               fi
 
@@ -229,7 +232,7 @@ command:
   - |
     # Verify using KMS - no local key file needed
     cosign verify \
-      --key awskms:///arn:aws:kms:us-east-1:123456789012:key/my-signing-key \
+      --key awskms:///arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab \
       "$IMAGE"
 ```
 
@@ -265,26 +268,30 @@ spec:
     targetRevision: 3.3.0
     helm:
       values: |
-        validators:
-          - name: cosign-default
-            type: cosign
-            trustRoots:
-              - name: default
-                key: |
-                  -----BEGIN PUBLIC KEY-----
-                  MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
-                  your-public-key
-                  -----END PUBLIC KEY-----
-        policy:
-          - pattern: "registry.example.com/*"
-            validator: cosign-default
-            with:
-              trustRoot: default
-          - pattern: "*"
-            validator: deny  # Block all unsigned images
-        namespacedValidation:
-          enabled: true
-          mode: validate  # Only validate in labeled namespaces
+        application:
+          validators:
+            - name: cosign-default
+              type: cosign
+              trustRoots:
+                - name: default
+                  key: |
+                    -----BEGIN PUBLIC KEY-----
+                    MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE
+                    your-public-key
+                    -----END PUBLIC KEY-----
+            - name: deny
+              type: static
+              approve: false
+          policy:
+            - pattern: "registry.example.com/*:*"
+              validator: cosign-default
+              with:
+                trustRoot: default
+            - pattern: "*:*"
+              validator: deny  # Block all unsigned images
+          features:
+            namespacedValidation:
+              mode: validate  # Only validate in labeled namespaces
   destination:
     server: https://kubernetes.default.svc
     namespace: connaisseur
@@ -304,7 +311,7 @@ metadata:
   name: production
   labels:
     securityProfile: restricted
-    connaisseur.io/webhook: validate
+    securesystemsengineering.connaisseur/webhook: validate
 ```
 
 ## Handling Signature Rotation
@@ -318,7 +325,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-image-multi-key
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: verify-with-any-key
       match:
@@ -329,6 +335,7 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestors:
             - count: 1  # At least one must match
               entries:
