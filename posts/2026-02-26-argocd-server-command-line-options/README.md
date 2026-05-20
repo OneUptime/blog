@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Server Configuration, Operation
 
-Description: Learn how to configure argocd-server command-line options to customize API server behavior, authentication, TLS, rate limiting, and performance tuning.
+Description: Learn how to configure argocd-server command-line options to customize API server behavior, authentication, TLS, request validation, and performance tuning.
 
 ---
 
@@ -14,7 +14,7 @@ This guide covers the most important argocd-server command-line options, when to
 
 ## How to Set Command-Line Options
 
-The argocd-server runs as a Kubernetes Deployment. You modify its command-line options by editing the container's `command` or `args` field.
+The argocd-server runs as a Kubernetes Deployment. You modify its command-line options by editing the container's `args` field.
 
 ### Using kubectl edit
 
@@ -41,9 +41,9 @@ patches:
       name: argocd-server
     patch: |
       - op: replace
-        path: /spec/template/spec/containers/0/command
+        path: /spec/template/spec/containers/0/args
         value:
-          - argocd-server
+          - /usr/local/bin/argocd-server
           - --insecure
           - --rootpath=/argocd
           - --loglevel=info
@@ -78,27 +78,30 @@ command:
 
 This is one of the most commonly used flags. Without it, ArgoCD serves HTTPS on port 8080, which can cause issues with ingress controllers that expect to do TLS termination themselves.
 
-#### --tls-cert-file and --tls-key-file
+#### --tlsminversion, --tlsmaxversion, and --tlsciphers
 
-Specify custom TLS certificates instead of the auto-generated ones.
+Configure TLS protocol versions and cipher suites when ArgoCD terminates TLS itself.
 
 ```yaml
 command:
   - argocd-server
-  - --tls-cert-file=/tls/tls.crt
-  - --tls-key-file=/tls/tls.key
+  - --tlsminversion=1.2
+  - --tlsmaxversion=1.3
+  - --tlsciphers=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
 ```
 
-Mount the certificates from a Kubernetes Secret.
+Custom server certificates are provided through a Kubernetes Secret named `argocd-server-tls` with `tls.crt` and `tls.key` keys.
 
 ```yaml
-volumeMounts:
-  - name: tls-certs
-    mountPath: /tls
-volumes:
-  - name: tls-certs
-    secret:
-      secretName: argocd-server-tls
+apiVersion: v1
+kind: Secret
+metadata:
+  name: argocd-server-tls
+  namespace: argocd
+type: kubernetes.io/tls
+data:
+  tls.crt: <base64-encoded-certificate>
+  tls.key: <base64-encoded-private-key>
 ```
 
 ### URL and Path Configuration
@@ -142,7 +145,7 @@ Use `debug` for troubleshooting, `info` for normal operation, and `warn` or `err
 
 #### --logformat
 
-Choose between `text` (default) and `json` log formats. JSON is better for log aggregation systems.
+Choose between `json` (default) and `text` log formats. JSON is better for log aggregation systems.
 
 ```yaml
 command:
@@ -176,7 +179,7 @@ Increase this for high-traffic environments to reduce the load on your OIDC prov
 
 #### --enable-gzip
 
-Enables gzip compression for API responses. Reduces bandwidth usage.
+Enables gzip compression for API responses. This is enabled by default in current ArgoCD releases.
 
 ```yaml
 command:
@@ -218,11 +221,11 @@ command:
 
 Lower values mean more frequent state checks but more load on the cluster.
 
-## Rate Limiting Options
+## Request and Cache Options
 
 ### --api-content-types
 
-Restrict accepted content types for API requests.
+Restrict accepted content types for non-GET API requests. The default is `application/json`; an empty value allows any content type.
 
 ### --connection-status-cache-expiration
 
@@ -304,9 +307,8 @@ flowchart TD
     Client[Browser/CLI] -->|HTTPS| Ingress[Ingress Controller]
     Ingress -->|HTTP| Server[argocd-server]
     Server -->|gRPC| RepoServer[argocd-repo-server]
-    Server -->|gRPC| Controller[argocd-application-controller]
     Server -->|TCP| Redis[Redis]
-    Server -->|gRPC| Dex[argocd-dex-server]
+    Server -->|HTTP/OIDC| Dex[argocd-dex-server]
     Server -->|HTTPS| K8sAPI[Kubernetes API]
 ```
 
@@ -323,10 +325,10 @@ env:
   - name: ARGOCD_SERVER_ROOTPATH
     value: "/argocd"
   # Log level
-  - name: ARGOCD_LOG_LEVEL
+  - name: ARGOCD_SERVER_LOG_LEVEL
     value: "info"
   # Log format
-  - name: ARGOCD_LOG_FORMAT
+  - name: ARGOCD_SERVER_LOGFORMAT
     value: "json"
 ```
 
@@ -335,9 +337,9 @@ env:
 Check what options your argocd-server is currently running with.
 
 ```bash
-# See the full command line
+# See the full command line arguments
 kubectl get deployment argocd-server -n argocd \
-  -o jsonpath='{.spec.template.spec.containers[0].command}' | jq .
+  -o jsonpath='{.spec.template.spec.containers[0].args}' | jq .
 
 # See environment variables
 kubectl get deployment argocd-server -n argocd \
@@ -353,9 +355,9 @@ kubectl exec -n argocd deployment/argocd-server -- argocd-server --help
 
 If your ingress controller terminates TLS and forwards plain HTTP to ArgoCD, you must use `--insecure`. Otherwise, ArgoCD will try to serve HTTPS on the backend, causing protocol mismatches and redirect loops.
 
-### Setting --rootpath Without --basehref
+### Setting Only --basehref When the API Also Needs a Subpath
 
-If you set `--rootpath` but forget `--basehref`, the UI assets will not load correctly because the browser will request them from the wrong path.
+If both the UI and API are served under a non-root path, use `--rootpath`. The `--basehref` flag only changes the UI base path.
 
 ### Running Multiple Replicas Without Redis
 
