@@ -267,7 +267,7 @@ When a migration job fails, ArgoCD stops the sync. The application continues run
 1. Check the migration Job logs
 2. Fix the migration script
 3. Push the fix to Git
-4. ArgoCD will retry the sync
+4. ArgoCD will retry the sync if automated sync is enabled, or you can start a new sync manually
 
 ```bash
 # Check migration job logs
@@ -316,21 +316,27 @@ containers:
   - name: migrate
     image: registry.example.com/myapp:v2.1.0
     command:
-      - /bin/sh
+      - python
       - -c
       - |
-        # Acquire advisory lock before migrating
-        PGPASSWORD=$DB_PASSWORD psql -h postgres -U app -d mydb \
-          -c "SELECT pg_advisory_lock(12345);"
+        import subprocess
+        import sys
+        import os
 
-        python manage.py migrate --noinput
-        RESULT=$?
+        import psycopg
 
-        # Release lock
-        PGPASSWORD=$DB_PASSWORD psql -h postgres -U app -d mydb \
-          -c "SELECT pg_advisory_unlock(12345);"
+        with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT pg_advisory_lock(12345)")
+                try:
+                    result = subprocess.run(
+                        ["python", "manage.py", "migrate", "--noinput"],
+                        check=False,
+                    )
+                finally:
+                    cur.execute("SELECT pg_advisory_unlock(12345)")
 
-        exit $RESULT
+        sys.exit(result.returncode)
 ```
 
 ## Monitoring Migrations
@@ -339,4 +345,4 @@ Track migration execution time and success rate using [OneUptime](https://oneupt
 
 ## Summary
 
-Database migrations with ArgoCD sync hooks follow a clear pattern: use PreSync hooks to run migrations before the application updates, sync waves to order multiple migrations, and PostSync hooks for data backfill operations. Always use the same image version for the migration job and the application deployment. Set appropriate timeouts and retry limits. When migrations fail, ArgoCD stops the sync, keeping the old application running safely while you fix the migration script in Git.
+Database migrations with ArgoCD sync hooks follow a clear pattern: use PreSync hooks to run migrations before the application updates, sync waves to order multiple migrations, and PostSync hooks for data backfill operations. Always use the same image version for the migration job and the application deployment. Set appropriate timeouts and retry limits. When migrations fail, ArgoCD stops the sync, keeping the old application running safely while you fix the migration script in Git and retry the sync.
