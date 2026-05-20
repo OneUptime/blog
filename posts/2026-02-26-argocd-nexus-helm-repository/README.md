@@ -8,21 +8,21 @@ Description: Step-by-step guide to configuring Sonatype Nexus Repository Manager
 
 ---
 
-Sonatype Nexus Repository Manager is a popular open-source artifact repository that many organizations use to host Helm charts alongside Docker images, Maven artifacts, and npm packages. Connecting Nexus to ArgoCD allows you to deploy Helm charts stored in Nexus through a GitOps workflow without changing your existing artifact management setup.
+Sonatype Nexus Repository Manager is a popular artifact repository that many organizations use to host Helm charts alongside Docker images, Maven artifacts, and npm packages. Connecting Nexus to ArgoCD allows you to deploy Helm charts stored in Nexus through a GitOps workflow without changing your existing artifact management setup.
 
 This guide covers everything you need to configure Nexus as a Helm repository in ArgoCD, including authentication, TLS, and common troubleshooting scenarios.
 
 ## Why Nexus with ArgoCD
 
-Nexus Repository Manager (both OSS and Pro editions) has been a staple in software delivery for years. Many teams already use it for container images and other artifacts. Adding Helm chart hosting to Nexus means you keep all your artifacts in one place rather than spinning up a separate ChartMuseum or Artifactory instance.
+Nexus Repository Manager (both Community and Pro editions) has been a staple in software delivery for years. Many teams already use it for container images and other artifacts. Adding Helm chart hosting to Nexus means you keep all your artifacts in one place rather than spinning up a separate ChartMuseum or Artifactory instance.
 
 Key advantages of using Nexus for Helm charts:
 
 - Consolidation of all artifact types in a single platform
 - Built-in proxy repositories for caching upstream Helm charts (Bitnami, ingress-nginx, etc.)
-- Group repositories that combine hosted and proxy repos under one URL
+- Group repositories that combine hosted and proxy repos under one URL in Nexus Repository 3.92+
 - Role-based access control for Helm chart publishing and consumption
-- Free OSS edition supports Helm repositories
+- Free Community Edition supports Helm repositories
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ To cache charts from upstream sources like Bitnami:
 
 To aggregate your hosted and proxy repos behind a single URL:
 
-1. Click **Create Repository** and select **helm (group)** (Nexus Pro only)
+1. Click **Create Repository** and select **helm (group)** (Nexus Repository 3.92+)
 2. Configure:
    - Name: `helm-group`
    - Member repositories: Add `helm-hosted` and `helm-bitnami-proxy`
@@ -295,6 +295,6 @@ kubectl -n argocd exec -it deploy/argocd-repo-server -- \
 
 ## Summary
 
-Nexus Repository Manager works well as a Helm chart source for ArgoCD. The setup is straightforward - add the repository URL with credentials using either the CLI, a Kubernetes Secret, or credential templates. Whether you use the free OSS edition or Nexus Pro with group repositories, the integration gives you centralized artifact management combined with GitOps deployment automation.
+Nexus Repository Manager works well as a Helm chart source for ArgoCD. The setup is straightforward - add the repository URL with credentials using either the CLI, a Kubernetes Secret, or credential templates. Whether you use the free Community Edition or Nexus Repository 3.92+ with group repositories, the integration gives you centralized artifact management combined with GitOps deployment automation.
 
 For more on Helm and ArgoCD, see [How to Use ArgoCD with Helm](https://oneuptime.com/blog/post/2026-02-02-argocd-helm/view).
