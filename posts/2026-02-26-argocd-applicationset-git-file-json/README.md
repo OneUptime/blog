@@ -14,7 +14,7 @@ This guide covers the Git file generator with JSON config files in depth, includ
 
 ## How JSON File Generation Works
 
-The Git file generator scans a Git repository for files matching a glob pattern. Each matched file is parsed as JSON, and its contents become template parameters. One file equals one generated Application.
+The Git file generator scans a Git repository for files matching a glob pattern. Each matched file is parsed as JSON, and its contents become template parameters. When each file contains one JSON object, one file equals one generated Application.
 
 ```mermaid
 flowchart TD
@@ -300,7 +300,7 @@ spec:
 
 ## Conditional Deployment with Enable Flags
 
-Add a boolean flag to control whether an app should be deployed.
+Add a flag to control whether an app should be deployed.
 
 ```json
 {
@@ -327,10 +327,10 @@ spec:
         revision: HEAD
         files:
           - path: 'apps/*.json'
-        # Only generate apps where enabled is true
-        selector:
-          matchLabels:
-            enabled: "true"
+      # Only generate apps where enabled is true
+      selector:
+        matchLabels:
+          enabled: "true"
   template:
     metadata:
       name: '{{app_name}}'
@@ -345,30 +345,30 @@ spec:
         namespace: '{{namespace}}'
 ```
 
-Setting `enabled` to `"false"` in the JSON file will cause the Application to be pruned (or not created).
+Setting `enabled` to `"false"` in the JSON file will cause the ApplicationSet to stop generating the Application.
 
 ## Validating JSON Config Files in CI
 
-Enforce schema validation before configs reach the ApplicationSet.
+Enforce JSON syntax and required-field validation before configs reach the ApplicationSet.
 
 ```bash
 #!/bin/bash
 # validate-app-configs.sh
 
-SCHEMA='{
-  "type": "object",
-  "required": ["app_name", "namespace", "source_repo", "source_path"],
-  "properties": {
-    "app_name": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
-    "namespace": {"type": "string"},
-    "source_repo": {"type": "string", "format": "uri"},
-    "source_path": {"type": "string"}
-  }
-}'
-
 for config in configs/apps/*.json; do
   if ! jq empty "$config" 2>/dev/null; then
     echo "FAIL: Invalid JSON - $config"
+    exit 1
+  fi
+
+  if ! jq -e '
+    type == "object" and
+    (.app_name | type == "string" and test("^[a-z][a-z0-9-]*$")) and
+    (.namespace | type == "string") and
+    (.source_repo | type == "string") and
+    (.source_path | type == "string")
+  ' "$config" >/dev/null; then
+    echo "FAIL: Missing or invalid required fields - $config"
     exit 1
   fi
 
@@ -392,7 +392,7 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-applicationset-controlle
   --tail=50
 
 # Verify the glob pattern matches your files
-# The path pattern follows Go's filepath.Match syntax
+# Argo CD's default Git file globbing is recursive; the optional new globbing uses doublestar patterns
 
 # Check the ApplicationSet status
 kubectl describe applicationset json-config-apps -n argocd
