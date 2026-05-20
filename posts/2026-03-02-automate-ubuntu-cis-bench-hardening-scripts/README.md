@@ -44,11 +44,14 @@ Start with a header and utility functions:
 set -euo pipefail
 
 LOG_FILE="/opt/hardening/logs/hardening-$(date +%Y%m%d-%H%M%S).log"
+LATEST_LOG_FILE="/opt/hardening/logs/hardening-latest.log"
 REPORT_FILE="/opt/hardening/reports/compliance-$(date +%Y%m%d).txt"
+
+: > "$LATEST_LOG_FILE"
 
 # Logging function
 log() {
-    echo "[$(date +%Y-%m-%dT%H:%M:%S)] $*" | tee -a "$LOG_FILE"
+    echo "[$(date +%Y-%m-%dT%H:%M:%S)] $*" | tee -a "$LOG_FILE" "$LATEST_LOG_FILE"
 }
 
 # Apply a hardening setting with logging
@@ -56,7 +59,12 @@ apply() {
     local description="$1"
     shift
     log "APPLYING: $description"
-    "$@" && log "SUCCESS: $description" || log "FAILED: $description"
+    if "$@"; then
+        log "SUCCESS: $description"
+    else
+        log "FAILED: $description"
+        return 1
+    fi
 }
 ```
 
@@ -252,15 +260,26 @@ EOF
 
     # Configure PAM password settings
     # Set account lockout
-    if ! grep -q "pam_faillock" /etc/pam.d/common-auth; then
-        sed -i '/pam_unix.so/i auth required pam_faillock.so preauth silent audit deny=5 unlock_time=900' /etc/pam.d/common-auth
-        log "Configured account lockout via pam_faillock"
+    cat > /etc/security/faillock.conf << 'EOF'
+# CIS Benchmark account lockout requirements
+deny=5
+unlock_time=900
+audit
+silent
+EOF
+
+    if ! grep -q "pam_faillock.so preauth" /etc/pam.d/common-auth; then
+        sed -i '/pam_unix.so/i auth required pam_faillock.so preauth' /etc/pam.d/common-auth
     fi
+    if ! grep -q "pam_faillock.so authfail" /etc/pam.d/common-auth; then
+        sed -i '/pam_unix.so/a auth [default=die] pam_faillock.so authfail\nauth sufficient pam_faillock.so authsucc' /etc/pam.d/common-auth
+    fi
+    log "Configured account lockout via pam_faillock"
 
     # SSH hardening
+    mkdir -p /etc/ssh/sshd_config.d
     cat > /etc/ssh/sshd_config.d/cis-hardening.conf << 'EOF'
 # CIS Benchmark SSH configuration
-Protocol 2
 PermitRootLogin no
 MaxAuthTries 4
 IgnoreRhosts yes
@@ -275,7 +294,8 @@ X11Forwarding no
 AllowAgentForwarding no
 EOF
 
-    apply "Restarting sshd" systemctl restart sshd
+    apply "Validating sshd configuration" sshd -t
+    apply "Restarting ssh" systemctl restart ssh.service
 
     log "Access control hardening complete"
 }
