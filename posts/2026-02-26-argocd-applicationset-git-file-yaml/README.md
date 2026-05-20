@@ -8,7 +8,7 @@ Description: Learn how to use the ArgoCD ApplicationSet Git file generator with 
 
 ---
 
-The Git file generator in ArgoCD ApplicationSets reads configuration files from a Git repository and uses their contents as template parameters. While JSON is the most commonly documented format, YAML config files work just as well and are often preferred by teams already steeped in Kubernetes YAML conventions.
+The Git file generator in ArgoCD ApplicationSets reads JSON or YAML configuration files from a Git repository and uses their contents as template parameters. YAML config files are often preferred by teams already steeped in Kubernetes YAML conventions.
 
 This guide covers how to set up the Git file generator with YAML files, structure your config data, and handle practical patterns.
 
@@ -27,36 +27,32 @@ flowchart LR
 
 ## Basic YAML Config File Setup
 
-Note that as of ArgoCD v2.x, the Git file generator officially supports JSON files. For YAML config files, you have two approaches: use JSON files (recommended for maximum compatibility) or use a config management plugin. However, many teams use the Git file generator with JSON files that contain YAML-like structured data.
-
-The recommended approach is to use JSON files with the Git file generator. Here is the setup.
+The Git file generator supports YAML files directly. Here is the setup.
 
 Create a directory structure with config files:
 
 ```text
 apps/
   frontend/
-    config.json
+    config.yaml
   backend/
-    config.json
+    config.yaml
   worker/
-    config.json
+    config.yaml
 ```
 
 Each config file contains application parameters:
 
-```json
-{
-  "app_name": "frontend",
-  "namespace": "frontend",
-  "chart_path": "charts/frontend",
-  "target_revision": "HEAD",
-  "values_file": "values-production.yaml",
-  "replicas": "3",
-  "domain": "app.example.com",
-  "team": "web-platform",
-  "tier": "frontend"
-}
+```yaml
+app_name: frontend
+namespace: frontend
+chart_path: charts/frontend
+target_revision: HEAD
+values_file: values-production.yaml
+replicas: "3"
+domain: app.example.com
+team: web-platform
+tier: frontend
 ```
 
 ```yaml
@@ -71,7 +67,7 @@ spec:
         repoURL: https://github.com/myorg/app-configs.git
         revision: HEAD
         files:
-          - path: 'apps/*/config.json'
+          - path: 'apps/*/config.yaml'
   template:
     metadata:
       name: '{{app_name}}'
@@ -105,15 +101,24 @@ spec:
 
 ## Embedding YAML Values in Config Files
 
-While the config files themselves must be JSON for the Git file generator, you can embed YAML content as string values that get passed to Helm charts.
+You can also embed YAML content as string values that get passed to Helm charts.
 
-```json
-{
-  "app_name": "backend-api",
-  "namespace": "backend",
-  "helm_values": "replicaCount: 3\nresources:\n  requests:\n    cpu: 500m\n    memory: 512Mi\n  limits:\n    cpu: 1000m\n    memory: 1Gi\nenv:\n  DATABASE_URL: postgres://db:5432/app\n  REDIS_URL: redis://cache:6379",
-  "team": "backend"
-}
+```yaml
+app_name: backend-api
+namespace: backend
+helm_values: |
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+  env:
+    DATABASE_URL: postgres://db:5432/app
+    REDIS_URL: redis://cache:6379
+team: backend
 ```
 
 ```yaml
@@ -128,7 +133,7 @@ spec:
         repoURL: https://github.com/myorg/app-configs.git
         revision: HEAD
         files:
-          - path: 'apps/*/config.json'
+          - path: 'apps/*/config.yaml'
   template:
     metadata:
       name: '{{app_name}}'
@@ -154,48 +159,44 @@ Structure your config files to support multiple environments.
 environments/
   dev/
     apps/
-      frontend.json
-      backend.json
+      frontend.yaml
+      backend.yaml
   staging/
     apps/
-      frontend.json
-      backend.json
+      frontend.yaml
+      backend.yaml
   production/
     apps/
-      frontend.json
-      backend.json
+      frontend.yaml
+      backend.yaml
 ```
 
 Production frontend config:
 
-```json
-{
-  "app_name": "frontend",
-  "env": "production",
-  "namespace": "frontend-prod",
-  "cluster": "https://prod.example.com",
-  "replicas": "5",
-  "domain": "www.example.com",
-  "autoscaling_min": "3",
-  "autoscaling_max": "10",
-  "cdn_enabled": "true"
-}
+```yaml
+app_name: frontend
+env: production
+namespace: frontend-prod
+cluster: https://prod.example.com
+replicas: "5"
+domain: www.example.com
+autoscaling_min: "3"
+autoscaling_max: "10"
+cdn_enabled: "true"
 ```
 
 Dev frontend config:
 
-```json
-{
-  "app_name": "frontend",
-  "env": "dev",
-  "namespace": "frontend-dev",
-  "cluster": "https://dev.example.com",
-  "replicas": "1",
-  "domain": "dev.example.com",
-  "autoscaling_min": "1",
-  "autoscaling_max": "2",
-  "cdn_enabled": "false"
-}
+```yaml
+app_name: frontend
+env: dev
+namespace: frontend-dev
+cluster: https://dev.example.com
+replicas: "1"
+domain: dev.example.com
+autoscaling_min: "1"
+autoscaling_max: "2"
+cdn_enabled: "false"
 ```
 
 ```yaml
@@ -210,7 +211,7 @@ spec:
         repoURL: https://github.com/myorg/env-configs.git
         revision: HEAD
         files:
-          - path: 'environments/*/apps/*.json'
+          - path: 'environments/*/apps/*.yaml'
   template:
     metadata:
       name: '{{app_name}}-{{env}}'
@@ -245,28 +246,23 @@ spec:
           - CreateNamespace=true
 ```
 
-## Nested JSON for Complex Configuration
+## Nested YAML for Complex Configuration
 
-JSON config files support nested objects. The Git file generator flattens them using dot notation.
+YAML config files support nested objects. The Git file generator flattens them using dot notation.
 
-```json
-{
-  "name": "api-gateway",
-  "metadata": {
-    "team": "platform",
-    "tier": "gateway",
-    "oncall": "platform-oncall@example.com"
-  },
-  "deploy": {
-    "namespace": "gateway",
-    "cluster": "https://prod.example.com",
-    "replicas": 3
-  },
-  "monitoring": {
-    "enabled": true,
-    "dashboard": "https://grafana.example.com/d/gateway"
-  }
-}
+```yaml
+name: api-gateway
+metadata:
+  team: platform
+  tier: gateway
+  oncall: platform-oncall@example.com
+deploy:
+  namespace: gateway
+  cluster: https://prod.example.com
+  replicas: 3
+monitoring:
+  enabled: true
+  dashboard: https://grafana.example.com/d/gateway
 ```
 
 Access nested values in the template using dot notation:
@@ -285,7 +281,7 @@ spec:
         repoURL: https://github.com/myorg/configs.git
         revision: HEAD
         files:
-          - path: 'apps/*/config.json'
+          - path: 'apps/*/config.yaml'
   template:
     metadata:
       name: '{{.name}}'
@@ -311,17 +307,15 @@ spec:
 The Git file generator pattern enables a self-service workflow where developers create a config file to onboard their application.
 
 ```text
-# Developer creates: apps/my-new-service/config.json
+# Developer creates: apps/my-new-service/config.yaml
 
-{
-  "app_name": "my-new-service",
-  "namespace": "my-new-service",
-  "repo_url": "https://github.com/myorg/my-new-service.git",
-  "chart_path": "deploy",
-  "team": "my-team",
-  "environment": "dev",
-  "deploy_enabled": "true"
-}
+app_name: my-new-service
+namespace: my-new-service
+repo_url: https://github.com/myorg/my-new-service.git
+chart_path: deploy
+team: my-team
+environment: dev
+deploy_enabled: "true"
 ```
 
 The ApplicationSet picks it up on next reconciliation:
@@ -343,16 +337,16 @@ Add a CI check to validate config files before they reach the ApplicationSet.
 #!/bin/bash
 # validate-configs.sh - Run in CI pipeline
 
-for config_file in apps/*/config.json; do
-  # Check valid JSON
-  if ! jq empty "$config_file" 2>/dev/null; then
-    echo "ERROR: Invalid JSON in $config_file"
+for config_file in apps/*/config.yaml; do
+  # Check valid YAML
+  if ! yq e '.' "$config_file" >/dev/null 2>&1; then
+    echo "ERROR: Invalid YAML in $config_file"
     exit 1
   fi
 
   # Check required fields
   for field in app_name namespace team; do
-    value=$(jq -r ".$field" "$config_file")
+    value=$(yq e ".$field" "$config_file")
     if [ "$value" = "null" ] || [ -z "$value" ]; then
       echo "ERROR: Missing required field '$field' in $config_file"
       exit 1
