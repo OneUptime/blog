@@ -8,26 +8,26 @@ Description: Learn how to configure Git credential caching in ArgoCD to reduce a
 
 ---
 
-Every time ArgoCD fetches from a private Git repository, it needs to authenticate. For HTTPS repositories, this means sending credentials with each request. For organizations with hundreds of applications all pointing to private repositories, this creates significant authentication overhead and can trigger rate limiting from credential providers like GitHub Apps or OAuth token endpoints.
+Every time ArgoCD fetches from a private Git repository, it needs credentials that Git can use for that request. For HTTPS repositories, this usually means providing a username and password or token through ArgoCD's askpass integration. For organizations with hundreds of applications all pointing to private repositories, this creates operational overhead and can add latency when tokens have to be generated from providers like GitHub Apps or OAuth token endpoints.
 
-Git credential caching reduces this overhead by storing authenticated sessions in memory for a configurable period. This guide covers how to configure credential caching in ArgoCD for better performance and reliability.
+Git credential caching can reduce some repeated Git credential prompts by storing credentials in memory for a configurable period. ArgoCD also has its own repository and token caches. This guide covers how these layers fit together for better performance and reliability.
 
 ## How ArgoCD Handles Git Credentials
 
-ArgoCD stores repository credentials in Kubernetes Secrets within the argocd namespace. When the repo server needs to fetch from a repository, it retrieves the appropriate credentials and passes them to the Git client. The flow looks like this:
+ArgoCD stores repository credentials in Kubernetes Secrets within the argocd namespace. When the repo server needs to fetch from a repository, it resolves the appropriate credentials and exposes them to the Git client through ArgoCD's askpass helper. The flow looks like this:
 
 ```mermaid
 flowchart LR
     A[Repo Server] --> B{Credentials Cached?}
     B -->|Yes| C[Use Cached Credentials]
     B -->|No| D[Fetch from K8s Secret]
-    D --> E[Authenticate with Git Server]
+    D --> E[Provide Credentials via Askpass]
     E --> F[Cache Credentials]
     C --> G[Git Fetch Operation]
     F --> G
 ```
 
-Without caching, every Git operation triggers a fresh credential lookup and authentication handshake. With caching, subsequent operations reuse the authenticated session.
+Without caching, every Git operation may need ArgoCD to provide credentials again. With caching, subsequent operations can reuse cached credential material where the authentication method supports it.
 
 ## Configuring Repository Credential Templates
 
@@ -53,7 +53,7 @@ This template applies to all repositories under `https://github.com/myorg`. Inst
 
 ## Configuring Git Credential Helper Caching
 
-Git has a built-in credential helper system that can cache credentials in memory. Configure this by mounting a custom gitconfig into the repo server:
+Git has a built-in credential helper system that can cache credentials in memory. ArgoCD runs Git with `HOME=/dev/null`, so a user-level file such as `/home/argocd/.gitconfig` is not used. If you need to customize Git configuration in the repo server, mount it as system Git configuration at `/etc/gitconfig` or build it into a custom image:
 
 ```yaml
 apiVersion: v1
@@ -64,13 +64,13 @@ metadata:
 data:
   gitconfig: |
     [credential]
-      helper = cache --timeout=3600
+      helper = cache --timeout=3600 --socket=/tmp/git-credential-cache.sock
 
     [credential "https://github.com"]
-      helper = cache --timeout=7200
+      helper = cache --timeout=7200 --socket=/tmp/git-credential-cache.sock
 
     [credential "https://gitlab.internal.corp.com"]
-      helper = cache --timeout=1800
+      helper = cache --timeout=1800 --socket=/tmp/git-credential-cache.sock
 ```
 
 Mount it into the repo server:
@@ -88,7 +88,7 @@ spec:
       - name: argocd-repo-server
         volumeMounts:
         - name: gitconfig
-          mountPath: /home/argocd/.gitconfig
+          mountPath: /etc/gitconfig
           subPath: gitconfig
       volumes:
       - name: gitconfig
@@ -96,7 +96,7 @@ spec:
           name: argocd-repo-server-gitconfig
 ```
 
-The `--timeout` value is in seconds. The example above caches GitHub credentials for 2 hours and internal GitLab credentials for 30 minutes.
+The `--timeout` value is in seconds. The example above caches GitHub credentials for 2 hours and internal GitLab credentials for 30 minutes. The explicit `--socket` keeps the cache socket on a writable local path; the helper stores credentials in the credential-cache daemon's memory and forgets them when the timeout expires or the daemon exits.
 
 ## Understanding Cache Lifetime Trade-offs
 
@@ -118,7 +118,7 @@ For most environments, a timeout between 1800 and 3600 seconds (30 minutes to 1 
 
 ## Configuring Credential Caching with GitHub App Tokens
 
-GitHub App installation tokens expire after 1 hour by default. ArgoCD handles GitHub App authentication natively, but the token refresh process adds latency. Configure caching to minimize redundant token generation:
+GitHub App installation tokens expire after 1 hour by default. ArgoCD handles GitHub App authentication natively and caches the GitHub App installation transport/token internally, so Git credential-helper caching is not required to avoid regenerating a token for every Git operation. Configure the repository or credential template with GitHub App credentials:
 
 ```yaml
 apiVersion: v1
@@ -140,7 +140,7 @@ stringData:
     -----END RSA PRIVATE KEY-----
 ```
 
-ArgoCD automatically handles token generation and caching for GitHub App credentials. The tokens are refreshed before they expire, so you do not need to configure additional caching for this authentication method.
+ArgoCD automatically handles token generation and caching for GitHub App credentials. The default cache duration is 60 minutes and can be adjusted with `ARGOCD_GITHUB_APP_CREDS_EXPIRATION_DURATION`, which is specified in minutes, so you do not need to configure Git credential-helper caching for this authentication method.
 
 ## Repo Server Cache Configuration
 
@@ -154,12 +154,15 @@ metadata:
   namespace: argocd
 data:
   # Cache expiration for repository data
-  reposerver.default.cache.expiration: "24h"
+  reposerver.default.cache.expiration: "24h0m0s"
+  # Cache expiration for repo state, including app lists, app details,
+  # manifest generation, and revision metadata
+  reposerver.repo.cache.expiration: "24h0m0s"
   # Enable repo server parallelism limit
   reposerver.parallelism.limit: "10"
 ```
 
-The repo server maintains a local clone of each repository. When ArgoCD needs to check for changes, it performs a `git fetch` instead of a full clone. This is much faster and uses fewer credentials authentications because the repository is already checked out locally.
+The repo server maintains a local clone of each repository. When ArgoCD needs to check for changes, it can perform a `git fetch` instead of a full clone. This is much faster and usually needs less authentication work because the repository is already checked out locally.
 
 ## Persistent Repository Cache
 
@@ -198,7 +201,7 @@ spec:
   storageClassName: gp3
 ```
 
-With persistent caching, restarts no longer trigger a full re-authentication and clone cycle for all repositories. The repo server picks up where it left off.
+With persistent caching, restarts no longer have to discard every local clone. If you run multiple repo server replicas, use storage that matches your replica model, such as one writable volume per replica or a storage class that supports the access mode you need.
 
 ## Configuring Helm Values for Credential Caching
 
@@ -218,7 +221,7 @@ repoServer:
 
   volumeMounts:
     - name: gitconfig
-      mountPath: /home/argocd/.gitconfig
+      mountPath: /etc/gitconfig
       subPath: gitconfig
     - name: repo-cache
       mountPath: /tmp
@@ -229,7 +232,8 @@ repoServer:
 
 configs:
   params:
-    reposerver.default.cache.expiration: "24h"
+    reposerver.default.cache.expiration: "24h0m0s"
+    reposerver.repo.cache.expiration: "24h0m0s"
 ```
 
 ## Monitoring Credential Cache Effectiveness
@@ -237,35 +241,41 @@ configs:
 Track how well your credential caching is working by monitoring Git operation metrics:
 
 ```promql
-# Rate of Git requests - should decrease with effective caching
+# Rate of Git requests - useful for correlating repo-server load
 rate(argocd_git_request_total[5m])
 
-# Git request duration - should decrease as cached operations are faster
+# Git request duration
 histogram_quantile(0.95,
   rate(argocd_git_request_duration_seconds_bucket[5m])
 )
 
-# Failed authentication requests
-rate(argocd_git_request_total{grpc_code="Unauthenticated"}[5m])
+# Failed Git fetch requests
+rate(argocd_git_fetch_fail_total[5m])
 ```
 
-A spike in unauthenticated errors might indicate that cached credentials have expired and the underlying credentials themselves are invalid.
+A spike in Git fetch failures might indicate that cached credentials have expired and the underlying credentials themselves are invalid. Check the repo-server logs for the exact Git authentication error.
 
 ## Troubleshooting Credential Cache Issues
 
-**Credentials not being cached:**
+**Git configuration not being applied:**
 
 ```bash
 # Check if the gitconfig is mounted correctly
-kubectl exec -n argocd deployment/argocd-repo-server -- cat /home/argocd/.gitconfig
+kubectl exec -n argocd deployment/argocd-repo-server -- git config --system --get-all credential.helper
 
-# Check if the credential helper daemon is running
-kubectl exec -n argocd deployment/argocd-repo-server -- git credential-cache --daemon
+# Clear the credential-cache daemon if you need to force Git to forget cached credentials
+kubectl exec -n argocd deployment/argocd-repo-server -- git credential-cache exit
 ```
 
 **Stale cached credentials after rotation:**
 
 When you rotate repository credentials (update the Kubernetes Secret), the cached version might still be used until it expires. Force a cache clear by restarting the repo server:
+
+```bash
+kubectl exec -n argocd deployment/argocd-repo-server -- git credential-cache exit
+```
+
+If you need to clear all repo-server in-memory state as well, restart the repo server:
 
 ```bash
 kubectl rollout restart deployment/argocd-repo-server -n argocd
@@ -283,4 +293,4 @@ resources:
     memory: 1Gi
 ```
 
-Credential caching is a simple optimization that pays off significantly in large ArgoCD deployments. Start with a moderate cache timeout, monitor the metrics, and adjust based on your authentication patterns and security requirements.
+Credential caching can be a useful optimization in large ArgoCD deployments, especially alongside ArgoCD's built-in repository and token caches. Start with a moderate cache timeout, monitor the metrics, and adjust based on your authentication patterns and security requirements.
