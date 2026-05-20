@@ -14,17 +14,23 @@ The ArgoCD UI is one of its biggest selling points over other GitOps tools. It g
 
 After logging into the ArgoCD UI, you will see the application list view showing tiles for each application. Click on any application tile to open its details page.
 
-You can also navigate directly using the URL pattern:
+You can also navigate directly using the URL pattern. For applications in the default ArgoCD control-plane namespace, this is usually:
 
 ```text
 https://argocd.example.com/applications/argocd/<application-name>
 ```
 
-Or from the CLI, open the UI for a specific app:
+If your ArgoCD instance allows applications in other namespaces, use the application namespace in the URL:
+
+```text
+https://argocd.example.com/applications/<application-namespace>/<application-name>
+```
+
+From the CLI, you can inspect the same application details, but this command does not open the UI:
 
 ```bash
 argocd app get my-app --grpc-web
-# The output includes a URL field pointing to the UI page
+# Use --refresh or --hard-refresh if you need fresh status data
 
 ```
 
@@ -72,10 +78,10 @@ This is where you quickly determine if your application is in a good state or ne
 
 ### Parameters Section
 
-If your application uses Helm or Kustomize, the parameters section shows the rendered values:
+If your application uses Helm or Kustomize, the parameters section shows configured build parameters and overrides:
 
 For Helm applications:
-- All helm values currently in effect
+- Helm parameters and values-file settings configured on the Application
 - Value overrides from the Application spec
 - Which values files are being used
 
@@ -173,7 +179,8 @@ Click "SYNC" to trigger a manual sync. The sync dialog lets you:
 - Choose which resources to sync (selective sync)
 - Enable/disable prune during this sync
 - Enable/disable dry run mode
-- Force the sync (replaces resources instead of applying)
+- Replace resources instead of applying when the replace option is enabled
+- Force delete and recreate resources when `Force=true` is configured with `Replace=true`
 - Set the target revision for this sync
 
 ### Refresh
