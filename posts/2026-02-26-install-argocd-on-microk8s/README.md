@@ -8,7 +8,7 @@ Description: A step-by-step guide to installing and configuring ArgoCD on MicroK
 
 ---
 
-MicroK8s is Canonical's lightweight, snap-based Kubernetes distribution that runs on a single node. It is great for development, IoT, edge computing, and CI environments where you want a full Kubernetes experience without the overhead of a full cluster. Pairing MicroK8s with ArgoCD gives you a GitOps-driven deployment pipeline that is both lightweight and production-capable.
+MicroK8s is Canonical's lightweight, snap-based Kubernetes distribution that can run on a single node. It is great for development, IoT, edge computing, and CI environments where you want a full Kubernetes experience without the overhead of a full cluster. Pairing MicroK8s with ArgoCD gives you a GitOps-driven deployment pipeline that is both lightweight and production-capable.
 
 This guide walks you through installing ArgoCD on MicroK8s from scratch, including enabling the right MicroK8s addons, deploying ArgoCD, accessing the UI, and deploying your first application.
 
@@ -27,11 +27,12 @@ Install MicroK8s using snap.
 ```bash
 # Install the latest stable MicroK8s
 
-sudo snap install microk8s --classic --channel=1.28/stable
+sudo snap install microk8s --classic --channel=latest/stable
 
 # Add your user to the microk8s group so you don't need sudo
 sudo usermod -a -G microk8s $USER
-sudo chown -f -R $USER ~/.kube
+mkdir -p ~/.kube
+chmod 0700 ~/.kube
 
 # Re-enter the session for group changes to take effect
 newgrp microk8s
@@ -46,11 +47,11 @@ microk8s status --wait-ready
 
 ## Step 2: Enable Required Addons
 
-ArgoCD needs DNS, storage, and RBAC to function. MicroK8s ships these as optional addons you need to enable.
+ArgoCD needs DNS and RBAC to function. If you want a default storage class for workloads you deploy through ArgoCD, enable MicroK8s hostpath storage.
 
 ```bash
 # Enable core addons that ArgoCD depends on
-microk8s enable dns storage rbac
+microk8s enable dns rbac hostpath-storage
 
 # Optional: enable ingress if you want to expose ArgoCD via a domain
 microk8s enable ingress
@@ -92,7 +93,8 @@ Apply the official ArgoCD manifests to your MicroK8s cluster.
 
 ```bash
 # Install the latest stable ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
 This installs the full ArgoCD stack including the API server, repo server, application controller, Redis, and Dex.
@@ -128,7 +130,13 @@ Open your browser and go to `https://localhost:8080`. You will see a certificate
 
 ### Alternative: Use MicroK8s Ingress
 
-If you enabled the ingress addon, you can create an Ingress resource to expose ArgoCD.
+If you enabled the ingress addon, configure ArgoCD to serve HTTP behind the ingress controller and create an Ingress resource to expose ArgoCD.
+
+```bash
+kubectl -n argocd patch configmap argocd-cmd-params-cm --type merge \
+  -p '{"data":{"server.insecure":"true"}}'
+kubectl -n argocd rollout restart deployment argocd-server
+```
 
 ```yaml
 # argocd-ingress.yaml
@@ -137,11 +145,8 @@ kind: Ingress
 metadata:
   name: argocd-server-ingress
   namespace: argocd
-  annotations:
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
+  ingressClassName: public
   rules:
   - host: argocd.local
     http:
@@ -152,10 +157,10 @@ spec:
           service:
             name: argocd-server
             port:
-              number: 443
+              name: http
 ```
 
-Apply this and add `argocd.local` to your `/etc/hosts` file pointing to `127.0.0.1`.
+Apply this and add `argocd.local` to your `/etc/hosts` file pointing to the MicroK8s node IP address.
 
 ```bash
 kubectl apply -f argocd-ingress.yaml
@@ -229,16 +234,16 @@ MicroK8s on constrained hardware can struggle with ArgoCD's default resource req
 
 ```bash
 # Patch the ArgoCD components to use less memory
-kubectl -n argocd patch deployment argocd-server --type='json' \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "128Mi"}]'
+kubectl -n argocd patch deployment argocd-server --type='strategic' \
+  -p='{"spec":{"template":{"spec":{"containers":[{"name":"argocd-server","resources":{"requests":{"memory":"128Mi"}}}]}}}}'
 
-kubectl -n argocd patch deployment argocd-repo-server --type='json' \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/memory", "value": "128Mi"}]'
+kubectl -n argocd patch deployment argocd-repo-server --type='strategic' \
+  -p='{"spec":{"template":{"spec":{"containers":[{"name":"argocd-repo-server","resources":{"requests":{"memory":"128Mi"}}}]}}}}'
 ```
 
 ### Storage Class
 
-MicroK8s uses the `microk8s-hostpath` storage class by default. If ArgoCD components need persistent volumes, make sure this storage class is available.
+MicroK8s uses the `microk8s-hostpath` storage class when the `hostpath-storage` addon is enabled. If ArgoCD-managed applications need persistent volumes, make sure this storage class is available.
 
 ```bash
 # Check available storage classes
