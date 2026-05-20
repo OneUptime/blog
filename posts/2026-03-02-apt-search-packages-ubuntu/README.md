@@ -102,7 +102,7 @@ The priority number (500) and source URL show which repository the package comes
 apt-cache policy php8.3 php8.2 php8.1
 
 # Check if a specific version is available
-apt-cache showpkg nginx | grep "^Versions"
+apt-cache policy nginx | grep "1.24.0-2ubuntu7"
 ```
 
 ## Searching by File or Command
@@ -149,10 +149,10 @@ dpkg -l nginx
 # un = not installed
 
 # Get a clean list of all installed packages
-dpkg --get-selections | grep install | awk '{print $1}'
+dpkg --get-selections | awk '$2 == "install" {print $1}'
 
 # Check if a specific package is installed
-dpkg -s nginx
+dpkg -s nginx | grep "^Status: install ok installed"
 # Exit code 0 if installed, non-zero if not
 
 # A simpler installed check
@@ -165,13 +165,13 @@ Ubuntu packages are organized into sections:
 
 ```bash
 # Search within a specific section
-apt-cache search "" | grep "^perl"
+apt-cache dumpavail | awk '/^Package: / { pkg = $2 } /^Section: perl$/ { print pkg }' | head
 
 # Show section information for a package
 apt-cache show htop | grep "^Section:"
 
 # List all available sections
-apt-cache show $(apt-cache search "" | head -1 | cut -d' ' -f1) | grep Section
+apt-cache dumpavail | awk -F': ' '/^Section:/ {print $2}' | sort -u
 ```
 
 More useful: search for all packages in a category:
@@ -184,7 +184,7 @@ apt-cache search "web server"
 apt-cache search "database client"
 
 # Find all python packages
-apt-cache search python3 | grep -c ""  # Count total python3 packages
+apt search python3 | grep -c "^[[:alnum:]][[:alnum:].+-]*/"  # Count total python3 packages
 ```
 
 ## Advanced Search with aptitude
@@ -204,7 +204,7 @@ aptitude search '~dnginx'
 aptitude search '~i nginx'
 
 # Search not-installed packages
-aptitude search '~Unginx'
+aptitude search '!~i nginx'
 
 # Search by maintainer
 aptitude search '~mcanonical'
@@ -280,7 +280,7 @@ Many packages have separate documentation packages:
 
 ```bash
 # Search for documentation packages
-apt search "-doc " | grep "documentation\|manual\|man pages"
+apt search -- "-doc " | grep "documentation\|manual\|man pages"
 
 # Find doc package for a specific tool
 apt search "nginx-doc"
@@ -291,10 +291,13 @@ apt show nginx-doc 2>/dev/null
 
 ```bash
 # Find the source package for a binary package
+# Requires deb-src entries in your APT sources
 apt-cache showsrc nginx
 
-# Search available source packages
-apt-cache search --names-only "" | head -20  # All sources
+# Show only source package records with that source name
+apt-cache showsrc --only-source nginx
+
+# Search binary packages for source-related packages
 apt-cache search nginx | grep "source\|src"
 ```
 
