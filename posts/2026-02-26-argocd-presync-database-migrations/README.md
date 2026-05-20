@@ -288,16 +288,16 @@ metadata:
   name: db-migrate-v42
 ```
 
-**Generate name** (ArgoCD generates a unique suffix):
+**Generate name** (Kubernetes generates a unique suffix):
 ```yaml
 metadata:
   generateName: db-migrate-
   annotations:
     argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
 ```
 
-Using `BeforeHookCreation` delete policy with `generateName` is often the cleanest approach. ArgoCD deletes the previous hook resource before creating the new one.
+Using `generateName` is often the cleanest approach. Kubernetes generates a unique suffix for each hook Job, and ArgoCD cleans up successful hook Jobs with `HookSucceeded`. If you use a fixed `metadata.name` instead, `BeforeHookCreation` lets ArgoCD delete the previous hook resource before creating the new one.
 
 ## Backward-Compatible Migration Strategy
 
