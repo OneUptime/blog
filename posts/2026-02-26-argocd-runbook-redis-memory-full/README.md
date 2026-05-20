@@ -57,7 +57,7 @@ kubectl exec -n argocd deployment/argocd-redis -- redis-cli config get maxmemory
 ### Step 3: Check Key Distribution
 
 ```bash
-# Count keys by type
+# Count keys in the current database
 kubectl exec -n argocd deployment/argocd-redis -- redis-cli dbsize
 
 # Get memory usage of the largest keys
@@ -84,8 +84,9 @@ kubectl exec -n argocd deployment/argocd-redis -- redis-cli info memory | grep m
 kubectl get deployment argocd-redis -n argocd \
   -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq .
 
-# Check if the pod was OOMKilled
-kubectl get events -n argocd --field-selector reason=OOMKilling,involvedObject.name~=argocd-redis
+# Check if Redis containers were OOMKilled
+kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.containerStatuses[*]}{.lastState.terminated.reason}{"\n"}{end}{end}'
 ```
 
 ## Root Causes and Resolutions
@@ -130,7 +131,7 @@ Memory sizing guide: plan for approximately 3-5MB per application and 10-50MB pe
 High fragmentation means Redis is using more memory than the data requires.
 
 ```bash
-# Enable active defragmentation
+# Enable active defragmentation if your Redis build supports it
 kubectl exec -n argocd deployment/argocd-redis -- redis-cli config set activedefrag yes
 
 # If fragmentation is severe, restart Redis to defragment
@@ -181,7 +182,7 @@ If Redis is completely unresponsive or in a crash loop.
 kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-redis
 
 # Step 2: Wait for it to come back
-kubectl wait --for=condition=ready pod -n argocd -l app.kubernetes.io/name=argocd-redis --timeout=60s
+kubectl rollout status deployment/argocd-redis -n argocd --timeout=60s
 
 # Step 3: Configure eviction policy immediately
 kubectl exec -n argocd deployment/argocd-redis -- redis-cli config set maxmemory-policy allkeys-lru
