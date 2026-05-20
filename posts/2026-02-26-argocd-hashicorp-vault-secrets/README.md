@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, HashiCorp Vault, Security
 
-Description: A complete guide to integrating HashiCorp Vault with ArgoCD for dynamic secret management using the Vault Agent, CSI driver, and External Secrets Operator.
+Description: A complete guide to integrating HashiCorp Vault with ArgoCD for secret management using External Secrets Operator, ArgoCD Vault Plugin, and Vault dynamic secrets.
 
 ---
 
@@ -20,9 +20,8 @@ graph TD
     C[Vault] -->|Provides secrets| B
     D[How do we connect A and C?]
     D --> E[External Secrets Operator]
-    D --> F[Vault Agent Sidecar]
-    D --> G[CSI Secrets Store Driver]
-    D --> H[ArgoCD Vault Plugin]
+    D --> F[ArgoCD Vault Plugin]
+    D --> G[Vault Dynamic Secrets]
 ```
 
 Each approach has trade-offs. Let us explore all of them.
@@ -49,12 +48,17 @@ vault policy write external-secrets - <<EOF
 path "secret/data/*" {
   capabilities = ["read"]
 }
+
+path "database/creds/my-app" {
+  capabilities = ["read"]
+}
 EOF
 
 # Create a role for ESO
 vault write auth/kubernetes/role/external-secrets \
   bound_service_account_names=external-secrets \
   bound_service_account_namespaces=external-secrets \
+  audience=vault \
   policies=external-secrets \
   ttl=1h
 ```
@@ -62,7 +66,7 @@ vault write auth/kubernetes/role/external-secrets \
 ### Create the SecretStore
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault
@@ -79,12 +83,14 @@ spec:
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets
+            audiences:
+              - vault
 ```
 
 ### Create ExternalSecrets
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -102,11 +108,11 @@ spec:
   data:
     - secretKey: DB_PASSWORD
       remoteRef:
-        key: secret/data/production/my-app
+        key: production/my-app
         property: db_password
     - secretKey: API_KEY
       remoteRef:
-        key: secret/data/production/my-app
+        key: production/my-app
         property: api_key
 ```
 
@@ -116,7 +122,7 @@ The ArgoCD Vault Plugin (AVP) is a Config Management Plugin that replaces placeh
 
 ### Installing AVP
 
-Create a custom ArgoCD repo-server with AVP installed:
+Create an ArgoCD repo-server sidecar with AVP installed:
 
 ```yaml
 apiVersion: apps/v1
@@ -127,6 +133,7 @@ metadata:
 spec:
   template:
     spec:
+      automountServiceAccountToken: true
       initContainers:
         - name: download-tools
           image: alpine:3.19
@@ -141,13 +148,36 @@ spec:
             - name: custom-tools
               mountPath: /custom-tools
       containers:
-        - name: argocd-repo-server
+        - name: avp
+          command: [/var/run/argocd/argocd-cmp-server]
+          image: alpine:3.19
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
           volumeMounts:
+            - name: var-files
+              mountPath: /var/run/argocd
+            - name: plugins
+              mountPath: /home/argocd/cmp-server/plugins
+            - name: cmp-plugin
+              mountPath: /home/argocd/cmp-server/config/plugin.yaml
+              subPath: avp.yaml
+            - name: cmp-tmp
+              mountPath: /tmp
             - name: custom-tools
               mountPath: /usr/local/bin/argocd-vault-plugin
               subPath: argocd-vault-plugin
       volumes:
+        - name: var-files
+          emptyDir: {}
+        - name: plugins
+          emptyDir: {}
         - name: custom-tools
+          emptyDir: {}
+        - name: cmp-plugin
+          configMap:
+            name: cmp-plugin
+        - name: cmp-tmp
           emptyDir: {}
 ```
 
@@ -157,7 +187,7 @@ Register AVP as a Config Management Plugin:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmp-cm
+  name: cmp-plugin
   namespace: argocd
 data:
   avp.yaml: |
@@ -172,7 +202,7 @@ data:
           command:
             - sh
             - "-c"
-            - "find . -name '*.yaml' | xargs -I {} grep '<path\\|<secret' {} | grep ."
+            - "find . -name '*.yaml' | xargs -I {} grep '<path\\|avp\\.kubernetes\\.io' {} | grep ."
       generate:
         command:
           - argocd-vault-plugin
@@ -217,11 +247,11 @@ stringData:
   AVP_K8S_ROLE: argocd-vault-plugin
 ```
 
-Mount this in the repo server:
+Mount this in the plugin sidecar:
 
 ```yaml
 containers:
-  - name: argocd-repo-server
+  - name: avp
     envFrom:
       - secretRef:
           name: argocd-vault-plugin-credentials
@@ -235,7 +265,7 @@ AVP can also process Helm templates:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cmp-cm
+  name: cmp-plugin
   namespace: argocd
 data:
   avp-helm.yaml: |
@@ -250,7 +280,8 @@ data:
           - sh
           - "-c"
           - |
-            helm template $ARGOCD_APP_NAME -n $ARGOCD_APP_NAMESPACE -f <(echo "$ARGOCD_ENV_HELM_VALUES") . |
+            printf '%s' "$ARGOCD_ENV_HELM_VALUES" > /tmp/values.yaml &&
+            helm template "$ARGOCD_APP_NAME" -n "$ARGOCD_APP_NAMESPACE" -f /tmp/values.yaml . |
             argocd-vault-plugin generate -
       lockRepo: false
 ```
@@ -284,22 +315,43 @@ vault write database/roles/my-app \
 ### Using Dynamic Secrets with ESO
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: db-credentials
+  namespace: app
+spec:
+  path: /database/creds/my-app
+  method: GET
+  resultType: Data
+  provider:
+    server: https://vault.example.com
+    auth:
+      kubernetes:
+        mountPath: kubernetes
+        role: external-secrets
+        serviceAccountRef:
+          name: external-secrets
+          namespace: external-secrets
+          audiences:
+            - vault
+---
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
   namespace: app
 spec:
   refreshInterval: 30m  # Refresh before TTL expires
-  secretStoreRef:
-    name: vault
-    kind: ClusterSecretStore
   target:
     name: db-credentials
     creationPolicy: Owner
   dataFrom:
-    - extract:
-        key: database/creds/my-app
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: db-credentials
 ```
 
 ## Vault Namespaces for Multi-Team Isolation
@@ -307,7 +359,7 @@ spec:
 If you use Vault Enterprise with namespaces:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-team-frontend
@@ -325,6 +377,8 @@ spec:
           serviceAccountRef:
             name: external-secrets
             namespace: external-secrets
+            audiences:
+              - vault
 ```
 
 ## Monitoring Vault Integration
@@ -333,8 +387,8 @@ spec:
 # Check ExternalSecret sync status
 kubectl get externalsecret -A -o wide
 
-# Check Vault agent logs if using sidecar
-kubectl logs deployment/my-app -n app -c vault-agent
+# Check AVP logs if using the plugin sidecar
+kubectl logs deployment/argocd-repo-server -n argocd -c avp
 
 # Verify secrets are being refreshed
 kubectl get externalsecret my-app-secrets -n app \
