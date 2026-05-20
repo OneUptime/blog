@@ -14,7 +14,7 @@ This approach is useful when cluster placement decisions depend on factors outsi
 
 ## How the Cluster Decision Resource Works
 
-An external controller creates or updates a custom resource that lists which clusters should receive specific workloads. The ApplicationSet Cluster Decision Resource generator watches that resource and creates Applications for each cluster listed in it.
+An external controller creates or updates a custom resource that lists which clusters should receive specific workloads. The ApplicationSet Cluster Decision Resource generator reads that resource and creates Applications for each cluster listed in it.
 
 ```mermaid
 graph TD
@@ -53,7 +53,7 @@ status:
 
 ## Configuring the Generator
 
-The generator needs to know the API group, kind, and which field contains the cluster decisions.
+The generator needs to know the API version, resource name, and which field contains the cluster decisions.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -101,13 +101,13 @@ metadata:
   name: my-cluster-decision-config
   namespace: argocd
 data:
-  # API group of the decision resource
+  # API version of the decision resource
   apiVersion: cluster.open-cluster-management.io/v1beta1
-  # Kind of the decision resource
-  kind: PlacementDecision
-  # JSON path to the status field containing decisions
+  # Lowercase plural resource name of the decision resource
+  kind: placementdecisions
+  # Key under status that contains decisions
   statusListKey: decisions
-  # JSON path within each decision to the cluster name
+  # Key within each decision that contains the cluster name
   matchKey: clusterName
 ```
 
@@ -162,6 +162,39 @@ status:
     reason: "Selected"
 ```
 
+The ApplicationSet controller also needs permission to read PlacementDecision resources.
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argocd-applicationset-placementdecision-reader
+  namespace: argocd
+rules:
+- apiGroups:
+  - cluster.open-cluster-management.io
+  resources:
+  - placementdecisions
+  verbs:
+  - get
+  - list
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argocd-applicationset-placementdecision-reader
+  namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argocd-applicationset-placementdecision-reader
+subjects:
+- kind: ServiceAccount
+  name: argocd-applicationset-controller
+  namespace: argocd
+```
+
 The ApplicationSet picks up these decisions and creates Applications.
 
 ```yaml
@@ -173,7 +206,7 @@ metadata:
 spec:
   generators:
   - clusterDecisionResource:
-      configMapRef: ocm-cluster-decision-config
+      configMapRef: my-cluster-decision-config
       labelSelector:
         matchLabels:
           cluster.open-cluster-management.io/placement: production-placement
@@ -220,30 +253,25 @@ spec:
               # Get healthy clusters from ArgoCD
               HEALTHY_CLUSTERS=$(kubectl get secrets -n argocd \
                 -l argocd.argoproj.io/secret-type=cluster \
-                -o jsonpath='{range .items[*]}{.metadata.labels.environment}{" "}{.data.name}{"\n"}{end}' \
-                | grep production | awk '{print $2}' | base64 -d)
+                -o jsonpath='{range .items[?(@.metadata.labels.environment=="production")]}{.data.name}{"\n"}{end}' \
+                | while read encoded; do echo "$encoded" | base64 -d; echo; done)
 
-              # Update the decision resource
-              cat <<YAML | kubectl apply -f -
-              apiVersion: custom.example.com/v1
-              kind: ClusterDecision
-              metadata:
-                name: healthy-production
-                namespace: argocd
-                labels:
-                  decision-type: healthy-production
-              status:
-                decisions:
-              $(echo "$HEALTHY_CLUSTERS" | while read cluster; do
-                echo "    - clusterName: $cluster"
-              done)
-              YAML
+              # Update the status of an existing ClusterDecision resource
+              DECISIONS=$(printf '%s\n' "$HEALTHY_CLUSTERS" \
+                | sed '/^$/d' \
+                | awk 'BEGIN { printf "[" } { printf "%s{\"clusterName\":\"%s\"}", sep, $1; sep="," } END { printf "]" }')
+
+              kubectl patch clusterdecision healthy-production \
+                -n argocd \
+                --type merge \
+                --subresource=status \
+                -p "{\"status\":{\"decisions\":$DECISIONS}}"
           restartPolicy: Never
 ```
 
 ## Dynamic Cluster Failover
 
-One powerful pattern is using the Cluster Decision Resource generator for automatic failover. When a cluster becomes unhealthy, the decision controller removes it from the decision list, and ArgoCD moves the workload.
+One powerful pattern is using the Cluster Decision Resource generator for automatic failover. When a cluster becomes unhealthy, the decision controller removes it from the decision list, and ArgoCD stops generating the Application for that cluster.
 
 ```yaml
 # Decision resource that responds to cluster health
