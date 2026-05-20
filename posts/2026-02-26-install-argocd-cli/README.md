@@ -70,7 +70,7 @@ argocd version --client
 To install a specific version instead of the latest:
 
 ```bash
-ARGOCD_VERSION=v2.13.3
+ARGOCD_VERSION=v3.4.2
 
 # Apple Silicon
 curl -sSL -o argocd \
@@ -115,8 +115,7 @@ sudo mv argocd /usr/local/bin/
 On Arch Linux:
 
 ```bash
-# From AUR
-yay -S argocd-bin
+sudo pacman -S argocd
 ```
 
 On NixOS:
@@ -128,7 +127,7 @@ nix-env -iA nixpkgs.argocd
 ### Specific Version on Linux
 
 ```bash
-ARGOCD_VERSION=v2.13.3
+ARGOCD_VERSION=v3.4.2
 curl -sSL -o argocd \
   https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64
 chmod +x argocd
@@ -163,7 +162,7 @@ Download the Windows binary manually.
 
 ```powershell
 # Download using PowerShell
-$version = "v2.13.3"
+$version = "v3.4.2"
 Invoke-WebRequest -Uri "https://github.com/argoproj/argo-cd/releases/download/$version/argocd-windows-amd64.exe" -OutFile "argocd.exe"
 
 # Move to a directory in your PATH
@@ -185,10 +184,10 @@ If you do not want to install the CLI on your host, run it from a Docker contain
 
 ```bash
 # Run ArgoCD CLI from Docker
-docker run --rm -it argoproj/argocd:v2.13.3 argocd version --client
+docker run --rm -it quay.io/argoproj/argocd:v3.4.2 argocd version --client
 
 # Create an alias for convenience
-alias argocd='docker run --rm -it -v ~/.kube:/home/argocd/.kube argoproj/argocd:v2.13.3 argocd'
+alias argocd='docker run --rm -it -v ~/.kube:/home/argocd/.kube quay.io/argoproj/argocd:v3.4.2 argocd'
 ```
 
 ## Post-Install Setup
@@ -300,8 +299,8 @@ The CLI and server versions should match. Check for version mismatches.
 argocd version
 
 # Output will show something like:
-# argocd: v2.13.3+abcdef
-# argocd-server: v2.13.3+abcdef
+# argocd: v3.4.2+abcdef
+# argocd-server: v3.4.2+abcdef
 ```
 
 If the versions do not match, you may encounter unexpected behavior. Always update the CLI when you upgrade the server.
