@@ -49,9 +49,9 @@ metadata:
     tier: "critical"
 ```
 
-## Enforcing Labels Through ArgoCD Projects
+## Documenting Labels Through ArgoCD Projects
 
-Configure ArgoCD projects to include required labels in their description and documentation.
+Configure ArgoCD projects to include required labels in their metadata, description, and documentation.
 
 ```yaml
 # project.yaml
@@ -83,7 +83,6 @@ kind: ClusterPolicy
 metadata:
   name: require-cost-labels
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-cost-labels
@@ -104,6 +103,7 @@ spec:
                 - argocd
                 - monitoring
       validate:
+        failureAction: Enforce
         message: >-
           Resource must have cost tracking labels: cost-center, team, environment.
           Missing labels on {{request.object.metadata.name}}.
@@ -131,11 +131,11 @@ spec:
                   +(environment): "{{request.object.metadata.labels.environment}}"
 ```
 
-The mutation rule copies cost labels from the Deployment to the pod template, ensuring that pods inherit cost attribution.
+The mutation rule copies cost labels from Deployments and StatefulSets to the pod template, ensuring that pods inherit cost attribution.
 
 ## ArgoCD ApplicationSet with Cost Labels
 
-Use ApplicationSets to automatically apply cost labels based on team and environment.
+Use ApplicationSets to label generated ArgoCD Applications based on team and environment. These labels are useful for ArgoCD inventory and automation; keep the same labels in the workload manifests, Kustomize common labels, Helm values, or Kyverno policies so they also appear on Kubernetes resources and pods.
 
 ```yaml
 # cost-tracked-appset.yaml
@@ -181,36 +181,22 @@ spec:
 
 ## Integrating with Kubecost
 
-Kubecost reads Kubernetes labels to allocate costs. Configure it to use your cost labels.
+Kubecost reads Kubernetes labels to allocate costs. Configure its label mappings to use your cost labels.
 
 ```yaml
-# kubecost-config.yaml (deployed via ArgoCD)
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: allocation-config
-  namespace: kubecost
-data:
-  allocation.json: |
-    {
-      "labelConfig": {
-        "team_label": "team",
-        "department_label": "department",
-        "environment_label": "environment",
-        "product_label": "app",
-        "cost_center_label": "cost-center"
-      },
-      "sharedOverhead": {
-        "shareNamespaces": ["kube-system", "argocd", "monitoring"],
-        "shareLabels": {},
-        "shareByPercent": true
-      }
-    }
+# kubecost-values.yaml (deployed via ArgoCD with the Kubecost Helm chart)
+kubecostProductConfigs:
+  labelMappingConfigs:
+    team_label: "team"
+    department_label: "department"
+    environment_label: "environment"
+    product_label: "app"
+  sharedNamespaces: "kube-system,argocd,monitoring"
 ```
 
 ## Labeling Namespaces for Cloud Provider Cost Allocation
 
-Cloud providers can use namespace labels for cost allocation. Ensure namespaces are labeled through ArgoCD.
+Cloud providers can expose Kubernetes cost data by namespace and, for services such as AWS split cost allocation data for EKS and GKE cost allocation, by workload labels. Ensure namespaces are labeled through ArgoCD for internal reporting and namespace-level dashboards, and keep the same labels on pods for provider and Kubecost allocation.
 
 ```yaml
 # namespace with cost labels
@@ -222,33 +208,23 @@ metadata:
     cost-center: "cc-alpha-5678"
     team: "alpha"
     environment: "production"
-  annotations:
-    # AWS cost allocation tag
-    aws.amazon.com/cost-center: "cc-alpha-5678"
-    # GCP label for billing
-    cloud.google.com/cost-center: "cc-alpha-5678"
-    # Azure tag
-    azure.com/cost-center: "cc-alpha-5678"
 ```
 
 ## Building a Cost Dashboard
 
-Create a Grafana dashboard that shows costs by team using Kubecost metrics.
+Create a Grafana dashboard that shows costs by team using the Kubecost Allocation API.
 
-```yaml
-# Key Prometheus queries for cost tracking
-
+```bash
 # Monthly cost per team
-# sum(kubecost_cluster_costs_total{}) by (team_label)
+curl "http://kubecost-cost-analyzer.kubecost:9090/model/allocation?window=month&aggregate=label:team&accumulate=true"
 
 # Cost per environment
-# sum(kubecost_cluster_costs_total{}) by (environment_label)
+curl "http://kubecost-cost-analyzer.kubecost:9090/model/allocation?window=month&aggregate=label:environment&accumulate=true"
 
 # Cost trend (week over week)
-# sum(increase(kubecost_cluster_costs_total{}[7d])) by (team_label)
+curl "http://kubecost-cost-analyzer.kubecost:9090/model/allocation?window=7d&aggregate=label:team&accumulate=true"
 
-# Unattributed costs (resources missing labels)
-# kubecost_cluster_costs_total{team_label=""}
+# Unattributed costs are returned under "__unallocated__" for the selected label.
 ```
 
 ## Automated Cost Reports
@@ -270,14 +246,16 @@ spec:
         spec:
           containers:
             - name: reporter
-              image: curlimages/curl:latest
+              image: alpine:3.20
               command:
                 - /bin/sh
                 - -c
                 - |
+                  apk add --no-cache curl jq
+
                   # Query Kubecost API for last 7 days
                   REPORT=$(curl -s \
-                    "http://kubecost-cost-analyzer.kubecost:9090/model/allocation?window=7d&aggregate=label:team")
+                    "http://kubecost-cost-analyzer.kubecost:9090/model/allocation?window=7d&aggregate=label:team&accumulate=true")
 
                   # Format and send to Slack
                   SUMMARY=$(echo "$REPORT" | jq -r '
