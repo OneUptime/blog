@@ -8,26 +8,25 @@ Description: Learn how to configure ArgoCD to ignore secret data changes in diff
 
 ---
 
-If you have used ArgoCD with any external secret management tool, you have probably seen the frustrating cycle: ArgoCD shows your application as OutOfSync because the Secret data in the cluster does not match what is in Git. This is expected behavior since tools like External Secrets Operator, Sealed Secrets, or cert-manager create and update Secret data outside of Git. But it floods your ArgoCD dashboard with false OutOfSync indicators.
+If you have used ArgoCD with any external secret management tool, you have probably seen the frustrating cycle: ArgoCD shows your application as OutOfSync because a Secret that ArgoCD tracks has data in the cluster that does not match what is in Git. This can happen when tools like External Secrets Operator, Sealed Secrets, or cert-manager mutate a Secret that is also managed by ArgoCD. If those tools create Secrets that are not in Git, ArgoCD will not diff them against the generator resource, though they may appear as orphaned resources if orphaned resource monitoring is enabled.
 
 In this post, I will show you every way to configure ArgoCD to ignore secret changes in its diff calculations, from application-level settings to global configurations.
 
 ## Why Secrets Cause False OutOfSync
 
-When ArgoCD compares live and desired state, it does a field-by-field comparison. For a Secret managed by External Secrets Operator, the situation looks like this:
+When ArgoCD compares live and desired state, it does a field-by-field comparison. For a Secret that is tracked by ArgoCD but also updated by an external controller, the situation looks like this:
 
-**In Git (ExternalSecret manifest):**
+**In Git (Secret manifest):**
 ```yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ExternalSecret
+apiVersion: v1
+kind: Secret
 metadata:
   name: app-secrets
-spec:
-  target:
-    name: app-secrets
+type: Opaque
+data: {}
 ```
 
-**In cluster (the resulting Kubernetes Secret):**
+**In cluster (the live Kubernetes Secret):**
 ```yaml
 apiVersion: v1
 kind: Secret
@@ -146,10 +145,10 @@ ignoreDifferences:
     jsonPointers:
       - /data
 
-  # Ignore changes for secrets matching a pattern
+  # Name and namespace must match exactly; they are not glob patterns
   - group: ""
     kind: Secret
-    name: "eso-*"
+    name: eso-database-credentials
     jsonPointers:
       - /data
 ```
@@ -189,22 +188,22 @@ data:
       - /status
 ```
 
-## Method 3: Server-Side Diff with Managed Fields
+## Method 3: Server-Side Diff
 
-ArgoCD 2.5+ supports server-side diff, which uses Kubernetes managed fields to determine which controller owns each field. This is the most elegant solution:
+ArgoCD supports server-side diff, which runs a server-side apply dry-run and compares the predicted live state with the live state. Server-side diff is available starting in ArgoCD 2.10 and is stable starting in ArgoCD 3.1:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
   # Enable server-side diff
   controller.diff.server.side: "true"
 ```
 
-With server-side diff enabled, ArgoCD understands that if External Secrets Operator owns the `/data` field of a Secret, it should not compare that field against Git. This works automatically without explicit `ignoreDifferences` configuration.
+Restart the `argocd-application-controller` after applying this configuration. Server-side diff does not replace `ignoreDifferences` rules for externally managed Secret data; if you want ArgoCD to ignore fields owned by another controller, use `managedFieldsManagers` in `ignoreDifferences`.
 
 You can also enable it per application:
 
@@ -285,12 +284,10 @@ data:
       kinds:
         - Secret
       clusters:
-        - "*"
-      # Only exclude secrets in specific namespaces
-      namespaces:
-        - cert-manager
-        - external-secrets
+        - https://my-cluster.example.com
 ```
+
+`resource.exclusions` matches API groups, kinds, and cluster URLs. It does not provide a namespace selector in the ArgoCD configuration schema.
 
 ## Common Patterns
 
