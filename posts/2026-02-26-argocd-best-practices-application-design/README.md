@@ -14,7 +14,7 @@ This guide covers the key decisions and best practices for designing ArgoCD appl
 
 ## Application granularity: how much goes in one application
 
-The biggest design decision is what resources belong in a single ArgoCD application. There are three approaches:
+The biggest design decision is what resources belong in a single ArgoCD application. There are three approaches. The Application snippets below focus on grouping and omit common required fields such as `project`, `source.repoURL`, `targetRevision`, and `destination` for brevity:
 
 ### Fine-grained: one application per microservice
 
@@ -311,12 +311,11 @@ Consistent naming prevents confusion:
 ```yaml
 # Pattern: <env>-<service-name>
 # Examples:
+# prod-user-service
+# staging-payment-api
+# dev-order-worker
 metadata:
   name: prod-user-service
-  # OR
-  name: staging-payment-api
-  # OR
-  name: dev-order-worker
 
   labels:
     # Standard labels for filtering
@@ -404,8 +403,7 @@ spec:
   source:
     path: manifests/api/overlays/production
     # Includes a Rollout resource instead of Deployment
-  # Custom health check for Rollout
-  # ArgoCD understands Rollout health status natively
+  # Argo CD includes a Lua health check for Rollout resources
 ```
 
 ## Testing application design
