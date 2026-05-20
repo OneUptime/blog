@@ -8,7 +8,7 @@ Description: Learn how to backup and restore ArgoCD configuration including appl
 
 ---
 
-ArgoCD stores critical configuration as Kubernetes resources: Application CRDs, Projects, Secrets containing repository credentials and cluster connections, and ConfigMaps with settings. Losing this configuration means losing your entire GitOps setup - every application definition, every repository connection, every RBAC policy. Regular backups ensure you can recover quickly from cluster failures, accidental deletions, or migration needs.
+ArgoCD stores critical configuration as Kubernetes resources: Application CRDs, Projects, Secrets containing repository credentials, cluster connections, and ArgoCD server secrets, and ConfigMaps with settings. Losing this configuration means losing your entire GitOps setup - every application definition, every repository connection, every RBAC policy. Regular backups ensure you can recover quickly from cluster failures, accidental deletions, or migration needs.
 
 ## What to Backup
 
@@ -21,8 +21,10 @@ ArgoCD configuration consists of these resource types:
 | ApplicationSets | Template-based app generation | CRDs in argocd namespace |
 | Secrets (cluster type) | Cluster connection credentials | Secrets in argocd namespace |
 | Secrets (repo type) | Repository credentials | Secrets in argocd namespace |
+| argocd-secret | User passwords, signing key, Dex secrets, webhook secrets | Secret in argocd namespace |
 | ConfigMaps | ArgoCD settings | ConfigMaps in argocd namespace |
 | RBAC policies | Access control rules | ConfigMap argocd-rbac-cm |
+| GPG public keys | Commit signature verification keys | ConfigMap argocd-gpg-keys-cm |
 
 ```mermaid
 flowchart TB
@@ -32,8 +34,10 @@ flowchart TB
         AS[ApplicationSets]
         C[Cluster Secrets]
         R[Repo Secrets]
+        SEC[argocd-secret]
         CM[ConfigMaps]
         RBAC[RBAC Config]
+        GPG[GPG Keys]
     end
 
     subgraph "Backup Target"
@@ -42,8 +46,8 @@ flowchart TB
         PV[Persistent Volume]
     end
 
-    A & P & AS & C & R & CM & RBAC --> S3
-    A & P & AS & C & R & CM & RBAC --> Git
+    A & P & AS & C & R & SEC & CM & RBAC & GPG --> S3
+    A & P & AS & C & R & SEC & CM & RBAC & GPG --> Git
 ```
 
 ## Method 1: Using argocd admin export
@@ -108,14 +112,13 @@ kubectl get secrets -n argocd \
 kubectl get secrets -n argocd \
   -l argocd.argoproj.io/secret-type=cluster -o yaml > "$BACKUP_DIR/cluster-secrets.yaml"
 
+# Backup ArgoCD server secret
+kubectl get secret argocd-secret -n argocd -o yaml > "$BACKUP_DIR/argocd-secret.yaml" 2>/dev/null
+
 # Backup ConfigMaps
-for cm in argocd-cm argocd-cmd-params-cm argocd-rbac-cm argocd-tls-certs-cm argocd-ssh-known-hosts-cm; do
+for cm in argocd-cm argocd-cmd-params-cm argocd-rbac-cm argocd-tls-certs-cm argocd-ssh-known-hosts-cm argocd-gpg-keys-cm; do
   kubectl get configmap "$cm" -n argocd -o yaml > "$BACKUP_DIR/$cm.yaml" 2>/dev/null
 done
-
-# Backup GPG keys
-kubectl get secrets -n argocd \
-  -l argocd.argoproj.io/secret-type=gnupg-key -o yaml > "$BACKUP_DIR/gpg-keys.yaml" 2>/dev/null
 
 echo "Backup complete: $BACKUP_DIR"
 ls -la "$BACKUP_DIR"
@@ -205,7 +208,7 @@ spec:
           serviceAccountName: argocd-backup
           containers:
             - name: backup
-              image: bitnami/kubectl:latest
+              image: myorg/kubectl-awscli:latest  # Build an image that includes kubectl, awscli, and bash
               env:
                 - name: AWS_ACCESS_KEY_ID
                   valueFrom:
@@ -247,15 +250,15 @@ spec:
                     kubectl get secrets -n argocd \
                       -l argocd.argoproj.io/secret-type=cluster -o yaml
                     echo "---"
-                    kubectl get configmap argocd-cm -n argocd -o yaml
+                    kubectl get secret argocd-secret -n argocd -o yaml --ignore-not-found
                     echo "---"
-                    kubectl get configmap argocd-rbac-cm -n argocd -o yaml
-                    echo "---"
-                    kubectl get configmap argocd-cmd-params-cm -n argocd -o yaml
+                    for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-tls-certs-cm argocd-ssh-known-hosts-cm argocd-gpg-keys-cm; do
+                      kubectl get configmap "$cm" -n argocd -o yaml --ignore-not-found
+                      echo "---"
+                    done
                   } > "$BACKUP_FILE"
 
                   # Upload to S3
-                  apt-get update -qq && apt-get install -qq -y awscli > /dev/null 2>&1
                   aws s3 cp "$BACKUP_FILE" \
                     "s3://${S3_BUCKET}/argocd-backups/argocd-backup-${TIMESTAMP}.yaml"
 
@@ -326,7 +329,7 @@ echo "Restoring ArgoCD from $BACKUP_DIR"
 kubectl get namespace argocd || kubectl create namespace argocd
 
 # Step 2: Restore ConfigMaps first (settings)
-for cm in argocd-cm argocd-cmd-params-cm argocd-rbac-cm argocd-tls-certs-cm argocd-ssh-known-hosts-cm; do
+for cm in argocd-cm argocd-cmd-params-cm argocd-rbac-cm argocd-tls-certs-cm argocd-ssh-known-hosts-cm argocd-gpg-keys-cm; do
   if [ -f "$BACKUP_DIR/$cm.yaml" ]; then
     kubectl apply -f "$BACKUP_DIR/$cm.yaml"
     echo "Restored $cm"
@@ -337,6 +340,7 @@ done
 kubectl apply -f "$BACKUP_DIR/repo-secrets.yaml" 2>/dev/null
 kubectl apply -f "$BACKUP_DIR/repo-cred-templates.yaml" 2>/dev/null
 kubectl apply -f "$BACKUP_DIR/cluster-secrets.yaml" 2>/dev/null
+kubectl apply -f "$BACKUP_DIR/argocd-secret.yaml" 2>/dev/null
 echo "Restored secrets"
 
 # Step 4: Restore projects (before applications)
@@ -364,8 +368,8 @@ echo "Restore complete"
 ### Partial Restore (Single Application)
 
 ```bash
-# Extract and restore a single application from backup
-kubectl get application my-app -n argocd -o yaml < backup/applications.yaml | \
+# Extract and restore a single application from a kubectl list backup
+yq '.items[] | select(.kind == "Application" and .metadata.name == "my-app")' backup/applications.yaml | \
   kubectl apply -f -
 
 # Or create from scratch if you know the configuration
