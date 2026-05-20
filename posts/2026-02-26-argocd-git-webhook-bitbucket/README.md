@@ -21,21 +21,38 @@ ArgoCD handles both, but the configuration in `argocd-secret` uses different key
 
 ## Part 1: Bitbucket Cloud Setup
 
-### Step 1: Generate a UUID for Bitbucket Cloud
+### Step 1: Create the Webhook in Bitbucket Cloud
 
-Bitbucket Cloud identifies webhooks by UUID rather than a shared secret:
+1. Navigate to your Bitbucket repository
+2. Go to Repository settings > Webhooks > Add webhook
+3. Configure:
 
-```bash
-# Generate a UUID for Bitbucket Cloud webhook identification
-
-BITBUCKET_UUID=$(python3 -c "import uuid; print(str(uuid.uuid4()))")
-echo "Your Bitbucket UUID: $BITBUCKET_UUID"
+```text
+Title: ArgoCD Webhook
+URL: https://argocd.example.com/api/webhook
+Status: Active
+Triggers: Repository push
 ```
+
+For Bitbucket Cloud, select these triggers:
+- **Repository push** - fires on push events to any branch
 
 ### Step 2: Configure ArgoCD Secret for Bitbucket Cloud
 
+Bitbucket Cloud identifies webhook deliveries with an `X-Hook-UUID` header. ArgoCD must be configured with the UUID assigned to the webhook by Bitbucket Cloud:
+
 ```bash
-# Patch the ArgoCD secret with the Bitbucket UUID
+# List Bitbucket Cloud webhooks and copy the UUID for the ArgoCD webhook
+curl -u "username:app_password" \
+  "https://api.bitbucket.org/2.0/repositories/WORKSPACE/REPO/hooks" | jq -r '.values[] | "\(.uuid) \(.description) \(.url)"'
+
+BITBUCKET_UUID="{copied-webhook-uuid}"
+```
+
+Then patch the ArgoCD secret with that UUID:
+
+```bash
+# Patch the ArgoCD secret with the Bitbucket Cloud webhook UUID
 kubectl patch secret argocd-secret -n argocd --type merge -p "{
   \"stringData\": {
     \"webhook.bitbucket.uuid\": \"$BITBUCKET_UUID\"
@@ -53,30 +70,16 @@ metadata:
   namespace: argocd
 type: Opaque
 stringData:
-  webhook.bitbucket.uuid: "your-generated-uuid"
+  webhook.bitbucket.uuid: "bitbucket-assigned-webhook-uuid"
 ```
 
-### Step 3: Create the Webhook in Bitbucket Cloud
+### Step 3: Create the Webhook with the Bitbucket Cloud API
 
-1. Navigate to your Bitbucket repository
-2. Go to Repository settings > Webhooks > Add webhook
-3. Configure:
-
-```text
-Title: ArgoCD Webhook
-URL: https://argocd.example.com/api/webhook
-Status: Active
-Triggers: Repository push
-```
-
-For Bitbucket Cloud, select these triggers:
-- **Repository push** - fires on push events to any branch
-
-You can also use the Bitbucket API:
+You can also use the Bitbucket API and capture the assigned webhook UUID from the response:
 
 ```bash
 # Create webhook using Bitbucket Cloud API
-curl -X POST "https://api.bitbucket.org/2.0/repositories/WORKSPACE/REPO/hooks" \
+BITBUCKET_UUID=$(curl -s -X POST "https://api.bitbucket.org/2.0/repositories/WORKSPACE/REPO/hooks" \
   -u "username:app_password" \
   -H "Content-Type: application/json" \
   -d "{
@@ -84,7 +87,9 @@ curl -X POST "https://api.bitbucket.org/2.0/repositories/WORKSPACE/REPO/hooks" \
     \"url\": \"https://argocd.example.com/api/webhook\",
     \"active\": true,
     \"events\": [\"repo:push\"]
-  }"
+  }" | jq -r '.uuid')
+
+echo "Bitbucket webhook UUID: $BITBUCKET_UUID"
 ```
 
 ### Step 4: Verify Bitbucket Cloud Webhook
@@ -275,7 +280,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  timeout.reconciliation: "600"
+  timeout.reconciliation: "10m"
 ```
 
 ## Troubleshooting
