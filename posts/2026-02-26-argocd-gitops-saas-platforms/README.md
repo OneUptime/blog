@@ -191,6 +191,8 @@ metadata:
   name: tenant-namespaces
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/your-org/saas-platform-config.git
@@ -199,23 +201,21 @@ spec:
           - path: "tenants/*/*"
   template:
     metadata:
-      name: "tenant-{{path[2]}}"
+      name: "tenant-{{.path.basenameNormalized}}"
       labels:
-        tier: "{{path[1]}}"
+        tier: "{{index .path.segments 1}}"
     spec:
       project: tenants
       source:
         repoURL: https://github.com/your-org/saas-platform-config.git
         targetRevision: main
-        path: "{{path}}"
+        path: "{{.path.path}}"
       destination:
         server: https://kubernetes.default.svc
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
-        syncOptions:
-          - CreateNamespace=true
 ```
 
 To onboard a new tenant, just add a directory:
@@ -379,10 +379,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: saas-api-dev
+  namespace: argocd
 spec:
+  project: platform
   source:
+    repoURL: https://github.com/your-org/saas-platform-config.git
     targetRevision: develop
     path: platform/core-services/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: dev
   syncPolicy:
     automated:
       prune: true
@@ -394,10 +400,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: saas-api-staging
+  namespace: argocd
 spec:
+  project: platform
   source:
+    repoURL: https://github.com/your-org/saas-platform-config.git
     targetRevision: main
     path: platform/core-services/overlays/staging
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: staging
   syncPolicy:
     automated:
       prune: true
@@ -409,10 +421,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: saas-api-production
+  namespace: argocd
 spec:
+  project: platform
   source:
+    repoURL: https://github.com/your-org/saas-platform-config.git
     targetRevision: main
     path: platform/core-services/overlays/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
   syncPolicy: {}  # Manual sync required
 ```
 
@@ -481,7 +499,8 @@ spec:
 
         - alert: TenantQuotaExhausted
           expr: |
-            kube_resourcequota{type="used"} / kube_resourcequota{type="hard"} > 0.9
+            kube_resourcequota{type="used"}
+            / ignoring(type) kube_resourcequota{type="hard"} > 0.9
           for: 15m
           labels:
             severity: warning
