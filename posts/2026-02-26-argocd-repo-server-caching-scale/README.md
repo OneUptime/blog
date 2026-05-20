@@ -30,11 +30,12 @@ sequenceDiagram
     participant Repo as Repo Server
     participant Git as Git Provider
 
-    Controller->>Redis: Check manifest cache
+    Controller->>Repo: Generate manifests
+    Repo->>Redis: Check manifest cache
     alt Cache Hit
-        Redis-->>Controller: Return cached manifests
+        Redis-->>Repo: Return cached manifests
+        Repo-->>Controller: Return manifests
     else Cache Miss
-        Controller->>Repo: Generate manifests
         Repo->>Git: Clone/fetch repository
         Git-->>Repo: Repository data
         Repo->>Repo: Render templates
@@ -64,7 +65,7 @@ spec:
         - name: repo-cache
           mountPath: /tmp
         env:
-        # Repo server will reuse cached repos instead of re-cloning
+        # Retry transient Git operations such as ls-remote or fetch
         - name: ARGOCD_GIT_ATTEMPTS_COUNT
           value: "3"
       volumes:
@@ -88,7 +89,7 @@ The size you need depends on the total size of your Git repositories. A good est
 
 ## Level 2: Manifest Cache in Redis
 
-ArgoCD caches generated manifests in Redis. When the same revision of an application is reconciled again, the cached manifests are returned directly without invoking the repo server at all.
+ArgoCD caches generated manifests in Redis. When the same revision of an application is reconciled again, the repo server can return the cached manifests without re-rendering templates or fetching repository content again.
 
 Configure the cache expiration based on your reconciliation frequency:
 
@@ -99,8 +100,8 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Cache manifests for 24 hours (default is 24h)
-  reposerver.default.cache.expiration: "24h"
+  # Cache repo state, including generated manifests, for 24 hours (default is 24h0m0s)
+  reposerver.repo.cache.expiration: "24h0m0s"
 
   # Timeout for repo server operations
   controller.repo.server.timeout.seconds: "300"
@@ -154,7 +155,7 @@ For charts pulled from OCI registries, this cache prevents repeated downloads of
 
 ## Level 4: Parallelism Configuration
 
-The repo server has a parallelism limit that controls how many concurrent manifest generation requests it processes. The default is conservative:
+The repo server has a parallelism limit that controls how many concurrent manifest generation requests it processes. Any value less than 1 means no limit, so setting an explicit limit is useful when you need to protect CPU and memory:
 
 ```yaml
 apiVersion: v1
@@ -167,7 +168,7 @@ data:
   reposerver.parallelism.limit: "20"
 ```
 
-Set this based on the repo server's CPU allocation. Each concurrent operation uses roughly 0.1 to 0.5 CPU cores depending on the complexity of the manifest generation. With 4 CPU cores, 20 concurrent operations is a reasonable limit.
+Set this based on the repo server's CPU allocation and the cost of your manifest generation. With 4 CPU cores, 20 concurrent operations can be reasonable for light workloads, but heavy Helm, Kustomize, or plugin-based generation may need a lower limit.
 
 ## Level 5: Horizontal Scaling
 
@@ -211,7 +212,7 @@ Anti-affinity ensures replicas land on different nodes, which distributes I/O lo
 
 ## Level 6: Repository Deduplication
 
-If the same repository is used by many applications (common with monorepos), the repo server can end up cloning it multiple times concurrently. Request deduplication helps:
+If the same repository is used by many applications (common with monorepos), ArgoCD maintains a local repository clone per repo-server pod and uses locks when manifest generation might modify the working tree. Avoid disabling the Git submodule setting for deduplication; it only controls whether Git submodules are enabled:
 
 ```yaml
 apiVersion: v1
@@ -220,11 +221,11 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable request coalescing for identical repo operations
-  reposerver.enable.git.submodule: "false"
+  # Leave enabled if your repositories rely on Git submodules
+  reposerver.enable.git.submodule: "true"
 ```
 
-The repo server automatically deduplicates concurrent requests for the same repository and revision. However, different revisions or paths within the same repo will trigger separate operations.
+For large monorepos, use fully qualified Git references and the `argocd.argoproj.io/manifest-generate-paths` annotation to reduce unnecessary revision resolution and manifest regeneration.
 
 ## Monitoring Cache Effectiveness
 
@@ -237,19 +238,19 @@ You need to track cache hit rates to know if your caching configuration is worki
 argocd_git_request_total{request_type="fetch"}
 argocd_git_request_total{request_type="ls-remote"}
 
-# Repo server request duration
-argocd_repo_server_request_duration_seconds_bucket
+# Git request duration
+argocd_git_request_duration_seconds_bucket
 
-# Active repo server operations
-argocd_repo_server_active_operations
+# Pending repo requests waiting on repository locks
+argocd_repo_pending_request_total
 ```
 
 Create a Grafana dashboard that shows:
 
 ```text
 # Cache hit ratio
-rate(argocd_redis_request_total{hit="true"}[5m]) /
-rate(argocd_redis_request_total[5m])
+sum(rate(argocd_redis_request_total{initiator="argocd-repo-server",result="hit"}[5m])) /
+sum(rate(argocd_redis_request_total{initiator="argocd-repo-server"}[5m]))
 ```
 
 A healthy cache hit rate for a stable environment should be above 80%. If you see rates below 50%, investigate whether applications are being reconciled with rapidly changing revisions.
