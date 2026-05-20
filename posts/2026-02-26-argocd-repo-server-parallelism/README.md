@@ -35,7 +35,7 @@ sequenceDiagram
     end
 ```
 
-Without parallelism limits, all incoming requests are processed concurrently. With 200 applications reconciling at once, the repo server tries to run 200 Git operations and manifest generations simultaneously.
+Without parallelism limits, many incoming requests can run concurrently, subject to repository locks and tool-specific serialization. With 200 applications reconciling at once, the repo server can try to run a large number of Git operations and manifest generations simultaneously.
 
 ## Configuring the Parallelism Limit
 
@@ -102,7 +102,7 @@ For a repo server with 4GB memory limit:
 
 ## Monitoring the Queue
 
-When parallelism is limited, requests that cannot be served immediately are queued. Monitor the queue to detect if your limit is too restrictive:
+When parallelism is limited, requests that cannot be served immediately wait for a slot. ArgoCD also exposes a pending-request metric for requests waiting on repository locks, which is useful for detecting monorepo or tool-specific serialization bottlenecks:
 
 ```bash
 # Check pending request count
@@ -111,7 +111,7 @@ kubectl port-forward svc/argocd-repo-server -n argocd 8084:8084 &
 curl -s http://localhost:8084/metrics | grep argocd_repo_pending_request_total
 ```
 
-If `argocd_repo_pending_request_total` is consistently above 10, your parallelism limit might be too low. If it stays near 0, you have headroom to reduce the limit and save resources.
+If `argocd_repo_pending_request_total` is consistently above 10, check whether many applications share the same repository path or use tools that require repository locking. If it stays near 0 and CPU and memory are also low, you have headroom to reduce the limit and save resources.
 
 Set up a Prometheus alert:
 
@@ -125,8 +125,8 @@ groups:
         labels:
           severity: warning
         annotations:
-          summary: "ArgoCD repo server has {{ $value }} pending requests"
-          description: "Consider increasing parallelism limit or scaling repo server replicas"
+          summary: "ArgoCD repo server has {{ $value }} repository-lock pending requests"
+          description: "Check monorepo contention, manifest generation tools, and repo server capacity"
 ```
 
 ## Parallelism with Multiple Repo Server Replicas
@@ -149,12 +149,12 @@ data:
   reposerver.parallelism.limit: "5"
 ```
 
-With this configuration, the total cluster-wide parallelism is 3 replicas * 5 = 15 concurrent operations. The controller distributes requests across replicas using gRPC load balancing.
+With this configuration, the effective upper bound is 3 replicas * 5 = 15 concurrent operations if requests are distributed across the replicas. Actual distribution depends on how clients connect through the repo server Service.
 
 ### Sizing for Multiple Replicas
 
 ```text
-Total parallelism = Replicas * Per-replica limit
+Effective total upper bound = Replicas * Per-replica limit
 Per-replica limit = Desired total parallelism / Replicas
 ```
 
@@ -166,18 +166,19 @@ data:
 
 ## Separate Parallelism for Different Operations
 
-ArgoCD does not currently support separate parallelism limits for Git operations vs manifest rendering. However, you can achieve similar effects by:
+ArgoCD does not currently support separate parallelism limits for Git operations vs manifest rendering. It also does not route individual applications to arbitrary repo server Deployments in a single control plane. However, you can achieve similar effects by:
 
-### Using Separate Repo Server Deployments
+### Using Separate ArgoCD Instances
 
-For organizations with both simple YAML deployments and complex Helm charts:
+For organizations with both simple YAML deployments and complex Helm charts, use separate ArgoCD instances or control planes with different repo server settings:
 
 ```yaml
 # Repo server for simple manifests (high parallelism)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: argocd-repo-server-simple
+  name: argocd-repo-server
+  namespace: argocd-simple
 spec:
   template:
     spec:
@@ -228,6 +229,11 @@ Use this approach to find the optimal setting:
 #!/bin/bash
 # test-parallelism.sh
 # Test different parallelism settings and measure throughput
+
+kubectl port-forward svc/argocd-repo-server -n argocd 8084:8084 >/tmp/argocd-repo-server-port-forward.log 2>&1 &
+PF_PID=$!
+trap 'kill "$PF_PID"' EXIT
+sleep 3
 
 for LIMIT in 2 5 8 10 15; do
   echo "Testing parallelism limit: $LIMIT"
@@ -291,14 +297,14 @@ When you add repo server replicas, remember to recalculate per-replica paralleli
 # Fix: 3 replicas, limit=4 (12 total - similar to before)
 ```
 
-For comprehensive monitoring of your ArgoCD repo server performance and parallelism tuning, [OneUptime](https://oneuptime.com) provides dashboards that correlate queue depth, CPU usage, and reconciliation latency.
+For comprehensive monitoring of your ArgoCD repo server performance and parallelism tuning, [OneUptime](https://oneuptime.com) provides dashboards that correlate repository-lock pending requests, CPU usage, and reconciliation latency.
 
 ## Key Takeaways
 
 - Set `reposerver.parallelism.limit` to prevent resource contention during reconciliation spikes
 - Start with `(CPU cores * 2)` as a baseline and tune from there
-- Monitor `argocd_repo_pending_request_total` to detect if the limit is too restrictive
+- Monitor `argocd_repo_pending_request_total` to detect repository-lock contention
 - Account for queue wait time when setting controller timeouts
-- With multiple replicas, total parallelism = replicas * per-replica limit
+- With multiple replicas, the total upper bound is replicas * per-replica limit
 - Test different settings systematically to find the optimal value
 - Adjust parallelism when adding or removing repo server replicas
