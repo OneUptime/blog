@@ -386,11 +386,11 @@ Use sync waves to run verification steps in order:
 
 ```mermaid
 graph LR
-    A[Wave 0: Deploy Resources] --> B[Wave 1: Health Check]
-    B --> C[Wave 2: Smoke Tests]
-    C --> D[Wave 3: Integration Tests]
-    D --> E[Wave 4: Synthetic Tests]
-    E --> F[Wave 5: Update Status Dashboard]
+    A[Sync Phase Wave 0: Deploy Resources] --> B[PostSync Wave 0: Health Check]
+    B --> C[PostSync Wave 1: Smoke Tests]
+    C --> D[PostSync Wave 2: Integration Tests]
+    D --> E[PostSync Wave 3: Synthetic Tests]
+    E --> F[PostSync Wave 5: Update Status Dashboard]
 ```
 
 If any wave fails, subsequent waves do not execute.
