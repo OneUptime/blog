@@ -14,7 +14,7 @@ In this guide, I will show you how to deploy Kyverno through ArgoCD, write pract
 
 ## Why Kyverno Over OPA for ArgoCD Workflows?
 
-Both tools solve the same problem, but Kyverno has some advantages in an ArgoCD-centric workflow. Kyverno policies are native Kubernetes resources written in YAML. There is no separate policy language to learn, no compilation step, and no external policy engine. Kyverno also supports mutation (modifying resources) and generation (creating new resources), which OPA Gatekeeper does not natively handle.
+Both tools solve the same problem, but Kyverno has some advantages in an ArgoCD-centric workflow. Kyverno policies are native Kubernetes resources written in YAML. There is no separate policy language to learn, no compilation step, and no external policy engine. Kyverno also supports mutation (modifying resources) and generation (creating new resources) directly in its policy model.
 
 For teams already deep in YAML from Kubernetes and ArgoCD, Kyverno feels natural.
 
@@ -50,23 +50,44 @@ spec:
   source:
     repoURL: https://kyverno.github.io/kyverno
     chart: kyverno
-    targetRevision: 3.1.4
+    targetRevision: 3.8.1
     helm:
       values: |
-        replicaCount: 3
+        admissionController:
+          replicas: 3
         backgroundController:
           enabled: true
+          replicas: 3
         cleanupController:
           enabled: true
+          replicas: 3
+        features:
+          policyExceptions:
+            enabled: true
+            namespace: kyverno
         config:
           webhooks:
-            # Exclude ArgoCD namespace from policy enforcement
-            - objectSelector:
-                matchExpressions:
-                  - key: app.kubernetes.io/part-of
-                    operator: NotIn
-                    values:
-                      - argocd
+            namespaceSelector:
+              # Exclude ArgoCD namespace from policy enforcement
+              matchExpressions:
+                - key: kubernetes.io/metadata.name
+                  operator: NotIn
+                  values:
+                    - kube-system
+                    - kyverno
+                    - argocd
+            # Optional object-level exclusion for selected resources
+            objectSelector:
+              matchExpressions:
+                - key: webhooks.kyverno.io/exclude
+                  operator: DoesNotExist
+            # Example: only exclude resources carrying the ArgoCD label if you add it intentionally
+            # objectSelector:
+            #   matchExpressions:
+            #     - key: app.kubernetes.io/part-of
+            #       operator: NotIn
+            #       values:
+            #         - argocd
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
@@ -98,7 +119,6 @@ metadata:
     policies.kyverno.io/description: >-
       Requires all Deployments to have team, environment, and cost-center labels.
 spec:
-  validationFailureAction: Enforce
   background: true
   rules:
     - name: check-required-labels
@@ -109,6 +129,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce
         message: >-
           The label '{{request.object.metadata.labels | keys(@)}}' is missing
           required labels: team, environment, cost-center.
@@ -156,6 +177,15 @@ spec:
     - group: apps
       kind: Deployment
       jsonPointers:
+        - /metadata/labels/managed-by
+        - /metadata/labels/deployed-at
+    - kind: Service
+      jsonPointers:
+        - /metadata/labels/managed-by
+        - /metadata/labels/deployed-at
+    - kind: ConfigMap
+      jsonPointers:
+        - /metadata/labels/managed-by
         - /metadata/labels/deployed-at
 ```
 
@@ -222,7 +252,7 @@ spec:
       selfHeal: true
 ```
 
-Use sync waves to make sure Kyverno itself is installed before the policies are applied.
+Use sync waves to make sure Kyverno itself is installed before the policies are applied when both Applications are managed by the same parent Application.
 
 ```yaml
 # On the kyverno Application
@@ -240,7 +270,7 @@ ArgoCD manages its own resources, and you do not want Kyverno blocking ArgoCD op
 
 ```yaml
 # argocd-exception.yaml
-apiVersion: kyverno.io/v2beta1
+apiVersion: kyverno.io/v2
 kind: PolicyException
 metadata:
   name: argocd-exception
@@ -275,8 +305,8 @@ kyverno apply policies/require-labels.yaml \
 # Test all policies against all resources in a directory
 kyverno apply policies/ --resource manifests/
 
-# Run in audit mode to see what would fail
-kyverno apply policies/ --resource manifests/ --audit
+# Treat Audit-mode policy results as warnings instead of failures
+kyverno apply policies/ --resource manifests/ --audit-warn
 ```
 
 Integrate this into your CI pipeline so that policy violations are caught before they even reach ArgoCD.
@@ -306,7 +336,7 @@ For more details on custom health checks in ArgoCD, see our guide on [implementi
 
 When rolling out new policies, use this progression to avoid disrupting existing workloads.
 
-Start with `Audit` mode. Set `validationFailureAction: Audit` to log violations without blocking them. Review the PolicyReport resources to understand the impact. Then switch to `Enforce` mode with exceptions for known violations. Finally, work with teams to fix existing violations and remove exceptions.
+Start with `Audit` mode. Set `validate.failureAction: Audit` to log violations without blocking them. Review the PolicyReport resources to understand the impact. Then switch to `Enforce` mode with exceptions for known violations. Finally, work with teams to fix existing violations and remove exceptions.
 
 This approach lets you introduce policy enforcement incrementally without causing deployment outages for existing applications managed by ArgoCD.
 
