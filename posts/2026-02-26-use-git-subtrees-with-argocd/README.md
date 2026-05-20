@@ -8,7 +8,7 @@ Description: Learn how to use Git subtrees as an alternative to submodules for s
 
 ---
 
-Git subtrees are an alternative to Git submodules for embedding shared code from one repository into another. Unlike submodules, subtrees copy the actual files into your repository, so there is no external dependency at clone time. This makes them simpler to work with in ArgoCD because the repo server does not need any special configuration to handle them.
+Git subtrees are an alternative to Git submodules for embedding shared code from one repository into another. Unlike submodules, subtrees copy the actual files into your repository, so there is no external dependency at clone time. This makes them simpler to work with in ArgoCD because the repo server does not need to fetch nested repositories or match credentials for submodule repositories.
 
 ## Subtrees vs Submodules for ArgoCD
 
@@ -27,7 +27,7 @@ graph LR
     end
 ```
 
-For ArgoCD, subtrees have a clear advantage: no special configuration needed. ArgoCD clones one repo and gets everything. No credential issues with nested repos, no submodule initialization step, no extra latency.
+For ArgoCD, subtrees have a clear advantage: no special configuration needed. ArgoCD clones one repo and gets everything. No credential issues with nested repos, no submodule checkout step, no extra latency.
 
 ## Adding a Subtree to Your Config Repo
 
@@ -199,7 +199,7 @@ spec:
       selfHeal: true
 ```
 
-ArgoCD sees the shared directory as part of the repo. No extra clones, no authentication issues, no special flags.
+ArgoCD sees the shared directory as part of the repo. No extra clones, no submodule credentials, no special flags.
 
 ## Managing Multiple Subtrees
 
@@ -289,4 +289,4 @@ Choose submodules when:
 
 ## Summary
 
-Git subtrees embed shared files directly into your config repo, making them invisible to ArgoCD - it just sees normal files. This eliminates the authentication, configuration, and clone-time issues that come with submodules. Use `git subtree add` to import shared configs, `git subtree pull` to update them, and automate updates through CI pipelines. The tradeoff is a larger repo and potentially more complex merge history, but for most ArgoCD workflows, the simplicity is worth it.
+Git subtrees embed shared files directly into your config repo, making them invisible to ArgoCD - it just sees normal files. This avoids the extra clone-time work and credential matching that can come with submodules. Use `git subtree add` to import shared configs, `git subtree pull` to update them, and automate updates through CI pipelines. The tradeoff is a larger repo and potentially more complex merge history, but for most ArgoCD workflows, the simplicity is worth it.
