@@ -82,17 +82,24 @@ jobs:
 Let ArgoCD Image Updater detect new images automatically:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
   name: staging-web-app
-  annotations:
-    # Configure Image Updater
-    argocd-image-updater.argoproj.io/image-list: web=myorg/web-app
-    argocd-image-updater.argoproj.io/web.update-strategy: latest
-    argocd-image-updater.argoproj.io/web.allow-tags: "regexp:^main-[a-f0-9]{7}$"
-    argocd-image-updater.argoproj.io/write-back-method: git
-    argocd-image-updater.argoproj.io/git-branch: main
+  namespace: argocd
+spec:
+  writeBackConfig:
+    method: "git"
+    gitConfig:
+      branch: "main"
+  applicationRefs:
+    - namePattern: "staging-web-app"
+      images:
+        - alias: "web"
+          imageName: "myorg/web-app"
+          commonUpdateSettings:
+            updateStrategy: "newest-build"
+            allowTags: "regexp:^main-[a-f0-9]{7}$"
 ```
 
 With this pattern, your CI pipeline just pushes images. ArgoCD Image Updater handles the rest.
@@ -140,10 +147,10 @@ if [ $? -ne 0 ]; then
 fi
 ```
 
-For pipelines that do not use the ArgoCD CLI, poll the API:
+For custom polling, use ArgoCD's JSON output:
 
 ```bash
-# Poll ArgoCD API for sync status
+# Poll ArgoCD status
 check_sync_status() {
   local app_name=$1
   local timeout=$2
@@ -196,6 +203,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: myorg/config
+          token: ${{ secrets.CONFIG_REPO_TOKEN }}
 
       - name: Update production image tag
         run: |
@@ -258,11 +266,12 @@ metadata:
   namespace: argocd
 data:
   policy.csv: |
-    # CI account can sync and read, but not delete or modify app config
+    # CI account can read, sync, run resource actions, and update approved apps
     p, role:ci-deployer, applications, get, */*, allow
     p, role:ci-deployer, applications, sync, */*, allow
     p, role:ci-deployer, applications, action/*, */*, allow
-    p, role:ci-deployer, applications, update, */*, deny
+    p, role:ci-deployer, applications, update, */staging-web-app, allow
+    p, role:ci-deployer, applications, update, */prod-web-app, allow
     p, role:ci-deployer, applications, delete, */*, deny
     p, role:ci-deployer, projects, get, *, allow
 
@@ -310,7 +319,7 @@ argocd app history my-app
 # 1   2026-02-26 08:00:00 +0000 UTC  abc1234
 # 2   2026-02-26 09:00:00 +0000 UTC  def5678
 
-# Rollback to previous revision
+# Rollback to previous revision (for manual-sync apps)
 argocd app rollback my-app 1
 
 # Or better: revert the Git commit
