@@ -46,7 +46,7 @@ graph TD
     I --> J[Istio/Linkerd/Nginx/Contour]
 ```
 
-**Key architectural difference:** Argo Rollouts replaces the Deployment kind with a Rollout kind. Flagger wraps existing Deployments without changing the resource type. This means Flagger is less invasive to existing workflows but Argo Rollouts gives you more fine-grained control.
+**Key architectural difference:** Argo Rollouts replaces the Deployment kind with a Rollout kind. Flagger adds a Canary custom resource around existing Deployments without replacing the workload type. This means Flagger is less invasive to existing workload manifests but Argo Rollouts gives you more fine-grained control.
 
 ## Canary Deployment Comparison
 
@@ -75,7 +75,7 @@ spec:
       steps:
         # Step 1: Send 10% traffic to canary
         - setWeight: 10
-        # Step 2: Run analysis for 5 minutes
+        # Step 2: Run analysis
         - analysis:
             templates:
               - templateName: success-rate
@@ -283,7 +283,7 @@ spec:
     }[{{ interval }}])) * 100
 ```
 
-**Key difference:** Argo Rollouts supports more metric providers natively (Prometheus, Datadog, NewRelic, Wavefront, CloudWatch, Graphite, InfluxDB, Kayenta, and web-based metrics). Flagger supports Prometheus, Datadog, CloudWatch, NewRelic, and Graphite, plus custom webhooks for anything else.
+**Key difference:** Argo Rollouts supports metric providers such as Prometheus, Datadog, NewRelic, Wavefront, CloudWatch, Graphite, InfluxDB, Kayenta, Apache SkyWalking, Kubernetes Jobs, and web-based metrics. Flagger supports Prometheus, InfluxDB, Datadog, CloudWatch, NewRelic, Graphite, Google Cloud Monitoring, Dynatrace, Keptn, and Splunk, plus custom webhooks for anything else.
 
 ## Traffic Management Support
 
@@ -297,22 +297,22 @@ spec:
 | Contour | No | Yes |
 | Gloo | No | Yes |
 | Apache APISIX | Yes | Yes |
-| Traefik | Yes | No |
+| Traefik | Yes | Yes |
 
 ## GitOps Integration
 
 ### Argo Rollouts + ArgoCD
 
-The integration between Argo Rollouts and ArgoCD is seamless. ArgoCD natively understands Rollout resources and displays their status in the UI.
+The integration between Argo Rollouts and ArgoCD is strong. ArgoCD includes health checks and built-in actions for Rollout resources, and the Argo Rollouts UI extension adds Rollout-specific views.
 
 ```bash
 # ArgoCD shows Rollout status
 
 argocd app get my-app
-# Shows: Rollout status, canary weight, analysis progress
+# Shows: application sync and health status, including Rollout health
 
-# The ArgoCD UI renders Rollout-specific views
-# including step progress and canary metrics
+# The Argo Rollouts UI extension renders Rollout-specific views
+# including step progress and analysis details
 ```
 
 ### Flagger + FluxCD
@@ -324,6 +324,9 @@ Flagger is commonly used with FluxCD but also works with ArgoCD. With FluxCD, th
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 spec:
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
   ignoreDifferences:
     - group: apps
       kind: Deployment
@@ -349,8 +352,8 @@ spec:
 
 - You prefer working with standard Kubernetes Deployments
 - You are using FluxCD as your GitOps tool
-- You want a less invasive approach (no custom resource types)
+- You want a less invasive approach that keeps your application workload as a Deployment
 - You use Contour or Gloo for traffic management
 - You want webhook-based testing integrated into the rollout process
 
-Both tools are mature, production-tested, and actively maintained. Your choice often comes down to your existing GitOps tooling and traffic management setup. For monitoring the health of your progressive delivery pipelines, explore [OneUptime's Kubernetes monitoring](https://oneuptime.com/blog/post/2026-02-26-argocd-vs-fluxcd-comparison/view) capabilities.
+Both tools are mature, production-tested, and actively maintained. Your choice often comes down to your existing GitOps tooling and traffic management setup. For monitoring the health of your progressive delivery pipelines, explore [OneUptime's Kubernetes monitoring](https://oneuptime.com/product/kubernetes) capabilities.
