@@ -76,7 +76,6 @@ data:
     # Developers - read and sync only, no delete
     p, role:developer, applications, get, */*, allow
     p, role:developer, applications, sync, */*, allow
-    p, role:developer, applications, action/*, */*, allow
     p, role:developer, logs, get, */*, allow
     p, role:developer, repositories, get, *, allow
     p, role:developer, projects, get, *, allow
@@ -97,7 +96,7 @@ data:
 Restrict network access to ArgoCD components:
 
 ```yaml
-# Deny all ingress by default
+# Deny all ingress and egress by default
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -167,8 +166,67 @@ spec:
       ports:
         - port: 6379
     # Allow DNS
-    - to: []
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# Allow repo server to reach Git repositories
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argocd-repo-server-egress
+  namespace: argocd
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
+  policyTypes:
+    - Egress
+  egress:
+    # HTTPS Git, Helm, and OCI endpoints
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
       ports:
+        - port: 443
+    # SSH Git endpoints, if used
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 22
+    # Allow DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+
+---
+# Allow API server to reach OIDC providers and repository server
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argocd-server-egress
+  namespace: argocd
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
+  policyTypes:
+    - Egress
+  egress:
+    # OIDC providers and external identity endpoints
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - port: 443
+    # Allow DNS
+    - ports:
         - port: 53
           protocol: UDP
         - port: 53
@@ -187,8 +245,14 @@ spec:
       app.kubernetes.io/part-of: argocd
   policyTypes:
     - Ingress
+    - Egress
   ingress:
     - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: argocd
+  egress:
+    - to:
         - podSelector:
             matchLabels:
               app.kubernetes.io/part-of: argocd
@@ -212,6 +276,22 @@ spec:
     kind: ClusterIssuer
   dnsNames:
     - argocd.myorg.com
+
+---
+# Issue an internal certificate for repo-server inter-component TLS
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: argocd-repo-server-tls
+  namespace: argocd
+spec:
+  secretName: argocd-repo-server-tls
+  issuerRef:
+    name: internal-ca
+    kind: ClusterIssuer
+  dnsNames:
+    - argocd-repo-server
+    - argocd-repo-server.argocd.svc
 ```
 
 Configure ArgoCD to use TLS:
@@ -226,11 +306,12 @@ data:
   # Enable TLS on the server
   server.insecure: "false"
 
-  # Redis TLS
-  redis.tls.enabled: "true"
+  # Keep TLS enabled on the repo server gRPC endpoint
+  reposerver.disable.tls: "false"
 
-  # Repo server TLS
-  reposerver.tls.enabled: "true"
+  # Validate repo server certificates for inter-component traffic
+  server.repo.server.strict.tls: "true"
+  controller.repo.server.strict.tls: "true"
 ```
 
 ## Set Pod Security Standards
@@ -358,25 +439,11 @@ rules:
 
 ## Enable audit logging
 
-Log every action taken through ArgoCD:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  server.audit.enabled: "true"
-```
-
-Set up log forwarding to a SIEM:
+ArgoCD emits Kubernetes Events for application activity, including the responsible actor when applicable. Forward ArgoCD component logs and Kubernetes Events to a SIEM:
 
 ```bash
-# ArgoCD logs include user, action, and resource details
-# Example log entry:
-# {"level":"info","user":"john@myorg.com","action":"sync",
-#  "application":"prod-web","project":"team-alpha","time":"2026-02-26T10:30:00Z"}
+# Inspect recent ArgoCD application events
+kubectl get events -n argocd --field-selector involvedObject.kind=Application
 ```
 
 ## Scan ArgoCD images for vulnerabilities
