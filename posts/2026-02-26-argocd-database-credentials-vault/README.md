@@ -18,7 +18,7 @@ In this guide, I will show you how to set up this integration end to end, from c
 graph TD
     A[ArgoCD syncs from Git] --> B[Deploys ExternalSecret + Deployment]
     B --> C[External Secrets Operator]
-    C --> D[Requests credentials from Vault]
+    C --> D[VaultDynamicSecret requests credentials from Vault]
     D --> E[Vault Database Secrets Engine]
     E --> F[Generates temp DB user/password]
     F --> G[Returns credentials to ESO]
@@ -126,47 +126,59 @@ vault write auth/kubernetes/config \
   token_reviewer_jwt="$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
   kubernetes_ca_cert="$(cat /var/run/secrets/kubernetes.io/serviceaccount/ca.crt)"
 
-# Create a policy for the external secrets operator
-vault policy write external-secrets - <<EOF
+# Create a policy for the Vault auth service account used by ESO
+vault policy write database-credentials - <<EOF
 path "database/creds/app-readonly" {
   capabilities = ["read"]
 }
 path "database/creds/app-readwrite" {
   capabilities = ["read"]
 }
+path "database/creds/app-mysql-role" {
+  capabilities = ["read"]
+}
+path "database/creds/app-mongo-role" {
+  capabilities = ["read"]
+}
 EOF
 
-# Bind the policy to the ESO service account
-vault write auth/kubernetes/role/external-secrets \
-  bound_service_account_names=external-secrets \
-  bound_service_account_namespaces=external-secrets \
-  policies=external-secrets \
+# Bind the policy to the Kubernetes service account ESO will use for Vault auth
+vault write auth/kubernetes/role/database-credentials \
+  bound_service_account_names=vault-auth \
+  bound_service_account_namespaces=production \
+  policies=database-credentials \
   ttl=1h
 ```
 
 ## Step 3: Set Up External Secrets Operator
 
-Create a ClusterSecretStore that connects to Vault:
+Create a service account and VaultDynamicSecret generator that connects to Vault's database secrets engine:
 
 ```yaml
-# cluster-secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
-kind: ClusterSecretStore
+# vault-dynamic-secret.yaml
+apiVersion: v1
+kind: ServiceAccount
 metadata:
-  name: vault-database
+  name: vault-auth
+  namespace: production
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: app-readwrite
+  namespace: production
 spec:
+  path: "/database/creds/app-readwrite"
+  method: "GET"
+  resultType: "Data"
   provider:
-    vault:
-      server: "https://vault.example.com"
-      path: "database"
-      version: "v1"
-      auth:
-        kubernetes:
-          mountPath: "kubernetes"
-          role: "external-secrets"
-          serviceAccountRef:
-            name: external-secrets
-            namespace: external-secrets
+    server: "https://vault.example.com"
+    auth:
+      kubernetes:
+        mountPath: "kubernetes"
+        role: "database-credentials"
+        serviceAccountRef:
+          name: vault-auth
 ```
 
 ## Step 4: Create ExternalSecrets for Database Credentials
@@ -175,7 +187,7 @@ This is the manifest that goes in your Git repository. It contains no sensitive 
 
 ```yaml
 # external-secret-db.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -183,9 +195,6 @@ metadata:
 spec:
   # Refresh before the TTL expires
   refreshInterval: 45m
-  secretStoreRef:
-    name: vault-database
-    kind: ClusterSecretStore
   target:
     name: database-credentials
     creationPolicy: Owner
@@ -197,8 +206,11 @@ spec:
         DB_USERNAME: "{{ .username }}"
         DB_PASSWORD: "{{ .password }}"
   dataFrom:
-    - extract:
-        key: creds/app-readwrite
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: app-readwrite
 ```
 
 ## Step 5: Deploy with ArgoCD
@@ -220,19 +232,11 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: production
-  ignoreDifferences:
-    # Vault generates unique credentials each time
-    - group: ""
-      kind: Secret
-      name: database-credentials
-      jsonPointers:
-        - /data
   syncPolicy:
     automated:
       selfHeal: true
       prune: true
     syncOptions:
-      - RespectIgnoreDifferences=true
       - CreateNamespace=true
 ```
 
@@ -267,8 +271,6 @@ spec:
                 secretKeyRef:
                   name: database-credentials
                   key: DATABASE_URL
-          # Connection pool settings for dynamic credentials
-          env:
             - name: DB_MAX_CONNECTIONS
               value: "10"
             - name: DB_MAX_IDLE_TIME
@@ -287,16 +289,37 @@ spec:
             initialDelaySeconds: 15
 
 ---
+# apps/api/base/vault-dynamic-secret.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: vault-auth
+---
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: app-readwrite
+spec:
+  path: "/database/creds/app-readwrite"
+  method: "GET"
+  resultType: "Data"
+  provider:
+    server: "https://vault.example.com"
+    auth:
+      kubernetes:
+        mountPath: "kubernetes"
+        role: "database-credentials"
+        serviceAccountRef:
+          name: vault-auth
+
+---
 # apps/api/base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
 spec:
   refreshInterval: 45m
-  secretStoreRef:
-    name: vault-database
-    kind: ClusterSecretStore
   target:
     name: database-credentials
     creationPolicy: Owner
@@ -307,8 +330,11 @@ spec:
         DB_USERNAME: "{{ .username }}"
         DB_PASSWORD: "{{ .password }}"
   dataFrom:
-    - extract:
-        key: creds/app-readwrite
+    - sourceRef:
+        generatorRef:
+          apiVersion: generators.external-secrets.io/v1alpha1
+          kind: VaultDynamicSecret
+          name: app-readwrite
 ```
 
 ## Handling Credential Rotation Gracefully
