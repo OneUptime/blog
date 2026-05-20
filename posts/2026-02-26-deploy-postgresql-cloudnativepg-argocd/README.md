@@ -16,7 +16,7 @@ By managing CloudNativePG through ArgoCD, you get declarative database infrastru
 
 Before you start, make sure you have:
 
-- A Kubernetes cluster (1.25+)
+- A Kubernetes cluster version supported by your CloudNativePG chart (the current chart requires Kubernetes 1.29+)
 - ArgoCD installed and running
 - A Git repository for your manifests
 - kubectl configured for your cluster
@@ -40,7 +40,7 @@ spec:
   source:
     chart: cloudnative-pg
     repoURL: https://cloudnative-pg.github.io/charts
-    targetRevision: 0.22.0
+    targetRevision: 0.28.2
     helm:
       releaseName: cloudnative-pg
       values: |
@@ -70,6 +70,38 @@ spec:
 ```
 
 The `ServerSideApply=true` sync option is important here because CloudNativePG CRDs are large and can exceed the annotation size limit that client-side apply uses.
+
+If you plan to use S3-compatible object storage for backups, install the CloudNativePG Barman Cloud plugin as well. The in-tree Barman Cloud backup configuration is deprecated in current CloudNativePG releases.
+
+```yaml
+# argocd/cloudnativepg-barman-plugin.yaml
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cloudnativepg-barman-plugin
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    chart: plugin-barman-cloud
+    repoURL: https://cloudnative-pg.github.io/charts
+    targetRevision: 0.6.0
+    helm:
+      releaseName: plugin-barman-cloud
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+```
 
 ## Step 2: Deploy a PostgreSQL Cluster
 
@@ -116,7 +148,7 @@ spec:
   instances: 3
 
   # PostgreSQL version
-  imageName: ghcr.io/cloudnative-pg/postgresql:16.2
+  imageName: ghcr.io/cloudnative-pg/postgresql:16.14
 
   # Storage configuration
   storage:
@@ -144,19 +176,11 @@ spec:
       max_wal_size: 2GB
 
   # Automated backup configuration
-  backup:
-    barmanObjectStore:
-      destinationPath: s3://my-pg-backups/production
-      s3Credentials:
-        accessKeyId:
-          name: s3-backup-creds
-          key: ACCESS_KEY_ID
-        secretAccessKey:
-          name: s3-backup-creds
-          key: SECRET_ACCESS_KEY
-      wal:
-        compression: gzip
-    retentionPolicy: "30d"
+  plugins:
+    - name: barman-cloud.cloudnative-pg.io
+      isWALArchiver: true
+      parameters:
+        barmanObjectName: production-db-backups
 
   # High availability settings
   minSyncReplicas: 1
@@ -195,6 +219,30 @@ spec:
       remoteRef:
         key: /production/postgres/backup-s3
         property: secret_access_key
+```
+
+The Barman Cloud plugin reads the S3 destination and retention settings from an `ObjectStore` resource in the same namespace as the PostgreSQL cluster.
+
+```yaml
+# databases/postgres/backup-object-store.yaml
+apiVersion: barmancloud.cnpg.io/v1
+kind: ObjectStore
+metadata:
+  name: production-db-backups
+  namespace: databases
+spec:
+  configuration:
+    destinationPath: s3://my-pg-backups/production
+    s3Credentials:
+      accessKeyId:
+        name: s3-backup-creds
+        key: ACCESS_KEY_ID
+      secretAccessKey:
+        name: s3-backup-creds
+        key: SECRET_ACCESS_KEY
+    wal:
+      compression: gzip
+  retentionPolicy: "30d"
 ```
 
 ## Step 5: Configure Health Checks in ArgoCD
@@ -240,10 +288,13 @@ metadata:
   name: production-db-backup
   namespace: databases
 spec:
-  schedule: "0 2 * * *"  # Daily at 2 AM
+  schedule: "0 0 2 * * *"  # Daily at 2 AM
   backupOwnerReference: self
   cluster:
     name: production-db
+  method: plugin
+  pluginConfiguration:
+    name: barman-cloud.cloudnative-pg.io
   immediate: false
 ```
 
@@ -266,14 +317,14 @@ graph TD
 
 ## Handling Upgrades
 
-When you need to upgrade PostgreSQL, update the `imageName` in your Git repository. CloudNativePG handles the rolling upgrade automatically - it promotes a replica, updates the old primary, and reintegrates it as a replica. ArgoCD detects the manifest change and triggers the sync.
+When you need to apply a PostgreSQL minor version upgrade, update the `imageName` in your Git repository. CloudNativePG handles the rolling update automatically - it updates replicas first and the primary last. ArgoCD detects the manifest change and triggers the sync.
 
 ```yaml
 # Change this line in your cluster manifest
-imageName: ghcr.io/cloudnative-pg/postgresql:16.3  # was 16.2
+imageName: ghcr.io/cloudnative-pg/postgresql:16.14  # was 16.13
 ```
 
-Commit and push. ArgoCD picks up the change and syncs. The operator then performs a rolling update with zero downtime.
+Commit and push. ArgoCD picks up the change and syncs. The operator then performs a rolling update. Major PostgreSQL upgrades are different: CloudNativePG performs those as offline in-place upgrades, so test them separately and plan for downtime.
 
 ## Sync Waves for Proper Ordering
 
@@ -293,7 +344,7 @@ metadata:
 
 ## Monitoring the Setup
 
-With monitoring enabled on the operator and PostgreSQL clusters, you get Prometheus metrics for connection counts, replication lag, transaction rates, and more. Pair this with a monitoring platform like [OneUptime](https://oneuptime.com/blog/post/2026-01-21-cloudnativepg-prometheus-monitoring/view) to get alerts when your database clusters drift from their desired state.
+With monitoring enabled on the operator and PostgreSQL clusters, you get Prometheus metrics for connection counts, replication lag, transaction rates, and more. The operator chart can create a PodMonitor for the operator, and current CloudNativePG guidance is to create your own PodMonitor for each PostgreSQL cluster using the `cnpg.io/cluster` label. Pair this with a monitoring platform like [OneUptime](https://oneuptime.com/blog/post/2026-01-21-cloudnativepg-prometheus-monitoring/view) to get alerts when your database clusters drift from their desired state.
 
 ## Conclusion
 
