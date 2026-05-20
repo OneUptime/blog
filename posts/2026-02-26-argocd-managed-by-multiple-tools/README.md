@@ -8,7 +8,7 @@ Description: Learn how to link ArgoCD resources to multiple management tools usi
 
 ---
 
-Real-world Kubernetes resources rarely have a single management tool. A Deployment might be provisioned by Terraform, deployed by ArgoCD, monitored by Datadog, and documented in Confluence. When multiple tools are involved, a single managed-by annotation is not enough. This guide covers strategies for linking ArgoCD resources to multiple tools simultaneously.
+Real-world Kubernetes resources rarely have a single management tool. A Deployment might be provisioned by Terraform, deployed by ArgoCD, monitored by Datadog, and documented in Confluence. When multiple tools are involved, a single external link annotation is not enough. This guide covers strategies for linking ArgoCD resources to multiple tools simultaneously.
 
 ## The Multi-Tool Challenge
 
@@ -26,7 +26,7 @@ graph TD
     A --> I[Jenkins - CI Pipeline]
 ```
 
-A single `argocd.argoproj.io/managed-by` annotation can only hold one URL. Here is how to handle multiple tools.
+A single per-resource external link annotation only represents one URL. Here is how to handle multiple tools.
 
 ## Strategy 1: Deep Links for Tool-Specific Links
 
@@ -41,60 +41,60 @@ metadata:
 data:
   resource.links: |
     # Source Code
-    - url: "https://github.com/myorg/{{.Name}}"
+    - url: "https://github.com/myorg/{{.resource.metadata.name}}"
       title: "Source Code"
       description: "View source on GitHub"
-      icon: "github"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-github"
+      if: resource.kind == "Deployment"
 
     # Monitoring
-    - url: "https://app.datadoghq.com/apm/services/{{.Name}}?env=production"
+    - url: "https://app.datadoghq.com/apm/services/{{.resource.metadata.name}}?env=production"
       title: "Datadog APM"
       description: "Application performance monitoring"
-      icon: "activity"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-line-chart"
+      if: resource.kind == "Deployment"
 
     # Logging
-    - url: "https://grafana.example.com/explore?query={{.Namespace}}/{{.Name}}"
+    - url: "https://grafana.example.com/explore?query={{.resource.metadata.namespace}}/{{.resource.metadata.name}}"
       title: "Logs"
       description: "View logs in Grafana Loki"
-      icon: "file-text"
-      if: "kind == 'Deployment' || kind == 'StatefulSet'"
+      icon.class: "fa-file-text-o"
+      if: resource.kind == "Deployment" || resource.kind == "StatefulSet"
 
     # Infrastructure
-    - url: "https://app.terraform.io/app/myorg/workspaces?search={{.Name}}"
+    - url: "https://app.terraform.io/app/myorg/workspaces?search={{.resource.metadata.name}}"
       title: "Terraform"
       description: "Infrastructure workspace"
-      icon: "cloud"
-      if: "kind == 'Deployment' && namespace == 'production'"
+      icon.class: "fa-cloud"
+      if: resource.kind == "Deployment" && resource.metadata.namespace == "production"
 
     # Incidents
-    - url: "https://myorg.pagerduty.com/service-directory?query={{.Name}}"
+    - url: "https://myorg.pagerduty.com/service-directory?query={{.resource.metadata.name}}"
       title: "PagerDuty"
       description: "On-call and incidents"
-      icon: "bell"
-      if: "kind == 'Deployment' && namespace == 'production'"
+      icon.class: "fa-bell"
+      if: resource.kind == "Deployment" && resource.metadata.namespace == "production"
 
     # CI/CD
-    - url: "https://github.com/myorg/{{.Name}}/actions"
+    - url: "https://github.com/myorg/{{.resource.metadata.name}}/actions"
       title: "CI Pipelines"
       description: "GitHub Actions workflows"
-      icon: "play"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-play"
+      if: resource.kind == "Deployment"
 
     # Documentation
-    - url: "https://wiki.internal.company/services/{{.Name}}"
+    - url: "https://wiki.internal.company/services/{{.resource.metadata.name}}"
       title: "Documentation"
       description: "Service documentation and runbooks"
-      icon: "book"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-book"
+      if: resource.kind == "Deployment"
 ```
 
 This gives every Deployment in production seven clickable links in the ArgoCD UI.
 
 ## Strategy 2: Combined Annotation Approach
 
-Use the managed-by annotation for the primary tool and custom annotations for supplementary links:
+Use an Argo CD external link annotation for the primary tool and custom annotations for supplementary links:
 
 ```yaml
 apiVersion: apps/v1
@@ -104,7 +104,7 @@ metadata:
   namespace: production
   annotations:
     # Primary management link
-    argocd.argoproj.io/managed-by: "https://github.com/myorg/api-server"
+    link.argocd.argoproj.io/source-code: "https://github.com/myorg/api-server"
 
     # Custom annotations for other tools (used by deep links)
     myorg.com/monitoring-url: "https://app.datadoghq.com/apm/services/api-server"
@@ -118,15 +118,15 @@ Then reference these custom annotations in deep links:
 ```yaml
 data:
   resource.links: |
-    - url: "{{index .Annotations \"myorg.com/monitoring-url\"}}"
+    - url: "{{index .resource.metadata.annotations \"myorg.com/monitoring-url\"}}"
       title: "Monitoring"
-      icon: "activity"
-      if: "annotations['myorg.com/monitoring-url'] != nil"
+      icon.class: "fa-line-chart"
+      if: resource.metadata.annotations["myorg.com/monitoring-url"] != nil
 
-    - url: "{{index .Annotations \"myorg.com/runbook-url\"}}"
+    - url: "{{index .resource.metadata.annotations \"myorg.com/runbook-url\"}}"
       title: "Runbook"
-      icon: "book"
-      if: "annotations['myorg.com/runbook-url'] != nil"
+      icon.class: "fa-book"
+      if: resource.metadata.annotations["myorg.com/runbook-url"] != nil
 ```
 
 ## Strategy 3: Central Link Registry
@@ -185,28 +185,28 @@ Then create conditional deep links based on labels:
 data:
   resource.links: |
     # Show Datadog link only for resources with monitoring=datadog label
-    - url: "https://app.datadoghq.com/apm/services/{{.Name}}"
+    - url: "https://app.datadoghq.com/apm/services/{{.resource.metadata.name}}"
       title: "Datadog"
-      icon: "activity"
-      if: "labels['monitoring'] == 'datadog'"
+      icon.class: "fa-line-chart"
+      if: resource.metadata.labels["monitoring"] == "datadog"
 
     # Show New Relic link for resources with monitoring=newrelic
-    - url: "https://one.newrelic.com/launcher?query={{.Name}}"
+    - url: "https://one.newrelic.com/launcher?query={{.resource.metadata.name}}"
       title: "New Relic"
-      icon: "activity"
-      if: "labels['monitoring'] == 'newrelic'"
+      icon.class: "fa-line-chart"
+      if: resource.metadata.labels["monitoring"] == "newrelic"
 
     # Show Terraform for infra-managed resources
-    - url: "https://app.terraform.io/app/myorg/workspaces?search={{.Name}}"
+    - url: "https://app.terraform.io/app/myorg/workspaces?search={{.resource.metadata.name}}"
       title: "Terraform"
-      icon: "cloud"
-      if: "labels['infra-managed-by'] == 'terraform'"
+      icon.class: "fa-cloud"
+      if: resource.metadata.labels["infra-managed-by"] == "terraform"
 
     # Show Pulumi for pulumi-managed resources
-    - url: "https://app.pulumi.com/myorg/{{.Name}}"
+    - url: "https://app.pulumi.com/myorg/{{.resource.metadata.name}}"
       title: "Pulumi"
-      icon: "cloud"
-      if: "labels['infra-managed-by'] == 'pulumi'"
+      icon.class: "fa-cloud"
+      if: resource.metadata.labels["infra-managed-by"] == "pulumi"
 ```
 
 ## Organizing Links by Category
@@ -217,43 +217,43 @@ Group your deep links into logical categories for better UX:
 data:
   resource.links: |
     # === Development ===
-    - url: "https://github.com/myorg/{{.Name}}"
+    - url: "https://github.com/myorg/{{.resource.metadata.name}}"
       title: "[Dev] Source Code"
-      icon: "github"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-github"
+      if: resource.kind == "Deployment"
 
-    - url: "https://github.com/myorg/{{.Name}}/actions"
+    - url: "https://github.com/myorg/{{.resource.metadata.name}}/actions"
       title: "[Dev] CI/CD"
-      icon: "play"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-play"
+      if: resource.kind == "Deployment"
 
     # === Operations ===
-    - url: "https://grafana.example.com/d/k8s?var-workload={{.Name}}&var-namespace={{.Namespace}}"
+    - url: "https://grafana.example.com/d/k8s?var-workload={{.resource.metadata.name}}&var-namespace={{.resource.metadata.namespace}}"
       title: "[Ops] Metrics"
-      icon: "activity"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-line-chart"
+      if: resource.kind == "Deployment"
 
-    - url: "https://grafana.example.com/explore?query={{.Name}}"
+    - url: "https://grafana.example.com/explore?query={{.resource.metadata.name}}"
       title: "[Ops] Logs"
-      icon: "file-text"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-file-text-o"
+      if: resource.kind == "Deployment"
 
-    - url: "https://runbooks.internal.company/{{.Name}}"
+    - url: "https://runbooks.internal.company/{{.resource.metadata.name}}"
       title: "[Ops] Runbook"
-      icon: "book"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-book"
+      if: resource.kind == "Deployment"
 
     # === Infrastructure ===
-    - url: "https://app.terraform.io/app/myorg/workspaces?search={{.Name}}"
+    - url: "https://app.terraform.io/app/myorg/workspaces?search={{.resource.metadata.name}}"
       title: "[Infra] Terraform"
-      icon: "cloud"
-      if: "kind == 'Deployment' && namespace == 'production'"
+      icon.class: "fa-cloud"
+      if: resource.kind == "Deployment" && resource.metadata.namespace == "production"
 
     # === Business ===
-    - url: "https://myorg.atlassian.net/wiki/search?text={{.Name}}"
+    - url: "https://myorg.atlassian.net/wiki/search?text={{.resource.metadata.name}}"
       title: "[Docs] Confluence"
-      icon: "book"
-      if: "kind == 'Deployment'"
+      icon.class: "fa-book"
+      if: resource.kind == "Deployment"
 ```
 
 ## Per-Team Tool Configurations
@@ -264,28 +264,28 @@ Different teams may use different tools. Handle this with conditional logic:
 data:
   resource.links: |
     # Backend team uses Datadog
-    - url: "https://app.datadoghq.com/apm/services/{{.Name}}"
+    - url: "https://app.datadoghq.com/apm/services/{{.resource.metadata.name}}"
       title: "Datadog APM"
-      icon: "activity"
-      if: "labels['team'] == 'backend'"
+      icon.class: "fa-line-chart"
+      if: resource.metadata.labels["team"] == "backend"
 
     # Frontend team uses Sentry
-    - url: "https://sentry.io/organizations/myorg/issues/?query=service:{{.Name}}"
+    - url: "https://sentry.io/organizations/myorg/issues/?query=service:{{.resource.metadata.name}}"
       title: "Sentry Errors"
-      icon: "alert-triangle"
-      if: "labels['team'] == 'frontend'"
+      icon.class: "fa-exclamation-triangle"
+      if: resource.metadata.labels["team"] == "frontend"
 
     # Data team uses Datadog + custom dashboards
-    - url: "https://grafana.example.com/d/data-pipelines?var-pipeline={{.Name}}"
+    - url: "https://grafana.example.com/d/data-pipelines?var-pipeline={{.resource.metadata.name}}"
       title: "Pipeline Dashboard"
-      icon: "activity"
-      if: "labels['team'] == 'data'"
+      icon.class: "fa-line-chart"
+      if: resource.metadata.labels["team"] == "data"
 
     # Platform team uses different monitoring
-    - url: "https://oneuptime.com/dashboard/monitors?query={{.Name}}"
+    - url: "https://oneuptime.com/dashboard/monitors?query={{.resource.metadata.name}}"
       title: "OneUptime Monitor"
-      icon: "activity"
-      if: "labels['team'] == 'platform'"
+      icon.class: "fa-line-chart"
+      if: resource.metadata.labels["team"] == "platform"
 ```
 
 ## Auditing Multi-Tool Links
@@ -301,12 +301,12 @@ NAMESPACE="${1:-production}"
 echo "=== Tool Link Audit for $NAMESPACE ==="
 echo ""
 
-# Check managed-by annotations
-echo "Resources with managed-by annotation:"
+# Check primary external link annotations
+echo "Resources with source-code link annotation:"
 kubectl get all -n "$NAMESPACE" -o json | \
   jq -r '.items[] |
-    select(.metadata.annotations["argocd.argoproj.io/managed-by"] != null) |
-    "  \(.kind)/\(.metadata.name) -> \(.metadata.annotations["argocd.argoproj.io/managed-by"])"'
+    select(.metadata.annotations["link.argocd.argoproj.io/source-code"] != null) |
+    "  \(.kind)/\(.metadata.name) -> \(.metadata.annotations["link.argocd.argoproj.io/source-code"])"'
 
 echo ""
 
@@ -320,10 +320,10 @@ kubectl get all -n "$NAMESPACE" -o json | \
 echo ""
 
 # Check resources missing tool links
-echo "Resources WITHOUT managed-by annotation:"
+echo "Resources WITHOUT source-code link annotation:"
 kubectl get deployments -n "$NAMESPACE" -o json | \
   jq -r '.items[] |
-    select(.metadata.annotations["argocd.argoproj.io/managed-by"] == null) |
+    select(.metadata.annotations["link.argocd.argoproj.io/source-code"] == null) |
     "  \(.metadata.name)"'
 ```
 
