@@ -106,6 +106,8 @@ spec:
       kind: "*"
     - group: networking.k8s.io
       kind: Ingress
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
 ```
 
 ## Sharing a Database
@@ -173,13 +175,28 @@ spec:
               # Create databases for each tenant
               for TENANT in team-alpha team-beta team-gamma; do
                 psql -h shared-postgresql-pgpool -U postgres -c \
-                  "CREATE DATABASE ${TENANT//-/_} OWNER ${TENANT//-/_};" || true
-                psql -h shared-postgresql-pgpool -U postgres -c \
                   "CREATE USER ${TENANT//-/_} WITH PASSWORD '$(cat /secrets/${TENANT}/password)';" || true
+                psql -h shared-postgresql-pgpool -U postgres -c \
+                  "CREATE DATABASE ${TENANT//-/_} OWNER ${TENANT//-/_};" || true
               done
           envFrom:
             - secretRef:
                 name: postgresql-admin-credentials
+          volumeMounts:
+            - name: tenant-db-passwords
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: tenant-db-passwords
+          secret:
+            secretName: tenant-db-passwords
+            items:
+              - key: team-alpha-password
+                path: team-alpha/password
+              - key: team-beta-password
+                path: team-beta/password
+              - key: team-gamma-password
+                path: team-gamma/password
       restartPolicy: Never
 ```
 
@@ -245,7 +262,8 @@ spec:
     targetRevision: 28.0.0
     helm:
       values: |
-        replicaCount: 3
+        controller:
+          replicaCount: 3
         kraft:
           enabled: true
         listeners:
@@ -258,7 +276,7 @@ spec:
     namespace: kafka
 ```
 
-Each tenant gets Kafka credentials with ACLs restricting them to their own topics:
+If you manage Kafka users with Strimzi, each tenant gets Kafka credentials with ACLs restricting them to their own topics:
 
 ```yaml
 # Platform creates topic ACLs per tenant
@@ -347,7 +365,7 @@ spec:
       interval: 30s
 ```
 
-The `enforcedNamespaceLabel` setting ensures tenants can only see metrics from their own namespaces in Grafana, even if they write custom queries.
+The `enforcedNamespaceLabel` setting adds the originating namespace as a label to user-created metrics and alerts. Use Grafana organizations, datasource permissions, or a query proxy to enforce tenant-specific query access.
 
 ## Network Policies for Shared Access
 
@@ -363,7 +381,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: postgresql
+      app.kubernetes.io/component: postgresql
   ingress:
     - from:
         - namespaceSelector:
@@ -393,7 +411,7 @@ When upgrading shared infrastructure, coordinate with tenants. Use ArgoCD notifi
 ```yaml
 # Notification when shared infrastructure is about to sync
 trigger.on-shared-infra-sync: |
-  - when: app.metadata.labels.type == 'shared-infrastructure' and app.status.operationState.phase == 'Running'
+  - when: app.metadata.labels.type == 'shared-infrastructure' and app.status?.operationState.phase == 'Running'
     send: [slack-shared-infra-update]
 template.slack-shared-infra-update: |
   message: |
