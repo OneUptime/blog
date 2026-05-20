@@ -35,7 +35,7 @@ spec:
             requests:
               cpu: 100m
               memory: 256Mi
-          metricsApiServer:
+          metricServer:
             requests:
               cpu: 100m
               memory: 256Mi
@@ -45,7 +45,12 @@ spec:
           operator:
             enabled: true
         podAnnotations:
-          prometheus.io/scrape: "true"
+          keda:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "8080"
+          metricsAdapter:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "8080"
   destination:
     server: https://kubernetes.default.svc
     namespace: keda
@@ -81,8 +86,9 @@ spec:
     - type: rabbitmq
       metadata:
         queueName: orders
-        queueLength: "10"  # Scale up when queue has more than 10 messages per replica
-        host: amqp://guest:guest@rabbitmq.production.svc.cluster.local:5672
+        mode: QueueLength
+        value: "10"        # Scale up when queue has more than 10 messages per replica
+        host: amqp://guest:guest@rabbitmq.production.svc.cluster.local:5672/
 ```
 
 ## Authentication for Event Sources
@@ -111,7 +117,7 @@ metadata:
   namespace: production
 type: Opaque
 stringData:
-  connection-string: "amqp://user:password@rabbitmq.production.svc.cluster.local:5672"
+  connection-string: "amqp://user:password@rabbitmq.production.svc.cluster.local:5672/"
 ```
 
 Reference the TriggerAuthentication in the ScaledObject:
@@ -133,12 +139,13 @@ spec:
     - type: rabbitmq
       metadata:
         queueName: orders
-        queueLength: "10"
+        mode: QueueLength
+        value: "10"
       authenticationRef:
         name: rabbitmq-auth
 ```
 
-For cluster-wide authentication (useful when multiple namespaces need the same credentials):
+For cluster-wide authentication (useful when multiple namespaces need the same credentials). By default, secrets referenced by `ClusterTriggerAuthentication` must be in the namespace where KEDA is deployed, usually `keda`:
 
 ```yaml
 apiVersion: keda.sh/v1alpha1
@@ -192,7 +199,6 @@ triggers:
   - type: prometheus
     metadata:
       serverAddress: http://prometheus.monitoring.svc.cluster.local:9090
-      metricName: http_requests_per_second
       query: sum(rate(http_requests_total{service="backend-api"}[2m]))
       threshold: "1000"  # Scale when requests exceed 1000/s
 ```
@@ -237,17 +243,17 @@ spec:
   minReplicaCount: 0       # Allow scale to zero
   maxReplicaCount: 20
   cooldownPeriod: 300      # Wait 5 minutes before scaling to zero
-  idleReplicaCount: 0      # Scale to this when idle
   triggers:
     - type: rabbitmq
       metadata:
         queueName: batch-jobs
-        queueLength: "1"   # Scale up on any message
+        mode: QueueLength
+        value: "1"         # Scale up on any message
       authenticationRef:
         name: rabbitmq-auth
 ```
 
-With ArgoCD, scale-to-zero means the Deployment has 0 replicas. ArgoCD will see this as healthy as long as you configure the health check correctly:
+With ArgoCD, scale-to-zero means the Deployment has 0 replicas. If your Deployment health check treats zero replicas as progressing, add a stable label to KEDA-managed Deployments and account for it in the health check:
 
 ```yaml
 # Custom health check for scale-to-zero deployments
@@ -262,7 +268,7 @@ resource.customizations.health.apps_Deployment: |
   -- Check if this deployment is managed by KEDA
   local kedaManaged = false
   if obj.metadata.labels ~= nil then
-    if obj.metadata.labels["scaledobject.keda.sh/name"] ~= nil then
+    if obj.metadata.labels["autoscaling.oneuptime.com/keda-managed"] == "true" then
       kedaManaged = true
     end
   end
@@ -279,10 +285,10 @@ resource.customizations.health.apps_Deployment: |
 
   if available == desired then
     hs.status = "Healthy"
-    hs.message = string.format("%d/%d available", available, desired)
+    hs.message = tostring(available) .. "/" .. tostring(desired) .. " available"
   else
     hs.status = "Progressing"
-    hs.message = string.format("%d/%d available", available, desired)
+    hs.message = tostring(available) .. "/" .. tostring(desired) .. " available"
   end
   return hs
 ```
@@ -306,12 +312,6 @@ spec:
       kind: Deployment
       jsonPointers:
         - /spec/replicas
-    # Also ignore KEDA-added labels and annotations
-    - group: apps
-      kind: Deployment
-      jqPathExpressions:
-        - .metadata.labels["scaledobject.keda.sh/name"]
-        - .metadata.annotations["scaledobject.keda.sh/name"]
 ```
 
 ## Health Check for ScaledObjects
@@ -327,8 +327,7 @@ resource.customizations.health.keda.sh_ScaledObject: |
         if condition.type == "Ready" then
           if condition.status == "True" then
             hs.status = "Healthy"
-            hs.message = string.format("Active triggers: %s",
-              tostring(obj.status.externalMetricNames or "unknown"))
+            hs.message = "ScaledObject is ready"
             return hs
           elseif condition.status == "False" then
             hs.status = "Degraded"
