@@ -111,7 +111,6 @@ kubectl apply -f argocd-cmd-params-cm.yaml
 # Restart components to pick up changes
 kubectl rollout restart deployment/argocd-server -n argocd
 kubectl rollout restart statefulset/argocd-application-controller -n argocd
-kubectl rollout restart deployment/argocd-repo-server -n argocd
 
 # Verify all pods are running
 kubectl get pods -n argocd
@@ -119,34 +118,30 @@ kubectl get pods -n argocd
 
 ## Setting Up Namespace-Level RBAC
 
-ArgoCD needs RBAC permissions in each watched namespace to manage Application resources. If using glob patterns, you might need cluster-level permissions:
+If you want Applications in other namespaces to be managed by the ArgoCD API server (for example through the CLI or UI), extend the Kubernetes permissions for the `argocd-server` ServiceAccount. The upstream project provides a Kustomize example in `examples/k8s-rbac/argocd-server-applications/`; for a default installation, the core permissions look like this:
 
 ```yaml
-# ClusterRole for ArgoCD to manage applications in all watched namespaces
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: argocd-application-controller-namespaced
+  name: argocd-server-cluster-apps
 rules:
+  - apiGroups: ['']
+    resources: ['events']
+    verbs: ['create']
   - apiGroups: ['argoproj.io']
-    resources: ['applications', 'applicationsets']
-    verbs: ['get', 'list', 'watch', 'create', 'update', 'patch', 'delete']
-  - apiGroups: ['argoproj.io']
-    resources: ['applications/finalizers']
-    verbs: ['update']
+    resources: ['applications']
+    verbs: ['create', 'delete', 'update', 'patch']
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: argocd-application-controller-namespaced
+  name: argocd-server-cluster-apps
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: argocd-application-controller-namespaced
+  name: argocd-server-cluster-apps
 subjects:
-  - kind: ServiceAccount
-    name: argocd-application-controller
-    namespace: argocd
   - kind: ServiceAccount
     name: argocd-server
     namespace: argocd
