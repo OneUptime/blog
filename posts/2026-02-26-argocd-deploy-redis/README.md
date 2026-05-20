@@ -170,6 +170,9 @@ spec:
     matchLabels:
       app: redis
   template:
+    metadata:
+      labels:
+        app: redis
     spec:
       containers:
         - name: redis
@@ -193,7 +196,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: redis-data
   annotations:
-    argocd.argoproj.io/sync-options: Prune=false
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
     - ReadWriteOnce
