@@ -10,7 +10,7 @@ Description: Learn how to create golden paths for application deployment using A
 
 Golden paths are opinionated, well-supported workflows that represent the recommended way to accomplish a task. In the context of ArgoCD, a golden path is a pre-built deployment pattern that developers adopt to go from code to production without needing to understand every detail of Kubernetes, networking, or GitOps configuration. They ship faster, and the platform team sleeps better.
 
-This guide covers building golden paths for common deployment patterns using ArgoCD, Helm templates, Kustomize overlays, and ApplicationSets.
+This guide covers building golden paths for common deployment patterns using ArgoCD, Helm templates, and ApplicationSets.
 
 ## What Makes a Good Golden Path
 
@@ -262,6 +262,8 @@ metadata:
   name: golden-path-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/company/app-deployments.git
@@ -270,28 +272,28 @@ spec:
           - path: "teams/*/apps/*/config.yaml"
   template:
     metadata:
-      name: "{{values.team}}-{{values.app.name}}-{{values.environment}}"
+      name: "{{.team}}-{{.helmValues.app.name}}-{{.environment}}"
       labels:
-        team: "{{values.team}}"
-        golden-path: "{{values.goldenPath}}"
-        environment: "{{values.environment}}"
+        team: "{{.team}}"
+        golden-path: "{{.goldenPath}}"
+        environment: "{{.environment}}"
       annotations:
-        notifications.argoproj.io/subscribe.on-sync-failed.slack: "{{values.team}}-alerts"
-        notifications.argoproj.io/subscribe.on-health-degraded.slack: "{{values.team}}-alerts"
+        notifications.argoproj.io/subscribe.on-sync-failed.slack: "{{.team}}-alerts"
+        notifications.argoproj.io/subscribe.on-health-degraded.slack: "{{.team}}-alerts"
     spec:
-      project: "{{values.team}}"
+      project: "{{.team}}"
       source:
         repoURL: https://github.com/company/platform-charts.git
         targetRevision: main
-        path: "charts/{{values.goldenPath}}"
+        path: "charts/{{.goldenPath}}"
         helm:
           valueFiles:
             - "values.yaml"
           values: |
-            {{values.helmValues | toYaml | nindent 12}}
+            {{ .helmValues | toYaml | nindent 12 }}
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{values.team}}-{{values.environment}}"
+        namespace: "{{.team}}-{{.environment}}"
       syncPolicy:
         automated:
           prune: true
@@ -363,10 +365,10 @@ jobs:
           for file in $(git diff --name-only HEAD~1 | grep config.yaml); do
             echo "Validating $file..."
             # Check required fields
-            yq '.team' $file || exit 1
-            yq '.goldenPath' $file || exit 1
-            yq '.helmValues.app.name' $file || exit 1
-            yq '.helmValues.app.image.repository' $file || exit 1
+            yq -e '.team' $file || exit 1
+            yq -e '.goldenPath' $file || exit 1
+            yq -e '.helmValues.app.name' $file || exit 1
+            yq -e '.helmValues.app.image.repository' $file || exit 1
           done
 
       - name: Helm template test
