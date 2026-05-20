@@ -33,7 +33,7 @@ Common fields that change include:
 - **Annotations:** Added by Istio, Linkerd, Vault, cert-manager
 - **Labels:** Added by various controllers
 - **Default values:** Added by Kubernetes API server (e.g., `terminationGracePeriodSeconds`, `dnsPolicy`)
-- **Status fields:** Should never be compared but sometimes are
+- **Status fields:** Usually ignored by ArgoCD by default, but can still matter if you change the compare option or work with custom resources
 
 ## Method 1: Per-Application ignoreDifferences
 
@@ -153,8 +153,6 @@ data:
     managedFieldsManagers:
     - kube-controller-manager
     - kube-scheduler
-    jsonPointers:
-    - /status
 ```
 
 The naming convention for system-level rules is `resource.customizations.ignoreDifferences.<group>_<kind>`. Use `all` for rules that apply to every resource.
@@ -181,7 +179,7 @@ kubectl get deployment my-app -n production -o json | jq '.metadata.managedField
 
 ## Method 3: Server-Side Diff
 
-Server-Side Diff offloads the comparison to the Kubernetes API server, which inherently handles defaulting and mutation correctly.
+Server-Side Diff offloads the comparison to the Kubernetes API server by running server-side apply in dry-run mode. This handles API-server defaulting and validation more accurately than the legacy diff strategy.
 
 ```yaml
 # Enable per-application
@@ -190,7 +188,7 @@ kind: Application
 metadata:
   name: my-app
   annotations:
-    argocd.argoproj.io/compare-option: ServerSideDiff=true
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 ```
 
 ```yaml
@@ -198,13 +196,15 @@ metadata:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
   controller.diff.server.side: "true"
 ```
 
-Server-Side Diff resolves most false OutOfSync issues automatically because the API server knows exactly what the resource would look like after defaulting and mutation.
+Restart the `argocd-application-controller` after changing this global setting.
+
+Server-Side Diff resolves many false OutOfSync issues automatically because the API server knows what the resource would look like after defaulting. Mutating webhook changes are not included by default; add `IncludeMutationWebhook=true` to the `argocd.argoproj.io/compare-options` annotation when you need webhook mutations included in the diff.
 
 ## Method 4: RespectIgnoreDifferences in Sync
 
