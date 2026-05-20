@@ -44,7 +44,7 @@ spec:
   source:
     repoURL: https://open-policy-agent.github.io/gatekeeper/charts
     chart: gatekeeper
-    targetRevision: 3.14.0
+    targetRevision: 3.22.2
     helm:
       values: |
         replicas: 3
@@ -99,13 +99,13 @@ spec:
         package k8srequiredresourcelimits
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := input.review.object.spec.template.spec.containers[_]
           not container.resources.limits
           msg := sprintf("Container '%v' must have resource limits defined", [container.name])
         }
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := input.review.object.spec.template.spec.containers[_]
           required := input.parameters.resources[_]
           not container.resources.limits[required]
           msg := sprintf("Container '%v' must have '%v' limit defined", [container.name, required])
@@ -200,25 +200,25 @@ data:
 
 ## Using Dry Run Mode for Gradual Rollout
 
-When introducing new policies, start with `warn` enforcement action instead of `deny`. This lets you see which existing resources would violate the policy without blocking deployments.
+When introducing new policies, start with `dryrun` or `warn` enforcement action instead of `deny`. Both modes let audit surface violations without blocking deployments, and `warn` also returns admission warnings for new violating requests.
 
 ```yaml
 spec:
   enforcementAction: warn  # Log violations but don't block
 ```
 
-After reviewing the audit results, switch to `dryrun` for testing, then finally to `deny` for enforcement.
+After reviewing the audit results, switch to `deny` for enforcement.
 
 ```yaml
 # Check audit results
 kubectl get k8srequiredresourcelimits require-resource-limits -o yaml
 ```
 
-The status section will show all existing violations, giving you a clear picture of what needs to be fixed before you flip to enforcement mode.
+The status section will show audited violations up to the configured `constraintViolationsLimit`, giving you a clear picture of what needs to be fixed before you flip to enforcement mode.
 
 ## Advanced: Custom Sync Hook for Pre-Deployment Policy Check
 
-You can also add a pre-sync hook that runs conftest against your manifests before ArgoCD even attempts the sync.
+You can also add a pre-sync hook that runs conftest against a checked-out copy of your manifests before ArgoCD applies the main application resources.
 
 ```yaml
 # pre-sync-policy-check.yaml
@@ -232,6 +232,17 @@ metadata:
 spec:
   template:
     spec:
+      initContainers:
+        - name: clone-manifests
+          image: alpine/git:2.45.2
+          command:
+            - /bin/sh
+            - -c
+            - |
+              git clone --depth=1 https://github.com/myorg/app-manifests.git /workspace
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
       containers:
         - name: conftest
           image: openpolicyagent/conftest:latest
@@ -239,13 +250,14 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Pull policies from OCI registry
-              conftest pull oci://registry.myorg.com/policies:latest
-              # Test all manifests in the directory
-              conftest test /manifests/*.yaml --policy /policies
+              # Pull policies from OCI registry and test manifests
+              conftest test --update oci://registry.myorg.com/policies:latest /workspace/*.yaml
           volumeMounts:
-            - name: manifests
-              mountPath: /manifests
+            - name: workspace
+              mountPath: /workspace
+      volumes:
+        - name: workspace
+          emptyDir: {}
       restartPolicy: Never
 ```
 
@@ -276,7 +288,7 @@ Using Kustomize overlays, you can have strict `deny` enforcement in production w
 
 OPA Gatekeeper exposes Prometheus metrics that you can scrape to track policy compliance over time.
 
-Key metrics to monitor include `gatekeeper_violations` for the total number of current violations, `gatekeeper_constraint_template_status` for template health, and the audit results that show historical compliance data.
+Key metrics to monitor include `gatekeeper_violations` for the total number of audited violations, `gatekeeper_constraint_templates` for template health by status, and `gatekeeper_constraint_template_ingestion_count` for template ingestion results.
 
 For a complete monitoring setup with ArgoCD, check out our guide on [implementing health checks in ArgoCD](https://oneuptime.com/blog/post/2026-01-25-health-checks-argocd/view) which covers how to build custom health assessments for your policy infrastructure.
 
