@@ -72,7 +72,7 @@ You can run both systems simultaneously. Install ArgoCD in its own namespace:
 kubectl create namespace argocd
 
 # Install ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for pods to be ready
 kubectl wait --for=condition=ready pod -l app.kubernetes.io/part-of=argocd -n argocd --timeout=300s
@@ -174,6 +174,8 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
+  releaseName: nginx-ingress
+  targetNamespace: ingress-nginx
   chart:
     spec:
       chart: ingress-nginx
@@ -201,6 +203,7 @@ spec:
     chart: ingress-nginx
     targetRevision: "4.*"
     helm:
+      releaseName: nginx-ingress
       values: |
         controller:
           replicaCount: 2
@@ -217,10 +220,12 @@ spec:
 
 Do not try to migrate everything at once. Follow this process for each application:
 
-1. **Suspend the Flux Kustomization** so Flux stops managing the resource:
+1. **Suspend the Flux resource** so Flux stops managing it:
 
 ```bash
 flux suspend kustomization my-app
+# or, for HelmRelease-based apps:
+flux suspend helmrelease nginx-ingress
 ```
 
 2. **Create the ArgoCD Application** pointing to the same Git path:
@@ -229,15 +234,22 @@ flux suspend kustomization my-app
 kubectl apply -f argocd-apps/my-app.yaml
 ```
 
-3. **Verify in the ArgoCD UI** that the application shows as "Synced" and "Healthy" without actually changing any running resources.
+3. **Verify in the ArgoCD UI** that the application shows as "Synced" and "Healthy" after confirming the diff is expected.
 
 4. **Test a change** by pushing a small update through Git and confirming ArgoCD picks it up.
 
-5. **Delete the Flux Kustomization** once you are confident:
+5. **Remove the Flux resource** once you are confident. For Kustomizations with `prune: true`, set `deletionPolicy: Orphan` first so deleting the Flux object does not garbage-collect the live workloads now managed by ArgoCD:
 
 ```bash
+kubectl patch kustomizations.kustomize.toolkit.fluxcd.io my-app \
+  -n flux-system \
+  --type merge \
+  -p '{"spec":{"deletionPolicy":"Orphan"}}'
+
 flux delete kustomization my-app
 ```
+
+For HelmReleases, do not run `flux delete helmrelease` during cutover unless you intend to uninstall the Helm release. Leave the HelmRelease suspended until the final Flux uninstall.
 
 ## Step 7: Migrate Notifications
 
