@@ -16,7 +16,7 @@ LUKS (Linux Unified Key Setup) is the standard for disk encryption on Linux. It 
 - **LUKS**: A specification and on-disk format that adds key management on top of dm-crypt
 - **cryptsetup**: The userspace tool that manages LUKS and dm-crypt
 
-The LUKS header stores up to 8 key slots. Each key slot can hold a different passphrase or key file. Any valid key unlocks the master encryption key, which in turn decrypts the device.
+The LUKS header stores key slots: up to 8 for LUKS1 and up to 32 for LUKS2, depending on keyslot area size and key size. Each key slot can hold a different passphrase or key file. Any valid key unlocks the volume encryption key, which in turn decrypts the device.
 
 ## Installing cryptsetup
 
@@ -119,7 +119,7 @@ mount | grep mapper
 # Unmount the filesystem first
 sudo umount /mnt/encrypted-drive
 
-# Close the LUKS container (this re-encrypts and removes the decrypted device)
+# Close the LUKS container (this removes the decrypted device mapping)
 sudo cryptsetup close myencrypteddrive
 # or
 sudo cryptsetup luksClose myencrypteddrive
@@ -172,13 +172,13 @@ echo "dataencrypted  UUID=a1b2c3d4-...  /root/luks-keyfile  luks" | \
 
 ## Managing LUKS Key Slots
 
-LUKS supports up to 8 key slots. Each slot can have a different passphrase or key file:
+LUKS supports multiple key slots. LUKS1 supports up to 8 key slots, while LUKS2 supports up to 32 depending on keyslot area size and key size. Each slot can have a different passphrase or key file:
 
 ```bash
 # Show LUKS header information (including which key slots are used)
 sudo cryptsetup luksDump /dev/sdb
 
-# Add a new passphrase (up to 8 total)
+# Add a new passphrase
 sudo cryptsetup luksAddKey /dev/sdb
 
 # Add a key file as a key slot
@@ -187,7 +187,7 @@ sudo cryptsetup luksAddKey /dev/sdb /path/to/keyfile
 # Remove a passphrase (need to enter the passphrase to remove)
 sudo cryptsetup luksRemoveKey /dev/sdb
 
-# Remove a key slot by number (0-7)
+# Remove a key slot by number (0-7 for LUKS1, 0-31 for LUKS2)
 sudo cryptsetup luksKillSlot /dev/sdb 3
 
 # Change a passphrase (removes old, adds new in same slot)
@@ -238,12 +238,12 @@ sudo cryptsetup luksHeaderRestore /dev/sdb \
 To encrypt a drive that already has data (without formatting):
 
 ```bash
-# Option 1: Use cryptsetup-reencrypt (in-place encryption)
+# Option 1: Use cryptsetup reencrypt (in-place encryption)
 # WARNING: This is risky - have a backup before doing this
-sudo cryptsetup-reencrypt --encrypt /dev/sdb --reduce-device-size 32M
+sudo cryptsetup reencrypt --encrypt --type luks2 --reduce-device-size 32M /dev/sdb
 
 # This process:
-# 1. Reduces the device size by 32MB to make room for the LUKS header
+# 1. Requires the last 32 MiB of the device to be unused; that space will be lost
 # 2. Encrypts the data in place (can take hours for large drives)
 # 3. Can be interrupted and resumed
 
@@ -299,11 +299,11 @@ sudo hdparm -t /dev/mapper/myencrypteddrive      # Encrypted speed
 # Without the header, not even your passphrase can recover the data
 # USE WITH EXTREME CAUTION - this is irreversible
 sudo cryptsetup luksErase /dev/sdb  # Wipes all key slots
-# OR - nuclear option: overwrite the header entirely
-sudo dd if=/dev/urandom of=/dev/sdb bs=512 count=2056
+# OR - overwrite at least the default LUKS2 header area
+sudo dd if=/dev/urandom of=/dev/sdb bs=1M count=16
 
-# Securely wipe free space after deleting files from an encrypted volume
-sudo fstrim /mnt/encrypted-drive  # For SSDs (TRIM)
+# Trim unused blocks after deleting files from an encrypted volume
+sudo fstrim /mnt/encrypted-drive  # For SSDs (requires discard support; may reveal usage patterns)
 # For HDDs: fill with zeros
 sudo dd if=/dev/zero of=/mnt/encrypted-drive/temp-wipe bs=1M && rm /mnt/encrypted-drive/temp-wipe
 ```
