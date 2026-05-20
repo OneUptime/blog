@@ -8,7 +8,7 @@ Description: Compare ArgoCD and Jenkins X across architecture, CI/CD integration
 
 ---
 
-ArgoCD and Jenkins X approach Kubernetes deployments from very different angles. ArgoCD is a pure GitOps continuous delivery tool that focuses exclusively on deploying and synchronizing Kubernetes resources from Git. Jenkins X is a full-stack CI/CD platform built on Kubernetes that includes GitOps deployment as one of its many capabilities. Understanding these different philosophies is essential for choosing the right tool for your team.
+ArgoCD and Jenkins X approach Kubernetes deployments from very different angles. ArgoCD is a pure GitOps continuous delivery tool that focuses exclusively on deploying and synchronizing Kubernetes resources from Git. Jenkins X, renamed JayeX in 2026, is a full-stack CI/CD platform built on Kubernetes that includes GitOps deployment as one of its many capabilities. Understanding these different philosophies is essential for choosing the right tool for your team.
 
 ## Philosophical Differences
 
@@ -44,6 +44,7 @@ ArgoCD runs as a set of components in a single namespace. It watches Git reposit
 # - argocd-server (API + UI)
 # - argocd-application-controller (sync engine)
 # - argocd-repo-server (manifest generation)
+# - argocd-applicationset-controller (ApplicationSet reconciliation)
 # - argocd-redis (caching)
 # - argocd-dex-server (authentication)
 ```
@@ -52,16 +53,16 @@ Resource requirements for ArgoCD are modest. A standard installation uses about 
 
 ### Jenkins X
 
-Jenkins X deploys a much larger set of components including Tekton (pipeline engine), Lighthouse (webhook handler), various controllers, and storage backends.
+Jenkins X deploys a much larger set of components including Tekton (pipeline engine), Lighthouse (webhook handler), various controllers, and optional storage backends.
 
 ```yaml
 # Jenkins X components (typical deployment)
 # - Tekton Pipelines (pipeline execution engine)
 # - Lighthouse (GitHub webhook handler, ChatOps)
 # - Jenkins X Controllers (various)
-# - Chartmuseum (Helm chart storage)
-# - Nexus or Harbor (artifact storage)
-# - Vault or External Secrets (secret management)
+# - ChartMuseum or Bucket Repository (optional Helm chart storage)
+# - Nexus or cloud artifact storage (optional artifact storage)
+# - Vault or cloud/external secret integrations (optional secret management)
 # - Multiple CRDs and operators
 ```
 
@@ -102,23 +103,28 @@ jobs:
 
 ### Jenkins X
 
-Jenkins X provides built-in CI pipelines using Tekton. Pipelines are defined in the source repository.
+Jenkins X provides built-in CI pipelines using Tekton. In current Jenkins X/JayeX 3.x projects, pipelines are defined in the source repository under `.lighthouse/jenkins-x/`.
 
 ```yaml
-# jenkins-x.yml
-buildPack: go
-pipelineConfig:
-  pipelines:
-    release:
-      pipeline:
-        stages:
-          - name: build
-            steps:
-              - command: make build
-              - command: make test
-          - name: promote
-            steps:
-              - command: jx promote --all-auto --timeout 1h
+# .lighthouse/jenkins-x/release.yaml
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  name: release
+spec:
+  pipelineSpec:
+    tasks:
+      - name: from-build-pack
+        resources: {}
+        taskSpec:
+          stepTemplate:
+            image: uses:jenkins-x/jx3-pipeline-catalog/tasks/go/release.yaml@versionStream
+            workingDir: /workspace/source
+          steps:
+            - image: uses:jenkins-x/jx3-pipeline-catalog/tasks/git-clone/git-clone.yaml@versionStream
+              name: ""
+            - name: build-make-linux
+            - name: promote-jx-promote
 ```
 
 **Key difference:** ArgoCD gives you freedom to use any CI system. Jenkins X provides an opinionated CI solution. If you already have a CI system you like, ArgoCD integrates more cleanly. If you are starting fresh and want everything in one platform, Jenkins X provides more out of the box.
@@ -146,7 +152,7 @@ Jenkins X has built-in promotion with the `jx promote` command. It uses pull req
 
 ```bash
 # Jenkins X promotion
-jx promote my-app --version 1.2.3 --env production
+jx promote --app my-app --version 1.2.3 --env production
 
 # This creates a PR in the production environment repository
 # Once merged, the change is applied via GitOps
@@ -181,6 +187,7 @@ spec:
         repoURL: https://github.com/myorg/myapp.git
         targetRevision: '{{head_sha}}'
         path: manifests/
+      project: default
       destination:
         server: https://kubernetes.default.svc
         namespace: 'preview-{{number}}'
@@ -202,7 +209,7 @@ spec:
 
 **ArgoCD** has first-class multi-cluster support. A single ArgoCD instance can manage applications across many clusters.
 
-**Jenkins X** is primarily designed to run within a single cluster. Multi-cluster setups require running Jenkins X in each cluster or using additional tooling.
+**Jenkins X** defaults to a single development cluster, with staging and production environments mapped to namespaces in that cluster. It also supports remote clusters for environments such as staging or production, configured through its environment settings.
 
 ## Scalability
 
@@ -214,11 +221,11 @@ spec:
 
 | Metric | ArgoCD | Jenkins X |
 |--------|--------|-----------|
-| CNCF Status | Graduated | Graduated (via CDF) |
-| GitHub Stars | 16,000+ | 4,500+ |
-| Contributors | 800+ | 400+ |
+| Foundation Status | CNCF graduated (Argo project) | CDF project, renamed JayeX in 2026 |
+| GitHub Stars | 22,000+ | 4,700+ |
+| Contributors | 1,500+ | 400+ |
 | Release Cadence | Monthly | Monthly |
-| Enterprise Offerings | Akuity Platform | CloudBees |
+| Enterprise Offerings | Akuity Platform | Historically CloudBees; current project is JayeX |
 
 ## When to Choose ArgoCD
 
