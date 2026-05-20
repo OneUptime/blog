@@ -50,8 +50,8 @@ flowchart LR
 | `--git-poll-interval` | timeout.reconciliation | Global or per-app polling |
 | HelmRelease CRD | Application with Helm source | Different CRD structure |
 | `fluxctl sync` | `argocd app sync` | Manual sync trigger |
-| `flux.weave.works/automated: "true"` | syncPolicy.automated | Auto-sync configuration |
-| `flux.weave.works/tag.*` filter | ArgoCD Image Updater annotations | Image auto-update |
+| Flux Git reconciliation | syncPolicy.automated | Auto-sync configuration |
+| `flux.weave.works/tag.*` filter | ArgoCD Image Updater configuration | Image auto-update |
 | `flux.weave.works/locked: "true"` | Remove from auto-sync or use sync window | Deployment lock |
 
 ## Step 1: Inventory FluxCD v1 Resources
@@ -75,11 +75,11 @@ kubectl get deployment flux -n flux -o json | jq '.spec.template.spec.containers
 
 # List workloads with Flux annotations
 kubectl get deployments --all-namespaces -o json | jq '.items[] |
-  select(.metadata.annotations | keys[] | startswith("flux.weave.works")) |
+  select((.metadata.annotations // {}) | keys[] | startswith("flux.weave.works")) |
   {
     name: .metadata.name,
     namespace: .metadata.namespace,
-    annotations: [.metadata.annotations | to_entries[] | select(.key | startswith("flux.weave.works"))]
+    annotations: [(.metadata.annotations // {}) | to_entries[] | select(.key | startswith("flux.weave.works"))]
   }'
 ```
 
@@ -147,7 +147,7 @@ FluxCD v1 HelmRelease CRDs need to be converted to ArgoCD Application CRDs.
 
 FluxCD v1 HelmRelease:
 ```yaml
-apiVersion: flux.weave.works/v1beta1
+apiVersion: helm.fluxcd.io/v1
 kind: HelmRelease
 metadata:
   name: redis
@@ -208,9 +208,7 @@ Map Flux annotations to ArgoCD configuration.
 ### Automated Sync
 ```yaml
 # FluxCD v1
-metadata:
-  annotations:
-    flux.weave.works/automated: "true"
+# Manifests under the configured --git-path are reconciled automatically.
 
 # ArgoCD
 spec:
@@ -224,19 +222,30 @@ spec:
 # FluxCD v1
 metadata:
   annotations:
+    flux.weave.works/automated: "true"
     flux.weave.works/tag.app: semver:~1.0
     flux.weave.works/tag.sidecar: glob:v*
 
 # ArgoCD Image Updater
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: >
-      app=registry.myorg.com/app,
-      sidecar=registry.myorg.com/sidecar
-    argocd-image-updater.argoproj.io/app.update-strategy: semver
-    argocd-image-updater.argoproj.io/app.allow-tags: "regexp:^1\\.0"
-    argocd-image-updater.argoproj.io/sidecar.update-strategy: name
-    argocd-image-updater.argoproj.io/sidecar.allow-tags: "regexp:^v"
+  name: api-images
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: api-production
+      images:
+        - alias: app
+          imageName: registry.myorg.com/app:~1.0
+          commonUpdateSettings:
+            updateStrategy: semver
+            allowTags: "regexp:^1\\.0"
+        - alias: sidecar
+          imageName: registry.myorg.com/sidecar
+          commonUpdateSettings:
+            updateStrategy: alphabetical
+            allowTags: "regexp:^v"
 ```
 
 ### Deployment Lock
@@ -263,7 +272,7 @@ kubectl create namespace argocd
 kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Install ArgoCD Image Updater (if using Flux image automation)
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/manifests/install.yaml
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj-labs/argocd-image-updater/stable/config/install.yaml
 ```
 
 ## Step 6: Migrate Applications One at a Time
@@ -296,14 +305,14 @@ argocd app sync api-production --dry-run
 Remove Flux-specific resources as you migrate.
 
 ```bash
-# Remove HelmRelease CRDs after migration
+# Remove HelmRelease resources after migration
 kubectl delete helmrelease redis -n cache
 
 # After all migrations complete, remove Flux
 kubectl delete namespace flux
-kubectl delete crd helmreleases.flux.weave.works
-kubectl delete clusterrole flux
-kubectl delete clusterrolebinding flux
+kubectl delete crd helmreleases.helm.fluxcd.io
+kubectl delete clusterrole flux 2>/dev/null
+kubectl delete clusterrolebinding flux 2>/dev/null
 ```
 
 ## Step 8: Migrate Image Automation
@@ -341,7 +350,7 @@ After all applications are migrated, verify and remove Flux.
 # Verify no Flux-managed resources remain
 kubectl get helmreleases --all-namespaces 2>/dev/null
 kubectl get deployments --all-namespaces -o json | \
-  jq '.items[] | select(.metadata.annotations | keys[] | startswith("flux.weave.works"))' 2>/dev/null
+  jq '.items[] | select((.metadata.annotations // {}) | keys[] | startswith("flux.weave.works"))' 2>/dev/null
 
 # If clean, remove Flux
 kubectl delete deployment flux -n flux
@@ -349,7 +358,7 @@ kubectl delete deployment helm-operator -n flux  # If using Helm Operator
 kubectl delete namespace flux
 
 # Clean up CRDs
-kubectl delete crd helmreleases.flux.weave.works 2>/dev/null
+kubectl delete crd helmreleases.helm.fluxcd.io 2>/dev/null
 kubectl delete crd fluxhelmreleases.helm.integrations.flux.weave.works 2>/dev/null
 
 echo "FluxCD v1 has been decommissioned. All deployments are managed by ArgoCD."
