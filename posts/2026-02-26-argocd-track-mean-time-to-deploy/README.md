@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, DORA Metric, Monitoring
 
-Description: Learn how to measure and track mean time to deploy using ArgoCD Prometheus metrics, covering lead time from Git commit to running in production.
+Description: Learn how to measure and track mean time to deploy using ArgoCD Prometheus metrics, covering the path from ArgoCD detecting a change to running in production.
 
 ---
 
-Mean Time to Deploy (MTTD) measures how long it takes for a code change to go from commit to running in production. It is closely related to the DORA "Lead Time for Changes" metric and is one of the most important indicators of your delivery pipeline's efficiency. ArgoCD provides the metrics you need to track this, but it takes some work to stitch together the complete picture.
+Mean Time to Deploy (MTTD) measures how long it takes for a code change to go from commit to running in production. It is closely related to the DORA "Lead Time for Changes" metric and is one of the most important indicators of your delivery pipeline's efficiency. ArgoCD provides useful metrics for parts of this flow, but it takes some work to stitch together the complete picture.
 
 ## What Mean Time to Deploy Means in ArgoCD
 
@@ -47,7 +47,7 @@ ArgoCD exposes several metrics that together give you MTTD:
 
 ### Reconciliation Duration
 
-This measures how long ArgoCD takes to detect a change and compute the diff:
+This measures how long ArgoCD takes to reconcile an application after it has been queued for refresh:
 
 ```promql
 # P50 reconciliation duration
@@ -64,17 +64,18 @@ histogram_quantile(0.99, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
 histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le, name))
 ```
 
-### Sync Duration
+### Sync Activity
 
-This measures the time the actual sync operation takes - from starting the apply to all resources being applied:
+ArgoCD exposes sync counters and, in current versions, a cumulative sync-duration counter. The sync counter tracks how often syncs complete with each phase; it is not a duration histogram:
 
 ```promql
-# Average sync duration for successful syncs
+# Successful sync rate
 rate(argocd_app_sync_total{phase="Succeeded"}[1h])
 
-# If using custom metrics for sync duration tracking
-# ArgoCD does not natively expose sync duration as a histogram
-# You may need to calculate it from sync events
+# Average sync duration over the last hour, if argocd_app_sync_duration_seconds_total is available
+sum(rate(argocd_app_sync_duration_seconds_total[1h]))
+/
+sum(rate(argocd_app_sync_total[1h]))
 ```
 
 ### Git Request Duration
@@ -97,13 +98,14 @@ ArgoCD does not provide a single "time from change to deployed" metric out of th
 
 ### Method 1: Using ArgoCD Metrics
 
-Approximate MTTD by summing the component times:
+Approximate the ArgoCD-observable part of MTTD by summing the component times:
 
 ```promql
-# Approximate MTTD = polling interval + reconciliation + sync time
-# Polling interval is a constant (default 3 minutes)
+# Approximate ArgoCD-observable MTTD = polling wait + reconciliation + Git request time
+# ArgoCD polls Git every 3 minutes by default; typical wait is about half the polling interval.
+# Add rollout time from custom events or notifications for an end-to-end value.
 
-# Detection + Reconciliation P95
+# Reconciliation P95
 histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[1h])) by (le))
 
 # Add the typical Git fetch time
@@ -163,7 +165,7 @@ metadata:
   namespace: argocd
 data:
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       send: [record-deployment-time]
 
   template.record-deployment-time: |
@@ -177,7 +179,7 @@ data:
             "revision": "{{.app.status.sync.revision}}",
             "deployedAt": "{{.app.status.operationState.finishedAt}}",
             "syncStartedAt": "{{.app.status.operationState.startedAt}}",
-            "syncDuration": "{{.app.status.operationState.finishedAt}}"
+            "syncFinishedAt": "{{.app.status.operationState.finishedAt}}"
           }
 
   service.webhook.metrics-collector: |
@@ -186,6 +188,8 @@ data:
       - name: Content-Type
         value: application/json
 ```
+
+Subscribe applications to this trigger with an annotation such as `notifications.argoproj.io/subscribe.on-deployed.metrics-collector: ""`.
 
 ## Recording Rules
 
@@ -222,7 +226,7 @@ spec:
           expr: |
             histogram_quantile(0.95, sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le))
 
-        # Approximate MTTD (detection + render + apply)
+        # Approximate ArgoCD-observable MTTD (reconcile/render + Git request time)
         - record: argocd:estimated_mttd:p95
           expr: |
             histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
@@ -301,13 +305,14 @@ If your MTTD is higher than acceptable, here are the levers you can pull:
 **Use Git webhooks instead of polling**: Reduce the detection time from 3 minutes (default polling interval) to seconds:
 
 ```yaml
-# Configure webhook in argocd-cm
+# Configure webhook secret in argocd-secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: argocd-secret
   namespace: argocd
-data:
+type: Opaque
+stringData:
   # Webhook secret for GitHub
   webhook.github.secret: $webhook-github-secret
 ```
