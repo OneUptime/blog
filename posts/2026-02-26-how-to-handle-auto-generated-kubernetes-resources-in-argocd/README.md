@@ -8,7 +8,7 @@ Description: Learn how to handle auto-generated Kubernetes resources like Endpoi
 
 ---
 
-Kubernetes generates resources automatically all the time. When you create a Service, Kubernetes generates Endpoints. When you create a Deployment, it creates ReplicaSets. Controllers create Secrets, ConfigMaps, and custom resources. These auto-generated resources create headaches in ArgoCD because they exist in the cluster but not in Git, causing confusing diff outputs and OutOfSync states. This guide explains how to handle every common type of auto-generated resource.
+Kubernetes generates resources automatically all the time. When you create a Service with a selector, Kubernetes generates endpoint resources. When you create a Deployment, it creates ReplicaSets. Controllers create Secrets, ConfigMaps, and custom resources. These auto-generated resources create headaches in ArgoCD because they exist in the cluster but not in Git, causing confusing diff outputs and OutOfSync states. This guide explains how to handle every common type of auto-generated resource.
 
 ## Why Auto-Generated Resources Cause Problems
 
@@ -25,7 +25,7 @@ Here is a reference of what Kubernetes generates automatically and how to handle
 
 ### Endpoints and EndpointSlices
 
-Created automatically for every Service:
+Created automatically for Services with selectors:
 
 ```yaml
 # Problem: Endpoints are auto-generated from Service selectors
@@ -105,7 +105,6 @@ spec:
       kind: ServiceAccount
       jsonPointers:
         - /secrets
-        - /imagePullSecrets
 ```
 
 ### Events
@@ -144,16 +143,14 @@ data:
       clusters:
         - "*"
 
-# For the generated TLS secrets, use ignoreDifferences:
+# For generated TLS secrets that are not in Git, configure orphanedResources on the AppProject:
 spec:
-  ignoreDifferences:
-    - group: ""
-      kind: Secret
-      jsonPointers:
-        - /data
-      managedFieldsManagers:
-        - cert-manager-certificates-issuing
-        - cert-manager-certificates-key-manager
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ""
+        kind: Secret
+        name: "my-certificate-secret"
 ```
 
 ### HPA-Managed Replica Count
@@ -193,7 +190,7 @@ spec:
 
 ### kube-root-ca.crt ConfigMap
 
-Kubernetes automatically creates this ConfigMap in every namespace:
+Kubernetes automatically creates this ConfigMap in every namespace, and ArgoCD does not consider it orphaned by default:
 
 ```yaml
 data:
@@ -206,7 +203,7 @@ data:
       # This is too broad - use orphanedResources ignore instead
 ```
 
-Better approach using orphanedResources:
+If you need an explicit rule, configure it on the AppProject using orphanedResources:
 
 ```yaml
 spec:
@@ -310,6 +307,7 @@ spec:
 ```
 
 The `RespectIgnoreDifferences=true` sync option is critical. Without it, `ignoreDifferences` only affects the diff display but ArgoCD still tries to sync the ignored fields.
+Note that this option only changes sync behavior for resources that already exist in the cluster.
 
 ## Handling Operator-Created Resources
 
@@ -344,7 +342,7 @@ spec:
       - ServerSideApply=true
 ```
 
-With server-side apply, ArgoCD only manages the fields it explicitly sets. Other controllers can manage their own fields without creating conflicts. This is the most modern and cleanest solution for many auto-generated field issues.
+With server-side apply, Kubernetes tracks field ownership using managed fields instead of relying on the client-side last-applied annotation. Other controllers can own their fields more cleanly, although real field conflicts can still happen when multiple managers try to own the same field. This is the most modern and cleanest solution for many auto-generated field issues.
 
 ## Summary
 
