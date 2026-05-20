@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, High Availability, Networking, Pacemaker, Failover
 
-Description: Learn how to configure floating IPs (virtual IPs) for high availability on Ubuntu using Pacemaker, Keepalived, and manual approaches to ensure continuous service availability.
+Description: Learn how to configure floating IPs (virtual IPs) for high availability on Ubuntu using Pacemaker and Keepalived to ensure continuous service availability.
 
 ---
 
 A floating IP, also called a virtual IP or VIP, is an IP address that is not permanently tied to a single machine. When the node currently holding the IP fails, the address moves to another healthy node. Clients experience only a brief interruption rather than a permanent outage. This is the fundamental building block of most high availability architectures.
 
-This guide covers three approaches: Pacemaker (full cluster stack), Keepalived (lighter weight), and manual management for understanding the underlying mechanics.
+This guide covers two approaches: Pacemaker (full cluster stack) and Keepalived (lighter weight).
 
 ## How Floating IPs Work
 
-A floating IP is assigned to a network interface using standard Linux networking commands. When Pacemaker or Keepalived detects a failure, it removes the IP from the failed node's interface and adds it to a healthy node's interface. The new node then sends a gratuitous ARP broadcast to update neighboring devices' ARP caches, effectively advertising "I now own this IP."
+A floating IP is assigned to a network interface using standard Linux networking commands. When Pacemaker or Keepalived detects a failure, the IP is added to a healthy node's interface and, when the failed node is reachable or recovers, removed from the old owner. The new node then sends a gratuitous ARP broadcast to update neighboring devices' ARP caches, effectively advertising "I now own this IP."
 
 The time between failure and the IP moving is called failover time. With Pacemaker, typical failover takes 10-30 seconds. With Keepalived, it can be as low as 2-3 seconds.
 
@@ -28,7 +28,7 @@ This approach suits clusters already using Pacemaker for other resources.
 # Install on both nodes
 
 sudo apt update
-sudo apt install -y pacemaker corosync pcs
+sudo apt install -y pacemaker corosync pcs resource-agents
 
 # Set hacluster password
 sudo passwd hacluster
@@ -72,7 +72,7 @@ sudo pcs status
 ip addr show eth0 | grep 192.168.1.50
 ```
 
-The `ocf:heartbeat:IPaddr2` resource agent handles adding/removing the IP and sending gratuitous ARP. You can also specify `broadcast_arp=true` if needed for your network environment.
+The `ocf:heartbeat:IPaddr2` resource agent handles adding/removing the IP and sending unsolicited ARP or Neighbor Advertisement packets. You can tune ARP behavior with parameters such as `arp_count`, `arp_count_refresh`, and `arp_sender` if needed for your network environment.
 
 ### Multiple Floating IPs
 
@@ -102,7 +102,7 @@ Keepalived is simpler than Pacemaker - it focuses specifically on VIP management
 
 ```bash
 # Install on both nodes
-sudo apt install -y keepalived
+sudo apt install -y keepalived curl
 
 # Backup the default config
 sudo mv /etc/keepalived/keepalived.conf /etc/keepalived/keepalived.conf.orig
@@ -166,6 +166,8 @@ On node2:
 sudo tee /etc/keepalived/keepalived.conf << 'EOF'
 global_defs {
     router_id node2
+    script_user root
+    enable_script_security
 }
 
 vrrp_script chk_service {
@@ -206,9 +208,7 @@ sudo tee /etc/keepalived/notify.sh << 'EOF'
 #!/bin/bash
 # Notification script called when VRRP state changes
 
-TYPE=$1
-STATE=$2
-NAME=$3
+STATE=$1
 
 case $STATE in
     "MASTER")
@@ -288,10 +288,10 @@ sudo systemctl start keepalived
 When a VIP moves, the new node must announce itself via ARP. You can tune this:
 
 ```bash
-# For Pacemaker IPaddr2, set ARP count
+# For Pacemaker IPaddr2, set ARP counts
 sudo pcs resource update cluster-vip \
   arp_count=3 \
-  arp_interval=200
+  arp_count_refresh=1
 
 # For Keepalived, tune the garp settings
 # In keepalived.conf vrrp_instance:
