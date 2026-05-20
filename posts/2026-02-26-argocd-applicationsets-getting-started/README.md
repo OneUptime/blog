@@ -200,7 +200,7 @@ When you add a new directory under `apps/`, ArgoCD automatically creates a new A
 
 ## Handling ApplicationSet Lifecycle
 
-ApplicationSets manage the lifecycle of the Applications they create. When you delete an element from a generator, the corresponding Application gets deleted too - along with all its Kubernetes resources if pruning is enabled.
+ApplicationSets manage the lifecycle of the Applications they create. When you delete an element from a generator, the corresponding Application gets deleted too - along with all its Kubernetes resources unless resource preservation is enabled.
 
 This is the default behavior, but you can control it.
 
@@ -210,7 +210,7 @@ spec:
   - list:
       elements:
       - environment: dev
-  # Prevent accidental deletion of Applications
+  # Prevent deletion of deployed child resources when Applications are deleted
   syncPolicy:
     preserveResourcesOnDeletion: true
 ```
@@ -228,8 +228,9 @@ kubectl get applicationset -n argocd my-app-environments -o yaml
 # Check the status conditions
 kubectl get applicationset -n argocd -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[*].message}{"\n"}{end}'
 
-# List all Applications created by a specific ApplicationSet
-kubectl get applications -n argocd -l 'app.kubernetes.io/managed-by=applicationset-controller'
+# List Applications and the ApplicationSet that owns each one
+kubectl get applications -n argocd \
+  -o custom-columns=NAME:.metadata.name,APPSET:.metadata.ownerReferences[0].name
 ```
 
 For ongoing monitoring, consider setting up alerts with a platform like [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-applicationset-resource-modification/view) that can track the health of your ArgoCD-managed applications.
