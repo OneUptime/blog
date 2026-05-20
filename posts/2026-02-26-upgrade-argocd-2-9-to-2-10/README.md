@@ -8,24 +8,21 @@ Description: Step-by-step guide to upgrading ArgoCD from version 2.9 to 2.10 wit
 
 ---
 
-ArgoCD 2.10 brought important improvements to multi-source applications, enhanced RBAC, and changes to how resource tracking works. This guide walks you through every step of the upgrade from 2.9 to 2.10, including the specific changes that might affect your existing setup.
+ArgoCD 2.10 brought server-side diff support, a newer bundled Helm version, and a change to how `managedNamespaceMetadata` behaves with server-side apply. This guide walks you through every step of the upgrade from 2.9 to 2.10, including the specific changes that might affect your existing setup.
 
 ## What Changed in ArgoCD 2.10
 
-### Key New Features
+### Features to Know About
 
-- **Multi-source applications GA**: Multi-source applications moved from beta to generally available
-- **Dynamic cluster distribution**: Better distribution of application reconciliation across multiple application controller shards
-- **Improved ApplicationSet templating**: Enhanced Go template support in ApplicationSets
-- **Server-side diff improvements**: More reliable diff calculation
-- **Improved project scoped repositories**: Better support for project-level repository access
+- **Server-side diff**: New beta diff strategy that uses server-side apply in dry-run mode
+- **Bundled Helm upgrade**: The bundled Helm version changed from 3.13.2 to 3.14.3
+- **Dynamic cluster distribution**: Alpha support for rebalancing application controller shards when using the dynamic distribution mode
+- **Multi-source applications**: Multi-source applications remain available as a beta feature in 2.10
 
 ### Breaking Changes
 
-- **Resource tracking changes**: The default resource tracking method changed behavior. Applications using annotation-based tracking may see sync differences.
-- **RBAC policy changes**: Some default RBAC policies were tightened. Users with custom RBAC may need adjustments.
-- **Helm value file handling**: Changes to how multiple value files are merged in multi-source applications.
-- **Deprecated CLI flags removed**: Several CLI flags deprecated in 2.8 were removed.
+- **`managedNamespaceMetadata` behavior**: ArgoCD 2.10 upgraded kubectl from 1.24 to 1.26. With server-side apply, existing client-side-applied namespace labels and annotations may no longer be preserved when `managedNamespaceMetadata` is enabled.
+- **Bundled Helm version**: The bundled Helm version changed from 3.13.2 to 3.14.3, so test applications that depend on Helm rendering behavior.
 
 ## Pre-Upgrade Checklist
 
@@ -38,10 +35,10 @@ argocd version --server
 
 ### 2. Check Kubernetes Compatibility
 
-ArgoCD 2.10 supports Kubernetes 1.26 through 1.30. If your cluster is on 1.25, you need to upgrade Kubernetes first.
+ArgoCD 2.10 was tested with Kubernetes 1.25 through 1.28.
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 ### 3. Backup Current Configuration
@@ -70,30 +67,33 @@ kubectl get secret -n argocd argocd-secret -o yaml > argocd-backup-2.9/argocd-se
 # Repository credentials
 kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=repository -o yaml > argocd-backup-2.9/repo-secrets.yaml
 
+# Repository credential templates
+kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=repo-creds -o yaml > argocd-backup-2.9/repo-creds-secrets.yaml
+
 # Cluster credentials
 kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=cluster -o yaml > argocd-backup-2.9/cluster-secrets.yaml
 ```
 
 ### 4. Audit Resource Tracking Method
 
-Check your current resource tracking method. This is important because 2.10 changed defaults.
+Check your current resource tracking method. ArgoCD 2.10 still defaults to label-based tracking, but it is useful to know whether your installation has explicitly changed this setting.
 
 ```bash
 # Check current tracking method
 kubectl get cm -n argocd argocd-cm -o jsonpath='{.data.application\.resourceTrackingMethod}'
 ```
 
-If this returns empty, you are using the default (label-based in 2.9). In 2.10, the recommended method is `annotation+label`. If you have not explicitly set this, be aware that behavior may change.
+If this returns empty, you are using the default label-based tracking. If you want to move to annotation-based tracking, the supported values are `label`, `annotation+label`, and `annotation`.
 
 ### 5. Check RBAC Configuration
 
-Review your current RBAC configuration for policies that might be affected.
+Review your current RBAC configuration before the upgrade.
 
 ```bash
 kubectl get cm -n argocd argocd-rbac-cm -o yaml
 ```
 
-Pay attention to policies using `applications` resource - some default permissions were refined in 2.10.
+Pay attention to policies using the `applications`, `logs`, and `exec` resources.
 
 ## Upgrade Steps
 
@@ -105,12 +105,12 @@ kubectl apply --server-side -f https://raw.githubusercontent.com/argoproj/argo-c
 kubectl apply --server-side -f https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.0/manifests/crds/applicationset-crd.yaml
 
 # Verify CRDs are updated
-kubectl get crd applications.argoproj.io -o jsonpath='{.metadata.annotations.kubectl\.kubernetes\.io/last-applied-configuration}' | jq -r '.metadata.labels'
+kubectl get crd applications.argoproj.io appprojects.argoproj.io applicationsets.argoproj.io
 ```
 
 ### Step 2: Set Resource Tracking Explicitly
 
-To avoid unexpected behavior changes, explicitly set your resource tracking method before upgrading.
+To document and preserve your current behavior, explicitly set your resource tracking method before upgrading.
 
 ```yaml
 # In argocd-cm ConfigMap - keep the same method you were using
@@ -143,13 +143,13 @@ metadata:
   namespace: argocd
 data:
   policy.csv: |
-    # 2.10 adds more granular application permissions
+    # Application permissions
     p, role:developer, applications, get, */*, allow
     p, role:developer, applications, sync, */*, allow
     p, role:developer, applications, action/*, */*, allow
     p, role:developer, logs, get, */*, allow
 
-    # New in 2.10 - explicit exec permission
+    # Explicit exec permission for the web terminal
     p, role:sre, exec, create, */*, allow
 
     g, developers, role:developer
@@ -169,24 +169,21 @@ dependencies:
     repository: "https://argoproj.github.io/argo-helm"
 ```
 
-Key values changes for 2.10:
+Useful values to review for 2.10:
 
 ```yaml
 # values.yaml updates for 2.10
 argo-cd:
-  # Server-side diff is now recommended as default
+  # Optional beta feature: server-side diff
   configs:
     params:
       controller.diff.server.side: "true"
 
-  # Application controller sharding improvements
+  # Application controller sharding
   controller:
     replicas: 2  # For HA
-    env:
-      - name: ARGOCD_CONTROLLER_REPLICAS
-        value: "2"
 
-  # Redis HA (recommended for 2.10+)
+  # Redis HA for HA installations
   redis-ha:
     enabled: true
 ```
@@ -203,7 +200,7 @@ git push
 
 # Monitor the rollout
 kubectl rollout status deploy/argocd-server -n argocd --timeout=300s
-kubectl rollout status deploy/argocd-application-controller -n argocd --timeout=300s
+kubectl rollout status sts/argocd-application-controller -n argocd --timeout=300s
 kubectl rollout status deploy/argocd-repo-server -n argocd --timeout=300s
 ```
 
@@ -230,7 +227,7 @@ argocd version
 argocd app list --output json | jq -r '.[] | select(.status.sync.status != "Synced") | "\(.metadata.name): \(.status.sync.status)"'
 
 # Check controller logs for errors
-kubectl logs -n argocd deploy/argocd-application-controller --tail=100 | grep -E "error|ERROR|panic"
+kubectl logs -n argocd sts/argocd-application-controller --tail=100 | grep -E "error|ERROR|panic"
 
 # Check repo server
 kubectl logs -n argocd deploy/argocd-repo-server --tail=50 | grep -E "error|ERROR"
@@ -255,7 +252,7 @@ spec:
     path: manifests
     targetRevision: main
 
-# After (2.10 multi-source - GA)
+# After (2.10 multi-source - beta)
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -327,9 +324,9 @@ Go template syntax was improved in 2.10. If you use Go templates in ApplicationS
 If Redis was upgraded as part of the ArgoCD update, existing connections may fail. Restart the application controller.
 
 ```bash
-kubectl rollout restart deploy/argocd-application-controller -n argocd
+kubectl rollout restart sts/argocd-application-controller -n argocd
 ```
 
 ## Summary
 
-Upgrading ArgoCD from 2.9 to 2.10 is primarily about handling resource tracking method changes, RBAC refinements, and the multi-source application GA release. The key is to explicitly set your resource tracking method before upgrading to avoid unexpected sync status changes. Back up everything, test in staging first, and have your rollback procedure ready. The upgrade itself is straightforward, and the new features - especially multi-source GA and improved sharding - make it worthwhile.
+Upgrading ArgoCD from 2.9 to 2.10 is primarily about handling the `managedNamespaceMetadata` behavior change, the bundled Helm upgrade, and optional features such as server-side diff. Back up everything, test in staging first, and have your rollback procedure ready. The upgrade itself is straightforward, and the new features - especially server-side diff and improved sharding options - make it worthwhile.
