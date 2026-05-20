@@ -8,7 +8,7 @@ Description: Learn how to use age, a modern and simple file encryption tool, to 
 
 ---
 
-`age` (Actually Good Encryption) is a modern file encryption tool designed to be simple, secure, and composable. Created by Filippo Valsorda (who also works on Go's cryptography), age addresses common GPG pain points: no key management complexity, no configuration files, no legacy cipher support, and no interoperability with 1990s protocols. It's the right tool for straightforward file encryption.
+`age` (Actually Good Encryption) is a modern file encryption tool designed to be simple, secure, and composable. Designed by Ben Cartwright-Cox and Filippo Valsorda (who also works on Go's cryptography), age addresses common GPG pain points: no key management complexity, no configuration files, no legacy cipher support, and no interoperability with 1990s protocols. It's the right tool for straightforward file encryption.
 
 ## Installing age on Ubuntu
 
@@ -22,8 +22,8 @@ sudo apt install age -y
 age --version
 
 # Method 2: Download binary from GitHub releases
-curl -LO https://github.com/FiloSottile/age/releases/latest/download/age-v1.1.1-linux-amd64.tar.gz
-tar -xzf age-v1.1.1-linux-amd64.tar.gz
+curl -L -o age-linux-amd64.tar.gz "https://dl.filippo.io/age/latest?for=linux/amd64"
+tar -xzf age-linux-amd64.tar.gz
 sudo mv age/age age/age-keygen /usr/local/bin/
 age --version
 
@@ -52,24 +52,17 @@ age --decrypt secret.age
 
 ### Non-Interactive Passphrase Encryption
 
-For use in scripts, pipe the passphrase:
+For use in scripts, avoid passphrase mode:
 
 ```bash
-# Encrypt with a passphrase from a variable
-# Note: age reads passphrase from file or stdin when using --passphrase
-PASSPHRASE="your-strong-passphrase"
-
-# Using a passphrase file
-echo "$PASSPHRASE" > /tmp/pass.txt
-chmod 600 /tmp/pass.txt
-
-# age doesn't support reading passphrase from environment/stdin directly
+# age passphrase mode is intentionally interactive; it does not accept
+# passphrases from environment variables, files, or stdin.
 # The recommended approach for scripting is to use key pairs instead
 ```
 
 ## Key Pair Encryption
 
-age uses X25519 key pairs for asymmetric encryption. Unlike GPG, there is no key management system - keys are just files.
+By default, age uses X25519 key pairs for asymmetric encryption. age 1.3.0 and later also support post-quantum hybrid X25519 + ML-KEM-768 key pairs with `age-keygen -pq`. Unlike GPG, there is no key management system - keys are just files.
 
 ### Generating Key Pairs
 
@@ -84,6 +77,7 @@ age-keygen
 # AGE-SECRET-KEY-1...
 
 # Save the private key to a file
+mkdir -p ~/.config/age
 age-keygen -o ~/.config/age/identity.txt
 
 # The public key is also shown in the private key file header
@@ -113,7 +107,7 @@ age \
 
 # Encrypt from stdin using public key
 cat important-config.yaml | \
-    age --recipient age1ql3z7hjy54... > config.yaml.age
+    age --recipient age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p > config.yaml.age
 ```
 
 ### Decrypting with Your Private Key
@@ -137,13 +131,13 @@ age can use existing SSH keys (RSA and Ed25519) for encryption - no need to gene
 
 ```bash
 # Encrypt using an SSH public key (from GitHub or local authorized_keys)
-age --recipient ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA... \
+age --recipient "$(cat ~/.ssh/id_ed25519.pub)" \
     --output encrypted.age \
     plaintext.txt
 
 # Encrypt using your GitHub SSH public keys (they're public!)
 curl https://github.com/yourusername.keys | \
-    age --recipient - --output encrypted-for-github-user.age plaintext.txt
+    age --recipients-file - --output encrypted-for-github-user.age plaintext.txt
 
 # Decrypt using your SSH private key
 age --decrypt \
@@ -163,7 +157,7 @@ tar -czf - /path/to/directory/ | \
 
 # Encrypt directory for a specific recipient
 tar -czf - /path/to/directory/ | \
-    age --recipient age1ql3z7hjy54... > directory-backup.tar.gz.age
+    age --recipient age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p > directory-backup.tar.gz.age
 
 # Decrypt and extract
 age --decrypt \
@@ -257,13 +251,11 @@ age --decrypt \
 
 ## Using rage (Rust Implementation)
 
-`rage` is a Rust implementation of age with identical format but faster performance for large files:
+`rage` is a Rust implementation of age that reads and writes the same file format:
 
 ```bash
-# Install rage
-curl -LO https://github.com/str4d/rage/releases/latest/download/rage-linux-amd64.tar.gz
-tar -xzf rage-linux-amd64.tar.gz
-sudo mv rage rage-keygen /usr/local/bin/
+# Install rage with Cargo
+cargo install rage
 
 # rage is a drop-in replacement with same syntax
 rage --passphrase --output secret.txt.age plaintext.txt
@@ -294,12 +286,13 @@ age makes key rotation straightforward - it's just re-encrypting with new keys:
 #!/bin/bash
 # rotate-age-key.sh - Re-encrypt files with a new age key
 
-OLD_IDENTITY="~/.config/age/identity-old.txt"
-NEW_IDENTITY="~/.config/age/identity-new.txt"
+OLD_IDENTITY="$HOME/.config/age/identity-old.txt"
+NEW_IDENTITY="$HOME/.config/age/identity-new.txt"
 NEW_PUBKEY=$(age-keygen -y "$NEW_IDENTITY")
 
 # Re-encrypt all .age files in current directory
 for file in *.age; do
+    [ -e "$file" ] || continue
     echo "Re-encrypting: $file"
     age --decrypt --identity "$OLD_IDENTITY" "$file" | \
         age --recipient "$NEW_PUBKEY" --output "${file}.new"
