@@ -30,7 +30,10 @@ You need Docker and Kind installed:
 brew install kind
 
 # Install Kind (Linux)
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+# For AMD64 / x86_64
+[ $(uname -m) = x86_64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
+# For ARM64
+[ $(uname -m) = aarch64 ] && curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-arm64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 
@@ -57,13 +60,16 @@ nodes:
       kubeletExtraArgs:
         node-labels: "ingress-ready=true"
   extraPortMappings:
-  # Map port 443 for ArgoCD HTTPS access
+  # Map port 443 for ArgoCD HTTPS access with NodePort
   - containerPort: 30443
     hostPort: 8443
     protocol: TCP
-  # Map port 80 for HTTP (optional, for ingress)
-  - containerPort: 30080
+  # Map ports for ingress-nginx (optional)
+  - containerPort: 80
     hostPort: 8080
+    protocol: TCP
+  - containerPort: 443
+    hostPort: 9443
     protocol: TCP
 ```
 
@@ -100,7 +106,7 @@ kubectl get pods -n argocd
 
 ## Step 3: Expose ArgoCD
 
-Kind does not support LoadBalancer services natively. You have two options:
+Kind does not support LoadBalancer services by default. You have three options:
 
 ### Option A: Port-Forward (Simplest)
 
@@ -119,8 +125,8 @@ Since we configured port mappings in the Kind config, we can use a NodePort serv
 # Patch the ArgoCD server to use NodePort
 kubectl patch svc argocd-server -n argocd --type=json \
   -p='[
-    {"op": "replace", "path": "/spec/type", "value": "NodePort"},
-    {"op": "replace", "path": "/spec/ports/0/nodePort", "value": 30443}
+    {"op": "add", "path": "/spec/type", "value": "NodePort"},
+    {"op": "add", "path": "/spec/ports/1/nodePort", "value": 30443}
   ]'
 
 # Access ArgoCD at https://localhost:8443
@@ -133,6 +139,17 @@ Install an Ingress controller and create an Ingress for ArgoCD:
 ```bash
 # Install nginx ingress controller for Kind
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+
+# Enable SSL passthrough for ArgoCD
+kubectl patch deployment ingress-nginx-controller -n ingress-nginx --type=json \
+  -p='[
+    {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--enable-ssl-passthrough"}
+  ]'
+
+# Wait for the ingress controller rollout
+kubectl rollout status deployment/ingress-nginx-controller \
+  -n ingress-nginx \
+  --timeout=120s
 
 # Wait for the ingress controller to be ready
 kubectl wait --namespace ingress-nginx \
@@ -152,7 +169,6 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
   rules:
@@ -165,12 +181,12 @@ spec:
           service:
             name: argocd-server
             port:
-              number: 443
+              name: https
 ```
 
 ```bash
 kubectl apply -f argocd-ingress.yaml
-# Access at https://argocd.localhost
+# Access at https://argocd.localhost:9443
 ```
 
 ## Step 4: Log In and Configure
@@ -227,19 +243,15 @@ kind create cluster --name target-cluster
 # Get the kubeconfig for the target cluster
 kind get kubeconfig --name target-cluster > /tmp/target-kubeconfig
 
-# Switch back to the ArgoCD cluster
-kubectl config use-context kind-argocd-dev
-
-# Register the target cluster with ArgoCD
-# First, get the target cluster's API server address
-# Kind clusters communicate through the Docker network
-TARGET_SERVER=$(docker inspect target-cluster-control-plane \
-  --format='{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
-
-echo "Target cluster API: https://$TARGET_SERVER:6443"
+# Update the kubeconfig to use the Docker network address
+kubectl --kubeconfig /tmp/target-kubeconfig config set-cluster kind-target-cluster \
+  --server=https://target-cluster-control-plane:6443
 
 # Add the cluster to ArgoCD
-argocd cluster add kind-target-cluster --name target-cluster
+argocd cluster add kind-target-cluster \
+  --kubeconfig /tmp/target-kubeconfig \
+  --name target-cluster \
+  --cluster-endpoint kubeconfig
 
 # Verify the cluster is registered
 argocd cluster list
