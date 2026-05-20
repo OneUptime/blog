@@ -228,6 +228,8 @@ metadata:
   name: production-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/org/gitops-config.git
@@ -236,16 +238,16 @@ spec:
           - path: services/*/overlays/production
   template:
     metadata:
-      name: 'prod-{{path[1]}}'
+      name: 'prod-{{index .path.segments 1}}'
     spec:
       project: production
       source:
         repoURL: https://github.com/org/gitops-config.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://production-cluster:6443
-        namespace: '{{path[1]}}'
+        namespace: '{{index .path.segments 1}}'
       syncPolicy:
         automated:
           prune: true
@@ -287,6 +289,8 @@ jobs:
           kustomize edit set image registry.example.com/api=registry.example.com/api:${{ github.sha }}
 
           # Commit and push
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .
           git commit -m "Update api image to ${{ github.sha }}"
           git push
@@ -331,6 +335,8 @@ generators:
   - matrix:
       generators:
         - git:
+            repoURL: https://github.com/org/gitops-config.git
+            revision: main
             directories:
               - path: services/*/overlays/production
         - clusters:
