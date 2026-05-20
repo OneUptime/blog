@@ -46,12 +46,11 @@ spec:
   source:
     repoURL: https://open-policy-agent.github.io/gatekeeper/charts
     chart: gatekeeper
-    targetRevision: 3.14.0
+    targetRevision: 3.22.0
     helm:
       values: |
         replicas: 3
         audit:
-          replicas: 1
           resources:
             limits:
               memory: 512Mi
@@ -126,11 +125,6 @@ spec:
       validation:
         openAPIV3Schema:
           type: object
-          properties:
-            cpu:
-              type: string
-            memory:
-              type: string
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -172,7 +166,9 @@ spec:
 
         violation[{"msg": msg}] {
           container := input.review.object.spec.template.spec.containers[_]
-          not contains(container.image, ":")
+          image_parts := split(container.image, "/")
+          image_name := image_parts[count(image_parts) - 1]
+          not contains(image_name, ":")
           msg := sprintf("Container %v has no image tag. Use a specific version.", [container.name])
         }
 ```
@@ -218,9 +214,6 @@ spec:
         kinds: ["Deployment", "StatefulSet"]
     namespaces:
       - "production"
-  parameters:
-    cpu: "2"
-    memory: "4Gi"
 
 ---
 # Git: policies/constraints/no-latest.yaml
@@ -274,7 +267,7 @@ Use ArgoCD sync waves to ensure proper ordering:
 # Wave 2: Application workloads
 ```
 
-This prevents ArgoCD from trying to create constraints before the templates exist, or deploying workloads before policies are in place.
+Apply these wave annotations to the resources within the same ArgoCD application, or to child `Application` resources managed by a parent app-of-apps application. This prevents ArgoCD from trying to create constraints before the templates exist, or deploying workloads before policies are in place.
 
 ## Handling Sync Failures Due to Policy Violations
 
@@ -295,7 +288,7 @@ To fix the violation, update the resource in Git to comply with the policy, then
 
 ## Pre-Sync Validation with Conftest
 
-For faster feedback, validate manifests before ArgoCD even tries to sync. Use a PreSync hook:
+For faster feedback, validate manifests before ArgoCD even tries to sync. Keep Conftest policies as Rego files and use a PreSync hook:
 
 ```yaml
 apiVersion: batch/v1
@@ -317,7 +310,7 @@ spec:
               # Clone the repo and run conftest
               git clone https://github.com/my-org/my-app.git /tmp/repo
               cd /tmp/repo
-              conftest test k8s/ --policy policies/ --output json
+              conftest test k8s/ --policy conftest/policy/ --output json
           env:
             - name: GIT_TOKEN
               valueFrom:
