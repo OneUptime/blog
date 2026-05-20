@@ -45,8 +45,7 @@ Install the operator:
 
 ```bash
 # Install cert-manager (required by the operator)
-
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Install the OpenTelemetry Operator
 kubectl apply -f https://github.com/open-telemetry/opentelemetry-operator/releases/latest/download/opentelemetry-operator.yaml
@@ -56,14 +55,15 @@ Create the collector configuration:
 
 ```yaml
 # otel-collector.yaml
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: argocd-otel
   namespace: argocd
 spec:
   mode: deployment
-  config: |
+  image: otel/opentelemetry-collector-contrib:0.151.0
+  config:
     receivers:
       # Scrape Prometheus metrics from ArgoCD components
       prometheus:
@@ -139,7 +139,7 @@ spec:
               - go_memstats_alloc_bytes_total
 
     exporters:
-      # Export metrics to Prometheus
+      # Export metrics to a Prometheus-compatible remote write endpoint
       prometheusremotewrite:
         endpoint: "http://prometheus:9090/api/v1/write"
       # Export traces to Jaeger
@@ -147,15 +147,15 @@ spec:
         endpoint: "jaeger-collector.observability:4317"
         tls:
           insecure: true
-      # Export logs to Loki
-      loki:
-        endpoint: "http://loki.observability:3100/loki/api/v1/push"
+      # Export logs to Loki's OTLP endpoint
+      otlphttp/loki:
+        endpoint: "http://loki.observability:3100/otlp"
 
     service:
       pipelines:
         metrics:
           receivers: [prometheus]
-          processors: [resource, batch]
+          processors: [resource, filter, batch]
           exporters: [prometheusremotewrite]
         traces:
           receivers: [otlp]
@@ -164,7 +164,7 @@ spec:
         logs:
           receivers: [otlp]
           processors: [resource, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
 ```
 
 Apply it:
@@ -175,18 +175,10 @@ kubectl apply -f otel-collector.yaml
 
 ## Step 2: Enable ArgoCD Metrics
 
-ArgoCD components expose Prometheus metrics by default, but you need to ensure the metrics ports are accessible. Update your ArgoCD ConfigMap if needed:
+ArgoCD components expose Prometheus metrics by default, but you need to ensure the metrics ports are accessible to the collector. The default metrics endpoints are:
 
-```yaml
-# argocd-cm patch
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Enable server-side metrics
-  server.enable.proxy.extension: "true"
+```bash
+kubectl get svc -n argocd argocd-metrics argocd-server-metrics argocd-repo-server
 ```
 
 Verify metrics are being scraped:
@@ -195,37 +187,39 @@ Verify metrics are being scraped:
 # Check the OTel collector logs
 kubectl logs -n argocd deployment/argocd-otel-collector -f
 
-# Verify metrics are flowing
-kubectl port-forward -n argocd svc/argocd-otel-collector 8888:8888
-curl http://localhost:8888/metrics
+# Verify ArgoCD metrics are flowing to your backend
+curl -s 'http://prometheus:9090/api/v1/query?query=argocd_app_info' | jq .
 ```
 
 ## Step 3: Configure Distributed Tracing
 
-ArgoCD supports OpenTelemetry tracing natively since v2.8. Enable it in the ArgoCD ConfigMap:
+ArgoCD supports OpenTelemetry tracing natively through the `--otlp-address` component flag. Enable it through the ArgoCD command parameters ConfigMap:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
   # Enable OTLP tracing
   otlp.address: "argocd-otel-collector.argocd:4317"
+  otlp.insecure: "true"
 ```
 
-You can also set environment variables on ArgoCD components for finer control:
+You can also set headers or resource attributes for finer control:
 
 ```yaml
-# Patch for argocd-server deployment
-env:
-  - name: OTEL_EXPORTER_OTLP_ENDPOINT
-    value: "http://argocd-otel-collector.argocd:4317"
-  - name: OTEL_TRACES_SAMPLER
-    value: "parentbased_traceidratio"
-  - name: OTEL_TRACES_SAMPLER_ARG
-    value: "0.1"  # Sample 10% of traces
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  otlp.address: "argocd-otel-collector.argocd:4317"
+  otlp.insecure: "true"
+  otlp.headers: "tenant=platform"
+  otlp.attrs: "service.namespace:argocd"
 ```
 
 ## Step 4: Collect Logs with OpenTelemetry
@@ -234,29 +228,32 @@ For log collection, use the OpenTelemetry Collector's filelog receiver or rely o
 
 ```yaml
 # otel-collector-daemonset.yaml
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: argocd-log-collector
   namespace: argocd
 spec:
   mode: daemonset
-  config: |
+  image: otel/opentelemetry-collector-contrib:0.151.0
+  volumeMounts:
+    - name: varlogpods
+      mountPath: /var/log/pods
+      readOnly: true
+  volumes:
+    - name: varlogpods
+      hostPath:
+        path: /var/log/pods
+  config:
     receivers:
       filelog:
         include:
           - /var/log/pods/argocd_*/*/*.log
+        start_at: end
+        include_file_path: true
+        include_file_name: false
         operators:
-          - type: json_parser
-            timestamp:
-              parse_from: attributes.time
-              layout: '%Y-%m-%dT%H:%M:%S.%LZ'
-          - type: move
-            from: attributes.msg
-            to: body
-          - type: move
-            from: attributes.level
-            to: attributes.log.level
+          - type: container
 
     processors:
       resource:
@@ -269,15 +266,15 @@ spec:
         timeout: 5s
 
     exporters:
-      loki:
-        endpoint: "http://loki.observability:3100/loki/api/v1/push"
+      otlphttp/loki:
+        endpoint: "http://loki.observability:3100/otlp"
 
     service:
       pipelines:
         logs:
           receivers: [filelog]
           processors: [resource, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
 ```
 
 ## Step 5: Key Metrics to Watch
@@ -288,30 +285,20 @@ Once everything is wired up, here are the critical ArgoCD metrics to monitor:
 |--------|-------------|-----------------|
 | `argocd_app_info` | Application health/sync status | health != Healthy |
 | `argocd_app_sync_total` | Total sync operations | Sudden drops |
-| `argocd_app_reconcile_duration` | Reconciliation time | > 5 minutes |
+| `argocd_app_reconcile` | Reconciliation time | > 5 minutes |
 | `argocd_git_request_total` | Git operations | High error rate |
-| `argocd_repo_server_queue_depth` | Repo server queue | > 10 |
+| `argocd_repo_pending_request_total` | Pending repo lock requests | > 10 |
 | `argocd_cluster_api_resource_objects` | Cluster resource count | Sudden changes |
 
 ## Step 6: Correlate Across Signals
 
-The power of full observability comes from correlating metrics, traces, and logs. When you see a spike in `argocd_app_reconcile_duration`:
+The power of full observability comes from correlating metrics, traces, and logs. When you see a spike in `argocd_app_reconcile`:
 
 1. Look at traces for that time window to find slow sync operations
 2. Check logs for the specific application that was syncing
 3. Correlate with cluster metrics to see if resource pressure caused the slowdown
 
-With OpenTelemetry, you can add trace IDs to logs and exemplars to metrics, making this correlation automatic in tools like Grafana.
-
-```yaml
-# Enable exemplars in the collector
-processors:
-  transform:
-    metric_statements:
-      - context: datapoint
-        statements:
-          - set(attributes["trace_id"], SpanID())
-```
+With OpenTelemetry, traces, logs, and metrics can share resource attributes such as `service.namespace` and `k8s.namespace.name`, making correlation easier in tools like Grafana. Trace IDs in logs require the emitting application to include the trace context in its log records; scraped Prometheus metrics from ArgoCD do not automatically gain trace exemplars in the collector.
 
 ## Verifying the Setup
 
@@ -328,7 +315,7 @@ curl -s http://prometheus:9090/api/v1/query?query=argocd_app_sync_total | jq .
 curl -s http://jaeger:16686/api/traces?service=argocd-server | jq '.data | length'
 
 # Check logs
-curl -s http://loki:3100/loki/api/v1/query?query={namespace="argocd"} | jq .
+curl -G -s http://loki:3100/loki/api/v1/query --data-urlencode 'query={k8s_namespace_name="argocd"}' | jq .
 ```
 
 ## Summary
