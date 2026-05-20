@@ -34,7 +34,8 @@ resources:
   - resources:
       - secrets
     providers:
-      # AES-CBC encryption (recommended for most setups)
+      # AES-CBC encryption with a locally managed key
+      # For stronger key isolation, prefer the KMS v2 provider where available.
       - aescbc:
           keys:
             - name: key1
@@ -71,20 +72,12 @@ kubectl get secrets -n argocd -o json | kubectl replace -f -
 
 ### Using AWS KMS for Key Management
 
-For EKS clusters, use AWS KMS:
+For EKS clusters, use the EKS encryption configuration API with AWS KMS:
 
-```yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: EncryptionConfiguration
-resources:
-  - resources:
-      - secrets
-    providers:
-      - kms:
-          apiVersion: v2
-          name: aws-encryption-provider
-          endpoint: unix:///var/run/kmsplugin/socket.sock
-      - identity: {}
+```bash
+aws eks associate-encryption-config \
+  --cluster-name my-eks-cluster \
+  --encryption-config '[{"resources":["secrets"],"provider":{"keyArn":"arn:aws:kms:us-east-1:123456789012:key/xxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}}]'
 ```
 
 ### Using Azure Key Vault
@@ -96,9 +89,12 @@ For AKS clusters:
 az aks update \
   --resource-group myResourceGroup \
   --name myAKSCluster \
+  --kms-infrastructure-encryption Enabled \
   --enable-azure-keyvault-kms \
   --azure-keyvault-kms-key-id <key-id> \
-  --azure-keyvault-kms-key-vault-network-access Private
+  --azure-keyvault-kms-key-vault-resource-id <key-vault-resource-id> \
+  --azure-keyvault-kms-key-vault-network-access Private \
+  --assign-identity <identity-resource-id>
 ```
 
 ### Using GCP Cloud KMS
@@ -114,6 +110,8 @@ gcloud kms keys create argocd-secrets-key \
 
 # Enable application-layer secrets encryption
 gcloud container clusters update my-cluster \
+  --location us-central1 \
+  --project my-project \
   --database-encryption-key projects/my-project/locations/us-central1/keyRings/my-keyring/cryptoKeys/argocd-secrets-key
 ```
 
@@ -162,7 +160,7 @@ The sealed secret is safe to commit to Git since only the Sealed Secrets control
 Pull credentials from external vaults instead of storing them in Kubernetes:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: argocd-repo-creds
@@ -197,23 +195,49 @@ ArgoCD uses Redis for caching. By default, Redis data is unencrypted in memory a
 
 ```yaml
 # Helm values for ArgoCD with Redis TLS
+global:
+  extraVolumes:
+    - name: redis-tls
+      secret:
+        secretName: argocd-redis-tls
+  extraVolumeMounts:
+    - name: redis-tls
+      mountPath: /tls
+      readOnly: true
+
 redis:
   enabled: true
-  externalEndpoint: ""
+  servicePort: 6380
+  containerPorts:
+    redis: 6380
+  extraArgs:
+    - --tls-port
+    - "6380"
+    - --port
+    - "0"
+    - --tls-cert-file
+    - /tls/tls.crt
+    - --tls-key-file
+    - /tls/tls.key
+    - --tls-ca-cert-file
+    - /tls/ca.crt
+    - --tls-auth-clients
+    - "no"
 
-redis-ha:
-  enabled: true
-  haproxy:
-    enabled: true
-  redis:
-    config:
-      tls-cert-file: /tls/tls.crt
-      tls-key-file: /tls/tls.key
-      tls-ca-cert-file: /tls/ca.crt
-      tls-auth-clients: "yes"
-      tls-replication: "yes"
-      tls-port: 6380
-      port: 0  # Disable non-TLS port
+server:
+  extraArgs:
+    - --redis-use-tls
+    - --redis-ca-certificate=/tls/ca.crt
+
+controller:
+  extraArgs:
+    - --redis-use-tls
+    - --redis-ca-certificate=/tls/ca.crt
+
+repoServer:
+  extraArgs:
+    - --redis-use-tls
+    - --redis-ca-certificate=/tls/ca.crt
 ```
 
 ### Redis Password Authentication
@@ -236,11 +260,11 @@ Configure ArgoCD components to use the password:
 
 ```yaml
 # Helm values
-redis:
-  password:
-    enabled: true
-    existingSecret: argocd-redis
-    key: auth
+redisSecretInit:
+  enabled: false
+
+# The Argo CD Helm chart reads the Redis password from the argocd-redis Secret
+# key named "auth" when using the bundled Redis deployment.
 ```
 
 ### Redis Persistence Encryption
@@ -266,15 +290,11 @@ The repo server clones Git repositories to generate manifests. These clones exis
 ```yaml
 # Use an emptyDir with medium: Memory for repo server
 repoServer:
-  volumes:
-    - name: tmp
+  existingVolumes:
+    tmp:
       emptyDir:
         medium: Memory  # Store in RAM, not disk
         sizeLimit: 2Gi
-
-  volumeMounts:
-    - name: tmp
-      mountPath: /tmp
 ```
 
 This ensures that temporary Git clones are stored in memory only and are never written to disk.
@@ -285,8 +305,8 @@ If you cannot use memory-backed storage, use encrypted volumes:
 
 ```yaml
 repoServer:
-  volumes:
-    - name: tmp
+  existingVolumes:
+    tmp:
       ephemeral:
         volumeClaimTemplate:
           spec:
@@ -297,9 +317,9 @@ repoServer:
                 storage: 5Gi
 ```
 
-## ArgoCD Secret Key Encryption
+## ArgoCD Secret Key for Sessions
 
-ArgoCD uses a server secret key for encrypting session tokens:
+ArgoCD uses a server secret key for signing and validating session tokens:
 
 ```yaml
 # Ensure the ArgoCD secret key is strong
@@ -335,11 +355,15 @@ Verify that encryption is working:
 
 ```bash
 # Check etcd encryption status
-kubectl get secret argocd-secret -n argocd -o jsonpath='{.data.server\.secretkey}' | base64 -d
-# Should return the encrypted value, not plaintext
+ETCDCTL_API=3 etcdctl \
+  --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+  --cert=/etc/kubernetes/pki/etcd/server.crt \
+  --key=/etc/kubernetes/pki/etcd/server.key \
+  get /registry/secrets/argocd/argocd-secret | hexdump -C
+# The stored value should include an encryption prefix such as k8s:enc:aescbc:v1:
 
 # Verify Redis TLS
-kubectl exec -n argocd deployment/argocd-redis -- redis-cli --tls \
+kubectl exec -n argocd deployment/argocd-redis -- redis-cli -p 6380 --tls \
   --cert /tls/tls.crt \
   --key /tls/tls.key \
   --cacert /tls/ca.crt \
