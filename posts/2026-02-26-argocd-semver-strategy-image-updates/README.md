@@ -18,7 +18,7 @@ Semantic versioning follows the format `MAJOR.MINOR.PATCH`:
 - **MINOR** (1.1.x to 1.2.x) - New features, backward compatible
 - **PATCH** (1.1.1 to 1.1.2) - Bug fixes, backward compatible
 
-Pre-release tags like `1.2.3-beta.1` and build metadata like `1.2.3+build.456` are also supported.
+Pre-release tags like `1.2.3-beta.1` are also supported. SemVer build metadata uses a `+` character, but standard Docker image tags do not allow `+`, so build metadata usually cannot be used directly in container image tags.
 
 ```mermaid
 graph LR
@@ -59,9 +59,9 @@ The most common constraint. It allows updates that do not change the leftmost no
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
   # ^1.0 means >=1.0.0 and <2.0.0
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: "^1.0"
+  argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:^1.0
+  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
 ```
 
 Examples of what `^1.0` matches:
@@ -70,7 +70,7 @@ Examples of what `^1.0` matches:
 
 For 0.x versions, caret is more restrictive:
 - `^0.2` matches 0.2.0 to 0.2.x (not 0.3.0)
-- `^0.0.3` matches only 0.0.3
+- `^0.0.3` matches 0.0.3 up to, but not including, 0.0.4
 
 ### Tilde Constraint (~) - Allow Only Patch Updates
 
@@ -78,9 +78,9 @@ More conservative than caret. Allows only patch-level changes.
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
   # ~1.2 means >=1.2.0 and <1.3.0
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: "~1.2"
+  argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:~1.2
+  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
 ```
 
 Examples of what `~1.2` matches:
@@ -93,28 +93,28 @@ For explicit control, use range operators:
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
   # Explicit range
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.5.0, <2.0.0"
+  argocd-image-updater.argoproj.io/image-list: "myapp=myregistry.com/myapp:>=1.5.0 <2.0.0"
+  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
 ```
 
 ```yaml
   # Exact version range
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.2.0, <=1.5.0"
+  argocd-image-updater.argoproj.io/image-list: "myapp=myregistry.com/myapp:>=1.2.0 <=1.5.0"
 ```
 
 ```yaml
   # Multiple ranges with OR
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.0.0, <2.0.0 || >=3.0.0"
+  argocd-image-updater.argoproj.io/image-list: "myapp=myregistry.com/myapp:>=1.0.0 <2.0.0 || >=3.0.0"
 ```
 
 ### Exact Version Pinning
 
 ```yaml
 annotations:
-  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
   # Only accept exact version
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: "1.5.0"
+  argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:1.5.0
+  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
 ```
 
 This is useful when you want Image Updater to detect a specific version but not auto-update beyond it.
@@ -127,8 +127,8 @@ Not all tags in your registry may be valid semver. Use tag filters to help Image
 
 ```yaml
 annotations:
+  argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:^1.0
   argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: "^1.0"
   # Only consider tags that are pure semver (no prefix)
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^[0-9]+\\.[0-9]+\\.[0-9]+$"
 ```
@@ -139,8 +139,8 @@ Many projects tag images with a `v` prefix (v1.2.3). Image Updater strips the `v
 
 ```yaml
 annotations:
+  argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:^1.0
   argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: "^1.0"
   # Accept both v1.2.3 and 1.2.3 formats
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^v?[0-9]+\\.[0-9]+\\.[0-9]+$"
 ```
@@ -149,10 +149,10 @@ annotations:
 
 ```yaml
 annotations:
+  argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:^1.0
   argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-  argocd-image-updater.argoproj.io/myapp.semver-constraint: "^1.0"
   # Exclude tags with pre-release identifiers like -beta, -rc, -alpha
-  argocd-image-updater.argoproj.io/myapp.ignore-tags: "regexp:-(alpha|beta|rc|dev)"
+  argocd-image-updater.argoproj.io/myapp.ignore-tags: "*-alpha*, *-beta*, *-rc*, *-dev*"
 ```
 
 ## Production vs Staging Strategies
@@ -167,10 +167,9 @@ Use different semver constraints per environment:
 metadata:
   name: myapp-staging
   annotations:
-    argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp
+    argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:^1.0
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
     # Staging gets all updates within major version
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: "^1.0"
 ```
 
 ### Production - Accept Only Patch Updates
@@ -180,10 +179,9 @@ metadata:
 metadata:
   name: myapp-production
   annotations:
-    argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp
+    argocd-image-updater.argoproj.io/image-list: myapp=myregistry.com/myapp:~1.2
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
     # Production only gets patch updates
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: "~1.2"
 ```
 
 This means staging automatically gets new features (1.3.0, 1.4.0) while production only gets bug fixes (1.2.1, 1.2.2) until you manually update the constraint.
@@ -195,18 +193,15 @@ When tracking multiple images, each can have its own semver constraint:
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: |
-    frontend=myregistry.com/frontend,
-    backend=myregistry.com/backend,
-    worker=myregistry.com/worker
+    frontend=myregistry.com/frontend:~2.1,
+    backend=myregistry.com/backend:^3.0,
+    worker=myregistry.com/worker:>=1.5.0 <1.8.0
   # Frontend is stable, only patch updates
   argocd-image-updater.argoproj.io/frontend.update-strategy: semver
-  argocd-image-updater.argoproj.io/frontend.semver-constraint: "~2.1"
   # Backend actively developed, allow minor updates
   argocd-image-updater.argoproj.io/backend.update-strategy: semver
-  argocd-image-updater.argoproj.io/backend.semver-constraint: "^3.0"
   # Worker tracks a specific version range
   argocd-image-updater.argoproj.io/worker.update-strategy: semver
-  argocd-image-updater.argoproj.io/worker.semver-constraint: ">=1.5.0, <1.8.0"
 ```
 
 ## Write-Back Configuration
