@@ -8,7 +8,7 @@ Description: Learn how to configure different GPG signature verification policie
 
 ---
 
-Not every ArgoCD project needs the same level of commit signing enforcement. Production environments demand strict GPG verification, while development and staging environments may need more flexibility. ArgoCD's project-level GPG configuration lets you set different verification policies for different projects - requiring signatures for production, recommending them for staging, and leaving them optional for development.
+Not every ArgoCD project needs the same level of commit signing enforcement. Production environments demand strict GPG verification, while development and staging environments may need more flexibility. ArgoCD's project-level GPG configuration lets you set different verification policies for different projects - requiring signatures for production and staging with different key sets, while leaving them optional for development.
 
 This guide covers implementing tiered GPG verification policies across multiple ArgoCD projects.
 
@@ -64,7 +64,7 @@ spec:
   destinations:
     - namespace: 'dev-*'
       server: https://kubernetes.default.svc
-  # No signatureKeys - GPG verification is disabled
+  # No sourceIntegrity policy - GPG verification is not enforced
   clusterResourceWhitelist:
     - group: ''
       kind: Namespace
@@ -87,17 +87,24 @@ spec:
   destinations:
     - namespace: 'staging-*'
       server: https://kubernetes.default.svc
-  signatureKeys:
-    # All developers
-    - keyID: 3AA5C34371567BD2   # Alice (developer)
-    - keyID: 9B2C5A6E8F3D1E7A   # Bob (developer)
-    - keyID: A1B2C3D4E5F6A7B8   # Charlie (developer)
-    - keyID: C1D2E3F4A5B6C7D8   # Diana (developer)
-    # CI systems
-    - keyID: 1C4D5E6F7A8B9C0D   # CI Bot
-    - keyID: 2D3E4F5A6B7C8D9E   # Image Updater
-    # Git platform
-    - keyID: 4AEE18F83AFDEB23   # GitHub merge commits
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/staging-configs.git
+          gpg:
+            mode: head
+            keys:
+              # All developers
+              - 3AA5C34371567BD2   # Alice (developer)
+              - 9B2C5A6E8F3D1E7A   # Bob (developer)
+              - A1B2C3D4E5F6A7B8   # Charlie (developer)
+              - C1D2E3F4A5B6C7D8   # Diana (developer)
+              # CI systems
+              - 1C4D5E6F7A8B9C0D   # CI Bot
+              - 2D3E4F5A6B7C8D9E   # Image Updater
+              # Git platform
+              - 4AEE18F83AFDEB23   # GitHub merge commits
 ```
 
 ### Production Project - Restricted Verification
@@ -117,14 +124,21 @@ spec:
   destinations:
     - namespace: 'prod-*'
       server: https://production-cluster:6443
-  signatureKeys:
-    # Only senior team members
-    - keyID: 3AA5C34371567BD2   # Alice (Tech Lead)
-    - keyID: 9B2C5A6E8F3D1E7A   # Bob (SRE Lead)
-    # Release automation only
-    - keyID: 2D3E4F5A6B7C8D9E   # Release Bot
-    # GitHub merge commits (for approved PRs)
-    - keyID: 4AEE18F83AFDEB23   # GitHub web-flow
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/production-configs.git
+          gpg:
+            mode: head
+            keys:
+              # Only senior team members
+              - 3AA5C34371567BD2   # Alice (Tech Lead)
+              - 9B2C5A6E8F3D1E7A   # Bob (SRE Lead)
+              # Release automation only
+              - 2D3E4F5A6B7C8D9E   # Release Bot
+              # GitHub merge commits (for approved PRs)
+              - 4AEE18F83AFDEB23   # GitHub web-flow
   # Restrict allowed resource types in production
   clusterResourceWhitelist:
     - group: ''
@@ -155,11 +169,18 @@ spec:
       server: https://kubernetes.default.svc
     - namespace: 'argocd'
       server: https://kubernetes.default.svc
-  signatureKeys:
-    # Only infrastructure team leads
-    - keyID: 9B2C5A6E8F3D1E7A   # Bob (SRE Lead)
-    - keyID: E1F2A3B4C5D6E7F8   # Eve (Security Lead)
-    # No CI bots allowed - all changes must be human-signed
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/infrastructure.git
+          gpg:
+            mode: strict
+            keys:
+              # Only infrastructure team leads
+              - 9B2C5A6E8F3D1E7A   # Bob (SRE Lead)
+              - E1F2A3B4C5D6E7F8   # Eve (Security Lead)
+              # No CI bots allowed - all changes must be human-signed
 ```
 
 ## Managing Keys Across Projects
@@ -195,10 +216,26 @@ data:
     ...charlie's key...
     -----END PGP PUBLIC KEY BLOCK-----
 
+  C1D2E3F4A5B6C7D8: |
+    -----BEGIN PGP PUBLIC KEY BLOCK-----
+    ...diana's key...
+    -----END PGP PUBLIC KEY BLOCK-----
+
   # CI keys
   1C4D5E6F7A8B9C0D: |
     -----BEGIN PGP PUBLIC KEY BLOCK-----
     ...ci bot's key...
+    -----END PGP PUBLIC KEY BLOCK-----
+
+  2D3E4F5A6B7C8D9E: |
+    -----BEGIN PGP PUBLIC KEY BLOCK-----
+    ...release and image updater bot's key...
+    -----END PGP PUBLIC KEY BLOCK-----
+
+  # Security team keys
+  E1F2A3B4C5D6E7F8: |
+    -----BEGIN PGP PUBLIC KEY BLOCK-----
+    ...eve's key...
     -----END PGP PUBLIC KEY BLOCK-----
 
   # Platform keys
@@ -208,7 +245,7 @@ data:
     -----END PGP PUBLIC KEY BLOCK-----
 ```
 
-The key is imported into ArgoCD's keyring, but it is only trusted for a specific project if that project lists it in `signatureKeys`. Having a key in the keyring without listing it in a project's `signatureKeys` has no effect.
+The key is imported into ArgoCD's keyring, but it is only trusted for a specific project if that project's `sourceIntegrity` policy lists it. Having a key in the keyring without listing it in a project's GPG policy has no effect on that project.
 
 ### Per-Project Key Selection
 
@@ -221,17 +258,19 @@ Keyring (all imported keys):
   Charlie (A1B2...) --|
   Diana (C1D2...)   --|
   CI Bot (1C4D...)  --|
+  Release/Image Bot (2D3...) --|
+  Eve (E1F2...)     --|
   GitHub (4AEE...)  --|
 
-Production project trusts:  Alice, Bob, GitHub
-Staging project trusts:     Alice, Bob, Charlie, Diana, CI Bot, GitHub
+Production project trusts:  Alice, Bob, Release Bot, GitHub
+Staging project trusts:     Alice, Bob, Charlie, Diana, CI Bot, Image Updater, GitHub
 Dev project trusts:         (none required)
-Infrastructure trusts:      Bob only
+Infrastructure trusts:      Bob, Eve
 ```
 
 ## Automating Project Configuration
 
-Use an ApplicationSet or a script to ensure consistent GPG policies:
+Use Kustomize overlays or a script to ensure consistent GPG policies:
 
 ```yaml
 # Use Kustomize overlays for per-environment project configs
@@ -244,31 +283,52 @@ metadata:
 spec:
   sourceRepos: []
   destinations: []
-  signatureKeys: []
+  sourceIntegrity:
+    git:
+      policies: []
 
+---
 # overlays/production/project-patch.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: production
 spec:
-  signatureKeys:
-    - keyID: 3AA5C34371567BD2
-    - keyID: 9B2C5A6E8F3D1E7A
-    - keyID: 4AEE18F83AFDEB23
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/production-configs.git
+          gpg:
+            mode: head
+            keys:
+              - 3AA5C34371567BD2
+              - 9B2C5A6E8F3D1E7A
+              - 2D3E4F5A6B7C8D9E
+              - 4AEE18F83AFDEB23
 
+---
 # overlays/staging/project-patch.yaml
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: staging
 spec:
-  signatureKeys:
-    - keyID: 3AA5C34371567BD2
-    - keyID: 9B2C5A6E8F3D1E7A
-    - keyID: A1B2C3D4E5F6A7B8
-    - keyID: 1C4D5E6F7A8B9C0D
-    - keyID: 4AEE18F83AFDEB23
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: https://github.com/myorg/staging-configs.git
+          gpg:
+            mode: head
+            keys:
+              - 3AA5C34371567BD2
+              - 9B2C5A6E8F3D1E7A
+              - A1B2C3D4E5F6A7B8
+              - C1D2E3F4A5B6C7D8
+              - 1C4D5E6F7A8B9C0D
+              - 2D3E4F5A6B7C8D9E
+              - 4AEE18F83AFDEB23
 ```
 
 ## Validating the Configuration
@@ -279,8 +339,10 @@ spec:
 # List all projects and their GPG configuration
 kubectl get appproject -n argocd -o json | jq '.items[] | {
   name: .metadata.name,
-  gpgRequired: (.spec.signatureKeys != null and (.spec.signatureKeys | length) > 0),
-  trustedKeys: (.spec.signatureKeys // [] | length)
+  gpgRequired: ([ (.spec.sourceIntegrity.git.policies // [])[] |
+    select((.gpg.mode // "head") != "none") | (.gpg.keys // [])[] ] | length > 0),
+  trustedKeys: ([ (.spec.sourceIntegrity.git.policies // [])[] |
+    select((.gpg.mode // "head") != "none") | (.gpg.keys // [])[] ] | unique | length)
 }'
 ```
 
@@ -289,9 +351,9 @@ Expected output:
 ```json
 {"name": "default", "gpgRequired": false, "trustedKeys": 0}
 {"name": "development", "gpgRequired": false, "trustedKeys": 0}
-{"name": "staging", "gpgRequired": true, "trustedKeys": 5}
-{"name": "production", "gpgRequired": true, "trustedKeys": 3}
-{"name": "infrastructure", "gpgRequired": true, "trustedKeys": 1}
+{"name": "staging", "gpgRequired": true, "trustedKeys": 7}
+{"name": "production", "gpgRequired": true, "trustedKeys": 4}
+{"name": "infrastructure", "gpgRequired": true, "trustedKeys": 2}
 ```
 
 ### Verify Keys Are Imported
@@ -309,12 +371,24 @@ argocd gpg get 3AA5C34371567BD2
 ```bash
 # Create test apps in each project and try to sync
 for project in development staging production; do
+  namespace="$project-test"
+  repo_name="$project-configs"
+  dest_server="https://kubernetes.default.svc"
+
+  if [ "$project" = "development" ]; then
+    repo_name="dev-configs"
+  fi
+
+  if [ "$project" = "production" ]; then
+    dest_server="https://production-cluster:6443"
+  fi
+
   echo "Testing $project..."
   argocd app create "test-gpg-$project" \
-    --repo https://github.com/myorg/$project-configs.git \
+    --repo "https://github.com/myorg/$repo_name.git" \
     --path test \
-    --dest-server https://kubernetes.default.svc \
-    --dest-namespace test \
+    --dest-server "$dest_server" \
+    --dest-namespace "$namespace" \
     --project "$project"
 
   argocd app sync "test-gpg-$project" 2>&1 | tail -3
@@ -331,6 +405,7 @@ When promoting changes from staging to production, the signing requirements may 
 # Promotion script
 #!/bin/bash
 APP=$1
+STAGING_COMMIT=$2
 STAGING_REPO="myorg/staging-configs"
 PROD_REPO="myorg/production-configs"
 
@@ -343,7 +418,7 @@ git commit -S -m "promote: $APP from staging (cherry-pick of $STAGING_COMMIT)"
 git push
 ```
 
-This naturally enforces the policy: only people whose keys are trusted by the production project can promote changes.
+ArgoCD enforces the policy at sync time: only commits signed by keys trusted by the production project can be deployed.
 
 ## Handling the Default Project
 
@@ -361,12 +436,19 @@ spec:
   sourceRepos: []         # No repos allowed
   destinations: []        # No destinations allowed
   # Optionally require GPG even on default
-  signatureKeys:
-    - keyID: 9B2C5A6E8F3D1E7A
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: '*'
+          gpg:
+            mode: head
+            keys:
+              - 9B2C5A6E8F3D1E7A
 ```
 
 By restricting the default project, you force all applications into explicitly configured projects with appropriate GPG policies.
 
 ## Summary
 
-Per-project GPG verification in ArgoCD lets you implement tiered security policies: no verification for development, team-wide verification for staging, and restricted verification for production. Import all organization GPG keys into ArgoCD's keyring centrally, then select which keys each project trusts through the `signatureKeys` field. This approach balances security with developer productivity by applying the right level of verification at each stage of your deployment pipeline.
+Per-project GPG verification in ArgoCD lets you implement tiered security policies: no verification for development, team-wide verification for staging, and restricted verification for production. Import all organization GPG keys into ArgoCD's keyring centrally, then select which keys each project trusts through `sourceIntegrity` GPG policies. This approach balances security with developer productivity by applying the right level of verification at each stage of your deployment pipeline.
