@@ -14,7 +14,7 @@ This guide covers the cluster generator in depth, from basic usage to advanced p
 
 ## How the Cluster Generator Works
 
-The cluster generator queries ArgoCD's cluster registry (the Secrets with `argocd.argoproj.io/secret-type: cluster` label) and creates one Application per matching cluster:
+The cluster generator queries ArgoCD's cluster registry (remote and declaratively configured clusters are stored as Secrets with the `argocd.argoproj.io/secret-type: cluster` label) and creates one Application per matching cluster:
 
 ```mermaid
 graph TD
@@ -67,7 +67,9 @@ The cluster generator provides these variables for templates:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `{{name}}` | Cluster name | `production-east` |
+| `{{nameNormalized}}` | Cluster name normalized for use in Kubernetes resource names | `production-east` |
 | `{{server}}` | Cluster API server URL | `https://prod.k8s.example.com` |
+| `{{project}}` | Project field from the cluster secret, or an empty string if not set | `platform` |
 | `{{metadata.labels.KEY}}` | Any label on the cluster secret | `production` |
 | `{{metadata.annotations.KEY}}` | Any annotation | `platform-team` |
 
@@ -111,7 +113,7 @@ generators:
 
 ### Exclude the in-cluster ArgoCD
 
-The local cluster (`https://kubernetes.default.svc`) is automatically included. To exclude it:
+The local cluster (`https://kubernetes.default.svc`) is automatically included. To exclude the default local cluster:
 
 ```yaml
 generators:
@@ -122,7 +124,7 @@ generators:
             operator: Exists  # Only clusters with environment label
 ```
 
-Since the in-cluster secret typically does not have custom labels, this effectively excludes it.
+The default local cluster does not have a cluster Secret, so selectors that require labels effectively exclude it. If you create a Secret-backed registration for the local cluster, apply the same labels you use for selection.
 
 ## Adding Custom Values
 
@@ -395,17 +397,21 @@ All ApplicationSets targeting `environment: production` automatically generate n
 
 ## Handling the In-Cluster (Local) Cluster
 
-ArgoCD always has the local cluster registered as `https://kubernetes.default.svc` with the name `in-cluster`. To include it in cluster generators:
+ArgoCD includes the local cluster (`https://kubernetes.default.svc`) in cluster generators when no selector excludes it. To include it in generators that use label selectors, first create a Secret-backed registration for the local cluster, then label that Secret:
 
 ```bash
-# Add labels to the in-cluster secret
-kubectl label secret -n argocd \
+# Create a Secret-backed local cluster registration
+argocd cluster add <context-name> --in-cluster
+
+# Find and label the local cluster secret
+LOCAL_CLUSTER_SECRET=$(kubectl get secrets -n argocd \
   -l argocd.argoproj.io/secret-type=cluster \
-  --field-selector metadata.name=in-cluster-secret \
-  environment=management
+  -o json | jq -r '.items[] | select(.data.server | @base64d == "https://kubernetes.default.svc") | .metadata.name')
+
+kubectl label secret -n argocd "$LOCAL_CLUSTER_SECRET" environment=management
 ```
 
-Or find and label it:
+Or find the existing local cluster secret:
 
 ```bash
 # Find the in-cluster secret
