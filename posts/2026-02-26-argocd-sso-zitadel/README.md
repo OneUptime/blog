@@ -79,7 +79,7 @@ Zitadel can include project roles in OIDC tokens. Enable this:
 
 1. Go to your ArgoCD project settings
 2. Enable **Assert Roles on Authentication**
-3. Enable **Check authorization on Authentication**
+3. Enable **Check Role Assignment on Authentication**
 
 This ensures that when a user authenticates for the ArgoCD application, their project roles are included in the token.
 
@@ -122,7 +122,6 @@ data:
       - openid
       - profile
       - email
-      - urn:zitadel:iam:org:project:roles
     requestedIDTokenClaims:
       urn:zitadel:iam:org:project:roles:
         essential: true
@@ -143,9 +142,9 @@ kubectl -n argocd patch secret argocd-secret --type merge -p '
 
 ## Step 8: Configure RBAC
 
-Zitadel project roles appear in the token under the `urn:zitadel:iam:org:project:roles` claim. The structure is a JSON object where keys are role names. ArgoCD needs to extract these for RBAC.
+Zitadel project roles appear in the token under the `urn:zitadel:iam:org:project:roles` claim. The structure is a JSON object where keys are role names. ArgoCD RBAC expects configured scope claims to be strings or string arrays, so flatten the role names into a simple `groups` claim with the Zitadel Action shown below.
 
-Since the roles claim is structured differently from simple string arrays, you may need to configure the scopes in `argocd-rbac-cm` accordingly:
+Then configure the scopes in `argocd-rbac-cm` accordingly:
 
 ```yaml
 apiVersion: v1
@@ -167,7 +166,7 @@ data:
 
     g, viewer, role:readonly
 
-  scopes: '[urn:zitadel:iam:org:project:roles]'
+  scopes: '[groups]'
 ```
 
 ## Step 9: Restart and Test
@@ -192,7 +191,7 @@ argocd account get-user-info
 
 ## Using Zitadel Actions for Custom Claims
 
-If you need to transform the token claims for ArgoCD compatibility, Zitadel Actions let you run custom JavaScript during authentication:
+To transform the token claims for ArgoCD compatibility, Zitadel Actions let you run custom JavaScript during authentication:
 
 1. In Zitadel, go to **Actions**
 2. Create a new action:
@@ -224,7 +223,6 @@ Then update ArgoCD to use the simpler `groups` claim:
       - openid
       - profile
       - email
-      - urn:zitadel:iam:org:project:roles
 ```
 
 And update RBAC:
@@ -238,7 +236,7 @@ And update RBAC:
 Zitadel supports multiple organizations within a single instance. Each organization can have its own users and role assignments. This is useful if you manage ArgoCD for multiple teams or customers:
 
 1. Create separate organizations in Zitadel for each tenant
-2. Add the ArgoCD project to each organization
+2. Grant the relevant ArgoCD project roles to each organization
 3. Assign roles within each organization
 4. Users from different organizations can log into the same ArgoCD instance with different permissions
 
@@ -265,14 +263,18 @@ The client ID or secret is incorrect, or the application is not active. Check th
 
 ### Connection Issues with Self-Hosted Zitadel
 
-If Zitadel is self-hosted with a self-signed certificate:
+If Zitadel is self-hosted with a certificate that is not signed by a public CA, add the PEM-encoded root certificate to `oidc.config`:
 
-```bash
-kubectl -n argocd create configmap argocd-tls-certs-cm \
-  --from-file=zitadel.example.com=/path/to/zitadel-ca.crt \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-kubectl -n argocd rollout restart deployment argocd-server
+```yaml
+  oidc.config: |
+    name: Zitadel
+    issuer: https://zitadel.example.com
+    clientID: your-zitadel-client-id
+    clientSecret: $oidc.zitadel.clientSecret
+    rootCA: |
+      -----BEGIN CERTIFICATE-----
+      ... encoded certificate data here ...
+      -----END CERTIFICATE-----
 ```
 
 ## Summary
