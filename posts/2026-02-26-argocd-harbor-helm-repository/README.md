@@ -25,7 +25,7 @@ graph TD
     C --> C3["Harbor 2.0+ recommended"]
 ```
 
-- **ChartMuseum mode**: Harbor v1.x to v2.7 included a built-in ChartMuseum. This is being deprecated.
+- **ChartMuseum mode**: Harbor v1.6 to v2.7 included a built-in ChartMuseum. Harbor 2.8 and later no longer include ChartMuseum.
 - **OCI mode**: Harbor 2.0+ supports storing Helm charts as OCI artifacts. This is the recommended approach going forward.
 
 Check your Harbor version to determine which mode to use.
@@ -111,7 +111,7 @@ Harbor 2.0+ stores Helm charts as OCI artifacts alongside container images. This
 ### Add via CLI
 
 ```bash
-argocd repo add harbor.company.com \
+argocd repo add harbor.company.com/platform \
   --type helm \
   --name harbor-oci \
   --enable-oci \
@@ -133,7 +133,7 @@ metadata:
 stringData:
   type: helm
   name: harbor-oci
-  url: harbor.company.com
+  url: harbor.company.com/platform
   enableOCI: "true"
   username: argocd-reader
   password: your-harbor-password
@@ -145,7 +145,7 @@ kubectl apply -f harbor-oci-repo.yaml
 
 ### Deploy a Chart (OCI Mode)
 
-When using OCI, the Application spec uses the full OCI reference:
+When using OCI as a Helm chart source, the Application spec uses the registry and project path without the `oci://` prefix:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -364,8 +364,11 @@ update-deployment:
 ### "unauthorized: unauthorized to access repository"
 
 ```bash
-# Test credentials directly
-curl -u "robot\$argocd-reader:token" https://harbor.company.com/v2/platform/internal-service/tags/list
+# Test OCI chart credentials directly
+helm registry login harbor.company.com \
+  --username 'robot$argocd-reader' \
+  --password token
+helm pull oci://harbor.company.com/platform/internal-service --version 2.0.1
 
 # Check the robot account has not expired
 # Harbor UI > Project > Robot Accounts
