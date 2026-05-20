@@ -40,7 +40,7 @@ spec:
   source:
     repoURL: https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts
     chart: secrets-store-csi-driver
-    targetRevision: 1.4.0
+    targetRevision: 1.6.0
     helm:
       values: |
         syncSecret:
@@ -73,7 +73,7 @@ spec:
   source:
     repoURL: https://helm.releases.hashicorp.com
     chart: vault
-    targetRevision: 0.28.0
+    targetRevision: 0.32.0
     helm:
       values: |
         server:
@@ -106,7 +106,7 @@ spec:
   source:
     repoURL: https://aws.github.io/secrets-store-csi-driver-provider-aws
     chart: secrets-store-csi-driver-provider-aws
-    targetRevision: 0.3.0
+    targetRevision: 3.1.0
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
@@ -129,7 +129,7 @@ spec:
   source:
     repoURL: https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
     chart: csi-secrets-store-provider-azure
-    targetRevision: 1.5.0
+    targetRevision: 1.8.1
   destination:
     server: https://kubernetes.default.svc
     namespace: kube-system
@@ -337,7 +337,14 @@ metadata:
   name: my-app
   namespace: app
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       serviceAccountName: my-app
       containers:
@@ -385,9 +392,9 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 ```
 
-### Ignore Generated Secrets
+### Ignore Synced Secret Data
 
-The CSI driver creates Kubernetes Secrets that are not in Git. Tell ArgoCD to ignore them:
+The CSI driver creates synced Kubernetes Secrets at runtime. In most cases, do not commit those Secrets to Git. If your application also includes a Secret manifest for ownership labels or annotations, tell ArgoCD to ignore the fields managed by the CSI driver:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -395,10 +402,13 @@ kind: Application
 metadata:
   name: my-app
 spec:
+  destination:
+    namespace: app
   ignoreDifferences:
     - group: ""
       kind: Secret
       name: my-app-secrets
+      namespace: app
       jsonPointers:
         - /data
         - /metadata/labels
