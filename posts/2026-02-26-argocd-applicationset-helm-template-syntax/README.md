@@ -81,7 +81,7 @@ spec:
 
 ## Helm-Like Functions with Sprig
 
-When Go templates are enabled, ArgoCD includes the Sprig template function library, which is the same library Helm uses. This means you have access to the same functions.
+When Go templates are enabled, ArgoCD includes the Sprig template function library, which is the same library Helm uses. This means you have access to most of the same functions, with a few security-related exceptions such as `env`, `expandenv`, and `getHostByName`.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -109,7 +109,7 @@ spec:
         version-label: '{{.version | upper}}'
       annotations:
         # Default values like Helm
-        owner: '{{default "platform" .owner}}'
+        owner: '{{dig "owner" "platform" .}}'
         # SHA256 for change detection
         config-hash: '{{.name | sha256sum | trunc 8}}'
     spec:
@@ -139,8 +139,8 @@ Here are the Sprig functions most commonly used by Helm users that also work in 
 '{{.name | snakecase}}'      # snake_case
 '{{.name | camelcase}}'      # camelCase
 
-# Default values
-'{{default "fallback" .value}}'
+# Default values, including when missingkey=error is enabled
+'{{dig "value" "fallback" .}}'
 
 # Ternary (like Helm's ternary)
 '{{ternary "yes" "no" (eq .env "production")}}'
@@ -256,7 +256,7 @@ spec:
 
 ## Conditional Helm Parameters
 
-Go templates let you conditionally add or change Helm parameters, which is something basic substitution cannot do.
+Go templates let you conditionally change Helm parameter values, which is something basic substitution cannot do. Because Go templates are evaluated per string field, use `templatePatch` if you need to conditionally add or remove whole list items.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -305,17 +305,21 @@ spec:
 Just like Helm, Go templates in ApplicationSets support whitespace trimming with `{{-` and `-}}`.
 
 ```yaml
-# Without whitespace control (may produce blank lines)
-annotations:
-  {{if eq .env "production"}}
-  monitoring: enabled
-  {{end}}
+# Without whitespace control inside a string field (may produce blank lines)
+helm:
+  values: |
+    {{if eq .env "production"}}
+    monitoring:
+      enabled: true
+    {{end}}
 
 # With whitespace control (clean output)
-annotations:
-  {{- if eq .env "production"}}
-  monitoring: enabled
-  {{- end}}
+helm:
+  values: |
+    {{- if eq .env "production"}}
+    monitoring:
+      enabled: true
+    {{- end}}
 ```
 
 This is especially important in ApplicationSet templates where stray whitespace can cause YAML parsing issues.
@@ -328,7 +332,7 @@ First, there is no `.Values` prefix. In Helm you write `{{.Values.name}}`, but i
 
 Second, ApplicationSet templates operate on the ApplicationSet manifest itself, not on arbitrary Kubernetes resources. You are templating the Application spec, not the deployed workload.
 
-Third, you cannot use `range` to iterate over lists in the same way Helm does, because generator parameters are flat key-value pairs. If you need iteration, structure your generators to produce one entry per item.
+Third, you cannot use `range` to generate multiple YAML fields or list items in the same way Helm does, because Go templates are evaluated independently for each string field. If you need iteration, structure your generators to produce one entry per item or use `templatePatch` for advanced templating.
 
 ```bash
 # Verify your ApplicationSet template rendering
