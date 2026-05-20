@@ -38,7 +38,7 @@ kind: AppProject
 metadata:
   name: team-backend
   namespace: argocd
-  # Finalizer prevents accidental deletion
+  # Finalizer prevents deletion while applications still reference this project
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -245,7 +245,7 @@ spec:
   syncWindows:
     # Allow syncs only during business hours
     - kind: allow
-      schedule: '0 9-17 * * 1-5'  # Mon-Fri 9am to 5pm
+      schedule: '0 9 * * 1-5'  # Mon-Fri 9am
       duration: 8h
       applications:
         - '*'
