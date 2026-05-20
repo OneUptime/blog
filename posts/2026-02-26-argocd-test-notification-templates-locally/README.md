@@ -4,36 +4,36 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Notification, Testing
 
-Description: Learn how to test ArgoCD notification templates locally before deploying them, using the argocd-notifications CLI tool and mock application data to validate template rendering.
+Description: Learn how to test ArgoCD notification templates locally before deploying them, using the argocd CLI notifications commands and mock application data to validate template rendering.
 
 ---
 
 Deploying notification templates directly to your cluster and waiting for a trigger to fire is a slow and frustrating way to develop them. ArgoCD provides tooling to test notification templates locally, letting you validate template rendering, check for syntax errors, and preview the output before anything touches your cluster. This guide walks you through local testing workflows.
 
-## The argocd-notifications CLI Tool
+## The argocd Notifications CLI Commands
 
-ArgoCD ships a notifications CLI tool that can render templates against mock or real application data. This is the primary tool for local template testing.
+ArgoCD ships notifications CLI commands that can render templates against mock or real application data. This is the primary tool for local template testing.
 
 ### Installing the CLI
 
-You can get the notifications CLI from the ArgoCD releases:
+You can get the ArgoCD CLI from the ArgoCD releases:
 
 ```bash
-# Download the notifications tools binary
+# Download the ArgoCD CLI binary
 
 # Replace VERSION with your ArgoCD version
 VERSION=v2.10.0
-curl -sSL -o argocd-notifications \
+curl -sSL -o argocd \
   "https://github.com/argoproj/argo-cd/releases/download/${VERSION}/argocd-linux-amd64"
 
-chmod +x argocd-notifications
-sudo mv argocd-notifications /usr/local/bin/
+chmod +x argocd
+sudo mv argocd /usr/local/bin/
 
 # On macOS with Homebrew
 brew install argocd
 ```
 
-The `argocd` CLI includes notification-related subcommands starting from version 2.6.
+Modern versions of the `argocd` CLI include notification-related subcommands under `argocd admin notifications`.
 
 ## Testing Templates with the CLI
 
@@ -45,8 +45,8 @@ Create a local file with your template and test it against a real application:
 # Test a template against a real application in your cluster
 argocd admin notifications template notify \
   app-sync-succeeded my-app \
-  --config-map argocd-notifications-cm \
-  --secret argocd-notifications-secret
+  --config-map ./argocd-notifications-cm.yaml \
+  --secret ./argocd-notifications-secret.yaml
 ```
 
 This renders the template `app-sync-succeeded` using the actual state of `my-app` from your cluster and prints the result.
@@ -57,8 +57,11 @@ To see what would be sent to a specific service:
 
 ```bash
 # Preview what would be sent to Slack
-argocd admin notifications template get app-sync-succeeded \
-  --config-map argocd-notifications-cm
+argocd admin notifications template notify \
+  app-sync-succeeded my-app \
+  --recipient slack:argocd-notifications-test \
+  --config-map ./argocd-notifications-cm.yaml \
+  --secret ./argocd-notifications-secret.yaml
 ```
 
 ## Using Mock Application Data
@@ -67,6 +70,8 @@ You do not need a running cluster to test templates. Create a mock application J
 
 ```json
 {
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
   "metadata": {
     "name": "test-application",
     "namespace": "argocd",
@@ -111,9 +116,16 @@ You do not need a running cluster to test templates. Create a mock application J
 
 Save this as `mock-app.json` and use it for local rendering tests.
 
+```bash
+argocd admin notifications template notify \
+  app-sync-succeeded ./mock-app.json \
+  --config-map ./argocd-notifications-cm.yaml \
+  --secret :empty
+```
+
 ## Testing Go Template Syntax
 
-ArgoCD notification templates use Go template syntax. You can test templates offline with a simple Go script or use the `gomplate` tool:
+ArgoCD notification templates use Go template syntax with Sprig and ArgoCD-specific functions. You can test basic Go template syntax offline with a simple Go script or use the `gomplate` tool, but use the `argocd` CLI to validate ArgoCD-specific functions:
 
 ```bash
 # Install gomplate
@@ -202,7 +214,7 @@ metadata:
   namespace: argocd
   annotations:
     notifications.argoproj.io/subscribe.on-deployed.slack: argocd-notifications-test
-    notifications.argoproj.io/subscribe.on-deploy-failed.slack: argocd-notifications-test
+    notifications.argoproj.io/subscribe.on-sync-failed.slack: argocd-notifications-test
     notifications.argoproj.io/subscribe.on-health-degraded.slack: argocd-notifications-test
 spec:
   project: default
@@ -213,6 +225,9 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: notification-test
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
 ```
 
 ### Step 3: Trigger Notifications
@@ -224,7 +239,7 @@ argocd app sync notification-test
 # Force the app OutOfSync by making a manual change
 kubectl scale deployment guestbook-ui --replicas=3 -n notification-test
 
-# Break the app to trigger on-deploy-failed
+# Break the app to trigger on-sync-failed
 # Edit the source path to something invalid
 argocd app set notification-test --path nonexistent-path
 argocd app sync notification-test
@@ -312,17 +327,17 @@ open rendered-email.html
   template.deployment-email: |
     email:
       subject: "Deployment: {{ .app.metadata.name }} - {{ .app.status.operationState.phase }}"
-      body: |
-        <html>
-        <body>
-          <h2>Deployment Status</h2>
-          <table border="1" cellpadding="5">
-            <tr><td>Application</td><td>{{ .app.metadata.name }}</td></tr>
-            <tr><td>Status</td><td>{{ .app.status.operationState.phase }}</td></tr>
-            <tr><td>Revision</td><td>{{ .app.status.sync.revision | trunc 7 }}</td></tr>
-          </table>
-        </body>
-        </html>
+    message: |
+      <html>
+      <body>
+        <h2>Deployment Status</h2>
+        <table border="1" cellpadding="5">
+          <tr><td>Application</td><td>{{ .app.metadata.name }}</td></tr>
+          <tr><td>Status</td><td>{{ .app.status.operationState.phase }}</td></tr>
+          <tr><td>Revision</td><td>{{ .app.status.sync.revision | trunc 7 }}</td></tr>
+        </table>
+      </body>
+      </html>
 ```
 
 ## Automated Template Testing in CI
