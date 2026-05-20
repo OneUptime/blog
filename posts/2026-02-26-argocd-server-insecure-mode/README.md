@@ -99,9 +99,9 @@ helm upgrade argocd argo/argo-cd \
 
 When insecure mode is enabled:
 
-1. **Port changes**: The server listens on port 8080 (HTTP) instead of 8443 (HTTPS)
-2. **No TLS certificate**: ArgoCD does not generate or serve a TLS certificate
-3. **Service ports**: The Kubernetes service maps port 80 to the server's port 8080
+1. **Protocol changes**: The server listens on port 8080 by default, but serves plain HTTP instead of HTTPS
+2. **No TLS certificate is served**: ArgoCD does not serve a TLS certificate from the API server
+3. **Service ports**: The Kubernetes service maps both port 80 and port 443 to the server's port 8080 in the default install
 4. **gRPC**: gRPC traffic uses h2c (HTTP/2 cleartext) instead of encrypted HTTP/2
 5. **Redirects**: ArgoCD does not redirect HTTP to HTTPS
 
@@ -122,8 +122,8 @@ kubectl exec -n argocd deploy/argocd-server -- curl -s http://localhost:8080/hea
 # Should return: "ok"
 
 # Check if HTTPS is disabled
-kubectl exec -n argocd deploy/argocd-server -- curl -s https://localhost:8443/healthz
-# Should fail with connection refused
+kubectl exec -n argocd deploy/argocd-server -- curl -sk https://localhost:8080/healthz
+# Should fail because the server is serving plain HTTP on this port
 
 # Port-forward and test
 kubectl port-forward svc/argocd-server -n argocd 8080:80
@@ -157,7 +157,7 @@ ARGOCD_PASSWORD=$(kubectl -n argocd get secret argocd-initial-admin-secret -o js
 kubectl port-forward svc/argocd-server -n argocd 8080:80 &
 
 # 7. Login with CLI
-argocd login localhost:8080 --insecure --username admin --password $ARGOCD_PASSWORD
+argocd login localhost:8080 --plaintext --username admin --password $ARGOCD_PASSWORD
 
 # 8. Open the UI
 echo "ArgoCD UI: http://localhost:8080"
