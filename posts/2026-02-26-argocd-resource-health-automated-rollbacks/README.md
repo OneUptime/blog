@@ -35,16 +35,16 @@ flowchart LR
 
 The purest GitOps approach to rollback is reverting the Git commit that caused the problem. This keeps Git as the single source of truth and naturally triggers ArgoCD to sync back to the previous state.
 
-You can automate this with a PostSync hook that checks health and triggers a Git revert if health is degraded:
+You can automate this with a PostSync hook that runs after ArgoCD has applied the manifests and the application has reached `Healthy`. This works as a post-deployment smoke test for failures that appear shortly after the initial healthy state:
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: health-gate-rollback
+  generateName: health-gate-rollback-
   annotations:
     argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,HookFailed
 spec:
   template:
     spec:
@@ -75,16 +75,16 @@ spec:
   backoffLimit: 0
 ```
 
-When this PostSync job fails, ArgoCD marks the sync as failed. Combine this with a SyncFail hook to trigger the actual rollback:
+When this PostSync job fails, ArgoCD marks the sync operation as failed and runs any SyncFail hooks. Combine this with a SyncFail hook to trigger the actual rollback:
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: auto-revert
+  generateName: auto-revert-
   annotations:
     argocd.argoproj.io/hook: SyncFail
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,HookFailed
 spec:
   template:
     spec:
@@ -116,7 +116,7 @@ spec:
 
 ## Approach 2: Argo Rollouts with Analysis
 
-The most robust approach to automated rollbacks is using Argo Rollouts. Rollouts integrates directly with ArgoCD and provides built-in analysis that can automatically abort and roll back a deployment based on metrics.
+The most robust approach to automated rollbacks is using Argo Rollouts. Rollouts integrates with ArgoCD health assessment and provides built-in analysis that can automatically abort a rollout and return traffic or replicas to the previous stable ReplicaSet based on metrics.
 
 First, replace your Deployment with a Rollout:
 
@@ -189,12 +189,12 @@ spec:
         prometheus:
           address: http://prometheus.monitoring:9090
           query: |
-            kube_deployment_status_replicas_available{deployment="my-app"}
+            rollout_info_replicas_available{rollout="my-app",namespace="default"}
             /
-            kube_deployment_spec_replicas{deployment="my-app"}
+            rollout_info_replicas_desired{rollout="my-app",namespace="default"}
 ```
 
-When the analysis fails, Argo Rollouts automatically rolls back to the previous stable version.
+When the analysis fails, Argo Rollouts aborts the rollout and falls back to the previous stable ReplicaSet. The desired Git state still points at the failed version, so you should also revert Git or otherwise update the desired Rollout spec back to the stable version.
 
 ## Approach 3: ArgoCD Notification-Driven Rollback
 
@@ -222,8 +222,7 @@ data:
             "app": "{{.app.metadata.name}}",
             "namespace": "{{.app.spec.destination.namespace}}",
             "health": "{{.app.status.health.status}}",
-            "revision": "{{.app.status.sync.revision}}",
-            "previousRevision": "{{.app.status.history | last | .revision}}"
+            "revision": "{{.app.status.sync.revision}}"
           }
 
   service.webhook.rollback-service: |
@@ -244,11 +243,11 @@ metadata:
     notifications.argoproj.io/subscribe.on-health-degraded.rollback-service: ""
 ```
 
-The external rollback service would receive the webhook and use the ArgoCD API to roll back:
+The external rollback service would receive the webhook, look up the previous successful deployment history ID, and use the ArgoCD API to roll back:
 
 ```bash
 # The external service calls this
-argocd app rollback my-app <previous-revision-id>
+argocd app rollback my-app <history-id>
 ```
 
 ## Approach 4: ArgoCD History-Based Rollback Script
@@ -285,10 +284,10 @@ spec:
 
                   if [ "$HEALTH" = "Degraded" ]; then
                     echo "App is degraded, checking sync history..."
-                    # Get the previous successful revision
-                    PREV_ID=$(argocd app history my-app -o json | jq -r '.[1].id')
+                    # Get the previous deployment history ID. ArgoCD history IDs, not Git SHAs, are passed to app rollback.
+                    PREV_ID=$(argocd app history my-app -o json | jq -r 'if length > 1 then .[length - 2].id else empty end')
                     if [ -n "$PREV_ID" ]; then
-                      echo "Rolling back to revision $PREV_ID"
+                      echo "Rolling back to history ID $PREV_ID"
                       argocd app rollback my-app "$PREV_ID"
                     fi
                   fi
@@ -314,4 +313,4 @@ For production environments, I strongly recommend Argo Rollouts. It gives you th
 
 **Partial failures**: Sometimes only some resources in an application are degraded. Make sure your rollback logic accounts for this and does not unnecessarily roll back the entire application.
 
-For more on ArgoCD's rollback capabilities, see [how to create custom rollback actions](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-rollback-actions/view). For setting up health checks, check out how to understand built-in health checks in ArgoCD.
+For more on ArgoCD's rollback capabilities, see [how to create custom rollback actions](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-rollback-actions/view). For setting up health checks, check out [how to understand built-in health checks in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-built-in-health-checks/view).
