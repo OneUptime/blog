@@ -81,11 +81,11 @@ Store the robot account credentials in a Kubernetes secret:
 kubectl create secret docker-registry harbor-creds \
   -n argocd \
   --docker-server=harbor.example.com \
-  --docker-username='robot$argocd-image-updater' \
+  --docker-username='robot$myproject+argocd-image-updater' \
   --docker-password='your-robot-secret'
 ```
 
-Note: Harbor robot account usernames contain a `$` character (e.g., `robot$argocd-image-updater`). Make sure to use single quotes in bash to prevent shell expansion.
+Note: Harbor project robot account usernames contain `$` and `+` characters (for example, `robot$myproject+argocd-image-updater`). System robot account usernames use the format `robot$argocd-image-updater`. Make sure to use single quotes in bash to prevent shell expansion.
 
 ## Registry Configuration
 
@@ -157,8 +157,6 @@ data:
         prefix: harbor.example.com
         credentials: pullsecret:argocd/harbor-creds
         default: true
-        # Use the Docker Hub v2 API compatibility
-        tagsortmode: latest-first
 ```
 
 ## Configuring Applications
@@ -173,9 +171,8 @@ metadata:
   namespace: argocd
   annotations:
     # Track image in Harbor
-    argocd-image-updater.argoproj.io/image-list: myapp=harbor.example.com/myproject/myapp
+    argocd-image-updater.argoproj.io/image-list: myapp=harbor.example.com/myproject/myapp:>=1.0.0
     argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-    argocd-image-updater.argoproj.io/myapp.semver-constraint: ">=1.0.0"
     # Write back to Git
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/git-branch: main
@@ -200,7 +197,7 @@ spec:
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: myapp=harbor.example.com/myproject/myapp
-  argocd-image-updater.argoproj.io/myapp.update-strategy: latest
+  argocd-image-updater.argoproj.io/myapp.update-strategy: newest-build
   # Only consider tags that look like git commit hashes
   argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^main-[a-f0-9]{7}$"
   # Ignore tags
@@ -212,15 +209,12 @@ annotations:
 ```yaml
 annotations:
   argocd-image-updater.argoproj.io/image-list: |
-    frontend=harbor.example.com/myproject/frontend,
-    backend=harbor.example.com/myproject/backend,
-    worker=harbor.example.com/myproject/worker
+    frontend=harbor.example.com/myproject/frontend:^2.0,
+    backend=harbor.example.com/myproject/backend:^3.0,
+    worker=harbor.example.com/myproject/worker:^1.0
   argocd-image-updater.argoproj.io/frontend.update-strategy: semver
   argocd-image-updater.argoproj.io/backend.update-strategy: semver
   argocd-image-updater.argoproj.io/worker.update-strategy: semver
-  argocd-image-updater.argoproj.io/frontend.semver-constraint: "^2.0"
-  argocd-image-updater.argoproj.io/backend.semver-constraint: "^3.0"
-  argocd-image-updater.argoproj.io/worker.semver-constraint: "^1.0"
 ```
 
 ## Harbor Replication with Image Updater
@@ -268,7 +262,7 @@ annotations:
 
 ```bash
 # Verify the robot account works
-docker login harbor.example.com -u 'robot$argocd-image-updater' -p 'secret'
+docker login harbor.example.com -u 'robot$myproject+argocd-image-updater' -p 'secret'
 ```
 
 **Certificate errors** - If Harbor uses self-signed certs, add the CA to Image Updater's trust store as shown above.
@@ -277,7 +271,7 @@ docker login harbor.example.com -u 'robot$argocd-image-updater' -p 'secret'
 
 ```bash
 # Test listing tags via Harbor API
-curl -u 'robot$argocd-image-updater:secret' \
+curl -u 'robot$myproject+argocd-image-updater:secret' \
   "https://harbor.example.com/v2/myproject/myapp/tags/list"
 ```
 
