@@ -106,7 +106,7 @@ spec:
 
 ## Layer 2: Pre-Sync Validation Hooks
 
-ArgoCD sync hooks let you run validation before the actual sync happens. Use a PreSync hook to run compliance checks.
+ArgoCD sync hooks let you run validation before the actual sync happens. Use a PreSync hook to run compliance checks. Hooks are regular Kubernetes manifests, so the validation job must fetch or render the manifests it checks; ArgoCD does not automatically mount rendered manifests into the hook pod.
 
 ```yaml
 # hooks/compliance-check.yaml
@@ -125,37 +125,40 @@ spec:
         - name: compliance-checker
           image: company/compliance-checker:v1.0.0
           env:
-            - name: APP_NAME
-              value: "{{.app.metadata.name}}"
-            - name: APP_NAMESPACE
-              value: "{{.app.spec.destination.namespace}}"
-            - name: GIT_REPO
-              value: "{{.app.spec.source.repoURL}}"
-            - name: GIT_REVISION
-              value: "{{.app.status.sync.revision}}"
+            - name: REPO_URL
+              value: "https://github.com/company/production-configs"
+            - name: REVISION
+              value: "main"
+            - name: MANIFEST_PATH
+              value: "apps/production-web-app"
           command:
             - /bin/sh
             - -c
             - |
               echo "Running compliance checks..."
+              git clone --no-checkout "$REPO_URL" /workspace/repo
+              cd /workspace/repo
+              git fetch --depth 1 origin "$REVISION"
+              git checkout FETCH_HEAD
+              kustomize build "$MANIFEST_PATH" > /workspace/rendered.yaml
 
               # Check 1: Verify all images are from approved registries
               echo "Checking image registries..."
-              if grep -r 'image:' /manifests/ | grep -v 'company.azurecr.io\|gcr.io/company'; then
+              if grep 'image:' /workspace/rendered.yaml | grep -v 'company.azurecr.io\|gcr.io/company'; then
                 echo "FAIL: Found images from unapproved registries"
                 exit 1
               fi
 
               # Check 2: Verify resource limits are set
               echo "Checking resource limits..."
-              if ! /tools/check-resource-limits.sh /manifests/; then
+              if ! /tools/check-resource-limits.sh /workspace/rendered.yaml; then
                 echo "FAIL: Missing resource limits"
                 exit 1
               fi
 
               # Check 3: Verify no latest tags
               echo "Checking for latest tags..."
-              if grep -r ':latest' /manifests/ | grep 'image:'; then
+              if grep ':latest' /workspace/rendered.yaml | grep 'image:'; then
                 echo "FAIL: Using :latest tag is not allowed"
                 exit 1
               fi
@@ -167,7 +170,7 @@ spec:
 
 ## Layer 3: Resource-Level Controls
 
-Use ArgoCD's `ignoreDifferences` and resource actions to control specific fields.
+Use ArgoCD's `ignoreDifferences` and sync options to control specific fields.
 
 ```yaml
 # Prevent certain fields from being modified
@@ -188,11 +191,13 @@ spec:
       prune: true
       selfHeal: true
     syncOptions:
-      # Prevent deleting resources not in Git
+      # Delete pruned resources using foreground propagation
       - PrunePropagationPolicy=foreground
-      # Require all resources to pass validation
+      # Apply ignoreDifferences during sync, not just when calculating diff
+      - RespectIgnoreDifferences=true
+      # Keep kubectl schema validation enabled
       - Validate=true
-      # Use server-side apply for conflict detection
+      # Use server-side apply for Kubernetes field ownership tracking
       - ServerSideApply=true
 ```
 
@@ -202,68 +207,66 @@ Restrict which container images can be deployed through Kyverno or OPA policies 
 
 ```yaml
 # policies/restrict-image-registries.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: restrict-image-registries
   annotations:
     argocd.argoproj.io/sync-wave: "0"
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: validate-registries
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Images must come from approved registries: company.azurecr.io or gcr.io/company-project"
-        pattern:
-          spec:
-            containers:
-              - image: "company.azurecr.io/* | gcr.io/company-project/*"
-            =(initContainers):
-              - image: "company.azurecr.io/* | gcr.io/company-project/*"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ['']
+        apiVersions: ['v1']
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers
+        + object.spec.?initContainers.orValue([])
+        + object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - message: "Images must come from approved registries: company.azurecr.io or gcr.io/company-project"
+      expression: >-
+        variables.allContainers.all(c,
+          c.image.startsWith('company.azurecr.io/') ||
+          c.image.startsWith('gcr.io/company-project/')
+        )
 ```
 
 ### Block Latest Tags
 
 ```yaml
 # policies/disallow-latest-tag.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-latest-tag
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: require-image-tag
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Images must use a specific tag or digest, not ':latest' or no tag."
-        pattern:
-          spec:
-            containers:
-              - image: "*:*"
-    - name: disallow-latest
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "The ':latest' tag is not allowed. Use a specific version tag."
-        pattern:
-          spec:
-            containers:
-              - image: "!*:latest"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ['']
+        apiVersions: ['v1']
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allImages
+      expression: >-
+        object.spec.containers.map(c, image(c.image))
+        + object.spec.?initContainers.orValue([]).map(c, image(c.image))
+        + object.spec.?ephemeralContainers.orValue([]).map(c, image(c.image))
+  validations:
+    - message: "Images must use a specific tag or digest, not ':latest' or no tag."
+      expression: >-
+        variables.allImages.all(i, i.containsDigest() || i.tag() != '')
+    - message: "The ':latest' tag is not allowed. Use a specific version tag."
+      expression: >-
+        variables.allImages.all(i, i.tag() != 'latest')
 ```
 
 ## Layer 5: Label and Annotation Requirements
@@ -272,31 +275,27 @@ Enforce mandatory labels for cost allocation, ownership, and compliance tracking
 
 ```yaml
 # policies/require-labels.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-mandatory-labels
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: require-labels
-      match:
-        any:
-          - resources:
-              kinds:
-                - Deployment
-                - StatefulSet
-                - DaemonSet
-      validate:
-        message: "The following labels are required: app.kubernetes.io/name, app.kubernetes.io/version, company.com/team, company.com/cost-center"
-        pattern:
-          metadata:
-            labels:
-              app.kubernetes.io/name: "?*"
-              app.kubernetes.io/version: "?*"
-              company.com/team: "?*"
-              company.com/cost-center: "?*"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [apps]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [deployments, statefulsets, daemonsets]
+  validations:
+    - message: "The following labels are required: app.kubernetes.io/name, app.kubernetes.io/version, company.com/team, company.com/cost-center"
+      expression: >-
+        has(object.metadata.labels) &&
+        object.metadata.labels[?'app.kubernetes.io/name'].orValue('') != '' &&
+        object.metadata.labels[?'app.kubernetes.io/version'].orValue('') != '' &&
+        object.metadata.labels[?'company.com/team'].orValue('') != '' &&
+        object.metadata.labels[?'company.com/cost-center'].orValue('') != ''
 ```
 
 ## Layer 6: CI Pipeline Integration
@@ -344,11 +343,12 @@ jobs:
       - name: Run Kyverno CLI tests
         run: |
           # Install Kyverno CLI
-          curl -LO https://github.com/kyverno/kyverno/releases/latest/download/kyverno-cli_linux_amd64.tar.gz
-          tar xzf kyverno-cli_linux_amd64.tar.gz
+          KYVERNO_VERSION=v1.18.0
+          curl -LO "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz"
+          tar xzf "kyverno-cli_${KYVERNO_VERSION}_linux_x86_64.tar.gz"
 
           # Test manifests against policies
-          ./kyverno apply policies/ --resource apps/ -o json
+          ./kyverno apply policies/ --resource apps/ --policy-report --output-format json
 ```
 
 ## Handling Blocked Deployments
