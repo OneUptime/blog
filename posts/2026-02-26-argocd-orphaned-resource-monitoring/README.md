@@ -14,7 +14,7 @@ ArgoCD has a built-in orphaned resource monitoring feature that helps you find t
 
 ## What Are Orphaned Resources?
 
-In the ArgoCD context, an orphaned resource is any Kubernetes resource that exists in a namespace managed by an ArgoCD project but is not tracked by any ArgoCD application. It represents a gap between your GitOps-managed state and what actually exists in the cluster.
+In the ArgoCD context, an orphaned resource is a top-level namespaced Kubernetes resource that exists in a namespace targeted by an ArgoCD application but is not tracked by any ArgoCD application. It represents a gap between your GitOps-managed state and what actually exists in the cluster.
 
 ```mermaid
 flowchart TD
@@ -66,7 +66,7 @@ The `warn: true` setting makes ArgoCD report orphaned resources as warnings in t
 ```bash
 # Enable orphaned resource monitoring on an existing project
 
-argocd proj set production --orphaned-resources-warn
+argocd proj set production --orphaned-resources --orphaned-resources-warn
 ```
 
 ### Verifying the Configuration
@@ -81,7 +81,7 @@ argocd proj get production -o yaml | grep -A5 orphanedResources
 
 ## How Orphaned Resource Monitoring Works
 
-Once enabled, ArgoCD periodically scans the namespaces covered by the project's destination rules. For each resource found, it checks whether that resource is tracked by any ArgoCD application within the project. If not, the resource is reported as orphaned.
+Once enabled, ArgoCD checks top-level namespaced resources in application target namespaces covered by the project's destination rules. For each resource found, it checks whether that resource is tracked by any ArgoCD application. If not, the resource is reported as orphaned for applications targeting that namespace.
 
 ```mermaid
 sequenceDiagram
@@ -91,7 +91,7 @@ sequenceDiagram
 
     Controller->>Project: Read orphanedResources config
     Project-->>Controller: warn: true, destinations: [production/*]
-    Controller->>API: List all resources in production namespace
+    Controller->>API: List top-level namespaced resources in production namespace
     API-->>Controller: 50 resources found
     Controller->>Controller: Check each resource against tracked apps
     Controller->>Controller: 5 resources not tracked by any app
@@ -104,22 +104,23 @@ sequenceDiagram
 
 1. Navigate to Settings > Projects
 2. Select your project
-3. Look for the "Orphaned Resources" section
-4. Orphaned resources are listed with their kind, name, and namespace
+3. Open an application in the project
+4. Enable the "Show Orphaned" filter on the application details page
 
 ### Using the CLI
 
 ```bash
-# List orphaned resources for a project
-argocd proj get production -o json | \
-  jq '.status.orphanedResources // empty'
+# List orphaned resources for an application
+argocd app resources api-server --orphaned
 ```
 
 ### Using the API
 
 ```bash
-# Query the ArgoCD API for orphaned resources
-argocd admin proj orphaned-resources production
+# Query the ArgoCD API resource tree for orphaned resources
+curl -H "Authorization: Bearer $ARGOCD_TOKEN" \
+  "$ARGOCD_SERVER/api/v1/applications/api-server/resource-tree" | \
+  jq '.orphanedNodes // []'
 ```
 
 ## Configuration Options
@@ -150,14 +151,10 @@ orphanedResources:
     # Ignore Events
     - group: ""
       kind: Event
-    # Ignore ServiceAccounts (default one exists in every namespace)
-    - group: ""
-      kind: ServiceAccount
-      name: default
-    # Ignore Secrets created by ServiceAccounts
+    # Ignore operator-created Secrets
     - group: ""
       kind: Secret
-      name: default-token-*
+      name: cert-manager-*
 ```
 
 ### Excluding by Name Pattern
@@ -170,10 +167,10 @@ orphanedResources:
   ignore:
     - group: ""
       kind: ConfigMap
-      name: kube-root-ca.crt    # Auto-created in every namespace
+      name: operator-*          # Operator-created ConfigMaps
     - group: ""
       kind: Secret
-      name: "*-token-*"         # ServiceAccount tokens
+      name: "*.example.com"     # Operator-created TLS Secrets
 ```
 
 ## Project-Level vs Cluster-Level Monitoring
@@ -257,7 +254,7 @@ metadata:
 data:
   trigger.on-orphaned-resource: |
     - description: Application has orphaned resources
-      when: app.status.operationState.phase in ['Succeeded'] and app.status.orphanedResources | length > 0
+      when: any(app.status.conditions, {.type == 'OrphanedResourceWarning'})
       send: [slack-orphaned-warning]
   template.slack-orphaned-warning: |
     message: |
@@ -265,27 +262,27 @@ data:
       Please review and clean up untracked resources.
 ```
 
-## Common Resources That Trigger False Orphan Warnings
+## Common Resources to Review
 
-These resources commonly appear as orphaned but are expected:
+These resources commonly come up when reviewing orphaned resources:
 
 | Resource | Why It Exists | Action |
 |----------|--------------|--------|
 | `Endpoints` | Auto-created by Services | Ignore |
 | `EndpointSlice` | Auto-created by Services | Ignore |
 | `Event` | Kubernetes system events | Ignore |
-| `default` ServiceAccount | Auto-created in every namespace | Ignore |
-| `kube-root-ca.crt` ConfigMap | Auto-created for CA distribution | Ignore |
-| ServiceAccount token Secrets | Auto-created by Kubernetes | Ignore |
+| `default` ServiceAccount | Built-in ArgoCD exception | No action needed |
+| `kube-root-ca.crt` ConfigMap | Built-in ArgoCD exception | No action needed |
+| ServiceAccount token Secrets | Built-in ArgoCD exception when created for the default ServiceAccount | Usually no action needed |
 | ReplicaSets | Managed by Deployments | Usually tracked |
 
 ## Monitoring Orphaned Resources with Metrics
 
-ArgoCD exposes Prometheus metrics for orphaned resources:
+ArgoCD exposes Prometheus metrics for orphaned resources per application:
 
 ```promql
-# Count of orphaned resources per project
-argocd_app_orphaned_resources_count{project="production"}
+# Count of orphaned resources aggregated by project
+sum by (project) (argocd_app_orphaned_resources_count{project="production"})
 ```
 
 Create a Grafana alert for clusters accumulating too many orphaned resources:
@@ -296,7 +293,7 @@ groups:
   - name: argocd-orphaned
     rules:
       - alert: HighOrphanedResourceCount
-        expr: argocd_app_orphaned_resources_count > 20
+        expr: sum by (project) (argocd_app_orphaned_resources_count) > 20
         for: 1h
         labels:
           severity: warning
@@ -306,8 +303,8 @@ groups:
 
 ## Best Practices
 
-1. **Start with warn: true** - Never enable automatic deletion of orphaned resources without understanding what is orphaned first
-2. **Build a comprehensive ignore list** - Auto-created Kubernetes resources should always be ignored
+1. **Start with warning-only visibility** - Orphaned resource monitoring reports and displays orphaned resources, but it does not automatically delete them
+2. **Build a focused ignore list** - Ignore expected resources created by controllers or operators after confirming ArgoCD does not already exclude them
 3. **Review orphans weekly** - Set up a regular cadence to review and clean up orphaned resources
 4. **Enable on all projects** - Orphaned resource monitoring should be a standard part of every project configuration
 5. **Monitor metrics** - Track orphaned resource counts over time to catch trends
