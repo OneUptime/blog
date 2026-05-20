@@ -77,8 +77,8 @@ Document all active Spinnaker pipelines.
 spin pipeline list --application my-app --output json | jq '.[].name'
 
 # Export each pipeline configuration
-for PIPELINE in $(spin pipeline list --application my-app -o json | jq -r '.[].name'); do
-  spin pipeline get --name "$PIPELINE" --application my-app > "pipelines/${PIPELINE}.json"
+for PIPELINE in $(spin pipeline list --application my-app --output json | jq -r '.[].name'); do
+  spin pipeline get --name "$PIPELINE" --application my-app --output json > "pipelines/${PIPELINE}.json"
 done
 ```
 
@@ -229,10 +229,11 @@ metadata:
   name: argo-rollouts
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://argoproj.github.io/argo-helm
     chart: argo-rollouts
-    targetRevision: 2.35.0
+    targetRevision: 2.40.9
   destination:
     server: https://kubernetes.default.svc
     namespace: argo-rollouts
@@ -315,6 +316,18 @@ kind: Rollout
 metadata:
   name: api
 spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+        - name: api
+          image: registry.myorg.com/api:v2.1.0
   strategy:
     canary:
       steps:
@@ -342,11 +355,20 @@ Replace Spinnaker triggers with ArgoCD mechanisms.
 **Docker Registry Trigger**: Use ArgoCD Image Updater.
 
 ```yaml
-# argocd-image-updater annotation
+# ImageUpdater custom resource
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
-  annotations:
-    argocd-image-updater.argoproj.io/image-list: api=registry.myorg.com/api
-    argocd-image-updater.argoproj.io/api.update-strategy: semver
+  name: api-image-updater
+  namespace: argocd
+spec:
+  applicationRefs:
+    - namePattern: api-*
+      images:
+        - alias: api
+          imageName: registry.myorg.com/api:~2.1
+          commonUpdateSettings:
+            updateStrategy: semver
 ```
 
 **Git Trigger**: ArgoCD handles this natively through Git polling or webhooks.
@@ -382,7 +404,7 @@ After all applications are migrated and validated.
 
 ```bash
 # Verify no active Spinnaker pipelines
-spin pipeline list --application my-app -o json | jq '.[].disabled'
+spin pipeline list --application my-app --output json | jq -r '.[] | select(.disabled != true) | .name'
 
 # Remove Spinnaker
 kubectl delete namespace spinnaker
