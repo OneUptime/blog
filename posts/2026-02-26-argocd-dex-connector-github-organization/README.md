@@ -75,7 +75,7 @@ data:
           redirectURI: https://argocd.example.com/api/dex/callback
           orgs:
             - name: my-organization
-          loadAllGroups: true
+          teamNameField: slug
           useLoginAsID: true
 ```
 
@@ -207,27 +207,34 @@ A user who is a member of `my-org:backend` might also be a member of `my-org:eng
 
 ## Step 6: Using loadAllGroups vs Specific Teams
 
-The `loadAllGroups` setting controls whether Dex fetches all team memberships or only those for teams listed in the `orgs.teams` configuration:
+The `orgs.teams` configuration controls whether Dex returns all team memberships from an allowed organization or only specific teams:
 
 ```yaml
-          # Fetch ALL teams the user belongs to
-          loadAllGroups: true
-
-          # Only fetch teams listed in the orgs section
-          loadAllGroups: false
+          # Return all teams in the allowed organization
+          orgs:
+            - name: my-organization
 ```
 
-When `loadAllGroups` is `true`:
-- Dex fetches all team memberships for the user across allowed organizations
+```yaml
+          # Only return these teams in the allowed organization
+          orgs:
+            - name: my-organization
+              teams:
+                - platform-engineering
+                - sre
+```
+
+When `orgs` lists an organization without `teams`:
+- Dex fetches team memberships for the user in that allowed organization
 - More flexible for RBAC - you can reference any team in policy.csv
 - More API calls to GitHub, which could hit rate limits for large organizations
 
-When `loadAllGroups` is `false`:
-- Dex only checks membership in the teams explicitly listed in the `orgs` configuration
+When `orgs.teams` is set:
+- Dex only returns group claims for the teams explicitly listed in the `orgs` configuration
 - Fewer API calls
 - You can only use listed teams in RBAC policies
 
-For most setups, `loadAllGroups: true` is the better choice unless you have rate limiting concerns.
+The separate `loadAllGroups` setting loads all of a user's organizations and teams, but Dex only supports it when neither `org` nor `orgs` is configured. For organization-restricted ArgoCD access, use `orgs` and `orgs.teams` instead of `loadAllGroups`.
 
 ## GitHub Enterprise Server
 
@@ -238,7 +245,7 @@ For GitHub Enterprise Server (self-hosted), add the enterprise hostname:
             - name: my-organization
               teams:
                 - platform-team
-          loadAllGroups: true
+          teamNameField: slug
           useLoginAsID: true
           # GitHub Enterprise Server configuration
           hostName: github.internal.example.com
@@ -251,7 +258,7 @@ If your GitHub Enterprise uses a self-signed certificate:
           rootCA: /etc/dex/tls/github-ca.crt
 ```
 
-Mount the CA certificate into the Dex container as described in the LDAP guide.
+Mount the CA certificate into the Dex container so the `rootCA` path exists.
 
 ## Verifying the Configuration
 
@@ -284,8 +291,8 @@ Access revocation happens at the GitHub level:
 For immediate revocation, you can also:
 
 ```bash
-# Delete the user's ArgoCD token
-argocd account delete-token --account <username>
+# Delete a generated token for a local ArgoCD account
+argocd account delete-token --account <account-name> <token-id>
 ```
 
 ## Troubleshooting
@@ -299,8 +306,8 @@ The user is not in any of the organizations listed in `orgs`. Check:
 
 ### Teams Not Available in RBAC
 
-1. Verify `loadAllGroups: true` is set
-2. Check that the OAuth app has the `read:org` scope
+1. Verify the team is either not filtered out by `orgs.teams`, or is explicitly listed there
+2. Check that the OAuth authorization includes the `read:org` scope and that organization access has been approved
 3. Look at Dex logs for API errors:
 ```bash
 kubectl -n argocd logs deploy/argocd-dex-server | grep -i "team\|group\|error"
@@ -310,8 +317,7 @@ kubectl -n argocd logs deploy/argocd-dex-server | grep -i "team\|group\|error"
 
 If you see rate limit errors in Dex logs:
 - Reduce the number of concurrent logins
-- Set `loadAllGroups: false` and only list needed teams
-- Consider using a GitHub App instead of an OAuth App for higher rate limits
+- List only the needed teams under `orgs.teams`
 
 ## Summary
 
