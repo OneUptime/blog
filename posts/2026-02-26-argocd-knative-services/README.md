@@ -49,12 +49,12 @@ In your Git repository, store the Knative installation manifests:
 
 ```yaml
 # knative/serving/serving-crds.yaml
-# Download from: https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-crds.yaml
+# Download from: https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-crds.yaml
 # Store in Git for version control
 
 ---
 # knative/serving/serving-core.yaml
-# Download from: https://github.com/knative/serving/releases/download/knative-v1.13.0/serving-core.yaml
+# Download from: https://github.com/knative/serving/releases/download/knative-v1.22.0/serving-core.yaml
 ```
 
 Install the networking layer (using Kourier as a lightweight option):
@@ -81,6 +81,8 @@ spec:
     automated:
       selfHeal: true
 ```
+
+Store the Kourier manifest from `https://github.com/knative-extensions/net-kourier/releases/download/knative-v1.22.0/kourier.yaml` in the `knative/kourier` path.
 
 Configure Knative to use Kourier:
 
@@ -112,7 +114,7 @@ spec:
   template:
     metadata:
       annotations:
-        # Scale down to zero after 5 minutes of inactivity
+        # Keep the last pod for at least 5 minutes after the autoscaler decides to scale to zero
         autoscaling.knative.dev/scale-to-zero-pod-retention-period: "5m"
         # Use 10 concurrent requests per pod as scaling target
         autoscaling.knative.dev/target: "10"
@@ -199,6 +201,7 @@ spec:
       percent: 20
     # Tag the new revision for direct testing
     - revisionName: api-service-v2
+      percent: 0
       tag: canary
 ```
 
@@ -211,7 +214,7 @@ graph LR
     A[Incoming Traffic] --> B{Traffic Split}
     B -->|80%| C[api-service-v1]
     B -->|20%| D[api-service-v2]
-    E[canary-api-service.example.com] --> D
+    E[canary-api-service.production.example.com] --> D
 ```
 
 ## Autoscaling Configuration
@@ -226,10 +229,10 @@ metadata:
   name: config-autoscaler
   namespace: knative-serving
 data:
-  # Scale to zero after this period of inactivity
+  # Upper bound for internal network programming before the last replica is removed
   scale-to-zero-grace-period: "30s"
 
-  # How quickly to scale up
+  # Autoscaler observation windows and panic threshold
   stable-window: "60s"
   panic-window-percentage: "10.0"
   panic-threshold-percentage: "200.0"
@@ -298,10 +301,47 @@ spec:
       - ServerSideApply=true
 ```
 
+For Trigger examples, also store a broker implementation such as `https://github.com/knative/eventing/releases/download/knative-v1.22.0/mt-channel-broker.yaml` in the Eventing path.
+
 Create event sources and triggers:
 
 ```yaml
 # services/production/order-events.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: event-watcher
+  namespace: production
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: event-watcher
+  namespace: production
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - events
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: event-watcher
+  namespace: production
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: event-watcher
+subjects:
+  - kind: ServiceAccount
+    name: event-watcher
+    namespace: production
+---
 apiVersion: sources.knative.dev/v1
 kind: ApiServerSource
 metadata:
@@ -313,12 +353,17 @@ spec:
   resources:
     - apiVersion: v1
       kind: Event
-      controller: true
   sink:
     ref:
       apiVersion: serving.knative.dev/v1
       kind: Service
       name: order-processor
+---
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: default
+  namespace: production
 ---
 apiVersion: eventing.knative.dev/v1
 kind: Trigger
@@ -327,9 +372,9 @@ metadata:
   namespace: production
 spec:
   broker: default
-  filter:
-    attributes:
-      type: order.created
+  filters:
+    - exact:
+        type: order.created
   subscriber:
     ref:
       apiVersion: serving.knative.dev/v1
@@ -339,7 +384,7 @@ spec:
 
 ## Custom Health Checks
 
-ArgoCD does not understand Knative resource health by default. Add custom health checks:
+If your ArgoCD version does not include built-in Knative health checks, add custom health checks:
 
 ```yaml
 # In argocd-cm ConfigMap
@@ -382,10 +427,10 @@ data:
   # Default domain for all services
   example.com: ""
 
-  # Specific domain for production namespace
+  # Specific domain for services labeled environment=production
   prod.example.com: |
     selector:
-      serving.knative.dev/visibility: cluster-local
+      environment: production
 ```
 
 ## Summary
