@@ -14,7 +14,7 @@ Every ArgoCD Application has a sync status that tells you whether the Kubernetes
 
 ArgoCD reports three possible sync statuses for each Application:
 
-**Synced** - The live state in the cluster matches the desired state from Git. Every resource that should exist does exist, every resource that should not exist has been removed (if pruning is enabled), and the configuration of each resource matches what Git declares.
+**Synced** - The live state in the cluster matches the desired state from Git. Every resource that should exist does exist, any ArgoCD-tracked resource that should be pruned has been removed if pruning was enabled, and the configuration of each resource matches what Git declares.
 
 **OutOfSync** - The live state does not match the desired state. Something is different. Maybe a new commit changed a manifest, someone manually edited a resource, or a resource is missing from the cluster.
 
@@ -94,9 +94,9 @@ A resource defined in Git does not exist in the cluster. This can happen when:
 - The initial sync partially failed
 - A namespace was deleted
 
-### 4. Extra Resources (Orphans)
+### 4. Extra Resources That Need Pruning
 
-A resource exists in the cluster that is no longer defined in Git. This happens when you remove a manifest from your repository. ArgoCD detects the extra resource and reports OutOfSync.
+A resource tracked by ArgoCD exists in the cluster but is no longer defined in Git. This happens when you remove a manifest from your repository. ArgoCD detects the extra resource and reports OutOfSync. This is different from unrelated orphaned resources in the namespace, which are handled by ArgoCD's orphaned resources monitoring feature and do not automatically belong to the Application.
 
 The extra resource will only be removed during sync if pruning is enabled in the sync policy or if you check the "Prune" option during a manual sync.
 
@@ -143,9 +143,9 @@ The comparison process is more sophisticated than a simple YAML diff. Here is wh
 - `metadata.resourceVersion`
 - `metadata.generation`
 
-**Step 3: Apply defaults.** If the desired state omits a field that has a known default value in Kubernetes, ArgoCD treats them as equivalent. For example, if your manifest does not specify `imagePullPolicy` and the live resource has `imagePullPolicy: IfNotPresent` (the default), they are considered equal.
+**Step 3: Normalize known values.** ArgoCD accounts for Kubernetes-managed fields and known type formatting during comparison, but defaults are not a blanket rule for every resource and field. If a defaulted or reformatted field still appears in the diff, use the diff output to decide whether the manifest should be made explicit or an ignore rule is appropriate.
 
-**Step 4: Compare.** After normalization, ArgoCD does a structured comparison of the two states. If any field differs, the application is OutOfSync.
+**Step 4: Compare.** After normalization, ArgoCD does a structured comparison of the two states. If any relevant, non-ignored field differs, the application is OutOfSync.
 
 ## Viewing the Diff
 
@@ -195,6 +195,7 @@ kind: Application
 metadata:
   name: my-app
 spec:
+  # project, source, and destination omitted for brevity
   syncPolicy:
     automated:
       prune: true      # Automatically delete orphaned resources
@@ -211,7 +212,7 @@ spec:
         maxDuration: 3m
 ```
 
-With `selfHeal: true`, ArgoCD reverts any manual cluster changes within seconds, ensuring the cluster always matches Git.
+With `selfHeal: true`, ArgoCD re-attempts sync after live cluster drift is detected. The default self-heal timeout is 5 seconds, so manual changes are usually reverted quickly if the sync can succeed.
 
 ## Troubleshooting Persistent OutOfSync
 
