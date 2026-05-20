@@ -31,26 +31,31 @@ This widget shows how often an application has been deployed over time.
 ```python
 # deployment_tracker.py
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify
 from datetime import datetime, timedelta
+import os
 import requests
 
 app = Flask(__name__)
 
 # ArgoCD API base URL (accessible within the cluster)
-ARGOCD_API = "http://argocd-server.argocd.svc.cluster.local"
+ARGOCD_API = os.environ.get("ARGOCD_API", "https://argocd-server.argocd.svc.cluster.local")
 
 @app.route('/api/deployments/<app_name>/frequency')
 def deployment_frequency(app_name):
     """Calculate deployment frequency for an application."""
     # Get application history from ArgoCD API
-    # In production, use a proper token
-    headers = {"Authorization": f"Bearer {request.headers.get('X-ArgoCD-Token', '')}"}
+    argocd_token = os.environ.get("ARGOCD_TOKEN")
+    if not argocd_token:
+        return jsonify({"error": "ARGOCD_TOKEN is not configured"}), 500
+
+    headers = {"Authorization": f"Bearer {argocd_token}"}
+    verify_tls = os.environ.get("ARGOCD_VERIFY_TLS", "true").lower() == "true"
 
     resp = requests.get(
         f"{ARGOCD_API}/api/v1/applications/{app_name}",
         headers=headers,
-        verify=False
+        verify=verify_tls
     )
 
     if resp.status_code != 200:
@@ -105,7 +110,8 @@ interface FrequencyData {
 
 interface WidgetProps {
   application: {
-    metadata: { name: string };
+    metadata: { name: string; namespace?: string };
+    spec: { project: string };
   };
 }
 
@@ -114,12 +120,17 @@ const DeploymentFrequencyWidget: React.FC<WidgetProps> = ({ application }) => {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    fetch(`/api/extensions/deployments/api/deployments/${application.metadata.name}/frequency`)
+    fetch(`/extensions/deployments/api/deployments/${encodeURIComponent(application.metadata.name)}/frequency`, {
+      headers: {
+        'Argocd-Application-Name': `${application.metadata.namespace || 'argocd'}:${application.metadata.name}`,
+        'Argocd-Project-Name': application.spec.project,
+      },
+    })
       .then(res => res.json())
       .then(setData)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [application.metadata.name]);
+  }, [application.metadata.name, application.metadata.namespace, application.spec.project]);
 
   if (loading) return <div>Loading deployment data...</div>;
   if (!data) return <div>No deployment data available</div>;
@@ -188,7 +199,12 @@ const CostWidget: React.FC<{ application: any }> = ({ application }) => {
   React.useEffect(() => {
     const ns = application.spec.destination.namespace;
     // Query Kubecost through proxy extension
-    fetch(`/api/extensions/kubecost/model/allocation?window=30d&namespace=${ns}`)
+    fetch('/extensions/kubecost/model/allocation?window=30d&aggregate=namespace&accumulate=true', {
+      headers: {
+        'Argocd-Application-Name': `${application.metadata.namespace || 'argocd'}:${application.metadata.name}`,
+        'Argocd-Project-Name': application.spec.project,
+      },
+    })
       .then(res => res.json())
       .then(data => {
         // Transform Kubecost response
@@ -266,7 +282,12 @@ const ComplianceWidget: React.FC<{ application: any }> = ({ application }) => {
   React.useEffect(() => {
     const ns = application.spec.destination.namespace;
     // Query policy engine through proxy extension
-    fetch(`/api/extensions/compliance/api/check?namespace=${ns}&app=${application.metadata.name}`)
+    fetch(`/extensions/compliance/api/check?namespace=${encodeURIComponent(ns)}&app=${encodeURIComponent(application.metadata.name)}`, {
+      headers: {
+        'Argocd-Application-Name': `${application.metadata.namespace || 'argocd'}:${application.metadata.name}`,
+        'Argocd-Project-Name': application.spec.project,
+      },
+    })
       .then(res => res.json())
       .then(data => setResults(data.results || []))
       .catch(console.error);
@@ -276,12 +297,6 @@ const ComplianceWidget: React.FC<{ application: any }> = ({ application }) => {
     pass: '#18be94',
     fail: '#e74c3c',
     warning: '#f39c12',
-  };
-
-  const statusIcons = {
-    pass: 'check-circle',
-    fail: 'times-circle',
-    warning: 'exclamation-triangle',
   };
 
   const passCount = results.filter(r => r.status === 'pass').length;
@@ -355,16 +370,27 @@ const DashboardExtension: React.FC<{ application: any }> = ({ application }) => 
 
 // Register as application tab extension
 ((window: any) => {
-  window.extensions = window.extensions || {};
-  window.extensions.applications = window.extensions.applications || {};
-  window.extensions.applications['dashboard'] = DashboardExtension;
+  window.extensionsAPI.registerResourceExtension(
+    DashboardExtension,
+    'argoproj.io',
+    'Application',
+    'Dashboard'
+  );
 })(window);
 ```
 
 ## Deployment Configuration
 
 ```yaml
-# Configure ArgoCD to load the dashboard extension
+# Enable proxy extensions, then configure the extension backends
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  server.enable.proxy.extension: 'true'
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -395,8 +421,12 @@ Before deploying, test your widgets locally.
 # Build the extension bundle
 npx webpack --mode development --watch
 
-# Serve the bundle locally
-npx http-server dist/ --port 9090
+# Copy the built extension-*.js file into /tmp/extensions in an argocd-server pod
+ARGOCD_SERVER_POD=$(kubectl get pod -n argocd \
+  -l app.kubernetes.io/name=argocd-server \
+  -o jsonpath='{.items[0].metadata.name}')
+kubectl cp -n argocd dist/extension-dashboard.js \
+  "$ARGOCD_SERVER_POD:/tmp/extensions/extension-dashboard.js"
 
 # In another terminal, port-forward ArgoCD
 kubectl port-forward svc/argocd-server -n argocd 8080:443
@@ -407,7 +437,9 @@ You can test the proxy extensions directly with curl.
 ```bash
 # Test the deployment frequency endpoint
 curl -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://localhost:8080/api/extensions/deployments/api/deployments/my-app/frequency"
+  -H "Argocd-Application-Name: argocd:my-app" \
+  -H "Argocd-Project-Name: default" \
+  "https://localhost:8080/extensions/deployments/api/deployments/my-app/frequency"
 ```
 
 ## Conclusion
