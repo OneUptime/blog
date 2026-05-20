@@ -129,40 +129,45 @@ metadata:
   name: payment-service
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - list:
         elements:
           - environment: dev
             namespace: team-alpha-dev
-            autoSync: "true"
+            autoSync: true
             targetRevision: main
           - environment: staging
             namespace: team-alpha-staging
-            autoSync: "true"
+            autoSync: true
             targetRevision: main
           - environment: prod
             namespace: team-alpha-prod
-            autoSync: "false"
+            autoSync: false
             targetRevision: release
   template:
     metadata:
-      name: "payment-service-{{environment}}"
+      name: "payment-service-{{ .environment }}"
       labels:
         app: payment-service
-        environment: "{{environment}}"
+        environment: "{{ .environment }}"
     spec:
       project: team-alpha
       source:
         repoURL: https://github.com/myorg/payment-service.git
-        path: "k8s/overlays/{{environment}}"
-        targetRevision: "{{targetRevision}}"
+        path: "k8s/overlays/{{ .environment }}"
+        targetRevision: "{{ .targetRevision }}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{namespace}}"
+        namespace: "{{ .namespace }}"
+  templatePatch: |
+    {{- if .autoSync }}
+    spec:
       syncPolicy:
         automated:
           prune: true
           selfHeal: true
+    {{- end }}
 ```
 
 ## Multi-Cluster Environment Separation
@@ -210,7 +215,7 @@ Different environments need different sync behaviors:
 |-------------|-----------|-----------|-------|-------------|
 | Dev | Yes | Yes | Yes | Always |
 | Staging | Yes | Yes | Yes | Business hours |
-| Production | No | Yes | No | Maintenance window |
+| Production | No | No | No | Maintenance window |
 
 Configure sync windows in the AppProject:
 
@@ -219,7 +224,10 @@ apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: team-alpha
+  namespace: argocd
 spec:
+  sourceRepos:
+    - https://github.com/myorg/payment-service.git
   syncWindows:
     # Production: only during maintenance windows
     - kind: allow
@@ -229,7 +237,7 @@ spec:
         - team-alpha-prod
     # Block production deploys on weekends
     - kind: deny
-      schedule: "0 0 * * 0,6"  # Saturday and Sunday
+      schedule: "0 0 * * 6"  # Saturday
       duration: 48h
       namespaces:
         - team-alpha-prod
@@ -253,7 +261,7 @@ done
 
 Output shows whether all environments are on the same revision:
 
-```json
+```text
 === dev ===
 {"sync": "Synced", "health": "Healthy", "revision": "abc1234"}
 === staging ===
@@ -318,14 +326,14 @@ p, role:qa, applications, get, team-alpha/*, allow
 
 ## Monitoring Across Environments
 
-Set up a unified view of application health across all environments. ArgoCD's application labels make this easy with Prometheus queries:
+Set up a unified view of application health across all environments. ArgoCD's application names and labels make this easy with Prometheus queries:
 
 ```promql
 # Application sync status by environment
-argocd_app_info{name=~"payment-service-.*"} * on(name) group_left(environment) label_replace(argocd_app_info, "environment", "$1", "name", "payment-service-(.*)")
+label_replace(argocd_app_info{name=~"payment-service-.*"}, "environment", "$1", "name", "payment-service-(.*)")
 
 # Sync failures by environment in the last 24h
-sum by (dest_namespace) (increase(argocd_app_sync_total{phase="Error", name=~"payment-service-.*"}[24h]))
+sum by (environment) (label_replace(increase(argocd_app_sync_total{phase=~"Error|Failed", name=~"payment-service-.*"}[24h]), "environment", "$1", "name", "payment-service-(.*)"))
 ```
 
 Managing environments with ArgoCD gives you visibility into what is deployed where, the ability to trace every change back to a Git commit, and the confidence that each environment is exactly what its configuration says it should be. Start with the overlay-based approach, add ApplicationSets when you have many services, and layer on environment-specific policies as your organization matures.
