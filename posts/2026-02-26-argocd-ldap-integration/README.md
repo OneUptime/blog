@@ -105,7 +105,7 @@ This is a common source of confusion. `groupOfNames` stores full DNs in the `mem
 
 ## FreeIPA Configuration
 
-FreeIPA has its own LDAP schema that is closer to AD than standard OpenLDAP:
+FreeIPA has its own LDAP schema and DN layout, with users and groups under the `cn=accounts` subtree:
 
 ```yaml
 apiVersion: v1
@@ -171,7 +171,7 @@ For production environments, use External Secrets Operator or Sealed Secrets to 
 
 ```yaml
 # ExternalSecret pulling from Vault
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: argocd-ldap-credentials
