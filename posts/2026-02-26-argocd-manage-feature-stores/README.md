@@ -62,10 +62,10 @@ feature-store/
     entities/
       user.py
       product.py
-    feature-views/
+    feature_views/
       user_features.py
       product_features.py
-    feature-services/
+    feature_services/
       recommendation_service.py
     feature_store.yaml
 ```
@@ -202,7 +202,7 @@ spec:
         app: feast-feature-server
     spec:
       initContainers:
-        # Clone feature definitions from Git
+        # Use an image that bundles your feature definitions under /features
         - name: feature-loader
           image: myregistry/feast-loader:v1.0.0
           command:
@@ -212,8 +212,7 @@ spec:
               # Copy feature definitions
               cp -r /features/* /feast-repo/
               # Apply feature definitions to the registry
-              cd /feast-repo
-              feast apply
+              feast -c /feast-repo apply
           volumeMounts:
             - name: feast-repo
               mountPath: /feast-repo
@@ -223,9 +222,12 @@ spec:
       containers:
         - name: feast-server
           image: feastdev/feature-server:0.36.0
+          command:
+            - feast
           args:
             - -c
             - /feast-repo
+            - serve
             - --host
             - "0.0.0.0"
             - --port
@@ -269,21 +271,29 @@ The real power of this approach is that feature definitions live in Git alongsid
 from feast import Entity, ValueType
 
 user = Entity(
-    name="user_id",
+    name="user",
+    join_keys=["user_id"],
     value_type=ValueType.INT64,
     description="Unique user identifier",
 )
 ```
 
 ```python
-# feature-definitions/feature-views/user_features.py
-from feast import FeatureView, Field
+# feature-definitions/feature_views/user_features.py
+from feast import BigQuerySource, FeatureView, Field
 from feast.types import Float32, Int64
 from datetime import timedelta
 
+from entities.user import user
+
+user_purchase_source = BigQuerySource(
+    table="my-gcp-project.feast_offline.user_purchases",
+    timestamp_field="event_timestamp",
+)
+
 user_features = FeatureView(
     name="user_features",
-    entities=["user_id"],
+    entities=[user],
     ttl=timedelta(days=1),
     schema=[
         Field(name="total_purchases", dtype=Int64),
@@ -298,8 +308,11 @@ user_features = FeatureView(
 ```
 
 ```python
-# feature-definitions/feature-services/recommendation_service.py
+# feature-definitions/feature_services/recommendation_service.py
 from feast import FeatureService
+
+from feature_views.product_features import product_features
+from feature_views.user_features import user_features
 
 recommendation_service = FeatureService(
     name="recommendation_features",
@@ -336,17 +349,21 @@ spec:
                 - /bin/sh
                 - -c
                 - |
-                  cd /feast-repo
-                  feast materialize-incremental $(date -u +%Y-%m-%dT%H:%M:%S)
+                  cp -r /features/* /feast-repo/
+                  feast -c /feast-repo materialize-incremental $(date -u +%Y-%m-%dT%H:%M:%S)
               resources:
                 requests:
                   cpu: "2"
                   memory: "4Gi"
               volumeMounts:
+                - name: feast-repo
+                  mountPath: /feast-repo
                 - name: feast-config
-                  mountPath: /feast-repo/feature_store.yaml
+                  mountPath: /features/feature_store.yaml
                   subPath: feature_store.yaml
           volumes:
+            - name: feast-repo
+              emptyDir: {}
             - name: feast-config
               configMap:
                 name: feast-config
@@ -409,13 +426,25 @@ spec:
             - /bin/sh
             - -c
             - |
-              cd /feast-repo
+              cp -r /features/* /feast-repo/
               # Validate feature definitions
-              feast plan
+              feast -c /feast-repo plan
               if [ $? -ne 0 ]; then
                 echo "Feature validation failed"
                 exit 1
               fi
+          volumeMounts:
+            - name: feast-repo
+              mountPath: /feast-repo
+            - name: feast-config
+              mountPath: /features/feature_store.yaml
+              subPath: feature_store.yaml
+      volumes:
+        - name: feast-repo
+          emptyDir: {}
+        - name: feast-config
+          configMap:
+            name: feast-config
 ```
 
 The `feast plan` command shows what changes will be applied without actually applying them, similar to `terraform plan`. If validation fails, the sync is aborted.
