@@ -8,7 +8,7 @@ Description: Learn how to deploy Cilium service mesh with ArgoCD for eBPF-powere
 
 ---
 
-Cilium is a unique service mesh that uses eBPF to provide networking, security, and observability directly in the Linux kernel. Unlike Istio or Linkerd, Cilium does not use sidecar proxies - its mesh features run at the kernel level on each node, reducing per-pod overhead significantly. Deploying Cilium with ArgoCD gives you a GitOps-managed service mesh that doubles as your CNI plugin.
+Cilium is a unique service mesh that uses eBPF to provide networking, security, and observability directly in the Linux kernel, with node-local Envoy proxies for L7 features. Unlike Istio or Linkerd, Cilium does not use sidecar proxies - its mesh features run through eBPF and per-node components, reducing per-pod overhead significantly. Deploying Cilium with ArgoCD gives you a GitOps-managed service mesh that doubles as your CNI plugin.
 
 This guide covers deploying Cilium's service mesh capabilities with ArgoCD.
 
@@ -16,8 +16,8 @@ This guide covers deploying Cilium's service mesh capabilities with ArgoCD.
 
 Traditional service meshes inject a sidecar proxy (Envoy) into every pod. This adds CPU, memory, and latency overhead per pod. Cilium takes a different approach:
 
-- **eBPF-based**: Networking happens in the kernel, not in userspace sidecars
-- **No sidecars needed**: mTLS, L7 policies, and observability work without per-pod proxies
+- **eBPF-based**: L3/L4 networking happens in the kernel, not in userspace sidecars
+- **No sidecars needed**: mutual authentication, L7 policies, and observability work without per-pod proxies
 - **CNI + Service Mesh**: One tool replaces both your CNI plugin and service mesh
 - **Lower resource overhead**: No extra containers per pod
 
@@ -27,7 +27,9 @@ graph TD
         A[Pod A + Sidecar Proxy] --> B[Pod B + Sidecar Proxy]
     end
     subgraph Cilium Service Mesh
-        C[Pod A] --> D[eBPF in Kernel] --> E[Pod B]
+        C[Pod A] --> D[eBPF in Kernel]
+        D --> F[Node-local Envoy for L7]
+        F --> E[Pod B]
     end
 ```
 
@@ -38,20 +40,28 @@ Cilium replaces your CNI plugin, so you need to deploy it either:
 - During cluster creation (before any other CNI is installed)
 - By replacing an existing CNI (which requires node restarts)
 
-For EKS, you can create clusters without a default CNI:
+For EKS, create the cluster without the default networking addons by using an eksctl config file:
+
+```yaml
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: my-cluster
+  region: us-east-1
+  version: "1.35"
+addonsConfig:
+  disableDefaultAddons: true
+addons:
+  - name: kube-proxy
+  - name: coredns
+managedNodeGroups:
+  - name: main
+    instanceType: m6i.xlarge
+    desiredCapacity: 3
+```
 
 ```bash
-eksctl create cluster \
-  --name my-cluster \
-  --version 1.29 \
-  --without-nodegroup \
-  --vpc-cni-addon=false
-
-eksctl create nodegroup \
-  --cluster my-cluster \
-  --name main \
-  --node-type m6i.xlarge \
-  --nodes 3
+eksctl create cluster -f cluster.yaml
 ```
 
 ## Step 1: Deploy Cilium as CNI + Service Mesh
@@ -71,7 +81,7 @@ spec:
   source:
     repoURL: https://helm.cilium.io/
     chart: cilium
-    targetRevision: 1.15.0
+    targetRevision: 1.19.4
     helm:
       values: |
         # Cluster identification
@@ -88,11 +98,14 @@ spec:
         # Enable Envoy-based L7 proxy (per-node, not per-pod)
         envoy:
           enabled: true
+        envoyConfig:
+          enabled: true
 
         # Enable mutual TLS
         authentication:
+          enabled: true
           mutual:
-            spiffe:
+            spire:
               enabled: true
               install:
                 enabled: true
@@ -259,12 +272,15 @@ spec:
 Verify mTLS is working:
 
 ```bash
-# Check authentication status
-hubble observe --namespace api --type auth
+# Check authentication logs
+kubectl -n kube-system logs -l k8s-app=cilium -c cilium-agent --timestamps=true | \
+  grep "Policy is requiring authentication\|Validating Server SNI\|Validated certificate\|Successfully authenticated"
 
-# View SPIFFE identities
-cilium identity list
+# View Cilium identities used for SPIFFE IDs
+kubectl get ciliumidentities
 ```
+
+Cilium mutual authentication uses an out-of-band mTLS handshake for identity verification. If you also require payload encryption between pods, enable Cilium's WireGuard or IPsec transparent encryption.
 
 ## Step 5: Configure Ingress with Cilium
 
@@ -276,10 +292,8 @@ kind: Ingress
 metadata:
   name: api-ingress
   namespace: api
-  annotations:
-    # Use Cilium as ingress controller
-    ingressClassName: cilium
 spec:
+  ingressClassName: cilium
   rules:
     - host: api.example.com
       http:
@@ -297,7 +311,11 @@ spec:
       secretName: api-tls
 ```
 
-Or use the Gateway API for more advanced routing:
+Or use the Gateway API for more advanced routing. Install the Gateway API CRDs before enabling or applying Gateway resources:
+
+```bash
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
+```
 
 ```yaml
 apiVersion: gateway.networking.k8s.io/v1
@@ -441,19 +459,38 @@ spec:
             - name: envoy.filters.network.http_connection_manager
               typed_config:
                 "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-                route_config:
-                  virtual_hosts:
-                    - name: api
-                      routes:
-                        - match:
-                            prefix: "/"
-                          route:
-                            weighted_clusters:
-                              clusters:
-                                - name: api-service-stable
-                                  weight: 90
-                                - name: api-service-canary
-                                  weight: 10
+                stat_prefix: api-listener
+                rds:
+                  route_config_name: api_route
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+    - "@type": type.googleapis.com/envoy.config.route.v3.RouteConfiguration
+      name: api_route
+      virtual_hosts:
+        - name: api_route
+          domains: ["*"]
+          routes:
+            - match:
+                prefix: "/"
+              route:
+                weighted_clusters:
+                  clusters:
+                    - name: "api/api-service-stable"
+                      weight: 90
+                    - name: "api/api-service-canary"
+                      weight: 10
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: "api/api-service-stable"
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
+    - "@type": type.googleapis.com/envoy.config.cluster.v3.Cluster
+      name: "api/api-service-canary"
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      type: EDS
 ```
 
 ## Custom Health Checks for ArgoCD
@@ -480,19 +517,16 @@ data:
 
 ## Handling ArgoCD Diff Issues
 
-Cilium adds annotations and labels to pods. Configure ArgoCD to ignore these:
+Cilium can manage fields on resources after they are applied. Configure ArgoCD to ignore Cilium-owned managed fields:
 
 ```yaml
 spec:
   ignoreDifferences:
-    - group: ""
-      kind: Pod
-      jqPathExpressions:
-        - .metadata.annotations["cilium.io/.*"]
-    - group: ""
-      kind: Node
-      jqPathExpressions:
-        - .metadata.annotations["network.cilium.io/.*"]
+    - group: "*"
+      kind: "*"
+      managedFieldsManagers:
+        - cilium-agent
+        - cilium-operator
 ```
 
 ## Multi-Cluster Cilium Mesh
