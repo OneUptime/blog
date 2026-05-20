@@ -25,15 +25,20 @@ Before writing health checks, you need to understand what Velero puts in its sta
 A Velero Backup resource has a `status.phase` field that can be:
 
 - `New` - Backup request has been created
+- `Queued` - Backup is waiting in the controller queue
+- `ReadyToStart` - Backup has left the queue and is ready to run
 - `InProgress` - Backup is currently running
-- `Uploading` - Backup data is being uploaded to object storage
+- `WaitingForPluginOperations` - Backup is waiting for async plugin operations, such as snapshot data movement, to finish
+- `WaitingForPluginOperationsPartiallyFailed` - Backup is waiting for async plugin operations but has already encountered partial failures
+- `Finalizing` - Backup is finishing final status updates after work is complete
+- `FinalizingPartiallyFailed` - Backup is finishing final status updates after partial failures
 - `FailedValidation` - Backup failed validation checks
 - `Failed` - Backup has failed
 - `Completed` - Backup finished successfully
 - `PartiallyFailed` - Some items failed to back up
 - `Deleting` - Backup is being deleted
 
-A Velero Restore has similar phases: `New`, `InProgress`, `Completed`, `PartiallyFailed`, `Failed`, and `FailedValidation`.
+A Velero Restore has similar phases: `New`, `InProgress`, `WaitingForPluginOperations`, `WaitingForPluginOperationsPartiallyFailed`, `Finalizing`, `FinalizingPartiallyFailed`, `Completed`, `PartiallyFailed`, `Failed`, and `FailedValidation`.
 
 ## Configuring the Health Check in ArgoCD
 
@@ -66,10 +71,10 @@ data:
       elseif obj.status.phase == "FailedValidation" then
         hs.status = "Degraded"
         hs.message = "Backup failed validation"
-      elseif obj.status.phase == "InProgress" or obj.status.phase == "Uploading" then
+      elseif obj.status.phase == "InProgress" or obj.status.phase == "WaitingForPluginOperations" or obj.status.phase == "WaitingForPluginOperationsPartiallyFailed" or obj.status.phase == "Finalizing" or obj.status.phase == "FinalizingPartiallyFailed" then
         hs.status = "Progressing"
         hs.message = "Backup is in progress"
-      elseif obj.status.phase == "New" then
+      elseif obj.status.phase == "New" or obj.status.phase == "Queued" or obj.status.phase == "ReadyToStart" then
         hs.status = "Progressing"
         hs.message = "Backup is pending"
       elseif obj.status.phase == "Deleting" then
@@ -105,7 +110,7 @@ data:
       elseif obj.status.phase == "FailedValidation" then
         hs.status = "Degraded"
         hs.message = "Restore failed validation"
-      elseif obj.status.phase == "InProgress" then
+      elseif obj.status.phase == "InProgress" or obj.status.phase == "WaitingForPluginOperations" or obj.status.phase == "WaitingForPluginOperationsPartiallyFailed" or obj.status.phase == "Finalizing" or obj.status.phase == "FinalizingPartiallyFailed" then
         hs.status = "Progressing"
         hs.message = "Restore is in progress"
       elseif obj.status.phase == "New" then
@@ -130,7 +135,10 @@ Velero Schedules deserve their own health check too. A Schedule can be enabled o
   # Health check for Velero Schedule resources
   resource.customizations.health.velero.io_Schedule: |
     hs = {}
-    if obj.status ~= nil then
+    if obj.spec ~= nil and obj.spec.paused == true then
+      hs.status = "Suspended"
+      hs.message = "Schedule is paused"
+    elseif obj.status ~= nil then
       if obj.status.phase == "Enabled" then
         -- Check if the last backup was successful
         if obj.status.lastBackup ~= nil then
@@ -193,7 +201,7 @@ patches:
             elseif obj.status.phase == "Failed" or obj.status.phase == "PartiallyFailed" then
               hs.status = "Degraded"
               hs.message = obj.status.failureReason or "Backup failed"
-            elseif obj.status.phase == "InProgress" or obj.status.phase == "Uploading" then
+            elseif obj.status.phase == "InProgress" or obj.status.phase == "WaitingForPluginOperations" or obj.status.phase == "WaitingForPluginOperationsPartiallyFailed" or obj.status.phase == "Finalizing" or obj.status.phase == "FinalizingPartiallyFailed" then
               hs.status = "Progressing"
               hs.message = "Backup is in progress"
             else
@@ -213,8 +221,8 @@ If you installed ArgoCD with the community Helm chart, add the customization in 
 
 ```yaml
 # values.yaml for argo-cd Helm chart
-server:
-  config:
+configs:
+  cm:
     resource.customizations.health.velero.io_Backup: |
       hs = {}
       if obj.status ~= nil then
@@ -224,7 +232,7 @@ server:
         elseif obj.status.phase == "Failed" or obj.status.phase == "PartiallyFailed" then
           hs.status = "Degraded"
           hs.message = obj.status.failureReason or "Backup failed"
-        elseif obj.status.phase == "InProgress" or obj.status.phase == "Uploading" then
+        elseif obj.status.phase == "InProgress" or obj.status.phase == "WaitingForPluginOperations" or obj.status.phase == "WaitingForPluginOperationsPartiallyFailed" or obj.status.phase == "Finalizing" or obj.status.phase == "FinalizingPartiallyFailed" then
           hs.status = "Progressing"
           hs.message = "Backup is in progress"
         else
@@ -259,7 +267,7 @@ You should see the ArgoCD UI show "Progressing" while the backup runs and then s
 
 There are a few edge cases worth considering.
 
-**Stale backups**: A backup that has been "InProgress" for too long might indicate a stuck process. You can add a time-based check in your Lua script by comparing `obj.status.startTimestamp` with the current time, though Lua in ArgoCD has limited time functions.
+**Stale backups**: A backup that has been "InProgress" for too long might indicate a stuck process. You can add a time-based check in your Lua script by comparing `obj.status.startTimestamp` with the current time, but ArgoCD disables the standard Lua libraries by default. If you need Lua time functions, enable open libraries for that resource customization.
 
 **Partially failed backups**: Depending on your tolerance, you might want to treat `PartiallyFailed` as "Healthy" with a warning rather than "Degraded". Adjust the Lua script to match your operational requirements.
 
