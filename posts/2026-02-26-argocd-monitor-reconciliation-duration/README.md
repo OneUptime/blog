@@ -35,33 +35,33 @@ Each phase contributes to the total reconciliation duration. Slow Git fetches, c
 
 ## Key Reconciliation Metrics
 
-**argocd_app_reconcile** - Counter of reconciliation events:
+**argocd_app_reconcile** - Histogram of application reconciliation duration:
 
 ```promql
 # Reconciliation rate
 
-rate(argocd_app_reconcile_count[5m])
+sum(rate(argocd_app_reconcile_count[5m]))
 
 # Reconciliation rate by application
-rate(argocd_app_reconcile_count[5m]) by (name)
+sum by (name) (rate(argocd_app_reconcile_count[5m]))
 ```
 
-**argocd_app_reconcile_duration_seconds** - Histogram of reconciliation duration:
+The `argocd_app_reconcile` histogram exposes Prometheus series such as `argocd_app_reconcile_bucket`, `argocd_app_reconcile_sum`, and `argocd_app_reconcile_count`.
 
 ```promql
 # 95th percentile reconciliation duration
 histogram_quantile(0.95,
-  rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+  sum by (le) (rate(argocd_app_reconcile_bucket[5m]))
 )
 
 # 99th percentile
 histogram_quantile(0.99,
-  rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+  sum by (le) (rate(argocd_app_reconcile_bucket[5m]))
 )
 
 # Average reconciliation duration
-rate(argocd_app_reconcile_duration_seconds_sum[5m])
-/ rate(argocd_app_reconcile_duration_seconds_count[5m])
+sum(rate(argocd_app_reconcile_sum[5m]))
+/ sum(rate(argocd_app_reconcile_count[5m]))
 ```
 
 **Per-application duration:**
@@ -70,8 +70,8 @@ rate(argocd_app_reconcile_duration_seconds_sum[5m])
 # Find the slowest applications to reconcile
 topk(10,
   histogram_quantile(0.95,
-    rate(argocd_app_reconcile_duration_seconds_bucket[5m])
-  ) by (name)
+    sum by (name, le) (rate(argocd_app_reconcile_bucket[5m]))
+  )
 )
 ```
 
@@ -83,7 +83,7 @@ Create a Grafana dashboard focused on reconciliation performance:
 
 P95 reconciliation duration stat:
 ```promql
-histogram_quantile(0.95, rate(argocd_app_reconcile_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_app_reconcile_bucket[5m])))
 ```
 
 Reconciliation rate stat:
@@ -100,14 +100,14 @@ count(argocd_app_info)
 
 Time series - Reconciliation duration percentiles over time:
 ```promql
-histogram_quantile(0.50, rate(argocd_app_reconcile_duration_seconds_bucket[5m]))
-histogram_quantile(0.95, rate(argocd_app_reconcile_duration_seconds_bucket[5m]))
-histogram_quantile(0.99, rate(argocd_app_reconcile_duration_seconds_bucket[5m]))
+histogram_quantile(0.50, sum by (le) (rate(argocd_app_reconcile_bucket[5m])))
+histogram_quantile(0.95, sum by (le) (rate(argocd_app_reconcile_bucket[5m])))
+histogram_quantile(0.99, sum by (le) (rate(argocd_app_reconcile_bucket[5m])))
 ```
 
 Heatmap - Reconciliation duration distribution:
 ```promql
-rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+sum by (le) (rate(argocd_app_reconcile_bucket[5m]))
 ```
 
 **Row 3: Per-Application Analysis**
@@ -116,16 +116,16 @@ Bar gauge - Top 10 slowest applications:
 ```promql
 topk(10,
   histogram_quantile(0.95,
-    rate(argocd_app_reconcile_duration_seconds_bucket[10m])
-  ) by (name)
+    sum by (name, le) (rate(argocd_app_reconcile_bucket[10m]))
+  )
 )
 ```
 
 Table - Application reconciliation details:
 ```promql
 histogram_quantile(0.95,
-  rate(argocd_app_reconcile_duration_seconds_bucket[5m])
-) by (name)
+  sum by (name, le) (rate(argocd_app_reconcile_bucket[5m]))
+)
 ```
 
 **Row 4: Correlated Metrics**
@@ -134,13 +134,13 @@ Plot reconciliation duration alongside Git operation duration and controller que
 
 ```promql
 # Git duration
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
 
 # Reconciliation duration
-histogram_quantile(0.95, rate(argocd_app_reconcile_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_app_reconcile_bucket[5m])))
 
 # Queue depth
-workqueue_depth{namespace="argocd", name="app_reconciliation"}
+workqueue_depth{namespace="argocd", name="app_reconciliation_queue"}
 ```
 
 ## Setting Up Reconciliation Alerts
@@ -161,7 +161,7 @@ spec:
     - alert: ArgocdReconciliationSlow
       expr: |
         histogram_quantile(0.95,
-          rate(argocd_app_reconcile_duration_seconds_bucket[10m])
+          sum by (le) (rate(argocd_app_reconcile_bucket[10m]))
         ) > 60
       for: 15m
       labels:
@@ -174,7 +174,7 @@ spec:
     - alert: ArgocdReconciliationCritical
       expr: |
         histogram_quantile(0.95,
-          rate(argocd_app_reconcile_duration_seconds_bucket[10m])
+          sum by (le) (rate(argocd_app_reconcile_bucket[10m]))
         ) > 300
       for: 10m
       labels:
@@ -187,8 +187,8 @@ spec:
     - alert: ArgocdApplicationSlowReconcile
       expr: |
         histogram_quantile(0.95,
-          rate(argocd_app_reconcile_duration_seconds_bucket[10m])
-        ) by (name) > 120
+          sum by (name, le) (rate(argocd_app_reconcile_bucket[10m]))
+        ) > 120
       for: 15m
       labels:
         severity: warning
@@ -211,11 +211,11 @@ spec:
     - alert: ArgocdReconciliationDurationSpike
       expr: |
         histogram_quantile(0.95,
-          rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+          sum by (le) (rate(argocd_app_reconcile_bucket[5m]))
         )
         > 3 *
         histogram_quantile(0.95,
-          rate(argocd_app_reconcile_duration_seconds_bucket[5m] offset 1h)
+          sum by (le) (rate(argocd_app_reconcile_bucket[5m] offset 1h))
         )
       for: 15m
       labels:
@@ -233,14 +233,14 @@ When reconciliation is slow, identify which phase is the bottleneck:
 
 ```promql
 # If this is high, Git is the bottleneck
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95, sum by (le) (rate(argocd_git_request_duration_seconds_bucket[5m])))
 ```
 
 **Is it manifest generation?**
 
 ```promql
-# If this is high, Helm/Kustomize rendering is slow
-histogram_quantile(0.95, rate(argocd_repo_server_request_duration_seconds_bucket[5m]))
+# If this is high, repo-server manifest generation may be waiting on the parallelism limit
+histogram_quantile(0.95, sum by (le) (rate(argocd_repo_parallelism_wait_duration_seconds_bucket[5m])))
 ```
 
 **Is it cluster API access?**
@@ -275,13 +275,13 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Increase the default reconciliation interval (default: 180s)
+  # Increase the default reconciliation interval (default: 120s plus up to 60s jitter)
   timeout.reconciliation: "300s"
 ```
 
 **Use webhooks to trigger reconciliation on-demand:**
 
-Instead of polling every 3 minutes, configure webhooks so ArgoCD only reconciles when changes are pushed. This dramatically reduces unnecessary reconciliation cycles.
+Configure webhooks so ArgoCD refreshes applications immediately when changes are pushed, then use a longer polling interval as a fallback. This reduces unnecessary reconciliation cycles without relying only on periodic polling.
 
 **Increase controller parallelism:**
 
@@ -309,13 +309,13 @@ groups:
   - record: argocd:reconciliation_duration_p95:5m
     expr: |
       histogram_quantile(0.95,
-        rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+        sum by (le) (rate(argocd_app_reconcile_bucket[5m]))
       )
 
   - record: argocd:reconciliation_duration_p99:5m
     expr: |
       histogram_quantile(0.99,
-        rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+        sum by (le) (rate(argocd_app_reconcile_bucket[5m]))
       )
 
   - record: argocd:reconciliation_rate:5m
@@ -325,8 +325,8 @@ groups:
     expr: |
       topk(10,
         histogram_quantile(0.95,
-          rate(argocd_app_reconcile_duration_seconds_bucket[5m])
-        ) by (name)
+          sum by (name, le) (rate(argocd_app_reconcile_bucket[5m]))
+        )
       )
 ```
 
