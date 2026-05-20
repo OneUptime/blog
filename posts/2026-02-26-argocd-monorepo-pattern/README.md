@@ -94,6 +94,8 @@ metadata:
   name: team-a-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/org/gitops-monorepo.git
@@ -102,7 +104,7 @@ spec:
           - path: services/team-a/*/overlays/production
   template:
     metadata:
-      name: '{{path[2]}}-production'
+      name: '{{index .path.segments 2}}-production'
       labels:
         team: team-a
         env: production
@@ -111,7 +113,7 @@ spec:
       source:
         repoURL: https://github.com/org/gitops-monorepo.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://production-cluster.example.com
         namespace: team-a
@@ -123,7 +125,7 @@ spec:
           - CreateNamespace=true
 ```
 
-The `{{path[2]}}` template extracts the service name from the directory path. When a developer adds a new service directory under `services/team-a/`, ArgoCD automatically creates an Application for it.
+The `{{index .path.segments 2}}` template extracts the service name from the directory path. When a developer adds a new service directory under `services/team-a/`, ArgoCD automatically creates an Application for it.
 
 ## Multi-Environment with Matrix Generator
 
@@ -136,6 +138,8 @@ metadata:
   name: team-a-all-envs
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - matrix:
         generators:
@@ -159,16 +163,16 @@ spec:
                   namespace: team-a
   template:
     metadata:
-      name: '{{path.basename}}-{{env}}'
+      name: '{{.path.basename}}-{{.env}}'
     spec:
       project: team-a
       source:
         repoURL: https://github.com/org/gitops-monorepo.git
         targetRevision: main
-        path: '{{path}}/overlays/{{env}}'
+        path: '{{.path.path}}/overlays/{{.env}}'
       destination:
-        server: '{{cluster}}'
-        namespace: '{{namespace}}'
+        server: '{{.cluster}}'
+        namespace: '{{.namespace}}'
       syncPolicy:
         automated:
           selfHeal: true
@@ -181,23 +185,15 @@ Keep shared components in the `lib/` directory and reference them from service o
 
 ```yaml
 # lib/resource-limits/standard.yaml
-
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: placeholder
-spec:
-  template:
-    spec:
-      containers:
-        - name: placeholder
-          resources:
-            requests:
-              cpu: 100m
-              memory: 128Mi
-            limits:
-              cpu: 500m
-              memory: 512Mi
+- op: add
+  path: /spec/template/spec/containers/0/resources
+  value:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 ```
 
 ```yaml
@@ -269,7 +265,7 @@ spec:
     path: charts/microservice
     helm:
       valueFiles:
-        - ../../../services/team-a/user-service/overlays/production/values.yaml
+        - ../../services/team-a/user-service/overlays/production/values.yaml
 ```
 
 ## Performance Optimization
@@ -278,25 +274,33 @@ Large monorepos can slow down ArgoCD. Here is how to keep things fast:
 
 ### Webhook-Based Sync
 
-Configure webhooks so ArgoCD does not have to poll:
+Configure webhooks so ArgoCD does not have to wait for the next poll:
 
 ```yaml
 # argocd-cm ConfigMap
 data:
   # Reduce polling since webhooks handle most updates
-  timeout.reconciliation: 300s
+  timeout.reconciliation: 15m
 ```
 
 Set up the webhook in your Git provider pointing to `https://<argocd>/api/webhook`.
 
 ### Shallow Clones
 
-Enable shallow clones to reduce Git clone time:
+Enable shallow clones on the repository entry to reduce Git clone time:
 
-```bash
-# Set the Git fetch depth in the repo server
-kubectl set env deployment/argocd-repo-server -n argocd \
-  ARGOCD_GIT_SHALLOW_DEPTH=1
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitops-monorepo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  type: git
+  url: https://github.com/org/gitops-monorepo.git
+  depth: "1"
 ```
 
 ### Increase Repo Server Resources
@@ -319,7 +323,13 @@ repoServer:
 
 ### Use Path-Based Application Filtering
 
-When you have many apps, make sure each Application only watches its specific path. ArgoCD will skip reconciliation for apps whose paths were not affected by a commit.
+When you have many apps, annotate each Application with the paths that affect manifest generation. ArgoCD will skip reconciliation for apps whose manifest generation paths were not affected by a commit.
+
+```yaml
+metadata:
+  annotations:
+    argocd.argoproj.io/manifest-generate-paths: .
+```
 
 ## CODEOWNERS for Access Control
 
@@ -354,24 +364,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install tools
         run: |
-          # Install kustomize, helm, kubeval
+          # Install kustomize and kubeconform
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          curl -sSL "https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz" | tar xz
+          sudo mv kubeconform /usr/local/bin/
 
       - name: Find changed directories
         id: changes
         run: |
-          dirs=$(git diff --name-only origin/main | xargs -I{} dirname {} | sort -u)
-          echo "dirs=$dirs" >> $GITHUB_OUTPUT
+          {
+            echo "dirs<<EOF"
+            git diff --name-only origin/main...HEAD | xargs -r -I{} dirname {} | sort -u
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Validate Kustomize builds
         run: |
           # Build and validate each changed overlay
           find services/ -name kustomization.yaml -exec dirname {} \; | while read dir; do
             echo "Validating $dir"
-            kustomize build "$dir" | kubeval --strict
+            kustomize build "$dir" | kubeconform -strict
           done
 ```
 
