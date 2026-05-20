@@ -42,7 +42,7 @@ This tells Kubernetes to stop waiting for the finalizer and delete the Applicati
 
 ## Understanding the Deletion Cascade Options
 
-ArgoCD provides three deletion behaviors, and choosing the right one upfront avoids stuck deletions.
+ArgoCD provides cascade and non-cascade deletion behaviors, and choosing the right one upfront avoids stuck deletions.
 
 ```bash
 # Option 1: Cascade delete (default) - deletes app AND managed resources
@@ -51,7 +51,10 @@ argocd app delete my-app
 # Option 2: Non-cascade delete - deletes app, KEEPS managed resources (orphan)
 argocd app delete my-app --cascade=false
 
-# Option 3: Using kubectl with cascade control
+# Option 3: Using kubectl for non-cascade delete
+kubectl -n argocd patch application my-app \
+  -p '{"metadata": {"finalizers": null}}' \
+  --type merge
 kubectl -n argocd delete application my-app
 ```
 
@@ -131,8 +134,11 @@ Sometimes the Application deletion is stuck because a child resource has its own
 
 ```bash
 # Find resources in the target namespace that have finalizers
-kubectl get all -n my-app-namespace -o json | \
-  jq '.items[] | select(.metadata.finalizers != null) | {name: .metadata.name, kind: .kind, finalizers: .metadata.finalizers}'
+kubectl api-resources --verbs=list --namespaced -o name | \
+  while read resource; do
+    kubectl get "$resource" -n my-app-namespace -o json --ignore-not-found 2>/dev/null
+  done | \
+  jq -s '.[] | .items[]? | select(.metadata.finalizers != null) | {name: .metadata.name, kind: .kind, finalizers: .metadata.finalizers}'
 ```
 
 Fix the stuck child resource first, and the Application deletion will proceed.
@@ -189,8 +195,8 @@ metadata:
   finalizers:
     # Include this if you want ArgoCD to clean up resources on delete
     - resources-finalizer.argocd.argoproj.io
-    # Or use the foreground variant for ordered cleanup
-    # - resources-finalizer.argocd.argoproj.io/foreground
+    # Or use the background variant for background cascading deletion
+    # - resources-finalizer.argocd.argoproj.io/background
     # Or omit finalizers entirely if you want orphan behavior
 spec:
   # ...
