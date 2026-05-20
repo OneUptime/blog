@@ -214,6 +214,12 @@ nghttp -nv https://example.com 2>&1 | grep "HTTP/2"
 
 HTTP/2 Server Push lets you send resources to the client before they're requested. This can reduce the critical path for loading CSS, fonts, or JavaScript needed for the initial render.
 
+```bash
+# Required for the Header directive used below
+sudo a2enmod headers
+sudo systemctl reload apache2
+```
+
 ```apache
 <VirtualHost *:443>
     ServerName example.com
@@ -229,7 +235,7 @@ HTTP/2 Server Push lets you send resources to the client before they're requeste
 </VirtualHost>
 ```
 
-Note: Server push effectiveness has diminished with modern browser caching. Browsers now handle `Link: rel=preload` headers by fetching resources in parallel rather than waiting for the server to push. Use push judiciously.
+Note: Server push effectiveness has diminished with modern browser caching, and major browsers have removed or disabled HTTP/2 Server Push. In modern browsers, these `Link: rel=preload` headers usually act as preload hints rather than causing a pushed response. Use push judiciously.
 
 ## Tuning HTTP/2 Settings
 
@@ -241,10 +247,10 @@ H2MaxSessionStreams 100
 H2MinWorkers 10
 H2MaxWorkers 100
 
-# Stream window size (bytes) - affects throughput for large transfers
+# Stream window size (bytes) - affects request body flow control
 H2WindowSize 65535
 
-# Stream initial window size for sending data to clients
+# Maximum amount of response data buffered per stream
 H2StreamMaxMemSize 65536
 
 # Enable direct HTTP/2 for non-TLS connections (for internal use)
@@ -276,7 +282,7 @@ sudo tail -20 /var/log/apache2/error.log
 ### "HTTP/2 not supported by mod_prefork" Error
 
 ```text
-AH02030: HTTP/2 is not supported by mod_prefork.c
+AH10034: The mpm module (prefork.c) is not supported by mod_http2
 ```
 
 This is the MPM conflict. Switch to Event MPM:
