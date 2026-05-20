@@ -49,15 +49,19 @@ The `info` field accepts a list of name-value pairs. These appear in the ArgoCD 
 
 ### Adding Info Fields with the CLI
 
-You can also add info fields using the ArgoCD CLI:
+You can also add info fields using the ArgoCD CLI by patching the application spec:
 
 ```bash
-# Add an info field to an existing application
-
-argocd app set payment-service \
-  --info "Owner=payments-team" \
-  --info "Tier=Tier 1 - Business Critical" \
-  --info "Slack Channel=#payments-engineering"
+# Add info fields to an existing application
+argocd app patch payment-service --type merge --patch '{
+  "spec": {
+    "info": [
+      { "name": "Owner", "value": "payments-team" },
+      { "name": "Tier", "value": "Tier 1 - Business Critical" },
+      { "name": "Slack Channel", "value": "#payments-engineering" }
+    ]
+  }
+}'
 ```
 
 ### Info Fields with Links
@@ -249,6 +253,8 @@ metadata:
   name: microservices
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/app-configs
@@ -257,28 +263,28 @@ spec:
           - path: "apps/*/config.json"
   template:
     metadata:
-      name: "{{name}}"
+      name: "{{.name}}"
       labels:
-        team: "{{team}}"
-        env: "{{env}}"
+        team: "{{.team}}"
+        env: "{{.env}}"
     spec:
-      project: "{{project}}"
+      project: "{{.project}}"
       source:
-        repoURL: "{{repoURL}}"
-        targetRevision: "{{targetRevision}}"
-        path: "{{path}}"
+        repoURL: "{{.repoURL}}"
+        targetRevision: "{{.targetRevision}}"
+        path: "{{.path}}"
       destination:
-        server: "{{cluster}}"
-        namespace: "{{namespace}}"
+        server: "{{.cluster}}"
+        namespace: "{{.namespace}}"
       info:
         - name: "Owner"
-          value: "{{team}}"
+          value: "{{.team}}"
         - name: "Slack"
-          value: "#{{team}}-engineering"
+          value: "#{{.team}}-engineering"
         - name: "Runbook"
-          value: "https://wiki.example.com/runbooks/{{name}}"
+          value: "https://wiki.example.com/runbooks/{{.name}}"
         - name: "Dashboard"
-          value: "https://grafana.example.com/d/{{name}}"
+          value: "https://grafana.example.com/d/{{.name}}"
 ```
 
 The config.json files in the Git repo provide the values:
