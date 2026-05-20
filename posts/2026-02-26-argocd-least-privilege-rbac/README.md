@@ -16,7 +16,7 @@ Most organizations start with everyone having admin access "just to get things w
 
 Before writing policies, establish these principles:
 
-1. **No default permissions** - Set `policy.default: ""` so unauthenticated users get nothing
+1. **No default permissions** - Set `policy.default: ""` so authenticated users without explicit grants get no Argo CD access; unauthenticated users only receive default permissions if anonymous access is enabled
 2. **No shared accounts** - Every user and pipeline gets their own identity
 3. **Project-scoped access** - Users only access their team's project
 4. **Action-specific roles** - Separate view, deploy, and manage permissions
@@ -84,16 +84,16 @@ policy.csv: |
   # Tier 2: Deployer - sync applications in their project
   # (inherits viewer capabilities through separate assignment)
   p, role:frontend-deployer, applications, sync, frontend/*, allow
-  p, role:frontend-deployer, applications, action, frontend/*, allow
+  p, role:frontend-deployer, applications, action/*, frontend/*, allow
 
   p, role:backend-deployer, applications, sync, backend/*, allow
-  p, role:backend-deployer, applications, action, backend/*, allow
+  p, role:backend-deployer, applications, action/*, backend/*, allow
 
   # Tier 3: Manager - create and update applications
   p, role:frontend-manager, applications, create, frontend/*, allow
   p, role:frontend-manager, applications, update, frontend/*, allow
   p, role:frontend-manager, applications, sync, frontend/*, allow
-  p, role:frontend-manager, applications, action, frontend/*, allow
+  p, role:frontend-manager, applications, action/*, frontend/*, allow
   p, role:frontend-manager, applications, override, frontend/*, allow
   p, role:frontend-manager, exec, create, frontend/*, allow
 
@@ -189,11 +189,17 @@ kubectl patch configmap argocd-cm -n argocd --type merge -p '{
   }
 }'
 
+kubectl patch configmap argocd-rbac-cm -n argocd --type merge -p '{
+  "data": {
+    "policy.emergency.csv": "p, emergency-admin, *, *, *, allow\n"
+  }
+}'
+
 # Only generate tokens when needed, with short expiration
 argocd account generate-token --account emergency-admin --expires-in 2h
 ```
 
-Document when and why emergency tokens are generated as part of your incident response process.
+Document when and why emergency tokens are generated as part of your incident response process, and remove the `policy.emergency.csv` entry after the incident ends.
 
 ## Step 8: Audit and Review
 
