@@ -10,7 +10,7 @@ Description: Learn how to create a custom restart deployment action in ArgoCD th
 
 Restarting a Kubernetes Deployment is one of the most common operational tasks. Maybe you need to pick up a new ConfigMap, clear an in-memory cache, or recover from a transient error. With kubectl, you run `kubectl rollout restart deployment/my-app`. But if you are working in ArgoCD, switching to kubectl breaks your workflow. Worse, other team members who only have ArgoCD access cannot restart deployments at all.
 
-ArgoCD's resource actions feature lets you add a "Restart" button directly to the ArgoCD UI for any Deployment. This guide shows you exactly how to set it up, including variants for StatefulSets and DaemonSets.
+ArgoCD's resource actions feature lets you run a "Restart" action directly from the ArgoCD UI for any Deployment. Current ArgoCD versions include built-in restart actions for Deployments, StatefulSets, and DaemonSets, but this guide shows you how to customize the action when you want to control its behavior.
 
 ## How Deployment Restarts Work in Kubernetes
 
@@ -40,6 +40,7 @@ metadata:
   namespace: argocd
 data:
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       actions["restart"] = {
@@ -58,7 +59,7 @@ data:
             obj.spec.template.metadata.annotations = {}
           end
           -- Set the restart annotation with current timestamp
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
+          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%XZ")
           return obj
 ```
 
@@ -68,8 +69,8 @@ Let me break down what each part does:
 
 1. `local os = require("os")` - Imports the OS library to get the current timestamp
 2. The nil checks ensure we do not get a Lua error if the metadata or annotations sections do not exist yet
-3. `os.time()` returns the current Unix timestamp as a number
-4. `tostring()` converts it to a string for the annotation value
+3. `os.date("!%Y-%m-%dT%XZ")` returns the current UTC time in the same timestamp format used by kubectl
+4. ArgoCD stores that timestamp as the annotation value
 5. Returning the modified `obj` tells ArgoCD to patch the Deployment with this change
 
 The annotation key `kubectl.kubernetes.io/restartedAt` is the same one kubectl uses, so the behavior is identical.
@@ -80,6 +81,7 @@ StatefulSets work the same way, but with different rollout behavior (pods restar
 
 ```yaml
   resource.customizations.actions.apps_StatefulSet: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       actions["restart"] = {
@@ -96,7 +98,7 @@ StatefulSets work the same way, but with different rollout behavior (pods restar
           if obj.spec.template.metadata.annotations == nil then
             obj.spec.template.metadata.annotations = {}
           end
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
+          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%XZ")
           return obj
 ```
 
@@ -106,6 +108,7 @@ DaemonSets also support the same restart mechanism:
 
 ```yaml
   resource.customizations.actions.apps_DaemonSet: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       actions["restart"] = {
@@ -122,7 +125,7 @@ DaemonSets also support the same restart mechanism:
           if obj.spec.template.metadata.annotations == nil then
             obj.spec.template.metadata.annotations = {}
           end
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
+          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%XZ")
           return obj
 ```
 
@@ -132,6 +135,7 @@ You might not want to allow restarts on Deployments that are already in the midd
 
 ```yaml
   resource.customizations.actions.apps_Deployment: |
+    mergeBuiltinActions: true
     discovery.lua: |
       actions = {}
       -- Disable restart if the deployment is currently updating
@@ -166,7 +170,7 @@ You might not want to allow restarts on Deployments that are already in the midd
           if obj.spec.template.metadata.annotations == nil then
             obj.spec.template.metadata.annotations = {}
           end
-          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = tostring(os.time())
+          obj.spec.template.metadata.annotations["kubectl.kubernetes.io/restartedAt"] = os.date("!%Y-%m-%dT%XZ")
           return obj
 ```
 
@@ -200,13 +204,14 @@ argocd app actions run my-app restart --kind Deployment --resource-name my-deplo
 
 ```bash
 # Using curl against the ArgoCD API
-curl -X POST "https://argocd.example.com/api/v1/applications/my-app/resource/actions" \
+curl -X POST "https://argocd.example.com/api/v1/applications/my-app/resource/actions/v2" \
   -H "Authorization: Bearer $ARGOCD_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
+    "name": "my-app",
     "group": "apps",
     "kind": "Deployment",
-    "name": "my-deployment",
+    "resourceName": "my-deployment",
     "namespace": "production",
     "action": "restart"
   }'
@@ -216,7 +221,7 @@ curl -X POST "https://argocd.example.com/api/v1/applications/my-app/resource/act
 
 After triggering a restart, your application will briefly show as "OutOfSync" in ArgoCD. This is because the live Deployment now has the restart annotation, but your Git manifests do not. This is expected behavior.
 
-If you have auto-sync enabled, ArgoCD will sync the application and the annotation difference will resolve. If you use `ignoreDifferences`, you can tell ArgoCD to ignore this specific annotation:
+If you have automated sync with self-healing enabled, ArgoCD can sync the application back to Git and the annotation difference will resolve. If you use `ignoreDifferences`, you can tell ArgoCD to ignore this specific annotation:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -261,4 +266,4 @@ kubectl rollout restart deployment argocd-server -n argocd
 kubectl rollout restart deployment argocd-repo-server -n argocd
 ```
 
-The restart action is one of the most useful actions you can add to ArgoCD. It turns a common operational task into a one-click operation accessible to anyone with dashboard access. For more complex actions, see [how to write Lua scripts for custom resource actions](https://oneuptime.com/blog/post/2026-02-26-argocd-lua-scripts-resource-actions/view). For scaling actions, check out [how to create scale actions for deployments](https://oneuptime.com/blog/post/2026-02-26-argocd-scale-actions-deployments/view).
+The restart action is one of the most useful actions you can expose or customize in ArgoCD. It turns a common operational task into a one-click operation accessible to anyone with the right action permission. For more complex actions, see [how to write Lua scripts for custom resource actions](https://oneuptime.com/blog/post/2026-02-26-argocd-lua-scripts-resource-actions/view). For scaling actions, check out [how to create scale actions for deployments](https://oneuptime.com/blog/post/2026-02-26-argocd-scale-actions-deployments/view).
