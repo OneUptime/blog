@@ -18,8 +18,8 @@ In this setup, the TLS handshake happens at the load balancer (ingress controlle
 graph LR
     A[Client Browser] -->|HTTPS TLS 1.3| B[Load Balancer]
     B -->|Plain HTTP| C[ArgoCD Server]
-    D[ArgoCD CLI] -->|gRPC over TLS| B
-    B -->|HTTP/2 h2c| C
+    D[ArgoCD CLI] -->|gRPC-Web over HTTPS| B
+    B -->|Plain HTTP| C
 ```
 
 The traffic inside the cluster is unencrypted, but this is generally acceptable because:
@@ -30,7 +30,7 @@ The traffic inside the cluster is unencrypted, but this is generally acceptable 
 
 ## Step 1: Configure ArgoCD for Insecure Mode
 
-When using TLS termination, ArgoCD server must run without its built-in TLS. Otherwise, you get a double-encryption scenario that breaks communication.
+When using TLS termination and forwarding plain HTTP to the backend, ArgoCD server must run without its built-in TLS. If you keep ArgoCD's built-in TLS enabled, configure the load balancer to use HTTPS to the backend instead.
 
 ```yaml
 apiVersion: v1
@@ -113,12 +113,6 @@ metadata:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
     # TLS cipher configuration
     nginx.ingress.kubernetes.io/ssl-ciphers: "ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384"
-    # Minimum TLS version
-    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
-    # HSTS header
-    nginx.ingress.kubernetes.io/hsts: "true"
-    nginx.ingress.kubernetes.io/hsts-max-age: "31536000"
-    nginx.ingress.kubernetes.io/hsts-include-subdomains: "true"
     # Buffer sizes for large ArgoCD responses
     nginx.ingress.kubernetes.io/proxy-buffer-size: "64k"
 spec:
@@ -154,11 +148,15 @@ metadata:
   namespace: argocd
   annotations:
     # Use NLB
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     # TLS termination at NLB
     service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789:certificate/your-cert-arn"
     # Listen on HTTPS
     service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    # Frontend TLS policy
+    service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: "ELBSecurityPolicy-TLS13-1-2-2021-06"
     # Backend protocol
     service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
 spec:
@@ -171,26 +169,55 @@ spec:
     app.kubernetes.io/name: argocd-server
 ```
 
-### GCP TCP Load Balancer
+### GKE HTTPS Load Balancer
 
-For GCP with a managed certificate:
+For GKE with a Google-managed certificate, use a `ManagedCertificate` and attach it to an Ingress. Google-managed certificates are supported with GKE Ingress for external Application Load Balancers.
 
 ```yaml
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: argocd-server-cert
+  namespace: argocd
+spec:
+  domains:
+    - argocd.example.com
+---
 apiVersion: v1
 kind: Service
 metadata:
-  name: argocd-server-lb
+  name: argocd-server-http
   namespace: argocd
   annotations:
     cloud.google.com/neg: '{"ingress": true}'
 spec:
-  type: LoadBalancer
   ports:
-    - name: https
-      port: 443
+    - name: http
+      port: 80
       targetPort: 8080
   selector:
     app.kubernetes.io/name: argocd-server
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: argocd-server-ingress
+  namespace: argocd
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+    networking.gke.io/managed-certificates: argocd-server-cert
+spec:
+  rules:
+    - host: argocd.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server-http
+                port:
+                  number: 80
 ```
 
 ## Security Hardening
@@ -200,8 +227,16 @@ When terminating TLS at the load balancer, apply these security measures:
 ### Enforce Minimum TLS Version
 
 ```yaml
-annotations:
-  nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  ssl-protocols: "TLSv1.2 TLSv1.3"
+  hsts: "true"
+  hsts-max-age: "31536000"
+  hsts-include-subdomains: "true"
 ```
 
 ### Add Security Headers
@@ -218,16 +253,33 @@ annotations:
 ### Enable OCSP Stapling
 
 ```yaml
-annotations:
-  nginx.ingress.kubernetes.io/enable-ocsp-stapling: "true"
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  enable-ocsp: "true"
 ```
 
 ## Handling the X-Forwarded Headers
 
-When ArgoCD runs behind TLS termination, it needs to know the original client protocol and IP. The load balancer adds `X-Forwarded-*` headers that ArgoCD reads:
+When ArgoCD runs behind TLS termination, the ingress should preserve the original client protocol and IP with `X-Forwarded-*` headers. In ingress-nginx, these are controller ConfigMap settings:
 
 ```yaml
-# ArgoCD server configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  use-forwarded-headers: "true"
+  forwarded-for-header: "X-Forwarded-For"
+```
+
+Keep `server.rootpath` for subpath deployments only:
+
+```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -235,16 +287,7 @@ metadata:
   namespace: argocd
 data:
   server.insecure: "true"
-  # Trust the proxy headers
   server.rootpath: ""
-```
-
-The ingress controller should pass these headers:
-
-```yaml
-annotations:
-  nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
-  nginx.ingress.kubernetes.io/forwarded-for-header: "X-Forwarded-For"
 ```
 
 ## Verifying TLS Configuration
@@ -276,6 +319,6 @@ argocd login argocd.example.com --grpc-web
 
 **Certificate Not Trusted**: If using a self-signed cert, the CLI needs `--insecure` flag. For production, use a trusted CA or cert-manager with Let's Encrypt.
 
-**Connection Reset**: The backend protocol annotation does not match ArgoCD's mode. If `server.insecure` is true, use `HTTP`. If false, use `HTTPS`.
+**Connection Reset**: The backend protocol annotation does not match ArgoCD's mode. If `server.insecure` is true, use `HTTP` for the UI and gRPC-Web, or `GRPC` for a dedicated native gRPC ingress. If false, use `HTTPS` or `GRPCS` as appropriate.
 
 For TLS passthrough as an alternative, see [configuring ArgoCD with TLS passthrough](https://oneuptime.com/blog/post/2026-02-26-argocd-tls-passthrough/view). For automatic certificate management, check [ArgoCD with cert-manager](https://oneuptime.com/blog/post/2026-02-26-argocd-cert-manager-ssl/view).
