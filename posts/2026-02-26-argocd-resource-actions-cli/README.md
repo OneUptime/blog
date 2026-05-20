@@ -8,7 +8,7 @@ Description: Learn how to list and execute ArgoCD resource actions from the comm
 
 ---
 
-While the ArgoCD UI provides a convenient way to execute resource actions, the CLI is essential for automation. You can script restarts, scaling operations, rollout promotions, and custom actions into CI/CD pipelines, cron jobs, runbooks, and incident response scripts. The ArgoCD CLI gives you full control over resource actions with precise targeting.
+While the ArgoCD UI provides a convenient way to execute resource actions, the CLI is essential for automation. You can script restarts, pause and resume operations, rollout promotions, and custom actions into CI/CD pipelines, cron jobs, runbooks, and incident response scripts. The ArgoCD CLI gives you full control over resource actions with precise targeting.
 
 This guide covers every aspect of using resource actions from the ArgoCD CLI, from basic commands to advanced automation patterns.
 
@@ -57,10 +57,10 @@ argocd app actions list my-app --kind Rollout --group argoproj.io
 Example output:
 
 ```text
-NAME          DISABLED
-restart       false
-scale-up      false
-scale-down    false
+GROUP  KIND        NAME           ACTION   DISABLED
+apps   Deployment  my-deployment  restart  false
+apps   Deployment  my-deployment  pause    false
+apps   Deployment  my-deployment  resume   false
 ```
 
 ## Executing Actions
@@ -77,8 +77,11 @@ argocd app actions run <app-name> <action-name> --kind <Kind> --resource-name <n
 # Restart a Deployment
 argocd app actions run my-app restart --kind Deployment --resource-name my-deployment
 
-# Scale up a Deployment
-argocd app actions run my-app scale-up --kind Deployment --resource-name my-deployment
+# Pause a Deployment
+argocd app actions run my-app pause --kind Deployment --resource-name my-deployment
+
+# Resume a Deployment
+argocd app actions run my-app resume --kind Deployment --resource-name my-deployment
 
 # Promote an Argo Rollout
 argocd app actions run my-app resume --kind Rollout --resource-name my-rollout --group argoproj.io
@@ -131,8 +134,8 @@ if [ -z "$APP_NAME" ]; then
 fi
 
 # Get all Deployment resources
-DEPLOYMENTS=$(argocd app resources "$APP_NAME" -o json | \
-  jq -r '.[] | select(.kind == "Deployment") | .name')
+DEPLOYMENTS=$(argocd app get "$APP_NAME" -o json | \
+  jq -r '.status.resources[] | select(.kind == "Deployment") | .name')
 
 for dep in $DEPLOYMENTS; do
   echo "Restarting deployment: $dep"
@@ -154,8 +157,8 @@ echo "All deployments restarted"
 
 APP_NAME=$1
 
-DEGRADED=$(argocd app resources "$APP_NAME" -o json | \
-  jq -r '.[] | select(.kind == "Deployment" and .health.status == "Degraded") | .name')
+DEGRADED=$(argocd app get "$APP_NAME" -o json | \
+  jq -r '.status.resources[] | select(.kind == "Deployment" and .health.status == "Degraded") | .name')
 
 if [ -z "$DEGRADED" ]; then
   echo "No degraded deployments found"
@@ -170,22 +173,22 @@ for dep in $DEGRADED; do
 done
 ```
 
-### Scale Based on Time of Day
+### Pause or Resume Based on Time of Day
 
 ```bash
 #!/bin/bash
-# time-based-scaling.sh
+# time-based-pause-resume.sh
 APP_NAME=$1
 DEPLOYMENT_NAME=$2
 
 HOUR=$(date +%H)
 
 if [ "$HOUR" -ge 8 ] && [ "$HOUR" -lt 20 ]; then
-  echo "Business hours - scaling to 5 replicas"
-  ACTION="scale-to-5"
+  echo "Business hours - resuming deployment"
+  ACTION="resume"
 else
-  echo "Off hours - scaling to 2 replicas"
-  ACTION="scale-to-2"
+  echo "Off hours - pausing deployment"
+  ACTION="pause"
 fi
 
 argocd app actions run "$APP_NAME" "$ACTION" \
@@ -264,6 +267,7 @@ For more advanced automation, you can use the ArgoCD REST API instead of the CLI
 ```bash
 # Get an auth token
 TOKEN=$(curl -s "https://argocd.example.com/api/v1/session" \
+  -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"'$ARGOCD_PASSWORD'"}' | jq -r '.token')
 
 # List actions
@@ -271,9 +275,10 @@ curl -s "https://argocd.example.com/api/v1/applications/my-app/resource/actions?
   -H "Authorization: Bearer $TOKEN" | jq
 
 # Execute an action
-curl -X POST "https://argocd.example.com/api/v1/applications/my-app/resource/actions?namespace=production&resourceName=my-deployment&kind=Deployment&group=apps&action=restart" \
+curl -X POST "https://argocd.example.com/api/v1/applications/my-app/resource/actions/v2" \
   -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json"
+  -H "Content-Type: application/json" \
+  -d '{"action":"restart","namespace":"production","resourceName":"my-deployment","kind":"Deployment","group":"apps"}'
 ```
 
 ## Error Handling in Scripts
@@ -295,13 +300,13 @@ if [ $? -ne 0 ]; then
   exit 1
 fi
 
-ACTION_EXISTS=$(echo "$ACTIONS" | jq -r ".[] | select(.name == \"$ACTION\") | .name")
+ACTION_EXISTS=$(echo "$ACTIONS" | jq -r ".[] | select(.Action == \"$ACTION\") | .Action")
 if [ -z "$ACTION_EXISTS" ]; then
   echo "ERROR: Action '$ACTION' not found for $RESOURCE"
   exit 1
 fi
 
-DISABLED=$(echo "$ACTIONS" | jq -r ".[] | select(.name == \"$ACTION\") | .disabled")
+DISABLED=$(echo "$ACTIONS" | jq -r ".[] | select(.Action == \"$ACTION\") | .Disabled")
 if [ "$DISABLED" = "true" ]; then
   echo "ERROR: Action '$ACTION' is disabled for $RESOURCE"
   exit 1
