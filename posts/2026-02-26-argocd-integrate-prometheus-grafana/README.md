@@ -12,10 +12,10 @@ ArgoCD exposes a rich set of Prometheus metrics that give you visibility into ev
 
 ## ArgoCD Metrics Overview
 
-ArgoCD exposes metrics through three endpoints:
+ArgoCD exposes core metrics through three endpoints:
 
-- **Application Controller** (port 8082) - Application sync status, reconciliation metrics, cluster cache stats
-- **API Server** (port 8083) - API request metrics, gRPC stats
+- **Application Controller** (`argocd-metrics`, port 8082) - Application sync status, reconciliation metrics, cluster cache stats
+- **API Server** (`argocd-server-metrics`, port 8083) - API request metrics, gRPC stats when `ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true`
 - **Repo Server** (port 8084) - Git operations, manifest generation metrics
 
 These endpoints serve Prometheus-format metrics at the `/metrics` path.
@@ -32,14 +32,14 @@ If you are running the Prometheus Operator:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: argocd-application-controller
+  name: argocd-metrics
   namespace: argocd
   labels:
     release: prometheus  # Must match your Prometheus operator selector
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: argocd-application-controller
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -50,14 +50,14 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: argocd-server
+  name: argocd-server-metrics
   namespace: argocd
   labels:
     release: prometheus
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: argocd-server
+      app.kubernetes.io/name: argocd-server-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -68,7 +68,7 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: argocd-repo-server
+  name: argocd-repo-server-metrics
   namespace: argocd
   labels:
     release: prometheus
@@ -86,14 +86,14 @@ spec:
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: argocd-notifications
+  name: argocd-notifications-controller
   namespace: argocd
   labels:
     release: prometheus
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: argocd-notifications-controller
+      app.kubernetes.io/name: argocd-notifications-controller-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -106,7 +106,7 @@ If you are not using the Prometheus Operator, add scrape annotations to ArgoCD s
 
 ```yaml
 # Patch ArgoCD services with Prometheus annotations
-kubectl annotate service argocd-application-controller-metrics -n argocd \
+kubectl annotate service argocd-metrics -n argocd \
   prometheus.io/scrape="true" \
   prometheus.io/port="8082" \
   prometheus.io/path="/metrics"
@@ -147,23 +147,22 @@ argocd_app_info{health_status="Progressing"}
 
 ```promql
 # Reconciliation duration (time to compare Git vs cluster)
-histogram_quantile(0.95, rate(argocd_app_reconcile_bucket[5m]))
+histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
 
-# Reconciliation count by result
-rate(argocd_app_reconcile_count{result="error"}[5m])
-rate(argocd_app_reconcile_count{result="ok"}[5m])
+# Reconciliation rate
+rate(argocd_app_reconcile_count[5m])
 ```
 
 ### Cluster and Resource Metrics
 
 ```promql
-# Number of resources managed per application
-argocd_app_info{name="my-app"} * on(name) group_left() argocd_app_resource_info
+# Number of orphaned resources per application
+argocd_app_orphaned_resources_count{name="my-app"}
 
 # Cluster cache size
-argocd_cluster_info
+argocd_cluster_api_resource_objects
 
-# API server request rates
+# Kubernetes API request rates during reconciliation
 rate(argocd_app_k8s_request_total[5m])
 ```
 
@@ -174,7 +173,7 @@ rate(argocd_app_k8s_request_total[5m])
 histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
 
 # Git request failures
-rate(argocd_git_request_total{request_type="fetch", result="error"}[5m])
+rate(argocd_git_fetch_fail_total[5m])
 ```
 
 ## Building Grafana Dashboards
@@ -256,9 +255,9 @@ histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
 # P50 reconciliation latency
 histogram_quantile(0.50, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
 
-# Reconciliation error rate
-rate(argocd_app_reconcile_count{result="error"}[5m]) /
-rate(argocd_app_reconcile_count[5m]) * 100
+# Kubernetes request error rate during reconciliation
+sum(rate(argocd_kubectl_requests_total{code=~"5.."}[5m])) /
+sum(rate(argocd_kubectl_requests_total[5m])) * 100
 ```
 
 ## Prometheus Alerting Rules
@@ -316,7 +315,7 @@ spec:
 
         # Alert when Git fetch fails repeatedly
         - alert: ArgoGitFetchFailing
-          expr: rate(argocd_git_request_total{result="error"}[15m]) > 0.1
+          expr: rate(argocd_git_fetch_fail_total[15m]) > 0.1
           for: 5m
           labels:
             severity: warning
@@ -335,11 +334,11 @@ metadata:
   name: kube-prometheus-stack
   namespace: argocd
 spec:
-  project: monitoring
+  project: default
   source:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: kube-prometheus-stack
-    targetRevision: 55.0.0
+    targetRevision: 85.2.0
     helm:
       values: |
         prometheus:
