@@ -75,6 +75,7 @@ stringData:
   POSTGRES_USER: mlflow
   POSTGRES_PASSWORD: changeme  # Use sealed-secrets in production
   POSTGRES_DB: mlflow
+  MLFLOW_BACKEND_STORE_URI: postgresql://mlflow:changeme@mlflow-postgres:5432/mlflow
 ```
 
 ```yaml
@@ -160,7 +161,6 @@ kind: ConfigMap
 metadata:
   name: mlflow-config
 data:
-  MLFLOW_BACKEND_STORE_URI: "postgresql://mlflow:changeme@mlflow-postgres:5432/mlflow"
   MLFLOW_DEFAULT_ARTIFACT_ROOT: "s3://mlflow-artifacts/"
   MLFLOW_HOST: "0.0.0.0"
   MLFLOW_PORT: "5000"
@@ -181,6 +181,11 @@ spec:
   selector:
     matchLabels:
       app: mlflow-tracking
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   template:
     metadata:
       labels:
@@ -189,7 +194,7 @@ spec:
       serviceAccountName: mlflow-sa
       containers:
         - name: mlflow
-          image: ghcr.io/mlflow/mlflow:2.10.0
+          image: ghcr.io/mlflow/mlflow:v2.10.0
           command:
             - mlflow
             - server
@@ -206,6 +211,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: mlflow-config
+            - secretRef:
+                name: mlflow-postgres-secret
           ports:
             - containerPort: 5000
               name: http
@@ -363,9 +370,9 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../../base
-patchesStrategicMerge:
-  - patches/replicas.yaml
-  - patches/resources.yaml
+patches:
+  - path: patches/replicas.yaml
+  - path: patches/resources.yaml
 ```
 
 ```yaml
@@ -437,14 +444,14 @@ Upgrading MLflow versions is straightforward. Update the image tag in your deplo
 ```bash
 # Update the image version
 cd mlflow/base/mlflow-server
-sed -i 's/mlflow:2.10.0/mlflow:2.11.0/' deployment.yaml
+sed -i 's/mlflow:v2.10.0/mlflow:v2.11.0/' deployment.yaml
 
 git add deployment.yaml
 git commit -m "Upgrade MLflow to 2.11.0"
 git push origin main
 ```
 
-ArgoCD will perform a rolling update with zero downtime, since we have multiple replicas and `maxUnavailable: 0` as the default strategy.
+ArgoCD will perform a rolling update with zero downtime, since we have multiple replicas and the Deployment explicitly sets `maxUnavailable: 0`.
 
 ## Best Practices
 
