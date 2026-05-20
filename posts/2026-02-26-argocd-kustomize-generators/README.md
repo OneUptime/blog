@@ -8,7 +8,7 @@ Description: Learn how to use Kustomize configMapGenerator and secretGenerator w
 
 ---
 
-Kustomize generators create ConfigMaps and Secrets from files, literals, and environment variables during build time. Instead of writing ConfigMap YAML by hand, you point the generator at a properties file and it produces the ConfigMap for you. The killer feature is automatic hash suffixes - when the source data changes, the generated resource gets a new name, which triggers a rolling update of any Pod that references it.
+Kustomize generators create ConfigMaps and Secrets from files, literals, and environment files during build time. Instead of writing ConfigMap YAML by hand, you point the generator at a properties file and it produces the ConfigMap for you. The killer feature is automatic hash suffixes - when the source data changes, the generated resource gets a new name, which triggers a rolling update when Kustomize rewrites a workload's Pod template references.
 
 ArgoCD handles generators transparently during `kustomize build`, but the hash suffix behavior requires understanding to avoid sync issues.
 
@@ -88,11 +88,11 @@ secretGenerator:
     type: kubernetes.io/tls
 ```
 
-Note: Storing plaintext secrets in Git is a bad practice. Use secretGenerator with encrypted files (SOPS) or use External Secrets Operator instead.
+Note: Storing plaintext secrets in Git is a bad practice. Use SOPS through a supported integration such as KSOPS or a pre-render step, or use External Secrets Operator instead.
 
 ## How Hash Suffixes Work
 
-When the generator content changes, the hash suffix changes, producing a new ConfigMap name. Kustomize automatically updates all references to the ConfigMap:
+When the generator content changes, the hash suffix changes, producing a new ConfigMap name. Kustomize automatically updates recognized references to the ConfigMap:
 
 ```mermaid
 sequenceDiagram
@@ -194,7 +194,7 @@ generatorOptions:
 
 ## ArgoCD Sync Behavior with Generators
 
-When config data changes, the generator produces a new ConfigMap (new hash). ArgoCD sees two things:
+When config data changes, the generator produces a new ConfigMap (new hash). ArgoCD sees three things:
 
 1. A new ConfigMap resource (creates it)
 2. An updated Deployment reference (triggers rolling update)
