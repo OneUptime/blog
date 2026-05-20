@@ -41,21 +41,21 @@ Start by identifying which resources belong to which namespace.
 ```bash
 # List all resources grouped by namespace
 
-argocd app resources my-platform --output json | \
-  jq -r 'group_by(.namespace) | .[] | .[0].namespace as $ns | "\($ns):", (.[] | "  \(.group):\(.kind):\(.name)")'
+argocd app get my-platform -o json | \
+  jq -r 'def resource_id: "\(.group // ""):\(.kind):\(if (.namespace // "") == "" then .name else "\(.namespace)/\(.name)" end)"; .status.resources | group_by(.namespace // "") | .[] | (.[0].namespace // "cluster-scoped") as $ns | (if $ns == "" then "cluster-scoped:" else "\($ns):" end), (.[] | "  \(resource_id)")'
 
 # Example output:
 # staging:
-#   apps:Deployment:web-app
-#   :Service:web-svc
-#   :ConfigMap:app-config
+#   apps:Deployment:staging/web-app
+#   :Service:staging/web-svc
+#   :ConfigMap:staging/app-config
 # production:
-#   apps:Deployment:web-app
-#   :Service:web-svc
-#   :ConfigMap:app-config
+#   apps:Deployment:production/web-app
+#   :Service:production/web-svc
+#   :ConfigMap:production/app-config
 # monitoring:
-#   apps:Deployment:prometheus
-#   :Service:prometheus-svc
+#   apps:Deployment:monitoring/prometheus
+#   :Service:monitoring/prometheus-svc
 ```
 
 ## Syncing Resources in a Single Namespace
@@ -64,16 +64,16 @@ ArgoCD CLI does not have a direct `--namespace-only` flag for sync, but you can 
 
 ```bash
 # Get all resources in the staging namespace
-STAGING_RESOURCES=$(argocd app resources my-platform --output json | \
-  jq -r '.[] | select(.namespace == "staging") | "\(.group):\(.kind):\(.name)"')
+STAGING_RESOURCES=$(argocd app get my-platform -o json | \
+  jq -r '.status.resources[] | select(.namespace == "staging") | "\(.group):\(.kind):\(.namespace)/\(.name)"')
 
 # Build and execute the sync command
-RESOURCE_FLAGS=""
+RESOURCE_FLAGS=()
 while IFS= read -r resource; do
-  RESOURCE_FLAGS="$RESOURCE_FLAGS --resource $resource"
+  RESOURCE_FLAGS+=(--resource "$resource")
 done <<< "$STAGING_RESOURCES"
 
-eval argocd app sync my-platform $RESOURCE_FLAGS
+argocd app sync my-platform "${RESOURCE_FLAGS[@]}"
 ```
 
 ## A Reusable Namespace Sync Script
@@ -94,9 +94,9 @@ DRY_RUN="${3:-}"
 echo "Finding resources in namespace $TARGET_NS for app $APP_NAME..."
 
 # Get resources in the target namespace
-RESOURCES=$(argocd app resources "$APP_NAME" --output json | \
+RESOURCES=$(argocd app get "$APP_NAME" -o json | \
   jq -r --arg ns "$TARGET_NS" \
-  '.[] | select(.namespace == $ns) | "\(.group):\(.kind):\(.name)"')
+  '.status.resources[] | select(.namespace == $ns) | "\(.group):\(.kind):\(.namespace)/\(.name)"')
 
 if [ -z "$RESOURCES" ]; then
   echo "No resources found in namespace $TARGET_NS"
@@ -107,19 +107,19 @@ COUNT=$(echo "$RESOURCES" | wc -l | tr -d ' ')
 echo "Found $COUNT resources in $TARGET_NS:"
 echo "$RESOURCES" | while read -r r; do echo "  - $r"; done
 
-RESOURCE_FLAGS=""
+RESOURCE_FLAGS=()
 while IFS= read -r resource; do
-  RESOURCE_FLAGS="$RESOURCE_FLAGS --resource $resource"
+  RESOURCE_FLAGS+=(--resource "$resource")
 done <<< "$RESOURCES"
 
 if [ "$DRY_RUN" = "--dry-run" ]; then
   echo ""
   echo "Dry run:"
-  eval argocd app sync "$APP_NAME" $RESOURCE_FLAGS --dry-run
+  argocd app sync "$APP_NAME" "${RESOURCE_FLAGS[@]}" --dry-run
 else
   echo ""
   echo "Syncing..."
-  eval argocd app sync "$APP_NAME" $RESOURCE_FLAGS
+  argocd app sync "$APP_NAME" "${RESOURCE_FLAGS[@]}"
   echo "Sync complete for namespace $TARGET_NS"
 fi
 ```
@@ -156,26 +156,26 @@ for ns in "${NAMESPACES[@]}"; do
   echo "========================================="
 
   # Get resources in this namespace
-  RESOURCES=$(argocd app resources "$APP_NAME" --output json | \
+  RESOURCES=$(argocd app get "$APP_NAME" -o json | \
     jq -r --arg ns "$ns" \
-    '.[] | select(.namespace == $ns and .status == "OutOfSync") | "\(.group):\(.kind):\(.name)"')
+    '.status.resources[] | select(.namespace == $ns and .status == "OutOfSync") | "\(.group):\(.kind):\(.namespace)/\(.name)"')
 
   if [ -z "$RESOURCES" ]; then
     echo "No out-of-sync resources in $ns. Skipping."
     continue
   fi
 
-  RESOURCE_FLAGS=""
+  RESOURCE_FLAGS=()
   while IFS= read -r resource; do
-    RESOURCE_FLAGS="$RESOURCE_FLAGS --resource $resource"
+    RESOURCE_FLAGS+=(--resource "$resource")
   done <<< "$RESOURCES"
 
   # Sync the namespace
-  eval argocd app sync "$APP_NAME" $RESOURCE_FLAGS
+  argocd app sync "$APP_NAME" "${RESOURCE_FLAGS[@]}"
 
   # Wait for health
   echo "Waiting for resources in $ns to be healthy..."
-  argocd app wait "$APP_NAME" --health --timeout 300
+  argocd app wait "$APP_NAME" "${RESOURCE_FLAGS[@]}" --health --timeout 300
 
   # Wait before proceeding to the next namespace
   if [ "$ns" != "${NAMESPACES[-1]}" ]; then
@@ -195,16 +195,16 @@ Combine namespace filtering with kind filtering for even more precision.
 
 ```bash
 # Sync only Deployments in the staging namespace
-argocd app resources my-platform --output json | \
-  jq -r '.[] | select(.namespace == "staging" and .kind == "Deployment") | "\(.group):\(.kind):\(.name)"' | \
+argocd app get my-platform -o json | \
+  jq -r '.status.resources[] | select(.namespace == "staging" and .kind == "Deployment") | "\(.group):\(.kind):\(.namespace)/\(.name)"' | \
   xargs -I{} echo "--resource {}" | \
-  xargs argocd app sync my-platform
+  xargs -r argocd app sync my-platform
 
 # Sync only ConfigMaps in production
-argocd app resources my-platform --output json | \
-  jq -r '.[] | select(.namespace == "production" and .kind == "ConfigMap") | "\(.group):\(.kind):\(.name)"' | \
+argocd app get my-platform -o json | \
+  jq -r '.status.resources[] | select(.namespace == "production" and .kind == "ConfigMap") | "\(.group):\(.kind):\(.namespace)/\(.name)"' | \
   xargs -I{} echo "--resource {}" | \
-  xargs argocd app sync my-platform
+  xargs -r argocd app sync my-platform
 ```
 
 ## Alternative: Separate Applications Per Namespace
@@ -311,8 +311,8 @@ After syncing a specific namespace, verify the results.
 
 ```bash
 # Check sync status for resources in the target namespace
-argocd app resources my-platform --output json | \
-  jq '.[] | select(.namespace == "staging") | {kind, name, status, health: .health.status}'
+argocd app get my-platform -o json | \
+  jq '.status.resources[] | select(.namespace == "staging") | {kind, name, status, health: .health.status}'
 
 # Check pod status in the namespace
 kubectl get pods -n staging
@@ -327,8 +327,8 @@ Multi-namespace applications might include cluster-scoped resources like Cluster
 
 ```bash
 # Find cluster-scoped resources (namespace is empty)
-argocd app resources my-platform --output json | \
-  jq '.[] | select(.namespace == "" or .namespace == null) | {kind, name}'
+argocd app get my-platform -o json | \
+  jq '.status.resources[] | select(.namespace == "" or .namespace == null) | {kind, name}'
 ```
 
 If you need to sync cluster-scoped resources alongside namespace resources, include them explicitly.
@@ -336,9 +336,9 @@ If you need to sync cluster-scoped resources alongside namespace resources, incl
 ```bash
 # Sync staging namespace plus its related ClusterRole
 argocd app sync my-platform \
-  --resource :ConfigMap:app-config \
-  --resource apps:Deployment:web-app \
-  --resource :Service:web-svc \
+  --resource :ConfigMap:staging/app-config \
+  --resource apps:Deployment:staging/web-app \
+  --resource :Service:staging/web-svc \
   --resource rbac.authorization.k8s.io:ClusterRole:staging-reader
 ```
 
