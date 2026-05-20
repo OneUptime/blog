@@ -70,8 +70,8 @@ k8s-manifests/
       ksonnet.beta.4/
         k.libsonnet
         k8s.libsonnet
-    grafonnet/                  # Grafana dashboard library
-      grafana.libsonnet
+    grafonnet-latest/           # Grafana dashboard library
+      main.libsonnet
   apps/
     my-app/
       main.jsonnet              # Entry point for my-app
@@ -111,8 +111,8 @@ For managing external Jsonnet dependencies, `jsonnet-bundler` (jb) is the standa
 jb init
 
 # Add dependencies
-jb install https://github.com/grafana/grafonnet-lib/grafonnet
-jb install https://github.com/jsonnet-libs/k8s-libsonnet/1.29@main
+jb install github.com/grafana/grafonnet/gen/grafonnet-latest@main
+jb install github.com/jsonnet-libs/k8s-libsonnet/1.35@main
 
 # This creates vendor/ directory and jsonnetfile.json + jsonnetfile.lock.json
 ```
@@ -126,17 +126,17 @@ Your `jsonnetfile.json` tracks dependencies:
     {
       "source": {
         "git": {
-          "remote": "https://github.com/grafana/grafonnet-lib",
-          "subdir": "grafonnet"
+          "remote": "https://github.com/grafana/grafonnet",
+          "subdir": "gen/grafonnet-latest"
         }
       },
-      "version": "master"
+      "version": "main"
     },
     {
       "source": {
         "git": {
           "remote": "https://github.com/jsonnet-libs/k8s-libsonnet",
-          "subdir": "1.29"
+          "subdir": "1.35"
         }
       },
       "version": "main"
@@ -258,19 +258,19 @@ Let us build a practical shared library that multiple ArgoCD applications can us
 
 ## Multiple Library Path Order Matters
 
-When you specify multiple library paths, ArgoCD searches them in the order listed. If two paths contain a file with the same name, the first match wins:
+When you specify multiple library paths, ArgoCD gives later entries higher priority. If two paths contain a file with the same name, the last matching library path wins:
 
 ```yaml
 # Library path search order
 directory:
   jsonnet:
     libs:
-      - overrides    # Searched first - put local overrides here
-      - lib          # Searched second - internal shared libraries
-      - vendor       # Searched last - external dependencies
+      - vendor       # Lowest priority - external dependencies
+      - lib          # Internal shared libraries
+      - overrides    # Highest priority - put local overrides here
 ```
 
-This ordering lets you override vendored libraries with local versions when needed. For example, if `vendor/k8s.libsonnet` exists but you need a custom version, placing your modified file in `overrides/k8s.libsonnet` will take priority.
+This ordering lets you override vendored libraries with local versions when needed. For example, if `vendor/k8s.libsonnet` exists but you need a custom version, placing your modified file in `overrides/k8s.libsonnet` and listing `overrides` after `vendor` will take priority.
 
 ## Debugging Library Path Issues
 
@@ -329,8 +329,8 @@ This is because ArgoCD evaluates each Application independently. There is no glo
 
 **Vendor directory must be committed** - ArgoCD clones the repository as-is. It does not run `jb install` for you. Make sure the `vendor` directory is committed to Git.
 
-**Large vendor directories slow cloning** - If your vendor directory is very large, consider using shallow clones or keeping dependencies lean. ArgoCD clones the full repository for each application sync.
+**Large vendor directories slow repository fetches and cache refreshes** - If your vendor directory is very large, consider using ArgoCD repository shallow clone settings or keeping dependencies lean. ArgoCD's repo server maintains local repository clones, so large repositories can increase disk usage and refresh time.
 
-**Symlinks may not work** - Some Git hosting providers do not preserve symlinks. Avoid using symlinks in your library paths.
+**Out-of-bounds symlinks are blocked by default** - ArgoCD rejects library paths that resolve outside the repository root unless the repo server is explicitly configured to allow out-of-bounds symlinks. Keep library paths inside the repository.
 
 For more on Jsonnet with ArgoCD, see our guides on [deploying Jsonnet applications](https://oneuptime.com/blog/post/2026-02-26-argocd-deploy-jsonnet-applications/view) and [using external variables](https://oneuptime.com/blog/post/2026-02-26-argocd-jsonnet-external-variables/view).
