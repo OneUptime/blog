@@ -1,16 +1,16 @@
-# How to Reduce Git API Calls in ArgoCD
+# How to Reduce Git Requests in ArgoCD
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Git Optimization, Performance
 
-Description: Learn how to reduce Git API calls from ArgoCD to avoid GitHub rate limits, reduce network costs, and improve sync performance.
+Description: Learn how to reduce Git requests from ArgoCD to avoid provider throttling, reduce network costs, and improve sync performance.
 
 ---
 
-Every ArgoCD installation constantly polls Git repositories to detect changes. With hundreds of applications, this adds up fast. I have seen ArgoCD installations hit GitHub's rate limit of 5,000 requests per hour, causing all applications to show as "Unknown" until the rate limit resets. Beyond rate limits, excessive Git API calls waste bandwidth and slow down sync detection.
+Every ArgoCD installation constantly polls Git repositories to detect changes. With hundreds of applications, this adds up fast. I have seen ArgoCD installations hit provider throttling or network limits, causing all applications to show as "Unknown" until the service recovers. Beyond rate limits, excessive Git requests waste bandwidth and slow down sync detection.
 
-In this guide, I will show you how to dramatically reduce Git API calls from ArgoCD while maintaining fast change detection.
+In this guide, I will show you how to dramatically reduce Git requests from ArgoCD while maintaining fast change detection.
 
 ## Understanding How ArgoCD Polls Git
 
@@ -18,13 +18,13 @@ ArgoCD checks each application's Git repository at a configurable interval to se
 
 ```mermaid
 flowchart LR
-    A[ArgoCD Repo Server] -->|Poll every 3min| B[Git API - ls-remote]
+    A[ArgoCD Repo Server] -->|Poll every 3min| B[Git remote - ls-remote]
     A -->|On change detected| C[Git Clone/Fetch]
     C --> D[Manifest Generation]
     D --> E[Compare with Cluster State]
 ```
 
-For each poll, ArgoCD makes at least one `git ls-remote` call. If a change is detected, it follows up with a `git fetch` or `git clone`. If you have 200 applications polling every 3 minutes, that is 4,000 API calls per hour just for polling.
+For each poll, ArgoCD makes at least one `git ls-remote` call. If a change is detected, it follows up with a `git fetch` or `git clone`. If you have 200 applications polling every 3 minutes, that is 4,000 Git requests per hour just for polling.
 
 ## Strategy 1: Increase Polling Interval
 
@@ -45,33 +45,30 @@ data:
 
 This reduces polling calls by roughly 70%. For most environments, a 10-minute delay in change detection is perfectly acceptable.
 
-For specific applications that need faster detection, you can override the interval.
+For specific applications that need faster detection, trigger a refresh from CI after pushing a change.
 
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: critical-app
-  annotations:
-    # Override global interval for this app
-    argocd.argoproj.io/refresh: "hard"
-spec:
-  # ...
+```bash
+# Request a hard refresh for one application
+kubectl annotate application critical-app \
+  -n argocd \
+  argocd.argoproj.io/refresh=hard \
+  --overwrite
 ```
 
 ## Strategy 2: Use Webhooks Instead of Polling
 
-The most effective way to reduce Git API calls is to replace polling with webhooks. When Git calls ArgoCD on push, ArgoCD only needs to check repositories that actually changed.
+The most effective way to reduce Git requests is to replace frequent polling with webhooks. When your Git provider calls ArgoCD on push, ArgoCD only needs to refresh applications for repositories that actually changed.
 
 ### GitHub Webhook Setup
 
 Configure a webhook in your GitHub repository or organization settings.
 
 ```bash
-# Create a webhook secret
-kubectl create secret generic argocd-webhook-secret \
-  --from-literal=webhook.github.secret=your-secret-here \
-  -n argocd
+# Add the webhook secret to argocd-secret
+kubectl patch secret argocd-secret \
+  -n argocd \
+  --type merge \
+  -p '{"stringData":{"webhook.github.secret":"your-secret-here"}}'
 ```
 
 ```yaml
@@ -99,7 +96,7 @@ stringData:
 
 ### Reducing Polling After Webhook Setup
 
-Once webhooks are working, you can safely increase the polling interval to 30 minutes or more. The webhook triggers immediate sync on push, and the long polling interval serves as a safety net.
+Once webhooks are working, you can safely increase the polling interval to 30 minutes or more. The webhook triggers an immediate application refresh on push, and applications with automated sync enabled can then sync automatically. The long polling interval serves as a safety net.
 
 ```yaml
 # argocd-cm.yaml
@@ -108,31 +105,33 @@ data:
   timeout.reconciliation: "1800s"
 ```
 
-This combination - webhooks for real-time detection plus infrequent polling as fallback - reduces Git API calls by 90% or more.
+This combination - webhooks for real-time detection plus infrequent polling as fallback - reduces Git requests by 90% or more.
 
 ## Strategy 3: Repository Deduplication
 
-If multiple applications use the same Git repository, ArgoCD might make redundant calls. Use credential templates to help ArgoCD recognize they are the same repository.
+If multiple applications use the same Git repository, keep the repository URL consistent and use credential templates so you do not create duplicate repository credential entries.
 
 ```yaml
-# argocd-cm.yaml
-data:
-  repository.credentials: |
-    - url: https://github.com/myorg
-      type: git
-      passwordSecret:
-        name: github-creds
-        key: password
-      usernameSecret:
-        name: github-creds
-        key: username
+# argocd-repo-creds.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-repo-creds
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repo-creds
+stringData:
+  url: https://github.com/myorg
+  type: git
+  username: your-username
+  password: your-token
 ```
 
-When ArgoCD recognizes multiple applications share a repository, it can batch the checks.
+ArgoCD maintains local repository clones and caches generated manifests by repository revision, so consistent repository configuration helps those caches work as intended.
 
 ## Strategy 4: Use Git Submodules Carefully
 
-If your GitOps repository uses submodules, every submodule is a separate Git repository that ArgoCD needs to poll. Avoid submodules where possible. Instead, use Kustomize remote bases or Helm dependencies which are fetched differently.
+If your GitOps repository uses submodules, every submodule is a separate Git repository that ArgoCD may need to fetch during repository checkout. Avoid submodules where possible. Instead, use Kustomize remote bases or Helm dependencies intentionally and account for their own caching behavior.
 
 ```yaml
 # argocd-cmd-params-cm.yaml
@@ -143,7 +142,7 @@ data:
 
 ## Strategy 5: Use GitHub App Authentication
 
-GitHub Apps have higher rate limits (5,000 requests per installation per hour) compared to personal access tokens (5,000 per user per hour). If multiple teams share a token, they share the limit. A GitHub App gets its own allocation.
+GitHub Apps have their own installation rate limit, starting at 5,000 requests per installation per hour and scaling higher for larger organizations, while personal access tokens use the authenticated user's rate limit. If multiple teams share a token, they share the limit. A GitHub App gets its own allocation.
 
 ```yaml
 # Configure GitHub App in ArgoCD
@@ -167,7 +166,7 @@ stringData:
 
 ## Strategy 6: Optimize Manifest Caching
 
-ArgoCD caches generated manifests in Redis. Properly configured caching means ArgoCD does not need to re-clone and re-render manifests when nothing has changed.
+ArgoCD caches generated manifests in Redis. Properly configured caching means ArgoCD does not need to re-render manifests when nothing has changed.
 
 ```yaml
 # argocd-cmd-params-cm.yaml
@@ -176,38 +175,41 @@ data:
   reposerver.repo.cache.expiration: "24h"
 ```
 
-Monitor cache hit rates to ensure caching is effective.
+Monitor repo-server Git request metrics to ensure caching is effective.
 
 ```bash
-# Check repo server cache metrics
+# Check repo server Git request metrics
 kubectl exec -n argocd deploy/argocd-repo-server -- \
-  curl -s localhost:8084/metrics | grep argocd_repo_cache
+  curl -s localhost:8084/metrics | grep argocd_git_request_total
 ```
 
 ## Strategy 7: Monorepo Optimization
 
-If you use a monorepo structure where many applications point to different paths in the same repository, ArgoCD fetches the entire repository for each application. Optimize this with sparse checkout or by splitting into smaller repositories.
+If you use a monorepo structure where many applications point to different paths in the same repository, ArgoCD uses the repository commit SHA as a manifest cache key. A new commit can invalidate generated manifests for all applications in that repository. Optimize this with manifest path annotations or by splitting into smaller repositories.
 
 For monorepos that must stay as one repository, ensure ArgoCD only watches the relevant paths.
 
 ```yaml
-# Application spec with directory-specific tracking
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: my-service
+  annotations:
+    argocd.argoproj.io/manifest-generate-paths: .
 spec:
   source:
     repoURL: https://github.com/myorg/monorepo.git
     path: apps/production/my-service
     targetRevision: main
-    directory:
-      recurse: false  # Don't recurse into subdirectories
 ```
 
-## Monitoring Git API Usage
+## Monitoring Git Usage
 
-Track your Git API call rate to ensure optimizations are working.
+Track your Git request rate and GitHub API rate limit status to ensure optimizations are working.
 
 ```bash
 # Check GitHub rate limit status
-curl -H "Authorization: token $GITHUB_TOKEN" \
+curl -H "Authorization: Bearer $GITHUB_TOKEN" \
   https://api.github.com/rate_limit
 
 # ArgoCD repo server metrics for Git operations
@@ -241,10 +243,10 @@ spec:
 
 Here is a typical improvement after implementing these optimizations for an installation with 300 applications pointing to 50 repositories.
 
-Before: approximately 6,000 Git API calls per hour, frequent rate limiting, 5-minute average change detection time.
+Before: approximately 6,000 Git requests per hour, frequent provider throttling, 5-minute average change detection time.
 
-After with webhooks and 30-minute polling: approximately 200 Git API calls per hour (from fallback polling), zero rate limiting, sub-minute change detection via webhooks.
+After with webhooks and 30-minute polling: approximately 200 Git requests per hour (from fallback polling), no provider throttling, sub-minute change detection via webhooks.
 
 ## Conclusion
 
-Reducing Git API calls in ArgoCD is primarily about switching from polling to webhooks. Once webhooks handle real-time change detection, increase the polling interval to a long fallback period. Layer on repository deduplication, GitHub App authentication for better rate limits, and manifest caching to squeeze out remaining inefficiency. Monitor your Git API usage continuously and set alerts before you hit rate limits. These optimizations are especially critical for organizations using GitHub's free tier or sharing API tokens across multiple tools.
+Reducing Git requests in ArgoCD is primarily about switching from polling to webhooks. Once webhooks handle real-time change detection, increase the polling interval to a long fallback period. Layer on repository deduplication, GitHub App authentication for separate rate limits, and manifest caching to squeeze out remaining inefficiency. Monitor your Git usage continuously and set alerts before you hit provider limits. These optimizations are especially critical for organizations running many applications from a small set of repositories or sharing credentials across multiple tools.
