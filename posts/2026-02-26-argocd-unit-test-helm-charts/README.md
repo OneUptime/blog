@@ -150,8 +150,8 @@ tests:
 # Run all tests for a chart
 helm unittest ./charts/my-app
 
-# Run with verbose output
-helm unittest -v ./charts/my-app
+# Run with plugin debug output
+helm unittest --debugPlugin ./charts/my-app
 
 # Run specific test file
 helm unittest -f 'tests/deployment_test.yaml' ./charts/my-app
@@ -352,16 +352,31 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v5.0.0
+        with:
+          version: v3.19.0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Set up chart-testing
+        uses: helm/chart-testing-action@v2.8.0
 
       - name: Install helm-unittest
         run: helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
+      - name: Install kubeconform
+        run: |
+          curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xvzf -
+          sudo mv kubeconform /usr/local/bin/
 
       - name: Lint charts
         run: |
           for chart in charts/*/; do
             echo "Linting: $chart"
-            helm lint "$chart" --strict
+            ct lint --charts "$chart"
           done
 
       - name: Run unit tests
