@@ -68,30 +68,46 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Increase Git request timeout (default is 15s for ls-remote, 90s for fetch)
-  reposerver.git.request.timeout: "300"
+  # Increase Git request timeout (default is 15s)
+  reposerver.git.request.timeout: "300s"
 ```
 
 Enable shallow clones for large repos:
 
 ```yaml
-# argocd-cm ConfigMap
+# Repository Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: large-repo
   namespace: argocd
-data:
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/org/repo.git
   # Enable shallow cloning to reduce clone time
-  # This is available in ArgoCD 2.8+
+  depth: "1"
 ```
 
 Set up a Git proxy if you are behind a corporate firewall:
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
-data:
-  reposerver.git.proxy.url: "http://proxy.corp.example.com:8080"
+# Repository Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: proxied-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/org/repo.git
+  proxy: http://proxy.corp.example.com:8080
+  noProxy: ".internal.example.com,10.0.0.0/8"
 ```
 
 ## Scenario 2: Manifest Generation Timeout
@@ -126,8 +142,10 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Timeout for each manifest generation operation
-  reposerver.default.cache.expiration: "10m"
+  # Repo server RPC timeout used by the application controller
+  controller.repo.server.timeout.seconds: "300"
+  # Repo server RPC timeout used by the API server
+  server.repo.server.timeout.seconds: "300"
 ```
 
 **Optimize your manifests to generate faster:**
@@ -136,7 +154,7 @@ data:
 # Check how long Helm template takes locally
 time helm template my-release ./chart --values values.yaml
 
-# If it takes more than 30s locally, it will definitely timeout in ArgoCD
+# If it takes more than 90s locally, it can hit the default exec timeout in ArgoCD
 # Consider splitting large charts into smaller ones
 ```
 
@@ -160,13 +178,16 @@ argocd cluster list
 kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=cluster
 ```
 
-**Fix - increase the controller's Kubernetes client timeout:**
+**Fix - increase the cluster information update timeout:**
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
-data:
-  # Increase timeout for k8s API calls
-  controller.k8s.client.timeout: "120s"
+# Set on the application controller deployment
+containers:
+  - name: argocd-application-controller
+    env:
+      # Increase timeout for cluster information updates, in seconds
+      - name: ARGO_CD_UPDATE_CLUSTER_INFO_TIMEOUT
+        value: "120"
 ```
 
 For remote clusters behind VPN or with high latency:
@@ -206,10 +227,10 @@ The ArgoCD API server communicates with the repo server and controller via gRPC.
 ```yaml
 # argocd-cmd-params-cm ConfigMap
 data:
-  # Timeout for repo server operations
-  reposerver.timeout.seconds: "300"
-  # Default reconciliation timeout
-  timeout.reconciliation: "180s"
+  # Repo server RPC timeout used by the application controller
+  controller.repo.server.timeout.seconds: "300"
+  # Repo server RPC timeout used by the API server
+  server.repo.server.timeout.seconds: "300"
 ```
 
 ## Scenario 5: CLI Login Timeout
@@ -223,10 +244,9 @@ FATA[0030] rpc error: code = DeadlineExceeded desc = context deadline exceeded
 **Possible fixes:**
 
 ```bash
-# Increase the client-side timeout with --grpc-web flag
+# Use gRPC-Web if the proxy or load balancer does not support HTTP/2 gRPC
 argocd login argocd.example.com --grpc-web --grpc-web-root-path /
 
-# If behind a slow proxy, increase timeout
 # Check if the server is reachable first
 curl -k https://argocd.example.com/api/version
 ```
@@ -238,23 +258,23 @@ If the server is reachable via HTTPS but not gRPC, your load balancer might not 
 argocd login argocd.example.com --grpc-web
 ```
 
-## Scenario 6: Webhook Reconciliation Timeout
+## Scenario 6: Webhook-Driven Reconciliation Polling
 
-When ArgoCD receives a webhook but takes too long to process:
+When ArgoCD receives webhooks successfully and you want to reduce fallback polling:
 
 ```yaml
-# argocd-cmd-params-cm ConfigMap
+# argocd-cm ConfigMap
 data:
-  # Increase the webhook processing timeout
+  # Increase the Git polling interval when webhooks are the primary trigger
   timeout.reconciliation: "300s"
 ```
 
 ## General Timeout Configuration Reference
 
-Here is a reference of all the timeout-related settings you can configure:
+Here is a reference of the main timeout-related settings used in this guide:
 
 ```yaml
-# argocd-cmd-params-cm - complete timeout configuration
+# argocd-cmd-params-cm - repo server timeout configuration
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -262,16 +282,28 @@ metadata:
   namespace: argocd
 data:
   # Git operation timeout
-  reposerver.git.request.timeout: "300"
+  reposerver.git.request.timeout: "300s"
 
-  # Repo server operation timeout
-  reposerver.timeout.seconds: "300"
+  # Repo server RPC timeout used by the application controller
+  controller.repo.server.timeout.seconds: "300"
 
-  # Application reconciliation timeout
+  # Repo server RPC timeout used by the API server
+  server.repo.server.timeout.seconds: "300"
+```
+
+```yaml
+# argocd-cm - reconciliation timing configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Application reconciliation interval
   timeout.reconciliation: "180s"
 
   # Reconciliation jitter
-  timeout.reconciliation.jitter: "0s"
+  timeout.reconciliation.jitter: "60s"
 
   # Hard reconciliation timeout
   timeout.hard.reconciliation: "0s"
@@ -286,6 +318,8 @@ env:
     value: "300s"
   - name: ARGOCD_GIT_ATTEMPTS_COUNT
     value: "5"
+  - name: ARGO_CD_UPDATE_CLUSTER_INFO_TIMEOUT
+    value: "120"
 ```
 
 ## Diagnosing Which Timeout Is Hit
