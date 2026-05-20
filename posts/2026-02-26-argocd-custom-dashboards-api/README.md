@@ -18,7 +18,7 @@ A custom dashboard typically pulls data from several ArgoCD API endpoints and tr
 graph TD
     A[ArgoCD API] --> B[/api/v1/applications]
     A --> C[/api/v1/stream/applications]
-    A --> D[/api/v1/applications/name/resource-tree]
+    A --> D[/api/v1/applications/{name}/resource-tree]
     A --> E[/api/v1/settings]
 
     B --> F[Status Summary]
@@ -41,7 +41,7 @@ Build a summary dataset from the applications list:
 ```python
 import requests
 from collections import Counter, defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 class DashboardData:
     def __init__(self, server, token):
@@ -66,7 +66,7 @@ class DashboardData:
             "team_summary": self._team_summary(apps),
             "recent_syncs": self._recent_syncs(apps),
             "degraded_apps": self._degraded_details(apps),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     def _health_summary(self, apps):
@@ -133,7 +133,7 @@ class DashboardData:
 
 ## Building a Flask Dashboard
 
-Here is a complete web dashboard using Flask:
+Here is a web dashboard using Flask and the `DashboardData` class above:
 
 ```python
 from flask import Flask, render_template_string, jsonify
@@ -314,6 +314,10 @@ Track deployment velocity over time:
 ```python
 def get_deployment_frequency(server, token, days=30):
     """Calculate deployment frequency from sync history."""
+    from collections import Counter, defaultdict
+    from datetime import datetime, timedelta, timezone
+    import requests
+
     resp = requests.get(
         f"{server}/api/v1/applications",
         headers={"Authorization": f"Bearer {token}"},
@@ -321,8 +325,7 @@ def get_deployment_frequency(server, token, days=30):
     )
     apps = resp.json().get("items", [])
 
-    from datetime import datetime, timedelta
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
 
     deployments_per_day = defaultdict(int)
     deployments_per_app = Counter()
@@ -334,7 +337,7 @@ def get_deployment_frequency(server, token, days=30):
             if deployed_at:
                 try:
                     dt = datetime.fromisoformat(deployed_at.replace("Z", "+00:00"))
-                    if dt.replace(tzinfo=None) >= cutoff:
+                    if dt >= cutoff:
                         day = dt.strftime("%Y-%m-%d")
                         deployments_per_day[day] += 1
                         deployments_per_app[app["metadata"]["name"]] += 1
@@ -357,11 +360,12 @@ Combine SSE streaming with a dashboard for live updates. See our guide on [ArgoC
 # Backend: Flask-SSE endpoint
 from flask import Flask, Response
 import json
+import requests
 
 @app.route('/stream')
 def stream():
     def generate():
-        # Connect to ArgoCD SSE
+        # Connect to the ArgoCD streaming API
         with requests.get(
             f"{ARGOCD_SERVER}/api/v1/stream/applications",
             headers={"Authorization": f"Bearer {ARGOCD_TOKEN}"},
