@@ -51,7 +51,10 @@ spec:
     - name: v1
       served: true
       storage: true
-      # ... schema definition
+      schema:
+        openAPIV3Schema:
+          type: object
+          # ... schema definition
 
 ---
 # Controller deployment - applied second (wave -1)
@@ -145,7 +148,7 @@ spec:
       selfHeal: true
 ```
 
-When both Applications are managed by an app-of-apps parent, the sync waves ensure cert-manager is installed before any Certificate resources are created.
+When both Applications are managed by an app-of-apps parent, the sync waves order the child Applications so cert-manager is reconciled before any Certificate resources are created. In ArgoCD 1.8 and later, restore the `argoproj.io/Application` health check if you need the parent Application to wait for each child Application to become healthy before moving to the next wave.
 
 ## Pattern 3: ServerSideApply for CRDs
 
@@ -178,9 +181,9 @@ Without ServerSideApply, you may see errors like:
 metadata.annotations: Too long: must have at most 262144 bytes
 ```
 
-## Pattern 4: Skip Schema Validation
+## Pattern 4: Skip Dry Run on Missing Resources
 
-When a CRD is not yet installed, ArgoCD's schema validation fails because the API server does not recognize the resource type. Use the `SkipDryRunOnMissingResource` sync option:
+When a CRD is not yet installed and is not part of the same sync, ArgoCD's dry run fails because the API server does not recognize the resource type. Use the `SkipDryRunOnMissingResource` sync option:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -232,18 +235,31 @@ metadata:
     argocd.argoproj.io/sync-wave: "-1"
 spec:
   group: example.com
+  names:
+    kind: MyResource
+    plural: myresources
+    singular: myresource
+  scope: Namespaced
   versions:
     - name: v1
       served: true
       storage: false    # Old version still served but not stored
+      schema:
+        openAPIV3Schema:
+          type: object
+          # ... schema definition
     - name: v2
       served: true
       storage: true     # New version is the storage version
+      schema:
+        openAPIV3Schema:
+          type: object
+          # ... schema definition
 ```
 
 ## Ignoring CRD Diff Noise
 
-CRDs often have fields that are modified by the API server after creation (like status fields and conversion webhook configurations). Configure ArgoCD to ignore these:
+CRDs often have fields that are modified after creation (like status fields and conversion webhook CA bundles injected by another controller). Configure ArgoCD to ignore these:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -299,7 +315,7 @@ spec:
       - ServerSideApply=true
 ```
 
-Then manage CRDs separately or use the `--include-crds` flag in your Kustomize setup.
+Then manage CRDs separately or set `includeCRDs: true` on the Kustomize `helmCharts` entry.
 
 ### CRDs as Templates
 
