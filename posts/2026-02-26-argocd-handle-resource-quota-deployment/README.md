@@ -100,7 +100,7 @@ This works within the existing quota but is slower and briefly reduces capacity.
 
 ## Strategy 3: Temporary Quota Increase with ArgoCD Hooks
 
-Use a pre-sync hook to temporarily increase the quota before deployment:
+Use a pre-sync hook to temporarily increase the quota before deployment. This works when the `ResourceQuota` is not reapplied to its lower value during the same sync; if ArgoCD also manages the quota manifest, keep the temporary quota in Git for that sync or exclude that field from reconciliation.
 
 ```yaml
 # pre-sync-quota-increase.yaml
@@ -238,7 +238,7 @@ If pods are over-provisioned, reducing their requests frees up quota headroom fo
 
 ## Strategy 6: Priority-Based Resource Management
 
-Use PriorityClasses to ensure deployment surge pods can preempt lower-priority workloads:
+Use PriorityClasses to ensure deployment surge pods can preempt lower-priority workloads when node capacity is the bottleneck:
 
 ```yaml
 # priority-classes.yaml
@@ -264,7 +264,7 @@ metadata:
   name: batch-workload
 value: 10000
 preemptionPolicy: Never
-description: "Batch workloads - can be preempted"
+description: "Batch workloads - do not preempt other pods"
 ```
 
 Assign priorities to your deployments:
@@ -283,7 +283,7 @@ spec:
           # ...
 ```
 
-When quota is tight, higher-priority pods can preempt lower-priority ones.
+PriorityClasses do not bypass `ResourceQuota` admission checks. When node capacity is tight, higher-priority pods can preempt lower-priority ones; when namespace quota is tight, you still need quota headroom, lower surge, or a quota change.
 
 ## ArgoCD Application with Retry for Quota Issues
 
@@ -316,7 +316,7 @@ spec:
         maxDuration: 10m
 ```
 
-With generous retry settings, ArgoCD will keep trying even if the initial sync fails due to quota limits. As old pods terminate during the rolling update, quota frees up for new pods.
+With generous retry settings, ArgoCD will keep trying if the sync operation itself fails due to quota limits. For Deployment surge pods, the Deployment object is usually applied successfully and Kubernetes handles the rollout; quota only frees up when old pods terminate according to the rolling update settings.
 
 ## Monitoring Quota Usage
 
@@ -333,21 +333,21 @@ spec:
       rules:
         - alert: QuotaNearlyFull
           expr: |
-            (kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) > 0.85
+            (kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"}) > 0.85
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: "Resource quota {{ $labels.resourcequota }} in {{ $labels.namespace }} is {{ $value | humanizePercentage }} full"
+            summary: "Resource quota {{ $labels.resourcequota }} resource {{ $labels.resource }} in {{ $labels.namespace }} is {{ $value | humanizePercentage }} full"
 
         - alert: QuotaBlocking
           expr: |
-            (kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) >= 1.0
+            (kube_resourcequota{type="used"} / ignoring(type) kube_resourcequota{type="hard"}) >= 1.0
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Resource quota {{ $labels.resourcequota }} in {{ $labels.namespace }} is at capacity - deployments may be blocked"
+            summary: "Resource quota {{ $labels.resourcequota }} resource {{ $labels.resource }} in {{ $labels.namespace }} is at capacity - deployments may be blocked"
 ```
 
 ## Best Practices
