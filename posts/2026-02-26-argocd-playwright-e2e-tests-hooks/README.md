@@ -29,12 +29,14 @@ First, create a Docker image with your E2E tests:
 ```dockerfile
 # Dockerfile.e2e
 
-FROM mcr.microsoft.com/playwright:v1.41.0-jammy
+FROM mcr.microsoft.com/playwright:v1.60.0-noble
 
 WORKDIR /tests
 
 # Install dependencies
 COPY package.json package-lock.json ./
+# Make sure package-lock.json pins @playwright/test to the same version
+# as the Docker image so browser executable paths match.
 RUN npm ci
 
 # Copy test files
@@ -116,7 +118,6 @@ spec:
             - npx
             - playwright
             - test
-            - --reporter=list
           env:
             - name: BASE_URL
               value: "http://frontend.default.svc:3000"
@@ -147,6 +148,12 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Post-Deployment Smoke Tests', () => {
   test('homepage loads correctly', async ({ page }) => {
+    // Verify no JavaScript console errors
+    const errors: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') errors.push(msg.text());
+    });
+
     await page.goto('/');
 
     // Verify the page loaded (not a blank white screen)
@@ -155,12 +162,6 @@ test.describe('Post-Deployment Smoke Tests', () => {
     // Check that critical UI elements are present
     await expect(page.locator('nav')).toBeVisible();
     await expect(page.locator('main')).toBeVisible();
-
-    // Verify no JavaScript console errors
-    const errors: string[] = [];
-    page.on('console', (msg) => {
-      if (msg.type() === 'error') errors.push(msg.text());
-    });
 
     // Wait for page to fully render
     await page.waitForLoadState('networkidle');
@@ -331,7 +332,7 @@ containers:
       - -c
       - |
         # Run tests
-        npx playwright test --reporter=list 2>&1 | tee /tmp/results/output.txt
+        npx playwright test 2>&1 | tee /tmp/results/output.txt
         TEST_EXIT=$?
 
         # Upload artifacts on failure
@@ -344,16 +345,23 @@ containers:
           fi
 
           # Notify team with failure details
-          FAILURES=$(grep "FAIL" /tmp/results/output.txt | head -5)
+          export FAILURES
+          FAILURES=$(grep "FAIL" /tmp/results/output.txt | head -5 || true)
+          node -e '
+          const fs = require("fs");
+          const failures = process.env.FAILURES || "See Playwright output for details.";
+          const artifacts = process.env.ARTIFACTS_URL || "Not uploaded";
+          fs.writeFileSync("/tmp/results/slack-payload.json", JSON.stringify({
+            text: "E2E Tests Failed After Deployment",
+            attachments: [{
+              color: "danger",
+              text: `${failures}\n\nArtifacts: ${artifacts}`
+            }]
+          }));
+          '
           curl -X POST "$SLACK_WEBHOOK" \
             -H "Content-Type: application/json" \
-            -d "{
-              \"text\": \"E2E Tests Failed After Deployment\",
-              \"attachments\": [{
-                \"color\": \"danger\",
-                \"text\": \"$FAILURES\n\nArtifacts: $ARTIFACTS_URL\"
-              }]
-            }"
+            --data @/tmp/results/slack-payload.json
         fi
 
         exit $TEST_EXIT
