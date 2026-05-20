@@ -8,7 +8,7 @@ Description: Use fanotify on Ubuntu to monitor and optionally control file acces
 
 ---
 
-fanotify is a Linux kernel subsystem for filesystem event notification, introduced in kernel 2.6.36 and significantly expanded since. Unlike inotify, which requires separate watches on each directory, fanotify can monitor an entire filesystem mount point with a single notification group. This makes it suitable for anti-virus scanning, security auditing, and backup solutions that need comprehensive coverage without tracking individual directories.
+fanotify is a Linux kernel subsystem for filesystem event notification, introduced in kernel 2.6.37 and significantly expanded since. Unlike inotify, which requires separate watches on each directory, fanotify can monitor an entire filesystem mount point with a single notification group. This makes it suitable for anti-virus scanning, security auditing, and backup solutions that need comprehensive coverage without tracking individual directories.
 
 fanotify also has a unique capability inotify lacks: it can **intercept** file access and decide whether to allow or deny it, making it useful for implementing mandatory access controls in user space.
 
@@ -20,12 +20,12 @@ fanotify also has a unique capability inotify lacks: it can **intercept** file a
 | Access control | No | Yes (FAN_ACCESS_PERM, FAN_OPEN_PERM) |
 | Provides PID of accessor | No | Yes |
 | File descriptor to file | No | Yes (via /proc/self/fd) |
-| Required privilege | None | CAP_SYS_ADMIN |
+| Required privilege | None | CAP_SYS_ADMIN for mount, filesystem, and permission events |
 | NFS support | No | Limited |
 
 ## Prerequisites
 
-fanotify requires root privileges or `CAP_SYS_ADMIN`. Kernel 5.1+ is recommended for the `FAN_REPORT_FID` feature (needed for robust directory monitoring without race conditions).
+The mount, filesystem, and permission-event examples below require root privileges or `CAP_SYS_ADMIN`. Kernel 5.1+ is recommended for the `FAN_REPORT_FID` feature (needed for robust directory entry monitoring without race conditions).
 
 ```bash
 # Check kernel version
@@ -42,6 +42,7 @@ fanotify is a C API - there's no standalone CLI tool like inotifywait. You write
 
 ```c
 // fanotify_monitor.c - Monitor file access events on a mount point
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -175,6 +176,7 @@ fanotify's most powerful feature is denying access. This requires `FAN_CLASS_CON
 
 ```c
 // fanotify_access_control.c - Intercept and control file opens
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -263,7 +265,9 @@ int main(int argc, char *argv[])
 
             // Send allow or deny response
             response.response = block ? FAN_DENY : FAN_ALLOW;
-            write(fan_fd, &response, sizeof(response));
+            if (write(fan_fd, &response, sizeof(response)) != sizeof(response)) {
+                perror("write");
+            }
 
             close(event->fd);
             event = FAN_EVENT_NEXT(event, len);
@@ -281,6 +285,7 @@ A practical application is tracking which processes access sensitive files:
 
 ```c
 // fanotify_audit.c - Audit sensitive file access with process info
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -331,27 +336,17 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    int fan_fd = fanotify_init(FAN_CLASS_NOTIF | FAN_REPORT_DFID_NAME,
-                               O_RDONLY | O_LARGEFILE);
+    int fan_fd = fanotify_init(FAN_CLASS_NOTIF, O_RDONLY | O_LARGEFILE);
     if (fan_fd < 0) {
-        // Fallback for older kernels without FAN_REPORT_DFID_NAME
-        fan_fd = fanotify_init(FAN_CLASS_NOTIF, O_RDONLY | O_LARGEFILE);
-        if (fan_fd < 0) {
-            perror("fanotify_init");
-            return 1;
-        }
+        perror("fanotify_init");
+        return 1;
     }
 
-    if (fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_FILESYSTEM,
-                      FAN_OPEN | FAN_CLOSE_WRITE | FAN_CREATE | FAN_DELETE,
+    if (fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
+                      FAN_OPEN | FAN_CLOSE_WRITE,
                       AT_FDCWD, argv[1]) < 0) {
-        // Fall back to mount-level if filesystem-level not supported
-        if (fanotify_mark(fan_fd, FAN_MARK_ADD | FAN_MARK_MOUNT,
-                          FAN_OPEN | FAN_CLOSE_WRITE,
-                          AT_FDCWD, argv[1]) < 0) {
-            perror("fanotify_mark");
-            return 1;
-        }
+        perror("fanotify_mark");
+        return 1;
     }
 
     printf("Auditing file access on %s\n\n", argv[1]);
@@ -383,8 +378,6 @@ int main(int argc, char *argv[])
 
             if (event->mask & FAN_OPEN)        printf("OPEN ");
             if (event->mask & FAN_CLOSE_WRITE) printf("WRITE ");
-            if (event->mask & FAN_CREATE)      printf("CREATE ");
-            if (event->mask & FAN_DELETE)      printf("DELETE ");
             printf("]\n");
 
             if (event->fd >= 0) close(event->fd);
@@ -457,15 +450,15 @@ sudo journalctl -u fanotify-audit -f
 - `FAN_MODIFY`: File modified
 - `FAN_OPEN`: File opened
 - `FAN_CLOSE_WRITE`: File closed after write
-- `FAN_CREATE`: File created (kernel 5.1+)
-- `FAN_DELETE`: File deleted (kernel 5.1+)
-- `FAN_OPEN_PERM`: Permission event for open (requires FAN_CLASS_CONTENT)
+- `FAN_CREATE`: File created (kernel 5.1+, requires file-handle reporting)
+- `FAN_DELETE`: File deleted (kernel 5.1+, requires file-handle reporting)
+- `FAN_OPEN_PERM`: Permission event for open (requires FAN_CLASS_CONTENT or FAN_CLASS_PRE_CONTENT)
 
 ## Limitations
 
-- Requires root or `CAP_SYS_ADMIN`
+- These mount, filesystem, and permission-event examples require root or `CAP_SYS_ADMIN`
 - Cannot watch network filesystems (NFS, CIFS) reliably
-- `FAN_CREATE` and `FAN_DELETE` require kernel 5.1+
+- `FAN_CREATE` and `FAN_DELETE` require kernel 5.1+ and a file-handle reporting group such as `FAN_REPORT_FID`
 - Filesystem-level marks (`FAN_MARK_FILESYSTEM`) require kernel 4.20+
 - The provided file descriptor gives the current file content, not the state at event time
 
