@@ -31,8 +31,8 @@ The notifications controller is the pod that evaluates triggers and sends messag
 kubectl get pods -n argocd -l app.kubernetes.io/component=notifications-controller
 
 # Expected output:
-# NAME                                               READY   STATUS    RESTARTS
-# argocd-notifications-controller-5b7db4d9f8-x2k4m   1/1     Running   0
+# NAME                                               READY   STATUS    RESTARTS   AGE
+# argocd-notifications-controller-5b7db4d9f8-x2k4m   1/1     Running   0          5m
 ```
 
 If the pod is in CrashLoopBackOff or not present, check:
@@ -47,7 +47,7 @@ kubectl describe pod -n argocd -l app.kubernetes.io/component=notifications-cont
 
 ## Step 2: Check Controller Logs for Delivery Errors
 
-The notifications controller logs every delivery attempt. Search for error messages:
+The notifications controller logs delivery errors and, at higher log levels, delivery attempts. Search for error messages:
 
 ```bash
 # Get recent logs from the controller
@@ -105,9 +105,9 @@ kubectl get configmap argocd-notifications-cm -n argocd -o json | \
 If you changed the trigger configuration but the `oncePer` value has not changed (same revision, same timestamp), the controller considers the notification already sent. To force a resend, you need to change the `oncePer` value or delete the notification state:
 
 ```bash
-# The notifications controller stores state in a secret
-kubectl get secret argocd-notifications-secret -n argocd -o json | \
-  jq '.data | keys'
+# The notifications controller stores sent-notification state on the Application
+kubectl get application my-app -n argocd -o json | \
+  jq '.metadata.annotations["notified.notifications.argoproj.io"]'
 ```
 
 ## Step 5: Verify Service Configuration
@@ -143,12 +143,12 @@ Confirm the application has the correct subscription annotation:
 ```bash
 # List notification annotations on the application
 kubectl get application my-app -n argocd -o json | \
-  jq '.metadata.annotations | to_entries[] | select(.key | startswith("notifications"))'
+  jq '(.metadata.annotations // {}) | to_entries[] | select(.key | startswith("notifications"))'
 
 # Also check the parent project
 PROJECT=$(kubectl get application my-app -n argocd -o jsonpath='{.spec.project}')
 kubectl get appproject "$PROJECT" -n argocd -o json | \
-  jq '.metadata.annotations | to_entries[] | select(.key | startswith("notifications"))'
+  jq '(.metadata.annotations // {}) | to_entries[] | select(.key | startswith("notifications"))'
 ```
 
 The trigger name in the annotation must exactly match the trigger name in the ConfigMap. A common mistake is a subtle typo like `on-sync-fail` instead of `on-sync-failed`.
@@ -162,7 +162,9 @@ If the controller logs show delivery failures, the issue might be network connec
 kubectl run -it --rm debug-notifications \
   --image=curlimages/curl \
   --namespace=argocd \
-  -- curl -s -o /dev/null -w "%{http_code}" \
+  --restart=Never \
+  --command -- \
+  curl -s -o /dev/null -w "%{http_code}" \
   https://slack.com/api/api.test
 
 # Expected: 200
@@ -175,7 +177,9 @@ For SMTP email services:
 kubectl run -it --rm debug-smtp \
   --image=busybox \
   --namespace=argocd \
-  -- nc -zv smtp.gmail.com 587
+  --restart=Never \
+  --command -- \
+  nc -zv smtp.gmail.com 587
 ```
 
 If you are behind a corporate firewall or using network policies, ensure the notifications controller pod can reach external services.
@@ -212,15 +216,15 @@ This is almost always due to `oncePer` deduplication. If the application state h
 ```yaml
   # Bad: oncePer uses a value that does not change between events
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       oncePer: app.metadata.name
       send:
         - sync-failed
 
   # Good: oncePer uses a value that changes with each event
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
-      oncePer: app.status.operationState.finishedAt
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
+      oncePer: app.status?.operationState.finishedAt
       send:
         - sync-failed
 ```
@@ -256,18 +260,21 @@ kubectl get secret argocd-notifications-secret -n argocd -o jsonpath='{.data.sla
 For deeper investigation, increase the log level on the notifications controller:
 
 ```bash
-# Edit the deployment to add --loglevel=debug
-kubectl edit deployment argocd-notifications-controller -n argocd
+# Set the notifications controller log level to debug
+kubectl patch configmap argocd-cmd-params-cm \
+  -n argocd \
+  --type merge \
+  -p '{"data":{"notificationscontroller.log.level":"debug"}}'
+
+# Restart the controller so it picks up the ConfigMap change
+kubectl rollout restart deployment argocd-notifications-controller -n argocd
 ```
 
-Add the argument to the container spec:
+The relevant key in `argocd-cmd-params-cm` should look like this:
 
 ```yaml
-spec:
-  containers:
-    - name: argocd-notifications-controller
-      args:
-        - --loglevel=debug
+data:
+  notificationscontroller.log.level: debug
 ```
 
 Debug logging shows every trigger evaluation, every template render, and every delivery attempt with full details.
