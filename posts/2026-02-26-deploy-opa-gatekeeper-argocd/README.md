@@ -77,50 +77,20 @@ gatekeeper:
   # Replicas for high availability
   replicas: 3
 
-  # Audit configuration
-  audit:
-    replicas: 1
-    resources:
-      requests:
-        cpu: 250m
-        memory: 256Mi
-      limits:
-        memory: 512Mi
-    # How often to audit existing resources
-    auditInterval: 300  # 5 minutes
-    constraintViolationsLimit: 100
-    auditFromCache: false
-    auditChunkSize: 500
-
-  # Controller manager
-  controllerManager:
-    resources:
-      requests:
-        cpu: 250m
-        memory: 256Mi
-      limits:
-        memory: 512Mi
+  # How often to audit existing resources
+  auditInterval: 300  # 5 minutes
+  constraintViolationsLimit: 100
+  auditFromCache: false
+  auditChunkSize: 500
 
   # Webhook configuration
-  webhook:
-    # What happens when Gatekeeper is unavailable
-    failurePolicy: Ignore
-    # Timeout for webhook calls
-    timeoutSeconds: 5
-
-  # Exempt namespaces from enforcement
-  exemptNamespaces:
-    - kube-system
-    - kube-public
-    - kube-node-lease
-    - gatekeeper-system
-    - argocd
-
-  # Exempt namespaces via prefix
-  exemptNamespacePrefixes: []
+  # What happens when Gatekeeper is unavailable
+  validatingWebhookFailurePolicy: Ignore
+  # Timeout for webhook calls
+  validatingWebhookTimeoutSeconds: 5
 
   # Enable mutation support
-  mutatingWebhookEnabled: true
+  disableMutation: false
   mutatingWebhookFailurePolicy: Ignore
 
   # Emit admission events
@@ -130,15 +100,37 @@ gatekeeper:
   # Enable external data providers
   enableExternalData: false
 
-  # Pod disruption budget
-  podDisruptionBudget:
-    minAvailable: 1
+  # Audit configuration
+  audit:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
 
-  # ServiceMonitor
-  serviceMonitor:
-    enabled: true
-    additionalLabels:
-      release: kube-prometheus-stack
+  # Controller manager
+  controllerManager:
+    resources:
+      requests:
+        cpu: 250m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+    # Exempt namespaces from enforcement
+    exemptNamespaces:
+      - kube-system
+      - kube-public
+      - kube-node-lease
+      - gatekeeper-system
+      - argocd
+    # Exempt namespaces via prefix
+    exemptNamespacePrefixes: []
+
+  # Pod disruption budget
+  pdb:
+    controllerManager:
+      minAvailable: 1
 
   # Install CRDs
   crds:
@@ -303,7 +295,7 @@ spec:
         }
 
         _matches_exemption(img, exemption) {
-          contains(googimg, exemption)
+          img == exemption
         }
 
         _matches_exemption(img, exemption) {
@@ -343,8 +335,26 @@ spec:
 
         violation[{"msg": msg}] {
           c := input_containers[_]
+          not is_exempt(c)
           c.securityContext.privileged == true
           msg := sprintf("Privileged container not allowed: %v", [c.name])
+        }
+
+        is_exempt(container) {
+          exempt_images := object.get(input.parameters, "exemptImages", [])
+          img := container.image
+          exemption := exempt_images[_]
+          _matches_exemption(img, exemption)
+        }
+
+        _matches_exemption(img, exemption) {
+          img == exemption
+        }
+
+        _matches_exemption(img, exemption) {
+          endswith(exemption, "*")
+          prefix := trim_suffix(exemption, "*")
+          startswith(img, prefix)
         }
 
         input_containers[c] {
