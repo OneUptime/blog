@@ -48,7 +48,7 @@ spec:
   source:
     repoURL: https://open-policy-agent.github.io/gatekeeper/charts
     chart: gatekeeper
-    targetRevision: 3.15.1
+    targetRevision: 3.22.2
     helm:
       values: |
         replicas: 3
@@ -87,19 +87,22 @@ spec:
     spec:
       names:
         kind: K8sRequiredResources
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package k8srequiredresources
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := input.review.object.spec.template.spec.containers[_]
           not container.resources.limits
           msg := sprintf("Container %v must have resource limits", [container.name])
         }
 
         violation[{"msg": msg}] {
-          container := input.review.object.spec.containers[_]
+          container := input.review.object.spec.template.spec.containers[_]
           not container.resources.requests
           msg := sprintf("Container %v must have resource requests", [container.name])
         }
@@ -142,7 +145,7 @@ spec:
   source:
     repoURL: https://kyverno.github.io/kyverno
     chart: kyverno
-    targetRevision: 3.1.4
+    targetRevision: 3.8.0
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
@@ -158,75 +161,74 @@ spec:
 
 ```yaml
 # Require labels on all deployments
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-labels
   annotations:
     argocd.argoproj.io/sync-wave: "-1"
 spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: check-required-labels
-      match:
-        any:
-          - resources:
-              kinds:
-                - Deployment
-                - StatefulSet
-      validate:
-        message: "The labels 'app.kubernetes.io/name', 'app.kubernetes.io/version', and 'app.kubernetes.io/managed-by' are required."
-        pattern:
-          metadata:
-            labels:
-              app.kubernetes.io/name: "?*"
-              app.kubernetes.io/version: "?*"
-              app.kubernetes.io/managed-by: "?*"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets"]
+  validations:
+    - message: "The labels 'app.kubernetes.io/name', 'app.kubernetes.io/version', and 'app.kubernetes.io/managed-by' are required."
+      expression: >-
+        'app.kubernetes.io/name' in object.metadata.?labels.orValue({}) &&
+        'app.kubernetes.io/version' in object.metadata.?labels.orValue({}) &&
+        'app.kubernetes.io/managed-by' in object.metadata.?labels.orValue({})
 
 ---
 # Disallow privileged containers
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-privileged
 spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: deny-privileged
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Privileged containers are not allowed."
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  privileged: "false"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  variables:
+    - name: allContainers
+      expression: "object.spec.containers + object.spec.?initContainers.orValue([]) + object.spec.?ephemeralContainers.orValue([])"
+  validations:
+    - message: "Privileged containers are not allowed. The privileged field must be unset or false."
+      expression: "variables.allContainers.all(container, container.?securityContext.?privileged.orValue(false) == false)"
 
 ---
 # Require non-root containers
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-non-root
 spec:
-  validationFailureAction: Enforce
-  rules:
-    - name: require-run-as-non-root
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Containers must run as non-root."
-        pattern:
-          spec:
-            securityContext:
-              runAsNonRoot: true
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  variables:
+    - name: allContainers
+      expression: "object.spec.containers + object.spec.?initContainers.orValue([]) + object.spec.?ephemeralContainers.orValue([])"
+  validations:
+    - message: "Containers must run as non-root."
+      expression: >-
+        (object.spec.?securityContext.?runAsNonRoot.orValue(false) == true &&
+        variables.allContainers.all(container, container.?securityContext.?runAsNonRoot.orValue(true) == true)) ||
+        variables.allContainers.all(container, container.?securityContext.?runAsNonRoot.orValue(false) == true)
 ```
 
 ## Pre-Merge Policy Validation in CI
@@ -250,8 +252,8 @@ jobs:
 
       - name: Install Kyverno CLI
         run: |
-          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.11.4/kyverno-cli_v1.11.4_linux_x86_64.tar.gz
-          tar -xzf kyverno-cli_v1.11.4_linux_x86_64.tar.gz
+          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.18.0/kyverno-cli_v1.18.0_linux_x86_64.tar.gz
+          tar -xzf kyverno-cli_v1.18.0_linux_x86_64.tar.gz
           sudo mv kyverno /usr/local/bin/
 
       - name: Validate manifests against policies
@@ -356,23 +358,18 @@ Not every workload can meet every policy. Handle exceptions explicitly:
 
 ```yaml
 # Kyverno exception
-apiVersion: kyverno.io/v2alpha1
+apiVersion: policies.kyverno.io/v1beta1
 kind: PolicyException
 metadata:
   name: allow-privileged-monitoring
   namespace: monitoring
 spec:
-  exceptions:
-    - policyName: disallow-privileged
-      ruleNames:
-        - deny-privileged
-  match:
-    any:
-      - resources:
-          namespaces:
-            - monitoring
-          names:
-            - node-exporter*
+  policyRefs:
+    - name: disallow-privileged
+      kind: ValidatingPolicy
+  matchConditions:
+    - name: allow-monitoring-node-exporter
+      expression: "object.metadata.namespace == 'monitoring' && object.metadata.name.startsWith('node-exporter')"
 ```
 
 Store exceptions in Git alongside your policies so they are auditable:
