@@ -53,7 +53,7 @@ spec:
   source:
     repoURL: https://agones.dev/chart/stable
     chart: agones
-    targetRevision: 1.38.0
+    targetRevision: 1.58.0
     helm:
       values: |
         agones:
@@ -69,6 +69,9 @@ spec:
               requests:
                 cpu: 1000m
                 memory: 1Gi
+        gameservers:
+          namespaces:
+            - game-servers
   destination:
     server: https://kubernetes.default.svc
     namespace: agones-system
@@ -76,6 +79,8 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
 ```
 
 ### Managing Game Server Fleets
@@ -96,7 +101,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 25%
-      maxUnavailable: 0  # Never kill servers with active players
+      maxUnavailable: 0  # Keep Ready capacity steady during template updates
   template:
     spec:
       ports:
@@ -109,6 +114,9 @@ spec:
       players:
         initialCapacity: 100
       template:
+        metadata:
+          labels:
+            app: game-server
         spec:
           containers:
             - name: game-server
@@ -122,19 +130,17 @@ spec:
                   memory: 8Gi
               env:
                 - name: SERVER_REGION
-                  valueFrom:
-                    fieldRef:
-                      fieldPath: metadata.labels['topology.kubernetes.io/region']
+                  value: us-east-1  # Override per region with Kustomize or Helm values
 ```
 
 ## Rolling Updates Without Player Disruption
 
-The biggest challenge in gaming deployments is updating game servers without disconnecting active players. ArgoCD sync waves combined with Agones fleet allocation strategies handle this.
+The biggest challenge in gaming deployments is updating game servers without disconnecting active players. ArgoCD sync waves combined with Agones fleet update and allocation strategies help manage this.
 
 ### Graceful Update Strategy
 
 ```yaml
-# Fleet autoscaler that prevents scaling down servers with active players
+# Fleet autoscaler that keeps Ready capacity available for new matches
 apiVersion: autoscaling.agones.dev/v1
 kind: FleetAutoscaler
 metadata:
@@ -174,19 +180,20 @@ spec:
             - name: game-server
               image: myregistry/battle-royale-server:v2.15.0
 
----
-# Update allocation policy to route new matches to new version (sync wave 2)
-apiVersion: allocation.agones.dev/v1
-kind: GameServerAllocation
+# Update matchmaker configuration to request the new fleet (sync wave 2)
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: default-allocation
+  name: matchmaker-allocation-config
+  namespace: game-servers
   annotations:
     argocd.argoproj.io/sync-wave: "2"
-spec:
-  required:
-    matchLabels:
-      agones.dev/fleet: battle-royale-server-v2-15
-  scheduling: Packed
+data:
+  allocation.yaml: |
+    selectors:
+      - matchLabels:
+          agones.dev/fleet: battle-royale-server-v2-15
+    scheduling: Packed
 
 # Old version fleet scales down naturally as matches end
 # ArgoCD manages the lifecycle through the GitOps repo
@@ -315,13 +322,19 @@ spec:
   template:
     spec:
       template:
+        metadata:
+          labels:
+            app: game-server
         spec:
-          # Use node affinity to spread across availability zones
+          # Use pod anti-affinity to spread servers across availability zones
           affinity:
             podAntiAffinity:
               preferredDuringSchedulingIgnoredDuringExecution:
                 - weight: 100
                   podAffinityTerm:
+                    labelSelector:
+                      matchLabels:
+                        app: game-server
                     topologyKey: topology.kubernetes.io/zone
           # Tolerations for dedicated game server node pools
           tolerations:
@@ -334,17 +347,30 @@ spec:
 ```
 
 ```yaml
-# Cluster autoscaler configuration for rapid node provisioning
-apiVersion: v1
-kind: ConfigMap
+# Cluster Autoscaler deployment excerpt for rapid node provisioning
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: cluster-autoscaler-config
-data:
-  # Aggressive scaling for game launches
-  scan-interval: "10s"
-  scale-down-delay-after-add: "10m"
-  scale-down-unneeded-time: "5m"
-  max-node-provision-time: "5m"
+  name: cluster-autoscaler
+  namespace: kube-system
+spec:
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+    spec:
+      containers:
+        - name: cluster-autoscaler
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.34.0
+          args:
+            # Aggressive scaling for game launches
+            - --scan-interval=10s
+            - --scale-down-delay-after-add=10m
+            - --scale-down-unneeded-time=5m
+            - --max-node-provision-time=5m
 ```
 
 ## Monitoring Game Server Deployments
@@ -422,12 +448,7 @@ spec:
       duration: 6h
       applications:
         - 'game-servers-*'
-    # Emergency hotfixes always allowed
-    - kind: allow
-      schedule: '* * * * *'
-      duration: 24h
-      applications:
-        - 'game-servers-*'
+      # Permit explicit manual overrides for emergency hotfixes
       manualSync: true
 ```
 
