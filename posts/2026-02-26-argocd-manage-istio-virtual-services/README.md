@@ -17,7 +17,7 @@ This guide covers practical patterns for managing Istio VirtualServices with Arg
 A VirtualService defines how requests to a service are routed. Here is a typical example:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -125,8 +125,7 @@ data:
 
       if hasRoutes then
         hs.status = "Healthy"
-        hs.message = "Routes configured for " ..
-          table.concat(obj.spec.hosts, ", ")
+        hs.message = "Routes configured"
       else
         hs.status = "Degraded"
         hs.message = "No routes defined"
@@ -145,7 +144,7 @@ Use Kustomize patches to adjust traffic weights between environments:
 ```yaml
 # base/virtual-services/product-service.yaml
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -166,7 +165,7 @@ spec:
 
 ```yaml
 # overlays/production/virtual-services/product-service-patch.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -200,7 +199,7 @@ git push
 Route specific users or testers to new versions using headers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-service
@@ -230,7 +229,7 @@ Define fault injection rules in staging:
 
 ```yaml
 # overlays/staging/virtual-services/order-service-chaos.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service-chaos
@@ -263,7 +262,7 @@ This stays in the staging overlay and never reaches production because of the Ku
 Mirror production traffic to a new version without affecting users:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -287,7 +286,7 @@ spec:
 Manage resilience settings through Git:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -307,7 +306,7 @@ spec:
 
 ## Validating VirtualServices Before Sync
 
-Use a pre-sync hook to validate VirtualService configurations:
+Use a pre-sync hook to check the current Istio configuration before applying changes:
 
 ```yaml
 apiVersion: batch/v1
@@ -327,13 +326,13 @@ spec:
             - sh
             - -c
             - |
-              # Analyze all Istio configs for errors
+              # Analyze the current live Istio config for errors
               istioctl analyze --all-namespaces --output json
               if [ $? -ne 0 ]; then
                 echo "Istio configuration validation failed"
                 exit 1
               fi
-              echo "All VirtualService configurations are valid"
+              echo "Current Istio configuration is valid"
       restartPolicy: Never
   backoffLimit: 0
 ```
@@ -354,16 +353,12 @@ spec:
   destinations:
     - namespace: checkout
       server: https://kubernetes.default.svc
-  # Only allow specific Istio resource types
-  clusterResourceWhitelist:
+  # Only allow specific namespaced Istio resource types
+  namespaceResourceWhitelist:
     - group: networking.istio.io
       kind: VirtualService
     - group: networking.istio.io
       kind: DestinationRule
-  # Deny VirtualServices in other namespaces
-  namespaceResourceBlacklist:
-    - group: networking.istio.io
-      kind: Gateway
 ```
 
 ## Summary
