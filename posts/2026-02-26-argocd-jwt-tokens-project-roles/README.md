@@ -87,7 +87,7 @@ argocd proj role add-policy backend ci-deployer \
 
 ```bash
 # Generate a token for the ci-deployer role
-TOKEN=$(argocd proj role create-token backend ci-deployer)
+TOKEN=$(argocd proj role create-token backend ci-deployer --token-only)
 echo $TOKEN
 ```
 
@@ -97,13 +97,13 @@ This creates a token that never expires. While convenient, long-lived tokens are
 
 ```bash
 # Token that expires in 24 hours (86400 seconds)
-TOKEN=$(argocd proj role create-token backend ci-deployer --expires-in 86400s)
+TOKEN=$(argocd proj role create-token backend ci-deployer --expires-in 86400s --token-only)
 
 # Token that expires in 30 days
-TOKEN=$(argocd proj role create-token backend ci-deployer --expires-in 720h)
+TOKEN=$(argocd proj role create-token backend ci-deployer --expires-in 720h --token-only)
 
 # Token that expires in 1 year
-TOKEN=$(argocd proj role create-token backend ci-deployer --expires-in 8760h)
+TOKEN=$(argocd proj role create-token backend ci-deployer --expires-in 8760h --token-only)
 ```
 
 ### Generate a Token with a Custom ID
@@ -112,7 +112,7 @@ Custom IDs help you track which token is which:
 
 ```bash
 # Generate with a descriptive token ID
-TOKEN=$(argocd proj role create-token backend ci-deployer --token-id "github-actions-prod-2024")
+TOKEN=$(argocd proj role create-token backend ci-deployer --id "github-actions-prod-2024" --token-only)
 ```
 
 ## Step 3: Use the Token
@@ -241,16 +241,16 @@ pipeline {
 
 ```bash
 # List all tokens for a role
-argocd proj role get backend ci-deployer
+argocd proj role list-tokens backend ci-deployer --unixtime
 
-# Output shows token IDs and their creation/expiry times
+# Output shows token IDs and issued-at values for revocation
 ```
 
 ### Revoke a Token
 
 ```bash
-# Revoke by token ID
-argocd proj role delete-token backend ci-deployer <token-id>
+# Revoke by issued-at timestamp
+argocd proj role delete-token backend ci-deployer <issued-at>
 ```
 
 ### Revoke All Tokens for a Role
@@ -272,7 +272,7 @@ argocd proj role add-policy backend ci-deployer \
   -a sync -p allow -o "backend/*"
 
 # Generate a new token
-TOKEN=$(argocd proj role create-token backend ci-deployer)
+TOKEN=$(argocd proj role create-token backend ci-deployer --token-only)
 ```
 
 ## Token Rotation Strategy
@@ -288,7 +288,7 @@ For production environments, implement a token rotation strategy:
 
 ```bash
 # Step 1: Generate new token
-NEW_TOKEN=$(argocd proj role create-token backend ci-deployer --token-id "rotate-$(date +%Y%m%d)")
+NEW_TOKEN=$(argocd proj role create-token backend ci-deployer --id "rotate-$(date +%Y%m%d)" --token-only)
 
 # Step 2: Update in GitHub Actions (or equivalent)
 gh secret set ARGOCD_TOKEN --body "$NEW_TOKEN" --repo my-org/backend-api
@@ -297,7 +297,7 @@ gh secret set ARGOCD_TOKEN --body "$NEW_TOKEN" --repo my-org/backend-api
 ARGOCD_AUTH_TOKEN=$NEW_TOKEN argocd app list --project backend --server argocd.example.com
 
 # Step 4: Revoke old token
-argocd proj role delete-token backend ci-deployer <old-token-id>
+argocd proj role delete-token backend ci-deployer <old-issued-at>
 ```
 
 ### Automated Rotation with Short-Lived Tokens
@@ -306,7 +306,7 @@ For maximum security, generate short-lived tokens on each CI run:
 
 ```yaml
 # GitHub Actions with short-lived token generation
-# This requires a separate long-lived "token generator" credential
+# This requires a separate credential with permission to update the project
 - name: Generate short-lived ArgoCD token
   env:
     ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_TOKEN_GENERATOR }}
@@ -315,7 +315,8 @@ For maximum security, generate short-lived tokens on each CI run:
     SHORT_TOKEN=$(argocd proj role create-token backend ci-deployer \
       --server argocd.example.com \
       --grpc-web \
-      --expires-in 600s)
+      --expires-in 600s \
+      --token-only)
     echo "::add-mask::$SHORT_TOKEN"
     echo "DEPLOY_TOKEN=$SHORT_TOKEN" >> $GITHUB_ENV
 ```
