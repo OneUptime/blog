@@ -8,7 +8,7 @@ Description: Learn how to deploy HashiCorp Vault Agent with ArgoCD for GitOps-ma
 
 ---
 
-HashiCorp Vault is the industry standard for secrets management. Vault Agent is a client-side daemon that automates the process of authenticating to Vault, fetching secrets, and rendering them into files or environment variables. Deploying Vault Agent with ArgoCD lets you manage your secrets infrastructure through GitOps while keeping the actual secret values securely stored in Vault rather than in Git.
+HashiCorp Vault is the industry standard for secrets management. Vault Agent is a client-side daemon that automates the process of authenticating to Vault, fetching secrets, and rendering them into files that applications can read or source. Deploying Vault Agent with ArgoCD lets you manage your secrets infrastructure through GitOps while keeping the actual secret values securely stored in Vault rather than in Git.
 
 This guide covers deploying the Vault Agent Injector using ArgoCD, configuring Kubernetes authentication, and setting up secret injection for your applications.
 
@@ -65,7 +65,7 @@ type: application
 version: 1.0.0
 dependencies:
   - name: vault
-    version: "0.28.1"
+    version: "0.32.0"
     repository: "https://helm.releases.hashicorp.com"
 ```
 
@@ -80,7 +80,7 @@ vault:
 
   # Vault Server configuration
   server:
-    # For production, use HA mode with Raft storage
+    # HA mode with Raft storage
     ha:
       enabled: true
       replicas: 3
@@ -247,11 +247,11 @@ Store Vault policies in Git for documentation, though they need to be applied to
 ```hcl
 # secrets/vault-config/policies/app-read-policy.hcl
 # Policy allowing read access to application secrets
-path "secret/data/apps/{{identity.entity.aliases.auth_kubernetes_*.metadata.service_account_namespace}}/*" {
+path "secret/data/apps/backend/*" {
   capabilities = ["read"]
 }
 
-path "secret/metadata/apps/{{identity.entity.aliases.auth_kubernetes_*.metadata.service_account_namespace}}/*" {
+path "secret/metadata/apps/backend/*" {
   capabilities = ["list"]
 }
 ```
@@ -259,7 +259,7 @@ path "secret/metadata/apps/{{identity.entity.aliases.auth_kubernetes_*.metadata.
 ```hcl
 # secrets/vault-config/policies/db-creds-policy.hcl
 # Policy for dynamic database credentials
-path "database/creds/{{identity.entity.aliases.auth_kubernetes_*.metadata.service_account_namespace}}-readonly" {
+path "database/creds/backend-readonly" {
   capabilities = ["read"]
 }
 ```
@@ -326,7 +326,7 @@ spec:
           image: your-registry.com/backend-api:v1.0
           command: ["/bin/sh", "-c"]
           args:
-            - "source /vault/secrets/db-creds && ./start-server"
+            - ". /vault/secrets/db-creds && exec ./start-server"
           volumeMounts: []
           # Secrets are available at /vault/secrets/
 ```
@@ -359,14 +359,14 @@ kubectl exec -n vault vault-0 -- vault write database/roles/backend-readonly \
 
 ### ArgoCD Cannot Manage Vault's Internal State
 
-ArgoCD manages the Vault deployment (pods, services, configuration), but Vault's internal state (secrets, policies, auth methods) is stored inside Vault itself. These need to be managed separately, either through manual commands, Terraform, or the Vault Operator.
+ArgoCD manages the Vault deployment (pods, services, configuration), but Vault's internal state (secrets, policies, auth methods) is stored inside Vault itself. These need to be managed separately, either through manual commands, Terraform, or a Vault-focused Kubernetes operator.
 
 ### Handling Vault Unsealing
 
 After Vault pods restart, they need to be unsealed. For automated unsealing, use:
 
 - **Auto-unseal with cloud KMS** (recommended for production)
-- **Vault Operator** for automated unsealing in Kubernetes
+- **A Vault-focused Kubernetes operator** for automated unsealing in Kubernetes
 
 ```yaml
 # Auto-unseal configuration in Vault
@@ -403,4 +403,4 @@ kubectl exec test-pod -- cat /vault/secrets/config
 
 ## Summary
 
-Deploying Vault Agent with ArgoCD provides a GitOps-managed secrets infrastructure where the deployment configuration lives in Git while actual secrets remain securely stored in Vault. The Agent Injector automates secret delivery to applications through annotations, supporting both static secrets and dynamic credentials. The key distinction is that ArgoCD manages Vault's Kubernetes deployment, while Vault's internal configuration (policies, auth methods, secret engines) requires separate management through Terraform, CLI, or the Vault Operator.
+Deploying Vault Agent with ArgoCD provides a GitOps-managed secrets infrastructure where the deployment configuration lives in Git while actual secrets remain securely stored in Vault. The Agent Injector automates secret delivery to applications through annotations, supporting both static secrets and dynamic credentials. The key distinction is that ArgoCD manages Vault's Kubernetes deployment, while Vault's internal configuration (policies, auth methods, secret engines) requires separate management through Terraform, CLI, or a Vault-focused Kubernetes operator.
