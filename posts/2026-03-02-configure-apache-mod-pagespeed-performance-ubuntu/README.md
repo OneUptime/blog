@@ -12,16 +12,16 @@ mod_pagespeed is a Google-developed Apache module that automatically applies web
 
 ## Install mod_pagespeed
 
-Google provides pre-built packages for Debian-based systems:
+mod_pagespeed 1.1 provides pre-built packages for Debian-based systems:
 
 ```bash
-# Download the latest mod_pagespeed package
+# Download the current mod_pagespeed package
 
-# Check https://developers.google.com/speed/pagespeed/module/download for the latest version
-wget https://dl-ssl.google.com/dl/linux/direct/mod-pagespeed-stable_current_amd64.deb
+# Check https://modpagespeed.com/1.1/docs/getting-started/ for the latest version
+curl -O https://modpagespeed.com/releases/v1.1.0/mod-pagespeed_1.1.0-r0_amd64.deb
 
 # Install the package
-sudo dpkg -i mod-pagespeed-stable_current_amd64.deb
+sudo dpkg -i mod-pagespeed_1.1.0-r0_amd64.deb
 
 # Fix any dependency issues
 sudo apt-get install -f
@@ -37,6 +37,8 @@ sudo systemctl restart apache2
 
 # Verify it is loaded
 apache2ctl -M | grep pagespeed
+
+# For mod_pagespeed 1.1 packages, activate a trial or license in /pagespeed_global_admin
 ```
 
 ## Basic Configuration
@@ -62,16 +64,10 @@ Key settings at the top of the file:
 
     # Statistics endpoint (disable in production or restrict access)
     ModPagespeedStatistics off
-    ModPagespeedStatsLogging off
+    ModPagespeedStatisticsLogging off
 
-    # How long pagespeed retains cached optimized resources
+    # Cache size limit (100 MB)
     ModPagespeedFileCacheSizeKb 102400
-
-    # Interval for checking if the cache needs cleaning (in seconds)
-    ModPagespeedFileCacheCleanIntervalMs 3600000
-
-    # Inode limit for the cache directory
-    ModPagespeedFileCacheInodeLimit 500000
 </IfModule>
 ```
 
@@ -90,7 +86,7 @@ mod_pagespeed's behavior is controlled by filters. Enable specific filters based
     # Combine multiple JS files into one (reduces HTTP requests)
     ModPagespeedEnableFilters combine_javascript
 
-    # Move JavaScript to end of body for faster initial rendering
+    # Move CSS above scripts for faster initial rendering
     ModPagespeedEnableFilters move_css_above_scripts
 
     # Defer loading of JavaScript that is not needed immediately
@@ -113,13 +109,16 @@ mod_pagespeed's behavior is controlled by filters. Enable specific filters based
     # Compress and convert images
     ModPagespeedEnableFilters rewrite_images
 
-    # Convert images to WebP format for supporting browsers
+    # Convert JPEG images to WebP format for supporting browsers
+    ModPagespeedEnableFilters convert_jpeg_to_webp
+
+    # Convert PNG and GIF images to lossless WebP format for supporting browsers
     ModPagespeedEnableFilters convert_to_webp_lossless
 
     # Resize images to the dimensions specified in HTML
     ModPagespeedEnableFilters resize_images
 
-    # Resize mobile images based on screen size
+    # Resize images to their rendered dimensions
     ModPagespeedEnableFilters resize_rendered_image_dimensions
 
     # Inline small images as base64 data URIs
@@ -185,15 +184,15 @@ sudo nano /etc/apache2/sites-available/mysite.conf
         ModPagespeedDomain example.com
         ModPagespeedDomain static.example.com
 
-        # Domain for pagespeed's own resources (beacon, admin)
-        ModPagespeedBeaconUrl /ngx_pagespeed_beacon
+        # Path for pagespeed's own beacon requests
+        ModPagespeedBeaconUrl /mod_pagespeed_beacon
 
         # Image optimization quality settings
         ModPagespeedJpegRecompressionQuality 80
 
-        # Limit the size of inlined resources
-        ModPagespeedMaxInlinedPreviewImagesIndex 5
-        ModPagespeedMinImageSizeLimitForWebpInCss 0
+        # Limit the size of inlined image resources
+        ModPagespeedImageInlineMaxBytes 3072
+        ModPagespeedCssImageInlineMaxBytes 0
     </IfModule>
 </VirtualHost>
 ```
@@ -232,16 +231,13 @@ During initial configuration, the statistics panel helps you see what mod_pagesp
 
 # Restrict the admin and statistics endpoints
 <Location /pagespeed_admin>
-    Order allow,deny
-    Allow from localhost
-    Allow from 127.0.0.1
-    Allow from 192.168.0.0/16
+    Require local
+    Require ip 192.168.0.0/16
     SetHandler pagespeed_admin
 </Location>
 
 <Location /pagespeed_global_admin>
-    Order allow,deny
-    Allow from localhost
+    Require local
     SetHandler pagespeed_global_admin
 </Location>
 ```
@@ -266,11 +262,14 @@ sudo chmod 750 /var/cache/mod_pagespeed
     # Cache size limit (100 MB)
     ModPagespeedFileCacheSizeKb 102400
 
-    # Cache lifetime for optimized resources
-    ModPagespeedExpireSpecificationMs 3600000
+    # Cache lifetime for resources without explicit Cache-Control headers
+    ModPagespeedImplicitCacheTtlMs 3600000
 
     # Use a memcached backend for the cache (optional, better for multi-server setups)
     # ModPagespeedMemcachedServers localhost:11211
+
+    # Enable admin/API cache purging (restrict admin access before enabling)
+    ModPagespeedEnableCachePurge on
 </IfModule>
 ```
 
@@ -283,8 +282,8 @@ sudo systemctl reload apache2
 # Check that pagespeed headers appear in responses
 curl -I http://example.com | grep -i pagespeed
 
-# The X-Mod-Pagespeed header shows the version when active
-# X-Mod-Pagespeed: 1.13.35.2-0
+# The X-Mod-Pagespeed header indicates that the Apache module is active
+# X-Mod-Pagespeed: 1.1.0
 
 # Check the page source to see minified resources and combined files
 curl http://example.com | grep -E 'pagespeed|\.pagespeed\.'
@@ -297,11 +296,11 @@ curl http://example.com | grep -E 'pagespeed|\.pagespeed\.'
 When you deploy new content, purge the pagespeed cache to force re-optimization:
 
 ```bash
-# Purge all cached assets
-sudo find /var/cache/mod_pagespeed/ -type f -delete
+# Flush all cached assets
+sudo touch /var/cache/mod_pagespeed/cache.flush
 
-# Or use the admin API to flush the cache
-curl http://localhost/pagespeed_admin?purge_cache=true
+# Or use the admin API to purge the cache
+curl 'http://localhost/pagespeed_admin/cache?purge=*'
 
 # Restart Apache to fully clear in-memory caches
 sudo systemctl restart apache2
