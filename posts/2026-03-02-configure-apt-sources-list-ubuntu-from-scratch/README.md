@@ -14,8 +14,8 @@ The APT sources list tells Ubuntu's package manager where to look for software. 
 
 Ubuntu uses two formats for repository configuration:
 
-1. **One-Line Format** (`/etc/apt/sources.list` and `/etc/apt/sources.list.d/*.list`) - The traditional format used in Ubuntu before 22.04
-2. **deb822 Format** (`/etc/apt/sources.list.d/*.sources`) - The newer, structured format preferred from Ubuntu 22.04 onward
+1. **One-Line Format** (`/etc/apt/sources.list` and `/etc/apt/sources.list.d/*.list`) - The traditional format used by default in Ubuntu before 24.04
+2. **deb822 Format** (`/etc/apt/sources.list.d/*.sources`) - The newer, structured format used by default from Ubuntu 24.04 onward
 
 Both formats coexist and APT understands both.
 
@@ -56,16 +56,16 @@ deb http://security.ubuntu.com/ubuntu jammy-security main restricted universe mu
 deb http://archive.ubuntu.com/ubuntu jammy-backports main restricted universe multiverse
 ```
 
-## The deb822 Format (Ubuntu 22.04+)
+## The deb822 Format (Default in Ubuntu 24.04+)
 
-On Ubuntu 22.04 and later, the default is a deb822 format file:
+On Ubuntu 24.04 and later, the default is a deb822 format file:
 
 ```bash
 # View the default Ubuntu sources file
 cat /etc/apt/sources.list.d/ubuntu.sources
 ```
 
-The deb822 format uses `key: value` pairs:
+The deb822 format uses `key: value` pairs. APT also supports this format on Ubuntu 22.04, so an equivalent Jammy file looks like:
 
 ```yaml
 Types: deb
@@ -138,28 +138,30 @@ sudo apt update
 
 ## Adding Third-Party Repositories Securely
 
-The modern approach uses per-repository GPG keys stored in `/usr/share/keyrings/`:
+The modern approach uses per-repository GPG keys stored in `/etc/apt/keyrings/` for keys you manage locally:
 
 ```bash
 # Example: Adding the Docker repository
 
 # Step 1: Install prerequisites
-sudo apt install ca-certificates curl gnupg
+sudo apt install ca-certificates curl
 
 # Step 2: Create the keyrings directory if it doesn't exist
-sudo install -m 0755 -d /usr/share/keyrings
+sudo install -m 0755 -d /etc/apt/keyrings
 
 # Step 3: Download and store the GPG key
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-    sudo gpg --dearmor -o /usr/share/keyrings/docker.gpg
-sudo chmod a+r /usr/share/keyrings/docker.gpg
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
 
 # Step 4: Add the repository with the key reference
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo tee /etc/apt/sources.list.d/docker.sources << EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
 
 # Step 5: Update
 sudo apt update
@@ -207,7 +209,7 @@ sudo ppa-purge ppa:owner/ppa-name
 sudo rm /etc/apt/sources.list.d/repo-name.list
 
 # And optionally remove its key
-sudo rm /usr/share/keyrings/repo-name.gpg
+sudo rm /etc/apt/keyrings/repo-name.asc
 
 # Update after removing
 sudo apt update
@@ -222,13 +224,13 @@ The one-line format supports options in square brackets:
 deb [arch=amd64] http://archive.ubuntu.com/ubuntu jammy main
 
 # Specify the signing key
-deb [signed-by=/usr/share/keyrings/repo.gpg] http://example.com/ubuntu jammy main
+deb [signed-by=/etc/apt/keyrings/repo.gpg] http://example.com/ubuntu jammy main
 
 # Allow unauthenticated (insecure - only use in isolated environments)
 deb [trusted=yes] http://local-server/ubuntu jammy main
 
 # Combine multiple options
-deb [arch=amd64 signed-by=/usr/share/keyrings/repo.gpg] http://example.com/ubuntu jammy main
+deb [arch=amd64 signed-by=/etc/apt/keyrings/repo.gpg] http://example.com/ubuntu jammy main
 ```
 
 ## Validating Your Configuration
@@ -240,12 +242,13 @@ sudo apt update 2>&1 | grep -E "Err|Hit|Get"
 # Check for any GPG errors
 sudo apt update 2>&1 | grep -i "signature\|key\|NO_PUBKEY"
 
-# If you see NO_PUBKEY errors, fetch the missing key
-sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys KEYID
-
-# Modern approach using curl (no apt-key required)
+# If you see NO_PUBKEY errors, fetch the missing key without apt-key
+sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xKEYID" | \
-    sudo gpg --dearmor -o /usr/share/keyrings/missing-key.gpg
+    sudo gpg --dearmor -o /etc/apt/keyrings/missing-key.gpg
+
+# Then update that repository's source entry to use:
+# signed-by=/etc/apt/keyrings/missing-key.gpg
 ```
 
 ## Pointing to a Local or Corporate Mirror
@@ -282,10 +285,10 @@ apt-cache policy nginx
 
 APT sources configuration controls where Ubuntu looks for software. The key principles are:
 
-- Keep third-party repository keys in `/usr/share/keyrings/` using the `signed-by=` option
+- Keep third-party repository keys in `/etc/apt/keyrings/` using the `signed-by=` option
 - Use separate `.list` or `.sources` files in `/etc/apt/sources.list.d/` for third-party repos
 - Always run `sudo apt update` after any sources change
-- Prefer the deb822 format for new configurations on Ubuntu 22.04+
+- Use the deb822 format for default Ubuntu 24.04+ configurations
 - Use `add-apt-repository` for PPAs to handle key management automatically
 
 Understanding this structure makes it straightforward to add, remove, and troubleshoot package sources on any Ubuntu system.
