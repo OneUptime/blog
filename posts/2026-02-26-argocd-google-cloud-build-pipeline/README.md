@@ -8,7 +8,7 @@ Description: Learn how to build a complete CI/CD pipeline using Google Cloud Bui
 
 ---
 
-Google Cloud Build is a serverless CI/CD platform that runs builds in Google Cloud. It integrates natively with Google Kubernetes Engine (GKE), Artifact Registry, and Cloud Source Repositories. Combined with ArgoCD for GitOps deployment, you get a pipeline where Cloud Build handles the build phase and ArgoCD handles the deployment phase to GKE.
+Google Cloud Build is a serverless CI/CD platform that runs builds in Google Cloud. It integrates natively with Google Kubernetes Engine (GKE), Artifact Registry, and Git providers such as GitHub and Secure Source Manager. Combined with ArgoCD for GitOps deployment, you get a pipeline where Cloud Build handles the build phase and ArgoCD handles the deployment phase to GKE.
 
 This guide covers building a production Cloud Build + ArgoCD pipeline.
 
@@ -18,7 +18,7 @@ Cloud Build runs in Google Cloud. ArgoCD runs in your GKE cluster. Artifact Regi
 
 ```mermaid
 graph LR
-    A[GitHub/Cloud Source Push] --> B[Cloud Build Trigger]
+    A[Git Provider Push] --> B[Cloud Build Trigger]
     B --> C[Build & Test Steps]
     C --> D[Push to Artifact Registry]
     D --> E[Update Deployment Repo]
@@ -157,23 +157,28 @@ gcloud builds triggers create github \
 
 Or define it declaratively for infrastructure-as-code:
 
-```yaml
-# terraform/cloud-build-trigger.tf would be the Terraform equivalent,
-# but here is the YAML representation
-resource:
-  type: cloudbuild.googleapis.com/Trigger
-  properties:
-    name: api-service-deploy
-    github:
-      owner: myorg
-      name: api-service
-      push:
-        branch: ^main$
-    filename: cloudbuild.yaml
-    substitutions:
-      _REGION: us-central1
-      _REPO: containers
-      _IMAGE: api-service
+```hcl
+# terraform/cloud-build-trigger.tf
+resource "google_cloudbuild_trigger" "api_service_deploy" {
+  name     = "api-service-deploy"
+  location = "global"
+
+  github {
+    owner = "myorg"
+    name  = "api-service"
+    push {
+      branch = "^main$"
+    }
+  }
+
+  filename = "cloudbuild.yaml"
+
+  substitutions = {
+    _REGION = "us-central1"
+    _REPO   = "containers"
+    _IMAGE  = "api-service"
+  }
+}
 ```
 
 ## GKE Deployment Manifests
@@ -228,6 +233,15 @@ metadata:
   namespace: production
   annotations:
     iam.gke.io/gcp-service-account: api-service@myproject.iam.gserviceaccount.com
+```
+
+Allow the Kubernetes service account to impersonate the IAM service account:
+
+```bash
+gcloud iam service-accounts add-iam-policy-binding \
+    api-service@myproject.iam.gserviceaccount.com \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="serviceAccount:myproject.svc.id.goog[production/api-service]"
 ```
 
 ## ArgoCD Application for GKE
@@ -285,12 +299,16 @@ steps:
     args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE}:${SHORT_SHA}']
 
   - id: 'deploy-staging'
-    name: 'gcr.io/cloud-builders/git'
-    entrypoint: 'bash'
+    name: 'alpine/git:latest'
+    entrypoint: 'sh'
     secretEnv: ['DEPLOY_SSH_KEY']
     args:
       - '-c'
       - |
+        apk add --no-cache curl openssh-client
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | sh
+        mv kustomize /usr/local/bin/
+
         mkdir -p ~/.ssh
         echo "$$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
@@ -316,18 +334,22 @@ availableSecrets:
       env: 'DEPLOY_SSH_KEY'
 ```
 
-For production, use a separate trigger with a manual approval step through Cloud Deploy:
+For production, use a separate trigger with a Cloud Build approval gate, or submit the production build manually:
 
 ```yaml
 # cloudbuild-production.yaml
 steps:
   - id: 'deploy-production'
-    name: 'gcr.io/cloud-builders/git'
-    entrypoint: 'bash'
+    name: 'alpine/git:latest'
+    entrypoint: 'sh'
     secretEnv: ['DEPLOY_SSH_KEY']
     args:
       - '-c'
       - |
+        apk add --no-cache curl openssh-client
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | sh
+        mv kustomize /usr/local/bin/
+
         mkdir -p ~/.ssh
         echo "$$DEPLOY_SSH_KEY" > ~/.ssh/id_rsa
         chmod 600 ~/.ssh/id_rsa
@@ -376,14 +398,23 @@ gcloud artifacts repositories add-iam-policy-binding containers \
     --location=us-central1 \
     --member="serviceAccount:argocd-image-updater@myproject.iam.gserviceaccount.com" \
     --role="roles/artifactregistry.reader"
+
+gcloud iam service-accounts add-iam-policy-binding \
+    argocd-image-updater@myproject.iam.gserviceaccount.com \
+    --role="roles/iam.workloadIdentityUser" \
+    --member="serviceAccount:myproject.svc.id.goog[argocd/argocd-image-updater]"
 ```
 
 ## Cloud Build Notifications
 
 Send build status to Pub/Sub and then to Slack or other services:
 
+```bash
+gcloud pubsub topics create cloud-builds
+```
+
 ```yaml
-# Cloud Build automatically publishes to cloud-builds topic
+# Cloud Build publishes to the cloud-builds topic when it exists
 # Create a Cloud Function to forward to Slack
 
 # cloudbuild-notifier.yaml
@@ -417,7 +448,7 @@ options:
   # Only log to Cloud Logging (skip Cloud Storage)
   logging: CLOUD_LOGGING_ONLY
 
-  # Use Kaniko cache for faster Docker builds
+  # Use Docker BuildKit for faster Docker builds
   env:
     - 'DOCKER_BUILDKIT=1'
 ```
