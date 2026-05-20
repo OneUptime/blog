@@ -37,6 +37,7 @@ graph TD
 
     S --> R
     S --> RD
+    R --> RD
     C --> R
     C --> RD
     C --> K1
@@ -61,9 +62,10 @@ These are connections between ArgoCD components within the cluster:
 |--------|------------|------|----------|---------|
 | API Server | Repo Server | 8081 | gRPC | Manifest generation |
 | API Server | Redis | 6379 | TCP | Caching |
-| API Server | Dex | 5557 | gRPC | Authentication |
+| API Server | Dex | 5556/5557 | HTTP/gRPC | Authentication |
 | App Controller | Repo Server | 8081 | gRPC | Manifest generation |
 | App Controller | Redis | 6379 | TCP | Caching |
+| Repo Server | Redis | 6379 | TCP | Caching |
 | App Controller | Kube API | 6443 | HTTPS | Resource management |
 
 ### External Outbound Connections
@@ -121,9 +123,13 @@ spec:
     # Allow webhook traffic from specific sources
     - from:
         - ipBlock:
-            cidr: 140.82.112.0/20  # GitHub webhook IPs
+            cidr: 140.82.112.0/20  # GitHub webhook IPv4 ranges
         - ipBlock:
-            cidr: 192.30.252.0/22  # GitHub webhook IPs
+            cidr: 143.55.64.0/20  # GitHub webhook IPv4 ranges
+        - ipBlock:
+            cidr: 185.199.108.0/22  # GitHub webhook IPv4 ranges
+        - ipBlock:
+            cidr: 192.30.252.0/22  # GitHub webhook IPv4 ranges
       ports:
         - port: 8080
           protocol: TCP
@@ -168,7 +174,30 @@ spec:
         - port: 8084
           protocol: TCP
 ---
-# Allow Redis to receive connections from API server and controller
+# Allow Dex to receive connections from API server
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argocd-dex-ingress
+  namespace: argocd
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-dex-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-server
+      ports:
+        - port: 5556
+          protocol: TCP
+        - port: 5557
+          protocol: TCP
+---
+# Allow Redis to receive connections from API server, repo server, and controller
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -185,6 +214,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: argocd-server
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: argocd-repo-server
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: argocd-application-controller
@@ -281,35 +313,37 @@ For ArgoCD running on EKS with external access:
 
 ```bash
 # Create a security group for ArgoCD
-aws ec2 create-security-group \
+ARGOCD_SG_ID=$(aws ec2 create-security-group \
   --group-name argocd-sg \
   --description "ArgoCD security group" \
-  --vpc-id vpc-12345
+  --vpc-id vpc-12345 \
+  --query GroupId \
+  --output text)
 
 # Allow HTTPS from corporate network
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-argocd \
+  --group-id "$ARGOCD_SG_ID" \
   --protocol tcp \
   --port 443 \
   --cidr 10.0.0.0/8
 
-# Allow GitHub webhooks
+# Allow GitHub webhooks (repeat for each current IPv4 CIDR from https://api.github.com/meta)
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-argocd \
+  --group-id "$ARGOCD_SG_ID" \
   --protocol tcp \
   --port 443 \
   --cidr 140.82.112.0/20
 
 # Allow outbound to Git repos
 aws ec2 authorize-security-group-egress \
-  --group-id sg-argocd \
+  --group-id "$ARGOCD_SG_ID" \
   --protocol tcp \
   --port 443 \
   --cidr 0.0.0.0/0
 
 # Allow outbound SSH for Git
 aws ec2 authorize-security-group-egress \
-  --group-id sg-argocd \
+  --group-id "$ARGOCD_SG_ID" \
   --protocol tcp \
   --port 22 \
   --cidr 0.0.0.0/0
@@ -366,6 +400,8 @@ spec:
         # GitHub hooks
         - ipBlock:
             cidr: 140.82.112.0/20
+        - ipBlock:
+            cidr: 143.55.64.0/20
         - ipBlock:
             cidr: 185.199.108.0/22
         - ipBlock:
