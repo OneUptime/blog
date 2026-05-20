@@ -21,7 +21,7 @@ flowchart TD
     A[Overview Row: Total Apps, Sync Status, Health Status]
     B[Sync Operations Row: Sync Count, Failure Rate, Duration]
     C[Git Operations Row: Fetch Duration, Error Rate, Request Count]
-    D[Controller Row: Queue Depth, Reconciliation Duration, Memory]
+    D[Controller Row: Reconciliation Rate, Reconciliation Duration, Memory]
     E[Repo Server Row: Request Duration, Cache Hit Rate, CPU]
     F[API Server Row: Request Latency, Error Rate, Active Connections]
 
@@ -32,7 +32,7 @@ flowchart TD
 
 Before creating dashboards, ensure Grafana has a Prometheus data source configured that scrapes ArgoCD metrics:
 
-1. Navigate to Configuration > Data Sources in Grafana
+1. Navigate to Connections > Data sources in Grafana
 2. Add a Prometheus data source pointing to your Prometheus server
 3. Verify the connection by running a test query: `argocd_app_info`
 
@@ -114,10 +114,11 @@ sum(rate(argocd_app_sync_total{phase=~"Failed|Error"}[1h]))
 
 Set thresholds at: 0-5% green, 5-20% yellow, 20-100% red.
 
-**Sync Duration by Application (Heatmap Panel):**
+**Average Sync Duration by Application (Time Series Panel):**
 
 ```promql
-sum(rate(argocd_app_sync_total{phase="Succeeded"}[5m])) by (name)
+sum(rate(argocd_app_sync_duration_seconds_total[5m])) by (name)
+/ sum(rate(argocd_app_sync_total{phase="Succeeded"}[5m])) by (name)
 ```
 
 ## Git Operations Row
@@ -126,39 +127,45 @@ sum(rate(argocd_app_sync_total{phase="Succeeded"}[5m])) by (name)
 
 ```promql
 # 50th percentile
-histogram_quantile(0.50, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.50,
+  sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le, request_type)
+)
 
 # 95th percentile
-histogram_quantile(0.95, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.95,
+  sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le, request_type)
+)
 
 # 99th percentile
-histogram_quantile(0.99, rate(argocd_git_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.99,
+  sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le, request_type)
+)
 ```
 
 **Git Request Rate (Time Series Panel):**
 
 ```promql
-# Total requests by status
+# Total requests by type
 sum(rate(argocd_git_request_total[5m])) by (request_type)
 
-# Failed requests specifically
-sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m])) by (grpc_code)
+# Failed fetches specifically
+sum(rate(argocd_git_fetch_fail_total[5m]))
 ```
 
 **Git Error Rate (Stat Panel):**
 
 ```promql
-sum(rate(argocd_git_request_total{grpc_code!="OK"}[5m]))
+sum(rate(argocd_git_fetch_fail_total[5m]))
 / sum(rate(argocd_git_request_total[5m]))
 * 100
 ```
 
 ## Controller Performance Row
 
-**Reconciliation Queue Depth (Time Series Panel):**
+**Reconciliation Rate (Time Series Panel):**
 
 ```promql
-argocd_app_reconcile_count
+sum(rate(argocd_app_reconcile_count[5m])) by (namespace, dest_server)
 ```
 
 **Reconciliation Duration (Time Series Panel):**
@@ -166,7 +173,7 @@ argocd_app_reconcile_count
 ```promql
 # 95th percentile reconciliation duration
 histogram_quantile(0.95,
-  rate(argocd_app_reconcile_duration_seconds_bucket[5m])
+  sum(rate(argocd_app_reconcile_bucket[5m])) by (le, dest_server)
 )
 ```
 
@@ -194,14 +201,14 @@ rate(container_cpu_usage_seconds_total{
 
 ```promql
 histogram_quantile(0.95,
-  rate(argocd_repo_server_request_duration_seconds_bucket[5m])
+  sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le, request_type)
 )
 ```
 
 **Repo Server Request Rate (Time Series Panel):**
 
 ```promql
-sum(rate(argocd_repo_server_request_total[5m])) by (request_type)
+sum(rate(argocd_git_request_total[5m])) by (request_type)
 ```
 
 **Repo Server Memory and CPU:**
@@ -278,21 +285,19 @@ metadata:
   name: argocd-grafana-dashboard
   namespace: monitoring
   labels:
-    grafana_dashboard: "true"
+    grafana_dashboard: "1"
 data:
   argocd-dashboard.json: |
     {
-      "dashboard": {
-        "title": "ArgoCD Overview",
-        "uid": "argocd-overview",
-        "panels": [
-          ... (your dashboard JSON)
-        ]
-      }
+      "title": "ArgoCD Overview",
+      "uid": "argocd-overview",
+      "panels": [
+        ... (your dashboard JSON)
+      ]
     }
 ```
 
-If you use the Grafana Helm chart or kube-prometheus-stack, dashboards in ConfigMaps with the `grafana_dashboard: "true"` label are automatically imported.
+If you use the Grafana Helm chart or kube-prometheus-stack with the dashboard sidecar enabled, dashboards in ConfigMaps with the configured dashboard label, commonly `grafana_dashboard: "1"`, are automatically imported.
 
 ## Dashboard Best Practices
 
