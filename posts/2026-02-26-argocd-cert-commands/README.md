@@ -4,20 +4,20 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, CLI, TLS Security
 
-Description: Learn how to use argocd cert commands to manage TLS certificates and SSH known hosts for secure Git repository and cluster connections in ArgoCD.
+Description: Learn how to use argocd cert commands to manage TLS certificates and SSH known hosts for secure Git repository and Helm repository connections in ArgoCD.
 
 ---
 
-ArgoCD connects to Git repositories, Helm registries, and Kubernetes clusters over the network, and all these connections need to be secure. The `argocd cert` command family manages the TLS certificates and SSH known hosts that ArgoCD uses to verify the identity of remote servers. Getting certificate management right is critical for both security and avoiding connection errors.
+ArgoCD connects to Git repositories and Helm repositories over the network, and all these connections need to be secure. The `argocd cert` command family manages the TLS certificates and SSH known hosts that ArgoCD uses to verify the identity of remote repository servers. Getting certificate management right is critical for both security and avoiding connection errors.
 
 ## Understanding Certificate Types in ArgoCD
 
 ArgoCD manages two types of certificates:
 
-1. **TLS certificates** - Used to verify HTTPS connections to Git servers, Helm registries, and Kubernetes API servers
+1. **TLS certificates** - Used to verify HTTPS connections to Git servers and Helm repository servers
 2. **SSH known host keys** - Used to verify SSH connections to Git servers
 
-Both are stored in ConfigMaps/Secrets in the ArgoCD namespace and can be managed via the CLI.
+Both are stored in ConfigMaps in the ArgoCD namespace and can be managed via the CLI.
 
 ## Listing Certificates
 
@@ -36,7 +36,7 @@ argocd cert list
 argocd cert list --cert-type https
 
 # Output:
-# HOSTNAME              TYPE   SUBTYPE  FINGERPRINT/INFO
+# HOSTNAME              TYPE   SUBTYPE  FINGERPRINT/SUBJECT
 # github.com            https  rsa      SHA256:xxxxxxxx...
 # gitlab.com            https  rsa      SHA256:yyyyyyyy...
 # git.mycompany.com     https  rsa      SHA256:zzzzzzzz...
@@ -49,7 +49,7 @@ argocd cert list --cert-type https
 argocd cert list --cert-type ssh
 
 # Output:
-# HOSTNAME     TYPE  SUBTYPE        FINGERPRINT/INFO
+# HOSTNAME     TYPE  SUBTYPE        FINGERPRINT/SUBJECT
 # github.com   ssh   ssh-ed25519    SHA256:xxxxxxxx...
 # github.com   ssh   ecdsa-sha2...  SHA256:yyyyyyyy...
 # github.com   ssh   ssh-rsa        SHA256:zzzzzzzz...
@@ -346,6 +346,8 @@ kind: ConfigMap
 metadata:
   name: argocd-tls-certs-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   git.mycompany.com: |
     -----BEGIN CERTIFICATE-----
@@ -358,6 +360,8 @@ kind: ConfigMap
 metadata:
   name: argocd-ssh-known-hosts-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   ssh_known_hosts: |
     github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
@@ -369,4 +373,4 @@ Managing certificates declaratively in Git is the GitOps way, but be careful not
 
 ## Summary
 
-The `argocd cert` command family is essential for maintaining secure connections between ArgoCD and your Git servers, registries, and clusters. Add TLS certificates for services using custom CAs, maintain SSH known hosts for Git repositories, and implement regular certificate audits. When you encounter the dreaded "certificate signed by unknown authority" or "key is unknown" errors, these commands are your first line of resolution.
+The `argocd cert` command family is essential for maintaining secure connections between ArgoCD and your Git servers and Helm repositories. Add TLS certificates for services using custom CAs, maintain SSH known hosts for Git repositories, and implement regular certificate audits. When you encounter the dreaded "certificate signed by unknown authority" or "key is unknown" errors, these commands are your first line of resolution.
