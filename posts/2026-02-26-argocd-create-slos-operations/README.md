@@ -33,27 +33,27 @@ Here are practical SLOs for a production ArgoCD installation. Adjust the targets
 
 **Target**: 99.5% over a 30-day rolling window
 
-**Why this matters**: Failed syncs mean broken deployments. A 99.5% target allows for roughly 3-4 failed syncs per day in a busy installation with 100+ syncs daily.
+**Why this matters**: Failed syncs mean broken deployments. A 99.5% target allows for roughly 15 failed syncs over 30 days in an installation with 100 syncs daily.
 
-### SLO 2: Reconciliation Latency
+### SLO 2: Reconciliation Duration
 
-**Definition**: The time between a Git commit and ArgoCD detecting the change and starting reconciliation.
+**Definition**: The time ArgoCD spends reconciling an application by comparing the desired state from Git with the live state in the cluster.
 
 **Target**: 95th percentile under 5 minutes over a 30-day rolling window
 
-**Why this matters**: Developers expect their changes to be picked up quickly. A 5-minute P95 means most changes are detected within 3 minutes, which is acceptable for most teams.
+**Why this matters**: Developers expect ArgoCD to evaluate application state quickly. A 5-minute P95 means most reconciliation runs complete within 5 minutes, which is acceptable for most teams.
 
 ### SLO 3: Sync Duration
 
-**Definition**: The time from sync start to sync completion for a successful sync operation.
+**Definition**: The average time from sync start to sync completion for finished sync operations.
 
-**Target**: 95th percentile under 3 minutes over a 30-day rolling window
+**Target**: Average under 3 minutes over a 30-day rolling window
 
 **Why this matters**: Long sync times slow down your deployment pipeline and frustrate developers waiting for their changes to roll out.
 
 ### SLO 4: API Server Availability
 
-**Definition**: The percentage of successful API requests (non-5xx responses) to the ArgoCD API server.
+**Definition**: The percentage of successful gRPC requests to the ArgoCD API server.
 
 **Target**: 99.9% over a 30-day rolling window
 
@@ -84,7 +84,7 @@ To calculate the remaining error budget:
 )
 ```
 
-### SLI: Reconciliation Latency
+### SLI: Reconciliation Duration
 
 ArgoCD exposes reconciliation duration as a histogram:
 
@@ -98,23 +98,21 @@ histogram_quantile(0.95,
 ### SLI: Sync Duration
 
 ```promql
-# P95 sync duration
-histogram_quantile(0.95,
-  sum(rate(argocd_app_sync_total_duration_seconds_bucket{phase="Succeeded"}[30d])) by (le)
-)
+# Average sync duration
+sum(rate(argocd_app_sync_duration_seconds_total[30d])) /
+sum(rate(argocd_app_sync_total[30d]))
 ```
 
 ### SLI: API Server Availability
 
+Make sure the ArgoCD API server gRPC metrics are enabled and scraped from the `argocd-server-metrics` endpoint.
+
 ```promql
 # API server success rate
 sum(rate(grpc_server_handled_total{
-  grpc_service=~".*ArgoCD.*",
-  grpc_code!~"Internal|Unavailable|Unknown"
+  grpc_code="OK"
 }[30d])) /
-sum(rate(grpc_server_handled_total{
-  grpc_service=~".*ArgoCD.*"
-}[30d]))
+sum(rate(grpc_server_handled_total[30d]))
 ```
 
 ## Creating PrometheusRule for SLO Alerts
@@ -187,7 +185,7 @@ spec:
           for: 15m
           labels:
             severity: warning
-            slo: reconciliation-latency
+            slo: reconciliation-duration
           annotations:
             summary: "ArgoCD reconciliation P95 exceeds 5 minutes"
             description: "P95 reconciliation duration is {{ $value | humanizeDuration }}"
@@ -198,12 +196,9 @@ spec:
         - record: argocd:api_success_rate:ratio_rate5m
           expr: |
             sum(rate(grpc_server_handled_total{
-              grpc_service=~".*ArgoCD.*",
-              grpc_code!~"Internal|Unavailable|Unknown"
+              grpc_code="OK"
             }[5m])) /
-            sum(rate(grpc_server_handled_total{
-              grpc_service=~".*ArgoCD.*"
-            }[5m]))
+            sum(rate(grpc_server_handled_total[5m]))
 
         # Alert on API availability drop
         - alert: ArgoCDAPIAvailabilityLow
@@ -224,7 +219,7 @@ Build a dashboard that shows SLO compliance at a glance:
 ```mermaid
 graph TD
     A[ArgoCD SLO Dashboard] --> B[Sync Success Rate]
-    A --> C[Reconciliation Latency]
+    A --> C[Reconciliation Duration]
     A --> D[Sync Duration]
     A --> E[API Availability]
     B --> B1[Current: 99.7%]
@@ -232,7 +227,7 @@ graph TD
     B --> B3[Budget Remaining: 60%]
     C --> C1[P95: 2.3 min]
     C --> C2[Target: 5 min]
-    D --> D1[P95: 1.8 min]
+    D --> D1[Average: 1.8 min]
     D --> D2[Target: 3 min]
     E --> E1[Current: 99.95%]
     E --> E2[Target: 99.9%]
