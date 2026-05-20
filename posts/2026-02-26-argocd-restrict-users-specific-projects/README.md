@@ -22,9 +22,9 @@ p, <subject>, <resource>, <action>, <object>, <effect>
 
 Where:
 - **subject**: A role name, SSO group, or user
-- **resource**: `applications`, `projects`, `repositories`, `clusters`, `logs`, `exec`
-- **action**: `get`, `create`, `update`, `delete`, `sync`, `override`, `action/*`
-- **object**: `<project>/<application>` pattern (supports wildcards)
+- **resource**: `applications`, `applicationsets`, `projects`, `repositories`, `clusters`, `accounts`, `certificates`, `gpgkeys`, `logs`, `exec`, `extensions`
+- **action**: `get`, `create`, `update`, `delete`, `sync`, `override`, `action/<group/kind/action-name>`, `invoke` (valid actions depend on the resource)
+- **object**: The target resource identifier; application-specific resources such as `applications`, `logs`, and `exec` use a `<project>/<application>` pattern (supports wildcards)
 - **effect**: `allow` or `deny`
 
 ## Configuring Global RBAC Policies
@@ -72,7 +72,7 @@ data:
 
 ### Step 2: Set the Default Policy
 
-The `policy.default` field determines what unauthenticated or unmapped users can do:
+The `policy.default` field determines what authenticated users get by default, and also applies to unauthenticated users if anonymous access is enabled:
 
 ```yaml
 data:
@@ -102,7 +102,7 @@ data:
     g, my-org:backend, role:backend-team
     g, my-org:frontend, role:frontend-team
 
-  # Scopes to request from GitHub
+  # Token scopes ArgoCD examines for RBAC
   scopes: "[groups]"
 ```
 
@@ -190,7 +190,7 @@ Note: deny rules take precedence over allow rules.
 
 ## Project-Level Roles
 
-In addition to global RBAC, ArgoCD supports project-level roles. These are defined in the AppProject spec and generate JWT tokens for automation.
+In addition to global RBAC, ArgoCD supports project-level roles. These are defined in the AppProject spec and can be bound to SSO groups or used with generated JWT tokens for automation.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -248,14 +248,14 @@ policy.csv: |
 
 ```bash
 # Check if a subject can perform an action
-argocd admin rbac can role:backend-team get applications backend/my-app
+argocd admin settings rbac can role:backend-team get application backend/my-app --policy-file policy.csv
 # Output: Yes
 
-argocd admin rbac can role:backend-team get applications frontend/my-app
+argocd admin settings rbac can role:backend-team get application frontend/my-app --policy-file policy.csv
 # Output: No
 
 # Validate the entire policy
-argocd admin rbac validate --policy-file policy.csv
+argocd admin settings rbac validate --policy-file policy.csv
 ```
 
 ### Verify with a Test User
