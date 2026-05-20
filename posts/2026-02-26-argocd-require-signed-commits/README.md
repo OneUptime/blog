@@ -8,7 +8,7 @@ Description: Learn how to enforce signed Git commits as a requirement for ArgoCD
 
 ---
 
-Requiring signed commits for ArgoCD applications creates a trust chain from developer to deployment. Every change that reaches your Kubernetes cluster must be cryptographically signed by someone you trust. This is not just a security best practice - for regulated industries, it is often a compliance requirement. This guide covers the practical implementation of mandatory commit signing, including enforcement policies, team workflows, and handling edge cases.
+Requiring signed commits for ArgoCD applications creates a trust chain from developer to deployment. Every deployed revision that reaches your Kubernetes cluster must be cryptographically signed by someone you trust. This is not just a security best practice - for regulated industries, it is often a compliance requirement. This guide covers the practical implementation of mandatory commit signing, including enforcement policies, team workflows, and handling edge cases.
 
 ## Why Require Signed Commits?
 
@@ -20,7 +20,7 @@ Without commit signing, anyone with push access to your Git repository can deplo
 - Merge commits from platforms that do not sign
 - Repository administrators bypassing branch protections
 
-GPG signature verification adds a second factor: even if someone pushes to the repository, ArgoCD will refuse to deploy unless the commit carries a valid signature from a trusted key.
+GPG signature verification adds a second factor: even if someone pushes to the repository, ArgoCD will refuse to deploy unless the target revision carries a valid signature from a trusted key.
 
 ## Setting Up the Requirement
 
@@ -128,11 +128,18 @@ spec:
   destinations:
     - namespace: '*'
       server: https://kubernetes.default.svc
-  signatureKeys:
-    - keyID: 3AA5C34371567BD2   # Alice
-    - keyID: 9B2C5A6E8F3D1E7A   # Bob
-    - keyID: 1C4D5E6F7A8B9C0D   # CI Bot
-    - keyID: 4AEE18F83AFDEB23   # GitHub merge commits
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: "https://github.com/myorg/production-configs.git"
+          gpg:
+            mode: "head"
+            keys:
+              - 3AA5C34371567BD2   # Alice
+              - 9B2C5A6E8F3D1E7A   # Bob
+              - 1C4D5E6F7A8B9C0D   # CI Bot
+              - 4AEE18F83AFDEB23   # GitHub merge commits
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
@@ -146,11 +153,18 @@ spec:
   destinations:
     - namespace: '*'
       server: https://kubernetes.default.svc
-  signatureKeys:
-    - keyID: 3AA5C34371567BD2
-    - keyID: 9B2C5A6E8F3D1E7A
-    - keyID: 1C4D5E6F7A8B9C0D
-    - keyID: 4AEE18F83AFDEB23
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: "https://github.com/myorg/staging-configs.git"
+          gpg:
+            mode: "head"
+            keys:
+              - 3AA5C34371567BD2
+              - 9B2C5A6E8F3D1E7A
+              - 1C4D5E6F7A8B9C0D
+              - 4AEE18F83AFDEB23
 ```
 
 ## Handling CI/CD Automation
@@ -210,12 +224,6 @@ spec:
     spec:
       containers:
         - name: argocd-image-updater
-          env:
-            - name: GIT_COMMIT_SIGNING_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: image-updater-gpg
-                  key: key-id
           volumeMounts:
             - name: gpg-keyring
               mountPath: /home/argocd/.gnupg
@@ -223,6 +231,15 @@ spec:
         - name: gpg-keyring
           secret:
             secretName: image-updater-gpg-keyring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-image-updater-config
+  namespace: argocd
+data:
+  git.commit-signing-method: "openpgp"
+  git.commit-signing-key: 1C4D5E6F7A8B9C0D
 ```
 
 ## Enforcing Signing at the Git Level Too
@@ -234,7 +251,7 @@ For defense in depth, enforce signing at both the Git platform level and ArgoCD:
 ```text
 Repository Settings > Branches > Branch protection rules:
   - Require signed commits: ON
-  - Include administrators: ON
+  - Do not allow bypassing the above settings: ON
 ```
 
 ### GitLab Push Rules
@@ -271,9 +288,9 @@ git commit --allow-empty -S -m "chore: signed commit for GPG verification"
 
 2. Temporarily disable verification while migrating:
 ```yaml
-# Remove signatureKeys temporarily
+# Remove sourceIntegrity temporarily, or set a matching policy to mode: "none"
 spec:
-  signatureKeys: []
+  sourceIntegrity: {}
 ```
 
 ## Monitoring Verification Failures
@@ -316,7 +333,7 @@ argocd gpg list
 # 2. Import the new key into ArgoCD
 argocd gpg add --from new-key.asc
 
-# 3. Update project signatureKeys
+# 3. Update project sourceIntegrity keys
 kubectl edit appproject production -n argocd
 
 # 4. After all old signed commits are deployed, remove the old key
@@ -332,7 +349,7 @@ In an emergency, you might need to deploy an unsigned commit. Document the proce
 # This should require approval from security team
 kubectl patch appproject production -n argocd \
   --type json \
-  -p '[{"op": "remove", "path": "/spec/signatureKeys"}]'
+  -p '[{"op": "remove", "path": "/spec/sourceIntegrity"}]'
 
 # Deploy the emergency fix
 argocd app sync critical-app
@@ -340,11 +357,11 @@ argocd app sync critical-app
 # RE-ENABLE verification immediately after
 kubectl patch appproject production -n argocd \
   --type merge \
-  -p '{"spec":{"signatureKeys":[{"keyID":"3AA5C34371567BD2"},{"keyID":"9B2C5A6E8F3D1E7A"}]}}'
+  -p '{"spec":{"sourceIntegrity":{"git":{"policies":[{"repos":[{"url":"https://github.com/myorg/production-configs.git"}],"gpg":{"mode":"head","keys":["3AA5C34371567BD2","9B2C5A6E8F3D1E7A"]}}]}}}}'
 ```
 
 Always re-enable verification after the emergency. Log the override for audit purposes.
 
 ## Summary
 
-Requiring signed commits for ArgoCD applications involves importing trusted GPG public keys, configuring the `signatureKeys` field on ArgoCD projects, and ensuring all developers and CI systems sign their commits. The key operational challenges are handling CI automation (which needs its own GPG keys), managing key rotation, and dealing with merge commits from Git platforms. Combined with Git platform-level signing enforcement, this creates a strong trust chain from developer to production deployment.
+Requiring signed commits for ArgoCD applications involves importing trusted GPG public keys, configuring source integrity policies on ArgoCD projects, and ensuring all developers and CI systems sign their commits. The key operational challenges are handling CI automation (which needs its own GPG keys), managing key rotation, and dealing with merge commits from Git platforms. Combined with Git platform-level signing enforcement, this creates a strong trust chain from developer to production deployment.
