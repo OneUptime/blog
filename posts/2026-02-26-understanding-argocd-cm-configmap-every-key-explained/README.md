@@ -1,14 +1,14 @@
-# Understanding ArgoCD argocd-cm ConfigMap: Every Key Explained
+# Understanding ArgoCD argocd-cm ConfigMap: Important Keys Explained
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration, Administration
 
-Description: A comprehensive reference to every key in the ArgoCD argocd-cm ConfigMap, covering repository settings, SSO configuration, resource customizations, and operational tuning.
+Description: A practical reference to important keys in the ArgoCD argocd-cm ConfigMap, covering SSO configuration, resource customizations, UI behavior, and operational tuning.
 
 ---
 
-The `argocd-cm` ConfigMap is the central configuration hub for ArgoCD. It controls everything from user accounts and SSO settings to resource tracking, custom health checks, and UI behavior. Changes to this ConfigMap take effect almost immediately without requiring a restart in most cases. This guide documents every key you can set.
+The `argocd-cm` ConfigMap is the central configuration hub for many ArgoCD settings. It controls user accounts, SSO settings, resource tracking, custom health checks, and UI behavior. Many changes are picked up dynamically, but some settings require restarting ArgoCD components. This guide documents important keys you can set.
 
 ## Location and Basics
 
@@ -133,7 +133,7 @@ data:
 
 ### repositories
 
-Define repository connections (legacy format - using Secrets is preferred):
+Define repository connections in ArgoCD 2.x legacy format. In ArgoCD 3.0 and later, repository configuration through `argocd-cm` is no longer available; use Secrets labeled `argocd.argoproj.io/secret-type: repository` instead.
 
 ```yaml
 data:
@@ -153,7 +153,7 @@ data:
 
 ### repository.credentials
 
-Credential templates for pattern-matching repository access:
+Credential templates for pattern-matching repository access in ArgoCD 2.x legacy format. In ArgoCD 3.0 and later, use Secrets labeled `argocd.argoproj.io/secret-type: repo-creds` instead.
 
 ```yaml
 data:
@@ -167,7 +167,7 @@ data:
         key: password
 ```
 
-Resource Tracking and Behavior
+## Resource Tracking and Behavior
 
 ### application.instanceLabelKey
 
@@ -203,7 +203,7 @@ data:
 
 ### resource.inclusions
 
-Only include specific resources (mutually exclusive with exclusions - do not use both):
+Only include specific resources. By default, all resource group/kinds are included:
 
 ```yaml
 data:
@@ -283,13 +283,13 @@ data:
 
 ### resource.customizations.knownTypeFields
 
-Specify known type fields for better diffing:
+Specify Kubernetes type fields reused by CRDs for better diffing:
 
 ```yaml
 data:
-  resource.customizations.knownTypeFields.apps_Deployment: |
-    - field: spec.template.spec.containers
-      type: core/v1/Container
+  resource.customizations.knownTypeFields.argoproj.io_Rollout: |
+    - field: spec.template.spec
+      type: core/v1/PodSpec
 ```
 
 ## Tracking Method
@@ -300,13 +300,13 @@ Controls how ArgoCD tracks resources it manages:
 
 ```yaml
 data:
-  # Options: label, annotation, annotation+label (default)
+  # Options: annotation (default in current ArgoCD), annotation+label, label
   application.resourceTrackingMethod: "annotation"
 ```
 
+- `annotation` - uses the `argocd.argoproj.io/tracking-id` annotation
+- `annotation+label` - uses the annotation for tracking and also applies the instance label for compatibility
 - `label` - uses the instance label only (legacy, limited by label length)
-- `annotation` - uses an annotation (supports longer values)
-- `annotation+label` - uses both (recommended default)
 
 ## UI and Server Configuration
 
@@ -349,11 +349,11 @@ data:
 
 ### helm.valuesFileSchemes
 
-Allowed URL schemes for Helm values files:
+Additional custom URL schemes for Helm values files. HTTP and HTTPS are allowed by default:
 
 ```yaml
 data:
-  helm.valuesFileSchemes: "https, http, s3"
+  helm.valuesFileSchemes: "s3"
 ```
 
 ## Exec and Terminal
@@ -380,7 +380,7 @@ data:
 
 ### timeout.reconciliation
 
-How often ArgoCD checks for changes (default 180s):
+How often ArgoCD checks for changes. Current ArgoCD defaults to 120s plus jitter, while many older installations and Helm chart values use 180s:
 
 ```yaml
 data:
@@ -389,7 +389,7 @@ data:
 
 ### timeout.hard.reconciliation
 
-Maximum time between reconciliation, regardless of other settings:
+Timeout for a hard refresh of application data and the target manifest cache:
 
 ```yaml
 data:
@@ -400,7 +400,7 @@ data:
 
 ### configManagementPlugins
 
-Define config management plugins (legacy - CMP v2 sidecar model is preferred):
+Define config management plugins in the old `argocd-cm` format. This was deprecated in ArgoCD 2.4 and removed in ArgoCD 2.8; current ArgoCD versions use a repo-server sidecar with a `ConfigManagementPlugin` configuration file.
 
 ```yaml
 data:
@@ -413,4 +413,4 @@ data:
 
 ## Summary
 
-The `argocd-cm` ConfigMap is where most of ArgoCD's runtime behavior is configured. From user accounts and SSO to resource tracking and custom health checks, this single ConfigMap controls the personality of your ArgoCD installation. Always test changes in a staging environment first, and remember that some changes (like the resource tracking method) can have significant impact on existing deployments. For related configuration, see the [argocd-rbac-cm](https://oneuptime.com/blog/post/2026-02-26-understanding-argocd-rbac-cm-configmap-every-key-explained/view) and [argocd-cmd-params-cm](https://oneuptime.com/blog/post/2026-02-26-understanding-argocd-cmd-params-cm-every-key-explained/view) guides.
+The `argocd-cm` ConfigMap is where much of ArgoCD's runtime behavior is configured. From user accounts and SSO to resource tracking and custom health checks, this single ConfigMap controls the personality of your ArgoCD installation. Always test changes in a staging environment first, and remember that some changes (like the resource tracking method) can have significant impact on existing deployments. For related configuration, see the [argocd-rbac-cm](https://oneuptime.com/blog/post/2026-02-26-understanding-argocd-rbac-cm-configmap-every-key-explained/view) and [argocd-cmd-params-cm](https://oneuptime.com/blog/post/2026-02-26-understanding-argocd-cmd-params-cm-every-key-explained/view) guides.
