@@ -190,6 +190,8 @@ kind: ConfigMap
 metadata:
   name: argocd-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   # Disable admin if using SSO
   # admin.enabled: "false"
@@ -229,6 +231,8 @@ kind: ConfigMap
 metadata:
   name: argocd-rbac-cm
   namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: argocd
 data:
   policy.default: role:readonly
   policy.csv: |
@@ -361,12 +365,6 @@ spec:
       - appprojects.argoproj.io
       - configmaps
       - secrets
-    labelSelector:
-      matchExpressions:
-        - key: app.kubernetes.io/part-of
-          operator: In
-          values:
-            - argocd
     ttl: 720h  # Retain for 30 days
 ```
 
