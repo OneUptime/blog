@@ -83,12 +83,16 @@ patches:
         path: /spec/replicas
         value: 3
       - op: add
-        path: /spec/template/spec/containers/0/env/-
+        path: /spec/template/spec/containers/0/env
         value:
-          name: PRODUCTION
-          value: "true"
+          - name: PRODUCTION
+            value: "true"
       - op: remove
-        path: /spec/template/spec/containers/0/env/2
+        path: /spec/template/spec/containers/0/livenessProbe
+
+# To append to an existing env list instead, use:
+#     path: /spec/template/spec/containers/0/env/-
+# The parent env field must already exist.
 ```
 
 JSON 6902 operations:
@@ -161,13 +165,17 @@ patches:
             annotations:
               sidecar.istio.io/inject: "true"
 
-  # Apply to all resources with a specific label
+  # Apply to all Services with a specific label
   - target:
+      kind: Service
       labelSelector: "tier=frontend"
     patch: |
-      - op: add
-        path: /metadata/annotations/cdn.myorg.com~1enabled
-        value: "true"
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: not-used  # Name is ignored when target selector is used
+        annotations:
+          cdn.myorg.com/enabled: "true"
 
   # Apply to a specific resource by name and kind
   - target:
@@ -188,7 +196,7 @@ Target selector fields:
 - `group` - API group (e.g., `apps`, `batch`, `""` for core)
 - `version` - API version (e.g., `v1`)
 - `kind` - Resource kind
-- `name` - Resource name (supports regex with `|` separator)
+- `name` - Resource name (supports anchored regular expressions, e.g., `api|worker`)
 - `namespace` - Resource namespace
 - `labelSelector` - Label-based selection
 - `annotationSelector` - Annotation-based selection
