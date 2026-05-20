@@ -55,6 +55,7 @@ Before making any API call, you need an authentication token. You can obtain one
 ```bash
 # Get an auth token using username/password
 curl -s -k https://localhost:8080/api/v1/session \
+  -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"your-password"}' | jq .
 
 # Response:
@@ -68,6 +69,7 @@ Store the token for subsequent requests:
 ```bash
 # Store the token in a variable
 ARGOCD_TOKEN=$(curl -s -k https://localhost:8080/api/v1/session \
+  -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"your-password"}' | jq -r '.token')
 
 # Use it in the Authorization header
@@ -78,12 +80,14 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
 For service account automation, use a project-scoped JWT token instead of logging in each time:
 
 ```bash
-# Generate a long-lived token for a project role
+# Generate a project token for a project role
 argocd proj role create-token my-project ci-role
 
 # Or use the API to generate tokens
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  -X POST https://localhost:8080/api/v1/projects/my-project/roles/ci-role/token
+  -X POST https://localhost:8080/api/v1/projects/my-project/roles/ci-role/token \
+  -H "Content-Type: application/json" \
+  -d '{"expiresIn": 3600}'
 ```
 
 ## Core API Endpoints
@@ -176,6 +180,7 @@ TIMEOUT=300  # 5 minutes
 
 # Authenticate
 TOKEN=$(curl -s -k "$ARGOCD_SERVER/api/v1/session" \
+  -H "Content-Type: application/json" \
   -d "{\"username\":\"$ARGOCD_USER\",\"password\":\"$ARGOCD_PASS\"}" \
   | jq -r '.token')
 
@@ -183,7 +188,10 @@ TOKEN=$(curl -s -k "$ARGOCD_SERVER/api/v1/session" \
 curl -s -k -H "Authorization: Bearer $TOKEN" \
   -X PATCH "$ARGOCD_SERVER/api/v1/applications/$APP_NAME" \
   -H "Content-Type: application/json" \
-  -d "{\"spec\":{\"source\":{\"targetRevision\":\"$REVISION\"}}}"
+  -d "{
+    \"patch\": \"{\\\"spec\\\":{\\\"source\\\":{\\\"targetRevision\\\":\\\"$REVISION\\\"}}}\",
+    \"patchType\": \"merge\"
+  }"
 
 # Trigger sync
 curl -s -k -H "Authorization: Bearer $TOKEN" \
@@ -278,6 +286,7 @@ class ArgoCDClient:
                 headers=self._headers(),
                 verify=self.verify
             )
+            resp.raise_for_status()
             app = resp.json()
             sync = app["status"]["sync"]["status"]
             health = app["status"]["health"]["status"]
@@ -292,18 +301,18 @@ client.sync_application("my-app")
 success = client.wait_for_sync("my-app", timeout=600)
 ```
 
-## API Pagination
+## API Filtering
 
-When you have many applications, the API supports pagination:
+When you have many applications, filter the list response to return the applications you need:
 
 ```bash
-# Get first 50 applications
-curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
-  "https://localhost:8080/api/v1/applications?limit=50"
-
 # Get applications matching a label selector
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   "https://localhost:8080/api/v1/applications?selector=team%3Dbackend"
+
+# Get applications in a specific project
+curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
+  "https://localhost:8080/api/v1/applications?project=default"
 ```
 
 ## Error Handling
