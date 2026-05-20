@@ -26,6 +26,7 @@ go mod init github.com/company/argocd-tools
 
 # Add the ArgoCD client dependency
 go get github.com/argoproj/argo-cd/v2@latest
+go get github.com/spf13/cobra@latest
 ```
 
 ### Building a Promotion Tool
@@ -47,6 +48,13 @@ import (
 	"github.com/argoproj/argo-cd/v2/pkg/apiclient/application"
 	"github.com/spf13/cobra"
 )
+
+func shortRevision(revision string) string {
+	if len(revision) > 7 {
+		return revision[:7]
+	}
+	return revision
+}
 
 func main() {
 	var (
@@ -74,10 +82,11 @@ func main() {
 			}
 
 			// Get the application service client
-			_, appClient, err := client.NewApplicationClient()
+			conn, appClient, err := client.NewApplicationClient()
 			if err != nil {
 				return fmt.Errorf("failed to create app client: %w", err)
 			}
+			defer conn.Close()
 
 			ctx := context.Background()
 
@@ -90,7 +99,10 @@ func main() {
 			}
 
 			sourceRevision := sourceAppData.Status.Sync.Revision
-			fmt.Printf("Source app %s is at revision: %s\n", sourceApp, sourceRevision[:7])
+			if sourceRevision == "" {
+				return fmt.Errorf("source app %s does not have a synced revision yet", sourceApp)
+			}
+			fmt.Printf("Source app %s is at revision: %s\n", sourceApp, shortRevision(sourceRevision))
 
 			// Get the target application
 			targetAppData, err := appClient.Get(ctx, &application.ApplicationQuery{
@@ -101,7 +113,7 @@ func main() {
 			}
 
 			currentTargetRev := targetAppData.Status.Sync.Revision
-			fmt.Printf("Target app %s is at revision: %s\n", targetApp, currentTargetRev[:7])
+			fmt.Printf("Target app %s is at revision: %s\n", targetApp, shortRevision(currentTargetRev))
 
 			if sourceRevision == currentTargetRev {
 				fmt.Println("Apps are already at the same revision. Nothing to do.")
@@ -109,6 +121,9 @@ func main() {
 			}
 
 			// Update the target application's target revision
+			if targetAppData.Spec.Source == nil {
+				return fmt.Errorf("target app %s does not use spec.source; multi-source apps need source-specific handling", targetApp)
+			}
 			targetAppData.Spec.Source.TargetRevision = sourceRevision
 			_, err = appClient.Update(ctx, &application.ApplicationUpdateRequest{
 				Application: targetAppData,
@@ -117,13 +132,14 @@ func main() {
 				return fmt.Errorf("failed to update target app: %w", err)
 			}
 
-			fmt.Printf("Updated %s target revision to %s\n", targetApp, sourceRevision[:7])
+			fmt.Printf("Updated %s target revision to %s\n", targetApp, shortRevision(sourceRevision))
 
 			// Optionally trigger a sync
 			if autoSync {
+				prune := true
 				_, err = appClient.Sync(ctx, &application.ApplicationSyncRequest{
 					Name:  &targetApp,
-					Prune: true,
+					Prune: &prune,
 				})
 				if err != nil {
 					return fmt.Errorf("failed to sync target app: %w", err)
@@ -141,8 +157,12 @@ func main() {
 	cmd.Flags().StringVar(&targetApp, "target", "", "Target application name")
 	cmd.Flags().BoolVar(&autoSync, "sync", false, "Auto-sync after promotion")
 
-	cmd.MarkFlagRequired("source")
-	cmd.MarkFlagRequired("target")
+	if err := cmd.MarkFlagRequired("source"); err != nil {
+		log.Fatal(err)
+	}
+	if err := cmd.MarkFlagRequired("target"); err != nil {
+		log.Fatal(err)
+	}
 
 	if err := cmd.Execute(); err != nil {
 		log.Fatal(err)
@@ -180,6 +200,7 @@ import json
 import click
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import quote, urlencode
 
 ARGOCD_URL = os.environ.get('ARGOCD_URL', 'https://argocd.company.com')
 ARGOCD_TOKEN = os.environ.get('ARGOCD_AUTH_TOKEN', '')
@@ -205,13 +226,13 @@ def api_request(method, endpoint, data=None):
 
 def get_matching_apps(selector=None, project=None):
     """Get applications matching the given filters."""
-    params = []
+    params = {}
     if selector:
-        params.append(f'selector={selector}')
+        params['selector'] = selector
     if project:
-        params.append(f'projects={project}')
+        params['projects'] = project
 
-    query = '&'.join(params)
+    query = urlencode(params)
     endpoint = f'/api/v1/applications?{query}' if query else '/api/v1/applications'
     result = api_request('GET', endpoint)
     return result.get('items', [])
@@ -283,7 +304,8 @@ def sync(selector, project, parallel, dry_run):
     # Sync in parallel with a thread pool
     def sync_app(name):
         try:
-            api_request('POST', f'/api/v1/applications/{name}/sync', {
+            encoded_name = quote(name, safe='')
+            api_request('POST', f'/api/v1/applications/{encoded_name}/sync', {
                 'prune': True
             })
             return name, 'success', None
@@ -314,7 +336,8 @@ def refresh(selector, project):
     for a in apps:
         name = a['metadata']['name']
         try:
-            api_request('GET', f'/api/v1/applications/{name}?refresh=normal')
+            encoded_name = quote(name, safe='')
+            api_request('GET', f'/api/v1/applications/{encoded_name}?refresh=normal')
             click.echo(f'  Refreshed: {name}')
         except Exception as e:
             click.echo(f'  Failed: {name} - {e}', err=True)
@@ -351,7 +374,8 @@ def preflight(app_name):
     """Run pre-flight checks before syncing an application."""
     click.echo(f'Running pre-flight checks for {app_name}...\n')
 
-    app = api_request('GET', f'/api/v1/applications/{app_name}')
+    encoded_name = quote(app_name, safe='')
+    app = api_request('GET', f'/api/v1/applications/{encoded_name}')
     checks_passed = True
 
     # Check 1: Is the app already synced?
@@ -375,7 +399,7 @@ def preflight(app_name):
     out_of_sync = [r for r in resources if r.get('status') == 'OutOfSync']
     click.echo(f'[INFO] {len(out_of_sync)} resources will be updated')
 
-    # Check 4: Verify the target revision exists
+    # Check 4: Show the target revision
     source = app.get('spec', {}).get('source', {})
     click.echo(f'[INFO] Target revision: {source.get("targetRevision", "HEAD")}')
 
