@@ -76,7 +76,7 @@ If credentials exist, verify they actually work:
 ```bash
 # Test the token directly against the Git provider's API
 # GitHub
-curl -H "Authorization: token ghp_your_token" https://api.github.com/user
+curl -H "Authorization: Bearer ghp_your_token" https://api.github.com/user
 
 # GitLab
 curl -H "PRIVATE-TOKEN: glpat-your_token" https://gitlab.com/api/v4/user
@@ -89,17 +89,15 @@ kubectl exec -n argocd deployment/argocd-repo-server -- \
 ### For SSH Keys
 
 ```bash
-# Test SSH connectivity from the repo-server
-kubectl exec -n argocd deployment/argocd-repo-server -- \
-  ssh -T -o StrictHostKeyChecking=no git@github.com 2>&1
+# Force ArgoCD to test the repository using the configured SSH key
+argocd repo get git@github.com:org/repo.git --refresh hard
 
-# Check if the SSH key is properly mounted
-kubectl exec -n argocd deployment/argocd-repo-server -- \
-  ls -la /app/config/ssh/
+# Check if the repository secret contains an SSH private key
+kubectl get secret my-ssh-repo -n argocd -o jsonpath='{.data.sshPrivateKey}' | base64 -d | head -1
 
-# Test with verbose SSH output
-kubectl exec -n argocd deployment/argocd-repo-server -- \
-  ssh -vvv git@github.com 2>&1 | tail -30
+# Check repo-server logs for SSH errors
+kubectl logs -n argocd deployment/argocd-repo-server --tail=100 | \
+  grep -i "ssh\|known_hosts\|permission denied\|publickey"
 ```
 
 ### For GitHub App Credentials
@@ -153,7 +151,7 @@ Tokens expire. This is the most common cause of "it was working yesterday" auth 
 
 ```bash
 # GitHub PATs - check if the token is still valid
-curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ghp_your_token" https://api.github.com/user
+curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer ghp_your_token" https://api.github.com/user
 # 200 = valid, 401 = expired/invalid
 
 # GitLab PATs - check validity
@@ -247,7 +245,7 @@ kubectl delete pod -n argocd -l app.kubernetes.io/name=argocd-repo-server
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-repo-server -w
 
 # Test the repository connection
-argocd repo get https://github.com/org/repo.git --refresh
+argocd repo get https://github.com/org/repo.git --refresh hard
 ```
 
 ## Step 9: Re-add the Repository
@@ -285,7 +283,7 @@ kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository -o js
 kubectl logs -n argocd deployment/argocd-repo-server --tail=50 --since=5m 2>/dev/null | grep -i error
 
 # Force refresh a repository
-argocd repo get https://github.com/org/repo.git --refresh
+argocd repo get https://github.com/org/repo.git --refresh hard
 ```
 
 Authentication errors are the second most common ArgoCD issue after sync failures. Most of the time it comes down to expired tokens, wrong URL patterns in credential templates, or missing scopes. The systematic approach in this guide should help you identify the root cause quickly.
