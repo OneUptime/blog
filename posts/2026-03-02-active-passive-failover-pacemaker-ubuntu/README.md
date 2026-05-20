@@ -36,7 +36,7 @@ Run these commands on both nodes:
 ```bash
 # Update and install packages
 sudo apt update
-sudo apt install -y pacemaker corosync pcs
+sudo apt install -y pacemaker corosync pcs resource-agents-base resource-agents-extra
 
 # Set the hacluster password (used for node authentication)
 sudo passwd hacluster
@@ -108,6 +108,9 @@ On both nodes, install Apache:
 # Install Apache on both nodes
 sudo apt install -y apache2
 
+# Enable the Apache status module for Pacemaker health checks
+sudo a2enmod status
+
 # Stop and disable Apache from managing itself (Pacemaker will manage it)
 sudo systemctl stop apache2
 sudo systemctl disable apache2
@@ -138,7 +141,7 @@ Resources in a group start in order and stop in reverse order. They also run on 
 sudo pcs resource group add webservice cluster-vip apache-web
 
 # Verify the group configuration
-sudo pcs resource show webservice
+sudo pcs resource config webservice
 sudo pcs status
 ```
 
@@ -151,7 +154,7 @@ By default, Pacemaker decides which node runs the group based on scores. You can
 sudo pcs constraint location webservice prefers node1=100
 
 # View location constraints
-sudo pcs constraint location show
+sudo pcs constraint location config
 ```
 
 This means node1 will be chosen when both nodes are healthy, and the group will fail over to node2 if node1 goes down, then fail back to node1 when it recovers.
@@ -165,7 +168,7 @@ By default, resources fail back to the preferred node when it recovers. You can 
 sudo pcs resource defaults update resource-stickiness=100
 
 # Or set it per-group
-sudo pcs resource update webservice resource-stickiness=100
+sudo pcs resource meta webservice resource-stickiness=100
 ```
 
 ## Testing Failover
@@ -236,7 +239,7 @@ sudo corosync-quorumtool -s
 
 ## Configuring STONITH for Production
 
-Before using this cluster in production, configure fencing. For a KVM/cloud environment you can use SBD:
+Before using this cluster in production, configure fencing. For a bare-metal environment with IPMI, you can use `fence_ipmilan`:
 
 ```bash
 # Re-enable STONITH
