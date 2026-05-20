@@ -16,8 +16,8 @@ This guide covers the Lua scripting fundamentals specific to ArgoCD resource act
 
 ArgoCD uses a sandboxed Lua 5.1 runtime for resource actions. The sandbox restricts which libraries are available for security reasons. You have access to:
 
-- **Standard Lua operations**: strings, tables, math, type conversion
-- **`os` library** (limited): primarily `os.time()` for timestamps
+- **Core Lua operations**: conditionals, loops, tables, arithmetic, and type conversion
+- **`os` library** (limited): `os.time()` and `os.date()` for timestamps
 - **`tostring()` and `tonumber()`**: type conversion functions
 - **Table manipulation**: `table.insert`, `table.remove`, `ipairs`, `pairs`
 
@@ -26,7 +26,7 @@ You do NOT have access to:
 - OS commands (`os.execute`)
 - Network operations
 - The `require` function (except for `os`)
-- `loadstring` or `dofile`
+- Standard libraries such as `string` and `math` in custom action scripts
 
 ## Anatomy of a Resource Action Script
 
@@ -205,16 +205,11 @@ return obj
 ### Pattern 5: Update Container Image
 
 ```lua
--- Update the image tag (useful for emergency patches)
+-- Update the image (useful for emergency patches)
 if obj.spec.template.spec.containers ~= nil then
   for i, container in ipairs(obj.spec.template.spec.containers) do
     if container.name == "my-app" then
-      -- Replace the tag portion of the image
-      local image = container.image
-      local repo = string.match(image, "(.+):")
-      if repo ~= nil then
-        obj.spec.template.spec.containers[i].image = repo .. ":rollback-stable"
-      end
+      obj.spec.template.spec.containers[i].image = "registry.example.com/my-app:rollback-stable"
     end
   end
 end
