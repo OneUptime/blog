@@ -10,7 +10,7 @@ Description: Learn how to implement distributed tracing for ArgoCD operations to
 
 When an ArgoCD sync takes longer than expected or fails intermittently, you need to understand exactly what happened during that operation. Which component was slow? Was it the Git fetch, the manifest generation, or the Kubernetes API calls? Distributed tracing gives you a timeline view of every operation, broken down by component and operation type.
 
-ArgoCD has built-in support for OpenTelemetry tracing since version 2.8, making it straightforward to instrument your GitOps pipeline.
+ArgoCD has built-in support for OpenTelemetry tracing, making it straightforward to instrument your GitOps pipeline.
 
 ## How ArgoCD Tracing Works
 
@@ -39,28 +39,29 @@ sequenceDiagram
     Server-->>User: Result
 ```
 
-Each step in this sequence is captured as a span in a trace, giving you visibility into where time is spent.
+The traced gRPC, HTTP, and Kubernetes operations give you visibility into where time is spent across this flow.
 
 ## Enabling Tracing in ArgoCD
 
 ### Step 1: Configure the OTLP Endpoint
 
-Set the tracing endpoint in the ArgoCD ConfigMap:
+Set the tracing endpoint in the ArgoCD command parameters ConfigMap:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Point to your OpenTelemetry Collector or Jaeger directly
+  # Point to your OpenTelemetry Collector
   otlp.address: "otel-collector.observability:4317"
+  otlp.insecure: "true"
 ```
 
 ### Step 2: Set Environment Variables for Fine-Grained Control
 
-For more control over tracing behavior, set environment variables on each ArgoCD component:
+For more control over tracing behavior, set ArgoCD's component-specific environment variables:
 
 ```yaml
 # Patch for argocd-server deployment
@@ -77,53 +78,39 @@ spec:
         - name: argocd-server
           env:
             # OTLP endpoint
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "http://otel-collector.observability:4317"
-            # Service name for trace identification
-            - name: OTEL_SERVICE_NAME
-              value: "argocd-server"
-            # Sampling rate (0.0 to 1.0)
-            - name: OTEL_TRACES_SAMPLER
-              value: "parentbased_traceidratio"
-            - name: OTEL_TRACES_SAMPLER_ARG
-              value: "0.1"
-            # Resource attributes
-            - name: OTEL_RESOURCE_ATTRIBUTES
-              value: "k8s.namespace.name=argocd,deployment.environment=production"
+            - name: ARGOCD_SERVER_OTLP_ADDRESS
+              value: "otel-collector.observability:4317"
+            # Resource attributes, separated with commas
+            - name: ARGOCD_SERVER_OTLP_ATTRS
+              value: "k8s.namespace.name:argocd,deployment.environment:production"
 ```
 
 Apply similar environment variables to the repo server and application controller:
 
 ```bash
-# Patch all ArgoCD components
-for component in argocd-server argocd-repo-server; do
-  kubectl patch deployment -n argocd $component --type=json -p='[
+# Patch the API server
+kubectl patch deployment -n argocd argocd-server --type=json -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/env/-",
+    "value": {
+      "name": "ARGOCD_SERVER_OTLP_ADDRESS",
+      "value": "otel-collector.observability:4317"
+    }
+  }
+]'
+
+# Patch the repo server
+kubectl patch deployment -n argocd argocd-repo-server --type=json -p='[
     {
       "op": "add",
       "path": "/spec/template/spec/containers/0/env/-",
       "value": {
-        "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "value": "http://otel-collector.observability:4317"
-      }
-    },
-    {
-      "op": "add",
-      "path": "/spec/template/spec/containers/0/env/-",
-      "value": {
-        "name": "OTEL_TRACES_SAMPLER",
-        "value": "parentbased_traceidratio"
-      }
-    },
-    {
-      "op": "add",
-      "path": "/spec/template/spec/containers/0/env/-",
-      "value": {
-        "name": "OTEL_TRACES_SAMPLER_ARG",
-        "value": "0.1"
+        "name": "ARGOCD_REPO_SERVER_OTLP_ADDRESS",
+        "value": "otel-collector.observability:4317"
       }
     }
-  ]'
-done
+]'
 
 # Patch the statefulset for the application controller
 kubectl patch statefulset -n argocd argocd-application-controller --type=json -p='[
@@ -131,8 +118,8 @@ kubectl patch statefulset -n argocd argocd-application-controller --type=json -p
     "op": "add",
     "path": "/spec/template/spec/containers/0/env/-",
     "value": {
-      "name": "OTEL_EXPORTER_OTLP_ENDPOINT",
-      "value": "http://otel-collector.observability:4317"
+      "name": "ARGOCD_APPLICATION_CONTROLLER_OTLP_ADDRESS",
+      "value": "otel-collector.observability:4317"
     }
   }
 ]'
@@ -216,17 +203,16 @@ data:
 
 ## Understanding ArgoCD Trace Spans
 
-A typical ArgoCD sync trace includes these spans:
+A typical ArgoCD sync trace includes spans such as:
 
 | Span Name | Component | Description |
 |---|---|---|
-| `argocd.sync` | Controller | Root span for the entire sync |
-| `argocd.git.fetch` | Repo Server | Fetching from Git repository |
-| `argocd.manifest.generate` | Repo Server | Rendering Helm/Kustomize |
-| `argocd.manifest.cache.get` | Repo Server | Cache lookup for manifests |
-| `argocd.kubernetes.apply` | Controller | Applying resources to cluster |
-| `argocd.health.check` | Controller | Running health assessments |
-| `argocd.hook.execute` | Controller | Running sync hooks |
+| `/application.ApplicationService/Sync` | Server | User-initiated sync request |
+| `/repository.RepoServerService/GenerateManifest` | Repo Server | Rendering Helm/Kustomize or plain manifests |
+| `/repository.RepoServerService/GetRevisionMetadata` | Repo Server | Reading Git revision metadata |
+| `ApplyResource` | Controller | Applying a Kubernetes resource |
+| `GetResource` | Controller | Reading a Kubernetes resource |
+| `PatchResource` | Controller | Patching a Kubernetes resource |
 
 ## Analyzing Traces for Performance Issues
 
@@ -234,37 +220,40 @@ A typical ArgoCD sync trace includes these spans:
 
 In Jaeger or Tempo, search for traces with:
 - Service: `argocd-application-controller`
-- Operation: `argocd.sync`
+- Operation: `ApplyResource`
 - Min Duration: 60s
 
-This surfaces sync operations that took longer than a minute.
+This surfaces Kubernetes apply operations that took longer than a minute. To investigate user-triggered sync calls, search the `argocd-server` service for `/application.ApplicationService/Sync`.
 
 ### Identifying Git Bottlenecks
 
-Look for traces where `argocd.git.fetch` dominates the timeline. Common causes:
+Look for repo-server traces where repository access or manifest generation dominates the timeline. Common causes:
 - Large repositories taking a long time to clone
 - Slow Git hosting provider
 - Missing shallow clone configuration
 
-Fix by enabling shallow cloning:
+Fix by enabling shallow cloning on the repository:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: v1
+kind: Secret
 metadata:
-  name: my-app
-spec:
-  source:
-    repoURL: https://github.com/org/repo
-    targetRevision: main
-    # Enable shallow clone for faster fetches
-    directory:
-      recurse: false
+  name: my-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+  annotations:
+    managed-by: argocd.argoproj.io
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/org/repo
+  depth: "1"
 ```
 
 ### Identifying Manifest Generation Bottlenecks
 
-If `argocd.manifest.generate` is slow, check:
+If `/repository.RepoServerService/GenerateManifest` is slow, check:
 - Complex Helm charts with many dependencies
 - Kustomize overlays with heavy transformations
 - Repo server resource limits
@@ -293,18 +282,7 @@ spec:
 
 ## Sampling Strategy
 
-In production, you do not want to trace every single operation. Use a smart sampling strategy:
-
-```yaml
-# Always trace failed syncs, sample 10% of successful ones
-env:
-  - name: OTEL_TRACES_SAMPLER
-    value: "parentbased_traceidratio"
-  - name: OTEL_TRACES_SAMPLER_ARG
-    value: "0.1"
-```
-
-For custom sampling that always captures errors, use the OpenTelemetry Collector's tail sampling processor:
+In production, you do not want to keep every single operation. ArgoCD's built-in exporter is configured through its `--otlp-*` flags, so use the OpenTelemetry Collector's tail sampling processor to keep the most useful traces:
 
 ```yaml
 # OTel Collector config
@@ -331,7 +309,7 @@ processors:
 
 ## Correlating Traces with Logs and Metrics
 
-For full observability, inject trace IDs into ArgoCD logs. This lets you click from a log line directly to the corresponding trace:
+For full observability, configure your log pipeline to link log lines that contain trace IDs to the corresponding trace:
 
 ```yaml
 # In Grafana, use derived fields in Loki
@@ -345,6 +323,6 @@ derivedFields:
 
 ## Summary
 
-Distributed tracing transforms ArgoCD debugging from guesswork into science. By enabling OpenTelemetry tracing, you get a detailed timeline of every sync operation, from Git fetch through manifest generation to Kubernetes resource application. Use this visibility to identify bottlenecks, optimize slow components, and understand the full lifecycle of your GitOps deployments.
+Distributed tracing transforms ArgoCD debugging from guesswork into science. By enabling OpenTelemetry tracing, you get a timeline of operations across the API server, repo server, and Kubernetes resource application. Use this visibility to identify bottlenecks, optimize slow components, and understand the lifecycle of your GitOps deployments.
 
 For the complete observability stack, combine tracing with [log aggregation](https://oneuptime.com/blog/post/2026-02-26-argocd-log-aggregation-components/view) and [custom metrics](https://oneuptime.com/blog/post/2026-02-26-argocd-custom-metrics/view).
