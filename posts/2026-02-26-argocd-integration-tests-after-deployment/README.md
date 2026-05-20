@@ -285,6 +285,7 @@ spec:
             - pytest
             - /tests/integration/
             - -v
+            # Requires the pytest-timeout plugin in your test image
             - --timeout=30
 ```
 
