@@ -4,26 +4,24 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, UI, Customization
 
-Description: Learn how to create and configure custom resource icons in ArgoCD to improve visual identification of Kubernetes resources in the application tree view.
+Description: Learn how to create and contribute custom resource icons in ArgoCD to improve visual identification of Kubernetes resources in the application tree view.
 
 ---
 
-ArgoCD's web UI displays a tree view of all Kubernetes resources managed by each application. By default, each resource type gets a generic icon based on its Kubernetes kind. Custom resource icons let you replace these defaults with meaningful visual identifiers that make it easier for your team to understand application architecture at a glance. This is especially valuable when working with custom resources from operators where the default icons provide no visual distinction.
+ArgoCD's web UI displays a tree view of Kubernetes resources managed by each application. ArgoCD includes built-in icons for common resource types, and unsupported resource groups fall back to a generic icon. Custom resource icons let you add meaningful visual identifiers that make it easier for your team to understand application architecture at a glance. This is especially valuable when working with custom resources from operators where the default icons provide no visual distinction.
 
 ## How ArgoCD Resource Icons Work
 
-ArgoCD maps Kubernetes resource types to icons using a combination of built-in mappings and user-configurable overrides. The icon system works through the `argocd-cm` ConfigMap, where you can define custom icons for any resource Group/Kind combination.
+ArgoCD resource icons are bundled into the ArgoCD UI. They are not configured through the `argocd-cm` ConfigMap. To add a custom resource icon, you add an SVG file to the ArgoCD source tree, regenerate the resource icon list, and build or contribute that change to ArgoCD.
 
 ```mermaid
 graph TD
-    A[Resource Detected] --> B{Custom Icon Defined?}
-    B -->|Yes| C[Use Custom Icon]
-    B -->|No| D{Built-in Icon?}
-    D -->|Yes| E[Use Built-in Icon]
-    D -->|No| F[Use Default Generic Icon]
+    A[Resource Detected] --> B{Bundled Icon Matches API Group?}
+    B -->|Yes| C[Use Bundled Icon]
+    B -->|No| D[Use Default Generic Icon]
 ```
 
-The UI renders these icons in the application resource tree, the resource details panel, and the application overview.
+The UI uses these icons when rendering Kubernetes resources in the application tree and related resource views.
 
 ## Built-in Resource Icons
 
@@ -31,178 +29,98 @@ ArgoCD includes icons for common Kubernetes resource types out of the box.
 
 | Resource Kind | Icon |
 |---------------|------|
-| Deployment | Gear icon |
-| Service | Network icon |
-| ConfigMap | Document icon |
-| Secret | Lock icon |
-| Pod | Box icon |
-| Ingress | Globe icon |
-| PersistentVolumeClaim | Disk icon |
-| StatefulSet | Database icon |
-| DaemonSet | Multi-node icon |
-| Job/CronJob | Timer icon |
+| Deployment | Built-in workload icon |
+| Service | Built-in service icon |
+| ConfigMap | Built-in configuration icon |
+| Secret | Built-in secret icon |
+| Pod | Built-in pod icon |
+| Ingress | Built-in ingress icon |
+| PersistentVolumeClaim | Built-in storage icon |
+| StatefulSet | Built-in workload icon |
+| DaemonSet | Built-in workload icon |
+| Job/CronJob | Built-in job icon |
 
 For standard Kubernetes resources, these built-in icons work well. The need for custom icons arises when you use Custom Resource Definitions (CRDs) from operators, service meshes, or your own custom controllers.
 
-## Configuring Custom Icons via ConfigMap
+## Adding Custom Icons to the ArgoCD UI
 
-The primary way to add custom resource icons is through the `argocd-cm` ConfigMap. You define icon mappings using the `resource.customizations.icon` key pattern.
+The supported way to add custom resource icons is to contribute them to the ArgoCD source repository. Add the icon file under `ui/src/assets/images/resources/<group>/icon.svg`, where `<group>` is the Kubernetes API group for the custom resource.
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Custom icon for Istio VirtualService
-  resource.customizations.icon.networking.istio.io_VirtualService: |
-    icon: fa-route
-    color: "#466BB0"
+For example, to add an icon for resources in the `example.com` API group, use this path:
 
-  # Custom icon for Prometheus ServiceMonitor
-  resource.customizations.icon.monitoring.coreos.com_ServiceMonitor: |
-    icon: fa-heartbeat
-    color: "#E6522C"
-
-  # Custom icon for Cert-Manager Certificate
-  resource.customizations.icon.cert-manager.io_Certificate: |
-    icon: fa-certificate
-    color: "#326CE5"
-
-  # Custom icon for Argo Rollout
-  resource.customizations.icon.argoproj.io_Rollout: |
-    icon: fa-flag-checkered
-    color: "#EF7B4D"
+```text
+ui/src/assets/images/resources/example.com/icon.svg
 ```
 
-The format for the key is `resource.customizations.icon.<group>_<Kind>`. For core Kubernetes resources without an API group, use an empty group prefix like `_ConfigMap`.
+The icon SVG must use the ArgoCD resource icon color:
 
-### Available Icon Libraries
-
-ArgoCD supports Font Awesome icons. You can use any icon from the Font Awesome free set.
-
-```yaml
-# Common useful icons for DevOps resources
-
-data:
-  # Database-related CRDs
-  resource.customizations.icon.postgresql.cnpg.io_Cluster: |
-    icon: fa-database
-    color: "#336791"
-
-  # Message queue CRDs
-  resource.customizations.icon.rabbitmq.com_RabbitmqCluster: |
-    icon: fa-envelope
-    color: "#FF6600"
-
-  # Backup-related CRDs
-  resource.customizations.icon.velero.io_Backup: |
-    icon: fa-cloud-upload-alt
-    color: "#44B3C2"
-
-  # Network policy CRDs
-  resource.customizations.icon.cilium.io_CiliumNetworkPolicy: |
-    icon: fa-shield-alt
-    color: "#8061BC"
-
-  # External DNS
-  resource.customizations.icon.externaldns.k8s.io_DNSEndpoint: |
-    icon: fa-globe-americas
-    color: "#326CE5"
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <path fill="#8fa4b1" d="M12 2L2 7l10 5 10-5-10-5z"/>
+  <path fill="#8fa4b1" d="M2 17l10 5 10-5"/>
+  <path fill="#8fa4b1" d="M2 12l10 5 10-5"/>
+</svg>
 ```
+
+After adding the SVG, regenerate the TypeScript file that lists available resource icons:
+
+```bash
+make resourceiconsgen
+```
+
+Then build and test the ArgoCD UI from your fork, or open a pull request to the ArgoCD repository if the icon should be available upstream.
+
+### Wildcard Icon Groups
+
+ArgoCD also supports wildcard-style icon directories for API groups with a shared suffix. Prefix a directory with an underscore to make that part of the group act as a wildcard.
+
+For example, this path applies to API groups such as `example.com` and `another.example.com`:
+
+```text
+ui/src/assets/images/resources/_.example.com/icon.svg
+```
+
+This is useful when multiple CRD API groups should share the same icon.
 
 ## Using Custom SVG Icons
 
-For more distinctive branding, you can use custom SVG icons instead of Font Awesome icons. This requires modifying the ArgoCD source or using the resource customization extension mechanism.
+Custom resource icons in ArgoCD are SVG files bundled with the UI. Font Awesome class names and data URI strings are not supported for resource icons through `argocd-cm`.
 
-Create a custom icon set by adding SVGs to the ArgoCD UI.
+When preparing an SVG:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Use a data URI for inline SVG icons
-  resource.customizations.icon.mycompany.io_MyResource: |
-    icon: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5...
-    color: "#FF5733"
-```
-
-To convert an SVG to base64 for use in the configuration:
-
-```bash
-# Convert SVG file to base64
-base64 -i my-icon.svg | tr -d '\n'
-
-# Or use a one-liner to create the full data URI
-echo "data:image/svg+xml;base64,$(base64 -i my-icon.svg | tr -d '\n')"
-```
+1. Ensure the icon license is compatible with Apache 2.0.
+2. Keep the SVG simple and readable at small sizes.
+3. Set the icon color to `#8fa4b1`.
+4. Add the file as `icon.svg` under the correct API group directory.
+5. Run `make resourceiconsgen`.
 
 Resource Customization for Operator CRDs
 
-When deploying operators through ArgoCD, adding icons for their CRDs makes the resource tree much more readable. Here is a comprehensive example for a typical production setup.
+When deploying operators through ArgoCD, adding icons for their CRD API groups makes the resource tree much more readable. A typical source tree change might look like this:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Istio Service Mesh Resources
-  resource.customizations.icon.networking.istio.io_VirtualService: |
-    icon: fa-route
-    color: "#466BB0"
-  resource.customizations.icon.networking.istio.io_DestinationRule: |
-    icon: fa-directions
-    color: "#466BB0"
-  resource.customizations.icon.networking.istio.io_Gateway: |
-    icon: fa-door-open
-    color: "#466BB0"
-  resource.customizations.icon.security.istio.io_AuthorizationPolicy: |
-    icon: fa-user-shield
-    color: "#466BB0"
-
-  # Prometheus Stack Resources
-  resource.customizations.icon.monitoring.coreos.com_ServiceMonitor: |
-    icon: fa-heartbeat
-    color: "#E6522C"
-  resource.customizations.icon.monitoring.coreos.com_PrometheusRule: |
-    icon: fa-bell
-    color: "#E6522C"
-  resource.customizations.icon.monitoring.coreos.com_Prometheus: |
-    icon: fa-fire
-    color: "#E6522C"
-  resource.customizations.icon.monitoring.coreos.com_Alertmanager: |
-    icon: fa-exclamation-triangle
-    color: "#E6522C"
-
-  # Kafka (Strimzi) Resources
-  resource.customizations.icon.kafka.strimzi.io_Kafka: |
-    icon: fa-stream
-    color: "#191A1C"
-  resource.customizations.icon.kafka.strimzi.io_KafkaTopic: |
-    icon: fa-layer-group
-    color: "#191A1C"
-  resource.customizations.icon.kafka.strimzi.io_KafkaConnect: |
-    icon: fa-plug
-    color: "#191A1C"
-
-  # Crossplane Resources
-  resource.customizations.icon.apiextensions.crossplane.io_Composition: |
-    icon: fa-puzzle-piece
-    color: "#F8A51C"
-  resource.customizations.icon.apiextensions.crossplane.io_CompositeResourceDefinition: |
-    icon: fa-cubes
-    color: "#F8A51C"
+```text
+ui/src/assets/images/resources/
+  networking.istio.io/
+    icon.svg
+  monitoring.coreos.com/
+    icon.svg
+  kafka.strimzi.io/
+    icon.svg
+  postgresql.cnpg.io/
+    icon.svg
 ```
+
+Each directory represents the CRD API group. After adding or changing these files, run:
+
+```bash
+make resourceiconsgen
+```
+
+Then rebuild the ArgoCD UI image from your fork or submit the icons upstream.
 
 ## Combining Icons with Health Checks
 
-Custom icons work together with custom health checks to give you a complete visual picture of your resources. Define both for your CRDs.
+Custom icons can be paired with custom health checks to give you a more complete visual picture of your resources. Icons are bundled in the UI, while health checks are configured through `argocd-cm`.
 
 ```yaml
 apiVersion: v1
@@ -211,11 +129,6 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Icon for PostgreSQL clusters
-  resource.customizations.icon.postgresql.cnpg.io_Cluster: |
-    icon: fa-database
-    color: "#336791"
-
   # Health check for PostgreSQL clusters
   resource.customizations.health.postgresql.cnpg.io_Cluster: |
     hs = {}
@@ -234,62 +147,52 @@ data:
     return hs
 ```
 
-In the UI, you will see the database icon colored by the health status - green when healthy, yellow when progressing, and red when degraded.
+In the UI, the resource icon identifies the resource type, while the resource health status shows whether the resource is healthy, progressing, degraded, suspended, missing, or unknown.
 
 ## Applying Icon Changes
 
-After updating the ConfigMap, ArgoCD picks up icon changes without requiring a restart of any components.
+Because resource icons are compiled into the ArgoCD UI, applying an `argocd-cm` update is not enough. You need to build or deploy an ArgoCD version that contains the generated icon list and SVG files.
 
 ```bash
-# Apply the updated ConfigMap
-kubectl apply -f argocd-cm.yaml
+# Add or update SVG files under ui/src/assets/images/resources/
+make resourceiconsgen
 
-# Verify the configuration was applied
-kubectl get configmap argocd-cm -n argocd -o yaml | grep "resource.customizations.icon"
-
-# Refresh the ArgoCD UI in your browser to see the new icons
-# If icons do not appear, try a hard refresh (Ctrl+Shift+R or Cmd+Shift+R)
+# Build and test ArgoCD from your fork, or submit a pull request upstream
 ```
+
+After deploying an ArgoCD build that includes the icon changes, refresh the ArgoCD UI in your browser. If the old UI bundle is cached, use a hard refresh.
 
 ## Organizing Icons for Large Deployments
 
-For organizations with many CRDs, managing icons in a single ConfigMap becomes unwieldy. Use Kustomize to organize icon definitions.
+For organizations with many CRDs, keep icon ownership clear in your ArgoCD fork or contribution branch. Group icons by API group under `ui/src/assets/images/resources/` and regenerate the icon list whenever files are added, removed, or renamed.
 
-```yaml
-# base/kustomization.yaml
-apiVersion: kustomize.config.k8s.io/v1beta1
-kind: Kustomization
-resources:
-  - argocd-install.yaml
-
-configMapGenerator:
-  - name: argocd-cm
-    namespace: argocd
-    behavior: merge
-    files:
-      - icons/istio-icons.yaml
-      - icons/prometheus-icons.yaml
-      - icons/kafka-icons.yaml
-      - icons/custom-crds-icons.yaml
+```text
+ui/src/assets/images/resources/
+  networking.istio.io/icon.svg
+  security.istio.io/icon.svg
+  monitoring.coreos.com/icon.svg
+  kafka.strimzi.io/icon.svg
+  apiextensions.crossplane.io/icon.svg
 ```
 
-This keeps your icon definitions modular and easy to maintain as your cluster evolves. Each team can manage icons for their own CRDs.
+This keeps your icon definitions modular and easy to review as your cluster evolves. Each team can prepare icons for the CRDs they own, and the platform team can validate licensing, SVG format, and UI behavior before merging.
 
 ## Troubleshooting Icon Issues
 
 If custom icons are not displaying correctly, check these common issues:
 
-1. **Key format.** Ensure the ConfigMap key follows the exact format: `resource.customizations.icon.<apiGroup>_<Kind>`
-2. **Font Awesome availability.** Verify the icon name exists in the Font Awesome free set
-3. **Browser cache.** Clear your browser cache or do a hard refresh
-4. **ConfigMap syntax.** YAML indentation matters - ensure the icon configuration is properly formatted
+1. **Path format.** Ensure the SVG is located at `ui/src/assets/images/resources/<group>/icon.svg`.
+2. **Generated icon list.** Run `make resourceiconsgen` after adding or moving icon files.
+3. **SVG color.** Use the expected resource icon color, `#8fa4b1`.
+4. **Browser cache.** Clear your browser cache or do a hard refresh.
+5. **Deployment version.** Confirm the ArgoCD server is serving the UI build that contains your icon changes.
 
 ```bash
-# Validate your ConfigMap syntax
-kubectl apply --dry-run=client -f argocd-cm.yaml
+# Regenerate resource icon metadata after changing SVG files
+make resourceiconsgen
 
-# Check for configuration errors in the server logs
-kubectl logs -n argocd deployment/argocd-server | grep -i "icon\|customization"
+# Check the changed files before opening a pull request
+git diff -- ui/src/assets/images/resources
 ```
 
 Custom resource icons are a small investment that significantly improves the ArgoCD user experience. When your team can visually distinguish between a Kafka topic, a PostgreSQL cluster, and a Prometheus rule at a glance, troubleshooting and understanding application architecture becomes much faster. For more ArgoCD customization options, explore our guide on [contributing to ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-contribute-open-source/view).
