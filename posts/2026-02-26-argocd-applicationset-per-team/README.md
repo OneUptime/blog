@@ -133,9 +133,9 @@ spec:
 
 New teams just need to create a directory with their config file and submit a pull request. Once merged, the ApplicationSet automatically provisions their application.
 
-## Per-Team Namespace Setup with App-of-Apps
+## Per-Team Namespace Setup
 
-Teams often need more than just their application deployed - they need namespaces, resource quotas, network policies, and RBAC. Use a matrix generator to deploy a team namespace setup alongside the team's applications.
+Teams often need more than just their application deployed - they need namespaces, resource quotas, network policies, and RBAC. Use an ApplicationSet to deploy a team namespace setup alongside the team's applications.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -212,15 +212,10 @@ spec:
     - Egress
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              team: {{ .Values.team }}
+        - podSelector: {}
   egress:
     - to:
-        - namespaceSelector: {}
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
+        - podSelector: {}
 ```
 
 ## Multiple Services Per Team
@@ -245,6 +240,7 @@ spec:
               revision: HEAD
               files:
                 - path: 'teams/*/config.json'
+              pathParamPrefix: teamConfig
           # Service discovery within each team's repo
           - git:
               repoURL: '{{.repo_url}}'
