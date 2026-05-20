@@ -23,10 +23,10 @@ pactl info | grep "Server Name"
 
 ```
 
-Also install the PipeWire development tools:
+Also install the PipeWire JACK compatibility libraries if you plan to use JACK applications:
 
 ```bash
-sudo apt install pipewire-audio-client-libraries libpipewire-0.3-dev -y
+sudo apt install pipewire-alsa pipewire-jack -y
 ```
 
 ## Understanding PipeWire's Quantum and Rate Settings
@@ -44,7 +44,7 @@ Examples:
 - 256 / 48000 = 5.3ms
 - 128 / 48000 = 2.7ms
 
-The default PipeWire quantum is 1024 or 2048 depending on the version and activity detection.
+The upstream default PipeWire quantum is 1024, with minimum and maximum limits that control what clients can request at runtime.
 
 ## Configuring the Default Quantum
 
@@ -109,10 +109,11 @@ For professional audio with very low latency targets (under 5ms), the real-time 
 # Check available real-time kernels
 apt search linux-realtime
 
-# Install if available for your Ubuntu version
+# Install the low-latency kernel if available for your Ubuntu version
 sudo apt install linux-lowlatency -y
-# or
-sudo apt install linux-realtime -y
+
+# Or install Real-time Ubuntu where it is supported
+sudo apt install ubuntu-realtime -y
 
 # Reboot to use the new kernel
 sudo reboot
@@ -156,17 +157,18 @@ nano ~/.config/pipewire/pipewire.conf.d/20-realtime.conf
 
 ```ini
 context.properties = {
-    # Enable real-time priority for PipeWire threads
+    # Allow PipeWire to lock memory for real-time processing
     mem.allow-mlock = true
     mem.warn-mlock  = false
-
-    # Thread priority settings
-    # PipeWire uses these for its processing threads
-    core.daemon = true
 }
 
-context.spa-libs = {
-    support.* = support/libspa-support
+module.rt.args = {
+    # Real-time priority for PipeWire's data threads
+    rt.prio = 88
+
+    # Keep RTKit/Realtime Portal fallback enabled on Ubuntu
+    rtkit.enabled = true
+    rtportal.enabled = true
 }
 ```
 
@@ -175,31 +177,33 @@ context.spa-libs = {
 WirePlumber manages device activation and policy. Configure it for lower latency:
 
 ```bash
-mkdir -p ~/.config/wireplumber/main.lua.d/
-nano ~/.config/wireplumber/main.lua.d/51-alsa-disable-batch.lua
+mkdir -p ~/.config/wireplumber/wireplumber.conf.d/
+nano ~/.config/wireplumber/wireplumber.conf.d/51-alsa-disable-batch.conf
 ```
 
-```lua
--- Disable batch mode for ALSA devices to reduce latency
--- Batch mode buffers multiple periods together; disabling it
--- reduces latency at the cost of slightly higher CPU usage
-alsa_monitor.rules = {
+```ini
+# Disable batch mode for ALSA devices to reduce latency
+# Batch mode adds extra buffering for devices that report positions only
+# at interrupt time; disabling it can reduce latency if the device supports it.
+monitor.alsa.rules = [
   {
-    matches = {
+    matches = [
       {
-        { "node.name", "matches", "alsa_output.*" },
-      },
-    },
-    apply_properties = {
-      ["api.alsa.disable-batch"] = true,
-      -- Reduce headroom period count
-      ["api.alsa.headroom"] = 0,
-      -- Set specific period size
-      ["api.alsa.period-size"] = 256,
-      ["api.alsa.period-num"] = 2,
-    },
-  },
-}
+        node.name = "~alsa_output.*"
+      }
+    ]
+    actions = {
+      update-props = {
+        api.alsa.disable-batch = true
+        # Reduce headroom period count
+        api.alsa.headroom = 0
+        # Set specific period size
+        api.alsa.period-size = 256
+        api.alsa.period-num = 2
+      }
+    }
+  }
+]
 ```
 
 Restart WirePlumber:
@@ -232,11 +236,10 @@ Test the real round-trip latency your setup achieves:
 
 ```bash
 # Install the latency test tool
-sudo apt install jack2 -y
+sudo apt install pipewire-jack jackd2 -y
 
 # Use JACK's latency measurement (works with PipeWire's JACK compatibility)
-PIPEWIRE_QUANTUM=128/48000 jackd -d alsa &
-jack_iodelay
+PIPEWIRE_QUANTUM=128/48000 jack_iodelay
 ```
 
 Or use a physical loopback test with a tool like `alsa-utils`:
