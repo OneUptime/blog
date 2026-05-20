@@ -81,7 +81,7 @@ ip addr show tun0
 
 # Check that you're routing through the VPN
 curl ifconfig.me
-# Should return the VPN server's public IP
+# For full-tunnel configs, this should return the VPN server's public IP
 ```
 
 Press `Ctrl+C` to disconnect.
@@ -150,7 +150,7 @@ sudo nano /etc/openvpn/client/client1.conf
 
 ```bash
 # Remove passphrase from the key (requires entering the current passphrase)
-openssl rsa -in client1.key -out client1-nopass.key
+openssl pkey -in client1.key -out client1-nopass.key
 # Then use the nopass version in your config
 ```
 
@@ -223,8 +223,8 @@ persist-tun
 # Verify the server's certificate has the "server" key usage
 remote-cert-tls server
 
-# Cipher must match the server's setting
-cipher AES-256-CBC
+# Data ciphers must overlap with the server's settings
+data-ciphers AES-256-GCM:AES-128-GCM
 
 # HMAC algorithm must match the server
 auth SHA256
@@ -259,11 +259,11 @@ This sends only traffic for 192.168.100.0/24 through the VPN while other traffic
 
 ```bash
 # Test if the server port is reachable
-nc -u -z -v vpn.example.com 1194   # for UDP
+nc -u -z -v vpn.example.com 1194   # for UDP; a timeout does not always prove the port is closed
 nc -z -v vpn.example.com 1194       # for TCP
 
 # If UDP fails, try TCP - edit the config
-# proto tcp
+# proto tcp-client
 # remote vpn.example.com 443   # Use port 443 to bypass firewalls
 ```
 
@@ -325,11 +325,15 @@ dig +short myip.opendns.com @resolver1.opendns.com
 If DNS is leaking, add to the client config:
 
 ```conf
-# Use DNS servers pushed by the server
-dhcp-option DNS 8.8.8.8
+# Use DNS servers pushed by the server with systemd-resolved
 script-security 2
-up /etc/openvpn/update-resolv-conf
-down /etc/openvpn/update-resolv-conf
+up /etc/openvpn/update-systemd-resolved
+up-restart
+down /etc/openvpn/update-systemd-resolved
+down-pre
+
+# Route all DNS queries through the VPN DNS servers
+dhcp-option DOMAIN-ROUTE .
 ```
 
 Install the DNS update script:
