@@ -39,7 +39,7 @@ graph LR
     F --> G[Application Controller]
 ```
 
-The repo-server clones the Git repository, then passes the source files to the appropriate sidecar plugin through a shared volume. The sidecar runs its generate command and returns Kubernetes manifests.
+The repo-server clones the Git repository, then streams the source files to the appropriate sidecar plugin. The sidecar runs its generate command and returns Kubernetes manifests.
 
 ## Building a Sidecar Plugin
 
@@ -85,7 +85,7 @@ This file must be placed at `/home/argocd/cmp-server/config/plugin.yaml` inside 
 
 ### Step 2: Build the Container Image
 
-Create a Dockerfile for your sidecar. The key requirement is that the `argocd-cmp-server` binary must be present in the container:
+Create a Dockerfile for your sidecar. The key requirement is that the sidecar has your plugin configuration and any tools your plugin needs:
 
 ```dockerfile
 # Dockerfile for custom CMP sidecar
@@ -97,11 +97,6 @@ RUN apt-get update && \
     pip3 install pyyaml && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy the argocd-cmp-server binary from the ArgoCD image
-COPY --from=quay.io/argoproj/argocd:v2.10.0 \
-    /usr/local/bin/argocd-cmp-server \
-    /usr/local/bin/argocd-cmp-server
-
 # Copy your plugin configuration
 COPY plugin.yaml /home/argocd/cmp-server/config/plugin.yaml
 
@@ -111,8 +106,8 @@ COPY scripts/ /usr/local/bin/
 # The CMP server runs as non-root
 USER 999
 
-# The entrypoint must be the CMP server
-ENTRYPOINT ["/usr/local/bin/argocd-cmp-server"]
+# ArgoCD mounts the CMP server binary from the repo-server container
+ENTRYPOINT ["/var/run/argocd/argocd-cmp-server"]
 ```
 
 Build and push the image:
@@ -140,12 +135,6 @@ spec:
   template:
     spec:
       containers:
-        # The main repo-server container remains unchanged
-        - name: argocd-repo-server
-          # ... existing config ...
-          volumeMounts:
-            - name: cmp-tmp
-              mountPath: /tmp
         # Add your sidecar plugin container
         - name: my-custom-plugin
           image: my-registry/argocd-cmp-custom:v1.0
@@ -166,7 +155,7 @@ spec:
             # Required: shared plugins directory
             - name: plugins
               mountPath: /home/argocd/cmp-server/plugins
-            # Required: tmp directory for working files
+            # Required: separate tmp directory for sidecar working files
             - name: cmp-tmp
               mountPath: /tmp
       volumes:
@@ -198,7 +187,7 @@ The repo-server and sidecar communicate through a Unix domain socket at `/home/a
 4. The sidecar runs the `init` command (if configured), then the `generate` command
 5. The sidecar returns the generated YAML manifests
 
-The shared volume at `/tmp` allows the sidecar to create temporary files during processing.
+The sidecar's `/tmp` volume allows the plugin to create temporary files during processing. Starting with ArgoCD v2.4, this should be a separate volume from the repo-server container's `/tmp` to preserve filesystem separation.
 
 ## Using Your Plugin in an Application
 
@@ -216,9 +205,9 @@ spec:
     repoURL: https://github.com/myorg/myrepo.git
     targetRevision: main
     path: environments/production
-    # Reference the plugin by name
+    # Reference the versioned plugin by name
     plugin:
-      name: my-custom-plugin
+      name: my-custom-plugin-v1.0
       # Pass parameters to the plugin (optional)
       env:
         - name: ENVIRONMENT
@@ -250,7 +239,7 @@ kubectl get pods -n argocd \
 Common issues include:
 
 - **Socket connection errors**: Make sure the `var-files` volume is mounted at `/var/run/argocd` in both the repo-server and sidecar
-- **Permission denied**: The sidecar must run as user 999 (the argocd user) and the shared volumes must be writable
+- **Permission denied**: The sidecar must run as user 999 (the argocd user) and its mounted volumes must be writable
 - **Plugin not found**: Verify that `plugin.yaml` is at the correct path inside the container
 
 ## Security Considerations
@@ -300,6 +289,6 @@ Set appropriate resource limits to prevent a misbehaving plugin from consuming a
 
 ## Summary
 
-Sidecar-based Config Management Plugins give you a clean, isolated way to extend ArgoCD's manifest generation capabilities. The key steps are: build a container with your tools and the CMP server binary, define a `plugin.yaml` configuration, and mount it as a sidecar on the repo-server deployment. This approach keeps your plugins isolated, secure, and independently scalable.
+Sidecar-based Config Management Plugins give you a clean, isolated way to extend ArgoCD's manifest generation capabilities. The key steps are: build a container with your tools, define a `plugin.yaml` configuration, and mount it as a sidecar on the repo-server deployment. This approach keeps your plugins isolated, secure, and independently resource-controlled.
 
 For monitoring your ArgoCD deployments and plugin health, consider using [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-debug-config-management-plugin-errors/view) to track errors and performance across your GitOps pipeline.
