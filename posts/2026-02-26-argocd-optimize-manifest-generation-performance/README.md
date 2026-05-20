@@ -74,6 +74,7 @@ kind: Application
 metadata:
   name: my-app
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/repo.git
     path: charts/my-app
@@ -86,20 +87,24 @@ spec:
       # - name: image.tag
       #   value: v1.2.3
       # Instead, put everything in the values file
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
-### Using Helm Template Caching
+### Using Repo Server Caching
 
-ArgoCD caches the output of Helm template operations. Ensure the cache is working efficiently by checking cache hit rates.
+ArgoCD caches generated manifests in the repo server cache. ArgoCD does not expose a Helm-specific template cache hit metric, so monitor repo server cache activity and repository pressure instead.
 
 ```promql
-# Monitor Helm cache efficiency
-rate(argocd_repo_server_cache_hit_total{method="helm"}[5m]) /
-(rate(argocd_repo_server_cache_hit_total{method="helm"}[5m]) +
- rate(argocd_repo_server_cache_miss_total{method="helm"}[5m]))
+# Redis requests made by the repo server
+rate(argocd_redis_request_total{initiator="argocd-repo-server"}[5m])
+
+# Pending repo requests waiting on a repository lock
+argocd_repo_pending_request_total
 ```
 
-If the hit rate is below 80%, check whether your Helm values or chart dependencies are changing more frequently than expected.
+If repo server Redis traffic or pending requests stay high, check whether your Helm values, chart dependencies, or target revisions are changing more frequently than expected.
 
 ## Optimizing Kustomize Overlays
 
@@ -134,13 +139,17 @@ Each level of overlay adds processing time. Flatten where the intermediate layer
 Strategic merge patches are more expensive than JSON patches because Kustomize needs to understand the schema of the resource being patched.
 
 ```yaml
-# Strategic merge patch - slower
+# Strategic merge patch payload - use the current patches field
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-patchesStrategicMerge:
-- deployment-patch.yaml
+patches:
+- path: deployment-patch.yaml
+```
 
+```yaml
 # JSON patch - faster for simple changes
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
 patches:
 - target:
     kind: Deployment
@@ -185,12 +194,16 @@ kind: Application
 metadata:
   name: my-app
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/repo.git
     path: manifests/production
     # No Helm or Kustomize - just plain YAML
     directory:
       recurse: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 Plain YAML manifests are processed in milliseconds. ArgoCD simply reads the files and returns them. This is an order of magnitude faster than Helm template rendering.
@@ -205,23 +218,31 @@ kind: Deployment
 metadata:
   name: argocd-repo-server
   namespace: argocd
+  labels:
+    app.kubernetes.io/name: argocd-repo-server
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-repo-server
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-repo-server
     spec:
       containers:
       - name: argocd-repo-server
         env:
         # Increase generation timeout (default: 90s)
         - name: ARGOCD_EXEC_TIMEOUT
-          value: "300"
+          value: "300s"
         # Helm specific settings
         - name: HELM_CACHE_HOME
           value: /helm-cache
         - name: HELM_CONFIG_HOME
           value: /helm-config
         volumeMounts:
-        # Persistent Helm cache across restarts
+        # Helm cache volume for the pod
         - name: helm-cache
           mountPath: /helm-cache
       volumes:
@@ -230,7 +251,7 @@ spec:
           sizeLimit: 5Gi
 ```
 
-A persistent Helm cache means chart dependencies are not downloaded again after a pod restart.
+An `emptyDir` Helm cache survives container restarts inside the same pod, but not pod recreation or rescheduling. Use a PersistentVolumeClaim if you need the cache to survive repo-server pod replacement.
 
 ## Optimizing Custom Plugin Performance
 
@@ -256,6 +277,7 @@ data:
         args:
         - |
           # Cache intermediate results
+          mkdir -p /tmp/cache
           CACHE_KEY=$(md5sum input.yaml | cut -d' ' -f1)
           CACHE_FILE="/tmp/cache/$CACHE_KEY"
           if [ -f "$CACHE_FILE" ]; then
@@ -272,6 +294,20 @@ Custom plugins should implement their own caching where possible, because ArgoCD
 Extend the manifest cache duration to reduce regeneration frequency.
 
 ```yaml
+# argocd-cmd-params-cm ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Increase repo cache expiration (default: 24h)
+  reposerver.repo.cache.expiration: "48h"
+```
+
+You can also reduce periodic repository polling when webhooks are reliable.
+
+```yaml
 # argocd-cm ConfigMap
 apiVersion: v1
 kind: ConfigMap
@@ -279,40 +315,35 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Increase repo cache expiration (default: 24h)
-  reposerver.repo.cache.expiration: "48h"
-
-  # Increase manifest cache per app (controlled via reconciliation timeout)
-  timeout.reconciliation: "300"
+  # Poll every 5 minutes instead of the default 120s plus jitter
+  timeout.reconciliation: "5m"
 ```
 
-With webhooks enabled, extending cache duration is safe because caches are invalidated on actual changes. The longer cache lifetime only affects periodic reconciliation checks.
+With webhooks enabled, a longer polling interval is safer because webhooks trigger refreshes on repository changes. Keep some periodic polling as a fallback for missed or misconfigured webhooks.
 
 ## Measuring Generation Performance
 
 Use these metrics to identify which applications have the slowest manifest generation.
 
 ```promql
-# Manifest generation time by app
+# Application reconciliation time by app
 histogram_quantile(0.95,
-  rate(argocd_repo_server_request_duration_seconds_bucket{
-    request_type="generate-manifests"
-  }[5m])
+  sum by (le, name, namespace) (
+    rate(argocd_app_reconcile_bucket[5m])
+  )
 )
 
-# Total generation requests
-rate(argocd_repo_server_request_total{
-  request_type="generate-manifests"
-}[5m])
+# Repo server Git request rate
+rate(argocd_git_request_total[5m])
 
-# Identify the slowest repos
+# Identify the slowest application reconciliations
 topk(10,
-  argocd_repo_server_request_duration_seconds_sum /
-  argocd_repo_server_request_duration_seconds_count
+  sum by (name, namespace) (rate(argocd_app_reconcile_sum[5m])) /
+  sum by (name, namespace) (rate(argocd_app_reconcile_count[5m]))
 )
 ```
 
-Focus optimization efforts on the applications with the highest generation times. Often, a small number of complex Helm charts account for most of the total generation time.
+Focus optimization efforts on the applications with the highest reconciliation times and on repo servers with sustained Git or pending-request pressure. Often, a small number of complex Helm charts account for most of the total generation time.
 
 ## Summary
 
