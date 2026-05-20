@@ -46,7 +46,7 @@ Check these metrics with:
 kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-application-controller
 
 # Check if the controller is falling behind
-kubectl logs -n argocd deployment/argocd-application-controller \
+kubectl logs -n argocd statefulset/argocd-application-controller \
   --tail=100 | grep -c "Reconciliation took"
 ```
 
@@ -87,10 +87,10 @@ spec:
 
 ### The Environment Variable
 
-The `ARGOCD_CONTROLLER_REPLICAS` environment variable tells each controller pod the total number of shards. This is critical because each pod uses this value to calculate which clusters it owns:
+The `ARGOCD_CONTROLLER_REPLICAS` environment variable tells each controller pod the total number of shards. This is critical because each pod uses this value, the pod ordinal, and the configured sharding algorithm to calculate which clusters it owns:
 
 ```text
-my_clusters = clusters where hash(cluster) % ARGOCD_CONTROLLER_REPLICAS == my_pod_ordinal
+my_clusters = clusters where assigned_shard(cluster) == my_pod_ordinal
 ```
 
 If these two values do not match, you get undefined behavior. Some clusters may be managed by multiple controllers (causing conflicts) or no controller at all (causing them to appear as Unknown).
@@ -103,12 +103,8 @@ If you install ArgoCD with Helm, set the shard count in your values file:
 # values.yaml for argo-cd Helm chart
 controller:
   replicas: 3
-  env:
-    - name: ARGOCD_CONTROLLER_REPLICAS
-      value: "3"
-  # Use StatefulSet instead of Deployment
-  statefulset:
-    enabled: true
+  # Leave dynamicClusterDistribution disabled to use StatefulSet-based sharding
+  dynamicClusterDistribution: false
 ```
 
 ### Using Kustomize
@@ -128,12 +124,19 @@ patches:
       kind: StatefulSet
       name: argocd-application-controller
     patch: |
-      - op: replace
-        path: /spec/replicas
-        value: 3
-      - op: replace
-        path: /spec/template/spec/containers/0/env/0/value
-        value: "3"
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: argocd-application-controller
+      spec:
+        replicas: 3
+        template:
+          spec:
+            containers:
+              - name: argocd-application-controller
+                env:
+                  - name: ARGOCD_CONTROLLER_REPLICAS
+                    value: "3"
 ```
 
 ## Sizing Guidelines
@@ -160,22 +163,25 @@ These are starting points. The actual requirements depend heavily on:
 When you need to change the shard count, follow this process:
 
 ```bash
-# Step 1: Update the environment variable first
-kubectl set env statefulset/argocd-application-controller \
-  -n argocd ARGOCD_CONTROLLER_REPLICAS=4
+# Step 1: Update the StatefulSet replica count and environment variable together
+kubectl patch statefulset argocd-application-controller -n argocd --type='strategic' -p '
+spec:
+  replicas: 4
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_CONTROLLER_REPLICAS
+              value: "4"
+'
 
-# Step 2: Scale the StatefulSet
-kubectl scale statefulset argocd-application-controller \
-  -n argocd --replicas=4
-
-# Step 3: Wait for all pods to be ready
+# Step 2: Wait for all pods to be ready
 kubectl rollout status statefulset/argocd-application-controller \
   -n argocd --timeout=300s
 
-# Step 4: Verify cluster distribution
-kubectl get secrets -n argocd \
-  -l argocd.argoproj.io/secret-type=cluster \
-  -o jsonpath='{range .items[*]}{.metadata.name}: {.metadata.annotations.argocd\.argoproj\.io/shard}{"\n"}{end}'
+# Step 3: Verify cluster distribution
+argocd admin cluster stats --replicas=4
 ```
 
 ### Scaling Down Safely
@@ -185,15 +191,20 @@ When reducing the shard count, clusters assigned to removed shards get redistrib
 ```bash
 # Check which clusters are on the shard you are removing
 # If you are going from 4 to 3 shards, check shard 3
-kubectl get secrets -n argocd \
-  -l argocd.argoproj.io/secret-type=cluster \
-  -o json | jq '.items[] | select(.metadata.annotations["argocd.argoproj.io/shard"] == "3") | .metadata.name'
+argocd admin cluster stats --shard=3 --replicas=4
 
-# Scale down
-kubectl set env statefulset/argocd-application-controller \
-  -n argocd ARGOCD_CONTROLLER_REPLICAS=3
-kubectl scale statefulset argocd-application-controller \
-  -n argocd --replicas=3
+# Scale down by updating both values together
+kubectl patch statefulset argocd-application-controller -n argocd --type='strategic' -p '
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_CONTROLLER_REPLICAS
+              value: "3"
+'
 ```
 
 ## Monitoring Shard Performance
@@ -231,8 +242,8 @@ Set alerts for:
 
 **Starting too high** - Running 10 shards for 5 clusters wastes resources and adds unnecessary complexity. Start small and scale up based on data.
 
-**Not using a StatefulSet** - Sharding requires stable pod identities. A Deployment with multiple replicas will not work correctly because pods do not have predictable ordinals.
+**Not using a StatefulSet for static sharding** - Static sharding requires stable pod identities. A Deployment with multiple replicas will not work correctly in this mode because pods do not have predictable ordinals.
 
-**Forgetting the headless service** - StatefulSets need a headless service for DNS resolution between pods.
+**Assuming a Deployment works for static sharding** - Static sharding depends on StatefulSet pod ordinals. Use the dynamic cluster distribution feature if you want Deployment-based sharding.
 
 Getting the shard count right is an iterative process. Start with the sizing guidelines, deploy, monitor, and adjust. The key metrics to watch are memory usage, reconciliation latency, and queue depth. When any of these consistently exceed healthy thresholds, it is time to add another shard.
