@@ -12,7 +12,7 @@ Managing Git credentials for dozens or hundreds of repositories in ArgoCD gets t
 
 ## How Credential Templates Work
 
-Credential templates use URL prefix matching. When ArgoCD needs to access a repository, it checks if any credential template's URL is a prefix of the repository URL. If a match is found, ArgoCD uses those credentials. If no template matches, ArgoCD falls back to any repository-specific credentials or attempts unauthenticated access.
+Credential templates use URL prefix matching. When ArgoCD needs to access a repository, it first uses any repository-specific credentials configured for that repository. If the repository is not configured, or is configured without credential information, ArgoCD checks if any credential template's URL is a prefix of the repository URL. If a match is found, ArgoCD uses those credentials. If no template matches, ArgoCD attempts unauthenticated access.
 
 ```mermaid
 flowchart TD
@@ -41,7 +41,7 @@ metadata:
     argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: https://github.com/my-org
+  url: https://github.com/my-org/
   password: ghp_your_personal_access_token_here
   username: my-github-username
 ```
@@ -69,14 +69,14 @@ metadata:
     argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: git@github.com:my-org
+  url: git@github.com:my-org/
   sshPrivateKey: |
     -----BEGIN OPENSSH PRIVATE KEY-----
     b3BlbnNzaC1rZXktdjEAAAA...
     -----END OPENSSH PRIVATE KEY-----
 ```
 
-This template will match any SSH repository URL starting with `git@github.com:my-org`.
+This template will match any SSH repository URL starting with `git@github.com:my-org/`.
 
 ## Creating a Credential Template with GitHub App
 
@@ -93,7 +93,7 @@ metadata:
     argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: https://github.com/my-org
+  url: https://github.com/my-org/
   githubAppID: "123456"
   githubAppInstallationID: "12345678"
   githubAppPrivateKey: |
@@ -108,16 +108,16 @@ You can also manage credential templates through the ArgoCD CLI:
 
 ```bash
 # HTTPS credential template
-argocd repocreds add https://github.com/my-org \
+argocd repocreds add https://github.com/my-org/ \
   --username my-username \
   --password ghp_your_token
 
 # SSH credential template
-argocd repocreds add git@github.com:my-org \
+argocd repocreds add git@github.com:my-org/ \
   --ssh-private-key-path ~/.ssh/argocd_key
 
 # GitHub App credential template
-argocd repocreds add https://github.com/my-org \
+argocd repocreds add https://github.com/my-org/ \
   --github-app-id 123456 \
   --github-app-installation-id 12345678 \
   --github-app-private-key-path /path/to/private-key.pem
@@ -126,7 +126,7 @@ argocd repocreds add https://github.com/my-org \
 argocd repocreds list
 
 # Remove a credential template
-argocd repocreds rm https://github.com/my-org
+argocd repocreds rm https://github.com/my-org/
 ```
 
 ## URL Prefix Matching Rules
@@ -135,7 +135,7 @@ Understanding how prefix matching works is critical to avoiding credential confl
 
 ```yaml
 # Template 1: Matches all repos under my-org on GitHub
-url: https://github.com/my-org
+url: https://github.com/my-org/
 
 # Template 2: More specific - matches only repos under my-org/infra-*
 url: https://github.com/my-org/infra-
@@ -144,7 +144,7 @@ url: https://github.com/my-org/infra-
 url: https://gitlab.internal.company.com
 ```
 
-When multiple templates match, ArgoCD uses the most specific match (longest prefix). So if you have templates for both `https://github.com/my-org` and `https://github.com/my-org/infra-`, a repository at `https://github.com/my-org/infra-configs.git` will use Template 2.
+When multiple templates match, ArgoCD uses the most specific match (longest prefix). So if you have templates for both `https://github.com/my-org/` and `https://github.com/my-org/infra-`, a repository at `https://github.com/my-org/infra-configs.git` will use Template 2.
 
 ## Multi-Provider Setup
 
@@ -161,7 +161,7 @@ metadata:
     argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: https://github.com/my-org
+  url: https://github.com/my-org/
   username: bot-user
   password: ghp_github_token
 ---
@@ -209,7 +209,7 @@ metadata:
     argocd.argoproj.io/secret-type: repo-creds
 stringData:
   type: git
-  url: https://github.com/my-org
+  url: https://github.com/my-org/
   username: read-only-bot
   password: ghp_read_only_token
 ---
@@ -241,6 +241,8 @@ metadata:
   name: team-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/my-org/app-registry.git
@@ -249,17 +251,17 @@ spec:
           - path: "apps/*"
   template:
     metadata:
-      name: "{{path.basename}}"
+      name: "{{.path.basename}}"
     spec:
       project: default
       source:
         # Each app might be in a different repo - credential template handles auth
-        repoURL: "https://github.com/my-org/{{path.basename}}.git"
+        repoURL: "https://github.com/my-org/{{.path.basename}}.git"
         targetRevision: HEAD
         path: deploy
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{path.basename}}"
+        namespace: "{{.path.basename}}"
 ```
 
 ## Troubleshooting Credential Templates
