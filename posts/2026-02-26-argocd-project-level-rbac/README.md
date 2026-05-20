@@ -28,7 +28,7 @@ Before diving in, let's clarify the difference:
 - Defined as roles within the AppProject spec
 - Controls what actions are allowed within that project
 
-Both work together. Global RBAC determines who can access which projects, and project-level RBAC adds fine-grained control within each project.
+Both work together. Global RBAC covers instance-wide permissions, while project-level RBAC adds scoped policies for resources that belong to an AppProject.
 
 ## Defining Roles in an AppProject
 
@@ -114,7 +114,7 @@ argocd proj role create-token frontend deployer
 argocd proj role create-token frontend deployer --expires-in 24h
 
 # Generate a token with a specific token ID
-argocd proj role create-token frontend deployer --token-id ci-pipeline-token
+argocd proj role create-token frontend deployer --id ci-pipeline-token
 ```
 
 The generated token can be used in API calls or CLI commands:
@@ -140,7 +140,7 @@ argocd proj role list-tokens frontend deployer
 argocd proj role delete-token frontend deployer <iat-timestamp>
 ```
 
-Each token has an `iat` (issued at) timestamp that serves as its identifier. You can revoke tokens by deleting them.
+Each token has an `iat` (issued at) timestamp that is used by the delete command. You can revoke tokens by deleting them.
 
 ## Multiple Roles with Different Permissions
 
@@ -198,20 +198,21 @@ spec:
 
 ## Combining Project RBAC with Global RBAC
 
-Project-level roles work alongside global RBAC. A user needs both global and project-level permissions to perform actions. Here is how they interact:
+Project-level roles work alongside global RBAC. ArgoCD evaluates policies from the global `argocd-rbac-cm` ConfigMap and policies generated from AppProject roles during authorization. A matching `deny` still takes priority over an `allow`, so a global deny can block an action that a project role would otherwise allow.
 
 ```yaml
 # Global RBAC in argocd-rbac-cm
 policy.csv: |
-  # Allow all authenticated users to access the frontend project
-  p, role:authenticated, applications, get, frontend/*, allow
-  g, *, role:authenticated
+  # Explicitly deny frontend-team deletes in the frontend project
+  p, role:no-frontend-delete, applications, delete, frontend/*, deny
+  g, frontend-team, role:no-frontend-delete
 
 # Project-level RBAC in the AppProject
 roles:
   - name: deployer
     policies:
       - p, proj:frontend:deployer, applications, sync, frontend/*, allow
+      - p, proj:frontend:deployer, applications, delete, frontend/*, allow
     groups:
       - frontend-team
 ```
@@ -220,14 +221,14 @@ The flow works like this:
 
 ```mermaid
 graph TD
-    A[User makes request] --> B{Global RBAC allows?}
-    B -->|No| C[Permission Denied]
-    B -->|Yes| D{Project RBAC allows?}
-    D -->|No| C
-    D -->|Yes| E[Action Performed]
+    A[User makes request] --> B{Matching global deny?}
+    B -->|Yes| C[Permission Denied]
+    B -->|No| D{Project role allows?}
+    D -->|No match| C
+    D -->|Allow| E[Action Performed]
 ```
 
-Both layers must permit the action. If global RBAC denies access, project RBAC cannot override it.
+Project role permissions can grant access within their AppProject, but they cannot override a matching deny rule from global RBAC.
 
 ## Project Role Policies vs Global Policies
 
@@ -236,14 +237,14 @@ There are some differences in what you can control at each level:
 | Feature | Global RBAC | Project RBAC |
 |---------|-------------|--------------|
 | Application access | Yes | Yes |
-| Cluster management | Yes | No |
-| Repository management | Yes | No |
+| Cluster management | Yes | Project-scoped only |
+| Repository management | Yes | Project-scoped only |
 | Account management | Yes | No |
 | Log access | Yes | Yes |
 | Exec access | Yes | Yes |
-| JWT token generation | No | Yes |
+| Project role JWT tokens | No | Yes |
 
-Project RBAC is limited to application-related operations. You cannot use project roles to manage clusters, repositories, or user accounts.
+Project RBAC is scoped to project resources. You can use project roles for application-related resources and project-scoped repositories or clusters, but not for global cluster, global repository, or user account administration.
 
 ## Testing Project-Level Permissions
 
