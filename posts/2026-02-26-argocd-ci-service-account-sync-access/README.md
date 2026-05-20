@@ -134,13 +134,13 @@ jobs:
           ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_FRONTEND_CI_TOKEN }}
         run: |
           # Sync the application
-          argocd app sync frontend/web-app \
+          argocd app sync web-app \
             --server $ARGOCD_SERVER \
             --grpc-web \
             --force
 
           # Wait for sync to complete
-          argocd app wait frontend/web-app \
+          argocd app wait web-app \
             --server $ARGOCD_SERVER \
             --grpc-web \
             --timeout 300
@@ -155,11 +155,11 @@ deploy:
   variables:
     ARGOCD_SERVER: argocd.company.com
   script:
-    - argocd app sync frontend/web-app
+    - argocd app sync web-app
         --server $ARGOCD_SERVER
         --auth-token $ARGOCD_CI_TOKEN
         --grpc-web
-    - argocd app wait frontend/web-app
+    - argocd app wait web-app
         --server $ARGOCD_SERVER
         --auth-token $ARGOCD_CI_TOKEN
         --grpc-web
@@ -179,11 +179,11 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh '''
-                    argocd app sync backend/api-service \
+                    argocd app sync api-service \
                         --server $ARGOCD_SERVER \
                         --grpc-web
 
-                    argocd app wait backend/api-service \
+                    argocd app wait api-service \
                         --server $ARGOCD_SERVER \
                         --grpc-web \
                         --timeout 300
@@ -230,8 +230,9 @@ NEW_TOKEN=$(argocd account generate-token --account frontend-ci --expires-in 216
 # (This step depends on your CI system)
 
 # After verifying the new token works, you can optionally
-# disable the old token by noting its iat and removing it
+# delete the old token by noting its ID and removing it
 argocd account get --account frontend-ci
+argocd account delete-token --account frontend-ci <token-id>
 ```
 
 For zero-downtime rotation, CI accounts can have multiple active tokens. Generate the new token, update your CI secrets, verify the pipeline works, then clean up old tokens.
@@ -281,25 +282,25 @@ Your CI pipeline should handle sync failures gracefully:
 set -e
 
 # Sync with timeout and error handling
-if ! argocd app sync frontend/web-app \
+if ! argocd app sync web-app \
     --server "$ARGOCD_SERVER" \
     --grpc-web \
     --timeout 300; then
   echo "Sync failed. Checking application status..."
-  argocd app get frontend/web-app \
+  argocd app get web-app \
     --server "$ARGOCD_SERVER" \
     --grpc-web
   exit 1
 fi
 
 # Wait for health check
-if ! argocd app wait frontend/web-app \
+if ! argocd app wait web-app \
     --server "$ARGOCD_SERVER" \
     --grpc-web \
     --health \
     --timeout 300; then
   echo "Application is not healthy after sync"
-  argocd app get frontend/web-app \
+  argocd app get web-app \
     --server "$ARGOCD_SERVER" \
     --grpc-web
   exit 1
