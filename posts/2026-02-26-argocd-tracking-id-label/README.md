@@ -1,14 +1,14 @@
-# How to Use argocd.argoproj.io/tracking-id Label
+# How to Use argocd.argoproj.io/tracking-id Annotation
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Labels, Resource Tracking
 
-Description: Learn how the argocd.argoproj.io/tracking-id label works in ArgoCD for resource ownership tracking and how to configure annotation-based tracking.
+Description: Learn how the argocd.argoproj.io/tracking-id annotation works in ArgoCD for resource ownership tracking and how to configure annotation-based tracking.
 
 ---
 
-Every resource that ArgoCD manages needs to be tracked back to the Application that owns it. The `argocd.argoproj.io/tracking-id` label (or annotation, depending on your tracking method) is the mechanism ArgoCD uses to establish this ownership link. Understanding how it works is critical for debugging resource conflicts, shared resource issues, and migration scenarios.
+Every resource that ArgoCD manages needs to be tracked back to the Application that owns it. The `argocd.argoproj.io/tracking-id` annotation is the mechanism ArgoCD uses for annotation-based tracking to establish this ownership link. Understanding how it works is critical for debugging resource conflicts, shared resource issues, and migration scenarios.
 
 ## How Resource Tracking Works in ArgoCD
 
@@ -16,8 +16,8 @@ When ArgoCD syncs an application, it needs to answer one fundamental question fo
 
 ArgoCD supports three tracking methods:
 
-1. **Label-based tracking** (legacy default) - Uses the `app.kubernetes.io/instance` label
-2. **Annotation-based tracking** - Uses the `argocd.argoproj.io/tracking-id` annotation
+1. **Annotation-based tracking** (default in current ArgoCD releases) - Uses the `argocd.argoproj.io/tracking-id` annotation
+2. **Label-based tracking** (legacy default in older ArgoCD releases) - Uses the `app.kubernetes.io/instance` label
 3. **Annotation+Label tracking** - Uses both for backward compatibility
 
 ## The tracking-id Format
@@ -44,7 +44,7 @@ my-app:rbac.authorization.k8s.io/ClusterRole:/my-cluster-role
 
 ## Label-Based Tracking (Legacy)
 
-By default, ArgoCD uses the `app.kubernetes.io/instance` label to track resources:
+In label-based tracking mode, ArgoCD uses the `app.kubernetes.io/instance` label to track resources:
 
 ```yaml
 apiVersion: apps/v1
@@ -115,23 +115,23 @@ data:
 
 Here is what each method does:
 
-### label (default)
+### label
 
 ```yaml
 data:
   application.resourceTrackingMethod: label
 ```
 
-Sets the `app.kubernetes.io/instance` label on managed resources. This is the legacy default and works fine if you do not have label conflicts.
+Sets the `app.kubernetes.io/instance` label on managed resources. This was the legacy default in older ArgoCD releases and works fine if you do not have label conflicts.
 
-### annotation
+### annotation (default)
 
 ```yaml
 data:
   application.resourceTrackingMethod: annotation
 ```
 
-Uses only the `argocd.argoproj.io/tracking-id` annotation. Recommended for new installations or environments using Helm charts heavily.
+Uses only the `argocd.argoproj.io/tracking-id` annotation. This is the current default and is recommended for new installations or environments using Helm charts heavily.
 
 ### annotation+label
 
@@ -203,12 +203,12 @@ data:
   application.resourceTrackingMethod: annotation+label
 ```
 
-### Step 2: Force refresh all applications
+### Step 2: Sync all applications
 
 ```bash
-# List all applications and refresh them
+# List all applications and sync them so ArgoCD applies the new tracking metadata
 for app in $(argocd app list -o name); do
-  argocd app get "$app" --hard-refresh
+  argocd app sync "$app"
 done
 ```
 
@@ -233,7 +233,7 @@ data:
 
 ## Handling Shared Resources
 
-The tracking-id becomes critically important when multiple applications reference the same resource. ArgoCD uses the tracking-id to determine ownership, and only one application can own a given resource.
+The tracking-id becomes critically important when multiple applications reference the same resource. ArgoCD uses the tracking-id to determine ownership, and a resource should be owned by only one application.
 
 If two applications try to manage the same resource:
 
@@ -247,7 +247,7 @@ metadata:
     argocd.argoproj.io/tracking-id: "app-a:/Namespace:/shared-namespace"
 ```
 
-If Application B also tries to manage the same namespace, ArgoCD will detect a conflict. You can handle this by:
+If Application B also tries to manage the same namespace, ArgoCD can identify it as a shared resource. By default, ArgoCD still applies manifests, but you can make the sync fail when a shared resource is found. You can handle this by:
 
 1. Removing the resource from one application's source
 2. Using the `FailOnSharedResource` sync option to prevent accidental overwrites
@@ -269,7 +269,7 @@ kubectl get deployment web-server -n production \
 # List all resources tracked by a specific application
 argocd app resources my-app
 
-# Check for orphaned resources (tracked but app doesn't exist)
+# Check for stale instance labels in label-based or annotation+label tracking
 kubectl get all -A -l app.kubernetes.io/instance=deleted-app
 ```
 
