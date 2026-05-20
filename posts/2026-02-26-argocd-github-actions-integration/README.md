@@ -40,6 +40,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   IMAGE_NAME: ghcr.io/myorg/my-app
   DEPLOY_REPO: myorg/k8s-manifests
@@ -198,9 +202,9 @@ argocd proj role create my-project ci-role
 
 # Add necessary permissions
 argocd proj role add-policy my-project ci-role \
-  -a sync -p allow -o "applications"
+  -a sync -p allow -o "*"
 argocd proj role add-policy my-project ci-role \
-  -a get -p allow -o "applications"
+  -a get -p allow -o "*"
 
 # Generate a token
 argocd proj role create-token my-project ci-role
@@ -218,6 +222,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+
 jobs:
   preview:
     runs-on: ubuntu-latest
@@ -225,10 +234,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build preview image
         run: |
           docker build -t ghcr.io/myorg/my-app:pr-${{ github.event.pull_request.number }} .
           docker push ghcr.io/myorg/my-app:pr-${{ github.event.pull_request.number }}
+
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
 
       - name: Create ArgoCD Application for PR
         run: |
@@ -255,7 +277,7 @@ jobs:
         with:
           script: |
             const prNumber = context.payload.pull_request.number;
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: prNumber,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -276,7 +298,15 @@ on:
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      - name: Install ArgoCD CLI
+        run: |
+          curl -sSL -o argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/
+
       - name: Delete preview application
         run: |
           argocd login ${{ secrets.ARGOCD_SERVER }} \
@@ -294,6 +324,12 @@ jobs:
 Report ArgoCD deployment status back to GitHub:
 
 ```yaml
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
       - name: Report deployment status to GitHub
         if: always()
         uses: actions/github-script@v7
