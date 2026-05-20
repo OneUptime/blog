@@ -105,10 +105,6 @@ spec:
           env:
             - name: ES_JAVA_OPTS
               value: "-Xms2g -Xmx2g"
-            - name: discovery.type
-              value: single-node
-            - name: xpack.security.enabled
-              value: "false"
           volumeMounts:
             - name: data
               mountPath: /usr/share/elasticsearch/data
@@ -121,7 +117,7 @@ spec:
               memory: 4Gi
             limits:
               cpu: "2"
-              memory: 4Gi  # Set equal to requests for guaranteed QoS
+              memory: 4Gi  # Keep heap sizing aligned with the container memory limit
           readinessProbe:
             httpGet:
               path: /_cluster/health?local=true
@@ -235,9 +231,6 @@ spec:
       count: 3
       config:
         node.roles: ["master"]
-        xpack.security.enabled: true
-        xpack.security.transport.ssl.enabled: true
-        xpack.security.http.ssl.enabled: false  # SSL termination at ingress
       podTemplate:
         spec:
           containers:
@@ -250,6 +243,7 @@ spec:
                   cpu: 500m
                   memory: 2Gi
                 limits:
+                  cpu: 500m
                   memory: 2Gi
       volumeClaimTemplates:
         - metadata:
@@ -279,6 +273,7 @@ spec:
                   cpu: "2"
                   memory: 16Gi
                 limits:
+                  cpu: "2"
                   memory: 16Gi
           # Spread data nodes across availability zones
           affinity:
@@ -319,6 +314,7 @@ spec:
                   cpu: "1"
                   memory: 8Gi
                 limits:
+                  cpu: "1"
                   memory: 8Gi
       volumeClaimTemplates:
         - metadata:
@@ -361,6 +357,7 @@ spec:
               cpu: 500m
               memory: 1Gi
             limits:
+              cpu: 500m
               memory: 2Gi
   http:
     tls:
@@ -392,13 +389,13 @@ spec:
               ES_URL="http://production-es-http.logging.svc:9200"
 
               # Wait for cluster to be ready
-              until curl -sf "$ES_URL/_cluster/health"; do
+              until curl -sf -u "elastic:$ELASTIC_PASSWORD" "$ES_URL/_cluster/health"; do
                 echo "Waiting for Elasticsearch..."
                 sleep 10
               done
 
               # Create ILM policy
-              curl -X PUT "$ES_URL/_ilm/policy/logs-policy" \
+              curl -u "elastic:$ELASTIC_PASSWORD" -X PUT "$ES_URL/_ilm/policy/logs-policy" \
                 -H "Content-Type: application/json" \
                 -d '{
                   "policy": {
@@ -445,7 +442,7 @@ spec:
                 }'
 
               # Create index template
-              curl -X PUT "$ES_URL/_index_template/logs-template" \
+              curl -u "elastic:$ELASTIC_PASSWORD" -X PUT "$ES_URL/_index_template/logs-template" \
                 -H "Content-Type: application/json" \
                 -d '{
                   "index_patterns": ["logs-*"],
@@ -459,7 +456,24 @@ spec:
                   }
                 }'
 
+              # Create the initial write index for the rollover alias
+              curl -u "elastic:$ELASTIC_PASSWORD" -X PUT "$ES_URL/logs-000001" \
+                -H "Content-Type: application/json" \
+                -d '{
+                  "aliases": {
+                    "logs": {
+                      "is_write_index": true
+                    }
+                  }
+                }'
+
               echo "ILM and index templates configured"
+          env:
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-es-elastic-user
+                  key: elastic
       restartPolicy: OnFailure
 ```
 
@@ -481,15 +495,17 @@ spec:
         spec:
           containers:
             - name: snapshot
-              image: curlimages/curl:latest
+              image: alpine:3.19
               command: [sh, -c]
               args:
                 - |
+                  apk add --no-cache curl jq
+
                   ES_URL="http://production-es-http.logging.svc:9200"
                   SNAPSHOT_NAME="daily-$(date +%Y%m%d)"
 
                   # Register S3 repository (idempotent)
-                  curl -X PUT "$ES_URL/_snapshot/s3-backups" \
+                  curl -u "elastic:$ELASTIC_PASSWORD" -X PUT "$ES_URL/_snapshot/s3-backups" \
                     -H "Content-Type: application/json" \
                     -d '{
                       "type": "s3",
@@ -501,7 +517,7 @@ spec:
                     }'
 
                   # Create snapshot
-                  curl -X PUT "$ES_URL/_snapshot/s3-backups/$SNAPSHOT_NAME?wait_for_completion=true" \
+                  curl -u "elastic:$ELASTIC_PASSWORD" -X PUT "$ES_URL/_snapshot/s3-backups/$SNAPSHOT_NAME?wait_for_completion=true" \
                     -H "Content-Type: application/json" \
                     -d '{
                       "indices": "*",
@@ -511,19 +527,25 @@ spec:
 
                   # Delete snapshots older than 30 days
                   OLD_DATE=$(date -d "30 days ago" +%Y%m%d 2>/dev/null || date -v-30d +%Y%m%d)
-                  for snapshot in $(curl -s "$ES_URL/_snapshot/s3-backups/_all" | jq -r ".snapshots[].snapshot" | grep "daily-"); do
+                  for snapshot in $(curl -s -u "elastic:$ELASTIC_PASSWORD" "$ES_URL/_snapshot/s3-backups/_all" | jq -r ".snapshots[].snapshot" | grep "daily-"); do
                     SNAP_DATE=$(echo $snapshot | grep -o '[0-9]\{8\}')
                     if [ "$SNAP_DATE" -lt "$OLD_DATE" ]; then
-                      curl -X DELETE "$ES_URL/_snapshot/s3-backups/$snapshot"
+                      curl -u "elastic:$ELASTIC_PASSWORD" -X DELETE "$ES_URL/_snapshot/s3-backups/$snapshot"
                       echo "Deleted old snapshot: $snapshot"
                     fi
                   done
+              env:
+                - name: ELASTIC_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: production-es-elastic-user
+                      key: elastic
           restartPolicy: OnFailure
 ```
 
 ## Monitoring Elasticsearch
 
-ECK provides built-in monitoring. For custom monitoring, deploy elasticsearch-exporter:
+ECK supports Elastic Stack monitoring integrations. For custom Prometheus monitoring, deploy elasticsearch-exporter:
 
 ```yaml
 apiVersion: apps/v1
@@ -546,6 +568,14 @@ spec:
       containers:
         - name: exporter
           image: quay.io/prometheuscommunity/elasticsearch-exporter:v1.7.0
+          env:
+            - name: ES_USERNAME
+              value: elastic
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: production-es-elastic-user
+                  key: elastic
           args:
             - "--es.uri=http://production-es-http.logging.svc:9200"
             - "--es.all"
@@ -580,6 +610,7 @@ resources:
     cpu: "4"
     memory: 32Gi  # JVM heap will be 16GB
   limits:
+    cpu: "4"
     memory: 32Gi
 
 # Warm nodes (older data, low query load)
@@ -588,9 +619,10 @@ resources:
     cpu: "2"
     memory: 16Gi  # JVM heap will be 8GB
   limits:
+    cpu: "2"
     memory: 16Gi
 ```
 
 ## Summary
 
-Deploying Elasticsearch with ArgoCD ranges from a single-node development instance to a multi-tier production cluster with the ECK operator. Key practices include using ECK for production (it handles TLS, rolling upgrades, and node orchestration), configuring ILM policies for automatic index lifecycle management, and implementing snapshot-based backups. Always set memory requests equal to limits for Elasticsearch pods to get guaranteed QoS, and never set JVM heap above 31GB. The entire Elasticsearch infrastructure - from operator installation to cluster topology to ILM policies - lives in Git and is managed declaratively through ArgoCD.
+Deploying Elasticsearch with ArgoCD ranges from a single-node development instance to a multi-tier production cluster with the ECK operator. Key practices include using ECK for production (it handles TLS, rolling upgrades, and node orchestration), configuring ILM policies for automatic index lifecycle management, and implementing snapshot-based backups. Set CPU and memory requests equal to limits for every Elasticsearch container if you need guaranteed QoS, and never set JVM heap above 31GB. The entire Elasticsearch infrastructure - from operator installation to cluster topology to ILM policies - lives in Git and is managed declaratively through ArgoCD.
