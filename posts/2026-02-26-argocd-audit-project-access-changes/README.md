@@ -23,7 +23,7 @@ A complete ArgoCD audit trail should capture:
 
 ## ArgoCD Server Audit Logs
 
-The ArgoCD API server logs every API request, including the user, action, and result.
+The ArgoCD API server logs API activity, including request details that can help reconstruct user actions and results.
 
 ### Enabling Detailed Logging
 
@@ -36,10 +36,10 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable debug logging for detailed audit
+  # Use info logging for operational audit events
   server.log.level: info
 
-  # Enable gRPC access logs
+  # Emit structured logs
   server.log.format: json
 ```
 
@@ -222,17 +222,19 @@ data:
           }
 
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [audit-event]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Failed', 'Error']
+    - when: app.status?.operationState.phase in ['Failed', 'Error']
       send: [audit-event]
 
-  trigger.on-created: |
-    - when: "true"
-      oncePer: app.metadata.uid
-      send: [audit-event]
+  subscriptions: |
+    - recipients:
+      - audit
+      triggers:
+      - on-sync-succeeded
+      - on-sync-failed
 ```
 
 ### Slack Audit Channel
@@ -258,9 +260,15 @@ data:
           ]
         }]
 
-  trigger.on-any-change: |
-    - when: "true"
+  trigger.on-sync-operation-change: |
+    - when: app.status?.operationState.phase in ['Running', 'Succeeded', 'Failed', 'Error', 'Terminating']
       send: [audit-slack]
+
+  subscriptions: |
+    - recipients:
+      - slack:audit-channel
+      triggers:
+      - on-sync-operation-change
 ```
 
 ## Prometheus Metrics for Audit
@@ -270,14 +278,14 @@ ArgoCD exports metrics that can be used for audit monitoring:
 ### Useful Audit Metrics
 
 ```promql
-# Sync operations over time (who triggered syncs)
+# Sync operations over time
 rate(argocd_app_sync_total[1h])
 
 # Sync operations by project
 sum by (project) (increase(argocd_app_sync_total[24h]))
 
 # Failed sync attempts
-argocd_app_sync_total{phase="Failed"}
+increase(argocd_app_sync_total{phase="Failed"}[24h])
 
 # Application count changes over time
 argocd_app_info
@@ -301,7 +309,7 @@ groups:
 
       # Alert on after-hours deployments
       - alert: AfterHoursDeployment
-        expr: argocd_app_sync_total and ON() hour() > 22 or hour() < 6
+        expr: (increase(argocd_app_sync_total[5m]) > 0) and on() (hour() >= 22 or hour() < 6)
         labels:
           severity: info
         annotations:
