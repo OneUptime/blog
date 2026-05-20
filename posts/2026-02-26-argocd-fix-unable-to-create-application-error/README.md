@@ -139,23 +139,23 @@ The application YAML has validation errors that prevent creation.
 
 ### Missing Required Fields
 
-Every ArgoCD application needs at minimum:
+A typical namespaced Git application needs at minimum:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: my-app
-  namespace: argocd  # Applications must be in the argocd namespace by default
+  namespace: argocd  # Usually the namespace where ArgoCD is installed
 spec:
-  project: default  # Required - must reference an existing project
+  project: default  # Optional, but recommended - defaults to the default project if omitted
   source:
     repoURL: https://github.com/your-org/your-repo.git  # Required
-    path: manifests  # Required for Git sources
-    targetRevision: HEAD  # Required
+    path: manifests  # Required for Git directory sources
+    targetRevision: HEAD  # Use HEAD for the default branch, or a branch, tag, or commit SHA
   destination:
     server: https://kubernetes.default.svc  # Required
-    namespace: my-app  # Required
+    namespace: my-app  # Needed for namespaced resources without metadata.namespace
 ```
 
 ### Common Spec Errors
@@ -172,7 +172,7 @@ Common mistakes:
 - `spec.destination.server` set to a cluster that has not been registered
 - `spec.source.path` pointing to a non-existent directory in the repo
 - Using `spec.source` and `spec.sources` together (they are mutually exclusive)
-- Wrong `targetRevision` format (use `HEAD` for default branch, not `main` unless you want to pin)
+- Wrong `targetRevision` value (use `HEAD` for the default branch, or a valid branch such as `main`, tag, or commit SHA)
 
 ## Cause 4: Repository Not Accessible
 
@@ -225,9 +225,9 @@ kubectl patch application my-app -n argocd --type json \
 kubectl delete application my-app -n argocd
 ```
 
-## Cause 6: Namespace Does Not Exist
+## Cause 6: Namespace Does Not Exist During Sync
 
-If the destination namespace does not exist and `CreateNamespace=true` is not set:
+ArgoCD can create the Application object before the destination namespace exists, but the first sync will fail if the destination namespace does not exist and `CreateNamespace=true` is not set:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -264,18 +264,20 @@ ArgoCD application names must follow Kubernetes naming conventions:
 my-app
 my-app-v2
 frontend-production
+frontend.production
 
 # Invalid names (will cause creation failure)
 My_App          # Uppercase and underscores not allowed
 my app          # Spaces not allowed
-my.app.v2      # Periods may cause issues
 -my-app         # Cannot start with hyphen
+my-app-        # Cannot end with hyphen
 ```
 
 Application names must:
 - Be lowercase
-- Contain only letters, numbers, and hyphens
+- Contain only letters, numbers, hyphens, and periods
 - Start with a letter or number
+- End with a letter or number
 - Be no longer than 253 characters
 
 ## Cause 8: Server or Cluster Not Registered
@@ -314,7 +316,7 @@ EOF
 
 ## Debugging: Check Server Logs
 
-When the error message is vague, the ArgoCD server logs always have the full details:
+When the error message is vague, the ArgoCD server logs usually have more details:
 
 ```bash
 # Watch server logs while trying to create the application
