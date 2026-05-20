@@ -49,7 +49,6 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      - Replace=true
 ```
 
 Alternatively, you can use the dedicated CRD chart that the Prometheus community provides:
@@ -67,7 +66,7 @@ spec:
   source:
     repoURL: https://prometheus-community.github.io/helm-charts
     chart: prometheus-operator-crds
-    targetRevision: 11.0.0
+    targetRevision: 8.0.0
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -98,6 +97,10 @@ spec:
     helm:
       skipCrds: true
       values: |
+        # CRDs are managed by the separate prometheus-crds Application
+        crds:
+          enabled: false
+
         # Prometheus configuration
         prometheus:
           prometheusSpec:
@@ -322,7 +325,7 @@ argocd app get kube-prometheus-stack --show-operation
 
 ## Dealing with Diff Noise
 
-The kube-prometheus-stack generates many resources with default values that can cause diff noise in ArgoCD. Use resource exclusions to ignore known noisy fields:
+The kube-prometheus-stack generates many resources with default values that can cause diff noise in ArgoCD. Use resource customizations to ignore known noisy fields:
 
 ```yaml
 # In argocd-cm ConfigMap
