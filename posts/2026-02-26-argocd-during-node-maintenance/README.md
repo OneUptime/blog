@@ -12,7 +12,7 @@ Node maintenance is a routine operation in Kubernetes - OS patching, kernel upgr
 
 ## Understanding the Impact
 
-When a node is cordoned and drained, all pods on that node are evicted and rescheduled to other nodes. This affects ArgoCD in two ways:
+When a node is cordoned and drained, eligible workload pods on that node are evicted and rescheduled to other nodes. DaemonSet pods are ignored when `--ignore-daemonsets` is used, mirror pods are not deleted through the API server, and unmanaged pods require `--force`. This affects ArgoCD in two ways:
 
 1. **ArgoCD's own pods** may be evicted if they run on the maintenance node
 2. **Application pods** managed by ArgoCD will be rescheduled, triggering health status changes
@@ -25,7 +25,7 @@ graph TD
     D -->|Yes| E[ArgoCD pods evicted]
     D -->|No| F[ArgoCD unaffected]
     E --> G[Pods reschedule to other nodes]
-    G --> H[Brief ArgoCD downtime]
+    G --> H[Possible brief ArgoCD downtime]
     C --> I[Application pods evicted]
     I --> J[ArgoCD detects health changes]
     J --> K[Temporary Degraded/Progressing status]
@@ -101,8 +101,8 @@ kubectl scale deployment argocd-server -n argocd --replicas=2
 # Scale repo server
 kubectl scale deployment argocd-repo-server -n argocd --replicas=2
 
-# The application controller is a StatefulSet with leader election
-# Scale it for HA (only the leader is active)
+# The application controller is a StatefulSet. For controller HA or sharding,
+# scale it together with the controller replica configuration used by your install.
 kubectl scale statefulset argocd-application-controller -n argocd --replicas=2
 ```
 
@@ -125,7 +125,13 @@ metadata:
   namespace: argocd
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-server
     spec:
       affinity:
         podAntiAffinity:
@@ -171,10 +177,12 @@ kubectl uncordon <node-name>
 If ArgoCD is not running in HA mode, node maintenance will cause downtime.
 
 ```bash
-# Step 1: Disable auto-sync to prevent issues when ArgoCD comes back
-for app in $(argocd app list -o name); do
+# Step 1: Disable auto-sync for apps that currently use it
+argocd app list -o json | jq -r '.[] | select(.spec.syncPolicy.automated != null) | .metadata.name' > autosync-apps.txt
+
+while read -r app; do
   argocd app set "$app" --sync-policy none
-done
+done < autosync-apps.txt
 
 # Step 2: Note the current state
 argocd app list > pre-maintenance-status.txt
@@ -189,9 +197,9 @@ kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
 argocd app list
 
 # Step 6: Re-enable auto-sync
-for app in $(argocd app list -o name); do
+while read -r app; do
   argocd app set "$app" --sync-policy automated
-done
+done < autosync-apps.txt
 ```
 
 ### Scenario 3: Rolling Node Maintenance Across All Nodes
@@ -239,18 +247,18 @@ When application pods are evicted during node drains, ArgoCD will report health 
 
 ### Suppress Noise from Expected Rescheduling
 
-Configure ArgoCD notifications to not fire during maintenance windows.
+Configure ArgoCD notifications to avoid sending the same degraded alert repeatedly while workloads are rescheduling.
 
 ```yaml
-# Notification trigger with maintenance window awareness
+# Notification trigger that limits repeat alerts
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  # Only alert if unhealthy for more than 10 minutes
-  # This covers the rescheduling time during node maintenance
+  # Send once for each observed degraded status value instead of repeatedly
+  # while resources are rescheduling during node maintenance.
   trigger.on-health-degraded: |
     - when: app.status.health.status == 'Degraded'
       oncePer: app.status.health.status
@@ -259,7 +267,7 @@ data:
 
 ### Use Sync Windows to Prevent Maintenance Interference
 
-Block syncs during planned maintenance to prevent ArgoCD from fighting the rescheduling.
+Block syncs during planned maintenance to prevent sync operations, including automated syncs, from starting while workloads are being rescheduled.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -289,7 +297,7 @@ kubectl get pods -n argocd -w &
 watch -n 5 'argocd app list --output wide | grep -v Healthy'
 
 # Check for any sync errors
-kubectl logs -f deployment/argocd-application-controller -n argocd --tail=50 | grep -i error
+kubectl logs -f statefulset/argocd-application-controller -n argocd --tail=50 | grep -i error
 ```
 
 ## Post-Maintenance Validation
@@ -304,15 +312,15 @@ kubectl get nodes
 kubectl get pods -n argocd
 
 # Step 3: All applications are healthy and synced
-argocd app list | grep -c "Healthy.*Synced"
-argocd app list | grep -c -v "Healthy.*Synced"
+argocd app list -o json | jq '[.[] | select(.status.health.status == "Healthy" and .status.sync.status == "Synced")] | length'
+argocd app list -o json | jq '[.[] | select(.status.health.status != "Healthy" or .status.sync.status != "Synced")] | length'
 
 # Step 4: Force a reconciliation to clear stale state
 for app in $(argocd app list -o name); do
   argocd app get "$app" --refresh
 done
 
-# Step 5: Check for any orphaned resources
+# Step 5: Check for any pending pods
 kubectl get pods --all-namespaces --field-selector=status.phase=Pending
 ```
 
@@ -338,12 +346,8 @@ spec:
             - -c
             - |
               # Disable auto-sync on all applications
-              argocd login argocd-server.argocd.svc:443 --insecure \
-                --username admin \
-                --password $(cat /var/run/secrets/argocd/admin-password)
-
-              for app in $(argocd app list -o name); do
-                argocd app set "$app" --sync-policy none
+              for app in $(argocd --core app list -o name); do
+                argocd --core app set "$app" --sync-policy none
                 echo "Disabled auto-sync: $app"
               done
               echo "ArgoCD prepared for maintenance"
