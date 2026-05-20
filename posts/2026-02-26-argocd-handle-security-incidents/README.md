@@ -117,7 +117,7 @@ kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repo-creds -o na
   xargs kubectl delete -n argocd
 
 # Step 5: Re-add repositories with new credentials
-argocd repo add https://github.com/org/config-repo.git \
+argocd repo add git@github.com:org/config-repo.git \
   --ssh-private-key-path ~/.ssh/new_key
 
 # Step 6: Revoke old credentials at the Git provider level
@@ -128,12 +128,12 @@ argocd repo add https://github.com/org/config-repo.git \
 
 ```bash
 # Check recent sync operations for all apps
-argocd app list -o json | jq '.[] | {
+argocd app list -o json | jq 'map({
   name: .metadata.name,
   syncBy: .status.operationState.operation.initiatedBy,
   revision: .status.sync.revision,
   syncTime: .status.operationState.finishedAt
-}' | sort -t'"' -k10
+}) | sort_by(.syncTime // "")'
 
 # Check ArgoCD server logs for suspicious activity
 kubectl logs -n argocd deployment/argocd-server --since=24h | \
@@ -232,7 +232,7 @@ kubectl rollout restart deployment argocd-server -n argocd
 # List accounts
 argocd account list
 # Delete all tokens for each account
-argocd account delete-token <account> <token-id>
+argocd account delete-token --account <account> <token-id>
 
 # Step 6: Disable auto-sync on all applications while investigating
 argocd app list -o name | xargs -I{} argocd app set {} --sync-policy none
@@ -291,14 +291,15 @@ kind: ClusterPolicy
 metadata:
   name: block-compromised-image
 spec:
-  validationFailureAction: enforce
   rules:
     - name: block-image
       match:
-        resources:
-          kinds:
-            - Pod
+        any:
+          - resources:
+              kinds:
+                - Pod
       validate:
+        failureAction: Enforce
         message: "This image has been flagged as compromised"
         pattern:
           spec:
