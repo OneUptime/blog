@@ -4,27 +4,27 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Application Management, Cache Management
 
-Description: Learn how to perform a hard refresh in ArgoCD to invalidate all caches and force a complete re-computation of application state from scratch.
+Description: Learn how to perform a hard refresh in ArgoCD to invalidate manifest and target cluster state caches and force a fresh application comparison.
 
 ---
 
-ArgoCD maintains several layers of caching to keep operations fast. The repo server caches Git repository content and generated manifests. The application controller caches the live state of cluster resources. Normally, a regular refresh is enough to pick up changes. But sometimes these caches get stale or corrupted, and you need ArgoCD to throw everything away and recompute the application state from scratch.
+ArgoCD maintains several layers of caching to keep operations fast. The repo server caches repository state and generated manifests. The application controller caches the live state of cluster resources. Normally, a regular refresh is enough to pick up changes. But sometimes the manifest or target cluster state cache gets stale, and you need ArgoCD to recompute the application state.
 
-That is what a hard refresh does. It invalidates all caches for the application and forces ArgoCD to re-fetch the Git repository content, re-generate manifests, re-read the live cluster state, and re-compute the diff from scratch.
+That is what a hard refresh does. It refreshes application data and invalidates the target manifests cache and target cluster state cache before comparison. This forces ArgoCD to re-generate manifests, refresh live cluster state, and re-compute the diff.
 
 ## Hard Refresh vs Normal Refresh
 
 A **normal refresh** triggers ArgoCD to:
-1. Check Git for new commits (using the existing repo cache)
-2. Re-generate manifests if the commit changed (using the manifest cache if unchanged)
-3. Compare against the cached live state
+1. Refresh application data when retrieving the application
+2. Check the target revision for changes
+3. Re-generate manifests if the cache key changes, or use the manifest cache if unchanged
 4. Update the sync and health status
 
 A **hard refresh** forces ArgoCD to:
-1. Invalidate the Git repo cache for this application
-2. Re-clone or re-fetch the repository content
-3. Re-generate all manifests from scratch (ignoring the manifest cache)
-4. Re-read the live cluster state directly from the Kubernetes API
+1. Refresh application data when retrieving the application
+2. Invalidate the target manifests cache for the application
+3. Re-generate manifests instead of using the manifest cache
+4. Invalidate the target cluster state cache before comparison
 5. Compute a fresh diff
 6. Update the sync and health status
 
@@ -38,7 +38,7 @@ The hard refresh is more expensive but catches issues that a normal refresh miss
 argocd app get my-app --hard-refresh
 ```
 
-This command triggers the cache invalidation, waits for the refresh to complete, and returns the updated application state.
+This command requests the hard refresh while retrieving the application and returns the updated application details.
 
 ## Hard Refresh via UI
 
@@ -65,12 +65,10 @@ curl -X GET "https://${ARGOCD_SERVER}/api/v1/applications/my-app?refresh=hard" \
 
 ### Manifest Generation Changes
 
-If you changed how manifests are generated - for example, by updating Helm values files, Kustomize overlays, or Jsonnet parameters - a normal refresh might use the cached generated manifests. A hard refresh forces re-generation:
+If manifest generation depends on inputs that can change without a Git revision change - for example, an external Helm chart dependency, a plugin side input, or a remote base - a normal refresh might use the cached generated manifests. A hard refresh forces re-generation:
 
 ```bash
-# After updating a Helm values file that affects template output
-git commit -am "Update Helm values for production"
-git push
+# After an external dependency or plugin input changes without a Git commit
 
 # Hard refresh to force manifest re-generation
 argocd app get my-app --hard-refresh
@@ -162,11 +160,11 @@ Limiting to 3 concurrent hard refreshes prevents the repo server from being over
 
 ## Performance Considerations
 
-Hard refresh is significantly more expensive than normal refresh:
+Hard refresh is more expensive than normal refresh:
 
-- **Git operations**: Full fetch instead of incremental check
-- **Manifest generation**: Full render instead of using cache
-- **API calls**: Fresh read of all application resources from the cluster
+- **Repository operations**: Revision and dependency checks may need to run again
+- **Manifest generation**: Render instead of using the target manifests cache
+- **API calls**: Target cluster state cache is invalidated before comparison
 - **CPU/memory**: Higher resource usage on the repo server and application controller
 
 For an application with 100+ resources and a complex Helm chart, a hard refresh might take 30 seconds to a minute. A normal refresh of the same application takes a few seconds.
@@ -177,18 +175,18 @@ Understanding the cache layers helps you know when hard refresh is necessary:
 
 ```mermaid
 graph TD
-    A[Git Repository] -->|Fetched by| B[Repo Server Git Cache]
-    B -->|Generates| C[Manifest Generation Cache]
+    A[Git Repository] -->|Resolved by| B[Repo Server Repository Cache]
+    B -->|Generates| C[Target Manifests Cache]
     C -->|Compared with| D[Live State Cache]
     D -->|Produces| E[Application State]
 
-    F[Normal Refresh] -->|Invalidates| B
-    G[Hard Refresh] -->|Invalidates| B
+    F[Normal Refresh] -->|Refreshes| E
+    G[Hard Refresh] -->|Refreshes| E
     G -->|Invalidates| C
     G -->|Invalidates| D
 ```
 
-Normal refresh primarily invalidates the Git cache, triggering a new fetch. Hard refresh invalidates all three cache layers, forcing a complete recomputation.
+Normal refresh refreshes application data while still allowing ArgoCD to use valid caches. Hard refresh invalidates the target manifests cache and target cluster state cache before refreshing application data.
 
 ## Configuring Cache Behavior
 
@@ -213,10 +211,10 @@ With a shorter cache expiration, stale cache issues resolve themselves faster.
 
 ## Clearing All Caches
 
-In extreme cases, you might need to clear all ArgoCD caches. The nuclear option is restarting the repo server:
+In extreme cases, you might need to clear shared ArgoCD cache data. Restarting the repo server clears its local repository and manifest-generation state:
 
 ```bash
-# Restart the repo server to clear all cached data
+# Restart the repo server to clear repo-server local cache data
 kubectl rollout restart deployment argocd-repo-server -n argocd
 
 # Wait for it to come back
@@ -247,6 +245,6 @@ Only do this in situations where you are confident the cache is corrupted. It fo
 
 ## Summary
 
-Hard refresh is ArgoCD's "clear all caches and start fresh" operation. Use it when normal refresh does not pick up changes, after ArgoCD upgrades, when cache corruption is suspected, or when manifest generation configuration changes. It is more expensive than a normal refresh, so use it selectively rather than routinely.
+Hard refresh is ArgoCD's operation for refreshing application data while invalidating the target manifests cache and target cluster state cache. Use it when normal refresh does not pick up changes, after ArgoCD upgrades, when cache corruption is suspected, or when manifest generation inputs change without a Git revision change. It is more expensive than a normal refresh, so use it selectively rather than routinely.
 
 For regular refresh operations, see our guide on [how to force refresh application state in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-force-refresh-application/view).
