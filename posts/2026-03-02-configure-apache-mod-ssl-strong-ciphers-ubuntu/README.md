@@ -62,27 +62,26 @@ sudo nano /etc/apache2/conf-available/ssl-hardening.conf
 
 ```apache
 # Disable SSL 2.0 and 3.0, and TLS 1.0 and 1.1
-# Only allow TLS 1.2 and 1.3 (required for PCI DSS compliance as of 2024)
+# Only allow TLS 1.2 and 1.3 (commonly used to meet PCI DSS strong-cryptography requirements)
 SSLProtocol -all +TLSv1.2 +TLSv1.3
 
 # Strong cipher suites only
-# This configuration prioritizes TLS 1.3 ciphers (no user config needed)
-# and falls back to strong TLS 1.2 ciphers
+# This configures strong TLS 1.2 ciphers; Apache/OpenSSL use strong TLS 1.3 ciphers by default
 SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:\
 ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:\
 ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:\
-DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA256
+DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
 
 # Honor the server's cipher preference (not the client's)
 SSLHonorCipherOrder on
 
-# Enable only server-side compression (client compression is a security risk)
+# Disable TLS compression (prevents compression-related attacks)
 SSLCompression off
 
 # Enable stapling for OCSP (certificate revocation checking)
 SSLUseStapling on
 
-# Enable session tickets for session resumption (improves performance)
+# Disable session tickets unless you rotate ticket keys frequently
 SSLSessionTickets off
 
 # Prevent session ID reuse across virtual hosts
@@ -107,7 +106,7 @@ sudo nano /etc/apache2/conf-available/ocsp-stapling.conf
 # Enable OCSP stapling globally
 SSLUseStapling on
 
-# Cache stapling responses for 7 days
+# Reject stapling responses older than 7 days
 SSLStaplingResponseMaxAge 604800
 
 # Timeout waiting for OCSP response
@@ -148,9 +147,8 @@ sudo nano /etc/apache2/sites-available/secure-site.conf
 
     # SSL certificate and key
     SSLEngine on
-    SSLCertificateFile /etc/letsencrypt/live/example.com/cert.pem
+    SSLCertificateFile /etc/letsencrypt/live/example.com/fullchain.pem
     SSLCertificateKeyFile /etc/letsencrypt/live/example.com/privkey.pem
-    SSLCertificateChainFile /etc/letsencrypt/live/example.com/chain.pem
 
     # Override protocols and ciphers for this host if needed
     # (the global conf-available file covers defaults)
@@ -252,7 +250,10 @@ Find and update the `SSLCipherSuite` and `SSLProtocol` lines. Some Ubuntu packag
 ```apache
 # In ssl.conf, apply strong defaults globally
 SSLProtocol -all +TLSv1.2 +TLSv1.3
-SSLCipherSuite HIGH:!aNULL:!MD5:!DES:!RC4:!EXPORT:!ADH:!3DES
+SSLCipherSuite ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:\
+ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:\
+ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:\
+DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384
 SSLHonorCipherOrder on
 SSLCompression off
 ```
