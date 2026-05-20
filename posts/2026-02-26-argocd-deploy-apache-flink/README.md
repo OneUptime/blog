@@ -240,7 +240,7 @@ spec:
         - /spec/taskManager/replicas
 ```
 
-The `ignoreDifferences` for `savepointTriggerNonce` is important because the operator updates this value when triggering savepoints.
+The `ignoreDifferences` for `savepointTriggerNonce` is important if you trigger savepoints outside Git, because changing this value in the live resource would otherwise be reverted by ArgoCD.
 
 ## Handling Job Upgrades
 
@@ -262,23 +262,23 @@ This is the zero-data-loss upgrade path that makes Flink and GitOps such a good 
 
 ## Autoscaling Flink Jobs
 
-The Flink operator supports reactive autoscaling:
+The Flink operator supports job autoscaling:
 
 ```yaml
 flinkConfiguration:
-  # Enable reactive mode
-  scheduler-mode: reactive
+  # Enable the adaptive scheduler for in-place scaling with Flink 1.18
+  jobmanager.scheduler: adaptive
 
   # Scaling limits
   jobmanager.adaptive-scheduler.min-parallelism-increase: "1"
 
   # Cooldown period
-  kubernetes.operator.job.autoscaler.enabled: "true"
-  kubernetes.operator.job.autoscaler.stabilization.interval: "5min"
-  kubernetes.operator.job.autoscaler.metrics.window: "10min"
-  kubernetes.operator.job.autoscaler.target.utilization: "0.7"
-  kubernetes.operator.job.autoscaler.scale-down.max-factor: "0.5"
-  kubernetes.operator.job.autoscaler.scale-up.max-factor: "2.0"
+  job.autoscaler.enabled: "true"
+  job.autoscaler.stabilization.interval: "5min"
+  job.autoscaler.metrics.window: "10min"
+  job.autoscaler.target.utilization: "0.7"
+  job.autoscaler.scale-down.max-factor: "0.5"
+  job.autoscaler.scale-up.max-factor: "2.0"
 ```
 
 ## Monitoring Flink with Prometheus
