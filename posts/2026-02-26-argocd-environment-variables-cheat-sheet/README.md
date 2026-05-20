@@ -41,10 +41,17 @@ kind: Deployment
 metadata:
   name: argocd-server
 spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: argocd-server
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: argocd-server
     spec:
       containers:
         - name: argocd-server
+          image: quay.io/argoproj/argocd:latest
           env:
             - name: ARGOCD_SERVER_ROOTPATH
               value: "/argocd"
@@ -65,10 +72,10 @@ ARGOCD_SERVER_BASEHREF="/argocd"
 ARGOCD_SERVER_INSECURE="true"
 
 # Static files directory for the UI
-ARGOCD_SERVER_STATICASSETS="/shared/app"
+ARGOCD_SERVER_STATIC_ASSETS="/shared/app"
 
 # Redis server address
-ARGOCD_SERVER_REDIS="argocd-redis:6379"
+REDIS_SERVER="argocd-redis:6379"
 
 # Enable gzip compression for API responses
 ARGOCD_SERVER_ENABLE_GZIP="true"
@@ -76,17 +83,14 @@ ARGOCD_SERVER_ENABLE_GZIP="true"
 # Maximum number of cookie sessions
 ARGOCD_SESSION_MAX_CACHE_SIZE="1000"
 
-# Session duration in hours
-ARGOCD_SESSION_EXPIRY="24h"
+# Session failure window in seconds
+ARGOCD_SESSION_FAILURE_WINDOW_SECONDS="300"
 
 # Listen address for the API server
 ARGOCD_SERVER_LISTEN_ADDRESS="0.0.0.0"
 
-# Port for the API server
-ARGOCD_SERVER_PORT="8080"
-
-# Metrics port
-ARGOCD_SERVER_METRICS_PORT="8083"
+# Repo server RPC timeout in seconds
+ARGOCD_SERVER_REPO_SERVER_TIMEOUT_SECONDS="60"
 
 # Repo server address
 ARGOCD_SERVER_REPO_SERVER="argocd-repo-server:8081"
@@ -94,17 +98,14 @@ ARGOCD_SERVER_REPO_SERVER="argocd-repo-server:8081"
 # Disable client authentication (for testing only)
 ARGOCD_SERVER_DISABLE_AUTH="false"
 
-# Enable RBAC log enforcement
-ARGOCD_SERVER_RBAC_LOG_ENFORCE_ENABLE="true"
-
-# OIDC TLS insecure skip verify (not recommended for production)
-ARGOCD_SERVER_OIDC_TLS_INSECURE_SKIP_VERIFY="false"
+# Log level
+ARGOCD_SERVER_LOG_LEVEL="info"
 
 # X-Frame-Options header value
 ARGOCD_SERVER_X_FRAME_OPTIONS="sameorigin"
 
 # Content Security Policy header
-ARGOCD_SERVER_CONTENT_SECURITY_POLICY="frame-ancestors 'self'"
+ARGOCD_SERVER_CONTENT_SECURITY_POLICY="frame-ancestors 'self';"
 ```
 
 ## Application Controller Environment Variables
@@ -122,41 +123,41 @@ ARGOCD_CONTROLLER_REPLICAS="1"
 ARGOCD_CONTROLLER_SHARD="0"
 
 # Status processors - how many apps are checked in parallel
-ARGOCD_CONTROLLER_STATUS_PROCESSORS="20"
+ARGOCD_APPLICATION_CONTROLLER_STATUS_PROCESSORS="20"
 
 # Operation processors - how many sync operations run in parallel
-ARGOCD_CONTROLLER_OPERATION_PROCESSORS="10"
+ARGOCD_APPLICATION_CONTROLLER_OPERATION_PROCESSORS="10"
 
 # Self-heal timeout in seconds
-ARGOCD_CONTROLLER_SELF_HEAL_TIMEOUT_SECONDS="5"
+ARGOCD_APPLICATION_CONTROLLER_SELF_HEAL_TIMEOUT_SECONDS="5"
 
 # Repo server address
-ARGOCD_CONTROLLER_REPO_SERVER="argocd-repo-server:8081"
+ARGOCD_APPLICATION_CONTROLLER_REPO_SERVER="argocd-repo-server:8081"
 
 # Redis address
-ARGOCD_CONTROLLER_REDIS="argocd-redis:6379"
+REDIS_SERVER="argocd-redis:6379"
 
-# Namespace where ArgoCD is installed
-ARGOCD_CONTROLLER_NAMESPACE="argocd"
+# Additional namespaces where Application resources can be reconciled
+ARGOCD_APPLICATION_NAMESPACES="team-a,team-b"
 
 # Log level (debug, info, warn, error)
-ARGOCD_CONTROLLER_LOGLEVEL="info"
+ARGOCD_APPLICATION_CONTROLLER_LOGLEVEL="info"
 
 # Log format (text, json)
-ARGOCD_CONTROLLER_LOGFORMAT="text"
+ARGOCD_APPLICATION_CONTROLLER_LOGFORMAT="text"
 
 # Enable hard resync (forces full state comparison)
-ARGOCD_HARD_RESYNC_TIMEOUT="0"
+ARGOCD_HARD_RECONCILIATION_TIMEOUT="0"
 
-# Kubectl parallelism limit
+# Kubernetes API client throughput
 ARGOCD_K8S_CLIENT_QPS="50"
 ARGOCD_K8S_CLIENT_BURST="100"
 
 # App state cache expiration
 ARGOCD_APP_STATE_CACHE_EXPIRATION="1h"
 
-# Diff cache enabled
-ARGOCD_CONTROLLER_DIFF_CACHE_ENABLED="true"
+# Enable server-side diff
+ARGOCD_APPLICATION_CONTROLLER_SERVER_SIDE_DIFF="true"
 ```
 
 ## Repo Server Environment Variables
@@ -176,14 +177,11 @@ ARGOCD_REPO_SERVER_PARALLELISM_LIMIT="0"
 # Listen address
 ARGOCD_REPO_SERVER_LISTEN_ADDRESS="0.0.0.0"
 
-# Port
-ARGOCD_REPO_SERVER_PORT="8081"
-
-# Metrics port
-ARGOCD_REPO_SERVER_METRICS_PORT="8084"
+# Metrics listen address
+ARGOCD_REPO_SERVER_METRICS_LISTEN_ADDRESS="0.0.0.0"
 
 # Redis address for caching
-ARGOCD_REPO_SERVER_REDIS="argocd-redis:6379"
+REDIS_SERVER="argocd-redis:6379"
 
 # Log level
 ARGOCD_REPO_SERVER_LOGLEVEL="info"
@@ -192,23 +190,21 @@ ARGOCD_REPO_SERVER_LOGLEVEL="info"
 ARGOCD_GIT_MODULES_ENABLED="true"
 
 # Git retry configuration
-ARGOCD_GIT_RETRY_MAX="5"
+ARGOCD_GIT_ATTEMPTS_COUNT="5"
 ARGOCD_GIT_RETRY_DURATION="100ms"
 ARGOCD_GIT_RETRY_FACTOR="2"
 
-# Disable Helm manifest caching
-ARGOCD_HELM_CACHE_ENABLED="true"
+# Helm index cache duration
+ARGOCD_HELM_INDEX_CACHE_DURATION="12h"
 
-# Helm version override
-HELM_VERSION="v3"
+# Helm user agent
+ARGOCD_HELM_USER_AGENT="argocd"
 
-# Kustomize build options
-KUSTOMIZE_BUILD_OPTIONS="--enable-alpha-plugins"
+# Git ls-remote parallelism limit
+ARGOCD_GIT_LS_REMOTE_PARALLELISM_LIMIT="0"
 
-# TLS configuration for repo server
-ARGOCD_REPO_SERVER_TLS_ENABLED="true"
-ARGOCD_REPO_SERVER_TLS_CERT_FILE="/app/config/server.crt"
-ARGOCD_REPO_SERVER_TLS_KEY_FILE="/app/config/server.key"
+# Disable TLS on the repo server gRPC endpoint
+ARGOCD_REPO_SERVER_DISABLE_TLS="false"
 ```
 
 ## Redis Environment Variables
@@ -221,20 +217,20 @@ REDIS_SERVER="argocd-redis:6379"
 REDIS_PASSWORD=""
 
 # Redis database number
-REDIS_DB="0"
+REDISDB="0"
 
-# Redis connection pool size
-REDIS_MAX_RETRIES="3"
+# Redis retry count
+REDIS_RETRY_COUNT="3"
 
-# Enable Redis TLS
-REDIS_TLS_ENABLED="false"
+# Redis compression
+REDIS_COMPRESSION="gzip"
 ```
 
 ## Notification Controller Environment Variables
 
 ```bash
-# Namespace for the notification controller
-ARGOCD_NOTIFICATIONS_CONTROLLER_NAMESPACE="argocd"
+# Additional namespaces that the notification controller should watch
+ARGOCD_APPLICATION_NAMESPACES="team-a,team-b"
 
 # Log level
 ARGOCD_NOTIFICATIONS_CONTROLLER_LOGLEVEL="info"
@@ -243,13 +239,10 @@ ARGOCD_NOTIFICATIONS_CONTROLLER_LOGLEVEL="info"
 ARGOCD_NOTIFICATIONS_CONTROLLER_LOGFORMAT="text"
 
 # Self-service notification enabled
-ARGOCD_NOTIFICATIONS_CONTROLLER_SELF_SERVICE_NOTIFICATION_ENABLED="false"
-
-# Metrics port
-ARGOCD_NOTIFICATIONS_CONTROLLER_METRICS_PORT="9001"
+ARGOCD_NOTIFICATION_CONTROLLER_SELF_SERVICE_NOTIFICATION_ENABLED="false"
 
 # Processing workers
-ARGOCD_NOTIFICATIONS_CONTROLLER_PROCESSING_WORKERS="1"
+ARGOCD_NOTIFICATION_CONTROLLER_PROCESSORS_COUNT="1"
 ```
 
 ## Performance Tuning Environment Variables
@@ -261,9 +254,9 @@ When managing hundreds of applications, performance tuning becomes critical. Her
 controller:
   env:
     # Increase workers for large clusters
-    - name: ARGOCD_CONTROLLER_STATUS_PROCESSORS
+    - name: ARGOCD_APPLICATION_CONTROLLER_STATUS_PROCESSORS
       value: "50"
-    - name: ARGOCD_CONTROLLER_OPERATION_PROCESSORS
+    - name: ARGOCD_APPLICATION_CONTROLLER_OPERATION_PROCESSORS
       value: "25"
     # Increase Kubernetes API throughput
     - name: ARGOCD_K8S_CLIENT_QPS
@@ -311,12 +304,12 @@ Enable verbose logging to troubleshoot issues:
 # Set debug logging on all components
 controller:
   env:
-    - name: ARGOCD_CONTROLLER_LOGLEVEL
+    - name: ARGOCD_APPLICATION_CONTROLLER_LOGLEVEL
       value: "debug"
 
 server:
   env:
-    - name: ARGOCD_SERVER_LOGLEVEL
+    - name: ARGOCD_SERVER_LOG_LEVEL
       value: "debug"
 
 repoServer:
@@ -349,11 +342,11 @@ env:
       secretKeyRef:
         name: argocd-redis
         key: auth
-  - name: ARGOCD_SERVER_OIDC_CLIENT_SECRET
+  - name: REDIS_USERNAME
     valueFrom:
       secretKeyRef:
-        name: argocd-oidc
-        key: client-secret
+        name: argocd-redis
+        key: username
 ```
 
 This cheat sheet covers the most commonly needed environment variables. For a deeper look at ArgoCD installation and configuration, see our guide on [ArgoCD installation and configuration](https://oneuptime.com/blog/post/2026-02-02-argocd-installation-configuration/view) and [ArgoCD high availability](https://oneuptime.com/blog/post/2026-02-02-argocd-high-availability/view).
