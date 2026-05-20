@@ -15,22 +15,21 @@ Sync waves look simple on paper: assign a number, resources deploy in order. In 
 The first step in debugging is confirming that ArgoCD actually sees your sync wave annotations. A typo in the annotation key means ArgoCD treats the resource as wave 0.
 
 ```bash
-# List all resources in an application with their sync wave numbers
-
+# Show the current operation details, including resources being synced
 argocd app get my-app --show-operation
 
-# Get detailed resource information including waves
-argocd app resources my-app
+# List resources in the application
+argocd app resources my-app --output tree=detailed
 ```
 
 You can also check directly in the ArgoCD UI. Navigate to the application, click on a resource, and look at the "Sync Wave" field in the resource details panel.
 
-For a programmatic check, query the ArgoCD API directly.
+For a programmatic check, query the application status as JSON.
 
 ```bash
 # Get the resource tree with sync wave info
-argocd app resources my-app --output json | \
-  jq '.[] | {kind: .kind, name: .name, namespace: .namespace, syncWave: .syncWave}'
+argocd app get my-app --output json | \
+  jq '.status.resources[] | {kind: .kind, name: .name, namespace: .namespace, syncWave: (.syncWave // 0)}'
 ```
 
 If the sync wave shows as `0` for a resource you annotated with a different wave, check for these common mistakes.
@@ -50,10 +49,10 @@ metadata:
 
 Wrong value type:
 ```yaml
-# WRONG - must be a string, not an integer
+# WRONG - Kubernetes annotations must be strings, not integers
 metadata:
   annotations:
-    argocd.argoproj.io/sync-wave: 1  # YAML interprets as integer
+    argocd.argoproj.io/sync-wave: 1  # Kubernetes rejects this annotation value
 
 # CORRECT - quote the number
 metadata:
@@ -61,11 +60,11 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 ```
 
-In YAML, unquoted numbers in annotation values might be parsed as integers rather than strings. ArgoCD expects a string value. Always quote sync wave numbers.
+In YAML, unquoted numbers in annotation values are parsed as integers rather than strings. Kubernetes annotation values must be strings, so quote sync wave numbers.
 
 ## Understanding Wave Execution Order
 
-ArgoCD processes sync waves in ascending numerical order. Within each wave, resources are applied in a specific order based on their kind. ArgoCD has a built-in priority list for resource kinds.
+ArgoCD processes sync waves in ascending numerical order within each sync phase. Within each wave, resources are applied in a specific order based on their kind and then by name. ArgoCD has a built-in priority list for resource kinds.
 
 ```mermaid
 flowchart TD
@@ -83,7 +82,7 @@ flowchart TD
         J --> K[Secrets]
         K --> L[ConfigMaps]
         L --> M[Other resources]
-        M --> N[Deployments/StatefulSets]
+        M --> N[Workloads and custom resources]
     end
 ```
 
@@ -91,7 +90,7 @@ Even without sync waves, ArgoCD has a default ordering within wave 0. Namespaces
 
 ## Diagnosing Stuck Waves
 
-A wave gets stuck when one or more resources in that wave never become healthy. ArgoCD waits for all resources in a wave to be healthy before moving to the next wave. If a resource stays degraded or progressing, subsequent waves never execute.
+A wave gets stuck when one or more resources in that wave never become synced and healthy. ArgoCD determines the first wave containing an out-of-sync or unhealthy resource, applies that wave, and repeats until all phases and waves are in sync and healthy. If a resource stays degraded or progressing, subsequent waves might never execute.
 
 ```bash
 # Check which resources are not healthy
@@ -138,32 +137,7 @@ Option 1: Fix the stuck resource. This is the right answer in most cases. Figure
 
 Option 2: Remove the stuck resource from the application. If the resource is optional, remove it from the Git repository and sync again. ArgoCD will prune it and the wave can complete.
 
-Option 3: Skip the health check for that resource type. You can configure ArgoCD to treat certain resource types as always healthy.
-
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: my-app
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/myorg/app.git
-    path: manifests/
-    targetRevision: main
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: production
-  ignoreDifferences:
-    - group: apps
-      kind: Deployment
-      name: optional-service
-      jsonPointers:
-        - /spec/replicas
-```
-
-For a more targeted approach, you can use a custom health check in the ArgoCD ConfigMap.
+Option 3: Override the health check for that resource type. You can configure ArgoCD to treat certain resource types as always healthy with a custom health check in the ArgoCD ConfigMap.
 
 ```yaml
 # In argocd-cm ConfigMap
@@ -182,11 +156,11 @@ data:
 
 Be careful with this. Marking resources as always healthy defeats the purpose of sync wave ordering.
 
-Resources Deploying Out of Expected Order
+## Resources Deploying Out of Expected Order
 
 If resources seem to deploy out of order despite correct sync wave annotations, check these scenarios.
 
-**The application uses auto-sync with self-healing.** Self-healing can trigger a sync for individual resources outside the normal wave ordering. When ArgoCD detects drift on a single resource, it reapplies just that resource without going through the full wave sequence.
+**The application uses selective sync.** Hooks do not run during selective sync operations. If you sync only a subset of resources, you are no longer observing the full application sync sequence.
 
 **Multiple sync operations overlapping.** If you trigger a manual sync while an auto-sync is in progress, the behavior can be unpredictable. Check the sync history.
 
@@ -247,9 +221,9 @@ When sync waves are not working as expected, work through this checklist.
 
 1. Verify the annotation key is exactly `argocd.argoproj.io/sync-wave`
 2. Verify the annotation value is a quoted string
-3. Check that ArgoCD sees the correct wave number with `argocd app resources`
+3. Check that ArgoCD sees the correct wave number with `argocd app get --output json`
 4. Verify no resource in a lower wave is stuck in an unhealthy state
-5. Check for auto-sync or self-healing operations that bypass wave ordering
+5. Check for selective sync operations that bypass the full application sync sequence
 6. Look at the ArgoCD controller logs for wave processing messages
 7. Confirm Helm hooks are not conflicting with sync wave assignments
 8. Test with a dry-run sync to validate ordering before applying
