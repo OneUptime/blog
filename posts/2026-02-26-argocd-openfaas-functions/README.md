@@ -10,7 +10,7 @@ Description: Learn how to deploy and manage OpenFaaS serverless functions using 
 
 OpenFaaS is a popular Functions-as-a-Service framework for Kubernetes. It lets you deploy any container as a function with automatic scaling, metrics, and a simple REST API. When you manage OpenFaaS through ArgoCD, your functions become version-controlled, automatically deployed, and consistently configured across environments.
 
-This guide covers installing OpenFaaS with ArgoCD and deploying functions using GitOps.
+This guide covers installing OpenFaaS Standard or Enterprise with ArgoCD and deploying functions using GitOps.
 
 ## Installing OpenFaaS with ArgoCD
 
@@ -29,13 +29,16 @@ spec:
   source:
     repoURL: https://openfaas.github.io/faas-netes/
     chart: openfaas
-    targetRevision: 14.2.0
+    targetRevision: 15.0.6
     helm:
       values: |
+        openfaasPro: true
         functionNamespace: openfaas-fn
         generateBasicAuth: true
         operator:
           create: true  # Enable CRD-based function management
+          leaderElection:
+            enabled: true
         gateway:
           replicas: 2
           resources:
@@ -54,17 +57,20 @@ spec:
           create: true
         autoscaler:
           enabled: true
-          rules:
-            - type: rps
-              target: 100
-              serviceName: ".*"
+          defaultTarget: 100
         ingress:
           enabled: true
           hosts:
             - host: faas.internal.example.com
-              serviceName: gateway
-              servicePort: 8080
-              path: /
+              http:
+                paths:
+                  - path: /
+                    pathType: Prefix
+                    backend:
+                      service:
+                        name: gateway
+                        port:
+                          number: 8080
   destination:
     server: https://kubernetes.default.svc
     namespace: openfaas
@@ -77,7 +83,7 @@ spec:
 
 ## Understanding the OpenFaaS Operator
 
-With `operator.create: true`, OpenFaaS watches for Function CRDs. This is critical because it means ArgoCD can manage functions as standard Kubernetes resources instead of relying on the `faas-cli` tool.
+With `operator.create: true`, OpenFaaS Standard or Enterprise watches for Function CRDs. This is critical because it means ArgoCD can manage functions as standard Kubernetes resources instead of relying on the `faas-cli` tool.
 
 ## Deploying Functions as CRDs
 
@@ -96,7 +102,8 @@ spec:
   labels:
     com.openfaas.scale.min: "1"
     com.openfaas.scale.max: "10"
-    com.openfaas.scale.factor: "20"
+    com.openfaas.scale.type: rps
+    com.openfaas.scale.target: "100"
     com.openfaas.scale.zero: "true"
     com.openfaas.scale.zero-duration: "15m"
   environment:
@@ -281,21 +288,21 @@ git push origin main
 
 ## Async Function Invocation
 
-OpenFaaS supports async invocation through NATS Streaming. Configure the queue worker:
+OpenFaaS supports async invocation through NATS JetStream or NATS Streaming. Configure the queue worker:
 
 ```yaml
 # In the OpenFaaS Helm values
 queueWorker:
   replicas: 3
-  ackWait: "120s"
-  maxInflight: 5
   resources:
     requests:
       cpu: 100m
       memory: 128Mi
+queueWorkerPro:
+  maxInflight: 5
 ```
 
-Functions called asynchronously through `/async-function/` endpoints get queued and processed reliably even under high load.
+Functions called asynchronously through `/async-function/` endpoints get queued in NATS JetStream or NATS Streaming, depending on the OpenFaaS edition and queue worker in use, and processed by the queue worker.
 
 ## Monitoring OpenFaaS Functions
 
@@ -314,9 +321,9 @@ spec:
       rules:
         - alert: FunctionHighErrorRate
           expr: |
-            rate(gateway_function_invocation_total{code=~"5.."}[5m])
+            sum by (function_name) (rate(gateway_function_invocation_total{code=~"5.."}[5m]))
             /
-            rate(gateway_function_invocation_total[5m])
+            sum by (function_name) (rate(gateway_function_invocation_total[5m]))
             > 0.1
           for: 5m
           labels:
@@ -326,7 +333,7 @@ spec:
 
         - alert: FunctionHighLatency
           expr: |
-            histogram_quantile(0.99, rate(gateway_functions_seconds_bucket[5m])) > 10
+            histogram_quantile(0.99, sum by (le, function_name) (rate(gateway_functions_seconds_bucket[5m]))) > 10
           for: 5m
           labels:
             severity: warning
@@ -340,21 +347,39 @@ Add a health check so ArgoCD understands Function resource status:
 
 ```yaml
 # In argocd-cm ConfigMap
-resource.customizations.health.openfaas.com_Function: |
-  hs = {}
-  if obj.status ~= nil and obj.status.replicas ~= nil then
-    if obj.status.replicas > 0 or obj.spec.labels["com.openfaas.scale.zero"] == "true" then
-      hs.status = "Healthy"
-      hs.message = "Function is deployed"
-    else
-      hs.status = "Degraded"
-      hs.message = "Function has no running replicas"
-    end
-  else
-    hs.status = "Progressing"
-    hs.message = "Waiting for function deployment"
-  end
-  return hs
+resource.customizations: |
+  openfaas.com/Function:
+    health.lua: |
+      hs = {}
+      if obj.status ~= nil then
+        if obj.status.conditions ~= nil then
+          for i, condition in ipairs(obj.status.conditions) do
+            if condition.type == "Ready" and condition.status == "False" then
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
+            end
+            if condition.type == "Stalled" and condition.status == "True" then
+              hs.status = "Degraded"
+              hs.message = condition.message
+              return hs
+            end
+            if condition.type == "Ready" and condition.status == "True" then
+              if obj.status.replicas ~= nil and obj.status.replicas > 0 then
+                hs.status = "Healthy"
+                hs.message = condition.message
+              else
+                hs.status = "Suspended"
+                hs.message = "No replicas available"
+              end
+              return hs
+            end
+          end
+        end
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Function"
+      return hs
 ```
 
 ## Summary
