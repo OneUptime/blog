@@ -38,7 +38,7 @@ You can see what changed with the ArgoCD CLI.
 
 argocd app diff my-app
 
-# Show detailed diff with full resource contents
+# Compare the live app against local manifests
 argocd app diff my-app --local ./manifests/
 ```
 
@@ -187,7 +187,8 @@ kind: ClusterPolicy
 metadata:
   name: warn-argocd-managed
 spec:
-  validationFailureAction: Audit
+  emitWarning: true
+  background: false
   rules:
     - name: check-argocd-labels
       match:
@@ -198,19 +199,23 @@ spec:
                 - Service
                 - ConfigMap
       preconditions:
-        all:
+        any:
           # Only apply to resources ArgoCD manages
-          - key: "{{ request.object.metadata.labels.\"app.kubernetes.io/managed-by\" || '' }}"
-            operator: Equals
-            value: "argocd"
+          - key: "{{ request.object.metadata.annotations.\"argocd.argoproj.io/tracking-id\" || '' }}"
+            operator: NotEquals
+            value: ""
+          - key: "{{ request.object.metadata.labels.\"app.kubernetes.io/instance\" || '' }}"
+            operator: NotEquals
+            value: ""
       validate:
+        failureAction: Audit
         message: >
           This resource is managed by ArgoCD. Make changes through Git instead.
           Repository: Check the ArgoCD dashboard for the source repo.
         deny:
           conditions:
             all:
-              # Block if the user is not the ArgoCD service account
+              # Warn if the user is not the ArgoCD service account
               - key: "{{ request.userInfo.username }}"
                 operator: NotEquals
                 value: "system:serviceaccount:argocd:argocd-application-controller"
