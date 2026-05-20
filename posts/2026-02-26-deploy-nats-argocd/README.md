@@ -62,9 +62,9 @@ spec:
 
           # Merge additional NATS config
           merge:
-            max_payload: 8MB
+            max_payload: << 8MB >>
             max_connections: 10000
-            write_deadline: 10s
+            write_deadline: << 10s >>
 
         # Pod template configuration
         podTemplate:
@@ -90,6 +90,8 @@ spec:
         promExporter:
           enabled: true
           port: 7777
+          podMonitor:
+            enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: messaging
@@ -105,46 +107,47 @@ spec:
 
 NATS supports multiple authentication mechanisms. For production, use NKey-based authentication or JWT-based auth with an account resolver.
 
-Create a configuration overlay in your Git repository:
+Add the authorization configuration to your Helm values and read the passwords from a Kubernetes Secret:
 
 ```yaml
-# messaging/nats/auth-config.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: nats-auth-config
-  namespace: messaging
-type: Opaque
-stringData:
-  auth.conf: |
-    authorization {
-      users = [
-        {
-          user: "order-service"
-          password: "$NATS_ORDER_SVC_PASS"
-          permissions: {
+# In the Helm values
+config:
+  merge:
+    authorization:
+      users:
+        - user: order-service
+          password: << $NATS_ORDER_SVC_PASS >>
+          permissions:
             publish: ["orders.>", "_INBOX.>"]
             subscribe: ["orders.>", "_INBOX.>"]
-          }
-        }
-        {
-          user: "notification-service"
-          password: "$NATS_NOTIFICATION_SVC_PASS"
-          permissions: {
+        - user: notification-service
+          password: << $NATS_NOTIFICATION_SVC_PASS >>
+          permissions:
             publish: ["_INBOX.>"]
             subscribe: ["orders.created", "orders.updated", "_INBOX.>"]
-          }
-        }
-        {
-          user: "admin"
-          password: "$NATS_ADMIN_PASS"
-          permissions: {
+        - user: admin
+          password: << $NATS_ADMIN_PASS >>
+          permissions:
             publish: ">"
             subscribe: ">"
-          }
-        }
-      ]
-    }
+
+container:
+  env:
+    NATS_ORDER_SVC_PASS:
+      valueFrom:
+        secretKeyRef:
+          name: nats-credentials
+          key: order-service-password
+    NATS_NOTIFICATION_SVC_PASS:
+      valueFrom:
+        secretKeyRef:
+          name: nats-credentials
+          key: notification-service-password
+    NATS_ADMIN_PASS:
+      valueFrom:
+        secretKeyRef:
+          name: nats-credentials
+          key: admin-password
 ```
 
 For a more production-appropriate setup, use External Secrets to manage the credentials:
@@ -167,6 +170,10 @@ spec:
     - secretKey: order-service-password
       remoteRef:
         key: /production/nats/order-service
+        property: password
+    - secretKey: notification-service-password
+      remoteRef:
+        key: /production/nats/notification-service
         property: password
     - secretKey: admin-password
       remoteRef:
@@ -227,7 +234,7 @@ spec:
                 --subjects="notifications.>" \
                 --storage=file \
                 --replicas=3 \
-                --retention=workqueue \
+                --retention=work \
                 --max-age=24h \
                 --defaults \
                 || echo "Stream notifications already exists"
@@ -239,12 +246,12 @@ spec:
 
 ## Step 4: Set Up Monitoring
 
-NATS provides a Prometheus exporter through the `promExporter` config we enabled in the Helm values. Create a ServiceMonitor to scrape it.
+NATS provides a Prometheus exporter through the `promExporter` config we enabled in the Helm values. If you do not use the chart's built-in `promExporter.podMonitor.enabled` option, create a PodMonitor to scrape it.
 
 ```yaml
-# messaging/nats/service-monitor.yaml
+# messaging/nats/pod-monitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: nats-monitor
   namespace: messaging
@@ -254,7 +261,7 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: nats
-  endpoints:
+  podMetricsEndpoints:
     - port: prom-metrics
       interval: 15s
       path: /metrics
@@ -262,10 +269,10 @@ spec:
 
 Key metrics to watch:
 
-- `nats_server_connections` - current connection count
-- `nats_server_messages_sent` and `nats_server_messages_received` - throughput
-- `nats_jetstream_server_total_streams` - stream count
-- `nats_jetstream_consumer_num_pending` - consumer lag
+- `nats_varz_connections` - current connection count
+- `nats_varz_out_msgs` and `nats_varz_in_msgs` - throughput
+- `nats_server_total_streams` - stream count
+- `nats_consumer_num_pending` - consumer lag
 
 Integrate these with [OneUptime](https://oneuptime.com) for alerting on consumer lag and connection spikes.
 
@@ -318,11 +325,11 @@ config:
     replicas: 5  # was 3
 ```
 
-New nodes join the cluster automatically through DNS-based peer discovery. JetStream rebalances stream replicas across the expanded cluster.
+New nodes join the cluster automatically through DNS-based peer discovery. JetStream can place new streams on the expanded cluster, and existing streams can be rebalanced explicitly with the NATS CLI when needed.
 
 ## Health Checks for ArgoCD
 
-Since NATS is deployed as a Helm chart (not a custom operator), ArgoCD uses standard Kubernetes health checks. The StatefulSet and Pod readiness probes handle this automatically. However, if you want JetStream-aware health, add a custom health check:
+Since NATS is deployed as a Helm chart (not a custom operator), ArgoCD uses standard Kubernetes health checks. The StatefulSet and Pod readiness probes handle this automatically. However, if you want an explicit StatefulSet health rule, add a custom health check:
 
 ```yaml
 # In argocd-cm
