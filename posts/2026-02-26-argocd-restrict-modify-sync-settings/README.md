@@ -8,26 +8,26 @@ Description: Learn how to use ArgoCD RBAC policies to prevent unauthorized users
 
 ---
 
-Sync settings in ArgoCD control how and when applications get deployed. Auto-sync, self-healing, pruning, sync windows - these settings determine the fundamental deployment behavior of your applications. When someone accidentally enables auto-sync with pruning on a production app, resources can be deleted without warning. When someone disables self-healing, manual drift goes undetected.
+Sync settings in ArgoCD control how and when applications get deployed. Auto-sync, self-healing, pruning, sync options, and project sync windows - these settings determine the fundamental deployment behavior of your applications. When someone accidentally enables auto-sync with pruning on a production app, resources can be deleted without warning. When someone disables self-healing, manual drift goes undetected.
 
 This guide shows how to lock down sync settings using RBAC so only authorized users can modify deployment behavior.
 
 ## What Sync Settings Can Be Modified
 
-ArgoCD application sync settings include:
+ArgoCD sync controls include:
 
 - **Automated sync** - Whether ArgoCD auto-syncs when Git changes
 - **Self-healing** - Whether ArgoCD reverts manual changes to cluster resources
 - **Prune** - Whether ArgoCD deletes resources that are no longer in Git
 - **Sync options** - Settings like Replace, ServerSideApply, CreateNamespace
 - **Retry policy** - Automatic retry configuration for failed syncs
-- **Sync windows** - Time-based restrictions on when syncs can happen
+- **Sync windows** - Time-based restrictions on when syncs can happen, configured on AppProjects
 
-All of these are part of the application spec, so modifying them requires the `update` action on the `applications` resource.
+The Application-level settings are part of the application spec, so modifying them requires the `update` action on the `applications` resource. Sync windows are part of the AppProject spec, so modifying those requires `update` on the `projects` resource.
 
 ## The Update Action Controls Sync Settings
 
-Sync settings are stored in the ArgoCD Application resource. Changing any sync setting requires updating the application, which means the `update` permission:
+Application-level sync settings are stored in the ArgoCD Application resource. Changing any of those settings requires updating the application, which means the `update` permission:
 
 ```yaml
 # This permission allows modifying sync settings
@@ -38,7 +38,7 @@ p, role:deployer, applications, update, myproject/*, allow
 p, role:syncer, applications, sync, myproject/*, allow
 ```
 
-The `sync` action only triggers a sync operation - it does not let users change how syncs are configured. The `update` action lets users modify the application spec, including all sync settings.
+The `sync` action only triggers a sync operation - it does not let users change how syncs are configured. The `update` action lets users modify the application spec, including Application-level sync settings.
 
 ## Separating Sync from Update
 
@@ -150,7 +150,7 @@ When a user without `update` permission tries to change settings via CLI:
 $ argocd app set payment-service --sync-policy automated
 FATA[0000] permission denied: applications, update, production/payment-service
 
-# Trying to disable pruning
+# Trying to enable automatic pruning
 $ argocd app set payment-service --auto-prune
 FATA[0000] permission denied: applications, update, production/payment-service
 
