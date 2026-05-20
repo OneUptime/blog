@@ -316,7 +316,7 @@ sequenceDiagram
     participant Controller as App Controller
     participant K8s as Kubernetes Cluster
 
-    Controller->>Repo: Poll for changes (every 3 min)
+    Controller->>Repo: Poll for changes (up to every 3 min by default)
     Repo->>Git: Fetch latest manifests
     Git-->>Repo: Return manifests
     Repo-->>Controller: Rendered manifests
@@ -335,7 +335,7 @@ sequenceDiagram
 
 3. **Hardcoding image tags to latest** - Use specific image tags like `nginx:1.25.3` instead of `nginx:latest`. The `latest` tag makes it impossible to know which version is deployed and breaks GitOps traceability.
 
-4. **Skipping health probes** - ArgoCD uses health status to determine if a deployment succeeded. Without probes, ArgoCD might report Healthy when your app is actually broken.
+4. **Skipping health probes** - Kubernetes uses probes to determine whether containers are live and ready. ArgoCD reports application health from Kubernetes resource health, so missing probes can make a broken app look healthy if the container is still running.
 
 ## Next Steps
 
