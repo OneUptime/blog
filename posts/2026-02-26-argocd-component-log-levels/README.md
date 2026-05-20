@@ -8,7 +8,7 @@ Description: Learn how to configure and manage log levels for each ArgoCD compon
 
 ---
 
-ArgoCD consists of several components that each produce their own logs - the API server, application controller, repo server, Dex, and Redis. Controlling the log verbosity for each component independently is essential for effective troubleshooting without drowning in noise. This guide covers how to configure log levels, log formats, and component-specific logging strategies.
+ArgoCD consists of several components that each produce their own logs - the API server, application controller, repo server, Dex, and supporting Redis. Controlling the log verbosity for ArgoCD components independently is essential for effective troubleshooting without drowning in noise. This guide covers how to configure log levels, log formats, and component-specific logging strategies.
 
 ## ArgoCD Log Level Options
 
@@ -23,7 +23,7 @@ Each component can be configured independently, so you can run the API server at
 
 ## Configuring Log Levels via Command-Line Arguments
 
-The simplest way to set log levels is through command-line arguments on each component's deployment:
+The simplest way to set log levels is through command-line arguments on each component's workload:
 
 ### API Server Log Level
 
@@ -51,7 +51,7 @@ spec:
 ```yaml
 # Set debug log level on the application controller
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -88,29 +88,31 @@ spec:
 
 ## Configuring Log Levels via Helm
 
-With the ArgoCD Helm chart, you can set log levels for all components in your values file:
+With the ArgoCD Helm chart, you can set a global log level and override individual core component log levels in your values file:
 
 ```yaml
 # values.yaml - log level configuration for all components
-server:
-  # API server log level
-  logLevel: info
-  # Log format: text or json
-  logFormat: json
+global:
+  logging:
+    # Log format: text or json
+    format: json
+    # Default log level for ArgoCD components
+    level: info
 
-controller:
-  # Application controller log level
-  logLevel: info
-  logFormat: json
-
-repoServer:
-  # Repo server log level
-  logLevel: info
-  logFormat: json
-
-dex:
-  # Dex log level
-  logLevel: info
+configs:
+  params:
+    # API server log level and format
+    server.log.level: info
+    server.log.format: json
+    # Application controller log level and format
+    controller.log.level: info
+    controller.log.format: json
+    # Repo server log level and format
+    reposerver.log.level: info
+    reposerver.log.format: json
+    # Dex log level and format
+    dexserver.log.level: info
+    dexserver.log.format: json
 ```
 
 Apply with Helm:
@@ -160,28 +162,24 @@ JSON format:
 
 JSON format is easier to parse with tools like jq and integrates better with log management platforms like ELK, Loki, and OneUptime.
 
-## Dynamic Log Level Changes
+## Changing Log Levels Temporarily
 
-You can change ArgoCD log levels at runtime without restarting pods using the ArgoCD CLI:
-
-```bash
-# Set API server log level to debug at runtime
-argocd admin settings set --loglevel debug
-
-# Check current log level
-kubectl logs -n argocd deploy/argocd-server --tail=5 | head -1
-```
-
-Alternatively, you can use the Kubernetes API to patch the deployment:
+ArgoCD component log levels are process startup settings. To change them temporarily, update `argocd-cmd-params-cm` and restart the affected component so the pod reads the new value:
 
 ```bash
-# Dynamically change repo server log level to debug
-kubectl set env deploy/argocd-repo-server -n argocd \
-  ARGOCD_LOG_LEVEL=debug
+# Set repo server log level to debug
+kubectl patch configmap argocd-cmd-params-cm -n argocd \
+  --type merge \
+  -p '{"data":{"reposerver.log.level":"debug"}}'
+
+# Restart repo server to pick up the new setting
+kubectl rollout restart deploy/argocd-repo-server -n argocd
 
 # Change back to info when done troubleshooting
-kubectl set env deploy/argocd-repo-server -n argocd \
-  ARGOCD_LOG_LEVEL=info
+kubectl patch configmap argocd-cmd-params-cm -n argocd \
+  --type merge \
+  -p '{"data":{"reposerver.log.level":"info"}}'
+kubectl rollout restart deploy/argocd-repo-server -n argocd
 ```
 
 ## Component-Specific Logging Strategies
@@ -211,13 +209,13 @@ The controller is the most important component for troubleshooting sync and heal
 
 ```bash
 # Filter controller logs for sync operations
-kubectl logs -n argocd deploy/argocd-application-controller | grep -i "sync"
+kubectl logs -n argocd statefulset/argocd-application-controller | grep -i "sync"
 
 # Filter for health assessment
-kubectl logs -n argocd deploy/argocd-application-controller | grep -i "health"
+kubectl logs -n argocd statefulset/argocd-application-controller | grep -i "health"
 
 # Filter for resource comparison (diff) operations
-kubectl logs -n argocd deploy/argocd-application-controller | grep -i "diff\|comparison"
+kubectl logs -n argocd statefulset/argocd-application-controller | grep -i "diff\|comparison"
 ```
 
 Recommended production level: `info`. Switch to `debug` when investigating why applications are not syncing or showing incorrect health status.
@@ -269,7 +267,8 @@ After modifying the ConfigMap, restart the affected components:
 
 ```bash
 # Restart all ArgoCD components to pick up new log levels
-kubectl rollout restart deploy -n argocd -l app.kubernetes.io/part-of=argocd
+kubectl rollout restart deployment,statefulset -n argocd \
+  -l app.kubernetes.io/part-of=argocd
 ```
 
 ## Log Rotation and Resource Management
@@ -280,13 +279,15 @@ In production, debug-level logging can generate significant log volume. Configur
 # Resource limits considering log volume
 server:
   resources:
+    # Increase ephemeral storage for log-heavy debugging sessions
     requests:
       cpu: 100m
       memory: 128Mi
+      ephemeral-storage: 1Gi
     limits:
       cpu: 500m
       memory: 512Mi
-  # Increase ephemeral storage for log-heavy debugging sessions
+      ephemeral-storage: 2Gi
   containerSecurityContext:
     allowPrivilegeEscalation: false
 ```
@@ -313,11 +314,11 @@ kubectl logs -n argocd deploy/argocd-server --tail=1000 | \
   jq -r '.level' | sort | uniq -c | sort -rn
 
 # Find all error logs with their messages
-kubectl logs -n argocd deploy/argocd-application-controller --tail=5000 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=5000 | \
   jq -r 'select(.level=="error") | .msg'
 
 # Find slow sync operations (useful for performance tuning)
-kubectl logs -n argocd deploy/argocd-application-controller --tail=5000 | \
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=5000 | \
   jq -r 'select(.msg | contains("sync")) | "\(.time) \(.msg)"'
 ```
 
