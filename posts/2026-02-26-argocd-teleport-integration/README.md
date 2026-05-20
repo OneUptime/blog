@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Teleport, Zero Trust
 
-Description: Learn how to integrate ArgoCD with Teleport for zero-trust access, including certificate-based authentication, session recording, and just-in-time access controls for GitOps workflows.
+Description: Learn how to integrate ArgoCD with Teleport for zero-trust access, including certificate-based authentication, audit logging, and just-in-time access controls for GitOps workflows.
 
 ---
 
-Teleport is a zero-trust access platform that provides certificate-based authentication, session recording, and just-in-time access for infrastructure. Integrating ArgoCD with Teleport adds a powerful security layer: every ArgoCD session is recorded, access can be time-limited, and authentication uses short-lived certificates instead of long-lived tokens. This is especially valuable for organizations with strict compliance requirements.
+Teleport is a zero-trust access platform that provides certificate-based authentication, audit logging, session recording for supported protocols, and just-in-time access for infrastructure. Integrating ArgoCD with Teleport adds a powerful security layer: ArgoCD access through Teleport Application Access is audited, access can be time-limited, and CLI access can use short-lived certificates instead of long-lived tokens. This is especially valuable for organizations with strict compliance requirements.
 
 This guide covers integrating ArgoCD with Teleport for both web UI access and Kubernetes-level access control.
 
@@ -16,7 +16,7 @@ This guide covers integrating ArgoCD with Teleport for both web UI access and Ku
 
 Teleport brings capabilities that standard OIDC/SAML providers do not offer:
 
-- **Session recording**: Every ArgoCD web session can be recorded for audit
+- **Application audit events**: ArgoCD access through Teleport Application Access emits app session request events
 - **Short-lived certificates**: No long-lived tokens or passwords
 - **Just-in-time access**: Users request elevated access that expires automatically
 - **Access requests with approvals**: Require manager approval for production access
@@ -28,61 +28,36 @@ There are two ways to integrate ArgoCD with Teleport:
 
 ```mermaid
 graph TD
-    A[Approach 1: OIDC via Dex] --> B[Teleport as OIDC Provider]
+    A[Approach 1: SSO via Dex] --> B[Shared OIDC/SAML IdP]
     B --> C[ArgoCD Web UI SSO]
 
     D[Approach 2: Teleport Application Access] --> E[Teleport Proxy]
     E --> F[ArgoCD Behind Teleport]
-    F --> G[Session Recording + Audit]
+    F --> G[Application Audit Events]
 ```
 
-Approach 1 gives you SSO authentication. Approach 2 gives you full session recording and zero-trust access. Many organizations use both.
+Approach 1 gives you SSO authentication through the same identity provider you use with Teleport. Approach 2 gives you Teleport's Application Access controls and audit events. Many organizations use both.
 
-## Approach 1: Teleport as OIDC Provider
+## Approach 1: SSO via Dex
 
-Teleport can act as an OIDC identity provider for ArgoCD through Dex.
+Teleport can use OIDC and SAML connectors to authenticate users against your identity provider. For ArgoCD SSO, configure Dex to use that same identity provider directly.
 
-### Step 1: Create a SAML/OIDC Connector in Teleport
+### Step 1: Configure Your Identity Provider in Teleport
 
-Teleport supports acting as an OIDC provider. Create a Teleport application:
-
-```yaml
-# teleport-argocd-app.yaml
-
-kind: app
-version: v3
-metadata:
-  name: argocd
-  description: ArgoCD GitOps Platform
-  labels:
-    env: production
-spec:
-  uri: https://argocd.internal.example.com
-  public_addr: argocd.example.com
-```
-
-Register it:
-
-```bash
-tctl create teleport-argocd-app.yaml
-```
-
-### Step 2: Configure Teleport OIDC Connector
-
-Create an OIDC connector in Teleport:
+Create a Teleport OIDC connector for the same provider your ArgoCD Dex connector will use:
 
 ```yaml
 # teleport-oidc-connector.yaml
 kind: oidc
 version: v3
 metadata:
-  name: argocd-oidc
+  name: company-oidc
 spec:
-  issuer_url: https://teleport.example.com
-  client_id: argocd
+  issuer_url: https://idp.example.com/oauth2/default
+  client_id: teleport
   client_secret: "generated-client-secret"
   redirect_url:
-  - https://argocd.example.com/api/dex/callback
+  - https://teleport.example.com/v1/webapi/oidc/callback
   scope:
   - openid
   - profile
@@ -99,6 +74,20 @@ spec:
     - argocd-developer
 ```
 
+Register it:
+
+```bash
+tctl create teleport-oidc-connector.yaml
+```
+
+### Step 2: Configure an ArgoCD OIDC Client in the Identity Provider
+
+Create a separate OIDC application for ArgoCD in the same identity provider, with this callback URL:
+
+```text
+https://argocd.example.com/api/dex/callback
+```
+
 ### Step 3: Configure Dex in ArgoCD
 
 ```yaml
@@ -113,10 +102,10 @@ data:
   dex.config: |
     connectors:
     - type: oidc
-      id: teleport
-      name: Teleport
+      id: company-oidc
+      name: Company OIDC
       config:
-        issuer: https://teleport.example.com
+        issuer: https://idp.example.com/oauth2/default
         clientID: argocd
         clientSecret: $dex.teleport.clientSecret
         redirectURI: https://argocd.example.com/api/dex/callback
@@ -133,7 +122,7 @@ data:
 
 ## Approach 2: Teleport Application Access (Recommended)
 
-This approach puts ArgoCD entirely behind Teleport's application access proxy. This gives you full session recording, access requests, and certificate-based auth.
+This approach puts ArgoCD entirely behind Teleport's application access proxy. This gives you application access audit events, access requests, and certificate-based CLI access.
 
 ### Step 1: Deploy Teleport Agent
 
@@ -158,14 +147,15 @@ spec:
     spec:
       containers:
       - name: teleport
-        image: public.ecr.aws/gravitational/teleport:14
+        image: public.ecr.aws/gravitational/teleport:18
         args:
+        - app
         - start
-        - --roles=app
         - --token=/etc/teleport-secrets/token
         - --auth-server=teleport.example.com:443
-        - --app-name=argocd
-        - --app-uri=http://argocd-server.argocd.svc.cluster.local:80
+        - --name=argocd
+        - --uri=http://argocd-server.argocd.svc.cluster.local:80
+        - --labels=app=argocd,env=production
         volumeMounts:
         - name: token
           mountPath: /etc/teleport-secrets
@@ -208,7 +198,8 @@ metadata:
 spec:
   allow:
     app_labels:
-      'name': 'argocd'
+      'app': 'argocd'
+      'env': 'production'
     # Additional Kubernetes access for ArgoCD namespace
     kubernetes_labels:
       'env': 'production'
@@ -218,10 +209,10 @@ spec:
       name: '*'
     kubernetes_groups:
     - argocd-admins
+    review_requests:
+      roles:
+      - argocd-jit-admin
   options:
-    # Session recording
-    record_session:
-      desktop: best_effort
     # Maximum session duration
     max_session_ttl: 8h
 ---
@@ -232,17 +223,16 @@ metadata:
 spec:
   allow:
     app_labels:
-      'name': 'argocd'
+      'app': 'argocd'
+      'env': 'production'
     # Request access to production (requires approval)
     request:
       roles:
-      - argocd-admin
+      - argocd-jit-admin
       # Limit elevated access duration
       max_duration: 2h
   options:
     max_session_ttl: 8h
-    record_session:
-      desktop: best_effort
 ```
 
 Apply the roles:
@@ -264,15 +254,8 @@ metadata:
 spec:
   allow:
     app_labels:
-      'name': 'argocd'
-    # Full ArgoCD access for approved requests
-    request:
-      roles: []
-    # Auto-approve from specific groups or require manual approval
-    review_requests:
-      roles:
-      - argocd-admin
-      where: 'contains(request.roles, "argocd-jit-admin")'
+      'app': 'argocd'
+      'env': 'production'
   options:
     max_session_ttl: 2h  # Short-lived elevated access
 ```
@@ -284,28 +267,29 @@ Developers request access:
 tsh request create --roles=argocd-jit-admin --reason="Deploying hotfix for JIRA-1234"
 
 # Admin approves the request
-tsh request approve <request-id>
+tsh request review --approve <request-id>
 
 # Developer now has time-limited admin access
-tsh app login argocd
+tsh login --request-id=<request-id>
+tsh apps login argocd
 ```
 
-## Session Recording and Audit
+## Application Audit
 
-All ArgoCD web sessions through Teleport are recorded and auditable:
+ArgoCD access through Teleport is auditable. Application sessions capture `app.session.request` audit events:
 
 ```bash
-# View recent ArgoCD sessions
-tsh recordings ls --type=app
+# View recent Teleport sessions
+tsh recordings ls
 
-# View a specific recording
-tsh play <session-id>
+# View a specific app session as audit events
+tsh play --format=json <session-id>
 
-# Export audit events
-tctl get events --type=app.session.start --since=24h --format=json
+# Export the app session events
+tsh play --format=json <session-id> > argocd-app-session.json
 ```
 
-This is invaluable for compliance - you can prove exactly who did what in ArgoCD and when.
+This is invaluable for compliance - you can prove who accessed ArgoCD and which HTTP requests went through Teleport.
 
 ## Teleport with ArgoCD CLI
 
@@ -316,14 +300,25 @@ For CLI access through Teleport:
 tsh login --proxy=teleport.example.com
 
 # Access ArgoCD through Teleport tunnel
-tsh app login argocd
+tsh apps login argocd
 
-# Now use ArgoCD CLI - it routes through Teleport
-export ARGOCD_SERVER=$(tsh app config --format=uri argocd)
-argocd app list
+# Now use ArgoCD CLI with Teleport's short-lived client certificate.
+# ArgoCD authentication is still required.
+export ARGOCD_SERVER=$(tsh apps config --format=uri argocd)
+argocd login "$ARGOCD_SERVER" --sso \
+  --client-crt "$(tsh apps config --format=cert argocd)" \
+  --client-crt-key "$(tsh apps config --format=key argocd)" \
+  --server-crt "$(tsh apps config --format=ca argocd)" \
+  --grpc-web
+argocd app list \
+  --server "$ARGOCD_SERVER" \
+  --client-crt "$(tsh apps config --format=cert argocd)" \
+  --client-crt-key "$(tsh apps config --format=key argocd)" \
+  --server-crt "$(tsh apps config --format=ca argocd)" \
+  --grpc-web
 ```
 
-The CLI traffic goes through Teleport's proxy, which means it is also recorded and subject to access policies.
+The CLI traffic goes through Teleport's proxy, which means it is also audited and subject to access policies.
 
 ## Monitoring the Integration
 
@@ -352,4 +347,4 @@ Integrate with OneUptime for comprehensive monitoring of both the Teleport agent
 
 ## Conclusion
 
-Teleport integration elevates ArgoCD security from basic SSO to full zero-trust access with session recording, short-lived certificates, and just-in-time access controls. The application access approach is the most powerful, giving you complete audit trails of every ArgoCD interaction. For organizations in regulated industries or those requiring SOC 2 compliance, the combination of Teleport's session recording with ArgoCD's GitOps audit trail creates a comprehensive evidence chain for every deployment. The trade-off is added complexity in the access path, but for organizations that already use Teleport, the ArgoCD integration is straightforward and the security benefits are substantial.
+Teleport integration elevates ArgoCD security from basic SSO to zero-trust access with audit events, short-lived certificates, and just-in-time access controls. The application access approach is the most powerful, giving you audit trails for ArgoCD access through Teleport. For organizations in regulated industries or those requiring SOC 2 compliance, the combination of Teleport's audit trail with ArgoCD's GitOps audit trail creates a comprehensive evidence chain for every deployment. The trade-off is added complexity in the access path, but for organizations that already use Teleport, the ArgoCD integration is straightforward and the security benefits are substantial.
