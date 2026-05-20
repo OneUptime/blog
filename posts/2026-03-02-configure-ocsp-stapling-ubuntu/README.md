@@ -38,14 +38,13 @@ Your certificate contains the URL of the CA's OCSP responder:
 ```bash
 # Extract the OCSP URL from your certificate
 
-openssl x509 -in /etc/letsencrypt/live/yourdomain.com/cert.pem -noout -text | \
-    grep -A 3 "Authority Information Access"
+openssl x509 -in /etc/ssl/yourdomain.com/cert.pem -noout -ocsp_uri
 
 # Output example:
-# Authority Information Access:
-#     OCSP - URI:http://r3.o.lencr.org
-#     CA Issuers - URI:http://r3.i.letsencrypt.org/r3.der
+# http://ocsp.example-ca.com
 ```
+
+If this command prints nothing, your certificate does not contain an OCSP responder URL. For example, Let's Encrypt removed OCSP URLs from newly issued certificates in May 2025 and turned off its OCSP responders in August 2025, so OCSP stapling is not available for current Let's Encrypt certificates.
 
 ### Nginx Configuration
 
@@ -61,8 +60,8 @@ server {
     listen 443 ssl;
     server_name yourdomain.com;
 
-    ssl_certificate     /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/yourdomain.com/privkey.pem;
+    ssl_certificate     /etc/ssl/yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/ssl/yourdomain.com/privkey.pem;
 
     # Enable OCSP Stapling
     ssl_stapling on;
@@ -70,9 +69,9 @@ server {
     # Verify the OCSP response signature
     ssl_stapling_verify on;
 
-    # Nginx needs the CA chain to verify the OCSP response
-    # fullchain.pem includes the intermediate, so it can be used here
-    ssl_trusted_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;
+    # Nginx needs trusted CA certificates to verify the OCSP response
+    # Use a PEM file containing the issuer, intermediate, and root CA certificates
+    ssl_trusted_certificate /etc/ssl/yourdomain.com/ca-chain.pem;
 
     # DNS resolver for Nginx to use when fetching OCSP responses
     # Use reliable resolvers; the server must be able to reach the OCSP URL
@@ -117,7 +116,7 @@ openssl s_client -connect yourdomain.com:443 -servername yourdomain.com \
 ### Enabling Required Modules
 
 ```bash
-# mod_ssl includes OCSP stapling support (Apache 2.3.3+)
+# mod_ssl in Apache 2.4 includes OCSP stapling support
 sudo a2enmod ssl
 
 # Verify mod_ssl is loaded
@@ -142,14 +141,14 @@ SSLStaplingCache shmcb:/var/run/apache2/stapling_cache(128000)
     ServerName yourdomain.com
 
     SSLEngine on
-    SSLCertificateFile    /etc/letsencrypt/live/yourdomain.com/fullchain.pem
-    SSLCertificateKeyFile /etc/letsencrypt/live/yourdomain.com/privkey.pem
+    SSLCertificateFile    /etc/ssl/yourdomain.com/fullchain.pem
+    SSLCertificateKeyFile /etc/ssl/yourdomain.com/privkey.pem
 
     # Enable OCSP Stapling
     SSLUseStapling on
 
     # How long to cache the OCSP response (seconds)
-    # Default is 300; set based on the "Next Update" time in OCSP responses
+    # Default is 3600; set based on the "Next Update" time in OCSP responses
     SSLStaplingStandardCacheTimeout 3600
 
     # How long to cache OCSP errors before retrying
@@ -183,26 +182,25 @@ You can manually query OCSP to understand what the server sees:
 
 ```bash
 # Extract OCSP URL from the certificate
-OCSP_URL=$(openssl x509 -in /etc/letsencrypt/live/yourdomain.com/cert.pem \
-    -noout -text | grep -A 1 "OCSP" | grep "URI" | awk '{print $NF}')
+OCSP_URL=$(openssl x509 -in /etc/ssl/yourdomain.com/cert.pem -noout -ocsp_uri)
 echo "OCSP URL: $OCSP_URL"
 
 # Query the OCSP responder manually
 openssl ocsp \
-    -issuer /etc/letsencrypt/live/yourdomain.com/chain.pem \
-    -cert /etc/letsencrypt/live/yourdomain.com/cert.pem \
+    -issuer /etc/ssl/yourdomain.com/issuer.pem \
+    -cert /etc/ssl/yourdomain.com/cert.pem \
     -url "$OCSP_URL" \
     -resp_text
 
 # Simplified: just show the status
 openssl ocsp \
-    -issuer /etc/letsencrypt/live/yourdomain.com/chain.pem \
-    -cert /etc/letsencrypt/live/yourdomain.com/cert.pem \
+    -issuer /etc/ssl/yourdomain.com/issuer.pem \
+    -cert /etc/ssl/yourdomain.com/cert.pem \
     -url "$OCSP_URL" \
     -no_nonce 2>/dev/null | head -5
 
 # Expected output:
-# /etc/letsencrypt/live/yourdomain.com/cert.pem: good
+# /etc/ssl/yourdomain.com/cert.pem: good
 # This Update: Mar  2 10:00:00 2026 GMT
 # Next Update: Mar  9 10:00:00 2026 GMT
 ```
@@ -227,10 +225,10 @@ Check if Nginx can resolve and reach the OCSP URL:
 
 ```bash
 # Test DNS resolution for the OCSP host
-nslookup r3.o.lencr.org 8.8.8.8
+nslookup ocsp.example-ca.com 8.8.8.8
 
 # Test HTTP connectivity to the OCSP endpoint
-curl -v http://r3.o.lencr.org 2>&1 | head -20
+curl -v http://ocsp.example-ca.com 2>&1 | head -20
 
 # If behind a firewall, allow outbound HTTP (port 80) to the OCSP hosts
 sudo ufw allow out 80/tcp
@@ -241,11 +239,11 @@ sudo ufw allow out 80/tcp
 The `ssl_trusted_certificate` (Nginx) or CA chain must include the intermediate CA that signed the OCSP response:
 
 ```bash
-# For Let's Encrypt, use chain.pem (just the intermediate) or fullchain.pem
-# Don't use cert.pem alone - it doesn't include the intermediate
+# Use the CA certificates needed to validate the OCSP response
+# Don't use cert.pem alone - it doesn't include the issuer or root CA certificates
 
-# Nginx: use the full chain for ssl_trusted_certificate
-ssl_trusted_certificate /etc/letsencrypt/live/yourdomain.com/chain.pem;
+# Nginx: use a CA chain file for ssl_trusted_certificate
+ssl_trusted_certificate /etc/ssl/yourdomain.com/ca-chain.pem;
 ```
 
 ### Apache OCSP Stapling Not Working
@@ -286,4 +284,4 @@ Use an external checker for a third-party perspective:
 
 ## Summary
 
-OCSP Stapling improves TLS performance and privacy by having your server pre-fetch and serve certificate revocation status. Configure it in Nginx with `ssl_stapling on`, `ssl_stapling_verify on`, `ssl_trusted_certificate`, and a `resolver`. In Apache, set `SSLUseStapling on` and `SSLStaplingCache`. The first connection after a reload may not have a stapled response while the server fetches it; subsequent connections will include it. Verify with `openssl s_client -status` and look for `OCSP Response Status: successful`. Ensure your server has outbound HTTP access to the CA's OCSP responder URL.
+OCSP Stapling improves TLS performance and privacy by having your server pre-fetch and serve certificate revocation status when your certificate includes an OCSP responder URL. Configure it in Nginx with `ssl_stapling on`, `ssl_stapling_verify on`, `ssl_trusted_certificate`, and a `resolver`. In Apache, set `SSLUseStapling on` and `SSLStaplingCache`. The first connection after a reload may not have a stapled response while the server fetches it; subsequent connections will include it. Verify with `openssl s_client -status` and look for `OCSP Response Status: successful`. Ensure your server has outbound HTTP access to the CA's OCSP responder URL.
