@@ -66,7 +66,7 @@ VirtualServices define how requests get routed to different versions of your ser
 
 ```yaml
 # policies/production/api-gateway-vs.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway
@@ -75,7 +75,7 @@ spec:
   hosts:
     - api-gateway.production.svc.cluster.local
   http:
-    # Route 90% to stable, 10% to canary
+    # Route header-matched requests to canary, and split the rest 90/10
     - match:
         - headers:
             x-canary:
@@ -104,7 +104,7 @@ The matching DestinationRule defines subsets and load balancing:
 
 ```yaml
 # policies/production/api-gateway-dr.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-gateway
@@ -141,7 +141,7 @@ Circuit breakers prevent cascading failures. Configure them in DestinationRules 
 
 ```yaml
 # policies/production/payment-service-dr.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -241,7 +241,7 @@ policies/
 
 ## Sync Waves for Traffic Policy Updates
 
-When updating traffic policies alongside service deployments, ordering matters. Use sync waves to ensure policies are applied before new service versions roll out:
+When updating traffic policies alongside service deployments, ordering matters. Use sync waves to ensure new service versions are applied before traffic policies route requests to them:
 
 ```yaml
 # Service deployment - syncs first
@@ -255,7 +255,7 @@ metadata:
 
 ---
 # DestinationRule - syncs after deployment is ready
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-gateway
@@ -265,7 +265,7 @@ metadata:
 
 ---
 # VirtualService with traffic split - syncs last
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-gateway
@@ -280,7 +280,7 @@ ArgoCD makes it easy to apply and remove fault injection rules for chaos testing
 
 ```yaml
 # policies/staging/fault-injection-test.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-fault-test
