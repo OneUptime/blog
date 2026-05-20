@@ -31,12 +31,23 @@ Start with branch protection on your main branch:
 
 gh api repos/myorg/backend-api-config/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["validate-kustomize","kubeconform","policy-check"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1,"require_code_owner_reviews":true,"dismiss_stale_reviews":true}' \
-  --field restrictions=null \
-  --field allow_force_pushes=false \
-  --field allow_deletions=false
+  --input - <<'JSON'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["validate-structure", "policy-check", "diff-preview"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1,
+    "require_code_owner_reviews": true,
+    "dismiss_stale_reviews": true
+  },
+  "restrictions": null,
+  "allow_force_pushes": false,
+  "allow_deletions": false
+}
+JSON
 ```
 
 Key settings:
@@ -55,7 +66,7 @@ Use CODEOWNERS to route reviews based on what is being changed:
 # Any changes to base require SRE review
 base/ @myorg/sre-team
 
-# Dev changes - service team can self-approve
+# Dev changes - service team review
 overlays/dev/ @myorg/backend-team
 
 # Staging changes - service team + lead
@@ -77,7 +88,7 @@ overlays/production/ @myorg/platform-team
 This creates a tiered review system:
 - Dev changes are lightweight reviews
 - Staging requires team lead oversight
-- Production requires platform team approval
+- Production application changes require platform team approval
 - Security-sensitive changes always need the security team
 
 ## Automated Validation Checks
@@ -101,8 +112,10 @@ jobs:
         run: |
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           sudo mv kustomize /usr/local/bin/
-          wget -q https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
-          tar xf kubeconform-linux-amd64.tar.gz && sudo mv kubeconform /usr/local/bin/
+          curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xzf -
+          sudo mv kubeconform /usr/local/bin/
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
 
       - name: Build all overlays
         run: |
@@ -146,8 +159,12 @@ jobs:
 
       - name: Install OPA/Conftest
         run: |
-          wget -q https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz
-          tar xf conftest_Linux_x86_64.tar.gz && sudo mv conftest /usr/local/bin/
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          LATEST_VERSION=$(wget -O - "https://api.github.com/repos/open-policy-agent/conftest/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | cut -c 2-)
+          wget -q "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_VERSION}/conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz"
+          tar xzf "conftest_${LATEST_VERSION}_Linux_x86_64.tar.gz"
+          sudo mv conftest /usr/local/bin/
 
       - name: Run policy checks
         run: |
@@ -164,16 +181,18 @@ jobs:
 
       - name: Generate diff preview
         run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
           # Build current main version
-          git stash
-          git checkout main
+          git fetch origin main
+          git checkout origin/main
           for env in dev staging production; do
             kustomize build "overlays/${env}" > "/tmp/${env}-main.yaml" 2>/dev/null || true
           done
           git checkout -
 
           # Build PR version
-          git stash pop 2>/dev/null || true
           for env in dev staging production; do
             kustomize build "overlays/${env}" > "/tmp/${env}-pr.yaml"
           done
@@ -209,8 +228,10 @@ Write Open Policy Agent (OPA) policies that enforce your organization's standard
 # policies/deployment.rego
 package main
 
+import rego.v1
+
 # Deny deployments without resource limits
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   not container.resources.limits
@@ -218,7 +239,7 @@ deny[msg] {
 }
 
 # Deny privileged containers
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   container.securityContext.privileged == true
@@ -226,7 +247,7 @@ deny[msg] {
 }
 
 # Deny images without specific tags
-deny[msg] {
+deny contains msg if {
   input.kind == "Deployment"
   container := input.spec.template.spec.containers[_]
   endswith(container.image, ":latest")
@@ -234,7 +255,7 @@ deny[msg] {
 }
 
 # Warn if replicas are less than 2 in production
-warn[msg] {
+warn contains msg if {
   input.kind == "Deployment"
   input.metadata.namespace == "production"
   input.spec.replicas < 2
@@ -279,9 +300,9 @@ Revert this PR: `git revert <commit>`
 During incidents, the normal review process is too slow. Set up a fast path:
 
 ```yaml
-# CODEOWNERS exception for hotfix branches
-# Hotfix branches only need one SRE approval
-# (configured via branch protection rule for hotfix/* branches)
+# Hotfix PRs to main still use main's branch protection.
+# Use a repository ruleset bypass list for the SRE on-call team
+# if your incident process allows emergency bypasses.
 ```
 
 ```bash
@@ -299,10 +320,10 @@ gh pr create \
   --reviewer "@myorg/sre-oncall"
 ```
 
-Configure a separate branch protection rule for hotfix branches that requires fewer approvals:
+Configure the emergency path explicitly. A branch protection rule for `hotfix/*` protects those branches themselves; it does not reduce the requirements for a pull request targeting `main`. For hotfix PRs that still target `main`, use a repository ruleset bypass list or keep the same required checks and assign the SRE on-call reviewer:
 
 - Regular PRs to main: 1 CODEOWNER approval + all checks pass
-- Hotfix PRs: 1 SRE approval + basic validation only
+- Hotfix PRs: 1 SRE approval + basic validation, using an approved ruleset bypass only when incident policy allows it
 
 ## Summary
 
