@@ -35,7 +35,7 @@ flowchart LR
 
 ### Step 1: Enable Multi-Namespace Watch
 
-Configure ArgoCD to watch team namespaces:
+This feature requires a cluster-scoped ArgoCD installation; it will not work with an ArgoCD instance installed in namespace-scoped mode. Configure ArgoCD to watch team namespaces:
 
 ```yaml
 apiVersion: v1
@@ -55,9 +55,15 @@ kubectl rollout restart deployment/argocd-server -n argocd
 kubectl rollout restart statefulset/argocd-application-controller -n argocd
 ```
 
+If teams will use the ArgoCD CLI, UI, or API for applications in other namespaces, also extend the `argocd-server` Kubernetes RBAC so it can read and manage Application resources outside the control plane namespace:
+
+```bash
+kubectl apply -k examples/k8s-rbac/argocd-server-applications/
+```
+
 ### Step 2: Create Team Namespaces
 
-Set up namespaces with proper labels:
+Set up namespaces with optional team labels:
 
 ```yaml
 apiVersion: v1
@@ -94,6 +100,8 @@ spec:
   sourceRepos:
     - 'https://github.com/myorg/team-a-*'
   destinations:
+    - server: https://kubernetes.default.svc
+      namespace: team-a
     - server: https://kubernetes.default.svc
       namespace: team-a-*
   namespaceResourceWhitelist:
@@ -133,6 +141,8 @@ subjects:
     name: team-a-members
     apiGroup: rbac.authorization.k8s.io
 ```
+
+The `applicationsets` permission is only needed if you also enable ApplicationSets in non-control-plane namespaces by configuring the ApplicationSet controller's allowed namespaces.
 
 ## Creating Namespace-Scoped Applications
 
@@ -198,7 +208,7 @@ sequenceDiagram
     Argo->>K8s: Deploy application resources
 ```
 
-Teams can even use ArgoCD to manage their own Application definitions using a config repo:
+Teams can even use ArgoCD to manage their own Application definitions using a config repo. Make sure the team AppProject allows `team-a` as a destination namespace, because the meta-application creates Application resources in that namespace:
 
 ```yaml
 # Team A's meta-application - manages their Application resources
@@ -257,7 +267,7 @@ argocd app get team-a/user-service
 
 ### UI Access
 
-The ArgoCD UI automatically shows applications from all watched namespaces. Users can filter by project or namespace using the UI filters. The namespace where the Application lives is displayed alongside the application name.
+The ArgoCD UI shows applications from watched namespaces when the `argocd-server` RBAC has been extended to access those namespaces. Users can filter by project or namespace using the UI filters. The namespace where the Application lives is displayed alongside the application name.
 
 ### API Access
 
@@ -311,7 +321,7 @@ This limits team-a to 50 Application resources and 10 ApplicationSet resources.
 
 ## Notifications for Namespace-Scoped Apps
 
-ArgoCD Notifications works with namespace-scoped applications. Configure notification triggers as usual:
+ArgoCD Notifications works with namespace-scoped applications. For namespace-based notification configuration, the notifications controller must be configured with the application namespaces and self-service notifications must be enabled. Once that is in place, configure notification subscriptions as usual:
 
 ```yaml
 # Annotation on the namespace-scoped Application
