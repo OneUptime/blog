@@ -68,7 +68,7 @@ This is the safest method and produces a fully consistent backup. The downtime d
 
 ## Live Backup Using External Snapshots
 
-Live backup uses qcow2's overlay mechanism to freeze the original disk while the VM writes to a new overlay:
+Live backup uses qcow2's overlay mechanism to freeze the original disk while the VM writes to a new overlay. This produces a crash-consistent backup; for filesystem-consistent snapshots, use `--quiesce` with a working QEMU guest agent:
 
 ```bash
 sudo nano /usr/local/bin/kvm-live-backup.sh
@@ -101,6 +101,7 @@ DISK_INFO=$(virsh domblklist "$VM_NAME" --details | awk '/disk/')
 # Build disk spec strings for snapshot
 DISK_SPECS=""
 declare -A DISK_PATHS
+declare -A SNAP_PATHS
 while IFS= read -r line; do
     TARGET=$(echo "$line" | awk '{print $3}')
     SOURCE=$(echo "$line" | awk '{print $4}')
@@ -108,6 +109,7 @@ while IFS= read -r line; do
     SNAP_FILE="${SOURCE%.*}-snap-${DATE}.qcow2"
     DISK_SPECS="$DISK_SPECS --diskspec ${TARGET},snapshot=external,file=${SNAP_FILE}"
     DISK_PATHS[$TARGET]="$SOURCE"
+    SNAP_PATHS[$TARGET]="$SNAP_FILE"
     log "  Disk $TARGET: $SOURCE -> snap: $SNAP_FILE"
 done <<< "$DISK_INFO"
 
@@ -126,7 +128,12 @@ log "Snapshot created - original disks are now frozen"
 # Step 4: Copy original disk images (they are now read-only)
 for TARGET in "${!DISK_PATHS[@]}"; do
     ORIGINAL="${DISK_PATHS[$TARGET]}"
-    BACKUP_FILE="$BACKUP_DIR/$(basename "${ORIGINAL%.*}")-${DATE}.qcow2"
+    ORIGINAL_BASENAME=$(basename "$ORIGINAL")
+    if [[ "$ORIGINAL_BASENAME" == *.* ]]; then
+        BACKUP_FILE="$BACKUP_DIR/${ORIGINAL_BASENAME%.*}-${DATE}.${ORIGINAL_BASENAME##*.}"
+    else
+        BACKUP_FILE="$BACKUP_DIR/${ORIGINAL_BASENAME}-${DATE}"
+    fi
     log "Copying $ORIGINAL -> $BACKUP_FILE"
     rsync --progress "$ORIGINAL" "$BACKUP_FILE"
     log "  Done: $(du -sh "$BACKUP_FILE" | cut -f1)"
@@ -145,11 +152,10 @@ done
 
 # Step 6: Clean up snapshot files (they are now merged back)
 log "Cleaning up snapshot files"
-virsh domblklist "$VM_NAME" --details | awk '/disk/ {print $4}' | while read -r path; do
-    if echo "$path" | grep -q "snap-${DATE}"; then
-        rm -f "$path"
-        log "  Removed: $path"
-    fi
+for TARGET in "${!SNAP_PATHS[@]}"; do
+    SNAP_FILE="${SNAP_PATHS[$TARGET]}"
+    rm -f "$SNAP_FILE"
+    log "  Removed: $SNAP_FILE"
 done
 
 log "Backup complete for $VM_NAME"
@@ -207,7 +213,13 @@ while IFS= read -r vm; do
         # Copy each disk
         virsh domblklist "$vm" --details | awk '/disk/ {print $4}' | while read -r disk; do
             [ -z "$disk" ] && continue
-            cp "$disk" "$BACKUP_DIR/$(basename "${disk%.*}")-${DATE}.qcow2"
+            DISK_BASENAME=$(basename "$disk")
+            if [[ "$DISK_BASENAME" == *.* ]]; then
+                BACKUP_FILE="$BACKUP_DIR/${DISK_BASENAME%.*}-${DATE}.${DISK_BASENAME##*.}"
+            else
+                BACKUP_FILE="$BACKUP_DIR/${DISK_BASENAME}-${DATE}"
+            fi
+            cp "$disk" "$BACKUP_FILE"
             log "Copied disk: $disk"
         done
 
@@ -260,8 +272,9 @@ virsh define /mnt/backup/vms/myvm/myvm-20260302.xml
 
 ```bash
 # Convert and compress a backup image
+# The -c option enables qcow2 compression.
 qemu-img convert \
-  -c \                       # Enable compression
+  -c \
   -O qcow2 \
   /mnt/backup/vms/myvm/myvm-20260302.qcow2 \
   /mnt/backup/vms/myvm/myvm-20260302-compressed.qcow2
@@ -277,19 +290,19 @@ ls -lh /mnt/backup/vms/myvm/
 qemu-img check /mnt/backup/vms/myvm/myvm-20260302.qcow2
 
 # Test XML is valid
-virsh define --validate /mnt/backup/vms/myvm/myvm-20260302.xml
-virsh undefine myvm  # If it was only created for validation
+virt-xml-validate /mnt/backup/vms/myvm/myvm-20260302.xml domain
 
 # Optionally boot the backup in a test environment
 qemu-img create \
   -f qcow2 \
   -b /mnt/backup/vms/myvm/myvm-20260302.qcow2 \
   -F qcow2 \
-  /tmp/myvm-test.qcow2 \
-  0  # No extra space needed for test overlay
+  /tmp/myvm-test.qcow2
 
-virsh define /mnt/backup/vms/myvm/myvm-20260302.xml
-# Edit the XML to point to /tmp/myvm-test.qcow2 for testing
+# Edit a copy of the XML to point to /tmp/myvm-test.qcow2 before defining it
+cp /mnt/backup/vms/myvm/myvm-20260302.xml /tmp/myvm-test.xml
+sed -i "s|/var/lib/libvirt/images/myvm.qcow2|/tmp/myvm-test.qcow2|g" /tmp/myvm-test.xml
+virsh define /tmp/myvm-test.xml
 ```
 
 ## Managing Backup Retention
@@ -299,8 +312,9 @@ virsh define /mnt/backup/vms/myvm/myvm-20260302.xml
 find /mnt/backup/vms -name "*.qcow2" -mtime +30 -delete
 find /mnt/backup/vms -name "*.xml" -mtime +30 -delete
 
-# Keep weekly snapshots for 3 months
-find /mnt/backup/vms -name "*-$(date -d '90 days ago' +%Y%m%d)*.qcow2" -delete
+# Clean up backup files older than 90 days
+find /mnt/backup/vms -name "*.qcow2" -mtime +90 -delete
+find /mnt/backup/vms -name "*.xml" -mtime +90 -delete
 ```
 
 VM backups are larger and more time-consuming than file backups, but the live snapshot approach minimizes downtime to near zero. For critical production VMs, combine live backups with periodic offline snapshots (taken during maintenance windows) for the most comprehensive protection.
