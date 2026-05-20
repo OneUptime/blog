@@ -120,7 +120,7 @@ kubectl logs -n argocd \
 ### Post Selector Filters Everything Out
 
 ```yaml
-# This might filter out everything if no element has env=production
+# This might filter out everything if no element has environment=production
 generators:
   - list:
       elements:
@@ -164,7 +164,8 @@ Template rendering issues often show up as unexpected application names.
 
 ```bash
 # List generated applications
-argocd app list -l app.kubernetes.io/managed-by=applicationset-controller
+kubectl get applications -n argocd -o json | \
+  jq -r '.items[] | select(any(.metadata.ownerReferences[]?; .kind=="ApplicationSet" and .name=="my-appset")) | .metadata.name'
 
 # Compare expected vs actual names
 kubectl get applicationset my-appset -n argocd -o json | \
@@ -220,7 +221,7 @@ Without this option, missing keys silently render as empty strings, creating app
 ### YAML Formatting Issues from Templates
 
 ```yaml
-# BUG: Template produces invalid YAML
+# BUG: This ApplicationSet manifest is invalid YAML before templating
 template:
   metadata:
     name: '{{name}}'
@@ -277,16 +278,13 @@ Look for:
 For deep debugging, temporarily increase the controller's log verbosity.
 
 ```bash
-# Edit the controller deployment
-kubectl edit deployment argocd-applicationset-controller -n argocd
+# Set the ApplicationSet controller log level
+kubectl patch configmap argocd-cmd-params-cm -n argocd \
+  --type merge \
+  -p '{"data":{"applicationsetcontroller.log.level":"debug"}}'
 
-# Add to the container args:
-# --loglevel=debug
-
-# Or patch it
-kubectl patch deployment argocd-applicationset-controller -n argocd \
-  --type json \
-  -p '[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--loglevel=debug"}]'
+# Restart the controller so it picks up the updated command parameter
+kubectl rollout restart deployment argocd-applicationset-controller -n argocd
 
 # Remember to revert after debugging
 ```
@@ -308,8 +306,9 @@ kubectl get events -n argocd --field-selector involvedObject.name=my-appset
 # 4. What do the controller logs say?
 kubectl logs -n argocd -l app.kubernetes.io/name=argocd-applicationset-controller --tail=100
 
-# 5. How many applications exist?
-argocd app list | grep -c "managed-by-applicationset"
+# 5. How many applications are managed by this ApplicationSet?
+kubectl get applicationset my-appset -n argocd -o json | \
+  jq '.status.resources // [] | length'
 
 # 6. For Git generators, can ArgoCD access the repo?
 argocd repo list
