@@ -17,8 +17,8 @@ First, understand what resource kinds exist in your application.
 ```bash
 # List all unique resource kinds in an application
 
-argocd app resources my-app --output json | \
-  jq -r '[.[] | .kind] | unique | .[]'
+argocd app get my-app -o json | \
+  jq -r '[.status.resources[] | .kind] | unique | .[]'
 
 # Example output:
 # ConfigMap
@@ -37,22 +37,25 @@ To sync all Deployments in an application, extract them from the resource list a
 
 ```bash
 # Sync all Deployments
-argocd app resources my-app --output json | \
-  jq -r '.[] | select(.kind == "Deployment") | "\(.group):\(.kind):\(.name)"' | \
-  xargs -I{} echo "--resource {}" | \
-  xargs argocd app sync my-app
+argocd app get my-app -o json | \
+  jq -r '.status.resources[] | select(.kind == "Deployment") | "\(.group // ""):\(.kind):\((if (.namespace // "") != "" then "\(.namespace)/" else "" end)\(.name))"' | \
+  while IFS= read -r resource; do
+    argocd app sync my-app --resource "$resource"
+  done
 
 # Sync all ConfigMaps
-argocd app resources my-app --output json | \
-  jq -r '.[] | select(.kind == "ConfigMap") | "\(.group):\(.kind):\(.name)"' | \
-  xargs -I{} echo "--resource {}" | \
-  xargs argocd app sync my-app
+argocd app get my-app -o json | \
+  jq -r '.status.resources[] | select(.kind == "ConfigMap") | "\(.group // ""):\(.kind):\((if (.namespace // "") != "" then "\(.namespace)/" else "" end)\(.name))"' | \
+  while IFS= read -r resource; do
+    argocd app sync my-app --resource "$resource"
+  done
 
 # Sync all Services
-argocd app resources my-app --output json | \
-  jq -r '.[] | select(.kind == "Service") | "\(.group):\(.kind):\(.name)"' | \
-  xargs -I{} echo "--resource {}" | \
-  xargs argocd app sync my-app
+argocd app get my-app -o json | \
+  jq -r '.status.resources[] | select(.kind == "Service") | "\(.group // ""):\(.kind):\((if (.namespace // "") != "" then "\(.namespace)/" else "" end)\(.name))"' | \
+  while IFS= read -r resource; do
+    argocd app sync my-app --resource "$resource"
+  done
 ```
 
 ## A Reusable Script for Kind-Based Sync
@@ -73,9 +76,9 @@ DRY_RUN="${3:-}"
 echo "Finding all $TARGET_KIND resources in $APP_NAME..."
 
 # Get resources matching the specified kind
-RESOURCES=$(argocd app resources "$APP_NAME" --output json | \
+RESOURCES=$(argocd app get "$APP_NAME" -o json | \
   jq -r --arg kind "$TARGET_KIND" \
-  '.[] | select(.kind == $kind) | "\(.group):\(.kind):\(.name)"')
+  '.status.resources[] | select(.kind == $kind) | "\(.group // ""):\(.kind):\((if (.namespace // "") != "" then "\(.namespace)/" else "" end)\(.name))"')
 
 if [ -z "$RESOURCES" ]; then
   echo "No $TARGET_KIND resources found in $APP_NAME"
@@ -88,20 +91,20 @@ echo "Found $COUNT $TARGET_KIND resources:"
 echo "$RESOURCES" | while read -r r; do echo "  - $r"; done
 
 # Build resource flags
-RESOURCE_FLAGS=""
+RESOURCE_FLAGS=()
 while IFS= read -r resource; do
-  RESOURCE_FLAGS="$RESOURCE_FLAGS --resource $resource"
+  RESOURCE_FLAGS+=(--resource "$resource")
 done <<< "$RESOURCES"
 
 # Execute sync
 if [ "$DRY_RUN" = "--dry-run" ]; then
   echo ""
   echo "Dry run mode - showing what would change:"
-  eval argocd app sync "$APP_NAME" $RESOURCE_FLAGS --dry-run
+  argocd app sync "$APP_NAME" "${RESOURCE_FLAGS[@]}" --dry-run
 else
   echo ""
   echo "Syncing $COUNT $TARGET_KIND resources..."
-  eval argocd app sync "$APP_NAME" $RESOURCE_FLAGS
+  argocd app sync "$APP_NAME" "${RESOURCE_FLAGS[@]}"
   echo "Sync complete."
 fi
 ```
@@ -139,13 +142,9 @@ set -euo pipefail
 APP_NAME="${1:?Usage: $0 APP_NAME \"Kind1,Kind2\"}"
 TARGET_KINDS="${2:?Usage: $0 APP_NAME \"Kind1,Kind2\"}"
 
-# Convert comma-separated kinds to jq filter
-JQ_FILTER=$(echo "$TARGET_KINDS" | tr ',' '\n' | \
-  sed 's/.*/.kind == "&"/' | paste -sd '|' -)
-
-RESOURCES=$(argocd app resources "$APP_NAME" --output json | \
-  jq -r --argjson dummy 0 \
-  ".[] | select($JQ_FILTER) | \"\(.group):\(.kind):\(.name)\"")
+RESOURCES=$(argocd app get "$APP_NAME" -o json | \
+  jq -r --arg kinds "$TARGET_KINDS" \
+  '.status.resources[] | select(($kinds | split(",")) | index(.kind)) | "\(.group // ""):\(.kind):\((if (.namespace // "") != "" then "\(.namespace)/" else "" end)\(.name))"')
 
 if [ -z "$RESOURCES" ]; then
   echo "No matching resources found"
@@ -155,12 +154,12 @@ fi
 echo "Resources to sync:"
 echo "$RESOURCES"
 
-RESOURCE_FLAGS=""
+RESOURCE_FLAGS=()
 while IFS= read -r resource; do
-  RESOURCE_FLAGS="$RESOURCE_FLAGS --resource $resource"
+  RESOURCE_FLAGS+=(--resource "$resource")
 done <<< "$RESOURCES"
 
-eval argocd app sync "$APP_NAME" $RESOURCE_FLAGS
+argocd app sync "$APP_NAME" "${RESOURCE_FLAGS[@]}"
 ```
 
 Usage:
@@ -182,10 +181,11 @@ Combine kind filtering with sync status filtering for even more precision.
 
 ```bash
 # Sync only out-of-sync Deployments
-argocd app resources my-app --output json | \
-  jq -r '.[] | select(.kind == "Deployment" and .status == "OutOfSync") | "\(.group):\(.kind):\(.name)"' | \
-  xargs -I{} echo "--resource {}" | \
-  xargs argocd app sync my-app
+argocd app get my-app -o json | \
+  jq -r '.status.resources[] | select(.kind == "Deployment" and .status == "OutOfSync") | "\(.group // ""):\(.kind):\((if (.namespace // "") != "" then "\(.namespace)/" else "" end)\(.name))"' | \
+  while IFS= read -r resource; do
+    argocd app sync my-app --resource "$resource"
+  done
 ```
 
 This is useful after a batch of configuration changes where multiple Deployments are out of sync but you want to roll them out one kind at a time.
@@ -274,7 +274,7 @@ This pipeline syncs configuration first, then workloads, then networking, in sep
 
 ## Limitations
 
-Kind-based sync does not respect sync waves. When you manually select resources to sync, ArgoCD applies them without wave ordering. If your application relies on sync waves for dependency ordering, consider whether kind-based sync might break that ordering.
+Kind-based sync only applies the resources you select. Sync waves can still order selected resources, but resources from other kinds are skipped even if they are in earlier waves. If your application relies on sync waves for dependency ordering, consider whether kind-based sync might break that ordering.
 
 Kind-based sync also does not execute hooks. PreSync and PostSync hooks only run during full application syncs. If your deployment relies on hooks for database migrations or smoke tests, use a full sync instead.
 
