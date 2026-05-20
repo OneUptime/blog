@@ -44,6 +44,8 @@ kubectl create secret generic gitlab-token -n argocd \
 
 For self-hosted GitLab instances, you will also need to specify the API URL.
 
+This token is used for GitLab API discovery. If the generated Applications point to private repositories, configure matching ArgoCD repository credentials or credential templates separately so ArgoCD can clone them.
+
 ## Basic GitLab SCM Provider Generator
 
 Discover all projects within a GitLab group and deploy them.
@@ -150,18 +152,18 @@ generators:
         key: token
       includeSubgroups: true
     filters:
-    # Only projects with the 'kubernetes' topic
+    # Only projects with the 'kubernetes' topic and exclude infrastructure repos
     - labelMatch: "kubernetes"
-    # Exclude infrastructure repos
-    - repositoryMatch: "^(?!infra-).*"
+      repositoryMatch: "^(?!infra-).*"
 ```
 
-Add topics to your GitLab projects.
+Add topics to your GitLab projects with a token that has write API access.
 
 ```bash
 # Using GitLab API to add topics to a project
 curl --request PUT \
   --header "PRIVATE-TOKEN: glpat-your-token" \
+  --header "Content-Type: application/json" \
   "https://gitlab.com/api/v4/projects/12345" \
   --data '{"topics": ["kubernetes", "production", "microservice"]}'
 ```
@@ -197,7 +199,7 @@ generators:
       # Scan all subgroups
       includeSubgroups: true
     filters:
-    # Include only backend and frontend services
+    # Include projects that contain deployment manifests
     - repositoryMatch: ".*"
       pathsExist:
       - deploy/kustomization.yaml
@@ -221,6 +223,8 @@ generators:
       pathsExist:
       # Only repos with a deploy directory
       - deploy/kustomization.yaml
+    - repositoryMatch: ".*"
+      pathsExist:
       # OR repos with Helm charts
       - charts/Chart.yaml
 ```
@@ -245,6 +249,7 @@ spec:
             tokenRef:
               secretName: gitlab-token
               key: token
+          requeueAfterSeconds: 1800
           filters:
           - labelMatch: "production"
             pathsExist:
@@ -278,16 +283,24 @@ curl --head --header "PRIVATE-TOKEN: glpat-your-token" \
 # Look for: RateLimit-Remaining header
 ```
 
-Adjust the reconciliation interval to reduce API pressure.
+Adjust the SCM Provider generator requeue interval to reduce API pressure.
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
 metadata:
-  name: argocd-cm
+  name: gitlab-services
   namespace: argocd
-data:
-  timeout.reconciliation: "300"  # 5 minutes instead of default 3
+spec:
+  generators:
+  - scmProvider:
+      gitlab:
+        group: "myorg/services"
+        tokenRef:
+          secretName: gitlab-token
+          key: token
+      # Check GitLab every 60 minutes instead of the default 30
+      requeueAfterSeconds: 3600
 ```
 
 ## Monitoring and Debugging
