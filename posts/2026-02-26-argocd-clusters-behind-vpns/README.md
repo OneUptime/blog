@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, VPN, Networking
 
-Description: Learn how to configure ArgoCD to manage Kubernetes clusters that sit behind VPN tunnels, including WireGuard, OpenVPN, and cloud-native VPN solutions.
+Description: Learn how to configure ArgoCD to manage Kubernetes clusters that sit behind VPN tunnels, including WireGuard, SSH tunnels, and cloud-native VPN solutions.
 
 ---
 
@@ -46,7 +46,7 @@ Use AWS Site-to-Site VPN to connect your management VPC to the remote network:
 
 aws ec2 create-customer-gateway \
   --type ipsec.1 \
-  --public-ip 203.0.113.1 \
+  --ip-address 203.0.113.1 \
   --bgp-asn 65000
 
 # Create a Virtual Private Gateway
@@ -77,11 +77,26 @@ aws ec2 create-route \
 For clusters behind Azure VPN:
 
 ```bash
+# Ensure the management VNET has the required gateway subnet
+az network vnet subnet create \
+  --name GatewaySubnet \
+  --resource-group mgmt-rg \
+  --vnet-name mgmt-vnet \
+  --address-prefixes 10.0.255.0/27
+
+# Create a public IP for the VPN gateway
+az network public-ip create \
+  --name argocd-vpn-gateway-pip \
+  --resource-group mgmt-rg \
+  --allocation-method Static \
+  --sku Standard
+
 # Create VPN Gateway in management VNET
 az network vnet-gateway create \
   --name argocd-vpn-gateway \
   --resource-group mgmt-rg \
   --vnet mgmt-vnet \
+  --public-ip-addresses argocd-vpn-gateway-pip \
   --gateway-type Vpn \
   --vpn-type RouteBased \
   --sku VpnGw2
@@ -127,12 +142,12 @@ stringData:
     PersistentKeepalive = 25
 ```
 
-Then patch the ArgoCD application controller deployment to include a WireGuard sidecar:
+Then patch the ArgoCD application controller StatefulSet to include a WireGuard sidecar:
 
 ```yaml
 # argocd-controller-wireguard-patch.yaml
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -194,7 +209,7 @@ spec:
 Apply the patch:
 
 ```bash
-kubectl patch deployment argocd-application-controller \
+kubectl patch statefulset argocd-application-controller \
   -n argocd \
   --type strategic \
   --patch-file argocd-controller-wireguard-patch.yaml
@@ -210,12 +225,16 @@ kind: Secret
 metadata:
   name: ssh-tunnel-key
   namespace: argocd
-data:
-  id_rsa: <base64-encoded-private-key>
-  known_hosts: <base64-encoded-known-hosts>
+stringData:
+  id_rsa: |
+    -----BEGIN OPENSSH PRIVATE KEY-----
+    ...
+    -----END OPENSSH PRIVATE KEY-----
+  known_hosts: |
+    bastion.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA...
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: argocd-application-controller
   namespace: argocd
@@ -268,7 +287,8 @@ stringData:
     {
       "tlsClientConfig": {
         "caData": "base64-ca-cert",
-        "insecure": false
+        "insecure": false,
+        "serverName": "172.16.1.10"
       },
       "bearerToken": "service-account-token"
     }
@@ -293,7 +313,7 @@ subctl join broker-info.subm \
   --clusterid remote-cluster
 ```
 
-After Submariner is set up, services can be exported and accessed across clusters, and the Kubernetes API servers become reachable through the Submariner tunnel.
+After Submariner is set up, services can be exported and accessed across clusters. Kubernetes API servers are only reachable through the Submariner tunnel if you explicitly expose them through a routable service or endpoint.
 
 ## DNS Configuration for VPN Clusters
 
@@ -356,7 +376,7 @@ spec:
                   CLUSTERS="172.16.1.10:6443 172.16.2.10:6443"
                   for CLUSTER in $CLUSTERS; do
                     if ! curl -sk --connect-timeout 5 \
-                      "https://$CLUSTER/healthz" > /dev/null 2>&1; then
+                      "https://$CLUSTER/readyz" > /dev/null 2>&1; then
                       echo "ALERT: Cannot reach cluster $CLUSTER through VPN"
                       # Send alert to monitoring system
                       curl -X POST https://oneuptime.com/api/alert \
