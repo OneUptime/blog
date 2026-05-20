@@ -319,7 +319,6 @@ kind: ClusterPolicy
 metadata:
   name: require-labels
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: require-team-label
       match:
@@ -330,6 +329,7 @@ spec:
                 - StatefulSet
                 - DaemonSet
       validate:
+        failureAction: Enforce
         message: "The label 'team' is required."
         pattern:
           metadata:
@@ -343,6 +343,7 @@ spec:
                 - Deployment
                 - StatefulSet
       validate:
+        failureAction: Enforce
         message: "The label 'app' is required."
         pattern:
           metadata:
@@ -373,16 +374,17 @@ spec:
           annotations:
             summary: "Application {{ $labels.name }} is out of sync"
             description: "This may indicate manual changes were made"
-        - alert: SelfHealTriggered
+        - alert: FrequentApplicationSyncs
           expr: |
-            increase(argocd_app_reconcile_count{
+            increase(argocd_app_sync_total{
+              phase="Succeeded",
               dest_server!="https://kubernetes.default.svc"
             }[1h]) > 10
           labels:
             severity: info
           annotations:
-            summary: "Frequent self-heal in {{ $labels.name }}"
-            description: "Someone may be making manual changes"
+            summary: "Frequent syncs for {{ $labels.name }}"
+            description: "Recurring syncs may indicate repeated Git changes or drift being corrected"
 ```
 
 ## Verifying Consistency
