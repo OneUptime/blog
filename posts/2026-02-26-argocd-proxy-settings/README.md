@@ -17,8 +17,8 @@ Not all ArgoCD components need proxy configuration. Here is a breakdown:
 | Component | Needs Proxy | Why |
 |-----------|-------------|-----|
 | Repo Server | Yes | Clones Git repos, fetches Helm charts |
-| API Server | Sometimes | OIDC authentication, webhook validation |
-| App Controller | Sometimes | Connecting to remote cluster APIs |
+| API Server | Sometimes | OIDC authentication when configured directly against an external provider |
+| App Controller | Sometimes | Connecting to remote cluster APIs through a configured cluster proxy |
 | Dex | Sometimes | LDAP/OIDC backend connections |
 | Redis | No | Internal communication only |
 
@@ -103,25 +103,30 @@ spec:
 
 ### Application Controller Proxy Configuration
 
-The application controller needs proxy settings when managing remote clusters through a proxy:
+The application controller needs proxy settings when managing remote clusters through a proxy. For per-cluster configuration, use the `proxyUrl` field in the cluster Secret:
 
 ```yaml
-# Patch the application controller with proxy settings
-apiVersion: apps/v1
-kind: Deployment
+# Cluster Secret with proxy settings for the Kubernetes client
+apiVersion: v1
+kind: Secret
 metadata:
-  name: argocd-application-controller
+  name: remote-cluster
   namespace: argocd
-spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-application-controller
-          env:
-            - name: HTTPS_PROXY
-              value: "http://proxy.corp.example.com:3128"
-            - name: NO_PROXY
-              value: "argocd-server,argocd-repo-server,argocd-redis,argocd-dex-server,kubernetes.default.svc,.svc,.cluster.local,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,localhost,127.0.0.1"
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+type: Opaque
+stringData:
+  name: remote-cluster
+  server: https://remote-cluster-api.example.com
+  config: |
+    {
+      "bearerToken": "<authentication token>",
+      "proxyUrl": "http://proxy.corp.example.com:3128",
+      "tlsClientConfig": {
+        "insecure": false,
+        "caData": "<base64 encoded certificate>"
+      }
+    }
 ```
 
 ## Configuring Proxy via Helm Values
@@ -209,32 +214,35 @@ spec:
             name: proxy-ca-cert
 ```
 
-Alternatively, use ArgoCD's built-in TLS certificate management:
+Alternatively, use ArgoCD's built-in TLS certificate management for repository server certificates. The data key must be the repository server's hostname, not the full URL or an arbitrary file name:
 
 ```bash
-# Add the proxy CA certificate to ArgoCD's trust store
+# Add a repository server CA certificate to ArgoCD's trust store
 kubectl create configmap argocd-tls-certs-cm \
-  --from-file=proxy-ca.crt=proxy-ca.crt \
+  --from-file=github.corp.example.com=proxy-ca.crt \
   -n argocd \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Configuring Git to Use the Proxy
 
-ArgoCD's repo server uses Git commands internally. You can configure Git-specific proxy settings through the `argocd-cm` ConfigMap:
+ArgoCD's repo server uses Git commands internally. You can configure repository-specific proxy settings through the repository Secret:
 
 ```yaml
-# Configure Git proxy in ArgoCD ConfigMap
+# Configure Git proxy in an ArgoCD repository Secret
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: github-myorg
   namespace: argocd
-data:
-  # Use a custom Git config for proxy settings
-  repositories: |
-    - url: https://github.com/myorg
-      proxy: http://proxy.corp.example.com:3128
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/myorg
+  proxy: http://proxy.corp.example.com:3128
+  noProxy: ".internal.example.com,company.org,10.123.0.0/16"
 ```
 
 For SSH-based Git access through a proxy, use the `GIT_SSH_COMMAND` environment variable:
@@ -258,6 +266,8 @@ Always include these in `NO_PROXY`:
 - Private IP ranges: `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`
 - `localhost` and `127.0.0.1`
 - Pod and service CIDR ranges specific to your cluster
+
+ArgoCD runs tools such as Git, Helm, and Kustomize through the repo server. If a tool does not honor a wildcard or CIDR entry in `NO_PROXY`, use the full hostname or a syntax that the specific tool supports.
 
 ```bash
 # Find your cluster's pod and service CIDRs
