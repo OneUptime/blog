@@ -139,7 +139,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - ServerSideApply=true  # Required for CRDs
+      - ServerSideApply=true  # Useful for large CRDs
 ```
 
 Apply this:
@@ -168,8 +168,11 @@ spec:
     chart: kube-prometheus-stack
     targetRevision: 56.6.2
     helm:
+      releaseName: monitoring
       values: |
-        # Install operator and CRDs only
+        fullnameOverride: monitoring
+
+        # Install Prometheus, Alertmanager, operator, and CRDs without Grafana
         prometheus:
           enabled: true
         grafana:
@@ -271,31 +274,30 @@ metadata:
 data:
   argocd-dashboard.json: |
     {
-      "dashboard": {
-        "title": "ArgoCD Overview",
-        "panels": [
-          {
-            "title": "Application Sync Status",
-            "type": "stat",
-            "targets": [
-              {
-                "expr": "sum(argocd_app_info{sync_status=\"Synced\"})",
-                "legendFormat": "Synced"
-              }
-            ]
-          },
-          {
-            "title": "Sync Failures (24h)",
-            "type": "stat",
-            "targets": [
-              {
-                "expr": "sum(increase(argocd_app_sync_total{phase=\"Error\"}[24h]))",
-                "legendFormat": "Failed Syncs"
-              }
-            ]
-          }
-        ]
-      }
+      "title": "ArgoCD Overview",
+      "schemaVersion": 39,
+      "panels": [
+        {
+          "title": "Application Sync Status",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(argocd_app_info{sync_status=\"Synced\"})",
+              "legendFormat": "Synced"
+            }
+          ]
+        },
+        {
+          "title": "Sync Failures (24h)",
+          "type": "stat",
+          "targets": [
+            {
+              "expr": "sum(increase(argocd_app_sync_total{phase=\"Error\"}[24h]))",
+              "legendFormat": "Failed Syncs"
+            }
+          ]
+        }
+      ]
     }
 ```
 
@@ -380,7 +382,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: argocd
+      app.kubernetes.io/name: argocd-metrics
   namespaceSelector:
     matchNames:
       - argocd
@@ -390,6 +392,8 @@ spec:
 ```
 
 ## Configuring Alertmanager Routes
+
+If you manage the native Alertmanager Secret separately, set `alertmanager.alertmanagerSpec.useExistingSecret: true` in the `kube-prometheus-stack` values so the chart does not render its own generated config Secret:
 
 ```yaml
 # monitoring/alertmanager-config/manifests/alertmanager-config.yaml
@@ -409,11 +413,11 @@ stringData:
       repeat_interval: 12h
       receiver: 'default'
       routes:
-        - match:
-            severity: critical
+        - matchers:
+            - severity="critical"
           receiver: 'pagerduty'
-        - match:
-            severity: warning
+        - matchers:
+            - severity="warning"
           receiver: 'slack'
     receivers:
       - name: 'default'
