@@ -55,11 +55,10 @@ images:
   # Change only the image name (different registry)
   - name: nginx
     newName: myregistry.example.com/nginx
-    newTag: "1.25-alpine"
 
   # Use a digest instead of a tag for immutable references
   - name: myorg/worker
-    digest: sha256:abc123def456...
+    digest: sha256:3b7c1f4a5e9d8c2b6a0f1e4d9c8b7a6f5e4d3c2b1a09876543210fedcba98765
 ```
 
 The base deployment references the original image name:
@@ -71,7 +70,13 @@ kind: Deployment
 metadata:
   name: backend-api
 spec:
+  selector:
+    matchLabels:
+      app: backend-api
   template:
+    metadata:
+      labels:
+        app: backend-api
     spec:
       containers:
         - name: api
@@ -117,7 +122,7 @@ kustomize:
     - nginx=myregistry.example.com/nginx:1.25-alpine
 
     # Use digest: original-image@sha256:digest
-    - myorg/worker@sha256:abc123def456
+    - myorg/worker@sha256:3b7c1f4a5e9d8c2b6a0f1e4d9c8b7a6f5e4d3c2b1a09876543210fedcba98765
 
     # Change name only: original=new-image
     - myorg/frontend=ghcr.io/myorg/frontend
@@ -143,7 +148,7 @@ argocd app get backend-api -o json | jq '.spec.source.kustomize.images'
 
 ## Using ArgoCD Image Updater
 
-ArgoCD Image Updater automates image tag updates by watching container registries for new tags. It works by modifying the ArgoCD Application's `kustomize.images` field:
+ArgoCD Image Updater automates image tag updates by watching container registries for new tags. By default, it writes updates back through the ArgoCD API, similar to running `argocd app set`; with Git write-back configured, it can instead commit changes to Git:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -160,11 +165,17 @@ metadata:
     # Only consider tags matching this constraint
     argocd-image-updater.argoproj.io/api.allow-tags: "regexp:^\\d+\\.\\d+\\.\\d+$"
 spec:
+  project: default
   source:
+    repoURL: https://github.com/myorg/k8s-configs.git
+    targetRevision: main
     path: apps/backend-api/overlays/production
     kustomize:
       images:
         - myorg/backend-api:2.3.1  # Image Updater updates this
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
 ```
 
 ## Multiple Containers in a Single Pod
