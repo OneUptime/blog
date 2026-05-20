@@ -107,7 +107,7 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - PrunePropagationPolicy=orphan  # Keep PVCs when parent is deleted
+      - PrunePropagationPolicy=orphan  # Orphan dependents when pruning resources
 ```
 
 Additionally, annotate your PVCs to prevent pruning:
@@ -176,10 +176,11 @@ metadata:
   name: fast-ssd
   annotations:
     argocd.argoproj.io/sync-wave: "-5"  # Create before PVCs
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  iopsPerGB: "50"
+  iops: "5000"
+  throughput: "250"
   encrypted: "true"
 reclaimPolicy: Retain  # Keep data even after PVC deletion
 allowVolumeExpansion: true
@@ -243,7 +244,7 @@ kubectl delete pvc postgres-data -n databases
 
 ## Ignoring PVC Status Differences
 
-PVCs accumulate status fields that cause diffs in ArgoCD. Ignore them:
+PVCs can accumulate controller-assigned fields that cause diffs in ArgoCD. Ignore them:
 
 ```yaml
 spec:
@@ -256,6 +257,7 @@ spec:
         - .spec.volumeMode     # Defaulted by Kubernetes
         - .metadata.annotations."pv.kubernetes.io/bind-completed"
         - .metadata.annotations."pv.kubernetes.io/bound-by-controller"
+        - .metadata.annotations."volume.kubernetes.io/storage-provisioner"
         - .metadata.annotations."volume.beta.kubernetes.io/storage-provisioner"
 ```
 
