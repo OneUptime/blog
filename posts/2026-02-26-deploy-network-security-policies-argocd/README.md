@@ -299,7 +299,7 @@ spec:
     - fromEndpoints:
         - matchLabels:
             app: web
-            io.kubernetes.pod.namespace: frontend
+            k8s:io.kubernetes.pod.namespace: frontend
       toPorts:
         - ports:
             - port: "8080"
@@ -324,6 +324,17 @@ spec:
     matchLabels:
       app: api
   egress:
+    - toEndpoints:
+        - matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
     - toFQDNs:
         - matchName: "api.stripe.com"
         - matchName: "api.sendgrid.com"
@@ -369,8 +380,8 @@ nslookup kubernetes.default
 # Test connectivity to a service
 wget -qO- --timeout=2 http://api.backend.svc.cluster.local:8080/health
 
-# Use Cilium's policy checker (if using Cilium)
-cilium policy trace --src-k8s-pod default:test-pod --dst-k8s-pod backend:api-pod --dport 8080
+# Inspect Cilium policy state (if using Cilium)
+kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg policy get
 ```
 
 ## Visualizing Network Policies
