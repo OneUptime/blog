@@ -42,19 +42,19 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.30"
+      version = "~> 6.28"
     }
     helm = {
       source  = "hashicorp/helm"
-      version = "~> 2.12"
+      version = "~> 2.17"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.25"
+      version = "~> 2.38"
     }
     argocd = {
-      source  = "oboukili/argocd"
-      version = "~> 6.0"
+      source  = "argoproj-labs/argocd"
+      version = "~> 7.15"
     }
   }
 
@@ -68,10 +68,15 @@ terraform {
 # EKS cluster
 module "eks" {
   source  = "terraform-aws-modules/eks/aws"
-  version = "~> 19.21"
+  version = "~> 21.0"
 
-  cluster_name    = "${var.environment}-cluster"
-  cluster_version = "1.29"
+  name               = "${var.environment}-cluster"
+  kubernetes_version = "1.35"
+
+  endpoint_public_access = true
+
+  # Allow the Terraform identity to create bootstrap Kubernetes resources
+  enable_cluster_creator_admin_permissions = true
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -147,7 +152,7 @@ resource "helm_release" "argocd" {
   name       = "argocd"
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argo-cd"
-  version    = "5.55.0"
+  version    = "9.5.14"
   namespace  = kubernetes_namespace.argocd.metadata[0].name
 
   values = [yamlencode({
@@ -164,6 +169,12 @@ resource "helm_release" "argocd" {
         "admin.enabled" = true
         # Configure SSO if needed
         "url" = "https://argocd.${var.domain}"
+      }
+
+      secret = {
+        # Generate with: argocd account bcrypt --password "$ARGOCD_ADMIN_PASSWORD"
+        argocdServerAdminPassword      = var.argocd_admin_password_bcrypt
+        argocdServerAdminPasswordMtime = var.argocd_admin_password_mtime
       }
 
       rbac = {
@@ -235,8 +246,20 @@ Now that ArgoCD is running, configure the ArgoCD Terraform provider:
 # Wait for ArgoCD to be ready, then configure the provider
 provider "argocd" {
   port_forward_with_namespace = "argocd"
+  plain_text                  = true
   username                    = "admin"
   password                    = var.argocd_admin_password
+
+  kubernetes {
+    host                   = module.eks.cluster_endpoint
+    cluster_ca_certificate = base64decode(module.eks.cluster_certificate_authority_data)
+
+    exec {
+      api_version = "client.authentication.k8s.io/v1beta1"
+      command     = "aws"
+      args        = ["eks", "get-token", "--cluster-name", module.eks.cluster_name]
+    }
+  }
 
   # Or use the server URL if accessible
   # server_addr = "argocd.${var.domain}:443"
@@ -456,7 +479,19 @@ variable "git_token" {
 variable "argocd_admin_password" {
   type        = string
   sensitive   = true
-  description = "ArgoCD admin password"
+  description = "Plaintext ArgoCD admin password used by the provider during bootstrap"
+}
+
+variable "argocd_admin_password_bcrypt" {
+  type        = string
+  sensitive   = true
+  description = "Bcrypt hash of the ArgoCD admin password for the Helm chart"
+}
+
+variable "argocd_admin_password_mtime" {
+  type        = string
+  description = "Admin password modification time in RFC3339 format"
+  default     = "2026-05-20T00:00:00Z"
 }
 
 # outputs.tf
