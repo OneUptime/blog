@@ -8,7 +8,7 @@ Description: Learn how to bootstrap cert-manager using ArgoCD for automated TLS 
 
 ---
 
-cert-manager is one of the first things you need running in a new Kubernetes cluster. Without it, your ingress controllers serve plain HTTP, your internal services talk unencrypted, and your compliance team starts asking questions. Bootstrapping cert-manager through ArgoCD ensures it is version-controlled, reproducible, and part of your cluster's declarative infrastructure.
+cert-manager is one of the first things you need running in a new Kubernetes cluster. Without it, your ingress controllers and internal services cannot request and renew TLS certificates automatically, and your compliance team starts asking questions. Bootstrapping cert-manager through ArgoCD ensures it is version-controlled, reproducible, and part of your cluster's declarative infrastructure.
 
 This guide walks through setting up cert-manager as part of your ArgoCD cluster bootstrapping process, including handling CRD ordering, configuring ClusterIssuers, and solving the chicken-and-egg problems that come up.
 
@@ -53,12 +53,13 @@ spec:
   source:
     repoURL: https://charts.jetstack.io
     chart: cert-manager
-    targetRevision: v1.14.4
+    targetRevision: v1.20.2
     helm:
       releaseName: cert-manager
       values: |
         # Install CRDs as part of the Helm release
-        installCRDs: true
+        crds:
+          enabled: true
         # Enable Prometheus metrics
         prometheus:
           enabled: true
@@ -112,7 +113,7 @@ The `ServerSideApply=true` sync option is important here. cert-manager CRDs are 
 
 ## Handling CRD Installation Order
 
-cert-manager CRDs must exist before any Certificate, Issuer, or ClusterIssuer resources. The Helm chart handles this when you set `installCRDs: true`, but if you prefer managing CRDs separately for more control, you can split them out.
+cert-manager CRDs must exist before any Certificate, Issuer, or ClusterIssuer resources. The Helm chart handles this when you set `crds.enabled: true`, but if you prefer managing CRDs separately for more control, you can split them out.
 
 ```yaml
 # bootstrap/cert-manager/crds-application.yaml
@@ -128,7 +129,7 @@ spec:
   source:
     repoURL: https://github.com/cert-manager/cert-manager.git
     path: deploy/crds
-    targetRevision: v1.14.4
+    targetRevision: v1.20.2
   destination:
     server: https://kubernetes.default.svc
   syncPolicy:
@@ -137,10 +138,9 @@ spec:
       selfHeal: true
     syncOptions:
       - ServerSideApply=true
-      - Replace=true
 ```
 
-When managing CRDs separately, set `installCRDs: false` in the Helm values. The sync wave of `-5` for CRDs and `-3` for the main chart ensures correct ordering.
+When managing CRDs separately, set `crds.enabled: false` in the Helm values. The sync wave of `-5` for CRDs and `-3` for the main chart ensures correct ordering.
 
 ## Configuring ClusterIssuers
 
@@ -163,7 +163,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ---
 # bootstrap/cert-manager/cluster-issuer-staging.yaml
 apiVersion: cert-manager.io/v1
@@ -181,10 +181,10 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
-These ClusterIssuers use sync wave `1` to guarantee cert-manager is fully running before they are applied. Without this ordering, ArgoCD will try to create the ClusterIssuer before the cert-manager webhook is ready, and the admission will fail.
+These ClusterIssuers use sync wave `1` so ArgoCD applies them after the cert-manager Application. In an app-of-apps setup, restore ArgoCD Application health checks if you want sync waves to wait for the child cert-manager Application to become healthy before applying later waves. Without this ordering, ArgoCD can try to create the ClusterIssuer before the cert-manager webhook is ready, and the admission will fail.
 
 ## Wrapping It in App-of-Apps
 
@@ -231,8 +231,7 @@ bootstrap/
 ArgoCD does not know by default whether cert-manager's ClusterIssuer is actually ready to issue certificates. You can add a custom health check so ArgoCD reports the correct status.
 
 ```lua
--- Add to argocd-cm ConfigMap under resource.customizations.health
--- resource type: cert-manager.io/ClusterIssuer
+-- Add to argocd-cm ConfigMap as resource.customizations.health.cert-manager.io_ClusterIssuer
 hs = {}
 if obj.status ~= nil then
   if obj.status.conditions ~= nil then
@@ -294,7 +293,7 @@ serviceAccount:
 
 ## Ignoring Status Fields in Diff
 
-cert-manager resources frequently update their status fields, which can cause ArgoCD to show them as OutOfSync. Configure ignoreDifferences to prevent noise.
+cert-manager resources frequently update their status fields. If your ArgoCD version or configuration does not already ignore status fields during diffing, configure ignoreDifferences to prevent noise.
 
 ```yaml
 spec:
@@ -325,4 +324,4 @@ Once bootstrapped, monitor cert-manager health through ArgoCD's application dash
 
 For deeper monitoring, integrate with your observability stack. cert-manager exposes Prometheus metrics on port 9402 by default. You can track certificate expiry, issuance latency, and failure rates to catch problems before they affect your services.
 
-Bootstrapping cert-manager with ArgoCD sets the foundation for automated TLS across your entire cluster. Every new ingress, every internal service, every webhook gets valid certificates without manual intervention. And when you need to rebuild or replicate the cluster, cert-manager comes up automatically with the right configuration.
+Bootstrapping cert-manager with ArgoCD sets the foundation for automated TLS across your entire cluster. Every configured ingress, internal service, and webhook can get valid certificates without manual intervention. And when you need to rebuild or replicate the cluster, cert-manager comes up automatically with the right configuration.
