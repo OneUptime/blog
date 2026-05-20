@@ -227,6 +227,14 @@ resource.customizations.health.keda.sh_ScaledObject: |
     hs.message = "ScaledObject initializing"
     return hs
   end
+  -- Check for paused state
+  if obj.metadata.annotations ~= nil then
+    if obj.metadata.annotations["autoscaling.keda.sh/paused"] == "true" or obj.metadata.annotations["autoscaling.keda.sh/paused-replicas"] ~= nil then
+      hs.status = "Suspended"
+      hs.message = "ScaledObject is paused"
+      return hs
+    end
+  end
   if obj.status.conditions ~= nil then
     for i, condition in ipairs(obj.status.conditions) do
       if condition.type == "Ready" then
@@ -242,14 +250,6 @@ resource.customizations.health.keda.sh_ScaledObject: |
         end
         return hs
       end
-    end
-  end
-  -- Check for paused state
-  if obj.metadata.annotations ~= nil then
-    if obj.metadata.annotations["autoscaling.keda.sh/paused"] == "true" then
-      hs.status = "Suspended"
-      hs.message = "ScaledObject is paused"
-      return hs
     end
   end
   hs.status = "Progressing"
@@ -364,7 +364,7 @@ argocd app get my-app -o json | \
   jq '.status.resources[] | select(.kind == "MyResource") | .health'
 
 # Check for Lua errors in controller logs
-kubectl logs -n argocd deployment/argocd-application-controller | \
+kubectl logs -n argocd statefulset/argocd-application-controller | \
   grep -i "error.*lua\|lua.*error" | tail -10
 ```
 
