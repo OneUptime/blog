@@ -24,7 +24,7 @@ Before starting, ensure:
 Create a secure shared secret that GitHub and ArgoCD will use to verify webhook payloads:
 
 ```bash
-# Generate a random 32-character hex secret
+# Generate a random 64-character hex secret
 
 WEBHOOK_SECRET=$(openssl rand -hex 32)
 echo "Save this secret: $WEBHOOK_SECRET"
@@ -46,6 +46,7 @@ kubectl patch secret argocd-secret -n argocd --type merge -p "{
 Or declaratively:
 
 ```yaml
+# Add this key to the existing argocd-secret; do not replace the whole Secret.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -54,7 +55,6 @@ metadata:
 type: Opaque
 stringData:
   webhook.github.secret: "your-generated-secret-here"
-  # Keep existing secrets - do not overwrite them
 ```
 
 ## Step 3: Configure the Webhook in GitHub
@@ -104,7 +104,7 @@ gh api repos/org/repo/hooks -X POST -f "name=web" \
   -f "config[content_type]=json" \
   -f "config[secret]=$WEBHOOK_SECRET" \
   -f "events[]=push" \
-  -f "active=true"
+  -F "active=true"
 
 # Create webhook for an organization
 gh api orgs/my-org/hooks -X POST -f "name=web" \
@@ -112,7 +112,7 @@ gh api orgs/my-org/hooks -X POST -f "name=web" \
   -f "config[content_type]=json" \
   -f "config[secret]=$WEBHOOK_SECRET" \
   -f "events[]=push" \
-  -f "active=true"
+  -F "active=true"
 ```
 
 ## Step 4: Verify the Webhook Works
@@ -127,7 +127,7 @@ kubectl logs -n argocd deployment/argocd-server -f | grep -i "webhook\|received"
 You should see log entries like:
 
 ```text
-level=info msg="Received push event repo: https://github.com/org/repo, revision: abc1234, ref: refs/heads/main"
+level=info msg="Received push event repo: https://github.com/org/repo, revision: main, touchedHead: true"
 ```
 
 Also check the webhook delivery status in GitHub:
@@ -171,8 +171,8 @@ curl -X POST https://argocd.example.com/api/webhook \
 For GitHub Enterprise Server, the webhook configuration is identical but you need to ensure network connectivity between your GitHub Enterprise instance and ArgoCD.
 
 ```yaml
-# If GitHub Enterprise uses a custom CA certificate
-# Add it to ArgoCD's trusted certificates
+# If ArgoCD connects to GitHub Enterprise with a custom CA certificate
+# Add the CA to ArgoCD's trusted certificates
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -246,7 +246,8 @@ metadata:
   name: argocd-webhook
   namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/whitelist-source-range: "140.82.112.0/20,185.199.108.0/22,192.30.252.0/22"
+    # Verify these CIDRs regularly with: curl -s https://api.github.com/meta | jq -r '.hooks | join(",")'
+    nginx.ingress.kubernetes.io/whitelist-source-range: "192.30.252.0/22,185.199.108.0/22,140.82.112.0/20,143.55.64.0/20,2a0a:a440::/29,2606:50c0::/32"
 spec:
   rules:
     - host: argocd.example.com
@@ -283,10 +284,10 @@ kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-server
 
 # Check if the webhook endpoint is accessible
 curl -I https://argocd.example.com/api/webhook
-# Should return 405 Method Not Allowed (because we're using GET, not POST)
+# Should not return 404. A 400 or 405 response means the request reached ArgoCD but was not a valid webhook delivery.
 ```
 
-### Error: 403 Forbidden
+### Error: 400 Bad Request
 
 The webhook secret does not match:
 
@@ -319,8 +320,8 @@ ArgoCD received the webhook but could not match it to an application. Check that
 # Check the repo URL ArgoCD has
 argocd app get my-app -o json | jq '.spec.source.repoURL'
 
-# GitHub sends the URL as clone_url, which typically includes .git
-# Make sure they match or both formats are registered
+# ArgoCD uses the GitHub repository html_url from the webhook payload
+# and matches common URL forms, including an optional .git suffix.
 ```
 
 For comprehensive monitoring of your webhook delivery and ArgoCD sync performance, [OneUptime](https://oneuptime.com) provides end-to-end visibility from Git push to deployment completion.
