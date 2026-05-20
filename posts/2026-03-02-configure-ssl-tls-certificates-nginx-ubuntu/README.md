@@ -114,10 +114,12 @@ ssl_session_cache shared:MozSSL:10m;
 ssl_session_tickets off;
 
 # OCSP Stapling
-ssl_stapling on;
-ssl_stapling_verify on;
-resolver 8.8.8.8 8.8.4.4 valid=300s;
-resolver_timeout 5s;
+# Enable this only for certificates that include an OCSP responder URL.
+# Let's Encrypt certificates issued after May 7, 2025 no longer include one.
+# ssl_stapling on;
+# ssl_stapling_verify on;
+# resolver 8.8.8.8 8.8.4.4 valid=300s;
+# resolver_timeout 5s;
 
 # HSTS: tell browsers to always use HTTPS (31536000 seconds = 1 year)
 # Add 'includeSubDomains' and 'preload' once you're sure everything works
@@ -149,7 +151,7 @@ If you host multiple sites, each gets its own certificate:
 sudo certbot --nginx -d site1.com -d www.site1.com
 sudo certbot --nginx -d site2.com -d www.site2.com
 
-# Or a wildcard certificate (requires DNS challenge)
+# Or a wildcard certificate (requires DNS challenge; this manual method does not renew automatically)
 sudo certbot certonly --manual --preferred-challenges dns -d "*.yourdomain.com"
 ```
 
@@ -218,7 +220,7 @@ sudo systemctl reload nginx
 curl -I https://yourdomain.com
 
 # Check which TLS version and cipher is being used
-openssl s_client -connect yourdomain.com:443 -brief
+openssl s_client -connect yourdomain.com:443 -servername yourdomain.com -brief
 ```
 
 ## Testing SSL Configuration Quality
@@ -228,27 +230,28 @@ openssl s_client -connect yourdomain.com:443 -brief
 openssl s_client -connect yourdomain.com:443 -servername yourdomain.com
 
 # Verify the certificate details
-openssl s_client -connect yourdomain.com:443 </dev/null | openssl x509 -noout -dates -subject -issuer
+openssl s_client -connect yourdomain.com:443 -servername yourdomain.com </dev/null | openssl x509 -noout -dates -subject -issuer
 
 # Test specific TLS protocols
 # TLS 1.2 should work:
-openssl s_client -tls1_2 -connect yourdomain.com:443
+openssl s_client -tls1_2 -connect yourdomain.com:443 -servername yourdomain.com
 
 # TLS 1.0 should fail (if you've disabled it):
-openssl s_client -tls1 -connect yourdomain.com:443
+openssl s_client -tls1 -connect yourdomain.com:443 -servername yourdomain.com
 ```
 
 For a comprehensive external test, use SSL Labs: `https://www.ssllabs.com/ssltest/analyze.html?d=yourdomain.com`
 
 ## Enabling HTTP/2
 
-HTTP/2 provides significant performance improvements over HTTP/1.1 and requires TLS. Add it to your listen directives:
+HTTP/2 provides significant performance improvements over HTTP/1.1 and is commonly used with TLS. Enable it in your HTTPS server block:
 
 ```nginx
 server {
     # Enable HTTP/2
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
     # ... rest of config
 }
 ```
