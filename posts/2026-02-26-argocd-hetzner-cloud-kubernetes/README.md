@@ -8,21 +8,22 @@ Description: Learn how to deploy ArgoCD on Hetzner Cloud Kubernetes for a cost-e
 
 ---
 
-Hetzner Cloud has become the go-to choice for developers and small teams who want powerful infrastructure at a fraction of the cost of major cloud providers. While Hetzner does not offer a managed Kubernetes service like EKS or GKE, you can run Kubernetes on Hetzner using tools like k3s, kubeadm, or the community-maintained Hetzner Cloud Controller Manager. Combined with ArgoCD, this gives you a fully functional GitOps pipeline that costs a fraction of what you would pay elsewhere.
+Hetzner Cloud has become the go-to choice for developers and small teams who want powerful infrastructure at a fraction of the cost of major cloud providers. While Hetzner does not offer a managed Kubernetes service like EKS or GKE, you can run Kubernetes on Hetzner using tools like k3s, kubeadm, or the Hetzner Cloud Controller Manager. Combined with ArgoCD, this gives you a fully functional GitOps pipeline that costs a fraction of what you would pay elsewhere.
 
 This guide covers setting up ArgoCD on Kubernetes running on Hetzner Cloud, integrating with Hetzner's load balancers and volumes, and the practical considerations specific to Hetzner's platform.
 
 ## Why Hetzner Cloud for Kubernetes?
 
-The pricing is the headline. A Hetzner CX31 (2 vCPU, 8GB RAM, 80GB SSD) costs around 7 euros per month. Compare that to equivalent instances on AWS or GCP, and you are looking at 3 to 5 times the cost. For a three-node Kubernetes cluster running ArgoCD, your monthly bill might be 21 euros.
+The pricing is the headline. A Hetzner CX33 (4 vCPU, 8GB RAM, 80GB SSD) costs around 6.50 euros per month in Germany and Finland, excluding VAT and any Primary IPs. Compare that to equivalent instances on AWS or GCP, and you are looking at several times the cost. For a three-node Kubernetes cluster running ArgoCD, your server bill might be around 19.50 euros before load balancers, volumes, and IP addresses.
 
 ## Prerequisites
 
 - A Hetzner Cloud account
-- Three or more servers (CX21 or CX31 recommended)
+- Three or more servers (CX23 or CX33 recommended)
 - Kubernetes installed (k3s, kubeadm, or similar)
 - Hetzner Cloud API token
 - kubectl configured with your cluster
+- Helm installed locally
 
 ## Step 1: Bootstrap Kubernetes on Hetzner
 
@@ -59,7 +60,11 @@ kubectl create secret generic hcloud \
   --from-literal=network=<NETWORK_ID>
 
 # Deploy the cloud controller manager
-kubectl apply -f https://github.com/hetznercloud/hcloud-cloud-controller-manager/releases/latest/download/ccm-networks.yaml
+helm repo add hcloud https://charts.hetzner.cloud
+helm repo update hcloud
+helm install hccm hcloud/hcloud-cloud-controller-manager \
+  -n kube-system \
+  --set networking.enabled=true
 ```
 
 ### Install the Hetzner CSI Driver
@@ -68,7 +73,7 @@ For persistent volumes backed by Hetzner Cloud Volumes.
 
 ```bash
 # Deploy the CSI driver
-kubectl apply -f https://raw.githubusercontent.com/hetznercloud/csi-driver/main/deploy/kubernetes/hcloud-csi.yml
+helm install hcloud-csi hcloud/hcloud-csi -n kube-system
 ```
 
 ## Step 2: Install ArgoCD
@@ -142,6 +147,8 @@ spec:
               load-balancer.hetzner.cloud/use-private-ip: "true"
               load-balancer.hetzner.cloud/uses-proxyprotocol: "true"
             type: LoadBalancer
+          extraArgs:
+            enable-ssl-passthrough: ""
           config:
             use-proxy-protocol: "true"
   destination:
@@ -184,7 +191,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
 ## Step 4: Configure Persistent Storage
@@ -246,7 +253,7 @@ spec:
   source:
     repoURL: https://helm.goharbor.io
     chart: harbor
-    targetRevision: 1.14.x
+    targetRevision: 1.19.x
     helm:
       values: |
         expose:
@@ -290,10 +297,10 @@ Here is a realistic cost comparison for a small ArgoCD setup.
 | Component | Hetzner | AWS (EKS) | GCP (GKE) |
 |-----------|---------|-----------|-----------|
 | Control plane | Free (self-managed) | ~$73/month | ~$73/month |
-| 3 worker nodes (4 vCPU, 8GB) | ~$21/month | ~$150/month | ~$130/month |
-| Load balancer | ~$6/month | ~$18/month | ~$18/month |
-| 50GB storage | ~$2/month | ~$5/month | ~$4/month |
-| **Total** | **~$29/month** | **~$246/month** | **~$225/month** |
+| 3 worker nodes (4 vCPU, 8GB) | ~€19.50/month | ~$150/month | ~$130/month |
+| Load balancer | ~€7.50/month | ~$18/month | ~$18/month |
+| 50GB storage | ~€3/month | ~$5/month | ~$4/month |
+| **Total** | **~€30/month** | **~$246/month** | **~$225/month** |
 
 That is roughly an 8x cost difference for similar resources.
 
@@ -301,13 +308,15 @@ That is roughly an 8x cost difference for similar resources.
 
 ### Server Locations
 
-Hetzner has data centers in:
+Hetzner Cloud is available in:
 - Falkenstein (fsn1) - Germany
 - Nuremberg (nbg1) - Germany
 - Helsinki (hel1) - Finland
 - Ashburn (ash) - USA
+- Hillsboro (hil) - USA
+- Singapore (sin) - Singapore
 
-Choose the location closest to your users and keep all servers in the same location for the private network.
+Choose the location closest to your users and keep all servers in the same network zone for the private network.
 
 ### Private Networking
 
@@ -352,7 +361,7 @@ hcloud firewall add-rule k8s-firewall --direction in --protocol tcp \
 If load balancers are not being created, check the CCM logs.
 
 ```bash
-kubectl logs -n kube-system -l app=hcloud-cloud-controller-manager
+kubectl logs -n kube-system -l app.kubernetes.io/name=hcloud-cloud-controller-manager
 ```
 
 ### Volume Mount Failures
@@ -365,12 +374,11 @@ hcloud volume list
 
 ### Node Connectivity Issues
 
-Make sure all nodes are on the same private network and the firewall allows inter-node traffic.
+Make sure all nodes are on the same private network and that host-level firewalls allow inter-node traffic. Hetzner Cloud Firewalls do not filter traffic inside private Cloud Networks.
 
 ```bash
-# Allow all traffic within the private network
-hcloud firewall add-rule k8s-firewall --direction in --protocol tcp \
-  --port any --source-ips 10.0.0.0/8
+# Example host-level rules for a private network interface
+ufw allow in on enp7s0 from 10.0.0.0/8
 ```
 
 ## Conclusion
