@@ -8,7 +8,7 @@ Description: Step-by-step guide to setting up VNC server on Ubuntu for remote gr
 
 ---
 
-VNC (Virtual Network Computing) lets you access a graphical desktop session on a remote Ubuntu machine as if you were sitting in front of it. Unlike SSH, which gives you a command line, VNC mirrors the full desktop including applications, windows, and GUI tools. This is useful for remote administration of machines that require graphical applications or for accessing your work desktop from home.
+VNC (Virtual Network Computing) lets you access a graphical desktop session on a remote Ubuntu machine as if you were sitting in front of it. Unlike SSH, which gives you a command line, VNC provides or shares a desktop including applications, windows, and GUI tools. This is useful for remote administration of machines that require graphical applications or for accessing your work desktop from home.
 
 ## Choosing a VNC Server
 
@@ -17,7 +17,7 @@ Ubuntu has several VNC server options:
 - **TigerVNC**: Fast, well-maintained, recommended for new setups
 - **TightVNC**: Older but still functional, good for low-bandwidth connections
 - **x11vnc**: Shares an existing X session (useful for accessing a running desktop)
-- **Vino**: GNOME's built-in VNC server (for sharing a live session)
+- **GNOME Remote Desktop**: GNOME's built-in remote desktop service for sharing a live session
 
 This guide covers TigerVNC for standalone virtual desktops and x11vnc for sharing a live session.
 
@@ -31,7 +31,7 @@ sudo apt install -y tigervnc-standalone-server tigervnc-common
 
 # Install a desktop environment if not already present
 # For XFCE (lightweight, recommended for VNC)
-sudo apt install -y xfce4 xfce4-goodies
+sudo apt install -y xfce4 xfce4-goodies dbus-x11
 
 # Or MATE
 sudo apt install -y mate-desktop-environment
@@ -119,8 +119,8 @@ vncserver -list
 # Kill a VNC session
 vncserver -kill :1
 
-# Kill all VNC sessions
-vncserver -killall
+# Kill all VNC sessions for your user
+vncserver -kill :*
 ```
 
 ## Running VNC as a Systemd Service
@@ -138,7 +138,6 @@ After=syslog.target network.target
 
 [Service]
 Type=forking
-User=%u
 WorkingDirectory=%h
 
 # Clean up lockfiles if VNC was not cleanly stopped
@@ -203,12 +202,12 @@ x11vnc is different from TigerVNC - it shares the currently running X display ra
 sudo apt install -y x11vnc
 
 # Set a password
-x11vnc -storepasswd /etc/x11vnc.pass
+sudo x11vnc -storepasswd /etc/x11vnc.pass
 
 # Start x11vnc sharing the current display
 x11vnc -display :0 \
   -auth guess \
-  -passwd yourpassword \
+  -rfbauth /etc/x11vnc.pass \
   -rfbport 5900 \
   -loop \
   -noxdamage
@@ -226,7 +225,7 @@ After=multi-user.target network.target
 Type=simple
 ExecStart=/usr/bin/x11vnc \
     -display :0 \
-    -auth /run/user/1000/gdm/Xauthority \
+    -auth guess \
     -rfbauth /etc/x11vnc.pass \
     -rfbport 5900 \
     -loop \
@@ -265,13 +264,13 @@ sudo ufw status
 sudo apt install -y tigervnc-viewer
 
 # Connect directly (insecure, use only on trusted networks)
-vncviewer server-ip:5901
+vncviewer server-ip::5901
 
 # Connect through SSH tunnel (recommended)
 # First establish tunnel:
 ssh -L 5901:localhost:5901 -N user@server-ip &
 # Then connect:
-vncviewer localhost:5901
+vncviewer localhost::5901
 
 # Linux - using Remmina (GUI application)
 sudo apt install -y remmina remmina-plugin-vnc
@@ -283,12 +282,11 @@ sudo apt install -y remmina remmina-plugin-vnc
 VNC can feel sluggish on slow connections. Tune for performance:
 
 ```bash
-# Use quality settings for slow connections
+# Use lower resolution and color depth for slow connections
+# 16-bit color uses less bandwidth than 24-bit
 vncserver :1 \
   -geometry 1280x720 \
-  -depth 16 \           # 16-bit color uses less bandwidth than 24-bit
-  -CompressLevel 6 \    # Compression level 0-9
-  -QualityLevel 6       # JPEG quality 0-9
+  -depth 16
 
 # Disable compositing in XFCE for faster rendering
 # XFCE > Settings > Window Manager Tweaks > Compositor tab
@@ -297,8 +295,9 @@ vncserver :1 \
 # Or disable via command line
 xfconf-query -c xfwm4 -p /general/use_compositing -s false
 
-# Use TigerVNC's encoding options from client
-vncviewer -PreferredEncoding Tight -QualityLevel 7 localhost:5901
+# Use TigerVNC's encoding options from the client
+# Compression and JPEG quality levels range from 0-9
+vncviewer -PreferredEncoding Tight -CompressLevel 6 -QualityLevel 7 localhost::5901
 ```
 
 ## Troubleshooting
