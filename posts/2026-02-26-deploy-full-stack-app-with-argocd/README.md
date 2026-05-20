@@ -46,7 +46,6 @@ fullstack-app/
     database/
       statefulset.yaml
       service.yaml
-      pvc.yaml
     redis/
       deployment.yaml
       service.yaml
@@ -143,7 +142,7 @@ metadata:
   name: postgres
   namespace: fullstack-app
 spec:
-  type: ClusterIP
+  clusterIP: None
   ports:
     - port: 5432
       targetPort: 5432
@@ -184,6 +183,22 @@ spec:
               memory: 256Mi
 ```
 
+```yaml
+# base/redis/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: fullstack-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 6379
+      targetPort: 6379
+  selector:
+    app: redis
+```
+
 ### Backend API
 
 ```yaml
@@ -212,7 +227,7 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: backend-config
+                  name: backend-secrets
                   key: database-url
             - name: REDIS_URL
               value: "redis://redis:6379"
@@ -248,6 +263,22 @@ data:
   log-level: "info"
 ```
 
+```yaml
+# base/backend/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: fullstack-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+  selector:
+    app: backend
+```
+
 ### Frontend
 
 ```yaml
@@ -281,6 +312,22 @@ spec:
               memory: 256Mi
 ```
 
+```yaml
+# base/frontend/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: fullstack-app
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 80
+  selector:
+    app: frontend
+```
+
 ### Ingress
 
 ```yaml
@@ -290,8 +337,6 @@ kind: Ingress
 metadata:
   name: fullstack-app
   namespace: fullstack-app
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: nginx
   rules:
@@ -442,7 +487,7 @@ kubectl apply -f argocd-app.yaml
 
 ## Step 5: Managing Secrets
 
-For secrets like database credentials, use Sealed Secrets or External Secrets Operator. Never commit plain Kubernetes Secrets to Git.
+For secrets like database credentials and backend connection strings, use Sealed Secrets or External Secrets Operator. Never commit plain Kubernetes Secrets to Git. The manifests above expect a `postgres-credentials` secret with `username` and `password` keys, and a `backend-secrets` secret with a `database-url` key.
 
 ```bash
 # Using Sealed Secrets
