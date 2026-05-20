@@ -88,7 +88,7 @@ Webex supports Markdown in messages:
         body: |
           {
             "roomId": "$webex-room-id",
-            "markdown": "### Sync Failed\n\n**Application:** {{ .app.metadata.name }}\n**Project:** {{ .app.spec.project }}\n**Revision:** `{{ .app.status.sync.revision | trunc 7 }}`\n\n**Error:**\n```\n{{ .app.status.operationState.message }}\n```\n\n[Investigate in ArgoCD](https://argocd.example.com/applications/{{ .app.metadata.name }})"
+            "markdown": "### Sync Failed\n\n**Application:** {{ .app.metadata.name }}\n**Project:** {{ .app.spec.project }}\n**Revision:** `{{ .app.status.sync.revision | trunc 7 }}`\n\n**Error:**\n```\n{{ .app.status.operationState.message | js }}\n```\n\n[Investigate in ArgoCD](https://argocd.example.com/applications/{{ .app.metadata.name }})"
           }
 ```
 
@@ -180,7 +180,7 @@ Webex supports Adaptive Cards for richer formatting:
                   },
                   {
                     "type": "TextBlock",
-                    "text": "{{ .app.status.operationState.message }}",
+                    "text": "{{ .app.status.operationState.message | js }}",
                     "wrap": true,
                     "fontType": "Monospace",
                     "size": "Small"
@@ -203,16 +203,16 @@ Webex supports Adaptive Cards for richer formatting:
 
 ```yaml
   trigger.on-deployed-webex: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [webex-deploy-card]
 
   trigger.on-sync-failed-webex: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [webex-failure-card]
 
   trigger.on-health-degraded-webex: |
-    - when: app.status.health.status == 'Degraded'
+    - when: app.status?.operationState != nil and app.status.health.status == 'Degraded'
       send: [webex-sync-failed]
 ```
 
@@ -231,7 +231,7 @@ Default subscriptions:
 ```yaml
   subscriptions: |
     - recipients:
-        - webex:
+        - webex
       triggers:
         - on-deployed-webex
         - on-sync-failed-webex
@@ -250,7 +250,7 @@ To send to different Webex spaces, create templates with different room IDs:
         body: |
           {
             "roomId": "$webex-prod-room-id",
-            "markdown": "**PRODUCTION ALERT:** {{ .app.metadata.name }} sync failed\n\n{{ .app.status.operationState.message }}"
+            "markdown": "**PRODUCTION ALERT:** {{ .app.metadata.name }} sync failed\n\n{{ .app.status.operationState.message | js }}"
           }
 
   template.webex-dev-notify: |
@@ -276,7 +276,7 @@ Mention specific people in Webex messages using their email or person ID:
         body: |
           {
             "roomId": "$webex-room-id",
-            "markdown": "<@personEmail:oncall@example.com> Production deployment failed for **{{ .app.metadata.name }}**. Please investigate.\n\n```\n{{ .app.status.operationState.message }}\n```"
+            "markdown": "<@personEmail:oncall@example.com|oncall> Production deployment failed for **{{ .app.metadata.name }}**. Please investigate.\n\n```\n{{ .app.status.operationState.message | js }}\n```"
           }
 ```
 
@@ -295,7 +295,7 @@ curl -X POST https://webexapis.com/v1/messages \
 # Common errors:
 # "Room not found" - Room ID is wrong or bot is not in the room
 # "Not authorized" - Bot token is invalid or expired
-# "Rate limited" - Too many messages too quickly (Webex rate limit is ~5 msg/sec)
+# "Rate limited" - Too many API requests; honor the Retry-After header before retrying
 ```
 
 For the complete ArgoCD notification setup, see our [notifications from scratch guide](https://oneuptime.com/blog/post/2026-02-26-argocd-notifications-setup-from-scratch/view). For other enterprise messaging platforms, check out our guides on [Microsoft Teams](https://oneuptime.com/blog/post/2026-02-26-argocd-notifications-microsoft-teams/view) and [Slack](https://oneuptime.com/blog/post/2026-02-26-argocd-notifications-slack/view).
