@@ -30,7 +30,7 @@ graph TD
 Your plugin receives these variables automatically:
 
 - `ARGOCD_APP_NAME` - Application name
-- `ARGOCD_APP_NAMESPACE` - Application namespace
+- `ARGOCD_APP_NAMESPACE` - Destination namespace of the application
 - `ARGOCD_APP_REVISION` - Git revision being synced
 - `ARGOCD_APP_SOURCE_PATH` - Path within the Git repo
 - `ARGOCD_APP_SOURCE_REPO_URL` - Repository URL
@@ -38,7 +38,7 @@ Your plugin receives these variables automatically:
 - `KUBE_VERSION` - Destination cluster Kubernetes version
 - `KUBE_API_VERSIONS` - Available API versions
 
-Plus any custom variables prefixed with `ARGOCD_ENV_`.
+Plus any custom Application plugin environment variables, which ArgoCD prefixes with `ARGOCD_ENV_` before the plugin command receives them.
 
 ## Creating a Sidecar Plugin
 
@@ -46,7 +46,7 @@ Modern ArgoCD uses sidecar-based plugins. Here is a complete setup.
 
 ### Step 1: Plugin Definition
 
-Create a ConfigManagementPlugin manifest:
+Create a `plugin.yaml` ConfigManagementPlugin configuration file:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -75,11 +75,7 @@ spec:
 
   # Discover tells ArgoCD when to use this plugin
   discover:
-    find:
-      command:
-        - sh
-        - -c
-        - "test -f plugin-config.yaml && echo true || echo false"
+    fileName: plugin-config.yaml
 ```
 
 ### Step 2: Plugin Script
@@ -99,7 +95,7 @@ def get_env_context():
     """Gather all ArgoCD build environment variables."""
     return {
         'app_name': os.environ.get('ARGOCD_APP_NAME', 'unknown'),
-        'app_namespace': os.environ.get('ARGOCD_APP_NAMESPACE', 'argocd'),
+        'app_namespace': os.environ.get('ARGOCD_APP_NAMESPACE', 'default'),
         'revision': os.environ.get('ARGOCD_APP_REVISION', 'unknown'),
         'source_path': os.environ.get('ARGOCD_APP_SOURCE_PATH', ''),
         'source_repo': os.environ.get('ARGOCD_APP_SOURCE_REPO_URL', ''),
@@ -300,6 +296,8 @@ resources:
 
 Add the plugin as a sidecar to the repo server:
 
+This example assumes you created a ConfigMap named `cmp-plugin-env-aware` whose `plugin.yaml` key contains the plugin configuration from Step 1.
+
 ```yaml
 # argocd-repo-server deployment patch
 apiVersion: apps/v1
@@ -344,12 +342,20 @@ metadata:
   name: backend-api-production
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/config-repo.git
     targetRevision: main
     path: apps/backend-api
     plugin:
-      name: env-aware-generator
+      name: env-aware-generator-v1.0
+      env:
+        - name: CLUSTER_NAME
+          value: production-east
+        - name: REGION
+          value: us-east-1
+        - name: REGISTRY_URL
+          value: 123456789.dkr.ecr.us-east-1.amazonaws.com
   destination:
     server: https://kubernetes.default.svc
     namespace: backend-api
@@ -357,7 +363,34 @@ spec:
 
 ## Passing Custom Environment Variables
 
-Set custom variables on the repo server that your plugin can access:
+Set custom variables in the Application plugin configuration:
+
+```yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend-api-production
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/myorg/config-repo.git
+    targetRevision: main
+    path: apps/backend-api
+    plugin:
+      name: env-aware-generator-v1.0
+      env:
+        - name: CLUSTER_NAME
+          value: production-east
+        - name: REGION
+          value: us-east-1
+        - name: REGISTRY_URL
+          value: 123456789.dkr.ecr.us-east-1.amazonaws.com
+```
+
+ArgoCD prefixes those variables before the plugin command receives them, so they are available in your plugin as `$ARGOCD_ENV_CLUSTER_NAME`, `$ARGOCD_ENV_REGION`, etc.
+
+You can also set system environment variables on the plugin sidecar container if they are shared operational settings for the plugin itself:
 
 ```yaml
 apiVersion: apps/v1
@@ -368,17 +401,15 @@ spec:
   template:
     spec:
       containers:
-        - name: argocd-repo-server
+        - name: env-aware-generator
           env:
-            - name: ARGOCD_ENV_CLUSTER_NAME
-              value: production-east
-            - name: ARGOCD_ENV_REGION
+            - name: LOG_LEVEL
+              value: info
+            - name: DEFAULT_REGION
               value: us-east-1
-            - name: ARGOCD_ENV_REGISTRY_URL
-              value: 123456789.dkr.ecr.us-east-1.amazonaws.com
 ```
 
-These are available in your plugin as `$ARGOCD_ENV_CLUSTER_NAME`, `$ARGOCD_ENV_REGION`, etc.
+These are available in your plugin as `$LOG_LEVEL`, `$DEFAULT_REGION`, etc.
 
 ## Using Kube Version for API Compatibility
 
@@ -388,11 +419,11 @@ The `KUBE_VERSION` and `KUBE_API_VERSIONS` variables let your plugin generate ve
 kube_version = os.environ.get('KUBE_VERSION', '1.29.0')
 api_versions = os.environ.get('KUBE_API_VERSIONS', '').split(',')
 
-# Use the right API version based on cluster capabilities
-if 'autoscaling/v2' in api_versions:
+# Use the current stable API version when the cluster supports it
+if 'autoscaling/v2' in api_versions or 'autoscaling/v2/HorizontalPodAutoscaler' in api_versions:
     hpa_api = 'autoscaling/v2'
 else:
-    hpa_api = 'autoscaling/v2beta2'
+    raise RuntimeError('HorizontalPodAutoscaler autoscaling/v2 is not available on this cluster')
 ```
 
 ## Debugging Plugins with Build Variables
@@ -402,7 +433,7 @@ Test your plugin locally by setting environment variables:
 ```bash
 # Simulate the ArgoCD environment
 export ARGOCD_APP_NAME=backend-api-production
-export ARGOCD_APP_NAMESPACE=argocd
+export ARGOCD_APP_NAMESPACE=backend-api
 export ARGOCD_APP_REVISION=a1b2c3d4e5f6
 export ARGOCD_APP_SOURCE_PATH=apps/backend-api
 export ARGOCD_APP_SOURCE_REPO_URL=https://github.com/myorg/config-repo.git
@@ -415,7 +446,7 @@ cd /path/to/your/app/dir
 python3 generate.py
 ```
 
-Check the repo server logs for plugin output:
+Check the sidecar logs for CMP server errors:
 
 ```bash
 kubectl logs -n argocd deployment/argocd-repo-server -c env-aware-generator -f
@@ -423,4 +454,4 @@ kubectl logs -n argocd deployment/argocd-repo-server -c env-aware-generator -f
 
 ## Summary
 
-Custom Config Management Plugins in ArgoCD have full access to build environment variables, making them the most flexible option for dynamic manifest generation. Use the built-in variables for application context, Git revision tracking, and Kubernetes version compatibility. Add custom variables with the `ARGOCD_ENV_` prefix for environment-specific configuration. This combination lets you build sophisticated manifest generators that produce different output based on which application, environment, and cluster they are targeting - all from a single plugin codebase.
+Custom Config Management Plugins in ArgoCD have full access to build environment variables, making them the most flexible option for dynamic manifest generation. Use the built-in variables for application context, Git revision tracking, and Kubernetes version compatibility. Add custom Application plugin variables for environment-specific configuration; ArgoCD exposes them to the plugin with the `ARGOCD_ENV_` prefix. This combination lets you build sophisticated manifest generators that produce different output based on which application, environment, and cluster they are targeting - all from a single plugin codebase.
