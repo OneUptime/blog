@@ -89,9 +89,9 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
-        - ipBlock:
-            # CoreDNS ClusterIP range
-            cidr: 10.96.0.0/16
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
@@ -170,7 +170,7 @@ spec:
     # Allow HTTPS to specific external APIs
     - to:
         - ipBlock:
-            # Stripe API IPs
+            # Example external API IPs. Replace with provider-published CIDRs.
             cidr: 54.187.174.169/32
         - ipBlock:
             cidr: 54.187.205.235/32
@@ -195,6 +195,7 @@ spec:
     # Allow access to payment processor only
     - to:
         - ipBlock:
+            # Example external API IPs. Replace with provider-published CIDRs.
             cidr: 54.187.174.169/32
         - ipBlock:
             cidr: 54.187.205.235/32
@@ -233,11 +234,7 @@ spec:
         - ipBlock:
             cidr: 0.0.0.0/0
             except:
-              # AWS metadata API
-              - 169.254.169.254/32
-              # GCP metadata API
-              - metadata.google.internal/32
-              # Azure metadata API
+              # AWS, GCP, and Azure metadata API IPv4 endpoint
               - 169.254.169.254/32
 ```
 
@@ -401,9 +398,18 @@ spec:
                 echo "WARNING: DNS egress policy will be created"
               fi
 
-              # Validate all policies
-              kubectl apply --dry-run=server \
-                -f /policies/ 2>&1
+              # Validate a representative policy against the API server schema
+              cat <<'EOF' | kubectl apply --dry-run=server -f -
+              apiVersion: networking.k8s.io/v1
+              kind: NetworkPolicy
+              metadata:
+                name: validate-default-deny-egress
+                namespace: production
+              spec:
+                podSelector: {}
+                policyTypes:
+                  - Egress
+              EOF
               echo "Egress policy validation passed"
       restartPolicy: Never
   backoffLimit: 0
@@ -416,7 +422,10 @@ Track egress policy enforcement:
 ```promql
 # Dropped egress packets (Calico)
 sum(rate(
-  calico_denied_packets_total{direction="egress"}[5m]
+  cnx_policy_rule_packets{
+    action="deny",
+    traffic_direction="egress"
+  }[5m]
 )) by (policy, namespace)
 
 # Cilium egress drops
@@ -425,7 +434,7 @@ sum(rate(
     reason="POLICY_DENIED",
     direction="egress"
   }[5m]
-)) by (namespace)
+))
 ```
 
 Create alerts for unexpected egress blocks:
@@ -442,8 +451,9 @@ spec:
         - alert: HighEgressDropRate
           expr: >
             sum(rate(
-              calico_denied_packets_total{
-                direction="egress"
+              cnx_policy_rule_packets{
+                action="deny",
+                traffic_direction="egress"
               }[5m]
             )) by (namespace) > 100
           for: 5m
