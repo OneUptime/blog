@@ -8,7 +8,7 @@ Description: Learn how to configure ArgoCD to access private GitHub repositories
 
 ---
 
-Deploy keys are SSH keys that grant read-only access to a single GitHub repository. Unlike personal access tokens (which grant access to all of a user's repositories) or GitHub App tokens, deploy keys are scoped to exactly one repository. This makes them the most secure option for connecting ArgoCD to private GitHub repos when you follow the principle of least privilege. This guide walks through the complete setup process.
+Deploy keys are SSH keys that grant access to a single GitHub repository. Unlike classic personal access tokens (which can grant access to all repositories a user can access) or GitHub App tokens, deploy keys are scoped to exactly one repository. This makes them a strong option for connecting ArgoCD to private GitHub repos when you follow the principle of least privilege. This guide walks through the complete setup process.
 
 ## Why Deploy Keys Over Other Methods
 
@@ -16,10 +16,10 @@ ArgoCD supports multiple authentication methods for private repositories: HTTPS 
 
 | Method | Scope | Rotation | Security |
 |--------|-------|----------|----------|
-| Personal Access Token | All user repos | Manual | Low - broad access |
+| Personal Access Token | Selected or all user repos | Manual | Medium - depends on token scope |
 | SSH User Key | All user repos | Manual | Low - broad access |
 | SSH Deploy Key | Single repo | Manual | High - minimal access |
-| GitHub App | Org-configured repos | Automatic | High - scoped access |
+| GitHub App | Org-configured repos | Short-lived tokens; private key manual | High - scoped access |
 
 Deploy keys are ideal when you need access to a specific repository and want to limit the blast radius if the key is compromised.
 
@@ -129,7 +129,7 @@ kubeseal --format yaml < repo-secret.yaml > repo-secret-sealed.yaml
 ### Using External Secrets Operator
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: repo-my-repo
@@ -145,6 +145,7 @@ spec:
       metadata:
         labels:
           argocd.argoproj.io/secret-type: repository
+      engineVersion: v2
       data:
         type: git
         url: git@github.com:org/my-repo.git
@@ -279,9 +280,8 @@ echo "Deploy key configured for $REPO"
 argocd repo list
 argocd repo get git@github.com:org/my-repo.git
 
-# Test SSH connectivity from the repo server
-kubectl exec -n argocd deployment/argocd-repo-server -- \
-  ssh -T -i /tmp/test-key git@github.com 2>&1
+# Force ArgoCD to refresh the repository connection status
+argocd repo get git@github.com:org/my-repo.git --refresh hard
 
 # Common causes:
 # 1. Wrong private key in the ArgoCD secret
@@ -329,4 +329,4 @@ repoURL: git@github.com:org/my-repo.git
 
 ## Summary
 
-Deploy keys are the most secure option for connecting ArgoCD to individual private GitHub repositories. Generate an Ed25519 key pair, add the public key to GitHub as a read-only deploy key, register the private key in ArgoCD, and ensure SSH known hosts are configured. Use Sealed Secrets or External Secrets Operator to manage the private keys in a GitOps-friendly way. For organizations with many repos, consider credential templates with a machine user key as a practical middle ground.
+Deploy keys are a strong option for connecting ArgoCD to individual private GitHub repositories. Generate an Ed25519 key pair, add the public key to GitHub as a read-only deploy key, register the private key in ArgoCD, and ensure SSH known hosts are configured. Use Sealed Secrets or External Secrets Operator to manage the private keys in a GitOps-friendly way. For organizations with many repos, consider credential templates with a machine user key as a practical middle ground.
