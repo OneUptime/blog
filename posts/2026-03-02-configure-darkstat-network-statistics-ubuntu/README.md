@@ -42,19 +42,19 @@ START_DARKSTAT=yes
 INTERFACE="-i eth0"
 
 # Directory to store darkstat's database
-DIR="-d /var/lib/darkstat"
+DIR="/var/lib/darkstat"
 
 # Port for the built-in HTTP server
 PORT="-p 667"
 
 # Bind to localhost only for security
-BINDADDR="-b 127.0.0.1"
+BINDIP="-b 127.0.0.1"
 
 # Local network definition for proper host grouping
 LOCAL="-l 192.168.1.0/24"
 
-# Chroot directory for privilege separation
-CHROOT="--chroot /var/lib/darkstat"
+# Additional command line arguments
+OPTIONS="--syslog"
 ```
 
 Key options explained:
@@ -62,7 +62,7 @@ Key options explained:
 - `-i eth0` - specifies which interface to sniff. Check your interface name with `ip link show`.
 - `-b 127.0.0.1` - binds the web server to localhost, preventing external access. This is important if the server is internet-facing.
 - `-l 192.168.1.0/24` - tells Darkstat which subnet is "local." Traffic to and from hosts in this range gets labeled as local.
-- `--chroot` - runs Darkstat in a chroot jail for additional security.
+- `DIR="/var/lib/darkstat"` - sets the directory used by the Debian/Ubuntu init script for Darkstat's chroot and database files.
 
 ### Finding the Correct Interface Name
 
@@ -73,7 +73,7 @@ On modern Ubuntu systems, interfaces have names like `ens3`, `enp0s3`, or `eno1`
 ip link show
 
 # Or use this to find the default route interface
-ip route get 1.1.1.1 | awk '{print $5; exit}'
+ip route get 1.1.1.1 | awk '{for (i = 1; i <= NF; i++) if ($i == "dev") {print $(i + 1); exit}}'
 ```
 
 Update the `INTERFACE` line in the config file with the correct interface name.
@@ -139,21 +139,21 @@ Clicking on a host reveals protocol-level breakdowns and port statistics, which 
 
 ### Graphs
 
-The Graphs section shows traffic over time using hourly and daily views. The data is stored in the directory specified by `-d`, allowing historical analysis without an external database.
+The Graphs section shows traffic over time using second, minute, hourly, and daily views. The data is stored in the directory specified by `DIR`, allowing historical analysis without an external database.
 
 ### Dump Statistics
 
-You can export raw statistics via the built-in URL:
+You can view the full hosts table via the built-in URL:
 
 ```text
-http://localhost:667/hosts.html?full=1
+http://localhost:667/hosts/?full=yes
 ```
 
-Or pull data in machine-readable form:
+Or fetch the HTML page for a quick script-friendly check:
 
 ```bash
 # Fetch the stats page and parse with a browser or script
-curl -s http://localhost:667/hosts.html | grep -i "bytes"
+curl -s http://localhost:667/hosts/ | grep -i "bytes"
 ```
 
 ## Securing the Web Interface with Nginx Reverse Proxy
@@ -205,7 +205,7 @@ sudo certbot --nginx -d monitor.example.com
 
 ## Persistent Data and Restarts
 
-Darkstat saves its database to the directory specified by `-d`. This means statistics survive daemon restarts. The database file is typically named `darkstat.db` and is updated periodically.
+The Debian/Ubuntu init script tells Darkstat to import and export its database as `darkstat.db` relative to the directory specified by `DIR`. This means statistics survive clean daemon restarts.
 
 To reset all collected statistics:
 
@@ -221,7 +221,7 @@ By default Darkstat runs quietly. To enable more detailed logging during trouble
 
 ```bash
 # In /etc/darkstat/init.cfg
-EXTRA="--verbose"
+OPTIONS="--verbose"
 ```
 
 Then restart the service:
