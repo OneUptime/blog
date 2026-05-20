@@ -28,7 +28,7 @@ Main Process
 - Stable and battle-tested
 - High memory usage (each process has its own memory space)
 - Required for `mod_php` (the old PHP embedding method)
-- Not compatible with HTTP/2
+- Severely limited with HTTP/2; use Worker or Event for production HTTP/2
 - Safe for non-thread-safe PHP extensions
 - Slower under high concurrent load
 
@@ -79,7 +79,7 @@ Main Process
 **Characteristics:**
 - Best performance for high-traffic sites
 - Handles keep-alive connections efficiently
-- Required for HTTP/2
+- Recommended for HTTP/2
 - Thread-safe code required
 - Not compatible with `mod_php`
 - Default on Ubuntu 22.04 and 24.04 when PHP-FPM is used
@@ -178,7 +178,7 @@ sudo nano /etc/apache2/mods-available/mpm_prefork.conf
     # This is the absolute ceiling - no more than this many requests at once
     MaxRequestWorkers       150
 
-    # How long to wait for a client to send the complete request
+    # Hard limit for MaxRequestWorkers in Prefork
     ServerLimit              150
 </IfModule>
 ```
@@ -187,7 +187,7 @@ sudo nano /etc/apache2/mods-available/mpm_prefork.conf
 - `MaxRequestWorkers` is the key setting - it limits concurrent requests
 - Each worker uses memory (typically 30-50MB per process)
 - Rule of thumb: `MaxRequestWorkers` = (Available RAM) / (Size of one Apache process)
-- Check process size: `ps aux | grep apache2 | awk '{print $6}'` (RSS in KB)
+- Check process size: `ps -o rss= -C apache2` (RSS in KB)
 
 ### Worker Configuration
 
@@ -236,14 +236,14 @@ sudo nano /etc/apache2/mods-available/mpm_event.conf
     MinSpareThreads         25
     MaxSpareThreads         75
 
-    # Threads per child process (including listener thread)
+    # Server threads per child process (plus a listener thread)
     ThreadsPerChild         25
 
-    # Maximum concurrent connections
+    # Maximum concurrent active request workers
     MaxRequestWorkers      150
 
     # Maximum child processes
-    ServerLimit              4
+    ServerLimit              6
 
     # Thread limit (must be >= ThreadsPerChild)
     ThreadLimit             64
@@ -268,7 +268,7 @@ sudo nano /etc/apache2/mods-available/mpm_event.conf
 free -m
 
 # Check how much memory each Apache process uses
-ps aux | grep apache2 | awk '{sum+=$6} END {print "Total KB:", sum, "Average KB:", sum/NR}'
+ps -o rss= -C apache2 | awk '{sum+=$1; count++} END {print "Total KB:", sum, "Average KB:", sum/count}'
 
 # Formula for MaxRequestWorkers (Prefork):
 # MaxRequestWorkers = (Total RAM * 0.8) / Average process size in MB
@@ -286,8 +286,8 @@ ps aux | grep apache2 | awk '{sum+=$6} END {print "Total KB:", sum, "Average KB:
 sudo apache2ctl status
 # Look at the Scoreboard section
 
-# Count total requests per second
-sudo awk '{print $7}' /var/log/apache2/access.log | sort | uniq -c | head -5
+# Count requests per second from the access log
+sudo awk '{gsub(/^\[/, "", $4); print $4}' /var/log/apache2/access.log | sort | uniq -c | tail
 
 # Monitor Apache in real time
 watch -n 1 'sudo apache2ctl status | grep "requests/sec"'
@@ -362,4 +362,4 @@ For most modern Ubuntu deployments:
 - **Prefork + mod_php** is for legacy setups that can't migrate to PHP-FPM
 - **Worker MPM** is rarely chosen over Event on modern Apache versions
 
-After switching MPMs, reload the configuration and monitor the server status page to verify worker utilization matches your expectations.
+After switching MPMs, restart Apache and monitor the server status page to verify worker utilization matches your expectations.
