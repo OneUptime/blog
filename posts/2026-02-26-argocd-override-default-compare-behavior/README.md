@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Configuration Management
 
-Description: Learn how to override ArgoCD default resource comparison behavior at the system, project, and application level to handle edge cases in diff calculation and sync determination.
+Description: Learn how to override ArgoCD default resource comparison behavior at the system, application, and resource level to handle edge cases in diff calculation and sync determination.
 
 ---
 
@@ -20,11 +20,22 @@ Before overriding anything, it helps to understand the default behavior. ArgoCD 
 4. Computing a structured diff between the two
 5. Marking resources as Synced or OutOfSync based on whether differences exist
 
-The default normalization removes common server-side fields like `metadata.resourceVersion`, `metadata.uid`, `metadata.creationTimestamp`, and the entire `status` block for built-in resources. Everything else is compared field by field.
+The default normalization removes common server-side fields like `metadata.resourceVersion`, `metadata.uid`, `metadata.creationTimestamp`, and the `status` field. Everything else is compared field by field.
 
 ## Override Level 1: Global System Settings
 
-The broadest override applies to all resources across all applications. Configure these in the `argocd-cm` ConfigMap:
+The broadest override applies to all resources across all applications. Resource customizations live in the `argocd-cm` ConfigMap, while controller parameters such as server-side diff live in `argocd-cmd-params-cm`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Enable server-side diff for all applications
+  controller.diff.server.side: "true"
+```
 
 ```yaml
 apiVersion: v1
@@ -33,9 +44,6 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Enable server-side diff for all applications
-  controller.diff.server.side: "true"
-
   # Ignore aggregated ClusterRole rules
   resource.compareoptions: |
     ignoreAggregatedRoles: true
@@ -56,14 +64,16 @@ Server-side diff delegates the comparison to the Kubernetes API server using dry
 ```yaml
 # Enable globally
 
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
 data:
   controller.diff.server.side: "true"
-
-  # Optional: also include mutation webhook effects in the comparison
-  controller.diff.server.side.mutation: "true"
 ```
 
-With mutation enabled, ArgoCD sends the manifest through admission webhooks during dry-run, so the comparison accounts for webhook modifications. This eliminates most false OutOfSync reports from mutating webhooks.
+After changing this ConfigMap, restart the `argocd-application-controller`. Server-side diff does not include mutating webhook changes by default. To include them for an application, add `IncludeMutationWebhook=true` to that Application's compare-options annotation.
 
 ### Ignoring Aggregated ClusterRoles
 
@@ -158,9 +168,7 @@ metadata:
   name: my-app
   namespace: argocd
   annotations:
-    # Enable server-side diff for this app only
-    argocd.argoproj.io/compare-options: ServerSideDiff=true
-    # Or combine multiple options
+    # Enable server-side diff and include mutation webhook effects for this app
     argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
 spec:
   # ...
@@ -169,11 +177,10 @@ spec:
 Available annotation options:
 - `ServerSideDiff=true` - Use server-side apply for comparison
 - `IncludeMutationWebhook=true` - Include mutation webhook effects in server-side diff
-- `IgnoreExtraneous=true` - Do not track resources that exist in the cluster but not in Git
 
 ## Override Level 4: Resource-Level Annotations
 
-For the most granular control, annotate individual Kubernetes resources within your Git manifests:
+For generated resources that should not affect the application's sync status when they are extraneous, annotate individual Kubernetes resources within your Git manifests:
 
 ```yaml
 apiVersion: apps/v1
@@ -181,15 +188,15 @@ kind: Deployment
 metadata:
   name: my-app
   annotations:
-    # Tell ArgoCD to ignore this resource in comparison
+    # Exclude this extraneous resource from the app's sync status
     argocd.argoproj.io/compare-options: IgnoreExtraneous
 ```
 
-This annotation on the resource itself (not the Application) tells ArgoCD to skip comparison for that specific resource.
+This annotation on the resource itself (not the Application) tells ArgoCD to exclude the resource from the application's overall sync status when it is extraneous. It does not suppress the resource's health status.
 
-## Custom Diff Normalization with Lua
+## Custom Diff Normalization
 
-For complex comparison overrides, ArgoCD supports Lua scripts that normalize resources before comparison:
+For complex comparison overrides, ArgoCD supports resource customizations that normalize resources before comparison:
 
 ```yaml
 apiVersion: v1
@@ -198,13 +205,10 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  resource.customizations: |
-    # Custom normalization for a CRD
-    mygroup.io/MyResource:
-      ignoreDifferences: |
-        jsonPointers:
-          - /status
-          - /metadata/annotations/last-reconciled
+  # Custom normalization for a CRD
+  resource.customizations.ignoreDifferences.mygroup.io_MyResource: |
+    jsonPointers:
+      - /metadata/annotations/last-reconciled
 ```
 
 ## Overriding Compare Behavior in ApplicationSets
@@ -259,7 +263,7 @@ graph TD
     style E fill:#e0ffe0
 ```
 
-Overrides are additive, not replacing. A field ignored at the global level stays ignored even if the per-application configuration does not mention it. Per-application rules add additional ignore rules on top of system-level settings.
+Ignore-difference rules are additive, not replacing. A field ignored at the global level stays ignored even if the per-application configuration does not mention it. Per-application rules add additional ignore rules on top of system-level settings. Compare-options annotations such as `ServerSideDiff=true` and `IgnoreExtraneous` control separate comparison behaviors rather than replacing ignore-difference rules.
 
 ## Testing Override Configurations
 
@@ -288,7 +292,7 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller \
 1. **Forgetting to hard refresh** - ArgoCD caches comparison results. After changing ignore rules, always hard refresh.
 2. **Wrong API group format** - Use `apps` not `apps/v1`. The group does not include the version.
 3. **Overly broad ignores** - Ignoring `/spec` on all Deployments means ArgoCD will never detect real drift in deployment specs.
-4. **Missing CRD status ignores** - Every CRD with a status field needs an explicit ignore rule (unlike built-in resources).
+4. **Changing status compare defaults without checking impact** - ArgoCD ignores resource status fields by default, but `resource.compareoptions.ignoreResourceStatusField` can change this behavior.
 5. **Not testing after config changes** - Always verify with `argocd app diff` after changing comparison overrides.
 
 Mastering comparison overrides is key to running ArgoCD smoothly in production. Start with the most specific override level that solves your problem, and only escalate to broader overrides when the same pattern affects many applications. For per-application configuration details, see [How to Configure Compare Options per Application](https://oneuptime.com/blog/post/2026-02-26-argocd-compare-options-per-application/view).
