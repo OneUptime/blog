@@ -55,7 +55,7 @@ For a Python-based dashboard backend, you might structure this as follows.
 # Backend service that aggregates ArgoCD data for the dashboard
 import requests
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timezone
 
 class ArgoCDClient:
     def __init__(self, url, token):
@@ -164,14 +164,14 @@ histogram_quantile(0.95,
 )
 ```
 
-### Repo Server Manifest Generation Time
+### Repo Server Git Request Time
 
 ```promql
-# Average time to generate manifests per repo
-avg by (repo) (
-  rate(argocd_repo_server_generate_manifest_seconds_sum[5m])
-  /
-  rate(argocd_repo_server_generate_manifest_seconds_count[5m])
+# P95 Git request latency in the repo server
+histogram_quantile(0.95,
+  sum by (le) (
+    rate(argocd_git_request_duration_seconds_bucket[5m])
+  )
 )
 ```
 
@@ -237,7 +237,7 @@ To show a timeline of recent deployments, query the application's operation hist
 ```bash
 # Get the operation history for an application
 curl -s -k "$ARGOCD_URL/api/v1/applications/my-web-app" \
-  -H "$AUTH_HEADER" | jq '[.status.history[] | {
+  -H "$AUTH_HEADER" | jq '[(.status.history // [])[] | {
     revision: .revision[0:7],
     deployedAt: .deployedAt,
     source: .source.path
@@ -251,15 +251,16 @@ def get_deployment_timeline(client, hours=24):
     """Get recent deployments across all applications."""
     apps = client.get_applications()
     deployments = []
+    cutoff = datetime.now(timezone.utc).timestamp() - (hours * 3600)
 
     for app in apps:
         history = app.get('status', {}).get('history', [])
         for entry in history:
             deployed_at = entry.get('deployedAt', '')
-            if deployed_at:
+            if deployed_at and datetime.fromisoformat(deployed_at.replace('Z', '+00:00')).timestamp() >= cutoff:
                 deployments.append({
                     'app': app['metadata']['name'],
-                    'revision': entry.get('revision', '')[:7],
+                    'revision': (entry.get('revision') or '')[:7],
                     'deployed_at': deployed_at,
                     'source': entry.get('source', {}).get('path', ''),
                 })
@@ -292,7 +293,7 @@ def get_environment_comparison(client):
 
         sync = app.get('status', {}).get('sync', {})
         comparison[base_name][env] = {
-            'revision': sync.get('revision', 'unknown')[:7],
+            'revision': (sync.get('revision') or 'unknown')[:7],
             'status': sync.get('status', 'Unknown'),
             'health': app.get('status', {}).get('health', {}).get('status', 'Unknown'),
         }
@@ -312,17 +313,17 @@ This produces output like the following, which you can render as a comparison ta
 }
 ```
 
-## Auto-Refreshing Dashboard with WebSocket
+## Auto-Refreshing Dashboard with the Streaming API
 
 For real-time updates without polling, use ArgoCD's watch endpoint.
 
 ```bash
-# Watch for real-time application changes (Server-Sent Events)
+# Watch for real-time application changes
 curl -s -k -N "$ARGOCD_URL/api/v1/stream/applications?name=my-web-app" \
   -H "$AUTH_HEADER"
 ```
 
-This streams JSON events whenever the application state changes, which is perfect for updating a dashboard in real-time without polling.
+This streams application change events whenever the application state changes, which is perfect for updating a dashboard in real-time without polling.
 
 ## Wrapping Up
 
