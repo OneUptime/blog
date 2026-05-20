@@ -90,17 +90,14 @@ Netplan supports special route types for traffic engineering:
 routes:
   # Blackhole: silently drop traffic to this prefix
   - to: 10.99.0.0/16
-    via: 0.0.0.0
     type: blackhole
 
   # Unreachable: drop traffic and send ICMP unreachable
   - to: 10.88.0.0/16
-    via: 0.0.0.0
     type: unreachable
 
   # Prohibit: drop traffic and send ICMP prohibited
   - to: 10.77.0.0/16
-    via: 0.0.0.0
     type: prohibit
 ```
 
@@ -108,9 +105,9 @@ Blackhole routes are useful for preventing traffic from leaking to the default g
 
 ## Custom Routing Tables
 
-Linux supports up to 255 named routing tables. Additional tables are used with policy-based routing (PBR) to direct different traffic through different paths.
+Linux supports multiple routing tables identified by numeric IDs, with built-in tables such as `local`, `main`, and `default` reserved for system use. Additional tables are used with policy-based routing (PBR) to direct different traffic through different paths.
 
-Route tables are defined by number (1-255) or by name in `/etc/iproute2/rt_tables`:
+Route tables are referenced by number, and iproute2 can map those numbers to names in `/etc/iproute2/rt_tables`. Netplan's `table` field uses numeric IDs:
 
 ```bash
 # View existing named tables
@@ -154,7 +151,6 @@ network:
           via: 192.168.1.1
           table: 100
         - to: 192.168.1.0/24
-          via: 0.0.0.0
           scope: link
           table: 100
       routing-policy:
@@ -172,7 +168,6 @@ network:
           via: 10.10.0.1
           table: 200
         - to: 10.10.0.0/24
-          via: 0.0.0.0
           scope: link
           table: 200
       routing-policy:
@@ -203,8 +198,8 @@ For more advanced scenarios, you can route traffic based on packet marks (set by
 
 ```yaml
 routing-policy:
-  - from: all
-    fwmark: 1234       # only packets with this fwmark
+  - from: 0.0.0.0/0
+    mark: 1234         # only packets with this firewall mark
     table: 100
     priority: 50
 ```
@@ -232,12 +227,12 @@ network:
       routes:
         - to: default
           via: 192.168.1.1
-        # Route VPN-specific subnets through the VPN gateway
+        # Route VPN-specific subnets through a VPN router on the local LAN
         - to: 10.8.0.0/24
-          via: 10.8.0.1      # VPN gateway (after tunnel is up)
+          via: 192.168.1.10
         # Internal corporate networks via VPN
         - to: 172.16.0.0/12
-          via: 10.8.0.1
+          via: 192.168.1.10
 ```
 
 Note that VPN routes are typically added by the VPN client (OpenVPN, WireGuard) dynamically, not through Netplan. Netplan is for persistent routes that survive reboots regardless of VPN state.
