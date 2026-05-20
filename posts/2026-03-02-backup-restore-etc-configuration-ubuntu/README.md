@@ -29,8 +29,7 @@ etckeeper automatically commits changes to `/etc` to a Git repository. Every tim
 sudo apt update
 sudo apt install etckeeper git
 
-# Initialize the Git repository in /etc
-
+# Initialize the Git repository in /etc if your package did not do it automatically
 sudo etckeeper init
 
 # Review what will be committed
@@ -57,7 +56,7 @@ sudo nano /etc/etckeeper/etckeeper.conf
 ```
 
 ```bash
-# VCS to use (git, hg, bzr, darcs)
+# VCS to use (git, hg, bzr/brz, darcs)
 VCS="git"
 
 # Automatically commit before package manager actions
@@ -117,9 +116,11 @@ sudo git -C /etc log -S "listen 443" -- nginx/sites-enabled/
 ```bash
 # Restore a file to its state from 3 commits ago
 sudo git -C /etc checkout HEAD~3 -- nginx/nginx.conf
+sudo etckeeper init
 
 # Restore to a specific date
 sudo git -C /etc checkout "@{2026-02-01}" -- ssh/sshd_config
+sudo etckeeper init
 
 # See what the file looked like before restoring
 sudo git -C /etc show HEAD~3:nginx/nginx.conf
@@ -139,8 +140,9 @@ sudo tar -czf /mnt/backup/etc-$(date +%Y%m%d-%H%M%S).tar.gz /etc
 # Verify the archive
 tar --list --file=/mnt/backup/etc-20260302-020000.tar.gz | head -20
 
-# Create with extended attributes preserved
-sudo tar -czpAXf /mnt/backup/etc-$(date +%Y%m%d).tar.gz /etc
+# Create with ACLs and extended attributes preserved
+sudo tar --create --gzip --preserve-permissions --acls --xattrs \
+  --file=/mnt/backup/etc-$(date +%Y%m%d).tar.gz /etc
 ```
 
 ### Automating /etc Backups
@@ -174,6 +176,8 @@ sudo tar \
     --create \
     --gzip \
     --preserve-permissions \
+    --acls \
+    --xattrs \
     --file="$ARCHIVE" \
     /etc 2>&1 | tee -a "$LOG_FILE"
 
@@ -207,12 +211,16 @@ tar --list --file=/mnt/backup/etc-archives/etc-myserver-20260302.tar.gz | head -
 
 # Restore a specific file
 sudo tar --extract \
+  --acls \
+  --xattrs \
   --file=/mnt/backup/etc-archives/etc-myserver-20260302.tar.gz \
   --directory=/ \
   etc/nginx/nginx.conf
 
 # Restore an entire subdirectory
 sudo tar --extract \
+  --acls \
+  --xattrs \
   --file=/mnt/backup/etc-archives/etc-myserver-20260302.tar.gz \
   --directory=/ \
   etc/nginx/
@@ -220,6 +228,8 @@ sudo tar --extract \
 # Restore all of /etc to a temporary location for review
 mkdir /tmp/etc-restore
 sudo tar --extract \
+  --acls \
+  --xattrs \
   --file=/mnt/backup/etc-archives/etc-myserver-20260302.tar.gz \
   --directory=/tmp/etc-restore/
 
@@ -248,13 +258,13 @@ gpg --decrypt /mnt/backup/etc-20260302.tar.gz.gpg | tar -xzf -
 
 For etckeeper with a remote Git repository, ensure the repository is private. The `/etc/shadow` file contains password hashes, `/etc/ssl` may contain private keys, and `/etc/wpa_supplicant` may contain WiFi passwords.
 
-etckeeper automatically handles file permissions and marks sensitive files in `.gitignore` by default:
+etckeeper records file metadata such as ownership and permissions, but it does not make sensitive files safe to publish. Review `.gitignore` yourself and keep any remote repository private:
 
 ```bash
 # View what etckeeper ignores
 cat /etc/.gitignore
 
-# See what is sensitive (marked in etckeeper config)
+# See ignored, untracked files
 sudo git -C /etc ls-files --others --ignored --exclude-standard
 ```
 
@@ -270,7 +280,8 @@ sudo etckeeper commit "Pre-upgrade snapshot: $(lsb_release -sd)"
 sudo apt upgrade
 
 # See what the upgrade changed in /etc
-sudo git -C /etc diff HEAD
+sudo git -C /etc show --stat HEAD
+sudo git -C /etc diff HEAD~1 HEAD
 sudo git -C /etc log --oneline -5
 ```
 
@@ -287,13 +298,14 @@ sudo tee /root/etc-restore-procedure.txt << 'EOF'
 
 From etckeeper (for individual files):
   sudo git -C /etc checkout <commit-hash> -- <path/to/file>
+  sudo etckeeper init
   sudo systemctl restart <affected-service>
 
 From tar archive (for individual files):
-  sudo tar -xzf /mnt/backup/etc-archives/<archive>.tar.gz -C / etc/<file>
+  sudo tar -xzpf /mnt/backup/etc-archives/<archive>.tar.gz --acls --xattrs -C / etc/<file>
 
 From tar archive (full restore after system reinstall):
-  sudo tar -xzpf /mnt/backup/etc-archives/<archive>.tar.gz -C /
+  sudo tar -xzpf /mnt/backup/etc-archives/<archive>.tar.gz --acls --xattrs -C /
   sudo systemctl daemon-reload
 
 Git repository for off-site backup:
