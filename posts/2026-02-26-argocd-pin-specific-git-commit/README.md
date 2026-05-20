@@ -77,9 +77,9 @@ Before pinning, you need to identify the correct commit. Here are some common ap
 git log main --oneline -5
 # Output:
 # a1b2c3d Fix ingress configuration
-# e4f5g6h Add resource limits
-# i7j8k9l Update configmap values
-# m0n1o2p Initial production config
+# e4f5a6b Add resource limits
+# c7d8e9f Update configmap values
+# d0e1f2a Initial production config
 
 # Get the commit that a tag points to
 git rev-parse v1.5.2
@@ -101,11 +101,11 @@ argocd app history my-app-production
 # Output:
 # ID  DATE                 REVISION
 # 5   2026-02-26 10:00:00  a1b2c3d4 (current - has issues)
-# 4   2026-02-25 15:00:00  x9y8z7w6 (last known good)
-# 3   2026-02-24 12:00:00  p5q4r3s2
+# 4   2026-02-25 15:00:00  b2c3d4e5 (last known good)
+# 3   2026-02-24 12:00:00  c3d4e5f6
 
 # Step 2: Pin to the last known good commit
-argocd app set my-app-production --revision x9y8z7w6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+argocd app set my-app-production --revision b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1
 
 # Step 3: Disable auto-sync to prevent accidental updates
 argocd app set my-app-production --sync-policy none
@@ -135,7 +135,7 @@ metadata:
 spec:
   source:
     repoURL: https://github.com/myorg/my-manifests.git
-    targetRevision: x9y8z7w6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+    targetRevision: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1
     path: k8s/overlays/production
   destination:
     server: https://kubernetes.default.svc
@@ -192,7 +192,7 @@ metadata:
 spec:
   source:
     repoURL: https://github.com/myorg/my-manifests.git
-    targetRevision: x9y8z7w6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4
+    targetRevision: b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1
     path: k8s/overlays/production
   destination:
     server: https://kubernetes.default.svc
