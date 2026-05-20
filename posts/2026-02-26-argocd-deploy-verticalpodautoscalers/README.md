@@ -4,25 +4,27 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, VPA, Autoscaling
 
-Description: Learn how to deploy VerticalPodAutoscalers with ArgoCD to automatically right-size pod resource requests and limits based on actual usage patterns.
+Description: Learn how to deploy VerticalPodAutoscalers with ArgoCD to automatically right-size pod resource requests, and optionally limits, based on actual usage patterns.
 
 ---
 
-VerticalPodAutoscalers (VPAs) automatically adjust CPU and memory requests and limits for containers based on observed usage. While HPAs scale horizontally (more pods), VPAs scale vertically (bigger pods). VPA is particularly useful for workloads where the right resource allocation is hard to guess upfront, or where it changes over time as data grows.
+VerticalPodAutoscalers (VPAs) automatically adjust CPU and memory requests, and optionally limits, for containers based on observed usage. While HPAs scale horizontally (more pods), VPAs scale vertically (bigger pods). VPA is particularly useful for workloads where the right resource allocation is hard to guess upfront, or where it changes over time as data grows.
 
 ## What VPA Does
 
-VPA monitors container resource usage over time and recommends (or applies) optimal resource requests. It operates in three modes:
+VPA monitors container resource usage over time and recommends (or applies) optimal resource requests. It supports these update modes:
 
 - **Off (Recommend only)**: VPA calculates recommendations but does not apply them. You read the recommendations and update your manifests manually.
 - **Initial**: VPA sets resources when pods are created but does not update running pods.
-- **Auto**: VPA evicts and recreates pods with updated resource requests.
+- **Recreate**: VPA evicts and recreates pods with updated resource requests.
+- **InPlaceOrRecreate**: VPA tries to update pod resources in place when the cluster supports it, and falls back to recreation if needed.
+- **Auto**: Deprecated since VPA 1.4.0. It is currently an alias for Recreate.
 
 For GitOps workflows, the "Off" mode is often the best choice because it preserves the Git-as-source-of-truth principle.
 
 ## Installing VPA
 
-VPA is not included in standard Kubernetes distributions. Install it separately:
+VPA is not included in standard Kubernetes distributions. It also requires a metrics source such as Metrics Server. Install it separately:
 
 ```bash
 # Clone the VPA repository
@@ -50,7 +52,7 @@ spec:
   source:
     repoURL: https://charts.fairwinds.com/stable
     chart: vpa
-    targetRevision: 4.4.0
+    targetRevision: 4.11.0
     helm:
       values: |
         recommender:
@@ -139,9 +141,9 @@ containers:
         memory: 512Mi   # Based on VPA upperBound
 ```
 
-## VPA in Auto Mode with ArgoCD
+## VPA in Recreate Mode with ArgoCD
 
-If you want VPA to automatically update pods, you need to tell ArgoCD to ignore resource field differences:
+If you want VPA to automatically update pods, use `Recreate` mode. VPA normally mutates Pod resources through its admission controller and does not modify the Deployment template, so ArgoCD usually does not need to ignore Deployment resource fields for VPA alone. If another mutating webhook or operator also changes the resource fields that ArgoCD manages, tell ArgoCD to ignore those resource field differences:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -171,7 +173,7 @@ spec:
         - .spec.template.spec.containers[].resources
 ```
 
-The VPA in Auto mode:
+The VPA in Recreate mode:
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -184,7 +186,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: myapp
@@ -196,7 +198,7 @@ spec:
           memory: 4Gi
 ```
 
-In Auto mode, VPA evicts pods and recreates them with updated resource values. This means brief disruptions, so always pair with PDBs.
+In Recreate mode, VPA evicts pods and recreates them with updated resource values. This means brief disruptions, so always pair with PDBs.
 
 Resource Policy Configuration
 
@@ -357,7 +359,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
       - containerName: myapp
@@ -411,4 +413,4 @@ spec:
 
 ## Summary
 
-VerticalPodAutoscalers help right-size your pods based on actual usage patterns. For GitOps workflows with ArgoCD, the "Off" recommendation mode is the safest approach - it provides data-driven recommendations that you apply through Git. If you use Auto mode, configure `ignoreDifferences` in ArgoCD to prevent sync conflicts over resource values. Combine VPA recommendations with your existing resource management strategy including LimitRanges, ResourceQuotas, and HPAs for comprehensive resource optimization.
+VerticalPodAutoscalers help right-size your pods based on actual usage patterns. For GitOps workflows with ArgoCD, the "Off" recommendation mode is the safest approach - it provides data-driven recommendations that you apply through Git. If you use Recreate mode, VPA normally updates Pod resources without changing the Deployment template; configure `ignoreDifferences` in ArgoCD only for resource fields that another controller or webhook mutates on resources ArgoCD manages. Combine VPA recommendations with your existing resource management strategy including LimitRanges, ResourceQuotas, and HPAs for comprehensive resource optimization.
