@@ -23,11 +23,24 @@ Using the CLI, create a Subscription resource to install the operator.
 ```yaml
 # openshift-gitops-subscription.yaml
 
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-gitops-operator
+---
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: openshift-gitops-operator
+  namespace: openshift-gitops-operator
+spec:
+  upgradeStrategy: Default
+---
 apiVersion: operators.coreos.com/v1alpha1
 kind: Subscription
 metadata:
   name: openshift-gitops-operator
-  namespace: openshift-operators
+  namespace: openshift-gitops-operator
 spec:
   channel: latest
   installPlanApproval: Automatic
@@ -47,7 +60,7 @@ Wait for the operator to install.
 
 ```bash
 # Watch the operator pod come up
-oc get pods -n openshift-operators -w
+oc get pods -n openshift-gitops-operator -w
 
 # Check that the ArgoCD instance is created in openshift-gitops namespace
 oc get pods -n openshift-gitops
@@ -68,19 +81,21 @@ Open the URL in your browser. You can log in using OpenShift credentials (the op
 
 ```bash
 # Get the admin password
-oc extract secret/openshift-gitops-cluster -n openshift-gitops --to=-
+oc get secret openshift-gitops-cluster -n openshift-gitops \
+  -o jsonpath='{.data.admin\.password}' | base64 -d
+echo
 ```
 
 ### Grant Permissions to Manage Other Namespaces
 
-By default, the operator-created ArgoCD can only manage the `openshift-gitops` namespace. To manage other namespaces, you need to label them.
+To let the operator-created ArgoCD deploy workloads into other namespaces, label each target namespace with the ArgoCD instance namespace.
 
 ```bash
 # Label a namespace for ArgoCD management
 oc label namespace my-app-namespace argocd.argoproj.io/managed-by=openshift-gitops
 ```
 
-Or create a custom ArgoCD instance scoped to specific namespaces.
+Or create a custom ArgoCD instance and label the namespaces that it should manage.
 
 ```yaml
 # custom-argocd.yaml
@@ -93,14 +108,13 @@ spec:
   server:
     route:
       enabled: true
-  sourceNamespaces:
-    - team-app-dev
-    - team-app-staging
-    - team-app-prod
 ```
 
 ```bash
 oc apply -f custom-argocd.yaml
+oc label namespace team-app-dev argocd.argoproj.io/managed-by=team-gitops
+oc label namespace team-app-staging argocd.argoproj.io/managed-by=team-gitops
+oc label namespace team-app-prod argocd.argoproj.io/managed-by=team-gitops
 ```
 
 ## Option 2: Manual Upstream ArgoCD Installation
@@ -121,9 +135,11 @@ OpenShift uses Security Context Constraints (SCCs) that are stricter than defaul
 ```bash
 # Grant the anyuid SCC to ArgoCD service accounts
 oc adm policy add-scc-to-user anyuid -z argocd-application-controller -n argocd
+oc adm policy add-scc-to-user anyuid -z argocd-applicationset-controller -n argocd
 oc adm policy add-scc-to-user anyuid -z argocd-server -n argocd
 oc adm policy add-scc-to-user anyuid -z argocd-repo-server -n argocd
 oc adm policy add-scc-to-user anyuid -z argocd-dex-server -n argocd
+oc adm policy add-scc-to-user anyuid -z argocd-notifications-controller -n argocd
 oc adm policy add-scc-to-user anyuid -z argocd-redis -n argocd
 ```
 
@@ -133,7 +149,8 @@ Apply the standard manifests.
 
 ```bash
 # Install ArgoCD
-oc apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+oc apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
 Wait for pods to start.
@@ -202,9 +219,22 @@ data:
     hs = {}
     if obj.status ~= nil then
       if obj.status.ingress ~= nil then
-        hs.status = "Healthy"
-        hs.message = "Route is admitted"
-        return hs
+        for _, ingress in ipairs(obj.status.ingress) do
+          if ingress.conditions ~= nil then
+            for _, condition in ipairs(ingress.conditions) do
+              if condition.type == "Admitted" and condition.status == "True" then
+                hs.status = "Healthy"
+                hs.message = "Route is admitted"
+                return hs
+              end
+              if condition.type == "Admitted" and condition.status == "False" then
+                hs.status = "Degraded"
+                hs.message = condition.message
+                return hs
+              end
+            end
+          end
+        end
       end
     end
     hs.status = "Progressing"
@@ -268,6 +298,10 @@ secret: your-client-secret-here
 
 ```bash
 oc apply -f oauth-client.yaml
+
+# Store the same client secret for Dex to read from argocd-secret
+oc patch secret argocd-secret -n argocd --type merge \
+  -p '{"stringData":{"dex.openshift.clientSecret":"your-client-secret-here"}}'
 ```
 
 ## Deploy an Application
