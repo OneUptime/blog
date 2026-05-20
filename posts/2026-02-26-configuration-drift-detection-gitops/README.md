@@ -14,7 +14,7 @@ GitOps tools like ArgoCD make drift detection a first-class feature. But underst
 
 ## How ArgoCD Detects Drift
 
-ArgoCD uses a continuous reconciliation loop to detect drift. Every few minutes (configurable, default 3 minutes), the application controller performs the following steps:
+ArgoCD uses a continuous reconciliation loop to detect drift. Every few minutes (configurable, by default 120 seconds plus up to 60 seconds of jitter), the application controller performs the following steps:
 
 ```mermaid
 sequenceDiagram
@@ -149,7 +149,16 @@ spec:
   - 10.96.45.123
 ```
 
-**Fix**: Use server-side diff which understands field ownership:
+**Fix**: Ignore fields owned by the relevant Kubernetes controller, or use server-side diff for defaulting and admission-controller mutations:
+
+```yaml
+spec:
+  ignoreDifferences:
+  - group: "*"
+    kind: "*"
+    managedFieldsManagers:
+    - kube-controller-manager
+```
 
 ```yaml
 apiVersion: v1
@@ -161,7 +170,7 @@ data:
   controller.diff.server.side: "true"
 ```
 
-Server-side diff uses Kubernetes' built-in understanding of which controller owns which fields, eliminating false drift reports from controller-managed fields.
+Server-side diff runs a server-side apply dry run and compares the predicted live state with the actual live state, which can reduce false drift reports caused by defaulting and admission-controller mutations. Restart the `argocd-application-controller` after changing this controller-level setting.
 
 ### 5. Secrets Managed by External Systems
 
@@ -197,7 +206,7 @@ syncPolicy:
     selfHeal: true
 ```
 
-When drift is detected, ArgoCD performs a sync to bring the cluster back to the desired state. This happens within the reconciliation interval (default 3 minutes).
+When drift is detected, ArgoCD performs a sync to bring the cluster back to the desired state. The automatic sync interval is controlled by `timeout.reconciliation`, which defaults to 120 seconds plus up to 60 seconds of jitter. With self-heal enabled, repeat sync attempts use the controller self-heal timeout, which defaults to 5 seconds.
 
 Self-healing is powerful but can be disruptive if not configured carefully:
 
@@ -227,17 +236,17 @@ Monitor drift patterns to understand your environment's health:
 # Applications currently out of sync
 count(argocd_app_info{sync_status="OutOfSync"})
 
-# Drift events over time
-sum(increase(argocd_app_sync_total{reason="drift"}[24h]))
+# Sync operations over time, grouped by result
+sum by (phase) (increase(argocd_app_sync_total[24h]))
 
-# Self-heal corrections
-sum(increase(argocd_app_sync_total{trigger="self-heal"}[24h]))
+# Failed or errored syncs over time
+sum(increase(argocd_app_sync_total{phase=~"Failed|Error"}[24h]))
 ```
 
 A healthy GitOps environment shows:
 - Zero or near-zero OutOfSync applications (excluding those with manual sync policies)
-- Decreasing drift events over time as ignore rules are refined
-- Low self-heal frequency (high frequency indicates something is fighting ArgoCD)
+- Decreasing OutOfSync duration over time as ignore rules are refined
+- Low unexpected sync frequency (high frequency indicates something is fighting ArgoCD)
 
 ## Investigating Drift
 
