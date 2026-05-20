@@ -74,7 +74,6 @@ spec:
 
         # LocalPV Hostpath configuration
         localpv-provisioner:
-          enabled: true
           hostpathClass:
             enabled: true
             isDefaultClass: false
@@ -83,14 +82,10 @@ spec:
         # LVM LocalPV configuration
         lvm-localpv:
           enabled: true
-          storageClass:
-            enabled: true
 
         # ZFS LocalPV configuration
         zfs-localpv:
           enabled: true
-          storageClass:
-            enabled: true
 
         # Mayastor configuration
         mayastor:
@@ -140,14 +135,13 @@ spec:
         engines:
           local:
             lvm:
-              enabled: true
+              enabled: false
             zfs:
               enabled: false
           replicated:
             mayastor:
               enabled: false
         localpv-provisioner:
-          enabled: true
           hostpathClass:
             enabled: true
             isDefaultClass: true
@@ -228,9 +222,8 @@ metadata:
   name: openebs-mayastor
 provisioner: io.openebs.csi-mayastor
 parameters:
-  ioTimeout: "30"
   protocol: nvmf
-  repl_count: "3"
+  repl: "3"
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: Immediate
@@ -343,19 +336,20 @@ data:
     hs = {}
     if obj.status ~= nil then
       local state = obj.status.state or "Unknown"
-      if state == "Online" then
+      local poolStatus = obj.status.pool_status or obj.status.poolStatus or "Unknown"
+      if poolStatus == "Online" then
         hs.status = "Healthy"
         local capacity = obj.status.capacity or 0
         local used = obj.status.used or 0
         hs.message = string.format(
           "Online - %d/%d bytes used", used, capacity
         )
-      elseif state == "Creating" then
+      elseif state == "Creating" or state == "Pending" then
         hs.status = "Progressing"
         hs.message = "DiskPool being created"
       else
         hs.status = "Degraded"
-        hs.message = "DiskPool state: " .. state
+        hs.message = "DiskPool status: " .. poolStatus
       end
     else
       hs.status = "Progressing"
@@ -380,30 +374,30 @@ spec:
       app: openebs
   endpoints:
     - port: metrics
-      interval: 30s
+      interval: 5m
 ```
 
 Key metrics:
 
 ```promql
 # Volume capacity and usage
-openebs_volume_capacity_bytes
-openebs_volume_used_bytes
+kubelet_volume_stats_capacity_bytes
+kubelet_volume_stats_used_bytes
 
-# Volume replica status
-openebs_volume_replica_count
-openebs_volume_healthy_replica_count
+# Replica I/O counters
+replica_num_read_ops
+replica_num_write_ops
 
 # Disk pool health
-openebs_pool_status
-openebs_pool_capacity_bytes
-openebs_pool_used_bytes
+disk_pool_status
+disk_pool_total_size_bytes
+disk_pool_used_size_bytes
 
 # I/O performance
-rate(openebs_read_bytes_total[5m])
-rate(openebs_write_bytes_total[5m])
-rate(openebs_read_iops[5m])
-rate(openebs_write_iops[5m])
+delta(volume_bytes_read[5m]) / 300
+delta(volume_bytes_written[5m]) / 300
+delta(volume_num_read_ops[5m]) / 300
+delta(volume_num_write_ops[5m]) / 300
 ```
 
 ### Alerting
@@ -420,23 +414,21 @@ spec:
       rules:
         - alert: OpenEBSPoolAlmostFull
           expr: >
-            openebs_pool_used_bytes / openebs_pool_capacity_bytes > 0.85
+            disk_pool_used_size_bytes / disk_pool_total_size_bytes > 0.85
           for: 15m
           labels:
             severity: warning
           annotations:
-            summary: "DiskPool {{ $labels.pool }} is almost full"
+            summary: "DiskPool {{ $labels.name }} is almost full"
 
-        - alert: OpenEBSVolumeDegraded
+        - alert: OpenEBSPoolNotOnline
           expr: >
-            openebs_volume_healthy_replica_count
-            < openebs_volume_replica_count
+            disk_pool_status != 1
           for: 10m
           labels:
             severity: warning
           annotations:
-            summary: >
-              Volume {{ $labels.volume }} has degraded replicas
+            summary: "DiskPool {{ $labels.name }} is not online"
 ```
 
 ## Choosing the Right Engine
