@@ -120,7 +120,7 @@ Verify the client secret is stored:
 
 ```bash
 # Check if the secret key exists
-kubectl -n argocd get secret argocd-secret -o jsonpath='{.data}' | python3 -c "import json,sys; data=json.load(sys.stdin); print(list(data.keys()))"
+kubectl -n argocd get secret argocd-secret -o json | python3 -c "import json,sys; data=json.load(sys.stdin); print(list(data.get('data', {}).keys()))"
 ```
 
 You should see keys like `oidc.clientSecret` or `dex.github.clientSecret`.
@@ -192,7 +192,7 @@ If authentication succeeds but authorization fails, decode the JWT token to see 
 argocd account get-user-info
 
 # Or decode a JWT manually
-echo "eyJhbGciOiJSUzI1..." | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+echo "eyJhbGciOiJSUzI1..." | cut -d. -f2 | python3 -c "import base64,sys; s=sys.stdin.read().strip(); print(base64.urlsafe_b64decode(s + '=' * (-len(s) % 4)).decode())" | python3 -m json.tool
 ```
 
 Check for:
@@ -219,15 +219,26 @@ The ArgoCD server does not trust the IdP's TLS certificate:
 # Check the IdP's certificate
 echo | openssl s_client -connect idp.example.com:443 2>/dev/null | openssl x509 -text -noout | grep "Issuer"
 
-# Add the CA to ArgoCD's trust store
-kubectl -n argocd create configmap argocd-tls-certs-cm \
-  --from-file=idp.example.com=/path/to/idp-ca.crt \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-kubectl -n argocd rollout restart deployment argocd-server
+# Add the CA to ArgoCD's OIDC configuration
+kubectl -n argocd edit configmap argocd-cm
 ```
 
-For Dex, you may also need to add the CA to the Dex trust store by mounting it as a volume.
+Add the PEM-encoded root certificate under `rootCA` in `oidc.config`:
+
+```yaml
+data:
+  oidc.config: |
+    name: Your IdP
+    issuer: https://idp.example.com
+    clientID: your-client-id
+    clientSecret: $oidc.clientSecret
+    rootCA: |
+      -----BEGIN CERTIFICATE-----
+      ...
+      -----END CERTIFICATE-----
+```
+
+For Dex OIDC connectors, configure the connector with `caData` or `ca` as supported by Dex, and restart Dex after changing the connector configuration.
 
 ### Check Certificate Chain
 
@@ -363,8 +374,8 @@ echo "8. Recent Errors (Dex Server):"
 kubectl -n argocd logs deploy/argocd-dex-server --tail=100 2>/dev/null | grep -i "error" | tail -5
 
 echo ""
-echo "9. TLS Certificates ConfigMap:"
-kubectl -n argocd get configmap argocd-tls-certs-cm -o yaml 2>/dev/null | head -5 || echo "Not configured"
+echo "9. OIDC TLS Settings:"
+kubectl -n argocd get configmap argocd-cm -o yaml | grep -E "rootCA|caData|oidc.tls.insecure.skip.verify" | head -10 || echo "No OIDC TLS overrides found"
 ```
 
 ## Summary
