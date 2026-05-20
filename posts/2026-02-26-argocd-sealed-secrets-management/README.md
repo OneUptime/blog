@@ -20,10 +20,10 @@ graph LR
     B -->|Git push| C[Git Repository]
     C -->|ArgoCD sync| D[Kubernetes Cluster]
     D -->|Sealed Secrets Controller| E[Decrypted Secret]
-    F[Private Key] -->|Stored only in| D
+    F[Private Key] -->|Stored in cluster Secret| D
 ```
 
-The sealed secrets controller generates an asymmetric key pair. The public key encrypts secrets, and the private key (which never leaves the cluster) decrypts them. Only the controller running in your cluster can decrypt the SealedSecret resources.
+The sealed secrets controller generates asymmetric key pairs. The public key encrypts secrets, and the private key, which is stored in a Kubernetes Secret and should only leave the cluster for a secure backup or restore, decrypts them. Only a controller with access to the corresponding private key can decrypt the SealedSecret resources.
 
 ## Installing Sealed Secrets Controller
 
@@ -40,7 +40,7 @@ spec:
   source:
     repoURL: https://bitnami-labs.github.io/sealed-secrets
     chart: sealed-secrets
-    targetRevision: 2.14.0
+    targetRevision: 2.18.5
     helm:
       values: |
         fullnameOverride: sealed-secrets-controller
@@ -71,7 +71,7 @@ helm install sealed-secrets sealed-secrets/sealed-secrets \
 brew install kubeseal
 
 # Linux
-KUBESEAL_VERSION=0.27.0
+KUBESEAL_VERSION=0.36.6
 wget "https://github.com/bitnami-labs/sealed-secrets/releases/download/v${KUBESEAL_VERSION}/kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz"
 tar -xvzf kubeseal-${KUBESEAL_VERSION}-linux-amd64.tar.gz kubeseal
 sudo install -m 755 kubeseal /usr/local/bin/kubeseal
@@ -263,7 +263,7 @@ kubectl rollout restart deployment sealed-secrets-controller -n kube-system
 
 ## Multi-Cluster Considerations
 
-Each cluster has its own sealed secrets key pair. Secrets encrypted for one cluster cannot be decrypted by another. For multi-cluster setups:
+Each cluster normally has its own sealed secrets key pair. Secrets encrypted for one cluster cannot be decrypted by another unless you intentionally restore or share the same sealing key. For multi-cluster setups:
 
 ```bash
 # Fetch the public key from a specific cluster
@@ -294,7 +294,7 @@ kubectl get secrets -n app
 ### Common Issues
 
 1. **Namespace mismatch**: SealedSecrets are namespace-scoped by default. The namespace in the SealedSecret must match where it is deployed.
-2. **Key rotation**: If the controller's key has been rotated, old SealedSecrets need to be re-encrypted.
+2. **Key rotation**: The controller keeps old sealing keys so existing SealedSecrets can still be decrypted, but you should re-encrypt secrets after intentional key renewal or compromise so they use the current public key.
 3. **Scope**: By default, sealed secrets are strict scope (name and namespace must match). Use `--scope cluster-wide` if you need flexibility.
 
 ## Conclusion
