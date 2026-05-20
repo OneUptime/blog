@@ -42,7 +42,7 @@ kind: Application
 metadata:
   name: my-web-app
   namespace: argocd
-  # Finalizer ensures resources are cleaned up on deletion
+  # Finalizer enables cascading cleanup of managed resources on deletion
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -294,7 +294,7 @@ This is the foundation of the [App-of-Apps pattern](https://oneuptime.com/blog/p
 
 ## Handling Secrets in Declarative Applications
 
-Application manifests may contain repository credentials or other sensitive information. Never store secrets in plain text. Instead:
+Application manifests reference repositories that may require credentials. Never store secrets in plain text in Application manifests. Instead:
 
 ```yaml
 # Reference a repository that is already configured in ArgoCD
@@ -309,16 +309,16 @@ Repository credentials should be managed separately through ArgoCD's repository 
 
 ## Validating Declarative Applications
 
-Before applying, validate your Application manifests:
+Before applying, validate your Application manifests. After an application exists in ArgoCD, you can also preview the generated manifests:
 
 ```bash
-# Dry-run to check for errors
+# Server-side dry run to check the resource against the cluster API
 kubectl apply -f applications/production/web-app.yaml --dry-run=server
 
-# Validate the YAML structure
+# Client-side dry run to catch basic YAML/object errors
 kubectl apply -f applications/production/web-app.yaml --dry-run=client
 
-# Use argocd CLI to preview
+# Use argocd CLI to preview manifests for an existing application
 argocd app manifests my-web-app
 ```
 
@@ -326,7 +326,7 @@ argocd app manifests my-web-app
 
 1. **One Application per file** for clear Git diffs and easy code review
 2. **Use consistent naming** like `{app-name}-{environment}` for Application names
-3. **Always include finalizers** to ensure proper cleanup
+3. **Include finalizers when you want deletion to cascade** to managed resources
 4. **Store Application YAMLs in a dedicated repo** separate from application source code
 5. **Use labels consistently** for filtering and organization
 6. **Review Application changes in PRs** just like any other code change
