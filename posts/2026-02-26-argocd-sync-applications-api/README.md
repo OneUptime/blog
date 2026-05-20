@@ -18,7 +18,7 @@ The endpoint for triggering a sync is:
 POST /api/v1/applications/{name}/sync
 ```
 
-It accepts a JSON body with sync options and returns the sync operation result.
+It accepts a JSON body with sync options and returns the updated Application object, including the sync operation state.
 
 ## Basic Sync
 
@@ -75,10 +75,10 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
 
 ## Sync with Strategy Options
 
-ArgoCD supports two sync strategies - Apply and Hook:
+ArgoCD supports two sync strategies - Hook (the default) and Apply:
 
 ```bash
-# Sync using apply strategy (default kubectl apply)
+# Sync using apply strategy (runs kubectl apply)
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   -X POST "https://argocd.example.com/api/v1/applications/my-app/sync" \
   -H "Content-Type: application/json" \
@@ -91,7 +91,7 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
     }
   }'
 
-# Sync using hook strategy (respects sync hooks)
+# Sync using hook strategy (default; respects sync hooks)
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   -X POST "https://argocd.example.com/api/v1/applications/my-app/sync" \
   -H "Content-Type: application/json" \
@@ -102,7 +102,7 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
     }
   }'
 
-# Force sync (deletes and recreates resources instead of patching)
+# Force apply (deletes the resource only if patching conflicts after retries)
 curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   -X POST "https://argocd.example.com/api/v1/applications/my-app/sync" \
   -H "Content-Type: application/json" \
@@ -236,10 +236,8 @@ while true; do
   # Check for completion
   case "$PHASE" in
     "Succeeded")
-      if [ "$HEALTH" = "Healthy" ]; then
-        echo "Sync completed successfully!"
-        exit 0
-      fi
+      echo "Sync completed successfully! Health: $HEALTH"
+      exit 0
       ;;
     "Failed"|"Error")
       echo "Sync failed!"
