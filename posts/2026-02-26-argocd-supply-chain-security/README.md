@@ -12,21 +12,21 @@ Software supply chain security has become one of the most critical concerns in m
 
 ## What Is Supply Chain Security
 
-Supply chain security ensures that every component in your software delivery pipeline is trusted and verified - from source code to running containers. The SLSA (Supply chain Levels for Software Artifacts) framework defines four levels of maturity:
+Supply chain security ensures that every component in your software delivery pipeline is trusted and verified - from source code to running containers. The current SLSA Build track defines levels from Build L0 through Build L3:
 
 ```mermaid
 graph LR
-    A[SLSA Level 1] -->|Provenance| B[SLSA Level 2]
-    B -->|Hosted Build| C[SLSA Level 3]
-    C -->|Hermetic Build| D[SLSA Level 4]
+    A[Build L0] -->|Provenance exists| B[Build L1]
+    B -->|Hosted build with signed provenance| C[Build L2]
+    C -->|Hardened build platform| D[Build L3]
 
-    A ---|Document build process| A
-    B ---|Signed provenance| B
-    C ---|Build isolation| C
-    D ---|Parameterless build| D
+    A ---|No guarantees| A
+    B ---|Provenance showing how the package was built| B
+    C ---|Authentic provenance from a hosted platform| C
+    D ---|Strong isolation and tamper protection| D
 ```
 
-ArgoCD primarily helps enforce Levels 1 through 3 by verifying provenance, signatures, and attestations before deploying.
+ArgoCD helps enforce controls around provenance, signatures, and attestations before deploying. The SLSA level itself is achieved by the producer workflow and build platform, not by ArgoCD alone.
 
 ## The Supply Chain Security Stack
 
@@ -41,6 +41,8 @@ metadata:
   name: supply-chain-security
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -48,24 +50,24 @@ spec:
             namespace: kyverno
             chart: kyverno
             repoURL: https://kyverno.github.io/kyverno
-            version: 3.1.0
+            version: 3.8.1
           - name: sigstore-policy-controller
             namespace: cosign-system
             chart: policy-controller
             repoURL: https://sigstore.github.io/helm-charts
-            version: 0.6.6
+            version: 0.10.6
   template:
     metadata:
-      name: "security-{{name}}"
+      name: "security-{{.name}}"
     spec:
       project: security
       source:
-        repoURL: "{{repoURL}}"
-        chart: "{{chart}}"
-        targetRevision: "{{version}}"
+        repoURL: "{{.repoURL}}"
+        chart: "{{.chart}}"
+        targetRevision: "{{.version}}"
       destination:
         server: https://kubernetes.default.svc
-        namespace: "{{namespace}}"
+        namespace: "{{.namespace}}"
       syncPolicy:
         automated:
           selfHeal: true
@@ -89,7 +91,6 @@ metadata:
     policies.kyverno.io/title: Verify SLSA Provenance
     policies.kyverno.io/severity: critical
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-provenance
       match:
@@ -102,8 +103,9 @@ spec:
       verifyImages:
         - imageReferences:
             - "registry.example.com/*"
+          failureAction: Enforce
           attestations:
-            - type: https://slsa.dev/provenance/v1
+            - predicateType: https://slsa.dev/provenance/v1
               conditions:
                 - all:
                     # Verify the build was from our GitHub org
@@ -115,13 +117,15 @@ spec:
                     - key: "{{ runDetails.builder.id }}"
                       operator: AnyIn
                       value:
-                        - "https://github.com/your-org/build-pipeline"
+                        - "https://github.com/your-org/*/actions"
                         - "https://tekton.dev/chains/v2"
               attestors:
                 - entries:
                     - keyless:
                         subject: "https://github.com/your-org/*"
                         issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
 ```
 
 ## Generating SLSA Provenance in CI
@@ -155,58 +159,48 @@ jobs:
           docker build -t $IMAGE .
           docker push $IMAGE
           DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $IMAGE)
-          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+          echo "image=$DIGEST" >> $GITHUB_OUTPUT
 
-      - name: Generate SLSA provenance
+      - name: Generate SLSA provenance predicate
         run: |
-          cat > provenance.json <<EOF
+          cat > slsa-provenance-predicate.json <<EOF
           {
-            "_type": "https://in-toto.io/Statement/v1",
-            "subject": [{
-              "name": "registry.example.com/myapp",
-              "digest": {"sha256": "${{ steps.build.outputs.digest }}"}
-            }],
-            "predicateType": "https://slsa.dev/provenance/v1",
-            "predicate": {
-              "buildDefinition": {
-                "buildType": "https://github.com/your-org/build-pipeline",
-                "externalParameters": {
-                  "source": {
-                    "uri": "https://github.com/${{ github.repository }}",
-                    "digest": {"sha1": "${{ github.sha }}"}
-                  }
+            "buildDefinition": {
+              "buildType": "https://github.com/your-org/build-pipeline",
+              "externalParameters": {
+                "source": {
+                  "uri": "https://github.com/${{ github.repository }}",
+                  "digest": {"sha1": "${{ github.sha }}"}
                 }
+              }
+            },
+            "runDetails": {
+              "builder": {
+                "id": "https://github.com/${{ github.repository }}/actions"
               },
-              "runDetails": {
-                "builder": {
-                  "id": "https://github.com/${{ github.repository }}/actions"
-                },
-                "metadata": {
-                  "invocationId": "${{ github.run_id }}",
-                  "startedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-                }
+              "metadata": {
+                "invocationId": "${{ github.run_id }}",
+                "startedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
               }
             }
           }
           EOF
 
       - name: Sign and attest provenance
-        env:
-          COSIGN_EXPERIMENTAL: "1"
         run: |
           # Keyless signing tied to GitHub Actions OIDC
-          cosign sign ${{ steps.build.outputs.digest }}
+          cosign sign ${{ steps.build.outputs.image }}
 
           # Attest provenance
           cosign attest \
-            --predicate provenance.json \
+            --predicate slsa-provenance-predicate.json \
             --type slsaprovenance \
-            ${{ steps.build.outputs.digest }}
+            ${{ steps.build.outputs.image }}
 ```
 
 ## Dependency Verification
 
-Verify that base images and dependencies are also signed and trusted:
+Verify that deployed images come from approved registries and image repositories. Kubernetes admission policies can check the image references in Pod specs; base image lineage should be captured in provenance or SBOM attestations during the build:
 
 ```yaml
 # policies/verify-base-images.yaml
@@ -215,7 +209,6 @@ kind: ClusterPolicy
 metadata:
   name: verify-base-images
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: verify-approved-base-images
       match:
@@ -224,6 +217,7 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Only approved base images are allowed"
         pattern:
           spec:
@@ -233,19 +227,7 @@ spec:
 
 ## Git Commit Signing Verification
 
-ArgoCD can verify that the Git commits it syncs from are signed:
-
-```yaml
-# In argocd-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Enable GPG signature verification for Git repos
-  gpg.enabled: "true"
-```
+ArgoCD can verify that the Git commits it syncs from are signed. First populate the ArgoCD GnuPG keyring:
 
 ```yaml
 # Add GPG keys for trusted developers
@@ -255,7 +237,7 @@ metadata:
   name: argocd-gpg-keys-cm
   namespace: argocd
 data:
-  developer1: |
+  ABCDEF1234567890: |
     -----BEGIN PGP PUBLIC KEY BLOCK-----
     ...
     -----END PGP PUBLIC KEY BLOCK-----
@@ -270,9 +252,16 @@ metadata:
   name: production
   namespace: argocd
 spec:
-  signatureKeys:
-    - keyID: "ABCDEF1234567890"
-    - keyID: "1234567890ABCDEF"
+  sourceIntegrity:
+    git:
+      policies:
+        - repos:
+            - url: "https://github.com/your-org/*"
+          gpg:
+            mode: "head"
+            keys:
+              - "ABCDEF1234567890"
+              - "1234567890ABCDEF"
   sourceRepos:
     - "https://github.com/your-org/*"
   destinations:
@@ -291,7 +280,6 @@ kind: ClusterPolicy
 metadata:
   name: restrict-image-registries
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: only-trusted-registries
       match:
@@ -303,6 +291,7 @@ spec:
                 - production
                 - staging
       validate:
+        failureAction: Enforce
         message: >-
           Images must come from trusted registries.
           Allowed: registry.example.com, gcr.io/distroless
@@ -343,13 +332,17 @@ spec:
 
               # Step 1: Verify image signature
               echo "1. Checking image signature..."
-              cosign verify --key /keys/cosign.pub "$IMAGE"
+              cosign verify \
+                --certificate-identity-regexp "https://github.com/your-org/.+" \
+                --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+                "$IMAGE"
               [ $? -ne 0 ] && echo "FAIL: Image not signed" && exit 1
 
               # Step 2: Verify SLSA provenance attestation
               echo "2. Checking SLSA provenance..."
               cosign verify-attestation \
-                --key /keys/cosign.pub \
+                --certificate-identity-regexp "https://github.com/your-org/.+" \
+                --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
                 --type slsaprovenance \
                 "$IMAGE"
               [ $? -ne 0 ] && echo "FAIL: No provenance attestation" && exit 1
@@ -357,7 +350,8 @@ spec:
               # Step 3: Verify vulnerability scan attestation
               echo "3. Checking vulnerability scan..."
               cosign verify-attestation \
-                --key /keys/cosign.pub \
+                --certificate-identity-regexp "https://github.com/your-org/.+" \
+                --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
                 --type vuln \
                 "$IMAGE"
               [ $? -ne 0 ] && echo "FAIL: No vulnerability scan attestation" && exit 1
@@ -365,20 +359,14 @@ spec:
               # Step 4: Verify SBOM attestation
               echo "4. Checking SBOM..."
               cosign verify-attestation \
-                --key /keys/cosign.pub \
+                --certificate-identity-regexp "https://github.com/your-org/.+" \
+                --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
                 --type spdx \
                 "$IMAGE"
               [ $? -ne 0 ] && echo "WARN: No SBOM attestation (non-blocking)"
 
               echo ""
               echo "=== Supply chain verification PASSED ==="
-          volumeMounts:
-            - name: cosign-key
-              mountPath: /keys
-      volumes:
-        - name: cosign-key
-          secret:
-            secretName: cosign-pub
       restartPolicy: Never
   backoffLimit: 1
 ```
