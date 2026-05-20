@@ -49,9 +49,9 @@ spec:
           env:
             - name: ARGOCD_SERVER_INSECURE
               value: "true"
-            - name: ARGOCD_LOG_LEVEL
+            - name: ARGOCD_SERVER_LOG_LEVEL
               value: "info"
-            - name: ARGOCD_LOG_FORMAT
+            - name: ARGOCD_SERVER_LOGFORMAT
               value: "json"
 ```
 
@@ -69,9 +69,9 @@ spec:
       containers:
         - name: argocd-application-controller
           env:
-            - name: ARGOCD_CONTROLLER_STATUS_PROCESSORS
+            - name: ARGOCD_APPLICATION_CONTROLLER_STATUS_PROCESSORS
               value: "50"
-            - name: ARGOCD_CONTROLLER_OPERATION_PROCESSORS
+            - name: ARGOCD_APPLICATION_CONTROLLER_OPERATION_PROCESSORS
               value: "25"
             - name: ARGOCD_K8S_CLIENT_QPS
               value: "50"
@@ -94,7 +94,7 @@ spec:
         - name: argocd-repo-server
           env:
             - name: ARGOCD_EXEC_TIMEOUT
-              value: "180"
+              value: "180s"
             - name: ARGOCD_GIT_ATTEMPTS_COUNT
               value: "3"
             - name: HELM_CACHE_HOME
@@ -124,7 +124,7 @@ spec:
       containers:
         - name: argocd-notifications-controller
           env:
-            - name: ARGOCD_NOTIFICATIONS_LOG_LEVEL
+            - name: ARGOCD_NOTIFICATIONS_CONTROLLER_LOGLEVEL
               value: "info"
 ```
 
@@ -174,7 +174,7 @@ This approach is cleaner because:
 
 ## Method 3: Helm Values
 
-When installing ArgoCD with the official Helm chart, use the `extraEnv` field:
+When installing ArgoCD with the official Helm chart, use the component environment fields:
 
 ```yaml
 # values.yaml
@@ -185,24 +185,24 @@ global:
     format: json
 
 server:
-  extraEnv:
+  env:
     - name: ARGOCD_SERVER_INSECURE
       value: "true"
     - name: ARGOCD_SERVER_ENABLE_GZIP
       value: "true"
 
 controller:
-  extraEnv:
+  env:
     - name: ARGOCD_K8S_CLIENT_QPS
       value: "50"
     - name: ARGOCD_K8S_CLIENT_BURST
       value: "100"
 
   # Or use the configs section for cmd-params-cm
-  env: []
+  extraArgs: []
 
 repoServer:
-  extraEnv:
+  env:
     - name: HELM_CACHE_HOME
       value: "/tmp/helm-cache"
     - name: HELM_CONFIG_HOME
@@ -212,14 +212,14 @@ repoServer:
 
 notifications:
   extraEnv:
-    - name: ARGOCD_NOTIFICATIONS_LOG_LEVEL
+    - name: ARGOCD_NOTIFICATIONS_CONTROLLER_LOGLEVEL
       value: "info"
 
 dex:
-  extraEnv: []
+  env: []
 
 redis:
-  extraEnv: []
+  env: []
 
 # ConfigMap-based settings
 configs:
@@ -254,10 +254,10 @@ kind: Kustomization
 resources:
   - https://raw.githubusercontent.com/argoproj/argo-cd/v2.10.0/manifests/install.yaml
 
-patchesStrategicMerge:
-  - server-env.yaml
-  - controller-env.yaml
-  - repo-server-env.yaml
+patches:
+  - path: server-env.yaml
+  - path: controller-env.yaml
+  - path: repo-server-env.yaml
 ```
 
 ```yaml
@@ -274,7 +274,7 @@ spec:
           env:
             - name: ARGOCD_SERVER_INSECURE
               value: "true"
-            - name: ARGOCD_LOG_FORMAT
+            - name: ARGOCD_SERVER_LOGFORMAT
               value: "json"
 ```
 
@@ -295,7 +295,7 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
-          name: ARGOCD_LOG_FORMAT
+          name: ARGOCD_SERVER_LOGFORMAT
           value: "json"
 
   - target:
@@ -305,7 +305,7 @@ patches:
       - op: add
         path: /spec/template/spec/containers/0/env/-
         value:
-          name: ARGOCD_CONTROLLER_STATUS_PROCESSORS
+          name: ARGOCD_APPLICATION_CONTROLLER_STATUS_PROCESSORS
           value: "50"
 
   - target:
@@ -455,7 +455,7 @@ data:
   timeout.reconciliation: "300"
 
 ---
-# Custom env vars for plugins (loaded by repo server)
+# Custom env vars for plugins
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -464,6 +464,22 @@ metadata:
 data:
   ARGOCD_ENV_CLUSTER_NAME: "production"
   ARGOCD_ENV_REGION: "us-east-1"
+
+---
+# Load custom env vars into the repo server
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: argocd-repo-server
+  namespace: argocd
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-repo-server
+          envFrom:
+            - configMapRef:
+                name: argocd-custom-env
 ```
 
 ## Summary
