@@ -56,9 +56,13 @@ kind: Application
 metadata:
   name: my-app
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/deploy
     path: apps/my-app/production
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
   syncPolicy:
     automated:
       selfHeal: true
@@ -87,7 +91,7 @@ This is a legitimate concern. GitOps handles this through ArgoCD sync hooks:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: db-migration
+  generateName: db-migration-
   annotations:
     argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
@@ -113,6 +117,18 @@ kind: Rollout
 metadata:
   name: my-app
 spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-app
+        image: app:latest
   strategy:
     canary:
       steps:
@@ -140,7 +156,7 @@ Abstract arguments only go so far. Build a proof of concept that demonstrates th
 ```bash
 # Quick PoC setup
 kubectl create namespace argocd
-kubectl apply -n argocd \
+kubectl apply -n argocd --server-side --force-conflicts \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Create a demo application
@@ -149,7 +165,8 @@ argocd app create demo \
   --path k8s \
   --dest-server https://kubernetes.default.svc \
   --dest-namespace demo \
-  --sync-policy automated
+  --sync-policy automated \
+  --self-heal
 ```
 
 Let team members interact with it. The best way to overcome skepticism is hands-on experience.
