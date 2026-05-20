@@ -18,7 +18,7 @@ StatefulSets differ from Deployments in several ways that affect ArgoCD:
 
 - **Ordered operations**: Pods are created and terminated in order (pod-0, pod-1, pod-2). ArgoCD needs to wait for each pod to be ready before proceeding.
 - **Stable network identity**: Each pod gets a predictable hostname. Changing the StatefulSet name breaks this identity.
-- **Persistent storage**: PVCs are not deleted when the StatefulSet is deleted. ArgoCD's prune behavior needs careful configuration.
+- **Persistent storage**: PVCs created from `volumeClaimTemplates` are retained by default, but Kubernetes can delete them if `persistentVolumeClaimRetentionPolicy` is configured to do so. ArgoCD's prune behavior needs careful configuration.
 - **Update strategies**: Rolling updates happen in reverse order (pod-N first, then pod-N-1). Partition-based updates let you update a subset of pods.
 
 ## Basic StatefulSet with ArgoCD
@@ -71,6 +71,8 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: data
+        labels:
+          app: redis
       spec:
         accessModes: ["ReadWriteOnce"]
         storageClassName: standard
@@ -131,14 +133,14 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      - PrunePropagationPolicy=orphan  # Keep PVCs when pruning
+      - PrunePropagationPolicy=orphan  # Orphan dependents if pruning is run manually
       - RespectIgnoreDifferences=true
 ```
 
 Key settings for StatefulSets:
 
 - **prune: false** - Prevents ArgoCD from deleting the StatefulSet if you temporarily remove it from Git. Accidental deletion of a StatefulSet can cause data loss.
-- **PrunePropagationPolicy=orphan** - If pruning does happen, PVCs are kept as orphans rather than being deleted with the StatefulSet.
+- **PrunePropagationPolicy=orphan** - If pruning does happen manually, Kubernetes uses orphan deletion propagation for dependents. PVC retention is still controlled by the StatefulSet's `persistentVolumeClaimRetentionPolicy`, which defaults to `Retain`.
 
 ## Handling PVC Lifecycle
 
@@ -146,9 +148,9 @@ StatefulSets create PVCs from volumeClaimTemplates, but ArgoCD does not manage t
 
 This means:
 
-1. PVCs are not shown as part of the Application in ArgoCD UI (they are children of the StatefulSet)
-2. Deleting the ArgoCD Application does not delete the PVCs
-3. Scaling down the StatefulSet does not delete PVCs for removed pods
+1. PVCs are not tracked as desired Application resources from Git, though they may appear in the resource tree as related child resources
+2. Deleting the ArgoCD Application does not delete the PVCs by default
+3. Scaling down the StatefulSet does not delete PVCs for removed pods by default
 
 To clean up PVCs when they are no longer needed, you must delete them manually:
 
@@ -230,9 +232,9 @@ This gives you manual control over the rollout while keeping everything in Git:
 # Step 4: remove partition (all pods running new version)
 ```
 
-## Ignoring Status Field Differences
+## Ignoring VolumeClaimTemplate Differences
 
-StatefulSets have status fields that change frequently. Configure ArgoCD to ignore these to avoid unnecessary diff warnings:
+ArgoCD ignores resource `status` fields by default. If your cluster or tooling adds default fields to `volumeClaimTemplates`, configure ArgoCD to ignore those specific differences:
 
 ```yaml
 spec:
@@ -246,11 +248,11 @@ spec:
         - .spec.volumeClaimTemplates[].spec.volumeName
 ```
 
-This is especially important for `volumeClaimTemplates`, where Kubernetes adds default fields that are not in your Git manifests.
+This is especially important for `volumeClaimTemplates`, where live manifests can include defaulted fields that are not in your Git manifests.
 
 ## Health Checks for StatefulSets
 
-ArgoCD checks StatefulSet health by comparing `readyReplicas` to the desired `replicas` count. You can customize this behavior:
+ArgoCD's built-in StatefulSet health check verifies that the observed generation matches the desired generation and that the number of updated replicas matches the desired replicas count. You can customize this behavior:
 
 ```yaml
 # In argocd-cm ConfigMap
@@ -258,12 +260,15 @@ data:
   resource.customizations.health.apps_StatefulSet: |
     hs = {}
     if obj.status ~= nil then
-      if obj.status.readyReplicas == obj.spec.replicas then
-        hs.status = "Healthy"
-        hs.message = "All replicas ready"
+      if obj.status.observedGeneration ~= nil and obj.metadata.generation ~= nil and obj.status.observedGeneration < obj.metadata.generation then
+        hs.status = "Progressing"
+        hs.message = "Waiting for StatefulSet controller to observe the latest generation"
       elseif obj.status.updatedReplicas ~= nil and obj.status.updatedReplicas < obj.spec.replicas then
         hs.status = "Progressing"
         hs.message = "Rolling update in progress"
+      elseif obj.status.readyReplicas == obj.spec.replicas then
+        hs.status = "Healthy"
+        hs.message = "All replicas ready"
       else
         hs.status = "Progressing"
         hs.message = "Waiting for replicas"
@@ -280,7 +285,7 @@ data:
 When scaling StatefulSets through GitOps, be careful about the direction:
 
 - **Scaling up**: Safe. New pods get new PVCs and join the cluster.
-- **Scaling down**: Risky. The highest-ordinal pod is removed, but its PVC persists. For clustered applications, you must drain data from the pod before scaling down.
+- **Scaling down**: Risky. The highest-ordinal pod is removed, and its PVC persists unless `persistentVolumeClaimRetentionPolicy.whenScaled` is set to `Delete`. For clustered applications, you must drain data from the pod before scaling down.
 
 Add a PreSync hook to handle data migration before scale-down:
 
