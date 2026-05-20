@@ -20,12 +20,12 @@ New Relic provides several ways to record deployment events:
 
 We will configure ArgoCD to use both the deployment marker API and custom events.
 
-## Getting Your New Relic API Key
+## Getting Your New Relic API Keys
 
 1. Log into New Relic
 2. Go to the API Keys page (account settings)
-3. Create a new User API key (or use an existing one)
-4. Copy the key (starts with `NRAK-`)
+3. Create a new User API key for NerdGraph (or use an existing one)
+4. Create or copy an Ingest - License key for the Event API
 
 You also need your New Relic Account ID, visible in the URL when you are logged in.
 
@@ -35,14 +35,15 @@ Store credentials in the ArgoCD secret:
 kubectl patch secret argocd-notifications-secret -n argocd \
   --type merge \
   -p '{"stringData": {
-    "newrelic-api-key": "NRAK-your-api-key",
+    "newrelic-user-key": "NRAK-your-user-key",
+    "newrelic-license-key": "your-new-relic-license-key",
     "newrelic-account-id": "1234567"
   }}'
 ```
 
 ## Option 1: Deployment Markers via Change Tracking API
 
-New Relic's change tracking GraphQL API is the modern way to record deployments:
+New Relic's change tracking GraphQL API can record deployment markers:
 
 ```yaml
 apiVersion: v1
@@ -57,7 +58,7 @@ data:
       - name: Content-Type
         value: application/json
       - name: API-Key
-        value: $newrelic-api-key
+        value: $newrelic-user-key
 
   template.newrelic-deployment-marker: |
     webhook:
@@ -82,7 +83,7 @@ If you have multiple applications mapped to different New Relic entities, use an
         method: POST
         body: |
           {
-            "query": "mutation { changeTrackingCreateDeployment(deployment: { version: \"{{ .app.status.sync.revision | trunc 7 }}\", entityGuid: \"{{ index .app.metadata.annotations \"newrelic.com/entity-guid\" }}\", description: \"{{ .app.metadata.name }} deployed to {{ .app.spec.destination.namespace }}\", commit: \"{{ .app.status.sync.revision }}\", deploymentType: ROLLING }) { deploymentId entityGuid } }"
+            "query": "mutation { changeTrackingCreateDeployment(deployment: { version: \"{{ .app.status.sync.revision | trunc 7 }}\", entityGuid: \"{{ index .app.metadata.annotations "newrelic.com/entity-guid" }}\", description: \"{{ .app.metadata.name }} deployed to {{ .app.spec.destination.namespace }}\", commit: \"{{ .app.status.sync.revision }}\", deploymentType: ROLLING }) { deploymentId entityGuid } }"
           }
 ```
 
@@ -104,7 +105,7 @@ Send deployment data as custom events that you can query with NRQL:
       - name: Content-Type
         value: application/json
       - name: Api-Key
-        value: $newrelic-api-key
+        value: $newrelic-license-key
 
   template.newrelic-custom-event: |
     webhook:
@@ -170,7 +171,7 @@ Send both deployment markers and custom events for the best of both worlds:
         method: POST
         body: |
           {
-            "query": "mutation { changeTrackingCreateDeployment(deployment: { version: \"{{ .app.status.sync.revision | trunc 7 }}\", entityGuid: \"{{ index .app.metadata.annotations \"newrelic.com/entity-guid\" }}\", description: \"{{ .app.metadata.name }}: {{ .app.status.operationState.phase }}\", commit: \"{{ .app.status.sync.revision }}\" }) { deploymentId } }"
+            "query": "mutation { changeTrackingCreateDeployment(deployment: { version: \"{{ .app.status.sync.revision | trunc 7 }}\", entityGuid: \"{{ index .app.metadata.annotations "newrelic.com/entity-guid" }}\", description: \"{{ .app.metadata.name }}: {{ .app.status.operationState.phase }}\", commit: \"{{ .app.status.sync.revision }}\" }) { deploymentId } }"
           }
       newrelic-events:
         method: POST
@@ -190,12 +191,12 @@ Send both deployment markers and custom events for the best of both worlds:
 
 ```yaml
   trigger.on-deployed-newrelic: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState?.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       oncePer: app.status.sync.revision
       send: [newrelic-full-tracking]
 
   trigger.on-sync-failed-newrelic: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState?.phase in ['Error', 'Failed']
       send: [newrelic-custom-event]
 ```
 
@@ -274,7 +275,7 @@ kubectl logs -n argocd deploy/argocd-notifications-controller -f
 # Test New Relic Event API
 curl -X POST "https://insights-collector.newrelic.com/v1/accounts/YOUR_ACCOUNT_ID/events" \
   -H "Content-Type: application/json" \
-  -H "Api-Key: NRAK-your-key" \
+  -H "Api-Key: your-new-relic-license-key" \
   -d '[{"eventType": "ArgoCDDeployment", "application": "test", "syncPhase": "Succeeded"}]'
 
 # Verify events arrived
