@@ -33,7 +33,7 @@ graph LR
 
 ## Installing the ArgoCD Plugin for Backstage
 
-Backstage has an official ArgoCD plugin maintained by the community. Install both the frontend and backend components.
+Backstage has a community ArgoCD plugin from Roadie. Install both the frontend and backend components.
 
 ### Install the Frontend Plugin
 
@@ -89,7 +89,7 @@ const overviewContent = (
   <Grid container spacing={3}>
     {/* Other cards */}
     <EntitySwitch>
-      <EntitySwitch.Case if={isArgocdAvailable}>
+      <EntitySwitch.Case if={entity => Boolean(isArgocdAvailable(entity))}>
         <Grid item md={6}>
           <EntityArgoCDOverviewCard />
         </Grid>
@@ -109,10 +109,13 @@ Configure the ArgoCD instance in your Backstage `app-config.yaml`:
 ```yaml
 # app-config.yaml - ArgoCD configuration
 argocd:
-  # Base URL of the ArgoCD API server
-  baseUrl: https://argocd.example.com
-  # Authentication - use an API token
-  token: ${ARGOCD_AUTH_TOKEN}
+  # Authentication - use an API token for the configured instance
+  appLocatorMethods:
+    - type: config
+      instances:
+        - name: production
+          url: https://argocd.example.com
+          token: ${ARGOCD_AUTH_TOKEN}
   # Optional: configure multiple ArgoCD instances
   # appLocatorMethods:
   #   - type: config
@@ -153,8 +156,8 @@ data:
   policy.csv: |
     # Allow Backstage read-only access to all applications
     p, role:backstage, applications, get, */*, allow
-    p, role:backstage, clusters, get, *, allow
-    p, role:backstage, projects, get, *, allow
+    p, role:backstage, applications, list, */*, allow
+    p, role:backstage, logs, get, */*, allow
     g, backstage, role:backstage
 ```
 
@@ -185,7 +188,7 @@ metadata:
     # Link to the ArgoCD application
     argocd/app-name: payment-service
     # For multiple ArgoCD instances, specify the instance
-    # argocd/app-name: production/payment-service
+    # argocd/instance-name: production
     # For multiple apps per service (e.g., different environments)
     # argocd/app-selector: app.kubernetes.io/instance=payment-service
   tags:
@@ -261,7 +264,8 @@ Reference the instance in catalog annotations:
 ```yaml
 # Reference a specific ArgoCD instance
 annotations:
-  argocd/app-name: production/payment-service
+  argocd/app-name: payment-service
+  argocd/instance-name: production
 ```
 
 ## What the Integration Shows
@@ -284,7 +288,7 @@ Once configured, the ArgoCD plugin shows several pieces of information on the en
 
 Use ArgoCD Application metadata to automatically generate Backstage catalog entries:
 
-```yaml
+```bash
 # Script to generate catalog-info.yaml from ArgoCD applications
 #!/bin/bash
 # generate-catalog.sh
