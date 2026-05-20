@@ -58,7 +58,7 @@ az ad sp create-for-rbac \
   --name "crossplane-provider" \
   --role Contributor \
   --scopes /subscriptions/YOUR_SUBSCRIPTION_ID \
-  --sdk-auth
+  --json-auth
 ```
 
 Store the credentials as a Kubernetes Secret:
@@ -98,7 +98,7 @@ spec:
       key: credentials
 ```
 
-For AKS clusters, use Pod Identity or Workload Identity for stronger security:
+For AKS clusters, use a managed identity or Workload Identity for stronger security. For a system-assigned managed identity, configure the provider with the subscription and tenant IDs:
 
 ```yaml
 apiVersion: azure.upbound.io/v1beta1
@@ -106,6 +106,8 @@ kind: ProviderConfig
 metadata:
   name: default
 spec:
+  subscriptionID: YOUR_SUBSCRIPTION_ID
+  tenantID: YOUR_TENANT_ID
   credentials:
     source: SystemAssignedManagedIdentity
 ```
@@ -165,9 +167,8 @@ spec:
     privateDnsZoneIdRef:
       name: postgres-private-dns
 
-    backup:
-      - geoRedundantBackupEnabled: true
-        backupRetentionDays: 14
+    geoRedundantBackupEnabled: true
+    backupRetentionDays: 14
 
     highAvailability:
       - mode: ZoneRedundant
@@ -198,17 +199,8 @@ spec:
     charset: UTF8
     collation: en_US.utf8
 ---
-# Firewall rule for AKS subnet access
-apiVersion: dbforpostgresql.azure.upbound.io/v1beta1
-kind: FlexibleServerFirewallRule
-metadata:
-  name: allow-aks-subnet
-spec:
-  forProvider:
-    serverIdRef:
-      name: app-postgres
-    startIpAddress: 10.0.0.0
-    endIpAddress: 10.0.255.255
+# With delegatedSubnetIdRef and privateDnsZoneIdRef, access is through
+# the VNet. FlexibleServerFirewallRule is only for public network access.
 ```
 
 ## Managing Storage Accounts
@@ -420,10 +412,10 @@ Track provisioning status and health:
 
 ```bash
 # Check all Azure managed resources
-kubectl get managed -l crossplane.io/provider-azure
+kubectl get managed
 
 # Get detailed status of a specific resource
-kubectl describe flexibleserver app-postgres
+kubectl describe flexibleserver.dbforpostgresql.azure.upbound.io app-postgres
 
 # Check for errors
 kubectl get managed -o custom-columns=\
