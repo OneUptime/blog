@@ -8,7 +8,7 @@ Description: Learn how to create isolated Kubernetes environments for each featu
 
 ---
 
-Feature branch deployments give developers isolated Kubernetes environments where they can test their changes before merging to main. With ArgoCD, you can automatically create and destroy these environments using ApplicationSets and the Pull Request generator. Every feature branch gets its own namespace, its own deployment, and its own URL.
+Feature branch deployments give developers isolated Kubernetes environments where they can test their changes before merging to main. With ArgoCD, you can automatically create and destroy these environments using ApplicationSets and the Pull Request generator. Every matching pull request gets its own namespace, its own deployment, and its own URL.
 
 ## How Feature Branch Deployments Work
 
@@ -30,12 +30,12 @@ sequenceDiagram
     Dev->>GH: Open Pull Request
     GH->>CI: Trigger Build
     CI->>CI: Build Image with PR tag
-    CI->>ArgoCD: ApplicationSet detects PR
+    ArgoCD->>GH: ApplicationSet polls open PRs
     ArgoCD->>K8s: Create namespace + deploy
-    ArgoCD->>GH: Post deployment URL
+    CI->>GH: Post deployment URL
     Dev->>K8s: Test feature
     Dev->>GH: Merge PR
-    GH->>ArgoCD: PR closed
+    ArgoCD->>GH: PR removed from open list
     ArgoCD->>K8s: Delete namespace + resources
 ```
 
@@ -79,7 +79,7 @@ spec:
           namePrefix: 'pr-{{number}}-'
           nameSuffix: ''
           images:
-            - 'myregistry.com/myapp=myregistry.com/myapp:pr-{{number}}-{{head_sha_short}}'
+            - 'myregistry.com/myapp=myregistry.com/myapp:pr-{{number}}-{{head_short_sha_7}}'
           commonLabels:
             app.kubernetes.io/instance: 'pr-{{number}}'
             preview-branch: '{{branch}}'
@@ -87,6 +87,9 @@ spec:
         server: https://kubernetes.default.svc
         namespace: 'preview-{{number}}'
       syncPolicy:
+        managedNamespaceMetadata:
+          labels:
+            app.kubernetes.io/instance: 'pr-{{number}}'
         automated:
           prune: true
           selfHeal: true
@@ -197,11 +200,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Log in to container registry
+        uses: docker/login-action@v3
+        with:
+          registry: myregistry.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Build feature branch image
         run: |
           PR_NUMBER=${{ github.event.pull_request.number }}
-          SHORT_SHA="${GITHUB_SHA::7}"
+          SHORT_SHA="${{ github.event.pull_request.head.sha }}"
+          SHORT_SHA="${SHORT_SHA::7}"
           IMAGE_TAG="pr-${PR_NUMBER}-${SHORT_SHA}"
 
           docker build -t myregistry.com/myapp:$IMAGE_TAG .
@@ -319,9 +332,9 @@ resources:
 
 ## Cleanup on PR Close
 
-ArgoCD ApplicationSets handle cleanup automatically. When a PR is closed or merged, the Pull Request generator removes it from the list, and ArgoCD deletes the corresponding Application. With `prune: true` in the sync policy, all Kubernetes resources are deleted.
+ArgoCD ApplicationSets handle cleanup automatically. When a PR is closed or merged, the Pull Request generator removes it from the list, and ArgoCD deletes the corresponding Application. ApplicationSet-generated Applications get the ArgoCD resource finalizer by default unless `preserveResourcesOnDeletion` is enabled, so the Application's managed Kubernetes resources are deleted.
 
-To also delete the namespace, ensure the Application has cascade deletion configured:
+To also delete the namespace created with `CreateNamespace=true`, configure namespace metadata so ArgoCD tracks the generated namespace, and keep cascade deletion enabled:
 
 ```yaml
 # In the ApplicationSet template
@@ -331,6 +344,13 @@ template:
     namespace: argocd
     finalizers:
       - resources-finalizer.argocd.argoproj.io
+  spec:
+    syncPolicy:
+      managedNamespaceMetadata:
+        labels:
+          app.kubernetes.io/instance: 'pr-{{number}}'
+      syncOptions:
+        - CreateNamespace=true
 ```
 
 ## Monitoring Feature Branch Environments
