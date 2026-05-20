@@ -22,6 +22,8 @@ Install Sealed Secrets in each cluster:
 
 ```bash
 # Install the controller
+helm repo add sealed-secrets https://bitnami-labs.github.io/sealed-secrets
+helm repo update
 
 helm install sealed-secrets sealed-secrets/sealed-secrets \
   --namespace kube-system
@@ -110,6 +112,9 @@ External Secrets Operator (ESO) syncs secrets from external providers like AWS S
 Install ESO:
 
 ```bash
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+
 helm install external-secrets external-secrets/external-secrets \
   --namespace external-secrets \
   --create-namespace
@@ -119,7 +124,7 @@ Create a SecretStore for each environment:
 
 ```yaml
 # overlays/staging/secret-store.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secret-store
@@ -143,7 +148,7 @@ Create ExternalSecrets that reference environment-specific paths:
 
 ```yaml
 # overlays/staging/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -167,7 +172,7 @@ spec:
 
 ```yaml
 # overlays/production/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -193,7 +198,7 @@ The ExternalSecret manifests are safe to store in Git because they only contain 
 
 ## Approach 3: HashiCorp Vault with ArgoCD Vault Plugin
 
-The ArgoCD Vault Plugin (AVP) replaces placeholders in your manifests with values from Vault at sync time:
+The ArgoCD Vault Plugin (AVP) replaces placeholders in your manifests with values from Vault during manifest generation before ArgoCD syncs the rendered resources:
 
 ```yaml
 # base/secret.yaml - with Vault placeholders
@@ -230,6 +235,8 @@ spec:
           value: https://vault.myorg.com
         - name: AVP_AUTH_TYPE
           value: k8s
+        - name: AVP_K8S_ROLE
+          value: my-app-staging
 ```
 
 Store secrets in Vault under environment-specific paths:
@@ -252,7 +259,7 @@ You can use Kustomize patches to set environment-specific paths in your External
 
 ```yaml
 # base/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -271,7 +278,7 @@ spec:
 
 ```yaml
 # overlays/production/secret-path-patch.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -313,6 +320,6 @@ Set appropriate refresh intervals on ExternalSecrets. Too frequent refreshing ad
 
 Audit secret access. Use Vault audit logs or cloud provider logging to track who accessed which secrets and when.
 
-For a detailed walkthrough of managing secrets with Sealed Secrets in ArgoCD, see our post on [ArgoCD Secrets with Sealed Secrets](https://oneuptime.com/blog/post/2026-02-26-argocd-environment-specific-configmaps/view).
+For a detailed walkthrough of managing secrets with Sealed Secrets in ArgoCD, see our post on [ArgoCD Secrets with Sealed Secrets](https://oneuptime.com/blog/post/2026-01-27-argocd-sealed-secrets/view).
 
 The right approach depends on your infrastructure. Sealed Secrets is simplest but requires re-encryption when rotating. External Secrets Operator works well with cloud-native secret stores. Vault provides the most features but adds operational complexity. Pick the approach that matches your team's capabilities and security requirements.
