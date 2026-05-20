@@ -8,7 +8,7 @@ Description: Learn how to migrate your Helm v2 Tiller-based deployments to ArgoC
 
 ---
 
-If you are still running Helm v2 with Tiller, you are operating on borrowed time. Tiller was deprecated in 2019 and removed in Helm v3. It stores release state in ConfigMaps or Secrets in the kube-system namespace, runs with cluster-admin privileges, and represents a significant security risk. Migrating to ArgoCD eliminates Tiller entirely while giving you a modern GitOps deployment pipeline.
+If you are still running Helm v2 with Tiller, you are operating on borrowed time. Tiller was removed in Helm v3, and Helm v2 has been unsupported since November 2020. It stores release state in ConfigMaps or Secrets in the Tiller namespace, which is usually kube-system, and many installations gave it broad cluster privileges. Migrating to ArgoCD eliminates Tiller entirely while giving you a modern GitOps deployment pipeline.
 
 In this guide, I will walk through migrating from Helm v2/Tiller to ArgoCD, covering release discovery, manifest extraction, GitOps repository creation, and cutover strategies.
 
@@ -16,8 +16,8 @@ In this guide, I will walk through migrating from Helm v2/Tiller to ArgoCD, cove
 
 Tiller's architecture was fundamentally flawed. It acted as a server-side component with broad cluster access, making it a security liability. When you migrate to ArgoCD, you get several improvements:
 
-- No server-side component with cluster-admin (ArgoCD uses fine-grained RBAC)
-- Release state stored in Git, not in cluster ConfigMaps
+- No Tiller server-side component with broad release-management permissions
+- Desired state stored in Git, not in Tiller release ConfigMaps
 - Declarative deployment model instead of imperative `helm install`
 - Visibility through the ArgoCD UI instead of `helm list`
 - Automated drift detection and self-healing
@@ -41,19 +41,21 @@ flowchart LR
 First, document everything Tiller is currently managing.
 
 ```bash
+TILLER_NAMESPACE=kube-system
+
 # List all Helm v2 releases
 
 helm2 list --all --output json | jq '.Releases[] | {
   name: .Name,
   namespace: .Namespace,
   chart: .Chart,
-  version: .AppVersion,
+  appVersion: .AppVersion,
   status: .Status,
   updated: .Updated
 }'
 
 # If Tiller is not accessible, check ConfigMaps directly
-kubectl get configmaps -n kube-system -l "OWNER=TILLER" -o json | \
+kubectl get configmaps -n "$TILLER_NAMESPACE" -l "OWNER=TILLER" -o json | \
   jq '.items[] | {
     name: .metadata.labels.NAME,
     status: .metadata.labels.STATUS,
@@ -61,7 +63,7 @@ kubectl get configmaps -n kube-system -l "OWNER=TILLER" -o json | \
   }'
 
 # Or if using Secrets storage
-kubectl get secrets -n kube-system -l "OWNER=TILLER" --no-headers
+kubectl get secrets -n "$TILLER_NAMESPACE" -l "OWNER=TILLER" --no-headers
 ```
 
 Create a migration tracking document.
@@ -184,7 +186,7 @@ metadata:
   name: nginx-ingress
   namespace: argocd
 spec:
-  project: infrastructure
+  project: default
   source:
     repoURL: https://github.com/myorg/gitops-repo.git
     path: apps/ingress
@@ -210,7 +212,7 @@ For each release, follow this procedure.
 
 ### Option A: In-Place Adoption (Recommended)
 
-ArgoCD can adopt existing resources without recreating them.
+ArgoCD can manage existing resources without recreating them when the rendered manifests match the same Kubernetes group, kind, namespace, and name.
 
 ```bash
 # 1. Create the ArgoCD Application (without auto-sync)
@@ -219,18 +221,18 @@ kubectl apply -f argocd-apps/ingress.yaml
 # 2. In ArgoCD UI, check the diff
 #    ArgoCD will show the difference between Git and cluster state
 
-# 3. If the diff shows only expected differences, sync with replace=false
-argocd app sync nginx-ingress --prune=false
+# 3. If the diff shows only expected differences, sync without pruning
+argocd app sync nginx-ingress
 
 # 4. Verify the application is healthy
 argocd app get nginx-ingress
 
 # 5. Remove the Tiller release metadata (but keep resources)
-# Delete the ConfigMap/Secret that Tiller uses for tracking
-kubectl delete configmap -n kube-system -l "NAME=nginx-ingress,OWNER=TILLER"
+# Delete the ConfigMaps or Secrets that Tiller uses for tracking
+kubectl delete configmap,secret -n "$TILLER_NAMESPACE" -l "NAME=nginx-ingress,OWNER=TILLER"
 ```
 
-The key here is that ArgoCD adopts ownership of the existing resources. It does not delete and recreate them. The resources continue running without interruption.
+The key here is that ArgoCD applies the desired manifests to existing resources by identity. It does not delete and recreate matching resources unless you enable pruning or use sync options such as replace or force. The resources continue running without interruption if the desired manifests are compatible with the live objects.
 
 ### Option B: Blue-Green Migration
 
@@ -245,25 +247,19 @@ spec:
 
 After validating the new deployment, switch traffic and decommission the old one.
 
-## Step 7: Handle Resource Annotations
+## Step 7: Handle Resource Labels
 
-Tiller-managed resources have Helm annotations that ArgoCD may flag as drift. Clean these up.
+Helm v2 charts often rendered labels such as `heritage: Tiller` or `release: <name>` into resources. ArgoCD may flag these as drift if the modern chart renders different metadata. Clean these up only when they are not used by selectors.
 
 ```bash
-# Remove Helm v2 annotations from existing resources
-kubectl annotate deployment nginx-ingress-controller \
-  -n ingress-nginx \
-  meta.helm.sh/release-name- \
-  meta.helm.sh/release-namespace-
-
-# Remove Helm labels
+# Remove Helm v2 labels from existing resource metadata
 kubectl label deployment nginx-ingress-controller \
   -n ingress-nginx \
-  app.kubernetes.io/managed-by- \
-  helm.sh/chart-
+  heritage- \
+  release-
 ```
 
-Alternatively, configure ArgoCD to ignore these annotations.
+Alternatively, configure ArgoCD to ignore these labels.
 
 ```yaml
 spec:
@@ -271,9 +267,8 @@ spec:
     - group: apps
       kind: Deployment
       jsonPointers:
-        - /metadata/annotations/meta.helm.sh~1release-name
-        - /metadata/annotations/meta.helm.sh~1release-namespace
-        - /metadata/labels/app.kubernetes.io~1managed-by
+        - /metadata/labels/heritage
+        - /metadata/labels/release
 ```
 
 ## Step 8: Remove Tiller
@@ -281,14 +276,16 @@ spec:
 After all releases are migrated, remove Tiller from the cluster.
 
 ```bash
+TILLER_NAMESPACE=kube-system
+
 # Verify no releases remain
-kubectl get configmaps -n kube-system -l "OWNER=TILLER" --no-headers | wc -l
+kubectl get configmaps,secrets -n "$TILLER_NAMESPACE" -l "OWNER=TILLER" --no-headers | wc -l
 # Should return 0
 
 # Delete Tiller
-kubectl delete deployment tiller-deploy -n kube-system
-kubectl delete service tiller-deploy -n kube-system
-kubectl delete serviceaccount tiller -n kube-system
+kubectl delete deployment tiller-deploy -n "$TILLER_NAMESPACE"
+kubectl delete service tiller-deploy -n "$TILLER_NAMESPACE"
+kubectl delete serviceaccount tiller -n "$TILLER_NAMESPACE"
 kubectl delete clusterrolebinding tiller-admin
 
 echo "Tiller has been removed. All deployments are now managed by ArgoCD."
@@ -311,15 +308,17 @@ spec:
 Verify that everything is working correctly.
 
 ```bash
+TILLER_NAMESPACE=kube-system
+
 # Check all ArgoCD applications are healthy and synced
 argocd app list
 
 # Verify no Tiller artifacts remain
-kubectl get configmaps -n kube-system -l "OWNER=TILLER" --no-headers
-kubectl get secrets -n kube-system -l "OWNER=TILLER" --no-headers
+kubectl get configmaps -n "$TILLER_NAMESPACE" -l "OWNER=TILLER" --no-headers
+kubectl get secrets -n "$TILLER_NAMESPACE" -l "OWNER=TILLER" --no-headers
 
 # Check that no helm2 processes are running
-kubectl get pods -n kube-system | grep tiller
+kubectl get pods -n "$TILLER_NAMESPACE" | grep tiller
 ```
 
 For more details on deploying Helm charts through ArgoCD, see our guide on [deploying Helm charts with ArgoCD](https://oneuptime.com/blog/post/2026-01-25-deploy-helm-charts-argocd/view).
