@@ -47,6 +47,7 @@ spec:
     path: overlays/dev
     targetRevision: main
   destination:
+    server: https://kubernetes.default.svc
     namespace: team-alpha-dev
   syncPolicy:
     automated:
@@ -66,6 +67,7 @@ spec:
     path: overlays/staging
     targetRevision: main
   destination:
+    server: https://kubernetes.default.svc
     namespace: team-alpha-staging
   syncPolicy:
     automated:
@@ -85,6 +87,7 @@ spec:
     path: overlays/prod
     targetRevision: main
   destination:
+    server: https://kubernetes.default.svc
     namespace: team-alpha-prod
   # No syncPolicy.automated - requires manual trigger
 ```
@@ -150,6 +153,9 @@ spec:
     repoURL: https://github.com/myorg/payment-service-config.git
     path: overlays/prod
     targetRevision: release/production  # Protected branch
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: team-alpha-prod
   syncPolicy:
     automated:
       prune: true
@@ -251,22 +257,25 @@ metadata:
   name: check-approval
   annotations:
     argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded,HookFailed
 spec:
   template:
     spec:
       containers:
         - name: approval-check
-          image: curlimages/curl:8.5.0
+          image: alpine:3.20
           command:
             - /bin/sh
             - -c
             - |
+              apk add --no-cache curl jq
+
               # Check if this deployment has been approved
               RESPONSE=$(curl -sf \
                 -H "Authorization: Bearer ${APPROVAL_TOKEN}" \
+                -H "Content-Type: application/json" \
                 "https://approvals.internal/api/v1/check" \
-                -d "{\"app\": \"payment-service\", \"env\": \"prod\", \"revision\": \"${ARGOCD_APP_REVISION}\"}")
+                -d "{\"app\": \"payment-service\", \"env\": \"prod\", \"revision\": \"${APPROVAL_REVISION}\"}")
 
               APPROVED=$(echo "$RESPONSE" | jq -r '.approved')
               if [ "$APPROVED" != "true" ]; then
@@ -282,6 +291,8 @@ spec:
                 secretKeyRef:
                   name: approval-service-token
                   key: token
+            - name: APPROVAL_REVISION
+              value: "$ARGOCD_APP_REVISION"
       restartPolicy: Never
   backoffLimit: 0
 ```
@@ -322,10 +333,15 @@ Every approval should be traceable. Record approvals as annotations on the Appli
 
 ```bash
 # After manual sync, add audit annotations
-argocd app set payment-service-prod \
-  --annotations "deploy.myorg.io/approved-by=jane.doe@example.com" \
-  --annotations "deploy.myorg.io/approved-at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  --annotations "deploy.myorg.io/approval-ticket=DEPLOY-4567"
+argocd app patch payment-service-prod --type merge --patch "{
+  \"metadata\": {
+    \"annotations\": {
+      \"deploy.myorg.io/approved-by\": \"jane.doe@example.com\",
+      \"deploy.myorg.io/approved-at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+      \"deploy.myorg.io/approval-ticket\": \"DEPLOY-4567\"
+    }
+  }
+}"
 ```
 
 These annotations persist in the Application resource and show up in the ArgoCD UI, providing the audit trail that compliance teams require.
