@@ -14,7 +14,7 @@ This guide covers the environment variables that control the controller's behavi
 
 ## How the Controller Uses Environment Variables
 
-The controller reads configuration from the `argocd-cmd-params-cm` ConfigMap and from environment variables set on its deployment. The ConfigMap approach is preferred for GitOps:
+The controller reads command parameters from the `argocd-cmd-params-cm` ConfigMap and from environment variables set on its deployment. Some global Argo CD settings, such as reconciliation polling and resource tracking, live in `argocd-cm`. The ConfigMap approach is preferred for GitOps:
 
 ```yaml
 apiVersion: v1
@@ -42,9 +42,9 @@ spec:
       containers:
         - name: argocd-application-controller
           env:
-            - name: ARGOCD_CONTROLLER_STATUS_PROCESSORS
+            - name: ARGOCD_APPLICATION_CONTROLLER_STATUS_PROCESSORS
               value: "50"
-            - name: ARGOCD_CONTROLLER_OPERATION_PROCESSORS
+            - name: ARGOCD_APPLICATION_CONTROLLER_OPERATION_PROCESSORS
               value: "25"
 ```
 
@@ -56,10 +56,16 @@ How often the controller re-checks applications even if no Git changes are detec
 
 ```yaml
 data:
-  # Default reconciliation timeout (180 seconds = 3 minutes)
-  controller.repo.server.timeout.seconds: "180"
+  # Default reconciliation polling interval plus jitter is 120s + up to 60s
+  timeout.reconciliation: "120s"
+  timeout.reconciliation.jitter: "60s"
+```
 
-  # Self-heal timeout (seconds between self-heal checks, default 5)
+Self-heal timing is a controller command parameter:
+
+```yaml
+data:
+  # Self-heal timeout in seconds between self-heal attempts
   controller.self.heal.timeout.seconds: "5"
 ```
 
@@ -67,7 +73,7 @@ For large installations, increasing the reconciliation timeout reduces load:
 
 ```yaml
 data:
-  timeout.reconciliation: "300"    # Check every 5 minutes instead of 3
+  timeout.reconciliation: "300s"    # Check every 5 minutes instead of 3
 ```
 
 ### Processor Counts
@@ -88,26 +94,26 @@ data:
 These are the most impactful performance settings. If you manage hundreds of applications:
 
 ```yaml
-# For 500+ applications
+# For larger installations
 
 data:
-  controller.status.processors: "100"
-  controller.operation.processors: "50"
+  controller.status.processors: "50"
+  controller.operation.processors: "25"
 ```
 
-For 1000+ applications:
+For 1000+ applications, start around that range and increase carefully if reconciliation or sync processing still backs up:
 
 ```yaml
 data:
-  controller.status.processors: "200"
-  controller.operation.processors: "100"
+  controller.status.processors: "75"
+  controller.operation.processors: "35"
 ```
 
-Monitor the controller's queue depth metrics to determine if you need more processors:
+Monitor reconciliation latency and controller work metrics to determine if you need more processors:
 
 ```promql
-# Check if status queue is backing up
-argocd_app_reconcile_bucket{le="+Inf"} - argocd_app_reconcile_bucket{le="30"}
+# 95th percentile application reconciliation duration
+histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
 ```
 
 ## Sharding Configuration
@@ -115,18 +121,36 @@ argocd_app_reconcile_bucket{le="+Inf"} - argocd_app_reconcile_bucket{le="30"}
 For large-scale deployments, shard the controller across multiple replicas:
 
 ```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: argocd-application-controller
+  namespace: argocd
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: argocd-application-controller
+          env:
+            - name: ARGOCD_CONTROLLER_REPLICAS
+              value: "3"
+```
+
+Choose the shard distribution algorithm in `argocd-cmd-params-cm`:
+
+```yaml
 data:
-  # Number of controller shards
+  # Sharding algorithm: legacy, round-robin, or consistent-hashing
   controller.sharding.algorithm: "round-robin"
 ```
 
-Or use environment variables:
+Or use the equivalent environment variable:
 
 ```yaml
 env:
-  # Enable sharding with this many replicas
-  - name: ARGOCD_CONTROLLER_REPLICAS
-    value: "3"
+  - name: ARGOCD_CONTROLLER_SHARDING_ALGORITHM
+    value: "round-robin"
 ```
 
 With sharding, each controller replica manages a subset of clusters. This distributes the load across multiple pods.
@@ -157,21 +181,22 @@ Use `debug` level sparingly - it generates significant log volume and can itself
 ```bash
 # Temporarily enable debug logging for troubleshooting
 kubectl set env statefulset/argocd-application-controller \
-  ARGOCD_LOG_LEVEL=debug -n argocd
+  ARGOCD_APPLICATION_CONTROLLER_LOGLEVEL=debug -n argocd
 
 # Remember to revert
 kubectl set env statefulset/argocd-application-controller \
-  ARGOCD_LOG_LEVEL=info -n argocd
+  ARGOCD_APPLICATION_CONTROLLER_LOGLEVEL=info -n argocd
 ```
 
-Resource Management Variables
+## Resource Management Variables
 
-### Memory and Cache Limits
+### Health Persistence and Kubectl Parallelism
 
 ```yaml
 data:
-  # Controller memory cache limit for manifests
-  controller.resource.health.persist: "true"
+  # Persist per-resource health in the Application CR.
+  # In Argo CD 3.x, false reduces Application CR updates and controller load.
+  controller.resource.health.persist: "false"
 
   # Kubectl parallelism limit
   controller.kubectl.parallelism.limit: "20"
@@ -182,29 +207,34 @@ data:
 ```yaml
 data:
   # Repo server address
-  controller.repo.server.address: "argocd-repo-server:8081"
+  repo.server: "argocd-repo-server:8081"
 
   # Timeout for repo server calls
   controller.repo.server.timeout.seconds: "120"
 
   # Number of parallel manifest generation requests
-  controller.repo.server.parallelism.limit: "0"    # 0 means unlimited
+  reposerver.parallelism.limit: "0"    # 0 means unlimited
 ```
 
 If manifest generation is slow, limiting parallelism prevents the repo server from being overwhelmed:
 
 ```yaml
 data:
-  controller.repo.server.parallelism.limit: "10"
+  reposerver.parallelism.limit: "10"
 ```
 
 ## Application-Level Settings
 
-### Default Sync Options
+### Resource Tracking
 
-Set default sync behavior for all applications:
+Set the resource tracking method for all applications:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
 data:
   # Resource tracking method: label, annotation, or annotation+label
   application.resourceTrackingMethod: "annotation"
@@ -218,7 +248,7 @@ data:
   controller.diff.server.side: "true"
 ```
 
-Server-side diff is more accurate but slightly slower. It is recommended for production to avoid false positives in diff results.
+Server-side diff runs a server-side apply dry run to predict the live state and can catch admission-controller validation issues during diff. It is a beta feature, so test it with your workloads before enabling it globally.
 
 ## Kubernetes Client Configuration
 
@@ -256,20 +286,33 @@ data:
   controller.log.level: "info"
   controller.log.format: "json"
 
-  # Reconciliation
-  timeout.reconciliation: "300"
+  # Self-heal timing
   controller.self.heal.timeout.seconds: "5"
 
   # Processing parallelism
-  controller.status.processors: "100"
-  controller.operation.processors: "50"
+  controller.status.processors: "50"
+  controller.operation.processors: "25"
 
   # Repo server
   controller.repo.server.timeout.seconds: "180"
-  controller.repo.server.parallelism.limit: "20"
+  reposerver.parallelism.limit: "20"
 
   # Diff
   controller.diff.server.side: "true"
+```
+
+And the global Argo CD settings in `argocd-cm`:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  # Reconciliation polling
+  timeout.reconciliation: "300s"
+  timeout.reconciliation.jitter: "60s"
 
   # Resource tracking
   application.resourceTrackingMethod: "annotation"
@@ -307,7 +350,7 @@ spec:
 After setting environment variables, monitor their impact:
 
 ```bash
-# Check controller queue depth
+# Check controller reconciliation metrics
 kubectl exec -n argocd statefulset/argocd-application-controller -- \
   curl -s localhost:8082/metrics | grep argocd_app_reconcile
 
@@ -321,11 +364,14 @@ kubectl logs -n argocd statefulset/argocd-application-controller | grep -i throt
 Key Prometheus metrics to watch:
 
 ```promql
-# Reconciliation queue depth
-argocd_app_reconcile_count
+# Reconciliation rate
+rate(argocd_app_reconcile_count[5m])
 
 # Time spent in reconciliation
-argocd_app_reconcile_bucket
+histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
+
+# Pending kubectl executions
+argocd_kubectl_exec_pending
 
 # Controller memory
 process_resident_memory_bytes{job="argocd-application-controller"}
