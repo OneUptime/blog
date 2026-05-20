@@ -18,7 +18,7 @@ Cascade deletion only works when the Application has the resources finalizer. Ch
 kubectl get application my-app -n argocd -o jsonpath='{.metadata.finalizers}'
 ```
 
-If the output includes `resources-finalizer.argocd.argoproj.io`, cascade delete will work. If there are no finalizers, you need to add one first.
+If the output includes `resources-finalizer.argocd.argoproj.io`, cascade delete will work. If you delete through the ArgoCD CLI with `--cascade`, ArgoCD adds the finalizer automatically. If you delete through `kubectl`, add the finalizer first.
 
 ### Adding the Finalizer
 
@@ -28,8 +28,8 @@ If your Application does not have the finalizer:
 # Add the resources finalizer
 
 kubectl patch application my-app -n argocd \
-  --type json \
-  -p '[{"op": "add", "path": "/metadata/finalizers", "value": ["resources-finalizer.argocd.argoproj.io"]}]'
+  --type merge \
+  -p '{"metadata": {"finalizers": ["resources-finalizer.argocd.argoproj.io"]}}'
 ```
 
 Or in the Application YAML:
@@ -96,7 +96,7 @@ When the finalizer is present, this triggers the same cascade deletion as the Ar
 
 1. Navigate to the application in the ArgoCD UI
 2. Click the **Delete** button in the application header
-3. In the confirmation dialog, make sure the **Cascade** checkbox is **checked**
+3. In the confirmation dialog, choose **Foreground** or **Background** deletion to cascade-delete managed resources
 4. Type the application name to confirm
 5. Click **OK**
 
@@ -107,7 +107,7 @@ The UI will show the deletion progress. Resources will disappear from the resour
 ArgoCD deletes all resources it tracks for the application. This includes:
 
 - Resources directly defined in your manifests (Deployments, Services, ConfigMaps, etc.)
-- Resources that ArgoCD created (like namespaces if CreateNamespace was used)
+- Resources that ArgoCD tracks for the application. Namespaces created with `CreateNamespace=true` are normally not tracked unless you also configure namespace metadata so ArgoCD owns the namespace.
 
 Resources That Are NOT Deleted
 
@@ -118,7 +118,7 @@ Resources That Are NOT Deleted
 
 ### Propagation Policy
 
-The deletion propagation policy controls how dependent resources are handled:
+For normal pruning during sync, `PrunePropagationPolicy` controls how Kubernetes dependents are handled:
 
 ```yaml
 syncPolicy:
@@ -130,23 +130,20 @@ syncPolicy:
     - PrunePropagationPolicy=orphan      # Delete owner, leave dependents running
 ```
 
-The default is `foreground`, which means ArgoCD waits for all dependent resources (Pods owned by ReplicaSets, ReplicaSets owned by Deployments) to be fully deleted before proceeding.
+The default is `foreground`, which means ArgoCD prunes extraneous resources using Kubernetes foreground deletion. For Application deletion, use the finalizer variant or `argocd app delete --propagation-policy foreground|background`.
 
 ## Deletion Order
 
-ArgoCD deletes resources in a specific order during cascade deletion:
+ArgoCD deletes managed resources during cascade deletion, and Kubernetes handles dependents according to the propagation policy:
 
 ```mermaid
 flowchart TD
-    A[Start Deletion] --> B[Delete child resources first]
-    B --> C[Pods, ReplicaSets]
-    C --> D[Delete parent resources]
-    D --> E[Deployments, StatefulSets]
-    E --> F[Delete supporting resources]
-    F --> G[Services, ConfigMaps, Secrets]
-    G --> H[Delete namespace if auto-created]
-    H --> I[Remove finalizer from Application]
-    I --> J[Application CR deleted]
+    A[Start Deletion] --> B[Process managed resources]
+    B --> C[Resources in higher sync waves]
+    C --> D[Delete lower sync waves]
+    D --> E[Kubernetes garbage collection handles dependents]
+    E --> F[Remove finalizer from Application]
+    F --> G[Application CR deleted]
 ```
 
 If sync waves were used, resources are deleted in reverse wave order.
@@ -198,7 +195,7 @@ Only use this as a last resort. You may need to manually clean up resources afte
 
 ## Deleting Applications in an App-of-Apps Setup
 
-When using the app-of-apps pattern, deleting the parent application with cascade will delete the child Application resources, which in turn cascade-delete their managed resources:
+When using the app-of-apps pattern, deleting the parent application with cascade deletes the child Application resources. If those child Applications have the resources finalizer, they in turn cascade-delete their managed resources:
 
 ```text
 Parent App (deleted)
@@ -224,11 +221,11 @@ If an Application was created by an ApplicationSet, you typically should not del
 ```bash
 # Instead of: argocd app delete my-app
 # Modify the ApplicationSet to exclude the app
-# Or delete the ApplicationSet itself
+# Or delete the ApplicationSet itself if you want to delete its generated Applications
 kubectl delete applicationset my-appset -n argocd
 ```
 
-The ApplicationSet controller manages the lifecycle of generated Applications. If you delete an Application it generated, the controller may recreate it on the next reconciliation.
+The ApplicationSet controller manages the lifecycle of generated Applications. If you delete an Application it generated, the controller may recreate it on the next reconciliation. Deleting the ApplicationSet normally deletes generated Applications and, unless `preserveResourcesOnDeletion` was set, their managed resources too.
 
 ## Pre-Deletion Checklist
 
