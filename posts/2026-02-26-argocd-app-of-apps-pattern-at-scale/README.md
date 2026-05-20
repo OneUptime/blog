@@ -146,7 +146,7 @@ spec:
     namespace: ingress-nginx
 ```
 
-ArgoCD processes sync waves in order. Wave 1 resources must be healthy before wave 2 starts.
+ArgoCD processes sync waves in order. In an App-of-Apps setup, the wave annotations order the child `Application` resources created by the parent app. If you need later waves to wait for child applications to become Healthy, restore the `Application` health check shown below, because ArgoCD no longer includes a built-in health assessment for `argoproj.io/Application`.
 
 ## Scaling Strategy 3: Combine with ApplicationSets
 
@@ -160,6 +160,8 @@ metadata:
   name: team-a-services
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/org/gitops-config.git
@@ -168,13 +170,13 @@ spec:
           - path: manifests/team-a/*
   template:
     metadata:
-      name: '{{path.basename}}'
+      name: '{{.path.basename}}'
     spec:
       project: team-a
       source:
         repoURL: https://github.com/org/gitops-config.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
         namespace: team-a
@@ -198,6 +200,8 @@ metadata:
   name: platform-per-cluster
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - clusters:
         selector:
@@ -205,7 +209,7 @@ spec:
             env: production
   template:
     metadata:
-      name: 'platform-{{name}}'
+      name: 'platform-{{.nameNormalized}}'
     spec:
       project: platform
       source:
@@ -213,7 +217,7 @@ spec:
         targetRevision: main
         path: apps/platform/
       destination:
-        server: '{{server}}'
+        server: '{{.server}}'
         namespace: argocd
 ```
 
@@ -291,7 +295,7 @@ spec:
 
 ## Health Checks for the Pattern
 
-The root app shows as Healthy only when all child apps are Healthy. You can add custom health logic:
+By default, ArgoCD does not include a built-in health assessment for `Application` resources. If you want the root app to reflect child app health, add custom health logic:
 
 ```yaml
 # In argocd-cm ConfigMap
@@ -312,11 +316,11 @@ resource.customizations.health.argoproj.io_Application: |
 
 ## Performance Tips
 
-1. **Set `ServerSideApply=true`** on the root app to speed up diff calculation
-2. **Use `RespectIgnoreDifferences=true`** to avoid unnecessary syncs
+1. **Set `ServerSideApply=true`** when you need server-side field management or need to avoid the `last-applied-configuration` annotation size limit
+2. **Use `RespectIgnoreDifferences=true`** with `spec.ignoreDifferences` when ignored fields should also be ignored during sync
 3. **Increase controller processors** when managing 100+ apps
-4. **Use selective sync** instead of syncing the entire tree when only one child changed
-5. **Enable resource tracking** with annotation-based tracking for faster reconciliation
+4. **Use selective sync** with `ApplyOutOfSyncOnly=true` for large applications so ArgoCD applies only out-of-sync resources
+5. **Use annotation-based resource tracking** to avoid label length limits and ownership conflicts with other Kubernetes tools
 
 ```yaml
 # On the root application
@@ -325,6 +329,7 @@ spec:
     syncOptions:
       - ServerSideApply=true
       - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
     automated:
       selfHeal: true
       prune: true

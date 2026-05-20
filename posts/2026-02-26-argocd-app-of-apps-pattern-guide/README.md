@@ -253,38 +253,37 @@ applications:
 defaults:
   targetRevision: main
   server: https://kubernetes.default.svc
-  autoSync: true
   prune: true
   selfHeal: true
 ```
 
 ```yaml
 # templates/application.yaml
-{{`{{- range $name, $app := .Values.applications }}`}}
+{{- range $name, $app := .Values.applications }}
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: {{`{{ $name }}`}}-production
+  name: {{ $name }}-production
   namespace: argocd
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
-  project: {{`{{ $app.project | default "default" }}`}}
+  project: {{ $app.project | default "default" }}
   source:
-    repoURL: {{`{{ $app.repoURL }}`}}
-    targetRevision: {{`{{ $app.targetRevision | default $.Values.defaults.targetRevision }}`}}
-    path: {{`{{ $app.path }}`}}
+    repoURL: {{ $app.repoURL }}
+    targetRevision: {{ $app.targetRevision | default $.Values.defaults.targetRevision }}
+    path: {{ $app.path }}
   destination:
-    server: {{`{{ $app.server | default $.Values.defaults.server }}`}}
-    namespace: {{`{{ $app.namespace }}`}}
+    server: {{ $app.server | default $.Values.defaults.server }}
+    namespace: {{ $app.namespace }}
   syncPolicy:
     automated:
-      prune: {{`{{ $app.prune | default $.Values.defaults.prune }}`}}
-      selfHeal: {{`{{ $app.selfHeal | default $.Values.defaults.selfHeal }}`}}
+      prune: {{ dig "prune" $.Values.defaults.prune $app }}
+      selfHeal: {{ dig "selfHeal" $.Values.defaults.selfHeal $app }}
     syncOptions:
       - CreateNamespace=true
 ---
-{{`{{- end }}`}}
+{{- end }}
 ```
 
 The parent application then points to this Helm chart:
@@ -308,7 +307,7 @@ spec:
 
 ## Handling Sync Order
 
-Sometimes child applications need to be created in a specific order. Use sync waves to control this:
+Sometimes child applications need to be created in a specific order. Use sync waves to control the order in which the parent application applies the child Application resources. If you need ArgoCD to wait for a child Application to become healthy before moving to a later wave, restore or define a health check for the `argoproj.io/Application` resource, because ArgoCD removed the built-in Application health assessment in v1.8.
 
 ```yaml
 # apps/production/namespace-setup.yaml
@@ -344,12 +343,12 @@ Be careful: removing a YAML file from the apps directory will delete the child a
 
 ## Best Practices
 
-1. **Always include finalizers** on child applications for proper cleanup
+1. **Include finalizers** on child applications when you want cascading cleanup of managed resources
 2. **Use separate parent apps per environment** so production and staging are independent
 3. **Start with plain YAML** before moving to Helm-templated child apps
 4. **Enable prune on the parent** so removed YAML files result in removed applications
 5. **Use sync waves** when child applications have ordering dependencies
-6. **Keep the parent app in the default project** for simplicity
+6. **Keep the parent app in an administrator-owned project** because App-of-Apps can create Applications in multiple projects
 7. **Review all changes in PRs** since adding or removing a file changes what is deployed
 
-The App-of-Apps pattern scales well from a handful of applications to hundreds. For even more dynamic patterns, consider [ArgoCD ApplicationSets](https://oneuptime.com/blog/post/2026-02-26-argocd-bootstrap-cluster-app-of-apps/view), which generate Applications from templates based on cluster, Git, or list generators.
+The App-of-Apps pattern scales well from a handful of applications to hundreds. For even more dynamic patterns, consider [ArgoCD ApplicationSets](https://oneuptime.com/blog/post/2026-02-02-argocd-applicationsets/view), which generate Applications from templates based on cluster, Git, or list generators.
