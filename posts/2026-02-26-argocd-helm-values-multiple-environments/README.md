@@ -14,7 +14,7 @@ Here are the patterns that work well with ArgoCD, from simplest to most sophisti
 
 ## Pattern 1: Separate Values Files Per Environment
 
-The most straightforward approach. One values file per environment, each containing the complete set of values.
+The most straightforward approach. One values file per environment, each containing the environment-specific overrides.
 
 ```text
 charts/myapp/
@@ -37,6 +37,7 @@ metadata:
   name: myapp-dev
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/repo.git
     targetRevision: main
@@ -56,6 +57,7 @@ metadata:
   name: myapp-production
   namespace: argocd
 spec:
+  project: default
   source:
     repoURL: https://github.com/org/repo.git
     targetRevision: main
@@ -171,6 +173,7 @@ metadata:
   name: myapp-production
   namespace: argocd
 spec:
+  project: default
   sources:
     - repoURL: https://github.com/org/helm-charts.git
       targetRevision: main
@@ -214,14 +217,21 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: myapp-production-us
+  namespace: argocd
 spec:
+  project: default
   source:
+    repoURL: https://github.com/org/repo.git
+    targetRevision: main
     path: charts/myapp
     helm:
       valueFiles:
         - ../../config/myapp/values-common.yaml
         - ../../config/myapp/values-prod.yaml
         - ../../config/myapp/values-production-us.yaml
+  destination:
+    server: https://production-us-cluster:6443
+    namespace: myapp
 ```
 
 Values are merged in order, with later files overriding earlier ones. So `values-production-us.yaml` overrides `values-prod.yaml`, which overrides `values-common.yaml`.
@@ -272,6 +282,8 @@ metadata:
   name: myapp
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
         elements:
@@ -289,8 +301,9 @@ spec:
             values_file: values-production.yaml
   template:
     metadata:
-      name: 'myapp-{{environment}}'
+      name: 'myapp-{{.environment}}'
     spec:
+      project: default
       source:
         repoURL: https://github.com/org/repo.git
         targetRevision: main
@@ -298,10 +311,10 @@ spec:
         helm:
           valueFiles:
             - values.yaml
-            - '{{values_file}}'
+            - '{{.values_file}}'
       destination:
-        server: '{{cluster}}'
-        namespace: '{{namespace}}'
+        server: '{{.cluster}}'
+        namespace: '{{.namespace}}'
       syncPolicy:
         automated:
           prune: true
@@ -320,8 +333,12 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: myapp-dev
+  namespace: argocd
 spec:
+  project: default
   source:
+    repoURL: https://github.com/org/repo.git
+    targetRevision: main
     path: charts/myapp
     helm:
       valueFiles:
@@ -334,6 +351,9 @@ spec:
         resources:
           requests:
             cpu: 50m
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: myapp-dev
 ```
 
 **Pros:** No extra files for minor differences.
