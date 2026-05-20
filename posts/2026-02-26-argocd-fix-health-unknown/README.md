@@ -138,12 +138,16 @@ For resources that do not have a status field and are always healthy when they e
 
 ```yaml
 data:
-  # Mark all resources of this type as healthy
-  resource.customizations.health.mygroup.io_MyResource: |
-    hs = {}
-    hs.status = "Healthy"
-    return hs
+  # Mark all resources in this API group as healthy
+  resource.customizations: |
+    mygroup.io/*:
+      health.lua: |
+        hs = {}
+        hs.status = "Healthy"
+        return hs
 ```
+
+Wildcard health checks must use the `resource.customizations` key. The `resource.customizations.health.<group>_<kind>` style does not support wildcards.
 
 ## Fix 3: Use the Built-in Health Check Library
 
@@ -234,7 +238,7 @@ data:
 
 ## Fix 6: Ignore Health for Specific Resources
 
-If a resource type does not need health monitoring, you can tell ArgoCD to ignore it entirely:
+If a resource type does not need health monitoring, you can mark it as healthy:
 
 ```yaml
 data:
@@ -244,7 +248,15 @@ data:
     return hs
 ```
 
-Or exclude the resource from the application entirely:
+To keep a specific resource from affecting the parent Application's health, add the ignore-healthcheck annotation to that resource:
+
+```yaml
+metadata:
+  annotations:
+    argocd.argoproj.io/ignore-healthcheck: "true"
+```
+
+Or exclude the resource from ArgoCD tracking entirely:
 
 ```yaml
 # argocd-cm ConfigMap
@@ -274,7 +286,7 @@ kubectl get deployment my-app -n production -o yaml | grep -A20 "status:"
 Possible causes:
 - Controller cannot access the cluster API
 - Resource status has an unexpected format
-- The resource was just created and status has not been populated yet
+- The built-in health check returned an error while reading the resource
 
 ## Testing Custom Health Checks
 
@@ -285,10 +297,14 @@ Before deploying a health check to production, test it:
 kubectl get certificate my-cert -n production -o yaml > resource.yaml
 
 # The health check should work with this data
-# Test by applying the ConfigMap and checking the app
+# Test it locally with the ArgoCD CLI
+argocd admin settings resource-overrides health resource.yaml \
+  --argocd-cm-path argocd-cm-configmap.yaml
+
+# Apply the ConfigMap and check the app
 kubectl apply -f argocd-cm-configmap.yaml
 
-# Restart the controller to pick up changes
+# If the status does not update, restart the controller
 kubectl rollout restart deployment argocd-application-controller -n argocd
 
 # Check the health status
@@ -323,4 +339,4 @@ data:
 
 ## Summary
 
-ArgoCD shows Unknown health when it does not have a health check for a resource type. This almost always happens with Custom Resource Definitions. Fix it by adding Lua-based health checks to the `argocd-cm` ConfigMap using the `resource.customizations.health.<group>_<kind>` pattern. For resources without a status field, simply return Healthy. For resources with standard status conditions, check for Ready/True conditions. Restart the application controller after adding health checks to pick up the changes.
+ArgoCD shows Unknown health when it does not have a health check for a resource type. This almost always happens with Custom Resource Definitions. Fix it by adding Lua-based health checks to the `argocd-cm` ConfigMap using the `resource.customizations.health.<group>_<kind>` pattern. For resources without a status field, simply return Healthy. For resources with standard status conditions, check for Ready/True conditions. If the status does not update after adding health checks, restart the application controller.
