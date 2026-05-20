@@ -8,7 +8,7 @@ Description: Learn how to use include and exclude glob patterns in ArgoCD direct
 
 ---
 
-When you point an ArgoCD Application at a directory, it reads every YAML and JSON file it finds. That is usually fine, but sometimes your directory contains files you do not want deployed - test fixtures, documentation, examples, or environment-specific configs that belong to a different cluster. ArgoCD provides `include` and `exclude` glob patterns to give you precise control over which files are processed.
+When you point an ArgoCD Application at a directory, it reads every YAML, JSON, and Jsonnet manifest file it finds. That is usually fine, but sometimes your directory contains files you do not want deployed - test fixtures, documentation, examples, or environment-specific configs that belong to a different cluster. ArgoCD provides `include` and `exclude` glob patterns to give you precise control over which files are processed.
 
 ## The Default Behavior
 
@@ -17,8 +17,9 @@ Without any include or exclude configuration, ArgoCD reads all files matching th
 - `.yaml`
 - `.yml`
 - `.json`
+- `.jsonnet`
 
-Files with other extensions (`.md`, `.txt`, `.sh`) are automatically ignored. Hidden files starting with `.` are also skipped.
+Files with other extensions (`.md`, `.txt`, `.sh`) are automatically ignored. Hidden files with manifest extensions are not automatically skipped, so exclude them explicitly if they should not be rendered.
 
 ## Using the Include Pattern
 
@@ -39,7 +40,7 @@ spec:
     targetRevision: main
     path: apps/my-app
     directory:
-      include: '*.yaml'  # Only include .yaml files, skip .yml and .json
+      include: '*.yaml'  # Only include .yaml files, skip .yml, .json, and .jsonnet
   destination:
     server: https://kubernetes.default.svc
     namespace: default
@@ -211,7 +212,7 @@ spec:
     directory:
       recurse: true
       include: '*.yaml'
-      exclude: '{test-*,*_test.yaml}'
+      exclude: '{test-*,*/test-*,*_test.yaml}'
 ```
 
 With this configuration and a directory like:
@@ -230,15 +231,15 @@ apps/platform/
     test-e2e.yaml        # Excluded by pattern
 ```
 
-Note that the exclude pattern matches on the filename only, not the full path. So `test-*` excludes any file starting with `test-` regardless of which subdirectory it is in.
+The patterns match paths relative to the Application source path. With recursion enabled, use a path-aware pattern like `*/test-*` when you want to match files in subdirectories. You can also target a specific subdirectory with a pattern such as `backend/*.yaml`.
 
 ## Glob Pattern Reference
 
-ArgoCD uses Go's `filepath.Match` glob syntax with some extensions:
+ArgoCD uses glob syntax against paths relative to the Application source directory:
 
 | Pattern | Matches |
 |---|---|
-| `*` | Any sequence of characters in a filename |
+| `*` | Any sequence of characters |
 | `?` | Any single character |
 | `[abc]` | Any character in the set |
 | `[a-z]` | Any character in the range |
@@ -246,8 +247,9 @@ ArgoCD uses Go's `filepath.Match` glob syntax with some extensions:
 | `*.yaml` | All files ending in `.yaml` |
 | `deploy-*` | All files starting with `deploy-` |
 | `app-?.yaml` | `app-1.yaml`, `app-a.yaml`, etc. |
+| `backend/*.yaml` | YAML files under the `backend` subdirectory |
 
-Important: the glob patterns match **filenames only**, not full paths. You cannot use patterns like `backend/*.yaml` to match files specifically in the `backend` subdirectory.
+Important: the glob patterns match relative paths, not absolute paths. Use path prefixes such as `backend/*.yaml` or `env-usw2/*` when you want a rule to apply to a specific subdirectory.
 
 ## Verifying Your Patterns
 
@@ -272,7 +274,7 @@ If the manifest count does not match your expectations, check:
 1. The include pattern is not too restrictive
 2. The exclude pattern is not too broad
 3. Files have the correct extensions
-4. With recursion enabled, files in subdirectories are also filtered
+4. With recursion enabled, files in subdirectories are also filtered by their relative paths
 
 ## Common Mistakes
 
@@ -280,7 +282,7 @@ If the manifest count does not match your expectations, check:
 
 **Forgetting curly braces for multiple patterns** - Use `{pattern1,pattern2}` to match multiple patterns. Without braces, only one pattern is used.
 
-**Assuming path-based matching** - Patterns match filenames, not directory paths. You cannot use `/backend/` in a pattern.
+**Assuming absolute path matching** - Patterns match paths relative to the Application source path. Use `backend/*.yaml`, not `/backend/*.yaml`.
 
 **Not accounting for .yml vs .yaml** - If your team uses both extensions, make sure your include pattern covers both: `*.{yaml,yml}`.
 
