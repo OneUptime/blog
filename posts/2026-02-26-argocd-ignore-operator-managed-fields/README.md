@@ -17,10 +17,10 @@ This guide explains how to identify operator-managed fields and configure ArgoCD
 Many operators modify resources they do not own. For example:
 
 - **HPA controller** sets `spec.replicas` on Deployments
-- **VPA controller** updates `spec.containers[].resources` on Pods
-- **Cert-manager** modifies Ingress annotations and TLS secrets
-- **External DNS** adds annotations to Services and Ingresses
-- **Kyverno/OPA** may mutate resources during admission
+- **VPA admission/updater components** can set `spec.containers[].resources` on Pods
+- **Cert-manager** creates and updates Certificate resources and TLS secrets
+- **ExternalDNS** reads annotations from Services and Ingresses to publish DNS records
+- **Kyverno/Gatekeeper** may mutate resources during admission
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,8 @@ flowchart LR
     OutOfSync -->|Self Heal| ArgoCD
     ArgoCD -->|Revert| K8s
     Operator -->|Modify Again| K8s
-    Note over ArgoCD,Operator: Reconciliation Loop
+    LoopNote[Reconciliation Loop] -.-> ArgoCD
+    LoopNote -.-> Operator
 ```
 
 ## Identifying Operator-Managed Fields
@@ -44,10 +45,10 @@ Kubernetes tracks which controller manages which fields through the `metadata.ma
 ```bash
 # See which managers own which fields on a Deployment
 
-kubectl get deployment my-app -o jsonpath='{.metadata.managedFields}' | jq '.'
+kubectl get deployment my-app --show-managed-fields -o jsonpath='{.metadata.managedFields}' | jq '.'
 
 # Filter for a specific manager
-kubectl get deployment my-app -o jsonpath='{.metadata.managedFields}' | \
+kubectl get deployment my-app --show-managed-fields -o jsonpath='{.metadata.managedFields}' | \
   jq '.[] | select(.manager | contains("kube-controller-manager"))'
 ```
 
@@ -60,7 +61,7 @@ The output shows the field paths and the manager name. If you see a manager like
 argocd app diff my-app
 
 # Look at a specific resource
-argocd app get my-app --resource-name my-deployment
+argocd app get-resource my-app --kind Deployment --resource-name my-deployment -o yaml
 ```
 
 ## Ignoring HPA-Managed Replica Count
@@ -98,16 +99,16 @@ ignoreDifferences:
       - /spec/replicas
 ```
 
-## Ignoring VPA-Managed Resource Requests
+## Ignoring Mutated Resource Requests
 
-The Vertical Pod Autoscaler modifies container resource requests and limits:
+The Vertical Pod Autoscaler normally writes recommendations to the `VerticalPodAutoscaler` object and applies them to Pods during admission, eviction, or in-place updates. It does not modify the Deployment pod template. Use a Deployment ignore rule only if another mutating controller writes resource recommendations back into your workload manifests:
 
 ```yaml
 ignoreDifferences:
   - group: apps
     kind: Deployment
     jqPathExpressions:
-      # Ignore resource requests/limits managed by VPA
+      # Ignore resource requests/limits managed by a mutating controller
       - .spec.template.spec.containers[].resources
 ```
 
@@ -123,16 +124,14 @@ ignoreDifferences:
 
 ## Ignoring Cert-Manager Managed Fields
 
-Cert-manager modifies Ingress resources by adding annotations and sometimes modifying TLS configuration:
+Cert-manager's ingress-shim reads Ingress annotations and creates Certificate resources and TLS Secrets. For HTTP-01 challenges, it can also modify an existing Ingress when `acme.cert-manager.io/http01-edit-in-place: "true"` is set. If those live changes create diffs, ignore only the fields cert-manager owns:
 
 ```yaml
 ignoreDifferences:
   - group: networking.k8s.io
     kind: Ingress
-    jsonPointers:
-      - /metadata/annotations/acme.cert-manager.io~1http01-edit-in-place
-      - /metadata/annotations/cert-manager.io~1issuer-kind
-      - /metadata/annotations/cert-manager.io~1issuer-name
+    managedFieldsManagers:
+      - cert-manager
   - group: ""
     kind: Secret
     name: my-tls-cert
@@ -143,7 +142,7 @@ ignoreDifferences:
 
 ## Ignoring External DNS Annotations
 
-External DNS adds annotations to Services and Ingresses to track DNS record ownership:
+ExternalDNS reads annotations from Services and Ingresses to decide which DNS records to publish. If another automation layer injects those annotations live instead of storing them in Git, you can ignore them:
 
 ```yaml
 ignoreDifferences:
@@ -187,11 +186,10 @@ data:
   resource.customizations.ignoreDifferences.apps_Deployment: |
     jsonPointers:
       - /spec/replicas
-  # Ignore cert-manager annotations on all Ingresses
+  # Ignore cert-manager-owned fields on all Ingresses
   resource.customizations.ignoreDifferences.networking.k8s.io_Ingress: |
-    jsonPointers:
-      - /metadata/annotations/cert-manager.io~1issuer-name
-      - /metadata/annotations/cert-manager.io~1issuer-kind
+    managedFieldsManagers:
+      - cert-manager
 ```
 
 ## Using ManagedFields Manager for Diff
@@ -204,14 +202,13 @@ ignoreDifferences:
     kind: Deployment
     managedFieldsManagers:
       - kube-controller-manager  # HPA manager
-      - vpa-recommender          # VPA manager
 ```
 
 This tells ArgoCD to ignore any field owned by these managers. It is more future-proof than listing specific JSON pointers because it automatically adapts when the operator starts managing new fields.
 
 ## Using Server-Side Diff
 
-Server-side diff with server-side apply helps resolve operator conflicts by using field ownership properly:
+Server-side diff with server-side apply helps ArgoCD compare the desired state against the API server's predicted live state and use Kubernetes field management during sync:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -226,7 +223,7 @@ spec:
       - ServerSideApply=true
 ```
 
-With server-side apply, Kubernetes tracks field ownership per manager. ArgoCD only owns the fields it applies, and operators own the fields they set. This eliminates most conflict scenarios.
+With server-side apply, Kubernetes tracks field ownership per manager. This reduces surprises when multiple controllers collaborate on the same object, but it does not replace explicit `ignoreDifferences` rules for fields that should remain operator-owned.
 
 ## The RespectIgnoreDifferences Flag
 
@@ -252,10 +249,9 @@ ignoreDifferences:
     jsonPointers:
       - /spec/replicas                    # HPA
     jqPathExpressions:
-      - .spec.template.spec.containers[].resources  # VPA
+      - .spec.template.spec.containers[].resources  # Mutating resource controller
     managedFieldsManagers:
       - kube-controller-manager           # HPA
-      - vpa-recommender                   # VPA
       - istio-sidecar-injector            # Istio
 ```
 
@@ -265,7 +261,7 @@ When operator ignore rules are not working:
 
 ```bash
 # Check who manages what fields
-kubectl get deployment my-app -o json | jq '.metadata.managedFields[] | {manager, fieldsV1}'
+kubectl get deployment my-app --show-managed-fields -o json | jq '.metadata.managedFields[] | {manager, fieldsV1}'
 
 # Verify ArgoCD sees the ignore rules
 argocd app get my-app -o yaml | grep -A30 ignoreDifferences
