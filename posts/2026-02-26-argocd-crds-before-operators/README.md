@@ -68,17 +68,19 @@ spec:
 
 ArgoCD processes sync waves in order: wave -5 first, then wave 0, then wave 5. Resources in the same wave are applied together.
 
-**Important**: For sync waves to work, you need either auto-sync enabled or you need to initiate a manual sync. ArgoCD does not automatically retry failed waves - if the CRD wave succeeds but the operator wave fails, it stops there.
+**Important**: For sync waves to work, you need either auto-sync enabled or you need to initiate a manual sync. ArgoCD does not continue past a failed wave within that sync operation - if the CRD wave succeeds but the operator wave fails, it stops there.
 
 ### Adding Health Checks Between Waves
 
-Sync waves wait for resources in the current wave to be "healthy" before moving to the next wave. For a Deployment, "healthy" means the rollout is complete. For a CRD, ArgoCD considers it healthy as soon as it is created.
+Sync waves wait for resources in the current wave to be "healthy" before moving to the next wave. For a Deployment, ArgoCD checks that the controller has observed the desired generation and that the updated replica count matches the desired replica count. For a CRD, ArgoCD considers it healthy as soon as it is created.
 
-To ensure the operator is actually running before custom resources are created, the Deployment health check handles this naturally. ArgoCD waits until the operator pods are ready before proceeding to the next wave.
+To ensure the operator rollout has happened before custom resources are created, the Deployment health check usually handles this naturally. If you need a stronger readiness gate, use a custom health check or a hook that explicitly waits for the operator to be ready.
 
 ## Pattern 2: Separate Applications with App of Apps
 
 When the CRDs, operator, and custom resources come from different sources (like a Helm chart for the operator and your own manifests for the custom resources), separate Applications with ordering give better control.
+
+One caveat: in ArgoCD 1.8 and later, the built-in health assessment for `argoproj.io/Application` was removed. If you rely on app-of-apps sync waves to wait for each child Application to become healthy before the next wave, restore the Application health check in `argocd-cm`.
 
 ```yaml
 # App of apps that deploys in order
@@ -152,11 +154,11 @@ spec:
       selfHeal: true
 ```
 
-**Note on `installCRDs: false`**: Many Helm charts include CRDs, but managing CRDs through Helm has a known issue - Helm does not update CRDs on `helm upgrade`. By managing CRDs in a separate Application with `ServerSideApply`, you get proper CRD lifecycle management.
+**Note on `installCRDs: false`**: Many Helm charts include CRDs in the chart `crds` directory, and Helm does not update or delete those CRDs on `helm upgrade`. cert-manager is a special case: when you set `installCRDs: true`, its chart templates the CRDs so Helm can manage them, with its own uninstall risks. By managing CRDs in a separate Application with `ServerSideApply`, you get explicit CRD lifecycle management.
 
 ## Pattern 3: Using ServerSideApply for CRDs
 
-CRDs can be large (cert-manager CRDs are over 1MB). ArgoCD may fail to apply them with the default client-side apply because of the `kubectl.kubernetes.io/last-applied-configuration` annotation size limit.
+CRDs can be large. ArgoCD may fail to apply large CRDs with the default client-side apply because of the `kubectl.kubernetes.io/last-applied-configuration` annotation size limit.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
