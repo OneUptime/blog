@@ -46,11 +46,11 @@ data:
 
   # Trigger on sync events
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       send: [slack-deployment-success]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status.operationState != nil and app.status.operationState.phase in ['Error', 'Failed']
       send: [slack-deployment-failed]
 
   trigger.on-health-degraded: |
@@ -124,7 +124,6 @@ For interactive commands (sync, rollback, status), build a Slack bot that talks 
 # chatops-bot/app.py
 
 import os
-import json
 import requests
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
@@ -142,6 +141,7 @@ def argocd_api(method, path, data=None):
     }
     url = f"{ARGOCD_SERVER}/api/v1/{path}"
     resp = requests.request(method, url, headers=headers, json=data, verify=True)
+    resp.raise_for_status()
     return resp.json()
 
 @app.command("/deploy")
@@ -149,7 +149,7 @@ def handle_deploy(ack, say, command):
     """Handle /deploy <app-name> command"""
     ack()
     app_name = command["text"].strip()
-    user = command["user_name"]
+    user_id = command["user_id"]
 
     # Check if app exists
     try:
@@ -159,7 +159,7 @@ def handle_deploy(ack, say, command):
         return
 
     # Trigger sync
-    say(f":rocket: *{user}* triggered deployment of `{app_name}`...")
+    say(f":rocket: <@{user_id}> triggered deployment of `{app_name}`...")
 
     sync_result = argocd_api("POST", f"applications/{app_name}/sync", {
         "revision": app_info["spec"]["source"]["targetRevision"],
@@ -206,7 +206,7 @@ def handle_rollback(ack, say, command):
     """Handle /deploy-rollback <app-name> command"""
     ack()
     app_name = command["text"].strip()
-    user = command["user_name"]
+    user_id = command["user_id"]
 
     # Get deployment history
     app_info = argocd_api("GET", f"applications/{app_name}")
@@ -217,10 +217,10 @@ def handle_rollback(ack, say, command):
         return
 
     previous = history[-2]
-    say(f":rewind: *{user}* initiated rollback of `{app_name}` "
+    say(f":rewind: <@{user_id}> initiated rollback of `{app_name}` "
         f"to revision `{previous['revision'][:7]}`...")
 
-    argocd_api("PUT", f"applications/{app_name}/rollback", {
+    argocd_api("POST", f"applications/{app_name}/rollback", {
         "id": previous["id"]
     })
 
@@ -308,13 +308,13 @@ Implement deployment approvals through Slack interactive messages:
 def handle_approval(ack, body, say):
     """Handle deployment approval button click"""
     ack()
-    user = body["user"]["username"]
+    user_id = body["user"]["id"]
     app_name = body["actions"][0]["value"]
 
     # Verify user is authorized to approve
     # (check against ArgoCD RBAC or a local allowlist)
 
-    say(f":white_check_mark: *{user}* approved deployment of `{app_name}`")
+    say(f":white_check_mark: <@{user_id}> approved deployment of `{app_name}`")
 
     # Trigger the sync
     argocd_api("POST", f"applications/{app_name}/sync", {
@@ -325,14 +325,14 @@ def handle_approval(ack, body, say):
 def handle_rejection(ack, body, say):
     """Handle deployment rejection"""
     ack()
-    user = body["user"]["username"]
+    user_id = body["user"]["id"]
     app_name = body["actions"][0]["value"]
-    say(f":no_entry: *{user}* rejected deployment of `{app_name}`")
+    say(f":no_entry: <@{user_id}> rejected deployment of `{app_name}`")
 ```
 
 ## Microsoft Teams Integration
 
-For Teams, use ArgoCD Notifications with the Teams webhook:
+For Teams, use ArgoCD Notifications with an Incoming Webhook trigger from Microsoft Teams Workflows:
 
 ```yaml
 apiVersion: v1
@@ -341,23 +341,18 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  service.teams: |
+  service.teams-workflows: |
     recipientUrls:
-      deployments: https://outlook.office.com/webhook/xxx/IncomingWebhook/yyy/zzz
+      deployments: $teams-workflow-webhook-url
 
   template.teams-deployment: |
-    teams:
+    teams-workflows:
       title: "{{.app.metadata.name}} Deployment"
-      themeColor: "{{if eq .app.status.health.status \"Healthy\"}}00FF00{{else}}FF0000{{end}}"
-      sections: |
-        [{
-          "activityTitle": "{{.app.metadata.name}}",
-          "facts": [
-            {"name": "Status", "value": "{{.app.status.sync.status}}"},
-            {"name": "Health", "value": "{{.app.status.health.status}}"},
-            {"name": "Revision", "value": "{{.app.status.sync.revision | trunc 7}}"}
-          ]
-        }]
+      themeColor: "{{if eq .app.status.health.status \"Healthy\"}}Good{{else}}Attention{{end}}"
+      text: |
+        Status: {{.app.status.sync.status}}
+        Health: {{.app.status.health.status}}
+        Revision: {{.app.status.sync.revision | trunc 7}}
       potentialAction: |
         [{
           "@type": "OpenUri",
