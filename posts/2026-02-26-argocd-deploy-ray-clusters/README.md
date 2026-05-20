@@ -107,6 +107,7 @@ spec:
   headGroupSpec:
     rayStartParams:
       dashboard-host: '0.0.0.0'
+      metrics-export-port: '8080'
       num-cpus: '0'  # Don't schedule tasks on head
     template:
       metadata:
@@ -125,6 +126,8 @@ spec:
                 name: client
               - containerPort: 8000
                 name: serve
+              - containerPort: 8080
+                name: metrics
             resources:
               limits:
                 cpu: "4"
@@ -145,6 +148,7 @@ spec:
       minReplicas: 0
       maxReplicas: 8
       rayStartParams:
+        metrics-export-port: '8080'
         num-gpus: '1'
       template:
         metadata:
@@ -161,6 +165,9 @@ spec:
           containers:
             - name: ray-worker
               image: rayproject/ray-ml:2.9.0-py310-gpu
+              ports:
+                - containerPort: 8080
+                  name: metrics
               resources:
                 limits:
                   cpu: "8"
@@ -188,6 +195,7 @@ spec:
       minReplicas: 2
       maxReplicas: 20
       rayStartParams:
+        metrics-export-port: '8080'
         num-cpus: '8'
       template:
         metadata:
@@ -198,6 +206,9 @@ spec:
           containers:
             - name: ray-worker
               image: rayproject/ray-ml:2.9.0-py310
+              ports:
+                - containerPort: 8080
+                  name: metrics
               resources:
                 limits:
                   cpu: "8"
@@ -220,30 +231,12 @@ Key configuration choices here:
 - Autoscaling is enabled with separate min/max for each worker group
 - CPU and GPU workers are separate groups so they can scale independently
 
-## Step 3: Create Services for Ray
+## Step 3: Create Ingress for Ray
 
-Expose the Ray dashboard and client endpoint:
+KubeRay automatically creates a head service named `ml-cluster-head-svc` for the Ray dashboard, Ray Client endpoint, Ray Serve, GCS, and metrics ports. Point your Ingress at that service:
 
 ```yaml
-# ray-clusters/production/services.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: ml-cluster-head-svc
-spec:
-  selector:
-    ray-node: head
-  ports:
-    - name: dashboard
-      port: 8265
-      targetPort: 8265
-    - name: client
-      port: 10001
-      targetPort: 10001
-    - name: serve
-      port: 8000
-      targetPort: 8000
----
+# ray-clusters/production/ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -316,8 +309,6 @@ kind: RayService
 metadata:
   name: recommendation-service
 spec:
-  serviceUnhealthySecondThreshold: 300
-  deploymentUnhealthySecondThreshold: 300
   serveConfigV2: |
     applications:
       - name: recommendation
@@ -383,9 +374,9 @@ Upgrading Ray versions requires careful coordination. The recommended approach i
 
 1. Update the image tags in your Git repository
 2. Let ArgoCD detect the change
-3. ArgoCD will perform a rolling update of the cluster
+3. ArgoCD applies the updated manifest, and KubeRay reconciles the cluster
 
-For major version upgrades, consider creating a new RayCluster alongside the old one and migrating traffic:
+RayCluster does not provide a native zero-downtime rolling upgrade for Ray version changes. For production upgrades, create a new RayCluster alongside the old one and migrate traffic:
 
 ```yaml
 # Create a new cluster with the new version
@@ -400,20 +391,37 @@ spec:
 
 ## Monitoring Ray with ArgoCD
 
-Add Prometheus monitoring for your Ray cluster:
+Add Prometheus monitoring for your Ray cluster with PodMonitors:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
-  name: ray-metrics
+  name: ray-head-metrics
 spec:
+  namespaceSelector:
+    matchNames:
+      - ray
   selector:
     matchLabels:
-      ray-node: head
-  endpoints:
-    - port: dashboard
-      path: /api/prometheus_health
+      ray.io/node-type: head
+  podMetricsEndpoints:
+    - port: metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: ray-worker-metrics
+spec:
+  namespaceSelector:
+    matchNames:
+      - ray
+  selector:
+    matchLabels:
+      ray.io/node-type: worker
+  podMetricsEndpoints:
+    - port: metrics
       interval: 30s
 ```
 
