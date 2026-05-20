@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Performance, Troubleshooting
 
-Description: Learn how to manage large application manifests that exceed the 1MB etcd size limit in ArgoCD, including splitting strategies, compression, and architectural patterns.
+Description: Learn how to manage large application manifests that exceed Kubernetes and etcd size limits in ArgoCD, including splitting strategies, compression, and architectural patterns.
 
 ---
 
-Kubernetes stores all resources in etcd, and etcd has a hard limit of approximately 1.5MB per key-value pair. The practical limit for a Kubernetes resource is about 1MB after encoding overhead. When ArgoCD generates or manages manifests that approach this limit, you run into errors during sync, and applications fail to deploy. This guide covers why this happens and how to work around it.
+Kubernetes stores resources in etcd, and etcd's default maximum request size is 1.5MiB. Kubernetes also has object-specific limits, such as the 1MiB data limit for ConfigMaps. When ArgoCD generates or manages manifests that approach these limits, you run into errors during sync, and applications fail to deploy. This guide covers why this happens and how to work around it.
 
 ## Understanding the Size Limit
 
-The etcd size limit applies to the serialized form of any Kubernetes resource. This includes the entire resource - metadata, spec, status, annotations, and managed fields. Several things can push a resource past this limit:
+The size limits apply to the serialized form of Kubernetes resources and the API requests that store them. This includes the entire resource - metadata, spec, status, annotations, and managed fields. Several things can push a resource past these limits:
 
 - Large ConfigMaps or Secrets with embedded configuration files
 - Helm releases with extensive template output stored in release Secrets
@@ -28,7 +28,7 @@ graph TD
     A --> E[annotations can be huge]
     B --> F[managedFields ~10-100KB]
     E --> G[last-applied-config duplicates spec]
-    F --> H[Total must be under ~1MB]
+    F --> H[Total must stay below API and storage limits]
     G --> H
 ```
 
@@ -118,7 +118,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: app
@@ -148,7 +154,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       initContainers:
         - name: fetch-config
@@ -179,7 +191,7 @@ spec:
 
 ## Strategy 3: Reduce Helm Release Secret Size
 
-Helm stores release information in Secrets, and these can grow very large with complex charts. ArgoCD uses Helm as a manifest generator, so this is less of an issue than with standalone Helm. However, if you are using ArgoCD to manage Helm releases that were originally installed with Helm, the release Secrets can be problematic.
+Helm stores release information in Secrets, and these can grow very large with complex charts. ArgoCD uses Helm as a manifest generator by running `helm template`, so it does not create or update Helm release Secrets for ArgoCD-managed applications. However, release Secrets left behind by standalone Helm installs can still be problematic.
 
 ```bash
 # Check the size of Helm release secrets
@@ -187,26 +199,10 @@ kubectl get secrets -n default -l "owner=helm" -o json | \
   jq -r '.items[] | "\(.metadata.name): \(. | tostring | length) bytes"' | \
   sort -t: -k2 -n -r
 
-# Reduce Helm history to minimize stored releases
-# In your ArgoCD Application
-```
-
-```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: my-helm-app
-  namespace: argocd
-spec:
-  source:
-    repoURL: https://charts.example.com
-    chart: my-chart
-    targetRevision: 1.0.0
-    helm:
-      # Limit revision history to reduce secret size
-      parameters:
-        - name: revisionHistoryLimit
-          value: "3"
+# For standalone Helm releases, limit stored revisions during upgrades
+helm upgrade my-release https://charts.example.com/my-chart \
+  --install \
+  --history-max 3
 ```
 
 ## Strategy 4: Remove the last-applied-configuration Annotation
@@ -313,7 +309,7 @@ kubectl get deployment my-app -o json | jq '[.metadata.managedFields[].manager]'
 
 ## Strategy 7: Use Binary Data Compression
 
-For ConfigMaps and Secrets that contain binary or compressible data, use the `binaryData` field with base64-encoded compressed content.
+For ConfigMaps that contain binary or compressible data, use the `binaryData` field with base64-encoded compressed content. For Secrets, use the `data` field for base64-encoded compressed content.
 
 ```yaml
 apiVersion: v1
@@ -363,4 +359,4 @@ done
 
 ## Summary
 
-The 1MB etcd limit is a hard constraint that requires architectural thinking. Split large ConfigMaps into smaller pieces, use external storage for very large configuration data, enable server-side apply to eliminate the last-applied-configuration annotation bloat, and break monolithic ArgoCD Applications into smaller ones. The best approach depends on what is eating the space - use the diagnostic commands above to find the culprit, then apply the matching strategy.
+Kubernetes and etcd size limits are constraints that require architectural thinking. Split large ConfigMaps into smaller pieces, use external storage for very large configuration data, enable server-side apply to eliminate the last-applied-configuration annotation bloat, and break monolithic ArgoCD Applications into smaller ones. The best approach depends on what is eating the space - use the diagnostic commands above to find the culprit, then apply the matching strategy.
