@@ -249,7 +249,8 @@ If you want to switch from server URL to name (or vice versa):
 # Switch from server to name
 argocd app set my-app --dest-name production-cluster
 
-# This automatically removes the server field
+# If the application already has a server field, remove it from the manifest
+# or update the application declaratively with only one destination identifier
 ```
 
 **Declaratively, edit the Application YAML:**
@@ -270,18 +271,17 @@ destination:
 
 ## Validating Destination Before Creating
 
-You can validate your application spec before creating it:
+You can validate your application spec when creating or updating it:
 
 ```bash
-# Dry-run creation to check for errors
+# Create the app through the ArgoCD API, which validates repo and cluster settings by default
 argocd app create my-app \
   --repo https://github.com/org/repo \
   --path deploy/ \
   --dest-server https://kubernetes.default.svc \
-  --dest-namespace production \
-  --dry-run
+  --dest-namespace production
 
-# Or validate a YAML file
+# Or have the Kubernetes API server validate a YAML file's CRD schema
 kubectl apply --dry-run=server -f application.yaml
 ```
 
