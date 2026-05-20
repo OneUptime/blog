@@ -17,7 +17,7 @@ This guide covers the monitoring and alerting setup every ArgoCD installation sh
 ArgoCD exposes Prometheus metrics on each component. Enable scraping:
 
 ```yaml
-# ServiceMonitor for all ArgoCD components
+# ServiceMonitor for the application controller metrics service
 
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -29,7 +29,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/part-of: argocd
+      app.kubernetes.io/name: argocd-metrics
   endpoints:
     - port: metrics
       interval: 30s
@@ -59,8 +59,7 @@ sum by (sync_status) (argocd_app_info)
 argocd_app_info{sync_status="OutOfSync"}
 
 # Applications that have been OutOfSync for over 30 minutes
-# (requires recording rule)
-argocd_app_info{sync_status="OutOfSync"} offset 30m
+min_over_time(argocd_app_info{sync_status="OutOfSync"}[30m]) == 1
 ```
 
 ### Application health status
@@ -79,11 +78,13 @@ argocd_app_info{health_status="Unknown"}
 ### Sync operation performance
 
 ```promql
-# Sync operation duration (histogram)
-histogram_quantile(0.95, sum(rate(argocd_app_sync_total[5m])) by (le, name))
+# Average sync operation duration
+sum by (namespace, name, project, dest_server) (rate(argocd_app_sync_duration_seconds_total[5m]))
+/
+sum by (namespace, name, project, dest_server) (rate(argocd_app_sync_total{phase=~"Succeeded|Failed|Error"}[5m]))
 
 # Sync failures rate
-sum(rate(argocd_app_sync_total{phase="Error"}[5m])) by (name)
+sum(rate(argocd_app_sync_total{phase=~"Error|Failed"}[5m])) by (name)
 
 # Sync success rate
 sum(rate(argocd_app_sync_total{phase="Succeeded"}[5m])) /
@@ -93,8 +94,8 @@ sum(rate(argocd_app_sync_total[5m]))
 ### Controller performance
 
 ```promql
-# Controller reconciliation queue depth
-argocd_app_reconcile_count
+# Controller reconciliation rate
+sum(rate(argocd_app_reconcile_count[5m]))
 
 # Controller reconciliation duration
 histogram_quantile(0.95, sum(rate(argocd_app_reconcile_bucket[5m])) by (le))
@@ -110,20 +111,20 @@ container_memory_working_set_bytes{namespace="argocd", container="argocd-applica
 histogram_quantile(0.95, sum(rate(argocd_git_request_duration_seconds_bucket[5m])) by (le))
 
 # Git request failures
-sum(rate(argocd_git_request_total{request_type="fetch", result="error"}[5m]))
+sum(rate(argocd_git_fetch_fail_total[5m]))
 
-# Manifest generation duration
-histogram_quantile(0.95, sum(rate(argocd_repo_pending_request_total[5m])) by (le))
+# Pending repo-server requests
+sum(argocd_repo_pending_request_total) by (repo)
 ```
 
 ### API server performance
 
 ```promql
 # API request rate
-sum(rate(argocd_api_request_total[5m])) by (verb, resource)
+sum(rate(grpc_server_handled_total[5m])) by (grpc_service, grpc_method, grpc_code)
 
-# API request latency
-histogram_quantile(0.95, sum(rate(argocd_api_request_duration_seconds_bucket[5m])) by (le))
+# API gRPC request latency (requires ARGOCD_ENABLE_GRPC_TIME_HISTOGRAM=true)
+histogram_quantile(0.95, sum(rate(grpc_server_handling_seconds_bucket[5m])) by (le))
 ```
 
 ## Critical alerts
@@ -198,6 +199,13 @@ spec:
 These should notify the team but not page:
 
 ```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: argocd-warning-alerts
+  namespace: argocd
+spec:
+  groups:
     - name: argocd.warning
       rules:
         # Applications out of sync
@@ -222,7 +230,7 @@ These should notify the team but not page:
         # Git fetch errors
         - alert: ArgocdGitFetchErrors
           expr: |
-            increase(argocd_git_request_total{request_type="fetch", result="error"}[15m]) > 5
+            increase(argocd_git_fetch_fail_total[15m]) > 5
           labels:
             severity: warning
           annotations:
@@ -241,7 +249,7 @@ These should notify the team but not page:
         # Redis connection issues
         - alert: ArgocdRedisConnectionErrors
           expr: |
-            increase(argocd_redis_request_total{result="error"}[5m]) > 0
+            increase(argocd_redis_request_total{failed="true"}[5m]) > 0
           for: 10m
           labels:
             severity: warning
@@ -300,7 +308,7 @@ sum(increase(kube_pod_container_status_restarts_total{namespace="argocd"}[1h])) 
 histogram_quantile(0.95, sum(rate(argocd_git_request_duration_seconds_bucket{request_type="fetch"}[5m])) by (le))
 
 # Git fetch rate
-sum(rate(argocd_git_request_total{request_type="fetch"}[5m])) by (result)
+sum(rate(argocd_git_request_total{request_type="fetch"}[5m])) by (repo)
 ```
 
 ## ArgoCD notifications for operational events
