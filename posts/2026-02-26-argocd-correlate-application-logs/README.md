@@ -53,6 +53,7 @@ metadata:
     service: payment-service
     environment: production
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/payment-service
     targetRevision: main
@@ -60,7 +61,7 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: payments
-  # Ensure labels propagate to managed resources
+  # Create the destination namespace if it does not already exist
   syncPolicy:
     syncOptions:
       - CreateNamespace=true
@@ -82,11 +83,19 @@ metadata:
     # ArgoCD adds these automatically
     app.kubernetes.io/instance: payment-service
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
     metadata:
       labels:
         app: payment-service
         team: payments
+        environment: production
+    spec:
+      containers:
+        - name: payment-service
+          image: ghcr.io/myorg/payment-service:1.0.0
 ```
 
 These shared labels let you query both ArgoCD and application logs with the same filters.
@@ -115,13 +124,16 @@ spec:
             - /bin/sh
             - -c
             - |
+              REVISION="$(kubectl get application payment-service -n argocd -o jsonpath='{.status.sync.revision}')"
+              REPO_URL="$(kubectl get application payment-service -n argocd -o jsonpath='{.spec.source.repoURL}')"
+
               # Annotate the deployment with the sync timestamp and revision
               kubectl annotate deployment payment-service \
                 -n payments \
                 --overwrite \
                 argocd.sync.timestamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-                argocd.sync.revision="${ARGOCD_APP_REVISION}" \
-                argocd.sync.source="${ARGOCD_APP_SOURCE_REPO_URL}"
+                argocd.sync.revision="$REVISION" \
+                argocd.sync.source="$REPO_URL"
       restartPolicy: Never
 ```
 
@@ -144,13 +156,16 @@ data:
       filelog/argocd:
         include:
           - /var/log/pods/argocd_*/*/*.log
+        include_file_path: true
+        include_file_name: false
         operators:
-          - type: regex_parser
-            regex: '^(?P<time>[^ ]+) (?P<stream>\S+) \S+ (?P<log>.*)$'
+          - type: container
+          - type: add
+            field: attributes.log.source
+            value: argocd
           - type: json_parser
-            parse_from: attributes.log
-        attributes:
-          log.source: argocd
+            parse_from: body
+            if: 'body matches "^\\{"'
 
       filelog/apps:
         include:
@@ -158,14 +173,17 @@ data:
         exclude:
           - /var/log/pods/argocd_*/*/*.log
           - /var/log/pods/kube-system_*/*/*.log
+        include_file_path: true
+        include_file_name: false
         operators:
-          - type: regex_parser
-            regex: '^(?P<time>[^ ]+) (?P<stream>\S+) \S+ (?P<log>.*)$'
-        attributes:
-          log.source: application
+          - type: container
+          - type: add
+            field: attributes.log.source
+            value: application
 
     processors:
       k8sattributes:
+        auth_type: serviceAccount
         extract:
           metadata:
             - k8s.pod.name
@@ -184,8 +202,8 @@ data:
         log_statements:
           - context: log
             statements:
-              - set(attributes["correlation.app"], attributes["argocd_app"])
-                where attributes["argocd_app"] != nil
+              - set(attributes["correlation.app"], resource.attributes["argocd_app"])
+                where resource.attributes["argocd_app"] != nil
 
       batch:
         send_batch_size: 1000
