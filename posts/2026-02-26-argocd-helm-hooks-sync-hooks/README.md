@@ -42,7 +42,7 @@ metadata:
     argocd.argoproj.io/hook-delete-policy: HookSucceeded
 ```
 
-When ArgoCD renders Helm charts, it converts Helm hooks to ArgoCD hooks automatically.
+When ArgoCD renders Helm charts, it converts supported Helm hooks to ArgoCD hooks automatically. If you define any ArgoCD hook annotations in the chart, ArgoCD ignores the Helm hook annotations.
 
 ## How ArgoCD Handles Helm Hooks
 
@@ -54,12 +54,13 @@ By default, ArgoCD maps Helm hook annotations to ArgoCD hook annotations:
 | `post-install` | `PostSync` | After the sync/install |
 | `pre-upgrade` | `PreSync` | Before the sync/upgrade |
 | `post-upgrade` | `PostSync` | After the sync/upgrade |
-| `pre-delete` | `PreSync` (with special handling) | Before deletion |
-| `post-delete` | `PostSync` (with special handling) | After deletion |
+| `pre-delete` | `PreDelete` | Before Application deletion |
+| `post-delete` | `PostDelete` | After Application deletion |
 | `pre-rollback` | Not directly mapped | N/A |
-| `test` | Skipped by default | N/A |
+| `post-rollback` | Not directly mapped | N/A |
+| `test` / `test-success` / `test-failure` | Not supported | N/A |
 
-The mapping happens at render time. When ArgoCD runs `helm template`, it detects the Helm hook annotations and translates them to ArgoCD equivalents.
+The mapping happens at render time. ArgoCD uses Helm only to inflate charts with `helm template`, then maps supported Helm hook annotations to ArgoCD equivalents. ArgoCD cannot distinguish a first install from an upgrade; every operation is a sync, so `pre-install` and `pre-upgrade` hooks run in the same sync phase.
 
 ## Practical Example: Database Migration
 
@@ -146,6 +147,7 @@ kind: ConfigMap
 metadata:
   name: app-config
   annotations:
+    argocd.argoproj.io/hook: PreSync
     argocd.argoproj.io/sync-wave: "-2"
 data:
   config.yaml: |
@@ -182,7 +184,13 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       containers:
         - name: my-app
@@ -215,8 +223,8 @@ graph LR
     A["PreSync Phase"] --> B["Sync Phase"]
     B --> C["PostSync Phase"]
 
+    A --> A0["Wave -2: ConfigMap"]
     A --> A1["Wave -1: DB Migration"]
-    B --> B1["Wave -2: ConfigMap"]
     B --> B2["Wave 0: Deployment"]
     C --> C1["Wave 1: Smoke Tests"]
 ```
@@ -249,7 +257,7 @@ annotations:
 
 ## Disabling Helm Hook Conversion
 
-If you want ArgoCD to skip Helm hooks entirely (not convert them), you can set the `helm.sh/hook` annotation to `crd-install` or use the skip annotation:
+If you want ArgoCD to skip a rendered resource entirely, use the skip annotation:
 
 ```yaml
 annotations:
@@ -257,7 +265,7 @@ annotations:
   argocd.argoproj.io/hook: Skip
 ```
 
-Or configure it at the application level:
+For Helm test manifests, you can configure ArgoCD to pass Helm's `--skip-tests` behavior at the application level:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -310,11 +318,11 @@ Common issues:
 
 1. **Hook not running**: Check if the Helm hook annotation is being correctly mapped. View the rendered manifest with `argocd app manifests my-app`.
 
-2. **Hook running every sync**: Make sure you have a delete policy set. Without one, the hook Job persists and is not recreated.
+2. **Hook not being recreated or updated**: Named hooks are applied with `kubectl apply`, so use `helm.sh/hook-delete-policy: before-hook-creation` or `argocd.argoproj.io/hook-delete-policy: BeforeHookCreation` when you need a fresh Job on each sync.
 
 3. **Hook order issues**: Use sync waves to control ordering within a phase.
 
-4. **Test hooks**: By default, ArgoCD skips Helm test hooks. Use `skipTests: false` if you want them to run.
+4. **Test hooks**: ArgoCD does not run Helm test hooks. Use `skipTests: true` if you want Helm test manifests omitted during rendering.
 
 ## Summary
 
