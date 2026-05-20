@@ -8,7 +8,7 @@ Description: Learn how to set up eCryptfs to encrypt your home directory on Ubun
 
 ---
 
-eCryptfs is a filesystem-level encryption layer built into the Linux kernel that encrypts files individually as they are written to disk. Ubuntu has used it as the basis for home directory encryption since Ubuntu 9.10 (though newer installations prefer LUKS). It's particularly useful for laptops where the risk of physical theft is real.
+eCryptfs is a filesystem-level encryption layer built into the Linux kernel that encrypts files individually as they are written to disk. Ubuntu used it as the basis for home directory encryption beginning with Ubuntu 9.04, but Ubuntu 18.04 LTS and later no longer support eCryptfs encrypted home directories as an installer feature. For current Ubuntu installations, LUKS full-disk encryption is generally preferred. eCryptfs can still be useful on legacy systems or manually configured setups where the risk of physical theft is real.
 
 ## Understanding eCryptfs
 
@@ -16,7 +16,7 @@ eCryptfs works differently from LUKS full-disk encryption:
 - **LUKS**: Encrypts the entire disk partition. Must be unlocked at boot.
 - **eCryptfs**: Encrypts the filesystem layer. Unlocked when you log in with your password.
 
-eCryptfs stores encrypted files in a lower directory (`.Private` or a separate directory) and mounts the decrypted view over your home directory when you authenticate. Individual files are encrypted with their own keys, which are wrapped by your login passphrase.
+eCryptfs stores encrypted files in a lower directory (`.Private` or a separate directory) and mounts the decrypted view over your home directory when you authenticate. Individual files are encrypted with per-file encryption keys; those keys are protected by a mount passphrase, and Ubuntu's home-directory setup stores that mount passphrase wrapped by your login passphrase.
 
 ## Installing eCryptfs Utilities
 
@@ -30,19 +30,19 @@ sudo apt install ecryptfs-utils -y
 sudo apt install rsync -y
 
 # Verify the kernel module is available
-modprobe ecryptfs
+sudo modprobe ecryptfs
 lsmod | grep ecryptfs
 ```
 
 ## Option 1: Encrypting During Ubuntu Installation
 
-The cleanest approach is to enable home encryption during Ubuntu installation:
+On legacy Ubuntu releases that still supported eCryptfs encrypted home directories in the installer, the cleanest approach was to enable home encryption during Ubuntu installation:
 
 1. During installation, when creating your user account, check "Encrypt my home folder"
 2. Ubuntu handles all the setup automatically
 3. Your home directory will be encrypted on first boot
 
-This is the recommended approach for new installations.
+For new Ubuntu installations, use LUKS full-disk encryption instead.
 
 ## Option 2: Setting Up eCryptfs on an Existing Home Directory
 
@@ -65,6 +65,7 @@ sudo ecryptfs-migrate-home -u username
 # 1. You'll be shown a warning about backing up
 # 2. Confirm you understand the risks
 # 3. The tool copies your home directory to an encrypted location
+# 4. Log in as the migrated user immediately after migration, before rebooting
 ```
 
 After migration completes:
@@ -103,17 +104,19 @@ echo "Mount passphrase: $PASSPHRASE"
 # SAVE THIS PASSPHRASE SECURELY
 
 # Insert the passphrase into the kernel keyring
-echo "$PASSPHRASE" | ecryptfs-add-passphrase --fnek
+printf "%s" "$PASSPHRASE" | ecryptfs-add-passphrase --fnek -
 
-# Get the key signature (shown after adding passphrase)
-KEY_SIG=$(keyctl list @u | grep -oP '(?<=\d: )[0-9a-f]+' | head -1)
+# Get the key signatures shown after adding the passphrase
+KEY_SIG="your_key_signature_here"
+FNEK_SIG="your_fnek_signature_here"
 echo "Key signature: $KEY_SIG"
+echo "Filename key signature: $FNEK_SIG"
 
 # Mount eCryptfs manually
 sudo mount -t ecryptfs \
     /home/.ecryptfs/username/.Private \
     /home/username \
-    -o ecryptfs_sig=$KEY_SIG,ecryptfs_fnek_sig=$KEY_SIG,ecryptfs_cipher=aes,ecryptfs_key_bytes=16
+    -o ecryptfs_sig=$KEY_SIG,ecryptfs_fnek_sig=$FNEK_SIG,ecryptfs_cipher=aes,ecryptfs_key_bytes=16,ecryptfs_enable_filename_crypto=y
 
 # The directory is now mounted and encrypted files in .Private appear decrypted at /home/username
 ```
@@ -130,17 +133,12 @@ grep ecryptfs /etc/pam.d/common-session
 # If not configured, add PAM integration
 # For common-auth, add after the pam_unix.so line:
 sudo tee -a /etc/pam.d/common-auth << 'EOF'
-auth    optional        pam_ecryptfs.so unwrap
+auth    required        pam_ecryptfs.so unwrap
 EOF
 
 # For common-session:
 sudo tee -a /etc/pam.d/common-session << 'EOF'
 session optional        pam_ecryptfs.so unwrap
-EOF
-
-# For common-password (handles passphrase changes):
-sudo tee -a /etc/pam.d/common-password << 'EOF'
-password        optional        pam_ecryptfs.so
 EOF
 ```
 
@@ -180,14 +178,15 @@ MOUNT_POINT=/mnt/decrypted
 sudo mkdir -p "$MOUNT_POINT"
 
 # Add the passphrase to keyring (enter the MOUNT PASSPHRASE, not login password)
-ecryptfs-add-passphrase
+ecryptfs-add-passphrase --fnek
 
-# Mount with the key signature shown
+# Mount with the key signatures shown
 KEY_SIG="your_key_signature_here"
+FNEK_SIG="your_fnek_signature_here"
 sudo mount -t ecryptfs \
     "$ENCRYPTED_DIR" \
     "$MOUNT_POINT" \
-    -o ecryptfs_sig=$KEY_SIG,ecryptfs_fnek_sig=$KEY_SIG,ecryptfs_cipher=aes,ecryptfs_key_bytes=16,ecryptfs_passthrough=n,ecryptfs_enable_filename_crypto=y
+    -o ecryptfs_sig=$KEY_SIG,ecryptfs_fnek_sig=$FNEK_SIG,ecryptfs_cipher=aes,ecryptfs_key_bytes=16,ecryptfs_enable_filename_crypto=y
 
 # Your files are now accessible in /mnt/decrypted
 ls /mnt/decrypted
@@ -225,10 +224,10 @@ mount | grep ecryptfs | tr ',' '\n'
 ls -la ~/.ecryptfs/
 
 # Check the private directory (encrypted storage)
-ls -la ~/.Private/
+ls -la /home/.ecryptfs/username/.Private/
 
 # Verify files are actually encrypted on disk
-ls ~/.Private/ | head -5
+ls /home/.ecryptfs/username/.Private/ | head -5
 # File names should look like random characters (encrypted filenames)
 ```
 
@@ -236,13 +235,13 @@ ls ~/.Private/ | head -5
 
 ```bash
 # Unmount the encrypted home directory (normally done automatically at logout)
-umount.ecryptfs_private
+ecryptfs-umount-private
 
 # Or manually
 sudo umount /home/username
 
-# After unmounting, ~/Private shows encrypted filenames
-ls ~/Private/  # Shows encrypted file names
+# After unmounting, the lower directory shows encrypted filenames
+ls /home/.ecryptfs/username/.Private/  # Shows encrypted file names
 ```
 
 ## Limitations and Considerations
@@ -261,7 +260,7 @@ sudo ecryptfs-setup-swap
 
 # Or use cryptsetup for swap
 # Add to /etc/crypttab:
-# cryptswap1 /dev/sdX /dev/urandom swap,offset=1024,cipher=aes-xts-plain64
+# cryptswap1 /dev/sdX /dev/urandom plain,cipher=aes-xts-plain64,size=256,swap
 ```
 
 eCryptfs remains a practical option for home directory encryption on Ubuntu, particularly for existing installations where full-disk encryption wasn't set up during installation. For new deployments, LUKS full-disk encryption is generally preferred.
