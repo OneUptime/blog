@@ -14,13 +14,13 @@ Understanding how glob patterns work in ArgoCD RBAC is essential for managing pe
 
 ## Glob Pattern Basics
 
-ArgoCD uses the `path.Match` function from Go's standard library for glob matching. The object field in RBAC policies follows the format `<project>/<application>`, and you can use patterns in either part.
+ArgoCD's default `glob` RBAC match mode is based on Go glob matching. For application-specific policies, the object field usually follows the format `<project>/<application>`, and you can use patterns across that object value. If the "Application in any namespace" feature is enabled, the object format becomes `<project>/<namespace>/<application>`.
 
 The basic wildcards are:
 
 | Pattern | Matches |
 |---------|---------|
-| `*` | Any sequence of characters (excluding `/`) |
+| `*` | Any sequence of characters |
 | `?` | Any single character |
 | `[abc]` | Any single character in the set |
 | `[a-z]` | Any single character in the range |
@@ -62,7 +62,7 @@ policy.csv: |
   p, role:global-viewer, applications, get, */*, allow
 ```
 
-However, the `*` wildcard does not match the `/` separator. So `*` matches project names and application names independently. The pattern `*/app-name` matches `app-name` in any project, and `project-name/*` matches any application in a specific project.
+ArgoCD does not treat `/` as a separator when evaluating glob patterns, so the whole object is matched as a single token. In the usual `<project>/<application>` format, the pattern `*/app-name` matches `app-name` in any project, and `project-name/*` matches any application in a specific project.
 
 ## Application Name Patterns
 
@@ -226,22 +226,22 @@ Test with actual application names that exist in your cluster to catch subtle pa
 ### The Double Wildcard Trap
 
 ```yaml
-# WRONG: ** is not supported in ArgoCD RBAC
+# WRONG: ** is unnecessary and less clear for application objects
 p, role:viewer, applications, get, **, allow
 
-# CORRECT: use */* for all projects and apps
+# CORRECT: use */* when you mean project/application objects
 p, role:viewer, applications, get, */*, allow
 ```
 
-ArgoCD does not support recursive glob patterns (`**`). Always use `*/*` to match all projects and applications.
+ArgoCD's glob mode does not treat `/` as a directory separator, so recursive path-style patterns are not needed. Use `*/*` when you want the policy to clearly target application objects in the usual project/application format.
 
 ### Forgetting the Project Part
 
 ```yaml
-# WRONG: missing project part
+# WRONG: does not match a project/application object named */my-app
 p, role:viewer, applications, get, my-app, allow
 
-# CORRECT: include project/app format
+# CORRECT: include a pattern for the full object value
 p, role:viewer, applications, get, */my-app, allow
 p, role:viewer, applications, get, myproject/my-app, allow
 ```
