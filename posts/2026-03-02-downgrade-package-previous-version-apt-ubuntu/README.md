@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Ubuntu, APT, Package Management, Troubleshooting, System Administration
 
-Description: Learn how to downgrade a package to a previous version on Ubuntu using APT, including finding available versions, pinning to prevent re-upgrade, and handling dependency issues.
+Description: Learn how to downgrade a package to a previous version on Ubuntu using APT, including finding available versions, holding packages to prevent re-upgrade, and handling dependency issues.
 
 ---
 
@@ -58,10 +58,10 @@ sudo apt install nginx=1.18.0-6ubuntu14.4
 # Do you want to continue? [Y/n]
 ```
 
-If the version number isn't in your repository's package lists (only in cache), you might see it listed in `apt-cache policy` but APT won't install it by default. Use `--allow-downgrades`:
+For non-interactive runs, add `--allow-downgrades` so APT can proceed without stopping at the downgrade prompt:
 
 ```bash
-# Force downgrade even when APT is hesitant
+# Allow the downgrade without an interactive confirmation prompt
 sudo apt install --allow-downgrades nginx=1.18.0-6ubuntu14.4
 ```
 
@@ -73,8 +73,11 @@ Downgrading often triggers dependency conflicts because the older package versio
 # Simulate the downgrade to see what it affects
 sudo apt install --simulate nginx=1.18.0-6ubuntu14.4
 
-# If dependencies are a problem, use the force flag (with caution)
-sudo apt install -f nginx=1.18.0-6ubuntu14.4
+# If related packages must move together, specify their versions together
+sudo apt install --allow-downgrades \
+    nginx=1.18.0-6ubuntu14.4 \
+    nginx-common=1.18.0-6ubuntu14.4 \
+    nginx-core=1.18.0-6ubuntu14.4
 
 # Or with dpkg directly for more control
 sudo dpkg -i /var/cache/apt/archives/nginx_1.18.0-6ubuntu14.4_amd64.deb
@@ -135,7 +138,7 @@ sudo ppa-purge ppa:owner/ppa-name
 
 This is the cleanest way to revert a PPA installation.
 
-## Using apt-get with --force-yes for Scripted Downgrades
+## Using apt-get with --allow-downgrades for Scripted Downgrades
 
 In automation scripts where interactive prompts aren't possible:
 
@@ -166,23 +169,24 @@ sudo apt install -f
 
 ### Option B: Download from Ubuntu Launchpad
 
-Ubuntu maintains package snapshots at `launchpad.net/ubuntu`:
+Ubuntu publishes source and binary package pages at `launchpad.net/ubuntu`:
 
 ```bash
 # Find the package version in Launchpad's package search
 # https://launchpad.net/ubuntu/+source/nginx
 
-# Download a specific version
-wget https://launchpad.net/ubuntu/+archive/ubuntu/pool/main/n/nginx/nginx_1.18.0-6ubuntu14.4_amd64.deb
+# Open the binary package page and download the matching .deb
+# For example:
+# https://launchpad.net/ubuntu/jammy/amd64/nginx-core/1.18.0-6ubuntu14.4
 
 # Install it
-sudo dpkg -i nginx_1.18.0-6ubuntu14.4_amd64.deb
+sudo dpkg -i nginx-core_1.18.0-6ubuntu14.4_amd64.deb
 sudo apt install -f
 ```
 
 ### Option C: Use Snapshot Repositories
 
-Some projects maintain historical snapshot repositories. For Ubuntu packages, Launchpad's API can be queried for exact package versions.
+Some projects maintain historical snapshot repositories. For Ubuntu packages, Launchpad package pages and archive publishing history can help locate exact package versions.
 
 ## Downgrading Multiple Related Packages
 
@@ -216,8 +220,9 @@ apt-cache policy nginx | grep "Installed:"
 For operational discipline, document any intentional downgrades:
 
 ```bash
-# Create a note in a standard location
-sudo tee /etc/apt/preferences.d/nginx-downgrade-note << 'EOF'
+# Create a note in a standard location for local operations notes
+sudo mkdir -p /var/local/ops-notes
+sudo tee /var/local/ops-notes/nginx-downgrade-note.txt << 'EOF'
 # NOTE: nginx downgraded from 1.24.0 to 1.18.0 on 2026-03-02
 # Reason: Version 1.24.0 introduced breaking change in SSL config handling
 # Ticket: OPS-1234
