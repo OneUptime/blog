@@ -52,7 +52,7 @@ apt-rdepends curl | grep -c "^  Depends:"
 apt-rdepends curl | grep "^[^ ]" | sort -u | wc -l
 
 # Get just a flat list of dependent packages
-apt-rdepends curl | grep -v "Depends:" | grep -v "^Reading" | grep -v "^$" | sort -u
+apt-rdepends curl | grep "^[^ ]" | grep -v "^Reading" | sort -u
 ```
 
 ## Reverse Dependencies: What Needs This Package?
@@ -68,7 +68,7 @@ apt-rdepends --reverse libssl3
 # - Finding the "root" packages that pulled in a dependency
 
 # How many packages depend on libssl3?
-apt-rdepends --reverse libssl3 | grep -c "^  Depends:"
+apt-rdepends --reverse libssl3 | grep -c "^  Reverse Depends:"
 ```
 
 ## Why This Matters: Safe Package Removal
@@ -87,20 +87,20 @@ apt-cache rdepends libpng16-16 | head -20
 
 The difference is that `apt-rdepends --reverse` shows the full recursive chain, while `apt-cache rdepends` only shows direct dependents.
 
-## Limiting Dependency Depth
+## Filtering Dependency Types
 
-For large packages, the full recursive tree can be overwhelming. Limit the depth:
+For large packages, the full recursive tree can be overwhelming. `apt-rdepends` does not support a depth limit, but you can control which relationship types it follows and displays:
 
 ```bash
-# Show only direct dependencies (depth 1)
-apt-rdepends --depth=1 nginx
+# Follow only Depends relationships recursively
+apt-rdepends --follow=Depends nginx
 
-# Show two levels deep
-apt-rdepends --depth=2 nginx
+# Show only Depends relationships in the output
+apt-rdepends --show=Depends nginx
 
-# Compare: without depth limit vs with
+# Compare: default output vs Depends-only output
 apt-rdepends nginx | wc -l
-apt-rdepends --depth=1 nginx | wc -l
+apt-rdepends --show=Depends nginx | wc -l
 ```
 
 ## Generating Dependency Graphs
@@ -158,6 +158,7 @@ apt-rdepends --reverse unexpected-package | head -30
 # Cross-reference with what's installed
 apt-rdepends --reverse unexpected-package | \
     grep "^[^ ]" | \
+    grep -v "^Reading" | \
     xargs dpkg -l 2>/dev/null | \
     grep "^ii"
 ```
@@ -186,10 +187,10 @@ apt-cache rdepends libreadline8 | \
 echo "Packages with no reverse dependencies:"
 echo "(review carefully before removing)"
 
-dpkg --get-selections | grep "install$" | awk '{print $1}' | \
+dpkg --get-selections | awk '$2 == "install" {print $1}' | \
 while read pkg; do
     # Check if anything depends on this package
-    rdeps=$(apt-rdepends --reverse "$pkg" 2>/dev/null | grep "^[^ ]" | grep -v "^$pkg$" | wc -l)
+    rdeps=$(apt-rdepends --reverse "$pkg" 2>/dev/null | grep "^[^ ]" | grep -v "^Reading" | grep -v "^$pkg$" | wc -l)
     if [ "$rdeps" -eq 0 ]; then
         # Also check that it's not manually installed
         manual=$(apt-mark showmanual | grep "^${pkg}$")
@@ -211,7 +212,7 @@ sudo apt full-upgrade --dry-run 2>&1 | grep "^Inst" | \
     head -10 | \
     while read pkg; do
         echo "=== $pkg ==="
-        apt-rdepends --reverse "$pkg" --depth=2 | head -10
+        apt-rdepends --reverse "$pkg" | head -10
     done
 ```
 
@@ -225,8 +226,8 @@ PKG1="nginx"
 PKG2="apache2"
 
 # Get dependency lists for both packages
-apt-rdepends "$PKG1" | grep "^[^ ]" | sort > /tmp/deps-$PKG1.txt
-apt-rdepends "$PKG2" | grep "^[^ ]" | sort > /tmp/deps-$PKG2.txt
+apt-rdepends "$PKG1" | grep "^[^ ]" | grep -v "^Reading" | sort > /tmp/deps-$PKG1.txt
+apt-rdepends "$PKG2" | grep "^[^ ]" | grep -v "^Reading" | sort > /tmp/deps-$PKG2.txt
 
 # Find common dependencies
 echo "Common dependencies between $PKG1 and $PKG2:"
