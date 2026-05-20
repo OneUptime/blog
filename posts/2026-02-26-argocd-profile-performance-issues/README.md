@@ -86,8 +86,8 @@ curl -s localhost:8082/metrics | grep workqueue_queue_duration
 # Cluster info - per-cluster resource counts
 curl -s localhost:8082/metrics | grep argocd_cluster_info
 
-# kubectl exec count - how many K8s API calls are made
-curl -s localhost:8082/metrics | grep argocd_kubectl_exec
+# kubectl request metrics - how many K8s API calls are made and how long they take
+curl -s localhost:8082/metrics | grep argocd_kubectl_request
 ```
 
 ### Key Repo Server Metrics
@@ -118,23 +118,28 @@ curl -s localhost:8083/metrics | grep argocd_redis_request
 
 ## Step 3: Go pprof Profiling
 
-ArgoCD components expose Go pprof endpoints for CPU and memory profiling:
+ArgoCD components can expose Go pprof endpoints on their internal metrics ports when profiling is enabled:
 
 ```bash
-# Enable pprof by checking if the debug port is available
-# The controller exposes pprof on port 6060 by default
+# Enable pprof on the controller metrics port
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
+  "data": {
+    "controller.profile.enabled": "true"
+  }
+}'
+kubectl rollout restart deployment argocd-application-controller -n argocd
 
 # Port-forward to the pprof endpoint
-kubectl port-forward -n argocd deploy/argocd-application-controller 6060:6060 &
+kubectl port-forward -n argocd deploy/argocd-application-controller 8082:8082 &
 
 # CPU profile (30 second sample)
-curl -o controller-cpu.prof http://localhost:6060/debug/pprof/profile?seconds=30
+curl -o controller-cpu.prof http://localhost:8082/debug/pprof/profile?seconds=30
 
 # Memory/heap profile
-curl -o controller-heap.prof http://localhost:6060/debug/pprof/heap
+curl -o controller-heap.prof http://localhost:8082/debug/pprof/heap
 
 # Goroutine dump (useful for deadlock detection)
-curl -o controller-goroutine.txt http://localhost:6060/debug/pprof/goroutine?debug=2
+curl -o controller-goroutine.txt http://localhost:8082/debug/pprof/goroutine?debug=2
 
 # Analyze with go tool pprof
 go tool pprof -http=:8080 controller-cpu.prof
@@ -144,9 +149,16 @@ go tool pprof -http=:8081 controller-heap.prof
 For the repo server:
 
 ```bash
-kubectl port-forward -n argocd deploy/argocd-repo-server 6060:6060 &
-curl -o repo-cpu.prof http://localhost:6060/debug/pprof/profile?seconds=30
-curl -o repo-heap.prof http://localhost:6060/debug/pprof/heap
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
+  "data": {
+    "reposerver.profile.enabled": "true"
+  }
+}'
+kubectl rollout restart deployment argocd-repo-server -n argocd
+
+kubectl port-forward -n argocd deploy/argocd-repo-server 8084:8084 &
+curl -o repo-cpu.prof http://localhost:8084/debug/pprof/profile?seconds=30
+curl -o repo-heap.prof http://localhost:8084/debug/pprof/heap
 ```
 
 ## Step 4: Identify Specific Bottlenecks
@@ -154,9 +166,9 @@ curl -o repo-heap.prof http://localhost:6060/debug/pprof/heap
 ### Bottleneck: Slow Reconciliation
 
 ```bash
-# Find the slowest applications to reconcile
-curl -s localhost:8082/metrics | grep argocd_app_reconcile_bucket | \
-  grep 'le="10"' | sort -t'=' -k2 -rn | head -10
+# Find applications with the highest total reconciliation time
+curl -s localhost:8082/metrics | grep '^argocd_app_reconcile_sum' | \
+  sort -t' ' -k2 -rn | head -10
 
 # Check reconciliation queue
 curl -s localhost:8082/metrics | grep workqueue_depth
@@ -190,15 +202,17 @@ curl -s localhost:8084/metrics | grep argocd_git_request_duration_seconds_sum | 
   sort -t' ' -k2 -rn | head -10
 ```
 
-Fix: Enable Git caching, reduce fetch frequency, or use shallow clones:
+Fix: Tune the repo cache expiration or Git request timeout:
 
 ```bash
-# Reduce Git operation timeout
-kubectl patch configmap argocd-cm -n argocd --type merge -p '{
+# Increase repo cache duration and Git request timeout
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
   "data": {
-    "timeout.reconciliation": "180s"
+    "reposerver.repo.cache.expiration": "48h0m0s",
+    "reposerver.git.request.timeout": "30s"
   }
 }'
+kubectl rollout restart deployment argocd-repo-server -n argocd
 ```
 
 ### Bottleneck: High Memory Usage
@@ -211,14 +225,14 @@ while true; do
 done
 
 # Get detailed memory breakdown from pprof
-curl -s http://localhost:6060/debug/pprof/heap?debug=1 | head -50
+curl -s http://localhost:8082/debug/pprof/heap?debug=1 | head -50
 ```
 
 ### Bottleneck: Kubernetes API Latency
 
 ```bash
-# Check kubectl exec counts and durations
-curl -s localhost:8082/metrics | grep argocd_kubectl_exec
+# Check kubectl request counts and durations
+curl -s localhost:8082/metrics | grep argocd_kubectl_request
 
 # If K8s API is slow, ArgoCD will be slow
 kubectl get --raw /metrics | grep apiserver_request_duration_seconds_bucket | head -20
