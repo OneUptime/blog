@@ -8,13 +8,13 @@ Description: Learn how to implement and manage mutual TLS configuration across y
 
 ---
 
-Mutual TLS (mTLS) is the backbone of zero-trust networking in Kubernetes. Every service-to-service communication gets encrypted and authenticated without application code changes. But managing mTLS configuration across dozens or hundreds of services is where things get messy. ArgoCD turns this into a declarative, auditable process.
+Mutual TLS (mTLS) is the backbone of zero-trust networking in Kubernetes. Service-to-service communication between workloads in the mesh gets encrypted and authenticated without application code changes. But managing mTLS configuration across dozens or hundreds of services is where things get messy. ArgoCD turns this into a declarative, auditable process.
 
 This guide covers implementing mTLS with Istio service mesh managed through ArgoCD, from strict enforcement to gradual rollout strategies.
 
 ## Understanding mTLS Modes in Istio
 
-Istio supports three mTLS modes that you manage through PeerAuthentication resources:
+Istio supports three explicit mTLS behavior modes that you manage through PeerAuthentication resources:
 
 - **PERMISSIVE** - Accepts both plaintext and mTLS traffic (good for migration)
 - **STRICT** - Only accepts mTLS traffic (zero-trust)
@@ -50,15 +50,15 @@ spec:
       - ServerSideApply=true
 ```
 
-Inside the `mtls-policies` directory, start with a mesh-wide PERMISSIVE policy:
+Inside the `mtls-policies` directory, start with a mesh-wide PERMISSIVE policy. Mesh-wide policies live in Istio's configured root namespace, which is `istio-system` by default:
 
 ```yaml
 # mtls-policies/mesh-wide-policy.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
-  namespace: istio-system  # Mesh-wide when in istio-system
+  namespace: istio-system  # Mesh-wide in the default Istio root namespace
 spec:
   mtls:
     mode: PERMISSIVE
@@ -70,7 +70,7 @@ The smart approach is to roll out STRICT mTLS one namespace at a time. Each name
 
 ```yaml
 # mtls-policies/namespaces/production.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -79,14 +79,14 @@ spec:
   mtls:
     mode: STRICT
 ---
-# DestinationRule to ensure outgoing connections use mTLS
-apiVersion: networking.istio.io/v1beta1
+# DestinationRule for services that need explicit client TLS settings
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
-  name: default
+  name: orders-mtls
   namespace: production
 spec:
-  host: "*.production.svc.cluster.local"
+  host: orders.production.svc.cluster.local
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
@@ -94,7 +94,7 @@ spec:
 
 ```yaml
 # mtls-policies/namespaces/staging.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -106,7 +106,7 @@ spec:
 
 ## Gradual Rollout Strategy
 
-The safest approach is a three-phase rollout. Here is the workflow managed through Git branches and ArgoCD:
+The safest approach is a phased rollout. Here is the workflow managed through Git branches and ArgoCD:
 
 ```mermaid
 graph LR
@@ -135,7 +135,7 @@ Some services legitimately cannot use mTLS - external-facing gateways, legacy se
 
 ```yaml
 # mtls-policies/exceptions/legacy-payment-service.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: legacy-payment
@@ -157,7 +157,7 @@ Add a corresponding DestinationRule so the mesh knows how to reach this service:
 
 ```yaml
 # mtls-policies/exceptions/legacy-payment-dr.yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-payment
@@ -187,7 +187,7 @@ metadata:
   namespace: argocd
   annotations:
     argocd.argoproj.io/hook: PreSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation,HookSucceeded
 spec:
   template:
     spec:
@@ -247,7 +247,7 @@ For production environments, use External Secrets Operator or Sealed Secrets ins
 
 ```yaml
 # mtls-policies/certs/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: cacerts
@@ -278,7 +278,7 @@ spec:
 
 ## Monitoring mTLS Status
 
-After enabling STRICT mTLS, monitor for connection failures. Create a PrometheusRule that triggers alerts when mTLS handshake failures spike:
+After enabling STRICT mTLS, monitor for traffic that is not using mTLS. Create a PrometheusRule that triggers alerts when non-mTLS destination traffic appears:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -290,14 +290,16 @@ spec:
   groups:
     - name: mtls
       rules:
-        - alert: HighMTLSHandshakeFailures
+        - alert: NonMTLSTrafficDetected
           expr: |
-            sum(rate(envoy_ssl_connection_error_total[5m])) by (namespace) > 0.1
+            sum by (destination_workload_namespace) (
+              rate({__name__=~"istio_requests_total|istio_tcp_connections_closed_total",reporter="destination",connection_security_policy!="mutual_tls"}[5m])
+            ) > 0.1
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "High mTLS handshake failures in {{ $labels.namespace }}"
+            summary: "Non-mTLS traffic detected in {{ $labels.destination_workload_namespace }}"
 ```
 
 ## Audit Trail Benefits
