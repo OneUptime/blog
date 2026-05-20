@@ -187,12 +187,13 @@ commonAnnotations:
 
 # ArgoCD Application spec
 kustomize:
+  forceCommonAnnotations: true
   commonAnnotations:
     environment: production
     cluster: prod-1
 ```
 
-The result includes all four annotations. If the same key appears in both, the ArgoCD spec value wins.
+The result includes all four annotations. If the same key appears in both, set `forceCommonAnnotations: true` so the ArgoCD spec value can replace the value from `kustomization.yaml`. Without it, ArgoCD fails manifest generation when a duplicate annotation key already exists.
 
 ## ArgoCD-Managed Annotations
 
@@ -200,28 +201,34 @@ ArgoCD adds its own annotations to managed resources:
 
 ```yaml
 annotations:
-  # Added by ArgoCD for tracking
-  kubectl.kubernetes.io/last-applied-configuration: "..."
+  # Used by ArgoCD when annotation-based resource tracking is enabled
+  argocd.argoproj.io/tracking-id: my-api:apps/Deployment:production/my-api
 ```
 
 Do not override ArgoCD's tracking annotations through commonAnnotations.
 
 ## Selective Annotation Application
 
-If you need annotations only on specific resources (not all of them), do not use commonAnnotations. Use patches instead:
+If you need annotations only on a specific resource (not all of them), do not use commonAnnotations. Use patches instead:
 
 ```yaml
 # overlays/production/kustomization.yaml
 patches:
   - target:
+      group: apps
+      version: v1
       kind: Deployment
+      name: my-api
     patch: |
-      - op: add
-        path: /metadata/annotations/deploy.myorg.com~1canary
-        value: "true"
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: my-api
+        annotations:
+          deploy.myorg.com/canary: "true"
 ```
 
-This adds the annotation only to Deployments, not to Services, ConfigMaps, or other resources.
+This adds the annotation only to the `my-api` Deployment, not to Services, ConfigMaps, or other resources.
 
 ## Verifying Annotations
 
