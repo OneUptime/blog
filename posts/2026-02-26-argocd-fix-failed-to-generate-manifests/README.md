@@ -90,18 +90,18 @@ git ls-tree -d HEAD deploy/kubernetes
 argocd app set my-app --path correct/path
 ```
 
-## Cause 3: Tool Detection Failed
+## Cause 3: Tool Detection Is Wrong
 
-ArgoCD cannot determine whether to use Helm, Kustomize, or plain YAML:
+ArgoCD might select a tool you did not intend, especially when a directory contains a `Chart.yaml` or `kustomization.yaml` file:
 
 ```text
-failed to generate manifests: tool detection failed
+failed to generate manifests: app path contains a kustomization.yaml but directory source type is configured
 ```
 
 ArgoCD detects the tool type by looking for:
 - `Chart.yaml` - Helm
 - `kustomization.yaml`, `kustomization.yml`, or `Kustomization` - Kustomize
-- `.yaml`/`.json` files - Directory (plain YAML)
+- Otherwise, ArgoCD treats the path as a Directory application for plain `.yml`, `.yaml`, and `.json` manifests
 
 **If the detection is wrong or ambiguous, force the tool type:**
 
@@ -185,10 +185,15 @@ Large repos or complex charts can exceed the default timeout:
 failed to generate manifests: context deadline exceeded
 ```
 
-**Increase the exec timeout:**
+**Increase the repo server timeouts:**
 
 ```yaml
-# Repo server deployment
+# argocd-cmd-params-cm
+data:
+  controller.repo.server.timeout.seconds: "300"
+  server.repo.server.timeout.seconds: "300"
+
+# Repo server deployment, for long-running Helm/Kustomize/plugin commands
 env:
   - name: ARGOCD_EXEC_TIMEOUT
     value: "300s"
@@ -284,7 +289,7 @@ spec:
   source:
     directory:
       include: '*.yaml'
-      exclude: 'README.md,scripts/*'
+      exclude: '{README.md,scripts/*}'
 ```
 
 ## Cause 10: Repo Server Pod Not Ready
