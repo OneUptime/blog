@@ -28,18 +28,18 @@ Fast Startup causes Windows to write a hibernation image to disk rather than ful
 
 ### Check BitLocker Status
 
-If BitLocker is encrypting your Windows drive, suspend it before repartitioning:
+If BitLocker is encrypting your Windows drive, turn it off and wait for decryption to finish before running the Ubuntu installer. Ubuntu's guided side-by-side installer cannot safely map an encrypted Windows partition. Suspending BitLocker is useful for some boot changes, but it is not enough for the installer to inspect and resize the Windows filesystem safely:
 
 ```powershell
 # Run in PowerShell as Administrator to check status
 
 Get-BitLockerVolume -MountPoint C:
 
-# Suspend BitLocker temporarily
-Suspend-BitLocker -MountPoint C: -RebootCount 0
+# Turn BitLocker off and begin decrypting the drive
+Disable-BitLocker -MountPoint C:
 ```
 
-Re-enable it after the dual boot is fully working.
+You can turn BitLocker back on from Windows after the dual boot is fully working and you have saved the new recovery key.
 
 ### Check Secure Boot
 
@@ -64,9 +64,10 @@ If Windows refuses to shrink beyond a certain point due to unmovable files (like
 Download the Ubuntu 24.04 LTS ISO from ubuntu.com. Write it to a USB drive using Rufus on Windows:
 
 - Select the ISO
-- Partition scheme: GPT (required for UEFI systems)
-- File system: FAT32
+- Leave Rufus settings at their defaults unless the USB fails to boot
+- If it does fail to boot on a modern UEFI-only system, set Partition scheme to GPT and Target system to UEFI (non CSM)
 - Click Start
+- If prompted, choose "Write in ISO Image mode"
 
 ## Step 3: Boot from the USB
 
@@ -78,16 +79,16 @@ Choose "Try or Install Ubuntu". On the installation type screen, the installer s
 
 ### What This Does
 
-The installer will show a slider letting you divide the unallocated space. Drag it to set how much goes to Ubuntu. This creates:
+The installer will show a slider letting you divide the available space. Drag it to set how much goes to Ubuntu. This creates:
 
 - An ext4 partition for Ubuntu's root filesystem
-- A swap partition (or swap file, depending on the installer version)
+- A swap file in the Ubuntu filesystem on current Ubuntu releases, unless you create a separate swap partition manually
 
 The existing Windows EFI System Partition (ESP) is shared - Ubuntu adds its GRUB bootloader to the same ESP, which is the correct behavior on UEFI systems.
 
 ### Manual Partitioning (Optional)
 
-If you prefer full control, choose "Something else" on the installation type screen. You will see your disk layout. Click on the unallocated space and create:
+If you prefer full control, choose "Manual partitioning" on the installation type screen. You will see your disk layout. Click on the unallocated space and create:
 
 ```text
 # Suggested layout for the unallocated space:
@@ -101,7 +102,7 @@ Do not format the EFI partition - just select it and assign `/boot/efi` as the m
 
 ## Step 5: Complete Installation
 
-Fill in your username, hostname, and password. Enable the OpenSSH server if you want remote access. Let the installer run to completion.
+Fill in your username, hostname, and password. Let the installer run to completion. If you want remote access, install the OpenSSH server after Ubuntu boots.
 
 When it finishes, it will ask you to remove the USB drive and press Enter to restart.
 
@@ -113,7 +114,7 @@ On the next boot, GRUB will appear and list your boot options:
 - Windows Boot Manager
 - Ubuntu (recovery mode)
 
-Select Ubuntu to boot into Linux, or Windows Boot Manager for Windows. GRUB's default timeout is 10 seconds, after which it boots the default entry (Ubuntu).
+Select Ubuntu to boot into Linux, or Windows Boot Manager for Windows. The visible GRUB menu often waits 10 seconds before booting the default entry, but the exact timeout is controlled by `GRUB_TIMEOUT` in `/etc/default/grub`.
 
 ### Changing the Default Boot Entry
 
@@ -124,7 +125,7 @@ To make Windows the default:
 sudo nano /etc/default/grub
 ```
 
-Find `GRUB_DEFAULT=0` and change it to `GRUB_DEFAULT="Windows Boot Manager"` or to the numeric position of the Windows entry in the GRUB menu.
+Find `GRUB_DEFAULT=0` and change it to the numeric position of the Windows entry in the GRUB menu, counting from 0. You can also use the exact generated menu title, which is often similar to `Windows Boot Manager (on /dev/nvme0n1p1)`, but numbers or GRUB entry IDs are less fragile than shortened titles.
 
 Then update GRUB:
 
@@ -152,6 +153,7 @@ Ubuntu can read and write NTFS partitions (Windows drive) using the ntfs-3g driv
 lsblk -f
 
 # Mount the Windows partition (replace /dev/sda3 with your partition)
+sudo mkdir -p /mnt/windows
 sudo mount /dev/sda3 /mnt/windows
 
 # Or add to /etc/fstab for automatic mounting at boot
@@ -174,7 +176,11 @@ Windows sometimes overwrites the boot order after updates. Boot from your Ubuntu
 # Reinstall GRUB to the EFI partition
 sudo mount /dev/sda2 /mnt        # your Ubuntu root partition
 sudo mount /dev/sda1 /mnt/boot/efi  # your EFI partition
-sudo grub-install --target=x86_64-efi --efi-directory=/mnt/boot/efi --boot-directory=/mnt/boot
+sudo mount --bind /dev /mnt/dev
+sudo mount --bind /proc /mnt/proc
+sudo mount --bind /sys /mnt/sys
+sudo chroot /mnt grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu
+sudo chroot /mnt update-grub
 ```
 
 ### Windows Will Not Boot After Installing Ubuntu
