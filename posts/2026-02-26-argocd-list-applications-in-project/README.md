@@ -50,18 +50,22 @@ argocd app list --project backend -o wide
 
 ### Filtering by Status
 
-Combine project filtering with status filters:
+Filter the JSON output by status:
 
 ```bash
 # List only out-of-sync applications in the backend project
-argocd app list --project backend --status OutOfSync
+argocd app list --project backend -o json | \
+  jq -r '.[] | select(.status.sync.status == "OutOfSync") | .metadata.name'
 
 # List only unhealthy applications
-argocd app list --project backend --health Degraded
-argocd app list --project backend --health Missing
+argocd app list --project backend -o json | \
+  jq -r '.[] | select(.status.health.status == "Degraded") | .metadata.name'
+argocd app list --project backend -o json | \
+  jq -r '.[] | select(.status.health.status == "Missing") | .metadata.name'
 
 # List applications with sync errors
-argocd app list --project backend --status Unknown
+argocd app list --project backend -o json | \
+  jq -r '.[] | select(.status.sync.status == "Unknown") | .metadata.name'
 ```
 
 ### Extracting Specific Fields with JSON
@@ -69,30 +73,30 @@ argocd app list --project backend --status Unknown
 ```bash
 # Get names and sync status
 argocd app list --project backend -o json | \
-  jq '.items[] | {name: .metadata.name, sync: .status.sync.status, health: .status.health.status}'
+  jq '.[] | {name: .metadata.name, sync: .status.sync.status, health: .status.health.status}'
 
 # Get names and destination namespaces
 argocd app list --project backend -o json | \
-  jq '.items[] | {name: .metadata.name, namespace: .spec.destination.namespace}'
+  jq '.[] | {name: .metadata.name, namespace: .spec.destination.namespace}'
 
 # Get names and source repos
 argocd app list --project backend -o json | \
-  jq '.items[] | {name: .metadata.name, repo: .spec.source.repoURL}'
+  jq '.[] | {name: .metadata.name, repo: .spec.source.repoURL}'
 
 # Count by health status
 argocd app list --project backend -o json | \
-  jq '[.items[].status.health.status] | group_by(.) | map({status: .[0], count: length})'
+  jq '[.[].status.health.status] | sort | group_by(.) | map({status: .[0], count: length})'
 ```
 
 ## Using kubectl
 
-### List Applications by Project Label
+### List Applications by Project
 
 ```bash
 # ArgoCD applications are Kubernetes custom resources
 kubectl get applications -n argocd \
   -o custom-columns=NAME:.metadata.name,PROJECT:.spec.project,SYNC:.status.sync.status,HEALTH:.status.health.status | \
-  grep backend
+  awk 'NR == 1 || $2 == "backend"'
 
 # Or use jsonpath to filter
 kubectl get applications -n argocd \
@@ -196,11 +200,12 @@ echo "Time: $(date)"
 echo ""
 
 # Summary
-TOTAL=$(argocd app list --project $PROJECT -o name | wc -l | tr -d ' ')
-SYNCED=$(argocd app list --project $PROJECT --status Synced -o name | wc -l | tr -d ' ')
-OUT_OF_SYNC=$(argocd app list --project $PROJECT --status OutOfSync -o name | wc -l | tr -d ' ')
-HEALTHY=$(argocd app list --project $PROJECT --health Healthy -o name | wc -l | tr -d ' ')
-DEGRADED=$(argocd app list --project $PROJECT --health Degraded -o name | wc -l | tr -d ' ')
+APPS_JSON=$(argocd app list --project "$PROJECT" -o json)
+TOTAL=$(echo "$APPS_JSON" | jq 'length')
+SYNCED=$(echo "$APPS_JSON" | jq '[.[] | select(.status.sync.status == "Synced")] | length')
+OUT_OF_SYNC=$(echo "$APPS_JSON" | jq '[.[] | select(.status.sync.status == "OutOfSync")] | length')
+HEALTHY=$(echo "$APPS_JSON" | jq '[.[] | select(.status.health.status == "Healthy")] | length')
+DEGRADED=$(echo "$APPS_JSON" | jq '[.[] | select(.status.health.status == "Degraded")] | length')
 
 echo "Total applications: $TOTAL"
 echo "Synced: $SYNCED"
@@ -212,13 +217,13 @@ echo "Degraded: $DEGRADED"
 if [ "$OUT_OF_SYNC" -gt 0 ]; then
   echo ""
   echo "=== Out of Sync Applications ==="
-  argocd app list --project $PROJECT --status OutOfSync
+  echo "$APPS_JSON" | jq -r '.[] | select(.status.sync.status == "OutOfSync") | .metadata.name'
 fi
 
 if [ "$DEGRADED" -gt 0 ]; then
   echo ""
   echo "=== Degraded Applications ==="
-  argocd app list --project $PROJECT --health Degraded
+  echo "$APPS_JSON" | jq -r '.[] | select(.status.health.status == "Degraded") | .metadata.name'
 fi
 ```
 
@@ -236,10 +241,11 @@ printf "%-20s %-8s %-8s %-10s %-10s\n" "PROJECT" "TOTAL" "SYNCED" "HEALTHY" "DEG
 printf "%-20s %-8s %-8s %-10s %-10s\n" "-------" "-----" "------" "-------" "--------"
 
 for PROJECT in $(argocd proj list -o json | jq -r '.[].metadata.name'); do
-  TOTAL=$(argocd app list --project $PROJECT -o name 2>/dev/null | wc -l | tr -d ' ')
-  SYNCED=$(argocd app list --project $PROJECT --status Synced -o name 2>/dev/null | wc -l | tr -d ' ')
-  HEALTHY=$(argocd app list --project $PROJECT --health Healthy -o name 2>/dev/null | wc -l | tr -d ' ')
-  DEGRADED=$(argocd app list --project $PROJECT --health Degraded -o name 2>/dev/null | wc -l | tr -d ' ')
+  APPS_JSON=$(argocd app list --project "$PROJECT" -o json 2>/dev/null)
+  TOTAL=$(echo "$APPS_JSON" | jq 'length')
+  SYNCED=$(echo "$APPS_JSON" | jq '[.[] | select(.status.sync.status == "Synced")] | length')
+  HEALTHY=$(echo "$APPS_JSON" | jq '[.[] | select(.status.health.status == "Healthy")] | length')
+  DEGRADED=$(echo "$APPS_JSON" | jq '[.[] | select(.status.health.status == "Degraded")] | length')
 
   printf "%-20s %-8s %-8s %-10s %-10s\n" "$PROJECT" "$TOTAL" "$SYNCED" "$HEALTHY" "$DEGRADED"
 done
@@ -254,23 +260,21 @@ done
 PROJECT=$1
 echo "Syncing all applications in project: $PROJECT"
 
-for APP in $(argocd app list --project $PROJECT -o name); do
-  APP_NAME=$(echo $APP | cut -d'/' -f2)
-  echo "Syncing $APP_NAME..."
-  argocd app sync $APP_NAME --async
+for APP in $(argocd app list --project "$PROJECT" -o name); do
+  echo "Syncing $APP..."
+  argocd app sync "$APP" --async
 done
 
 echo ""
 echo "All syncs triggered. Waiting for completion..."
 
-for APP in $(argocd app list --project $PROJECT -o name); do
-  APP_NAME=$(echo $APP | cut -d'/' -f2)
-  argocd app wait $APP_NAME --timeout 300 2>/dev/null
+for APP in $(argocd app list --project "$PROJECT" -o name); do
+  argocd app wait "$APP" --timeout 300 2>/dev/null
   STATUS=$?
   if [ $STATUS -eq 0 ]; then
-    echo "  $APP_NAME: OK"
+    echo "  $APP: OK"
   else
-    echo "  $APP_NAME: FAILED"
+    echo "  $APP: FAILED"
   fi
 done
 ```
@@ -299,11 +303,11 @@ count by (health_status) (argocd_app_info{project="backend"})
 
 ## Tips for Large-Scale Environments
 
-**Performance**: With thousands of applications, `argocd app list --project X` might be slow. Use the API with pagination:
+**Performance**: With thousands of applications, `argocd app list --project X` might be slow. Use the API with server-side filters such as project, repo, label selector, or application namespace:
 
 ```bash
-# API supports pagination
-curl -s "$SERVER/api/v1/applications?project=backend&limit=50&offset=0" \
+# API supports list filters
+curl -s "$SERVER/api/v1/applications?project=backend&selector=team%3Dbackend" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -313,7 +317,7 @@ curl -s "$SERVER/api/v1/applications?project=backend&limit=50&offset=0" \
 # Cache results for 5 minutes
 CACHE_FILE="/tmp/argocd-${PROJECT}-apps.json"
 if [ ! -f "$CACHE_FILE" ] || [ $(find "$CACHE_FILE" -mmin +5 2>/dev/null) ]; then
-  argocd app list --project $PROJECT -o json > "$CACHE_FILE"
+  argocd app list --project "$PROJECT" -o json > "$CACHE_FILE"
 fi
 cat "$CACHE_FILE"
 ```
