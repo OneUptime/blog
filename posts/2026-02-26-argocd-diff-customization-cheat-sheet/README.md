@@ -42,7 +42,7 @@ The `ignoreResourceStatusField` options:
 
 - `all` - Ignore status for all resources
 - `crd` - Only ignore status for CRDs
-- Leave empty to compare status
+- `none` - Compare status fields
 
 ### Global Ignore Differences
 
@@ -220,7 +220,7 @@ spec:
 # Option 2: Remove replicas from your Git manifest entirely
 # Just don't set spec.replicas in your Deployment YAML
 
-# Option 3: Use server-side diff (ArgoCD v2.5+)
+# Option 3: Use server-side apply (ArgoCD v2.5+) and respect ignored fields during sync
 spec:
   syncPolicy:
     syncOptions:
@@ -244,19 +244,17 @@ resource.customizations.ignoreDifferences.apps_Deployment: |
 
 This is cleaner than listing individual JSON pointers when a controller manages many fields.
 
-## Server-Side Diff (ArgoCD 2.5+)
+## Server-Side Diff (ArgoCD 2.10+)
 
-Server-side diff uses Kubernetes server-side apply to compare resources, which is more accurate:
+Server-side diff uses Kubernetes server-side apply in dry-run mode to compare resources, which is more accurate:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: my-app
-spec:
-  syncPolicy:
-    syncOptions:
-      - ServerSideApply=true
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 ```
 
 Or enable it globally:
@@ -277,9 +275,6 @@ data:
 ```bash
 # See the full diff for an application
 argocd app diff my-app
-
-# See the diff in detail with specific resource
-argocd app diff my-app --resource apps:Deployment:my-deploy
 
 # Get the live manifest
 argocd app manifests my-app --source live
