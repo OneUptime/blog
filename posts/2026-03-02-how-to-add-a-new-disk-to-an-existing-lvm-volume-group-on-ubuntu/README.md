@@ -79,7 +79,8 @@ sudo fdisk /dev/sdc
 # n - new partition
 # Accept defaults to use whole disk
 # t - change partition type
-# 31 - Linux LVM (for GPT)
+# L - list partition types
+# Choose Linux LVM (or enter the lvm alias if your fdisk supports it)
 # w - write changes
 
 # Initialize the partition
@@ -257,11 +258,12 @@ After attaching in the console:
 
 ```bash
 # Rescan if needed
-sudo echo "- - -" > /sys/class/scsi_host/host0/scan 2>/dev/null || true
+echo "- - -" | sudo tee /sys/class/scsi_host/host0/scan >/dev/null
 
 # List devices
 lsblk
-# Typically shows as /dev/sdb, /dev/sdc, etc.
+# May show as /dev/sdb for SCSI or /dev/nvmeXnY for NVMe.
+# Prefer stable names under /dev/disk/by-id/google-* when available.
 
 sudo pvcreate /dev/sdb
 sudo vgextend data_vg /dev/sdb
