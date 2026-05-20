@@ -106,7 +106,7 @@ data:
 
 ### Session Management
 
-Configure session timeouts to automatically log out inactive users:
+Configure user session duration:
 
 ```yaml
 apiVersion: v1
@@ -116,9 +116,7 @@ metadata:
   namespace: argocd
 data:
   # Session timeout in hours (24 hours)
-  timeout.session: "24h"
-  # Require re-authentication after this period
-  timeout.reconciliation: "3m"
+  users.session.duration: "24h"
 ```
 
 ## CC6.6: Encryption of Data in Transit
@@ -147,16 +145,24 @@ spec:
 Enable Redis TLS:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+# Strategic merge patch for the argocd-server Deployment
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: argocd-cmd-params-cm
+  name: argocd-server
   namespace: argocd
-data:
-  redis.tls.enabled: "true"
-  # Enforce TLS 1.2 minimum
-  server.tls.minversion: "1.2"
+spec:
+  template:
+    spec:
+      containers:
+        - name: argocd-server
+          args:
+            - /usr/local/bin/argocd-server
+            - --redis-use-tls
+            - --tlsminversion=1.2
 ```
+
+Apply the equivalent `--redis-use-tls` flag to `argocd-application-controller` and `argocd-repo-server` when those components connect to a TLS-enabled Redis instance.
 
 ## CC7.2: Monitoring and Detection
 
@@ -224,6 +230,14 @@ metadata:
   name: production-app
   namespace: argocd
 spec:
+  project: production
+  source:
+    repoURL: https://github.com/example/production-manifests.git
+    targetRevision: main
+    path: manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
   syncPolicy:
     # Do NOT enable automated sync for production
     # automated: {}  # Intentionally commented out
@@ -281,11 +295,18 @@ spec:
             - "quay.io/argoproj/argocd:*"
           attestations:
             - predicateType: https://cosign.sigstore.dev/attestation/vuln/v1
+              attestors:
+                - entries:
+                    - keys:
+                        publicKeys: |-
+                          -----BEGIN PUBLIC KEY-----
+                          <your-cosign-public-key>
+                          -----END PUBLIC KEY-----
               conditions:
                 - all:
-                    - key: "{{ scanner }}"
-                      operator: Equals
-                      value: "trivy"
+                    - key: "{{ scanner.uri }}"
+                      operator: Contains
+                      value: "aquasecurity/trivy"
 ```
 
 ## Compliance Documentation
