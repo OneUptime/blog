@@ -131,6 +131,12 @@ Step 1: Enable Workload Identity on your GKE cluster (if not already enabled):
 gcloud container clusters update my-cluster \
   --workload-pool=my-project.svc.id.goog \
   --zone=us-central1-a
+
+# For existing Standard node pools, enable the GKE metadata server as well
+gcloud container node-pools update my-node-pool \
+  --cluster=my-cluster \
+  --location=us-central1-a \
+  --workload-metadata=GKE_METADATA
 ```
 
 Step 2: Create and configure the Google Cloud service account:
@@ -174,6 +180,30 @@ Step 4: Even with Workload Identity, ArgoCD still needs a repository secret to k
 
 ```yaml
 # Token refresher CronJob for Workload Identity
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: gar-token-refresher
+  namespace: argocd
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: gar-token-refresher
+  namespace: argocd
+subjects:
+  - kind: ServiceAccount
+    name: argocd-repo-server
+    namespace: argocd
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: gar-token-refresher
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -188,7 +218,7 @@ spec:
           serviceAccountName: argocd-repo-server
           containers:
             - name: refresher
-              image: google/cloud-sdk:slim
+              image: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
               command:
                 - /bin/bash
                 - -c
@@ -329,24 +359,23 @@ us-docker.pkg.dev/my-project/helm-charts
 ```yaml
 # cloudbuild.yaml - Cloud Build pipeline
 steps:
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        gcloud auth print-access-token | \
-        helm registry login -u oauth2accesstoken --password-stdin \
-        us-central1-docker.pkg.dev
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:slim'
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
 
-  - name: 'alpine/helm:latest'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        VERSION=$(cat VERSION)
-        helm package charts/my-app --version $VERSION
-        helm push my-app-${VERSION}.tgz \
-          oci://us-central1-docker.pkg.dev/${PROJECT_ID}/helm-charts
+      curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+      chmod 700 get_helm.sh
+      ./get_helm.sh
+
+      gcloud auth print-access-token | \
+        helm registry login -u oauth2accesstoken --password-stdin \
+        https://us-central1-docker.pkg.dev
+
+      VERSION=$(cat VERSION)
+      helm package charts/my-app --version "${VERSION}"
+      helm push "my-app-${VERSION}.tgz" \
+        "oci://us-central1-docker.pkg.dev/${PROJECT_ID}/helm-charts"
 ```
 
 ## Troubleshooting
