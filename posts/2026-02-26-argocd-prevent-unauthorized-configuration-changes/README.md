@@ -30,11 +30,17 @@ No one should push directly to the deployment branch:
 ```bash
 # GitHub: protect the main branch
 
-gh api repos/org/config-repo/branches/main/protection \
-  --method PUT \
-  --field required_pull_request_reviews='{"required_approving_review_count":2}' \
-  --field enforce_admins=true \
-  --field allow_force_pushes=false
+gh api repos/org/config-repo/branches/main/protection --method PUT --input - <<'JSON'
+{
+  "required_status_checks": null,
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 2
+  },
+  "restrictions": null,
+  "allow_force_pushes": false
+}
+JSON
 ```
 
 ### Enforce Signed Commits
@@ -189,17 +195,10 @@ spec:
       namespaces:
         - production
 
-    # Block all syncs during weekends
+    # Block automated syncs during weekends, but allow manual emergency syncs
     - kind: deny
       schedule: "0 0 * * 0,6"
       duration: 48h
-      applications:
-        - "*"
-
-    # Allow manual syncs for emergencies
-    - kind: allow
-      schedule: "* * * * *"
-      duration: 24h
       manualSync: true
       applications:
         - "*"
@@ -217,7 +216,8 @@ metadata:
 spec:
   syncPolicy:
     automated:
-      selfHeal: false  # Do not auto-revert manual changes
+      enabled: false    # Disable automated sync
+      selfHeal: false   # Do not auto-revert manual changes
       prune: false      # Do not auto-delete resources
 ```
 
@@ -229,80 +229,88 @@ Use policy engines to enforce rules at the Kubernetes API level:
 
 ```yaml
 # Kyverno: block deployments without resource limits
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: enforce
-  rules:
-    - name: require-limits
-      match:
-        resources:
-          kinds:
-            - Deployment
-            - StatefulSet
-      validate:
-        message: "Resource limits are required for all containers"
-        pattern:
-          spec:
-            template:
-              spec:
-                containers:
-                  - resources:
-                      limits:
-                        memory: "?*"
-                        cpu: "?*"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments", "statefulsets"]
+  validations:
+    - message: "Resource limits are required for all containers"
+      expression: >
+        object.spec.template.spec.containers.all(container,
+          has(container.resources) &&
+          has(container.resources.limits) &&
+          has(container.resources.limits.memory) &&
+          has(container.resources.limits.cpu)
+        )
 ```
 
 ```yaml
 # Kyverno: restrict image registries
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: restrict-registries
 spec:
-  validationFailureAction: enforce
-  rules:
-    - name: validate-image-registry
-      match:
-        resources:
-          kinds:
-            - Pod
-      validate:
-        message: "Images must come from the approved registry"
-        pattern:
-          spec:
-            containers:
-              - image: "registry.example.com/*"
-            initContainers:
-              - image: "registry.example.com/*"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - message: "Images must come from the approved registry"
+      expression: >
+        object.spec.containers.all(container,
+          container.image.startsWith("registry.example.com/")
+        ) &&
+        (!has(object.spec.initContainers) ||
+          object.spec.initContainers.all(container,
+            container.image.startsWith("registry.example.com/")
+          )
+        )
 ```
 
 ```yaml
-# Kyverno: prevent privilege escalation
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+# Kyverno: block privileged containers
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-privileged
 spec:
-  validationFailureAction: enforce
-  rules:
-    - name: deny-privileged
-      match:
-        resources:
-          kinds:
-            - Pod
-      validate:
-        message: "Privileged containers are not allowed"
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  privileged: "!true"
-            initContainers:
-              - securityContext:
-                  privileged: "!true"
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+  validations:
+    - message: "Privileged containers are not allowed"
+      expression: >
+        object.spec.containers.all(container,
+          !has(container.securityContext) ||
+          !has(container.securityContext.privileged) ||
+          container.securityContext.privileged == false
+        ) &&
+        (!has(object.spec.initContainers) ||
+          object.spec.initContainers.all(container,
+            !has(container.securityContext) ||
+            !has(container.securityContext.privileged) ||
+            container.securityContext.privileged == false
+          )
+        )
 ```
 
 ### Kubernetes RBAC
