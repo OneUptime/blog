@@ -10,7 +10,7 @@ Description: Learn how to configure custom health checks for Tekton Pipeline, Pi
 
 Tekton is a Kubernetes-native CI/CD framework that creates custom resources like Pipeline, PipelineRun, Task, and TaskRun in your cluster. When you deploy Tekton pipelines through ArgoCD, the default health checks will not give you useful information. ArgoCD will show a PipelineRun as "Healthy" even when it has failed, because ArgoCD does not know how to interpret Tekton's status conditions.
 
-This guide walks you through writing custom Lua health checks for every Tekton resource type so ArgoCD accurately reflects your pipeline execution status.
+This guide walks you through writing custom Lua health checks for common Tekton resource types so ArgoCD accurately reflects your pipeline execution status.
 
 ## Tekton Status Model
 
@@ -78,9 +78,9 @@ data:
           if condition.reason == "Running" then
             hs.status = "Progressing"
             hs.message = condition.message or "PipelineRun is running"
-          elseif condition.reason == "PipelineRunCancelled" or condition.reason == "Cancelled" then
-            hs.status = "Degraded"
-            hs.message = "PipelineRun was cancelled"
+          elseif condition.reason == "Cancelled" then
+            hs.status = "Progressing"
+            hs.message = "PipelineRun cancellation is in progress"
           elseif condition.reason == "PipelineRunPending" then
             hs.status = "Progressing"
             hs.message = "PipelineRun is pending"
@@ -100,7 +100,7 @@ data:
 
 ## Health Check for TaskRun
 
-TaskRun is the unit of execution in Tekton. Each step in a pipeline becomes a TaskRun.
+TaskRun is the unit of execution in Tekton. Each Pipeline task normally becomes a TaskRun, and each TaskRun runs the steps defined by that Task.
 
 ```yaml
   resource.customizations.health.tekton.dev_TaskRun: |
