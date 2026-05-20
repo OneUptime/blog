@@ -42,8 +42,7 @@ service-config-template/
 │   ├── kustomization.yaml
 │   ├── deployment.yaml
 │   ├── service.yaml
-│   ├── configmap.yaml
-│   └── hpa.yaml
+│   └── configmap.yaml
 ├── overlays/
 │   ├── dev/
 │   │   ├── kustomization.yaml
@@ -56,7 +55,6 @@ service-config-template/
 │   └── production/
 │       ├── kustomization.yaml
 │       └── patches/
-│           ├── replicas.yaml
 │           ├── resources.yaml
 │           └── pod-disruption-budget.yaml
 ├── .github/
@@ -130,8 +128,10 @@ resources:
   - service.yaml
   - configmap.yaml
 
-commonLabels:
-  app.kubernetes.io/name: SERVICE_NAME
+labels:
+  - pairs:
+      app.kubernetes.io/name: SERVICE_NAME
+    includeSelectors: true
 ```
 
 ## Environment Overlay Templates
@@ -164,6 +164,7 @@ kind: Kustomization
 
 resources:
   - ../../base
+  - patches/pod-disruption-budget.yaml
 
 namespace: production
 
@@ -177,7 +178,6 @@ replicas:
 
 patches:
   - path: patches/resources.yaml
-  - path: patches/pod-disruption-budget.yaml
 ```
 
 ```yaml
@@ -242,7 +242,7 @@ gh repo create "${ORG}/${REPO_NAME}" \
 cd "${REPO_NAME}"
 
 # Replace all placeholders
-find . -type f -name "*.yaml" -o -name "*.yml" | while read -r file; do
+find . -type f \( -name "*.yaml" -o -name "*.yml" -o -name "CODEOWNERS" \) | while read -r file; do
     sed -i "s/SERVICE_NAME/${SERVICE_NAME}/g" "$file"
     sed -i "s/TEAM_NAME/${TEAM_NAME}/g" "$file"
     sed -i "s|ORG|${ORG}|g" "$file"
