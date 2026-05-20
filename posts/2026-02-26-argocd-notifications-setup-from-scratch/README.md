@@ -31,7 +31,7 @@ graph LR
 - **Services**: The delivery channels (Slack, email, webhook, etc.)
 - **Subscriptions**: Which applications use which triggers and services
 
-All configuration lives in two ConfigMaps and one Secret in the `argocd` namespace.
+All configuration lives in one ConfigMap and one Secret in the `argocd` namespace.
 
 ## Step 1: Verify Notification Controller is Running
 
@@ -63,7 +63,7 @@ kubectl apply -n argocd \
 
 ## Step 2: Understanding the Configuration Resources
 
-ArgoCD notifications use three Kubernetes resources:
+ArgoCD notifications use two Kubernetes resources:
 
 ```bash
 # ConfigMap for triggers, templates, and service configurations
@@ -72,8 +72,6 @@ kubectl get configmap argocd-notifications-cm -n argocd
 # Secret for sensitive service credentials (tokens, passwords)
 kubectl get secret argocd-notifications-secret -n argocd
 
-# The catalog ConfigMap (optional, for built-in templates)
-kubectl get configmap argocd-notifications-catalog -n argocd
 ```
 
 If the ConfigMap does not exist yet, create it:
@@ -207,11 +205,11 @@ data:
 
   # Define triggers
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [app-sync-status]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-status]
 
   trigger.on-health-degraded: |
@@ -269,7 +267,14 @@ kubectl logs -n argocd deploy/argocd-notifications-controller --tail=50
 
 ## Using Built-in Triggers and Templates
 
-ArgoCD ships with a catalog of pre-built triggers and templates. Enable them by adding the catalog:
+ArgoCD ships with a catalog of pre-built triggers and templates. Enable them by applying the catalog:
+
+```bash
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/notifications_catalog/install.yaml
+```
+
+After that, you can use the built-in template names in your triggers:
 
 ```yaml
 apiVersion: v1
@@ -280,11 +285,11 @@ metadata:
 data:
   # Reference built-in triggers
   trigger.on-deployed: |
-    - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+    - when: app.status?.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
       send: [app-deployed]
 
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [app-sync-failed]
 
   trigger.on-sync-status-unknown: |
@@ -341,7 +346,7 @@ kubectl rollout restart deployment argocd-notifications-controller -n argocd
 Common issues:
 
 - **Template syntax errors**: The controller log will show parsing errors
-- **Missing secret references**: If a template references `$slack-token` but the secret does not have it, delivery fails silently
+- **Missing secret references**: If a service references `$slack-token` but the secret does not have it, the controller logs delivery errors
 - **Wrong annotation format**: The annotation must follow the exact format `notifications.argoproj.io/subscribe.<trigger>.<service>`
 - **Trigger condition never matches**: Double-check the `when` condition with your actual application status
 
