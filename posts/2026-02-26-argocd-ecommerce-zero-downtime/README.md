@@ -8,7 +8,7 @@ Description: Configure ArgoCD for e-commerce platforms with zero-downtime deploy
 
 ---
 
-E-commerce platforms live and die by their uptime, especially during peak shopping events like Black Friday, Cyber Monday, Prime Day, and holiday seasons. A deployment that goes wrong during these periods can cost millions in lost revenue. ArgoCD provides the controlled, auditable deployment pipeline that e-commerce teams need, with built-in features for change freezes, progressive rollouts, and automated rollback. This guide shows how to configure ArgoCD specifically for e-commerce deployment patterns.
+E-commerce platforms live and die by their uptime, especially during peak shopping events like Black Friday, Cyber Monday, Prime Day, and holiday seasons. A deployment that goes wrong during these periods can cost millions in lost revenue. ArgoCD provides the controlled, auditable deployment pipeline that e-commerce teams need, with sync windows for change freezes and integration with Argo Rollouts for progressive rollouts and automated rollback. This guide shows how to configure ArgoCD specifically for e-commerce deployment patterns.
 
 ## The E-Commerce Deployment Challenge
 
@@ -62,6 +62,7 @@ spec:
         - '*'
       namespaces:
         - 'ecommerce-*'
+      manualSync: true
 
     # Cyber Monday additional protection
     - kind: deny
@@ -73,13 +74,6 @@ spec:
         - 'checkout-*'
       # Only during November-December
       # Manage this by updating the project before the season
-
-    # Allow emergency manual syncs during freeze
-    - kind: allow
-      schedule: '* * * * *'
-      duration: 24h
-      applications:
-        - '*'
       manualSync: true
 
     # Normal operations: allow automated sync during business hours
@@ -113,11 +107,6 @@ spec:
       duration: 192h  # Nov 25 to Dec 3
       applications:
         - '*'
-    - kind: allow
-      schedule: '* * * * *'
-      duration: 24h
-      applications:
-        - '*'
       manualSync: true
 ```
 
@@ -138,26 +127,23 @@ spec:
   replicas: 20
   strategy:
     canary:
+      canaryService: product-catalog-canary
+      stableService: product-catalog-stable
       trafficRouting:
         nginx:
           stableIngress: product-catalog-stable
           additionalIngressAnnotations:
             canary-by-header: X-Canary
+            canary-by-header-value: "true"
       steps:
-        # Start with internal testing only
-        - setHeaderRoute:
-            name: canary-header
-            match:
-              - headerName: X-Canary
-                headerValue:
-                  exact: "true"
+        # Start with internal testing only via X-Canary: true
+        - setWeight: 0
         - pause: {duration: 300}  # 5 min internal validation
 
         # 5% of real traffic
         - setWeight: 5
         - analysis:
             templates:
-              - templateName: ecommerce-success-rate
               - templateName: checkout-conversion-rate
             args:
               - name: service
@@ -168,17 +154,14 @@ spec:
         - setWeight: 20
         - analysis:
             templates:
-              - templateName: ecommerce-success-rate
-              - templateName: revenue-impact
+              - templateName: checkout-conversion-rate
         - pause: {duration: 900}  # 15 min observation
 
         # 50% of real traffic
         - setWeight: 50
         - analysis:
             templates:
-              - templateName: ecommerce-success-rate
               - templateName: checkout-conversion-rate
-              - templateName: revenue-impact
         - pause: {duration: 600}
 
         # Full rollout
@@ -217,7 +200,7 @@ spec:
     - name: conversion-rate
       interval: 120s
       # Conversion rate should not drop more than 2% compared to baseline
-      successCondition: result[0] >= 0.98 * result[1]
+      successCondition: result[0] >= 0.98
       failureLimit: 3
       provider:
         prometheus:
@@ -315,9 +298,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: product-catalog-dev
+  namespace: argocd
 spec:
+  project: ecommerce-development
   source:
+    repoURL: https://github.com/org/ecommerce-gitops.git
     path: services/product-catalog/overlays/dev
+    targetRevision: main
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ecommerce-product-catalog-dev
   syncPolicy:
     automated:
       selfHeal: true
@@ -329,9 +319,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: product-catalog-staging
+  namespace: argocd
 spec:
+  project: ecommerce-staging
   source:
+    repoURL: https://github.com/org/ecommerce-gitops.git
     path: services/product-catalog/overlays/staging
+    targetRevision: main
+  destination:
+    server: https://staging.example.com
+    namespace: ecommerce-product-catalog
   syncPolicy:
     automated:
       selfHeal: true
@@ -343,9 +340,16 @@ apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: product-catalog-production
+  namespace: argocd
 spec:
+  project: ecommerce-production
   source:
+    repoURL: https://github.com/org/ecommerce-gitops.git
     path: services/product-catalog/overlays/production
+    targetRevision: main
+  destination:
+    server: https://production.example.com
+    namespace: ecommerce-product-catalog
   # No automated sync - requires manual approval
 ```
 
@@ -393,4 +397,4 @@ kubectl argo rollouts abort product-catalog -n ecommerce-catalog
 kubectl argo rollouts undo product-catalog -n ecommerce-catalog
 ```
 
-E-commerce deployments require a balance between deployment velocity and stability. ArgoCD gives you the tools to deploy confidently during normal operations and lock down changes when revenue is on the line. The combination of sync windows, progressive delivery, business metric analysis, and automated rollback creates a deployment pipeline that protects your bottom line while keeping your platform current. For end-to-end monitoring of your e-commerce platform, integrate [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-fintech-compliance/view) for comprehensive uptime and performance monitoring.
+E-commerce deployments require a balance between deployment velocity and stability. ArgoCD gives you the tools to deploy confidently during normal operations and lock down changes when revenue is on the line. The combination of sync windows, Argo Rollouts progressive delivery, business metric analysis, and automated rollback creates a deployment pipeline that protects your bottom line while keeping your platform current. For end-to-end monitoring of your e-commerce platform, integrate [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-fintech-compliance/view) for comprehensive uptime and performance monitoring.
