@@ -8,7 +8,7 @@ Description: Learn how to configure and manage Helm release names in ArgoCD appl
 
 ---
 
-When ArgoCD deploys a Helm chart, it creates a Helm release with a specific name. This release name is used in Helm's internal tracking, in template rendering (via `.Release.Name`), and often appears in Kubernetes resource names. Getting the release name right matters because it affects resource naming, Helm history, and how you interact with releases through the Helm CLI.
+When ArgoCD deploys a Helm chart, it renders the chart with `helm template` and passes a specific Helm release name into the render. This release name is used in template rendering (via `.Release.Name`) and often appears in Kubernetes resource names. Getting the release name right matters because it affects resource naming and the manifests ArgoCD applies to the cluster.
 
 This guide covers how to set the Helm release name in ArgoCD, what the defaults are, and how to handle common scenarios around release naming.
 
@@ -90,18 +90,13 @@ metadata:
   name: {{ .Release.Name }}-{{ .Chart.Name }}
 ```
 
-### 2. Helm History
+### 2. Rendered Manifests
 
-The release name is used for Helm's revision history:
+ArgoCD uses Helm to render manifests, but it does not manage the application lifecycle as a Helm release. That means the release name affects the rendered output, but the deployed application is managed through ArgoCD rather than `helm list`, `helm history`, or `helm upgrade`.
 
 ```bash
-# List Helm releases in the namespace
-helm list -n web
-# NAME       NAMESPACE  REVISION  STATUS    CHART
-# nginx-web  web        3         deployed  nginx-15.4.0
-
-# View release history
-helm history nginx-web -n web
+# Preview how the release name changes rendered manifests
+helm template nginx-web nginx --repo https://charts.bitnami.com/bitnami --version 15.4.0
 ```
 
 ### 3. Labels and Selectors
@@ -114,6 +109,8 @@ metadata:
     app.kubernetes.io/instance: {{ .Release.Name }}
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 ```
+
+When ArgoCD tracks resources by label, it injects `app.kubernetes.io/instance` with the ArgoCD Application name by default. If a chart uses that same label in selectors, overriding the Helm release name can break those selectors unless you configure ArgoCD to use a different tracking label.
 
 ### 4. Service Discovery
 
@@ -214,8 +211,10 @@ Helm release names must follow these rules:
 
 - Maximum 53 characters (Helm's limit)
 - Must start with a lowercase letter or number
-- Can only contain lowercase letters, numbers, and hyphens
+- Can only contain lowercase letters, numbers, hyphens, and periods
 - Must end with a lowercase letter or number
+
+Even though Helm allows periods, avoid them when charts use `.Release.Name` in Kubernetes resource names, because most resource names must be DNS labels and cannot contain periods.
 
 ```yaml
 # Valid release names
@@ -231,24 +230,19 @@ releaseName: my_app        # Underscores not allowed
 
 ## Changing the Release Name
 
-Changing the release name of an existing application is a destructive operation. ArgoCD treats it as a new release and the old release's resources become orphaned.
+Changing the release name of an existing application changes the manifests that Helm renders. If chart resource names or selectors include `.Release.Name`, ArgoCD may create resources with the new names and prune the old ones if pruning is enabled. If pruning is disabled, old resources can be left behind and need manual cleanup.
 
 If you need to change the release name:
 
 ```bash
-# Step 1: Delete the old application (be careful with prune settings)
-argocd app delete my-app --cascade=false  # Keep the resources
+# Step 1: Update the application release name
+argocd app set my-app --release-name new-release-name
 
-# Step 2: Clean up old Helm release metadata
-helm uninstall old-release-name -n web
+# Step 2: Sync the application so ArgoCD applies the newly rendered manifests
+argocd app sync my-app
 
-# Step 3: Create the application with the new release name
-argocd app create my-app \
-  --repo https://github.com/myorg/charts.git \
-  --path charts/my-app \
-  --dest-server https://kubernetes.default.svc \
-  --dest-namespace web \
-  --release-name new-release-name
+# Step 3: Review and clean up old resources if pruning is disabled
+kubectl get all -n web
 ```
 
 ## Viewing the Current Release Name
@@ -260,8 +254,8 @@ argocd app get my-app -o json | jq '.spec.source.helm.releaseName'
 # If null, the release name defaults to the application name
 argocd app get my-app -o json | jq '.metadata.name'
 
-# List Helm releases in the namespace
-helm list -n web
+# Inspect rendered manifests generated with the configured release name
+argocd app manifests my-app
 ```
 
 ## Release Name with Multi-Source Applications
@@ -293,4 +287,4 @@ spec:
 
 ## Summary
 
-The Helm release name in ArgoCD defaults to the Application name but can be customized with the `releaseName` field. The release name affects resource naming, Helm history, and template rendering via `.Release.Name`. Keep release names short (under 53 characters), use consistent naming patterns across environments, and avoid changing release names on existing applications as it creates orphaned resources. For dynamically managing release names across environments, use ApplicationSets with templated release names.
+The Helm release name in ArgoCD defaults to the Application name but can be customized with the `releaseName` field. The release name affects resource naming and template rendering via `.Release.Name`. Keep release names short (53 characters or fewer), use consistent naming patterns across environments, and be careful when changing release names on existing applications because resources whose names depend on `.Release.Name` may be recreated or left behind depending on pruning. For dynamically managing release names across environments, use ApplicationSets with templated release names.
