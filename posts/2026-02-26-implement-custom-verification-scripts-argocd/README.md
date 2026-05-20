@@ -224,7 +224,7 @@ spec:
     spec:
       containers:
         - name: reporter
-          image: curlimages/curl:latest
+          image: myorg/verification-scripts:latest
           command:
             - /bin/sh
             - -c
@@ -348,6 +348,11 @@ def run_checks(config):
                         failures.append(
                             f"{name}: Expected {key}={value}, got {data.get(key)}"
                         )
+
+            if check.get("expected_body_check") == "items_not_empty":
+                data = response.json()
+                if not data.get("items"):
+                    failures.append(f"{name}: Expected response items to be non-empty")
 
             print(f"  PASSED: {name}")
         except Exception as e:
