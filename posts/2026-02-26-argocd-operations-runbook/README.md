@@ -64,7 +64,7 @@ Every runbook should start with a section of common diagnostic commands that app
 kubectl get pods -n argocd
 
 # Check component logs
-kubectl logs -n argocd deployment/argocd-application-controller --tail=100
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=100
 kubectl logs -n argocd deployment/argocd-repo-server --tail=100
 kubectl logs -n argocd deployment/argocd-server --tail=100
 kubectl logs -n argocd deployment/argocd-redis --tail=100
@@ -80,7 +80,7 @@ argocd app list
 argocd app get <app-name> --show-operation
 
 # Check ArgoCD settings
-argocd admin settings validate -n argocd
+argocd admin settings validate -n argocd --load-cluster-settings
 
 # Check connectivity to managed clusters
 argocd cluster list
@@ -104,13 +104,13 @@ Based on real-world incidents, here are the most common ArgoCD failures.
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-application-controller
 
 # Check controller logs for errors
-kubectl logs -n argocd deployment/argocd-application-controller --tail=200 | grep -i error
+kubectl logs -n argocd statefulset/argocd-application-controller --tail=200 | grep -i error
 
 # Common cause: controller lost connection to Redis
 kubectl logs -n argocd deployment/argocd-redis --tail=50
 
 # Fix: restart the controller
-kubectl rollout restart deployment/argocd-application-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
 ```
 
 ### 2. Sync Operations Timing Out
@@ -170,7 +170,7 @@ kubectl get events -n argocd --field-selector reason=OOMKilling
 kubectl top pods -n argocd
 
 # Immediate fix: increase memory limits
-kubectl edit deployment argocd-application-controller -n argocd
+kubectl edit statefulset argocd-application-controller -n argocd
 # Increase resources.limits.memory
 
 # Long-term fix: enable controller sharding
@@ -236,7 +236,7 @@ spec:
         runbook_url: "https://wiki.example.com/runbooks/argocd#controller-not-running"
 
     - alert: ArgoCDSyncFailing
-      expr: argocd_app_sync_total{phase="Failed"} > 0
+      expr: increase(argocd_app_sync_total{phase="Failed"}[15m]) > 0
       for: 15m
       labels:
         severity: warning
@@ -262,8 +262,8 @@ kubectl rollout restart deployment/argocd-repo-server -n argocd
 kubectl rollout status deployment/argocd-repo-server -n argocd
 
 # 3. Application controller (depends on Redis and repo server)
-kubectl rollout restart deployment/argocd-application-controller -n argocd
-kubectl rollout status deployment/argocd-application-controller -n argocd
+kubectl rollout restart statefulset/argocd-application-controller -n argocd
+kubectl rollout status statefulset/argocd-application-controller -n argocd
 
 # 4. API server last (depends on all above)
 kubectl rollout restart deployment/argocd-server -n argocd
