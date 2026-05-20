@@ -8,7 +8,7 @@ Description: Learn how to configure bearer token authentication for remote Kuber
 
 ---
 
-Bearer token authentication is the most straightforward way to connect ArgoCD to remote Kubernetes clusters. A bearer token is a long-lived credential tied to a Kubernetes ServiceAccount. When ArgoCD needs to interact with the remote cluster, it includes this token in the Authorization header of every API request.
+Bearer token authentication is the most straightforward way to connect ArgoCD to remote Kubernetes clusters. A bearer token can be a long-lived credential tied to a Kubernetes ServiceAccount, or a time-bound token issued through the TokenRequest API. When ArgoCD needs to interact with the remote cluster, it includes this token in the Authorization header of every API request.
 
 This guide covers the complete setup: creating the right ServiceAccount, generating tokens that work across Kubernetes versions, configuring RBAC, and managing the token lifecycle.
 
@@ -24,7 +24,8 @@ sequenceDiagram
     AC->>KS: Read cluster secret
     KS-->>AC: Return bearer token
     AC->>API: Request with Authorization: Bearer <token>
-    API->>RBAC: Validate token and check permissions
+    API->>API: Validate bearer token
+    API->>RBAC: Check permissions
     RBAC-->>API: Authorized
     API-->>AC: Return response
 ```
@@ -83,14 +84,14 @@ kubectl get secret argocd-manager-token -n kube-system \
 Kubernetes also supports creating time-bound tokens via the TokenRequest API:
 
 ```bash
-# Create a token that expires in 8760 hours (1 year)
+# Request a token that expires in 8760 hours (1 year)
 TOKEN=$(kubectl create token argocd-manager \
   -n kube-system \
   --context remote-cluster \
   --duration=8760h)
 ```
 
-Note: Time-bound tokens require re-creation before expiry. The Secret-based approach is better for long-lived credentials.
+Note: Time-bound tokens require re-creation before expiry, and the API server may return a token with a shorter or longer lifetime than requested. The Secret-based approach is the Kubernetes mechanism for non-expiring, persisted credentials, but use it only when a time-bound token is not suitable.
 
 ### For Kubernetes 1.23 and earlier
 
@@ -234,11 +235,12 @@ subjects:
 ### Using the CLI
 
 ```bash
-# If you have the token and CA data ready
+# This reads the remote cluster details from the kubeconfig context.
+# It uses the named ServiceAccount and stores the resulting cluster credentials in ArgoCD.
 argocd cluster add remote-cluster \
   --name production \
-  --bearer-token "$TOKEN" \
-  --server https://k8s.example.com:6443
+  --service-account argocd-manager \
+  --system-namespace kube-system
 ```
 
 ### Declaratively
