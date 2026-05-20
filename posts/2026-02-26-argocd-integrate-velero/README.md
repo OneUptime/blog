@@ -24,6 +24,8 @@ Managing Velero through ArgoCD gives you several benefits:
 
 Install Velero using its Helm chart through an ArgoCD application:
 
+Create the `velero-cloud-credentials` Secret separately, such as with External Secrets, Sealed Secrets, or your cloud identity mechanism, rather than relying on Helm to substitute environment variables inside Git-managed values.
+
 ```yaml
 apiVersion: argoproj.io/v1alpha1
 kind: Application
@@ -53,11 +55,7 @@ spec:
                 region: us-east-1
         credentials:
           useSecret: true
-          secretContents:
-            cloud: |
-              [default]
-              aws_access_key_id=${AWS_ACCESS_KEY_ID}
-              aws_secret_access_key=${AWS_SECRET_ACCESS_KEY}
+          existingSecret: velero-cloud-credentials
         initContainers:
           - name: velero-plugin-for-aws
             image: velero/velero-plugin-for-aws:v1.8.0
@@ -147,6 +145,8 @@ spec:
         - name: freeze-db
           includedNamespaces:
             - production
+          includedResources:
+            - pods
           labelSelector:
             matchLabels:
               app: postgresql
@@ -340,7 +340,13 @@ In a disaster recovery scenario, you can restore a cluster and then let ArgoCD r
 
 ```bash
 # Step 1: Install Velero on the new cluster
-velero install --provider aws --bucket my-velero-backups --secret-file ./credentials
+velero install \
+  --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --bucket my-velero-backups \
+  --secret-file ./credentials \
+  --backup-location-config region=us-east-1 \
+  --snapshot-location-config region=us-east-1
 
 # Step 2: Restore the ArgoCD namespace first
 velero restore create argocd-restore --from-backup daily-backup \
