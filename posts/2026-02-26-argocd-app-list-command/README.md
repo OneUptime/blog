@@ -18,35 +18,27 @@ The simplest invocation lists all applications visible to your current user:
 argocd app list
 ```
 
-This produces a table with columns for name, cluster, namespace, project, status, health, sync policy, and conditions. The output looks something like:
+This produces a wide table with columns for name, cluster, namespace, project, status, health, sync policy, conditions, repo, path, and target revision. The output looks something like:
 
 ```text
-NAME              CLUSTER                         NAMESPACE    PROJECT    STATUS  HEALTH   SYNCPOLICY  CONDITIONS
-web-app           https://kubernetes.default.svc  web          default    Synced  Healthy  Auto        <none>
-api-service       https://kubernetes.default.svc  api          backend    Synced  Healthy  Auto-Prune  <none>
-payment-svc       https://prod.cluster.local      payments     critical   OutOfSync Degraded Manual    SyncError
-monitoring-stack  https://kubernetes.default.svc  monitoring   infra      Synced  Healthy  Auto        <none>
+NAME              CLUSTER                         NAMESPACE    PROJECT    STATUS     HEALTH    SYNCPOLICY  CONDITIONS  REPO                                      PATH         TARGET
+web-app           https://kubernetes.default.svc  web          default    Synced     Healthy   Auto        <none>      https://github.com/my-org/manifests.git  apps/web     main
+api-service       https://kubernetes.default.svc  api          backend    Synced     Healthy   Auto-Prune  <none>      https://github.com/my-org/manifests.git  apps/api     main
+payment-svc       https://prod.cluster.local      payments     critical   OutOfSync  Degraded  Manual      SyncError   https://github.com/my-org/manifests.git  apps/pay     main
+monitoring-stack  https://kubernetes.default.svc  monitoring   infra      Synced     Healthy   Auto        <none>      https://github.com/my-org/infra.git      monitoring   main
 ```
 
 ## Output Formats
 
 The `-o` flag controls the output format:
 
-### Table (Default)
-
-```bash
-argocd app list -o table
-```
-
-Human-readable table format, ideal for terminal viewing.
-
-### Wide Table
+### Wide Table (Default)
 
 ```bash
 argocd app list -o wide
 ```
 
-Includes additional columns like repo URL, path, and target revision. Useful when you need to see the source configuration at a glance.
+Human-readable table format with columns like repo URL, path, and target revision. Useful when you need to see the source configuration at a glance.
 
 ### Name Only
 
@@ -311,6 +303,11 @@ echo "Healthy applications: $HEALTHY"
 echo "Synced applications: $SYNCED"
 
 # Alert if healthy percentage drops below threshold
+if [ "$TOTAL" -eq 0 ]; then
+  echo "No applications found."
+  exit 0
+fi
+
 HEALTH_PCT=$((HEALTHY * 100 / TOTAL))
 if [ "$HEALTH_PCT" -lt 90 ]; then
   echo "WARNING: Only ${HEALTH_PCT}% of applications are healthy!"
