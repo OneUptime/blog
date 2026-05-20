@@ -199,29 +199,25 @@ Create a Jsonnet file that generates dashboard JSON.
 
 ```jsonnet
 // dashboards/api-overview.jsonnet
-local grafana = import 'grafonnet/grafana.libsonnet';
-local dashboard = grafana.dashboard;
-local prometheus = grafana.prometheus;
-local graphPanel = grafana.graphPanel;
+local g = import 'github.com/grafana/grafonnet/gen/grafonnet-latest/main.libsonnet';
 
-dashboard.new(
-  'API Overview',
-  tags=['api', 'kubernetes'],
-  time_from='now-1h',
-)
-.addPanel(
-  graphPanel.new(
-    'Request Rate',
-    datasource='Prometheus',
-  )
-  .addTarget(
-    prometheus.target(
-      'sum(rate(http_requests_total[5m])) by (status_code)',
-      legendFormat='{{ status_code }}',
+g.dashboard.new('API Overview')
++ g.dashboard.withTags(['api', 'kubernetes'])
++ g.dashboard.time.withFrom('now-1h')
++ g.dashboard.withPanels([
+  g.panel.timeSeries.new('Request Rate')
+  + g.panel.timeSeries.queryOptions.withTargets([
+    g.query.prometheus.new(
+      'Prometheus',
+      'sum(rate(http_requests_total[5m])) by (status_code)'
     )
-  ),
-  gridPos={ h: 8, w: 12, x: 0, y: 0 },
-)
+    + g.query.prometheus.withLegendFormat('{{ status_code }}'),
+  ])
+  + g.panel.timeSeries.gridPos.withH(8)
+  + g.panel.timeSeries.gridPos.withW(12)
+  + g.panel.timeSeries.gridPos.withX(0)
+  + g.panel.timeSeries.gridPos.withY(0),
+])
 ```
 
 You can use an ArgoCD Config Management Plugin (CMP) to compile Jsonnet during sync.
@@ -246,7 +242,7 @@ data:
           - |
             for f in *.jsonnet; do
               name=$(basename "$f" .jsonnet)
-              json=$(jsonnet "$f")
+              json=$(jsonnet -J vendor "$f" | sed 's/^/    /')
               cat <<YAML
             ---
             apiVersion: v1
@@ -257,7 +253,7 @@ data:
                 grafana_dashboard: "1"
             data:
               ${name}.json: |
-                ${json}
+            ${json}
             YAML
             done
 ```
@@ -293,14 +289,14 @@ kube-prometheus-stack:
       dashboards:
         provider:
           allowUiUpdates: false
-          disableDeletion: true
+          disableDelete: true
 ```
 
 This means all dashboard changes must go through Git and ArgoCD, which gives you full audit history and review processes.
 
 ## Dashboard Lifecycle Management
 
-When you want to remove a dashboard, simply delete the YAML file from Git. ArgoCD's prune functionality will remove the ConfigMap, and the Grafana sidecar will delete the dashboard. This full lifecycle management through Git is one of the biggest advantages of this approach.
+When you want to remove a dashboard, simply delete the YAML file from Git. ArgoCD's prune functionality will remove the ConfigMap, and the Grafana sidecar will delete the dashboard if you have not set `disableDelete: true`. This full lifecycle management through Git is one of the biggest advantages of this approach.
 
 ```mermaid
 graph LR
