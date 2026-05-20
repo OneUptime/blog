@@ -42,11 +42,11 @@ helm repo add opslevel https://opslevel.github.io/helm-charts
 helm repo update
 
 # Deploy the agent
-helm install opslevel-agent opslevel/opslevel-k8s-deploy-agent \
+helm install opslevel-agent opslevel/opslevel-agent \
   --namespace opslevel \
   --create-namespace \
-  --set opslevel.apiToken="${OPSLEVEL_API_TOKEN}" \
-  --set opslevel.integrationUrl="https://app.opslevel.com/integrations/kubernetes/${INTEGRATION_ID}"
+  --set secret.data.OPSLEVEL_API_TOKEN="${OPSLEVEL_API_TOKEN}" \
+  --set agent.integration="${OPSLEVEL_KUBERNETES_INTEGRATION_ALIAS}"
 ```
 
 ### Configure the Kubernetes Integration in OpsLevel
@@ -55,19 +55,21 @@ In the OpsLevel web UI:
 
 1. Navigate to Integrations and select Kubernetes
 2. Create a new Kubernetes integration
-3. Configure it to watch the `argocd` namespace
-4. Map ArgoCD Application resources to OpsLevel services
+3. Note the integration alias for the agent configuration
+4. Configure the agent selectors or `kubectl-opslevel` mapping to include ArgoCD Application resources in the `argocd` namespace
 
-Alternatively, use the OpsLevel CLI:
+Alternatively, use the `kubectl-opslevel` plugin for direct imports:
 
 ```bash
-# Install the OpsLevel CLI
-brew install opslevel/tap/cli
+# Install the OpsLevel kubectl plugin
+brew install opslevel/tap/kubectl
 
-# Create a Kubernetes integration
-opslevel create integration kubernetes \
-  --name "ArgoCD Production" \
-  --namespace argocd
+# Generate a mapping configuration and preview the import
+kubectl opslevel config sample > ./opslevel-k8s.yaml
+OPSLEVEL_API_TOKEN="${OPSLEVEL_API_TOKEN}" kubectl opslevel service preview 0 -c ./opslevel-k8s.yaml
+
+# Import and reconcile services from Kubernetes
+OPSLEVEL_API_TOKEN="${OPSLEVEL_API_TOKEN}" kubectl opslevel service import -c ./opslevel-k8s.yaml
 ```
 
 ## Mapping ArgoCD Applications to OpsLevel Services
@@ -75,40 +77,30 @@ opslevel create integration kubernetes \
 The integration maps ArgoCD Application custom resources to OpsLevel services. Configure the mapping rules:
 
 ```yaml
-# OpsLevel integration configuration
+# opslevel-k8s.yaml
 # This maps ArgoCD Application resources to OpsLevel services
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: opslevel-config
-  namespace: opslevel
-data:
-  config.yaml: |
-    service_discovery:
-      # Watch ArgoCD Application resources
-      - resource:
-          apiVersion: argoproj.io/v1alpha1
-          kind: Application
-          namespace: argocd
-        # Map to OpsLevel service using the application name
-        service_mapping:
-          name: "{{ .metadata.name }}"
-          # Use labels for ownership
-          owner: "{{ .metadata.labels.team }}"
-          # Map deployment properties
-          properties:
-            - name: argocd_sync_status
-              value: "{{ .status.sync.status }}"
-            - name: argocd_health_status
-              value: "{{ .status.health.status }}"
-            - name: argocd_repo_url
-              value: "{{ .spec.source.repoURL }}"
-            - name: argocd_revision
-              value: "{{ .status.sync.revision }}"
-            - name: argocd_destination_namespace
-              value: "{{ .spec.destination.namespace }}"
-            - name: argocd_last_sync
-              value: "{{ .status.operationState.finishedAt }}"
+version: "1.3.0"
+service:
+  import:
+    - selector:
+        apiVersion: argoproj.io/v1alpha1
+        kind: Application
+        namespaces:
+          - argocd
+      opslevel:
+        name: .metadata.name
+        owner: .metadata.labels.team
+        aliases:
+          - '"argocd:\(.metadata.name)"'
+        repositories:
+          - .spec.source.repoURL
+        tags:
+          assign:
+            - '{"argocd-sync-status": .status.sync.status}'
+            - '{"argocd-health-status": .status.health.status}'
+            - '{"argocd-revision": .status.sync.revision}'
+            - '{"argocd-destination-namespace": .spec.destination.namespace}'
+            - '{"argocd-last-sync": .status.operationState.finishedAt}'
 ```
 
 ## Using OpsLevel Tags for ArgoCD Metadata
@@ -116,21 +108,13 @@ data:
 OpsLevel uses tags to store metadata on services. Configure ArgoCD-related tags:
 
 ```bash
-# Create tags for ArgoCD metadata using the OpsLevel CLI
-opslevel create tag \
-  --service payment-service \
-  --key argocd-app \
-  --value payment-service-prod
-
-opslevel create tag \
-  --service payment-service \
-  --key deployment-method \
-  --value argocd
-
-opslevel create tag \
-  --service payment-service \
-  --key argocd-project \
-  --value production
+# Create or update tags for ArgoCD metadata using the OpsLevel GraphQL API
+curl -X POST "https://app.opslevel.com/api/graphql" \
+  -H "Authorization: Bearer ${OPSLEVEL_API_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "mutation { tagAssign(input: { alias: \"payment-service\", tags: [{ key: \"argocd-app\", value: \"payment-service-prod\" }, { key: \"deployment-method\", value: \"argocd\" }, { key: \"argocd-project\", value: \"production\" }] }) { tags { key value } errors { message } } }"
+  }'
 ```
 
 Automate tag creation with a script that reads from ArgoCD:
@@ -141,28 +125,32 @@ Automate tag creation with a script that reads from ArgoCD:
 # Syncs ArgoCD application metadata to OpsLevel service tags
 
 # Get all ArgoCD applications
-argocd app list -o json | jq -c '.[]' | while read app; do
-  app_name=$(echo $app | jq -r '.metadata.name')
-  repo_url=$(echo $app | jq -r '.spec.source.repoURL')
-  sync_status=$(echo $app | jq -r '.status.sync.status')
-  health_status=$(echo $app | jq -r '.status.health.status')
-  revision=$(echo $app | jq -r '.status.sync.revision')
+argocd app list -o json | jq -c '.[]' | while read -r app; do
+  app_name=$(echo "$app" | jq -r '.metadata.name')
+  sync_status=$(echo "$app" | jq -r '.status.sync.status')
+  health_status=$(echo "$app" | jq -r '.status.health.status')
+  revision=$(echo "$app" | jq -r '.status.sync.revision')
 
   # Update OpsLevel tags
-  opslevel create tag \
-    --service "$app_name" \
-    --key argocd-sync-status \
-    --value "$sync_status" 2>/dev/null
-
-  opslevel create tag \
-    --service "$app_name" \
-    --key argocd-health-status \
-    --value "$health_status" 2>/dev/null
-
-  opslevel create tag \
-    --service "$app_name" \
-    --key argocd-revision \
-    --value "${revision:0:8}" 2>/dev/null
+  jq -n \
+    --arg service "$app_name" \
+    --arg sync "$sync_status" \
+    --arg health "$health_status" \
+    --arg revision "${revision:0:8}" \
+    '{
+      query: "mutation($alias: String!, $tags: [TagInput!]!) { tagAssign(input: { alias: $alias, tags: $tags }) { tags { key value } errors { message } } }",
+      variables: {
+        alias: $service,
+        tags: [
+          {key: "argocd-sync-status", value: $sync},
+          {key: "argocd-health-status", value: $health},
+          {key: "argocd-revision", value: $revision}
+        ]
+      }
+    }' | curl -s -X POST "https://app.opslevel.com/api/graphql" \
+      -H "Authorization: Bearer $OPSLEVEL_API_TOKEN" \
+      -H "Content-Type: application/json" \
+      -d @- >/dev/null
 
   echo "Updated tags for $app_name"
 done
@@ -170,36 +158,11 @@ done
 
 ## Creating Maturity Checks for ArgoCD
 
-OpsLevel's maturity rubric lets you define checks that services must pass. Create checks related to ArgoCD deployment practices:
+OpsLevel's maturity rubric lets you define checks that services must pass. In the OpsLevel UI, navigate to Service Maturity, select Rubrics, and create Tag Defined checks related to ArgoCD deployment practices:
 
-```bash
-# Check: Service must be managed by ArgoCD
-opslevel create check tag-defined \
-  --name "Managed by ArgoCD" \
-  --category "Deployment" \
-  --level "Bronze" \
-  --tag-key "deployment-method" \
-  --tag-predicate "equals" \
-  --tag-value "argocd"
-
-# Check: ArgoCD application must be synced
-opslevel create check tag-defined \
-  --name "ArgoCD Sync Status" \
-  --category "Deployment" \
-  --level "Silver" \
-  --tag-key "argocd-sync-status" \
-  --tag-predicate "equals" \
-  --tag-value "Synced"
-
-# Check: ArgoCD application must be healthy
-opslevel create check tag-defined \
-  --name "ArgoCD Health Status" \
-  --category "Deployment" \
-  --level "Gold" \
-  --tag-key "argocd-health-status" \
-  --tag-predicate "equals" \
-  --tag-value "Healthy"
-```
+- **Managed by ArgoCD**: Require a `deployment-method` tag with the value `argocd`
+- **ArgoCD Sync Status**: Require an `argocd-sync-status` tag with the value `Synced`
+- **ArgoCD Health Status**: Require an `argocd-health-status` tag with the value `Healthy`
 
 These checks create a maturity ladder:
 - **Bronze**: Service is managed by ArgoCD
@@ -230,7 +193,9 @@ data:
             },
             "deploy_url": "https://argocd.example.com/applications/{{.app.metadata.name}}",
             "environment": "Production",
-            "description": "ArgoCD sync: {{.app.status.sync.revision | truncate 8 \"\"}}",
+            "description": "ArgoCD sync: {{.app.status.sync.revision}}",
+            "deployed_at": "{{.app.status.operationState.finishedAt}}",
+            "status": "succeeded",
             "dedup_id": "{{.app.status.operationState.startedAt}}-{{.app.metadata.name}}"
           }
 
@@ -239,7 +204,7 @@ data:
       send: [opslevel-deploy]
 
   service.webhook.opslevel: |
-    url: https://app.opslevel.com/integrations/deploy/${OPSLEVEL_DEPLOY_WEBHOOK_ID}
+    url: https://app.opslevel.com/integrations/deploy/xxxxxxxx-xxxx-xxxx-xxxxxxxxxxxx
     headers:
       - name: Content-Type
         value: application/json
@@ -255,7 +220,7 @@ curl -X POST "https://app.opslevel.com/api/graphql" \
   -H "Authorization: Bearer ${OPSLEVEL_API_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
-  "query": "query { services(filter: {tag: {key: \"deployment-method\", value: \"argocd\"}}) { nodes { name owner { name } tags { nodes { key value } } maturityReport { overallLevel { name } } } } }"
+  "query": "query { account { services(tag: {key: \"deployment-method\", value: \"argocd\"}) { nodes { name owner { name } tags { nodes { key value } } } } } }"
 }'
 ```
 
@@ -308,23 +273,37 @@ spec:
         spec:
           containers:
             - name: sync
-              image: curlimages/curl:latest
+              image: alpine:3.20
               command:
                 - /bin/sh
                 - -c
                 - |
+                  apk add --no-cache curl jq
                   # Fetch ArgoCD apps and update OpsLevel
                   APPS=$(curl -s -H "Authorization: Bearer $ARGOCD_TOKEN" \
                     "$ARGOCD_URL/api/v1/applications")
                   # Process and send to OpsLevel
-                  echo "$APPS" | jq -c '.items[]' | while read app; do
-                    NAME=$(echo $app | jq -r '.metadata.name')
-                    SYNC=$(echo $app | jq -r '.status.sync.status')
-                    HEALTH=$(echo $app | jq -r '.status.health.status')
-                    curl -s -X POST "https://app.opslevel.com/api/graphql" \
+                  echo "$APPS" | jq -c '.items[]' | while read -r app; do
+                    NAME=$(echo "$app" | jq -r '.metadata.name')
+                    SYNC=$(echo "$app" | jq -r '.status.sync.status')
+                    HEALTH=$(echo "$app" | jq -r '.status.health.status')
+                    jq -n \
+                      --arg name "$NAME" \
+                      --arg sync "$SYNC" \
+                      --arg health "$HEALTH" \
+                      '{
+                        query: "mutation($alias: String!, $tags: [TagInput!]!) { tagAssign(input:{alias:$alias, tags:$tags}) { tags { key value } errors { message } } }",
+                        variables: {
+                          alias: $name,
+                          tags: [
+                            {key:"argocd-sync-status", value:$sync},
+                            {key:"argocd-health-status", value:$health}
+                          ]
+                        }
+                      }' | curl -s -X POST "https://app.opslevel.com/api/graphql" \
                       -H "Authorization: Bearer $OPSLEVEL_TOKEN" \
                       -H "Content-Type: application/json" \
-                      -d "{\"query\":\"mutation { tagAssign(input:{alias:\\\"$NAME\\\", tags:[{key:\\\"argocd-sync-status\\\",value:\\\"$SYNC\\\"},{key:\\\"argocd-health-status\\\",value:\\\"$HEALTH\\\"}]}) { tags { key value } } }\"}"
+                      -d @-
                   done
               envFrom:
                 - secretRef:
