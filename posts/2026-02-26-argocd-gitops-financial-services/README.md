@@ -165,7 +165,7 @@ spec:
       applications:
         - "*"
     - kind: deny
-      schedule: "0 0 * * 0,6"    # Weekends
+      schedule: "0 0 * * 6"      # Weekends
       duration: 48h
       applications:
         - "*"
@@ -173,20 +173,18 @@ spec:
 
 ## Audit Trail and Compliance Logging
 
-ArgoCD provides audit logs by default. Enhance them with structured logging:
+ArgoCD emits Kubernetes events for application activity, and Git provides the audit history for configuration changes. Enhance ArgoCD server logs with structured logging:
 
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
+  name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable audit logging
-  server.log.level: info
-
-  # Configure notifications for audit trail
-  url: https://argocd.finserv.internal
+  # Configure ArgoCD server logging
+  server.log.level: "info"
+  server.log.format: "json"
 ```
 
 Set up a dedicated audit notification service:
@@ -206,8 +204,14 @@ data:
       - name: Content-Type
         value: application/json
 
+  subscriptions: |
+    - recipients:
+        - audit-log
+      triggers:
+        - on-any-change
+
   trigger.on-any-change: |
-    - when: "true"
+    - when: app.status.operationState != nil
       send: [audit-event]
 
   template.audit-event: |
@@ -242,14 +246,15 @@ kind: ClusterPolicy
 metadata:
   name: require-resource-limits
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-resource-limits
       match:
-        resources:
-          kinds:
-            - Deployment
+        any:
+          - resources:
+              kinds:
+                - Deployment
       validate:
+        failureAction: Enforce
         message: "All containers must have resource limits defined (compliance requirement)"
         pattern:
           spec:
@@ -268,14 +273,15 @@ kind: ClusterPolicy
 metadata:
   name: approved-registries-only
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-registry
       match:
-        resources:
-          kinds:
-            - Pod
+        any:
+          - resources:
+              kinds:
+                - Pod
       validate:
+        failureAction: Enforce
         message: "Images must come from approved registries"
         pattern:
           spec:
@@ -289,14 +295,15 @@ kind: ClusterPolicy
 metadata:
   name: require-security-context
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-security-context
       match:
-        resources:
-          kinds:
-            - Pod
+        any:
+          - resources:
+              kinds:
+                - Pod
       validate:
+        failureAction: Enforce
         message: "Pods must run as non-root (compliance requirement)"
         pattern:
           spec:
