@@ -61,45 +61,41 @@ The `stringData` field is important here because it tells Kubernetes to handle t
 
 ## Method 2: Delete the Password and Let ArgoCD Regenerate It
 
-If you want ArgoCD to generate a fresh random password, you can delete the password fields from the secret entirely. ArgoCD will then set the initial admin password based on the `argocd-initial-admin-secret`.
+If you want ArgoCD to generate a fresh random password, you can delete the password fields from the secret entirely. ArgoCD will then write the new initial admin password to the `argocd-initial-admin-secret`.
 
 ```bash
-# Check if the initial admin secret still exists
-kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath='{.data.password}' | base64 -d
-
-# If the initial secret exists, that password will work after you clear the main secret
+# Clear the password fields from argocd-secret
 kubectl -n argocd patch secret argocd-secret \
   -p '{"data": {"admin.password": null, "admin.passwordMtime": null}}'
 
 # Restart the ArgoCD server to pick up the change
 kubectl -n argocd rollout restart deployment argocd-server
+
+# Read the regenerated initial admin password
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d
 ```
 
-If the `argocd-initial-admin-secret` was already deleted (which is recommended practice after first login), you will need to recreate it or use Method 1.
+If the `argocd-initial-admin-secret` was already deleted (which is recommended practice after first login), ArgoCD will recreate it on demand when it regenerates the admin password.
 
-## Method 3: Recreate the Initial Admin Secret
+## Method 3: Regenerate the Initial Admin Secret
 
-If the initial admin secret is gone, you can create a new one and then reset ArgoCD to use it.
+If the initial admin secret is gone, you can make ArgoCD generate a new one by deleting the password fields and restarting the server.
 
 ```bash
-# Generate a new random password
-NEW_PASSWORD=$(openssl rand -base64 16)
-echo "New password: $NEW_PASSWORD"
-
-# Create the initial admin secret
-kubectl -n argocd create secret generic argocd-initial-admin-secret \
-  --from-literal=password="$NEW_PASSWORD" \
-  --dry-run=client -o yaml | kubectl apply -f -
-
 # Clear the existing password from argocd-secret
 kubectl -n argocd patch secret argocd-secret \
   -p '{"data": {"admin.password": null, "admin.passwordMtime": null}}'
 
 # Restart ArgoCD server
 kubectl -n argocd rollout restart deployment argocd-server
+
+# Read the regenerated initial admin password
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath='{.data.password}' | base64 -d
 ```
 
-After the server restarts, you can log in with `admin` and the new password.
+After the server restarts, you can log in with `admin` and the regenerated password.
 
 ## Method 4: Using the ArgoCD CLI from Another Authenticated Session
 
@@ -128,6 +124,7 @@ argocd login argocd.example.com \
 
 # Or check the API directly
 curl -k https://argocd.example.com/api/v1/session \
+  -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"MyNewPassword123!"}'
 ```
 
