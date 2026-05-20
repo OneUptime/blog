@@ -208,7 +208,7 @@ roles:
 
 Resources and Actions
 
-Available resources and their actions:
+Common project-scoped resources and their actions:
 
 | Resource | Actions |
 |---|---|
@@ -244,7 +244,7 @@ roles:
       - p, proj:backend:restricted-deployer, applications, get, backend/*, allow
 ```
 
-Deny rules always take precedence over allow rules.
+Deny rules take precedence over allow rules for matching subject-specific policies. Permissions granted by the default global policy cannot be blocked by a later deny rule.
 
 ## Using Project Roles for Log and Exec Access
 
@@ -288,10 +288,10 @@ argocd proj role create backend developer \
 
 ```bash
 argocd proj role add-policy backend developer \
-  -a get -p allow -o "backend/*"
+  -a get -p allow -o "*"
 
 argocd proj role add-policy backend developer \
-  -a sync -p allow -o "backend/*-dev"
+  -a sync -p allow -o "*-dev"
 ```
 
 ### Add a Group to a Role
@@ -313,7 +313,7 @@ Project roles work alongside global RBAC policies. The effective permissions are
 1. Global RBAC policies matching the user's role or group
 2. Project role policies matching the user's SSO groups
 
-If either grants a permission, the user has it (unless a deny rule exists).
+If either grants a permission, the user has it, unless a matching deny rule takes precedence. Permissions granted by `policy.default` in global RBAC cannot be overridden by a deny rule.
 
 ```yaml
 # Global RBAC (argocd-rbac-cm)
