@@ -112,11 +112,11 @@ In the ArgoCD web UI:
 
 1. Navigate to the application you want to delete
 2. Click the **Delete** button in the header
-3. In the deletion dialog, **uncheck** the "Cascade" checkbox
+3. In the deletion dialog, choose **Non-Cascading (Orphan)** (or uncheck the "Cascade" checkbox in older versions)
 4. Type the application name to confirm
 5. Click **OK**
 
-With cascade unchecked, ArgoCD deletes only the Application CR and leaves the managed resources in the cluster.
+With non-cascading deletion selected, ArgoCD deletes only the Application CR and leaves the managed resources in the cluster.
 
 ## Method 4: Application Has No Finalizer
 
@@ -131,7 +131,7 @@ spec:
   # ...
 ```
 
-Then deleting it will never cascade-delete resources regardless of what method you use. The finalizer is what triggers the cascade behavior.
+Then deleting it directly with Kubernetes will not cascade-delete resources. Be careful with the ArgoCD CLI, though: `argocd app delete` defaults to cascading deletion and can add the finalizer automatically unless you pass `--cascade=false`. The finalizer is what triggers the controller's cascade behavior.
 
 ## What Happens to Orphaned Resources?
 
@@ -237,4 +237,4 @@ kubectl apply -f my-app-new-project.yaml
 
 5. **Check for dependent applications** - If your Application is part of an app-of-apps pattern, deleting it might affect the parent application's health status.
 
-Deleting an ArgoCD Application without deleting resources is a straightforward operation once you understand finalizers and the cascade flag. The key takeaway is that the `resources-finalizer.argocd.argoproj.io` finalizer controls cascade behavior, and you can bypass it using `--cascade=false`, removing the finalizer, or simply never adding the finalizer in the first place.
+Deleting an ArgoCD Application without deleting resources is a straightforward operation once you understand finalizers and the cascade flag. The key takeaway is that the `resources-finalizer.argocd.argoproj.io` finalizer controls the controller's cascade behavior, and you can bypass it using `--cascade=false`, removing the finalizer before direct Kubernetes deletion, or avoiding the finalizer when deleting directly with Kubernetes.
