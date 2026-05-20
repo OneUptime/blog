@@ -42,17 +42,28 @@ pipeline {
             spec:
               containers:
               - name: docker
+                image: docker:24-cli
+                command: ['sleep', 'infinity']
+                env:
+                - name: DOCKER_HOST
+                  value: tcp://localhost:2375
+                - name: DOCKER_TLS_CERTDIR
+                  value: ""
+              - name: dind
                 image: docker:24-dind
                 securityContext:
                   privileged: true
+                env:
+                - name: DOCKER_TLS_CERTDIR
+                  value: ""
                 volumeMounts:
-                - name: docker-socket
-                  mountPath: /var/run/docker.sock
+                - name: docker-graph-storage
+                  mountPath: /var/lib/docker
               - name: tools
                 image: alpine:3.19
                 command: ['sleep', 'infinity']
               volumes:
-              - name: docker-socket
+              - name: docker-graph-storage
                 emptyDir: {}
             '''
         }
@@ -61,7 +72,7 @@ pipeline {
     environment {
         REGISTRY = 'ghcr.io'
         IMAGE_NAME = 'myorg/api-service'
-        DEPLOYMENT_REPO = 'https://github.com/myorg/k8s-deployments.git'
+        DEPLOYMENT_REPO = 'git@github.com:myorg/k8s-deployments.git'
         IMAGE_TAG = "${env.GIT_COMMIT?.take(7) ?: 'latest'}"
     }
 
@@ -108,7 +119,8 @@ pipeline {
                         passwordVariable: 'REGISTRY_PASS'
                     )]) {
                         sh '''
-                            docker login ${REGISTRY} -u ${REGISTRY_USER} -p ${REGISTRY_PASS}
+                            until docker info >/dev/null 2>&1; do sleep 1; done
+                            printf '%s' "${REGISTRY_PASS}" | docker login ${REGISTRY} -u ${REGISTRY_USER} --password-stdin
 
                             docker build \
                                 -t ${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} \
@@ -141,6 +153,7 @@ pipeline {
                             cp ${SSH_KEY} ~/.ssh/id_rsa
                             chmod 600 ~/.ssh/id_rsa
                             ssh-keyscan github.com >> ~/.ssh/known_hosts
+                            export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes"
 
                             # Clone and update deployment repo
                             git clone ${DEPLOYMENT_REPO} deployment-repo
@@ -306,6 +319,7 @@ def call(Map config) {
             cp ${SSH_KEY} ~/.ssh/id_rsa
             chmod 600 ~/.ssh/id_rsa
             ssh-keyscan github.com >> ~/.ssh/known_hosts
+            export GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes"
 
             git clone ${deploymentRepo} deployment-repo
             cd deployment-repo
