@@ -8,7 +8,7 @@ Description: Learn how to install ArgoCD in core-only mode without the web UI, A
 
 ---
 
-ArgoCD ships with a full web UI, API server, Dex authentication server, and Redis cache. For many use cases, all of that is unnecessary overhead. If you are running ArgoCD purely as a GitOps engine and managing everything through the CLI or declarative YAML, the core installation gives you just the essential components - the Application Controller and the Repo Server - without the rest.
+ArgoCD ships with a full web UI, API server, Dex authentication server, and Redis cache. For many use cases, all of that is unnecessary overhead. If you are running ArgoCD purely as a GitOps engine and managing everything through the CLI or declarative YAML, the core installation gives you the essential components - the Application Controller, ApplicationSet Controller, Repo Server, and Redis - without the rest.
 
 ArgoCD Core mode was introduced to address environments where the UI and API server add unwanted attack surface, consume resources you cannot spare, or simply are not needed because everything is managed as code.
 
@@ -19,14 +19,15 @@ Here is what changes in core mode compared to a full installation:
 | Component | Full Install | Core Install |
 |---|---|---|
 | Application Controller | Yes | Yes |
+| ApplicationSet Controller | Yes | Yes |
 | Repo Server | Yes | Yes |
 | API Server | Yes | No |
 | Web UI | Yes | No |
 | Dex (SSO) | Yes | No |
 | Redis | Yes | Yes (for caching) |
-| Notifications Controller | Optional | Optional |
+| Notifications Controller | Yes | No |
 
-The Application Controller is the brain that watches Git repositories and reconciles the cluster state. The Repo Server handles cloning repos and generating manifests. These two are all you need for GitOps to work.
+The Application Controller is the brain that watches Git repositories and reconciles the cluster state. The Repo Server handles cloning repos and generating manifests. These components are all you need for GitOps to work.
 
 ## When to Use Core Mode
 
@@ -48,10 +49,10 @@ ArgoCD provides a separate manifest for core-only installation.
 kubectl create namespace argocd
 
 # Install ArgoCD in core mode
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/core-install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/core-install.yaml
 ```
 
-This installs only the Application Controller, Repo Server, and Redis.
+This installs the Application Controller, ApplicationSet Controller, Repo Server, and Redis.
 
 Verify the installation.
 
@@ -65,15 +66,16 @@ You should see something like:
 ```text
 NAME                                  READY   STATUS    RESTARTS   AGE
 argocd-application-controller-0       1/1     Running   0          1m
+argocd-applicationset-controller-xxxxx 1/1    Running   0          1m
 argocd-redis-5b6967fdfc-xxxxx         1/1     Running   0          1m
 argocd-repo-server-7598bf5999-xxxxx   1/1     Running   0          1m
 ```
 
-Notice there is no `argocd-server` or `argocd-dex-server` pod.
+Notice there is no `argocd-server`, `argocd-dex-server`, or `argocd-notifications-controller` pod.
 
 ## Step 2: Configure the ArgoCD CLI for Core Mode
 
-Without the API server, the ArgoCD CLI communicates directly with the Kubernetes API using your kubeconfig. This is called "core mode" for the CLI as well.
+Without the installed API server, the ArgoCD CLI relies on your kubeconfig and Kubernetes RBAC. In core mode, the CLI starts a local ArgoCD API server process for the command and terminates it when the command completes.
 
 ```bash
 # Install the ArgoCD CLI
@@ -83,20 +85,21 @@ sudo mv argocd /usr/local/bin/
 
 # Set the CLI to use core mode
 # This tells the CLI to talk to Kubernetes directly, not the ArgoCD API server
-export ARGOCD_OPTS="--core"
+kubectl config set-context --current --namespace=argocd
+argocd login --core
 ```
 
-You can also add this to your shell profile so it persists.
+You can also add `--core` to your shell profile so it is passed to future commands.
 
 ```bash
 # Add to ~/.bashrc or ~/.zshrc
 echo 'export ARGOCD_OPTS="--core"' >> ~/.bashrc
 ```
 
-Now the CLI works without needing to `argocd login` first. It uses your current kubeconfig context.
+After `argocd login --core`, the CLI uses your current kubeconfig context and Kubernetes RBAC instead of ArgoCD API server authentication.
 
 ```bash
-# List applications - works without logging in
+# List applications - works without logging in to an in-cluster API server
 argocd app list --core
 
 # Create an application
@@ -147,7 +150,7 @@ The Application Controller picks it up and syncs it automatically.
 
 ## Step 4: Monitor Applications Without the UI
 
-Since there is no web UI, you monitor applications through the CLI or Kubernetes-native tools.
+Since there is no in-cluster web UI, you monitor applications through the CLI or Kubernetes-native tools.
 
 ### Using the CLI
 
@@ -196,7 +199,7 @@ Key metrics to monitor:
 
 - `argocd_app_info` - Application status and health
 - `argocd_app_sync_total` - Sync operation counts
-- `argocd_app_reconcile_count` - Reconciliation frequency
+- `argocd_app_reconcile` - Application reconciliation performance
 
 ## Step 5: Manage Repositories in Core Mode
 
@@ -276,29 +279,32 @@ kubectl apply -f team-project.yaml
 You can upgrade from core to full mode later by applying the full install manifest.
 
 ```bash
-# Upgrade to full install (adds API server, UI, Dex)
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+# Upgrade to full install (adds API server, UI, Dex, and notifications)
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 ```
 
 To go back to core mode, delete the extra components.
 
 ```bash
-# Remove the API server, Dex, and related resources
+# Remove the API server, Dex, notifications, and related resources
 kubectl delete deployment argocd-server -n argocd
 kubectl delete deployment argocd-dex-server -n argocd
+kubectl delete deployment argocd-notifications-controller -n argocd
 kubectl delete service argocd-server -n argocd
 kubectl delete service argocd-dex-server -n argocd
+kubectl delete service argocd-server-metrics -n argocd
+kubectl delete service argocd-notifications-controller-metrics -n argocd
 ```
 
 Resource Comparison
 
-Here is roughly how much resources you save with core mode on a typical cluster:
+The exact savings depend on the ArgoCD version and any resource requests or limits you configure, but core mode avoids running these extra workloads:
 
-| Component | CPU Request | Memory Request |
-|---|---|---|
-| argocd-server | 50m | 64Mi |
-| argocd-dex-server | 10m | 64Mi |
-| **Total Saved** | **60m** | **128Mi** |
+| Component | Workload Removed |
+|---|---|
+| argocd-server | API server and in-cluster web UI |
+| argocd-dex-server | OIDC connector service |
+| argocd-notifications-controller | Notifications processing |
 
 It is not a huge saving for a single instance, but when you run multiple ArgoCD instances (e.g., one per team or per environment), it adds up.
 
