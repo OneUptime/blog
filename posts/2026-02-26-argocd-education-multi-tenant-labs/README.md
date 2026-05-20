@@ -66,29 +66,25 @@ metadata:
   name: kubernetes-101-labs
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
-  - git:
-      repoURL: https://git.university.edu/courses/kubernetes-101.git
-      revision: HEAD
-      files:
-      - path: "students.yaml"
-    selector:
-      matchExpressions: []
-  # Use the list generator parsing the students array
-  - list:
-      elementsYaml: |
-        {{- range .students }}
-        - id: {{ .id }}
-          name: {{ .name }}
-          email: {{ .email }}
-          labGroup: {{ .lab-group }}
-        {{- end }}
+  - matrix:
+      generators:
+      - git:
+          repoURL: https://git.university.edu/courses/kubernetes-101.git
+          revision: HEAD
+          files:
+          - path: "students.yaml"
+      # Use the list generator to expand the students array from students.yaml
+      - list:
+          elementsYaml: "{{ .students | toJson }}"
   template:
     metadata:
-      name: 'lab-{{id}}'
+      name: 'lab-{{.id}}'
       annotations:
-        student-email: '{{email}}'
-        lab-group: '{{labGroup}}'
+        student-email: '{{.email}}'
+        lab-group: '{{ index . "lab-group" }}'
     spec:
       project: kubernetes-101
       source:
@@ -98,14 +94,14 @@ spec:
         helm:
           parameters:
           - name: studentId
-            value: '{{id}}'
+            value: '{{.id}}'
           - name: studentName
-            value: '{{name}}'
+            value: '{{.name}}'
           - name: namespace
-            value: 'lab-{{id}}'
+            value: 'lab-{{.id}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: 'lab-{{id}}'
+        namespace: 'lab-{{.id}}'
       syncPolicy:
         automated:
           prune: true
@@ -123,6 +119,8 @@ metadata:
   name: kubernetes-101-labs
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - list:
       elements:
@@ -134,7 +132,7 @@ spec:
         email: cdavis@university.edu
   template:
     metadata:
-      name: 'lab-{{id}}'
+      name: 'lab-{{.id}}'
     spec:
       project: kubernetes-101
       source:
@@ -144,10 +142,10 @@ spec:
         helm:
           parameters:
           - name: studentId
-            value: '{{id}}'
+            value: '{{.id}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: 'lab-{{id}}'
+        namespace: 'lab-{{.id}}'
       syncPolicy:
         automated:
           prune: true
@@ -159,6 +157,14 @@ spec:
 ## Lab Environment Helm Chart
 
 The Helm chart deployed per student includes everything they need:
+
+```yaml
+# lab-environment/templates/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-{{ .Values.studentId }}
+```
 
 ```yaml
 # lab-environment/templates/resource-quota.yaml
@@ -222,10 +228,12 @@ spec:
     ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
   # Allow traffic within own namespace
   - to:
     - podSelector: {}
-  # Allow internet access for pulling images and docs
+  # Allow internet access for docs and external lab endpoints
   - to:
     - ipBlock:
         cidr: 0.0.0.0/0
@@ -379,8 +387,9 @@ metadata:
   namespace: lab-{{ .Values.studentId }}
 data:
   README: |
-    Resources with the label "managed-by: student" are not
-    auto-healed by ArgoCD. Use this label for your exercises.
+    Resources you create outside this chart are not auto-healed
+    by ArgoCD. Do not edit baseline lab resources unless the
+    exercise asks for it.
 ```
 
 ## Course Lifecycle Management
@@ -398,7 +407,8 @@ git rm courses/kubernetes-101/students.yaml
 git commit -m "End of Spring 2026 Kubernetes 101 course"
 git push
 
-# ArgoCD prunes all student namespaces automatically
+# ArgoCD prunes all student applications and managed resources automatically.
+# If your chart includes the Namespace manifest above, the lab namespaces are pruned too.
 ```
 
 ## Monitoring Lab Health
