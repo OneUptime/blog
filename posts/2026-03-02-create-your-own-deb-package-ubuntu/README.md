@@ -128,7 +128,6 @@ Section: admin
 Priority: optional
 Homepage: https://internal.mycompany.com/tools
 Description: MyCompany System Monitor
-
  Lightweight system monitoring daemon that reports disk usage
  and load averages to the central monitoring infrastructure.
  .
@@ -138,7 +137,7 @@ EOF
 ```
 
 Key control file fields:
-- `Package` - Package name (lowercase, only letters, numbers, hyphens, plus)
+- `Package` - Package name (lowercase, starts with a letter or number, and uses only letters, numbers, periods, plus signs, and hyphens)
 - `Version` - Package version (follows Debian version syntax)
 - `Architecture` - `all` for scripts/data, `amd64`/`arm64` for compiled code
 - `Depends` - Comma-separated list of required packages (with optional version constraints)
@@ -154,7 +153,7 @@ cat > ${PKGNAME}_${VERSION}/DEBIAN/postinst << 'POSTINST'
 #!/bin/bash
 set -e
 
-# Enable and start the service after installation
+# Enable the service after installation
 if [ "$1" = "configure" ]; then
     systemctl daemon-reload
     systemctl enable mycompany-monitor.service
@@ -278,6 +277,7 @@ sudo apt install build-essential devscripts debhelper
 
 # Your package needs a debian/ directory (lowercase, in source tree)
 # and debian/rules, debian/control, debian/changelog
+mkdir -p debian
 
 # Create minimal debian/rules
 cat > debian/rules << 'RULES'
