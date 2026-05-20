@@ -8,13 +8,13 @@ Description: Learn how to configure OIDC group claims in ArgoCD to implement tea
 
 ---
 
-One of the most powerful features of ArgoCD's SSO integration is the ability to map OIDC group claims to ArgoCD RBAC roles. Instead of managing individual user permissions in ArgoCD, you define access rules based on groups from your identity provider. When a user's group membership changes in the IdP, their ArgoCD permissions update automatically.
+One of the most powerful features of ArgoCD's SSO integration is the ability to map OIDC group claims to ArgoCD RBAC roles. Instead of managing individual user permissions in ArgoCD, you define access rules based on groups from your identity provider. When a user's group membership changes in the IdP, their ArgoCD permissions update after ArgoCD receives updated claims, typically when the user reauthenticates or when cached token/user-info data expires.
 
 This guide covers the concepts and practical configuration for team-based access control using OIDC groups in ArgoCD.
 
 ## How OIDC Groups Work in ArgoCD
 
-When a user logs into ArgoCD through SSO, the identity provider returns a token containing claims about the user. One of these claims contains the user's group memberships. ArgoCD reads this claim and uses it to evaluate RBAC policies.
+When a user logs into ArgoCD through SSO, the identity provider returns token claims about the user. One of these claims can contain the user's group memberships. ArgoCD reads this claim and uses it to evaluate RBAC policies.
 
 ```mermaid
 flowchart TD
@@ -33,7 +33,7 @@ flowchart TD
 
 The key configuration points are:
 
-1. **Identity Provider** - Must include group memberships in the OIDC token
+1. **Identity Provider** - Must include group memberships in the OIDC token or UserInfo response
 2. **ArgoCD ConfigMap** - Must request the correct scopes and claims
 3. **ArgoCD RBAC ConfigMap** - Must map group names to ArgoCD roles
 
@@ -66,7 +66,7 @@ data:
         essential: true
 ```
 
-The `requestedIDTokenClaims` tells the IdP that the groups claim is essential and must be included in the ID token.
+The `requestedIDTokenClaims` setting asks supporting IdPs to include the groups claim in the ID token. Some providers ignore this request or expose group data only through the UserInfo endpoint, so always confirm what claims ArgoCD actually receives.
 
 ### Step 2: Tell ArgoCD Which Claim Contains Groups
 
@@ -82,23 +82,23 @@ data:
   scopes: '[groups]'
 ```
 
-The `scopes` field tells ArgoCD which token claim to read for group information. Common claim names by provider:
+The `scopes` field tells ArgoCD which token or UserInfo claim to read for group information. Common claim names by provider:
 
 | Identity Provider | Claim Name |
 |---|---|
 | Okta | `groups` |
 | Azure AD | `groups` (contains GUIDs by default) |
 | Keycloak | `groups` (requires protocol mapper) |
-| Auth0 | `https://your-domain/groups` (namespaced) |
+| Auth0 | `http://your.domain/groups` (namespaced/FQDN claim) |
 | Google (via Dex) | `groups` |
-| Zitadel | `urn:zitadel:iam:org:project:roles` |
+| Zitadel | `groups` (commonly emitted from Zitadel roles using a custom Action) |
 | GitHub (via Dex) | `groups` (format: `org:team`) |
 | GitLab (via Dex) | `groups` (format: `group/subgroup`) |
 
 For non-standard claim names (like Auth0's namespaced claims), update the scopes accordingly:
 
 ```yaml
-  scopes: '[https://argocd.example.com/groups]'
+  scopes: '[http://your.domain/groups]'
 ```
 
 ## Designing Team-Based RBAC
@@ -204,7 +204,7 @@ Restrict access based on deployment environments:
 
 ## Handling Multiple Groups per User
 
-Users often belong to multiple groups. ArgoCD evaluates all matching policies and grants the union of permissions. For example, if a user belongs to both `developers` (sync staging) and `release-managers` (sync production), they can sync both staging and production.
+Users often belong to multiple groups. ArgoCD evaluates all matching policies and grants the union of allowed permissions unless a matching `deny` policy applies. For example, if a user belongs to both `developers` (sync staging) and `release-managers` (sync production), they can sync both staging and production.
 
 This additive behavior means you should design your groups and roles carefully:
 
@@ -265,19 +265,19 @@ Use `argocd admin` commands to test RBAC policies:
 ```bash
 # Test if a user/group has a specific permission
 
-argocd admin settings rbac can role:developer sync applications 'staging/*' \
+argocd admin settings rbac can role:developer sync application 'staging/*' \
   --policy-file /path/to/policy.csv
 ```
 
 ## Common Pitfalls
 
-### 1. Groups Claim Not in Token
+### 1. Groups Claim Not in Token or UserInfo Response
 
 The most common issue. Every IdP handles groups differently. Check the IdP-specific setup:
 - **Okta**: Add a Groups claim to the authorization server
 - **Azure AD**: Configure Token configuration with group claims
 - **Keycloak**: Add a Group Membership protocol mapper
-- **Auth0**: Create an Action that adds roles to the token
+- **Auth0**: Create an Action that adds groups or roles to the token under a namespaced claim
 
 ### 2. Case Sensitivity
 
@@ -293,10 +293,10 @@ Different IdPs format group names differently:
 
 ### 4. Policy Default Too Permissive
 
-Setting `policy.default: role:admin` gives admin access to any authenticated user without a specific group mapping. Always use `role:readonly` or an empty string as the default.
+Setting `policy.default: role:admin` gives admin access to any authenticated user without a specific group mapping. Use `role:readonly` only if all authenticated users should have read access, or use an empty string/custom minimal role as the default.
 
 ## Summary
 
-OIDC group-based access control in ArgoCD lets you manage deployment permissions through your identity provider rather than maintaining separate access lists. The configuration involves three pieces: the IdP must include groups in the token, ArgoCD must be told which claim to read, and the RBAC policies must map those groups to ArgoCD roles. Once set up, permission changes happen in your IdP and propagate automatically to ArgoCD.
+OIDC group-based access control in ArgoCD lets you manage deployment permissions through your identity provider rather than maintaining separate access lists. The configuration involves three pieces: the IdP must include groups in the token or UserInfo response, ArgoCD must be told which claim to read, and the RBAC policies must map those groups to ArgoCD roles. Once set up, permission changes happen in your IdP and take effect in ArgoCD when updated claims are received.
 
 For provider-specific setup guides, see [How to Configure SSO with Okta in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-sso-okta/view) and [How to Configure SSO with Azure AD in ArgoCD](https://oneuptime.com/blog/post/2026-02-26-argocd-sso-azure-ad-entra-id/view).
