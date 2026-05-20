@@ -91,7 +91,7 @@ kubectl get applicationsets -n argocd -o yaml | \
 ## Step 3: Export AppProjects
 
 ```bash
-# Export all AppProjects (excluding the default project)
+# Export all AppProjects
 kubectl get appprojects -n argocd -o yaml | \
   yq eval 'del(.items[].metadata.resourceVersion,
               .items[].metadata.uid,
@@ -145,6 +145,8 @@ echo "WARNING: Cluster bearer tokens may need to be regenerated on the new insta
 ## Step 6: Export Configuration
 
 ```bash
+mkdir -p export
+
 # Export all ArgoCD ConfigMaps
 for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-notifications-cm argocd-ssh-known-hosts-cm argocd-tls-certs-cm argocd-gpg-keys-cm; do
   kubectl get configmap $cm -n argocd -o yaml 2>/dev/null | \
@@ -160,6 +162,13 @@ kubectl get secret argocd-notifications-secret -n argocd -o yaml 2>/dev/null | \
               .metadata.uid,
               .metadata.creationTimestamp,
               .metadata.managedFields)' - > export/argocd-notifications-secret.yaml 2>/dev/null
+
+# Export the main ArgoCD secret
+kubectl get secret argocd-secret -n argocd -o yaml 2>/dev/null | \
+  yq eval 'del(.metadata.resourceVersion,
+              .metadata.uid,
+              .metadata.creationTimestamp,
+              .metadata.managedFields)' - > export/argocd-secret.yaml 2>/dev/null
 ```
 
 ## Step 7: Install ArgoCD on the New Cluster
@@ -167,10 +176,10 @@ kubectl get secret argocd-notifications-secret -n argocd -o yaml 2>/dev/null | \
 ```bash
 # On the new cluster, install ArgoCD
 kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/ha/install.yaml
 
 # Wait for ArgoCD to be ready
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/part-of=argocd -n argocd --timeout=300s
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=argocd -n argocd --timeout=300s
 ```
 
 ## Step 8: Import Configuration First
@@ -179,7 +188,7 @@ Import ConfigMaps and secrets before applications, as applications depend on pro
 
 ```bash
 # Import ConfigMaps
-for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-notifications-cm argocd-ssh-known-hosts-cm argocd-tls-certs-cm; do
+for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-notifications-cm argocd-ssh-known-hosts-cm argocd-tls-certs-cm argocd-gpg-keys-cm; do
   if [ -f "export/${cm}.yaml" ]; then
     kubectl apply -f "export/${cm}.yaml"
     echo "Applied $cm"
@@ -188,7 +197,7 @@ done
 
 # Restart ArgoCD to pick up configuration changes
 kubectl rollout restart deployment -n argocd -l app.kubernetes.io/part-of=argocd
-kubectl wait --for=condition=ready pod -l app.kubernetes.io/part-of=argocd -n argocd --timeout=300s
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/part-of=argocd -n argocd --timeout=300s
 ```
 
 ## Step 9: Import Secrets and Credentials
@@ -200,6 +209,9 @@ kubectl apply -f repo-creds-export.yaml
 
 # Import notification secrets
 kubectl apply -f export/argocd-notifications-secret.yaml 2>/dev/null
+
+# Import the main ArgoCD secret
+kubectl apply -f export/argocd-secret.yaml 2>/dev/null
 ```
 
 ## Step 10: Re-register Clusters
@@ -278,26 +290,70 @@ echo "Exporting ArgoCD state to $EXPORT_DIR"
 
 # Applications
 echo "Exporting applications..."
-kubectl get applications -n argocd -o yaml > "$EXPORT_DIR/applications.yaml"
+kubectl get applications -n argocd -o yaml | \
+  yq eval 'del(.items[].metadata.resourceVersion,
+              .items[].metadata.uid,
+              .items[].metadata.generation,
+              .items[].metadata.creationTimestamp,
+              .items[].metadata.managedFields,
+              .items[].status)' - > "$EXPORT_DIR/applications.yaml"
 
 # ApplicationSets
 echo "Exporting applicationsets..."
-kubectl get applicationsets -n argocd -o yaml > "$EXPORT_DIR/applicationsets.yaml" 2>/dev/null || true
+kubectl get applicationsets -n argocd -o yaml 2>/dev/null | \
+  yq eval 'del(.items[].metadata.resourceVersion,
+              .items[].metadata.uid,
+              .items[].metadata.generation,
+              .items[].metadata.creationTimestamp,
+              .items[].metadata.managedFields,
+              .items[].status)' - > "$EXPORT_DIR/applicationsets.yaml" || true
 
 # Projects
 echo "Exporting projects..."
-kubectl get appprojects -n argocd -o yaml > "$EXPORT_DIR/projects.yaml"
+kubectl get appprojects -n argocd -o yaml | \
+  yq eval 'del(.items[].metadata.resourceVersion,
+              .items[].metadata.uid,
+              .items[].metadata.generation,
+              .items[].metadata.creationTimestamp,
+              .items[].metadata.managedFields,
+              .items[].status)' - > "$EXPORT_DIR/projects.yaml"
 
 # Secrets
 echo "Exporting secrets..."
-kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository -o yaml > "$EXPORT_DIR/repo-secrets.yaml" 2>/dev/null || true
-kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repo-creds -o yaml > "$EXPORT_DIR/repo-creds.yaml" 2>/dev/null || true
-kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=cluster -o yaml > "$EXPORT_DIR/cluster-secrets.yaml" 2>/dev/null || true
+kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository -o yaml 2>/dev/null | \
+  yq eval 'del(.items[].metadata.resourceVersion,
+              .items[].metadata.uid,
+              .items[].metadata.creationTimestamp,
+              .items[].metadata.managedFields)' - > "$EXPORT_DIR/repo-secrets.yaml" || true
+kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repo-creds -o yaml 2>/dev/null | \
+  yq eval 'del(.items[].metadata.resourceVersion,
+              .items[].metadata.uid,
+              .items[].metadata.creationTimestamp,
+              .items[].metadata.managedFields)' - > "$EXPORT_DIR/repo-creds.yaml" || true
+kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=cluster -o yaml 2>/dev/null | \
+  yq eval 'del(.items[].metadata.resourceVersion,
+              .items[].metadata.uid,
+              .items[].metadata.creationTimestamp,
+              .items[].metadata.managedFields)' - > "$EXPORT_DIR/cluster-secrets.yaml" || true
+kubectl get secret argocd-notifications-secret -n argocd -o yaml 2>/dev/null | \
+  yq eval 'del(.metadata.resourceVersion,
+              .metadata.uid,
+              .metadata.creationTimestamp,
+              .metadata.managedFields)' - > "$EXPORT_DIR/argocd-notifications-secret.yaml" || true
+kubectl get secret argocd-secret -n argocd -o yaml 2>/dev/null | \
+  yq eval 'del(.metadata.resourceVersion,
+              .metadata.uid,
+              .metadata.creationTimestamp,
+              .metadata.managedFields)' - > "$EXPORT_DIR/argocd-secret.yaml" || true
 
 # ConfigMaps
 echo "Exporting configmaps..."
-for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-notifications-cm argocd-ssh-known-hosts-cm argocd-tls-certs-cm; do
-  kubectl get configmap $cm -n argocd -o yaml > "$EXPORT_DIR/${cm}.yaml" 2>/dev/null || true
+for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm argocd-notifications-cm argocd-ssh-known-hosts-cm argocd-tls-certs-cm argocd-gpg-keys-cm; do
+  kubectl get configmap $cm -n argocd -o yaml 2>/dev/null | \
+    yq eval 'del(.metadata.resourceVersion,
+                .metadata.uid,
+                .metadata.creationTimestamp,
+                .metadata.managedFields)' - > "$EXPORT_DIR/${cm}.yaml" || true
 done
 
 echo "Export complete: $EXPORT_DIR"
