@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Boundary, Zero Trust
 
-Description: Learn how to integrate ArgoCD with HashiCorp Boundary for secure access management, including session brokering, credential injection, and identity-based authorization for GitOps workflows.
+Description: Learn how to integrate ArgoCD with HashiCorp Boundary for secure access management, including session brokering, credential brokering, and identity-based authorization for GitOps workflows.
 
 ---
 
@@ -52,7 +52,9 @@ graph TD
 
 ## Step 1: Set Up Boundary Infrastructure
 
-If you do not already have Boundary deployed, here is a quick Kubernetes deployment managed by ArgoCD itself:
+If you do not already have Boundary deployed, start with HashiCorp's supported deployment paths: HCP Boundary, or a self-managed Boundary deployment with controllers, workers, PostgreSQL, TLS, and KMS configured according to the Boundary installation documentation. HashiCorp does not publish an official `boundary` Helm chart in `https://helm.releases.hashicorp.com`, so do not point ArgoCD at that repository with `chart: boundary`.
+
+You can still manage a self-managed Boundary deployment with GitOps, but the ArgoCD `Application` should reference your own tested manifests or an explicitly chosen third-party chart:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -63,46 +65,9 @@ metadata:
 spec:
   project: infrastructure
   source:
-    repoURL: https://helm.releases.hashicorp.com
-    chart: boundary
-    targetRevision: 0.6.x
-    helm:
-      values: |
-        server:
-          replicas: 2
-          resources:
-            requests:
-              cpu: 250m
-              memory: 256Mi
-
-          config: |
-            controller {
-              name = "kubernetes-controller"
-              database {
-                url = "env://BOUNDARY_PG_URL"
-              }
-            }
-
-            worker {
-              name = "kubernetes-worker"
-              controllers = ["boundary-controller:9201"]
-            }
-
-            listener "tcp" {
-              address = "0.0.0.0:9200"
-              purpose = "api"
-              tls_disable = true
-            }
-
-            listener "tcp" {
-              address = "0.0.0.0:9201"
-              purpose = "cluster"
-            }
-
-            listener "tcp" {
-              address = "0.0.0.0:9202"
-              purpose = "proxy"
-            }
+    repoURL: https://github.com/example/platform-infra.git
+    path: boundary
+    targetRevision: main
   destination:
     server: https://kubernetes.default.svc
     namespace: boundary
@@ -258,7 +223,7 @@ argocd app list
 
 ## Step 6: Credential Brokering (Optional)
 
-Boundary can inject credentials for Kubernetes API access, which ArgoCD uses to manage clusters:
+Boundary can broker credentials from Vault to users when they connect to a target. This does not inject credentials into ArgoCD or change the credentials ArgoCD uses to manage Kubernetes clusters:
 
 ```bash
 # Create a credential store connected to Vault
@@ -268,14 +233,14 @@ boundary credential-stores create vault \
   -vault-token "s.xxxxx" \
   -name "Vault Credential Store"
 
-# Create a credential library for Kubernetes tokens
+# Create a credential library for a Vault generic secret
 boundary credential-libraries create vault-generic \
   -credential-store-id <cred-store-id> \
-  -vault-path "kubernetes/creds/argocd-admin" \
-  -name "ArgoCD K8s Credentials" \
+  -vault-path "secret/data/argocd-access" \
+  -name "ArgoCD Access Credentials" \
   -credential-type username_password
 
-# Associate credentials with the target
+# Broker credentials to users who connect to the target
 boundary targets add-credential-sources \
   -id <grpc-target-id> \
   -brokered-credential-source <cred-library-id>
