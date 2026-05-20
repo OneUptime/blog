@@ -112,6 +112,19 @@ rules:
   - apiGroups: ["apiextensions.k8s.io"]
     resources: ["customresourcedefinitions"]
     verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-limited-controller
+subjects:
+  - kind: ServiceAccount
+    name: argocd-application-controller
+    namespace: argocd
+roleRef:
+  kind: ClusterRole
+  name: argocd-limited-controller
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 Then create namespace-scoped RoleBindings for each allowed namespace:
@@ -154,7 +167,7 @@ for NS in "${NAMESPACES[@]}"; do
   kubectl create role argocd-namespace-manager \
     --namespace="$NS" \
     --verb="*" \
-    --resource="*.*" \
+    --resource="*" \
     --dry-run=client -o yaml | kubectl apply -f -
 
   kubectl create rolebinding argocd-namespace-manager \
@@ -165,7 +178,7 @@ for NS in "${NAMESPACES[@]}"; do
 done
 ```
 
-After applying these, remove the default cluster-admin binding:
+After applying these and confirming the limited binding exists, remove the default cluster-wide binding:
 
 ```bash
 # Remove the default cluster-admin binding
@@ -174,28 +187,20 @@ kubectl delete clusterrolebinding argocd-application-controller
 
 ## Approach 3: Namespace-Scoped ArgoCD Installation
 
-For the strictest isolation, you can install ArgoCD in namespace-scoped mode. This means the entire ArgoCD instance only watches and manages resources in specific namespaces.
+For the strictest isolation, you can install ArgoCD in namespace-scoped mode. This installs ArgoCD without cluster-wide Kubernetes permissions, and you grant access only to the namespaces it should manage.
 
 When installing with Helm, set the namespace scope:
 
 ```yaml
 # argocd-values.yaml
+# Do not create ArgoCD's default cluster-wide roles.
+createClusterRoles: false
+
+# Optional: only needed if you want Application custom resources
+# to be created in these namespaces instead of the argocd namespace.
 configs:
   params:
-    # Run in namespace-scoped mode
     application.namespaces: "frontend-dev,frontend-staging,frontend-prod"
-
-controller:
-  # Only watch specific namespaces
-  env:
-    - name: ARGOCD_CONTROLLER_NAMESPACES
-      value: "frontend-dev,frontend-staging,frontend-prod"
-  clusterRoleRules:
-    enabled: false  # Disable cluster-wide roles
-
-server:
-  clusterRoleRules:
-    enabled: false
 ```
 
 Install with Helm:
@@ -209,22 +214,23 @@ helm install argocd argo/argo-cd \
 For the official manifests installation, use the namespace-install variant:
 
 ```bash
+# Install ArgoCD CRDs first; namespace-install.yaml does not include them
+kubectl apply --server-side --force-conflicts \
+  -k https://github.com/argoproj/argo-cd/manifests/crds?ref=stable
+
 # This installs ArgoCD without cluster-level permissions
 kubectl apply -n argocd \
   -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/namespace-install.yaml
 ```
 
-Then configure which namespaces to watch via the argocd-cmd-params-cm ConfigMap:
+Then register the in-cluster Kubernetes API with the namespaces ArgoCD is allowed to manage:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Comma-separated list of namespaces to manage
-  application.namespaces: "frontend-dev,frontend-staging,frontend-prod"
+```bash
+argocd cluster add <CONTEXT> \
+  --in-cluster \
+  --namespace frontend-dev \
+  --namespace frontend-staging \
+  --namespace frontend-prod
 ```
 
 ## Combining Approaches for Defense in Depth
@@ -344,7 +350,7 @@ kubectl auth can-i create deployments \
 
 ## Common Pitfalls
 
-**Forgetting cluster-scoped resources**: Some applications need ClusterRoles, ClusterRoleBindings, or CustomResourceDefinitions. If you block all cluster-scoped resources in the project, these will fail silently. Whitelist only what is absolutely needed.
+**Forgetting cluster-scoped resources**: Some applications need ClusterRoles, ClusterRoleBindings, or CustomResourceDefinitions. If you block all cluster-scoped resources in the project, these will fail during sync. Whitelist only what is absolutely needed.
 
 **Namespace creation**: If your applications expect namespaces to be created by ArgoCD (using the CreateNamespace sync option), the service account needs cluster-level namespace creation permissions. Either pre-create namespaces or add a specific ClusterRole for namespace creation.
 
