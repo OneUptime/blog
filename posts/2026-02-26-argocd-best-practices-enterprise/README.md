@@ -209,6 +209,8 @@ metadata:
   name: payments-team-apps
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
         repoURL: https://github.com/myorg/payments-config.git
@@ -217,16 +219,16 @@ spec:
           - path: manifests/*/overlays/production
   template:
     metadata:
-      name: 'prod-{{path[1]}}'
+      name: 'prod-{{index .path.segments 1}}'
     spec:
       project: team-payments
       source:
         repoURL: https://github.com/myorg/payments-config.git
         targetRevision: HEAD
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://prod-cluster.example.com
-        namespace: 'payments-{{path[1]}}'
+        namespace: 'payments-{{index .path.segments 1}}'
 ```
 
 ## High availability configuration
@@ -324,17 +326,26 @@ spec:
 
 ## Compliance and audit logging
 
-Enable comprehensive audit logging:
+Enable structured logging and a compliance banner:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cmd-params-cm
+  namespace: argocd
+data:
+  # Structured logs are easier to forward, search, and audit centrally
+  server.log.format: "json"
+  controller.log.format: "json"
+  reposerver.log.format: "json"
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Audit logging
-  server.audit.enabled: "true"
 
   # Banner for compliance
   ui.bannercontent: "Production ArgoCD - All actions are logged and auditable"
@@ -342,23 +353,24 @@ data:
   ui.bannerpermanent: "true"
 ```
 
-Forward ArgoCD logs to your centralized logging system:
+Forward ArgoCD pod logs to your centralized logging system:
 
 ```yaml
-# Fluent Bit sidecar for ArgoCD audit logs
-apiVersion: apps/v1
-kind: Deployment
+# Fluent Bit tail input for Kubernetes container logs
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: argocd-server
-spec:
-  template:
-    spec:
-      containers:
-        - name: fluent-bit
-          image: fluent/fluent-bit:latest
-          volumeMounts:
-            - name: audit-logs
-              mountPath: /var/log/argocd
+  name: fluent-bit-argocd-input
+  namespace: logging
+data:
+  argocd-input.conf: |
+    [INPUT]
+        Name              tail
+        Path              /var/log/containers/argocd-*.log
+        Parser            cri
+        Tag               kube.argocd.*
+        Mem_Buf_Limit     10MB
+        Skip_Long_Lines   On
 ```
 
 ## Disaster recovery
@@ -381,13 +393,19 @@ spec:
           serviceAccountName: argocd-backup
           containers:
             - name: backup
-              image: argoproj/argocd:v2.13.0
+              image: quay.io/argoproj/argocd:v2.13.0
               command: ["/bin/sh", "-c"]
               args:
                 - |
-                  argocd admin export > /backup/argocd-export-$(date +%Y%m%d-%H%M).yaml
-                  # Upload to S3
-                  aws s3 cp /backup/ s3://argocd-backups/ --recursive
+                  argocd admin export -n argocd -o /backup/argocd-export-$(date +%Y%m%d-%H%M).yaml
+                  # Mount /backup to persistent or object-storage-backed storage
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: argocd-backup
           restartPolicy: OnFailure
 ```
 
@@ -395,7 +413,7 @@ Test recovery regularly:
 
 ```bash
 # Restore procedure
-argocd admin import < argocd-export-20260226-0800.yaml
+argocd admin import -n argocd - < argocd-export-20260226-0800.yaml
 ```
 
 ## Monitoring and alerting
