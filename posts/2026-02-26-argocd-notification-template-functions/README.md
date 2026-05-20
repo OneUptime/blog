@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Notification, Go Templates
 
-Description: Learn how to use ArgoCD notification template functions including time formatting, repo helpers, string manipulation, and custom functions for building dynamic notifications.
+Description: Learn how to use ArgoCD notification template functions including time formatting, repo helpers, string manipulation, and JSON helpers for building dynamic notifications.
 
 ---
 
-ArgoCD notification templates support a rich set of built-in functions that go beyond basic Go templating. These functions let you format timestamps, extract repository information, manipulate strings, and work with the application data in powerful ways. This guide documents every function category with practical examples.
+ArgoCD notification templates support a rich set of built-in functions that go beyond basic Go templating. These functions let you format timestamps, extract repository information, manipulate strings, and work with the application data in powerful ways. This guide documents common function categories with practical examples.
 
 ## Built-in Go Template Functions
 
-ArgoCD templates inherit all standard Go `text/template` functions plus additional helpers from the Sprig library and ArgoCD-specific functions.
+ArgoCD notification templates use Go `html/template` and have access to built-in template functions, helpers from the Sprig library, and ArgoCD-specific functions.
 
 ### String Functions
 
@@ -101,7 +101,7 @@ Converts SSH Git URLs to HTTPS format:
 
 ```yaml
 # Input: git@github.com:my-org/my-repo.git
-# Output: https://github.com/my-org/my-repo
+# Output: https://github.com/my-org/my-repo.git
 {{ call .repo.RepoURLToHTTPS .app.spec.source.repoURL }}
 ```
 
@@ -113,7 +113,7 @@ Useful for creating clickable links:
       attachments: |
         [{
           "title": "{{ .app.metadata.name }}",
-          "title_link": "{{ call .repo.RepoURLToHTTPS .app.spec.source.repoURL }}/commit/{{ .app.status.sync.revision }}"
+          "title_link": "{{ call .repo.RepoURLToHTTPS .app.spec.source.repoURL | trimSuffix \".git\" }}/commit/{{ .app.status.sync.revision }}"
         }]
 ```
 
@@ -121,12 +121,16 @@ Useful for creating clickable links:
 
 ### Formatting Timestamps
 
-ArgoCD timestamps are in RFC3339 format. The Sprig library provides time formatting:
+ArgoCD timestamps are in RFC3339 format. ArgoCD exposes `.time.Parse` for parsing them into Go `time.Time` values that can be formatted:
 
 ```yaml
 # Display the raw timestamp
 {{ .app.status.operationState.finishedAt }}
 # Output: 2026-02-26T14:30:00Z
+
+# Format the timestamp
+{{ (call .time.Parse .app.status.operationState.finishedAt).Format .time.RFC1123 }}
+# Output: Thu, 26 Feb 2026 14:30:00 UTC
 
 # Calculate duration between start and finish
 # Note: direct time arithmetic is limited in Go templates
@@ -143,7 +147,7 @@ Some APIs need Unix timestamps in milliseconds:
         method: POST
         body: |
           {
-            "time": {{ .app.status.operationState.finishedAt | toUnixMilli }},
+            "time": {{ (call .time.Parse .app.status.operationState.finishedAt).UnixMilli }},
             "text": "Deployed {{ .app.metadata.name }}"
           }
 ```
@@ -274,12 +278,12 @@ Combine repo helper functions with revision data to create useful links:
           "fields": [
             {
               "title": "Commit",
-              "value": "<{{ call .repo.RepoURLToHTTPS .app.spec.source.repoURL }}/commit/{{ .app.status.sync.revision }}|{{ .app.status.sync.revision | trunc 7 }}>",
+              "value": "<{{ call .repo.RepoURLToHTTPS .app.spec.source.repoURL | trimSuffix \".git\" }}/commit/{{ .app.status.sync.revision }}|{{ .app.status.sync.revision | trunc 7 }}>",
               "short": true
             },
             {
               "title": "Diff",
-              "value": "<{{ call .repo.RepoURLToHTTPS .app.spec.source.repoURL }}/compare/{{ .app.status.sync.comparedTo.source.targetRevision }}...{{ .app.status.sync.revision | trunc 7 }}|View changes>",
+              "value": "<{{ call .repo.RepoURLToHTTPS .app.spec.source.repoURL | trimSuffix \".git\" }}/compare/{{ .app.status.sync.comparedTo.source.targetRevision }}...{{ .app.status.sync.revision }}|View changes>",
               "short": true
             }
           ]
