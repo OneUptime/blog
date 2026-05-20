@@ -322,8 +322,10 @@ When a team requests a new resource type, update the project configuration:
 # Check current project configuration
 argocd proj get web-team -o yaml
 
-# There is no CLI shorthand for modifying resource whitelists
-# Edit the project YAML and apply
+# Add a namespace-scoped resource to the whitelist
+argocd proj allow-namespace-resource web-team apps Deployment
+
+# Or edit the project YAML directly
 kubectl edit appproject web-team -n argocd
 ```
 
