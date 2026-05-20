@@ -8,7 +8,7 @@ Description: Learn how to use argocd app history to track deployment history, au
 
 ---
 
-Every deployment in ArgoCD is recorded in the application's history. The `argocd app history` command gives you access to this audit trail, showing you every sync operation, the revision that was deployed, who initiated it, and when it happened. This is essential for debugging, compliance, and understanding deployment patterns.
+Every retained deployment in ArgoCD is recorded in the application's revision history. The `argocd app history` command gives you access to this audit trail, showing you each recorded sync operation, the revision that was deployed, and when it happened. This is essential for debugging, compliance, and understanding deployment patterns.
 
 ## Basic Usage
 
@@ -19,24 +19,25 @@ argocd app history my-app
 This produces a table showing the deployment history:
 
 ```text
+SOURCE  https://github.com/my-org/manifests.git
 ID  DATE                           REVISION
-0   2026-02-20 10:30:00 +0000 UTC  a1b2c3d (HEAD)
-1   2026-02-18 14:15:00 +0000 UTC  d4e5f6a
-2   2026-02-15 09:00:00 +0000 UTC  g7h8i9j
-3   2026-02-10 16:45:00 +0000 UTC  k1l2m3n
+0   2026-02-10 16:45:00 +0000 UTC  HEAD (k1l2m3n)
+1   2026-02-15 09:00:00 +0000 UTC  HEAD (g7h8i9j)
+2   2026-02-18 14:15:00 +0000 UTC  HEAD (d4e5f6a)
+3   2026-02-20 10:30:00 +0000 UTC  HEAD (a1b2c3d)
 ```
 
 Each entry represents a successful sync operation.
 
 ## Understanding History IDs
 
-History entries are numbered with the most recent entry having the highest ID. The ID is what you use when performing a rollback:
+History entries are numbered with an auto-incrementing ID, so the oldest retained entry usually has the lowest ID and the newest retained entry has the highest ID. The ID is what you use when performing a rollback:
 
 ```text
-ID 3: oldest recorded deployment
-ID 2: next deployment
-ID 1: previous deployment
-ID 0: current deployment
+ID 0: oldest retained deployment
+ID 1: next deployment
+ID 2: previous deployment
+ID 3: current deployment
 ```
 
 Note: ArgoCD keeps a limited number of history entries (configurable). Older entries are automatically pruned.
@@ -52,21 +53,21 @@ argocd app history my-app
 ### JSON
 
 ```bash
-argocd app history my-app -o json
+argocd app get my-app -o json
 ```
 
-The JSON output includes much more detail:
+The `argocd app history` command supports `wide` and `id` output. For JSON, fetch the Application object and read `.status.history`, which includes much more detail:
 
 ```bash
 # Get full history with deployment parameters
 
-argocd app history my-app -o json | jq '.[].revision'
+argocd app get my-app -o json | jq '(.status.history // [])[].revision'
 
 # Get deployment dates
-argocd app history my-app -o json | jq '.[] | {id: .id, date: .deployedAt, revision: .revision}'
+argocd app get my-app -o json | jq '(.status.history // [])[] | {id: .id, date: .deployedAt, revision: .revision}'
 
 # Get the source configuration for each deployment
-argocd app history my-app -o json | jq '.[] | {id: .id, source: .source}'
+argocd app get my-app -o json | jq '(.status.history // [])[] | {id: .id, source: .source}'
 ```
 
 ## Building Audit Reports
@@ -82,7 +83,7 @@ APP_NAME="${1:?Usage: deployment-log.sh <app-name>}"
 echo "=== Deployment History for: $APP_NAME ==="
 echo ""
 
-argocd app history "$APP_NAME" -o json | jq -r '.[] | "\(.id)\t\(.deployedAt)\t\(.revision[0:7])\t\(.source.repoURL)"' | \
+argocd app get "$APP_NAME" -o json | jq -r '(.status.history // [])[] | "\(.id)\t\(.deployedAt)\t\(.revision[0:7])\t\(.source.repoURL)"' | \
   column -t -s $'\t' -N "ID,Date,Revision,Repository"
 ```
 
@@ -97,11 +98,11 @@ APP_NAME="${1:?Usage: deploy-frequency.sh <app-name>}"
 echo "=== Deployment Frequency for: $APP_NAME ==="
 
 # Count deployments per day
-argocd app history "$APP_NAME" -o json | jq -r '.[].deployedAt' | \
+argocd app get "$APP_NAME" -o json | jq -r '(.status.history // [])[].deployedAt' | \
   cut -d'T' -f1 | sort | uniq -c | sort -rn
 
 echo ""
-echo "Total deployments in history: $(argocd app history "$APP_NAME" -o json | jq 'length')"
+echo "Total deployments in history: $(argocd app get "$APP_NAME" -o json | jq '.status.history | length')"
 ```
 
 ### Team Deployment Report
@@ -120,9 +121,10 @@ echo ""
 APPS=$(argocd app list -l "team=$TEAM" -o name)
 
 for app in $APPS; do
-  DEPLOY_COUNT=$(argocd app history "$app" -o json 2>/dev/null | jq 'length')
-  LAST_DEPLOY=$(argocd app history "$app" -o json 2>/dev/null | jq -r '.[0].deployedAt // "never"')
-  LAST_REV=$(argocd app history "$app" -o json 2>/dev/null | jq -r '.[0].revision[0:7] // "none"')
+  APP_JSON=$(argocd app get "$app" -o json 2>/dev/null)
+  DEPLOY_COUNT=$(echo "$APP_JSON" | jq '.status.history | length')
+  LAST_DEPLOY=$(echo "$APP_JSON" | jq -r '.status.history[-1].deployedAt // "never"')
+  LAST_REV=$(echo "$APP_JSON" | jq -r '.status.history[-1].revision[0:7] // "none"')
 
   printf "%-30s Deploys: %-5s Last: %-25s Rev: %s\n" "$app" "$DEPLOY_COUNT" "$LAST_DEPLOY" "$LAST_REV"
 done
@@ -140,7 +142,7 @@ APP_NAME="${1:?Usage: compare-deployments.sh <app> <old-id> <new-id>}"
 OLD_ID="${2:?Usage: compare-deployments.sh <app> <old-id> <new-id>}"
 NEW_ID="${3:?Usage: compare-deployments.sh <app> <old-id> <new-id>}"
 
-HISTORY=$(argocd app history "$APP_NAME" -o json)
+HISTORY=$(argocd app get "$APP_NAME" -o json | jq '.status.history')
 
 OLD_REV=$(echo "$HISTORY" | jq -r ".[] | select(.id == $OLD_ID) | .revision")
 NEW_REV=$(echo "$HISTORY" | jq -r ".[] | select(.id == $NEW_ID) | .revision")
@@ -162,7 +164,7 @@ fi
 
 ## History and Rollback Connection
 
-The history is directly linked to the rollback capability. Each history entry is a known-good state you can return to:
+The history is directly linked to the rollback capability. Each history entry is a previously deployed state you can return to:
 
 ```bash
 # View history to find the target
@@ -176,20 +178,7 @@ For more on rollback, see the [argocd app rollback guide](https://oneuptime.com/
 
 ## History Retention Configuration
 
-By default, ArgoCD keeps a limited number of history entries. You can configure this in the `argocd-cmd-params-cm` ConfigMap:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Keep 50 history entries per application (default is 10)
-  controller.status.processors: "50"
-```
-
-Or set it on the Application spec directly using the `revisionHistoryLimit` field:
+By default, ArgoCD keeps a limited number of history entries. You can configure this on the Application spec directly using the `revisionHistoryLimit` field:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -216,7 +205,7 @@ For compliance requirements, you might need to retain more history. Set `revisio
 For regulated environments, the deployment history provides evidence of:
 
 - **When** a deployment happened (timestamp)
-- **What** was deployed (Git revision)
+- **What** was deployed (Git revision for Git-backed applications)
 - **Where** it was deployed (source repo, path, destination)
 - **How** it was configured (Helm values, parameters)
 
@@ -234,7 +223,7 @@ DATE=$(date +%Y-%m-%d)
 # Export history for all production applications
 for app in $(argocd app list -l environment=production -o name); do
   echo "Exporting history for: $app"
-  argocd app history "$app" -o json > "$OUTPUT_DIR/${app}-history-${DATE}.json"
+  argocd app get "$app" -o json | jq '.status.history' > "$OUTPUT_DIR/${app}-history-${DATE}.json"
 done
 
 echo "History exported to $OUTPUT_DIR"
@@ -247,14 +236,14 @@ echo "" >> "$OUTPUT_DIR/summary-${DATE}.txt"
 for f in "$OUTPUT_DIR"/*-history-*.json; do
   APP=$(basename "$f" | sed "s/-history-.*//")
   COUNT=$(jq 'length' "$f")
-  LAST=$(jq -r '.[0].deployedAt // "none"' "$f")
+  LAST=$(jq -r '.[-1].deployedAt // "none"' "$f")
   echo "$APP: $COUNT deployments, last: $LAST" >> "$OUTPUT_DIR/summary-${DATE}.txt"
 done
 ```
 
 ## Correlating History with Git Commits
 
-The revision in the history is the Git commit SHA. You can correlate this with Git log information:
+For Git-backed applications, the revision in the history is the Git commit SHA. You can correlate this with Git log information:
 
 ```bash
 #!/bin/bash
@@ -263,7 +252,7 @@ The revision in the history is the Git commit SHA. You can correlate this with G
 APP_NAME="${1:?Usage: annotate-history.sh <app-name>}"
 REPO_DIR="${2:?Usage: annotate-history.sh <app-name> <local-repo-path>}"
 
-argocd app history "$APP_NAME" -o json | jq -r '.[].revision' | while read rev; do
+argocd app get "$APP_NAME" -o json | jq -r '(.status.history // [])[].revision' | while read rev; do
   COMMIT_MSG=$(cd "$REPO_DIR" && git log -1 --format="%s" "$rev" 2>/dev/null || echo "unknown")
   COMMIT_DATE=$(cd "$REPO_DIR" && git log -1 --format="%ai" "$rev" 2>/dev/null || echo "unknown")
   echo "$rev $COMMIT_DATE - $COMMIT_MSG"
@@ -282,8 +271,8 @@ echo "Deployments in the last 7 days:"
 echo "================================"
 
 for app in $(argocd app list -o name); do
-  WEEK_COUNT=$(argocd app history "$app" -o json 2>/dev/null | \
-    jq "[.[] | select(.deployedAt > \"$(date -v-7d +%Y-%m-%d)\")] | length")
+  WEEK_COUNT=$(argocd app get "$app" -o json 2>/dev/null | \
+    jq "[(.status.history // [])[] | select(.deployedAt > \"$(date -u -d '7 days ago' +%Y-%m-%d)\")] | length")
 
   if [ "$WEEK_COUNT" -gt 0 ]; then
     echo "$app: $WEEK_COUNT deployments"
@@ -293,4 +282,4 @@ done
 
 ## Summary
 
-The `argocd app history` command provides a complete audit trail for every deployment managed by ArgoCD. Use it for debugging (when did this change?), compliance (prove what was deployed and when), and operational insights (deployment frequency). Combined with JSON output and scripting, it becomes a powerful tool for generating reports, correlating deployments with Git commits, and tracking your team's deployment velocity.
+The `argocd app history` command provides an audit trail for retained deployments managed by ArgoCD. Use it for debugging (when did this change?), compliance (prove what was deployed and when), and operational insights (deployment frequency). Combined with Application JSON output and scripting, it becomes a powerful tool for generating reports, correlating Git-backed deployments with commits, and tracking your team's deployment velocity.
