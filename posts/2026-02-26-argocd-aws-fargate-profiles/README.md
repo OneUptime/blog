@@ -69,19 +69,15 @@ aws eks create-fargate-profile \
 Fargate has some limitations that affect ArgoCD installation:
 
 1. **No DaemonSets** - Fargate does not support DaemonSets
-2. **No privileged containers** - SecurityContext must set `privileged: false`
+2. **No privileged containers** - SecurityContext must not set `privileged: true`
 3. **No HostPort or HostNetwork** - Pods cannot bind to host ports
-4. **Storage** - Only ephemeral storage and EFS are supported (no EBS)
-5. **Pod size limits** - Maximum 4 vCPU and 30 GB memory per pod
+4. **Storage** - Only ephemeral storage and EFS are supported (no EBS), and EFS must use static provisioning on Fargate
+5. **Pod size limits** - Up to 16 vCPU and 120 GB memory per pod, depending on the valid Fargate CPU/memory combination
 
 ### Modified Helm Values for Fargate
 
 ```yaml
 # values-fargate.yaml
-global:
-  image:
-    tag: v2.10.0
-
 controller:
   replicas: 1   # Fargate pods start slower - keep replicas manageable
   resources:
@@ -89,8 +85,8 @@ controller:
       cpu: 500m
       memory: 1Gi
     limits:
-      cpu: 1
-      memory: 2Gi
+      cpu: 500m
+      memory: 1Gi
 
 server:
   replicas: 2
@@ -99,8 +95,8 @@ server:
       cpu: 250m
       memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 250m
+      memory: 256Mi
   service:
     type: ClusterIP   # Use Ingress, not LoadBalancer
 
@@ -111,18 +107,21 @@ repoServer:
       cpu: 250m
       memory: 256Mi
     limits:
-      cpu: 500m
-      memory: 512Mi
+      cpu: 250m
+      memory: 256Mi
 
-# Redis - cannot use redis-ha with DaemonSet on Fargate
+# Redis - use the single Redis deployment for a simple Fargate install
 redis:
   enabled: true
   resources:
     requests:
       cpu: 100m
       memory: 128Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
 
-# Disable redis-ha (requires DaemonSets or StatefulSets with EBS)
+# Disable redis-ha; use EC2 nodes if you need ArgoCD's HA Redis setup
 redis-ha:
   enabled: false
 
@@ -130,6 +129,9 @@ redis-ha:
 notifications:
   resources:
     requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
       cpu: 100m
       memory: 64Mi
 
@@ -165,6 +167,24 @@ kubectl rollout restart deployment coredns -n kube-system
 On Fargate, use the AWS Load Balancer Controller with an Ingress:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-server-grpc
+  namespace: argocd
+  annotations:
+    alb.ingress.kubernetes.io/backend-protocol-version: GRPC
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: 80
+      protocol: TCP
+      targetPort: 8080
+  selector:
+    app.kubernetes.io/name: argocd-server
+
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -176,17 +196,22 @@ metadata:
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:123456789:certificate/abc-123
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
     alb.ingress.kubernetes.io/backend-protocol: HTTP
-    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/healthcheck-path: /
     alb.ingress.kubernetes.io/conditions.argocd-server-grpc: >-
       [{"field":"http-header","httpHeaderConfig":{"httpHeaderName":"Content-Type","values":["application/grpc"]}}]
-    alb.ingress.kubernetes.io/actions.argocd-server-grpc: >-
-      {"type":"forward","forwardConfig":{"targetGroups":[{"serviceName":"argocd-server","servicePort":"8083"}]}}
 spec:
   ingressClassName: alb
   rules:
     - host: argocd.internal.example.com
       http:
         paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server-grpc
+                port:
+                  number: 80
           - path: /
             pathType: Prefix
             backend:
@@ -203,16 +228,21 @@ Fargate pods get 20 GB of ephemeral storage by default. For ArgoCD, this is usua
 If you need persistent storage (for Redis or other components), use EFS:
 
 ```yaml
-# EFS StorageClass
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
+# Static EFS PersistentVolume
+apiVersion: v1
+kind: PersistentVolume
 metadata:
-  name: efs-sc
-provisioner: efs.csi.aws.com
-parameters:
-  provisioningMode: efs-ap
-  fileSystemId: fs-xxxxxxxxx
-  directoryPerms: "700"
+  name: redis-data
+spec:
+  capacity:
+    storage: 5Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: fs-xxxxxxxxx::fsap-xxxxxxxxx
 
 ---
 # PVC for Redis persistence (optional)
@@ -223,8 +253,9 @@ metadata:
   namespace: argocd
 spec:
   accessModes:
-    - ReadWriteOnce
-  storageClassName: efs-sc
+    - ReadWriteMany
+  storageClassName: ""
+  volumeName: redis-data
   resources:
     requests:
       storage: 5Gi
@@ -322,14 +353,14 @@ spec:
           ports:
             - containerPort: 8080
           resources:
-            # Resources are REQUIRED on Fargate
+            # Set resources explicitly on Fargate
             # Fargate rounds up to the nearest valid CPU/memory combination
             requests:
               cpu: "250m"
               memory: "512Mi"
             limits:
-              cpu: "500m"
-              memory: "1Gi"
+              cpu: "250m"
+              memory: "512Mi"
           securityContext:
             readOnlyRootFilesystem: true
             runAsNonRoot: true
@@ -394,20 +425,25 @@ spec:
             requests:
               cpu: "50m"
               memory: "32Mi"
+            limits:
+              cpu: "50m"
+              memory: "32Mi"
 ```
 
-Or use CloudWatch Container Insights, which works natively with Fargate:
+Or use CloudWatch Container Insights with AWS Distro for OpenTelemetry, which supports EKS Fargate:
 
 ```bash
-# Enable Container Insights for Fargate
-aws eks create-addon \
-  --cluster-name my-cluster \
-  --addon-name amazon-cloudwatch-observability \
-  --configuration-values '{"containerLogs":{"enabled":true}}'
+# After creating the ADOT IAM service account and Fargate profile
+CLUSTER_NAME=my-cluster
+REGION=us-east-1
+
+curl -fsSL https://raw.githubusercontent.com/aws-observability/aws-otel-collector/main/deployment-template/eks/otel-fargate-container-insights.yaml |
+  sed "s/YOUR-EKS-CLUSTER-NAME/${CLUSTER_NAME}/g; s/region=us-east-1/region=${REGION}/g" |
+  kubectl apply -f -
 ```
 
 ## Conclusion
 
-Running ArgoCD with Fargate on EKS gives you serverless pod execution for your application workloads. For most production setups, a hybrid approach works best - ArgoCD and system components on EC2 managed node groups (for DaemonSet support, faster startup, and EBS storage), and application pods on Fargate (for automatic scaling and no node management). The key is ensuring your manifests are Fargate-compatible: resource requests are required, no privileged containers, no host networking, and account for the longer pod startup times.
+Running ArgoCD with Fargate on EKS gives you serverless pod execution for your application workloads. For most production setups, a hybrid approach works best - ArgoCD and system components on EC2 managed node groups (for DaemonSet support, faster startup, and EBS storage), and application pods on Fargate (for automatic scaling and no node management). The key is ensuring your manifests are Fargate-compatible: set resource requests and limits consistently, no privileged containers, no host networking, and account for the longer pod startup times.
 
 For monitoring your Fargate workloads and ArgoCD deployments, [OneUptime](https://oneuptime.com) provides application-level observability that works regardless of your compute platform.
