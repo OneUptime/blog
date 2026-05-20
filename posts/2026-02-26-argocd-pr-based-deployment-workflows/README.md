@@ -133,6 +133,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Setup tools
       run: |
@@ -140,15 +142,17 @@ jobs:
         curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
         sudo mv kustomize /usr/local/bin/
 
-        # Install kubeval for schema validation
-        wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
-        tar xf kubeval-linux-amd64.tar.gz
-        sudo mv kubeval /usr/local/bin/
+        # Install kubeconform for schema validation
+        curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+        sudo mv kubeconform /usr/local/bin/
+
+    - name: Install Kyverno CLI
+      uses: kyverno/action-install-cli@v0.2.0
 
     - name: Identify changed environments
       id: changes
       run: |
-        CHANGED_ENVS=$(git diff --name-only origin/main...HEAD | grep "^environments/" | cut -d/ -f2 | sort -u)
+        CHANGED_ENVS=$(git diff --name-only origin/main...HEAD | grep "^environments/" | cut -d/ -f2 | sort -u | tr '\n' ' ')
         echo "envs=${CHANGED_ENVS}" >> $GITHUB_OUTPUT
 
     - name: Build and validate manifests
@@ -158,7 +162,7 @@ jobs:
           # Build the manifests
           kustomize build environments/${env} > /tmp/${env}-manifests.yaml
           # Validate against Kubernetes schema
-          kubeval /tmp/${env}-manifests.yaml --strict
+          kubeconform -strict -summary /tmp/${env}-manifests.yaml
         done
 
     - name: Diff against current state
@@ -235,7 +239,7 @@ Configure branch protection to enforce the PR workflow:
 # GitHub branch protection (configured via API or UI)
 # Main branch:
 # - Require pull request reviews: 1 reviewer minimum
-# - Require status checks to pass: validate-pr
+# - Require status checks to pass: validate
 # - Require branches to be up to date
 # - Restrict pushes to main (no direct commits)
 # - Require signed commits (optional)
@@ -295,6 +299,11 @@ jobs:
         repository: org/config-repo
         token: ${{ secrets.CONFIG_REPO_TOKEN }}
 
+    - name: Setup kustomize
+      run: |
+        curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+        sudo mv kustomize /usr/local/bin/
+
     - name: Update image tag
       run: |
         NEW_TAG="${GITHUB_REF_NAME}"
@@ -302,7 +311,11 @@ jobs:
         kustomize edit set image myapp=registry.example.com/myapp:${NEW_TAG}
 
     - name: Create PR
+      env:
+        GH_TOKEN: ${{ secrets.CONFIG_REPO_TOKEN }}
       run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git checkout -b update-image/${GITHUB_REF_NAME}
         git add .
         git commit -m "Update myapp image to ${GITHUB_REF_NAME}"
@@ -324,6 +337,13 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  subscriptions: |
+    - recipients:
+      - github
+      triggers:
+      - on-sync-succeeded
+      - on-sync-failed
+
   trigger.on-sync-succeeded: |
     - when: app.status.operationState.phase in ['Succeeded']
       send: [github-commit-status]
