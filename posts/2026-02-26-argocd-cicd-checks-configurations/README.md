@@ -134,6 +134,11 @@ Verify that Helm charts and Kustomize overlays render correctly:
           curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
           mv kustomize /usr/local/bin/
 
+      - name: Install kubeconform
+        run: |
+          curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | \
+            tar xz -C /usr/local/bin/
+
       - name: Render Helm charts
         run: |
           for chart_dir in charts/*/; do
@@ -198,6 +203,14 @@ Enforce organizational policies:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v3
+
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          mv kustomize /usr/local/bin/
+
       - name: Install Conftest
         run: |
           curl -L https://github.com/open-policy-agent/conftest/releases/latest/download/conftest_Linux_x86_64.tar.gz | \
@@ -247,6 +260,8 @@ Show what would change in the cluster:
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install ArgoCD CLI
         run: |
@@ -269,16 +284,18 @@ Show what would change in the cluster:
           affected_apps=$(echo "$changed_files" | \
             grep -oP '(apps|overlays)/\K[^/]+' | sort -u)
 
-          report=""
+          : > /tmp/diff-report.md
           for app in $affected_apps; do
             app_diff=$(argocd app diff "$app" \
               --local "apps/$app/production/" 2>&1) || true
             if [ -n "$app_diff" ]; then
-              report="${report}### $app\n```diff\n${app_diff}\n```\n\n"
+              {
+                printf '### %s\n```diff\n' "$app"
+                printf '%s\n' "$app_diff"
+                printf '```\n\n'
+              } >> /tmp/diff-report.md
             fi
           done
-
-          echo "$report" > /tmp/diff-report.md
 
       - name: Post diff to PR
         uses: actions/github-script@v7
@@ -313,6 +330,11 @@ For critical changes, run a server-side dry-run:
         uses: azure/k8s-set-context@v4
         with:
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
+
+      - name: Install Kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          mv kustomize /usr/local/bin/
 
       - name: Dry-run changed manifests
         run: |
@@ -387,9 +409,19 @@ Configure your Git provider to require checks before merging:
 # GitHub CLI - require checks
 gh api repos/myorg/gitops-repo/branches/main/protection \
   --method PUT \
-  --field required_status_checks='{"strict":true,"contexts":["YAML Lint","Schema Validation","Template Rendering","Policy Checks"]}' \
-  --field enforce_admins=true \
-  --field required_pull_request_reviews='{"required_approving_review_count":1}'
+  --input - <<'EOF'
+{
+  "required_status_checks": {
+    "strict": true,
+    "contexts": ["YAML Lint", "Schema Validation", "Template Rendering", "Policy Checks"]
+  },
+  "enforce_admins": true,
+  "required_pull_request_reviews": {
+    "required_approving_review_count": 1
+  },
+  "restrictions": null
+}
+EOF
 ```
 
 ## Monitoring CI/CD Pipeline Health
