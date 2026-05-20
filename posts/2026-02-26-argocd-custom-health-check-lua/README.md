@@ -8,7 +8,7 @@ Description: Learn how to write custom Lua health check scripts for ArgoCD to as
 
 ---
 
-ArgoCD includes built-in health checks for standard Kubernetes resources like Deployments and Services. But when you deploy custom resources from operators, third-party CRDs, or resources with complex health conditions, ArgoCD defaults to reporting them as "Healthy" simply because they exist. That is not useful. You need to teach ArgoCD how to actually evaluate the health of these resources.
+ArgoCD includes built-in health checks for standard Kubernetes resources like Deployments and Services. But when you deploy custom resources from operators, third-party CRDs, or resources with complex health conditions, ArgoCD may not have a useful built-in way to evaluate their health. That is not useful. You need to teach ArgoCD how to actually evaluate the health of these resources.
 
 ArgoCD uses Lua scripts for custom health assessment. Lua is a lightweight scripting language that ArgoCD embeds in its controller. This guide teaches you the Lua scripting patterns you need to write effective health checks.
 
@@ -27,7 +27,7 @@ flowchart TD
     B -->|Yes| C[Execute Lua Script]
     B -->|No| D{Built-in Health Check?}
     D -->|Yes| E[Execute Built-in Logic]
-    D -->|No| F[Return Healthy by Default]
+    D -->|No| F[No Resource-Specific Health Assessment]
     C --> G[Return Status + Message]
     E --> G
     F --> G
@@ -58,7 +58,7 @@ The key format is `resource.customizations.health.<group>_<kind>` where:
 
 Your Lua script receives one variable: `obj` - the full Kubernetes resource as a Lua table. You must return a table with:
 
-- `status` (required): One of `"Healthy"`, `"Progressing"`, `"Degraded"`, `"Suspended"`, `"Missing"`
+- `status` (required): A supported ArgoCD health status, usually `"Healthy"`, `"Progressing"`, `"Degraded"`, or `"Suspended"`. ArgoCD also uses `"Missing"` and `"Unknown"` for resource health states.
 - `message` (optional): A human-readable message explaining the status
 
 ```lua
@@ -296,7 +296,7 @@ ArgoCD provides a tool for testing Lua scripts:
 ```bash
 # Test a health check against a resource
 
-argocd admin settings resource-health /path/to/resource.yaml \
+argocd admin settings resource-overrides health /path/to/resource.yaml \
   --argocd-cm-path /path/to/argocd-cm.yaml
 ```
 
