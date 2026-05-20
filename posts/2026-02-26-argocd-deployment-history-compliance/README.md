@@ -29,21 +29,7 @@ argocd app history production-api
 # 3   2026-02-01 11:00:00 +0000 UTC  m0n1o2p (main)
 ```
 
-However, ArgoCD only keeps the last 10 revisions by default. For compliance, you need to increase this and supplement it with external storage.
-
-```yaml
-# argocd-cmd-params-cm.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cmd-params-cm
-  namespace: argocd
-data:
-  # Increase revision history limit
-  controller.status.processors: "50"
-```
-
-At the application level, you can control history retention.
+However, ArgoCD only keeps the last 10 revisions by default. For compliance, you can increase this on the Application and supplement it with external storage.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -52,13 +38,13 @@ metadata:
   name: production-api
   namespace: argocd
 spec:
-  revisionHistoryLimit: 100  # Keep last 100 deployments
+  revisionHistoryLimit: 100  # Keep last 100 history entries
   # ... rest of spec
 ```
 
 ## Git as the Source of Truth for History
 
-The strongest aspect of GitOps for compliance is that Git already provides an immutable, timestamped, authenticated record of every change. Every deployment in ArgoCD corresponds to a Git commit.
+The strongest aspect of GitOps for compliance is that a protected Git repository can provide a timestamped, authenticated record of every change. For Git-backed applications, every deployment in ArgoCD can be tied back to the commit or tag that ArgoCD synced.
 
 Structure your GitOps repository to make audit queries easy.
 
@@ -106,6 +92,13 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
+  subscriptions: |
+    - recipients:
+        - compliance-tracker
+      triggers:
+        - on-deployment-complete
+        - on-deployment-failed
+
   service.webhook.compliance-tracker: |
     url: https://compliance.internal.myorg.com/api/deployments
     headers:
@@ -131,8 +124,8 @@ data:
             "status": "{{.app.status.operationState.phase}}",
             "started_at": "{{.app.status.operationState.startedAt}}",
             "finished_at": "{{.app.status.operationState.finishedAt}}",
-            "initiated_by": "{{.app.status.operationState.operation.initiatedBy.username}}",
-            "automated": {{.app.status.operationState.operation.initiatedBy.automated}},
+            "initiated_by": "{{.app.status.operationState.operation.initiatedBy.username | default "automated"}}",
+            "automated": {{if .app.status.operationState.operation.initiatedBy.automated}}true{{else}}false{{end}},
             "resources": {{.app.status.operationState.syncResult.resources | toJson}},
             "images": [
               {{range $index, $img := .app.status.summary.images}}
@@ -142,10 +135,12 @@ data:
           }
 
   trigger.on-deployment-complete: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
+      oncePer: app.status?.operationState.syncResult.revision
       send: [deployment-record]
   trigger.on-deployment-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
+      oncePer: app.status?.operationState.syncResult.revision
       send: [deployment-record]
 ```
 
@@ -170,66 +165,44 @@ echo ""
 
 # Get ArgoCD sync history
 echo "=== Sync History ==="
-argocd app history "$APP_NAME" --output json | \
+argocd app get "$APP_NAME" -o json | \
   jq --arg start "$START_DATE" --arg end "$END_DATE" \
-  '.[] | select(.deployedAt >= $start and .deployedAt <= $end)'
+  '.status.history // [] | .[] | select(.deployedAt >= $start and .deployedAt <= $end)'
 
 echo ""
 echo "=== Git Commit History ==="
 # Get git commits for the same period
 git log --since="$START_DATE" --until="$END_DATE" \
-  --format='{"hash":"%H","author":"%an","date":"%aI","message":"%s"}' \
+  --date=iso-strict \
+  --format='%H%x09%an%x09%aI%x09%s' \
   -- "apps/production/$APP_NAME/"
 
 echo ""
 echo "=== Image Versions Deployed ==="
 argocd app get "$APP_NAME" -o json | \
-  jq '.status.summary.images[]'
+  jq '.status.summary.images[]?'
 ```
 
 ## Storing Deployment Artifacts
 
-For strict compliance, store the exact manifests that were deployed, not just the Git revision.
+For strict compliance, store the exact rendered manifests for the revision that was deployed, not just the Git revision.
 
-```yaml
-# post-sync-artifact-capture.yaml
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: capture-deployment-artifact
-  annotations:
-    argocd.argoproj.io/hook: PostSync
-    argocd.argoproj.io/hook-delete-policy: HookSucceeded
-spec:
-  template:
-    spec:
-      serviceAccountName: artifact-capturer
-      containers:
-        - name: capture
-          image: bitnami/kubectl:latest
-          command:
-            - /bin/sh
-            - -c
-            - |
-              TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
-              APP_NAME="production-api"
-              NAMESPACE="production"
+```bash
+#!/bin/bash
+set -euo pipefail
 
-              # Capture all resources in the namespace
-              kubectl get all -n "$NAMESPACE" -o yaml > "/artifacts/${APP_NAME}-${TIMESTAMP}.yaml"
+APP_NAME="production-api"
+TIMESTAMP=$(date -u +%Y%m%d-%H%M%S)
+REVISION=$(argocd app get "$APP_NAME" -o json | \
+  jq -r '.status.operationState.syncResult.revision // .status.sync.revision')
+ARTIFACT="/tmp/${APP_NAME}-${REVISION}-${TIMESTAMP}.yaml"
 
-              # Upload to S3 for long-term storage
-              aws s3 cp "/artifacts/${APP_NAME}-${TIMESTAMP}.yaml" \
-                "s3://compliance-artifacts/deployments/${APP_NAME}/${TIMESTAMP}.yaml"
+argocd app manifests "$APP_NAME" --revision "$REVISION" > "$ARTIFACT"
 
-              echo "Artifact captured: ${APP_NAME}-${TIMESTAMP}"
-          volumeMounts:
-            - name: artifacts
-              mountPath: /artifacts
-      volumes:
-        - name: artifacts
-          emptyDir: {}
-      restartPolicy: Never
+aws s3 cp "$ARTIFACT" \
+  "s3://compliance-artifacts/deployments/${APP_NAME}/${REVISION}/${TIMESTAMP}.yaml"
+
+echo "Artifact captured: ${APP_NAME}-${REVISION}-${TIMESTAMP}"
 ```
 
 ## Mapping to Compliance Frameworks
@@ -246,7 +219,7 @@ flowchart TD
     B --> B2[Access control logs]
     C --> C1[File integrity monitoring]
     C --> C2[Audit trail of changes]
-    D --> D1[ePHI access logs]
+    D --> D1[Audit controls evidence]
     D --> D2[Configuration tracking]
     E --> E1[Change control records]
     E --> E2[Configuration management]
@@ -256,9 +229,9 @@ For each framework, document how ArgoCD provides the required evidence.
 
 **SOC 2 CC8.1 (Change Management)**: Git pull requests serve as change requests. ArgoCD sync logs show deployment execution. Git history provides rollback capability evidence.
 
-**PCI-DSS 6.4 (Change Control)**: Git commits document all changes. ArgoCD Application history shows deployment timeline. Kubernetes audit logs capture API-level changes.
+**PCI-DSS 6.5.1 (Change Control in PCI DSS v4.x)**: Git commits document all changes. ArgoCD Application history shows deployment timeline. Kubernetes audit logs capture API-level changes.
 
-**HIPAA (Security Rule)**: ArgoCD SSO integration ties deployments to authenticated users. Notification webhooks create tamper-evident audit trails. Git signed commits provide non-repudiation.
+**HIPAA (Security Rule)**: ArgoCD SSO integration ties deployments to authenticated users. Notification webhooks can send records to append-only or WORM storage for tamper-evident audit trails. Git signed commits provide non-repudiation.
 
 ## Querying Historical Deployments
 
@@ -268,7 +241,7 @@ Use the ArgoCD API to programmatically query deployment history.
 # Get deployment history via API
 curl -s -H "Authorization: Bearer $ARGOCD_TOKEN" \
   "https://argocd.myorg.com/api/v1/applications/production-api" | \
-  jq '.status.history[] | {
+  jq '.status.history[]? | {
     revision: .revision,
     deployedAt: .deployedAt,
     id: .id,
@@ -278,7 +251,7 @@ curl -s -H "Authorization: Bearer $ARGOCD_TOKEN" \
 # Find when a specific revision was deployed
 curl -s -H "Authorization: Bearer $ARGOCD_TOKEN" \
   "https://argocd.myorg.com/api/v1/applications/production-api" | \
-  jq '.status.history[] | select(.revision | startswith("a1b2c3"))'
+  jq '.status.history[]? | select(.revision | startswith("a1b2c3"))'
 ```
 
 ## Conclusion
