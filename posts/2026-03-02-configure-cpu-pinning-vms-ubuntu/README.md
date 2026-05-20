@@ -144,10 +144,10 @@ In XML with NUMA awareness:
   <vcpupin vcpu='2' cpuset='4'/>
   <vcpupin vcpu='3' cpuset='5'/>
   <emulatorpin cpuset='0-1'/>
-  <numatune>
-    <memory mode='strict' nodeset='0'/>
-  </numatune>
 </cputune>
+<numatune>
+  <memory mode='strict' nodeset='0'/>
+</numatune>
 ```
 
 ## Isolating Host CPUs for VMs
@@ -165,7 +165,7 @@ sudo update-grub
 sudo reboot
 ```
 
-After isolation, CPUs 2-5 are no longer used for any host processes, making them fully available for your pinned VMs with minimal interference.
+After isolation, CPUs 2-5 are no longer used for normal scheduler load balancing. Explicit CPU affinity, interrupts, and some kernel workqueues can still target isolated CPUs unless you tune them separately, but the pinned VMs will have much less scheduler interference.
 
 ```bash
 # Verify isolation
@@ -177,12 +177,7 @@ cat /sys/devices/system/cpu/isolated
 
 For real-time workloads, set the vCPU scheduler policy:
 
-```bash
-# Set vCPU scheduler to FIFO (real-time) for vCPU 0
-virsh schedinfo myvm --set vcpu_scheduler_type=fifo vcpu_scheduler_priority=1
-
-# Or in XML:
-```
+Configure the vCPU scheduler in the VM XML:
 
 ```xml
 <cputune>
@@ -198,16 +193,16 @@ If you cannot dedicate CPUs, control relative CPU access:
 
 ```bash
 # Set CPU shares (higher = more CPU time when contention exists)
-virsh schedinfo myvm --set cpu_shares=2048  # Default is 1024
+virsh schedinfo myvm --set cpu_shares=2048  # Common cgroups v1 default is 1024
 
 # Set CPU quota (microseconds per period)
-# Limit to 50% of one CPU core:
+# Limit the whole VM to 50% of one CPU core:
 virsh schedinfo myvm \
-  --set cpu_quota=50000 \
-  --set cpu_period=100000
+  --set global_quota=50000 \
+  --set global_period=100000
 
 # Remove CPU quota limit
-virsh schedinfo myvm --set cpu_quota=-1
+virsh schedinfo myvm --set global_quota=-1
 
 # Check current scheduler settings
 virsh schedinfo myvm
