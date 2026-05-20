@@ -8,11 +8,11 @@ Description: Learn how to deploy and configure ArgoCD on EKS Anywhere clusters f
 
 ---
 
-EKS Anywhere lets you run Amazon EKS on your own infrastructure - vSphere, bare metal, Nutanix, or CloudStack. It uses the same EKS distribution that runs in AWS but deploys on-premises. ArgoCD pairs naturally with EKS Anywhere because EKS-A already uses a GitOps model for cluster management. This guide covers how to set up ArgoCD on EKS Anywhere and leverage its unique capabilities.
+EKS Anywhere lets you run Amazon EKS on your own infrastructure - vSphere, bare metal, Nutanix, CloudStack, or AWS Snow. It uses the same EKS distribution that runs in AWS but deploys on-premises. ArgoCD pairs naturally with EKS Anywhere because EKS-A supports an optional GitOps model for cluster management. This guide covers how to set up ArgoCD on EKS Anywhere and leverage its unique capabilities.
 
 ## EKS Anywhere Architecture
 
-EKS Anywhere has a management cluster and workload clusters, similar to TKG. The management cluster runs Cluster API providers that manage workload cluster lifecycle.
+EKS Anywhere can run as a standalone cluster or with a management cluster and workload clusters, similar to TKG. In the management cluster model, the management cluster runs Cluster API providers that manage workload cluster lifecycle.
 
 ```mermaid
 graph TD
@@ -51,7 +51,7 @@ kubectl get pods -A
 kubectl create namespace argocd
 
 # Install ArgoCD (use HA for production)
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for all components
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
@@ -119,7 +119,7 @@ EKS Anywhere does not include a built-in load balancer solution. You need to ins
 
 ```bash
 # Install MetalLB
-kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.3/config/manifests/metallb-native.yaml
+kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.15.3/config/manifests/metallb-native.yaml
 
 # Wait for MetalLB to be ready
 kubectl wait --for=condition=Ready pods -l app=metallb -n metallb-system --timeout=120s
@@ -159,7 +159,11 @@ Install an ingress controller first.
 
 ```bash
 # Install Nginx ingress controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.9.4/deploy/static/provider/baremetal/deploy.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/baremetal/deploy.yaml
+
+# Enable SSL passthrough for ArgoCD's HTTPS/gRPC endpoint
+kubectl patch deployment ingress-nginx-controller -n ingress-nginx --type=json \
+  -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--enable-ssl-passthrough"}]'
 ```
 
 ```yaml
@@ -171,7 +175,6 @@ metadata:
   namespace: argocd
   annotations:
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
-    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
 spec:
   ingressClassName: nginx
   rules:
@@ -184,7 +187,7 @@ spec:
               service:
                 name: argocd-server
                 port:
-                  number: 443
+                  name: https
 ```
 
 ## EKS Anywhere Packages and ArgoCD
@@ -220,28 +223,44 @@ spec:
 
 ## IAM and AWS Authentication
 
-EKS Anywhere supports AWS IAM authentication through the aws-iam-authenticator. Configure ArgoCD to use it for cluster access.
+EKS Anywhere supports AWS IAM authentication through the aws-iam-authenticator. For ArgoCD cluster access, configure the registered cluster credentials with an exec provider or an ArgoCD AWS auth config. The command used by the exec provider must be available in the ArgoCD image.
 
 ```yaml
-# argocd-cm ConfigMap for AWS IAM authentication
+# Cluster Secret using an exec provider for AWS IAM authentication
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: eksa-cluster
   namespace: argocd
-data:
-  # If using aws-iam-authenticator for cluster auth
-  exec.enabled: "true"
+  labels:
+    argocd.argoproj.io/secret-type: cluster
+type: Opaque
+stringData:
+  name: eksa-cluster
+  server: https://my-eksa-api.example.com
+  config: |
+    {
+      "execProviderConfig": {
+        "command": "aws-iam-authenticator",
+        "args": ["token", "-i", "my-eksa-cluster"],
+        "apiVersion": "client.authentication.k8s.io/v1beta1"
+      },
+      "tlsClientConfig": {
+        "insecure": false,
+        "caData": "<base64 encoded certificate>"
+      }
+    }
 ```
 
 For adding EKS (cloud) clusters to an on-premises ArgoCD instance.
 
 ```bash
 # Add an EKS cloud cluster to your EKS-A ArgoCD
-aws eks update-kubeconfig --name my-eks-cluster --region us-east-1
+aws eks update-kubeconfig --name my-eks-cluster --region us-east-1 --alias my-eks-cluster-context
 
 # Add to ArgoCD
-argocd cluster add arn:aws:eks:us-east-1:123456789:cluster/my-eks-cluster \
+argocd cluster add my-eks-cluster-context \
+  --aws-cluster-name my-eks-cluster \
   --name eks-cloud-cluster
 ```
 
