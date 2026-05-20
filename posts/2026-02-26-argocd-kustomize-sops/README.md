@@ -36,20 +36,20 @@ The cleanest approach is to build a custom repo server image:
 ```dockerfile
 # Dockerfile
 
-FROM quay.io/argoproj/argocd:v2.13.0
+FROM quay.io/argoproj/argocd:v3.4.1
 
 # Switch to root to install
 USER root
 
 # Install KSOPS
-ARG KSOPS_VERSION=v4.3.2
-ADD https://github.com/viaductoss/ksops/releases/download/${KSOPS_VERSION}/ksops_${KSOPS_VERSION}_Linux_x86_64.tar.gz /tmp/ksops.tar.gz
+ARG KSOPS_VERSION=4.5.1
+ADD https://github.com/viaduct-ai/kustomize-sops/releases/download/v${KSOPS_VERSION}/ksops_${KSOPS_VERSION}_Linux_x86_64.tar.gz /tmp/ksops.tar.gz
 RUN tar -xzf /tmp/ksops.tar.gz -C /usr/local/bin/ ksops && \
     chmod +x /usr/local/bin/ksops && \
     rm /tmp/ksops.tar.gz
 
 # Install SOPS
-ARG SOPS_VERSION=v3.9.0
+ARG SOPS_VERSION=v3.13.0
 ADD https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64 /usr/local/bin/sops
 RUN chmod +x /usr/local/bin/sops
 
@@ -60,13 +60,23 @@ USER argocd
 Build and push:
 
 ```bash
-docker build -t your-registry/argocd-ksops:v2.13.0 .
-docker push your-registry/argocd-ksops:v2.13.0
+docker build -t your-registry/argocd-ksops:v3.4.1 .
+docker push your-registry/argocd-ksops:v3.4.1
 ```
 
 ### Configure the Repo Server
 
-Update the repo server deployment to use your custom image and mount the AGE key:
+Enable Kustomize exec plugins in ArgoCD, then update the repo server deployment to use your custom image and mount the AGE key:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  kustomize.buildOptions: "--enable-alpha-plugins --enable-exec"
+```
 
 ```yaml
 apiVersion: apps/v1
@@ -79,7 +89,7 @@ spec:
     spec:
       containers:
         - name: argocd-repo-server
-          image: your-registry/argocd-ksops:v2.13.0
+          image: your-registry/argocd-ksops:v3.4.1
           env:
             - name: SOPS_AGE_KEY_FILE
               value: /sops/age/keys.txt
@@ -160,7 +170,7 @@ creation_rules:
 ### Write the Plaintext Secret
 
 ```yaml
-# secret.yaml (temporary - do not commit this)
+# overlays/production/secret.yaml (temporary - do not commit this)
 apiVersion: v1
 kind: Secret
 metadata:
@@ -179,14 +189,16 @@ stringData:
 ```bash
 # Encrypt using .sops.yaml rules (path determines which key is used)
 cd overlays/production/
-sops --encrypt ../../secret.yaml > secret.enc.yaml
+sops --encrypt \
+  --filename-override overlays/production/secret.enc.yaml \
+  secret.yaml > secret.enc.yaml
 
 # Verify the encryption
 cat secret.enc.yaml
 # Values should be encrypted, keys should be readable
 
 # Delete the plaintext
-rm ../../secret.yaml
+rm secret.yaml
 ```
 
 ## Configuring Kustomize with KSOPS
@@ -225,10 +237,10 @@ patches:
       name: my-app
     patch: |
       - op: add
-        path: /spec/template/spec/containers/0/envFrom/-
+        path: /spec/template/spec/containers/0/envFrom
         value:
-          secretRef:
-            name: my-app-secrets
+          - secretRef:
+              name: my-app-secrets
 ```
 
 ### KSOPS Generator Definition
@@ -306,7 +318,9 @@ SOPS_AGE_KEY_FILE=~/age-key.txt sops secret.enc.yaml
 # Or decrypt, edit, and re-encrypt
 SOPS_AGE_KEY_FILE=~/age-key.txt sops --decrypt secret.enc.yaml > secret.yaml
 # Edit secret.yaml
-SOPS_AGE_KEY_FILE=~/age-key.txt sops --encrypt secret.yaml > secret.enc.yaml
+SOPS_AGE_KEY_FILE=~/age-key.txt sops --encrypt \
+  --filename-override overlays/production/secret.enc.yaml \
+  secret.yaml > secret.enc.yaml
 rm secret.yaml
 
 # Commit and push
@@ -389,9 +403,9 @@ jobs:
 
       - name: Install SOPS
         run: |
-          curl -LO https://github.com/getsops/sops/releases/download/v3.9.0/sops-v3.9.0.linux.amd64
-          chmod +x sops-v3.9.0.linux.amd64
-          sudo mv sops-v3.9.0.linux.amd64 /usr/local/bin/sops
+          curl -LO https://github.com/getsops/sops/releases/download/v3.13.0/sops-v3.13.0.linux.amd64
+          chmod +x sops-v3.13.0.linux.amd64
+          sudo mv sops-v3.13.0.linux.amd64 /usr/local/bin/sops
 
       - name: Encrypt and commit
         env:
@@ -399,7 +413,11 @@ jobs:
         run: |
           echo "$SOPS_AGE_KEY" > /tmp/age-key.txt
           export SOPS_AGE_KEY_FILE=/tmp/age-key.txt
-          sops --encrypt secret.yaml > overlays/${{ inputs.environment }}/secret.enc.yaml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          sops --encrypt \
+            --filename-override overlays/${{ inputs.environment }}/secret.enc.yaml \
+            secret.yaml > overlays/${{ inputs.environment }}/secret.enc.yaml
           git add overlays/${{ inputs.environment }}/secret.enc.yaml
           git commit -m "Update ${{ inputs.environment }} secrets"
           git push
@@ -415,7 +433,7 @@ kubectl exec -n argocd deployment/argocd-repo-server -- which ksops
 kubectl exec -n argocd deployment/argocd-repo-server -- sops --version
 
 # Verify AGE key is mounted
-kubectl exec -n argocd deployment/argocd-repo-server -- cat /sops/age/keys.txt | head -1
+kubectl exec -n argocd deployment/argocd-repo-server -- test -s /sops/age/keys.txt
 
 # Check repo server logs for decryption errors
 kubectl logs -n argocd deployment/argocd-repo-server | grep -iE "sops|ksops|decrypt|age"
