@@ -88,10 +88,9 @@ schedule: '0 2 15 * *'
 # Last business day approximation (28th) at 10 PM
 schedule: '0 22 28 * *'
 
-# First Monday of the month (approximate with 1-7 range and day-of-week)
+# First Monday of the month cannot be expressed directly in standard cron
 # Note: standard cron does not support "first Monday" directly
-# Use day 1-7 combined with Monday
-schedule: '0 2 1-7 * 1'
+# Use an external scheduler or multiple sync window changes for exact behavior
 ```
 
 ### Quarterly Windows
@@ -100,9 +99,9 @@ schedule: '0 2 1-7 * 1'
 # Start of each quarter (Jan 1, Apr 1, Jul 1, Oct 1) at midnight
 schedule: '0 0 1 1,4,7,10 *'
 
-# End of each quarter (Mar 31, Jun 30, Sep 30, Dec 31) at 10 PM
+# Near the end of each quarter (28th of Mar, Jun, Sep, Dec) at 10 PM
 schedule: '0 22 28 3,6,9,12 *'
-# Note: Using 28 instead of 30/31 to avoid February issues
+# Note: This is an approximation, not the actual final day of the quarter
 ```
 
 ### Biweekly Windows
