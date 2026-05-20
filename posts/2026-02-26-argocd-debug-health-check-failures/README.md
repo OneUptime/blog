@@ -68,11 +68,11 @@ Compare what you see in the resource status with what ArgoCD is reporting. If th
 If you have a custom Lua health check that is not working as expected, you need to test the script. ArgoCD does not provide a built-in way to test Lua scripts in isolation, but you can use the ArgoCD CLI to inspect what the health check returns.
 
 ```bash
-# Get the application resource tree with health info
-argocd app resources my-app --output json
+# Get the application details, including resource health info, as JSON
+argocd app get my-app --output json
 
 # Force a refresh to re-evaluate health
-argocd app get my-app --refresh --hard-refresh
+argocd app get my-app --hard-refresh
 ```
 
 ### Common Lua Script Errors
@@ -130,11 +130,13 @@ if obj.status.Phase == "Running" then
 if obj.status.phase == "Running" then
 ```
 
-**String comparison issues**: Status values might have unexpected whitespace or casing.
+**String comparison issues**: Status values must match the values exposed by the resource exactly.
 
 ```lua
--- Use tostring() for safety and trim if needed
-local phase = tostring(obj.status.phase)
+local phase = ""
+if obj.status ~= nil and obj.status.phase ~= nil then
+  phase = obj.status.phase
+end
 if phase == "Running" then
 ```
 
@@ -190,16 +192,19 @@ resource.customizations.health.velero.io_Backup: |
 
 ## Step 6: Check for Conflicting Health Checks
 
-If you have both a wildcard and specific health check defined, the specific one takes precedence. But sometimes this leads to unexpected behavior.
+If you have both a wildcard and specific health check defined, the specific one takes precedence. Wildcards must be configured under the `resource.customizations` key, not the `resource.customizations.health.<group>_<kind>` key format.
 
 ```yaml
-# This generic check matches all Crossplane resources
-resource.customizations.health.*.crossplane.io_*: |
-  -- generic check
+resource.customizations: |
+  # This generic check matches all Crossplane AWS resources
+  "*.aws.crossplane.io/*":
+    health.lua: |
+      -- generic check
 
-# This specific check overrides for S3 Bucket
-resource.customizations.health.s3.aws.crossplane.io_Bucket: |
-  -- specific check
+  # This specific check overrides for S3 Bucket
+  s3.aws.crossplane.io/Bucket:
+    health.lua: |
+      -- specific check
 ```
 
 Verify that the right check is being applied by temporarily adding a distinctive message to your health check script and checking what appears in the ArgoCD UI.
