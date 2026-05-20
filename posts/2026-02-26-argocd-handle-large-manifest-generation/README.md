@@ -115,12 +115,15 @@ spec:
               cpu: "4"
               memory: "8Gi"
           env:
-            # Increase Go garbage collection threshold
+            # Lower the Go garbage collection threshold to trade CPU for lower heap growth
             - name: GOGC
               value: "50"
             # Set Go memory limit
             - name: GOMEMLIMIT
               value: "6GiB"
+            # Increase config-management tool execution timeout
+            - name: ARGOCD_EXEC_TIMEOUT
+              value: "180s"
 ```
 
 ## Strategy 3: Increase Manifest Generation Timeout
@@ -135,11 +138,14 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Timeout for manifest generation (default: 60s)
+  # Repo server RPC timeout used by the application controller (default: 60s)
   controller.repo.server.timeout.seconds: "180"
 
-  # Also increase the repo server's own timeout
-  reposerver.git.request.timeout: "120"
+  # Repo server RPC timeout used by the API server (default: 60s)
+  server.repo.server.timeout.seconds: "180"
+
+  # Git request timeout uses Go duration strings
+  reposerver.git.request.timeout: "120s"
 ```
 
 ## Strategy 4: Optimize Helm Umbrella Charts
@@ -265,7 +271,7 @@ components:
   - ../../components/networking
 ```
 
-Components are assembled at build time and are more efficient than multiple overlays.
+Components are assembled at build time and help avoid duplicating the same patches across multiple overlays.
 
 ## Strategy 6: Use Server-Side Apply for Large Resources
 
@@ -308,7 +314,8 @@ spec:
 If you use custom config management plugins (CMPs), optimize their output:
 
 ```yaml
-# CMP ConfigMap
+# CMP plugin.yaml ConfigMap, mounted into the CMP sidecar at
+# /home/argocd/cmp-server/config/plugin.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -354,14 +361,17 @@ Set up alerts:
 groups:
   - name: argocd-manifest-generation
     rules:
-      - alert: ArgocdManifestGenerationSlow
+      - alert: ArgocdReconciliationSlow
         expr: |
-          argocd_app_reconcile_duration_seconds_bucket{le="30"} == 0
+          histogram_quantile(
+            0.95,
+            sum(rate(argocd_app_reconcile_bucket[10m])) by (le)
+          ) > 30
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "ArgoCD manifest generation taking >30 seconds"
+          summary: "ArgoCD application reconciliation taking >30 seconds"
 
       - alert: ArgocdRepoServerOOM
         expr: |
