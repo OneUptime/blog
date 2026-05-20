@@ -35,18 +35,20 @@ flowchart TD
 Start by getting the full list of orphaned resources:
 
 ```bash
-# Get orphaned resources for a project
+# Get orphaned resources for an application in the project
+APP_NAME="production-app"
 
-argocd proj get production -o json | \
-  jq -r '.status.orphanedResources[] | "\(.group)/\(.kind)/\(.name) in \(.namespace)"'
+argocd app resources "$APP_NAME" --orphaned | \
+  awk 'NR > 1 && $NF == "Yes" { if (NF == 5) print $1 "/" $2 "/" $4 " in " $3; else print "/" $1 "/" $3 " in " $2 }'
 ```
 
 Organize them by category for systematic cleanup:
 
 ```bash
 # Group by kind
-argocd proj get production -o json | \
-  jq -r '[.status.orphanedResources[] | .kind] | group_by(.) | .[] | "\(.[0]) (count: \(length))"'
+argocd app resources "$APP_NAME" --orphaned | \
+  awk 'NR > 1 && $NF == "Yes" { if (NF == 5) print $2; else print $1 }' | \
+  sort | uniq -c | awk '{print $2 " (count: " $1 ")"}'
 ```
 
 ## Step 2: Assess Each Resource
@@ -75,12 +77,12 @@ Resources with owner references are managed by a parent resource and will be gar
 
 ```bash
 # Find orphaned resources WITH owner references (should be ignored, not deleted)
-for resource in $(argocd proj get production -o json | jq -r '.status.orphanedResources[] | "\(.kind)/\(.name)"'); do
-  kind=$(echo $resource | cut -d/ -f1)
-  name=$(echo $resource | cut -d/ -f2)
-  owners=$(kubectl get $kind $name -n production -o jsonpath='{.metadata.ownerReferences}' 2>/dev/null)
+argocd app resources "$APP_NAME" --orphaned | \
+  awk 'NR > 1 && $NF == "Yes" { if (NF == 5) print $2, $4, $3; else print $1, $3, $2 }' | \
+  while read kind name namespace; do
+  owners=$(kubectl get $kind $name -n $namespace -o jsonpath='{.metadata.ownerReferences}' 2>/dev/null)
   if [ -n "$owners" ] && [ "$owners" != "null" ]; then
-    echo "HAS OWNER: $resource -> $owners"
+    echo "HAS OWNER: $kind/$name in $namespace -> $owners"
   fi
 done
 ```
@@ -118,6 +120,8 @@ kubectl get pods -n $NAMESPACE -o json | \
       .valueFrom.configMapKeyRef.name == \"$RESOURCE_NAME\"
     )
   ) | .metadata.name"
+
+# For Secrets, use secret.secretName, secretRef.name, and secretKeyRef.name.
 ```
 
 ### Services
@@ -125,13 +129,13 @@ kubectl get pods -n $NAMESPACE -o json | \
 Check if the Service has active endpoints and receives traffic:
 
 ```bash
-# Check endpoints
-kubectl get endpoints my-service -n production
+# Check EndpointSlices
+kubectl get endpointslice -n production -l kubernetes.io/service-name=my-service
 
 # Check if any Ingress references this Service
 kubectl get ingress -n production -o json | \
   jq -r ".items[] | select(
-    .spec.rules[].http.paths[].backend.service.name == \"my-service\"
+    .spec.rules[]?.http.paths[]?.backend.service?.name == \"my-service\"
   ) | .metadata.name"
 ```
 
@@ -175,14 +179,13 @@ kubectl get secret old-api-key -n production -o yaml > \
   /tmp/orphan-backups/$(date +%Y-%m-%d)/secret-old-api-key.yaml
 
 # Backup all orphaned resources at once
-for resource in $(argocd proj get production -o json | \
-  jq -r '.status.orphanedResources[] | "\(.kind)/\(.name)"'); do
-  kind=$(echo $resource | cut -d/ -f1)
-  name=$(echo $resource | cut -d/ -f2)
+argocd app resources "$APP_NAME" --orphaned | \
+  awk 'NR > 1 && $NF == "Yes" { if (NF == 5) print $2, $4, $3; else print $1, $3, $2 }' | \
+  while read kind name namespace; do
   filename=$(echo "${kind}-${name}" | tr '[:upper:]' '[:lower:]')
-  kubectl get $kind $name -n production -o yaml > \
+  kubectl get $kind $name -n $namespace -o yaml > \
     "/tmp/orphan-backups/$(date +%Y-%m-%d)/${filename}.yaml" 2>/dev/null
-  echo "Backed up: $resource"
+  echo "Backed up: $kind/$name in $namespace"
 done
 ```
 
@@ -205,9 +208,12 @@ kubectl delete configmap debug-config -n production --dry-run=client
 
 ```bash
 # Delete all orphaned ConfigMaps (after backing up)
-argocd proj get production -o json | \
-  jq -r '.status.orphanedResources[] | select(.kind == "ConfigMap") | .name' | \
-  xargs -I {} kubectl delete configmap {} -n production
+argocd app resources "$APP_NAME" --orphaned | \
+  awk 'NR > 1 && $NF == "Yes" { if (NF == 5) print $2, $4, $3; else print $1, $3, $2 }' | \
+  awk '$1 == "ConfigMap" {print $2, $3}' | \
+  while read name namespace; do
+    kubectl delete configmap "$name" -n "$namespace"
+  done
 ```
 
 ### Scripted Safe Deletion
@@ -216,35 +222,35 @@ argocd proj get production -o json | \
 #!/bin/bash
 # safe-delete-orphans.sh
 
-NAMESPACE="production"
 PROJECT="production"
+APP_NAME="production-app"
 BACKUP_DIR="/tmp/orphan-backups/$(date +%Y-%m-%d)"
-mkdir -p $BACKUP_DIR
+mkdir -p "$BACKUP_DIR"
 
 echo "=== Orphaned Resource Cleanup ==="
 echo "Project: $PROJECT"
-echo "Namespace: $NAMESPACE"
+echo "Application: $APP_NAME"
 echo "Backup directory: $BACKUP_DIR"
 echo ""
 
 # Get orphaned resources
-argocd proj get $PROJECT -o json | \
-  jq -r '.status.orphanedResources[] | "\(.kind) \(.name)"' | \
-  while read kind name; do
-    echo "Processing: $kind/$name"
+argocd app resources "$APP_NAME" --project "$PROJECT" --orphaned | \
+  awk 'NR > 1 && $NF == "Yes" { if (NF == 5) print $2, $4, $3; else print $1, $3, $2 }' | \
+  while read kind name namespace; do
+    echo "Processing: $kind/$name in $namespace"
 
     # Backup
     filename=$(echo "${kind}-${name}" | tr '[:upper:]' '[:lower:]')
-    kubectl get $kind $name -n $NAMESPACE -o yaml > "$BACKUP_DIR/${filename}.yaml" 2>/dev/null
+    kubectl get $kind $name -n $namespace -o yaml > "$BACKUP_DIR/${filename}.yaml" 2>/dev/null
 
     # Check age
-    age=$(kubectl get $kind $name -n $NAMESPACE -o jsonpath='{.metadata.creationTimestamp}')
+    age=$(kubectl get $kind $name -n $namespace -o jsonpath='{.metadata.creationTimestamp}')
     echo "  Created: $age"
 
     # Prompt for deletion
-    read -p "  Delete $kind/$name? (y/n): " confirm
+    read -p "  Delete $kind/$name in $namespace? (y/n): " confirm
     if [ "$confirm" = "y" ]; then
-      kubectl delete $kind $name -n $NAMESPACE
+      kubectl delete $kind $name -n $namespace
       echo "  Deleted."
     else
       echo "  Skipped."
@@ -296,7 +302,7 @@ Copy the resource manifest to the appropriate directory in Git and commit:
 # Get the manifest
 kubectl get configmap app-config -n production -o yaml > /tmp/configmap.yaml
 
-# Clean up runtime fields
+# Clean up runtime fields (requires the kubectl-neat plugin)
 kubectl get configmap app-config -n production -o yaml | \
   kubectl neat > manifests/configmap-app-config.yaml
 
@@ -334,10 +340,10 @@ spec:
 
 ### Enforce GitOps Workflow
 
-Use admission webhooks to prevent manual resource creation:
+Use admission webhooks to prevent manual resource creation. For example, if you use ArgoCD's default label-based resource tracking, you can require the application instance label:
 
 ```yaml
-# OPA Gatekeeper policy to require ArgoCD labels
+# OPA Gatekeeper policy to require the default ArgoCD tracking label
 apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
@@ -353,7 +359,7 @@ spec:
         package requireargolabel
         violation[{"msg": msg}] {
           not input.review.object.metadata.labels["app.kubernetes.io/instance"]
-          msg := "All resources must be managed by ArgoCD. Add app.kubernetes.io/instance label."
+          msg := "All resources must be managed by ArgoCD. Add the app.kubernetes.io/instance label or use a policy that matches your ArgoCD tracking method."
         }
 ```
 
