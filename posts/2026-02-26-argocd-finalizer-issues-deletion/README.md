@@ -87,7 +87,8 @@ This is the most common stuck deletion scenario. ArgoCD can successfully send de
 
 ```bash
 # Find resources stuck in Terminating in the target namespace
-kubectl get all -n production --field-selector metadata.deletionTimestamp!=''
+kubectl get all -n production -o json | \
+  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | "\(.kind)/\(.metadata.name)"'
 
 # Check a specific resource's finalizers
 kubectl get deployment my-deployment -n production -o json | \
@@ -122,13 +123,14 @@ kubectl patch certificate my-cert -n production \
   --type json -p '[{"op":"remove","path":"/metadata/finalizers"}]'
 ```
 
-**Helm release finalizers:**
+**Helm hook resources:**
 ```bash
 # If resources were originally managed by Helm
-# They might have: helm.sh/hook-delete-policy finalizers
+# They might have helm.sh/hook-delete-policy annotations,
+# but stuck deletion is still caused by Kubernetes finalizers
 kubectl get job pre-install-hook -n production -o jsonpath='{.metadata.finalizers}'
 
-# Remove if Helm is no longer managing these
+# Remove only after confirming the finalizer cleanup is no longer needed
 kubectl patch job pre-install-hook -n production \
   --type json -p '[{"op":"remove","path":"/metadata/finalizers"}]'
 ```
@@ -228,11 +230,15 @@ for app in $STUCK_APPS; do
 
   # Clean stuck resources in target namespace
   if [ -n "$NS" ]; then
-    STUCK_RES=$(kubectl get all -n $NS --field-selector metadata.deletionTimestamp!='' -o name 2>/dev/null)
-    for res in $STUCK_RES; do
-      echo "  Removing finalizers from: $res"
-      kubectl patch $res -n $NS --type json \
-        -p '[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null
+    for type in $(kubectl api-resources --verbs=list --namespaced -o name); do
+      STUCK_RES=$(kubectl get "$type" -n "$NS" --ignore-not-found -o json 2>/dev/null | \
+        jq -r '.items[]? | select(.metadata.deletionTimestamp != null and ((.metadata.finalizers // []) | length > 0)) | .metadata.name')
+
+      for name in $STUCK_RES; do
+        echo "  Removing finalizers from: $type/$name"
+        kubectl patch "$type" "$name" -n "$NS" --type json \
+          -p '[{"op":"remove","path":"/metadata/finalizers"}]' 2>/dev/null
+      done
     done
   fi
 
