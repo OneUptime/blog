@@ -32,10 +32,10 @@ Key factors that increase memory:
 
 ## Technique 1: Enable Controller Sharding
 
-Sharding splits applications across multiple controller replicas, distributing memory load:
+Sharding splits managed clusters across multiple controller replicas, distributing memory load when one ArgoCD instance manages multiple clusters:
 
 ```yaml
-# Use StatefulSet-based sharding
+# Patch the existing StatefulSet for StatefulSet-based sharding
 
 apiVersion: apps/v1
 kind: StatefulSet
@@ -58,7 +58,7 @@ spec:
               memory: "4Gi"
 ```
 
-With 3 shards, each controller only manages roughly one-third of the applications, reducing per-instance memory by about 60%.
+With 3 shards, each controller manages roughly one-third of the clusters. This can substantially reduce per-instance memory when applications are spread across many managed clusters, but it will not split applications within a single cluster across controller replicas.
 
 For dynamic cluster distribution sharding:
 
@@ -72,6 +72,8 @@ metadata:
 data:
   controller.sharding.algorithm: "round-robin"
 ```
+
+The `round-robin` and `consistent-hashing` sharding algorithms, and dynamic cluster distribution, are alpha features in current ArgoCD releases.
 
 ## Technique 2: Exclude Unnecessary Resources
 
@@ -213,33 +215,51 @@ spec:
 
 ## Technique 5: Limit Cluster Resource Tracking
 
-By default, the controller watches all cluster-scoped resources. Limit this to only what you need:
+By default, ArgoCD includes all resource group/kinds except the built-in exclusions. Limit the watched resource kinds to only what you need:
 
 ```yaml
-# In ArgoCD project, limit cluster resources
-apiVersion: argoproj.io/v1alpha1
-kind: AppProject
+# argocd-cm ConfigMap
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: default
+  name: argocd-cm
   namespace: argocd
-spec:
-  clusterResourceWhitelist:
-    # Only track these cluster-scoped resources
-    - group: ""
-      kind: Namespace
-    - group: rbac.authorization.k8s.io
-      kind: ClusterRole
-    - group: rbac.authorization.k8s.io
-      kind: ClusterRoleBinding
-  # Block everything else at the cluster level
-  clusterResourceBlacklist:
-    - group: "*"
-      kind: "*"
+data:
+  resource.inclusions: |
+    - apiGroups:
+        - ""
+      kinds:
+        - Namespace
+        - Service
+        - ConfigMap
+        - Secret
+      clusters:
+        - "*"
+    - apiGroups:
+        - "apps"
+      kinds:
+        - Deployment
+        - StatefulSet
+        - DaemonSet
+        - ReplicaSet
+      clusters:
+        - "*"
+    - apiGroups:
+        - "rbac.authorization.k8s.io"
+      kinds:
+        - Role
+        - RoleBinding
+        - ClusterRole
+        - ClusterRoleBinding
+      clusters:
+        - "*"
 ```
+
+Only use `resource.inclusions` when you have audited the resource kinds your applications need. AppProject `clusterResourceWhitelist` and `clusterResourceBlacklist` are still useful for controlling what applications are allowed to deploy, but they do not by themselves reduce the controller's cluster cache.
 
 ## Technique 6: Optimize Redis Configuration
 
-The controller uses Redis for caching. A well-configured Redis reduces what the controller keeps in its own memory:
+ArgoCD uses Redis as a disposable cache for application state and related data. A well-configured Redis helps avoid cache evictions and Redis OOMs, but it does not replace the controller's in-memory Kubernetes cluster cache:
 
 ```yaml
 # External Redis with sufficient memory
@@ -278,7 +298,7 @@ spec:
 
 ## Technique 7: Increase Reconciliation Interval
 
-Fewer reconciliations mean less data held in flight:
+Fewer Git polling reconciliations mean less controller work and memory churn:
 
 ```yaml
 apiVersion: v1
@@ -287,7 +307,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  timeout.reconciliation: "600"  # 10 minutes instead of 3
+  timeout.reconciliation: "10m"  # 10 minutes instead of 3m
 ```
 
 Combined with webhooks, this significantly reduces controller work and memory churn.
@@ -324,6 +344,12 @@ groups:
             namespace="argocd",
             container="argocd-application-controller"
           }[15m]) > 0
+          and on(namespace, pod, container)
+          min_over_time(kube_pod_container_status_last_terminated_reason{
+            namespace="argocd",
+            container="argocd-application-controller",
+            reason="OOMKilled"
+          }[15m]) == 1
         labels:
           severity: critical
         annotations:
@@ -334,10 +360,9 @@ groups:
 # Quick memory check
 kubectl top pod -n argocd -l app.kubernetes.io/name=argocd-application-controller
 
-# Detailed memory breakdown from Go runtime
-kubectl port-forward -n argocd deployment/argocd-application-controller 6060:6060 &
-curl -s http://localhost:6060/debug/pprof/heap > heap.prof
-go tool pprof heap.prof
+# Enable controller.profile.enabled: "true" in argocd-cmd-params-cm first
+kubectl port-forward -n argocd svc/argocd-metrics 8082:8082
+go tool pprof http://localhost:8082/debug/pprof/heap
 ```
 
 ## Memory Optimization Checklist
@@ -345,7 +370,7 @@ go tool pprof heap.prof
 | Optimization | Memory Savings | Effort |
 |-------------|---------------|--------|
 | Exclude Events/Endpoints | 10-30% | Low |
-| Controller sharding | 50-70% per instance | Medium |
+| Controller sharding across clusters | 50-70% per instance | Medium |
 | GOGC tuning | 10-20% peak | Low |
 | GOMEMLIMIT | Prevents OOM | Low |
 | Split large applications | 20-40% | Medium |
@@ -357,9 +382,9 @@ For continuous monitoring of ArgoCD controller memory patterns and proactive ale
 ## Key Takeaways
 
 - Exclude Events, Endpoints, and other non-GitOps resources to reduce tracking overhead
-- Enable controller sharding to distribute memory across multiple instances
+- Enable controller sharding to distribute managed clusters across multiple instances
 - Set `GOGC=50` and `GOMEMLIMIT` to optimize Go garbage collection
 - Split applications with 200+ resources into smaller, focused applications
-- Limit cluster-scoped resource tracking through project whitelists
+- Limit watched resource kinds with `resource.inclusions` only after auditing required resource types
 - Monitor memory usage and set alerts at 80% of limits
 - Increase reconciliation interval and rely on webhooks for change detection
