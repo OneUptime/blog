@@ -24,14 +24,13 @@ This guide walks you through the common causes and fixes for this error.
 
 ## Understanding gRPC Unavailable
 
-ArgoCD's components communicate with each other using gRPC. The main communication paths are:
+ArgoCD uses gRPC for several important communication paths. The main paths involved in this class of error are:
 
 ```mermaid
 graph LR
     CLI[ArgoCD CLI] -->|gRPC| API[API Server]
     UI[ArgoCD UI] -->|gRPC-Web| API
     API -->|gRPC| Repo[Repo Server]
-    API -->|gRPC| Controller[App Controller]
     Controller -->|gRPC| Repo
 ```
 
@@ -100,7 +99,7 @@ data:
   server.insecure: "true"
 ```
 
-**For internal component-to-component communication, configure TLS settings:**
+**For internal component-to-component communication, configure TLS settings carefully:**
 
 ```yaml
 # argocd-cmd-params-cm
@@ -110,12 +109,15 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Disable TLS for repo server (internal communication)
-  reposerver.disable.tls: "false"
-  # Set custom TLS cert if needed
-  reposerver.tls.cert: "/path/to/cert"
-  reposerver.tls.key: "/path/to/key"
+  # Disable TLS on the repo server gRPC endpoint only if another layer
+  # (for example, a service mesh sidecar) handles TLS.
+  reposerver.disable.tls: "true"
+  # Make clients use plaintext to the repo server when repo server TLS is disabled.
+  server.repo.server.plaintext: "true"
+  controller.repo.server.plaintext: "true"
 ```
+
+If you need a custom repo server certificate instead of disabling TLS, create an `argocd-repo-server-tls` Kubernetes TLS secret with `tls.crt` and `tls.key`.
 
 ## Cause 3: Service Not Reachable
 
@@ -183,14 +185,22 @@ When accessing ArgoCD through a load balancer, gRPC connections need special han
 **For AWS ALB:**
 
 ```yaml
-apiVersion: networking.k8s.io/v1
-kind: Ingress
+apiVersion: v1
+kind: Service
 metadata:
+  name: argogrpc
+  namespace: argocd
   annotations:
-    # ALB needs specific settings for gRPC
     alb.ingress.kubernetes.io/backend-protocol-version: "GRPC"
-    alb.ingress.kubernetes.io/target-type: "ip"
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: argocd-server
+  ports:
+    - name: "443"
+      port: 443
+      targetPort: 8080
+      protocol: TCP
 ```
 
 **For Nginx Ingress:**
@@ -199,15 +209,30 @@ metadata:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
+  name: argocd-server-ingress
+  namespace: argocd
   annotations:
-    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
+    # Requires --enable-ssl-passthrough on the ingress-nginx controller.
     nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: argocd.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: argocd-server
+                port:
+                  name: https
 ```
 
 **For Traefik:**
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: argocd-server
@@ -216,14 +241,21 @@ spec:
   entryPoints:
     - websecure
   routes:
-    - match: Host(`argocd.example.com`)
-      kind: Rule
+    - kind: Rule
+      match: Host(`argocd.example.com`)
+      priority: 10
       services:
         - name: argocd-server
-          port: 443
+          port: 80
+    - kind: Rule
+      match: Host(`argocd.example.com`) && Header(`Content-Type`, `application/grpc`)
+      priority: 11
+      services:
+        - name: argocd-server
+          port: 80
           scheme: h2c
   tls:
-    passthrough: true
+    certResolver: default
 ```
 
 ## Cause 6: Service Mesh Interference
@@ -262,10 +294,12 @@ Make sure the ports match between the service definition and what the server is 
 # Check what port the API server is listening on
 kubectl get svc argocd-server -n argocd -o jsonpath='{.spec.ports[*]}'
 
-# Default ports:
-# API Server: 8080 (HTTP), 8083 (gRPC)
-# Repo Server: 8081
-# Controller: 8082
+# Common default ports:
+# argocd-server service: 80 and 443, both targeting the API server on 8080
+# argocd-server metrics: 8083
+# argocd-repo-server API: 8081
+# argocd-repo-server metrics: 8084
+# argocd-application-controller metrics: 8082
 ```
 
 If you have customized ports, make sure all references are consistent.
