@@ -71,6 +71,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Login to container registry
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Install kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
       - name: Build and push Docker image
         run: |
           docker build -t org/my-app:${{ github.sha }} .
@@ -179,6 +190,7 @@ resources:
   - deployment.yaml
   - service.yaml
   - configmap.yaml
+  - hpa.yaml
 ```
 
 ## Environment Overlays
@@ -263,36 +275,36 @@ spec:
 Instead of having CI update the config repo, you can use ArgoCD Image Updater:
 
 ```yaml
-apiVersion: argoproj.io/v1alpha1
-kind: Application
+apiVersion: argocd-image-updater.argoproj.io/v1alpha1
+kind: ImageUpdater
 metadata:
   name: my-app-staging
   namespace: argocd
-  annotations:
-    # Tell Image Updater to watch for new images
-    argocd-image-updater.argoproj.io/image-list: myapp=org/my-app
-    argocd-image-updater.argoproj.io/myapp.update-strategy: latest
-    argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^[0-9a-f]{7,40}$"
-    argocd-image-updater.argoproj.io/write-back-method: git
-    argocd-image-updater.argoproj.io/write-back-target: kustomization
 spec:
-  project: default
-  source:
-    repoURL: https://github.com/org/my-app-config.git
-    targetRevision: main
-    path: overlays/staging
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: staging
+  applicationRefs:
+    - namePattern: "my-app-staging"
+      images:
+        - alias: myapp
+          imageName: org/my-app
+          commonUpdateSettings:
+            updateStrategy: newest-build
+            allowTags: "regexp:^[0-9a-f]{7,40}$"
+          manifestTargets:
+            kustomize:
+              name: org/my-app
+      writeBackConfig:
+        method: git
+        gitConfig:
+          branch: main
+          writeBackTarget: kustomization
 ```
 
 For production, use a semver-based strategy:
 
 ```yaml
-annotations:
-  argocd-image-updater.argoproj.io/image-list: myapp=org/my-app
-  argocd-image-updater.argoproj.io/myapp.update-strategy: semver
-  argocd-image-updater.argoproj.io/myapp.allow-tags: "regexp:^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+commonUpdateSettings:
+  updateStrategy: semver
+  allowTags: "regexp:^v[0-9]+\\.[0-9]+\\.[0-9]+$"
 ```
 
 ## Promotion Workflow
