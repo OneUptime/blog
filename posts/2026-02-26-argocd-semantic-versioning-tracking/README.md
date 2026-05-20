@@ -10,7 +10,7 @@ Description: Learn how to leverage semantic versioning with ArgoCD for controlle
 
 Semantic versioning (semver) gives your deployment pipeline a structured way to reason about changes. Instead of tracking arbitrary branch names or opaque commit SHAs, you can use version numbers that communicate intent - patch versions for bug fixes, minor versions for backward-compatible features, and major versions for breaking changes.
 
-ArgoCD supports semver-based tracking primarily through Helm chart versions. In this guide, we will explore how to use semver constraints in ArgoCD, how to set up version ranges, and how to build a promotion workflow around semantic versioning.
+ArgoCD supports semver-based tracking through Helm chart versions and semver Git tags. In this guide, we will explore how to use semver constraints in ArgoCD, how to set up version ranges, and how to build a promotion workflow around semantic versioning.
 
 ## Semver Basics for Deployment Tracking
 
@@ -24,7 +24,7 @@ Pre-release versions use suffixes like `1.6.0-rc.1`, `1.6.0-beta.2`, or `1.6.0-a
 
 ## Using Semver Constraints with Helm Charts
 
-ArgoCD allows you to specify semver version constraints for Helm chart sources. This is the primary way to use semver tracking in ArgoCD.
+ArgoCD allows you to specify semver version constraints for Helm chart sources. For chart-based applications, this is the primary way to use semver tracking in ArgoCD.
 
 ```yaml
 # Track the latest patch release of 1.5.x
@@ -180,7 +180,7 @@ argocd app sync my-app-production
 
 ## Semver with Git Tags
 
-While ArgoCD's semver constraint syntax works natively with Helm chart repositories, you can implement a similar pattern with Git tags by using CI/CD to automate the process:
+ArgoCD's semver constraint syntax works natively with Helm chart repositories and semver Git tags. You can also use CI/CD to promote a newly published Git tag by updating an application's `targetRevision` to that exact tag:
 
 ```yaml
 # .github/workflows/promote-on-tag.yaml
@@ -188,7 +188,7 @@ name: Promote semver release
 on:
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v*.*.*'
 
 jobs:
   promote:
@@ -198,6 +198,10 @@ jobs:
         id: semver
         run: |
           TAG=${GITHUB_REF#refs/tags/v}
+          if [[ ! "$TAG" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Tag v$TAG is not a stable semver release"
+            exit 1
+          fi
           MAJOR=$(echo $TAG | cut -d. -f1)
           MINOR=$(echo $TAG | cut -d. -f2)
           PATCH=$(echo $TAG | cut -d. -f3)
@@ -225,8 +229,8 @@ argocd app get my-app-staging -o json | jq '.status.sync.revision'
 # See the target constraint
 argocd app get my-app-staging -o json | jq '.spec.source.targetRevision'
 
-# List available chart versions in the repository
-argocd repo get https://charts.myorg.com --type helm
+# Show configured repository details
+argocd repo get https://charts.myorg.com -o yaml
 ```
 
 ## Excluding Pre-release Versions
@@ -243,4 +247,4 @@ targetRevision: "~1.6.0"
 
 ## Summary
 
-Semantic versioning gives your ArgoCD deployments a structured, predictable upgrade path. Use semver constraints on Helm chart versions to automatically receive patch fixes while blocking breaking changes. Combine this with per-environment strategies - loose constraints for development, tight constraints for production - to build a robust promotion pipeline. For Git-based applications without Helm, implement similar patterns using [Git tags](https://oneuptime.com/blog/post/2026-02-26-argocd-track-git-tag/view) and CI/CD automation.
+Semantic versioning gives your ArgoCD deployments a structured, predictable upgrade path. Use semver constraints on Helm chart versions to automatically receive patch fixes while blocking breaking changes. Combine this with per-environment strategies - loose constraints for development, tight constraints for production - to build a robust promotion pipeline. For Git-based applications without Helm, use semver [Git tags](https://oneuptime.com/blog/post/2026-02-26-argocd-track-git-tag/view) directly or combine them with CI/CD automation.
