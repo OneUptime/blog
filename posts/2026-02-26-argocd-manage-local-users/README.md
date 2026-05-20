@@ -75,10 +75,10 @@ After creating accounts, set their passwords using the ArgoCD CLI:
 argocd login argocd.example.com --username admin --password <admin-password>
 
 # Set password for a new user
-argocd account update-password --account alice --new-password '<alices-password>'
+argocd account update-password --account alice --current-password '<admin-password>' --new-password '<alices-password>'
 
 # Set password for another user
-argocd account update-password --account bob --new-password '<bobs-password>'
+argocd account update-password --account bob --current-password '<admin-password>' --new-password '<bobs-password>'
 ```
 
 Users can also change their own passwords:
@@ -213,7 +213,7 @@ kubectl -n argocd patch configmap argocd-cm --type json -p '[
 argocd account get --account ci-bot
 
 # Delete a specific token by ID
-argocd account delete-token --account ci-bot --id <token-id>
+argocd account delete-token --account ci-bot <token-id>
 ```
 
 ## The Admin Account
