@@ -17,13 +17,13 @@ Before removing a cluster, understand what is deployed to it:
 ```bash
 # List all applications targeting this cluster
 
-argocd app list --dest-server https://cluster-to-remove.k8s.example.com
+argocd app list --cluster https://cluster-to-remove.k8s.example.com
 
 # Or by cluster name
-argocd app list --dest-name my-cluster
+argocd app list --cluster my-cluster
 
 # Get the count
-argocd app list --dest-server https://cluster-to-remove.k8s.example.com -o json | \
+argocd app list --cluster https://cluster-to-remove.k8s.example.com -o json | \
   jq '. | length'
 ```
 
@@ -85,7 +85,7 @@ For removing all applications targeting a cluster:
 
 ```bash
 # Delete all apps targeting the cluster (with confirmation)
-argocd app list --dest-server https://cluster-to-remove.k8s.example.com -o name | \
+argocd app list --cluster https://cluster-to-remove.k8s.example.com -o name | \
   while read app; do
     echo "Deleting: $app"
     argocd app delete "$app" --cascade=false --yes
@@ -136,8 +136,8 @@ kubectl delete clusterrole argocd-manager-role --context old-cluster
 # Delete the cluster role binding
 kubectl delete clusterrolebinding argocd-manager-role-binding --context old-cluster
 
-# Delete the token secret (Kubernetes 1.24+)
-kubectl delete secret argocd-manager-token -n kube-system --context old-cluster
+# Delete any manually created long-lived token secret, if you created one
+kubectl delete secret <token-secret-name> -n kube-system --context old-cluster
 ```
 
 If you created a custom namespace for the ArgoCD service account:
@@ -178,7 +178,8 @@ Applications with finalizers may get stuck during deletion if the cluster is unr
 
 ```bash
 # Check for stuck applications
-kubectl get applications -n argocd | grep Deleting
+kubectl get applications -n argocd -o json | \
+  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | .metadata.name'
 
 # Remove the finalizer to allow deletion
 kubectl patch application myapp -n argocd \
@@ -195,7 +196,7 @@ After removal, verify everything is clean:
 argocd cluster list | grep "cluster-to-remove"
 
 # Verify no applications reference the old cluster
-argocd app list --dest-server https://cluster-to-remove.k8s.example.com
+argocd app list --cluster https://cluster-to-remove.k8s.example.com
 
 # Verify no cluster secrets remain
 kubectl get secrets -n argocd \
