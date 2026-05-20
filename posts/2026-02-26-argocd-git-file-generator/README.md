@@ -41,7 +41,7 @@ spec:
       source:
         repoURL: '{{repoURL}}'
         targetRevision: '{{targetRevision}}'
-        path: '{{path}}'
+        path: '{{manifestPath}}'
       destination:
         server: '{{destServer}}'
         namespace: '{{destNamespace}}'
@@ -49,27 +49,29 @@ spec:
 
 Each config file provides all the parameter values:
 
+`apps/api-gateway/config.json`:
+
 ```json
-// apps/api-gateway/config.json
 {
   "name": "api-gateway",
   "project": "production",
   "repoURL": "https://github.com/company/k8s-manifests.git",
   "targetRevision": "main",
-  "path": "services/api-gateway",
+  "manifestPath": "services/api-gateway",
   "destServer": "https://kubernetes.default.svc",
   "destNamespace": "api-gateway"
 }
 ```
 
+`apps/user-service/config.json`:
+
 ```json
-// apps/user-service/config.json
 {
   "name": "user-service",
   "project": "production",
   "repoURL": "https://github.com/company/k8s-manifests.git",
   "targetRevision": "main",
-  "path": "services/user-service",
+  "manifestPath": "services/user-service",
   "destServer": "https://kubernetes.default.svc",
   "destNamespace": "user-service"
 }
@@ -86,7 +88,7 @@ name: api-gateway
 project: production
 repoURL: https://github.com/company/k8s-manifests.git
 targetRevision: main
-path: services/api-gateway
+manifestPath: services/api-gateway
 destServer: https://kubernetes.default.svc
 destNamespace: api-gateway
 team: backend
@@ -108,8 +110,9 @@ The ApplicationSet generator spec is identical - just change the file path patte
 
 Configuration files can contain nested objects. Access nested values using dot notation in Go templates:
 
+`apps/payment-service/config.json`:
+
 ```json
-// apps/payment-service/config.json
 {
   "name": "payment-service",
   "source": {
@@ -178,14 +181,15 @@ config/
 
 Each file has environment-specific values:
 
+`config/production/api-gateway.json`:
+
 ```json
-// config/production/api-gateway.json
 {
   "name": "prod-api-gateway",
   "environment": "production",
   "repoURL": "https://github.com/company/k8s-manifests.git",
   "targetRevision": "v1.5.0",
-  "path": "services/api-gateway/overlays/production",
+  "manifestPath": "services/api-gateway/overlays/production",
   "clusterURL": "https://prod-cluster.example.com",
   "namespace": "api-gateway",
   "replicas": "5",
@@ -194,14 +198,15 @@ Each file has environment-specific values:
 }
 ```
 
+`config/staging/api-gateway.json`:
+
 ```json
-// config/staging/api-gateway.json
 {
   "name": "staging-api-gateway",
   "environment": "staging",
   "repoURL": "https://github.com/company/k8s-manifests.git",
   "targetRevision": "main",
-  "path": "services/api-gateway/overlays/staging",
+  "manifestPath": "services/api-gateway/overlays/staging",
   "clusterURL": "https://staging-cluster.example.com",
   "namespace": "api-gateway",
   "replicas": "2",
@@ -224,7 +229,7 @@ spec:
         repoURL: https://github.com/company/app-configs.git
         revision: main
         files:
-          - path: 'config/*/**.json'
+          - path: 'config/**/*.json'
   template:
     metadata:
       name: '{{name}}'
@@ -235,7 +240,7 @@ spec:
       source:
         repoURL: '{{repoURL}}'
         targetRevision: '{{targetRevision}}'
-        path: '{{path}}'
+        path: '{{manifestPath}}'
       destination:
         server: '{{clusterURL}}'
         namespace: '{{namespace}}'
@@ -245,8 +250,9 @@ spec:
 
 The file generator is particularly useful for Helm-based applications where each deployment needs different values:
 
+`apps/api-gateway/config.json`:
+
 ```json
-// apps/api-gateway/config.json
 {
   "name": "api-gateway",
   "chart": "api-gateway",
@@ -300,11 +306,12 @@ spec:
 
 In addition to the file contents, the Git file generator provides built-in parameters about the file itself:
 
-- `path` - the full path of the matched file (e.g., `apps/api-gateway/config.json`)
-- `path.basename` - the filename without directory (e.g., `config.json`)
+- `path` - the directory containing the matched file (e.g., `apps/api-gateway`)
+- `path.basename` - the basename of that directory (e.g., `api-gateway`)
 - `path[n]` - individual path segments
-- `path.basenameNormalized` - the filename normalized for Kubernetes naming
-- `path.filenameNormalized` - filename without extension, normalized
+- `path.basenameNormalized` - the directory basename normalized for Kubernetes naming
+- `path.filename` - the matched filename (e.g., `config.json`)
+- `path.filenameNormalized` - the matched filename normalized for Kubernetes naming
 
 These are useful when file location conveys meaning:
 
@@ -317,7 +324,7 @@ These are useful when file location conveys meaning:
 
 ## Globbing Patterns
 
-The file generator supports standard glob patterns:
+The file generator supports glob patterns. Argo CD's newer Git file globbing uses doublestar-style patterns when enabled, while older/default behavior may match more greedily:
 
 ```yaml
   generators:
