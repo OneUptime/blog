@@ -16,9 +16,9 @@ journald is the first stop for log messages on systemd-based systems. It collect
 
 The forwarding can happen in two directions:
 - journald forwards to syslog (journald is primary, syslog receives a copy)
-- rsyslog reads directly from the journal socket (both run in parallel)
+- rsyslog reads directly from the journal files through the journal API (both run in parallel)
 
-On Ubuntu, the second approach is the default. rsyslog uses the `imjournal` or `imuxsock` module to read from journald's socket. The explicit `ForwardToSyslog` setting in journald.conf controls whether journald also writes to the syslog socket.
+On Ubuntu, the syslog socket approach is the usual default: Ubuntu ships a journald drop-in that enables syslog forwarding, and rsyslog's `imuxsock` module consumes `/run/systemd/journal/syslog` when running under systemd. The `imjournal` module is a separate option that reads journal files through the journal API when you need journal metadata.
 
 ## Check Current Setup
 
@@ -31,7 +31,7 @@ systemctl status rsyslog
 dpkg -l | grep -E 'rsyslog|syslog-ng'
 
 # Verify journald forwarding status
-grep -i forward /etc/systemd/journald.conf 2>/dev/null || echo "Using defaults"
+systemd-analyze cat-config systemd/journald.conf | grep -i Forward
 
 # Check if the syslog socket exists
 ls -la /run/systemd/journal/syslog 2>/dev/null || echo "Socket not present"
@@ -79,11 +79,14 @@ sudo nano /etc/rsyslog.conf
 Ensure the following module is loaded near the top of the file:
 
 ```text
-# Load the Unix socket input module
-module(load="imuxsock"
-       SysSock.Use="off")  # Disable the default /dev/log socket
+# Load the Unix socket input module. Under systemd, this consumes
+# /run/systemd/journal/syslog when journald forwarding is enabled.
+module(load="imuxsock")
+```
 
-# Load the journal module for direct journal reading
+If you need structured journal metadata instead of the syslog-formatted socket stream, use `imjournal` instead of the socket forwarding path:
+
+```text
 module(load="imjournal"
        StateFile="imjournal.state"
        IgnorePreviousMessages="off"
@@ -92,7 +95,7 @@ module(load="imjournal"
        UsePid="system")
 ```
 
-The `imjournal` module reads directly from the journal API, which is more reliable than the syslog socket forwarding method. It handles structured data and supports reading journal metadata fields.
+The `imjournal` module reads directly from the journal API. It handles structured data and supports reading journal metadata fields, but rsyslog documentation notes that it is typically slower than `imuxsock`, so use it only when you need those fields.
 
 Restart rsyslog after making changes:
 
@@ -146,14 +149,14 @@ logger -t test-forwarding "This is a test message from $(hostname)"
 sudo journalctl -t test-forwarding -n 5
 
 # Check syslog received it
-grep "test-forwarding" /var/log/syslog | tail -5
+sudo grep "test-forwarding" /var/log/syslog | tail -5
 
 # If forwarding to a remote server, check there as well
 ```
 
 ## Use syslog-ng Instead of rsyslog
 
-If your environment uses syslog-ng, the configuration is different but the principle is the same. syslog-ng reads from the journald socket:
+If your environment uses syslog-ng, the configuration is different but the principle is the same. syslog-ng can read from the systemd journal:
 
 ```bash
 # Install syslog-ng with the journald module
@@ -245,10 +248,11 @@ sudo rsyslogd -N1
 ls -la /run/systemd/journal/syslog
 
 # Verify journald is actually forwarding
-sudo systemctl show systemd-journald | grep Forward
+systemd-analyze cat-config systemd/journald.conf | grep -i ForwardToSyslog
 
 # Test remote connectivity
-nc -zv 192.168.1.100 514
+nc -zv 192.168.1.100 514      # TCP
+nc -uzv 192.168.1.100 514     # UDP
 ```
 
 Setting up journald-to-syslog forwarding takes about 15 minutes and opens up your existing syslog infrastructure to receive all systemd-generated log data. Once in place, centralized log aggregation, alerting, and compliance reporting all work against a single stream of events from every journald source on your servers.
