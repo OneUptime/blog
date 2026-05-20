@@ -33,10 +33,13 @@ For rewrite rules in `.htaccess` files to work, the VirtualHost must allow them:
 <Directory /var/www/html>
     AllowOverride All
     # Or more precisely:
-    # AllowOverride FileInfo Options
+    # AllowOverride FileInfo
+    Options FollowSymLinks
     Require all granted
 </Directory>
 ```
+
+`mod_rewrite` directives in `.htaccess` require the `FileInfo` override class, and Apache also requires `FollowSymLinks` to be enabled for per-directory rewrites.
 
 ## How mod_rewrite Works
 
@@ -68,7 +71,7 @@ The `RewriteRule` pattern matches against the URL path. In `.htaccess`, the lead
 RewriteRule ^about-us$ about.html [L]
 ```
 
-In VirtualHost config, the full path is matched.
+In VirtualHost config, the URL path is matched with a leading `/`, such as `/about-us`.
 
 ### Condition Variables
 
@@ -77,10 +80,10 @@ Common `%{VARIABLE}` values for `RewriteCond`:
 | Variable | Description |
 |----------|-------------|
 | `%{HTTP_HOST}` | The Host header |
-| `%{REQUEST_URI}` | Full URI with query string |
-| `%{REQUEST_FILENAME}` | Full filesystem path |
+| `%{REQUEST_URI}` | Requested URI path, without the query string |
+| `%{REQUEST_FILENAME}` | Full filesystem path if already mapped; otherwise the same value as `%{REQUEST_URI}` |
 | `%{QUERY_STRING}` | Query string portion |
-| `%{HTTPS}` | "on" if HTTPS, empty if HTTP |
+| `%{HTTPS}` | "on" if HTTPS, "off" if HTTP |
 | `%{SERVER_PORT}` | Server port number |
 | `%{REMOTE_ADDR}` | Client IP address |
 | `%{HTTP:HeaderName}` | Any HTTP request header |
