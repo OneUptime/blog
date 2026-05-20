@@ -29,11 +29,11 @@ metadata:
   name: argocd-cmd-params-cm
   namespace: argocd
 data:
-  # Enable server-side diff for better audit trails
+  # Keep API responses compressed
   server.enable.gzip: "true"
   # Set log level to capture all operations
   server.log.level: "info"
-  # Enable audit logging
+  # Use structured logs for collection and querying
   server.log.format: "json"
 ```
 
@@ -49,7 +49,7 @@ JSON format is essential for audit logs because it makes them parseable by log a
 
 ## Capturing Sync Events
 
-Every sync operation in ArgoCD generates events that you can capture. Configure ArgoCD notifications to log sync events to a dedicated audit channel.
+ArgoCD emits Kubernetes Events for application activity, and sync operations can also be captured through notifications. Configure ArgoCD notifications to log sync events to a dedicated audit channel.
 
 ```yaml
 # argocd-notifications-cm.yaml
@@ -92,15 +92,17 @@ data:
 
   # Triggers for all sync events
   trigger.on-sync-running: |
-    - when: app.status.operationState.phase in ['Running']
+    - when: app.status?.operationState.phase in ['Running']
       send: [audit-sync-event]
   trigger.on-sync-succeeded: |
-    - when: app.status.operationState.phase in ['Succeeded']
+    - when: app.status?.operationState.phase in ['Succeeded']
       send: [audit-sync-event]
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [audit-sync-event]
 ```
+
+Add a matching notification subscription to each Application, AppProject, or global subscription so the webhook is actually invoked for these triggers.
 
 ## Kubernetes Audit Logging Integration
 
@@ -160,7 +162,8 @@ data:
     type = "remap"
     inputs = ["argocd_logs"]
     source = '''
-    . = parse_json!(.message)
+    parsed = object!(parse_json!(.message))
+    . = merge(., parsed)
     .source = "argocd"
     .cluster = "production-us-east-1"
     '''
@@ -169,19 +172,19 @@ data:
     type = "filter"
     inputs = ["parse_argocd"]
     condition = '''
-    includes(["sync", "create", "update", "delete", "login", "logout"], .action)
+    match_any(to_string(.msg) ?? "", [r'sync', r'create', r'update', r'delete', r'login', r'logout'])
     '''
 
     [sinks.elasticsearch]
     type = "elasticsearch"
     inputs = ["filter_audit_events"]
     endpoints = ["https://elasticsearch.mycompany.com:9200"]
-    index = "argocd-audit-%Y-%m-%d"
+    bulk.index = "argocd-audit-%Y-%m-%d"
 ```
 
 ## Tracking User Actions in the ArgoCD UI
 
-ArgoCD logs user actions performed through the UI and CLI. Every time someone clicks "Sync" or "Rollback" in the UI, that action is recorded with the authenticated user identity.
+ArgoCD records application activity as Kubernetes Events, and API server logs include most non-sensitive API requests. Every time someone clicks "Sync" or "Rollback" in the UI, those events can be correlated with the authenticated user identity when it is available.
 
 To make this work properly, ensure you have SSO configured so that actions are tied to real user identities rather than a shared admin account. See our guide on [configuring SSO with OIDC in ArgoCD](https://oneuptime.com/blog/post/2026-01-25-sso-oidc-argocd/view) for setup instructions.
 
@@ -248,11 +251,11 @@ data:
             ]
           },
           {
-            "title": "Deployments by User",
+            "title": "Deployments by Project",
             "type": "piechart",
             "targets": [
               {
-                "expr": "sum(argocd_app_sync_total) by (initiated_by)"
+                "expr": "sum(argocd_app_sync_total) by (project)"
               }
             ]
           }
@@ -263,11 +266,11 @@ data:
 
 ## Retention and Compliance
 
-For compliance frameworks like SOC 2, PCI-DSS, or HIPAA, you typically need to retain audit logs for specific periods. Configure your log storage accordingly.
+For compliance frameworks like SOC 2, PCI-DSS, or HIPAA, you typically need to retain audit evidence for defined periods. Configure your log storage according to your regulatory scope and written policies.
 
-- SOC 2: Retain logs for at least 1 year
-- PCI-DSS: Retain logs for at least 1 year, with 3 months immediately available
-- HIPAA: Retain logs for 6 years
+- SOC 2: Align log retention with your organization's control commitments and audit period
+- PCI-DSS: Retain audit log history for at least 12 months, with the most recent 3 months immediately available for analysis
+- HIPAA: Retain required compliance documentation for 6 years; set technical log retention with your compliance and legal teams based on what the logs contain and how they support required reviews
 
 Set up log lifecycle policies in your storage system to automatically archive old logs to cold storage and delete them after the retention period.
 
