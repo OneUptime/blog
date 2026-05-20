@@ -44,8 +44,8 @@ metadata:
   name: app-data
   namespace: production
   annotations:
-    # Prevent ArgoCD from deleting this PVC
-    argocd.argoproj.io/sync-options: Delete=false
+    # Prevent ArgoCD pruning this PVC, and keep it during Application deletion
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
     - ReadWriteOnce
@@ -55,7 +55,7 @@ spec:
       storage: 50Gi
 ```
 
-The `Delete=false` annotation is critical - it prevents ArgoCD from deleting the PVC if you remove it from Git, protecting your data.
+The `Prune=false` annotation is critical - it prevents ArgoCD from pruning the PVC if you remove it from Git, protecting your data. `Delete=false` keeps the PVC when the ArgoCD Application itself is deleted.
 
 ### PVC with Specific Selector
 
@@ -68,7 +68,7 @@ metadata:
   name: database-data
   namespace: production
   annotations:
-    argocd.argoproj.io/sync-options: Delete=false
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 spec:
   accessModes:
     - ReadWriteOnce
@@ -160,7 +160,7 @@ spec:
   storageClassName: fast-ssd
   csi:
     driver: ebs.csi.aws.com
-    volumeHandle: vol-0a1b2c3d4e5f6g7h8
+    volumeHandle: vol-0a1b2c3d4e5f67890
     fsType: ext4
   nodeAffinity:
     required:
@@ -227,6 +227,7 @@ spec:
       prune: false
     syncOptions:
       - ServerSideApply=true
+      - Prune=false
 
 ---
 # Namespace-scoped PVCs (per application)
@@ -248,6 +249,8 @@ spec:
     automated:
       selfHeal: true
       prune: false  # Never auto-prune PVCs
+    syncOptions:
+      - Prune=false
 ```
 
 ## Protecting PVCs from Deletion
@@ -259,10 +262,12 @@ Multiple layers of protection:
 ```yaml
 metadata:
   annotations:
-    argocd.argoproj.io/sync-options: Delete=false
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
 ```
 
 ### 2. Finalizer Protection
+
+Kubernetes adds the `kubernetes.io/pvc-protection` finalizer to PVCs that are actively used by a Pod. This delays deletion until the PVC is no longer in use, but it is not a substitute for ArgoCD prune protection.
 
 ```yaml
 metadata:
@@ -270,7 +275,7 @@ metadata:
     - kubernetes.io/pvc-protection
 ```
 
-### 3. ArgoCD Project Restrictions
+### 3. ArgoCD Project-Level Visibility
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -279,19 +284,9 @@ metadata:
   name: apps
   namespace: argocd
 spec:
-  # Deny deletion of PVCs
+  # Warn when resources in application namespaces become orphaned
   orphanedResources:
     warn: true
-  # Restrict which resources can be pruned
-  syncWindows:
-    - kind: deny
-      schedule: "* * * * *"
-      duration: 8760h
-      applications: ["*"]
-      manualSync: true
-      # Only deny automatic pruning of PVCs
-      clusters: ["*"]
-      namespaces: ["*"]
 ```
 
 ### 4. Disable Prune on Sync Policy
@@ -340,7 +335,7 @@ StatefulSets create PVCs from templates. Managing these with ArgoCD requires und
 
 1. The PVC template is part of the StatefulSet spec
 2. Once created, PVCs are not updated when the template changes
-3. Deleting the StatefulSet does not delete the PVCs
+3. By default, deleting the StatefulSet does not delete the PVCs; Kubernetes can change this behavior with `persistentVolumeClaimRetentionPolicy`
 
 ```yaml
 apiVersion: apps/v1
@@ -369,7 +364,7 @@ spec:
     - metadata:
         name: data
         annotations:
-          argocd.argoproj.io/sync-options: Delete=false
+          argocd.argoproj.io/sync-options: Prune=false,Delete=false
       spec:
         accessModes: ["ReadWriteOnce"]
         storageClassName: fast-ssd
@@ -436,4 +431,4 @@ spec:
 
 ## Summary
 
-Managing PersistentVolume configurations with ArgoCD requires extra care around data protection. Always disable pruning for PVC resources, use the `Delete=false` sync option, and set reclaim policies to Retain for critical data. Use dynamic provisioning through StorageClasses when possible, and reserve static PV provisioning for special cases like NFS shares and pre-existing cloud volumes. Monitor PVC health actively and alert before volumes fill up.
+Managing PersistentVolume configurations with ArgoCD requires extra care around data protection. Always disable pruning for PVC resources, use the `Prune=false` and `Delete=false` sync options, and set reclaim policies to Retain for critical data. Use dynamic provisioning through StorageClasses when possible, and reserve static PV provisioning for special cases like NFS shares and pre-existing cloud volumes. Monitor PVC health actively and alert before volumes fill up.
