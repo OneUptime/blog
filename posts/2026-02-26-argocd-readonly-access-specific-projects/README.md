@@ -22,7 +22,7 @@ When you assign `role:readonly` to a user, they can see every application across
 g, dev-user@company.com, role:readonly
 ```
 
-That means a frontend developer can see backend deployments, database configurations, infrastructure secrets, and anything else managed by ArgoCD. In regulated environments, this violates the principle of least privilege.
+That means a frontend developer can see backend deployments, application definitions, repository and cluster entries, and anything else exposed through ArgoCD's read-only resources. In regulated environments, this violates the principle of least privilege.
 
 ## Creating Project-Scoped Readonly Roles
 
@@ -63,7 +63,7 @@ With this configuration:
 
 ## Understanding the Object Format
 
-The object field in RBAC policies uses the format `<project>/<application>`. Here are the patterns you can use:
+The object field in RBAC policies uses the format `<project>/<application>` for the default application namespace mode. If you have enabled applications in any namespace, the format becomes `<project>/<application-namespace>/<application>`. Here are the patterns you can use:
 
 ```yaml
 policy.csv: |
@@ -73,7 +73,7 @@ policy.csv: |
   # A specific app in a specific project
   p, role:viewer, applications, get, myproject/web-app, allow
 
-  # All apps in all projects (same as global readonly)
+  # All apps in all projects
   p, role:viewer, applications, get, */*, allow
 
   # All apps whose name starts with "staging-"
@@ -150,7 +150,7 @@ data:
   policy.default: ""
 ```
 
-Make sure your OIDC configuration includes the groups scope so ArgoCD receives group claims from Okta:
+Make sure your OIDC configuration includes the groups scope and that Okta is configured to return a groups claim so ArgoCD receives group membership:
 
 ```yaml
 apiVersion: v1
@@ -169,6 +169,9 @@ data:
       - profile
       - email
       - groups
+    requestedIDTokenClaims:
+      groups:
+        essential: true
 ```
 
 ## Testing Project-Scoped Access
