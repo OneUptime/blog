@@ -8,7 +8,7 @@ Description: A practical guide to diagnosing and fixing Config Management Plugin
 
 ---
 
-Config Management Plugins extend ArgoCD's capabilities, but they also introduce new failure modes that can be frustrating to debug. Plugin errors often produce cryptic messages, and because the plugin runs inside a sidecar container, you cannot simply exec into the repo-server to test things. This guide provides a systematic approach to debugging CMP errors, covering the most common failures and how to fix them.
+Config Management Plugins extend ArgoCD's capabilities, but they also introduce new failure modes that can be frustrating to debug. Plugin errors often produce cryptic messages, and because the plugin runs inside a sidecar container, you need to exec into that sidecar rather than the main repo-server container to test things. This guide provides a systematic approach to debugging CMP errors, covering the most common failures and how to fix them.
 
 ## Common Error Messages and What They Mean
 
@@ -17,7 +17,7 @@ Config Management Plugins extend ArgoCD's capabilities, but they also introduce 
 This means ArgoCD cannot find a plugin matching the name in your Application spec. Causes include:
 
 - The sidecar container is not running
-- The plugin name in `plugin.yaml` does not match the name in the Application spec
+- The plugin name in `plugin.yaml` does not match the name in the Application spec. If `spec.version` is set, the name ArgoCD expects is `<metadata.name>-<spec.version>`; otherwise it is `<metadata.name>`. You can also omit the Application plugin name and use discovery rules.
 - The socket file was not created properly
 
 ```bash
@@ -41,7 +41,7 @@ kubectl logs deployment/argocd-repo-server \
 
 ### "rpc error: code = DeadlineExceeded"
 
-The plugin took too long to generate manifests. The default timeout is 90 seconds.
+The plugin took too long to generate manifests. ArgoCD's repo-server request timeouts default to 60 seconds, and each CMP command also has an independent `ARGOCD_EXEC_TIMEOUT` in the sidecar that defaults to 90 seconds.
 
 ```bash
 # Check how long the generate command takes by looking at timestamps
@@ -57,7 +57,7 @@ kubectl logs deployment/argocd-repo-server \
 The plugin's generate command returned a non-zero exit code. The actual error message should be in stderr.
 
 ```bash
-# Get the full error from the repo-server logs
+# Get the full error from the sidecar logs
 kubectl logs deployment/argocd-repo-server \
   -n argocd \
   -c my-custom-plugin \
@@ -108,14 +108,14 @@ kubectl exec deployment/argocd-repo-server \
   cat /home/argocd/cmp-server/config/plugin.yaml
 ```
 
-Verify the YAML is valid:
+Verify the expected YAML fields are present:
 
 ```bash
-# Check if the plugin config is valid YAML
+# Inspect the plugin config
 kubectl exec deployment/argocd-repo-server \
   -n argocd \
   -c my-custom-plugin -- \
-  sh -c 'cat /home/argocd/cmp-server/config/plugin.yaml | head -3'
+  sed -n '1,40p' /home/argocd/cmp-server/config/plugin.yaml
 ```
 
 ### Step 3: Test the Generate Command Manually
@@ -197,7 +197,8 @@ generate:
       which helm kustomize sops 2>&1 >&2
 
       # Your actual generate command
-      set -euxo pipefail  # -x enables command tracing
+      set -eux  # -x enables command tracing
+      set -o pipefail 2>/dev/null || true
       helm template my-app . -f values.yaml
 ```
 
@@ -312,7 +313,10 @@ argocd app get my-app --show-params
 # Force a refresh to trigger manifest generation
 argocd app get my-app --refresh
 
-# Get the diff to see what the plugin generates
+# Print the manifests generated from Git
+argocd app manifests my-app
+
+# Compare the generated target state with the live cluster
 argocd app diff my-app
 ```
 
@@ -327,7 +331,7 @@ kubectl logs deployment/argocd-server \
   --tail=100 | grep -i "error\|plugin\|cmp"
 
 # Check the application controller logs
-kubectl logs deployment/argocd-application-controller \
+kubectl logs statefulset/argocd-application-controller \
   -n argocd \
   --tail=100 | grep -i "error\|plugin\|manifest"
 ```
