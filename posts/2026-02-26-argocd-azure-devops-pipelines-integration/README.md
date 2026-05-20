@@ -85,7 +85,7 @@ stages:
             inputs:
               command: buildAndPush
               repository: 'my-app'
-              dockerfile: 'Dockerfile'
+              Dockerfile: 'Dockerfile'
               containerRegistry: 'acr-service-connection'
               tags: |
                 $(imageTag)
@@ -101,10 +101,10 @@ stages:
 
           - script: |
               # Install kustomize
-              curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin
+              curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz | sudo tar xz -C /usr/local/bin
 
               # Clone deployment repo using PAT
-              git clone https://deploy-bot:$(DEPLOY_PAT)@dev.azure.com/myorg/myproject/_git/k8s-manifests
+              git clone https://deploy-bot:${DEPLOY_PAT}@dev.azure.com/myorg/myproject/_git/k8s-manifests
               cd k8s-manifests/apps/my-app/production
 
               # Update image tag
@@ -117,6 +117,8 @@ stages:
               git commit -m "Deploy my-app:$(imageTag) from Azure Pipeline $(Build.BuildNumber)"
               git push
             displayName: 'Update manifests in deployment repo'
+            env:
+              DEPLOY_PAT: $(DEPLOY_PAT)
 ```
 
 ## Pattern 2: Sync and Verify with ArgoCD CLI
@@ -135,17 +137,20 @@ stages:
         steps:
           - script: |
               # Install ArgoCD CLI
-              curl -sSL -o /usr/local/bin/argocd \
+              curl -sSL -o argocd-linux-amd64 \
                 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-              chmod +x /usr/local/bin/argocd
+              sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+              rm argocd-linux-amd64
             displayName: 'Install ArgoCD CLI'
 
           - script: |
               # Login to ArgoCD
               argocd login $(ARGOCD_SERVER) \
-                --auth-token $(ARGOCD_TOKEN) \
+                --auth-token "$ARGOCD_TOKEN" \
                 --grpc-web
             displayName: 'Login to ArgoCD'
+            env:
+              ARGOCD_TOKEN: $(ARGOCD_TOKEN)
 
           - script: |
               # Refresh to detect latest Git changes
@@ -226,12 +231,13 @@ stages:
               steps:
                 - script: |
                     # Install tools
-                    curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin
-                    curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-                    chmod +x /usr/local/bin/argocd
+                    curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz | sudo tar xz -C /usr/local/bin
+                    curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+                    sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+                    rm argocd-linux-amd64
 
                     # Update staging manifests
-                    git clone https://deploy-bot:$(DEPLOY_PAT)@dev.azure.com/myorg/myproject/_git/k8s-manifests
+                    git clone https://deploy-bot:${DEPLOY_PAT}@dev.azure.com/myorg/myproject/_git/k8s-manifests
                     cd k8s-manifests/apps/my-app/staging
                     kustomize edit set image $(imageName)=$(imageName):$(imageTag)
                     git config user.name "Azure Pipeline"
@@ -241,10 +247,13 @@ stages:
                     git push
 
                     # Sync with ArgoCD
-                    argocd login $(ARGOCD_SERVER) --auth-token $(ARGOCD_TOKEN) --grpc-web
+                    argocd login $(ARGOCD_SERVER) --auth-token "$ARGOCD_TOKEN" --grpc-web
                     argocd app sync my-app-staging --grpc-web
                     argocd app wait my-app-staging --sync --health --timeout 300 --grpc-web
                   displayName: 'Deploy to staging'
+                  env:
+                    DEPLOY_PAT: $(DEPLOY_PAT)
+                    ARGOCD_TOKEN: $(ARGOCD_TOKEN)
 
   - stage: DeployProduction
     displayName: 'Deploy to Production'
@@ -259,12 +268,13 @@ stages:
             deploy:
               steps:
                 - script: |
-                    curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin
-                    curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-                    chmod +x /usr/local/bin/argocd
+                    curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz | sudo tar xz -C /usr/local/bin
+                    curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+                    sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+                    rm argocd-linux-amd64
 
                     # Update production manifests
-                    git clone https://deploy-bot:$(DEPLOY_PAT)@dev.azure.com/myorg/myproject/_git/k8s-manifests
+                    git clone https://deploy-bot:${DEPLOY_PAT}@dev.azure.com/myorg/myproject/_git/k8s-manifests
                     cd k8s-manifests/apps/my-app/production
                     kustomize edit set image $(imageName)=$(imageName):$(imageTag)
                     git config user.name "Azure Pipeline"
@@ -274,10 +284,13 @@ stages:
                     git push
 
                     # Sync with ArgoCD
-                    argocd login $(ARGOCD_SERVER) --auth-token $(ARGOCD_TOKEN) --grpc-web
+                    argocd login $(ARGOCD_SERVER) --auth-token "$ARGOCD_TOKEN" --grpc-web
                     argocd app sync my-app-production --grpc-web
                     argocd app wait my-app-production --sync --health --timeout 300 --grpc-web
                   displayName: 'Deploy to production'
+                  env:
+                    DEPLOY_PAT: $(DEPLOY_PAT)
+                    ARGOCD_TOKEN: $(ARGOCD_TOKEN)
 ```
 
 Configure the `production` environment in Azure DevOps to require approvals:
@@ -334,13 +347,14 @@ parameters:
 steps:
   - script: |
       # Install tools
-      curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz | tar xz -C /usr/local/bin
-      curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-      chmod +x /usr/local/bin/argocd
+      curl -sL https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.8.1/kustomize_v5.8.1_linux_amd64.tar.gz | sudo tar xz -C /usr/local/bin
+      curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+      sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd
+      rm argocd-linux-amd64
     displayName: 'Install tools'
 
   - script: |
-      git clone https://deploy-bot:$(DEPLOY_PAT)@dev.azure.com/myorg/myproject/_git/k8s-manifests
+      git clone https://deploy-bot:${DEPLOY_PAT}@dev.azure.com/myorg/myproject/_git/k8s-manifests
       cd k8s-manifests/${{ parameters.deployPath }}
       kustomize edit set image ${{ parameters.imageName }}=${{ parameters.imageName }}:${{ parameters.imageTag }}
       git config user.name "Azure Pipeline"
@@ -349,12 +363,16 @@ steps:
       git commit -m "Deploy ${{ parameters.imageTag }} to ${{ parameters.environment }}"
       git push
     displayName: 'Update ${{ parameters.environment }} manifests'
+    env:
+      DEPLOY_PAT: $(DEPLOY_PAT)
 
   - script: |
-      argocd login $(ARGOCD_SERVER) --auth-token $(ARGOCD_TOKEN) --grpc-web
+      argocd login $(ARGOCD_SERVER) --auth-token "$ARGOCD_TOKEN" --grpc-web
       argocd app sync ${{ parameters.appName }} --grpc-web
       argocd app wait ${{ parameters.appName }} --sync --health --timeout ${{ parameters.timeout }} --grpc-web
     displayName: 'Sync ${{ parameters.appName }}'
+    env:
+      ARGOCD_TOKEN: $(ARGOCD_TOKEN)
 ```
 
 Use the template:
@@ -388,7 +406,7 @@ Speed up ArgoCD sync detection by configuring a webhook from Azure Repos:
 3. Select **Web Hooks** as the service
 4. Select **Code pushed** as the trigger
 5. Set the URL to `https://argocd.example.com/api/webhook`
-6. Configure the webhook secret to match `argocd-secret`
+6. If you secure the webhook, configure basic authentication in Azure DevOps and set matching `webhook.azuredevops.username` and `webhook.azuredevops.password` keys in the `argocd-secret` Kubernetes secret
 
 ## Security Best Practices
 
