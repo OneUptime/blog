@@ -113,7 +113,7 @@ Move the resource definition out of one application's source directory so only o
 
 **Fix option 2: Use the FailOnSharedResource sync option**
 
-If resource sharing is intentional, configure the applications to handle it:
+If you want ArgoCD to fail early when another application already manages the resource, configure the application to catch shared resources:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -123,8 +123,8 @@ metadata:
 spec:
   syncPolicy:
     syncOptions:
-      # Do not fail if resources are shared with another app
-      - RespectIgnoreDifferences=true
+      # Fail if resources are shared with another app
+      - FailOnSharedResource=true
 ```
 
 **Fix option 3: Change resource tracking method**
@@ -203,17 +203,17 @@ spec:
 
 ## Scenario 5: Helm Release Name Conflict
 
-When deploying Helm charts, the release name might conflict with an existing Helm release in the cluster:
+When deploying Helm charts, ArgoCD renders manifests with Helm. The rendered Kubernetes resources might conflict with resources from an existing Helm release in the cluster:
 
 ```bash
 # Check existing Helm releases
 helm list -n production
 
-# If there is a release with the same name not managed by ArgoCD
+# If an existing release owns the conflicting resources
 helm uninstall old-release -n production
 ```
 
-**Configure ArgoCD to use a specific release name:**
+**Configure ArgoCD to render the chart with a specific release name:**
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
