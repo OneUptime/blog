@@ -43,14 +43,27 @@ Add the OIDC configuration to your Authelia configuration file:
 
 identity_providers:
   oidc:
-    # HMAC secret for signing (generate with: openssl rand -hex 32)
+    # HMAC secret (generate with: openssl rand -hex 32)
     hmac_secret: 'your-hmac-secret-here'
 
-    # Issuer URL - must match what ArgoCD/Dex expects
-    issuer_private_key: |
-      -----BEGIN RSA PRIVATE KEY-----
-      ... your RSA private key ...
-      -----END RSA PRIVATE KEY-----
+    # Signing key for ID tokens
+    jwks:
+    - key_id: argocd
+      algorithm: RS256
+      use: sig
+      key: |
+        -----BEGIN PRIVATE KEY-----
+        ... your RSA private key ...
+        -----END PRIVATE KEY-----
+
+    authorization_policies:
+      argocd_policy:
+        default_policy: deny
+        rules:
+        - policy: two_factor
+          subject:
+          - 'group:argocd-users'
+          - 'group:argocd-admins'
 
     # CORS configuration for ArgoCD
     cors:
@@ -64,13 +77,13 @@ identity_providers:
 
     # Define the ArgoCD client
     clients:
-    - id: argocd
-      description: ArgoCD GitOps Platform
-      secret: '$pbkdf2-sha512$310000$...'  # Hashed secret
+    - client_id: argocd
+      client_name: ArgoCD GitOps Platform
+      client_secret: '$pbkdf2-sha512$310000$...'  # Hashed secret
       # Generate hashed secret:
-      # authelia crypto hash generate pbkdf2 --variant sha512 --random --random.length 72
+      # authelia crypto hash generate pbkdf2 --variant sha512 --random --random.length 72 --random.charset rfc3986
       public: false
-      authorization_policy: two_factor  # Require 2FA for ArgoCD
+      authorization_policy: argocd_policy  # Restrict to ArgoCD groups and require 2FA
       redirect_uris:
       - https://argocd.example.com/api/dex/callback
       scopes:
@@ -78,9 +91,13 @@ identity_providers:
       - profile
       - email
       - groups
-      userinfo_signing_algorithm: none
-      consent_mode: implicit  # Skip consent screen
-      token_endpoint_auth_method: client_secret_post
+      response_types:
+      - code
+      grant_types:
+      - authorization_code
+      access_token_signed_response_alg: none
+      userinfo_signed_response_alg: none
+      token_endpoint_auth_method: client_secret_basic
 ```
 
 ### Generate the Client Secret
@@ -94,37 +111,32 @@ docker run --rm authelia/authelia:latest \
   authelia crypto hash generate pbkdf2 \
   --variant sha512 \
   --random \
-  --random.length 72
+  --random.length 72 \
+  --random.charset rfc3986
 ```
 
 This outputs both the plaintext secret (for ArgoCD) and the hashed version (for Authelia config).
 
-## Step 2: Configure Authelia Access Control
+## Step 2: Configure Authelia OIDC Authorization Policy
 
-Set up access control policies in Authelia that apply to ArgoCD:
+Set up an OIDC authorization policy in Authelia that applies to ArgoCD. Authelia's standard `access_control` rules are for reverse proxy authorization and do not apply to OIDC login flows:
 
 ```yaml
 # authelia configuration.yml
-access_control:
-  default_policy: deny
+identity_providers:
+  oidc:
+    authorization_policies:
+      argocd_policy:
+        default_policy: deny
+        rules:
+        - policy: two_factor
+          subject:
+          - 'group:argocd-users'
+          - 'group:argocd-admins'
 
-  rules:
-  # ArgoCD OIDC endpoints must be accessible
-  - domain: auth.example.com
-    resources:
-    - '^/api/oidc.*$'
-    policy: bypass
-
-  # ArgoCD requires two-factor authentication
-  - domain: argocd.example.com
-    policy: two_factor
-    subject:
-    - 'group:argocd-users'
-    - 'group:argocd-admins'
-
-  # Deny everyone else
-  - domain: argocd.example.com
-    policy: deny
+    clients:
+    - client_id: argocd
+      authorization_policy: argocd_policy
 ```
 
 ## Step 3: Configure Groups in Authelia
@@ -190,12 +202,11 @@ data:
 
         # Enable group claims
         insecureEnableGroups: true
-        groupsKey: groups
+        getUserInfo: true
 
-        # Claim mapping
+        # Standard Authelia claims
         userIDKey: sub
         userNameKey: preferred_username
-        emailKey: email
 
         # If Authelia uses a self-signed cert
         # rootCAData: <base64-encoded-ca-cert>
@@ -302,18 +313,17 @@ spec:
   source:
     repoURL: https://charts.authelia.com
     chart: authelia
-    targetRevision: 0.9.x
+    targetRevision: 0.11.x
     helm:
       values: |
-        domain: example.com
         ingress:
           enabled: true
-          subdomain: auth
           tls:
             enabled: true
             secret: authelia-tls
 
         pod:
+          kind: Deployment
           replicas: 2
           resources:
             requests:
@@ -321,6 +331,10 @@ spec:
               memory: 128Mi
 
         configMap:
+          session:
+            cookies:
+            - domain: example.com
+              subdomain: auth
           access_control:
             default_policy: deny
           # ... other config
@@ -349,7 +363,7 @@ Verify Authelia's OIDC discovery endpoint is accessible:
 curl -s https://auth.example.com/.well-known/openid-configuration | jq .
 ```
 
-If this returns an error, check that Authelia's OIDC provider is properly configured and the issuer_private_key is valid.
+If this returns an error, check that Authelia's OIDC provider is properly configured and the `jwks` signing key is valid.
 
 ### Groups Missing from Token
 
