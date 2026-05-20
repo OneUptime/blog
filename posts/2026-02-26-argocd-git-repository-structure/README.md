@@ -124,6 +124,7 @@ metadata:
   name: all-apps-dev
   namespace: argocd
 spec:
+  goTemplate: true
   generators:
     - git:
         repoURL: https://github.com/myorg/platform.git
@@ -133,16 +134,16 @@ spec:
   template:
     metadata:
       # Extract app name from path
-      name: '{{path[1]}}-dev'
+      name: '{{index .path.segments 1}}-dev'
     spec:
       project: default
       source:
         repoURL: https://github.com/myorg/platform.git
         targetRevision: main
-        path: '{{path}}'
+        path: '{{.path.path}}'
       destination:
         server: https://kubernetes.default.svc
-        namespace: '{{path[1]}}-dev'
+        namespace: '{{index .path.segments 1}}-dev'
 ```
 
 ## Helm-Based Repository Structure
@@ -317,8 +318,7 @@ argocd app create test-frontend \
   --repo https://github.com/myorg/platform.git \
   --path apps/frontend/overlays/dev \
   --dest-server https://kubernetes.default.svc \
-  --dest-namespace test \
-  --dry-run
+  --dest-namespace test
 ```
 
 ## Summary
