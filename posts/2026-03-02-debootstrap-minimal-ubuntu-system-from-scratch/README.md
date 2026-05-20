@@ -8,7 +8,7 @@ Description: Learn how to use debootstrap to build a minimal Ubuntu system from 
 
 ---
 
-Debootstrap is the tool Debian and Ubuntu use internally to construct the base OS during installation. It downloads packages directly from the archive and installs them into a directory, creating a bootable system without running the graphical or text installer. Using debootstrap directly gives you complete control over what gets installed, lets you build minimal containers and chroot environments, and helps you understand what a Linux system actually consists of at its most fundamental level.
+Debootstrap is one of the low-level tools used to construct Debian and Ubuntu base systems. It downloads packages directly from the archive and installs them into a directory, creating a root filesystem without running the graphical or text installer. Using debootstrap directly gives you complete control over what gets installed, lets you build minimal containers and chroot environments, and helps you understand what a Linux system actually consists of at its most fundamental level.
 
 ## What Debootstrap Does
 
@@ -41,21 +41,21 @@ The minimal command to create an Ubuntu 24.04 system:
 # Create a minimal Ubuntu Noble (24.04) base system in /tmp/ubuntu-noble
 sudo debootstrap noble /tmp/ubuntu-noble http://archive.ubuntu.com/ubuntu
 
-# For ARM64 systems (or to create an ARM64 chroot on x86_64 with QEMU)
+# On an ARM64 host, use the Ubuntu ports archive
 sudo debootstrap --arch=arm64 noble /tmp/ubuntu-noble-arm64 http://ports.ubuntu.com/ubuntu-ports
 ```
 
 The variants affect what gets installed:
 
 ```bash
-# Minbase: only essential packages and priority=required
+# Minbase: only priority=required packages and apt
 # Smallest possible system (~100-150 MB)
 sudo debootstrap --variant=minbase noble /tmp/ubuntu-minbase http://archive.ubuntu.com/ubuntu
 
 # Buildd: packages needed for building Debian packages
 sudo debootstrap --variant=buildd noble /tmp/ubuntu-build http://archive.ubuntu.com/ubuntu
 
-# Default (no --variant): installs standard + important priority packages
+# Default (no --variant): installs priority=required and priority=important packages, including apt
 sudo debootstrap noble /tmp/ubuntu-base http://archive.ubuntu.com/ubuntu
 ```
 
@@ -68,7 +68,7 @@ After debootstrap completes, you have a working chroot:
 ls /tmp/ubuntu-minbase/
 
 # Check the package count
-ls /tmp/ubuntu-minbase/var/lib/dpkg/info/ | grep '.list' | wc -l
+ls /tmp/ubuntu-minbase/var/lib/dpkg/info/ | grep -c '\.list$'
 
 # Enter the chroot
 sudo chroot /tmp/ubuntu-minbase /bin/bash
@@ -112,7 +112,7 @@ sudo umount /tmp/ubuntu-minbase/dev
 
 ## Building a Bootable System on a Disk
 
-This is the full process to build a bootable Ubuntu installation from scratch using debootstrap - the same process the Ubuntu installer uses internally.
+This is the full process to build a bootable Ubuntu installation from scratch using debootstrap.
 
 ### Step 1: Prepare the Target Disk
 
@@ -160,15 +160,39 @@ sudo mount --bind /dev /mnt/ubuntu-build/dev
 sudo mount --bind /dev/pts /mnt/ubuntu-build/dev/pts
 sudo mount -t proc proc /mnt/ubuntu-build/proc
 sudo mount -t sysfs sysfs /mnt/ubuntu-build/sys
-sudo mount --bind /sys/firmware/efi/efivars /mnt/ubuntu-build/sys/firmware/efi/efivars
 sudo cp /etc/resolv.conf /mnt/ubuntu-build/etc/resolv.conf
 
-sudo chroot /mnt/ubuntu-build
+# Capture partition UUIDs before entering the chroot
+BOOT_UUID=$(sudo blkid -s UUID -o value ${LOOP}p1)
+ROOT_UUID=$(sudo blkid -s UUID -o value ${LOOP}p2)
+
+sudo env BOOT_UUID="$BOOT_UUID" ROOT_UUID="$ROOT_UUID" chroot /mnt/ubuntu-build /bin/bash
 ```
 
 Inside the chroot, configure the system:
 
 ```bash
+# Configure apt sources
+cat > /etc/apt/sources.list << 'EOF'
+deb http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
+deb http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
+deb http://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse
+EOF
+
+# Update and install essential packages
+apt update
+apt install -y \
+    linux-image-generic \
+    linux-headers-generic \
+    grub-efi-amd64 \
+    systemd-sysv \
+    netplan.io \
+    networkd-dispatcher \
+    systemd-resolved \
+    openssh-server \
+    sudo \
+    vim
+
 # Set locale
 locale-gen en_US.UTF-8
 update-locale LANG=en_US.UTF-8
@@ -187,26 +211,6 @@ cat > /etc/hosts << 'EOF'
 ::1       localhost ip6-localhost ip6-loopback
 EOF
 
-# Configure apt sources
-cat > /etc/apt/sources.list << 'EOF'
-deb http://archive.ubuntu.com/ubuntu noble main restricted universe multiverse
-deb http://archive.ubuntu.com/ubuntu noble-updates main restricted universe multiverse
-deb http://security.ubuntu.com/ubuntu noble-security main restricted universe multiverse
-EOF
-
-# Update and install essential packages
-apt update
-apt install -y \
-    linux-image-generic \
-    linux-headers-generic \
-    grub-efi-amd64 \
-    systemd-sysv \
-    networkd-dispatcher \
-    systemd-resolved \
-    openssh-server \
-    sudo \
-    vim
-
 # Create a user
 useradd -m -s /bin/bash -G sudo admin
 echo "admin:password" | chpasswd
@@ -222,10 +226,6 @@ chmod 600 /home/admin/.ssh/authorized_keys
 
 ```bash
 # Still inside chroot
-# Get the UUIDs
-BOOT_UUID=$(blkid -s UUID -o value ${LOOP}p1)
-ROOT_UUID=$(blkid -s UUID -o value ${LOOP}p2)
-
 cat > /etc/fstab << EOF
 UUID=${ROOT_UUID}  /         ext4  defaults  0  1
 UUID=${BOOT_UUID}  /boot/efi vfat  umask=0077  0  1
@@ -236,8 +236,8 @@ EOF
 
 ```bash
 # Still inside chroot
-# Install GRUB to the EFI partition
-grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu
+# Install GRUB to the EFI partition using the removable fallback path
+grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=ubuntu --removable --no-nvram
 
 # Generate GRUB configuration
 update-grub
@@ -245,6 +245,8 @@ update-grub
 # Verify GRUB was installed
 ls /boot/efi/EFI/ubuntu/
 # Should see grubx64.efi and other files
+ls /boot/efi/EFI/BOOT/
+# Should see BOOTX64.EFI
 ```
 
 ### Step 6: Network Configuration
@@ -255,9 +257,13 @@ mkdir -p /etc/netplan
 cat > /etc/netplan/00-default.yaml << 'EOF'
 network:
   version: 2
+  renderer: networkd
   ethernets:
-    enp0s3:
+    default:
+      match:
+        name: "en*"
       dhcp4: true
+      optional: true
 EOF
 chmod 600 /etc/netplan/00-default.yaml
 
@@ -274,7 +280,6 @@ systemctl enable ssh
 exit
 
 # Unmount everything in reverse order
-sudo umount /mnt/ubuntu-build/sys/firmware/efi/efivars
 sudo umount /mnt/ubuntu-build/sys
 sudo umount /mnt/ubuntu-build/proc
 sudo umount /mnt/ubuntu-build/dev/pts
@@ -290,11 +295,13 @@ The disk image is now bootable. Test it:
 
 ```bash
 # Boot in QEMU to test
+cp /usr/share/OVMF/OVMF_VARS_4M.fd /tmp/OVMF_VARS.fd
 qemu-system-x86_64 \
     -enable-kvm \
     -m 2048 \
-    -drive file=/tmp/ubuntu-disk.img \
-    -drive file=/usr/share/OVMF/OVMF_CODE.fd,if=pflash,format=raw,readonly=on \
+    -drive file=/tmp/ubuntu-disk.img,format=raw \
+    -drive file=/usr/share/OVMF/OVMF_CODE_4M.fd,if=pflash,format=raw,readonly=on \
+    -drive file=/tmp/OVMF_VARS.fd,if=pflash,format=raw \
     -netdev user,id=net0,hostfwd=tcp::2222-:22 \
     -device virtio-net-pci,netdev=net0
 ```
@@ -306,6 +313,7 @@ qemu-system-x86_64 \
 sudo debootstrap --variant=minbase noble /tmp/ubuntu-docker http://archive.ubuntu.com/ubuntu
 
 # Optionally install additional packages inside the chroot
+sudo chroot /tmp/ubuntu-docker apt update
 sudo chroot /tmp/ubuntu-docker apt install -y curl python3
 
 # Package it as a Docker image
