@@ -146,7 +146,7 @@ spec:
         team: platform
       forceCommonLabels: true             # Override existing labels
       forceCommonAnnotations: true         # Override existing annotations
-      version: v5.0.0                      # Kustomize version to use
+      version: v5.0.0                      # Kustomize version to use (must be configured in argocd-cm)
       patches:                             # Inline patches
         - target:
             kind: Deployment
@@ -191,7 +191,7 @@ spec:
       ref: values                                  # Reference name for $values
 ```
 
-Note: When using `sources`, you cannot use `source`. They are mutually exclusive.
+Note: When using `sources`, ArgoCD ignores the singular `source` field. Configure one style per Application to avoid ambiguity.
 
 ## The `spec.destination` Section
 
