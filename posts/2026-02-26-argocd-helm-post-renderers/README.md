@@ -8,9 +8,9 @@ Description: Learn how to use Helm post-renderers in ArgoCD to transform rendere
 
 ---
 
-Helm post-renderers let you modify the rendered Helm output before it gets applied to the cluster. This is incredibly useful when you need to add labels, annotations, patches, or other modifications to a chart's resources without forking the chart. ArgoCD does not support arbitrary post-renderer executables, but it does support Kustomize as a post-renderer, which covers the vast majority of use cases.
+Helm post-renderers let you modify the rendered Helm output before it gets applied to the cluster. This is incredibly useful when you need to add labels, annotations, patches, or other modifications to a chart's resources without forking the chart. ArgoCD's native Helm source does not expose Helm's `--post-renderer` flag, but it can render Helm charts through Kustomize when Helm support is enabled for Kustomize, which covers many of the same use cases.
 
-This guide explains how to use Kustomize as a Helm post-renderer in ArgoCD, with practical examples for common transformation scenarios.
+This guide explains how to use Kustomize to transform Helm-rendered resources in ArgoCD, with practical examples for common transformation scenarios.
 
 ## What is a Post-Renderer
 
@@ -22,31 +22,39 @@ In standard Helm usage, a post-renderer is an executable that receives rendered 
 helm install my-app ./chart --post-renderer ./my-transform.sh
 ```
 
-ArgoCD does not support arbitrary post-renderer executables because it renders charts in its repo-server, which has security restrictions. Instead, ArgoCD provides built-in support for Kustomize as a post-renderer, which lets you apply patches, add labels, modify resources, and more.
+ArgoCD does not expose Helm's arbitrary post-renderer executables through the native Helm application source. Instead, use a Kustomize application with Helm chart inflation enabled, which lets you apply patches, add labels, modify resources, and more.
 
 ## Enabling Kustomize Post-Rendering in ArgoCD
 
-To use Kustomize as a post-renderer, you need to create a `kustomization.yaml` file alongside your Helm values and reference it in a multi-source application, or use the built-in Helm+Kustomize integration.
+To use Kustomize for this workflow, create a `kustomization.yaml` file alongside your Helm values and configure ArgoCD to run `kustomize build --enable-helm`. ArgoCD's Kustomize options do not include `--enable-helm` per application, so enable it globally in `argocd-cm` or implement the build through a Config Management Plugin.
 
-### Method 1: Using Multi-Source with Helm and Kustomize
+### Method 1: Enable Helm Support for Kustomize
 
-The cleanest approach is to use a multi-source application that combines Helm output with Kustomize patches:
+Configure ArgoCD's repo server to pass the Helm flag to Kustomize:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  kustomize.buildOptions: --enable-helm
+```
+
+Then keep the Helm chart configuration and Kustomize patches in the same Kustomize application path:
 
 ```text
 # Repository structure
 my-app/
-  helm/
-    Chart.yaml
-    templates/
-    values.yaml
-  kustomize/
-    kustomization.yaml
-    patches/
-      add-labels.yaml
-      add-sidecar.yaml
+  kustomization.yaml
+  values.yaml
+  patches/
+    add-labels.yaml
+    add-sidecar.yaml
 ```
 
-However, the most practical approach for post-rendering is to use ArgoCD's built-in Kustomize post-renderer support.
+ArgoCD will detect the `kustomization.yaml` and render the application with Kustomize.
 
 ### Method 2: Kustomize with Helm Chart as a Base
 
@@ -67,9 +75,11 @@ helmCharts:
     valuesFile: values-production.yaml
 
 # Apply Kustomize transformations on top
-commonLabels:
-  team: platform
-  cost-center: engineering
+labels:
+  - pairs:
+      team: platform
+      cost-center: engineering
+    includeSelectors: false
 
 patches:
   - target:
@@ -124,12 +134,14 @@ helmCharts:
     namespace: web
     valuesFile: values.yaml
 
-# These labels will be added to ALL resources
-commonLabels:
-  app.kubernetes.io/managed-by: argocd
-  app.kubernetes.io/part-of: web-platform
-  team: web-team
-  environment: production
+# These labels will be added to resource metadata
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: argocd
+      app.kubernetes.io/part-of: web-platform
+      team: web-team
+      environment: production
+    includeSelectors: false
 
 commonAnnotations:
   monitoring.myorg.com/enabled: "true"
@@ -159,7 +171,7 @@ patches:
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: unused  # Kustomize requires this but applies to all matched
+        name: unused
       spec:
         template:
           spec:
@@ -236,7 +248,7 @@ spec:
 
 ### Modifying Resource Limits
 
-Override resource limits for all containers without modifying chart values:
+Override resource limits for a specific container without modifying chart values:
 
 ```yaml
 # kustomization.yaml
@@ -281,20 +293,15 @@ patches:
   - target:
       kind: Deployment
     patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: unused
-      spec:
-        template:
-          spec:
-            imagePullSecrets:
-              - name: registry-credentials
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value:
+          - name: registry-credentials
 ```
 
 ## Using the Config Management Plugin Alternative
 
-For more complex post-rendering that Kustomize cannot handle, you can use an ArgoCD Config Management Plugin (CMP):
+For more complex post-rendering that Kustomize cannot handle, you can use an ArgoCD Config Management Plugin (CMP). The plugin configuration is stored in a ConfigMap and mounted into a repo-server sidecar at `/home/argocd/cmp-server/config/plugin.yaml`:
 
 ```yaml
 # configmap for CMP
@@ -314,6 +321,7 @@ data:
         command: ["/bin/sh", "-c"]
         args:
           - |
+            set -o pipefail
             helm template $ARGOCD_APP_NAME . \
               --namespace $ARGOCD_APP_NAMESPACE \
               -f values.yaml | \
@@ -346,4 +354,4 @@ argocd app diff my-app
 
 ## Summary
 
-Helm post-renderers in ArgoCD let you transform chart output without forking charts. Use Kustomize as a post-renderer to add labels, inject sidecars, apply patches, and add supplementary resources. Create a `kustomization.yaml` that uses `helmCharts` as a base and apply your transformations on top. For advanced transformations beyond Kustomize's capabilities, consider Config Management Plugins. This approach keeps your charts clean and reusable while allowing organization-specific customizations at the deployment layer.
+Kustomize with Helm chart inflation in ArgoCD lets you transform chart output without forking charts. Use Kustomize to add labels, inject sidecars, apply patches, and add supplementary resources. Create a `kustomization.yaml` that uses `helmCharts` as a base and apply your transformations on top. For advanced transformations beyond Kustomize's capabilities, consider Config Management Plugins. This approach keeps your charts clean and reusable while allowing organization-specific customizations at the deployment layer.
