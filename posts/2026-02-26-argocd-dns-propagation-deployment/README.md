@@ -8,7 +8,7 @@ Description: Learn how to handle DNS propagation delays during ArgoCD deployment
 
 ---
 
-DNS propagation is the silent killer of otherwise smooth deployments. You deploy a new service, update the DNS records, and everything looks good - except some clients are still hitting the old endpoints because DNS caches have not expired. This is particularly challenging with ArgoCD-managed deployments where services, ingresses, and DNS records need to change atomically. This guide covers strategies for handling DNS propagation during ArgoCD deployments.
+DNS propagation is the silent killer of otherwise smooth deployments. You deploy a new service, update the DNS records, and everything looks good - except some clients are still hitting the old endpoints because DNS caches have not expired. This is particularly challenging with ArgoCD-managed deployments where services, ingresses, and DNS records need to be coordinated. This guide covers strategies for handling DNS propagation during ArgoCD deployments.
 
 ## Understanding DNS in Kubernetes
 
@@ -19,17 +19,18 @@ graph TD
     A[External Clients] -->|Public DNS| B[Route53/CloudDNS]
     B -->|TTL: 60-300s| C[Cloud Load Balancer]
     C --> D[Ingress Controller]
-    D -->|Cluster DNS| E[CoreDNS]
-    E -->|Service DNS| F[kube-dns resolution]
-    F --> G[Pod Endpoints]
+    D --> E[Kubernetes Service]
+    E --> G[Pod Endpoints]
+    H[Internal Clients] -->|Cluster DNS| I[CoreDNS]
+    I -->|Service DNS| E
 ```
 
 Each layer has its own caching behavior:
 
 1. **Client DNS cache** - browser, OS, application-level caching (unpredictable TTL)
-2. **Recursive resolver cache** - ISP/corporate DNS servers (respects TTL)
+2. **Recursive resolver cache** - ISP/corporate DNS servers (usually respects TTL)
 3. **External DNS records** - Route53, CloudDNS, etc. (configurable TTL)
-4. **Kubernetes Service DNS** - CoreDNS internal to the cluster (typically 30s TTL)
+4. **Kubernetes Service DNS** - CoreDNS internal to the cluster (5s by default unless configured)
 5. **kube-proxy/iptables** - endpoint updates (nearly instant)
 
 ## Challenge 1: External DNS Propagation
@@ -81,9 +82,10 @@ spec:
     targetRevision: 1.14.0
     helm:
       values: |
-        provider: aws
-        aws:
-          region: us-east-1
+        provider:
+          name: aws
+        extraArgs:
+          - --aws-zone-type=public
         domainFilters:
           - example.com
         policy: upsert-only  # Never delete records
@@ -133,7 +135,8 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Lower TTL to 30 seconds
+              # Lower TTL to 30 seconds for a non-alias record.
+              # Route53 alias records must omit TTL and inherit it from the alias target.
               aws route53 change-resource-record-sets \
                 --hosted-zone-id Z1234567890 \
                 --change-batch '{
@@ -141,12 +144,11 @@ spec:
                     "Action": "UPSERT",
                     "ResourceRecordSet": {
                       "Name": "api.example.com",
-                      "Type": "A",
-                      "AliasTarget": {
-                        "HostedZoneId": "Z32O12XQLNTSW2",
-                        "DNSName": "current-lb.us-east-1.elb.amazonaws.com",
-                        "EvaluateTargetHealth": true
-                      }
+                      "Type": "CNAME",
+                      "TTL": 30,
+                      "ResourceRecords": [{
+                        "Value": "current-lb.us-east-1.elb.amazonaws.com"
+                      }]
                     }
                   }]
                 }'
@@ -322,16 +324,16 @@ spec:
             - /bin/sh
             - -c
             - |
-              EXPECTED_IP="10.0.1.50"
+              EXPECTED_TARGET="new-lb.us-east-1.elb.amazonaws.com"
               DOMAIN="api.example.com"
               MAX_RETRIES=30
               RETRY_INTERVAL=10
 
               for i in $(seq 1 $MAX_RETRIES); do
-                RESOLVED_IP=$(getent hosts $DOMAIN | awk '{print $1}')
-                echo "Attempt $i: $DOMAIN resolves to $RESOLVED_IP"
+                RESOLVED_TARGET=$(nslookup -type=cname $DOMAIN 2>/dev/null | awk -F'= ' '/canonical name/ {print $2}' | sed 's/\.$//')
+                echo "Attempt $i: $DOMAIN CNAME resolves to $RESOLVED_TARGET"
 
-                if [ "$RESOLVED_IP" = "$EXPECTED_IP" ]; then
+                if [ "$RESOLVED_TARGET" = "$EXPECTED_TARGET" ]; then
                   echo "DNS propagation verified"
 
                   # Also verify the endpoint is actually responding
