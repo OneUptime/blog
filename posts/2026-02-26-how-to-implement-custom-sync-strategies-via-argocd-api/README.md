@@ -14,7 +14,7 @@ ArgoCD's REST API gives you granular control over the sync process, allowing you
 
 ## Understanding ArgoCD's Sync Process
 
-A standard ArgoCD sync applies all out-of-sync resources according to sync waves and hooks. When you trigger a sync through the API, you can control exactly which resources are synced, what strategy is used, and what options are applied.
+A standard ArgoCD sync applies the desired manifests according to sync waves and hooks. When you trigger a sync through the API, you can control exactly which resources are synced, what strategy is used, and what options are applied.
 
 ```mermaid
 flowchart TD
@@ -32,6 +32,8 @@ flowchart TD
 ## Selective Resource Sync
 
 The most basic custom strategy is syncing specific resources rather than everything at once. This is useful when you want to roll out changes incrementally.
+
+Keep in mind that ArgoCD selective sync operations are not recorded in application history, and resource hooks do not run during selective sync.
 
 ```bash
 # Sync only the ConfigMap and then the Deployment separately
@@ -155,13 +157,18 @@ def check_metrics(app_name, duration=120):
     time.sleep(duration)
 
     # Query error rate
-    query = f'rate(http_requests_total{{app="{app_name}",status=~"5.."}}[2m]) / rate(http_requests_total{{app="{app_name}"}}[2m])'
+    query = f'sum(rate(http_requests_total{{app="{app_name}",status=~"5.."}}[2m])) / sum(rate(http_requests_total{{app="{app_name}"}}[2m]))'
     resp = requests.get(
         f'{PROMETHEUS_URL}/api/v1/query',
         params={'query': query},
         timeout=30
     )
+    resp.raise_for_status()
     result = resp.json()
+
+    if result.get('status') != 'success':
+        print(f'ERROR: Prometheus query failed: {result.get("error", "unknown error")}')
+        return False
 
     if result.get('data', {}).get('result'):
         error_rate = float(result['data']['result'][0]['value'][1])
@@ -219,6 +226,8 @@ def canary_sync(app_name, canary_resources, full_resources):
                 'revision': prev_revision,
                 'resources': canary_resources
             })
+        else:
+            print('No previous full sync revision found for canary restore')
         return False
 
     # Step 4: Full rollout
@@ -268,37 +277,35 @@ def blue_green_sync(app_name_blue, app_name_green, service_app_name):
     Assumes blue and green are separate ArgoCD apps, and a third app
     manages the Service/Ingress that routes traffic.
     """
-    # Determine which environment is currently active
     service_app = argocd_api('GET', f'/api/v1/applications/{service_app_name}')
-    # Check which backend the service currently points to
-    # (This would depend on your specific setup)
+    active = detect_active_environment(service_app)
+    inactive_app = app_name_green if active == 'blue' else app_name_blue
 
-    print(f'Current active: blue, deploying to: green')
-    inactive_app = app_name_green
+    print(f'Current active: {active}, deploying to: {"green" if active == "blue" else "blue"}')
 
     # Step 1: Sync the inactive environment
-    print('Syncing green environment...')
+    print(f'Syncing {"green" if active == "blue" else "blue"} environment...')
     argocd_api('POST', f'/api/v1/applications/{inactive_app}/sync', {
         'prune': True,
         'strategy': {'apply': {'force': False}}
     })
 
     if not wait_for_sync(inactive_app):
-        print('Green sync failed')
+        print('Inactive environment sync failed')
         return False
 
     if not wait_for_healthy(inactive_app, timeout=300):
-        print('Green environment is not healthy')
+        print('Inactive environment is not healthy')
         return False
 
-    # Step 2: Run smoke tests against green
-    print('Running smoke tests against green...')
+    # Step 2: Run smoke tests against the inactive environment
+    print('Running smoke tests against the inactive environment...')
     if not run_smoke_tests(inactive_app):
-        print('Smoke tests failed, keeping blue active')
+        print(f'Smoke tests failed, keeping {active} active')
         return False
 
-    # Step 3: Switch traffic to green
-    print('Switching traffic to green...')
+    # Step 3: Switch traffic to the validated environment
+    print('Switching traffic to the validated environment...')
     argocd_api('POST', f'/api/v1/applications/{service_app_name}/sync', {
         'prune': True
     })
@@ -307,8 +314,18 @@ def blue_green_sync(app_name_blue, app_name_green, service_app_name):
         print('Service switch failed')
         return False
 
-    print('Blue-green deployment complete, green is now active')
+    print('Blue-green deployment complete')
     return True
+
+
+def detect_active_environment(service_app):
+    """Detect the active environment from the routing application.
+
+    This placeholder assumes the routing app exposes an active-environment
+    annotation. Adapt it to match your Service, Ingress, or Gateway setup.
+    """
+    annotations = service_app.get('metadata', {}).get('annotations', {})
+    return annotations.get('example.com/active-environment', 'blue')
 
 
 def run_smoke_tests(app_name):
