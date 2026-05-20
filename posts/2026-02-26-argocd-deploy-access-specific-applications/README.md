@@ -17,11 +17,11 @@ This guide walks through the exact RBAC configuration to grant deploy access to 
 Deploying an application in ArgoCD involves several actions:
 
 - **sync** - Trigger a sync operation to apply changes from Git to the cluster
-- **action** - Perform resource actions like restarting a deployment or scaling replicas
-- **override** - Override application parameters during sync
+- **action/\*** - Perform resource actions like restarting a deployment
+- **override** - Allow an override sync with local manifests, and in newer configurations optionally different revisions
 - **get** - View the application (required to see what you are deploying)
 
-A typical deploy role includes all of these. You might also want to include `logs` access so deployers can check pod logs after deployment.
+A typical deploy role includes `get` and `sync`, and sometimes `action/*`. Grant `override` only when the user really needs it because it can deploy manifests that differ from the configured Git source. You might also want to include `logs` access so deployers can check pod logs after deployment.
 
 ## Granting Sync Access to a Single Application
 
@@ -38,7 +38,7 @@ data:
     # Grant deploy access to a specific application
     p, role:web-deployer, applications, get, frontend/web-app, allow
     p, role:web-deployer, applications, sync, frontend/web-app, allow
-    p, role:web-deployer, applications, action, frontend/web-app, allow
+    p, role:web-deployer, applications, action/*, frontend/web-app, allow
     p, role:web-deployer, logs, get, frontend/web-app, allow
 
     # Assign a user to this role
@@ -64,9 +64,9 @@ policy.csv: |
   p, role:frontend-deployer, applications, sync, frontend/admin-portal, allow
   p, role:frontend-deployer, applications, sync, frontend/marketing-site, allow
 
-  p, role:frontend-deployer, applications, action, frontend/web-app, allow
-  p, role:frontend-deployer, applications, action, frontend/admin-portal, allow
-  p, role:frontend-deployer, applications, action, frontend/marketing-site, allow
+  p, role:frontend-deployer, applications, action/*, frontend/web-app, allow
+  p, role:frontend-deployer, applications, action/*, frontend/admin-portal, allow
+  p, role:frontend-deployer, applications, action/*, frontend/marketing-site, allow
 
   p, role:frontend-deployer, logs, get, frontend/*, allow
 
@@ -84,12 +84,12 @@ policy.csv: |
   # Deploy any app starting with "staging-" in the myproject project
   p, role:staging-deployer, applications, get, myproject/staging-*, allow
   p, role:staging-deployer, applications, sync, myproject/staging-*, allow
-  p, role:staging-deployer, applications, action, myproject/staging-*, allow
+  p, role:staging-deployer, applications, action/*, myproject/staging-*, allow
 
   # Deploy any app in the frontend project
   p, role:frontend-deployer, applications, get, frontend/*, allow
   p, role:frontend-deployer, applications, sync, frontend/*, allow
-  p, role:frontend-deployer, applications, action, frontend/*, allow
+  p, role:frontend-deployer, applications, action/*, frontend/*, allow
 ```
 
 Naming conventions like `staging-web-app`, `staging-api`, `prod-web-app`, `prod-api` make wildcard RBAC policies much cleaner.
@@ -106,11 +106,11 @@ policy.csv: |
 
   # Frontend team can additionally deploy frontend apps
   p, role:frontend-deployer, applications, sync, frontend/*, allow
-  p, role:frontend-deployer, applications, action, frontend/*, allow
+  p, role:frontend-deployer, applications, action/*, frontend/*, allow
 
   # Backend team can additionally deploy backend apps
   p, role:backend-deployer, applications, sync, backend/*, allow
-  p, role:backend-deployer, applications, action, backend/*, allow
+  p, role:backend-deployer, applications, action/*, backend/*, allow
 
   # Assign both roles to teams
   g, team-frontend, role:viewer
@@ -127,15 +127,14 @@ This way, everyone has visibility into the whole system, but only the responsibl
 
 ## Deploy Access Without Delete Permission
 
-A common requirement is allowing syncs but preventing application deletion. Use explicit deny rules:
+A common requirement is allowing syncs but preventing application deletion. Use explicit deny rules when the same role might inherit broader application permissions:
 
 ```yaml
 policy.csv: |
-  # Allow all app operations within the project
+  # Allow deploy-related app operations within the project
   p, role:safe-deployer, applications, get, myproject/*, allow
   p, role:safe-deployer, applications, sync, myproject/*, allow
-  p, role:safe-deployer, applications, action, myproject/*, allow
-  p, role:safe-deployer, applications, override, myproject/*, allow
+  p, role:safe-deployer, applications, action/*, myproject/*, allow
   p, role:safe-deployer, logs, get, myproject/*, allow
 
   # Explicitly deny create and delete
@@ -181,7 +180,7 @@ Use this token in your CI pipeline to trigger syncs:
 
 ```bash
 # In your CI pipeline
-argocd app sync production/api-service --auth-token $ARGOCD_TOKEN
+argocd app sync api-service --auth-token $ARGOCD_TOKEN
 ```
 
 ## Environment-Based Deploy Access
@@ -193,12 +192,12 @@ policy.csv: |
   # Developers can deploy to staging
   p, role:dev-deployer, applications, get, */*, allow
   p, role:dev-deployer, applications, sync, staging/*, allow
-  p, role:dev-deployer, applications, action, staging/*, allow
+  p, role:dev-deployer, applications, action/*, staging/*, allow
 
   # Release managers can deploy to production
   p, role:release-manager, applications, get, */*, allow
   p, role:release-manager, applications, sync, production/*, allow
-  p, role:release-manager, applications, action, production/*, allow
+  p, role:release-manager, applications, action/*, production/*, allow
 
   g, developers, role:dev-deployer
   g, release-managers, role:release-manager
@@ -229,4 +228,4 @@ argocd admin settings rbac can role:frontend-deployer sync applications 'backend
 
 ## Summary
 
-Granting deploy access to specific applications in ArgoCD comes down to writing precise RBAC policies with the correct `<project>/<application>` patterns. Use exact application names for maximum restriction, glob patterns for team-level access, and always combine deploy access with explicit deny rules for dangerous operations like delete. Test every policy with `argocd admin settings rbac can` before applying it to your cluster.
+Granting deploy access to specific applications in ArgoCD comes down to writing precise RBAC policies with the correct `<project>/<application>` patterns. Use exact application names for maximum restriction, glob patterns for team-level access, and explicit deny rules for dangerous operations like delete when a role might otherwise inherit those permissions. Test every policy with `argocd admin settings rbac can` before applying it to your cluster.
