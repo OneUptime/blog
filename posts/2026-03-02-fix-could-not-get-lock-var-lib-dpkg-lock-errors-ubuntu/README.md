@@ -39,12 +39,14 @@ ps aux | grep -E '(apt|dpkg)' | grep -v grep
 
 # A more targeted check
 pgrep -a apt
+pgrep -a apt-get
 pgrep -a dpkg
+pgrep -af '/usr/bin/[u]nattended-upgrade|/usr/share/[u]nattended-upgrades'
 ```
 
 If you see active processes, wait for them to finish. Common culprits include:
 
-- **Automatic updates**: Ubuntu's unattended-upgrades daemon runs in the background
+- **Automatic updates**: Ubuntu's unattended-upgrades process runs periodically in the background
 - **Software Updater GUI**: If someone opened the graphical updater
 - **Another terminal session**: A colleague or script running apt on the same machine
 
@@ -65,7 +67,7 @@ If `unattended-upgrades` is running, the safest approach is to wait for it to co
 
 ```bash
 # Watch the process and wait for it to finish
-watch -n 5 'pgrep -a apt || echo "APT process finished"'
+watch -n 5 'pgrep -a apt || pgrep -a apt-get || pgrep -a dpkg || pgrep -af "/usr/bin/[u]nattended-upgrade|/usr/share/[u]nattended-upgrades" || echo "Package process finished"'
 ```
 
 Automatic security updates can take several minutes, especially on a system that hasn't been updated recently. Killing these processes mid-operation can leave the package database in an inconsistent state.
@@ -75,7 +77,10 @@ Automatic security updates can take several minutes, especially on a system that
 If the process appears hung or you confirmed no legitimate process is running, you can kill it:
 
 ```bash
-# Find the PID from lsof output and kill it
+# Find the PID from lsof output and ask it to stop
+sudo kill <PID>
+
+# If it still will not exit after a short wait, force it
 sudo kill -9 <PID>
 
 # Or kill all apt/dpkg processes
@@ -115,26 +120,26 @@ sudo apt update
 Sometimes the lock issue accompanies a corrupted package state. If `dpkg --configure -a` throws errors, try:
 
 ```bash
-# Force all packages to be unconfigured and reconfigured
+# Configure any unpacked but not-yet-configured packages
 sudo dpkg --configure --pending
 
-# If you get errors about specific packages
+# If you get broken dependency errors
 sudo apt install -f
 
-# Nuclear option: force-overwrite if packages conflict
-sudo dpkg --force-overwrite --configure -a
+# Check for packages left in a broken state
+sudo dpkg --audit
 ```
 
 ## Handling the Snap Store Process
 
-On Ubuntu 20.04 and later, the Snap store daemon can also trigger lock conflicts. Check if it's the culprit:
+On Ubuntu 20.04 and later, Ubuntu Software / Snap Store can also be involved in package operations. Check if it's the culprit:
 
 ```bash
-# Check for snap-related processes holding the lock
-snap refresh --list
+# Check for GUI software-store processes
+pgrep -af '[s]nap-store|[g]nome-software|[p]ackagekitd'
 
-# The snap daemon can trigger apt calls periodically
-systemctl status snapd
+# See exactly what is holding the lock
+sudo lsof /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock
 ```
 
 ## Preventing This in Scripts
@@ -149,8 +154,8 @@ wait_for_apt() {
     local max_wait=300  # Maximum wait time in seconds
     local waited=0
 
-    while fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
-          /var/cache/apt/archives/lock >/dev/null 2>&1; do
+    while sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+          /var/cache/apt/archives/lock /var/lib/apt/lists/lock >/dev/null 2>&1; do
         if [ "$waited" -ge "$max_wait" ]; then
             echo "Timeout waiting for apt lock. Exiting."
             exit 1
@@ -176,13 +181,14 @@ Ubuntu's systemd journal can help you trace what triggered the lock in the first
 
 ```bash
 # Check recent apt-related activity
-sudo journalctl -u unattended-upgrades --since "1 hour ago"
+sudo journalctl -u apt-daily.service -u apt-daily-upgrade.service --since "1 hour ago"
 
-# Check for dpkg activity
-sudo journalctl -t dpkg --since "1 hour ago"
+# Check apt history and terminal logs
+sudo tail -50 /var/log/apt/history.log
+sudo tail -50 /var/log/apt/term.log
 
-# Check all package management activity
-sudo grep -i "apt\|dpkg\|unattended" /var/log/syslog | tail -50
+# Check dpkg activity
+sudo tail -50 /var/log/dpkg.log
 ```
 
 ## Summary
