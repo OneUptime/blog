@@ -8,7 +8,7 @@ Description: Learn how to change the ArgoCD admin password using the CLI, kubect
 
 ---
 
-The first thing you should do after installing ArgoCD is change the admin password. The initial password is randomly generated and stored in a Kubernetes Secret that anyone with cluster access can read. Changing it to a strong, known password - and then deleting the initial secret - is a basic security step that many teams skip.
+The first thing you should do after installing ArgoCD is change the admin password. The initial password is randomly generated and stored in a Kubernetes Secret that anyone with permission to read secrets in the ArgoCD namespace can read. Changing it to a strong, known password - and then deleting the initial secret - is a basic security step that many teams skip.
 
 This guide covers multiple methods for changing the password, automating password rotation, and best practices for admin account security.
 
@@ -223,7 +223,8 @@ spec:
           serviceAccountName: argocd-password-rotator
           containers:
           - name: rotator
-            image: bitnami/kubectl:latest
+            # Build this image with kubectl, bash, openssl, Python, and the Python bcrypt package.
+            image: your-registry/argocd-password-rotator:latest
             command:
             - /bin/bash
             - -c
@@ -306,7 +307,7 @@ argocd login localhost:8080 --username admin --password '<new-password>' --insec
 
 ### bcrypt Hash Format Issues
 
-ArgoCD expects `$2a$` prefixed bcrypt hashes. Some tools generate `$2y$` or `$2b$` prefixes. Convert them:
+ArgoCD examples and Helm chart values commonly use `$2a$` prefixed bcrypt hashes. Some tools, including `htpasswd`, may generate `$2y$` prefixes. Convert them:
 
 ```bash
 # Replace $2y$ with $2a$ (they are functionally identical)
