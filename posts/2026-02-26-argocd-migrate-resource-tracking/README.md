@@ -26,7 +26,7 @@ flowchart TD
     F --> E
 ```
 
-The migration steps ensure that resources get the new tracking metadata before ArgoCD starts relying on it.
+The migration steps minimize the time between changing the tracking method and syncing the applications so ArgoCD can apply the new tracking metadata quickly.
 
 ## Pre-Migration Checklist
 
@@ -67,7 +67,7 @@ done > /tmp/resource-counts-before.txt
 
 ## Migration Path: Label to Annotation+Label
 
-This is the most common migration and the safest. The `annotation+label` method still sets the label, so existing label-based tracking continues to work while the annotation is being added.
+This is the most common migration and the safest destination when other tools still need the instance label. The `annotation+label` method still sets the label for compatibility, but ArgoCD uses the `argocd.argoproj.io/tracking-id` annotation for tracking.
 
 ### Step 1: Change the Tracking Method
 
@@ -146,7 +146,7 @@ Follow the label to annotation+label migration above. This gets the annotations 
 ```bash
 # Confirm all resources have the tracking annotation
 for app in $(argocd app list -o name); do
-  MISSING=$(argocd app resources "$app" -o json | jq '[.[] | select(.health.status == "Missing")] | length')
+  MISSING=$(argocd app get "$app" -o json | jq '[.status.resources[]? | select(.health.status == "Missing")] | length')
   if [ "$MISSING" -gt 0 ]; then
     echo "WARNING: $app has $MISSING missing resources"
   else
@@ -229,7 +229,7 @@ If a resource appears to belong to two applications:
 # Check the tracking metadata
 kubectl get deployment my-deployment -o yaml | grep -A 3 "annotations"
 
-# The tracking-id annotation shows the actual owner
+# With annotation-based tracking, the tracking-id annotation shows the actual owner
 # If wrong, sync the correct application with --force
 argocd app sync correct-app --force
 ```
