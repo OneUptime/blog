@@ -134,9 +134,11 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
-The `ignoreDifferences` configuration tells ArgoCD to not compare the `replicas` field between Git and the live cluster. The HPA can adjust replicas freely without triggering an OutOfSync status.
+The `ignoreDifferences` configuration tells ArgoCD to not compare the `replicas` field between Git and the live cluster. The `RespectIgnoreDifferences=true` sync option also tells ArgoCD to respect that ignored field during sync, so the HPA can adjust replicas freely without triggering an OutOfSync status or being overwritten by a later sync.
 
 ## Solution 3: Server-Side Diff with Ignore
 
@@ -155,9 +157,12 @@ spec:
       kind: Deployment
       managedFieldsManagers:
         - kube-controller-manager  # HPA changes come through this manager
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
-This approach ignores any field changes made by the kube-controller-manager (which is what modifies replicas on behalf of the HPA), while still tracking changes made by other controllers.
+This approach ignores field changes owned by the kube-controller-manager (which is what modifies replicas on behalf of the HPA), while still tracking changes made by other managers. This is broader than ignoring only `/spec/replicas`, so use it when you are comfortable ignoring kube-controller-manager-owned fields for these Deployments.
 
 ## Kustomize Configuration for HPA
 
@@ -302,7 +307,7 @@ data:
 
 ## Health Check for HPA Resources
 
-Add a custom health check so ArgoCD correctly reports HPA health:
+ArgoCD has a built-in HPA health check. If you need to override it for your environment, add a custom health check:
 
 ```yaml
 # In argocd-cm ConfigMap
@@ -330,10 +335,9 @@ resource.customizations.health.autoscaling_HorizontalPodAutoscaler: |
 
     if obj.status.currentReplicas ~= nil then
       hs.status = "Healthy"
-      hs.message = string.format("Current replicas: %d (min: %d, max: %d)",
-        obj.status.currentReplicas,
-        obj.spec.minReplicas or 1,
-        obj.spec.maxReplicas)
+      hs.message = "Current replicas: " .. obj.status.currentReplicas ..
+        " (min: " .. (obj.spec.minReplicas or 1) ..
+        ", max: " .. obj.spec.maxReplicas .. ")"
     else
       hs.status = "Progressing"
       hs.message = "Waiting for HPA to report current replicas"
