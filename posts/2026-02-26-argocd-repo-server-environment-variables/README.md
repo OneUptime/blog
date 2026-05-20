@@ -101,8 +101,8 @@ kubectl logs -n argocd deployment/argocd-repo-server | grep -i "queue\|waiting"
 
 ```yaml
 data:
-  # Timeout for Git operations in seconds (default: 90)
-  reposerver.git.request.timeout: "120"
+  # Timeout for Git HTTP requests (default: 15s)
+  reposerver.git.request.timeout: "120s"
 ```
 
 Increase this for large repositories or slow network connections.
@@ -116,22 +116,36 @@ env:
     value: "3"
 ```
 
-### Git Credential Caching
+### Git Repository Credentials
 
 ```yaml
-env:
-  # Cache Git credentials in memory
-  - name: GIT_CREDENTIAL_CACHE_TIMEOUT
-    value: "3600"    # Cache for 1 hour
+apiVersion: v1
+kind: Secret
+metadata:
+  name: private-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: https://github.com/example/private-repo.git
+  username: git
+  password: token
 ```
 
 ### Git LFS Support
 
 ```yaml
-env:
-  # Enable Git LFS
-  - name: ARGOCD_GIT_LFS_ENABLED
-    value: "true"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: private-repo
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+stringData:
+  url: https://github.com/example/private-repo.git
+  # Enable Git LFS for this repository
+  enableLfs: "true"
 ```
 
 ## Logging Configuration
@@ -159,8 +173,15 @@ Controls the timeout for config management tool execution (Helm template, kustom
 
 ```yaml
 data:
-  # Timeout for tool execution in seconds (default: 90)
-  reposerver.exec.timeout: "180"
+  # Repo server RPC timeout for controller requests (default: 60)
+  controller.repo.server.timeout.seconds: "180"
+```
+
+```yaml
+env:
+  # Timeout for tool execution (default: 90s)
+  - name: ARGOCD_EXEC_TIMEOUT
+    value: "180s"
 ```
 
 Increase this if you have:
@@ -175,45 +196,55 @@ data:
   # Disable TLS on the repo server (when using service mesh or internal network)
   reposerver.disable.tls: "false"
 
-  # TLS certificate files
-  reposerver.tls.cert: "/app/config/reposerver/tls/tls.crt"
-  reposerver.tls.key: "/app/config/reposerver/tls/tls.key"
+  # TLS protocol settings
+  reposerver.tls.minversion: "1.2"
+  reposerver.tls.maxversion: "1.3"
+  reposerver.tls.ciphers: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384"
 ```
 
 ## Custom Environment Variables for Plugins
 
-Pass custom environment variables that Config Management Plugins can access:
+Pass custom environment variables through the Application spec. Argo CD prefixes user-supplied plugin variables with `ARGOCD_ENV_` before plugin commands receive them:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: argocd-repo-server
+  name: example-plugin-app
   namespace: argocd
 spec:
-  template:
-    spec:
-      containers:
-        - name: argocd-repo-server
-          env:
-            # Custom variables for plugins (must start with ARGOCD_ENV_)
-            - name: ARGOCD_ENV_CLUSTER_NAME
-              value: "production-east"
-            - name: ARGOCD_ENV_REGION
-              value: "us-east-1"
-            - name: ARGOCD_ENV_REGISTRY_URL
-              value: "123456789.dkr.ecr.us-east-1.amazonaws.com"
-
-            # Variables for Helm plugins
-            - name: HELM_CACHE_HOME
-              value: "/tmp/helm-cache"
-            - name: HELM_CONFIG_HOME
-              value: "/tmp/helm-config"
-            - name: HELM_DATA_HOME
-              value: "/tmp/helm-data"
+  project: default
+  source:
+    repoURL: https://github.com/example/config.git
+    targetRevision: HEAD
+    path: app
+    plugin:
+      env:
+        # Plugin receives these as ARGOCD_ENV_CLUSTER_NAME, ARGOCD_ENV_REGION, and ARGOCD_ENV_REGISTRY_URL
+        - name: CLUSTER_NAME
+          value: "production-east"
+        - name: REGION
+          value: "us-east-1"
+        - name: REGISTRY_URL
+          value: "123456789.dkr.ecr.us-east-1.amazonaws.com"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
 ```
 
-The `ARGOCD_ENV_` prefixed variables are available to all config management tools during manifest generation. See [How to Use Build Environment in Custom Plugins](https://oneuptime.com/blog/post/2026-02-26-argocd-build-environment-custom-plugins/view) for detailed usage.
+For Helm plugins or built-in Helm rendering, set Helm environment variables on the repo server container:
+
+```yaml
+env:
+  - name: HELM_CACHE_HOME
+    value: "/tmp/helm-cache"
+  - name: HELM_CONFIG_HOME
+    value: "/tmp/helm-config"
+  - name: HELM_DATA_HOME
+    value: "/tmp/helm-data"
+```
+
+The `ARGOCD_ENV_` prefixed variables are available to the plugin during manifest generation. See [How to Use Build Environment in Custom Plugins](https://oneuptime.com/blog/post/2026-02-26-argocd-build-environment-custom-plugins/view) for detailed usage.
 
 ## Proxy Configuration
 
@@ -307,8 +338,8 @@ data:
   reposerver.parallelism.limit: "20"
 
   # Timeouts
-  reposerver.exec.timeout: "180"
-  reposerver.git.request.timeout: "120"
+  controller.repo.server.timeout.seconds: "180"
+  reposerver.git.request.timeout: "120s"
 ```
 
 ```yaml
@@ -332,6 +363,8 @@ spec:
           env:
             - name: ARGOCD_GIT_ATTEMPTS_COUNT
               value: "3"
+            - name: ARGOCD_EXEC_TIMEOUT
+              value: "180s"
             - name: ARGOCD_ENV_CLUSTER_NAME
               value: "production"
             - name: HELM_CACHE_HOME
@@ -347,26 +380,25 @@ spec:
 Key metrics to watch:
 
 ```promql
-# Manifest generation duration
-argocd_repo_server_manifest_generation_duration_seconds
+# Git request duration
+argocd_git_request_duration_seconds
 
-# Git fetch duration
-argocd_repo_server_git_request_duration_seconds
+# Git request count
+argocd_git_request_total
 
-# Active manifest generation requests
-argocd_repo_server_active_manifests_requests
+# Requests waiting on repository locks
+argocd_repo_pending_request_total
 
-# Cache hits vs misses
-argocd_repo_server_cache_hit_total
-argocd_repo_server_cache_miss_total
+# Parallelism wait duration
+argocd_repo_parallelism_wait_duration_seconds
 ```
 
 ```bash
 # Check repo server resource usage
 kubectl top pods -n argocd -l app.kubernetes.io/name=argocd-repo-server
 
-# Check for OOMKilled events
-kubectl get events -n argocd --field-selector reason=OOMKilled
+# Check for OOMKilled containers
+kubectl describe pods -n argocd -l app.kubernetes.io/name=argocd-repo-server | grep -i OOMKilled
 
 # View repo server logs for errors
 kubectl logs -n argocd deployment/argocd-repo-server --tail=100
