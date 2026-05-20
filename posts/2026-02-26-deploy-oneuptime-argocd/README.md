@@ -10,7 +10,7 @@ Description: Learn how to deploy OneUptime - the open-source observability platf
 
 OneUptime is an open-source, complete observability platform that provides monitoring, incident management, status pages, on-call management, and more in a single unified tool. Deploying OneUptime with ArgoCD lets you manage your entire observability infrastructure as code, with automated syncing, drift detection, and version-controlled configuration.
 
-This guide covers deploying OneUptime on Kubernetes using its official Helm chart through ArgoCD, including database configuration, ingress setup, and production hardening.
+This guide covers deploying OneUptime on Kubernetes using its official Helm chart through ArgoCD, including database configuration, gateway setup, and production hardening.
 
 ## What OneUptime Provides
 
@@ -35,7 +35,7 @@ Before deploying OneUptime with ArgoCD, ensure you have:
 - ArgoCD installed and configured
 - A Git repository for your manifests
 - A domain name configured for OneUptime access
-- TLS certificates (or cert-manager for automatic provisioning)
+- TLS certificates or the chart's built-in Let's Encrypt provisioning
 
 ## Repository Structure
 
@@ -61,7 +61,7 @@ type: application
 version: 1.0.0
 dependencies:
   - name: oneuptime
-    version: "7.0.0"
+    version: "10.4.10"
     repository: "https://helm-chart.oneuptime.com"
 ```
 
@@ -71,11 +71,14 @@ dependencies:
 # observability/oneuptime/values.yaml
 oneuptime:
   # Global settings
+  host: oneuptime.example.com
+  httpProtocol: https
+
   global:
-    # Your domain for accessing OneUptime
-    host: oneuptime.example.com
-    # HTTP protocol
-    httpProtocol: https
+    storageClass: gp3
+
+  ssl:
+    provision: true
 
   # Deployment configuration
   deployment:
@@ -86,14 +89,11 @@ oneuptime:
   postgresql:
     enabled: true
     auth:
-      existingSecret: oneuptime-postgresql-credentials
-      secretKeys:
-        adminPasswordKey: postgres-password
+      postgresPassword: ""
     primary:
       persistence:
         enabled: true
         size: 50Gi
-        storageClass: gp3
       resources:
         requests:
           cpu: 500m
@@ -105,21 +105,24 @@ oneuptime:
   redis:
     enabled: true
     auth:
-      existingSecret: oneuptime-redis-credentials
-      existingSecretPasswordKey: redis-password
+      existingSecret:
+        name: oneuptime-redis-credentials
+        passwordKey: redis-password
     master:
       persistence:
         enabled: true
         size: 10Gi
-        storageClass: gp3
 
   # ClickHouse for logs, traces, and metrics
   clickhouse:
     enabled: true
+    auth:
+      existingSecret:
+        name: oneuptime-clickhouse-credentials
+        passwordKey: clickhouse-password
     persistence:
       enabled: true
       size: 100Gi
-      storageClass: gp3
     resources:
       requests:
         cpu: 1
@@ -127,24 +130,10 @@ oneuptime:
       limits:
         memory: 8Gi
 
-  # Ingress configuration
-  ingress:
-    enabled: true
-    className: nginx
-    annotations:
-      cert-manager.io/cluster-issuer: letsencrypt-prod
-      nginx.ingress.kubernetes.io/proxy-body-size: "50m"
-      nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
-      nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
-    hosts:
-      - host: oneuptime.example.com
-        paths:
-          - path: /
-            pathType: Prefix
-    tls:
-      - secretName: oneuptime-tls
-        hosts:
-          - oneuptime.example.com
+  # OneUptime ships its own nginx gateway instead of creating Kubernetes Ingress objects.
+  nginx:
+    service:
+      type: LoadBalancer
 ```
 
 ## Production Configuration
@@ -225,22 +214,6 @@ spec:
 Never store database passwords or API keys in plain text. Use Sealed Secrets or an external secrets operator.
 
 ```yaml
-# Sealed Secret for PostgreSQL credentials
-apiVersion: bitnami.com/v1alpha1
-kind: SealedSecret
-metadata:
-  name: oneuptime-postgresql-credentials
-  namespace: oneuptime
-spec:
-  encryptedData:
-    postgres-password: AgBy3i4OJSWK+PiTySYZZA9r...
-  template:
-    metadata:
-      name: oneuptime-postgresql-credentials
-      namespace: oneuptime
-```
-
-```yaml
 # Sealed Secret for Redis credentials
 apiVersion: bitnami.com/v1alpha1
 kind: SealedSecret
@@ -253,6 +226,22 @@ spec:
   template:
     metadata:
       name: oneuptime-redis-credentials
+      namespace: oneuptime
+```
+
+```yaml
+# Sealed Secret for ClickHouse credentials
+apiVersion: bitnami.com/v1alpha1
+kind: SealedSecret
+metadata:
+  name: oneuptime-clickhouse-credentials
+  namespace: oneuptime
+spec:
+  encryptedData:
+    clickhouse-password: AgBy3i4OJSWK+PiTySYZZA9r...
+  template:
+    metadata:
+      name: oneuptime-clickhouse-credentials
       namespace: oneuptime
 ```
 
@@ -311,11 +300,11 @@ spec:
 
     exporters:
       otlp/oneuptime:
-        endpoint: oneuptime.oneuptime.svc.cluster.local:4317
+        endpoint: oneuptime-app.oneuptime.svc.cluster.local:4317
         tls:
           insecure: true
         headers:
-          x-oneuptime-service-token: "your-service-token"
+          x-oneuptime-token: "your-telemetry-ingestion-token"
 
     service:
       pipelines:
@@ -340,10 +329,10 @@ spec:
 kubectl get pods -n oneuptime
 
 # Check the database is running
-kubectl get pods -n oneuptime -l app.kubernetes.io/name=postgresql
+kubectl get pods -n oneuptime -l app=oneuptime-postgresql
 
-# Verify the ingress is configured
-kubectl get ingress -n oneuptime
+# Verify the nginx gateway service is configured
+kubectl get svc -n oneuptime oneuptime-nginx
 
 # Access the OneUptime dashboard
 # Navigate to https://oneuptime.example.com in your browser
@@ -377,4 +366,4 @@ spec:
 
 ## Summary
 
-Deploying OneUptime with ArgoCD gives you a complete observability platform - monitoring, incident management, status pages, logs, traces, and metrics - all managed through GitOps. The key considerations are properly sizing the database backends (PostgreSQL and ClickHouse), managing secrets securely, and configuring reliable ingress with TLS. With ArgoCD handling the deployment lifecycle, your observability platform becomes as auditable and reproducible as the applications it monitors.
+Deploying OneUptime with ArgoCD gives you a complete observability platform - monitoring, incident management, status pages, logs, traces, and metrics - all managed through GitOps. The key considerations are properly sizing the database backends (PostgreSQL and ClickHouse), managing secrets securely, and configuring a reliable nginx gateway with TLS. With ArgoCD handling the deployment lifecycle, your observability platform becomes as auditable and reproducible as the applications it monitors.
