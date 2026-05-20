@@ -8,7 +8,7 @@ Description: Learn how to write custom health check scripts in ArgoCD using Lua 
 
 ---
 
-ArgoCD ships with built-in health checks for standard Kubernetes resources like Deployments, StatefulSets, Services, and Ingresses. But when you use custom resources from operators - things like PostgreSQL clusters, Kafka topics, Istio VirtualServices, or any CRD - ArgoCD does not know how to determine their health. The resource will show as "Missing" or "Unknown" health status, which makes the overall application health unreliable.
+ArgoCD ships with built-in health checks for standard Kubernetes resources like Deployments, StatefulSets, Services, and Ingresses. But when you use custom resources from operators - things like PostgreSQL clusters, Kafka topics, Istio VirtualServices, or many CRDs - ArgoCD might not know how to determine their health unless a built-in or custom health check exists. The resource can show an "Unknown" health status, which makes the overall application health unreliable.
 
 Custom health checks solve this by letting you write Lua scripts that teach ArgoCD how to interpret the health of any resource type.
 
@@ -22,7 +22,7 @@ Custom health checks close this gap. They tell ArgoCD exactly how to interpret t
 
 ArgoCD uses Lua scripts for custom health checks. The script receives the resource object and must return a health status object with:
 
-- **status** - One of: `Healthy`, `Degraded`, `Progressing`, `Suspended`, `Missing`, `Unknown`
+- **status** - One of: `Healthy`, `Degraded`, `Progressing`, `Suspended`
 - **message** - A human-readable description of the health state
 
 ```mermaid
@@ -62,8 +62,8 @@ data:
         hs.status = "Degraded"
         hs.message = obj.status.message or "Rollout is degraded"
       else
-        hs.status = "Unknown"
-        hs.message = "Unknown phase: " .. tostring(obj.status.phase)
+        hs.status = "Progressing"
+        hs.message = "Waiting for rollout phase"
       end
     else
       hs.status = "Progressing"
@@ -91,10 +91,10 @@ data:
       elseif obj.status.PostgresClusterStatus == "CreateFailed" or
              obj.status.PostgresClusterStatus == "UpdateFailed" then
         hs.status = "Degraded"
-        hs.message = "PostgreSQL cluster failed: " .. tostring(obj.status.PostgresClusterStatus)
+        hs.message = "PostgreSQL cluster failed"
       else
-        hs.status = "Unknown"
-        hs.message = "Unknown status: " .. tostring(obj.status.PostgresClusterStatus)
+        hs.status = "Progressing"
+        hs.message = "Waiting for PostgreSQL cluster to become running"
       end
     else
       hs.status = "Progressing"
@@ -118,15 +118,16 @@ data:
             hs.status = "Healthy"
             hs.message = "Kafka cluster is ready"
             return hs
-          else
-            hs.status = "Degraded"
-            hs.message = condition.message or "Kafka cluster is not ready"
-            return hs
           end
         end
         if condition.type == "NotReady" and condition.status == "True" then
-          hs.status = "Progressing"
-          hs.message = condition.message or "Kafka cluster is starting"
+          if condition.reason == "Creating" then
+            hs.status = "Progressing"
+            hs.message = condition.message or "Kafka cluster is starting"
+          else
+            hs.status = "Degraded"
+            hs.message = condition.message or "Kafka cluster is not ready"
+          end
           return hs
         end
       end
@@ -173,6 +174,13 @@ data:
     if obj.status ~= nil then
       if obj.status.conditions ~= nil then
         for i, condition in ipairs(obj.status.conditions) do
+          if condition.type == "Issuing" and condition.status == "True" then
+            hs.status = "Progressing"
+            hs.message = condition.message or "Certificate is being issued"
+            return hs
+          end
+        end
+        for i, condition in ipairs(obj.status.conditions) do
           if condition.type == "Ready" then
             if condition.status == "True" then
               hs.status = "Healthy"
@@ -183,14 +191,8 @@ data:
               end
               return hs
             else
-              -- Check if it is being issued
-              if condition.reason == "Issuing" then
-                hs.status = "Progressing"
-                hs.message = "Certificate is being issued"
-              else
-                hs.status = "Degraded"
-                hs.message = condition.message or "Certificate is not ready"
-              end
+              hs.status = "Degraded"
+              hs.message = condition.message or "Certificate is not ready"
               return hs
             end
           end
@@ -246,16 +248,16 @@ data:
 
 ## Example 6: Prometheus ServiceMonitor
 
-ServiceMonitors do not have a status field, so we check for proper configuration.
+ServiceMonitors often do not have a populated status field, so we check for proper configuration.
 
 ```yaml
 data:
   resource.customizations.health.monitoring.coreos.com_ServiceMonitor: |
     hs = {}
-    -- ServiceMonitors don't have status, so check spec validity
+    -- ServiceMonitors often don't have status, so check spec validity
     if obj.spec ~= nil then
       if obj.spec.endpoints ~= nil and #obj.spec.endpoints > 0 then
-        if obj.spec.selector ~= nil and obj.spec.selector.matchLabels ~= nil then
+        if obj.spec.selector ~= nil then
           hs.status = "Healthy"
           hs.message = "ServiceMonitor configured with " ..
                        #obj.spec.endpoints .. " endpoint(s)"
@@ -273,7 +275,7 @@ data:
 
 ## Using the Alternative ConfigMap Format
 
-For better organization, you can use separate ConfigMap keys per resource type instead of putting everything in `argocd-cm`.
+For better organization, you can use the `resource.customizations` key in `argocd-cm`.
 
 ```yaml
 apiVersion: v1
@@ -282,14 +284,11 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Reference an external resource customization
   resource.customizations: |
-    - group: acid.zalan.do
-      kind: postgresql
+    acid.zalan.do/postgresql:
       health.lua: |
         -- health check script here
-    - group: kafka.strimzi.io
-      kind: Kafka
+    kafka.strimzi.io/Kafka:
       health.lua: |
         -- health check script here
 ```
@@ -348,10 +347,10 @@ If a health check is not working as expected, check the ArgoCD controller logs.
 
 ```bash
 # Check controller logs for health check errors
-kubectl logs -n argocd deployment/argocd-application-controller | grep -i "health"
+kubectl logs -n argocd statefulset/argocd-application-controller | grep -i "health"
 
 # Check for Lua script errors
-kubectl logs -n argocd deployment/argocd-application-controller | grep -i "lua"
+kubectl logs -n argocd statefulset/argocd-application-controller | grep -i "lua"
 ```
 
 Common issues include:
