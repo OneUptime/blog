@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, CLI, DevOps
 
-Description: Learn how to use the ArgoCD CLI to override application parameters for Helm, Kustomize, and plain manifests, including practical CI/CD integration patterns.
+Description: Learn how to use the ArgoCD CLI to override application parameters for Helm, Kustomize, and config management plugins, including practical CI/CD integration patterns.
 
 ---
 
-The ArgoCD CLI is the fastest way to make runtime adjustments to your applications. Whether you need to update an image tag after a CI build, change a Helm value for debugging, or override a Kustomize parameter for testing, the CLI gives you direct control without modifying your Git repository. This guide covers every parameter override command available in the ArgoCD CLI, with practical examples for each manifest type.
+The ArgoCD CLI is the fastest way to make runtime adjustments to your applications. Whether you need to update an image tag after a CI build, change a Helm value for debugging, or override a Kustomize parameter for testing, the CLI gives you direct control without modifying your Git repository. This guide covers common parameter override commands available in the ArgoCD CLI, with practical examples for common source types.
 
 ## Setting Up the CLI
 
@@ -32,7 +32,7 @@ export ARGOCD_OPTS="--grpc-web"
 
 ## Helm Parameter Overrides
 
-For Helm-based applications, you can override individual values, set entire values files, or change the Helm release name:
+For Helm-based applications, you can override individual values, add values file references, or change the Helm release name:
 
 ```bash
 # Override a single Helm value
@@ -77,8 +77,10 @@ argocd app set my-app --helm-set replicaCount=3
 argocd app set my-app --helm-set-string image.tag=1.0
 # Without --helm-set-string, "1.0" might be interpreted as a float
 
-# JSON array or complex value
-argocd app set my-app --helm-set-json 'ingress.hosts=[{"host":"example.com","paths":[{"path":"/"}]}]'
+# Array or object fields
+argocd app set my-app \
+  --helm-set ingress.hosts[0].host=example.com \
+  --helm-set ingress.hosts[0].paths[0].path=/
 ```
 
 ## Kustomize Parameter Overrides
@@ -102,10 +104,10 @@ argocd app set my-app \
 argocd app set my-app --kustomize-namespace production
 
 # Set a name prefix
-argocd app set my-app --kustomize-name-prefix "v2-"
+argocd app set my-app --nameprefix "v2-"
 
 # Set a name suffix
-argocd app set my-app --kustomize-name-suffix "-canary"
+argocd app set my-app --namesuffix "-canary"
 
 # Add common labels
 argocd app set my-app --kustomize-common-label "version=v2"
@@ -114,12 +116,12 @@ argocd app set my-app --kustomize-common-label "version=v2"
 argocd app set my-app --kustomize-common-annotation "deployed-by=ci-pipeline"
 ```
 
-## Plain Manifest Parameter Overrides
+## Config Management Plugin Parameter Overrides
 
-For applications using plain YAML manifests (directory of YAML files), you can use the `--plugin-env` flag to pass values that ArgoCD processes through its config management plugin:
+For applications using a config management plugin, you can use the `--plugin-env` flag to pass values that ArgoCD processes through the plugin:
 
 ```bash
-# Set parameters for config management plugins
+# Set environment variables for config management plugins
 argocd app set my-app --plugin-env ENV_NAME=value
 ```
 
@@ -156,12 +158,12 @@ To revert to the values defined in Git, unset the overrides:
 
 ```bash
 # Unset a specific Helm value
-argocd app unset my-app --helm-set image.tag
+argocd app unset my-app -p image.tag
 
 # Unset multiple Helm values
 argocd app unset my-app \
-  --helm-set image.tag \
-  --helm-set replicaCount
+  -p image.tag \
+  -p replicaCount
 
 # Unset a values file
 argocd app unset my-app --values environments/override-values.yaml
@@ -173,8 +175,8 @@ argocd app unset my-app --kustomize-image myregistry/my-app
 argocd app unset my-app --kustomize-namespace
 
 # Unset name prefix/suffix
-argocd app unset my-app --kustomize-name-prefix
-argocd app unset my-app --kustomize-name-suffix
+argocd app unset my-app --nameprefix
+argocd app unset my-app --namesuffix
 ```
 
 ## Applying Overrides and Syncing
@@ -226,9 +228,9 @@ jobs:
 
       - name: Install ArgoCD CLI
         run: |
-          curl -sSL -o /usr/local/bin/argocd \
+          sudo curl -sSL -o /usr/local/bin/argocd \
             https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-          chmod +x /usr/local/bin/argocd
+          sudo chmod +x /usr/local/bin/argocd
 
       - name: Deploy to staging
         env:
@@ -306,7 +308,7 @@ argocd app sync my-app-production
 
 # After the emergency, commit the change to Git
 # and remove the override to return to GitOps flow
-argocd app unset my-app-production --helm-set image.tag
+argocd app unset my-app-production -p image.tag
 ```
 
 ## Best Practices
