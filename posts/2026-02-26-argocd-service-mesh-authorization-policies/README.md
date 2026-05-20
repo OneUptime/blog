@@ -55,7 +55,7 @@ The deny-all policy for your production namespace:
 
 ```yaml
 # authz-policies/production/deny-all.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -71,7 +71,7 @@ Once deny-all is in place, add explicit allow policies for each communication pa
 
 ```yaml
 # authz-policies/production/api-gateway-policy.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-api-gateway-ingress
@@ -95,7 +95,7 @@ spec:
 
 ```yaml
 # authz-policies/production/user-service-policy.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-user-service
@@ -120,7 +120,7 @@ spec:
 
 ```yaml
 # authz-policies/production/payment-service-policy.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-payment-service
@@ -141,11 +141,8 @@ spec:
             methods: ["POST"]
             paths: ["/api/payments/*"]
             ports: ["8080"]
-    # Health checks from kubelet
-    - from:
-        - source:
-            namespaces: ["kube-system"]
-      to:
+    # Health checks
+    - to:
         - operation:
             methods: ["GET"]
             paths: ["/healthz", "/readyz"]
@@ -167,42 +164,44 @@ graph LR
     F -.->|DENY| E
 ```
 
-## Gradual Rollout with AUDIT Mode
+## Gradual Rollout with Dry Run
 
-Jumping straight to DENY can break things. Istio supports an AUDIT action that logs policy violations without blocking traffic. Use this for testing:
+Jumping straight to DENY can break things. Istio supports a dry-run annotation that evaluates an authorization policy without enforcing it. Use this for testing:
 
 ```yaml
-# authz-policies/staging/audit-deny-all.yaml
-apiVersion: security.istio.io/v1beta1
+# authz-policies/staging/dry-run-deny-all.yaml
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: audit-all
+  name: dry-run-deny-all
   namespace: staging
+  annotations:
+    "istio.io/dry-run": "true"
 spec:
-  action: AUDIT
+  action: DENY
   rules:
-    - {}  # Audit all traffic
+    - {}  # Evaluate deny-all without enforcing it
 ```
 
-After deploying in AUDIT mode, check the Envoy access logs for RBAC violations:
+After deploying the dry-run policy, check the Envoy proxy logs for shadow denials:
 
 ```bash
-# Check for denied requests in logs
-kubectl logs -n production -l app=payment-service -c istio-proxy | grep "rbac_access_denied"
+# Check for dry-run denials in logs
+kubectl logs -n staging -l app=payment-service -c istio-proxy | grep "shadow denied"
 ```
 
 Your rollout strategy through Git branches:
 
 ```mermaid
 graph TD
-    A[Phase 1: Deploy AUDIT Policies] --> B[Monitor for 48 Hours]
-    B --> C{Unexpected Denials?}
+    A[Phase 1: Deploy Dry-Run DENY Policies] --> B[Monitor for 48 Hours]
+    B --> C{Unexpected Shadow Denials?}
     C -->|Yes| D[Add Missing ALLOW Rules]
     D --> B
     C -->|No| E[Phase 2: Switch to DENY + ALLOW]
     E --> F[Monitor for 24 Hours]
     F --> G{Issues?}
-    G -->|Yes| H[Git Revert to AUDIT]
+    G -->|Yes| H[Git Revert to Dry Run]
     G -->|No| I[Policy is Stable]
 ```
 
@@ -212,7 +211,7 @@ Services often need to talk across namespaces. Be explicit about these paths:
 
 ```yaml
 # authz-policies/monitoring/allow-prometheus-scrape.yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-prometheus-scrape
@@ -247,7 +246,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "0"
 ---
 # Deploy ALLOW policies second
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-payment-service
@@ -255,7 +254,7 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 ---
 # Deploy DENY-ALL last
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -309,7 +308,7 @@ spec:
 
 ## Self-Heal for Security
 
-ArgoCD's self-heal feature is critical for authorization policies. If someone manually modifies a policy with kubectl, ArgoCD immediately reverts it:
+ArgoCD's self-heal feature is critical for authorization policies. If someone manually modifies a policy with kubectl, ArgoCD reverts it on reconciliation:
 
 ```yaml
 syncPolicy:
@@ -318,7 +317,7 @@ syncPolicy:
     prune: true     # Remove policies deleted from Git
 ```
 
-This means the only way to change authorization policies is through a Git commit, which requires a pull request review. This is exactly the workflow your security team wants.
+With Kubernetes RBAC limiting direct writes to these resources, this means the normal way to change authorization policies is through a Git commit, which requires a pull request review. This is exactly the workflow your security team wants.
 
 ## Emergency Override
 
@@ -327,7 +326,7 @@ For incident response, you may need to quickly open up traffic. Create an emerge
 ```bash
 # In an emergency, create a branch that relaxes policies
 git checkout -b emergency/open-payment-service
-# Modify the policy to PERMISSIVE
+# Modify the policy to add a temporary ALLOW rule
 git commit -m "EMERGENCY: Open payment service for debugging"
 git push origin emergency/open-payment-service
 
@@ -339,4 +338,4 @@ After the incident, switch back to main and the strict policies are automaticall
 
 ## Summary
 
-Authorization policies managed through ArgoCD give you a complete, auditable, and automatically-enforced security layer. Start with deny-all, add explicit allow policies for every service communication path, use AUDIT mode for safe rollout, and rely on ArgoCD's self-heal to prevent unauthorized changes. Your entire zero-trust posture lives in Git, exactly where your security team can review and approve it.
+Authorization policies managed through ArgoCD give you a complete, auditable, and automatically-enforced security layer. Start with deny-all, add explicit allow policies for every service communication path, use dry-run mode for safe rollout, and rely on ArgoCD's self-heal to prevent unauthorized changes. Your entire zero-trust posture lives in Git, exactly where your security team can review and approve it.
