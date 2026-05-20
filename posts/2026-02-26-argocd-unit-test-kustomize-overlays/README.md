@@ -120,7 +120,7 @@ for overlay in overlays/*/; do
 done
 ```
 
-## Method 3: Snapshot Testing with kustomize-assert
+## Method 3: Snapshot Testing with Golden Files
 
 Snapshot testing captures the expected output and compares future builds against it. This is like a "golden file" test:
 
@@ -197,14 +197,14 @@ Write policies specific to overlay requirements:
 package main
 
 # Production must have at least 3 replicas
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     input.spec.replicas < 3
     msg := sprintf("Production deployment '%s' must have at least 3 replicas, got %d", [input.metadata.name, input.spec.replicas])
 }
 
 # Production must have resource limits
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     not container.resources.limits
@@ -212,7 +212,7 @@ deny[msg] {
 }
 
 # Production images must not use 'latest' tag
-deny[msg] {
+deny contains msg if {
     input.kind == "Deployment"
     container := input.spec.template.spec.containers[_]
     endswith(container.image, ":latest")
@@ -284,7 +284,7 @@ kindNodeCache: true
 apiVersion: kuttl.dev/v1beta1
 kind: TestStep
 commands:
-  - command: kustomize build ../../overlays/production/ | kubectl apply -f -
+  - script: kustomize build ../../overlays/production/ | kubectl apply -f -
 ```
 
 ```yaml
@@ -325,6 +325,10 @@ jobs:
 
           # Install kubeconform
           curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz -C /usr/local/bin/
+
+          # Install conftest
+          LATEST_CONFTEST=$(curl -s https://api.github.com/repos/open-policy-agent/conftest/releases/latest | grep '"tag_name":' | sed -E 's/.*"v([^"]+)".*/\1/')
+          curl -L "https://github.com/open-policy-agent/conftest/releases/download/v${LATEST_CONFTEST}/conftest_${LATEST_CONFTEST}_Linux_x86_64.tar.gz" | tar xz -C /usr/local/bin/ conftest
 
       - name: Build all overlays
         run: |
