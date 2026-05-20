@@ -8,7 +8,7 @@ Description: Learn how to view, interpret, and use the ArgoCD sync history to au
 
 ---
 
-Every time ArgoCD syncs an application, it records the operation in the application's sync history. This history is your deployment audit trail - it tells you what was deployed, when, by whom, and whether it succeeded or failed. Understanding how to access and use sync history is essential for debugging, auditing, and rollback operations.
+Every time ArgoCD successfully syncs an application, it records the deployed revision in the application's revision history. This history is your deployment audit trail - it tells you what was deployed, when, and by whom. Understanding how to access and use sync history is essential for debugging, auditing, and rollback operations.
 
 ## What Gets Recorded in Sync History
 
@@ -17,10 +17,10 @@ Each sync history entry contains:
 - **Revision** - The Git commit SHA or Helm chart version that was synced
 - **Timestamp** - When the sync started and completed
 - **Initiated by** - Who or what triggered the sync (user, automated policy, or API)
-- **Status** - Whether the sync succeeded, failed, or is still running
-- **Duration** - How long the sync operation took
-- **Message** - Any error messages if the sync failed
-- **Sync options** - Which options were active during the sync (prune, dry-run, etc.)
+- **History ID** - The numeric identifier used for rollbacks
+- **Source details** - The Git or Helm source used for the sync
+
+The current or most recent operation state also includes status, messages, sync options, and per-resource sync results. Those details are exposed separately from the retained revision history.
 
 ## Viewing Sync History in the UI
 
@@ -28,7 +28,7 @@ Each sync history entry contains:
 
 1. Open your application in the ArgoCD UI
 2. Click the **History and Rollback** button (clock icon) in the application header
-3. The history panel shows a chronological list of all sync operations
+3. The history panel shows a chronological list of recorded deployed revisions
 
 Each entry in the history looks like:
 
@@ -37,8 +37,6 @@ Revision:   abc1234 (main)
 Date:       2026-02-26 10:30:00
 Author:     jane@example.com
 Message:    Update backend to v2.1.0
-Status:     Succeeded
-Duration:   15s
 Initiated:  automated (auto-sync)
 ```
 
@@ -46,10 +44,10 @@ Initiated:  automated (auto-sync)
 
 Click on any history entry to see more details:
 
-- **Resources synced** - List of resources that were created, updated, or deleted
-- **Sync result per resource** - Whether each resource was successfully applied
-- **Parameters** - Helm values or Kustomize parameters used during the sync
-- **Manifest diff** - What changed compared to the previous sync
+- **Revision metadata** - Commit author, date, and message when available
+- **Source details** - Repository, path, chart, and target revision
+- **Rollback action** - Option to sync the application back to that recorded revision
+- **Comparison options** - Depending on the ArgoCD version, links or actions to inspect differences from the current state
 
 ## Viewing Sync History via CLI
 
@@ -85,13 +83,17 @@ argocd app history my-app
 # View the operation details for the last sync
 argocd app get my-app --show-operation
 
-# View the resources that were part of the last sync
+# View application parameters and overrides
 argocd app get my-app --show-params
+
+# View resources that were part of the most recent operation
+argocd app get my-app -o json | \
+  jq '.status.operationState.syncResult.resources'
 ```
 
 ## Understanding Sync Status Values
 
-Each sync history entry has one of these statuses:
+The retained revision history does not store a status for every entry. The current or most recent operation state has one of these phases:
 
 ### Succeeded
 
@@ -124,6 +126,10 @@ A sync is currently in progress. This is a transient state.
 ### Error
 
 An unexpected error occurred during the sync operation, typically an ArgoCD internal error rather than a Kubernetes error.
+
+### Terminating
+
+The operation is being terminated.
 
 ## Comparing Sync Revisions
 
@@ -175,7 +181,7 @@ argocd app rollback my-app 3
 
 ### Important Rollback Considerations
 
-Rollbacks in ArgoCD work by syncing to a previous Git revision. If auto-sync is enabled, ArgoCD will immediately try to sync back to HEAD, undoing your rollback. To prevent this:
+Rollbacks in ArgoCD work by syncing to a previous recorded revision. ArgoCD does not allow rollback while automated sync is enabled. Disable auto-sync before rolling back:
 
 ```bash
 # Disable auto-sync before rolling back
@@ -198,9 +204,9 @@ For regulated environments, sync history provides audit evidence:
 
 1. **What was deployed** - The exact Git revision applied to the cluster
 2. **When it was deployed** - Timestamp of the sync operation
-3. **Who approved it** - The user who triggered the sync (or "automated" for auto-sync)
-4. **Whether it succeeded** - The final status of the operation
-5. **What changed** - The diff between the previous and current state
+3. **Who initiated it** - The user who triggered the sync (or "automated" for auto-sync)
+4. **Which source was used** - Repository, path, chart, and target revision details
+5. **What changed** - The recorded revision can be compared with Git or the current state to derive the diff
 
 ### Exporting History
 
@@ -221,8 +227,8 @@ Since each sync entry includes the Git commit SHA, you can correlate deployment 
 
 ```bash
 # For each sync entry, get the full Git commit details
-argocd app history my-app -o json | \
-  jq -r '.[].revision' | \
+argocd app get my-app -o json | \
+  jq -r '.status.history[].revision' | \
   while read rev; do
     echo "=== $rev ==="
     git log -1 --format="%H %an %s" "$rev"
@@ -234,13 +240,14 @@ argocd app history my-app -o json | \
 ArgoCD retains sync history as part of the Application resource's status. There are practical limits:
 
 - **Default retention** - ArgoCD keeps the last 10 sync operations by default
-- **Configuring retention** - You can adjust this in the ArgoCD ConfigMap:
+- **Configuring retention** - You can adjust this in the Application spec:
 
 ```yaml
-# In argocd-cm ConfigMap
-data:
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
   # Keep the last 20 sync operations in history
-  resource.status.maxHistory: "20"
+  revisionHistoryLimit: 20
 ```
 
 For long-term deployment history beyond what ArgoCD retains, use:
