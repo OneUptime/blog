@@ -8,7 +8,7 @@ Description: Learn how to enable and configure server-side diff in ArgoCD to get
 
 ---
 
-Server-side diff is a diff strategy in ArgoCD that uses Kubernetes' server-side apply mechanism to compute differences between your desired state and the live cluster state. Instead of ArgoCD doing the comparison locally, it delegates the work to the Kubernetes API server, which understands field defaults, ownership, and admission controller mutations. This produces significantly more accurate diff results.
+Server-side diff is a diff strategy in ArgoCD that uses Kubernetes' server-side apply dry-run mechanism to compute differences between your desired state and the live cluster state. Instead of ArgoCD doing the comparison locally, it asks the Kubernetes API server to calculate the predicted live object, which accounts for API defaulting and validation admission. Mutating webhooks can also be included when explicitly enabled. This produces significantly more accurate diff results.
 
 ## Why Server-Side Diff Matters
 
@@ -17,10 +17,10 @@ With the traditional client-side diff, ArgoCD renders your manifests and compare
 For example, when you apply a Deployment, the API server:
 
 - Adds default values (strategy type, revision history limit, etc.)
-- Processes admission controller mutations (sidecar injection, resource limits, etc.)
+- Processes validation admission checks, and optionally mutation webhooks when configured
 - Sets managed fields metadata
 
-Client-side diff sees these API server additions as differences, causing false OutOfSync reports. Server-side diff avoids this because it asks the API server "what would this look like if I applied it?" and compares that result.
+Client-side diff can see API server additions as differences, causing false OutOfSync reports. Server-side diff avoids many of these cases because it asks the API server "what would this look like if I applied it?" and compares that result.
 
 ```mermaid
 flowchart LR
@@ -51,7 +51,10 @@ kind: Application
 metadata:
   name: my-app
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
+  project: default
   source:
     repoURL: https://github.com/myorg/app.git
     targetRevision: main
@@ -59,12 +62,9 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: my-app
-  syncPolicy:
-    syncOptions:
-      - ServerSideApply=true
 ```
 
-The `ServerSideApply=true` sync option enables both server-side diff (for status computation) and server-side apply (for sync operations).
+The `argocd.argoproj.io/compare-options: ServerSideDiff=true` annotation enables server-side diff for status computation. The `ServerSideApply=true` sync option is separate: it enables Kubernetes server-side apply for sync operations.
 
 ### Global Default
 
@@ -87,21 +87,20 @@ kubectl apply -f argocd-cmd-params-cm.yaml
 kubectl rollout restart statefulset/argocd-application-controller -n argocd
 ```
 
-### For Specific Resource Types (System-Level)
+### Including Mutation Webhooks
 
-You can enable server-side diff for specific resource types system-wide using the `argocd-cm` ConfigMap:
+Server-side diff does not include changes made by mutating webhooks by default. If you want mutation webhooks to participate in the diff, add `IncludeMutationWebhook=true` to the same compare-options annotation:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: argocd-cm
+  name: my-app
   namespace: argocd
-data:
-  # Enable server-side diff for specific resource types
-  resource.customizations.useServerSideDiff.admissionregistration.k8s.io_MutatingWebhookConfiguration: "true"
-  resource.customizations.useServerSideDiff.apps_Deployment: "true"
-  resource.customizations.useServerSideDiff.cert-manager.io_Certificate: "true"
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true,IncludeMutationWebhook=true
+spec:
+  # ...
 ```
 
 ## How Server-Side Diff Works Internally
@@ -109,11 +108,11 @@ data:
 When ArgoCD computes the diff using server-side diff, it performs these steps:
 
 1. **Render manifests** from Git (same as client-side)
-2. **Send dry-run server-side apply** request to the Kubernetes API server
-3. **API server processes the request** - applies defaults, runs admission controllers, computes managed fields
+2. **Send dry-run server-side apply** request to the Kubernetes API server for existing resources
+3. **API server processes the request** - applies defaults, runs validation admission, and optionally includes mutating webhooks if configured
 4. **API server returns the expected result** without actually modifying the resource
 5. **ArgoCD compares** the expected result against the live state
-6. **ArgoCD only considers fields it manages** based on managedFields ownership
+6. **ArgoCD caches the result** until inputs change, such as an application refresh, a new Git revision, an application spec change, or a live resource version change
 
 The dry-run request looks like this under the hood:
 
@@ -128,29 +127,26 @@ kubectl apply -f manifest.yaml \
 
 ## Practical Examples
 
-### Example 1: Admission Controller Sidecar Injection
+### Example 1: Mutating Webhook Changes
 
-When Istio injects a sidecar, it adds a container to your pod spec. With client-side diff, this causes OutOfSync:
+When a mutating webhook changes a managed resource during admission, client-side diff may not know about that mutation. With server-side diff and `IncludeMutationWebhook=true`, ArgoCD can include webhook mutations in the predicted live object:
 
 ```yaml
-# Your manifest (1 container)
-spec:
-  containers:
-    - name: app
-      image: myapp:v1
+# Your manifest
+metadata:
+  labels:
+    app: my-app
 
-# Live state (2 containers - Istio injected sidecar)
-spec:
-  containers:
-    - name: app
-      image: myapp:v1
-    - name: istio-proxy
-      image: istio/proxyv2:1.20
+# Live state after a mutating webhook adds a label
+metadata:
+  labels:
+    app: my-app
+    policy.example.com/injected: "true"
 ```
 
-**Client-side diff**: Shows OutOfSync because the live state has an extra container.
+**Client-side diff**: Can show OutOfSync because the live state has an extra webhook-managed field.
 
-**Server-side diff**: Recognizes that ArgoCD only manages the `app` container (based on field ownership). The `istio-proxy` container is managed by the Istio admission controller. No false diff.
+**Server-side diff with mutation webhooks included**: The dry-run apply includes the same webhook mutation, so the comparison can avoid a false diff.
 
 ### Example 2: HPA-Managed Replicas
 
@@ -166,7 +162,7 @@ spec:
   replicas: 7
 ```
 
-With server-side diff and the HPA managing the replicas field, ArgoCD correctly identifies that it does not own the replicas field and ignores the difference. You may still need to use `ignoreDifferences` for this case depending on your setup.
+If the desired manifest still contains `spec.replicas: 3`, server-side diff can still report this as a difference because the predicted object has 3 replicas while the live object has 7. For HPA-managed workloads, use `ignoreDifferences` for `/spec/replicas` and consider omitting `replicas` from the desired manifest when appropriate.
 
 ### Example 3: Defaulted Fields
 
@@ -174,8 +170,16 @@ With server-side diff and the HPA managing the replicas field, ArgoCD correctly 
 # Your manifest (minimal)
 apiVersion: apps/v1
 kind: Deployment
+metadata:
+  name: web
 spec:
+  selector:
+    matchLabels:
+      app: web
   template:
+    metadata:
+      labels:
+        app: web
     spec:
       containers:
         - name: app
@@ -196,28 +200,27 @@ spec:
 
 **Server-side diff**: The dry-run apply returns the same defaults, so the comparison matches. No false OutOfSync.
 
-## Configuring the Field Manager
+## Field Manager Notes
 
-Server-side apply uses field managers to track ownership. ArgoCD uses a specific field manager name:
+Server-side apply uses field managers to track ownership. For server-side apply syncs, ArgoCD uses its own field manager, commonly `argocd-controller`. You can customize the field manager used during client-side apply migration with the `argocd.argoproj.io/client-side-apply-migration-manager` annotation:
 
 ```yaml
-# In argocd-cmd-params-cm
-apiVersion: v1
-kind: ConfigMap
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: argocd-cmd-params-cm
+  name: my-app
   namespace: argocd
-data:
-  controller.diff.server.side: "true"
-  # Customize the field manager name (optional)
-  controller.diff.server.side.manager: "argocd-controller"
+  annotations:
+    argocd.argoproj.io/client-side-apply-migration-manager: "my-custom-manager"
+spec:
+  # ...
 ```
 
-The field manager name determines which fields ArgoCD "owns." Only owned fields are considered in the diff.
+This annotation is for migration from client-side apply to server-side apply. It is not required to enable server-side diff.
 
 ## Handling Conflicts
 
-When server-side apply detects a conflict (another manager owns a field you are trying to change), ArgoCD can be configured to force the apply:
+When server-side apply detects a conflict, another manager owns a field you are trying to change. In current ArgoCD documentation, `ServerSideApply=true` syncs use `kubectl apply --server-side --force-conflicts`, so ArgoCD takes ownership of the fields it applies:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -229,20 +232,9 @@ spec:
   syncPolicy:
     syncOptions:
       - ServerSideApply=true
-    # Force conflicts resolution in favor of ArgoCD
-    managedNamespaceMetadata:
-      labels:
-        managed-by: argocd
 ```
 
-To force ownership on conflicts during sync:
-
-```yaml
-syncPolicy:
-  syncOptions:
-    - ServerSideApply=true
-    - ServerSideApply.ForceConflicts=true
-```
+If you do not want ArgoCD to own a field, remove that field from the desired manifest or configure `ignoreDifferences` and `RespectIgnoreDifferences=true` where appropriate.
 
 ## Monitoring Server-Side Diff Behavior
 
@@ -250,14 +242,14 @@ Check the diff output to verify server-side diff is working:
 
 ```bash
 # View the diff for an application
-argocd app diff my-app
+argocd app diff my-app --server-side-diff
 
 # If using server-side diff, the output should be clean
 # (no false diffs from defaulted fields)
 
 # Check application annotations for diff strategy
 kubectl get application my-app -n argocd \
-  -o jsonpath='{.status.sync.comparedTo.source}'
+  -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/compare-options}'
 ```
 
 Check controller logs for server-side diff activity:
@@ -276,7 +268,7 @@ If you still see false diffs after enabling server-side diff, check:
 ```bash
 # Verify the option is actually applied
 kubectl get application my-app -n argocd \
-  -o jsonpath='{.spec.syncPolicy.syncOptions}'
+  -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/compare-options}'
 
 # Check if global setting is enabled
 kubectl get configmap argocd-cmd-params-cm -n argocd \
@@ -298,21 +290,20 @@ kubectl logs -n argocd -l app.kubernetes.io/name=argocd-application-controller \
 
 ### Performance Impact
 
-Server-side diff makes additional API server requests (dry-run apply for each resource). Monitor API server load:
+Server-side diff makes additional API server requests (dry-run apply for existing resources). Monitor API server load:
 
 ```promql
-# API server request rate from ArgoCD
+# API server dry-run PATCH request rate
 rate(apiserver_request_total{
   verb="PATCH",
-  resource=~".*",
-  client=~".*argocd.*"
+  dry_run="All"
 }[5m])
 ```
 
 If the API server is under pressure, consider:
 
 - Increasing the reconciliation interval to reduce diff frequency
-- Only enabling server-side diff for resources that produce false diffs
+- Only enabling server-side diff for applications that produce false diffs
 
 ## Migration Checklist
 

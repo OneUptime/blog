@@ -8,13 +8,13 @@ Description: Learn how to handle server-side apply conflicts in ArgoCD when mult
 
 ---
 
-Server-side apply (SSA) is the modern way Kubernetes handles resource updates. Instead of the client sending the entire resource and hoping nothing else changed, SSA tracks which manager owns which fields. When ArgoCD uses server-side apply, conflicts can arise if another controller, operator, or even kubectl tries to modify the same fields. This guide covers what causes these conflicts and how to resolve them cleanly.
+Server-side apply (SSA) is the modern way Kubernetes handles resource updates. Instead of the client sending the entire resource and hoping nothing else changed, SSA tracks which manager owns which fields. When ArgoCD uses server-side apply, field ownership can become important if another controller, operator, or even kubectl tries to modify the same fields. This guide covers what causes ownership conflicts and how to resolve them cleanly.
 
 ## Understanding Server-Side Apply and Field Ownership
 
 Kubernetes 1.22+ supports server-side apply as a stable feature. Every field in a resource has an owner - the manager that last set it. When two managers try to set the same field to different values, Kubernetes raises a conflict.
 
-ArgoCD identifies itself as a field manager named `argocd-controller` when it applies resources. If a Horizontal Pod Autoscaler changes `spec.replicas` or a mutating webhook sets annotations, those fields now have different owners. The next time ArgoCD tries to sync, it hits a conflict because it wants to set a field that another manager owns.
+ArgoCD identifies itself as a field manager named `argocd-controller` when it applies resources. If a Horizontal Pod Autoscaler changes `spec.replicas` or a mutating webhook sets annotations, those fields now have different owners. The next time ArgoCD tries to sync, it may need to take ownership of a field that another manager owns.
 
 Here is a simplified view of how field ownership works:
 
@@ -53,18 +53,18 @@ spec:
       - ServerSideApply=true
 ```
 
-You can also enable it globally in the ArgoCD ConfigMap.
+You can also enable it for an individual resource with the sync-options annotation.
 
 ```yaml
-# argocd-cm ConfigMap - global setting
+# Resource-level setting
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: argocd-cm
-  namespace: argocd
+  name: my-config
+  annotations:
+    argocd.argoproj.io/sync-options: ServerSideApply=true
 data:
-  # Enable server-side apply for all applications
-  application.sync.options: ServerSideApply=true
+  key: value
 ```
 
 ## Common Conflict Scenarios
@@ -138,17 +138,17 @@ ignoreDifferences:
 
 ## Force Applying to Resolve Stubborn Conflicts
 
-When you need to forcefully take ownership of a field, you can use the `--force` flag during a manual sync. This tells Kubernetes to override the conflict and reassign field ownership to ArgoCD.
+Current ArgoCD versions use `kubectl apply --server-side --force-conflicts` when `ServerSideApply=true` is set, so SSA syncs can take ownership of conflicting fields. For an ad hoc sync, use server-side apply explicitly. If you are applying a manifest directly with kubectl, use `--force-conflicts`.
 
 ```bash
-# Force sync a specific application to resolve conflicts
-argocd app sync my-app --force
+# Sync a specific application using server-side apply
+argocd app sync my-app --server-side
 
 # Or use kubectl with force-conflicts flag directly
 kubectl apply --server-side --force-conflicts -f deployment.yaml
 ```
 
-Be careful with force-conflicts. It takes ownership away from whatever controller previously managed those fields. If an HPA was managing replicas and you force-apply, ArgoCD now owns replicas and the HPA can no longer change them.
+Be careful with force-conflicts. It takes ownership away from whatever controller previously managed those fields. If an HPA was managing replicas and you force-apply a manifest that declares replicas, ArgoCD now owns that field and you have created a field ownership fight with the HPA.
 
 ## Using managedFields to Debug Conflicts
 
@@ -215,25 +215,37 @@ kubectl apply --server-side -f resource.yaml
 # kubectl apply -f resource.yaml  # this uses last-applied-configuration annotation
 ```
 
-### 4. Configure the ArgoCD Field Manager Name
+### 4. Configure the Client-Side Apply Migration Manager
 
-You can customize the field manager name ArgoCD uses, which helps when debugging across multiple ArgoCD instances.
+You can customize the field manager ArgoCD uses for client-side apply migration, which helps when moving existing resources from client-side apply to server-side apply.
 
 ```yaml
-# argocd-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
+# Application manifest
+apiVersion: argoproj.io/v1alpha1
+kind: Application
 metadata:
-  name: argocd-cm
+  name: my-app
   namespace: argocd
-data:
-  # Custom field manager name for this ArgoCD instance
-  server.side.apply.field.manager: argocd-prod-cluster
+  annotations:
+    # Custom manager used for client-side apply migration
+    argocd.argoproj.io/client-side-apply-migration-manager: argocd-prod-migration
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/org/repo.git
+    targetRevision: main
+    path: manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: production
+  syncPolicy:
+    syncOptions:
+      - ServerSideApply=true
 ```
 
 ## Monitoring for SSA Conflicts
 
-ArgoCD surfaces SSA conflicts as sync errors in the UI and through notifications. Set up alerts to catch these early.
+ArgoCD surfaces sync problems, including field ownership issues, as sync errors in the UI and through notifications. Set up alerts to catch these early.
 
 ```yaml
 # ArgoCD notification trigger for sync failures (including SSA conflicts)
@@ -244,7 +256,7 @@ metadata:
   namespace: argocd
 data:
   trigger.on-sync-failed: |
-    - when: app.status.operationState.phase in ['Error', 'Failed']
+    - when: app.status?.operationState.phase in ['Error', 'Failed']
       send: [slack-notification]
   template.slack-notification: |
     message: |
