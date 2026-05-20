@@ -14,7 +14,7 @@ Too many teams adopt GitOps, declare victory because the tools are running, and 
 
 ## The Four DORA Metrics
 
-The DORA (DevOps Research and Assessment) metrics are the industry standard for measuring software delivery performance. They translate directly to GitOps adoption measurement:
+The DORA (DevOps Research and Assessment) metrics are the industry standard for measuring software delivery performance. The original four DORA metrics translate directly to GitOps adoption measurement, while the current DORA model also includes deployment rework rate:
 
 ### 1. Deployment Frequency
 
@@ -25,10 +25,12 @@ How often does your team deploy to production? GitOps should increase this becau
 ```bash
 # Count production syncs in the last 30 days
 
-argocd app list -o json | jq '[
+SINCE="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+
+argocd app list -o json | jq --arg since "$SINCE" '[
   .[] | select(.spec.destination.namespace == "production")
-  | .status.history[]
-  | select(.deployedAt > "2026-01-26")
+  | (.status.history // [])[]
+  | select(.deployedAt > $since)
 ] | length'
 ```
 
@@ -37,10 +39,12 @@ Or use Prometheus metrics from ArgoCD:
 ```promql
 # Deployment frequency per day
 sum(increase(argocd_app_sync_total{
-  dest_namespace="production",
+  project="production",
   phase="Succeeded"
 }[24h]))
 ```
+
+This Prometheus example assumes production applications are grouped in an Argo CD project named `production`. Argo CD's built-in application metrics include the Application namespace and project, but not the destination namespace.
 
 **Target**: After GitOps adoption, you should see deployment frequency increase by 2x to 5x within three months. Teams that deployed weekly should move toward daily deployments.
 
@@ -51,11 +55,19 @@ How long does it take from code commit to production deployment? In GitOps, this
 **How to measure**: Track the timestamp difference between the Git commit that triggered the change and the ArgoCD sync completion:
 
 ```promql
-# Average sync duration
-avg(argocd_app_sync_total_duration_seconds{
-  dest_namespace="production"
-})
+# Average successful sync duration over 30 days
+sum(rate(argocd_app_sync_duration_seconds_total{
+  project="production",
+  phase="Succeeded"
+}[30d]))
+/
+sum(rate(argocd_app_sync_total{
+  project="production",
+  phase="Succeeded"
+}[30d]))
 ```
+
+This measures Argo CD sync duration, not full lead time by itself.
 
 For end-to-end lead time, you need to correlate CI pipeline completion with ArgoCD sync start:
 
@@ -71,23 +83,25 @@ metadata:
 
 **Target**: Lead time should decrease by 30% to 50% after GitOps adoption. If your lead time was 2 hours (including pipeline + manual approval + deployment), it should drop to under 1 hour.
 
-### 3. Mean Time to Recovery (MTTR)
+### 3. Failed Deployment Recovery Time / MTTR
 
-When production breaks, how quickly can you restore service? GitOps dramatically improves MTTR because rollback is a Git revert:
+When production breaks, how quickly can you restore service? DORA's current model calls the deployment-specific version of this metric failed deployment recovery time; many teams still track it as MTTR. GitOps can improve recovery time because rollback is often a Git revert:
 
 ```bash
 # GitOps rollback is a single Git operation
 git revert HEAD
 git push origin main
-# ArgoCD automatically syncs to previous state
+# With automated sync enabled, ArgoCD syncs to the reverted state
 ```
 
 **How to measure**: Track the time between an incident being detected and the recovery deployment completing:
 
 ```promql
-# Track time between OutOfSync detection and Synced restoration
-argocd_app_info{sync_status="OutOfSync", health_status="Degraded"}
+# Alerting signal for applications that are both drifted and degraded
+count(argocd_app_info{sync_status="OutOfSync", health_status="Degraded"})
 ```
+
+Use this as an alerting signal, then calculate recovery time from your incident timestamp to the timestamp of the successful recovery sync.
 
 **Target**: MTTR should decrease by 50% to 80%. If your team took 45 minutes to roll back using kubectl and pipeline re-runs, GitOps rollbacks should complete in under 10 minutes.
 
@@ -95,12 +109,13 @@ argocd_app_info{sync_status="OutOfSync", health_status="Degraded"}
 
 What percentage of deployments cause incidents? GitOps should reduce this through better testing, review, and consistency:
 
-**How to measure**: Track the ratio of failed syncs to total syncs:
+**How to measure**: Track the ratio of failed syncs to total syncs as a deployment failure indicator, then correlate those failures with incidents, rollbacks, or hotfixes for the DORA change failure rate:
 
 ```promql
-# Change failure rate
-sum(argocd_app_sync_total{phase="Error"}) /
-sum(argocd_app_sync_total) * 100
+# Sync failure rate over 30 days
+sum(increase(argocd_app_sync_total{phase=~"Error|Failed"}[30d]))
+/
+sum(increase(argocd_app_sync_total[30d])) * 100
 ```
 
 **Target**: Change failure rate should decrease by 25% to 40% within six months of GitOps adoption.
@@ -114,9 +129,11 @@ Beyond DORA metrics, track metrics unique to GitOps:
 How often does the cluster state drift from Git? This measures both unauthorized changes and configuration management effectiveness:
 
 ```promql
-# Drift events per day
-sum(increase(argocd_app_info{sync_status="OutOfSync"}[24h]))
+# Applications currently out of sync
+count(argocd_app_info{sync_status="OutOfSync"})
 ```
+
+Because `argocd_app_info` is a gauge, use it to measure current drift. To count drift events over time, record status transitions through alerts, notifications, or logs.
 
 Track drift by category:
 - **Manual changes**: Someone ran kubectl and changed something
@@ -130,23 +147,23 @@ A healthy GitOps environment should see drift events decreasing over time as tea
 If you have self-healing enabled, track how often ArgoCD corrects drift:
 
 ```promql
-# Self-heal corrections per day
+# Successful syncs per day
 sum(increase(argocd_app_sync_total{
-  trigger="self-heal"
+  phase="Succeeded"
 }[24h]))
 ```
 
-A high number of self-heal events indicates that people or systems are still making changes outside of Git. This is a training and process issue, not a technical one.
+Argo CD's built-in sync counter does not expose a `trigger` label, so it cannot distinguish self-heal syncs from other automated syncs by itself. Track self-heal events through application-controller logs, notifications, or custom labels in your observability pipeline. A high number of self-heal events indicates that people or systems are still making changes outside of Git. This is a training and process issue, not a technical one.
 
 ### Sync Duration
 
 Track how long syncs take. Increasing sync duration can indicate scaling issues:
 
 ```promql
-# 95th percentile sync duration
-histogram_quantile(0.95,
-  rate(argocd_app_sync_total_duration_seconds_bucket[1h])
-)
+# Average sync duration over 1 hour
+sum(rate(argocd_app_sync_duration_seconds_total[1h]))
+/
+sum(rate(argocd_app_sync_total{phase="Succeeded"}[1h]))
 ```
 
 **Target**: Sync duration should remain under 60 seconds for most applications. If it exceeds 5 minutes, investigate repo server performance or manifest generation complexity.
@@ -187,24 +204,24 @@ The reduction comes from drift detection catching issues before they become inci
 Create a centralized dashboard that tracks all these metrics:
 
 ```yaml
-# Grafana dashboard JSON model (key panels)
+# Grafana dashboard panel definitions (key panels)
 panels:
   - title: "Deployment Frequency (30d)"
-    query: "sum(increase(argocd_app_sync_total{phase='Succeeded'}[30d]))"
+    query: 'sum(increase(argocd_app_sync_total{project="production",phase="Succeeded"}[30d]))'
 
   - title: "Average Sync Duration"
-    query: "avg(argocd_app_sync_total_duration_seconds)"
+    query: 'sum(rate(argocd_app_sync_duration_seconds_total[1h])) / sum(rate(argocd_app_sync_total{phase="Succeeded"}[1h]))'
 
-  - title: "Drift Events (7d)"
-    query: "sum(increase(argocd_app_info{sync_status='OutOfSync'}[7d]))"
+  - title: "Applications Out of Sync"
+    query: 'count(argocd_app_info{sync_status="OutOfSync"})'
 
-  - title: "Change Failure Rate"
+  - title: "Sync Failure Rate"
     query: |
-      sum(argocd_app_sync_total{phase='Error'}) /
-      sum(argocd_app_sync_total) * 100
+      sum(increase(argocd_app_sync_total{phase=~"Error|Failed"}[30d])) /
+      sum(increase(argocd_app_sync_total[30d])) * 100
 
-  - title: "Self-Heal Events (24h)"
-    query: "sum(increase(argocd_app_sync_total{trigger='self-heal'}[24h]))"
+  - title: "Successful Syncs (24h)"
+    query: 'sum(increase(argocd_app_sync_total{phase="Succeeded"}[24h]))'
 ```
 
 For a comprehensive monitoring setup that tracks both your GitOps metrics and application health, consider integrating your dashboards with [OneUptime](https://oneuptime.com/blog/post/2026-02-26-argocd-alerts-failed-syncs/view) for end-to-end observability.
