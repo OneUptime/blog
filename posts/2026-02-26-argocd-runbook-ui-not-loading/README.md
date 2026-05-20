@@ -55,8 +55,8 @@ kubectl get svc -n argocd argocd-server
 kubectl run test-curl --rm -it --image=curlimages/curl --restart=Never -- \
   curl -kv https://argocd-server.argocd.svc.cluster.local:443/healthz
 
-# Check the health endpoint
-kubectl exec -n argocd deployment/argocd-server -- curl -k https://localhost:8080/healthz
+# Check the readiness probe configuration
+kubectl get deployment -n argocd argocd-server -o jsonpath='{.spec.template.spec.containers[0].readinessProbe.httpGet.path}{"\n"}'
 ```
 
 ### Step 3: Check Ingress or Load Balancer
@@ -119,18 +119,16 @@ kubectl rollout status deployment/argocd-server -n argocd
 
 ### Cause 2: Ingress Not Forwarding WebSocket
 
-The ArgoCD UI uses WebSocket for real-time updates. If the Ingress does not support WebSocket, the UI loads but shows stale data or connection errors.
+The ArgoCD UI uses WebSocket for real-time updates. If the Ingress closes long-lived connections too quickly, the UI loads but shows stale data or connection errors.
 
 ```yaml
-# Nginx Ingress: Add WebSocket annotations
+# Nginx Ingress: Increase timeouts for long-lived connections
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: argocd-server
   namespace: argocd
   annotations:
-    # Enable WebSocket support
-    nginx.ingress.kubernetes.io/websocket-services: "argocd-server"
     # Increase timeouts for long-lived WebSocket connections
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
@@ -154,8 +152,8 @@ spec:
 # Apply the fix
 kubectl apply -f ingress.yaml
 
-# Force Ingress controller to reload
-kubectl rollout restart deployment/ingress-nginx-controller -n ingress-nginx
+# Check that the Ingress controller accepted the updated resource
+kubectl describe ingress -n argocd argocd-server
 ```
 
 ### Cause 3: Base URL Mismatch
@@ -225,7 +223,8 @@ kubectl logs -n argocd deployment/argocd-dex-server --tail=100
 kubectl rollout restart deployment/argocd-dex-server -n argocd
 
 # Workaround: use the local admin account
-argocd login argocd.example.com --username admin --password $(kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d)
+argocd admin initial-password -n argocd
+argocd login argocd.example.com --username admin
 ```
 
 ### Cause 6: Redis Down (Session Loss)
@@ -235,7 +234,7 @@ If Redis is down, existing sessions are lost and users are logged out.
 ```bash
 # Check Redis
 kubectl get pods -n argocd -l app.kubernetes.io/name=argocd-redis
-kubectl exec -n argocd deployment/argocd-redis -- redis-cli ping
+kubectl exec -n argocd deployment/argocd-redis -- sh -c 'REDISCLI_AUTH="$REDIS_PASSWORD" redis-cli ping'
 
 # If Redis is down, restart it
 kubectl rollout restart deployment/argocd-redis -n argocd
