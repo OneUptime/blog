@@ -8,7 +8,7 @@ Description: Learn how to query application health status through the ArgoCD RES
 
 ---
 
-Application health is one of the most critical signals in a GitOps workflow. ArgoCD continuously monitors the health of every managed resource and aggregates that into an overall application health status. By querying this through the API, you can build monitoring dashboards, trigger alerts, and make automated decisions based on application health.
+Application health is one of the most critical signals in a GitOps workflow. ArgoCD monitors resource health and infers the overall application health from the worst health of the application's immediate child resources. By querying this through the API, you can build monitoring dashboards, trigger alerts, and make automated decisions based on application health.
 
 ## Understanding Health Status Values
 
@@ -50,7 +50,7 @@ curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
   jq '{
     name: .metadata.name,
     health: .status.health.status,
-    healthMessage: .status.health.message,
+    healthLastTransitionTime: .status.health.lastTransitionTime,
     sync: .status.sync.status
   }'
 ```
@@ -61,7 +61,7 @@ Response:
 {
   "name": "my-app",
   "health": "Healthy",
-  "healthMessage": null,
+  "healthLastTransitionTime": "2026-02-26T10:15:30Z",
   "sync": "Synced"
 }
 ```
@@ -144,7 +144,7 @@ echo "$APPS" | jq -r '.items[].status.health.status' | sort | uniq -c | sort -rn
 echo ""
 echo "=== Degraded Applications ==="
 echo "$APPS" | jq -r '.items[] | select(.status.health.status == "Degraded") |
-  "  \(.metadata.name): \(.status.health.message // "no message")"'
+  "  \(.metadata.name)"'
 
 echo ""
 echo "=== Progressing Applications ==="
@@ -171,8 +171,7 @@ Build a more sophisticated health monitor in Python:
 
 ```python
 import requests
-import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 class HealthMonitor:
     def __init__(self, server, token):
@@ -196,7 +195,7 @@ class HealthMonitor:
                 "name": app["metadata"]["name"],
                 "project": app["spec"]["project"],
                 "health": app["status"]["health"]["status"],
-                "health_message": app["status"]["health"].get("message"),
+                "health_last_transition_time": app["status"]["health"].get("lastTransitionTime"),
                 "sync": app["status"]["sync"]["status"],
                 "last_synced": app["status"].get("operationState", {}).get("finishedAt")
             })
@@ -229,7 +228,7 @@ class HealthMonitor:
     def generate_report(self):
         """Generate a health report."""
         apps = self.get_all_health()
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
 
         print(f"ArgoCD Health Report - {timestamp}")
         print("=" * 60)
@@ -254,8 +253,8 @@ class HealthMonitor:
             print(f"\nDegraded Applications ({len(degraded)}):")
             for app in degraded:
                 print(f"\n  {app['name']} (project: {app['project']})")
-                if app["health_message"]:
-                    print(f"    Message: {app['health_message']}")
+                if app["health_last_transition_time"]:
+                    print(f"    Last transition: {app['health_last_transition_time']}")
 
                 details = self.get_degraded_details(app["name"])
                 for d in details:
@@ -290,7 +289,7 @@ while true; do
   ELAPSED=$(( $(date +%s) - START ))
   if [ $ELAPSED -gt $HEALTH_CHECK_TIMEOUT ]; then
     echo "Health check timeout reached"
-    break
+    exit 1
   fi
 
   HEALTH=$(curl -s -k -H "Authorization: Bearer $ARGOCD_TOKEN" \
