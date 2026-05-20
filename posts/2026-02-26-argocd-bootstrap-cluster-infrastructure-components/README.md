@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Infrastructure, Bootstrapping
 
-Description: Learn how to use ArgoCD to bootstrap essential Kubernetes cluster infrastructure components including CNI, CSI drivers, DNS, policy engines, and service mesh in the correct order.
+Description: Learn how to use ArgoCD to bootstrap essential Kubernetes cluster infrastructure components including namespaces, storage classes, DNS, policy engines, and service mesh in the correct order.
 
 ---
 
-Before any application can run on a Kubernetes cluster, infrastructure components need to be in place: networking, storage, DNS, security policies, and more. ArgoCD can manage all of these, but the ordering and dependency management requires careful planning. This guide shows you how to bootstrap every essential infrastructure component using ArgoCD.
+Before any application can run on a Kubernetes cluster, infrastructure components need to be in place: networking, storage, DNS, security policies, and more. ArgoCD can manage many of these, but the ordering and dependency management requires careful planning. This guide shows you how to bootstrap common essential infrastructure components using ArgoCD.
+
+The examples below assume these Application manifests are managed by a parent ArgoCD Application, often called the app-of-apps pattern. Sync waves order resources within a single sync operation, so wave annotations on child Application resources only provide deterministic bootstrap order when a parent Application is syncing those Application resources.
 
 ## Infrastructure Component Categories
 
@@ -266,7 +268,8 @@ spec:
     targetRevision: 1.14.3
     helm:
       values: |
-        provider: aws
+        provider:
+          name: aws
         policy: sync
         txtOwnerId: my-cluster
         domainFilters:
@@ -307,7 +310,8 @@ spec:
     helm:
       values: |
         installCRDs: true
-        priorityClassName: infrastructure-critical
+        global:
+          priorityClassName: infrastructure-critical
         prometheus:
           enabled: true
           servicemonitor:
@@ -362,7 +366,7 @@ spec:
     solvers:
       - http01:
           ingress:
-            class: nginx
+            ingressClassName: nginx
 ```
 
 ### Sealed Secrets
