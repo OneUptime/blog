@@ -8,7 +8,7 @@ Description: Learn how to enforce container image pull policies across your Kube
 
 ---
 
-Container image pull policies might seem like a small detail, but they have a significant impact on security and reliability. The default `IfNotPresent` policy can silently serve stale images, while `Always` adds latency and registry dependency. When you manage deployments through ArgoCD, you need a systematic approach to enforce the right pull policy across all your applications.
+Container image pull policies might seem like a small detail, but they have a significant impact on security and reliability. Kubernetes defaults to `IfNotPresent` for images with an explicit non-`latest` tag, which can silently serve stale images, while `Always` adds registry dependency and a manifest lookup on container start. When you manage deployments through ArgoCD, you need a systematic approach to enforce the right pull policy across all your applications.
 
 This guide covers how to enforce image pull policies consistently across your ArgoCD-managed clusters using a combination of GitOps practices, admission controllers, and ArgoCD features.
 
@@ -40,7 +40,6 @@ metadata:
     policies.kyverno.io/category: Security
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
   rules:
     # Mutate: Set pull policy to Always for all containers
     - name: set-image-pull-policy
@@ -66,13 +65,15 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Using the 'latest' tag is not allowed. Use a specific version tag."
-        pattern:
-          spec:
-            containers:
-              - image: "!*:latest & !*:*latest*"
-            =(initContainers):
-              - image: "!*:latest & !*:*latest*"
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "!*:latest"
+          - list: "request.object.spec.initContainers"
+            pattern:
+              image: "!*:latest"
 ```
 
 ## Enforcing with OPA Gatekeeper
@@ -145,7 +146,6 @@ kind: ClusterPolicy
 metadata:
   name: require-image-digest
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: check-digest
       match:
@@ -154,18 +154,22 @@ spec:
               kinds:
                 - Pod
       validate:
+        failureAction: Enforce
         message: "Images must use digest references (@sha256:...) in production."
-        pattern:
-          spec:
-            containers:
-              - image: "*@sha256:*"
+        foreach:
+          - list: "request.object.spec.containers"
+            pattern:
+              image: "*@sha256:*"
+          - list: "request.object.spec.initContainers"
+            pattern:
+              image: "*@sha256:*"
 ```
 
 When using this approach with ArgoCD, you will want to use the ArgoCD Image Updater to automatically update digests in your Git repository. See our guide on [implementing Image Updater in ArgoCD](https://oneuptime.com/blog/post/2026-01-25-image-updater-argocd/view) for details.
 
 ## ArgoCD Application-Level Enforcement
 
-You can also enforce image policies at the ArgoCD project level by restricting which registries are allowed.
+ArgoCD projects do not inspect container image registries or image pull policies directly. You can still use AppProject boundaries to restrict which Git repositories, destinations, and Kubernetes resource kinds are allowed, then rely on Kyverno or Gatekeeper for the image-specific enforcement.
 
 ```yaml
 # argocd-project.yaml
@@ -181,7 +185,7 @@ spec:
   destinations:
     - namespace: "prod-*"
       server: https://kubernetes.default.svc
-  # Deny resources that don't match our naming conventions
+  # Allow only the resource kinds this project should manage
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
@@ -231,7 +235,7 @@ This ensures that only images signed by your CI pipeline can be deployed through
 
 ## Handling ArgoCD Image Pull Secrets
 
-When enforcing `Always` pull policy, your nodes need valid credentials to pull images. ArgoCD can manage image pull secrets across namespaces.
+When enforcing `Always` pull policy, your nodes need valid credentials to pull images. A Kyverno generate policy, stored in Git and synced by ArgoCD, can copy image pull secrets across namespaces.
 
 ```yaml
 # image-pull-secret-generator.yaml
@@ -258,11 +262,11 @@ spec:
           name: registry-credentials
 ```
 
-This Kyverno generate policy copies your registry credentials to every new namespace, ensuring that `Always` pull policy never fails due to missing credentials.
+This Kyverno generate policy copies your registry credentials to every new namespace, helping prevent `Always` pull policy failures due to missing credentials.
 
-## Monitoring Pull Policy Compliance
+## Monitoring Policy Readiness
 
-Create an ArgoCD custom health check that monitors your policy compliance.
+Create an ArgoCD custom health check that monitors whether Kyverno reports your policy as ready.
 
 ```yaml
 # In argocd-cm ConfigMap
