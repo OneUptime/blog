@@ -8,7 +8,7 @@ Description: Learn how to diagnose and resolve Kubernetes resources stuck in del
 
 ---
 
-Finalizers in Kubernetes are pre-delete hooks that prevent a resource from being removed until some cleanup logic runs. When an ArgoCD application or one of its managed resources gets stuck in a "Deleting" state, finalizers are almost always the culprit. This guide covers why finalizers block deletion and how to resolve it safely.
+Finalizers in Kubernetes are metadata keys that prevent a resource from being removed until cleanup logic runs. When an ArgoCD application or one of its managed resources gets stuck in a "Deleting" state, finalizers are often the culprit. This guide covers why finalizers block deletion and how to resolve it safely.
 
 ## What Are Finalizers
 
@@ -19,6 +19,7 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: my-namespace
+spec:
   finalizers:
     # This finalizer prevents the namespace from being deleted
     # until all resources inside it are cleaned up
@@ -30,7 +31,7 @@ Common finalizers you will encounter include:
 - `kubernetes` - on Namespaces, ensures all resources in the namespace are deleted first
 - `foregroundDeletion` - Kubernetes garbage collector uses this for cascading deletes
 - `resources-finalizer.argocd.argoproj.io` - ArgoCD's own finalizer for cascade deletion
-- Custom finalizers from operators like `finalizer.databases.example.com`
+- Custom finalizers from operators like `databases.example.com/finalizer`
 
 ## How Finalizers Interact with ArgoCD
 
@@ -100,16 +101,16 @@ kubectl get postgrescluster -n database -o jsonpath='{range .items[*]}{.metadata
 If you want to delete the ArgoCD Application without cleaning up managed resources (for example, if you are migrating them to another management tool), remove the ArgoCD finalizer.
 
 ```bash
-# Remove the ArgoCD finalizer from the application
+# Remove the ArgoCD finalizer from the application after confirming it is index 0
 kubectl patch application my-app -n argocd \
   --type json \
   -p '[{"op": "remove", "path": "/metadata/finalizers/0"}]'
 ```
 
-A safer approach when there are multiple finalizers is to target the specific one.
+If the ArgoCD finalizer is the only finalizer on the Application, you can remove the whole finalizer list.
 
 ```bash
-# Remove only the ArgoCD finalizer, leaving others intact
+# Remove all finalizers from the Application
 kubectl patch application my-app -n argocd \
   --type merge \
   -p '{"metadata":{"finalizers":null}}'
@@ -175,16 +176,16 @@ When decommissioning an application, delete resources in the right order:
 3. Delete the CRDs
 4. Delete the namespace
 
-Use ArgoCD sync waves to encode this order.
+ArgoCD sync waves can help encode ordering, but remember that prune order is reversed from creation order: resources in higher waves are pruned first.
 
 ```yaml
-# Custom resources deleted first (lower wave = earlier)
+# Custom resources deleted first during prune (higher wave = earlier prune)
 apiVersion: databases.example.com/v1
 kind: PostgresCluster
 metadata:
   name: my-db
   annotations:
-    argocd.argoproj.io/sync-wave: "-3"
+    argocd.argoproj.io/sync-wave: "3"
 
 ---
 # Operator deleted after custom resources
@@ -193,7 +194,7 @@ kind: Deployment
 metadata:
   name: postgres-operator
   annotations:
-    argocd.argoproj.io/sync-wave: "-2"
+    argocd.argoproj.io/sync-wave: "2"
 
 ---
 # CRD deleted last
@@ -202,7 +203,7 @@ kind: CustomResourceDefinition
 metadata:
   name: postgresclusters.databases.example.com
   annotations:
-    argocd.argoproj.io/sync-wave: "-1"
+    argocd.argoproj.io/sync-wave: "1"
 ```
 
 ### Strategy 2: Use the ArgoCD Deletion Finalizer Wisely
@@ -227,13 +228,13 @@ spec:
     namespace: shared-infra
 ```
 
-### Strategy 3: Set Timeouts on Deletion
+### Strategy 3: Wait for Deletion
 
-ArgoCD supports a deletion timeout that will force-remove resources if they do not clean up in time.
+ArgoCD can wait for an application deletion to complete, but it does not force-remove stuck resources automatically. If the wait does not complete, inspect the resources and finalizers before removing anything manually.
 
 ```bash
-# Delete with a timeout - if resources do not clean up in 2 minutes, force delete
-argocd app delete my-app --cascade --timeout 120
+# Delete and wait for the application deletion to finish
+argocd app delete my-app --cascade --wait
 ```
 
 ### Strategy 4: Monitor for Stuck Resources
@@ -242,8 +243,10 @@ Set up monitoring to catch resources that are stuck in Terminating state.
 
 ```bash
 # Find all resources with deletionTimestamp but still existing
-kubectl get all --all-namespaces -o json | \
-  jq -r '.items[] | select(.metadata.deletionTimestamp != null) | "\(.kind)/\(.metadata.name) in \(.metadata.namespace) - stuck since \(.metadata.deletionTimestamp)"'
+kubectl api-resources --verbs=list -o name | while read resource; do
+  kubectl get "$resource" --all-namespaces -o json 2>/dev/null | \
+    jq -r --arg resource "$resource" '.items[] | select(.metadata.deletionTimestamp != null) | "\($resource)/\(.metadata.name) in \(.metadata.namespace // "<cluster>") - stuck since \(.metadata.deletionTimestamp)"'
+done
 ```
 
 ## Debugging Finalizer Chains
@@ -257,18 +260,9 @@ kubectl get app my-app -n argocd -o yaml | grep -A5 finalizers
 # Step 2: List all resources the app manages
 argocd app resources my-app
 
-# Step 3: Find which managed resources are stuck
-argocd app resources my-app | while read line; do
-  kind=$(echo "$line" | awk '{print $2}')
-  name=$(echo "$line" | awk '{print $3}')
-  ns=$(echo "$line" | awk '{print $1}')
-  ts=$(kubectl get "$kind" "$name" -n "$ns" -o jsonpath='{.metadata.deletionTimestamp}' 2>/dev/null)
-  if [ -n "$ts" ]; then
-    echo "STUCK: $kind/$name in $ns since $ts"
-    kubectl get "$kind" "$name" -n "$ns" -o jsonpath='{.metadata.finalizers}'
-    echo ""
-  fi
-done
+# Step 3: Check a listed resource for deletionTimestamp and finalizers
+kubectl get deployment my-deployment -n my-namespace \
+  -o jsonpath='{.metadata.deletionTimestamp}{"\n"}{.metadata.finalizers}{"\n"}'
 ```
 
 ## Summary
