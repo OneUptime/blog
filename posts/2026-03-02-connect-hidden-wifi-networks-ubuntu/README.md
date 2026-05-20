@@ -166,9 +166,9 @@ network:
       access-points:
         "HiddenNetworkSSID":
           hidden: true
-          password: "yourpassword"
           auth:
             key-management: psk
+            password: "yourpassword"
 EOF
 
 # Validate and apply
