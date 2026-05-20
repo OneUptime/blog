@@ -201,7 +201,7 @@ jobs:
         if: env.NEW_RELEASE != ''
         run: |
           git checkout custom-v2.10
-          # Attempt a dry-run rebase
+          # Attempt the rebase in the disposable CI workspace
           git rebase --onto $NEW_RELEASE upstream/release-2.10 custom-v2.10 || {
             echo "CONFLICT: Rebase failed. Manual intervention needed."
             git rebase --abort
@@ -229,7 +229,7 @@ name: Build Custom ArgoCD
 on:
   push:
     branches: [custom-v2.10]
-  tags: ['v*-custom*']
+    tags: ['v*-custom*']
 
 jobs:
   build:
@@ -248,11 +248,11 @@ jobs:
       - name: Build images
         run: |
           IMAGE_TAG=${GITHUB_REF_NAME}-custom
-          make image IMAGE_TAG=$IMAGE_TAG
+          IMAGE_NAMESPACE=registry.internal.company.com make image IMAGE_TAG=$IMAGE_TAG
 
       - name: Push to registry
         run: |
-          docker tag argoproj/argocd:$IMAGE_TAG registry.internal.company.com/argocd:$IMAGE_TAG
+          IMAGE_TAG=${GITHUB_REF_NAME}-custom
           docker push registry.internal.company.com/argocd:$IMAGE_TAG
 ```
 
@@ -294,13 +294,13 @@ EOF
 package customauth
 
 import (
-    "github.com/argoproj/argo-cd/v2/server/session"
+    sessionmgr "github.com/argoproj/argo-cd/v2/util/session"
 )
 
 // CustomAuthHandler wraps the standard session manager
 // with our internal OAuth2 provider integration
 type CustomAuthHandler struct {
-    delegate session.SessionManager
+    delegate *sessionmgr.SessionManager
     // custom fields
 }
 ```
