@@ -27,7 +27,7 @@ graph TD
     H --> E
 ```
 
-The Strimzi operator translates Kafka custom resources into StatefulSets, Services, ConfigMaps, and Secrets.
+The Strimzi operator translates Kafka custom resources into Kubernetes resources such as Deployments, Pods, Services, ConfigMaps, Secrets, and StrimziPodSets.
 
 ## Step 1: Deploy the Strimzi Operator
 
@@ -46,7 +46,7 @@ spec:
   source:
     repoURL: https://strimzi.io/charts/
     chart: strimzi-kafka-operator
-    targetRevision: 0.39.0
+    targetRevision: 1.0.0
     helm:
       values: |
         replicas: 1
@@ -58,7 +58,6 @@ spec:
           requests:
             cpu: "200m"
             memory: "256Mi"
-        featureGates: "+UseKRaft,+KafkaNodePools"
   destination:
     server: https://kubernetes.default.svc
     namespace: strimzi-system
@@ -77,7 +76,7 @@ Now define your Kafka cluster using KRaft mode (no ZooKeeper):
 
 ```yaml
 # kafka/production/kafka-cluster.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: controller
@@ -103,7 +102,7 @@ spec:
       cpu: "2"
       memory: "8Gi"
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaNodePool
 metadata:
   name: broker
@@ -129,17 +128,14 @@ spec:
       cpu: "4"
       memory: "16Gi"
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: Kafka
 metadata:
   name: production-kafka
-  annotations:
-    strimzi.io/node-pools: enabled
-    strimzi.io/kraft: enabled
 spec:
   kafka:
-    version: 3.7.0
-    metadataVersion: 3.7-IV4
+    version: 4.1.0
+    metadataVersion: "4.1-IV1"
     listeners:
       - name: plain
         port: 9092
@@ -157,6 +153,8 @@ spec:
         tls: true
         authentication:
           type: tls
+    authorization:
+      type: simple
     config:
       offsets.topic.replication.factor: 3
       transaction.state.log.replication.factor: 3
@@ -200,7 +198,7 @@ One of the biggest wins of using ArgoCD with Kafka is topic management. Every to
 
 ```yaml
 # kafka/production/topics/orders.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: orders
@@ -217,7 +215,7 @@ spec:
     max.message.bytes: "1048576"  # 1MB
     compression.type: lz4
 ---
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaTopic
 metadata:
   name: user-events
@@ -242,7 +240,7 @@ Manage Kafka user ACLs through Git:
 
 ```yaml
 # kafka/production/users/order-service.yaml
-apiVersion: kafka.strimzi.io/v1beta2
+apiVersion: kafka.strimzi.io/v1
 kind: KafkaUser
 metadata:
   name: order-service
@@ -356,11 +354,11 @@ Kafka version upgrades with Strimzi are handled through a rolling update. Update
 ```yaml
 spec:
   kafka:
-    version: 3.8.0
-    metadataVersion: 3.8-IV0  # Update after all brokers are upgraded
+    version: 4.2.0
+    metadataVersion: "4.1-IV1"  # Keep unchanged during the broker upgrade
 ```
 
-Push to Git, and Strimzi will perform a rolling upgrade broker by broker. The metadata version should be updated in a separate commit after all brokers are running the new version.
+Push to Git, and Strimzi will perform a rolling upgrade broker by broker. The metadata version should be updated to `"4.2-IV1"` in a separate commit after all brokers are running the new version.
 
 ## Best Practices
 
