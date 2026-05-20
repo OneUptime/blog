@@ -8,7 +8,7 @@ Description: Learn how to reduce container image pull costs and bandwidth in Arg
 
 ---
 
-Every time ArgoCD syncs a deployment, Kubernetes pulls container images. If you are running hundreds of applications across multiple clusters, these pulls add up to significant costs and bandwidth. Docker Hub charges for pulls over the rate limit, cloud registry egress costs money, and cross-region pulls are slower and more expensive. Optimizing image pulls is one of those "boring" optimizations that can save thousands of dollars per month.
+Every time an ArgoCD sync creates or restarts pods, Kubernetes may need to pull container images. If you are running hundreds of applications across multiple clusters, these pulls add up to significant costs and bandwidth. Docker Hub rate limits pulls on lower tiers, cloud registry egress costs money, and cross-region pulls are slower and more expensive. Optimizing image pulls is one of those "boring" optimizations that can save thousands of dollars per month.
 
 In this guide, I will show you practical strategies to reduce image pull costs in ArgoCD-managed clusters.
 
@@ -52,7 +52,7 @@ spec:
 However, `IfNotPresent` means if someone pushes a different image with the same tag, nodes with the cached version will not pull the update. To get the best of both worlds, use image digests.
 
 ```yaml
-image: registry.myorg.com/app@sha256:abc123...  # Immutable reference
+image: registry.myorg.com/app@sha256:3b7f4f2b1f6c9c8a5b4d3e2f1a0c9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b  # Immutable reference
 imagePullPolicy: IfNotPresent  # Safe with digests - they're immutable
 ```
 
@@ -97,7 +97,7 @@ metadata:
   name: registry-mirror
   namespace: registry-mirror
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: registry-mirror
@@ -156,24 +156,32 @@ spec:
     app: registry-mirror
 ```
 
-Configure your nodes to use the mirror. For containerd, add to the containerd config.
+Configure your nodes to use the mirror. Expose the mirror at an address that node-level containerd can resolve and reach, then configure containerd's registry hosts directory.
 
 ```toml
 # /etc/containerd/config.toml
-[plugins."io.containerd.grpc.v1.cri".registry.mirrors."docker.io"]
-  endpoint = ["http://registry-mirror.registry-mirror.svc.cluster.local:5000"]
+[plugins."io.containerd.grpc.v1.cri".registry]
+  config_path = "/etc/containerd/certs.d"
+```
+
+```toml
+# /etc/containerd/certs.d/docker.io/hosts.toml
+server = "https://registry-1.docker.io"
+
+[host."http://registry-mirror.example.internal:5000"]
+  capabilities = ["pull", "resolve"]
 ```
 
 ## Strategy 3: Use Same-Region Registries
 
-Pulling images from a registry in the same region as your cluster avoids egress charges.
+Pulling images from a registry in the same region as your cluster avoids cross-region transfer charges.
 
 ```yaml
 # Instead of pulling from a central registry across regions
-image: us-east-1.ecr.aws/myorg/app:v1.0.0  # Cluster is in eu-west-1 - EXPENSIVE
+image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/myorg/app:v1.0.0  # Cluster is in eu-west-1 - EXPENSIVE
 
 # Use a regional replica
-image: eu-west-1.ecr.aws/myorg/app:v1.0.0  # Same region as cluster - FREE internal transfer
+image: 123456789012.dkr.ecr.eu-west-1.amazonaws.com/myorg/app:v1.0.0  # Same region as cluster - avoids cross-region transfer
 ```
 
 For ECR, enable cross-region replication.
@@ -184,7 +192,7 @@ For ECR, enable cross-region replication.
 # to all regions where you have clusters
 ```
 
-For GCR, use multi-region repositories (gcr.io, us.gcr.io, eu.gcr.io, asia.gcr.io).
+For Google Cloud, use Artifact Registry repositories in the same location as your clusters. Legacy `gcr.io`, `us.gcr.io`, `eu.gcr.io`, and `asia.gcr.io` endpoints may be backed by Artifact Registry after migration.
 
 ## Strategy 4: Optimize Image Sizes
 
@@ -252,7 +260,7 @@ spec:
               memory: "1Mi"
       containers:
         - name: pause
-          image: gcr.io/google_containers/pause:3.9
+          image: registry.k8s.io/pause:3.9
           resources:
             requests:
               cpu: "1m"
@@ -271,7 +279,7 @@ metadata:
 
 ## Strategy 6: Docker Hub Rate Limit Management
 
-Docker Hub limits anonymous pulls to 100 per 6 hours and authenticated pulls to 200 per 6 hours. For ArgoCD clusters pulling many public images, this is easily exceeded.
+Docker Hub limits anonymous pulls to 100 per IPv4 address or IPv6 /64 subnet per 6 hours, and authenticated Docker Personal pulls to 200 per 6 hours. For ArgoCD clusters pulling many public images, this is easily exceeded.
 
 Configure authenticated pulls for Docker Hub.
 
