@@ -39,6 +39,8 @@ metadata:
   name: preview-environments
   namespace: argocd
 spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
   generators:
   - pullRequest:
       github:
@@ -55,25 +57,25 @@ spec:
       requeueAfterSeconds: 60
   template:
     metadata:
-      name: 'preview-{{number}}'
+      name: 'preview-{{.number}}'
       labels:
         preview: "true"
-        pr-number: '{{number}}'
+        pr-number: '{{.number}}'
     spec:
       project: previews
       source:
         repoURL: https://github.com/myorg/api-service
-        targetRevision: '{{head_sha}}'
+        targetRevision: '{{.head_sha}}'
         path: deploy/preview
         helm:
           parameters:
           - name: image.tag
-            value: 'pr-{{number}}'
+            value: 'pr-{{.number}}'
           - name: ingress.host
-            value: 'pr-{{number}}.preview.example.com'
+            value: 'pr-{{.number}}.preview.example.com'
       destination:
         server: https://kubernetes.default.svc
-        namespace: 'preview-{{number}}'
+        namespace: 'preview-{{.number}}'
       syncPolicy:
         automated:
           prune: true
@@ -87,23 +89,26 @@ spec:
 The PR generator provides these parameters:
 
 - `number` - the pull request number
+- `title` - the pull request title
 - `branch` - the source branch name
 - `branch_slug` - the branch name slugified (safe for DNS names)
 - `target_branch` - the target/base branch
 - `target_branch_slug` - target branch slugified
 - `head_sha` - the latest commit SHA on the PR branch
 - `head_short_sha` - shortened commit SHA
-- `labels` - comma-separated list of PR labels
+- `head_short_sha_7` - seven-character shortened commit SHA
+- `labels` - array of PR labels when Go templating is enabled
+- `author` - the pull request author
 
 ```yaml
 template:
   metadata:
-    name: 'preview-{{branch_slug}}'
+    name: 'preview-{{.branch_slug}}'
     annotations:
-      pr-number: '{{number}}'
-      source-branch: '{{branch}}'
-      target: '{{target_branch}}'
-      commit: '{{head_short_sha}}'
+      pr-number: '{{.number}}'
+      source-branch: '{{.branch}}'
+      target: '{{.target_branch}}'
+      commit: '{{.head_short_sha}}'
 ```
 
 ## GitLab Merge Request Generator
@@ -114,8 +119,8 @@ For GitLab, configure the generator with your project ID.
 generators:
 - pullRequest:
     gitlab:
-      # GitLab project path or ID
-      project: "myorg/api-service"
+      # GitLab project ID
+      project: "12341234"
       # Authentication
       tokenRef:
         secretName: gitlab-token
@@ -139,6 +144,7 @@ generators:
       owner: myorg
       repo: api-service
       basicAuth:
+        username: myuser
         passwordRef:
           secretName: bitbucket-creds
           key: password
@@ -155,6 +161,7 @@ generators:
       repo: api-service
       api: https://bitbucket.mycompany.com
       basicAuth:
+        username: myuser
         passwordRef:
           secretName: bitbucket-server-creds
           key: token
@@ -202,7 +209,7 @@ generators:
         key: token
     # Only PRs targeting the main branch
     filters:
-    - branchMatch: "^(feature|fix)/.*"
+    - targetBranchMatch: "^main$"
 ```
 
 Resource Limits for Preview Environments
@@ -260,7 +267,7 @@ Then each preview Application gets a unique hostname.
 helm:
   parameters:
   - name: ingress.host
-    value: 'pr-{{number}}.preview.example.com'
+    value: 'pr-{{.number}}.preview.example.com'
 ```
 
 ## Cleanup and TTL
@@ -272,7 +279,7 @@ For additional safety, you can set a TTL annotation.
 ```yaml
 template:
   metadata:
-    name: 'preview-{{number}}'
+    name: 'preview-{{.number}}'
     annotations:
       # Reminder annotation for manual cleanup scripts
       preview.expires: "72h"
