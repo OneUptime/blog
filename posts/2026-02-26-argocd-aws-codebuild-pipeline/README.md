@@ -47,11 +47,13 @@ Resources:
       Environment:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_MEDIUM
-        Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        Image: aws/codebuild/amazonlinux2023-x86_64-standard:5.0
         PrivilegedMode: true  # Required for Docker builds
         EnvironmentVariables:
           - Name: AWS_ACCOUNT_ID
             Value: !Ref AWS::AccountId
+          - Name: ECR_REGISTRY
+            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com
           - Name: ECR_REPO
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/api-service
           - Name: DEPLOYMENT_REPO
@@ -93,6 +95,10 @@ Resources:
                 Resource: '*'
               - Effect: Allow
                 Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+              - Effect: Allow
+                Action:
                   - secretsmanager:GetSecretValue
                 Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:deploy-ssh-key-*
 ```
@@ -126,7 +132,7 @@ phases:
 
       # Login to ECR
       - echo "Logging into ECR..."
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REPO
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
 
       # Set image tag
       - export SHORT_SHA=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c1-7)
@@ -263,7 +269,7 @@ spec:
 
 ## ECR Authentication for ArgoCD
 
-ArgoCD Image Updater needs ECR access. Use IRSA for secure authentication:
+If you use ArgoCD Image Updater instead of having CodeBuild edit the image tag directly, Image Updater needs ECR access. Use IRSA for secure authentication:
 
 ```yaml
 # argocd-image-updater service account with IRSA
@@ -308,7 +314,7 @@ metadata:
   annotations:
     argocd-image-updater.argoproj.io/image-list: >
       app=123456789012.dkr.ecr.us-east-1.amazonaws.com/api-service
-    argocd-image-updater.argoproj.io/app.update-strategy: latest
+    argocd-image-updater.argoproj.io/app.update-strategy: newest-build
     argocd-image-updater.argoproj.io/app.allow-tags: regexp:^[a-f0-9]{7}$
     argocd-image-updater.argoproj.io/write-back-method: git
 ```
@@ -320,26 +326,50 @@ Use CodePipeline to orchestrate multiple CodeBuild projects for a multi-stage de
 ```yaml
 # codepipeline.yaml
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  PipelineRoleArn:
+    Type: String
+    Description: IAM role ARN for CodePipeline
+  ConnectionArn:
+    Type: String
+    Description: CodeStar connection ARN for GitHub
+  CodeBuildProjectName:
+    Type: String
+    Description: CodeBuild project that builds and tests the service
+  StagingDeployProjectName:
+    Type: String
+    Description: CodeBuild project that updates staging manifests
+  ProductionDeployProjectName:
+    Type: String
+    Description: CodeBuild project that updates production manifests
+  ApprovalSNSTopicArn:
+    Type: String
+    Description: SNS topic ARN for production approval notifications
 Resources:
+  PipelineArtifactBucket:
+    Type: AWS::S3::Bucket
+
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
       Name: api-service-pipeline
-      RoleArn: !GetAtt PipelineRole.Arn
+      RoleArn: !Ref PipelineRoleArn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineArtifactBucket
       Stages:
         - Name: Source
           Actions:
             - Name: Source
               ActionTypeId:
                 Category: Source
-                Owner: ThirdParty
-                Provider: GitHub
+                Owner: AWS
+                Provider: CodeStarSourceConnection
                 Version: "1"
               Configuration:
-                Owner: myorg
-                Repo: api-service
-                Branch: main
-                OAuthToken: !Sub '{{resolve:secretsmanager:github-token}}'
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: myorg/api-service
+                BranchName: main
               OutputArtifacts:
                 - Name: SourceOutput
 
@@ -352,7 +382,7 @@ Resources:
                 Provider: CodeBuild
                 Version: "1"
               Configuration:
-                ProjectName: !Ref CodeBuildProject
+                ProjectName: !Ref CodeBuildProjectName
               InputArtifacts:
                 - Name: SourceOutput
 
@@ -365,7 +395,7 @@ Resources:
                 Provider: CodeBuild
                 Version: "1"
               Configuration:
-                ProjectName: !Ref StagingDeployProject
+                ProjectName: !Ref StagingDeployProjectName
               InputArtifacts:
                 - Name: SourceOutput
 
@@ -378,7 +408,7 @@ Resources:
                 Provider: Manual
                 Version: "1"
               Configuration:
-                NotificationArn: !Ref ApprovalSNSTopic
+                NotificationArn: !Ref ApprovalSNSTopicArn
 
         - Name: DeployProduction
           Actions:
@@ -389,7 +419,7 @@ Resources:
                 Provider: CodeBuild
                 Version: "1"
               Configuration:
-                ProjectName: !Ref ProductionDeployProject
+                ProjectName: !Ref ProductionDeployProjectName
               InputArtifacts:
                 - Name: SourceOutput
 ```
