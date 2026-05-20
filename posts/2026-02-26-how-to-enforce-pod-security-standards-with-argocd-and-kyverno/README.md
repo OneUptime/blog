@@ -47,34 +47,33 @@ spec:
   source:
     repoURL: https://kyverno.github.io/kyverno
     chart: kyverno
-    targetRevision: 3.1.4
+    targetRevision: 3.8.1
     helm:
       valuesObject:
-        # High availability configuration
-        replicaCount: 3
-        # Resource limits for production
-        resources:
-          limits:
-            cpu: 500m
-            memory: 512Mi
-          requests:
-            cpu: 100m
-            memory: 256Mi
-        # Webhook timeout - important for policy evaluation
-        webhookTimeout: 10
-        # Exclude kube-system and argocd from enforcement
+        # High availability configuration for admission webhooks
+        admissionController:
+          replicas: 3
+          container:
+            resources:
+              limits:
+                cpu: 500m
+                memory: 512Mi
+              requests:
+                cpu: 100m
+                memory: 256Mi
+        # Exclude kube-system and argocd from admission webhook enforcement
         config:
           excludeGroups:
             - system:nodes
           webhooks:
-            - namespaceSelector:
-                matchExpressions:
-                  - key: kubernetes.io/metadata.name
-                    operator: NotIn
-                    values:
-                      - kube-system
-                      - argocd
-                      - kyverno
+            namespaceSelector:
+              matchExpressions:
+                - key: kubernetes.io/metadata.name
+                  operator: NotIn
+                  values:
+                    - kube-system
+                    - argocd
+                    - kyverno
   destination:
     server: https://kubernetes.default.svc
     namespace: kyverno
@@ -95,8 +94,8 @@ The Baseline profile prevents known privilege escalations. Here are the key poli
 
 ```yaml
 # policies/disallow-privileged.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-privileged-containers
   annotations:
@@ -107,36 +106,36 @@ metadata:
       Privileged containers run with full host access and should never be
       allowed in production workloads.
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: privileged-containers
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Privileged containers are not allowed. Set securityContext.privileged to false."
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  privileged: "false"
-            initContainers:
-              - securityContext:
-                  privileged: "false"
-            ephemeralContainers:
-              - securityContext:
-                  privileged: "false"
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+  variables:
+    - name: allContainers
+      expression: object.spec.containers + object.spec.?initContainers.orValue([]) + object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: variables.allContainers.all(container, container.?securityContext.?privileged.orValue(false) == false)
+      message: "Privileged containers are not allowed. Set securityContext.privileged to false or leave it unset."
 ```
 
 ### Disallow Host Namespaces
 
 ```yaml
 # policies/disallow-host-namespaces.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-host-namespaces
   annotations:
@@ -144,30 +143,40 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: host-namespaces
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Sharing host namespaces (PID, IPC, Network) is not allowed."
-        pattern:
-          spec:
-            =(hostPID): "false"
-            =(hostIPC): "false"
-            =(hostNetwork): "false"
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+  variables:
+    - name: hostNetwork
+      expression: object.spec.?hostNetwork.orValue(false)
+    - name: hostIPC
+      expression: object.spec.?hostIPC.orValue(false)
+    - name: hostPID
+      expression: object.spec.?hostPID.orValue(false)
+  validations:
+    - expression: "!(variables.hostNetwork || variables.hostIPC || variables.hostPID)"
+      message: "Sharing host namespaces (PID, IPC, Network) is not allowed."
 ```
 
 ### Disallow Host Ports
 
 ```yaml
 # policies/disallow-host-ports.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-host-ports
   annotations:
@@ -175,34 +184,42 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Baseline)
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: host-ports
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Host ports are not allowed. Use ClusterIP or NodePort services instead."
-        pattern:
-          spec:
-            containers:
-              - ports:
-                  - =(hostPort): "0"
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+  variables:
+    - name: allContainers
+      expression: object.spec.containers + object.spec.?initContainers.orValue([]) + object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: |-
+        variables.allContainers.all(container,
+          container.?ports.orValue([]).all(port, port.?hostPort.orValue(0) == 0))
+      message: "Host ports are not allowed. Use ClusterIP or NodePort services instead."
 ```
 
 ## Step 3: Define Restricted Profile Policies
 
-The Restricted profile adds tighter controls for hardened environments.
+The Restricted profile adds tighter controls for hardened environments. The read-only root filesystem policy below is an additional hardening policy often used alongside Restricted controls.
 
 ### Require Non-Root User
 
 ```yaml
 # policies/require-non-root.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-run-as-non-root
   annotations:
@@ -210,107 +227,113 @@ metadata:
     policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: high
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: run-as-non-root
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: >-
-          Containers must run as non-root. Set runAsNonRoot to true and
-          specify a non-root runAsUser.
-        pattern:
-          spec:
-            securityContext:
-              runAsNonRoot: true
-            containers:
-              - securityContext:
-                  allowPrivilegeEscalation: false
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+  variables:
+    - name: allContainers
+      expression: object.spec.containers + object.spec.?initContainers.orValue([]) + object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: |-
+        (object.spec.?securityContext.?runAsNonRoot.orValue(false) == true
+          && variables.allContainers.all(container, container.?securityContext.?runAsNonRoot.orValue(true) == true))
+          || variables.allContainers.all(container, container.?securityContext.?runAsNonRoot.orValue(false) == true)
+      message: >-
+        Containers must run as non-root. Set spec.securityContext.runAsNonRoot
+        to true, or set securityContext.runAsNonRoot to true on every container.
 ```
 
 ### Require Read-Only Root Filesystem
 
 ```yaml
 # policies/require-readonly-rootfs.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-readonly-root-filesystem
   annotations:
     policies.kyverno.io/title: Require Read-Only Root Filesystem
-    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/category: Best Practices
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: readonly-rootfs
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Root filesystem must be read-only. Set readOnlyRootFilesystem to true."
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  readOnlyRootFilesystem: true
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+  variables:
+    - name: allContainers
+      expression: object.spec.containers + object.spec.?initContainers.orValue([]) + object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: variables.allContainers.all(container, container.?securityContext.?readOnlyRootFilesystem.orValue(false) == true)
+      message: "Root filesystem must be read-only. Set readOnlyRootFilesystem to true."
 ```
 
 ### Drop All Capabilities
 
 ```yaml
 # policies/drop-all-capabilities.yaml
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
-  name: drop-all-capabilities
+  name: disallow-capabilities-strict
   annotations:
     policies.kyverno.io/title: Drop All Capabilities
     policies.kyverno.io/category: Pod Security Standards (Restricted)
     policies.kyverno.io/severity: medium
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: drop-capabilities
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: >-
-          Containers must drop ALL capabilities and may only add NET_BIND_SERVICE.
-        deny:
-          conditions:
-            any:
-              - key: "{{ request.object.spec.containers[].securityContext.capabilities.drop[] | length(@) }}"
-                operator: LessThan
-                value: 1
-    - name: allowed-capabilities
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      validate:
-        message: "Only NET_BIND_SERVICE capability is allowed to be added."
-        pattern:
-          spec:
-            containers:
-              - securityContext:
-                  capabilities:
-                    drop:
-                      - ALL
-                    =(add):
-                      - NET_BIND_SERVICE
+  validationActions:
+    - Deny
+  evaluation:
+    background:
+      enabled: true
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+  variables:
+    - name: allContainers
+      expression: object.spec.containers + object.spec.?initContainers.orValue([]) + object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: variables.allContainers.all(container, container.?securityContext.?capabilities.?drop.orValue([]).exists_one(capability, capability == "ALL"))
+      message: "Containers must drop ALL capabilities."
+    - expression: |-
+        variables.allContainers.all(container,
+          container.?securityContext.?capabilities.?add.orValue([]).size() == 0 ||
+          (container.securityContext.capabilities.add.orValue([]).size() == 1 &&
+          container.securityContext.capabilities.add[0] == "NET_BIND_SERVICE"))
+      message: "Only NET_BIND_SERVICE capability is allowed to be added."
 ```
 
 ## Step 4: Deploy Policies with ArgoCD
@@ -401,7 +424,7 @@ spec:
 
 ## Step 6: Handling Policy Violations
 
-When a deployment managed by ArgoCD violates a Kyverno policy, the sync will fail. ArgoCD will report the application as `Degraded` with the Kyverno violation message.
+When a deployment managed by ArgoCD violates a Kyverno policy, the sync operation will fail. ArgoCD will surface the admission webhook violation in the application operation details.
 
 ```bash
 # Check for policy violations
@@ -422,36 +445,49 @@ Instead of just blocking non-compliant pods, use Kyverno's mutating policies to 
 ```yaml
 # policies/mutate-add-security-context.yaml
 # Automatically adds security context to pods that are missing it
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: MutatingPolicy
 metadata:
   name: add-default-security-context
   annotations:
     policies.kyverno.io/title: Add Default Security Context
     policies.kyverno.io/category: Pod Security Standards
 spec:
-  rules:
-    - name: add-security-context
-      match:
-        any:
-          - resources:
-              kinds:
-                - Pod
-      mutate:
-        patchStrategicMerge:
-          spec:
-            securityContext:
-              +(runAsNonRoot): true
-              +(seccompProfile):
-                type: RuntimeDefault
-            containers:
-              - (name): "*"
-                +(securityContext):
-                  allowPrivilegeEscalation: false
-                  readOnlyRootFilesystem: true
-                  capabilities:
-                    drop:
-                      - ALL
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+  mutations:
+    - patchType: ApplyConfiguration
+      applyConfiguration:
+        expression: >
+          Object{
+            spec: Object.spec{
+              securityContext: Object.spec.securityContext{
+                runAsNonRoot: true,
+                seccompProfile: Object.spec.securityContext.seccompProfile{
+                  type: "RuntimeDefault"
+                }
+              },
+              containers: object.spec.containers.map(container, Object.spec.containers{
+                name: container.name,
+                securityContext: Object.spec.containers.securityContext{
+                  allowPrivilegeEscalation: false,
+                  readOnlyRootFilesystem: true,
+                  capabilities: Object.spec.containers.securityContext.capabilities{
+                    drop: ["ALL"]
+                  }
+                }
+              })
+            }
+          }
 ```
 
 ## Monitoring Policy Compliance
@@ -470,7 +506,7 @@ spec:
       rules:
         - alert: KyvernoPolicyViolation
           expr: |
-            increase(kyverno_policy_results_total{rule_result="fail"}[1h]) > 0
+            increase(kyverno_policy_results{rule_result="fail"}[1h]) > 0
           for: 5m
           labels:
             severity: warning
