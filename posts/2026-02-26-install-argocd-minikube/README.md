@@ -48,8 +48,7 @@ Start a Minikube cluster with enough resources for ArgoCD. The default resources
 minikube start \
   --cpus=4 \
   --memory=8192 \
-  --driver=docker \
-  --kubernetes-version=v1.28.0
+  --driver=docker
 
 # Verify the cluster is running
 kubectl cluster-info
@@ -72,7 +71,8 @@ Create the ArgoCD namespace and apply the installation manifest:
 kubectl create namespace argocd
 
 # Install ArgoCD using the official manifest
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts \
+  -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for all ArgoCD pods to be ready
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
@@ -301,18 +301,18 @@ minikube addons enable dashboard
 
 Resource Optimization for Minikube
 
-ArgoCD's default resource requests may be too generous for a local cluster. You can reduce them:
+If you want explicit resource requests for local scheduling, you can set small CPU requests:
 
 ```bash
-# Reduce resource requests for local development
-kubectl patch deployment argocd-server -n argocd --type=json \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": "50m"}]'
+# Set small CPU requests for local development
+kubectl set resources deployment argocd-server -n argocd \
+  --containers=argocd-server --requests=cpu=50m
 
-kubectl patch deployment argocd-repo-server -n argocd --type=json \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": "50m"}]'
+kubectl set resources deployment argocd-repo-server -n argocd \
+  --containers=argocd-repo-server --requests=cpu=50m
 
-kubectl patch deployment argocd-redis -n argocd --type=json \
-  -p='[{"op": "replace", "path": "/spec/template/spec/containers/0/resources/requests/cpu", "value": "25m"}]'
+kubectl set resources deployment argocd-redis -n argocd \
+  --containers=redis --requests=cpu=25m
 ```
 
 ## Stopping and Restarting
