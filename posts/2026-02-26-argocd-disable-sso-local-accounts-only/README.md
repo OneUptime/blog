@@ -100,7 +100,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Keep admin enabled as the primary admin account
+  # Keep admin enabled until at least one other admin account works
   admin.enabled: "true"
 
   # Human users (can login via UI/CLI and generate API tokens)
@@ -120,9 +120,21 @@ Set passwords for human users:
 
 ```bash
 # As admin
-argocd account update-password --account alice --new-password '<password>'
-argocd account update-password --account bob --new-password '<password>'
-argocd account update-password --account carol --new-password '<password>'
+argocd account update-password --account alice --current-password '<current-admin-password>' --new-password '<password>'
+argocd account update-password --account bob --current-password '<current-admin-password>' --new-password '<password>'
+argocd account update-password --account carol --current-password '<current-admin-password>' --new-password '<password>'
+```
+
+After confirming that another admin account works, disable the built-in admin account:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-cm
+  namespace: argocd
+data:
+  admin.enabled: "false"
 ```
 
 ## Step 5: Configure RBAC
@@ -199,7 +211,7 @@ ArgoCD does not enforce password complexity, so enforce it procedurally:
 
 ### 2. Limit Login Attempts
 
-ArgoCD does not have built-in brute-force protection. Add it at the ingress level:
+ArgoCD has built-in failed-login throttling. You can also add rate limiting at the ingress level as an additional control:
 
 ```yaml
 # Nginx Ingress rate limiting
@@ -279,7 +291,7 @@ echo "================================="
 echo "Accounts requiring password rotation:"
 argocd account list | grep "login"
 echo ""
-echo "Run: argocd account update-password --account <username>"
+echo "Run: argocd account update-password --account <username> --current-password <current-admin-password>"
 ```
 
 ### 6. Use VPN or Bastion Host
@@ -329,7 +341,7 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  admin.enabled: "true"
+  admin.enabled: "false"
   accounts.alice: login, apiKey
   accounts.bob: login, apiKey
   accounts.ci-pipeline: apiKey
