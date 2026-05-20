@@ -111,13 +111,13 @@ sshfs myserver:/var/www ~/mnt/webroot
 
 ```bash
 # Unmount the filesystem
-fusermount -u ~/mnt/remote-server
+fusermount3 -u ~/mnt/remote-server
 
-# Alternative (if fusermount is not available)
+# Alternative (if fusermount3 is not available)
 umount ~/mnt/remote-server
 
-# Force unmount if the connection is broken
-fusermount -u -z ~/mnt/remote-server
+# Lazy unmount if the connection is broken
+fusermount3 -u -z ~/mnt/remote-server
 ```
 
 ## Persistent Mounts with /etc/fstab
@@ -171,9 +171,10 @@ sudo mount /home/user/mnt/remote
 systemd mounts are often more reliable than fstab for network filesystems. Create a mount unit:
 
 ```bash
-# Unit file path must match the mount point path, with / replaced by -
+# Unit file path must match the mount point path; use systemd-escape to generate it
 # For mount point /home/user/mnt/remote-server:
-sudo nano /etc/systemd/system/home-user-mnt-remote\x2dserver.mount
+systemd-escape --path --suffix=mount /home/user/mnt/remote-server
+sudo nano '/etc/systemd/system/home-user-mnt-remote\x2dserver.mount'
 ```
 
 ```ini
@@ -195,11 +196,11 @@ WantedBy=multi-user.target
 ```bash
 # Enable and start the mount
 sudo systemctl daemon-reload
-sudo systemctl enable home-user-mnt-remote-server.mount
-sudo systemctl start home-user-mnt-remote-server.mount
+sudo systemctl enable 'home-user-mnt-remote\x2dserver.mount'
+sudo systemctl start 'home-user-mnt-remote\x2dserver.mount'
 
 # Check status
-sudo systemctl status home-user-mnt-remote-server.mount
+sudo systemctl status 'home-user-mnt-remote\x2dserver.mount'
 ```
 
 ## Performance Tuning
@@ -207,9 +208,9 @@ sudo systemctl status home-user-mnt-remote-server.mount
 SSHFS can be slow for certain operations, especially with many small files:
 
 ```bash
-# Cache attributes and reads for better performance
-# cache_timeout is in seconds
-sshfs -o cache=yes,kernel_cache,cache_timeout=600,attr_timeout=600 \
+# Cache directory entries and attributes for better performance
+# dcache_timeout and attr_timeout are in seconds
+sshfs -o dir_cache=yes,dcache_timeout=600,attr_timeout=600 \
     user@server:/remote/path ~/mnt/remote
 
 # Increase the read buffer size
@@ -219,7 +220,7 @@ sshfs -o max_read=65536 user@server:/remote/path ~/mnt/remote
 sshfs -o Ciphers=aes128-gcm@openssh.com user@server:/remote/path ~/mnt/remote
 
 # Combine performance options
-sshfs -o cache=yes,kernel_cache,cache_timeout=600,max_read=65536,Compression=no \
+sshfs -o dir_cache=yes,dcache_timeout=600,max_read=65536,Compression=no \
     user@server:/remote/path ~/mnt/remote
 ```
 
@@ -230,7 +231,7 @@ sshfs -o cache=yes,kernel_cache,cache_timeout=600,max_read=65536,Compression=no 
 The SSH connection dropped. Unmount and remount:
 
 ```bash
-fusermount -u -z ~/mnt/remote-server
+fusermount3 -u -z ~/mnt/remote-server
 sshfs -o reconnect user@server:/remote/path ~/mnt/remote-server
 ```
 
@@ -248,11 +249,11 @@ ssh user@server ls -la /remote/
 
 **Mount hangs on disconnect**
 
-Use `fusermount` with the lazy unmount flag:
+Use `fusermount3` with the lazy unmount flag:
 
 ```bash
 # Lazy unmount - detaches from namespace immediately
-fusermount -u -z ~/mnt/remote-server
+fusermount3 -u -z ~/mnt/remote-server
 ```
 
 ## Summary
