@@ -17,7 +17,7 @@ This guide covers every connection method: direct login, token-based authenticat
 The ArgoCD CLI connects to your cluster in two ways:
 
 1. **API Server mode** (default) - The CLI talks to the ArgoCD API server, which talks to Kubernetes
-2. **Core mode** - The CLI talks directly to the Kubernetes API using your kubeconfig, bypassing the ArgoCD API server entirely
+2. **Core mode** - The CLI uses your kubeconfig and Kubernetes API access, bypassing the remote ArgoCD API server
 
 ```mermaid
 graph TD
@@ -119,8 +119,12 @@ Core mode is useful when:
 - You want to manage ArgoCD from scripts without an API server
 
 ```bash
-# Use core mode with a flag
-argocd app list --core
+# Configure core mode with your current kubeconfig context
+kubectl config set-context --current --namespace=argocd
+argocd login --core
+
+# Run commands in core mode
+argocd app list
 
 # Or set it globally via environment variable
 export ARGOCD_OPTS="--core"
@@ -130,7 +134,7 @@ argocd app list  # Now uses core mode by default
 kubectl config current-context
 ```
 
-In core mode, the CLI reads Application CRDs directly from the Kubernetes API. You need kubectl-level access to the `argocd` namespace.
+In core mode, the CLI uses Kubernetes API access to work with ArgoCD resources in the cluster. You need Kubernetes RBAC access to the `argocd` namespace and the relevant `Application` and `ApplicationSet` resources.
 
 ```bash
 # Make sure you can access the argocd namespace
@@ -285,16 +289,16 @@ Here are all the ways to configure the CLI connection:
 
 ## TLS Configuration
 
-### Trust a Custom CA
+### Trust a Custom Server Certificate
 
-If your ArgoCD server uses a certificate signed by a custom CA:
+If your ArgoCD server presents a certificate that your system does not already trust:
 
 ```bash
-# Specify the CA cert
-argocd login argocd.example.com --certificate-authority /path/to/ca.crt
+# Specify the trusted server certificate file
+argocd login argocd.example.com --server-crt /path/to/server.crt
 
 # Or add it to the config
-argocd login argocd.example.com --grpc-web-root-path "" --certificate-authority /path/to/ca.crt
+argocd login argocd.example.com --grpc-web-root-path "" --server-crt /path/to/server.crt
 ```
 
 ### Skip TLS Verification
