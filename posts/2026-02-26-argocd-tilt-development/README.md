@@ -43,8 +43,8 @@ tilt version
 # You also need:
 # - Docker
 # - kind or minikube
-# - Go 1.21+
-# - Node.js 20+ and yarn
+# - Go version listed in Argo CD's go.mod
+# - Node.js version used by Argo CD's Dockerfile.ui.tilt and pnpm
 # - kubectl
 ```
 
@@ -57,7 +57,7 @@ Create a kind cluster configured for Tilt.
 # Tilt works best with a local registry for fast image pushes
 
 # Create the registry container
-docker run -d --restart=always -p 5001:5000 --name kind-registry registry:2
+docker run -d --restart=always -p 127.0.0.1:5001:5000 --name kind-registry registry:3
 
 # Create a kind cluster connected to the registry
 cat <<EOF | kind create cluster --name argocd-dev --config=-
@@ -65,8 +65,8 @@ kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
 containerdConfigPatches:
 - |-
-  [plugins."io.containerd.grpc.v1.cri".registry.mirrors."localhost:5001"]
-    endpoint = ["http://kind-registry:5000"]
+  [plugins."io.containerd.grpc.v1.cri".registry]
+    config_path = "/etc/containerd/certs.d"
 nodes:
 - role: control-plane
   extraPortMappings:
@@ -75,8 +75,30 @@ nodes:
     protocol: TCP
 EOF
 
+# Tell containerd inside the kind node how to reach localhost:5001
+REGISTRY_DIR="/etc/containerd/certs.d/localhost:5001"
+for node in $(kind get nodes --name argocd-dev); do
+  docker exec "${node}" mkdir -p "${REGISTRY_DIR}"
+  cat <<EOF | docker exec -i "${node}" cp /dev/stdin "${REGISTRY_DIR}/hosts.toml"
+[host."http://kind-registry:5000"]
+EOF
+done
+
 # Connect the registry to the kind network
-docker network connect kind kind-registry
+docker network connect kind kind-registry || true
+
+# Document the local registry for tools that read the standard ConfigMap
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: local-registry-hosting
+  namespace: kube-public
+data:
+  localRegistryHosting.v1: |
+    host: "localhost:5001"
+    help: "https://kind.sigs.k8s.io/docs/user/local-registry/"
+EOF
 
 # Verify the cluster is working
 kubectl cluster-info
@@ -89,62 +111,97 @@ The Tiltfile defines how Tilt builds and deploys each ArgoCD component. Create t
 ```python
 # Tiltfile for ArgoCD development
 
-# Configuration
-default_registry('localhost:5001')
+load('ext://restart_process', 'docker_build_with_restart')
 
-# Build the main ArgoCD binary using live_update for fast iteration
-docker_build(
-    'argocd-dev',
-    '.',
-    dockerfile='Dockerfile',
+update_settings(k8s_server_side_apply="true")
+
+cluster_version = decode_yaml(local('kubectl version -o yaml'))
+platform = cluster_version['serverVersion']['platform']
+arch = platform.split('/')[1]
+
+code_deps = [
+    'applicationset',
+    'cmd',
+    'cmpserver',
+    'commitserver',
+    'common',
+    'controller',
+    'notification-controller',
+    'pkg',
+    'reposerver',
+    'server',
+    'util',
+    'go.mod',
+    'go.sum',
+]
+
+# Build the main Argo CD binary on code changes
+local_resource(
+    'argocd-compile',
+    'CGO_ENABLED=0 GOOS=linux GOARCH=' + arch + ' go build -mod=readonly -o .tilt-bin/argocd_linux cmd/main.go',
+    deps=code_deps,
+    ignore=['**/*_test.go'],
+    labels=['build'],
+)
+
+# Deploy the Argo CD Tilt manifests
+k8s_yaml(kustomize('manifests/dev-tilt'))
+
+# Build the dev image and restart the process after live updates
+docker_build_with_restart(
+    'quay.io/argoproj/argocd:latest',
+    context='.',
+    dockerfile='Dockerfile.tilt',
+    entrypoint=[
+        '/usr/bin/tini',
+        '-s',
+        '--',
+        'dlv',
+        'exec',
+        '--continue',
+        '--accept-multiclient',
+        '--headless',
+        '--listen=:2345',
+        '--api-version=2',
+    ],
+    platform=platform,
     only=[
-        'cmd/',
-        'controller/',
-        'reposerver/',
-        'server/',
-        'pkg/',
-        'util/',
-        'go.mod',
-        'go.sum',
+        '.tilt-bin',
+        'hack',
+        'entrypoint.sh',
     ],
     live_update=[
-        # Sync Go source files
-        sync('./cmd', '/src/cmd'),
-        sync('./controller', '/src/controller'),
-        sync('./reposerver', '/src/reposerver'),
-        sync('./server', '/src/server'),
-        sync('./pkg', '/src/pkg'),
-        sync('./util', '/src/util'),
-        # Rebuild the binary inside the container
-        run('cd /src && CGO_ENABLED=0 go build -o /usr/local/bin/argocd ./cmd',
-            trigger=['./cmd/', './controller/', './reposerver/', './server/', './pkg/', './util/']),
+        sync('.tilt-bin/argocd_linux', '/usr/local/bin/argocd'),
     ],
+    restart_file='/tilt/.restart-proc',
 )
 
-# Build the UI separately for faster iteration
+# Build the image used by Argo CD init jobs
 docker_build(
-    'argocd-ui-dev',
-    './ui',
-    dockerfile='ui/Dockerfile.dev',
-    live_update=[
-        sync('./ui/src', '/app/src'),
-        run('cd /app && yarn build', trigger=['./ui/src/']),
+    'argocd-job',
+    context='.',
+    dockerfile='Dockerfile.tilt',
+    platform=platform,
+    only=[
+        '.tilt-bin',
+        'hack',
+        'entrypoint.sh',
     ],
 )
-
-# Deploy ArgoCD manifests
-k8s_yaml(kustomize('manifests/base'))
-
-# Override images with our dev builds
-k8s_image_json_path('{.spec.template.spec.containers[0].image}')
 
 # Configure resource grouping in the Tilt UI
-k8s_resource('argocd-server', port_forwards='8080:8080',
-             labels=['argocd'])
-k8s_resource('argocd-repo-server', labels=['argocd'])
-k8s_resource('argocd-application-controller', labels=['argocd'])
-k8s_resource('argocd-redis', labels=['argocd'])
-k8s_resource('argocd-dex-server', labels=['argocd'])
+k8s_resource(workload='argocd-server',
+             port_forwards=['8080:8080', '8083:8083'],
+             labels=['argocd'],
+             resource_deps=['argocd-compile'])
+k8s_resource(workload='argocd-repo-server',
+             labels=['argocd'],
+             resource_deps=['argocd-compile'])
+k8s_resource(workload='argocd-application-controller',
+             labels=['argocd'],
+             resource_deps=['argocd-compile'])
+k8s_resource(workload='argocd-redis', labels=['argocd'])
+k8s_resource(workload='argocd-dex-server', labels=['argocd'])
 ```
 
 ## Optimized Tiltfile with Compile Host
@@ -157,52 +214,59 @@ For even faster builds, compile Go binaries on your host machine and inject them
 # Compile on the host for maximum speed
 local_resource(
     'argocd-compile',
-    'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ./dist/argocd ./cmd',
+    'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -mod=readonly -o ./.tilt-bin/argocd_linux cmd/main.go',
     deps=[
-        './cmd/',
-        './controller/',
-        './reposerver/',
-        './server/',
-        './pkg/',
-        './util/',
-        './go.mod',
-        './go.sum',
+        'applicationset',
+        'cmd',
+        'cmpserver',
+        'commitserver',
+        'common',
+        'controller',
+        'notification-controller',
+        'pkg',
+        'reposerver',
+        'server',
+        'util',
+        'go.mod',
+        'go.sum',
     ],
+    ignore=['**/*_test.go'],
     labels=['build'],
 )
 
 # Build a minimal image that just copies in the binary
 docker_build(
-    'argocd-dev',
+    'quay.io/argoproj/argocd:latest',
     '.',
     dockerfile_contents='''
 FROM ubuntu:22.04
 RUN apt-get update && apt-get install -y \
-    git git-lfs gpg gpg-agent ca-certificates && \
+    git git-lfs gpg gpg-agent ca-certificates tini && \
     rm -rf /var/lib/apt/lists/*
-COPY dist/argocd /usr/local/bin/argocd
+COPY .tilt-bin/argocd_linux /usr/local/bin/argocd
 RUN ln -s /usr/local/bin/argocd /usr/local/bin/argocd-server && \
     ln -s /usr/local/bin/argocd /usr/local/bin/argocd-application-controller && \
     ln -s /usr/local/bin/argocd /usr/local/bin/argocd-repo-server && \
     ln -s /usr/local/bin/argocd /usr/local/bin/argocd-cmp-server
+RUN mkdir -p /tilt
 ''',
-    only=['dist/argocd'],
+    only=['.tilt-bin/argocd_linux'],
     live_update=[
-        sync('./dist/argocd', '/usr/local/bin/argocd'),
+        sync('./.tilt-bin/argocd_linux', '/usr/local/bin/argocd'),
     ],
 )
 
 # UI development with hot reload
 local_resource(
     'argocd-ui',
-    serve_cmd='cd ui && yarn start',
-    deps=[],
+    serve_cmd='cd ui && pnpm start',
+    deps=['ui/package.json', 'ui/pnpm-lock.yaml'],
     links=['http://localhost:4000'],
     labels=['ui'],
 )
 
 # Deploy ArgoCD
-k8s_yaml(kustomize('manifests/base'))
+k8s_yaml(kustomize('manifests/dev-tilt'))
 
 # Port forwards for access
 k8s_resource('argocd-server',
@@ -265,8 +329,9 @@ For frontend development, Tilt can run the React development server with hot mod
 # Add to your Tiltfile for UI development
 local_resource(
     'argocd-ui-dev',
-    serve_cmd='cd ui && ARGOCD_SERVER=https://localhost:8080 yarn start',
-    deps=['ui/package.json'],
+    cmd='cd ui && pnpm install',
+    serve_cmd='cd ui && ARGOCD_SERVER=https://localhost:8080 pnpm start',
+    deps=['ui/package.json', 'ui/pnpm-lock.yaml'],
     links=['http://localhost:4000'],
     labels=['ui'],
 )
@@ -289,13 +354,13 @@ namespace_create('argocd')
 
 # Use docker_build_with_restart for faster container restarts
 docker_build_with_restart(
-    'argocd-dev',
+    'quay.io/argoproj/argocd:latest',
     '.',
     dockerfile_contents='...',
-    only=['dist/argocd'],
+    only=['.tilt-bin/argocd_linux'],
     entrypoint=['/usr/local/bin/argocd-server'],
     live_update=[
-        sync('./dist/argocd', '/usr/local/bin/argocd'),
+        sync('./.tilt-bin/argocd_linux', '/usr/local/bin/argocd'),
     ],
 )
 ```
@@ -308,18 +373,39 @@ Tilt makes it easy to attach a debugger to running ArgoCD components.
 # Build with debug symbols
 local_resource(
     'argocd-compile-debug',
-    'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -gcflags="all=-N -l" -o ./dist/argocd ./cmd',
-    deps=['./cmd/', './controller/', './server/', './pkg/'],
+    'CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -gcflags="all=-N -l" -mod=readonly -o ./.tilt-bin/argocd_linux cmd/main.go',
+    deps=['cmd', 'controller', 'reposerver', 'server', 'pkg', 'util', 'go.mod', 'go.sum'],
     labels=['build'],
 )
 
-# Expose the delve debug port
+# Run the process under delve and expose the debug port
+docker_build_with_restart(
+    'quay.io/argoproj/argocd:latest',
+    context='.',
+    dockerfile='Dockerfile.tilt',
+    entrypoint=[
+        '/usr/bin/tini',
+        '-s',
+        '--',
+        'dlv',
+        'exec',
+        '--continue',
+        '--accept-multiclient',
+        '--headless',
+        '--listen=:2345',
+        '--api-version=2',
+    ],
+    live_update=[
+        sync('./.tilt-bin/argocd_linux', '/usr/local/bin/argocd'),
+    ],
+)
+
 k8s_resource('argocd-server',
-    port_forwards=['8080:8080', '2345:2345'],  # 2345 for delve
+    port_forwards=['8080:8080', '9345:2345'],  # 9345 forwards to delve in the pod
     labels=['argocd'])
 ```
 
-Then connect your IDE's debugger to `localhost:2345`.
+Then connect your IDE's debugger to `localhost:9345`.
 
 ## Tips for Efficient ArgoCD Development with Tilt
 
