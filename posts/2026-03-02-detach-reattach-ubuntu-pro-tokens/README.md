@@ -18,7 +18,7 @@ When you run `sudo pro attach TOKEN`, the system:
 3. Stores the token and contract data locally in `/var/lib/ubuntu-advantage/`
 4. Enables default services for the subscription type
 
-The token itself is a machine identifier, not a per-seat credential. One token can be used to attach multiple machines up to the seat limit of your subscription. For free personal subscriptions, the limit is 5 machines.
+The token itself is a subscription credential, not a per-machine identifier. One token can be used to attach multiple machines up to the seat limit of your subscription. For free personal subscriptions, the limit is 5 machines.
 
 ## Checking What Is Currently Attached
 
@@ -29,8 +29,8 @@ Before detaching, verify what you have attached:
 
 pro status
 
-# See account and subscription information
-pro accounts
+# See account and subscription information in machine-readable output
+pro status --format json
 
 # Check which machines are consuming your subscription (web portal)
 # Visit ubuntu.com/pro/dashboard
@@ -49,7 +49,7 @@ The detach process:
 1. Disables all enabled Pro services (ESM, Livepatch, etc.)
 2. Removes ESM apt repositories
 3. Removes stored token and contract data
-4. Deregisters the machine from the account
+4. Detaches the machine from the account; the dashboard's active machine count may take up to 24 hours to decrease
 
 Detaching does NOT:
 - Remove packages that were installed via ESM repositories
@@ -133,11 +133,10 @@ For new machine provisioning, include Pro attachment in cloud-init:
 
 ```yaml
 #cloud-config
-ubuntu_advantage:
+ubuntu_pro:
   token: YOUR_TOKEN
   enable:
-    - esm-infra
-    - esm-apps
+    - esm
     - livepatch
 ```
 
@@ -156,9 +155,9 @@ For attaching existing machines:
     ubuntu_pro_token: "{{ vault_ubuntu_pro_token }}"  # From Ansible Vault
 
   tasks:
-    - name: Install ubuntu-advantage-tools
+    - name: Install ubuntu-pro-client
       apt:
-        name: ubuntu-advantage-tools
+        name: ubuntu-pro-client
         state: present
         update_cache: true
 
@@ -202,7 +201,7 @@ provisioner "shell" {
     "UBUNTU_PRO_TOKEN=${var.ubuntu_pro_token}"
   ]
   inline = [
-    "sudo pro attach ${UBUNTU_PRO_TOKEN}",
+    "sudo pro attach $UBUNTU_PRO_TOKEN",
     "sudo pro enable esm-infra esm-apps livepatch"
   ]
 }
@@ -217,17 +216,15 @@ provisioner "shell" {
 curl -v https://contracts.canonical.com
 
 # If behind a proxy, configure the proxy for Pro
-sudo nano /etc/ubuntu-advantage/uaclient.conf
+sudo pro config set http_proxy=http://proxy.example.com:8080
+sudo pro config set https_proxy=http://proxy.example.com:8080
 ```
 
-Add proxy configuration:
+If APT also needs the proxy, configure APT proxy settings for Pro repositories:
 
-```json
-{
-  "contract_url": "https://contracts.canonical.com",
-  "http_proxy": "http://proxy.example.com:8080",
-  "https_proxy": "http://proxy.example.com:8080"
-}
+```bash
+sudo pro config set ua_apt_http_proxy=http://proxy.example.com:8080
+sudo pro config set ua_apt_https_proxy=http://proxy.example.com:8080
 ```
 
 Or set environment variables:
@@ -247,10 +244,10 @@ If you see "maximum number of machines" errors:
 # Visit ubuntu.com/pro/dashboard
 
 # Detach decommissioned machines first (if they are still running)
-# Or use the web portal to remove machines that no longer exist
+# If a VM was already deleted, the active machine count should fall after it stops checking in
 ```
 
-On the web portal, you can remove machines that are no longer reachable (e.g., deleted cloud instances that were not properly detached before deletion).
+On the web portal, use the active machine count to confirm that deleted machines stop consuming the subscription. Canonical documents that this can take up to 24 hours after detach or after a destroyed machine stops checking in.
 
 ### Expired or Invalid Token
 
@@ -278,7 +275,7 @@ sudo pro attach "$TOKEN"
 
 **2. Detach before decommissioning**
 
-Always detach before destroying a machine:
+Detach before destroying a machine when practical:
 
 ```bash
 # In your decommission script or Terraform destroy provisioner
