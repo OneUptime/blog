@@ -65,6 +65,7 @@ spec:
             - -c
             - |
               echo "=== Security Scan: Container Images ==="
+              apk add --no-cache kubectl >/dev/null
 
               # Get all running images in the namespace
               NAMESPACE=${NAMESPACE:-default}
@@ -111,7 +112,7 @@ spec:
                   fieldPath: metadata.namespace
 ```
 
-You need a ServiceAccount with permissions to list pods:
+You need a ServiceAccount with read permissions for the resources your scans inspect:
 
 ```yaml
 apiVersion: v1
@@ -125,10 +126,19 @@ metadata:
   name: security-scanner
 rules:
   - apiGroups: [""]
-    resources: ["pods"]
+    resources: ["pods", "services", "serviceaccounts", "configmaps"]
     verbs: ["get", "list"]
   - apiGroups: ["apps"]
-    resources: ["deployments", "replicasets"]
+    resources: ["deployments", "replicasets", "statefulsets", "daemonsets"]
+    verbs: ["get", "list"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
     verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -166,21 +176,18 @@ spec:
       serviceAccountName: security-scanner
       containers:
         - name: kubescape
-          image: quay.io/kubescape/kubescape:v3.0
+          image: alpine:3.20
           command:
-            - kubescape
-          args:
-            - scan
-            - framework
-            - nsa
-            - --include-namespaces
-            - $(NAMESPACE)
-            - --compliance-threshold
-            - "80"
-            - --format
-            - pretty-printer
-            - --output
-            - /tmp/kubescape-report.txt
+            - sh
+            - -c
+            - |
+              apk add --no-cache bash curl >/dev/null
+              curl -s https://raw.githubusercontent.com/kubescape/kubescape/master/install.sh | /bin/bash
+              kubescape scan framework nsa \
+                --include-namespaces "$NAMESPACE" \
+                --compliance-threshold 80 \
+                --format pretty-printer \
+                --output /tmp/kubescape-report.txt
           env:
             - name: NAMESPACE
               valueFrom:
@@ -212,7 +219,7 @@ spec:
       serviceAccountName: security-scanner
       containers:
         - name: netpol-check
-          image: bitnami/kubectl:1.29
+          image: bitnami/kubectl:latest
           command:
             - sh
             - -c
@@ -235,18 +242,13 @@ spec:
 
               # Check that a default deny policy exists
               DEFAULT_DENY=$(kubectl get networkpolicies -n "$NAMESPACE" \
-                -o json | python3 -c "
-              import json, sys
-              data = json.load(sys.stdin)
-              for pol in data.get('items', []):
-                spec = pol.get('spec', {})
-                # A default deny has empty podSelector and no ingress rules
-                if not spec.get('podSelector', {}).get('matchLabels') and \
-                   not spec.get('ingress'):
-                  print('found')
-                  sys.exit(0)
-              print('not_found')
-              " 2>/dev/null)
+                -o json | jq -r '
+                  if any(.items[]?;
+                    (.spec.podSelector == {}) and
+                    ((.spec.policyTypes // ["Ingress"]) | index("Ingress")) and
+                    ((.spec.ingress // []) | length == 0)
+                  ) then "found" else "not_found" end
+                ' 2>/dev/null)
 
               if [ "$DEFAULT_DENY" != "found" ]; then
                 echo "WARN: No default deny NetworkPolicy found"
@@ -254,39 +256,36 @@ spec:
                 echo "PASS: Default deny NetworkPolicy exists"
               fi
 
-              # Check pods are not running as root
-              ROOT_PODS=$(kubectl get pods -n "$NAMESPACE" -o json | python3 -c "
-              import json, sys
-              data = json.load(sys.stdin)
-              root_pods = []
-              for pod in data.get('items', []):
-                for container in pod['spec'].get('containers', []):
-                  sc = container.get('securityContext', {})
-                  if sc.get('runAsUser') == 0 or \
-                     sc.get('runAsNonRoot') is False:
-                    root_pods.append(pod['metadata']['name'])
-              for p in set(root_pods):
-                print(p)
-              ")
+              # Check for explicit root settings at pod or container level
+              ROOT_PODS=$(kubectl get pods -n "$NAMESPACE" -o json | jq -r '
+                [
+                  .items[]? as $pod |
+                  ($pod.spec.securityContext // {}) as $pod_sc |
+                  $pod.spec.containers[]? |
+                  (.securityContext // {}) as $container_sc |
+                  select(
+                    (($container_sc.runAsUser // $pod_sc.runAsUser) == 0) or
+                    (($container_sc.runAsNonRoot // $pod_sc.runAsNonRoot) == false)
+                  ) |
+                  $pod.metadata.name
+                ] | unique | .[]
+              ')
 
               if [ -n "$ROOT_PODS" ]; then
                 echo "FAIL: Pods running as root:"
                 echo "$ROOT_PODS"
                 FAILURES=$((FAILURES + 1))
               else
-                echo "PASS: No pods running as root"
+                echo "PASS: No explicit root settings found"
               fi
 
               # Check for privileged containers
-              PRIV_CONTAINERS=$(kubectl get pods -n "$NAMESPACE" -o json | python3 -c "
-              import json, sys
-              data = json.load(sys.stdin)
-              for pod in data.get('items', []):
-                for container in pod['spec'].get('containers', []):
-                  sc = container.get('securityContext', {})
-                  if sc.get('privileged'):
-                    print(f\"{pod['metadata']['name']}/{container['name']}\")
-              ")
+              PRIV_CONTAINERS=$(kubectl get pods -n "$NAMESPACE" -o json | jq -r '
+                .items[]? as $pod |
+                $pod.spec.containers[]? |
+                select((.securityContext // {}).privileged == true) |
+                "\($pod.metadata.name)/\(.name)"
+              ')
 
               if [ -n "$PRIV_CONTAINERS" ]; then
                 echo "FAIL: Privileged containers found:"
@@ -311,7 +310,7 @@ spec:
 
 ## CIS Benchmark Scanning with kube-bench
 
-For cluster-level security validation, run kube-bench to check against CIS Kubernetes Benchmarks:
+For node-level CIS validation, run kube-bench to check the node where the Job is scheduled against CIS Kubernetes Benchmarks:
 
 ```yaml
 apiVersion: batch/v1
@@ -370,6 +369,7 @@ containers:
         trivy image --format json \
           --output /tmp/scan-results.json \
           --severity CRITICAL,HIGH \
+          --exit-code 1 \
           "$TARGET_IMAGE"
 
         scan_exit=$?
@@ -450,4 +450,4 @@ Configure OneUptime to track security scan outcomes over time and alert your sec
 5. **Correlate with CI scans** - Compare PostSync findings with CI findings to catch newly introduced issues.
 6. **Review findings regularly** - Do not let accepted risks accumulate without review.
 
-Post-deployment security scanning fills the gap between CI-time scanning and runtime protection. ArgoCD PostSync hooks make it automatic, and failing the sync on critical findings ensures security issues are addressed before they persist in production.
+Post-deployment security scanning fills the gap between CI-time scanning and runtime protection. ArgoCD PostSync hooks make it automatic, and failing the sync on critical findings ensures security issues are surfaced immediately after deployment rather than left unnoticed.
