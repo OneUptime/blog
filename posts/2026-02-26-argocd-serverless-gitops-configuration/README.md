@@ -50,9 +50,12 @@ serverless-config/
   functions/
     base/
       function-a/
+        kustomization.yaml
         function.yaml
         config.yaml
+        external-secret.yaml
       function-b/
+        kustomization.yaml
         function.yaml
         config.yaml
     overlays/
@@ -91,9 +94,6 @@ data:
 
   # Default max scale
   max-revision-timeout-seconds: "600"
-
-  # Enable multi-container support
-  enable-multi-container: "true"
 ```
 
 ```yaml
@@ -104,6 +104,9 @@ metadata:
   name: config-features
   namespace: knative-serving
 data:
+  # Enable multi-container support
+  multi-container: "enabled"
+
   # Enable affinity, tolerations, node selectors in Knative Services
   kubernetes.podspec-affinity: "enabled"
   kubernetes.podspec-tolerations: "enabled"
@@ -166,9 +169,11 @@ spec:
   triggers:
     - type: rabbitmq
       metadata:
-        host: amqp://guest:guest@rabbitmq.default.svc.cluster.local:5672/
+        hostFromEnv: RABBITMQ_HOST
+        protocol: amqp
         queueName: orders
-        queueLength: "10"  # Scale up when more than 10 messages per pod
+        mode: QueueLength
+        value: "10"  # Scale up when more than 10 messages per pod
     - type: cron
       metadata:
         timezone: America/New_York
@@ -226,6 +231,16 @@ spec:
 ```
 
 ```yaml
+# functions/base/function-a/kustomization.yaml
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - function.yaml
+  - config.yaml
+  - external-secret.yaml
+```
+
+```yaml
 # functions/base/function-a/config.yaml
 apiVersion: v1
 kind: ConfigMap
@@ -276,7 +291,7 @@ Never store secrets in plain text. Use External Secrets Operator with ArgoCD:
 
 ```yaml
 # functions/base/function-a/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: function-a-secrets
