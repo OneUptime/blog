@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Sync Operations, Troubleshooting
 
-Description: Learn how to retry failed sync operations in ArgoCD using the UI, CLI, and declarative configuration to recover from transient deployment failures.
+Description: Learn how to retry failed sync operations in ArgoCD using the UI, CLI, and API-based automation to recover from transient deployment failures.
 
 ---
 
@@ -14,7 +14,7 @@ This guide covers both manual retry approaches and the thought process behind de
 
 ## Understanding Sync Failure States
 
-When an ArgoCD sync fails, the application enters a specific state. The sync status shows "Failed" and the operation result contains error details. You can see this in both the UI and CLI:
+When an ArgoCD sync fails, the application sync status usually remains `OutOfSync` or may be `Unknown`, while the last sync operation result shows `Failed` and contains error details. You can see this in both the UI and CLI:
 
 ```bash
 # Check the status of a failed sync
@@ -65,27 +65,28 @@ argocd app sync my-app --timeout 300
 In the ArgoCD web UI:
 
 1. Navigate to your application
-2. You will see the "Failed" status banner with error details
+2. Check the last sync operation result and error details
 3. Click the "Sync" button in the top bar
 4. Review the sync parameters
 5. Click "Synchronize" to retry
 
-The UI preserves your previous sync options, making it easy to retry with the same configuration.
+Review the options before retrying, especially if the previous sync used pruning, force apply, or a specific revision.
 
 ## Force Sync After Failure
 
-Sometimes a regular retry is not enough. If the failure was caused by a stale cache or comparison, you can force a refresh before syncing:
+Sometimes a regular retry is not enough. If the failure was caused by a stale cache or comparison, refresh the application state before syncing:
 
 ```bash
 # Refresh the application state, then sync
 argocd app get my-app --refresh
 argocd app sync my-app
 
-# Or combine into one step by forcing the sync
-argocd app sync my-app --force
+# If target manifests might be stale, refresh the manifest cache too
+argocd app get my-app --hard-refresh
+argocd app sync my-app
 ```
 
-The `--force` flag tells ArgoCD to delete and recreate resources that cannot be updated in place. Use this carefully - it causes brief downtime for the affected resources.
+The `--force` flag is a separate option that performs a force apply during sync. Use it carefully, and prefer the documented `Force=true,Replace=true` sync option on specific resources when you intentionally need ArgoCD to delete and recreate them.
 
 ## Retrying Specific Resources
 
@@ -175,17 +176,18 @@ Then retry only the out-of-sync resources using `--resource` flags.
 Sometimes a sync fails because of the sync options used. You can retry with different options:
 
 ```bash
-# Original sync failed with validation error
-# Retry with validation disabled
-argocd app sync my-app --sync-option Validate=false
+# Original sync failed with validation error for a resource that needs it
+# Add the documented sync option to that resource or application, then retry
+argocd app set my-app --sync-option Validate=false
+argocd app sync my-app
 
 # Original sync failed with large CRD
 # Retry with server-side apply
-argocd app sync my-app --sync-option ServerSideApply=true
+argocd app sync my-app --server-side
 
 # Original sync timed out
 # Retry with replace instead of apply
-argocd app sync my-app --sync-option Replace=true
+argocd app sync my-app --replace
 ```
 
 ## Using the API for Programmatic Retries
