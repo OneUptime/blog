@@ -40,10 +40,10 @@ OneLogin supports OIDC natively, which means you can use ArgoCD's built-in OIDC 
 In the application settings:
 
 ### Configuration Tab
-- **Login URL**: `https://argocd.example.com/auth/callback`
+- **Login URL**: `https://argocd.example.com/auth/login`
 - **Redirect URIs**: `https://argocd.example.com/auth/callback`
 - **Post Logout Redirect URI**: `https://argocd.example.com` (optional)
-- **Token Endpoint Authentication Method**: POST
+- **Token Endpoint Authentication Method**: Basic
 
 ### SSO Tab
 Note the following values:
@@ -59,22 +59,12 @@ Assign the application to the roles or groups that should have access to ArgoCD.
 OneLogin can include group membership in the OIDC token through custom parameters:
 
 1. In the ArgoCD application, go to the **Parameters** tab
-2. Click **Add Parameter** (the + icon)
-3. Configure:
-   - **Field name**: `groups`
-   - **Include in SAML assertion**: Check this
-4. Click **Save**
-5. In the parameter row, click the value field and set:
-   - **Value**: Select **User Roles** or **Groups** depending on your OneLogin setup
-   - **Include in Token**: Yes
-6. Click **Save**
-
-Alternatively, use OneLogin's custom claims feature:
-
-1. Go to the **SSO** tab
-2. Under **Token Claims**, add a custom claim:
-   - **Claim name**: `groups`
-   - **Claim value**: Select the appropriate source (e.g., User Roles)
+2. Leave **Credentials are** set to **Configured by admin**
+3. Click the **Groups** parameter
+4. Configure:
+   - **Default if no value selected**: Select **User Roles** or another group source depending on your OneLogin setup
+   - **Transform**: Select **Semicolon Delimited Input**
+5. Click **Save**
 
 ## Step 4: Configure ArgoCD
 
@@ -195,6 +185,7 @@ data:
           clientID: your-onelogin-client-id
           clientSecret: $dex.onelogin.clientSecret
           redirectURI: https://argocd.example.com/api/dex/callback
+          insecureEnableGroups: true
           scopes:
             - openid
             - profile
@@ -218,8 +209,16 @@ Check that the redirect URI in OneLogin's application settings exactly matches w
 
 1. Check that the groups claim is present in the token. You can decode the JWT token to inspect claims:
 ```bash
-# Decode a JWT token (requires jq)
-echo "YOUR_TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | jq .
+# Decode a JWT token payload
+python3 - <<'PY'
+import base64
+import json
+
+token = "YOUR_TOKEN"
+payload = token.split(".")[1]
+payload += "=" * (-len(payload) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))
+PY
 ```
 
 2. Verify the group names in the token match exactly what you have in `policy.csv`
@@ -241,7 +240,7 @@ Adjust OneLogin's session settings:
 
 1. **Enable MFA in OneLogin** - Enforce multi-factor authentication for all users who access ArgoCD
 2. **Use OneLogin's risk-based authentication** - Configure adaptive MFA based on login context (location, device, etc.)
-3. **Set up user provisioning** - Use OneLogin's provisioning to automatically create and deactivate user access
+3. **Use app assignments and mappings** - Automatically grant and remove ArgoCD access through OneLogin roles and rules
 4. **Monitor login events** - Use OneLogin's event log to audit ArgoCD login activity
 5. **Rotate client secrets** - Periodically rotate the OIDC client secret and update the ArgoCD Secret
 
