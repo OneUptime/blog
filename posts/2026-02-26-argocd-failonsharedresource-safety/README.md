@@ -91,22 +91,7 @@ spec:
 
 ## Enabling FailOnSharedResource Globally
 
-If you want all applications to fail on shared resources by default, you can set it as a default sync option in the ArgoCD configuration.
-
-```yaml
-# argocd-cm ConfigMap
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  # Set default sync options for all applications
-  resource.customizations.syncOptions.all: |
-    - FailOnSharedResource=true
-```
-
-Alternatively, you can enforce this at the project level by requiring it in your team's deployment standards. While ArgoCD does not have a native project-level sync option enforcement, you can use admission controllers or policy engines to validate this:
+ArgoCD does not currently provide an `argocd-cm` setting that makes a sync option the default for every application. To require it globally, enforce it in your team's deployment standards with admission controllers or policy engines:
 
 ```yaml
 # Kyverno policy to enforce FailOnSharedResource
@@ -115,14 +100,15 @@ kind: ClusterPolicy
 metadata:
   name: require-failonsharedresource
 spec:
-  validationFailureAction: enforce
   rules:
     - name: check-failonsharedresource
       match:
-        resources:
-          kinds:
-            - argoproj.io/v1alpha1/Application
+        any:
+          - resources:
+              kinds:
+                - Application
       validate:
+        failureAction: Enforce
         message: "All ArgoCD applications must have FailOnSharedResource=true"
         pattern:
           spec:
@@ -184,11 +170,13 @@ argocd app sync my-app
 
 **Option C: Mark as intentionally shared**
 
-If the resource truly needs to be in both applications (rare), disable FailOnSharedResource for that specific sync:
+If the resource truly needs to be in both applications (rare), remove FailOnSharedResource before the sync and add it back afterward:
 
 ```bash
-# One-time sync with the option disabled
-argocd app sync my-app --sync-option FailOnSharedResource=false
+# Temporarily remove the sync option
+argocd app set my-app --sync-option '!FailOnSharedResource=true'
+argocd app sync my-app
+argocd app set my-app --sync-option FailOnSharedResource=true
 ```
 
 ## Using FailOnSharedResource with ApplicationSets
@@ -284,9 +272,10 @@ There are some cases where this option causes more trouble than it solves:
 
 ```bash
 # Temporarily disable for a migration sync
+argocd app set my-app --sync-option '!FailOnSharedResource=true'
 argocd app sync my-app \
-  --sync-option FailOnSharedResource=false \
   --prune=false
+argocd app set my-app --sync-option FailOnSharedResource=true
 ```
 
 ## Monitoring FailOnSharedResource Failures
