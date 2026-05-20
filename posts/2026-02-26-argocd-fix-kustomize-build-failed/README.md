@@ -177,14 +177,26 @@ metadata:
   name: argocd-cm
   namespace: argocd
 data:
-  # Override the kustomize binary path
-  kustomize.path.v4.5.7: /custom-tools/kustomize
+  # Register an additional Kustomize binary path
+  kustomize.path.v5.3.0: /custom-tools/kustomize
 ```
 
-You can mount a custom Kustomize binary using an init container on the repo server:
+Then set the application to use that version:
 
 ```yaml
-# Repo server deployment - add init container
+spec:
+  source:
+    kustomize:
+      version: v5.3.0
+```
+
+You can mount a custom Kustomize binary using an init container and volume mount on the repo server:
+
+```yaml
+# Repo server deployment - add volume, init container, and repo-server mount
+volumes:
+  - name: custom-tools
+    emptyDir: {}
 initContainers:
   - name: install-kustomize
     image: alpine:3.19
@@ -195,6 +207,11 @@ initContainers:
         wget https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.3.0/kustomize_v5.3.0_linux_amd64.tar.gz
         tar xzf kustomize_v5.3.0_linux_amd64.tar.gz
         mv kustomize /custom-tools/
+    volumeMounts:
+      - name: custom-tools
+        mountPath: /custom-tools
+containers:
+  - name: argocd-repo-server
     volumeMounts:
       - name: custom-tools
         mountPath: /custom-tools
@@ -230,15 +247,11 @@ cp -r /tmp/shared/base ./vendor/shared-base
 #   - ../../vendor/shared-base
 ```
 
-2. **Configure Git credentials for the remote base** in ArgoCD:
+2. **Use the same Git credentials as the application repo**:
 
-```bash
-argocd repo add https://github.com/org/shared-base \
-  --username x-access-token \
-  --password ghp_token
-```
+ArgoCD remote bases inherit credentials from the application repository. This works only when the remote base can use the same credentials or SSH key. It will not work for a different private repository just because that repository was added separately to ArgoCD.
 
-3. **Use the ref tag properly** for private repos:
+3. **Use the ref tag properly** for remote bases:
 
 ```yaml
 resources:
