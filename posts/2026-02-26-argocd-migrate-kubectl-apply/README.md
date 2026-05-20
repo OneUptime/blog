@@ -19,8 +19,8 @@ The problems with `kubectl apply` as a deployment strategy become apparent at sc
 - No single source of truth - YAML files live on different laptops
 - No audit trail - `kubectl apply` does not record who deployed what
 - No drift detection - manual changes in the cluster go unnoticed
-- No rollback mechanism - you hope someone has the previous YAML
-- No access control - anyone with cluster access can deploy anything
+- No consistent rollback mechanism - you hope someone has the previous YAML
+- Weak deployment access control - anyone with write access to the cluster can deploy anything
 - No visibility - no dashboard showing what is deployed where
 
 ArgoCD solves all of these by making Git the single source of truth and continuously reconciling cluster state with the desired state in Git.
@@ -30,7 +30,7 @@ ArgoCD solves all of these by making Git the single source of truth and continuo
 First, document everything that is currently running. The challenge is that `kubectl apply` leaves no organized record of what was deployed.
 
 ```bash
-# Export all resources from a namespace
+# Export common workload resources from a namespace
 
 kubectl get all -n production -o yaml > production-all.yaml
 
@@ -65,7 +65,15 @@ yq eval 'del(
   .metadata.managedFields,
   .metadata.annotations."kubectl.kubernetes.io/last-applied-configuration",
   .metadata.annotations."deployment.kubernetes.io/revision",
-  .status
+  .status,
+  .items[].metadata.resourceVersion,
+  .items[].metadata.uid,
+  .items[].metadata.creationTimestamp,
+  .items[].metadata.generation,
+  .items[].metadata.managedFields,
+  .items[].metadata.annotations."kubectl.kubernetes.io/last-applied-configuration",
+  .items[].metadata.annotations."deployment.kubernetes.io/revision",
+  .items[].status
 )' "$1"
 ```
 
@@ -173,7 +181,7 @@ metadata:
   name: production-api
   namespace: argocd
 spec:
-  project: production
+  project: default
   source:
     repoURL: https://github.com/myorg/gitops-repo.git
     path: apps/production/api
