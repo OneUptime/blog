@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Annotation, Diff Customization
 
-Description: Learn how to resolve the kubectl.kubernetes.io/last-applied-configuration annotation causing false OutOfSync status in ArgoCD applications.
+Description: Learn how to handle kubectl.kubernetes.io/last-applied-configuration annotation noise in ArgoCD applications.
 
 ---
 
-One of the most frequent sources of diff noise in ArgoCD is the `kubectl.kubernetes.io/last-applied-configuration` annotation. This annotation is a relic of client-side apply, and it stores a full JSON copy of the last configuration applied using `kubectl apply`. When ArgoCD manages resources that were previously managed by `kubectl`, or when someone runs `kubectl apply` alongside ArgoCD, this annotation creates persistent OutOfSync warnings.
+One source of diff noise in ArgoCD is the `kubectl.kubernetes.io/last-applied-configuration` annotation. This annotation is used by client-side apply, and it stores a full JSON copy of the last configuration applied using `kubectl apply`. When ArgoCD manages resources that were previously managed by `kubectl`, or when someone runs `kubectl apply` alongside ArgoCD, this annotation can make diff output noisy or influence ArgoCD's legacy three-way diff behavior.
 
 This guide explains what the annotation is, why it causes problems, and multiple strategies to handle it.
 
@@ -38,18 +38,18 @@ sequenceDiagram
 
 ## Why It Causes Problems in ArgoCD
 
-ArgoCD does not add this annotation when it applies resources. It uses its own tracking mechanism. But if the annotation already exists on a resource, or if someone manually runs `kubectl apply` on a resource ArgoCD manages, the annotation content may not match what ArgoCD expects.
+By default, ArgoCD applies resources with client-side `kubectl apply`, which relies on this annotation to store the previous applied state. ArgoCD also uses its own resource tracking mechanism to decide which resources belong to an application. If the annotation already exists on a resource, becomes stale, or is updated by someone manually running `kubectl apply` on a resource ArgoCD manages, the annotation content can make comparisons harder to understand.
 
 The problems manifest in several ways:
 
-1. **Initial migration**: You move from kubectl-managed resources to ArgoCD. All resources have the annotation, but ArgoCD's desired state does not include it
+1. **Initial migration**: You move from kubectl-managed resources to ArgoCD. Existing resources may have stale or very large last-applied annotations
 2. **Manual intervention**: An engineer runs `kubectl apply` to hotfix something. The annotation gets updated with their changes
-3. **Different serialization**: ArgoCD and kubectl may serialize the same manifest differently, causing the annotation contents to mismatch even when the actual resource configuration is identical
+3. **Different serialization**: Tools may serialize the same manifest differently, causing the annotation contents to look different even when the actual resource configuration is identical
 4. **Growing diff size**: The annotation contains the entire previous manifest, so the diff output becomes enormous and hard to read
 
 ## Solution 1: Ignore the Annotation with JSON Pointer
 
-The simplest fix is to tell ArgoCD to ignore this annotation in diffs.
+If the annotation itself is showing up as a diff, tell ArgoCD to ignore it in comparisons.
 
 ### Per-Application
 
@@ -77,7 +77,7 @@ Note the `~1` escape for the forward slash in the annotation key.
 
 ### System-Level (Recommended)
 
-Since this annotation affects all resource types, configure it globally:
+Since this annotation can appear on many resource types, configure it globally:
 
 ```yaml
 apiVersion: v1
@@ -112,11 +112,11 @@ for kind in deployment service configmap secret; do
 done
 ```
 
-After removing the annotation, ArgoCD should sync cleanly. However, if anyone runs `kubectl apply` again, the annotation comes back.
+After removing the annotation, ArgoCD can recreate it during a normal client-side apply sync. If anyone runs `kubectl apply` again, the annotation also comes back.
 
 ## Solution 3: Use Server-Side Apply
 
-Server-side apply does not use the `last-applied-configuration` annotation. Instead, it uses the `managedFields` metadata for three-way merge diffs. Switching ArgoCD to server-side apply eliminates this problem entirely:
+Server-side apply does not use the `last-applied-configuration` annotation for apply state. Instead, it uses `managedFields` metadata for field ownership. Switching ArgoCD to server-side apply avoids the annotation size limit and removes the client-side apply dependency on this annotation:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -136,7 +136,7 @@ spec:
       - ServerSideApply=true
 ```
 
-With server-side apply enabled, ArgoCD creates resources without the `last-applied-configuration` annotation and uses field ownership for merging.
+With server-side apply enabled, ArgoCD applies resources with `kubectl apply --server-side --force-conflicts` and uses field ownership for merging.
 
 ## Solution 4: Use Server-Side Diff
 
@@ -159,25 +159,25 @@ spec:
     namespace: default
 ```
 
-Server-side diff naturally handles the `last-applied-configuration` annotation because it compares the dry-run result against the live state, and neither side includes the annotation in the comparison.
+Server-side diff avoids relying on the `last-applied-configuration` annotation for comparison because it compares the server-side dry-run result against the live state.
 
 ## Solution 5: Prevent Manual kubectl apply
 
-The root cause is often people running `kubectl apply` on resources ArgoCD manages. Prevent this with RBAC:
+The root cause is often people running `kubectl apply` on resources ArgoCD manages. Kubernetes RBAC cannot distinguish `kubectl apply` from other create, update, or patch operations, but you can remove direct write permissions for those resources:
 
 ```yaml
-# ClusterRole that prevents apply on ArgoCD-managed resources
+# ClusterRole that prevents direct writes to deployments
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: no-direct-apply
+  name: deployment-read-only
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
     verbs: ["get", "list", "watch"]  # No create, update, patch
 ```
 
-Alternatively, use an admission webhook like OPA Gatekeeper to reject `kubectl apply` operations on resources with ArgoCD tracking labels:
+Alternatively, use an admission webhook like OPA Gatekeeper to reject direct write operations on resources with ArgoCD tracking labels:
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1
@@ -189,15 +189,28 @@ spec:
     spec:
       names:
         kind: PreventDirectApply
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
         package preventdirectapply
         violation[{"msg": msg}] {
-          input.review.object.metadata.labels["app.kubernetes.io/managed-by"] == "argocd"
+          input.review.object.metadata.labels["app.kubernetes.io/instance"]
           input.review.userInfo.username != "system:serviceaccount:argocd:argocd-application-controller"
           msg := "Direct modifications to ArgoCD-managed resources are not allowed"
         }
+---
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: PreventDirectApply
+metadata:
+  name: prevent-direct-apply
+spec:
+  match:
+    kinds:
+      - apiGroups: ["apps"]
+        kinds: ["Deployment"]
 ```
 
 ## Migration Strategy: kubectl to ArgoCD
@@ -225,7 +238,7 @@ Recommended migration steps:
 2. Import resources into ArgoCD applications
 3. Verify sync status is clean
 4. Optionally remove the annotations from cluster resources
-5. Optionally switch to server-side apply for a permanent solution
+5. Optionally switch to server-side apply so ArgoCD no longer depends on the annotation for apply state
 
 ## Handling the Annotation in CI/CD
 
@@ -238,7 +251,7 @@ kubectl annotate deployment my-app \
   kubectl.kubernetes.io/last-applied-configuration- \
   --overwrite
 
-# Or better: use kubectl create --save-config=false
+# Or, when creating a new resource only, use kubectl create without saving apply state
 kubectl create -f manifest.yaml --save-config=false
 ```
 
