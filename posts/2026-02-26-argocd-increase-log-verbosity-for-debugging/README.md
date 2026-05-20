@@ -8,20 +8,18 @@ Description: Learn how to increase ArgoCD log verbosity for each component to ge
 
 ---
 
-Default ArgoCD log levels show info and above, which is fine for normal operations but insufficient when you need to dig into why something is failing. Increasing log verbosity reveals the internal decision-making process of each ArgoCD component, including gRPC calls, Git operations, manifest rendering details, and reconciliation logic. Here is how to do it for each component.
+Default ArgoCD log levels show info and above, which is fine for normal operations but insufficient when you need to dig into why something is failing. Increasing log verbosity reveals more of the internal decision-making process of each ArgoCD component, including gRPC-related messages, Git operations, manifest rendering details, and reconciliation logic. Here is how to do it for each component.
 
 ## Understanding ArgoCD Log Levels
 
-ArgoCD supports these log levels, from least to most verbose:
+ArgoCD component log level flags support these log levels, from least to most verbose:
 
 | Level | Description |
 |-------|-------------|
-| `fatal` | Only shows fatal errors (component crashes) |
 | `error` | Shows errors only |
 | `warn` | Shows warnings and above |
 | `info` | Default level, shows operational information |
 | `debug` | Shows detailed internal operations |
-| `trace` | Most verbose, shows everything including gRPC payloads |
 
 ## Method 1: Using argocd-cmd-params-cm ConfigMap
 
@@ -46,6 +44,8 @@ data:
   applicationsetcontroller.log.level: "debug"
   # Notifications Controller log level
   notificationscontroller.log.level: "debug"
+  # Dex Server log level
+  dexserver.log.level: "debug"
 ```
 
 Apply and restart:
@@ -57,13 +57,20 @@ kubectl apply -f argocd-cmd-params-cm.yaml
 # Restart all components to pick up the new log level
 kubectl rollout restart deployment -n argocd \
   argocd-server \
-  argocd-application-controller \
-  argocd-repo-server
+  argocd-repo-server \
+  argocd-applicationset-controller \
+  argocd-notifications-controller \
+  argocd-dex-server
+kubectl rollout restart statefulset -n argocd \
+  argocd-application-controller
 
 # Wait for rollout
 kubectl rollout status deployment -n argocd argocd-server
-kubectl rollout status deployment -n argocd argocd-application-controller
 kubectl rollout status deployment -n argocd argocd-repo-server
+kubectl rollout status deployment -n argocd argocd-applicationset-controller
+kubectl rollout status deployment -n argocd argocd-notifications-controller
+kubectl rollout status deployment -n argocd argocd-dex-server
+kubectl rollout status statefulset -n argocd argocd-application-controller
 ```
 
 ## Method 2: Using kubectl patch
@@ -92,12 +99,15 @@ kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
   }
 }'
 
-# Set all components to debug
+# Set all listed components to debug
 kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
   "data": {
     "server.log.level": "debug",
     "controller.log.level": "debug",
-    "reposerver.log.level": "debug"
+    "reposerver.log.level": "debug",
+    "applicationsetcontroller.log.level": "debug",
+    "notificationscontroller.log.level": "debug",
+    "dexserver.log.level": "debug"
   }
 }'
 ```
@@ -122,7 +132,9 @@ kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
 
 # Restart all components
 kubectl rollout restart deployment -n argocd \
-  argocd-server argocd-application-controller argocd-repo-server
+  argocd-server argocd-repo-server
+kubectl rollout restart statefulset -n argocd \
+  argocd-application-controller
 ```
 
 ## What Debug Logs Reveal Per Component
@@ -130,7 +142,7 @@ kubectl rollout restart deployment -n argocd \
 ### API Server Debug Logs
 
 With debug level, the API server shows:
-- Full request/response details for API calls
+- Additional request handling details for API calls
 - RBAC evaluation decisions
 - SSO token validation steps
 - Webhook payload processing
@@ -138,10 +150,10 @@ With debug level, the API server shows:
 
 ```bash
 # Watch debug logs for authentication issues
-kubectl logs -n argocd deploy/argocd-server -f | grep -E "level=debug.*auth|level=debug.*rbac"
+kubectl logs -n argocd deploy/argocd-server -f | grep -E '(level=debug|"level":"debug").*(auth|rbac)'
 
 # Watch debug logs for webhook processing
-kubectl logs -n argocd deploy/argocd-server -f | grep -E "level=debug.*webhook"
+kubectl logs -n argocd deploy/argocd-server -f | grep -E '(level=debug|"level":"debug").*webhook'
 ```
 
 ### Application Controller Debug Logs
@@ -155,12 +167,12 @@ The controller debug logs reveal:
 
 ```bash
 # Watch reconciliation for a specific app
-kubectl logs -n argocd deploy/argocd-application-controller -f | \
-  grep -E "level=debug.*my-app-name"
+kubectl logs -n argocd statefulset/argocd-application-controller -f | \
+  grep -E '(level=debug|"level":"debug").*my-app-name'
 
 # Watch sync operations
-kubectl logs -n argocd deploy/argocd-application-controller -f | \
-  grep -E "level=debug.*(sync|reconcil)"
+kubectl logs -n argocd statefulset/argocd-application-controller -f | \
+  grep -E '(level=debug|"level":"debug").*(sync|reconcil)'
 ```
 
 ### Repo Server Debug Logs
@@ -175,11 +187,11 @@ The repo server debug logs show:
 ```bash
 # Watch Git operations
 kubectl logs -n argocd deploy/argocd-repo-server -f | \
-  grep -E "level=debug.*(git|clone|fetch)"
+  grep -E '(level=debug|"level":"debug").*(git|clone|fetch)'
 
 # Watch manifest generation
 kubectl logs -n argocd deploy/argocd-repo-server -f | \
-  grep -E "level=debug.*(helm|kustomize|manifest)"
+  grep -E '(level=debug|"level":"debug").*(helm|kustomize|manifest)'
 ```
 
 ## Enabling gRPC Logging
@@ -214,31 +226,28 @@ Then filter the debug output:
 ```bash
 # Only show Git-related debug messages
 kubectl logs -n argocd deploy/argocd-repo-server -f --tail=0 | \
-  grep "level=debug" | grep -i "git"
+  grep -E 'level=debug|"level":"debug"' | grep -i "git"
 ```
 
 ## Dex Server Log Verbosity
 
-Dex has its own logging configuration:
+Dex logging can also be set through `argocd-cmd-params-cm`:
 
 ```yaml
-# In argocd-cm ConfigMap, within dex.config
-dex.config: |
-  logger:
-    level: debug
-    format: json
-  connectors:
-    - type: oidc
-      id: okta
-      name: Okta
-      config:
-        issuer: https://your-org.okta.com
-        clientID: your-client-id
-        clientSecret: $dex.okta.clientSecret
+# argocd-cmd-params-cm ConfigMap
+data:
+  dexserver.log.level: "debug"
+  dexserver.log.format: "json"
 ```
 
 ```bash
-# Apply and restart Dex
+# Patch and restart Dex
+kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
+  "data": {
+    "dexserver.log.level": "debug",
+    "dexserver.log.format": "json"
+  }
+}'
 kubectl rollout restart deployment argocd-dex-server -n argocd
 
 # Watch Dex debug logs
@@ -256,10 +265,12 @@ sleep 1800 && kubectl patch configmap argocd-cmd-params-cm -n argocd --type merg
   "data": {
     "server.log.level": "info",
     "controller.log.level": "info",
-    "reposerver.log.level": "info"
+    "reposerver.log.level": "info",
+    "dexserver.log.level": "info"
   }
 }' && kubectl rollout restart deployment -n argocd \
-  argocd-server argocd-application-controller argocd-repo-server &
+  argocd-server argocd-repo-server argocd-dex-server && \
+kubectl rollout restart statefulset -n argocd argocd-application-controller &
 
 # 2. Monitor disk usage while debugging
 kubectl exec -n argocd deploy/argocd-server -- df -h /tmp
@@ -277,17 +288,26 @@ Always revert after debugging:
 kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge -p '{
   "data": {
     "server.log.level": "info",
-    "server.log.format": "text",
+    "server.log.format": "json",
     "controller.log.level": "info",
-    "controller.log.format": "text",
+    "controller.log.format": "json",
     "reposerver.log.level": "info",
-    "reposerver.log.format": "text"
+    "reposerver.log.format": "json",
+    "applicationsetcontroller.log.level": "info",
+    "applicationsetcontroller.log.format": "json",
+    "notificationscontroller.log.level": "info",
+    "notificationscontroller.log.format": "json",
+    "dexserver.log.level": "info",
+    "dexserver.log.format": "json"
   }
 }'
 
 # Restart all components
 kubectl rollout restart deployment -n argocd \
-  argocd-server argocd-application-controller argocd-repo-server
+  argocd-server argocd-repo-server argocd-applicationset-controller \
+  argocd-notifications-controller argocd-dex-server
+kubectl rollout restart statefulset -n argocd \
+  argocd-application-controller
 
 # Verify the change
 kubectl get configmap argocd-cmd-params-cm -n argocd -o yaml | grep log
@@ -315,7 +335,7 @@ enable_debug() {
         controller)
             kubectl patch configmap argocd-cmd-params-cm -n $NAMESPACE --type merge \
               -p '{"data":{"controller.log.level":"debug"}}'
-            kubectl rollout restart deployment argocd-application-controller -n $NAMESPACE
+            kubectl rollout restart statefulset argocd-application-controller -n $NAMESPACE
             ;;
         repo)
             kubectl patch configmap argocd-cmd-params-cm -n $NAMESPACE --type merge \
@@ -326,7 +346,9 @@ enable_debug() {
             kubectl patch configmap argocd-cmd-params-cm -n $NAMESPACE --type merge \
               -p '{"data":{"server.log.level":"debug","controller.log.level":"debug","reposerver.log.level":"debug"}}'
             kubectl rollout restart deployment -n $NAMESPACE \
-              argocd-server argocd-application-controller argocd-repo-server
+              argocd-server argocd-repo-server
+            kubectl rollout restart statefulset -n $NAMESPACE \
+              argocd-application-controller
             ;;
     esac
     echo "Debug logging enabled for: $comp"
@@ -336,7 +358,9 @@ disable_debug() {
     kubectl patch configmap argocd-cmd-params-cm -n $NAMESPACE --type merge \
       -p '{"data":{"server.log.level":"info","controller.log.level":"info","reposerver.log.level":"info"}}'
     kubectl rollout restart deployment -n $NAMESPACE \
-      argocd-server argocd-application-controller argocd-repo-server
+      argocd-server argocd-repo-server
+    kubectl rollout restart statefulset -n $NAMESPACE \
+      argocd-application-controller
     echo "Debug logging disabled for all components"
 }
 
