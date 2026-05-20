@@ -122,6 +122,8 @@ metadata:
   name: deploy-on-image-push
   namespace: argo-events
 spec:
+  template:
+    serviceAccountName: create-job-sa
   dependencies:
   - name: image-push
     eventSourceName: registry-webhook
@@ -151,11 +153,13 @@ spec:
                 spec:
                   containers:
                   - name: update
-                    image: alpine/git:latest
+                    image: alpine:3.20
                     command:
                     - /bin/sh
                     - -c
                     - |
+                      apk add --no-cache git kustomize
+
                       # Extract image tag from event
                       IMAGE_TAG="${IMAGE_TAG}"
 
@@ -213,7 +217,6 @@ spec:
         method: POST
         headers:
           Content-Type: application/json
-          Authorization: "Bearer ${ARGOCD_TOKEN}"
         payload:
         - src:
             dependencyName: infra-ready
@@ -224,7 +227,7 @@ spec:
           valueFrom:
             secretKeyRef:
               name: argocd-api-token
-              key: token
+              key: bearer-token
 ```
 
 ## Pattern 3: Cloud Events Pipeline
@@ -246,6 +249,7 @@ spec:
       region: us-east-1
       queue: argocd-deployment-events
       waitTimeSeconds: 20
+      jsonBody: true
       accessKey:
         name: aws-credentials
         key: access-key
@@ -260,6 +264,8 @@ metadata:
   name: post-migration-deploy
   namespace: argo-events
 spec:
+  template:
+    serviceAccountName: create-job-sa
   dependencies:
   - name: rds-migration-complete
     eventSourceName: aws-events
@@ -365,6 +371,8 @@ metadata:
   name: security-gated-deploy
   namespace: argo-events
 spec:
+  template:
+    serviceAccountName: create-job-sa
   dependencies:
   - name: scan-complete
     eventSourceName: webhook-events
@@ -442,7 +450,7 @@ spec:
         severity: critical
 
     - alert: SensorProcessingFailed
-      expr: increase(argo_events_sensor_trigger_failed_total[5m]) > 0
+      expr: increase(argo_events_action_failed_total[5m]) > 0
       for: 1m
       labels:
         severity: warning
