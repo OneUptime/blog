@@ -28,7 +28,7 @@ Or better, use Helm for more control:
 
 global:
   image:
-    tag: v2.10.0
+    tag: v3.4.1
 
 controller:
   replicas: 2
@@ -56,6 +56,7 @@ server:
   ingress:
     enabled: true
     ingressClassName: alb
+    hostname: argocd.internal.example.com
     annotations:
       alb.ingress.kubernetes.io/scheme: internal
       alb.ingress.kubernetes.io/target-type: ip
@@ -63,11 +64,7 @@ server:
       alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
       alb.ingress.kubernetes.io/ssl-redirect: "443"
       alb.ingress.kubernetes.io/backend-protocol: HTTPS
-    hosts:
-      - argocd.internal.example.com
-    tls:
-      - hosts:
-          - argocd.internal.example.com
+    tls: false
 
 repoServer:
   replicas: 2
@@ -79,6 +76,9 @@ repoServer:
     requests:
       cpu: 250m
       memory: 256Mi
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789:role/ArgoCD-ECR-ReadOnly
 
 redis-ha:
   enabled: true
@@ -138,8 +138,10 @@ eksctl create iamserviceaccount \
   --cluster my-cluster \
   --attach-policy-arn arn:aws:iam::123456789:policy/ArgoCD-ECR-ReadOnly \
   --approve \
-  --override-existing-serviceaccounts
+  --role-only
 ```
+
+Then annotate the Helm-managed `argocd-repo-server` service account in your Helm values, as shown in the installation example above.
 
 ### IRSA for ArgoCD Image Updater
 
@@ -193,9 +195,8 @@ spec:
     - Egress
   ingress:
     - from:
-        - namespaceSelector:
-            matchLabels:
-              name: kube-system   # ALB controller
+        - ipBlock:
+            cidr: 10.0.0.0/8  # Replace with your VPC CIDR or ALB subnet CIDRs
       ports:
         - port: 8080
         - port: 8083
@@ -237,6 +238,10 @@ stringData:
       "awsAuthConfig": {
         "clusterName": "production-cluster",
         "roleARN": "arn:aws:iam::123456789:role/ArgoCD-CrossAccount-Role"
+      },
+      "tlsClientConfig": {
+        "insecure": false,
+        "caData": "<base64-encoded-cluster-ca>"
       }
     }
 ```
@@ -245,7 +250,7 @@ This uses IAM roles for cluster authentication instead of static tokens.
 
 ## ECR Integration
 
-Configure ArgoCD to pull Helm charts and images from ECR:
+Configure ArgoCD to pull Helm charts or OCI artifacts from ECR:
 
 ```yaml
 apiVersion: v1
@@ -259,24 +264,28 @@ type: Opaque
 stringData:
   type: helm
   name: my-ecr-charts
-  url: oci://123456789.dkr.ecr.us-east-1.amazonaws.com
+  url: 123456789.dkr.ecr.us-east-1.amazonaws.com
   enableOCI: "true"
 ```
 
-For ECR authentication, you can use the credential helper:
+For private ECR authentication with standard ArgoCD, store a short-lived ECR authorization token and refresh it before it expires:
 
 ```yaml
-# In the argocd-cm ConfigMap
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: argocd-cm
+  name: ecr-repo
   namespace: argocd
-data:
-  helm.valuesFileSchemes: >-
-    secrets+gpg-import, secrets+gpg-import-kubernetes,
-    secrets, secrets+literal,
-    ref+awsssm, ref+vault
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  type: helm
+  name: my-ecr-charts
+  url: 123456789.dkr.ecr.us-east-1.amazonaws.com
+  enableOCI: "true"
+  username: AWS
+  password: "<output of aws ecr get-login-password>"
 ```
 
 ## Secrets Management with AWS Secrets Manager
@@ -285,7 +294,7 @@ Use External Secrets Operator to pull secrets from AWS Secrets Manager:
 
 ```yaml
 # ClusterSecretStore pointing to AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-secrets-manager
@@ -302,7 +311,7 @@ spec:
 
 ---
 # Example usage in an application
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -373,7 +382,7 @@ spec:
 Key metrics to watch:
 
 ```yaml
-# CloudWatch alarm for ArgoCD sync failures
+# Prometheus alerts for ArgoCD health and sync failures
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -422,6 +431,7 @@ kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository -o ya
 # Upload to S3
 aws s3 cp argocd-apps-backup.yaml s3://backups/argocd/$(date +%Y%m%d)/
 aws s3 cp argocd-projects-backup.yaml s3://backups/argocd/$(date +%Y%m%d)/
+aws s3 cp argocd-repos-backup.yaml s3://backups/argocd/$(date +%Y%m%d)/
 ```
 
 Automate this with a CronJob managed by ArgoCD itself:
@@ -441,7 +451,7 @@ spec:
           serviceAccountName: argocd-backup-sa
           containers:
             - name: backup
-              image: bitnami/kubectl:latest
+              image: my-registry.example.com/kubectl-awscli:latest
               command:
                 - /bin/sh
                 - -c
@@ -449,8 +459,10 @@ spec:
                   DATE=$(date +%Y%m%d)
                   kubectl get applications -n argocd -o yaml > /tmp/apps.yaml
                   kubectl get appprojects -n argocd -o yaml > /tmp/projects.yaml
+                  kubectl get secrets -n argocd -l argocd.argoproj.io/secret-type=repository -o yaml > /tmp/repos.yaml
                   aws s3 cp /tmp/apps.yaml s3://argocd-backups/$DATE/apps.yaml
                   aws s3 cp /tmp/projects.yaml s3://argocd-backups/$DATE/projects.yaml
+                  aws s3 cp /tmp/repos.yaml s3://argocd-backups/$DATE/repos.yaml
           restartPolicy: OnFailure
 ```
 
