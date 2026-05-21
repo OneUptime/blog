@@ -35,14 +35,14 @@ For a more detailed view:
 
 ```bash
 istioctl proxy-config secret deploy/my-app -o json | \
-  jq '.dynamicActiveSecrets[] | {name: .name, validityNotAfter: .secret.tlsCertificate.certificateChain.inlineBytes}'
+  jq '.dynamicActiveSecrets[] | select(.secret.tlsCertificate) | {name: .name, certificateChain: .secret.tlsCertificate.certificateChain.inlineBytes}'
 ```
 
 To get the actual certificate details:
 
 ```bash
 istioctl proxy-config secret deploy/my-app -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout | grep -A2 "Validity"
 ```
 
@@ -100,17 +100,16 @@ This gives you the number of seconds until the root cert expires.
 Each sidecar proxy also reports certificate-related metrics:
 
 ```text
-envoy_server_days_until_first_cert_expiring
-istio_agent_pilot_xds_expired_nonce
+istio_agent_cert_expiry_seconds
 ```
 
-The `envoy_server_days_until_first_cert_expiring` metric is particularly useful. It shows how many days until the certificate on the sidecar expires:
+The `istio_agent_cert_expiry_seconds` metric is particularly useful. It shows how many seconds until the certificate on the sidecar expires:
 
 ```promql
-envoy_server_days_until_first_cert_expiring{pod=~".*"}
+istio_agent_cert_expiry_seconds{resource_name="default"}
 ```
 
-Since Istio certificates default to 24-hour lifetimes, this should normally be between 0.5 and 1.0 (days). A value of 0 means the certificate has expired.
+Since Istio certificates default to 24-hour lifetimes, this should normally be between about 43,200 and 86,400 seconds. A value at or below 0 means the certificate has expired.
 
 ## Setting Up Alerts
 
@@ -151,7 +150,7 @@ groups:
 
   - alert: WorkloadCertExpired
     expr: |
-      envoy_server_days_until_first_cert_expiring == 0
+      istio_agent_cert_expiry_seconds{resource_name="default"} <= 0
     for: 1m
     labels:
       severity: critical
@@ -200,7 +199,7 @@ This should normally be zero. Any non-zero value needs investigation.
 **Panel 4 - Per-Workload Certificate Expiry:**
 
 ```promql
-envoy_server_days_until_first_cert_expiring
+istio_agent_cert_expiry_seconds{resource_name="default"} / 86400
 ```
 
 Display as a table showing each pod and its certificate expiry days. Sort by ascending to put the most urgent at the top.
@@ -210,11 +209,11 @@ Display as a table showing each pod and its certificate expiry days. Sort by asc
 For a quick overview of all certificates in your mesh, you can script a check across all pods:
 
 ```bash
-for pod in $(kubectl get pods -A -l security.istio.io/tlsMode=istio -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'); do
+for pod in $(kubectl get pods -A -o json | jq -r '.items[] | select(any(.spec.containers[]?; .name == "istio-proxy")) | "\(.metadata.namespace)/\(.metadata.name)"'); do
   ns=$(echo $pod | cut -d/ -f1)
   name=$(echo $pod | cut -d/ -f2)
   echo -n "$pod: "
-  istioctl proxy-config secret -n $ns $name 2>/dev/null | grep "Not After" | head -1
+  istioctl proxy-config secret -n $ns $name 2>/dev/null | awk '$1 == "default" {print "NOT AFTER " $7}'
 done
 ```
 
