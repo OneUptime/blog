@@ -14,16 +14,16 @@ This guide focuses specifically on using Istio authorization to create hard traf
 
 ## How Istio Authorization Works
 
-Istio authorization operates at the Envoy proxy level. Every request that flows through the mesh passes through an Envoy sidecar, and that sidecar evaluates authorization policies before forwarding the request. The policies are evaluated locally in the proxy, so there is no network hop to an external authorization server.
+Istio authorization operates at the Envoy proxy level. Every request that flows through the sidecar mesh passes through an Envoy sidecar, and that sidecar evaluates authorization policies before forwarding the request. ALLOW and DENY policies are evaluated locally in the proxy, so there is no network hop to an external authorization server unless you use a CUSTOM policy.
 
 The evaluation order is:
 1. If any CUSTOM policy matches, delegate to external authorizer
 2. If any DENY policy matches, deny the request
-3. If any ALLOW policy matches, allow the request
-4. If no ALLOW policies exist, allow by default
-5. If ALLOW policies exist but none match, deny
+3. If no ALLOW policies exist for the workload, allow the request
+4. If any ALLOW policy matches, allow the request
+5. Deny the request
 
-That last point is crucial. Once you create an ALLOW policy in a namespace, all traffic that does not match an ALLOW rule gets denied. This is the foundation of tenant isolation.
+That last point is crucial. Once you create an ALLOW policy for a workload, all traffic to that workload that does not match an ALLOW rule gets denied. This is the foundation of tenant isolation.
 
 ## Setting Up the Deny-by-Default Baseline
 
@@ -68,7 +68,7 @@ spec:
         - tenant-a
 ```
 
-This says: for any workload in the `tenant-a` namespace, allow requests that originate from other workloads in the `tenant-a` namespace. Anything from `tenant-b` or any other namespace gets denied.
+This says: for any workload in the `tenant-a` namespace, allow requests that originate from other workloads in the `tenant-a` namespace. Anything from `tenant-b` or any other namespace gets denied. The `namespaces` match is derived from the peer certificate, so it requires mTLS between workloads.
 
 Apply the same pattern for every tenant namespace:
 
@@ -141,7 +141,7 @@ spec:
         - tenant-c
 ```
 
-You also need to allow the shared service namespace in each tenant's Sidecar resource so the tenants can actually discover the shared services, but that is a separate concern from authorization.
+If you use restrictive Sidecar egress host scopes, you also need to include the shared service namespace in each tenant's Sidecar resource so the tenants' sidecars receive configuration for those services, but that is a separate concern from authorization.
 
 ## Controlling Ingress Gateway Access
 
@@ -163,6 +163,8 @@ spec:
 ```
 
 Without this, external traffic that comes through the gateway will hit the deny-all policy and get blocked.
+
+If your ingress gateway uses a different namespace or service account, replace the principal with the actual gateway workload identity.
 
 ## Handling JWT-Based Tenant Identification
 
@@ -227,9 +229,9 @@ This shows you all the authorization policies that apply to a specific workload,
 
 One mistake people make is creating a DENY policy when they should use ALLOW. If you create a deny-all at the mesh level and then try to add DENY policies per tenant, you are layering denies on top of an already-denied baseline. Use the empty ALLOW pattern at the root, and then explicit ALLOW policies per namespace.
 
-Another pitfall is forgetting about health check traffic. Kubernetes kubelet sends health check probes directly to the pod, bypassing the sidecar. These are not affected by Istio authorization. But if your health checks go through the sidecar (for example, using port forwarding through the proxy), you need to account for them in your policies.
+Another pitfall is forgetting about health check traffic. Kubernetes kubelet sends health check probes, and Istio rewrites HTTP, TCP, and gRPC probes to the sidecar agent by default so they keep working with mTLS. If you disable probe rewrite or run custom health checks through the mesh, you need to account for them in your policies.
 
-Also watch out for headless services. Traffic to headless services resolves directly to pod IPs, and the authorization policy still applies, but the source namespace detection works differently depending on whether mTLS is enabled.
+Also watch out for headless services. Traffic to headless services resolves directly to pod IPs, and the authorization policy still applies, but source namespace and principal matching still require mTLS.
 
 ## Verifying Isolation
 
