@@ -29,22 +29,15 @@ Understanding the common causes helps you prevent drift:
 Before setting up automation, know how to check for drift manually:
 
 ```bash
-# Get what is in the cluster
-
-kubectl get virtualservices -A -o yaml > /tmp/cluster-state.yaml
-
-# Get what should be there (from Git)
-kubectl kustomize environments/production > /tmp/desired-state.yaml
-
-# Compare
-diff /tmp/desired-state.yaml /tmp/cluster-state.yaml
+# Show the diff between the live cluster and the Git state
+kubectl diff -k environments/production
 ```
 
 For a more targeted check, compare individual resources:
 
 ```bash
-# Show the diff between desired and actual for a specific VirtualService
-kubectl diff -f services/api-gateway/overlays/production/
+# Show the diff between desired and actual for a specific overlay
+kubectl diff -k services/api-gateway/overlays/production/
 ```
 
 `kubectl diff` is quick and shows you exactly what would change if you applied the Git state.
@@ -136,7 +129,7 @@ metadata:
   name: argocd-notifications-cm
   namespace: argocd
 data:
-  trigger.on-sync-status-unknown: |
+  trigger.on-drift-detected: |
     - when: app.status.sync.status == 'OutOfSync'
       send: [drift-detected]
   template.drift-detected: |
@@ -148,13 +141,17 @@ data:
       {{end}}
   service.slack: |
     token: $slack-token
-    channel: istio-drift-alerts
+  subscriptions: |
+    - recipients:
+        - slack:istio-drift-alerts
+      triggers:
+        - on-drift-detected
 ```
 
 ### Flux Alerts
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: drift-alert
@@ -162,7 +159,7 @@ metadata:
 spec:
   providerRef:
     name: slack
-  eventSeverity: warning
+  eventSeverity: info
   eventSources:
     - kind: Kustomization
       name: istio-config
@@ -219,7 +216,7 @@ done
 
 # Check for orphaned resources (exist in cluster but not in Git)
 for kind in virtualservice destinationrule authorizationpolicy peerauthentication; do
-  cluster_resources=$(kubectl get "${kind}" -n "${ENVIRONMENT}" -o name 2>/dev/null)
+  cluster_resources=$(kubectl get "${kind}" -A -o name 2>/dev/null)
   for resource in $cluster_resources; do
     resource_name=$(echo "$resource" | cut -d/ -f2)
     if ! grep -q "name: ${resource_name}" /tmp/desired.yaml; then
@@ -258,7 +255,7 @@ spec:
           serviceAccountName: drift-checker
           containers:
             - name: drift-check
-              image: bitnami/kubectl:latest
+              image: your-registry/drift-checker:latest
               command:
                 - /bin/bash
                 - -c
@@ -323,6 +320,7 @@ webhooks:
   - name: istio-drift-prevention.example.com
     rules:
       - apiGroups: ["networking.istio.io", "security.istio.io"]
+        apiVersions: ["*"]
         resources: ["*"]
         operations: ["CREATE", "UPDATE", "DELETE"]
     clientConfig:
@@ -331,6 +329,8 @@ webhooks:
         namespace: istio-system
         path: /validate
     failurePolicy: Fail
+    sideEffects: None
+    admissionReviewVersions: ["v1"]
 ```
 
 The webhook allows changes from the GitOps service account and rejects everything else. This is the strongest prevention mechanism you can put in place.
