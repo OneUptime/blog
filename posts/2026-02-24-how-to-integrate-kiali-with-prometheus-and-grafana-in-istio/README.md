@@ -25,7 +25,7 @@ graph LR
     D -->|links from| C
 ```
 
-Envoy proxies in every pod expose metrics on port 15090. Prometheus scrapes these metrics. Both Kiali and Grafana query Prometheus for data. Kiali can also link directly to relevant Grafana dashboards for deeper analysis.
+Envoy proxies in every pod expose metrics on port 15090, and Istio's merged Prometheus telemetry is commonly exposed on port 15020 at `/stats/prometheus`. Prometheus scrapes these metrics. Both Kiali and Grafana query Prometheus for data. Kiali can also link directly to relevant Grafana dashboards for deeper analysis.
 
 ## Prerequisites
 
@@ -34,10 +34,10 @@ Make sure you have these components running:
 ```bash
 # Check Prometheus
 
-kubectl get pods -n istio-system -l app=prometheus
+kubectl get pods -n istio-system -l app.kubernetes.io/name=prometheus
 
 # Check Grafana
-kubectl get pods -n istio-system -l app=grafana
+kubectl get pods -n istio-system -l app.kubernetes.io/name=grafana
 
 # Check Kiali
 kubectl get pods -n istio-system -l app.kubernetes.io/name=kiali
@@ -46,9 +46,9 @@ kubectl get pods -n istio-system -l app.kubernetes.io/name=kiali
 If any of these aren't installed, you can install them using Istio's sample addons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.27/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.27/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.27/samples/addons/kiali.yaml
 ```
 
 ## Configuring Kiali to Use Prometheus
@@ -97,15 +97,29 @@ spec:
 For Prometheus behind a TLS endpoint with custom CA:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kiali-cabundle
+  namespace: istio-system
+data:
+  additional-ca-bundle.pem: |
+    -----BEGIN CERTIFICATE-----
+    ...
+    -----END CERTIFICATE-----
+---
+apiVersion: kiali.io/v1alpha1
+kind: Kiali
+metadata:
+  name: kiali
+  namespace: istio-system
 spec:
   external_services:
     prometheus:
       url: "https://prometheus.monitoring:9090"
-      auth:
-        ca_file: "/etc/kiali/prometheus-ca.crt"
 ```
 
-Mount the CA certificate into the Kiali pod via the Kiali CR's deployment configuration.
+Put the CA certificate in the `kiali-cabundle` ConfigMap. Current Kiali versions use this CA bundle for outbound HTTPS connections to external services.
 
 ## Configuring Kiali to Use Grafana
 
@@ -121,14 +135,14 @@ spec:
   external_services:
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
-      url: "https://grafana.example.com"
+      internal_url: "http://grafana.istio-system:3000"
+      external_url: "https://grafana.example.com"
 ```
 
 Two URLs are needed:
 
-- **in_cluster_url**: The internal cluster URL that Kiali uses to verify Grafana is reachable and to discover available dashboards
-- **url**: The external URL that your browser uses to access Grafana (this gets embedded in links)
+- **internal_url**: The internal cluster URL that Kiali uses to verify Grafana is reachable and to discover available dashboards
+- **external_url**: The external URL that your browser uses to access Grafana (this gets embedded in links)
 
 If both internal and external access use the same URL, set them to the same value.
 
@@ -141,8 +155,8 @@ spec:
   external_services:
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
-      url: "https://grafana.example.com"
+      internal_url: "http://grafana.istio-system:3000"
+      external_url: "https://grafana.example.com"
       auth:
         type: "basic"
         username: "admin"
@@ -175,21 +189,27 @@ Import them from the Istio repository:
 
 ```bash
 # Download the dashboard JSON files
-ISTIO_VERSION="1.22.0"
+ISTIO_VERSION="1.27.0"
 for dashboard in mesh service workload; do
   curl -sL "https://raw.githubusercontent.com/istio/istio/refs/tags/${ISTIO_VERSION}/manifests/addons/dashboards/istio-${dashboard}-dashboard.json" \
     -o "istio-${dashboard}-dashboard.json"
 done
 ```
 
-Then import them through Grafana's UI (Dashboards -> Import) or via the API:
+Then import them through Grafana's UI (Dashboards -> Import) or via the API. If Grafana is only exposed inside the cluster, port-forward it first:
+
+```bash
+kubectl port-forward -n istio-system svc/grafana 3000:3000
+```
+
+In another terminal, import the dashboards:
 
 ```bash
 for file in istio-*-dashboard.json; do
   curl -X POST \
     -H "Content-Type: application/json" \
     -d "{\"dashboard\": $(cat $file), \"overwrite\": true}" \
-    http://admin:admin@grafana.istio-system:3000/api/dashboards/db
+    http://localhost:3000/api/dashboards/db
 done
 ```
 
@@ -202,15 +222,17 @@ spec:
   external_services:
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
-      url: "https://grafana.example.com"
+      internal_url: "http://grafana.istio-system:3000"
+      external_url: "https://grafana.example.com"
       dashboards:
         - name: "Istio Service Dashboard"
           variables:
+            datasource: "var-datasource"
             namespace: "var-namespace"
             service: "var-service"
         - name: "Istio Workload Dashboard"
           variables:
+            datasource: "var-datasource"
             namespace: "var-namespace"
             workload: "var-workload"
 ```
@@ -238,7 +260,7 @@ In Kiali, go to any service detail page and look for Grafana links. If the integ
 If the links are missing, check:
 
 1. `grafana.enabled` is `true` in the Kiali CR
-2. The `in_cluster_url` is reachable from the Kiali pod
+2. The `internal_url` is reachable from the Kiali pod
 3. The Grafana dashboards are actually imported
 
 ### Test Cross-Linking
@@ -247,7 +269,7 @@ Click a Grafana link from Kiali. It should open Grafana with the correct dashboa
 
 ## Custom Prometheus Metrics in Kiali
 
-Kiali uses specific Prometheus metrics for its graphs. If you've customized Istio's metric names, tell Kiali about it:
+Kiali uses specific Prometheus metrics for its graphs. If you've customized Istio's metric names, keep the standard names available to Kiali, for example with Prometheus recording rules:
 
 ```yaml
 spec:
@@ -263,7 +285,7 @@ Kiali expects these metrics by default:
 - `istio_tcp_sent_bytes_total`
 - `istio_tcp_received_bytes_total`
 
-If you're using Prometheus federation or remote write and the metric names are prefixed, you might need to adjust your Prometheus queries or set up recording rules.
+If you're using Prometheus federation or remote write and the metric names are prefixed, set up recording rules that expose the standard Istio metric names to the Prometheus instance Kiali queries.
 
 ## Performance Considerations
 
@@ -273,7 +295,7 @@ With all three tools querying data simultaneously, keep these performance tips i
 
 2. **Prometheus scrape interval**: The default 15-second scrape interval works well. Shorter intervals increase storage and load without much benefit for Kiali.
 
-3. **Grafana data source caching**: Enable caching on the Prometheus data source in Grafana to reduce load when multiple users view the same dashboards.
+3. **Grafana query caching**: If query caching is available in your Grafana edition, enable it on the Prometheus data source to reduce load when multiple users view the same dashboards.
 
 4. **Kiali refresh rate**: Don't set Kiali's auto-refresh below 15 seconds in production. Each refresh triggers Prometheus queries.
 
@@ -298,20 +320,22 @@ spec:
       url: "http://prometheus.istio-system:9090"
     grafana:
       enabled: true
-      in_cluster_url: "http://grafana.istio-system:3000"
-      url: "https://grafana.example.com"
+      internal_url: "http://grafana.istio-system:3000"
+      external_url: "https://grafana.example.com"
       dashboards:
         - name: "Istio Service Dashboard"
           variables:
+            datasource: "var-datasource"
             namespace: "var-namespace"
             service: "var-service"
         - name: "Istio Workload Dashboard"
           variables:
+            datasource: "var-datasource"
             namespace: "var-namespace"
             workload: "var-workload"
     tracing:
       enabled: true
-      in_cluster_url: "http://tracing.istio-system:16685/jaeger"
+      internal_url: "http://tracing.istio-system:16685/jaeger"
       use_grpc: true
 ```
 
