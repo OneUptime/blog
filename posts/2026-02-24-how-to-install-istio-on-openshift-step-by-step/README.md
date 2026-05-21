@@ -14,7 +14,7 @@ Installing upstream Istio on OpenShift requires some extra steps compared to van
 
 ## Prerequisites
 
-- An OpenShift cluster (version 4.12+)
+- An OpenShift cluster running a Kubernetes version supported by the Istio version you plan to install
 - `oc` CLI tool installed and logged in
 - Cluster admin privileges
 - istioctl
@@ -46,27 +46,30 @@ kubectl create namespace istio-system
 
 ## Step 2: Configure Security Context Constraints
 
-OpenShift uses Security Context Constraints (SCCs) to control what pods can do. Istio's init containers need NET_ADMIN and NET_RAW capabilities to set up iptables rules. You need to grant the right SCCs:
+OpenShift uses Security Context Constraints (SCCs) to control what pods can do. Istio's init containers need NET_ADMIN and NET_RAW capabilities to set up iptables rules. The OpenShift profile below enables Istio CNI, which avoids those init containers for application pods.
+
+If you install without Istio CNI, you must grant the required SCCs to the service accounts that run Istio-managed workloads. For example:
 
 ```bash
 oc adm policy add-scc-to-group anyuid system:serviceaccounts:istio-system
 oc adm policy add-scc-to-group privileged system:serviceaccounts:istio-system
 ```
 
-For namespaces that will have Istio sidecars, you also need:
+For an application namespace that uses sidecars without Istio CNI, you might also need:
 
 ```bash
 oc adm policy add-scc-to-group anyuid system:serviceaccounts:default
 oc adm policy add-scc-to-group privileged system:serviceaccounts:default
 ```
 
-Replace `default` with whatever namespace your applications run in.
+Replace `default` with whatever namespace your applications run in. Do not grant the privileged SCC to application namespaces when you are using Istio CNI unless a separate workload requirement needs it.
 
 ## Step 3: Download and Install Istio
 
 ```bash
-curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+export ISTIO_VERSION=1.30.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=$ISTIO_VERSION sh -
+cd istio-$ISTIO_VERSION
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -86,7 +89,7 @@ spec:
       platform: openshift
     cni:
       enabled: true
-      chained: false
+      chained: true
   components:
     cni:
       enabled: true
@@ -96,7 +99,7 @@ spec:
         enabled: true
 ```
 
-The key setting here is `global.platform: openshift`, which tells Istio to configure itself for OpenShift's security model. We also enable the Istio CNI plugin, which avoids the need for init containers with elevated privileges.
+The key setting here is `global.platform: openshift`, which tells Istio to configure itself for OpenShift's security model. We also enable the Istio CNI plugin in `kube-system`, which matches Istio's OpenShift profile and avoids the need for init containers with elevated privileges.
 
 ```bash
 istioctl install -f istio-openshift.yaml -y
@@ -137,7 +140,7 @@ oc get pods -n default
 OpenShift has its own routing mechanism. You can create a Route that points to the Istio ingress gateway:
 
 ```bash
-oc expose svc istio-ingressgateway -n istio-system
+oc expose svc/istio-ingressgateway -n istio-system --port=http2
 ```
 
 Get the route URL:
@@ -188,7 +191,7 @@ For most setups, Option 1 is the pragmatic choice since it works with OpenShift'
 
 ## NetworkPolicy Integration
 
-If your OpenShift cluster uses NetworkPolicy for namespace isolation (which is the default on OpenShift 4.x with OVN-Kubernetes), you need to allow Istio traffic:
+If your OpenShift cluster enforces namespace isolation with NetworkPolicy, you need to allow the Istio traffic your application requires. For example, this allows traffic from the `istio-system` namespace into your application namespace:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -211,7 +214,7 @@ This allows traffic from the istio-system namespace into your application namesp
 
 ## Monitoring on OpenShift
 
-OpenShift 4 ships with a built-in monitoring stack (Prometheus + Grafana). You can configure it to scrape Istio metrics:
+OpenShift 4 ships with a built-in monitoring stack based on Prometheus Operator, Prometheus, Alertmanager, and console dashboards. After user workload monitoring is enabled, you can configure it to scrape Istio metrics:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
