@@ -27,7 +27,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 ```
 
 Verify cert-manager is running:
@@ -56,7 +56,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: istio
+          ingressClassName: istio
 ```
 
 Apply it:
@@ -181,16 +181,24 @@ spec:
 
 ## Integrating cert-manager as Istio's CA
 
-Beyond gateway certificates, you can actually replace Istio's internal CA with cert-manager. This gives you a unified certificate management layer. Install the istio-csr component:
+Beyond gateway certificates, you can actually replace Istio's internal CA with cert-manager. This gives you a unified certificate management layer. Install the istio-csr component before installing Istio, and make sure you have already created or chosen the cert-manager issuer that will sign workload certificates:
 
 ```bash
-helm install istio-csr jetstack/cert-manager-istio-csr \
+helm upgrade cert-manager-istio-csr jetstack/cert-manager-istio-csr \
+  --install \
   --namespace cert-manager \
+  --wait \
+  --set "app.certmanager.issuer.name=istio-ca" \
+  --set "app.certmanager.issuer.kind=Issuer" \
   --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
-  --set "app.server.clusterID=Kubernetes"
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumeMounts[0].readOnly=true" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca"
 ```
 
-Then install or reconfigure Istio to use istio-csr as its CA:
+Then install Istio to use istio-csr as its CA:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -199,10 +207,6 @@ spec:
   values:
     global:
       caAddress: cert-manager-istio-csr.cert-manager.svc:443
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_CERT_SIGNER: istio-system
   components:
     pilot:
       k8s:
@@ -211,7 +215,7 @@ spec:
           value: "false"
 ```
 
-This setup means all mTLS certificates in the mesh go through cert-manager, which can then use whatever backend CA you configure.
+This setup means all mTLS certificates in the mesh go through cert-manager, which can then use a CA issuer that is suitable for Istio workload identities.
 
 ## Monitoring Certificate Health
 
@@ -221,8 +225,9 @@ Certificates will expire if something goes wrong with the renewal process. Set u
 # Check all certificates across namespaces
 kubectl get certificates --all-namespaces
 
-# Look for certificates that are not ready
-kubectl get certificates --all-namespaces -o jsonpath='{range .items[?(@.status.conditions[0].status!="True")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'
+# Check the Ready condition and expiration date
+kubectl get certificates --all-namespaces \
+  -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,READY:'{.status.conditions[?(@.type=="Ready")].status}',EXPIRATION:.status.notAfter
 ```
 
 cert-manager exposes Prometheus metrics by default. You can create alerts for certificates nearing expiry:
@@ -253,13 +258,13 @@ If certificates are not being issued, start with the cert-manager logs:
 kubectl logs -n cert-manager deployment/cert-manager
 ```
 
-Check the Certificate, CertificateRequest, and Order resources:
+Check the Certificate, CertificateRequest, Order, and Challenge resources in the namespace where the Certificate was created:
 
 ```bash
 kubectl describe certificate my-app-cert -n istio-system
 kubectl get certificaterequests -n istio-system
-kubectl get orders -n cert-manager
-kubectl get challenges -n cert-manager
+kubectl get orders -n istio-system
+kubectl get challenges -n istio-system
 ```
 
 A common problem is the ingress gateway not picking up new certificates. Istio caches TLS secrets, but it should detect changes within a few seconds. If the gateway still serves the old certificate, check that the secret is in the right namespace and the `credentialName` matches exactly.
