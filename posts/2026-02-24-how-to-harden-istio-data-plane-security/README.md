@@ -16,7 +16,7 @@ Hardening the data plane means reducing what the sidecar can do, limiting its ac
 
 By default, the Istio sidecar init container needs `NET_ADMIN` and `NET_RAW` capabilities to set up iptables rules for traffic interception. But the main sidecar proxy container should run with minimal capabilities.
 
-Configure the sidecar security context through the IstioOperator:
+Configure the sidecar to avoid privileged mode and set conservative resource defaults through the IstioOperator:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -39,7 +39,7 @@ spec:
             memory: 256Mi
 ```
 
-For individual workloads, you can override the security context using annotations:
+For individual workloads, you can override sidecar resource limits using annotations and keep your application container security context strict:
 
 ```yaml
 apiVersion: apps/v1
@@ -77,15 +77,13 @@ kind: IstioOperator
 spec:
   components:
     cni:
+      namespace: istio-system
       enabled: true
   values:
     cni:
       excludeNamespaces:
       - istio-system
       - kube-system
-    sidecarInjectorWebhook:
-      injectedAnnotations:
-        traffic.sidecar.istio.io/excludeOutboundIPRanges: ""
 ```
 
 With the CNI plugin, your pods no longer need the `istio-init` container, and your application containers can run with even stricter security contexts:
@@ -167,6 +165,8 @@ spec:
 
 This tells the myapp sidecar to only know about services in its own namespace, the istio-system namespace, and the specific postgres service. It will not receive endpoint information for anything else.
 
+This scopes generated proxy configuration; by itself, it is not an outbound firewall. Use `REGISTRY_ONLY`, egress gateways, Kubernetes NetworkPolicy, or other network controls when you need enforcement.
+
 ## Apply Authorization Policies
 
 Use AuthorizationPolicy to control exactly who can access each service:
@@ -242,12 +242,12 @@ spec:
   ports:
   - number: 443
     name: https
-    protocol: HTTPS
+    protocol: TLS
   resolution: DNS
   location: MESH_EXTERNAL
 ```
 
-This prevents compromised workloads from reaching arbitrary external endpoints.
+This makes unknown outbound destinations fail through the sidecar, which helps catch missing `ServiceEntry` resources. Do not treat it as a complete outbound security policy; combine it with egress gateways or network-layer controls for stronger enforcement.
 
 ## Enable Access Logging
 
@@ -289,7 +289,7 @@ spec:
             memory: 512Mi
 ```
 
-## Disable Admin Ports in Production
+## Restrict Admin Ports in Production
 
 The Envoy admin interface can expose sensitive information. Restrict access to it:
 
@@ -302,7 +302,7 @@ spec:
       proxyAdminPort: 15000
 ```
 
-You cannot fully disable the admin port because Istio uses it for health checks and configuration, but you can use NetworkPolicy to prevent non-admin access:
+Port `15000` is the default Envoy admin port for Istio sidecars. It is pod-internal, but containers in the same pod can still reach it over localhost. Use NetworkPolicy to prevent other pods from reaching exposed workload ports, and keep untrusted containers out of pods that include an Istio sidecar:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
