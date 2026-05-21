@@ -8,11 +8,11 @@ Description: A hands-on guide to setting up Jaeger distributed tracing with Isti
 
 ---
 
-Distributed tracing is one of those features that you don't realize you need until you're debugging a latency issue across five microservices. Jaeger, originally built by Uber, is one of the most popular open-source tracing backends. When integrated with Istio, it captures traces automatically for every request flowing through the mesh, giving you a visual timeline of how requests propagate across your services.
+Distributed tracing is one of those features that you don't realize you need until you're debugging a latency issue across five microservices. Jaeger, originally built by Uber, is one of the most popular open-source tracing backends. When integrated with Istio, it captures traces for sampled requests flowing through the mesh, giving you a visual timeline of how requests propagate across your services.
 
 ## How Tracing Works in Istio
 
-Envoy sidecars generate trace spans for every request they handle. Each span includes timing data, HTTP metadata, and the relationship to other spans in the same trace. Envoy sends these spans to a tracing collector (Jaeger in this case).
+Envoy sidecars generate trace spans for sampled requests they handle. Each span includes timing data, HTTP metadata, and the relationship to other spans in the same trace. Envoy sends these spans to a tracing collector (Jaeger in this case).
 
 One critical thing to understand: Istio generates the spans, but your application needs to propagate trace context headers. When Service A calls Service B, Service A's sidecar creates a span and adds trace headers to the outgoing request. Service B's sidecar creates another span using those headers. But if Service B then calls Service C, it needs to forward the same trace headers. If B doesn't pass them along, the trace breaks.
 
@@ -35,7 +35,7 @@ Most HTTP frameworks have middleware or libraries that handle this automatically
 The quickest way for testing:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 ```
 
 Verify it's running:
@@ -57,20 +57,17 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 100.0
-        zipkin:
-          address: jaeger-collector.istio-system.svc:9411
+      tracing: {}
     extensionProviders:
     - name: jaeger
-      zipkin:
+      opentelemetry:
         service: jaeger-collector.istio-system.svc.cluster.local
-        port: 9411
+        port: 4317
 ```
 
-The sampling rate of 100.0 means 100% of requests are traced. For production, set this much lower - typically 1.0 (1%) to keep overhead manageable.
+This defines a Jaeger extension provider that receives traces over OTLP/gRPC. Sampling is configured with the Telemetry API. For production, set sampling much lower than 100% - typically 1.0 (1%) to keep overhead manageable.
 
-If you prefer to use the Telemetry API (recommended for newer Istio versions):
+Enable tracing with the Telemetry API:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -104,14 +101,15 @@ This opens the Jaeger UI in your browser. You'll see a search interface where yo
 Deploy a sample application to see traces:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/curl/curl.yaml
 ```
 
 Send some traffic:
 
 ```bash
 for i in $(seq 1 20); do
-  kubectl exec deploy/sleep -- curl -s -o /dev/null http://productpage:9080/productpage
+  kubectl exec deploy/curl -c curl -- curl -s -o /dev/null http://productpage:9080/productpage
 done
 ```
 
@@ -158,13 +156,13 @@ For production, you need persistent storage and proper scaling. The most common 
 
 ### Using Elasticsearch
 
-Deploy Jaeger with the Jaeger Operator:
+For Jaeger v1, deploy Jaeger with the Jaeger Operator. Jaeger v2 Kubernetes deployments are managed with the OpenTelemetry Operator or the Jaeger Helm chart, so check the current Jaeger docs before using the archived v1 Operator manifests:
 
 ```bash
 # Install the Jaeger Operator
 
 kubectl create namespace observability
-kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.51.0/jaeger-operator.yaml -n observability
+kubectl apply -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.65.0/jaeger-operator.yaml -n observability
 ```
 
 Create a Jaeger instance with Elasticsearch:
@@ -285,7 +283,7 @@ spec:
           defaultValue: "unknown"
 ```
 
-These tags appear on every span and can be searched in Jaeger.
+These tags appear on every reported span and can be searched in Jaeger.
 
 ## Troubleshooting
 
