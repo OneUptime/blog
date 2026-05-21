@@ -36,7 +36,7 @@ You need to see `istio.io/dataplane-mode=ambient` in the labels. If it is missin
 kubectl label namespace my-app istio.io/dataplane-mode=ambient
 ```
 
-Note that existing pods may need to be restarted for the CNI agent to set up their redirection rules. New pods pick it up automatically:
+In ambient mode, existing pods do not normally need to be restarted when you add the namespace label. The CNI agent watches for the label and can add running pods to the mesh. If a pod still does not get enrolled after the label is applied, restarting it is a useful recovery step:
 
 ```bash
 kubectl rollout restart deployment -n my-app
@@ -71,26 +71,17 @@ kubectl logs -n istio-system -l k8s-app=istio-cni-node | grep -i "failed to add 
 
 ## Verifying Redirection Rules
 
-Once a pod is enrolled, check that redirection rules exist in its network namespace. You need to run commands in the context of the node:
+Once a pod is enrolled, check that redirection rules exist in its network namespace:
 
 ```bash
-# Find the pod's node and PID
 POD_NAME="my-pod-xxx"
-NODE=$(kubectl get pod -n my-app $POD_NAME -o jsonpath='{.spec.nodeName}')
 
-# Use a debug pod to check iptables rules
-kubectl debug node/$NODE -it --image=nicolaka/netshoot -- bash
-```
-
-Inside the debug pod, find the pod's network namespace and check iptables:
-
-```bash
-# Find the pod's PID
-POD_IP=$(kubectl get pod -n my-app my-pod-xxx -o jsonpath='{.status.podIP}')
-
-# Check iptables rules in the pod's network namespace
-# (this requires nsenter, which is available in netshoot)
-nsenter -t $(pgrep -f "pause" | head -1) -n -- iptables-save | grep -E "ztunnel|15001|15006|15008"
+# Check iptables rules in the pod's network namespace.
+# The netadmin debug profile gives the debug container enough privileges.
+kubectl debug $POD_NAME -n my-app -it \
+  --image=gcr.io/istio-release/base \
+  --profile=netadmin -- \
+  iptables-save | grep -E "ISTIO|15001|15006|15008"
 ```
 
 You should see rules that redirect traffic to ztunnel's ports. If these rules are missing, the CNI agent did not set up redirection for this pod.
@@ -101,18 +92,13 @@ Even if redirection rules are in place, the ztunnel must be able to receive and 
 
 ```bash
 # Find ztunnel on the same node
+NODE=$(kubectl get pod -n my-app my-pod-xxx -o jsonpath='{.spec.nodeName}')
 ZTUNNEL=$(kubectl get pods -n istio-system -l app=ztunnel \
   --field-selector spec.nodeName=$NODE -o jsonpath='{.items[0].metadata.name}')
 
 # Check if ztunnel knows about the pod
-kubectl exec -n istio-system $ZTUNNEL -- \
-  curl -s localhost:15000/config_dump | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for w in data.get('workloads', []):
-    if 'my-pod' in json.dumps(w):
-        print(json.dumps(w, indent=2))
-"
+istioctl ztunnel-config workloads $ZTUNNEL.istio-system \
+  --workload-namespace my-app | grep my-pod
 ```
 
 If ztunnel does not know about the pod, it cannot handle its traffic even if redirection is configured. Check ztunnel logs:
@@ -121,16 +107,16 @@ If ztunnel does not know about the pod, it cannot handle its traffic even if red
 kubectl logs -n istio-system $ZTUNNEL | grep "my-pod"
 ```
 
-## Common Issue: Pod Created Before Namespace Was Labeled
+## Common Issue: Pod Not Reconciled After Namespace Was Labeled
 
-If pods were created before the namespace was labeled for ambient mode, the CNI agent may not have set up redirection for them:
+Ambient mode can add already-running pods to the mesh when a namespace is labeled. If that reconciliation did not happen, compare the pod state with the ztunnel view:
 
 ```bash
-# Check pod creation time vs namespace label time
 kubectl get pod -n my-app my-pod-xxx -o jsonpath='{.metadata.creationTimestamp}'
+istioctl ztunnel-config workloads --workload-namespace my-app | grep my-pod
 ```
 
-Fix by restarting the pods:
+Fix by checking the CNI agent logs and, if needed, restarting the affected pods:
 
 ```bash
 kubectl rollout restart deployment -n my-app my-deployment
@@ -149,7 +135,7 @@ Or through a debug pod:
 
 ```bash
 kubectl debug node/$NODE -it --image=nicolaka/netshoot -- \
-  cat /etc/cni/net.d/*.conflist
+  cat /host/etc/cni/net.d/*.conflist
 ```
 
 The Istio CNI should appear in the plugins chain. If it is missing, reinstall the Istio CNI component:
@@ -163,8 +149,8 @@ istioctl install --set profile=ambient --set components.cni.enabled=true -y
 In some rare cases, traffic gets redirected but to the wrong ztunnel instance or port. Verify by capturing traffic:
 
 ```bash
-# On the ztunnel pod, capture incoming traffic
-kubectl exec -n istio-system $ZTUNNEL -- \
+# From a debug container attached to the ztunnel pod, capture incoming traffic
+kubectl debug -n istio-system $ZTUNNEL -it --image=nicolaka/netshoot -- \
   tcpdump -i any -n "port 15008 or port 15001 or port 15006" -c 30
 ```
 
@@ -178,24 +164,25 @@ When DNS requests from ambient-enrolled pods fail, it is usually because DNS tra
 # Test DNS from inside the pod
 kubectl exec -n my-app deploy/my-app -- nslookup kubernetes.default
 
-# Check ztunnel DNS handling
-kubectl exec -n istio-system $ZTUNNEL -- \
-  curl -X POST "localhost:15000/logging?ztunnel::dns=debug"
+# Temporarily increase ztunnel DNS logging
+istioctl ztunnel-config log $ZTUNNEL.istio-system --level debug
 
 kubectl logs -n istio-system $ZTUNNEL | grep dns
 ```
 
-If DNS is failing, check the Istio installation to make sure DNS capture is enabled:
+DNS proxying is enabled by default for ambient mode in Istio 1.25 and later. For older ambient installations, check the Istio installation to make sure DNS capture is enabled:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+  values:
+    cni:
+      ambient:
+        dnsCapture: true
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: true
 ```
 
 ## Testing Redirection End-to-End
@@ -236,20 +223,24 @@ spec:
     - port: 80
 EOF
 
-# Test that mTLS is enforced (indicating traffic goes through ztunnel)
+# Test connectivity through the service
 kubectl run test-client -n my-app --image=curlimages/curl --rm -it -- \
   curl -s http://test-server/headers
+
+# Confirm the workloads are configured for HBONE
+istioctl ztunnel-config workloads --workload-namespace my-app | \
+  grep -E "test-client|test-server"
 ```
 
-In the response headers, look for `X-Forwarded-Client-Cert`. If it is present, traffic went through the mesh with mTLS. If it is absent, redirection is not working.
+In the `istioctl ztunnel-config workloads` output, look for `HBONE` in the `PROTOCOL` column for the workloads. ztunnel operates at Layer 4, so it does not add HTTP headers such as `X-Forwarded-Client-Cert`.
 
 ## Checking ztunnel Metrics for Redirection
 
 ztunnel metrics can confirm whether traffic is flowing through it:
 
 ```bash
-kubectl exec -n istio-system $ZTUNNEL -- \
-  curl -s localhost:15020/metrics | grep -E "ztunnel_connections_opened|ztunnel_bytes"
+kubectl debug -n istio-system $ZTUNNEL -it --image=curlimages/curl -- \
+  curl -s localhost:15020/metrics | grep -E "istio_tcp_connections_opened_total|istio_tcp_sent_bytes_total|istio_tcp_received_bytes_total"
 ```
 
 If connection counters are zero or not increasing when you send traffic, redirection is broken.
