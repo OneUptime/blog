@@ -24,19 +24,19 @@ The output is a unified diff format showing what is different:
 
 ```diff
 ===== apps/Deployment production/my-app ======
---- desired (Git)
-+++ live (Cluster)
+--- live (Cluster)
++++ target (Git)
 @@ -12,7 +12,7 @@
      spec:
        containers:
        - name: my-app
--        image: myorg/my-app:v2.0.0
-+        image: myorg/my-app:v1.9.0
+-        image: myorg/my-app:v1.9.0
++        image: myorg/my-app:v2.0.0
          env:
 -        - name: LOG_LEVEL
--          value: "info"
+-          value: "debug"
 +        - name: LOG_LEVEL
-+          value: "debug"
++          value: "info"
 ```
 
 This tells you that Git declares v2.0.0 with info logging, but the cluster is running v1.9.0 with debug logging. Someone either manually changed the cluster or the last sync did not complete.
@@ -45,8 +45,8 @@ This tells you that Git declares v2.0.0 with info logging, but the cluster is ru
 
 The diff output has specific conventions:
 
-- Lines with `-` (red) are what Git declares (desired state)
-- Lines with `+` (green) are what the cluster has (live state)
+- Lines with `-` (red) are what the cluster has (live state)
+- Lines with `+` (green) are what Argo CD predicts after applying the Git target state
 - The header `===== group/Kind namespace/name ======` identifies each resource
 - Unchanged lines provide context around the changes
 
@@ -60,7 +60,7 @@ The `--local` flag compares your local files against the live cluster:
 # Compare local directory against the live cluster
 argocd app diff my-app --local ./apps/my-app/production/
 
-# Compare a specific local file
+# Compare a local path while setting the repository root
 argocd app diff my-app --local-repo-root . --local ./apps/my-app/
 ```
 
@@ -79,18 +79,18 @@ git commit -m "Update my-app to v2.0.0"
 git push
 ```
 
-## Revision Diff: Compare Between Git Commits
+## Revision Diff: Compare a Git Revision to Live
 
-Compare what changed between two revisions:
+Compare the live application to a specific Git revision:
 
 ```bash
-# Diff between the current sync and a specific revision
+# Diff live state against the main branch
 argocd app diff my-app --revision main
 
-# Diff against a specific commit
+# Diff live state against a specific commit
 argocd app diff my-app --revision abc123def
 
-# Diff against a tag
+# Diff live state against a tag
 argocd app diff my-app --revision v2.0.0
 ```
 
@@ -107,10 +107,10 @@ For the most accurate diff, enable server-side comparison:
 
 ```bash
 # Use server-side diff (more accurate)
-argocd app diff my-app --server-side
+argocd app diff my-app --server-side-diff
 ```
 
-Server-side diff sends the manifests to the Kubernetes API server for comparison, which accounts for defaulting and mutation webhooks. This eliminates false positives you might see with client-side diffing.
+Server-side diff performs a server-side apply dry run through the Kubernetes API server and compares the predicted live state with the live state, which accounts for API defaulting. Mutation webhook changes are excluded by default; include them only if you explicitly enable `IncludeMutationWebhook=true`.
 
 Configure server-side diff as the default for an application:
 
@@ -125,19 +125,16 @@ spec:
   # ... rest of spec
 ```
 
-## Filtering Diff Output
+## Reducing Diff Output
 
-When an application has many resources, the diff can be noisy. Filter it:
+When an application has many resources, the diff can be noisy. The `argocd app diff` command does not have a `--resource` filter, so keep applications scoped tightly or filter the text output after generating the diff:
 
 ```bash
-# Diff only Deployments
-argocd app diff my-app --resource "apps/Deployment"
+# Show only the Deployment section from the diff output
+argocd app diff my-app | sed -n '/===== apps\/Deployment production\/my-app ======/,/^===== /p'
 
-# Diff a specific resource
-argocd app diff my-app --resource "apps/Deployment/my-app"
-
-# Diff only resources in a specific group
-argocd app diff my-app --resource "networking.k8s.io/*"
+# Or inspect the rendered manifests for a specific resource
+argocd app manifests my-app --source live | yq 'select(.kind == "Deployment" and .metadata.name == "my-app")'
 ```
 
 ## Exit Codes for Scripting
@@ -154,15 +151,23 @@ Use this in scripts:
 #!/bin/bash
 # check-sync.sh - Check if application needs syncing
 
-if argocd app diff my-app > /dev/null 2>&1; then
+set +e
+argocd app diff my-app > /dev/null 2>&1
+status=$?
+set -e
+
+if [ "$status" -eq 0 ]; then
     echo "Application is in sync - nothing to do"
     exit 0
-else
+elif [ "$status" -eq 1 ]; then
     echo "Application has pending changes"
-    argocd app diff my-app
+    argocd app diff my-app || true
     echo ""
     echo "Review the changes above before syncing"
     exit 1
+else
+    echo "argocd app diff failed"
+    exit 2
 fi
 ```
 
@@ -223,19 +228,23 @@ diff_output=$(argocd app diff "$APP_NAME" 2>&1) || true
 if [ -n "$diff_output" ]; then
     # Truncate long diffs for Slack
     truncated=$(echo "$diff_output" | head -50)
+    payload=$(jq -n \
+        --arg app "$APP_NAME" \
+        --arg diff "```$truncated```" \
+        '{
+            text: "ArgoCD Diff Preview for \($app)",
+            blocks: [{
+                type: "section",
+                text: {
+                    type: "mrkdwn",
+                    text: $diff
+                }
+            }]
+        }')
 
     curl -X POST "$SLACK_WEBHOOK" \
         -H 'Content-Type: application/json' \
-        -d "{
-            \"text\": \"ArgoCD Diff Preview for $APP_NAME\",
-            \"blocks\": [{
-                \"type\": \"section\",
-                \"text\": {
-                    \"type\": \"mrkdwn\",
-                    \"text\": \"```${truncated}```\"
-                }
-            }]
-        }"
+        -d "$payload"
 fi
 ```
 
@@ -244,9 +253,8 @@ fi
 When using Helm, diff captures value changes too:
 
 ```bash
-# Diff after changing Helm values
-argocd app diff my-app --local-repo-root . --local charts/my-app/ \
-    --values values/production.yaml
+# Diff after changing the values files referenced by the Argo CD application
+argocd app diff my-app --local-repo-root . --local charts/my-app/
 
 # Compare different value files
 diff <(helm template my-app charts/my-app/ -f values/staging.yaml) \
