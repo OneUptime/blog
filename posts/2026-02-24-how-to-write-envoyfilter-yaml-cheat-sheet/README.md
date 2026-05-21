@@ -49,6 +49,7 @@ spec:
 | `HTTP_ROUTE` | Specific HTTP route |
 | `CLUSTER` | Upstream cluster configuration |
 | `EXTENSION_CONFIG` | Extension configuration |
+| `LISTENER_FILTER` | Listener filter configuration |
 
 ### Context Values
 
@@ -85,7 +86,7 @@ spec:
 
 No selector means it applies to all workloads in the namespace. Be careful with this.
 
-For mesh-wide filters, place the EnvoyFilter in `istio-system` without a selector.
+For mesh-wide filters, place the EnvoyFilter in the Istio config root namespace, often `istio-system`, without a selector.
 
 ## Add Custom Response Headers
 
@@ -115,13 +116,14 @@ spec:
         operation: INSERT_BEFORE
         value:
           name: envoy.filters.http.lua
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_response(response_handle)
-                response_handle:headers():add("x-powered-by", "istio")
-                response_handle:headers():add("x-custom-header", "my-value")
-              end
+            default_source_code:
+              inline_string: |
+                function envoy_on_response(response_handle)
+                  response_handle:headers():add("x-powered-by", "istio")
+                  response_handle:headers():add("x-custom-header", "my-value")
+                end
 ```
 
 ## Rate Limiting with Local Rate Limit
@@ -152,27 +154,27 @@ spec:
         operation: INSERT_BEFORE
         value:
           name: envoy.filters.http.local_ratelimit
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
-            statPrefix: http_local_rate_limiter
-            tokenBucket:
-              maxTokens: 100
-              tokensPerFill: 100
-              fillInterval: 60s
-            filterEnabled:
+            stat_prefix: http_local_rate_limiter
+            token_bucket:
+              max_tokens: 100
+              tokens_per_fill: 100
+              fill_interval: 60s
+            filter_enabled:
               runtime_key: local_rate_limit_enabled
-              defaultValue:
+              default_value:
                 numerator: 100
                 denominator: HUNDRED
-            filterEnforced:
+            filter_enforced:
               runtime_key: local_rate_limit_enforced
-              defaultValue:
+              default_value:
                 numerator: 100
                 denominator: HUNDRED
-            responseHeadersToAdd:
+            response_headers_to_add:
               - append_action: OVERWRITE_IF_EXISTS_OR_ADD
                 header:
-                  key: x-rate-limited
+                  key: x-local-rate-limit
                   value: "true"
 ```
 
@@ -201,15 +203,15 @@ spec:
       patch:
         operation: MERGE
         value:
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            accessLog:
+            access_log:
               - name: envoy.access_loggers.file
-                typedConfig:
+                typed_config:
                   "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
                   path: /dev/stdout
-                  logFormat:
-                    jsonFormat:
+                  log_format:
+                    json_format:
                       timestamp: "%START_TIME%"
                       method: "%REQ(:METHOD)%"
                       path: "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%"
@@ -245,14 +247,16 @@ spec:
       patch:
         operation: MERGE
         value:
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            commonHttpProtocolOptions:
-              idleTimeout: 300s
-            streamIdleTimeout: 300s
+            common_http_protocol_options:
+              idle_timeout: 300s
+            stream_idle_timeout: 300s
 ```
 
 ## Add CORS at the Listener Level
+
+The CORS filter must be paired with a route or virtual host CORS policy to take effect.
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -278,8 +282,28 @@ spec:
         operation: INSERT_BEFORE
         value:
           name: envoy.filters.http.cors
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+    - applyTo: VIRTUAL_HOST
+      match:
+        context: SIDECAR_INBOUND
+        routeConfiguration:
+          vhost:
+            name: "inbound|http|8080"
+      patch:
+        operation: MERGE
+        value:
+          typed_per_filter_config:
+            envoy.filters.http.cors:
+              "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.CorsPolicy
+              allow_origin_string_match:
+                - safe_regex:
+                    google_re2: {}
+                    regex: ".*"
+              allow_methods: "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+              allow_headers: "authorization,content-type,x-requested-with"
+              expose_headers: "x-request-id"
+              max_age: "86400"
 ```
 
 ## Modify Cluster Settings
@@ -305,8 +329,8 @@ spec:
       patch:
         operation: MERGE
         value:
-          connectTimeout: 10s
-          dnsRefreshRate: 30s
+          connect_timeout: 10s
+          dns_refresh_rate: 30s
 ```
 
 ## Gateway-Specific Filters
@@ -337,12 +361,13 @@ spec:
         operation: INSERT_BEFORE
         value:
           name: envoy.filters.http.lua
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                request_handle:headers():add("x-gateway-timestamp", os.time())
-              end
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(request_handle)
+                  request_handle:headers():add("x-gateway-timestamp", tostring(os.time()))
+                end
 ```
 
 ## Enable gzip Compression
@@ -371,23 +396,23 @@ spec:
         operation: INSERT_BEFORE
         value:
           name: envoy.filters.http.compressor
-          typedConfig:
+          typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.compressor.v3.Compressor
-            responseDirectionConfig:
-              commonConfig:
-                minContentLength: 1024
-                contentType:
+            response_direction_config:
+              common_config:
+                min_content_length: 1024
+                content_type:
                   - application/json
                   - text/html
                   - text/plain
                   - application/javascript
-            compressorLibrary:
+            compressor_library:
               name: text_optimized
-              typedConfig:
+              typed_config:
                 "@type": type.googleapis.com/envoy.extensions.compression.gzip.compressor.v3.Gzip
-                memoryLevel: 5
-                windowBits: 12
-                compressionLevel: DEFAULT_COMPRESSION
+                memory_level: 5
+                window_bits: 12
+                compression_level: DEFAULT
 ```
 
 ## Debugging EnvoyFilter Issues
