@@ -240,25 +240,31 @@ Requests with the `x-api-version: v2` header go to v2, everything else goes to v
 
 ## Scaling the Ingress Gateway
 
-The default installation runs a single ingress gateway pod. For production, you want multiple replicas across zones:
+The default installation runs a single ingress gateway pod. For production, you want multiple replicas across zones. Patch the existing gateway Deployment instead of applying a partial Deployment manifest:
 
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: istio-ingressgateway
-  namespace: istio-system
-spec:
-  replicas: 3
-  template:
-    spec:
-      topologySpreadConstraints:
-        - maxSkew: 1
-          topologyKey: topology.kubernetes.io/zone
-          whenUnsatisfiable: DoNotSchedule
-          labelSelector:
-            matchLabels:
-              istio: ingressgateway
+```bash
+kubectl scale deployment istio-ingressgateway -n istio-system --replicas=3
+
+kubectl patch deployment istio-ingressgateway -n istio-system --type='merge' -p '{
+  "spec": {
+    "template": {
+      "spec": {
+        "topologySpreadConstraints": [
+          {
+            "maxSkew": 1,
+            "topologyKey": "topology.kubernetes.io/zone",
+            "whenUnsatisfiable": "DoNotSchedule",
+            "labelSelector": {
+              "matchLabels": {
+                "istio": "ingressgateway"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}'
 ```
 
 Or scale with HPA:
@@ -292,13 +298,13 @@ The ingress gateway generates Istio metrics just like any other sidecar:
 ```text
 # Request rate at the ingress
 
-sum(rate(istio_requests_total{source_workload="istio-ingressgateway"}[5m]))
+sum(rate(istio_requests_total{reporter="source",source_workload="istio-ingressgateway"}[5m]))
 
 # Error rate
-sum(rate(istio_requests_total{source_workload="istio-ingressgateway",response_code=~"5.*"}[5m]))
+sum(rate(istio_requests_total{reporter="source",source_workload="istio-ingressgateway",response_code=~"5.*"}[5m]))
 
 # Latency
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{source_workload="istio-ingressgateway"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="source",source_workload="istio-ingressgateway"}[5m])) by (le))
 ```
 
 ## Troubleshooting
