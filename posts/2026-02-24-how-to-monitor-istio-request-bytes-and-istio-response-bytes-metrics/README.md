@@ -12,7 +12,7 @@ Knowing how many requests your services handle is important, but knowing how muc
 
 ## What These Metrics Track
 
-Both `istio_request_bytes` and `istio_response_bytes` are Prometheus histograms. They measure the uncompressed size of the HTTP body in bytes (not including headers).
+Both `istio_request_bytes` and `istio_response_bytes` are Prometheus histograms. They measure the size of the HTTP request and response bodies in bytes.
 
 Like all Prometheus histograms, each creates three underlying time series:
 
@@ -29,10 +29,10 @@ istio_response_bytes_count            - total number of responses
 The default bucket boundaries are:
 
 ```text
-1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, +Inf
+0.5, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 300000, 600000, 1800000, 3600000, +Inf
 ```
 
-These are in bytes, ranging from 1 byte to 10MB. Most API responses fall somewhere between 100 bytes and 100KB.
+These are in bytes for size histograms, ranging up to 3.6MB before the `+Inf` bucket. Most API responses fall somewhere between 100 bytes and 100KB.
 
 ## Labels
 
@@ -229,7 +229,7 @@ A value above 2 means the average response size doubled. This could indicate a b
 Large payloads often correlate with high latency. You can check this by comparing throughput with latency:
 
 ```promql
-# Average response size for slow requests (> 1s)
+# Average response size for successful requests
 sum(rate(istio_response_bytes_sum{
   reporter="destination",
   destination_workload="api-service",
@@ -299,7 +299,7 @@ sum(rate(istio_response_bytes_sum{reporter="destination"}[5m])) + sum(rate(istio
 
 ### Compression Effectiveness
 
-If you're using gzip compression, compare request sizes before and after compression by looking at both the Istio metric (uncompressed) and your actual network metrics.
+If you're using gzip compression, compare these Istio size metrics with application-level uncompressed payload metrics and your actual network metrics.
 
 ### API Optimization
 
@@ -332,11 +332,11 @@ spec:
         - name: prometheus
       overrides:
         - match:
-            metric: REQUEST_BYTES
+            metric: REQUEST_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
         - match:
-            metric: RESPONSE_BYTES
+            metric: RESPONSE_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
 ```
