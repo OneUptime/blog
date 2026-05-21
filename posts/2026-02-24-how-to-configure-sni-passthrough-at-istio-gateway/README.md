@@ -53,8 +53,8 @@ spec:
   servers:
   - port:
       number: 443
-      name: tls
-      protocol: TLS
+      name: https
+      protocol: HTTPS
     hosts:
     - "app.example.com"
     tls:
@@ -62,7 +62,7 @@ spec:
 ```
 
 Notice the differences from a SIMPLE TLS gateway:
-- The `protocol` is `TLS`, not `HTTPS`. This tells Istio to handle this as a raw TLS connection, not HTTP over TLS.
+- For HTTPS services, use `protocol: HTTPS`; for raw TCP protocols wrapped in TLS, use `protocol: TLS`.
 - The `tls.mode` is `PASSTHROUGH`
 - There is no `credentialName` because the gateway is not presenting any certificate
 
@@ -109,8 +109,8 @@ spec:
   servers:
   - port:
       number: 443
-      name: tls
-      protocol: TLS
+      name: https
+      protocol: HTTPS
     hosts:
     - "api.example.com"
     - "web.example.com"
@@ -219,7 +219,9 @@ spec:
 
 ## Sidecar Considerations
 
-When using SNI passthrough, the Istio sidecar on the backend pod needs to know that the traffic is already TLS-encrypted. You may need a DestinationRule to disable mesh TLS for this service:
+When using SNI passthrough, the application TLS connection is forwarded as-is. If the backend has an Istio sidecar, Istio mTLS may still protect the hop between the gateway proxy and the workload sidecar, and the sidecar then forwards the original application TLS bytes to the container.
+
+What you should avoid is configuring TLS origination for the same service unless you intentionally want another TLS layer. If you already have a DestinationRule that originates TLS for this host, remove it or change it to plaintext only when your mesh policy permits plaintext upstream connections:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -233,7 +235,7 @@ spec:
       mode: DISABLE
 ```
 
-This prevents the sidecar from trying to initiate its own mTLS connection to a service that is already handling TLS. Without this, you can get TLS-in-TLS issues.
+This prevents the gateway or sidecar from originating an additional TLS connection to a service that is already handling application TLS. Do not add this rule just because the application uses TLS; in a mesh that requires Istio mTLS, forcing `DISABLE` can break traffic.
 
 Alternatively, you can configure the port as not needing protocol sniffing by excluding it from sidecar interception if needed.
 
