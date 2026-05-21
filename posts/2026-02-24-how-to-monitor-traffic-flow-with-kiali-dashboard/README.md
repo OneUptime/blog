@@ -14,15 +14,15 @@ This guide covers how to use Kiali's traffic monitoring features effectively, fr
 
 ## The Overview Dashboard
 
-When you first open Kiali, you land on the Overview page. This shows you all namespaces in your cluster with a quick health summary for each. Every namespace box shows:
+When you first open Kiali, you land on the Overview page. This shows a quick health summary for your mesh, including clusters, Istio configuration, control planes, data planes, and application health. The overview includes:
 
-- Number of applications and their health status
-- Number of Istio configuration objects and their validation state
-- A small sparkline graph of traffic over time
+- Application health grouped by status
+- Istio configuration and infrastructure health
+- Service insights, including services with the top error rates and p95 latencies
 
-Namespaces with healthy traffic show green. Namespaces with issues show yellow or red. This is your starting point for spotting problems.
+Healthy resources show green. Resources with issues show orange or red. This is your starting point for spotting problems.
 
-Click on any namespace to drill into its services.
+Use the namespace selector or the Services and Workloads views to drill into a specific namespace.
 
 ## Understanding the Traffic Graph
 
@@ -30,9 +30,9 @@ Navigate to the Graph page and select your namespace. The traffic graph is where
 
 ### Traffic Animation
 
-Enable traffic animation from the Display dropdown. When enabled, you'll see animated dots moving along the edges, representing actual requests. The speed and density of the dots correlates with request rate. This makes it immediately obvious which paths are hot and which are quiet.
+Enable traffic animation from the Display dropdown. When enabled, you'll see animated symbols moving along the edges, representing actual requests. For HTTP traffic, the density of the symbols correlates with request rate, and the speed of the animation reflects response time. This makes it immediately obvious which paths are hot and which are slow.
 
-Green dots represent successful requests, while red dots represent errors. During an incident, you can instantly see where errors are concentrated.
+Circles represent successful HTTP requests, while red diamonds represent errors. During an incident, you can instantly see where errors are concentrated.
 
 ### Edge Labels
 
@@ -40,13 +40,13 @@ Configure edge labels to show quantitative data. Under Display settings, you can
 
 - **Requests per second** - How much traffic is flowing on each edge
 - **Requests percentage** - What fraction of total traffic goes through each edge
-- **Response time** - Average latency on each edge
+- **Response time** - p95 latency on applicable edges
 
 For monitoring purposes, showing requests per second is usually the most useful. It tells you both the traffic volume and, when combined with the health colors, where problems are occurring.
 
 ## Monitoring Request Rates
 
-Click on any service node in the graph to open its detail panel on the right. The panel shows:
+Click on any node in the graph to open its detail panel on the right. The panel shows:
 
 - Inbound request rate (requests/sec)
 - Outbound request rate (requests/sec)
@@ -68,8 +68,8 @@ These charts pull data directly from Prometheus, so they reflect the same metric
 Error monitoring in Kiali is straightforward. On the traffic graph, edges change color based on error rates:
 
 - **Green**: Low or zero error rate
-- **Orange/Yellow**: Some errors present (typically 0.1% to 5%)
-- **Red**: High error rate (above the configured threshold)
+- **Orange**: Degraded traffic health based on the configured threshold
+- **Red**: Failure-level traffic health based on the configured threshold
 
 To see exact error numbers, click on an edge. The side panel shows the error rate as both a percentage and raw count, broken down by HTTP status code.
 
@@ -78,7 +78,7 @@ You can also check the health of all services in a namespace by going to the Ser
 ```text
 Service          Health    Request Rate    Error Rate
 productpage      [green]   150 req/s       0.0%
-reviews          [yellow]  120 req/s       2.3%
+reviews          [orange]  120 req/s       2.3%
 ratings          [red]     80 req/s        15.7%
 details          [green]   150 req/s       0.1%
 ```
@@ -103,11 +103,11 @@ spec:
           - code: "^5\\d\\d$"
             direction: ".*"
             protocol: "http"
-            degraded: 0.1
+            degraded: 1
             failure: 5
 ```
 
-This sets the degraded threshold to 0.1% (any 5xx errors) and the failure threshold to 5%.
+This sets the degraded threshold to 1% 5xx responses and the failure threshold to 5%. Kiali's current CR schema expects integer percentage values for these thresholds.
 
 ## Monitoring gRPC Traffic
 
@@ -119,13 +119,13 @@ gRPC error rates are based on gRPC status codes (OK, CANCELLED, UNKNOWN, etc.) r
 
 ## Monitoring TCP Traffic
 
-For raw TCP services (databases, message queues, etc.), Kiali shows TCP traffic flows with byte rates instead of request rates. Enable TCP traffic in the Display settings to see these connections.
+For raw TCP services (databases, message queues, etc.), Kiali shows TCP traffic flows with byte rates instead of request rates. Use the Traffic dropdown to include TCP traffic and choose sent, received, or total byte rates for these connections.
 
-TCP edges show:
+TCP edges can show:
 
 - Bytes sent per second
 - Bytes received per second
-- Connection status
+- Total bytes per second
 
 This is particularly useful for spotting services that are saturating their connections to databases or message brokers.
 
@@ -184,7 +184,7 @@ Here's a cheat sheet for common monitoring tasks:
 | Error rate for a service | Click service node in graph |
 | Traffic split verification | Graph page (Versioned App graph) |
 | Latency analysis | Service detail page, charts |
-| TCP traffic monitoring | Graph page, enable TCP display |
+| TCP traffic monitoring | Graph page, select TCP traffic |
 | Cross-namespace traffic | Graph page, select multiple namespaces |
 
 Kiali's traffic monitoring features give you a solid foundation for understanding what's happening in your mesh. Combined with Prometheus and Grafana for historical analysis, you'll have full visibility into your traffic patterns.
