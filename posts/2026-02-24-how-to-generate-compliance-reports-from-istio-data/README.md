@@ -35,9 +35,9 @@ Pull the data from Prometheus:
 
 curl -s "http://prometheus:9090/api/v1/query" \
   --data-urlencode 'query=
-    sum(istio_requests_total{connection_security_policy="mutual_tls"})
+    sum(increase(istio_requests_total{reporter="destination",connection_security_policy="mutual_tls"}[7d]))
     /
-    sum(istio_requests_total)
+    sum(increase(istio_requests_total{reporter="destination"}[7d]))
     * 100' | jq '.data.result[0].value[1]'
 ```
 
@@ -47,11 +47,11 @@ Generate a detailed breakdown by namespace:
 curl -s "http://prometheus:9090/api/v1/query" \
   --data-urlencode 'query=
     sum by (destination_service_namespace) (
-      istio_requests_total{connection_security_policy="mutual_tls"}
+      increase(istio_requests_total{reporter="destination",connection_security_policy="mutual_tls"}[7d])
     )
     /
     sum by (destination_service_namespace) (
-      istio_requests_total
+      increase(istio_requests_total{reporter="destination"}[7d])
     ) * 100' | jq '.data.result[] | {
       namespace: .metric.destination_service_namespace,
       mtls_percentage: .value[1]
@@ -74,7 +74,7 @@ echo "| Namespace | mTLS % |" >> "$REPORT_DIR/$DATE.md"
 echo "|-----------|--------|" >> "$REPORT_DIR/$DATE.md"
 
 curl -s "http://prometheus:9090/api/v1/query" \
-  --data-urlencode 'query=sum by (destination_service_namespace) (istio_requests_total{connection_security_policy="mutual_tls"}) / sum by (destination_service_namespace) (istio_requests_total) * 100' | \
+  --data-urlencode 'query=sum by (destination_service_namespace) (increase(istio_requests_total{reporter="destination",connection_security_policy="mutual_tls"}[7d])) / sum by (destination_service_namespace) (increase(istio_requests_total{reporter="destination"}[7d])) * 100' | \
   jq -r '.data.result[] | "| \(.metric.destination_service_namespace) | \(.value[1])% |"' >> "$REPORT_DIR/$DATE.md"
 
 echo "" >> "$REPORT_DIR/$DATE.md"
@@ -92,7 +92,7 @@ Export all authorization policies:
 kubectl get authorizationpolicies --all-namespaces -o json | jq '.items[] | {
   namespace: .metadata.namespace,
   name: .metadata.name,
-  action: (.spec.action // "DENY-ALL"),
+  action: (.spec.action // "ALLOW"),
   rules_count: (.spec.rules | length // 0),
   created: .metadata.creationTimestamp,
   last_modified: .metadata.managedFields[-1].time
@@ -102,11 +102,11 @@ kubectl get authorizationpolicies --all-namespaces -o json | jq '.items[] | {
 Show the enforcement statistics:
 
 ```bash
-# Denied requests by policy
+# Denied requests by service
 curl -s "http://prometheus:9090/api/v1/query" \
   --data-urlencode 'query=
     sum by (destination_service_namespace, destination_service_name) (
-      increase(istio_requests_total{response_code="403"}[30d])
+      increase(istio_requests_total{reporter="destination",response_code="403"}[30d])
     )' | jq '.data.result[] | {
       namespace: .metric.destination_service_namespace,
       service: .metric.destination_service_name,
@@ -134,6 +134,7 @@ curl -s "http://prometheus:9090/api/v1/query" \
     topk(20,
       sum by (source_workload, source_workload_namespace) (
         increase(istio_requests_total{
+          reporter=\"destination\",
           destination_service_namespace=\"$NAMESPACE\"
         }[30d])
       )
@@ -148,6 +149,7 @@ curl -s "http://prometheus:9090/api/v1/query" \
   --data-urlencode "query=
     sum by (source_workload) (
       increase(istio_requests_total{
+        reporter=\"destination\",
         destination_service_namespace=\"$NAMESPACE\",
         response_code=\"403\"
       }[30d])
@@ -156,7 +158,7 @@ curl -s "http://prometheus:9090/api/v1/query" \
 
 ## Report 4: Policy Change History
 
-Auditors want to see what changed, when, and by whom. Use Kubernetes events and Git history:
+Auditors want to see what changed, when, and by whom. Kubernetes events are short-lived and may not capture every spec update, but they can add recent operational context alongside Git history:
 
 ```bash
 #!/bin/bash
@@ -167,9 +169,9 @@ echo ""
 
 # From Kubernetes events
 kubectl get events --all-namespaces \
-  --field-selector reason=Updated \
+  --field-selector involvedObject.kind=AuthorizationPolicy \
   --sort-by='.lastTimestamp' \
-  -o json | jq '.items[] | select(.involvedObject.kind == "AuthorizationPolicy") | {
+  -o json | jq '.items[] | {
     time: .lastTimestamp,
     namespace: .involvedObject.namespace,
     policy: .involvedObject.name,
@@ -181,9 +183,9 @@ echo "## Recent PeerAuthentication Changes"
 echo ""
 
 kubectl get events --all-namespaces \
-  --field-selector reason=Updated \
+  --field-selector involvedObject.kind=PeerAuthentication \
   --sort-by='.lastTimestamp' \
-  -o json | jq '.items[] | select(.involvedObject.kind == "PeerAuthentication") | {
+  -o json | jq '.items[] | {
     time: .lastTimestamp,
     namespace: .involvedObject.namespace,
     policy: .involvedObject.name,
@@ -215,7 +217,7 @@ echo "|--------|------------|----------|-------------------|------------|"
 curl -s "http://prometheus:9090/api/v1/query" \
   --data-urlencode 'query=
     sum by (source_workload, destination_service_name) (
-      increase(istio_requests_total[7d])
+      increase(istio_requests_total{reporter="destination"}[7d])
     ) > 0' | jq -r '.data.result[] |
     "| \(.metric.source_workload) | \(.metric.destination_service_name) | \(.value[1]) | - | - |"'
 ```
@@ -239,7 +241,7 @@ spec:
           serviceAccountName: compliance-reporter
           containers:
             - name: report-generator
-              image: bitnami/kubectl:latest
+              image: your-registry/compliance-reporter:latest # includes bash, kubectl, curl, jq, and aws CLI
               command:
                 - /bin/bash
                 - -c
@@ -282,17 +284,24 @@ For real-time compliance visibility, create a Grafana dashboard that tracks your
       "type": "gauge",
       "targets": [
         {
-          "expr": "sum(istio_requests_total{connection_security_policy='mutual_tls'}) / sum(istio_requests_total) * 100"
+          "expr": "sum(rate(istio_requests_total{reporter='destination',connection_security_policy='mutual_tls'}[5m])) / sum(rate(istio_requests_total{reporter='destination'}[5m])) * 100"
         }
       ],
-      "thresholds": [
-        {"value": 99, "color": "green"},
-        {"value": 95, "color": "yellow"},
-        {"value": 0, "color": "red"}
-      ]
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"value": null, "color": "red"},
+              {"value": 95, "color": "yellow"},
+              {"value": 99, "color": "green"}
+            ]
+          }
+        }
+      }
     },
     {
-      "title": "Authorization Policy Coverage",
+      "title": "Configured AuthorizationPolicy Namespaces",
       "type": "stat",
       "targets": [
         {
@@ -301,11 +310,11 @@ For real-time compliance visibility, create a Grafana dashboard that tracks your
       ]
     },
     {
-      "title": "Access Denials (Last 24h)",
+      "title": "Access Denials (Rolling 24h)",
       "type": "timeseries",
       "targets": [
         {
-          "expr": "sum(rate(istio_requests_total{response_code='403'}[5m])) by (destination_service_namespace)"
+          "expr": "sum(increase(istio_requests_total{reporter='destination',response_code='403'}[24h])) by (destination_service_namespace)"
         }
       ]
     }
