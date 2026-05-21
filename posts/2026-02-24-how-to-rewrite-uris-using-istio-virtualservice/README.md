@@ -65,7 +65,9 @@ spec:
   http:
     - match:
         - uri:
-            prefix: "/service-a"
+            exact: "/service-a"
+        - uri:
+            prefix: "/service-a/"
       rewrite:
         uri: "/"
       route:
@@ -75,7 +77,9 @@ spec:
               number: 80
     - match:
         - uri:
-            prefix: "/service-b"
+            exact: "/service-b"
+        - uri:
+            prefix: "/service-b/"
       rewrite:
         uri: "/"
       route:
@@ -261,7 +265,9 @@ spec:
   http:
     - match:
         - uri:
-            prefix: "/users"
+            exact: "/users"
+        - uri:
+            prefix: "/users/"
       rewrite:
         uri: "/"
       route:
@@ -271,7 +277,9 @@ spec:
               number: 80
     - match:
         - uri:
-            prefix: "/orders"
+            exact: "/orders"
+        - uri:
+            prefix: "/orders/"
       rewrite:
         uri: "/"
       route:
@@ -298,7 +306,7 @@ To make sure your rewrites are working:
 kubectl apply -f virtualservice.yaml
 
 # Check the proxy config
-istioctl proxy-config routes deploy/istio-ingressgateway -n istio-system -o json
+istioctl proxy-config routes deployment/istio-ingressgateway -n istio-system -o json
 
 # Test with curl (verbose to see headers)
 curl -v http://myapp.example.com/api/v2/users/123
@@ -315,8 +323,8 @@ A few things to watch out for:
 
 2. **Query parameters are preserved.** URI rewriting only affects the path. Query parameters pass through unchanged.
 
-3. **The rewrite happens before the request reaches the backend.** Your backend sees the rewritten path, not the original one. If you need the original path for logging, it is lost unless you add it as a header.
+3. **The rewrite happens before the request reaches the backend.** Your backend sees the rewritten path in the request path. Envoy also adds the original path to the `x-envoy-original-path` header for path rewrites, unless that header is removed or changed by other configuration.
 
-4. **Regex-based rewriting is not supported** in the `rewrite` field. You can match with regex but can only rewrite to a fixed string. For complex rewrites, consider using an EnvoyFilter.
+4. **Regex-based rewriting uses `uriRegexRewrite`.** You can match with regex and rewrite with capture groups by using `rewrite.uriRegexRewrite`. For more complex rewrites beyond what the VirtualService API supports, consider using an EnvoyFilter.
 
 URI rewriting keeps your public API clean and your internal services simple. The proxy handles the translation, so your services only need to know about their own paths.
