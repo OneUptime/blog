@@ -98,17 +98,27 @@ rules:
 Only istiod and cluster admins should be able to update webhooks. Check who currently has access:
 
 ```bash
-kubectl auth can-i update mutatingwebhookconfigurations --all-namespaces --as=system:serviceaccount:istio-system:istiod
+kubectl auth can-i update mutatingwebhookconfigurations --as=system:serviceaccount:istio-system:istiod
 ```
 
 Review all ClusterRoleBindings that grant webhook modification:
 
 ```bash
-kubectl get clusterrolebindings -o json | \
-  jq '.items[] | select(.roleRef.name as $role |
-    ["cluster-admin", "admin"] | index($role) //
-    ($role | test("istio"))) |
-    {name: .metadata.name, role: .roleRef.name, subjects: .subjects}'
+WEBHOOK_ROLES=$(kubectl get clusterroles -o json | \
+  jq -r '.items[] |
+    select(any(.rules[]?;
+      ((.apiGroups // []) | index("admissionregistration.k8s.io")) and
+      ((.resources // []) | any(. == "mutatingwebhookconfigurations" or . == "validatingwebhookconfigurations" or . == "*")) and
+      ((.verbs // []) | any(. == "*" or . == "create" or . == "update" or . == "patch" or . == "delete"))
+    )) |
+    .metadata.name')
+
+for role in $WEBHOOK_ROLES; do
+  kubectl get clusterrolebindings -o json | \
+    jq --arg role "$role" '.items[] |
+      select(.roleRef.kind == "ClusterRole" and .roleRef.name == $role) |
+      {name: .metadata.name, role: .roleRef.name, subjects: .subjects}'
+done
 ```
 
 ## Namespace Selector Security
@@ -119,6 +129,7 @@ The namespace selector on the webhook determines which namespaces get sidecar in
 # Check if any non-admin users can label namespaces
 
 kubectl auth can-i update namespaces --as=system:serviceaccount:default:default
+kubectl auth can-i patch namespaces --as=system:serviceaccount:default:default
 ```
 
 Restrict who can label namespaces:
@@ -143,7 +154,7 @@ kind: ClusterPolicy
 metadata:
   name: protect-istio-injection-label
 spec:
-  validationFailureAction: Enforce
+  background: false
   rules:
   - name: prevent-label-removal
     match:
@@ -151,28 +162,34 @@ spec:
       - resources:
           kinds:
           - Namespace
-          selector:
-            matchLabels:
-              istio-injection: enabled
     validate:
+      failureAction: Enforce
       message: "Cannot remove istio-injection label from namespaces"
-      pattern:
-        metadata:
-          labels:
-            istio-injection: enabled
+      deny:
+        conditions:
+          all:
+          - key: "{{ request.operation }}"
+            operator: Equals
+            value: UPDATE
+          - key: "{{ request.oldObject.metadata.labels.\"istio-injection\" || '' }}"
+            operator: Equals
+            value: enabled
+          - key: "{{ request.object.metadata.labels.\"istio-injection\" || '' }}"
+            operator: NotEquals
+            value: enabled
 ```
 
 ## Webhook TLS Security
 
-The webhook endpoint uses TLS. Make sure the TLS configuration is strong:
+The webhook endpoint uses TLS. Make sure the CA material used to verify it is present and not expired:
 
 ```bash
-# Check the webhook's certificate
+# Check Istio's root CA certificate
 kubectl get secret -n istio-system istio-ca-secret -o jsonpath='{.data.ca-cert\.pem}' | \
   base64 -d | openssl x509 -text -noout
 ```
 
-Verify the certificate is not expired:
+Verify the CA certificate is not expired:
 
 ```bash
 kubectl get secret -n istio-system istio-ca-secret -o jsonpath='{.data.ca-cert\.pem}' | \
@@ -238,7 +255,7 @@ spec:
 An attacker might try to create pods that bypass sidecar injection. There are several ways to do this:
 
 1. **Creating pods in non-injected namespaces**
-2. **Using the `sidecar.istio.io/inject: "false"` annotation**
+2. **Using the `sidecar.istio.io/inject: "false"` pod label, or the deprecated annotation of the same name**
 3. **Using hostNetwork: true (which Istio skips by default)**
 
 Protect against these:
@@ -249,7 +266,6 @@ kind: ClusterPolicy
 metadata:
   name: prevent-injection-bypass
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: block-injection-disable
     match:
@@ -260,9 +276,12 @@ spec:
           namespaces:
           - myapp
     validate:
+      failureAction: Enforce
       message: "Cannot disable sidecar injection"
       pattern:
         metadata:
+          =(labels):
+            =(sidecar.istio.io/inject): "!false"
           =(annotations):
             =(sidecar.istio.io/inject): "!false"
 
@@ -275,6 +294,7 @@ spec:
           namespaces:
           - myapp
     validate:
+      failureAction: Enforce
       message: "Host networking is not allowed"
       pattern:
         spec:
@@ -298,7 +318,8 @@ spec:
   policyTypes:
   - Ingress
   ingress:
-  # Allow webhook calls from the API server
+  # Most clusters cannot select the API server by pod or namespace.
+  # This allows webhook calls on 15017; narrow it with ipBlock if you know the control-plane CIDRs.
   - from: []
     ports:
     - port: 15017
