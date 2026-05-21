@@ -8,14 +8,14 @@ Description: Writing WebAssembly plugins for Istio in C++ using the proxy-wasm C
 
 ---
 
-C++ was the original language for Envoy filters, and it remains a solid choice for Wasm plugins when you need maximum performance or want to port existing C++ filter code to the Wasm model. The proxy-wasm C++ SDK wraps the low-level Wasm ABI in a familiar C++ class hierarchy that mirrors the Envoy filter API. This post walks through writing, building, and deploying a C++ Wasm plugin for Istio.
+C++ was the original language for Envoy filters, and it remains a solid choice for Wasm plugins when you need high performance or want to port existing C++ filter code to the Wasm model. The proxy-wasm C++ SDK wraps the low-level Wasm ABI in a familiar C++ class hierarchy that mirrors the Envoy filter API. This post walks through writing, building, and deploying a C++ Wasm plugin for Istio.
 
 ## Why C++ for Wasm Plugins
 
 C++ makes sense when:
 
 - You are porting an existing Envoy C++ filter to Wasm
-- You need absolute maximum performance (no runtime overhead)
+- You need high performance without a language runtime or garbage collector
 - Your plugin uses C/C++ libraries that do not exist in Rust or Go
 - Your team has deep C++ expertise
 
@@ -27,25 +27,28 @@ The tradeoffs:
 
 ## Setting Up the Build Environment
 
-You need Emscripten to compile C++ to Wasm:
+You need Emscripten to compile C++ to Wasm. The proxy-wasm C++ SDK documents Emscripten 3.1.67 as a known-working version:
 
 ```bash
 # Install Emscripten
 
 git clone https://github.com/emscripten-core/emsdk.git
 cd emsdk
-./emsdk install latest
-./emsdk activate latest
+git checkout 3.1.67
+./emsdk install --shallow 3.1.67
+./emsdk activate 3.1.67
 source ./emsdk_env.sh
 
 # Verify
 emcc --version
 ```
 
-Alternatively, you can use a Docker-based build environment:
+Alternatively, you can use the SDK's Docker-based build environment:
 
 ```bash
-docker pull emscripten/emsdk:latest
+git clone https://github.com/proxy-wasm/proxy-wasm-cpp-sdk.git
+cd proxy-wasm-cpp-sdk
+docker build -t wasmsdk:v3 -f Dockerfile-sdk .
 ```
 
 ## Project Structure
@@ -54,7 +57,7 @@ Create the following project structure:
 
 ```text
 my-cpp-plugin/
-  CMakeLists.txt
+  Makefile
   src/
     plugin.cc
     plugin.h
@@ -78,6 +81,7 @@ Create `src/plugin.h`:
 
 #include "proxy_wasm_intrinsics.h"
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -249,57 +253,40 @@ void MyPluginContext::onLog() {
 }
 ```
 
-## Building with CMake
+## Building with the SDK Makefile
 
-Create `CMakeLists.txt`:
+Create `Makefile`:
 
-```cmake
-cmake_minimum_required(VERSION 3.10)
-project(my_cpp_plugin)
+```makefile
+PROXY_WASM_CPP_SDK ?= ./proxy-wasm-cpp-sdk
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
+all: plugin.wasm
 
-# proxy-wasm C++ SDK
-add_subdirectory(proxy-wasm-cpp-sdk)
+include ${PROXY_WASM_CPP_SDK}/Makefile
 
-add_executable(plugin.wasm
-    src/plugin.cc
-)
-
-target_include_directories(plugin.wasm PRIVATE
-    ${CMAKE_SOURCE_DIR}/proxy-wasm-cpp-sdk
-)
-
-target_link_libraries(plugin.wasm PRIVATE
-    proxy_wasm_intrinsics
-)
-
-# Set Wasm-specific compiler flags
-set_target_properties(plugin.wasm PROPERTIES
-    SUFFIX ".wasm"
-)
+plugin.wasm: src/plugin.cc src/plugin.h
+	em++ --std=c++17 -O3 -flto \
+		${EMSCRIPTEN_LINK_OPTS} \
+		-I${PROXY_WASM_CPP_SDK} \
+		${CPP_CONTEXT_LIB} \
+		${PROTO_OPTS} \
+		${WASM_LIBS} \
+		src/plugin.cc -o plugin.wasm
 ```
 
 Build:
 
 ```bash
 # Using Emscripten
-mkdir build && cd build
-emcmake cmake ..
-emmake make
+make plugin.wasm
 
-# The output will be build/plugin.wasm
+# The output will be plugin.wasm
 ```
 
 Or using Docker:
 
 ```bash
-docker run --rm -v $(pwd):/src -w /src emscripten/emsdk bash -c "
-  mkdir -p build && cd build &&
-  emcmake cmake .. &&
-  emmake make
-"
+docker run --rm -v "$PWD":/work -w /work wasmsdk:v3 /build_wasm.sh plugin.wasm
 ```
 
 ## Building an Authentication Filter in C++
@@ -372,8 +359,9 @@ FilterHeadersStatus AuthContext::onRequestHeaders(uint32_t headers, bool end_of_
 
     std::string body = "{\"token\":\"" + std::string(token->view()) + "\"}";
 
-    auto result = httpCall(
-        "auth-service.default.svc.cluster.local",
+    auto stream_context_id = id();
+    auto result = root_->httpCall(
+        "outbound|80||auth-service.default.svc.cluster.local",
         {
             {":method", "POST"},
             {":path", "/validate"},
@@ -383,7 +371,8 @@ FilterHeadersStatus AuthContext::onRequestHeaders(uint32_t headers, bool end_of_
         body,
         {},
         5000,  // timeout ms
-        [this](uint32_t headers, size_t body_size, uint32_t trailers) {
+        [stream_context_id](uint32_t headers, size_t body_size, uint32_t trailers) {
+            getContext(stream_context_id)->setEffectiveContext();
             auto status = getHeaderMapValue(WasmHeaderMapType::HttpCallResponseHeaders, ":status");
             if (status && status->view() == "200") {
                 continueRequest();
@@ -416,6 +405,7 @@ spec:
     matchLabels:
       app: api-gateway
   url: oci://registry.example.com/plugins/cpp-auth:v1.0
+  pluginName: my_plugin_root_id
   phase: AUTHN
   failStrategy: FAIL_CLOSE
   pluginConfig:
@@ -427,7 +417,8 @@ Push the Wasm binary:
 
 ```bash
 oras push registry.example.com/plugins/cpp-auth:v1.0 \
-  build/plugin.wasm:application/vnd.module.wasm.content.layer.v1+wasm
+  --artifact-type application/vnd.module.wasm.config.v1+json \
+  plugin.wasm:application/vnd.module.wasm.content.layer.v1+wasm
 ```
 
 ## JSON Parsing Options
@@ -462,13 +453,13 @@ bool MyPluginRootContext::onConfigure(size_t config_size) {
 
 ## Performance Comparison
 
-C++ Wasm plugins are typically the fastest option:
+C++ Wasm plugins can be small and fast, but the exact size and performance depend on the SDK options, dependencies, compiler flags, and Wasm runtime:
 
-- **Binary size**: 50KB-200KB (smallest of all languages)
-- **Memory overhead**: Minimal (no runtime or GC)
-- **Execution speed**: Comparable to native Envoy filters
-- **Startup time**: Fastest Wasm VM initialization
+- **Binary size**: Small for simple plugins, larger when you add libraries
+- **Memory overhead**: No language runtime or garbage collector
+- **Execution speed**: High for CPU-bound filter logic, with Wasm hostcall overhead for proxy interactions
+- **Startup time**: Usually low for small modules
 
 ## Summary
 
-C++ is a strong choice for Wasm plugins when performance is critical or when porting existing Envoy filter code. The proxy-wasm C++ SDK provides a class hierarchy that closely mirrors Envoy's native filter API, making the transition from native filters to Wasm straightforward. The build setup is more involved than Rust or Go, requiring Emscripten and CMake, but the resulting binaries are the smallest and fastest of all proxy-wasm language options.
+C++ is a strong choice for Wasm plugins when performance is critical or when porting existing Envoy filter code. The proxy-wasm C++ SDK provides a class hierarchy that closely mirrors Envoy's native filter API, making the transition from native filters to Wasm straightforward. The build setup is more involved than Rust or Go, requiring Emscripten and the SDK build files, but the resulting binaries can be compact and fast.
