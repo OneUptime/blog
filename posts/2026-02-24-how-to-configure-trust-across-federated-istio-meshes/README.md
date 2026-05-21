@@ -121,10 +121,10 @@ spec:
 
 Apply this to each cluster with the other mesh's root certificate.
 
-You can also use `PeerAuthentication` to configure trust at a more granular level:
+You can also use `PeerAuthentication` to temporarily allow both plaintext and mTLS traffic while you migrate workloads:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: federation-trust
@@ -144,8 +144,8 @@ After setting up trust, verify that the workload certificates chain back to the 
 # Get a workload's certificate chain
 istioctl proxy-config secret \
   $(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}' --context=cluster-west) \
-  --context=cluster-west -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  -n sample --context=cluster-west -o json | \
+  jq -r '.dynamicActiveSecrets[] | select(.secret.tlsCertificate) | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout
 ```
 
@@ -154,10 +154,10 @@ Check the issuer field. It should show your intermediate CA, and the chain shoul
 You can also test the actual mTLS connection between meshes:
 
 ```bash
-kubectl exec --context=cluster-west -n sample -c sleep \
+kubectl exec --context=cluster-west -n sample -c istio-proxy \
   "$(kubectl get pod --context=cluster-west -n sample -l app=sleep \
   -o jsonpath='{.items[0].metadata.name}')" \
-  -- curl -v helloworld.sample:5000/hello 2>&1 | grep "SSL"
+  -- openssl s_client -showcerts -connect helloworld.sample:5000 </dev/null
 ```
 
 ## Rotating Certificates
@@ -179,7 +179,7 @@ kubectl create secret generic cacerts -n istio-system \
 kubectl rollout restart deployment/istiod -n istio-system --context=cluster-west
 ```
 
-For root CA rotation, you need a longer transition period where both the old and new roots are trusted. Add both root certificates to the `cert-chain.pem` file during the rotation window.
+For root CA rotation, you need a longer transition period where both the old and new roots are trusted. Distribute both root certificates in the trust bundle, such as `root-cert.pem` or `MeshConfig.caCertificates`, during the rotation window, and keep `cert-chain.pem` aligned with the active signing chain.
 
 ## Common Mistakes
 
