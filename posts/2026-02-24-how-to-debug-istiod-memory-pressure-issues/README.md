@@ -81,10 +81,10 @@ The xDS cache stores generated Envoy configuration for each proxy. With many pro
 kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/syncz | jq length
 ```
 
-This shows the number of connected proxies. Each proxy has its own cached configuration. Estimate memory:
+This shows the number of connected proxies. Each proxy receives generated configuration, and larger proxy-specific configurations increase istiod memory pressure. Use this as a rough sizing signal:
 
 ```text
-proxies * average_config_size = xDS_cache_memory
+proxies * average_config_size = approximate_config_footprint
 ```
 
 To see the configuration size for a specific proxy:
@@ -93,7 +93,7 @@ To see the configuration size for a specific proxy:
 istioctl proxy-config all productpage-v1-abc123.default -o json | wc -c
 ```
 
-If each proxy has a 1MB configuration and you have 500 proxies, that is 500MB just for the xDS cache.
+If each proxy has about 1MB of generated configuration and you have 500 proxies, that is a signal that generated xDS configuration can account for hundreds of megabytes of memory pressure.
 
 ## Step 3: Check Service and Endpoint Count
 
@@ -103,8 +103,8 @@ Large numbers of services and endpoints consume significant memory:
 # Service count
 kubectl get services --all-namespaces --no-headers | wc -l
 
-# Endpoint count (roughly)
-kubectl get endpoints --all-namespaces -o json | jq '[.items[].subsets[].addresses | length] | add'
+# Endpoint count (roughly, using EndpointSlices)
+kubectl get endpointslices.discovery.k8s.io --all-namespaces -o json | jq '[.items[].endpoints | length] | add // 0'
 ```
 
 Each endpoint is tracked by istiod and included in EDS responses. Clusters with thousands of endpoints (common with headless services or large deployments) use more memory.
@@ -192,7 +192,7 @@ spec:
 
 Headless services can generate thousands of endpoints. If a service does not need headless behavior, switch it to ClusterIP.
 
-For headless services you must keep, consider using the `PILOT_FILTER_GATEWAY_CLUSTER_CONFIG` environment variable on istiod to filter out unnecessary endpoint information for gateways.
+For large gateway configurations, consider using the `PILOT_FILTER_GATEWAY_CLUSTER_CONFIG` environment variable on istiod to avoid sending gateway proxies clusters that are not referenced by their attached VirtualServices.
 
 ### Clean Up Unused Configuration
 
@@ -261,7 +261,7 @@ To break this cycle:
 
 1. Increase the memory limit significantly (double it)
 2. Scale to more replicas so the reconnection load is distributed
-3. Set `PILOT_PUSH_THROTTLE` to limit how many proxies are pushed simultaneously after restart
+3. Tune `PILOT_PUSH_THROTTLE` to limit concurrent pushes after restart
 
 ```yaml
 env:
@@ -269,6 +269,6 @@ env:
   value: "50"
 ```
 
-This limits concurrent pushes to 50, reducing the peak memory usage during mass reconnection at the cost of slower convergence.
+This limits concurrent pushes to 50, reducing the peak work during mass reconnection at the cost of slower convergence. Istio's default is `0`, which lets istiod choose the value based on machine size, so set an explicit value only after measuring push latency, CPU, and memory.
 
 Memory pressure in istiod is usually a sign that the mesh has outgrown its control plane resources. The Sidecar resource for scoping configurations and proper memory limits are the two most impactful fixes.
