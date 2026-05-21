@@ -10,7 +10,7 @@ Description: Configure Istio for stateful streaming applications like Kafka Stre
 
 Stateful streaming applications process continuous data streams while maintaining local state. Frameworks like Kafka Streams, Apache Flink, and Apache Spark Streaming create applications that consume events, build up state (like aggregations, windows, or joins), and produce results. These applications have unique networking requirements that need careful Istio configuration.
 
-Unlike stateless web services, streaming applications maintain local state stores, communicate with peers for state replication, and require stable identities for partition assignment. Getting the mesh configuration wrong can cause state loss, rebalancing storms, or processing delays.
+Unlike stateless web services, streaming applications maintain local state stores, may communicate with peers for interactive queries or data exchange, and benefit from stable identities so local state can be reused after restarts. Getting the mesh configuration wrong can cause slow state restoration, rebalancing storms, or processing delays.
 
 ## Kafka Streams Application Setup
 
@@ -35,7 +35,7 @@ spec:
       annotations:
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
-          drainDuration: 120s
+          terminationDrainDuration: 120s
     spec:
       terminationGracePeriodSeconds: 130
       containers:
@@ -47,10 +47,12 @@ spec:
         - containerPort: 8080
           name: http-query
         env:
-        - name: APPLICATION_SERVER
+        - name: POD_NAME
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        - name: APPLICATION_SERVER
+          value: "$(POD_NAME).stream-processor.streaming.svc.cluster.local:8080"
         volumeMounts:
         - name: state-store
           mountPath: /tmp/kafka-streams
@@ -64,7 +66,7 @@ spec:
           storage: 50Gi
 ```
 
-Using a StatefulSet gives each instance a stable hostname (stream-processor-0, stream-processor-1, etc.) which is required for Kafka Streams' interactive queries and state store replication.
+Using a StatefulSet gives each instance a stable hostname (stream-processor-0, stream-processor-1, etc.) that can be used for Kafka Streams' `application.server` setting when exposing interactive queries. Kafka Streams backs persistent state stores with changelog topics and restores or migrates state from Kafka rather than directly replicating state between pods.
 
 ## Service Configuration
 
@@ -101,7 +103,7 @@ The headless service allows Kafka Streams instances to discover each other by ho
 
 ## Kafka Broker Connection Configuration
 
-The streaming application needs reliable connections to Kafka brokers:
+The streaming application needs reliable connections to Kafka brokers. If the Kafka brokers are also mesh workloads and accept Istio mutual TLS, use a destination rule like this:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -130,22 +132,22 @@ Kafka Streams creates multiple connections per broker: one for the consumer, one
 
 When a Kafka Streams instance joins or leaves the consumer group (during scaling or deployment), a rebalance occurs. During rebalance:
 
-1. All instances stop processing
+1. Processing pauses for tasks affected by the rebalance
 2. Partitions are reassigned
-3. State stores are potentially migrated
+3. State stores are reused locally where possible or restored from changelog topics
 4. Processing resumes with new partition assignments
 
-The sidecar needs to stay alive during this entire process. The drain duration must be longer than the maximum expected rebalance time plus state migration time:
+The sidecar needs to stay alive while the application leaves the group cleanly, commits offsets, and closes Kafka connections. The termination drain duration should be long enough for a graceful shutdown:
 
 ```yaml
 annotations:
   proxy.istio.io/config: |
-    drainDuration: 300s
+    terminationDrainDuration: 300s
     proxyMetadata:
       EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
 ```
 
-For large state stores, state migration can take minutes. Set drain duration conservatively.
+For large state stores, restoration after a rebalance can take minutes. Set termination grace periods and shutdown hooks conservatively so pods have enough time to leave the group cleanly.
 
 ## Sidecar Scoping for Streaming Apps
 
@@ -296,7 +298,7 @@ Updating a stateful streaming application is tricky. You can't just do a rolling
 3. Deploy the new version
 4. Resume from the savepoint
 
-During this process, the sidecar drain duration determines how long the old pods have to save state:
+During this process, the sidecar termination drain duration determines how long existing proxy connections can finish after the old pod begins shutting down:
 
 ```yaml
 spec:
@@ -308,7 +310,7 @@ spec:
     metadata:
       annotations:
         proxy.istio.io/config: |
-          drainDuration: 300s
+          terminationDrainDuration: 300s
 ```
 
 ## Monitoring Streaming Application Traffic
