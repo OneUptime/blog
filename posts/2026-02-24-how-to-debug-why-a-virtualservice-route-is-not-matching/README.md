@@ -48,7 +48,7 @@ The `hosts` field in a VirtualService must match how the client addresses the se
 For mesh-internal traffic (sidecar to sidecar), the host needs to match the Kubernetes service name:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-vs
@@ -147,16 +147,16 @@ http:
 Common mistakes:
 
 - Using `prefix: /api` when you mean `prefix: /api/` (the former also matches /apiv2)
-- Forgetting that `exact` match requires the complete path including query parameters
+- Forgetting that `exact` match checks the path without the query string; use `queryParams` when you need to match query parameters
 - Not URL-encoding special characters
 
 Test which route matches by checking the Envoy access log:
 
 ```bash
-kubectl logs deploy/my-service -n production -c istio-proxy --tail=20
+kubectl logs deploy/my-client -n production -c istio-proxy --tail=20
 ```
 
-The access log shows the route name, which tells you which VirtualService rule matched.
+If access logging is enabled and the log format includes `%ROUTE_NAME%` (the default Istio access log format does), the access log shows the route name, which tells you which VirtualService rule matched.
 
 ## Step 7: Debug Header Matching
 
@@ -184,7 +184,7 @@ kubectl exec deploy/sleep -n production -c sleep -- \
   curl -v -H "x-version: v2" my-service.production:8080/
 ```
 
-Check that the header isn't being stripped by an upstream proxy or load balancer. Headers starting with `x-envoy-` are stripped by Envoy by default.
+Check that the header isn't being stripped by an upstream proxy or load balancer. Many `x-envoy-*` headers are internal to Envoy and may be sanitized, so use an application-specific header for routing.
 
 ## Step 8: Check Route Ordering
 
@@ -222,7 +222,7 @@ http:
 
 ## Step 9: Check for Conflicting VirtualServices
 
-If multiple VirtualServices target the same host, Istio merges them. But the merge behavior can be surprising:
+If multiple gateway-bound VirtualServices target the same host, Istio can merge them. But the merge behavior can be surprising:
 
 ```bash
 # Find all VirtualServices for a host
@@ -237,7 +237,7 @@ for item in data['items']:
 "
 ```
 
-If you find multiple VirtualServices, consolidate them into one to avoid merge conflicts.
+If you find multiple VirtualServices, consolidate them into one to avoid merge conflicts. For mesh-internal sidecar traffic, host merging is not supported, so duplicate VirtualServices for the same host should be treated as a conflict.
 
 ## Step 10: Check the Destination Service
 
