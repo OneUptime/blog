@@ -24,7 +24,7 @@ Custom service discovery systems add operational overhead:
 
 With Kubernetes + Istio, service discovery is built in:
 - Kubernetes Services provide DNS-based discovery
-- Istio's sidecar proxies get endpoints from the Kubernetes API
+- Istiod watches the Kubernetes API and sends endpoint configuration to Istio sidecar proxies
 - No client libraries needed
 - No separate health check infrastructure
 - No registration code in your applications
@@ -84,7 +84,7 @@ discovery.registerService(instance);
 
 ## Migration Strategy
 
-The migration has three phases: run both systems in parallel, switch services to Kubernetes DNS, then decommission the old system.
+The migration has three broad phases: run both systems in parallel, switch services to Kubernetes DNS, then decommission the old system.
 
 ### Phase 1: Ensure Kubernetes Services Exist
 
@@ -105,13 +105,13 @@ spec:
       targetPort: 8080
 ```
 
-Verify all services have endpoints:
+Verify all services have EndpointSlices:
 
 ```bash
-kubectl get endpoints payment-service
+kubectl get endpointslices -l kubernetes.io/service-name=payment-service
 ```
 
-The endpoints should list the pod IPs. If they do not, the selector labels might not match the pod labels.
+The EndpointSlices should list the pod IPs. If they do not, the selector labels might not match the pod labels.
 
 ### Phase 2: Install Istio
 
@@ -122,7 +122,7 @@ istioctl install --set profile=default
 ```
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -178,7 +178,7 @@ After:
 
 ```java
 RestTemplate restTemplate = new RestTemplate();
-// Kubernetes DNS + Envoy resolve "payment-service"
+// Kubernetes DNS resolves "payment-service"; Envoy handles mesh traffic
 restTemplate.getForObject("http://payment-service:8080/api/charge", Response.class);
 ```
 
@@ -225,7 +225,7 @@ Remove `@EnableEurekaClient` and Eureka configuration from `application.yml`.
 
 ### Phase 5: Handle Cross-Namespace Discovery
 
-With Consul or Eureka, services in different namespaces were all in one flat registry. With Kubernetes DNS, you need the full DNS name for cross-namespace calls:
+With Consul or Eureka, services in different namespaces were often in one flat registry. With Kubernetes DNS, use a namespace-qualified DNS name for cross-namespace calls:
 
 ```text
 # Same namespace
@@ -233,17 +233,20 @@ With Consul or Eureka, services in different namespaces were all in one flat reg
 http://payment-service:8080
 
 # Different namespace
+http://payment-service.payments:8080
+
+# Fully qualified form
 http://payment-service.payments.svc.cluster.local:8080
 ```
 
-If you want to simplify cross-namespace visibility, you can use Istio's Sidecar resource or ServiceEntries.
+If you want to control cross-namespace visibility inside Istio, use Istio export settings or the Sidecar resource's egress hosts.
 
 ### Phase 6: Handle External Services
 
 Services outside the Kubernetes cluster that were registered in Consul/Eureka need ServiceEntries in Istio:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-payment-processor
@@ -261,13 +264,13 @@ spec:
 For services with static IPs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: legacy-database
 spec:
   hosts:
-    - legacy-db
+    - legacy-db.internal.company.com
   addresses:
     - 10.100.0.50
   ports:
@@ -337,6 +340,6 @@ You should see responses from different pod instances.
 
 ## Consul Connect Integration
 
-If you are using Consul Connect (Consul's service mesh), you can run it alongside Istio temporarily using Consul's integration with Istio. But for a clean migration, it is better to fully switch to Istio service discovery rather than running two service meshes.
+If you are using Consul Connect (Consul's service mesh), you can run it alongside Istio temporarily, but treat that as a separate mesh or registry-integration step. For a clean migration, it is better to fully switch to Istio service discovery rather than running two service meshes.
 
 The migration from custom service discovery to Istio is primarily a code simplification exercise. You are removing client libraries, removing registration code, removing health check infrastructure, and replacing it all with Kubernetes DNS names and Istio's built-in service registry. Each service gets simpler, and the operational burden drops significantly.
