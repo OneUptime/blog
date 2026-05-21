@@ -14,12 +14,12 @@ Wildcard ServiceEntries are powerful but come with trade-offs. They are less pre
 
 ## Wildcard Host Syntax
 
-Istio supports wildcard hosts using the `*` prefix. The wildcard matches exactly one level of subdomain:
+Istio supports wildcard hosts using the `*` prefix. The wildcard is a prefix match for the hostname suffix:
 
 ```yaml
 hosts:
-  - "*.example.com"     # matches a.example.com, b.example.com
-                         # does NOT match a.b.example.com
+  - "*.example.com"     # matches a.example.com, b.example.com, a.b.example.com
+                         # does NOT match example.com
 ```
 
 You can only use the wildcard as the leftmost label:
@@ -57,7 +57,7 @@ spec:
   resolution: NONE
 ```
 
-The critical detail: when using wildcard hosts, you must set `resolution: NONE`. Envoy cannot perform DNS resolution for a wildcard because it does not know the actual hostname until a request comes in. With `NONE`, Envoy relies on the application's DNS resolution and just passes the connection through.
+The critical detail: regular `DNS` resolution cannot be used for wildcard hosts because Envoy cannot resolve a literal wildcard name. With `NONE`, Envoy relies on the application's DNS resolution and forwards the connection to the IP address the application selected. Newer Istio versions also support `DYNAMIC_DNS` for wildcard hosts in supported ambient/waypoint configurations, where the proxy resolves the hostname from the HTTP Host header or TLS SNI.
 
 ## AWS Service Wildcards
 
@@ -79,11 +79,9 @@ spec:
   resolution: NONE
 ```
 
-This matches `s3.us-east-1.amazonaws.com`, `sqs.us-east-1.amazonaws.com`, `dynamodb.us-east-1.amazonaws.com`, and every other AWS endpoint.
+This matches `s3.amazonaws.com`, `s3.us-east-1.amazonaws.com`, `sqs.us-east-1.amazonaws.com`, `dynamodb.us-east-1.amazonaws.com`, and other AWS endpoints under `amazonaws.com`.
 
-But wait - remember that `*` only matches one subdomain level. So `*.amazonaws.com` matches `s3.amazonaws.com` but does NOT match `s3.us-east-1.amazonaws.com` because that has two levels of subdomain.
-
-To cover regional endpoints, you need:
+If you want to allow only specific AWS regions instead of all `amazonaws.com` subdomains, use narrower wildcard hosts:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -92,7 +90,6 @@ metadata:
   name: aws-regional-wildcard
 spec:
   hosts:
-    - "*.amazonaws.com"
     - "*.us-east-1.amazonaws.com"
     - "*.us-west-2.amazonaws.com"
     - "*.eu-west-1.amazonaws.com"
@@ -104,7 +101,7 @@ spec:
   resolution: NONE
 ```
 
-Add entries for each AWS region your application uses. For S3 virtual-hosted buckets (like `my-bucket.s3.us-east-1.amazonaws.com`), you need yet another level:
+Add entries for each AWS region your application uses. For S3 virtual-hosted buckets (like `my-bucket.s3.us-east-1.amazonaws.com`), the regional wildcard already matches them. You can use a narrower S3-specific wildcard if you want to restrict access to S3 bucket hosts:
 
 ```yaml
 hosts:
@@ -199,7 +196,7 @@ If you need different policies for different services, use exact-match ServiceEn
 
 There are real limitations you should know about:
 
-**No DNS resolution.** Wildcard entries require `resolution: NONE`, which means Envoy does not manage endpoint resolution. The application handles DNS itself.
+**DNS resolution limits.** Wildcard entries cannot use regular `DNS` or `DNS_ROUND_ROBIN` resolution. With `NONE`, Envoy does not manage endpoint resolution and the application handles DNS itself. In supported ambient/waypoint configurations, `DYNAMIC_DNS` can resolve wildcard traffic from the HTTP Host header or TLS SNI.
 
 **Less granular metrics.** With DNS resolution, Istio can show you per-host metrics. With NONE resolution and wildcards, all traffic to `*.example.com` shows up under the same metric label.
 
@@ -207,7 +204,7 @@ There are real limitations you should know about:
 
 **No subset routing.** You cannot create subsets (via DestinationRule) for wildcard hosts because there are no endpoints to label.
 
-**VirtualService matching is limited.** You can create a VirtualService for a wildcard host, but route matching works differently:
+**VirtualService matching is limited.** You can create a VirtualService for a wildcard host, but for passthrough HTTPS traffic you match on TLS SNI instead of HTTP headers:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -217,8 +214,11 @@ metadata:
 spec:
   hosts:
     - "*.googleapis.com"
-  http:
-    - timeout: 30s
+  tls:
+    - match:
+        - port: 443
+          sniHosts:
+            - "*.googleapis.com"
       route:
         - destination:
             host: "*.googleapis.com"
