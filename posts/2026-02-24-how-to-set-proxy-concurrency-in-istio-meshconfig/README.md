@@ -14,7 +14,7 @@ Getting this number right matters. Too few threads and your proxy becomes a bott
 
 ## Default Behavior
 
-By default, Istio sets the concurrency to 2 worker threads. This is a conservative default that works for most services. The Envoy proxy is event-driven and quite efficient, so 2 threads can handle a surprising amount of traffic.
+By default, if `concurrency` is unset, current Istio automatically determines the worker thread count from the CPU limit allocated to the proxy container. For example, a proxy CPU limit of `2500m` results in 3 worker threads. The Envoy proxy is event-driven and quite efficient, so a small number of threads can handle a surprising amount of traffic.
 
 To check the current concurrency on a running proxy:
 
@@ -105,7 +105,7 @@ spec:
 
 ## The Special Value: 0
 
-Setting concurrency to 0 has special meaning. It tells Envoy to create one worker thread per CPU core available to the container:
+Setting concurrency to 0 has special meaning in Istio's proxy configuration. It tells Istio to use all cores on the machine for the proxy:
 
 ```yaml
 meshConfig:
@@ -115,14 +115,14 @@ meshConfig:
 
 This sounds appealing, but there are caveats:
 
-- If your container has no CPU limit set, Envoy will detect all cores on the node and create a thread for each one. On a 64-core node, that is 64 Envoy threads per pod.
-- If your container has a CPU limit, Envoy uses that to determine the number of cores. A limit of 2 CPUs means 2 threads.
+- Envoy will detect all cores on the node and create a thread for each one. On a 64-core node, that is 64 Envoy threads per pod.
+- If you want Istio to size concurrency from the proxy CPU limit, leave `concurrency` unset instead of setting it to 0.
 
 For most production environments, setting an explicit number is safer than using 0 because it gives you predictable behavior regardless of the node configuration.
 
 ## Relationship Between Concurrency and CPU Limits
 
-The sidecar container's CPU limit should be at least as high as the concurrency value. Each worker thread can use up to one CPU core. If you set concurrency to 4 but the sidecar only has 1 CPU limit, the threads will contend for CPU time and performance will actually be worse than using fewer threads.
+When you set an explicit concurrency value, the sidecar container's CPU limit should generally be at least as high as the concurrency value. Each worker thread can use up to one CPU core. If you set concurrency to 4 but the sidecar only has a 1 CPU limit, the threads will contend for CPU time and performance can be worse than using fewer threads.
 
 Here is a good rule of thumb:
 
@@ -175,15 +175,15 @@ Run the same load test with different concurrency values and measure latency:
 
 ```bash
 # Deploy with concurrency=2
-kubectl annotate deployment my-service \
-  proxy.istio.io/config='{"concurrency": 2}' --overwrite
+kubectl patch deployment my-service -n default --type merge -p \
+  '{"spec":{"template":{"metadata":{"annotations":{"proxy.istio.io/config":"{\"concurrency\": 2}"}}}}}'
 
 kubectl rollout restart deployment my-service -n default
 # Run load test and record p50, p99 latency
 
 # Deploy with concurrency=4
-kubectl annotate deployment my-service \
-  proxy.istio.io/config='{"concurrency": 4}' --overwrite
+kubectl patch deployment my-service -n default --type merge -p \
+  '{"spec":{"template":{"metadata":{"annotations":{"proxy.istio.io/config":"{\"concurrency\": 4}"}}}}}'
 
 kubectl rollout restart deployment my-service -n default
 # Run load test and record p50, p99 latency
@@ -226,33 +226,38 @@ spec:
           ISTIO_META_ROUTER_MODE: standard
 ```
 
-For the gateway's concurrency, set it through the proxy config in the gateway deployment:
+For the gateway's concurrency, set it through the proxy config annotation in the gateway deployment's pod template:
 
 ```bash
 kubectl edit deployment istio-ingressgateway -n istio-system
 ```
 
-Add the concurrency environment variable:
+Add the concurrency annotation:
 
 ```yaml
-env:
-  - name: ISTIO_META_REQUESTED_NETWORK_VIEW
-    value: network1
-  - name: PROXY_CONCURRENCY
-    value: "8"
+spec:
+  template:
+    metadata:
+      annotations:
+        proxy.istio.io/config: |
+          concurrency: 8
 ```
 
-## Monitoring Thread Usage
+## Monitoring After Changing Concurrency
 
-Once you set the concurrency, monitor whether the threads are actually being utilized:
+Once you set the concurrency, verify the configured worker count and monitor proxy activity:
 
 ```bash
-# Check Envoy's worker thread stats
+# Check Envoy's configured worker thread count
+kubectl exec deploy/my-service -c istio-proxy -n default -- \
+  pilot-agent request GET stats | grep "server.concurrency"
+
+# Check Envoy's total connection count
 kubectl exec deploy/my-service -c istio-proxy -n default -- \
   pilot-agent request GET stats | grep "server.total_connections"
 ```
 
-The Envoy admin interface shows per-thread stats that help you understand if all threads are being used or if some are idle:
+The Envoy admin interface also exposes listener and server stats that help you understand whether the proxy is handling the expected traffic after the change:
 
 ```bash
 kubectl exec deploy/my-service -c istio-proxy -n default -- \
@@ -261,8 +266,8 @@ kubectl exec deploy/my-service -c istio-proxy -n default -- \
 
 ## Summary
 
-- Default concurrency is 2, which works for most services
-- Set concurrency to 0 to use all available cores (be careful with this)
+- If concurrency is unset, current Istio automatically sizes it from the proxy CPU limit
+- Set concurrency to 0 to use all cores on the machine (be careful with this)
 - Match CPU limits to concurrency values to avoid thread contention
 - Use per-workload annotations for services with different throughput needs
 - Load test to find the optimal value for your high-traffic services
