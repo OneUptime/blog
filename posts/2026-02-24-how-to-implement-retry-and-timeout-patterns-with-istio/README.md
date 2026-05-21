@@ -19,7 +19,7 @@ Istio moves retry and timeout logic to the sidecar proxy layer. You configure th
 Here's a straightforward retry setup for a service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -37,14 +37,14 @@ spec:
       retryOn: 5xx,reset,connect-failure
 ```
 
-This tells Istio to retry failed requests up to 3 times, with a 2-second timeout for each attempt. Retries are triggered on 5xx responses, connection resets, and connection failures.
+This tells Istio to allow up to 3 retries after the initial request, with a 2-second timeout for each attempt. Retries are triggered on 5xx responses, connection resets, and connection failures.
 
 ### Understanding retryOn Conditions
 
 The `retryOn` field accepts a comma-separated list of conditions:
 
-- `5xx` - retry on any 5xx response code
-- `gateway-error` - retry on 502, 503, or 504
+- `5xx` - retry on any upstream 5xx response code, or when the upstream does not respond because of a disconnect, reset, or read timeout
+- `gateway-error` - retry on 502, 503, or 504, or when the upstream does not respond because of a disconnect, reset, or read timeout
 - `reset` - retry when the upstream resets the connection
 - `connect-failure` - retry when the connection to the upstream fails
 - `retriable-4xx` - retry on 409 (conflict) responses
@@ -62,18 +62,17 @@ If you want to retry only on specific HTTP status codes:
 retries:
   attempts: 3
   perTryTimeout: 2s
-  retryOn: retriable-status-codes
-  retryRemoteLocalities: false
+  retryOn: 503,504
 ```
 
-Then in the EnvoyFilter, configure which status codes should trigger retries. Alternatively, services can set the `x-envoy-retriable-status-codes` header to specify codes like `503,504`.
+Istio passes numeric status codes in `retryOn` through to Envoy. Alternatively, internal clients can use the `x-envoy-retriable-status-codes` header together with `retryOn: retriable-status-codes` to specify codes like `503,504`.
 
 ## Basic Timeout Configuration
 
 Timeouts prevent your services from waiting forever for a response:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: inventory-service
@@ -95,15 +94,15 @@ This sets a 10-second overall timeout for requests to the inventory service. If 
 When you use retries and timeouts together, the math matters. The total time a request can take is roughly:
 
 ```text
-total time = attempts * perTryTimeout
+total time = (1 + attempts) * perTryTimeout + retry backoff
 ```
 
-But there's a catch. The overall `timeout` field on the route acts as a hard cap. If you set `timeout: 10s`, 3 retry attempts, and `perTryTimeout: 5s`, the theoretical max is 15 seconds (3 * 5), but the 10-second overall timeout will cut it short.
+But there's a catch. The overall `timeout` field on the route acts as a hard cap across the initial request, retries, and retry backoff. If you set `timeout: 10s`, 3 retries, and `perTryTimeout: 5s`, the theoretical max is more than 20 seconds, but the 10-second overall timeout will cut it short.
 
 Here's a well-thought-out configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -122,14 +121,14 @@ spec:
       retryOn: 5xx,reset,connect-failure
 ```
 
-With 3 attempts at 3 seconds each, the worst case is 9 seconds. The overall timeout of 8 seconds ensures we don't exceed our budget. The third retry might get cut short, but that's fine - you'd rather fail fast than keep the caller waiting.
+With 3 retries at 3 seconds each, the worst case without an overall timeout would be more than 12 seconds, because the initial request also gets a per-try timeout and Envoy adds retry backoff. The overall timeout of 8 seconds ensures we don't exceed our budget. A later retry might get cut short, but that's fine - you'd rather fail fast than keep the caller waiting.
 
 ## Per-Route Timeouts
 
 Different endpoints often need different timeout values. A search endpoint should be fast, while a report generation endpoint might need more time:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: report-service
@@ -143,7 +142,7 @@ spec:
         prefix: /api/reports/generate
     timeout: 60s
     retries:
-      attempts: 1
+      attempts: 0
     route:
     - destination:
         host: report-service
@@ -169,7 +168,7 @@ Consider a call chain: Frontend -> Order Service -> Payment Service -> Bank API.
 ```yaml
 # Frontend to Order Service: 15s timeout
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -183,7 +182,7 @@ spec:
     timeout: 15s
 ---
 # Order Service to Payment Service: 10s timeout
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -197,7 +196,7 @@ spec:
     timeout: 10s
 ---
 # Payment Service to Bank API: 5s timeout
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: bank-api
@@ -220,7 +219,7 @@ Retries can amplify load on an already struggling service. If 1000 requests per 
 Istio doesn't have a built-in retry budget feature, but you can mitigate this with circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
@@ -277,10 +276,10 @@ Keep an eye on retry and timeout metrics to catch issues early:
 
 ```bash
 # Check Envoy stats for upstream retries
-istioctl proxy-config stats deploy/frontend -n default | grep retry
+istioctl experimental envoy-stats deploy/frontend -n default | grep retry
 
 # Look for timeout stats
-istioctl proxy-config stats deploy/frontend -n default | grep timeout
+istioctl experimental envoy-stats deploy/frontend -n default | grep timeout
 ```
 
 In Prometheus, the `istio_requests_total` metric includes a `response_code` label. A spike in 504 responses indicates timeout problems. A spike in 503 responses might indicate circuit breaking is kicking in.
