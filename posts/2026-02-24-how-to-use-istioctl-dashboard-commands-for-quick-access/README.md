@@ -25,7 +25,8 @@ The main ones:
 - **prometheus** - Raw metrics querying
 - **jaeger** - Distributed tracing UI
 - **zipkin** - Alternative tracing UI
-- **envoy** - Per-pod Envoy admin interface
+- **proxy** - Per-pod proxy admin interface
+- **envoy** - Deprecated alias for the sidecar Envoy admin interface
 - **controlz** - Istiod introspection interface
 
 ## Opening Kiali
@@ -68,7 +69,7 @@ Opens Grafana on port 3000 by default. Istio comes with pre-built dashboards for
 If Grafana isn't installed, you'll get an error. Install it with the Istio addons:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 ## Opening Prometheus
@@ -95,7 +96,7 @@ sum(rate(istio_requests_total{response_code=~"5.*", reporter="destination"}[5m])
 Install Prometheus if needed:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 ## Opening Jaeger
@@ -109,7 +110,7 @@ Opens the Jaeger tracing UI on port 16686. From here, you can search for traces 
 Make sure Jaeger is installed:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 ```
 
 And that tracing is enabled in your mesh config:
@@ -121,11 +122,30 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 100.0
+      tracing: {}
+    extensionProviders:
+    - name: jaeger
+      opentelemetry:
+        port: 4317
+        service: jaeger-collector.istio-system.svc.cluster.local
 ```
 
-Setting sampling to 100.0 means every request gets traced - useful for debugging but too expensive for production. In production, use something like 1.0 (1% of requests).
+Then enable the provider with the Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: jaeger
+    randomSamplingPercentage: 100.0
+```
+
+Setting `randomSamplingPercentage` to 100.0 means every request gets traced - useful for debugging but too expensive for production. In production, use something like 1.0 (1% of requests).
 
 ## Opening Zipkin
 
@@ -142,7 +162,7 @@ Opens Zipkin on port 9411. The interface is different from Jaeger but shows the 
 This one is different because it targets a specific pod:
 
 ```bash
-istioctl dashboard envoy productpage-v1-abc123.default
+istioctl dashboard proxy productpage-v1-abc123.default
 ```
 
 Opens the Envoy admin interface for that specific sidecar on port 15000. From here, you can:
@@ -156,7 +176,7 @@ Opens the Envoy admin interface for that specific sidecar on port 15000. From he
 You can also target the ingress gateway:
 
 ```bash
-istioctl dashboard envoy deployment/istio-ingressgateway -n istio-system
+istioctl dashboard proxy deployment/istio-ingressgateway -n istio-system
 ```
 
 ## Opening ControlZ
@@ -190,16 +210,13 @@ Keep in mind that background port-forwards can silently die. If a dashboard stop
 jobs
 ```
 
-## Custom Service Names and Namespaces
+## Custom Namespaces
 
-If your addon services are installed with non-default names or in a different namespace, use the service flags:
+If your addon services are installed in a different namespace, use the namespace flag:
 
 ```bash
 # Grafana in a custom namespace
 istioctl dashboard grafana --namespace monitoring
-
-# Custom service name
-istioctl dashboard prometheus --service-name my-prometheus-server
 ```
 
 ## Using Dashboard in CI/CD or Scripts
@@ -277,10 +294,10 @@ kubectl wait --for=condition=ready pod -l app=kiali -n istio-system --timeout=12
 The quickest way to get all dashboards working:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 Wait for everything to come up:
@@ -292,7 +309,7 @@ kubectl rollout status deployment -n istio-system prometheus
 kubectl rollout status deployment -n istio-system jaeger
 ```
 
-Then open everything:
+Then open a dashboard:
 
 ```bash
 istioctl dashboard kiali
