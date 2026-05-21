@@ -18,7 +18,7 @@ There are three levels of certificates that can expire:
 2. **Intermediate CA certificate** - Used by istiod to sign workload certs
 3. **Root CA certificate** - The trust anchor for the entire mesh
 
-Workload certificates are rotated automatically and rarely cause problems. The intermediate and root CA certificates are the dangerous ones because they have longer lifetimes and are not auto-rotated by Istio.
+Workload certificates are rotated automatically and rarely cause problems. The intermediate and root CA certificates need extra attention because they have longer lifetimes and, when you plug in your own CA certificates, rotation is an operator-managed process.
 
 ## Built-in Metrics for Certificate Monitoring
 
@@ -26,9 +26,10 @@ Istiod exposes several Prometheus metrics related to certificates:
 
 ```bash
 # Check istiod certificate metrics
+kubectl -n istio-system port-forward deploy/istiod 15014:15014
 
-kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep -E "cert|citadel"
+# In another terminal
+curl -s localhost:15014/metrics | grep -E "cert|citadel"
 ```
 
 The key metrics are:
@@ -38,6 +39,8 @@ The key metrics are:
 - `citadel_server_csr_count` - Total CSR requests processed
 - `citadel_server_success_cert_issuance_count` - Successful certificate issuances
 - `citadel_server_csr_parsing_err_count` - Failed CSR parsing attempts
+- `citadel_server_csr_sign_err_count` - Failed CSR signing attempts
+- `citadel_server_id_extraction_err_count` - Failed identity extraction attempts
 - `citadel_server_authentication_failure_count` - Auth failures during CSR
 
 ## Setting Up Prometheus Alerts
@@ -61,7 +64,7 @@ spec:
         severity: warning
       annotations:
         summary: "Istio root certificate expires in less than 30 days"
-        description: "Root cert expires at {{ $value | humanizeTimestamp }}"
+        description: "Root cert expires in {{ $value | humanizeDuration }}"
 
     - alert: IstioRootCertExpiring7Days
       expr: (citadel_server_root_cert_expiry_timestamp - time()) < 7 * 24 * 3600
@@ -70,7 +73,7 @@ spec:
         severity: critical
       annotations:
         summary: "Istio root certificate expires in less than 7 days"
-        description: "Root cert expires at {{ $value | humanizeTimestamp }}"
+        description: "Root cert expires in {{ $value | humanizeDuration }}"
 
     - alert: IstioCACertExpiring30Days
       expr: (citadel_server_cert_chain_expiry_timestamp - time()) < 30 * 24 * 3600
@@ -81,13 +84,16 @@ spec:
         summary: "Istio CA certificate chain expires in less than 30 days"
 
     - alert: IstioCertIssuanceFailures
-      expr: rate(citadel_server_csr_parsing_err_count[5m]) > 0
+      expr: |
+        rate(citadel_server_csr_parsing_err_count[5m]) > 0
+        or rate(citadel_server_csr_sign_err_count[5m]) > 0
+        or rate(citadel_server_id_extraction_err_count[5m]) > 0
       for: 10m
       labels:
         severity: warning
       annotations:
         summary: "Istio is failing to issue certificates"
-        description: "CSR parsing errors detected"
+        description: "CSR parsing, signing, or identity extraction errors detected"
 
     - alert: IstioCertAuthFailures
       expr: rate(citadel_server_authentication_failure_count[5m]) > 0
@@ -116,17 +122,19 @@ For bulk checking across all pods:
 ```bash
 #!/bin/bash
 # check-certs.sh - Check all workload certificate expirations
-for pod in $(kubectl get pods -l security.istio.io/tlsMode=istio -o jsonpath='{.items[*].metadata.name}'); do
-  expiry=$(istioctl proxy-config secret "$pod" -o json 2>/dev/null | \
+kubectl get pods -A -l security.istio.io/tlsMode=istio \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | \
+while read -r ns pod; do
+  expiry=$(istioctl proxy-config secret "$pod" -n "$ns" -o json 2>/dev/null | \
     jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' 2>/dev/null | \
     base64 -d 2>/dev/null | openssl x509 -enddate -noout 2>/dev/null)
-  echo "$pod: $expiry"
+  echo "$ns/$pod: $expiry"
 done
 ```
 
 ## Monitoring the Root CA ConfigMap
 
-The root CA certificate is distributed via ConfigMap to every namespace. Verify it is present and valid:
+The root CA certificate is distributed via ConfigMap to namespaces managed by istiod. Verify it is present and valid:
 
 ```bash
 # Check root cert in all namespaces
@@ -141,7 +149,7 @@ for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
 done
 ```
 
-If a namespace is missing the `istio-ca-root-cert` ConfigMap, workloads in that namespace will not be able to validate peer certificates.
+If a namespace that should be part of the mesh is missing the `istio-ca-root-cert` ConfigMap, injected workloads in that namespace may not receive the mesh root certificate.
 
 ## Using Grafana for Certificate Dashboards
 
@@ -165,9 +173,9 @@ Build a Grafana dashboard for certificate monitoring:
           "defaults": {
             "thresholds": {
               "steps": [
-                {"color": "red", "value": 7},
-                {"color": "yellow", "value": 30},
-                {"color": "green", "value": 90}
+                {"color": "red", "value": null},
+                {"color": "yellow", "value": 7},
+                {"color": "green", "value": 30}
               ]
             }
           }
@@ -175,7 +183,7 @@ Build a Grafana dashboard for certificate monitoring:
       },
       {
         "title": "Certificate Issuance Rate",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "sum(rate(citadel_server_success_cert_issuance_count[5m]))",
@@ -185,7 +193,7 @@ Build a Grafana dashboard for certificate monitoring:
       },
       {
         "title": "Certificate Errors",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "sum(rate(citadel_server_csr_parsing_err_count[5m]))",
@@ -221,10 +229,10 @@ Track these in Prometheus:
 
 ```promql
 # TLS handshake failure rate
-sum(rate(envoy_listener_ssl_connection_error[5m])) by (pod)
+sum by (pod) (rate({__name__=~"envoy_listener_.*_ssl_connection_error"}[5m]))
 
 # Certificate verification failures
-sum(rate(envoy_cluster_ssl_fail_verify_error[5m])) by (pod)
+sum by (pod) (rate({__name__=~"envoy_cluster_.*_ssl_fail_verify_error"}[5m]))
 ```
 
 ## Automated Certificate Health Checks
