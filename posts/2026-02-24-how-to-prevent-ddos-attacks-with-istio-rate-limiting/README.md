@@ -21,7 +21,7 @@ Both have their place, and you can actually combine them for layered protection.
 
 ## Local Rate Limiting with EnvoyFilter
 
-Local rate limiting runs entirely within each Envoy sidecar. The downside is that limits are per-pod, so if you have 10 replicas and set a limit of 100 requests per second, the effective cluster-wide limit is 1000 requests per second. Still, local limiting is fast and doesn't add network hops.
+Local rate limiting runs entirely within each Envoy proxy. The downside is that limits are per-pod, so if you have 10 replicas and set a limit of 100 requests per second, the effective cluster-wide limit is 1000 requests per second. Still, local limiting is fast and doesn't add network hops.
 
 Here's how to set up local rate limiting on an ingress gateway:
 
@@ -92,6 +92,24 @@ spec:
     labels:
       istio: ingressgateway
   configPatches:
+    - applyTo: HTTP_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+              subFilter:
+                name: envoy.filters.http.router
+      patch:
+        operation: INSERT_BEFORE
+        value:
+          name: envoy.filters.http.local_ratelimit
+          typed_config:
+            "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+            type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+            value:
+              stat_prefix: http_local_rate_limiter
     - applyTo: HTTP_ROUTE
       match:
         context: GATEWAY
@@ -113,6 +131,16 @@ spec:
                   max_tokens: 100
                   tokens_per_fill: 100
                   fill_interval: 60s
+                filter_enabled:
+                  runtime_key: local_rate_limit_enabled
+                  default_value:
+                    numerator: 100
+                    denominator: HUNDRED
+                filter_enforced:
+                  runtime_key: local_rate_limit_enforced
+                  default_value:
+                    numerator: 100
+                    denominator: HUNDRED
 ```
 
 This applies a tighter limit of 100 requests per minute to routes on the `api.example.com` virtual host.
@@ -246,34 +274,13 @@ spec:
                   cluster_name: outbound|8081||ratelimit.istio-system.svc.cluster.local
                   authority: ratelimit.istio-system.svc.cluster.local
               transport_api_version: V3
-    - applyTo: CLUSTER
-      match:
-        cluster:
-          service: ratelimit.istio-system.svc.cluster.local
-      patch:
-        operation: ADD
-        value:
-          name: rate_limit_cluster
-          type: STRICT_DNS
-          connect_timeout: 10s
-          lb_policy: ROUND_ROBIN
-          http2_protocol_options: {}
-          load_assignment:
-            cluster_name: rate_limit_cluster
-            endpoints:
-              - lb_endpoints:
-                  - endpoint:
-                      address:
-                        socket_address:
-                          address: ratelimit.istio-system.svc.cluster.local
-                          port_value: 8081
 ```
 
 Notice `failure_mode_deny: false`. This means if the rate limit service is down, requests are allowed through. For DDoS protection, you might want to set this to `true`, but be aware that a failure in the rate limit service would then block all traffic.
 
 ## Rate Limiting by Client IP
 
-For DDoS protection, limiting by source IP is critical. You need to configure Envoy to extract the client IP and use it as a rate limit descriptor:
+For DDoS protection, limiting by source IP is critical. If there is a load balancer or reverse proxy in front of the ingress gateway, first configure Istio's gateway topology so Envoy can determine the trusted client address from `X-Forwarded-For`. Then use that address as a rate limit descriptor:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -326,6 +333,15 @@ Set your local limits higher than your global limits. For example, local at 200 
 
 Keep an eye on rate limit metrics to tune your thresholds:
 
+Istio does not expose local rate limit filter metrics by default. Enable them on the gateway or workload with `proxyStatsMatcher` first:
+
+```yaml
+proxy.istio.io/config: |-
+  proxyStatsMatcher:
+    inclusionRegexps:
+      - ".*http_local_rate_limit.*"
+```
+
 ```bash
 kubectl exec -n istio-system deploy/istio-ingressgateway -- \
   pilot-agent request GET stats | grep ratelimit
@@ -336,7 +352,7 @@ Look at counters like `http_local_rate_limiter.http_local_rate_limit.rate_limite
 You can also query these through Prometheus:
 
 ```promql
-sum(rate(envoy_http_local_rate_limit_rate_limited{namespace="istio-system"}[5m]))
+sum(rate(envoy_http_local_rate_limiter_http_local_rate_limit_rate_limited{namespace="istio-system"}[5m]))
 ```
 
 ## Tips for DDoS Protection
