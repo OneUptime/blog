@@ -256,18 +256,19 @@ spec:
           name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-            inlineCode: |
-              function envoy_on_request(request_handle)
-                local group = request_handle:headers():get("x-ab-group")
-                if group == nil then
-                  -- Assign to a group based on simple random split
-                  if math.random() < 0.5 then
-                    request_handle:headers():add("x-ab-group", "control")
-                  else
-                    request_handle:headers():add("x-ab-group", "experiment")
+            defaultSourceCode:
+              inlineString: |
+                function envoy_on_request(request_handle)
+                  local group = request_handle:headers():get("x-ab-group")
+                  if group == nil then
+                    -- Assign to a group based on simple random split
+                    if math.random() < 0.5 then
+                      request_handle:headers():add("x-ab-group", "control")
+                    else
+                      request_handle:headers():add("x-ab-group", "experiment")
+                    end
                   end
                 end
-              end
 ```
 
 Then route based on the assigned group:
