@@ -16,7 +16,7 @@ When you configure a gateway for HTTP traffic, Istio can inspect HTTP headers, p
 
 - Port number
 - SNI hostname (if TLS is used)
-- Source IP (with some limitations)
+- Destination subnet and source workload selectors (with some limitations)
 
 ```mermaid
 graph LR
@@ -210,7 +210,7 @@ spec:
       credentialName: db-tls-credential
 ```
 
-With `protocol: TLS`, the gateway terminates TLS and forwards the decrypted TCP stream to the backend. The VirtualService then uses `tls` routing:
+With `protocol: TLS` and `tls.mode: SIMPLE`, the gateway terminates TLS and forwards the decrypted TCP stream to the backend. The VirtualService still uses `tcp` routing for the decrypted stream:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -222,11 +222,9 @@ spec:
   - "db.example.com"
   gateways:
   - tcp-tls-gateway
-  tls:
+  tcp:
   - match:
     - port: 5432
-      sniHosts:
-      - "db.example.com"
     route:
     - destination:
         host: postgres-service
@@ -255,6 +253,30 @@ spec:
     - "db.example.com"
     tls:
       mode: PASSTHROUGH
+```
+
+With passthrough, the gateway does not decrypt the connection. The VirtualService uses `tls` routing so Istio can route based on the SNI value from the client hello:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: postgres-passthrough-vs
+spec:
+  hosts:
+  - "db.example.com"
+  gateways:
+  - tcp-passthrough-gateway
+  tls:
+  - match:
+    - port: 5432
+      sniHosts:
+      - "db.example.com"
+    route:
+    - destination:
+        host: postgres-service
+        port:
+          number: 5432
 ```
 
 ## TCP Traffic Shifting
