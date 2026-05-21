@@ -29,6 +29,9 @@ If you are generating these for testing, here is how to create them with OpenSSL
 
 openssl req -x509 -sha256 -nodes -days 3650 -newkey rsa:4096 \
   -subj "/O=MyOrg/CN=Root CA" \
+  -addext "basicConstraints=critical,CA:TRUE,pathlen:1" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -addext "subjectKeyIdentifier=hash" \
   -keyout root-key.pem -out root-cert.pem
 
 # Generate intermediate CA CSR
@@ -39,7 +42,7 @@ openssl req -sha256 -nodes -newkey rsa:4096 \
 # Sign intermediate CA with root CA
 openssl x509 -req -sha256 -days 1825 -CA root-cert.pem -CAkey root-key.pem \
   -CAcreateserial -in ca-csr.pem -out ca-cert.pem \
-  -extfile <(printf "basicConstraints=critical,CA:TRUE\nkeyUsage=critical,digitalSignature,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash")
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,digitalSignature,keyCertSign,cRLSign\nsubjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid,issuer")
 
 # Create the certificate chain
 cat ca-cert.pem root-cert.pem > cert-chain.pem
@@ -89,21 +92,13 @@ First, install cert-manager if you do not have it:
 kubectl apply -f https://github.com/cert-manager/cert-manager/releases/latest/download/cert-manager.yaml
 ```
 
-Then install istio-csr, which acts as a bridge between Istio and cert-manager:
+Create a ClusterIssuer for cert-manager to use. This example uses the intermediate CA generated earlier, but you can point it at your organization's CA. For a ClusterIssuer, the CA secret must be in cert-manager's cluster resource namespace, which is usually `cert-manager`:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install istio-csr jetstack/cert-manager-istio-csr \
-  --namespace cert-manager \
-  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
-  --set "app.server.clusterID=cluster1" \
-  --set "app.certmanager.issuerRef.name=istio-ca" \
-  --set "app.certmanager.issuerRef.kind=ClusterIssuer"
+kubectl create secret tls istio-ca-secret -n cert-manager \
+  --cert=ca-cert.pem \
+  --key=ca-key.pem
 ```
-
-Create a ClusterIssuer for cert-manager to use. This example uses a self-signed CA, but you can point it at your organization's CA:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -115,6 +110,30 @@ spec:
     secretName: istio-ca-secret
 ```
 
+Then create a secret that contains the root CA certificate for istio-csr and install istio-csr, which acts as a bridge between Istio and cert-manager:
+
+```bash
+kubectl create secret generic istio-root-ca -n cert-manager \
+  --from-file=ca.pem=root-cert.pem
+
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+
+helm upgrade cert-manager-istio-csr jetstack/cert-manager-istio-csr \
+  --install \
+  --namespace cert-manager \
+  --wait \
+  --set "app.tls.rootCAFile=/var/run/secrets/istio-csr/ca.pem" \
+  --set "volumeMounts[0].name=root-ca" \
+  --set "volumeMounts[0].mountPath=/var/run/secrets/istio-csr" \
+  --set "volumes[0].name=root-ca" \
+  --set "volumes[0].secret.secretName=istio-root-ca" \
+  --set "app.server.clusterID=cluster1" \
+  --set "app.certmanager.issuer.name=istio-ca" \
+  --set "app.certmanager.issuer.kind=ClusterIssuer" \
+  --set "app.certmanager.issuer.group=cert-manager.io"
+```
+
 Now configure Istio to use the cert-manager CSR signer instead of its built-in CA:
 
 ```yaml
@@ -124,19 +143,21 @@ spec:
   values:
     global:
       caAddress: cert-manager-istio-csr.cert-manager.svc:443
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_CERT_SIGNER: istio-csr
+  components:
+    pilot:
+      k8s:
+        env:
+        - name: ENABLE_CA_SERVER
+          value: "false"
 ```
 
-With this setup, when a workload needs a certificate, the sidecar sends a CSR to istiod, which forwards it to cert-manager via istio-csr. cert-manager signs the certificate using your configured CA and returns it.
+With this setup, when a workload needs a certificate, the Istio agent sends a CSR to istio-csr. istio-csr creates cert-manager CertificateRequests, cert-manager signs the certificate using your configured CA, and istio-csr returns it to the workload.
 
 ## Option 3: HashiCorp Vault as CA
 
 If your organization uses HashiCorp Vault for secrets management, you can use Vault's PKI secrets engine as Istio's CA.
 
-This works through cert-manager as well. Install the Vault issuer for cert-manager:
+This works through cert-manager as well. Install the Vault issuer for cert-manager. The issuer must be configured so certificates can include Istio's SPIFFE URI SANs:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -158,10 +179,11 @@ spec:
 Then configure istio-csr to use the Vault issuer:
 
 ```bash
-helm upgrade istio-csr jetstack/cert-manager-istio-csr \
+helm upgrade cert-manager-istio-csr jetstack/cert-manager-istio-csr \
   --namespace cert-manager \
-  --set "app.certmanager.issuerRef.name=vault-issuer" \
-  --set "app.certmanager.issuerRef.kind=ClusterIssuer"
+  --set "app.certmanager.issuer.name=vault-issuer" \
+  --set "app.certmanager.issuer.kind=ClusterIssuer" \
+  --set "app.certmanager.issuer.group=cert-manager.io"
 ```
 
 On the Vault side, you need to configure the PKI secrets engine:
@@ -175,7 +197,7 @@ vault write pki/root/generate/internal \
   ttl=87600h
 
 vault write pki/roles/istio-workload \
-  allowed_domains="*.svc.cluster.local,*.istio-system" \
+  allowed_uri_sans="spiffe://*" \
   allow_any_name=true \
   max_ttl=72h
 ```
@@ -202,7 +224,7 @@ Shorter lifetimes are more secure (less time for a stolen certificate to be usef
 
 **Workloads cannot communicate after CA change**: After changing the CA, existing workload certificates are still signed by the old CA. New certificates are signed by the new CA. Until all workloads rotate their certificates, there will be a mix. If the old and new CAs do not share a common trust root, mTLS handshakes will fail. Always ensure the transition is smooth by including both CAs in the trust bundle.
 
-**istiod fails to start after creating cacerts**: Check that the secret has exactly the right key names: `ca-cert.pem`, `ca-key.pem`, `root-cert.pem`, `cert-chain.pem`. Any typo will cause istiod to fall back to the self-signed CA.
+**istiod fails to start after creating cacerts**: Check that the secret has exactly the right key names: `ca-cert.pem`, `ca-key.pem`, `root-cert.pem`, `cert-chain.pem`. Any typo or invalid CA certificate can prevent istiod from loading the plugged-in CA.
 
 **Certificate chain validation errors**: Make sure `cert-chain.pem` contains the full chain from the intermediate CA to the root CA. Verify with:
 
