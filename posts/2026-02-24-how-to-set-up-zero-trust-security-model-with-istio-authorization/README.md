@@ -68,7 +68,7 @@ spec:
   {}
 ```
 
-Wait, that is actually an "allow all" because it has no selector and no rules. To deny all, you need:
+This ALLOW policy has no selector and no rules. Because it is in the root namespace, it applies to all workloads in the mesh, and because it has no rules, it matches nothing. An explicit equivalent is:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -81,7 +81,7 @@ spec:
   rules: []
 ```
 
-An ALLOW policy with empty rules matches nothing, which means everything is denied. This applies mesh-wide because it is in the root namespace without a selector.
+An ALLOW policy with no matching rules means everything is denied unless another ALLOW policy matches the request. This applies mesh-wide because it is in the root namespace without a selector.
 
 After applying this, everything will break. That is expected. You will now need to explicitly allow every communication path that your services need.
 
@@ -186,31 +186,11 @@ spec:
 
 ## Step 5: Allow Health Checks and System Traffic
 
-Do not forget about system-level traffic. Kubernetes health checks, Istio control plane communication, and DNS all need to work.
+Do not forget about system-level traffic. Kubernetes health checks, ingress gateways, and any infrastructure services that receive mesh traffic all need to work.
 
 Allow Kubelet health probes (these come from outside the mesh):
 
-If you are using Istio's probe rewrite feature (enabled by default), health probes are handled by the sidecar and do not need special authorization rules. But if you disabled probe rewriting, you need to allow traffic from the kubelet IP range.
-
-Allow Istio control plane traffic:
-
-```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: allow-istiod
-  namespace: istio-system
-spec:
-  selector:
-    matchLabels:
-      app: istiod
-  action: ALLOW
-  rules:
-  - from:
-    - source:
-        principals:
-        - "*"
-```
+If you are using Istio's probe rewrite feature (enabled by default in the built-in installation profiles), health probes are handled by the sidecar and do not need special authorization rules. But if you disabled probe rewriting while using strict mTLS, kubelet probes will not have Istio certificates. In that case, use command probes, re-enable probe rewriting, or explicitly exempt the probe port with a workload-specific `PeerAuthentication` policy and a tightly scoped `AuthorizationPolicy`.
 
 ## Step 6: Add Request-Level Authentication for External Traffic
 
