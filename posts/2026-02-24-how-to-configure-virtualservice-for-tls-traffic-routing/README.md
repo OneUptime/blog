@@ -35,7 +35,7 @@ graph LR
 Here is a simple TLS routing configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tls-routing
@@ -62,7 +62,7 @@ The `tls` section of VirtualService is specifically for TLS passthrough routing.
 To receive TLS traffic from outside the mesh and pass it through without termination:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: tls-passthrough-gateway
@@ -81,7 +81,7 @@ spec:
       tls:
         mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tls-routing
@@ -120,7 +120,7 @@ The key is `tls.mode: PASSTHROUGH` on the Gateway. This tells Istio not to termi
 SNI-based routing lets you run multiple TLS services on port 443:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: multi-tls-gateway
@@ -138,7 +138,7 @@ spec:
       tls:
         mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tls-multi-route
@@ -182,7 +182,7 @@ All three services share port 443 but are distinguished by their SNI hostname.
 You can do traffic splitting for TLS traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tls-canary
@@ -211,14 +211,14 @@ spec:
           weight: 10
 ```
 
-90% of new TLS connections go to v1, 10% go to v2.
+90% of new TLS connections go to v1, 10% go to v2. The `v1` and `v2` subsets must be defined in a corresponding DestinationRule.
 
 ## Mesh-Internal TLS Routing
 
 For services within the mesh that use their own TLS (not Istio mutual TLS):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: internal-tls
@@ -238,27 +238,14 @@ spec:
               number: 8443
 ```
 
-You also need a DestinationRule to tell Istio that the backend expects TLS:
-
-```yaml
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: secure-service
-  namespace: default
-spec:
-  host: secure-service
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
-```
+Do not add `tls.mode: SIMPLE` for this passthrough case. That setting tells Istio to originate a new TLS connection to the upstream service, which is only needed when the application sends plaintext and the sidecar should initiate TLS on its behalf.
 
 ## TLS Origination
 
 Sometimes you want Istio to originate a TLS connection to an external service. This is when your app talks HTTP to the sidecar, and the sidecar talks HTTPS to the external service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -267,13 +254,17 @@ spec:
   hosts:
     - api.external.com
   ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api
@@ -281,27 +272,11 @@ metadata:
 spec:
   host: api.external.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
----
-apiVersion: networking.istio.io/v1beta1
-kind: VirtualService
-metadata:
-  name: external-api
-  namespace: default
-spec:
-  hosts:
-    - api.external.com
-  tls:
-    - match:
-        - sniHosts:
-            - api.external.com
-          port: 443
-      route:
-        - destination:
-            host: api.external.com
-            port:
-              number: 443
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
 ```
 
 ## TLS vs HTTPS in Gateway Configuration
@@ -310,7 +285,7 @@ There is an important difference between TLS and HTTPS in Gateway configuration:
 
 - `protocol: HTTPS` - Istio terminates TLS and inspects the HTTP traffic. You can use `http` routing rules.
 - `protocol: TLS` with `mode: PASSTHROUGH` - Istio does not terminate TLS. You must use `tls` routing rules.
-- `protocol: TLS` with `mode: SIMPLE` or `mode: MUTUAL` - Istio terminates TLS and you can use `http` or `tcp` routing.
+- `protocol: TLS` with `mode: SIMPLE` or `mode: MUTUAL` - Istio terminates raw TLS and you can use `tcp` routing for the decrypted stream. Use `protocol: HTTPS` when you need HTTP routing after termination.
 
 Choose based on whether you need to inspect the traffic content.
 
