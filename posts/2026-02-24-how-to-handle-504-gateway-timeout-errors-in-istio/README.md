@@ -31,12 +31,13 @@ kubectl logs <pod-name> -c istio-proxy --tail=100 | grep "504"
 
 Look for the response flag:
 
-- `UT` - Upstream request timeout (VirtualService timeout fired)
-- `DT` - Downstream request timeout
+- `UT` - Upstream request timeout (often a route timeout configured through VirtualService)
+- `DT` - Duration timeout, such as a maximum connection duration
 - `DC` - Downstream connection termination
 - `LR` - Local reset
+- `SI` - Stream idle timeout
 
-The `UT` flag is the most common and means the VirtualService timeout was exceeded.
+The `UT` flag is the most common timeout-related 504 flag and usually means the route timeout was exceeded.
 
 You can also check Envoy stats:
 
@@ -46,7 +47,7 @@ kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/stats | grep "
 
 ## Default Timeout Behavior
 
-By default, Istio does not set an explicit timeout on routes. However, the Envoy proxy has a default idle timeout of 1 hour. So if you are seeing 504s, something is explicitly setting a timeout that is too low, or there is a timeout at another layer.
+By default, Istio disables the HTTP route request timeout. Envoy also has stream idle timeouts; the HTTP connection manager defaults to 5 minutes if Istio has not configured another value, while DestinationRule TCP idle timeouts default to 1 hour. So if you are seeing 504s, check for an explicit route timeout, an idle timeout, a per-request timeout header, or a timeout at another layer.
 
 Check what timeouts are configured on your VirtualService:
 
@@ -65,7 +66,7 @@ kubectl get gateway -n default -o yaml
 The most common fix is adjusting the timeout on the VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: slow-service-vs
@@ -83,7 +84,7 @@ spec:
 If you are using retries along with a timeout, make sure the overall timeout is high enough to accommodate all retry attempts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: slow-service-vs
@@ -109,7 +110,7 @@ Here, 3 retries at 8 seconds each is 24 seconds, which fits inside the 30-second
 If the 504 happens at the ingress gateway, you need to increase the timeout there:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app-vs
@@ -154,7 +155,6 @@ spec:
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
             stream_idle_timeout: 300s
-            request_timeout: 300s
 ```
 
 ## Fixing Timeout for Long-Running Requests
@@ -162,7 +162,7 @@ spec:
 Some operations legitimately take a long time, like file uploads, report generation, or data exports. For these, you need to increase timeouts across the entire request path:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: report-service-vs
@@ -188,7 +188,28 @@ This gives the report generation endpoint 5 minutes while keeping the default ti
 
 ## Fixing Timeout for Streaming/SSE Endpoints
 
-Server-Sent Events (SSE) and streaming endpoints need special handling because they keep the connection open for a long time:
+Server-Sent Events (SSE) and streaming endpoints need special handling because they keep the connection open for a long time. If you have configured a route timeout for the service, disable it for the streaming path:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: streaming-service-vs
+  namespace: default
+spec:
+  hosts:
+    - streaming-service.default.svc.cluster.local
+  http:
+    - match:
+        - uri:
+            prefix: /events
+      route:
+        - destination:
+            host: streaming-service.default.svc.cluster.local
+      timeout: 0s
+```
+
+If the stream can stay idle for longer than Envoy's stream idle timeout, adjust the HTTP connection manager timeout for that workload:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -201,13 +222,6 @@ spec:
     labels:
       app: streaming-service
   configPatches:
-    - applyTo: ROUTE_CONFIGURATION
-      match:
-        context: SIDECAR_INBOUND
-      patch:
-        operation: MERGE
-        value:
-          max_direct_response_body_size_bytes: 0
     - applyTo: NETWORK_FILTER
       match:
         context: SIDECAR_INBOUND
@@ -251,7 +265,7 @@ Configure this in Istio:
 ```yaml
 # Timeout for calls to Service C
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-c-vs
@@ -266,7 +280,7 @@ spec:
 
 ---
 # Timeout for calls to Service B
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: service-b-vs
