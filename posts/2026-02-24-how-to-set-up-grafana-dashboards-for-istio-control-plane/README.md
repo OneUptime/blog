@@ -26,7 +26,7 @@ Each of these functions has associated metrics that you should track.
 If you haven't set up Grafana yet:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 kubectl rollout status deployment/grafana -n istio-system
 istioctl dashboard grafana
 ```
@@ -76,15 +76,21 @@ Istio uses the xDS protocol to push configuration to Envoy. Monitor the push rat
 # Total xDS pushes per second
 sum(rate(pilot_xds_pushes[5m])) by (type)
 
-# xDS push errors
-sum(rate(pilot_xds_push_errors[5m])) by (type)
+# xDS responses rejected by proxies
+sum(rate(pilot_total_xds_rejects[5m]))
+
+# Internal xDS errors in istiod
+sum(rate(pilot_total_xds_internal_errors[5m]))
 ```
 
-The `type` label breaks this down by xDS resource type: CDS (clusters), EDS (endpoints), LDS (listeners), and RDS (routes). If push errors are increasing, istiod is generating invalid configuration or proxies are rejecting updates.
+The `type` label on `pilot_xds_pushes` breaks this down by xDS resource type: CDS (clusters), EDS (endpoints), LDS (listeners), and RDS (routes). If rejects or internal errors are increasing, istiod may be generating configuration that proxies reject or hitting an internal xDS error.
 
 ```promql
-# Push queue size
-pilot_push_triggers
+# Push trigger rate
+sum(rate(pilot_push_triggers[5m])) by (reason)
+
+# Controller queue depth
+pilot_worker_queue_depth
 
 # Number of connected proxies
 pilot_xds
@@ -98,7 +104,10 @@ Track sidecar injection to catch injection failures:
 
 ```promql
 # Total injection attempts
-sum(rate(sidecar_injection_requests_total[5m])) by (success)
+sum(rate(sidecar_injection_requests_total[5m]))
+
+# Successful injections
+sum(rate(sidecar_injection_success_total[5m]))
 
 # Injection failures
 sum(rate(sidecar_injection_failure_total[5m]))
@@ -202,12 +211,14 @@ groups:
 
       - alert: IstiodPushErrors
         expr: |
-          sum(rate(pilot_xds_push_errors[5m])) > 0
+          sum(rate(pilot_total_xds_rejects[5m])) > 0
+          or
+          sum(rate(pilot_total_xds_internal_errors[5m])) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "istiod is experiencing xDS push errors"
+          summary: "istiod is experiencing xDS rejects or internal errors"
 
       - alert: HighConvergenceTime
         expr: |
@@ -236,16 +247,16 @@ As your mesh grows, istiod resource usage increases. Track the relationship betw
 # Number of services in the mesh
 pilot_services
 
-# Number of endpoints
-pilot_endpoints
+# Number of connected proxies
+pilot_xds
 
-# Resource usage per endpoint ratio
+# Resource usage per connected proxy ratio
 sum(container_memory_working_set_bytes{namespace="istio-system", container="discovery"})
 /
-pilot_endpoints
+pilot_xds
 ```
 
-If the memory-per-endpoint ratio keeps growing, you might need to optimize your Istio configuration (reduce the scope of sidecar configuration with Sidecar resources) or scale istiod horizontally.
+If the memory-per-proxy ratio keeps growing, you might need to optimize your Istio configuration (reduce the scope of sidecar configuration with Sidecar resources) or scale istiod horizontally.
 
 ## Verifying Control Plane Health
 
