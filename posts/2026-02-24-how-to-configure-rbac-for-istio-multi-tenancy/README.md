@@ -8,9 +8,9 @@ Description: How to set up Kubernetes RBAC to support multiple teams sharing an 
 
 ---
 
-Running a shared Istio mesh for multiple teams is common in larger organizations. It saves on infrastructure costs and simplifies operations. But sharing a mesh also means that one team's VirtualService could accidentally route traffic to another team's service, or a misconfigured AuthorizationPolicy could block cross-team communication. RBAC is how you prevent these problems.
+Running a shared Istio mesh for multiple teams is common in larger organizations. It saves on infrastructure costs and simplifies operations. But sharing a mesh also means that one team's VirtualService could accidentally route traffic to another team's service, or a misconfigured AuthorizationPolicy could block cross-team communication. RBAC is one part of limiting these problems, but Istio traffic resources can still affect routing outside their namespace unless you also use configuration scoping, admission controls, and runtime authorization policies.
 
-The goal is to give each team full control over their own namespaces while preventing them from affecting other teams' configurations. At the same time, the platform team needs cluster-wide visibility and the ability to set mesh-wide policies.
+The goal is to give each team control over their own namespaces while limiting their ability to affect other teams' configurations. At the same time, the platform team needs cluster-wide visibility and the ability to set mesh-wide policies.
 
 ## Namespace-Based Tenancy Model
 
@@ -96,7 +96,7 @@ rules:
       - delete
 ```
 
-Notice that this role does not include `gateways`, `envoyfilters`, or `peerauthentications`. Those affect mesh-wide behavior and should be reserved for the platform team.
+Notice that this role does not include `gateways`, `envoyfilters`, or `peerauthentications`. Those can affect shared or mesh-wide behavior and should be reserved for the platform team.
 
 ## Binding Roles to Teams
 
@@ -146,7 +146,9 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-With this setup, team-alpha can create VirtualServices in the `team-alpha` namespace but cannot touch anything in `team-beta` or `team-gamma`.
+With this setup, team-alpha can create VirtualServices in the `team-alpha` namespace but cannot modify Istio resources stored in `team-beta` or `team-gamma`.
+
+Kubernetes RBAC does not validate the hosts, gateways, or `exportTo` settings inside Istio resources. If tenants can create `VirtualService`, `DestinationRule`, or `ServiceEntry` objects, use admission policies or Istio configuration scoping to require tenant-safe settings such as namespace-local hosts and `exportTo: ["."]`.
 
 ## Platform Team ClusterRole
 
@@ -249,9 +251,9 @@ spec:
               - istio-system
 ```
 
-Apply this for each tenant namespace to prevent unauthorized cross-namespace traffic.
+Apply this for each tenant namespace to prevent unauthorized cross-namespace traffic. Namespace-based source matching depends on Istio peer identity, so enforce mutual TLS for workloads that rely on these policies.
 
-A more scalable approach uses a default-deny policy at the mesh level:
+A more scalable approach uses a default-deny policy at the mesh level. In a default Istio installation, policies in the root namespace, typically `istio-system`, can apply across the mesh:
 
 ```yaml
 apiVersion: security.istio.io/v1
