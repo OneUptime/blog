@@ -26,7 +26,7 @@ Within Kubernetes pods, DNS resolution expands short names based on the pod's na
 When you use a short name in the VirtualService `hosts` field:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -51,7 +51,7 @@ This means the VirtualService only affects traffic to `my-service` within the `d
 To route to a service in a different namespace, use the FQDN or namespace-qualified name:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: cross-namespace
@@ -70,7 +70,7 @@ spec:
 Or the shorter namespace-qualified form:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: cross-namespace
@@ -119,7 +119,7 @@ route:
 You can create a VirtualService in one namespace that targets a service in another:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: cross-ns-routing
@@ -135,14 +135,14 @@ spec:
               number: 80
 ```
 
-This works, but be aware that exportTo settings on the target namespace might restrict visibility. By default, VirtualServices are visible across all namespaces unless `exportTo` limits them.
+This works, but be aware that `exportTo` settings on the VirtualService, or the `networking.istio.io/exportTo` annotation on the target Service, might restrict visibility. By default, VirtualServices are visible across all namespaces unless `exportTo` limits them.
 
 ## The exportTo Field
 
 You can control which namespaces can see a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -172,7 +172,7 @@ If you have services with the same name in different namespaces, short names can
 ```yaml
 # This VirtualService is in the default namespace
 # It only affects my-service.default, not my-service.production
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -192,7 +192,7 @@ spec:
 If you want to apply rules to both, create separate VirtualServices or use FQDNs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-default
@@ -208,7 +208,7 @@ spec:
               number: 80
       timeout: 5s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-production
@@ -230,7 +230,7 @@ spec:
 When binding to a Gateway, the host field usually contains an external hostname, not a Kubernetes service name:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
