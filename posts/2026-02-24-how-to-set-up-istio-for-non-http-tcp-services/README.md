@@ -209,7 +209,7 @@ Even though Istio doesn't understand the protocol, you still get:
 - mTLS encryption between sidecars
 - Connection-level load balancing
 - Circuit breaking and outlier detection
-- TCP-level metrics (bytes sent/received, connection count, duration)
+- TCP-level metrics (bytes sent/received, connections opened/closed)
 - Authorization policies based on source identity
 
 You lose:
@@ -316,7 +316,7 @@ TCP metrics are available through Istio's telemetry:
 
 ```bash
 kubectl exec -it <pod-name> -c istio-proxy -n default -- \
-  pilot-agent request GET stats | grep "tcp\."
+  pilot-agent request GET /stats/prometheus | grep "istio_tcp_"
 ```
 
 Key TCP metrics:
