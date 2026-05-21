@@ -86,19 +86,17 @@ import (
 )
 
 type server struct {
+    auth.UnimplementedAuthorizationServer
     rdb *redis.Client
 }
 
 func (s *server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.CheckResponse, error) {
-    attrs := req.Attributes
-    source := attrs.Source
-    httpReq := attrs.Request.Http
+    attrs := req.GetAttributes()
+    source := attrs.GetSource()
+    httpReq := attrs.GetRequest().GetHttp()
 
     // Get source identity
-    principal := ""
-    if source != nil {
-        principal = source.Principal
-    }
+    principal := source.GetPrincipal()
 
     // Check blocklist
     blocked, err := s.rdb.SIsMember(ctx, "blocked_principals", principal).Result()
@@ -107,7 +105,7 @@ func (s *server) Check(ctx context.Context, req *auth.CheckRequest) (*auth.Check
     }
 
     // Check feature flags
-    path := httpReq.Path
+    path := httpReq.GetPath()
     if strings.HasPrefix(path, "/api/v2/") {
         enabled, err := s.rdb.Get(ctx, "feature:api_v2_enabled").Result()
         if err != nil || enabled != "true" {
@@ -263,13 +261,40 @@ for service, config in rules['services'].items():
 done
 ```
 
-## Approach 3: OPA/Gatekeeper Integration
+## Approach 3: OPA-Envoy Integration
 
-Open Policy Agent (OPA) provides a policy engine that Istio can use for dynamic authorization:
+Open Policy Agent (OPA) provides a policy engine that Istio can use for dynamic authorization. Use the OPA-Envoy plugin so OPA exposes the Envoy External Authorization gRPC API:
 
-Deploy OPA as an external authorizer:
+Deploy OPA-Envoy as an external authorizer:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: opa-authz
+  namespace: istio-system
+spec:
+  selector:
+    app: opa-authz
+  ports:
+  - name: grpc
+    port: 9191
+    targetPort: 9191
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opa-config
+  namespace: istio-system
+data:
+  config.yaml: |
+    plugins:
+      envoy_ext_authz_grpc:
+        addr: :9191
+        path: istio/authz/allow
+    decision_logs:
+      console: true
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -287,18 +312,25 @@ spec:
     spec:
       containers:
       - name: opa
-        image: openpolicyagent/opa:latest
+        image: openpolicyagent/opa:latest-envoy
         args:
         - "run"
         - "--server"
-        - "--addr=:8181"
-        - "--set=decision_logs.console=true"
+        - "--addr=0.0.0.0:8181"
+        - "--config-file=/config/config.yaml"
+        - "/policies/policy.rego"
         ports:
         - containerPort: 8181
+        - containerPort: 9191
         volumeMounts:
+        - name: config
+          mountPath: /config
         - name: policy
           mountPath: /policies
       volumes:
+      - name: config
+        configMap:
+          name: opa-config
       - name: policy
         configMap:
           name: opa-policies
@@ -319,23 +351,23 @@ data:
     default allow = false
 
     # Allow if source is in trusted namespace
-    allow {
+    allow if {
         input.attributes.source.namespace == "frontend"
         input.attributes.request.http.method == "GET"
     }
 
     # Allow admin access
-    allow {
+    allow if {
         input.attributes.source.namespace == "admin"
     }
 
     # Dynamic: check feature flags from external data
-    allow {
+    allow if {
         data.features[input.attributes.request.http.path].enabled == true
     }
 ```
 
-OPA policies can be updated at runtime by pushing new bundles to the OPA server, making this a truly dynamic solution.
+Register the `opa-authz.istio-system.svc.cluster.local` service as an `envoyExtAuthzGrpc` provider on port `9191`, then point a `CUSTOM` AuthorizationPolicy at it as in Approach 1. OPA policies can be updated at runtime by publishing new bundles for OPA to download, making this a truly dynamic solution.
 
 ## Handling Latency Concerns
 
@@ -348,10 +380,10 @@ envoyExtAuthzGrpc:
   failOpen: false  # Set to true if you'd rather fail open than block on authz failure
 ```
 
-2. Cache decisions when possible:
+2. Choose explicit error behavior:
 ```yaml
 envoyExtAuthzGrpc:
-  statusOnError: 403  # Return 403 if the authz service is down
+  statusOnError: "403"  # Return 403 if the authz service is down
 ```
 
 3. Keep the external service close to the mesh (same cluster, ideally same namespace).
