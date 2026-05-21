@@ -35,12 +35,12 @@ If the sidecar is using close to or exceeding its CPU limit, you have a problem.
 The most common cause is simply too much traffic. Each request requires proxy processing for routing, load balancing, telemetry recording, and access logging:
 
 ```bash
-# Check request rate through this proxy
+# Check the request counter through this proxy
 kubectl exec deploy/my-service -c istio-proxy -- \
   pilot-agent request GET stats | grep "downstream_rq_total"
 ```
 
-Compare the request rate with what you expect. If the traffic is legitimate, you may need to increase the CPU limit:
+Sample the counter over time or use Prometheus `rate()` to compare the request rate with what you expect. If the traffic is legitimate, you may need to increase the CPU limit:
 
 ```yaml
 metadata:
@@ -54,16 +54,16 @@ metadata:
 mTLS adds CPU overhead for every connection. This is usually small, but under high connection churn (many short-lived connections), it adds up:
 
 ```bash
-# Check TLS handshake rate
+# Check TLS handshake counters
 kubectl exec deploy/my-service -c istio-proxy -- \
   pilot-agent request GET stats | grep "ssl.handshake"
 
-# Check connection creation rate
+# Check connection creation counters
 kubectl exec deploy/my-service -c istio-proxy -- \
   pilot-agent request GET stats | grep "downstream_cx_total"
 ```
 
-If you see thousands of handshakes per second, connection reuse is poor. Fix this with connection pooling:
+If these counters are increasing by thousands per second, connection reuse is poor. Improve upstream connection reuse with connection pooling:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -203,18 +203,20 @@ Check the hot restart epoch and uptime. If the proxy has been restarted recently
 
 ## Adjusting Worker Threads
 
-By default, Envoy uses 2 worker threads. For services that genuinely need more throughput, increase this:
+Envoy worker thread count is controlled by Istio's `ProxyConfig` concurrency setting. If unset, Istio automatically determines it based on CPU limits. For services that genuinely need more throughput, increase this:
 
 ```yaml
 annotations:
-  sidecar.istio.io/concurrency: "4"
+  proxy.istio.io/config: |
+    concurrency: 4
 ```
 
 For low-traffic services where you want to save CPU, reduce to 1:
 
 ```yaml
 annotations:
-  sidecar.istio.io/concurrency: "1"
+  proxy.istio.io/config: |
+    concurrency: 1
 ```
 
 ## Monitoring CPU Over Time
