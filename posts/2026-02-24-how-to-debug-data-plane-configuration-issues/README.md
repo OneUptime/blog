@@ -25,7 +25,7 @@ Common reasons for STALE status:
 - The proxy is overloaded and cannot process config updates fast enough
 - istiod is under heavy load and cannot push updates to all proxies
 
-If a proxy shows `NOT SENT`, it means istiod has not sent any configuration to it yet, which could indicate the proxy just started or there is a registration issue.
+If a proxy shows `NOT SENT`, it means istiod has not sent anything for that xDS type. This usually means istiod has nothing to send for that proxy and resource type.
 
 ## Check the Proxy Configuration
 
@@ -104,7 +104,7 @@ istioctl proxy-config all deploy/my-app -n default -o json > actual.json
 Then look at the istiod debug endpoint:
 
 ```bash
-kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/debug/configz | python3 -m json.tool > expected.json
+kubectl exec -n istio-system deploy/istiod -- curl -s 'localhost:15014/debug/config_dump?proxyID=my-app-xyz.default' | python3 -m json.tool > expected.json
 ```
 
 If there are differences, you may have a config push issue.
@@ -157,7 +157,7 @@ Then restart the pod.
 
 ### Port Naming
 
-Istio requires service ports to follow a naming convention. The port name should be prefixed with the protocol:
+Istio expects service ports to follow a naming convention when you want explicit protocol selection. The port name should be prefixed with the protocol:
 
 ```yaml
 apiVersion: v1
@@ -174,7 +174,7 @@ spec:
     targetPort: 9090
 ```
 
-If you name a port just `web` instead of `http-web`, Istio treats it as plain TCP and you lose HTTP-level features like retries, header-based routing, and fault injection.
+If you name a port just `web` instead of `http-web`, Istio cannot use the name for explicit protocol selection and may fall back to protocol detection. Use an explicit HTTP or gRPC protocol name when you need HTTP-level features like retries, header-based routing, and fault injection.
 
 You can also use the `appProtocol` field:
 
