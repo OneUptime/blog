@@ -81,9 +81,9 @@ Start with your most critical services and define SLOs that match your actual bu
 | Service | SLI Type | SLO Target | Window |
 |---|---|---|---|
 | API Gateway | Availability | 99.95% | 30 days |
-| API Gateway | Latency (p99) | < 200ms for 99% of requests | 30 days |
+| API Gateway | Latency | < 200ms for 99% of requests | 30 days |
 | Payment Service | Availability | 99.99% | 30 days |
-| Payment Service | Latency (p99) | < 500ms for 99.5% of requests | 30 days |
+| Payment Service | Latency | < 500ms for 99.5% of requests | 30 days |
 | User Service | Availability | 99.9% | 30 days |
 | Notification Service | Availability | 99.5% | 30 days |
 
@@ -97,15 +97,23 @@ For each SLO, create a metric monitor in OneUptime that calculates the SLI:
 
 ```yaml
 # Availability SLI for API Gateway
-# OneUptime metric query:
+# OneUptime metrics monitor using a PromQL query:
 name: "API Gateway Availability"
-metric: istio_requests_total
-filters:
-  destination_service: "api-gateway.default.svc.cluster.local"
-calculation: |
-  successful = sum(rate(istio_requests_total{response_code!~"5.*"}[5m]))
-  total = sum(rate(istio_requests_total[5m]))
-  sli = successful / total
+query: |
+  100 *
+  sum(rate(istio_requests_total{
+    reporter="destination",
+    response_code!~"5..",
+    destination_service="api-gateway.default.svc.cluster.local"
+  }[5m]))
+  /
+  sum(rate(istio_requests_total{
+    reporter="destination",
+    destination_service="api-gateway.default.svc.cluster.local"
+  }[5m]))
+check:
+  metric_value: less_than
+  value: 99.95
 ```
 
 ### Step 2: Configure the SLO
