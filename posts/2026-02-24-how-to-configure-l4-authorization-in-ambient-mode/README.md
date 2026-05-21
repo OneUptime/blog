@@ -224,44 +224,44 @@ kubectl exec deploy/another-service -- curl -s -o /dev/null -w "%{http_code}" --
 Check the ztunnel logs for authorization decisions:
 
 ```bash
-kubectl logs -n istio-system -l app=ztunnel --tail=30 | grep "authorization"
+kubectl logs -n istio-system -l app=ztunnel --tail=30 | grep -E "access|denied|policy"
 ```
 
-You should see entries indicating whether connections were allowed or denied.
+You should see ztunnel traffic log entries for the connections. Denied attempts may show policy-related log messages or terminate from the client side with a connection error.
 
 ## Using istioctl to Debug Policies
 
-Check which policies apply to a workload:
+Check the policies configured on ztunnel:
 
 ```bash
-istioctl x authz check deploy/backend
+istioctl ztunnel-config policies
 ```
 
-This shows the authorization policies in effect and can help identify why a connection is being allowed or denied.
+This shows the authorization policies that ztunnel has received and can help identify why a connection is being allowed or denied.
 
 ## L4 Authorization Metrics
 
-Track authorization decisions in Prometheus:
+Track L4 connection activity in Prometheus. In ambient mode without a waypoint, ztunnel reports the standard Istio TCP metrics:
 
 ```promql
-sum(rate(ztunnel_tcp_authorization_allow_total[5m])) by (destination_workload)
+sum(rate(istio_tcp_connections_opened_total{app="ztunnel", reporter="destination"}[5m])) by (destination_workload)
 ```
 
 ```promql
-sum(rate(ztunnel_tcp_authorization_deny_total[5m])) by (destination_workload, source_workload)
+sum(rate(istio_tcp_connections_closed_total{app="ztunnel", reporter="destination", response_flags!="-" }[5m])) by (destination_workload, source_workload, response_flags)
 ```
 
-Set up an alert for unexpected denials:
+Set up an alert for unexpected flagged connections:
 
 ```yaml
-- alert: UnexpectedAuthorizationDenials
+- alert: UnexpectedFlaggedL4Connections
   expr: |
-    sum(rate(ztunnel_tcp_authorization_deny_total[5m])) by (destination_workload) > 0
+    sum(rate(istio_tcp_connections_closed_total{app="ztunnel", reporter="destination", response_flags!="-" }[5m])) by (destination_workload) > 0
   for: 5m
   labels:
     severity: warning
   annotations:
-    summary: "Authorization denials detected for {{ $labels.destination_workload }}"
+    summary: "Flagged L4 connections detected for {{ $labels.destination_workload }}"
 ```
 
 ## Migration from Sidecar Authorization
@@ -271,10 +271,10 @@ If you are migrating from the sidecar model to ambient mode, your existing Autho
 To check if a policy uses L7 fields:
 
 ```bash
-kubectl get authorizationpolicies -A -o yaml | grep -E "methods:|paths:|headers:"
+kubectl get authorizationpolicies -A -o yaml | grep -E 'methods:|paths:|request.headers\['
 ```
 
-Any policy using these fields needs a waypoint proxy for enforcement. Without a waypoint, ztunnel will ignore the L7 fields, which could create a security gap.
+Any policy using these fields needs a waypoint proxy for L7 enforcement. Without a waypoint, a selector-targeted policy with L7 attributes is enforced by ztunnel and fails safe by denying the connection.
 
 ## Best Practices
 
