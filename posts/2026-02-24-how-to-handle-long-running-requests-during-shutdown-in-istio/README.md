@@ -8,7 +8,7 @@ Description: Strategies for handling long-running HTTP requests, gRPC streams, a
 
 ---
 
-Most advice about Istio shutdown assumes your requests take a few seconds at most. But what about a report that takes 2 minutes to generate? Or a file upload that runs for 10 minutes? Or a gRPC stream that stays open for hours? Long-running requests need special consideration during pod shutdown because the standard drain configuration of 15-20 seconds will kill them before they finish.
+Most advice about Istio shutdown assumes your requests take a few seconds at most. But what about a report that takes 2 minutes to generate? Or a file upload that runs for 10 minutes? Or a gRPC stream that stays open for hours? Long-running requests need special consideration during pod shutdown because Istio's default termination drain duration is short and will kill them before they finish.
 
 ## Identifying Long-Running Request Patterns
 
@@ -21,13 +21,13 @@ kubectl exec -n istio-system deploy/prometheus -- \
   promtool query instant http://localhost:9090 \
   'histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="report-service.default.svc.cluster.local"}[1h])) by (le))'
 
-# Find the maximum request duration in the last hour
+# Estimate the highest observed request-duration bucket in the last hour
 kubectl exec -n istio-system deploy/prometheus -- \
   promtool query instant http://localhost:9090 \
   'histogram_quantile(1.0, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="report-service.default.svc.cluster.local"}[1h])) by (le))'
 ```
 
-If your p99 is 2 seconds but your max is 300 seconds, you have a long tail that needs special handling.
+If your p99 is 2 seconds but your upper-tail estimate is 300 seconds, you have a long tail that needs special handling.
 
 ## Extended Drain Duration
 
@@ -39,8 +39,13 @@ kind: Deployment
 metadata:
   name: report-service
 spec:
+  selector:
+    matchLabels:
+      app: report-service
   template:
     metadata:
+      labels:
+        app: report-service
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 330s
@@ -57,7 +62,7 @@ spec:
 
 The drain duration is 330 seconds (5.5 minutes), and the grace period is 360 seconds (6 minutes). This gives the longest request time to complete with a 30-second buffer.
 
-The downside is that every pod deletion takes up to 6 minutes, which makes deployments very slow. If you have 10 replicas and `maxUnavailable: 0`, a full rolling update takes over an hour.
+The downside is that every pod deletion can take up to 6 minutes, which makes deployments very slow. If you have 10 replicas and a rolling update strategy that only replaces one pod at a time, a full rolling update takes over an hour.
 
 ## Separating Long and Short Request Paths
 
@@ -112,6 +117,10 @@ metadata:
   name: report-service-long
 spec:
   replicas: 2
+  selector:
+    matchLabels:
+      app: report-service
+      pool: long-running
   template:
     metadata:
       labels:
@@ -133,6 +142,10 @@ metadata:
   name: report-service-standard
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: report-service
+      pool: standard
   template:
     metadata:
       labels:
@@ -176,7 +189,7 @@ spec:
 
 Setting `timeout: 0s` disables the route-level timeout for streaming endpoints. The drain duration then becomes the controlling factor for how long streams can continue during shutdown.
 
-For the client side, implement reconnection logic that handles GOAWAY:
+For the client side, implement reconnection logic in the gRPC client that handles GOAWAY. DestinationRule connection-pool settings can tune load balancing and connection reuse, but they do not replace client-side stream recovery:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -188,7 +201,6 @@ spec:
   trafficPolicy:
     connectionPool:
       http:
-        h2UpgradePolicy: DO_NOT_UPGRADE
         maxRequestsPerConnection: 0
     loadBalancer:
       simple: LEAST_REQUEST
@@ -219,7 +231,7 @@ spec:
 
 Your application needs to implement its own graceful disconnect for WebSocket clients. When it receives SIGTERM:
 
-1. Send a close frame to all connected clients with a "going away" status
+1. Send a close frame to all connected clients with status code 1001 ("going away")
 2. Wait for clients to reconnect to other pods
 3. After a timeout, forcibly close remaining connections
 
