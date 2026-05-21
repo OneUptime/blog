@@ -8,7 +8,7 @@ Description: A comprehensive guide to how Istio uses the SPIFFE identity framewo
 
 ---
 
-Every workload in an Istio mesh has an identity. This identity is not just a label or a name - it is a cryptographic identity backed by an X.509 certificate. Istio uses the SPIFFE (Secure Production Identity Framework For Everyone) standard to define these identities. Understanding SPIFFE is essential for understanding how Istio authenticates services and enforces security policies.
+Every workload in an Istio mesh has an identity. This identity is not just a label or a name - it is a cryptographic identity backed by an X.509 certificate. Istio uses the SPIFFE (Secure Production Identity Framework for Everyone) standard to define these identities. Understanding SPIFFE is essential for understanding how Istio authenticates services and enforces security policies.
 
 ## What Is SPIFFE?
 
@@ -87,7 +87,7 @@ Every pod from this Deployment gets the identity `spiffe://cluster.local/ns/prod
 You can inspect a workload's certificate to see its SPIFFE identity:
 
 ```bash
-istioctl proxy-config secret deploy/payment -n production -o json | \
+istioctl proxy-config secret deployment/payment -n production -o json | \
     jq -r '.dynamicActiveSecrets[] | select(.name=="default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
     base64 -d | openssl x509 -text -noout
 ```
@@ -125,7 +125,7 @@ This changes all identities to:
 spiffe://my-organization.example.com/ns/<namespace>/sa/<service-account>
 ```
 
-Trust domains matter in multi-cluster setups. Two clusters with the same trust domain can authenticate each other's workloads directly. Two clusters with different trust domains need explicit trust configuration.
+Trust domains matter in multi-cluster setups. Two clusters with the same trust domain and trust bundle can authenticate each other's workloads directly. Two clusters with different trust domains need explicit trust configuration.
 
 ## How SPIFFE Identities Enable mTLS
 
@@ -145,7 +145,7 @@ This is all transparent to the application. Your code just makes a plain HTTP re
 The real power of SPIFFE identities shows up in authorization policies. You can write policies that reference specific workload identities:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-access
@@ -174,7 +174,7 @@ This says: only the `web-app` service account from the `frontend` namespace and 
 You can also use namespace-level matching in policies:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-backend-namespace
@@ -187,23 +187,23 @@ spec:
         namespaces: ["backend"]
 ```
 
-Under the hood, this matches any SPIFFE identity with `/ns/backend/` in the path.
+Under the hood, Istio derives the source namespace from the peer certificate, which contains the workload's SPIFFE identity.
 
 ## Trust Bundle Distribution
 
 The trust bundle (root CA certificate) is distributed to every sidecar so they can verify peer certificates. You can see the root CA:
 
 ```bash
-istioctl proxy-config secret deploy/payment -n production
+istioctl proxy-config secret deployment/payment -n production
 ```
 
 ```text
-RESOURCE NAME   TYPE   STATUS   VALID CERT   SERIAL NUMBER
-default         Cert   ACTIVE   true         abc123...
-ROOTCA          CA     ACTIVE   true         def456...
+RESOURCE NAME   TYPE         STATUS   VALID CERT   SERIAL NUMBER
+default         Cert Chain   ACTIVE   true         abc123...
+ROOTCA          CA           ACTIVE   true         def456...
 ```
 
-The ROOTCA is the trust bundle. All workloads in the mesh share the same root CA, which is why they can all verify each other's certificates.
+The ROOTCA is the trust bundle. In a basic single-cluster mesh, workloads share the same root CA, which is why they can verify each other's certificates.
 
 ## Multi-Cluster Trust
 
@@ -235,18 +235,23 @@ kind: IstioOperator
 spec:
   meshConfig:
     trustDomain: cluster-1.example.com
-    trustDomainAliases:
-    - cluster-2.example.com
+    caCertificates:
+    - pem: |
+        -----BEGIN CERTIFICATE-----
+        <cluster-2-root-ca>
+        -----END CERTIFICATE-----
+      trustDomains:
+      - cluster-2.example.com
 ```
 
-You also need to configure the trust bundle to include both root CAs.
+If you want authorization policies to treat identities from another trust domain as aliases of the local trust domain, configure `trustDomainAliases` as well.
 
 ## SPIFFE Identity and JWT Authentication
 
-Besides X.509 SVIDs, Istio also supports JWT tokens that carry SPIFFE identities. This is used for end-user authentication:
+Besides X.509 workload identity, Istio also supports JWT request authentication for end-user authentication:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -257,7 +262,7 @@ spec:
     jwksUri: "https://auth.example.com/.well-known/jwks.json"
 ```
 
-The JWT's `sub` claim can contain a SPIFFE ID, and you can reference it in authorization policies.
+Istio builds the request principal from the JWT's `iss` and `sub` claims in the form `<issuer>/<subject>`, and you can reference it with `requestPrincipals` in authorization policies.
 
 ## Debugging Identity Issues
 
@@ -265,10 +270,10 @@ The JWT's `sub` claim can contain a SPIFFE ID, and you can reference it in autho
 
 ```bash
 # Quick check
-istioctl proxy-config secret deploy/my-app -n default
+istioctl proxy-config secret deployment/my-app -n default
 
 # Detailed certificate info
-istioctl proxy-config secret deploy/my-app -n default -o json | \
+istioctl proxy-config secret deployment/my-app -n default -o json | \
     jq -r '.dynamicActiveSecrets[] | select(.name=="default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
     base64 -d | openssl x509 -subject -issuer -dates -noout
 ```
@@ -276,8 +281,11 @@ istioctl proxy-config secret deploy/my-app -n default -o json | \
 ### Verify mTLS is working:
 
 ```bash
-# Check if mTLS is active for a service
-istioctl authn tls-check deploy/my-app -n default payment.production.svc.cluster.local
+# For an HTTP service such as httpbin that returns request headers,
+# the X-Forwarded-Client-Cert header is evidence that Istio mutual TLS was used
+kubectl exec "$(kubectl get pod -l app=curl -n foo -o jsonpath='{.items..metadata.name}')" \
+    -c curl -n foo -- curl -s http://httpbin.foo:8000/headers | \
+    jq '.headers["X-Forwarded-Client-Cert"]'
 ```
 
 ### Common identity problems:
