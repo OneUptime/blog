@@ -43,7 +43,7 @@ For locality load balancing to work across regions, Istio needs to know about en
 
 ### Option 1: Multi-Cluster Mesh
 
-With Istio multi-cluster, each region runs its own Kubernetes cluster and Istio control plane. The control planes exchange endpoint information through east-west gateways.
+With Istio multi-cluster, each region runs its own Kubernetes cluster and Istio control plane. The control planes discover endpoints through remote Kubernetes API access, and workloads on different networks communicate through east-west gateways.
 
 ```bash
 # On cluster in us-east-1
@@ -54,15 +54,16 @@ istioctl install --set profile=default \
   --set values.global.network=network1
 
 # Create east-west gateway
-istioctl install -f eastwest-gateway.yaml --set values.global.meshID=my-mesh
+samples/multicluster/gen-eastwest-gateway.sh --network network1 | \
+  istioctl install -y -f -
 
 # Create remote secret for cluster discovery
-istioctl create-remote-secret --name=us-east-1 | kubectl apply -f - --context=us-west-2
+istioctl create-remote-secret --context=us-east-1 --name=us-east-1 | kubectl apply -f - --context=us-west-2
 ```
 
 ### Option 2: Single Cluster Spanning Regions
 
-Some managed Kubernetes services support clusters that span regions. In this case, you have one Istio control plane with nodes in multiple regions. Locality load balancing works out of the box.
+Some Kubernetes clusters can be configured with nodes in multiple regions. In this case, you have one Istio control plane with nodes in multiple regions. Locality load balancing can use the node locality labels as long as `topology.kubernetes.io/region` and `topology.kubernetes.io/zone` are set correctly.
 
 For either approach, the DestinationRule configuration is the same.
 
@@ -239,13 +240,13 @@ Note the `averageUtilization: 50` - this leaves headroom for traffic spikes duri
 
 ## Monitoring Multi-Region Traffic
 
-Track traffic distribution across regions with Prometheus:
+Track traffic distribution across clusters with Prometheus:
 
 ```text
-# Requests by destination region (approximate using workload labels)
+# Requests by source and destination cluster
 sum(rate(istio_requests_total{
   destination_service="checkout-service.default.svc.cluster.local"
-}[5m])) by (source_workload, destination_workload)
+}[5m])) by (source_cluster, destination_cluster)
 ```
 
 Set up alerts for cross-region traffic, which indicates either intentional distribution or failover:
@@ -263,8 +264,18 @@ spec:
           expr: |
             sum(rate(istio_requests_total{
               destination_service="checkout-service.default.svc.cluster.local",
-              source_cluster!="",
-              destination_cluster!=""
+              source_cluster="us-east-1",
+              destination_cluster!="us-east-1"
+            }[5m])) +
+            sum(rate(istio_requests_total{
+              destination_service="checkout-service.default.svc.cluster.local",
+              source_cluster="us-west-2",
+              destination_cluster!="us-west-2"
+            }[5m])) +
+            sum(rate(istio_requests_total{
+              destination_service="checkout-service.default.svc.cluster.local",
+              source_cluster="eu-west-1",
+              destination_cluster!="eu-west-1"
             }[5m])) > 0
           for: 5m
           labels:
@@ -303,34 +314,22 @@ Watch traffic shift to the failover region:
 kubectl --context=us-west-2 logs -l app=checkout-service --tail=20 -f
 ```
 
-### Simulate Partial Failure
+### Simulate Endpoint Failure
 
-Use Istio fault injection to make one region return errors:
+Use the Envoy admin endpoint to drain the sidecars for the local service pods. This forces new connections to fail, which lets outlier detection eject those endpoints and move traffic to the next locality:
 
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: checkout-service-fault
-spec:
-  hosts:
-    - checkout-service
-  http:
-    - fault:
-        abort:
-          httpStatus: 503
-          percentage:
-            value: 100
-      route:
-        - destination:
-            host: checkout-service
+```bash
+for pod in $(kubectl --context=us-east-1 get pod -l app=checkout-service -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl --context=us-east-1 exec "$pod" -c istio-proxy -- \
+    curl -sS -X POST 127.0.0.1:15000/drain_listeners
+done
 ```
 
-Apply this in the us-east-1 cluster only. Traffic should failover to us-west-2.
+Traffic should failover to us-west-2 after the local endpoints are ejected.
 
 ## Recovery After Failover
 
-When the failed region recovers, Istio automatically starts sending traffic back to it as endpoints pass outlier detection checks. The recovery is gradual - Envoy does not immediately send 100% of traffic back. It reintroduces the recovered endpoints slowly.
+When the failed region recovers, Istio automatically starts sending traffic back to it after the outlier ejection period expires and the endpoints are healthy again. If you need gradual ramp-up for newly created endpoints, configure load balancer `warmup` in the DestinationRule.
 
 You can speed up recovery by reducing the `baseEjectionTime`:
 
