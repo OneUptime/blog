@@ -8,7 +8,7 @@ Description: Configure Maglev consistent hashing in Istio for faster lookups and
 
 ---
 
-Maglev is a consistent hashing algorithm originally developed at Google for their network load balancers. Istio and Envoy support it as an alternative to the default ring hash algorithm. Maglev provides faster lookups and more even distribution than ring hash, making it a good choice for high-throughput services that need session affinity.
+Maglev is a consistent hashing algorithm originally developed at Google for their network load balancers. Istio and Envoy support it as an alternative to ring hash. Maglev provides faster lookups and more even distribution than a large ring hash table, making it a good choice for high-throughput services that need session affinity.
 
 ## What Makes Maglev Different from Ring Hash
 
@@ -36,32 +36,9 @@ The request's hash value is used to index directly into the table. No ring walki
 
 ## Enabling Maglev in Istio
 
-To use maglev instead of ring hash, you set the `hashFunction` in the consistent hash configuration. However, in Istio's API, the hash algorithm is controlled through Envoy's configuration. The way you select maglev is by setting the `localityLbSetting` or by using an EnvoyFilter for full control.
+To use maglev instead of ring hash, configure it in the `consistentHash` settings of a DestinationRule.
 
-But the most practical approach in current Istio versions is to use the DestinationRule with consistent hash, which uses ring hash by default. To switch to maglev, you need an EnvoyFilter:
-
-```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: maglev-lb
-spec:
-  workloadSelector:
-    labels:
-      app: my-client
-  configPatches:
-  - applyTo: CLUSTER
-    match:
-      context: SIDECAR_OUTBOUND
-      cluster:
-        service: cache-service.default.svc.cluster.local
-    patch:
-      operation: MERGE
-      value:
-        lb_policy: MAGLEV
-```
-
-You still need a DestinationRule with consistent hash to define the hash key:
+The DestinationRule defines both the hash key and the Maglev load balancer:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -74,9 +51,10 @@ spec:
     loadBalancer:
       consistentHash:
         httpHeaderName: x-cache-key
+        maglev: {}
 ```
 
-The DestinationRule sets up the hash key extraction, and the EnvoyFilter overrides the lb_policy from RING_HASH to MAGLEV.
+The `httpHeaderName` field sets up the hash key extraction, and the `maglev` field selects the Maglev consistent hash load balancer.
 
 ## Setting Up the Complete Example
 
@@ -93,7 +71,7 @@ spec:
   ports:
   - name: http
     port: 8080
-    targetPort: 8080
+    targetPort: 80
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -113,15 +91,14 @@ spec:
       - name: app
         image: nginx:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 80
 ```
 
-Apply the deployment, DestinationRule, and EnvoyFilter:
+Apply the deployment and DestinationRule:
 
 ```bash
 kubectl apply -f cache-service.yaml
 kubectl apply -f cache-service-dr.yaml
-kubectl apply -f maglev-envoyfilter.yaml
 ```
 
 ## Verifying Maglev Is Active
@@ -140,36 +117,28 @@ You should see:
 }
 ```
 
-If you still see `RING_HASH`, the EnvoyFilter might not be matching correctly. Double-check the cluster service name and workload selector.
+If you still see `RING_HASH`, double-check that the DestinationRule host matches the service and that the client proxy has received the updated configuration.
 
 ## Maglev Table Size
 
-Maglev uses a prime number for its table size. The default in Envoy is 65537. You can configure it through an EnvoyFilter:
+Maglev uses a prime number for its table size. The default in Istio and Envoy is 65537. You can configure it in the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
 metadata:
-  name: maglev-lb-config
+  name: cache-service-dr
 spec:
-  workloadSelector:
-    labels:
-      app: my-client
-  configPatches:
-  - applyTo: CLUSTER
-    match:
-      context: SIDECAR_OUTBOUND
-      cluster:
-        service: cache-service.default.svc.cluster.local
-    patch:
-      operation: MERGE
-      value:
-        lb_policy: MAGLEV
-        maglev_lb_config:
-          table_size: 65537
+  host: cache-service
+  trafficPolicy:
+    loadBalancer:
+      consistentHash:
+        httpHeaderName: x-cache-key
+        maglev:
+          tableSize: 65537
 ```
 
-The table size must be a prime number. Larger tables give more even distribution but use more memory. For most cases, 65537 is the right choice.
+The table size must be a prime number less than 5000011. Larger tables reduce disruption when backend hosts change, but use more memory. For most cases, 65537 is the right choice.
 
 ## When to Choose Maglev Over Ring Hash
 
@@ -181,22 +150,22 @@ The table size must be a prime number. Larger tables give more even distribution
 
 ## When Ring Hash Is Better
 
-**Simplicity**: Ring hash is the default and does not require an EnvoyFilter. If you just need basic session affinity, ring hash is easier to set up.
+**Simplicity**: Ring hash is the default consistent hash policy. If you just need basic session affinity, ring hash is easier to set up.
 
 **Fewer endpoints**: With fewer than 20-30 endpoints, ring hash and maglev perform similarly. The advantages of maglev only show up at scale.
 
-**Weighted backends**: Ring hash can handle weighted backends more naturally by giving some backends more positions on the ring. Maglev's table-based approach makes weighting harder.
+**Extreme weights or endpoint counts**: Maglev supports endpoint weights, but each host needs representation in the table. If the number of hosts is larger than the table size, some hosts can be underrepresented or missing.
 
 ## Maglev's Disruption Properties
 
-When a backend is added or removed, maglev remaps a minimal number of keys. The disruption is slightly better than ring hash:
+When a backend is added or removed, maglev remaps a limited number of keys. Envoy describes Maglev as aiming for minimal disruption, but ring hash can be more stable when upstream hosts change:
 
 | Operation | Ring Hash Disruption | Maglev Disruption |
 |-----------|---------------------|-------------------|
 | Add 1 backend to N | ~1/N keys move | ~1/N keys move |
-| Remove 1 backend from N | ~1/N keys move | ~1/N keys move |
+| Remove 1 backend from N | ~1/N keys move | Can be higher than ring hash |
 
-Both are minimal disruption, but maglev tends to have slightly more even redistribution in practice.
+Both reduce disruption compared to simple load balancing algorithms, but Maglev is usually chosen for lookup speed and distribution rather than for stronger stability during host changes.
 
 ## Combining with Outlier Detection
 
@@ -213,6 +182,7 @@ spec:
     loadBalancer:
       consistentHash:
         httpHeaderName: x-cache-key
+        maglev: {}
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 10s
@@ -241,10 +211,9 @@ This shows all the endpoints Envoy knows about for the cluster. If any are marke
 ## Cleanup
 
 ```bash
-kubectl delete envoyfilter maglev-lb
 kubectl delete destinationrule cache-service-dr
 kubectl delete deployment cache-service
 kubectl delete service cache-service
 ```
 
-Maglev is a powerful consistent hashing algorithm, but it requires an EnvoyFilter to enable in Istio since it is not directly exposed in the DestinationRule API. Use it when you have many backends and need the best possible distribution and lookup performance. For simpler setups, ring hash (the default) works just fine.
+Maglev is a powerful consistent hashing algorithm, and Istio exposes it directly in the DestinationRule API. Use it when you have many backends and need strong distribution and lookup performance. For simpler setups, ring hash works just fine.
