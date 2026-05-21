@@ -24,7 +24,7 @@ The architecture looks like this:
 
 ## Deploying Ory Hydra
 
-Hydra needs a PostgreSQL database for storing clients, tokens, and consent data. Set that up first:
+Hydra needs a SQL database for storing clients, tokens, and consent data. This example uses PostgreSQL:
 
 ```yaml
 apiVersion: apps/v1
@@ -310,7 +310,7 @@ spec:
 
 ## Service-to-Service Token Flow
 
-For service-to-service communication, use the client_credentials grant. A sidecar or init container can obtain and refresh tokens:
+For service-to-service communication, use the client_credentials grant. A sidecar can obtain and refresh tokens; for short-lived jobs, an init container can fetch a startup token:
 
 ```yaml
 apiVersion: apps/v1
@@ -322,11 +322,12 @@ spec:
     spec:
       initContainers:
         - name: token-fetcher
-          image: curlimages/curl
+          image: alpine:3.20
           command:
             - sh
             - -c
             - |
+              apk add --no-cache curl jq
               TOKEN=$(curl -s -X POST https://hydra.mycompany.com/oauth2/token \
                 -d "grant_type=client_credentials" \
                 -d "client_id=$CLIENT_ID" \
