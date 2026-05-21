@@ -12,11 +12,11 @@ Not every service your application depends on runs inside your Kubernetes cluste
 
 ## Why Register External Services
 
-When traffic leaves the mesh to an external service without a ServiceEntry, Istio treats it as unknown. You get limited metrics (the destination shows up as "PassthroughCluster"), no retry or timeout configuration, and no mTLS. By creating a ServiceEntry, you tell Istio "this external host is a real service I care about." This gives you:
+When traffic leaves the mesh to an external service without a ServiceEntry, Istio treats it as unknown. You get limited metrics (the destination shows up as "PassthroughCluster"), no retry or timeout configuration, and no Istio-managed TLS origination policy. By creating a ServiceEntry, you tell Istio "this external host is a real service I care about." This gives you:
 
-- Full telemetry (metrics, traces, access logs) for external calls
-- The ability to configure timeouts, retries, and circuit breakers
-- Control over which workloads can access the external service
+- Service-level telemetry and access logs for external calls
+- The ability to configure traffic policies such as connection pools and, for HTTP traffic, timeouts and retries
+- A service registry entry you can combine with Sidecar, authorization, or egress gateway policy to control access
 - TLS origination from the sidecar
 
 ## Basic ServiceEntry Configuration
@@ -74,7 +74,25 @@ You can group related services in a single ServiceEntry, but keep them separate 
 
 ## Adding Traffic Management for External Services
 
-Once registered, you can apply Istio traffic management rules. Add timeouts and retries with a DestinationRule and VirtualService:
+Once registered, you can apply Istio traffic management rules. For HTTP traffic, add timeouts and retries with a DestinationRule and VirtualService while originating TLS from the sidecar:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: stripe-api
+  namespace: backend
+spec:
+  hosts:
+  - "api.stripe.com"
+  location: MESH_EXTERNAL
+  ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
+  resolution: DNS
+```
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -90,8 +108,11 @@ spec:
         connectTimeout: 5s
       http:
         h2UpgradePolicy: DEFAULT
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
 ```
 
 ```yaml
@@ -113,10 +134,10 @@ spec:
     - destination:
         host: api.stripe.com
         port:
-          number: 443
+          number: 80
 ```
 
-Now if Stripe's API is slow or returns a 500 error, Istio automatically retries the request up to 3 times.
+Now if Stripe's API is slow or returns a 500 error, Istio automatically retries the HTTP request up to 3 times. If your application calls `https://api.stripe.com` directly, that traffic is already encrypted before it reaches the sidecar, so HTTP-level retries and timeouts are not available unless the application sends HTTP and lets Istio originate TLS.
 
 ## TLS Origination for External Services
 
@@ -136,9 +157,10 @@ spec:
   - number: 80
     name: http
     protocol: HTTP
+    targetPort: 443
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
   resolution: DNS
 ---
 apiVersion: networking.istio.io/v1
@@ -170,7 +192,7 @@ spec:
     - destination:
         host: api.example.com
         port:
-          number: 443
+          number: 80
 ```
 
 Your application sends HTTP to port 80, the sidecar intercepts it, upgrades to TLS, and forwards to port 443. This is useful when your application code doesn't handle TLS natively or when you want centralized certificate management.
@@ -232,7 +254,7 @@ spec:
       role: replica
 ```
 
-Then use a DestinationRule to route reads to replicas and writes to the primary:
+Then use a DestinationRule to define subsets for explicit routing or subset-specific traffic policies:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -255,9 +277,11 @@ spec:
       role: replica
 ```
 
+Istio does not inspect PostgreSQL queries to automatically distinguish reads from writes. Applications still need to choose the right endpoint or route, and Istio can then apply policies to the selected subset.
+
 ## Monitoring External Service Traffic
 
-With ServiceEntry in place, you get full Istio telemetry for external calls. Check metrics in Prometheus:
+With ServiceEntry in place, you get Istio telemetry for external calls. For HTTP traffic, including HTTP traffic where Istio originates TLS, check metrics in Prometheus:
 
 ```text
 istio_requests_total{destination_service="api.stripe.com",reporter="source"}
@@ -267,7 +291,7 @@ istio_requests_total{destination_service="api.stripe.com",reporter="source"}
 istio_request_duration_milliseconds_bucket{destination_service="api.stripe.com",reporter="source"}
 ```
 
-You can now see request rates, latency distributions, and error rates for every external service your application depends on. This is incredibly useful for diagnosing issues. If Stripe is having a bad day, you'll see it in your Istio metrics before you see it in your application logs.
+You can now see request rates, latency distributions, and error rates for HTTP external services your application depends on. For opaque TCP or application-originated HTTPS traffic, telemetry is more limited because the sidecar cannot see HTTP methods, paths, or response codes. This is still useful for diagnosing issues because the destination is labeled as the external service instead of only as passthrough traffic.
 
 Check access logs for external traffic:
 
@@ -277,9 +301,9 @@ kubectl logs deploy/payment-service -c istio-proxy -n backend | grep "api.stripe
 
 ## Handling DNS Resolution Issues
 
-External services depend on DNS resolution. If DNS is unreliable, your ServiceEntry with `resolution: DNS` will have problems. You can mitigate this by:
+External services depend on DNS resolution. If DNS is unreliable, your ServiceEntry with `resolution: DNS` will have problems. Keep this behavior in mind:
 
-Using DNS caching in the proxy:
+Using proxy-side DNS resolution:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -298,7 +322,7 @@ spec:
   resolution: DNS
 ```
 
-Istio's DNS proxy caches resolutions, so brief DNS outages won't immediately affect your external service calls.
+Istio's proxy resolves `resolution: DNS` ServiceEntry hosts periodically and uses the resolved endpoints for routing. DNS proxying is a separate feature for application DNS queries; it does not change how the Istio proxy resolves ServiceEntry hosts.
 
 For critical external services where you want maximum reliability, consider using `resolution: STATIC` with known IP addresses, though this requires manual updates when IPs change.
 
