@@ -53,6 +53,7 @@ spec:
     metadata:
       labels:
         app: backend
+        version: v1
     spec:
       containers:
       - name: backend
@@ -78,7 +79,7 @@ spec:
 
 ## Routing to Specific Ports
 
-When you have multiple ports, your VirtualService needs to specify which port to route to. If you omit the port, Istio might route to the wrong one.
+When you have multiple ports, your VirtualService needs to specify which port to route to. If you omit the port, Istio might route to the wrong one. The subset names in this example assume you have backend pods labeled with `version: v1` and `version: v2`.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -148,35 +149,35 @@ spec:
     connectionPool:
       tcp:
         maxConnections: 100
-  portLevelSettings:
-  - port:
-      number: 8080
-    connectionPool:
-      http:
-        http1MaxPendingRequests: 50
-        http2MaxRequests: 100
-    outlierDetection:
-      consecutive5xxErrors: 3
-      interval: 10s
-      baseEjectionTime: 30s
-  - port:
-      number: 50051
-    connectionPool:
-      http:
-        http2MaxRequests: 200
-    outlierDetection:
-      consecutiveGatewayErrors: 5
-      interval: 15s
-      baseEjectionTime: 60s
-  - port:
-      number: 9090
-    connectionPool:
-      http:
-        http1MaxPendingRequests: 10
-    outlierDetection:
-      consecutive5xxErrors: 10
-      interval: 30s
-      baseEjectionTime: 10s
+    portLevelSettings:
+    - port:
+        number: 8080
+      connectionPool:
+        http:
+          http1MaxPendingRequests: 50
+          http2MaxRequests: 100
+      outlierDetection:
+        consecutive5xxErrors: 3
+        interval: 10s
+        baseEjectionTime: 30s
+    - port:
+        number: 50051
+      connectionPool:
+        http:
+          http2MaxRequests: 200
+      outlierDetection:
+        consecutiveGatewayErrors: 5
+        interval: 15s
+        baseEjectionTime: 60s
+    - port:
+        number: 9090
+      connectionPool:
+        http:
+          http1MaxPendingRequests: 10
+      outlierDetection:
+        consecutive5xxErrors: 10
+        interval: 30s
+        baseEjectionTime: 10s
   subsets:
   - name: v1
     labels:
@@ -250,7 +251,7 @@ The API endpoint goes to port 8080, and the admin endpoint goes to port 8081, ea
 
 ## Health Checks and Multiple Ports
 
-When Istio's sidecar is injected, Kubernetes health checks still go directly to the application container. But if you configure Istio's health check rewriting, probes go through the sidecar on port 15021:
+When Istio's sidecar is injected, Kubernetes health checks are still sent by the kubelet to the pod. But if you configure Istio's health check rewriting, probes are rewritten to the sidecar agent on port 15020:
 
 ```yaml
 apiVersion: apps/v1
@@ -258,20 +259,26 @@ kind: Deployment
 metadata:
   name: backend
 spec:
+  selector:
+    matchLabels:
+      app: backend
   template:
     metadata:
+      labels:
+        app: backend
       annotations:
         sidecar.istio.io/rewriteAppHTTPProbers: "true"
     spec:
       containers:
       - name: backend
+        image: my-backend:v1
         livenessProbe:
           httpGet:
             path: /healthz
             port: 8081
 ```
 
-With `rewriteAppHTTPProbers: "true"`, Istio rewrites the probe to go through port 15021, which means the probe goes through the sidecar. This is useful when your application port requires mTLS and kubelet cannot do mTLS.
+With `rewriteAppHTTPProbers: "true"`, Istio rewrites the probe to go through port 15020, where the sidecar agent maps it back to the original application probe. This is useful when your application port requires mTLS and kubelet cannot do mTLS.
 
 ## Excluding Ports from the Mesh
 
@@ -283,13 +290,19 @@ kind: Deployment
 metadata:
   name: backend
 spec:
+  selector:
+    matchLabels:
+      app: backend
   template:
     metadata:
+      labels:
+        app: backend
       annotations:
         traffic.sidecar.istio.io/excludeInboundPorts: "9090,8081"
     spec:
       containers:
       - name: backend
+        image: my-backend:v1
         ports:
         - containerPort: 8080
         - containerPort: 8081
@@ -301,7 +314,7 @@ Now ports 9090 (metrics) and 8081 (admin) bypass the sidecar. Traffic on those p
 
 ## Monitoring Multiple Ports
 
-Istio generates separate metrics for each port. You can query traffic per port:
+Istio generates request metrics for HTTP, HTTP/2, and gRPC traffic. If you add a `destination_port` dimension with the Telemetry API, you can query traffic per port:
 
 ```promql
 sum(rate(istio_requests_total{
@@ -310,7 +323,7 @@ sum(rate(istio_requests_total{
 }[5m])) by (destination_port)
 ```
 
-This breaks down request rates by port, so you can see how much traffic each port handles.
+This breaks down request rates by port, so you can see how much traffic each port handles. Without that custom dimension, the default standard labels include the destination service but not the destination port.
 
 ## Debugging Multi-Port Issues
 
@@ -342,7 +355,7 @@ If one port works but another does not, the issue is likely protocol detection o
 
 **Duplicate port names.** Each port name in a Service must be unique. You cannot have two ports both named `http`.
 
-**Port conflicts with sidecars.** Ports 15000-15090 are reserved by the Istio sidecar. If your application uses any of these, the sidecar will fail to start.
+**Port conflicts with sidecars.** Istio uses several sidecar ports in the 15000-15090 range, including 15000, 15001, 15006, 15020, 15021, 15053, and 15090. If your application uses one of the ports used by the sidecar, the pod can fail or behave incorrectly.
 
 **Missing targetPort.** If `targetPort` is not specified, it defaults to the `port` value. This is fine unless your application listens on a different port than what the Service exposes.
 
