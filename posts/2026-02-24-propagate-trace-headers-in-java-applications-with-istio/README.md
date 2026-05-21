@@ -100,6 +100,15 @@ public class RestTemplateConfig {
 ### Use It in Your Controller
 
 ```java
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.Map;
+
 @RestController
 public class OrderController {
 
@@ -132,7 +141,8 @@ For reactive applications using WebClient:
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
-import org.springframework.web.server.ServerWebExchange;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -160,7 +170,7 @@ public class WebClientConfig {
 
                 for (String header : TRACE_HEADERS) {
                     contextView.<String>getOrEmpty(header)
-                        .ifPresent(value -> builder.header(header, value));
+                        .ifPresent(value -> builder.headers(headers -> headers.set(header, value)));
                 }
 
                 return Mono.just(builder.build());
@@ -179,6 +189,8 @@ import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 import reactor.core.publisher.Mono;
 import reactor.util.context.Context;
+
+import java.util.List;
 
 @Component
 public class TraceContextWebFilter implements WebFilter {
@@ -263,6 +275,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.URI;
+import java.util.Map;
 
 public class ServiceClient {
 
@@ -308,7 +321,7 @@ containers:
 
 Setting `OTEL_TRACES_EXPORTER=none` is important because Istio handles trace export. You just need the agent for header propagation.
 
-The Java agent automatically instruments:
+The Java agent automatically instruments many supported libraries, including:
 - Spring RestTemplate and WebClient
 - Apache HttpClient
 - OkHttp
@@ -317,14 +330,17 @@ The Java agent automatically instruments:
 - JDBC
 - Kafka clients
 
-This means you do not need to write any propagation code yourself. The agent intercepts HTTP calls and adds trace headers automatically.
+This means you do not need to write propagation code yourself for supported clients. For HTTP and RPC clients, the agent injects the configured trace context into outgoing requests automatically.
 
 ## Method 5: gRPC Services
 
-For gRPC services, use interceptors:
+For gRPC clients called from the servlet request context in Method 3, use interceptors:
 
 ```java
 import io.grpc.*;
+
+import java.util.List;
+import java.util.Map;
 
 public class TraceHeaderClientInterceptor implements ClientInterceptor {
 
