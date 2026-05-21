@@ -8,11 +8,11 @@ Description: A practical walkthrough for migrating Istio Custom Resource Definit
 
 ---
 
-If you've been running Istio for a while, your cluster probably has resources created with older API versions like `v1alpha3` or `v1beta1`. While Kubernetes handles version conversion automatically at the API level, you should migrate your stored manifests and in-cluster resources to the latest stable version. This ensures compatibility with future Istio upgrades that may drop support for older versions.
+If you've been running Istio for a while, your cluster probably has resources created with older API versions like `v1alpha3` or `v1beta1`. While Kubernetes handles version conversion automatically at the API level, you should migrate your stored manifests and rewrite existing in-cluster resources so they use the current storage version. This ensures compatibility with future Istio upgrades that may drop support for older versions.
 
 ## Identifying Resources That Need Migration
 
-Start by finding all Istio resources and their API versions. The tricky part is that `kubectl get` returns resources in the version you request, not the version they were created with. To see what's actually stored, check the CRD storage version:
+Start by finding all Istio resources and their API versions. The tricky part is that `kubectl get` returns resources in the version you request, not necessarily the version originally used to create or last write them. To see the version Kubernetes will use for newly written objects, check the CRD storage version:
 
 ```bash
 kubectl get crd virtualservices.networking.istio.io -o jsonpath='{.spec.versions[?(@.storage==true)].name}'
@@ -72,14 +72,14 @@ kubectl get telemetries -A -o yaml > istio-migration/telemetry/telemetries.yaml
 
 ## Step 2: Update API Versions in the Exports
 
-For networking resources, change from v1alpha3 or v1beta1 to v1:
+For Istio resources that have a stable v1 API, change from v1alpha3 or v1beta1 to v1. Do not change EnvoyFilter or WasmPlugin to v1; EnvoyFilter remains `networking.istio.io/v1alpha3`, and WasmPlugin remains `extensions.istio.io/v1alpha1`.
 
 ```bash
 # Preview changes first
-grep -rn "networking.istio.io/v1alpha3\|networking.istio.io/v1beta1" istio-migration/
+grep -rn "networking.istio.io/v1alpha3\|networking.istio.io/v1beta1\|security.istio.io/v1beta1\|telemetry.istio.io/v1alpha1" istio-migration/
 
 # Apply changes
-find istio-migration/ -name "*.yaml" -exec sed -i '' \
+find istio-migration/ -name "*.yaml" ! -name "envoyfilters.yaml" -exec perl -pi \
   -e 's|networking.istio.io/v1alpha3|networking.istio.io/v1|g' \
   -e 's|networking.istio.io/v1beta1|networking.istio.io/v1|g' \
   -e 's|security.istio.io/v1beta1|security.istio.io/v1|g' \
@@ -145,7 +145,7 @@ kubectl apply -f istio-migration/security/
 kubectl apply -f istio-migration/telemetry/
 ```
 
-Since the resources already exist, `kubectl apply` will update them with the new API version.
+Since the resources already exist, `kubectl apply` will rewrite them through the API server. Existing objects are stored using the CRD's current storage version when they are updated.
 
 ## Step 6: Verify the Migration
 
@@ -171,9 +171,9 @@ Most Istio networking resources have identical schemas between v1alpha3, v1beta1
 
 **EnvoyFilter**: This resource has remained at v1alpha3 for a long time because it's considered an advanced, potentially unstable API. Check the current Istio version's documentation for the latest supported version.
 
-**WasmPlugin**: Introduced as an alternative to EnvoyFilter for Wasm extensions. Uses its own API group `extensions.istio.io`.
+**WasmPlugin**: Introduced as an alternative to EnvoyFilter for Wasm extensions. Uses its own API group, `extensions.istio.io`, and is still `v1alpha1`.
 
-**Telemetry**: Moved from `telemetry.istio.io/v1alpha1` to `telemetry.istio.io/v1` with some structural changes in how providers are configured.
+**Telemetry**: Moved from `telemetry.istio.io/v1alpha1` to `telemetry.istio.io/v1`. A few v1alpha1 fields were not promoted to v1, including `metrics.reportingInterval`, `accessLogging.filter`, and `tracing.useRequestIdForTraceSampling`, so check Telemetry resources carefully instead of only changing the version string.
 
 ## Updating Source Manifests
 
@@ -215,7 +215,7 @@ If something goes wrong after migration, you can reapply the backup:
 kubectl apply -f istio-backup-pre-migration.yaml
 ```
 
-Since the old API versions are still served (just not stored), the old manifests will work fine as a rollback.
+The old manifests will work as a rollback only if your installed Istio CRDs still serve those old API versions. Check `.spec.versions[].served` on the CRDs before relying on this.
 
 ## Automating Future Migrations
 
@@ -233,4 +233,4 @@ fi
 
 This prevents new resources from being created with old API versions and keeps your codebase clean going forward.
 
-Migrating CRDs between API versions is mostly mechanical work. The schemas are compatible in most cases, so it's really about updating the version string and reapplying. The key is to do it proactively before an Istio upgrade removes support for the old version.
+Migrating CRDs between API versions is mostly mechanical work. The schemas are compatible in most cases, but you still need to check resources that do not have a v1 API or that use fields not promoted to v1. The key is to do it proactively before an Istio upgrade removes support for the old version.
