@@ -17,7 +17,7 @@ Istio has two different timeout settings that affect retries:
 1. **Route timeout** - The overall timeout for the entire request, including all retry attempts. Set via the `timeout` field on the HTTP route.
 2. **Per-try timeout** - The timeout for each individual attempt (original + retries). Set via `perTryTimeout` in the retries configuration.
 
-The route timeout acts as a hard ceiling. Once it expires, no more retries happen, period. The per-try timeout controls how long each individual attempt can take before it is considered failed and triggers the next retry.
+When configured, the route timeout acts as a hard ceiling. Once it expires, no more retries happen, period. The per-try timeout controls how long each individual attempt can take before it is considered failed and triggers the next retry.
 
 ```mermaid
 sequenceDiagram
@@ -42,14 +42,14 @@ sequenceDiagram
 
 ## The Math You Need to Get Right
 
-Here is the formula: your route timeout must be greater than or equal to `perTryTimeout * attempts`. If it is not, some of your retry attempts will never happen because the route timeout expires first.
+Here is the formula: your route timeout must be greater than or equal to `perTryTimeout * (1 + attempts)`. In Istio, `attempts` is the number of retries after the original request, so the maximum possible number of upstream requests is `1 + attempts`. If the route timeout is too low, some of your retry attempts will never happen because the route timeout expires first.
 
 For example:
 - Route timeout: 5s
 - Per-try timeout: 2s
 - Retry attempts: 3
 
-The worst-case scenario needs 2s * 3 = 6 seconds. But the route timeout is only 5 seconds. So the third retry attempt might get cut short or never start at all.
+The worst-case scenario needs 2s * 4 = 8 seconds for the original request plus three retries. But the route timeout is only 5 seconds. So later retry attempts might get cut short or never start at all.
 
 A better configuration:
 
@@ -68,18 +68,18 @@ spec:
             host: catalog-service
             port:
               number: 8080
-      timeout: 8s
+      timeout: 10s
       retries:
         attempts: 3
         perTryTimeout: 2s
         retryOn: "gateway-error,connect-failure"
 ```
 
-With an 8-second route timeout, there is room for all three attempts at 2 seconds each (6 seconds worst case), plus some buffer for network overhead and backoff delays between retries.
+With a 10-second route timeout, there is room for the original request and three retries at 2 seconds each (8 seconds worst case), plus some buffer for network overhead and backoff delays between retries.
 
 ## Common Mistake: Missing the Route Timeout
 
-If you configure retries but do not set a route timeout, Istio uses its default timeout of 15 seconds. That sounds fine, but it means a request could sit there for 15 seconds doing retries against a broken service before the caller gets an error response.
+If you configure retries but do not set a route timeout, Istio's VirtualService timeout is disabled by default. That sounds fine, but it means retry behavior is bounded only by the retry policy, per-try timeout, connection timeouts, or other downstream limits instead of by an explicit end-to-end request cap.
 
 Always set an explicit route timeout:
 
@@ -98,7 +98,7 @@ spec:
             host: user-service
             port:
               number: 8080
-      timeout: 5s
+      timeout: 7s
       retries:
         attempts: 2
         perTryTimeout: 2s
@@ -119,7 +119,7 @@ retries:
   retryOn: "5xx"
 ```
 
-The per-try timeout is 5 seconds, but the route timeout is 3 seconds. The route timeout will always fire first, making the per-try timeout and retries pointless. The request will just time out after 3 seconds with no retries.
+The per-try timeout is 5 seconds, but the route timeout is 3 seconds. For slow attempts, the route timeout will fire first, so the per-try timeout cannot trigger a retry before the overall request is already out of time.
 
 ## Practical Examples by Service Type
 
@@ -144,12 +144,12 @@ spec:
               number: 8080
       timeout: 3s
       retries:
-        attempts: 2
+        attempts: 1
         perTryTimeout: 1s
         retryOn: "connect-failure,refused-stream"
 ```
 
-Users expect search results fast. This gives two attempts at 1 second each, with a 3-second overall cap. If the service is down, the user sees an error after 3 seconds rather than waiting forever.
+Users expect search results fast. This gives the original request and one retry at 1 second each, with a 3-second overall cap. If the service is down, the user sees an error after 3 seconds rather than waiting forever.
 
 ### Background Processing Service
 
@@ -172,7 +172,7 @@ spec:
               number: 8080
       timeout: 30s
       retries:
-        attempts: 3
+        attempts: 2
         perTryTimeout: 8s
         retryOn: "gateway-error,connect-failure,refused-stream"
 ```
@@ -197,15 +197,15 @@ spec:
         - destination:
             host: db-proxy
             port:
-              number: 5432
-      timeout: 10s
+              number: 8080
+      timeout: 14s
       retries:
         attempts: 2
         perTryTimeout: 4s
         retryOn: "connect-failure"
 ```
 
-Only retry on connection failures since database errors (like constraint violations) will just fail again on retry.
+Only retry on connection failures since database errors (like constraint violations) will just fail again on retry. This example assumes `db-proxy` exposes an HTTP API; raw database protocols such as PostgreSQL on port 5432 are not handled by an HTTP `VirtualService` route.
 
 ## Debugging Timeout and Retry Issues
 
@@ -232,11 +232,11 @@ You can also look at response headers for hints. Envoy adds the `x-envoy-upstrea
 
 Here is a quick reference for different scenarios:
 
-| Scenario | Route Timeout | Per-Try Timeout | Attempts | retryOn |
+| Scenario | Route Timeout | Per-Try Timeout | Retries (`attempts`) | retryOn |
 |----------|--------------|-----------------|----------|---------|
-| Fast API | 3s | 1s | 2 | connect-failure |
-| Standard API | 8s | 2s | 3 | gateway-error,connect-failure |
-| Batch Processing | 30s | 8s | 3 | gateway-error,connect-failure,refused-stream |
-| Real-time Stream | 2s | 800ms | 2 | connect-failure |
+| Fast API | 3s | 1s | 1 | connect-failure |
+| Standard API | 10s | 2s | 3 | gateway-error,connect-failure |
+| Batch Processing | 30s | 8s | 2 | gateway-error,connect-failure,refused-stream |
+| Real-time Stream | 2s | 800ms | 1 | connect-failure |
 
 The key takeaway is straightforward: always think about timeouts and retries together. They are two pieces of the same resilience puzzle, and getting one right while ignoring the other will bite you in production.

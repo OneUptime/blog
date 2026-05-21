@@ -14,7 +14,7 @@ gRPC runs over HTTP/2 and uses TLS heavily in production environments. When you 
 
 Istio's Envoy sidecars natively understand HTTP/2 and gRPC. When a gRPC request goes through the mesh:
 
-1. The client application sends a gRPC request (HTTP/2) to localhost
+1. The client application sends a gRPC request (HTTP/2) to the service address
 2. The source sidecar intercepts the request
 3. The sidecar establishes mTLS with the destination sidecar
 4. The request is forwarded over the encrypted HTTP/2 connection
@@ -24,7 +24,7 @@ The key thing is that Istio preserves the HTTP/2 framing throughout. It does not
 
 ## Port Naming Requirements
 
-Istio uses port names to detect protocols. For gRPC services, the port name must start with `grpc`:
+Istio can automatically detect HTTP/2 traffic, but explicit protocol selection is more reliable and is required for gateway forwarding behavior. For gRPC services, name the port with a `grpc` prefix:
 
 ```yaml
 apiVersion: v1
@@ -51,7 +51,7 @@ ports:
     appProtocol: grpc
 ```
 
-If you get the port naming wrong, Istio treats the traffic as raw TCP and you lose HTTP/2-level features like header-based routing, retries, and proper load balancing.
+If Istio cannot determine the protocol, it treats the traffic as raw TCP and you lose HTTP/2-level features like header-based routing, retries, and proper load balancing.
 
 ## mTLS for gRPC Services
 
@@ -105,7 +105,7 @@ spec:
         - "grpc.example.com"
 ```
 
-Note: Use `HTTPS` as the protocol for the gateway, not `GRPC`. The gateway detects HTTP/2 and gRPC within the HTTPS connection automatically.
+Note: Use `HTTPS` as the protocol for the gateway when it terminates external TLS. To make sure the gateway forwards gRPC to the backend over HTTP/2, explicitly declare the backend Service port as `grpc`, `http2`, or set `appProtocol: grpc`.
 
 Create the VirtualService:
 
@@ -182,16 +182,19 @@ Before:
 
 ```go
 creds, _ := credentials.NewClientTLSFromFile("ca.crt", "")
-conn, _ := grpc.Dial("grpc-service:50051", grpc.WithTransportCredentials(creds))
+conn, _ := grpc.NewClient("grpc-service:50051", grpc.WithTransportCredentials(creds))
 ```
 
 After:
 
 ```go
-conn, _ := grpc.Dial("grpc-service:50051", grpc.WithInsecure())
+conn, _ := grpc.NewClient(
+    "grpc-service:50051",
+    grpc.WithTransportCredentials(insecure.NewCredentials()),
+)
 ```
 
-The `WithInsecure()` might look concerning, but remember that the sidecar is transparently adding mTLS. The "insecure" connection only goes from the application to the local sidecar within the same pod.
+The `insecure.NewCredentials()` call might look concerning, but remember that the sidecar is transparently adding mTLS. The plaintext connection only goes from the application to the local sidecar within the same pod.
 
 ## gRPC Health Checks with TLS
 
@@ -259,7 +262,7 @@ spec:
         - "api.example.com"
 ```
 
-Envoy natively supports gRPC-Web transcoding, converting gRPC-Web requests to standard gRPC.
+Envoy supports gRPC-Web through the `grpc_web` HTTP filter, converting gRPC-Web requests to standard gRPC. The gateway alone does not add that filter, so configure it with an EnvoyFilter or another Istio-supported extension mechanism before expecting browser gRPC-Web clients to work.
 
 ## Debugging gRPC TLS Issues
 
