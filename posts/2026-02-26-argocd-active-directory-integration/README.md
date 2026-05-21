@@ -47,17 +47,15 @@ Before you start, gather these details from your AD administrator:
 Store the AD service account password in a Kubernetes secret:
 
 ```bash
-kubectl create secret generic argocd-dex-ad-credentials \
-  --namespace argocd \
-  --from-literal=bindPW='YourServiceAccountPassword'
+kubectl patch secret argocd-secret -n argocd \
+  --type merge \
+  -p '{"stringData": {"dex.ldap.bindPW": "YourServiceAccountPassword"}}'
 ```
 
-If your AD uses a self-signed or internal CA, also add the CA certificate:
+If your AD uses a self-signed or internal CA, base64 encode the CA certificate so you can add it to `rootCAData` in the Dex config:
 
 ```bash
-kubectl create secret generic ad-ca-cert \
-  --namespace argocd \
-  --from-file=ca.crt=/path/to/ad-ca-certificate.pem
+base64 -w0 /path/to/ad-ca-certificate.pem
 ```
 
 ## Step 2: Configure Dex LDAP Connector
@@ -143,7 +141,7 @@ stringData:
   dex.ldap.bindPW: "YourServiceAccountPassword"
 ```
 
-Or if you prefer, store it as a separate key and reference it:
+If you are applying changes imperatively, patch the key into the existing secret:
 
 ```bash
 kubectl patch secret argocd-secret -n argocd \
@@ -162,7 +160,7 @@ metadata:
   name: argocd-rbac-cm
   namespace: argocd
 data:
-  # Default: no access unless mapped
+  # Baseline access granted to authenticated users
   policy.default: role:readonly
 
   # Use AD group names for RBAC
@@ -242,7 +240,7 @@ Common causes:
 - Group `member` attribute uses DN but `userAttr` is set to something else
 - Nested groups - Dex does not follow nested AD groups by default
 
-For nested groups, add the LDAP_MATCHING_RULE_IN_CHAIN OID to your group filter:
+For nested groups, add the LDAP_MATCHING_RULE_IN_CHAIN OID to the group membership matcher:
 
 ```yaml
 groupSearch:
