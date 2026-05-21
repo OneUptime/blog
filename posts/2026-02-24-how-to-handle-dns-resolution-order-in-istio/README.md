@@ -48,7 +48,7 @@ When your app resolves `reviews`, the resolver tries these in order:
 3. `reviews.cluster.local`
 4. `reviews` (as a bare name)
 
-The `ndots:5` option means any name with fewer than 5 dots gets the search domains appended. This is why `reviews` triggers the search list, but `api.example.com` (3 dots) also triggers it, which can cause unnecessary DNS queries.
+The `ndots:5` option means any name with fewer than 5 dots gets the search domains appended. This is why `reviews` triggers the search list, but `api.example.com` (2 dots) also triggers it, which can cause unnecessary DNS queries.
 
 ## Optimizing ndots
 
@@ -87,7 +87,6 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 Or enable it per-pod:
@@ -98,7 +97,6 @@ metadata:
     proxy.istio.io/config: |
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 When DNS capture is enabled:
@@ -108,7 +106,7 @@ When DNS capture is enabled:
 3. If the hostname is a known mesh service, Envoy returns the ClusterIP directly
 4. If not, Envoy forwards the query to the upstream DNS server (CoreDNS)
 
-The `DNS_AUTO_ALLOCATE` option assigns virtual IPs to ServiceEntry hosts that don't have one. This is useful for external services that need to be routed through the mesh.
+Istio can also automatically assign virtual IPs to ServiceEntry hosts that don't have one. In current Istio versions, use the `networking.istio.io/enable-autoallocate-ip` label on a ServiceEntry when you need per-service control. This is useful for external services that need to be routed through the mesh.
 
 ## Handling Cross-Namespace Resolution
 
@@ -136,7 +134,7 @@ spec:
         - "istio-system/*"
 ```
 
-This limits namespace `alpha` to only see services in its own namespace, the `beta` namespace, and `istio-system`. DNS resolution might succeed for a service in namespace `gamma`, but Envoy won't have a route for it and the request will fail.
+This limits the service configuration generated for workloads in namespace `alpha` to services in its own namespace, the `beta` namespace, and `istio-system`. DNS resolution might succeed for a service in namespace `gamma`, but Envoy won't have service-specific configuration for it. Whether the request is rejected or handled as unmatched outbound traffic depends on the proxy's outbound traffic policy.
 
 ## ServiceEntry DNS Resolution
 
@@ -160,9 +158,11 @@ spec:
 
 Resolution options:
 
-- **DNS** - Envoy resolves the hostname at connection time and caches the result. The DNS TTL is respected.
+- **DNS** - Envoy resolves the hostname asynchronously and periodically, then load balances across the results. This resolution is independent from the application's DNS lookup.
 - **STATIC** - You provide explicit IP addresses in the `endpoints` field. No DNS resolution.
 - **NONE** - The caller provides the IP. Used for wildcard hosts.
+- **DNS_ROUND_ROBIN** - Envoy resolves the hostname asynchronously but uses the first returned IP address for new connections.
+- **DYNAMIC_DNS** - Envoy resolves the host from the HTTP Host header or TLS SNI at request time. This is used for wildcard ServiceEntry hosts in current Istio versions.
 
 ```yaml
 # STATIC resolution with explicit endpoints
@@ -206,7 +206,7 @@ When DNS resolution isn't working as expected:
 
 ```bash
 # Check what DNS returns inside the pod
-kubectl exec my-pod -c istio-proxy -- dig +short reviews.default.svc.cluster.local
+kubectl exec my-pod -- dig +short reviews.default.svc.cluster.local
 
 # Check if Istio DNS proxy is capturing DNS
 kubectl exec my-pod -c istio-proxy -- \
