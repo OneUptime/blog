@@ -47,6 +47,9 @@ metadata:
   name: legacy-service
   namespace: my-app
 spec:
+  selector:
+    matchLabels:
+      app: legacy-service
   template:
     metadata:
       labels:
@@ -109,7 +112,7 @@ spec:
     mode: STRICT
 ```
 
-Then removing a workload from the mesh means it can no longer talk to any meshed service. You will need to either change the policy to PERMISSIVE or keep the workload in the mesh.
+Then removing a workload from the mesh means it can no longer talk to destinations covered by that STRICT policy. You will need to either change the destination policy to PERMISSIVE or keep the workload in the mesh.
 
 ### 3. Check Waypoint Proxy Dependencies
 
@@ -120,8 +123,8 @@ If the namespace has a waypoint proxy, removing the namespace from ambient mode 
 
 kubectl get gateways -n my-app -l istio.io/waypoint-for
 
-# Remove the waypoint
-istioctl waypoint delete -n my-app
+# Remove the waypoints in the namespace
+istioctl waypoint delete --all -n my-app
 ```
 
 ### 4. Monitor Traffic During Removal
@@ -141,7 +144,7 @@ For a production environment, follow this sequence:
 
 ### Step 1: Switch to PERMISSIVE mTLS
 
-If you have STRICT mTLS, temporarily switch to PERMISSIVE for the namespace:
+If you have STRICT mTLS on destinations that the removed workload needs to reach, temporarily switch those destination policies to PERMISSIVE. For traffic to workloads in the `my-app` namespace, use:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -154,7 +157,7 @@ spec:
     mode: PERMISSIVE
 ```
 
-This allows both mTLS and plaintext traffic, preventing connection failures during the transition.
+This allows both mTLS and plaintext traffic to destinations in that namespace, preventing connection failures during the transition.
 
 ### Step 2: Update AuthorizationPolicies
 
@@ -206,7 +209,7 @@ kubectl delete peerauthentication permissive-during-removal -n my-app
 Remove any waypoint proxies in the namespace:
 
 ```bash
-istioctl waypoint delete -n my-app
+istioctl waypoint delete --all -n my-app
 ```
 
 Remove authorization policies that are no longer relevant:
@@ -224,7 +227,7 @@ During the removal process, you might have a mix of meshed and non-meshed worklo
 | Meshed | Meshed | mTLS (encrypted) |
 | Meshed | Non-meshed | Plaintext (ztunnel sends without encryption) |
 | Non-meshed | Meshed (PERMISSIVE) | Plaintext (accepted) |
-| Non-meshed | Meshed (STRICT) | Connection refused |
+| Non-meshed | Meshed (STRICT) | Denied |
 
 This is why the PERMISSIVE step is important. It prevents hard failures during the transition.
 
@@ -238,7 +241,9 @@ kubectl get namespaces -l istio.io/dataplane-mode=ambient -o name | \
   xargs -I {} kubectl label {} istio.io/dataplane-mode-
 
 # Remove all waypoint proxies
-istioctl waypoint delete --all -A
+kubectl get gateway -A \
+  -o jsonpath='{range .items[?(@.spec.gatewayClassName=="istio-waypoint")]}{.metadata.namespace}{" "}{.metadata.name}{"\n"}{end}' | \
+  while read namespace name; do istioctl waypoint delete "$name" -n "$namespace"; done
 
 # Clean up policies
 kubectl delete authorizationpolicy --all -A
