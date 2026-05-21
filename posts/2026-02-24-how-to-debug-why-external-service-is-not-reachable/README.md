@@ -25,10 +25,10 @@ If you see `mode: REGISTRY_ONLY`, that's likely the problem. Only services regis
 ## Step 1: Check the Outbound Traffic Policy
 
 ```bash
-istioctl proxy-config clusters deploy/my-app -n production | grep "PassthroughCluster"
+istioctl proxy-config clusters deploy/my-app -n production | grep -E "PassthroughCluster|BlackHoleCluster"
 ```
 
-If `PassthroughCluster` is present, the policy is `ALLOW_ANY` and unknown traffic is passed through. If it's missing or shows as blackhole, the policy is `REGISTRY_ONLY`.
+If `PassthroughCluster` is present, the policy is `ALLOW_ANY` and unknown traffic is passed through. If `BlackHoleCluster` is present, the policy is `REGISTRY_ONLY`.
 
 ## Step 2: Test Basic Connectivity
 
@@ -57,7 +57,7 @@ kubectl exec deploy/my-app -n production -c my-app -- curl -v https://api.exampl
 If the outbound policy is `REGISTRY_ONLY`, you need a ServiceEntry to register the external service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -69,7 +69,7 @@ spec:
   ports:
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
 ```
 
@@ -82,7 +82,7 @@ kubectl apply -f service-entry.yaml
 For HTTP services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-http-api
@@ -97,48 +97,48 @@ spec:
       protocol: HTTP
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
 ```
 
 ## Step 4: Check Port and Protocol Configuration
 
-A common mistake is getting the port or protocol wrong in the ServiceEntry. If your app makes an HTTPS connection, the protocol should be `TLS` (not `HTTPS`), because from the sidecar's perspective it's seeing TLS traffic that it can't decrypt:
+A common mistake is getting the port or protocol wrong in the ServiceEntry. If your app makes an HTTPS connection, the protocol should normally be `HTTPS`. Use `TLS` for non-HTTP traffic wrapped in TLS or when you need SNI-based routing without HTTP semantics:
 
 ```yaml
 # For HTTPS destinations where the app initiates TLS
 ports:
   - number: 443
     name: https
-    protocol: TLS
+    protocol: HTTPS
 
-# For HTTP destinations where you want Istio to originate TLS
+# For non-HTTP TLS destinations where you want SNI-based routing
 ports:
   - number: 443
-    name: https
-    protocol: HTTPS
+    name: tls
+    protocol: TLS
 ```
 
 The difference:
 
-- `TLS`: The app handles TLS. The sidecar just passes the encrypted traffic through.
-- `HTTPS`: The sidecar terminates TLS from the app and re-encrypts to the destination.
+- `HTTPS`: The app handles HTTPS. The sidecar passes the encrypted traffic through but can use HTTPS/SNI metadata for routing and telemetry.
+- `TLS`: The app handles TLS for non-HTTP traffic. The sidecar routes based on SNI without terminating TLS.
 
-For most external services where your app already uses HTTPS, use `protocol: TLS`.
+For most external web services where your app already uses HTTPS, use `protocol: HTTPS`. If you want Istio to originate TLS for a plain HTTP request from the app, configure a `DestinationRule` as shown below.
 
 ## Step 5: Check DNS Resolution
 
-Istio's DNS proxy might interfere with external DNS resolution. Check if DNS is working from inside the sidecar:
+Istio's DNS proxy might interfere with external DNS resolution if DNS capture is enabled. Check whether the sidecar is recording DNS activity:
 
 ```bash
 kubectl exec deploy/my-app -n production -c istio-proxy -- \
-  pilot-agent request GET "/dns?hostname=api.example.com"
+  pilot-agent request GET stats | grep dns
 ```
 
-If DNS resolution fails, check if Istio's DNS proxy is enabled:
+If DNS resolution fails, check if Istio's DNS proxy is enabled in the proxy metadata:
 
 ```bash
-kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep -A 5 dnsRefreshRate
+kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep ISTIO_META_DNS_CAPTURE
 ```
 
 You can also check DNS from the application container:
@@ -169,7 +169,7 @@ If the external service doesn't appear in clusters or endpoints, the ServiceEntr
 If you want Istio to handle TLS (so your app can make plain HTTP calls that get upgraded to HTTPS by the sidecar), configure a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -182,12 +182,13 @@ spec:
     - number: 80
       name: http
       protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-tls
@@ -195,8 +196,6 @@ metadata:
 spec:
   host: api.example.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
     portLevelSettings:
       - port:
           number: 80
@@ -249,7 +248,7 @@ kubectl get sidecar -n production -o yaml
 Look at the egress hosts:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
