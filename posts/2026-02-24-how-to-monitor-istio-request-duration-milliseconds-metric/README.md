@@ -12,21 +12,21 @@ Latency is one of the most important indicators of user experience. If your API 
 
 ## How This Metric Works
 
-`istio_request_duration_milliseconds` is a Prometheus histogram. That means it doesn't store individual latency values. Instead, it maintains counts of requests that fell into predefined time buckets. For example, it counts how many requests took less than 1ms, less than 5ms, less than 10ms, and so on.
+`istio_request_duration_milliseconds` is a Prometheus histogram. That means it doesn't store individual latency values. Instead, it maintains cumulative counts of requests that fell within predefined time buckets. For example, it counts how many requests took 1ms or less, 5ms or less, 10ms or less, and so on.
 
 In Prometheus, a histogram actually creates three underlying time series:
 
-- `istio_request_duration_milliseconds_bucket` - count of requests per bucket
+- `istio_request_duration_milliseconds_bucket` - cumulative count of requests up to each bucket boundary
 - `istio_request_duration_milliseconds_sum` - total cumulative duration of all requests
 - `istio_request_duration_milliseconds_count` - total number of requests (same as `istio_requests_total`)
 
 The bucket boundaries (the `le` label values) default to:
 
 ```text
-0.5, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 300000, 600000, +Inf
+0.5, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 300000, 600000, 1800000, 3600000, +Inf
 ```
 
-These are in milliseconds. So the buckets cover from 0.5ms to 600 seconds, which handles everything from fast cache lookups to slow batch operations.
+These are in milliseconds. So the finite buckets cover from 0.5ms to 3600 seconds, which handles everything from fast cache lookups to slow batch operations.
 
 ## The Labels
 
@@ -297,6 +297,6 @@ For the `reporter="destination"` view, the measurement is from the destination's
 
 Because histograms use predefined buckets, percentile calculations are estimates. If your actual P99 latency is 750ms, and your buckets are `[500, 1000]`, the reported P99 will be somewhere between 500 and 1000 based on linear interpolation. The more buckets you have in the relevant range, the more accurate the estimate.
 
-If you need better accuracy for specific latency ranges, you can customize the histogram buckets. But this requires adjusting the stats plugin configuration through EnvoyFilter, which is an advanced operation.
+If you need better accuracy for specific latency ranges, you can customize the histogram buckets with the `sidecar.istio.io/statsHistogramBuckets` pod annotation. This is still an advanced operation because it changes the bucket boundaries emitted by the proxy.
 
 The `istio_request_duration_milliseconds` metric, combined with `istio_requests_total`, gives you a thorough picture of your service mesh performance. Track percentiles rather than averages, break down latency by source and response code to find patterns, and set up alerts based on your SLOs.
