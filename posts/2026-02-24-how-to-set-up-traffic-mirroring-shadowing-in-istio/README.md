@@ -8,7 +8,7 @@ Description: How to configure traffic mirroring in Istio to send copies of produ
 
 ---
 
-Traffic mirroring (also called shadowing) sends a copy of live production traffic to a secondary service for testing. The production response goes back to the caller as normal - the mirrored response is discarded. This lets you test a new service version with real traffic patterns without any risk to users. If the mirrored service crashes, returns errors, or is slow, nobody notices.
+Traffic mirroring (also called shadowing) sends a copy of live production traffic to a secondary service for testing. The production response goes back to the caller as normal - the mirrored response is discarded. This lets you test a new service version with real traffic patterns without putting users on the mirrored response path. If the mirrored service crashes, returns errors, or is slow, those responses are not returned to users.
 
 ## How Traffic Mirroring Works in Istio
 
@@ -42,7 +42,7 @@ The mirror request is "fire and forget." Envoy does not wait for it to complete 
 Here is the simplest mirroring configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -68,7 +68,7 @@ This sends all production traffic to v1 and mirrors 100% of it to v2. Every requ
 You also need the DestinationRule with subsets:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service
@@ -86,9 +86,22 @@ spec:
 
 ## Setting Up the Deployments
 
-You need both versions deployed with proper labels:
+You need a Kubernetes Service plus both versions deployed with proper labels:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: default
+spec:
+  selector:
+    app: product-service
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -165,7 +178,7 @@ You can also check Envoy stats:
 ```bash
 # Check mirror stats
 kubectl exec deploy/sleep -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "mirror"
+  pilot-agent request GET stats | grep "mirror"
 ```
 
 ## Mirroring with Percentage Control
@@ -173,7 +186,7 @@ kubectl exec deploy/sleep -c istio-proxy -- \
 You do not have to mirror all traffic. Use `mirrorPercentage` to control how much gets mirrored:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -201,7 +214,7 @@ This mirrors only 10% of traffic. Useful when your mirror service cannot handle 
 You can mirror to a completely different service, not just a different version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service
@@ -240,7 +253,7 @@ Be very careful with mirroring write operations. If both v1 and v2 write to the 
 - Only mirror read-only endpoints
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -287,13 +300,13 @@ Track the health of your mirror service:
 
 ```bash
 # Request rate to the mirror
-# PromQL: sum(rate(istio_requests_total{destination_service="product-service",destination_version="v2"}[5m]))
+# PromQL: sum(rate(istio_requests_total{destination_service_name="product-service",destination_version="v2"}[5m]))
 
 # Error rate on the mirror
-# PromQL: sum(rate(istio_requests_total{destination_service="product-service",destination_version="v2",response_code=~"5.."}[5m]))
+# PromQL: sum(rate(istio_requests_total{destination_service_name="product-service",destination_version="v2",response_code=~"5.."}[5m]))
 
 # Latency on the mirror (even though responses are discarded, high latency indicates issues)
-# PromQL: histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_version="v2"}[5m])) by (le))
+# PromQL: histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name="product-service",destination_version="v2"}[5m])) by (le))
 ```
 
-Traffic mirroring is one of the safest ways to test a new service version with production traffic. The zero-risk nature of it means you can test aggressively - if the mirror service explodes, production is completely unaffected. Use it as the first step before moving to canary deployments with real traffic shifting.
+Traffic mirroring is one of the safest ways to test a new service version with production traffic. Since mirrored responses are discarded, you can test aggressively - if the mirror service fails, production responses are not affected. Use it as the first step before moving to canary deployments with real traffic shifting.
