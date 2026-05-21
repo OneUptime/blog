@@ -99,7 +99,9 @@ func (r *ManagedServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
     // Apply all resources with ownership
     for _, res := range resources {
-        controllerutil.SetControllerReference(&ms, res, r.Scheme)
+        if err := controllerutil.SetControllerReference(&ms, res, r.Scheme); err != nil {
+            return ctrl.Result{}, err
+        }
         if err := r.applyResource(ctx, res); err != nil {
             return ctrl.Result{}, err
         }
@@ -107,8 +109,10 @@ func (r *ManagedServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
     // Update status
     ms.Status.State = "Active"
-    ms.Status.GeneratedResources = len(resources)
-    r.Status().Update(ctx, &ms)
+    ms.Status.GeneratedResourceCount = len(resources)
+    if err := r.Status().Update(ctx, &ms); err != nil {
+        return ctrl.Result{}, err
+    }
 
     return ctrl.Result{}, nil
 }
@@ -133,7 +137,7 @@ func (r *ManagedServiceReconciler) buildDestinationRule(ms *platformv1.ManagedSe
     }
 
     // Add circuit breaker settings
-    if ms.Spec.Resiliency.CircuitBreaker != nil {
+    if ms.Spec.Resiliency != nil && ms.Spec.Resiliency.CircuitBreaker != nil {
         cb := ms.Spec.Resiliency.CircuitBreaker
         dr.Spec.TrafficPolicy = &networkingv1beta1api.TrafficPolicy{
             ConnectionPool: &networkingv1beta1api.ConnectionPoolSettings{
@@ -168,9 +172,9 @@ spec:
       timeout: 15s
       retries:
         attempts: 2
-    circuitBreaker:
-      maxConnections: 50
-      maxPendingRequests: 25
+      circuitBreaker:
+        maxConnections: 50
+        maxPendingRequests: 25
 
   # Mesh-level access control
   networkPolicy:
@@ -190,7 +194,7 @@ spec:
 The controller generates namespace-scoped Istio resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -203,7 +207,7 @@ spec:
     - "checkout/*"
     - "frontend/*"
 ---
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: default
@@ -264,14 +268,19 @@ func validateManagedService(ms *platformv1.ManagedService) []string {
     var errors []string
 
     // Timeout must be reasonable
-    timeout, _ := time.ParseDuration(ms.Spec.Resiliency.Timeout)
-    if timeout > 60*time.Second {
-        errors = append(errors, "timeout cannot exceed 60s")
+    if ms.Spec.Resiliency != nil && ms.Spec.Resiliency.Timeout != "" {
+        timeout, err := time.ParseDuration(ms.Spec.Resiliency.Timeout)
+        if err != nil {
+            errors = append(errors, fmt.Sprintf("invalid timeout: %v", err))
+        } else if timeout > 60*time.Second {
+            errors = append(errors, "timeout cannot exceed 60s")
+        }
     }
 
     // Must have at least one routing version
-    if len(ms.Spec.Routing.Versions) == 0 {
+    if ms.Spec.Routing == nil || len(ms.Spec.Routing.Versions) == 0 {
         errors = append(errors, "at least one routing version is required")
+        return errors
     }
 
     // Weights must sum to 100
@@ -305,12 +314,13 @@ kubectl get managedservice order-api -n orders -o yaml
 ```yaml
 status:
   state: Active
+  generatedResourceCount: 3
   generatedResources:
-  - apiVersion: networking.istio.io/v1beta1
+  - apiVersion: networking.istio.io/v1
     kind: VirtualService
     name: order-api-managed
     status: Synced
-  - apiVersion: networking.istio.io/v1beta1
+  - apiVersion: networking.istio.io/v1
     kind: DestinationRule
     name: order-api-managed
     status: Synced
