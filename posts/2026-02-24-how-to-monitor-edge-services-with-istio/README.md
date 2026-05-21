@@ -59,12 +59,18 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus
+            - name: alert-rules
+              mountPath: /etc/prometheus/rules
             - name: storage
               mountPath: /prometheus
       volumes:
         - name: config
           configMap:
             name: prometheus-config
+        - name: alert-rules
+          configMap:
+            name: prometheus-alerts
+            optional: true
         - name: storage
           emptyDir:
             sizeLimit: 1Gi
@@ -88,22 +94,20 @@ data:
       scrape_interval: 30s
       evaluation_interval: 30s
 
+    rule_files:
+      - /etc/prometheus/rules/*.yml
+
     scrape_configs:
       - job_name: 'istiod'
         kubernetes_sd_configs:
-          - role: pod
+          - role: endpoints
             namespaces:
               names:
                 - istio-system
         relabel_configs:
-          - source_labels: [__meta_kubernetes_pod_label_app]
+          - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
             action: keep
-            regex: istiod
-          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port]
-            action: replace
-            target_label: __address__
-            regex: (.+)
-            replacement: ${1}:15014
+            regex: istiod;http-monitoring
 
       - job_name: 'envoy-stats'
         metrics_path: /stats/prometheus
@@ -242,7 +246,7 @@ data:
             annotations:
               summary: "Error rate above 5% for 2 minutes"
 
-          - alert: SidecarNotReady
+          - alert: SlowProxyConvergence
             expr: |
               sum(pilot_proxy_convergence_time_bucket{le="30"})
               /
@@ -268,7 +272,7 @@ data:
 If you have enough resources, Kiali provides a visual service graph that shows traffic flow through the mesh:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 For edge environments where you cannot run Kiali locally, generate the service graph data from Prometheus queries and ship it centrally:
