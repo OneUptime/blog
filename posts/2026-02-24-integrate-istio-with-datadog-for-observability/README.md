@@ -58,23 +58,20 @@ datadog:
     enabled: true
     serviceEndpoints: true
 
+  clusterChecks:
+    enabled: true
+
   confd:
     istio.yaml: |-
       ad_identifiers:
         - proxyv2
+        - proxyv2-rhel8
       init_config:
       instances:
-        - istio_mesh_endpoint: http://%%host%%:15090/stats/prometheus
-          send_histograms_buckets: true
-          send_monotonic_counter: true
-          send_distribution_buckets: true
-
-agents:
-  containers:
-    agent:
-      env:
-      - name: DD_ISTIO_PROXYV2_ENABLED
-        value: "true"
+        - use_openmetrics: true
+          istio_mesh_endpoint: http://%%host%%:15020/stats/prometheus
+          send_histograms_buckets: false
+          tag_by_endpoint: false
 
 clusterAgent:
   enabled: true
@@ -84,7 +81,7 @@ clusterAgent:
       init_config:
       instances:
         - istiod_endpoint: http://istiod.istio-system.svc:15014/metrics
-          send_histograms_buckets: true
+          use_openmetrics: true
 ```
 
 ## Enabling Istio Sidecar Metrics Collection
@@ -97,40 +94,48 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         ad.datadoghq.com/istio-proxy.checks: |
           {
             "istio": {
               "instances": [
                 {
-                  "istio_mesh_endpoint": "http://%%host%%:15090/stats/prometheus",
-                  "send_histograms_buckets": true,
-                  "send_monotonic_counter": true
+                  "use_openmetrics": true,
+                  "istio_mesh_endpoint": "http://%%host%%:15020/stats/prometheus",
+                  "send_histograms_buckets": false,
+                  "tag_by_endpoint": false
                 }
               ]
             }
           }
+    spec:
+      containers:
+      - name: my-app
+        image: my-app:latest
 ```
 
-For a cluster-wide approach, configure the Datadog Agent to auto-detect Istio proxies:
+For a cluster-wide approach, use the Istio integration configuration so the Agent auto-detects Istio proxies without scheduling a separate generic OpenMetrics check against the same endpoint:
 
 ```yaml
 datadog:
-  prometheusScrape:
-    enabled: true
-    serviceEndpoints: true
-    additionalConfigs:
-    - configurations:
-      - timeout: 5
-        send_distribution_buckets: true
-      autodiscovery:
-        kubernetes_container_names:
-        - istio-proxy
-        kubernetes_annotations:
-          include:
-            sidecar.istio.io/status: "*"
+  confd:
+    istio.yaml: |-
+      ad_identifiers:
+        - proxyv2
+        - proxyv2-rhel8
+      init_config:
+      instances:
+        - use_openmetrics: true
+          istio_mesh_endpoint: http://%%host%%:15020/stats/prometheus
+          send_histograms_buckets: false
+          tag_by_endpoint: false
 ```
 
 ## Setting Up Distributed Tracing
@@ -189,19 +194,33 @@ spec:
     accessLogEncoding: JSON
 ```
 
-The Datadog Agent, running as a DaemonSet, automatically collects container logs. To add log processing rules specific to Istio:
+The Datadog Agent, running as a DaemonSet, collects container logs when log collection is enabled. To tag Envoy access logs from the injected sidecar, add an Autodiscovery log annotation:
 
 ```yaml
-datadog:
-  logs:
-    enabled: true
-    containerCollectAll: true
-
-  logsConfig:
-    processingRules:
-    - type: include_at_match
-      name: include_istio_proxy
-      pattern: "istio-proxy"
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+spec:
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+      annotations:
+        ad.datadoghq.com/istio-proxy.logs: |
+          [
+            {
+              "source": "envoy",
+              "service": "my-app"
+            }
+          ]
+    spec:
+      containers:
+      - name: my-app
+        image: my-app:latest
 ```
 
 ## Datadog Service Mesh Dashboard
@@ -209,8 +228,8 @@ datadog:
 After the integration is set up, Datadog provides an out-of-the-box Istio dashboard. Go to Dashboards in Datadog and search for "Istio". The default dashboard shows:
 
 - Mesh request volume and error rate
-- Request latency percentiles (p50, p95, p99)
-- Active connections
+- Request latency metrics
+- TCP connection open and close counters
 - Control plane health
 - Pilot push metrics
 
@@ -221,14 +240,14 @@ You can also create custom dashboards. Some useful queries:
 
 sum:istio.mesh.request.count{*} by {destination_service_name}.as_rate()
 
-# P99 latency by service
-p99:istio.mesh.request.duration.milliseconds{*} by {destination_service_name}
+# Average latency by service
+sum:istio.mesh.request.duration.milliseconds.sum{*} by {destination_service_name}.as_rate() / sum:istio.mesh.request.duration.milliseconds.count{*} by {destination_service_name}.as_rate()
 
 # Error rate
 sum:istio.mesh.request.count{response_code:5*} by {destination_service_name}.as_rate() / sum:istio.mesh.request.count{*} by {destination_service_name}.as_rate() * 100
 
-# Active connections
-avg:istio.mesh.connections_active{*} by {destination_service_name}
+# TCP connection open rate
+sum:istio.mesh.tcp.connections_opened.total{*} by {destination_service_name}.as_rate()
 ```
 
 ## Setting Up Monitors
@@ -254,7 +273,7 @@ Create Datadog monitors for Istio health:
 
 ## Service Map
 
-Datadog automatically builds a service map from Istio telemetry data. This shows the topology of your mesh with real-time metrics on each edge. You can see which services communicate, the request rate between them, and the error rate on each connection.
+Datadog builds a service map from APM trace data. With Istio tracing enabled, this shows the topology of your mesh with real-time request data on each edge. You can see which services communicate, the request rate between them, and the error rate on each connection.
 
 Access it through the APM > Service Map page in Datadog. Services running in the mesh show up with Istio-specific metadata.
 
@@ -272,12 +291,33 @@ metadata:
     tags.datadoghq.com/service: my-app
     tags.datadoghq.com/version: "2.0"
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
       labels:
+        app: my-app
         tags.datadoghq.com/env: production
         tags.datadoghq.com/service: my-app
         tags.datadoghq.com/version: "2.0"
+    spec:
+      containers:
+      - name: my-app
+        image: my-app:latest
+        env:
+        - name: DD_ENV
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['tags.datadoghq.com/env']
+        - name: DD_SERVICE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['tags.datadoghq.com/service']
+        - name: DD_VERSION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['tags.datadoghq.com/version']
 ```
 
 The Datadog and Istio integration gives you a comprehensive observability setup with minimal effort. The Datadog Agent handles the collection, and Datadog's platform provides the dashboards, alerting, and analysis tools. The biggest advantage over self-hosted solutions is that you do not need to manage Prometheus, Grafana, Jaeger, and a logging stack separately. Everything goes to one place.
