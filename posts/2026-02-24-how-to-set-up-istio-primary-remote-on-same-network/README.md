@@ -34,9 +34,16 @@ export CTX_CLUSTER2=cluster2
 
 Cluster1 will be the primary (runs Istiod). Cluster2 will be the remote (no local Istiod).
 
-## Step 1: Set Up Shared Root CA
+## Step 1: Set Up Trust
 
-As always with multi-cluster Istio, you need a shared root certificate:
+For a primary-remote deployment with a single primary Istiod CA, you can use Istio's default self-signed CA. If you want to use intermediate certificates for the clusters, generate them from a shared root:
+
+Create the Istio system namespace in both clusters:
+
+```bash
+kubectl create namespace istio-system --context="${CTX_CLUSTER1}" --dry-run=client -o yaml | kubectl apply --context="${CTX_CLUSTER1}" -f -
+kubectl create namespace istio-system --context="${CTX_CLUSTER2}" --dry-run=client -o yaml | kubectl apply --context="${CTX_CLUSTER2}" -f -
+```
 
 ```bash
 mkdir -p certs
@@ -50,14 +57,12 @@ make -f ../tools/certs/Makefile.selfsigned.mk cluster2-cacerts
 Install the certificates:
 
 ```bash
-kubectl create namespace istio-system --context="${CTX_CLUSTER1}"
 kubectl create secret generic cacerts -n istio-system --context="${CTX_CLUSTER1}" \
   --from-file=cluster1/ca-cert.pem \
   --from-file=cluster1/ca-key.pem \
   --from-file=cluster1/root-cert.pem \
   --from-file=cluster1/cert-chain.pem
 
-kubectl create namespace istio-system --context="${CTX_CLUSTER2}"
 kubectl create secret generic cacerts -n istio-system --context="${CTX_CLUSTER2}" \
   --from-file=cluster2/ca-cert.pem \
   --from-file=cluster2/ca-key.pem \
@@ -101,22 +106,17 @@ spec:
 istioctl install --context="${CTX_CLUSTER1}" -f cluster1-primary.yaml -y
 ```
 
-After installation, you need to expose the Istiod service so the remote cluster can reach it. On the same network, the ClusterIP is directly reachable, but you still need to create the appropriate configuration. The typical approach is to expose Istiod via a LoadBalancer or use the east-west gateway even on the same network for the control plane connection:
+After installation, you need to expose the control plane so the remote cluster can reach Istiod. In the Istio primary-remote same-network guide, service workloads communicate directly across clusters, while the remote cluster reaches Istiod through a dedicated east-west gateway.
+
+## Step 4: Expose Istiod to the Remote Cluster
+
+The remote cluster does not run Istiod. Instead, it points its sidecars at the primary cluster's Istiod. First, identify the external control plane cluster that should manage `cluster2`:
 
 ```bash
-# Get the Istiod service address
-kubectl get svc istiod -n istio-system --context="${CTX_CLUSTER1}"
+kubectl annotate namespace istio-system topology.istio.io/controlPlaneClusters=cluster1 --context="${CTX_CLUSTER2}"
 ```
 
-## Step 4: Create the Remote Cluster Configuration
-
-The remote cluster does not run Istiod. Instead, it points its sidecars at the primary cluster's Istiod. First, get the address of the primary cluster's Istiod:
-
-```bash
-export DISCOVERY_ADDRESS=$(kubectl get svc istiod -n istio-system --context="${CTX_CLUSTER1}" -o jsonpath='{.spec.clusterIP}')
-```
-
-Since you are on the same network, the ClusterIP might not be reachable. Alternatively, use the east-west gateway or an external LoadBalancer. A common approach is to install a small gateway in the primary cluster:
+Then install a gateway in the primary cluster for the remote cluster's control plane connection:
 
 ```bash
 samples/multicluster/gen-eastwest-gateway.sh \
@@ -133,11 +133,10 @@ kubectl apply -f samples/multicluster/expose-istiod.yaml -n istio-system --conte
 The expose-istiod.yaml looks like:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: istiod-gateway
-  namespace: istio-system
 spec:
   selector:
     istio: eastwestgateway
@@ -158,6 +157,35 @@ spec:
       mode: PASSTHROUGH
     hosts:
     - "*"
+---
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: istiod-vs
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istiod-gateway
+  tls:
+  - match:
+    - port: 15012
+      sniHosts:
+      - "*"
+    route:
+    - destination:
+        host: istiod.istio-system.svc.cluster.local
+        port:
+          number: 15012
+  - match:
+    - port: 15017
+      sniHosts:
+      - "*"
+    route:
+    - destination:
+        host: istiod.istio-system.svc.cluster.local
+        port:
+          number: 443
 ```
 
 Get the external IP of the east-west gateway:
@@ -242,6 +270,9 @@ You should see responses from both v1 and v2.
 To confirm the remote cluster is properly connected to the primary's Istiod:
 
 ```bash
+# Confirm that Istiod can see the remote cluster
+istioctl remote-clusters --context="${CTX_CLUSTER1}"
+
 # Check that sidecar injection works in the remote cluster
 kubectl get mutatingwebhookconfigurations --context="${CTX_CLUSTER2}" | grep istio
 
@@ -249,7 +280,7 @@ kubectl get mutatingwebhookconfigurations --context="${CTX_CLUSTER2}" | grep ist
 istioctl proxy-status --context="${CTX_CLUSTER1}"
 ```
 
-You should see proxies from both clusters listed in the output.
+The remote cluster should show as `synced`, and you should see proxies from both clusters listed in the output.
 
 ## Summary
 
