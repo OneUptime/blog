@@ -23,44 +23,44 @@ kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].name}'
 You should see both your application container and `istio-proxy`. If `istio-proxy` is missing, check that sidecar injection is enabled for the namespace:
 
 ```bash
-kubectl get namespace <namespace> --show-labels | grep istio-injection
+kubectl get namespace <namespace> -L istio-injection,istio.io/rev
 ```
 
 The namespace should have `istio-injection=enabled` or a revision label like `istio.io/rev=default`.
 
 ## Check the Init Container
 
-The init container sets up iptables rules. If it failed, traffic won't be redirected:
+In installations that do not use Istio CNI, the init container sets up the pod traffic redirection rules. If it failed, traffic won't be redirected:
 
 ```bash
 kubectl get pod <pod-name> -o jsonpath='{.status.initContainerStatuses[*].name}: {.status.initContainerStatuses[*].ready}'
 ```
 
-If the init container failed, check its logs:
+If the `istio-init` container is present and failed, check its logs:
 
 ```bash
 kubectl logs <pod-name> -c istio-init
 ```
 
 Common failures include:
-- Missing NET_ADMIN capability (blocked by security policy)
+- Missing NET_ADMIN or NET_RAW capability when Istio CNI is not enabled
 - Image pull errors
 - Insufficient permissions
 
 ## Inspect iptables Rules
 
-The next step is to verify that iptables rules are in place:
+The next step is to verify that traffic redirection rules are in place. With Istio's default `iptables` backend, you can inspect the pod's network namespace with a debug container:
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -L -v -n
+kubectl debug <pod-name> -it --image=nicolaka/netshoot --profile=netadmin -- iptables -t nat -L -v -n
 ```
 
-Look for the custom Istio chains: ISTIO_INBOUND, ISTIO_IN_REDIRECT, ISTIO_OUTPUT, and ISTIO_REDIRECT. If these chains are missing or empty, the init container didn't run successfully.
+Look for the custom Istio chains such as ISTIO_INBOUND, ISTIO_IN_REDIRECT, ISTIO_OUTPUT, and ISTIO_REDIRECT. If these chains are missing or empty in an init-container based installation, the init container didn't run successfully. If your mesh is configured to use Istio CNI or the `nftables` backend, inspect the CNI logs or `nft` rules instead.
 
 Check the packet counters on each rule. If ISTIO_REDIRECT has packets flowing through it, outbound interception is working. If the counters are all zero, something is off.
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- iptables -t nat -L -v -n --line-numbers
+kubectl debug <pod-name> -it --image=nicolaka/netshoot --profile=netadmin -- iptables -t nat -L -v -n --line-numbers
 ```
 
 ## Verify Envoy Is Listening
@@ -103,7 +103,7 @@ If the listener list is empty or missing entries, Envoy might not be receiving c
 istioctl proxy-status
 ```
 
-Look for your pod. The SYNCED column should show "SYNCED" for all categories (CDS, LDS, EDS, RDS). If any show "NOT SENT" or "STALE", there's a configuration delivery problem.
+Look for your pod. The CDS, LDS, EDS, and RDS columns should show "SYNCED". If any show "NOT SENT" or "STALE", there's a configuration delivery problem.
 
 ## Check Envoy Clusters and Routes
 
@@ -204,7 +204,7 @@ spec:
 
 The naming convention (`http-`, `grpc-`, `tcp-`) tells Istio what protocol to expect.
 
-**Application binding to localhost**: If your app binds to 127.0.0.1 instead of 0.0.0.0, Envoy can't forward traffic to it. The redirected connection doesn't originate from localhost, so the app rejects it.
+**Application binding to localhost**: If your app binds to 127.0.0.1 instead of 0.0.0.0, it is not reachable from other pods by default. Bind the application to 0.0.0.0, or configure a Sidecar ingress `defaultEndpoint` if the application must listen only on localhost.
 
 **mTLS mismatches**: If one side expects mTLS and the other doesn't, connections fail silently or with a "connection reset" error. Check the PeerAuthentication policy:
 
