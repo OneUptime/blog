@@ -19,7 +19,7 @@ The admin interface listens on localhost inside the proxy container. There are s
 The easiest method:
 
 ```bash
-istioctl dashboard envoy productpage-v1-abc123.default
+istioctl dashboard proxy productpage-v1-abc123.default
 ```
 
 This sets up port forwarding and opens your browser to the admin page.
@@ -118,7 +118,7 @@ cluster.outbound|9080||reviews.default.svc.cluster.local.upstream_rq_5xx: 12
 cluster.outbound|9080||reviews.default.svc.cluster.local.circuit_breakers.default.cx_open: 0
 
 # Request retry count
-cluster.outbound|9080||reviews.default.svc.cluster.local.retry.upstream_rq: 3
+cluster.outbound|9080||reviews.default.svc.cluster.local.upstream_rq_retry: 3
 
 # Outlier detection ejections
 cluster.outbound|9080||reviews.default.svc.cluster.local.outlier_detection.ejections_active: 1
@@ -180,7 +180,7 @@ View and change log levels at runtime:
 
 ```bash
 # See current log levels
-kubectl exec my-pod -c istio-proxy -- curl -s localhost:15000/logging
+kubectl exec my-pod -c istio-proxy -- curl -s -X POST localhost:15000/logging
 
 # Set all loggers to debug
 kubectl exec my-pod -c istio-proxy -- curl -s -X POST "localhost:15000/logging?level=debug"
@@ -189,7 +189,7 @@ kubectl exec my-pod -c istio-proxy -- curl -s -X POST "localhost:15000/logging?l
 kubectl exec my-pod -c istio-proxy -- curl -s -X POST "localhost:15000/logging?http=debug"
 
 # Set multiple loggers
-kubectl exec my-pod -c istio-proxy -- curl -s -X POST "localhost:15000/logging?http=debug&router=debug&connection=debug"
+kubectl exec my-pod -c istio-proxy -- curl -s -X POST "localhost:15000/logging?paths=http:debug,router:debug,connection:debug"
 
 # Reset to warning
 kubectl exec my-pod -c istio-proxy -- curl -s -X POST "localhost:15000/logging?level=warning"
@@ -203,7 +203,7 @@ Simple readiness check:
 kubectl exec my-pod -c istio-proxy -- curl -s -o /dev/null -w "%{http_code}" localhost:15000/ready
 ```
 
-Returns 200 if Envoy is ready, 503 if not. This is used by Kubernetes readiness probes.
+Returns 200 if Envoy is ready, 503 if not. This can be used as a readiness check. In Istio, the injected sidecar's Kubernetes readiness probe typically uses the Istio agent endpoint on port 15021 (`/healthz/ready`).
 
 ### /certs
 
@@ -267,13 +267,13 @@ This resets all counters to zero so you can see what happens during a specific t
 
 ### Draining for Debugging
 
-If you need to stop a proxy from accepting new connections (for debugging without affecting traffic):
+If you need to stop a proxy from accepting new connections while letting the configured drain period run:
 
 ```bash
-kubectl exec my-pod -c istio-proxy -- curl -s -X POST localhost:15000/drain_listeners
+kubectl exec my-pod -c istio-proxy -- curl -s -X POST "localhost:15000/drain_listeners?graceful&skip_exit"
 ```
 
-This gracefully stops the proxy from accepting new connections while keeping existing ones alive.
+This gracefully drains listeners and avoids exiting after the drain period.
 
 ## Security Note
 
