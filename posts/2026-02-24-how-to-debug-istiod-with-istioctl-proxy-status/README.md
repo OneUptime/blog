@@ -12,7 +12,7 @@ Istiod is the brain of your Istio mesh. It takes your high-level configuration (
 
 ## What proxy-status Actually Shows
 
-When you run `istioctl proxy-status` (or the shorthand `istioctl ps`), it queries Istiod's debug endpoints and shows you the synchronization state for every connected proxy:
+When you run `istioctl proxy-status` (or the shorthand `istioctl ps`), it retrieves the last sent and last acknowledged xDS state from Istiod and shows you the synchronization state for every connected proxy:
 
 ```bash
 istioctl proxy-status
@@ -27,7 +27,7 @@ productpage-v1-6b746f74dc-def34.default  Kubernetes  SYNCED  SYNCED  SYNCED  SYN
 reviews-v1-545db77b95-ghi56.default   Kubernetes     SYNCED  SYNCED  SYNCED  SYNCED  -       istiod-5d4f4f46d4-xyz89
 ```
 
-Each column corresponds to an xDS API type:
+The sync columns correspond to xDS API types:
 
 - **CDS** (Cluster Discovery Service) - Information about upstream clusters (services)
 - **LDS** (Listener Discovery Service) - Listener configuration (ports, protocols)
@@ -90,13 +90,13 @@ The output uses the standard diff format, with lines prefixed by `+` showing wha
 In a large mesh, the default output of proxy-status can be overwhelming. Filter by namespace:
 
 ```bash
-istioctl proxy-status | grep "\.production"
+istioctl proxy-status --namespace production
 ```
 
 If you're running canary upgrades with revisions:
 
 ```bash
-istioctl proxy-status --revision canary
+istioctl proxy-status --xds-label istio.io/rev=canary
 ```
 
 This only shows proxies connected to the Istiod instance with that revision label. It's essential when you're in the middle of a control plane upgrade and want to verify that proxies are migrating to the new version.
@@ -118,23 +118,22 @@ All affected proxies should show SYNCED. If some are STALE, the new config hasn'
 When proxy-status shows widespread issues, the problem is likely with Istiod itself rather than individual proxies. Check Istiod's health:
 
 ```bash
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/syncz
+istioctl x internal-debug syncz
 ```
 
-The `syncz` endpoint returns the sync status from Istiod's perspective. It tells you how many proxies are connected and their sync state.
+The `syncz` debug output returns the sync status from Istiod's perspective. It tells you how many proxies are connected and their sync state.
 
 Other useful debug endpoints:
 
 ```bash
-# List all connected proxies
+# List supported debug endpoints
+istioctl x internal-debug --list
 
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/connections
+# Inspect Istiod's service registry view
+istioctl x internal-debug registryz
 
-# Check push status
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/push_status
-
-# See config distribution
-kubectl exec -n istio-system deployment/istiod -- curl -s localhost:15014/debug/config_distribution
+# Dump generated config for a proxy
+istioctl x internal-debug config_dump httpbin-74fb669cc6-abc12.default
 ```
 
 ## Monitoring Push Metrics
@@ -145,11 +144,12 @@ Istiod exposes Prometheus metrics about config pushes. These are great for setti
 pilot_xds_pushes{type="cds"}       - Total CDS pushes
 pilot_xds_pushes{type="lds"}       - Total LDS pushes
 pilot_proxy_convergence_time       - Time for a config change to reach all proxies
-pilot_xds_push_errors              - Number of failed pushes
+pilot_total_xds_internal_errors    - Internal XDS errors in Istiod
+pilot_total_xds_rejects            - XDS responses rejected by proxies
 pilot_xds_config_size_bytes        - Size of the config being pushed
 ```
 
-If `pilot_xds_push_errors` is increasing, Istiod is failing to push configs to some proxies. If `pilot_proxy_convergence_time` is climbing, the mesh is getting slower at distributing changes.
+If `pilot_total_xds_internal_errors` or `pilot_total_xds_rejects` is increasing, Istiod is failing to generate valid config or proxies are rejecting what they receive. If `pilot_proxy_convergence_time` is climbing, the mesh is getting slower at distributing changes.
 
 Set up a Grafana dashboard or Prometheus alert for these metrics. They'll catch problems before users notice.
 
