@@ -14,10 +14,10 @@ Many Istio installations started with Jaeger or Zipkin for distributed tracing b
 
 Before getting into the how, here is why teams are making this move:
 
-- **Protocol standardization** - OTLP is becoming the standard. Jaeger and Zipkin both accept OTLP now, so the protocol layer is the same regardless of backend.
+- **Protocol standardization** - OTLP is becoming the standard. Jaeger and many modern tracing backends accept OTLP directly, and the OpenTelemetry Collector can translate OTLP to Zipkin when you need to keep an existing Zipkin-compatible backend.
 - **Unified pipeline** - instead of separate pipelines for metrics (Prometheus) and traces (Jaeger/Zipkin), you get one collector handling everything.
 - **Better sampling** - the OpenTelemetry Collector supports tail-based sampling, which keeps error and slow traces while sampling normal ones. Jaeger/Zipkin clients only support head-based sampling.
-- **Vendor flexibility** - OTLP export works with any backend. Switching from Jaeger to Tempo or a commercial service is a configuration change, not an infrastructure project.
+- **Vendor flexibility** - OTLP export works with any OTLP-compatible backend. Switching from Jaeger to Tempo or a commercial service is a configuration change, not an infrastructure project.
 
 ## Current State: Jaeger Integration
 
@@ -92,11 +92,9 @@ data:
         limit_mib: 512
 
     exporters:
-      # Keep sending to existing Jaeger
-      otlp/jaeger:
-        endpoint: "jaeger-collector.observability:4317"
-        tls:
-          insecure: true
+      # Keep sending to existing Jaeger through its Zipkin-compatible endpoint
+      zipkin/existing:
+        endpoint: "http://jaeger-collector.observability:9411/api/v2/spans"
 
       # New backend (e.g., Tempo)
       otlp/tempo:
@@ -112,7 +110,7 @@ data:
         traces:
           receivers: [otlp, zipkin]
           processors: [memory_limiter, batch]
-          exporters: [otlp/jaeger, otlp/tempo, debug]
+          exporters: [zipkin/existing, otlp/tempo, debug]
 ```
 
 Deploy the collector:
@@ -121,7 +119,7 @@ Deploy the collector:
 kubectl apply -f otel-collector.yaml
 ```
 
-The collector accepts both OTLP and Zipkin protocols and fans out to both backends. This means you can switch Istio to use OTLP while still keeping Jaeger populated.
+The collector accepts both OTLP and Zipkin protocols and fans out to both backends. This means you can switch Istio to use OTLP while still keeping Jaeger or Zipkin populated through its Zipkin-compatible ingestion endpoint.
 
 ### Phase 2: Update Istio to Use OpenTelemetry
 
@@ -136,6 +134,9 @@ spec:
     defaultConfig:
       tracing:
         sampling: 1.0
+        context:
+        - B3
+        - W3C_TRACE_CONTEXT
     extensionProviders:
     - name: otel-tracing
       opentelemetry:
@@ -175,9 +176,9 @@ kubectl port-forward -n observability svc/tempo 3200:3200
 # Query for recent traces
 ```
 
-### Phase 4: Remove Old Jaeger Exporter
+### Phase 4: Remove Old Zipkin-Compatible Exporter
 
-Once you are confident the new backend is working, remove the Jaeger exporter from the collector:
+Once you are confident the new backend is working, remove the old Zipkin-compatible exporter from the collector:
 
 ```yaml
 service:
@@ -238,7 +239,7 @@ tracer = trace.get_tracer(__name__)
 
 ```go
 // Go with Jaeger client
-import "github.com/uber/jaeger-client-go"
+import jaegercfg "github.com/uber/jaeger-client-go/config"
 
 cfg := jaegercfg.Configuration{
     ServiceName: "my-service",
@@ -255,6 +256,8 @@ tracer, closer, _ := cfg.NewTracer()
 ```go
 // Go with OpenTelemetry
 import (
+    "context"
+
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
     "go.opentelemetry.io/otel/sdk/trace"
@@ -262,6 +265,7 @@ import (
     semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 )
 
+ctx := context.Background()
 exporter, _ := otlptracegrpc.New(ctx,
     otlptracegrpc.WithEndpoint("otel-collector:4317"),
     otlptracegrpc.WithInsecure(),
@@ -280,7 +284,7 @@ otel.SetTracerProvider(tp)
 
 During migration, you might have a mix of services using different tracing libraries. Make sure header propagation is compatible:
 
-Istio supports both B3 and W3C Trace Context headers. Configure the mesh to propagate both:
+Istio supports both B3 and W3C Trace Context headers. Configure the mesh to propagate both by setting `defaultConfig.tracing.context` to include `B3` and `W3C_TRACE_CONTEXT`, as shown in the OpenTelemetry IstioOperator example above.
 
 The OpenTelemetry SDK can be configured to extract and inject both formats:
 
@@ -288,7 +292,7 @@ The OpenTelemetry SDK can be configured to extract and inject both formats:
 from opentelemetry.propagators.b3 import B3MultiFormat
 from opentelemetry.propagate import set_global_textmap
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation import TraceContextTextMapPropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
 set_global_textmap(CompositePropagator([
     TraceContextTextMapPropagator(),
@@ -328,7 +332,7 @@ The dual-write approach means Jaeger still has data even after switching to OTLP
 - **Week 1**: Deploy OTel Collector with dual-write, verify it works
 - **Week 2**: Switch Istio to OTLP, keep dual-write running
 - **Week 3**: Migrate application-level tracing libraries
-- **Week 4**: Remove old Jaeger exporter, run solely on new pipeline
+- **Week 4**: Remove old Zipkin-compatible exporter, run solely on new pipeline
 - **Week 5**: Decommission old Jaeger/Zipkin infrastructure
 
 The migration from Jaeger or Zipkin to OpenTelemetry is mostly a configuration exercise. The dual-write approach through the OTel Collector makes it safe to do in production without any gap in visibility. Take your time, verify each step, and you will end up with a more flexible and maintainable observability pipeline.
