@@ -34,7 +34,7 @@ In a cluster with 500 services, each sidecar might use 100-200 MB just to hold t
 The single most effective optimization is using the Sidecar resource to limit what each sidecar knows about. By default, every sidecar gets the configuration for every service in the mesh. Most services only talk to a handful of other services.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: orders-api-sidecar
@@ -53,7 +53,7 @@ spec:
 You can also set a namespace-wide default:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -97,7 +97,7 @@ spec:
       concurrency: 1
 ```
 
-Going from the default 2 threads to 1 saves roughly 20-30% memory per sidecar.
+Istio automatically chooses the worker count when concurrency is unset, based on the proxy's CPU limits. Setting concurrency to 1 for low-traffic workloads can reduce per-sidecar memory, but measure latency and throughput before using it broadly.
 
 ## Technique 3: Disable Unused Features
 
@@ -121,7 +121,7 @@ If you are not using distributed tracing, disabling it saves the memory needed t
 
 ## Technique 4: Optimize Istiod Memory
 
-For the control plane, several environment variables help:
+For the control plane, several environment variables are worth reviewing:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -131,25 +131,21 @@ spec:
     pilot:
       k8s:
         env:
-        - name: PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING
-          value: "false"
         - name: PILOT_FILTER_GATEWAY_CLUSTER_CONFIG
           value: "true"
         - name: PILOT_DEBOUNCE_AFTER
           value: "100ms"
         - name: PILOT_DEBOUNCE_MAX
-          value: "1s"
+          value: "10s"
 ```
 
-`PILOT_ENABLE_CONFIG_DISTRIBUTION_TRACKING` tracks which sidecars have received which configuration. In large clusters, this can use significant memory. Turn it off if you do not need it.
-
-`PILOT_FILTER_GATEWAY_CLUSTER_CONFIG` prevents gateway configurations from being sent to sidecars that do not need them.
+`PILOT_FILTER_GATEWAY_CLUSTER_CONFIG` reduces the clusters sent to gateway proxies to the clusters referenced by VirtualServices attached to those gateways.
 
 The debounce settings control how istiod batches configuration updates. Larger debounce windows mean fewer but larger pushes, which can reduce CPU spikes at the cost of slightly slower configuration propagation.
 
 ## Technique 5: Use DNS Proxy Wisely
 
-Istio's DNS proxy resolves service names locally in the sidecar. While it improves performance, it caches DNS results in memory:
+Istio's DNS proxy resolves service names locally in the sidecar. In sidecar mode, DNS capture is not enabled by default. If you enabled it globally and do not need it for every workload, you can disable it globally and enable it selectively:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -161,18 +157,18 @@ spec:
         ISTIO_META_DNS_CAPTURE: "false"
 ```
 
-Disabling DNS capture saves a few megabytes per sidecar. Enable it selectively on workloads that benefit from it.
+Avoiding DNS capture on workloads that do not need it saves the memory used by the DNS proxy cache. Enable it selectively on workloads that benefit from it.
 
 ## Technique 6: Prune Stale Configuration
 
 Over time, orphaned VirtualServices, DestinationRules, and ServiceEntries accumulate. Each one adds to the configuration that istiod computes and pushes to sidecars:
 
 ```bash
-# Find VirtualServices that reference non-existent services
+# List VirtualService hosts so you can compare them with active Services and ServiceEntries
 
-kubectl get virtualservices -A -o json | jq -r '.items[] | select(.spec.hosts[] as $h | ($h | test("^[a-z]")) and ([$h] | inside(["existing-services"]) | not)) | "\(.metadata.namespace)/\(.metadata.name)"'
+kubectl get virtualservices -A -o json | jq -r '.items[] | .metadata.namespace as $ns | .metadata.name as $name | .spec.hosts[]? | "\($ns)/\($name) -> \(.)"'
 
-# Find DestinationRules without matching services
+# List DestinationRule hosts for the same review
 kubectl get destinationrules -A -o json | jq -r '.items[] | .metadata.namespace + "/" + .metadata.name + " -> " + .spec.host'
 ```
 
@@ -194,7 +190,7 @@ spec:
 Setting `accessLogFile` to empty disables access logging entirely. If you need access logs, consider enabling them only for specific workloads:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: enable-access-log
@@ -249,7 +245,7 @@ kubectl exec -n api-services deploy/orders-api -c istio-proxy -- \
 If you are looking for the biggest bang for your buck, apply these optimizations in order:
 
 1. **Sidecar scope restriction** - By far the biggest impact (40-80% memory reduction per sidecar)
-2. **Reduce concurrency to 1** - 20-30% reduction
+2. **Reduce concurrency to 1** - Useful for low-traffic workloads, but validate latency and throughput
 3. **Disable unused features** (tracing, access logs) - 10-20% reduction
 4. **Prune stale configuration** - Variable, depends on how much cruft you have
 5. **Istiod tuning** - Smaller impact but important for control plane stability
