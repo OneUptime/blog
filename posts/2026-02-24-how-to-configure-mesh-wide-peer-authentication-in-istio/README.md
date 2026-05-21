@@ -179,9 +179,11 @@ spec:
     matchLabels:
       app: my-service
   portLevelMtls:
-    15090:
+    9090:
       mode: PERMISSIVE
 ```
+
+The port in `portLevelMtls` is the workload port that exposes the metrics, not the Kubernetes Service port.
 
 ## Multiple Mesh-Wide Policies
 
