@@ -14,7 +14,7 @@ ARM processors have taken the cloud computing world by storm. With AWS Graviton,
 
 Before getting started, make sure you have:
 
-- A Kubernetes cluster running on ARM64 nodes (v1.25 or later recommended)
+- A Kubernetes cluster running on ARM64 nodes with a Kubernetes version supported by the Istio release you install (Istio 1.30 supports Kubernetes 1.32 to 1.36)
 - kubectl configured to talk to your cluster
 - Helm 3.x installed
 - At least 4GB of RAM available per node for Istio components
@@ -22,19 +22,19 @@ Before getting started, make sure you have:
 You can verify your node architecture with:
 
 ```bash
-kubectl get nodes -o wide
+kubectl get nodes -L kubernetes.io/arch
 ```
 
-Look at the ARCH column. You should see `arm64` for your ARM nodes.
+Look at the `kubernetes.io/arch` column. You should see `arm64` for your ARM nodes.
 
 ## Checking Istio ARM Support
 
-Istio has supported multi-architecture container images since version 1.15. The official images on Docker Hub and gcr.io are published as multi-arch manifests, which means the container runtime will automatically pull the correct image for your node architecture.
+Istio has supported multi-architecture container images since version 1.15. The official images are published as multi-arch manifests, which means the container runtime will automatically pull the correct image for your node architecture. For current releases, `registry.istio.io/release` is the preferred Istio image registry.
 
 You can verify this yourself:
 
 ```bash
-docker manifest inspect istio/pilot:1.20.0
+docker manifest inspect registry.istio.io/release/pilot:1.30.0
 ```
 
 You should see entries for both `linux/amd64` and `linux/arm64` in the manifest list.
@@ -44,8 +44,8 @@ You should see entries for both `linux/amd64` and `linux/arm64` in the manifest 
 The simplest path to getting Istio running on ARM is using istioctl. First, download the appropriate binary for your platform:
 
 ```bash
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-cd istio-1.20.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -79,7 +79,7 @@ helm repo update
 Install the base chart first:
 
 ```bash
-helm install istio-base istio/base -n istio-system --create-namespace
+helm install istio-base istio/base -n istio-system --set defaultRevision=default --create-namespace
 ```
 
 Then install istiod:
@@ -227,7 +227,7 @@ The `istio-init` container configures iptables rules. On some ARM distributions,
 kubectl logs <pod-name> -c istio-init
 ```
 
-You can switch to Istio CNI mode to avoid iptables entirely:
+You can switch to Istio CNI mode to avoid privileged `istio-init` containers in each workload pod. Istio CNI still configures the pod network traffic redirection for the sidecar:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -289,4 +289,4 @@ Both commands should report no errors. If you see warnings about resource limits
 
 ## Summary
 
-Deploying Istio on ARM-based Kubernetes clusters is a well-supported path today. The multi-arch images handle the heavy lifting, and you do not need any special configuration for basic deployments. The key things to watch out for are making sure your application images also support ARM, tuning resource allocations for ARM CPU characteristics, and considering Istio CNI mode if you run into iptables compatibility issues on certain ARM Linux distributions. With Graviton and other ARM processors offering significant cost savings, running Istio on ARM is a smart move for production workloads.
+Deploying Istio on ARM-based Kubernetes clusters is a well-supported path today. The multi-arch images handle the heavy lifting, and you do not need any special configuration for basic deployments. The key things to watch out for are making sure your application images also support ARM, tuning resource allocations for ARM CPU characteristics, and considering Istio CNI mode if you want to avoid privileged init containers in workload pods. With Graviton and other ARM processors offering significant cost savings, running Istio on ARM is a smart move for production workloads.
