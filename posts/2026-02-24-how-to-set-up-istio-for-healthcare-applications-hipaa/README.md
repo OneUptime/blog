@@ -19,15 +19,15 @@ HIPAA's Security Rule has several technical requirements that map directly to Is
 - **Encryption in transit** (164.312(e)(1)) - Istio's mTLS
 - **Access controls** (164.312(a)(1)) - Istio's AuthorizationPolicy
 - **Audit controls** (164.312(b)) - Istio's access logging
-- **Integrity controls** (164.312(c)(1)) - mTLS prevents tampering
+- **Integrity controls** (164.312(c)(1)) - mTLS helps protect in-transit integrity
 - **Person or entity authentication** (164.312(d)) - JWT validation and service identity
 
 ## Encryption in Transit
 
-HIPAA requires that all PHI be encrypted during transmission. Enable strict mTLS across the entire mesh:
+HIPAA's transmission security standard requires covered entities to guard against unauthorized access to ePHI in transit; encryption is the typical safeguard when it is reasonable and appropriate. Enable strict mTLS across the entire mesh:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -42,7 +42,7 @@ This ensures that every service-to-service call is encrypted with TLS 1.2 or hig
 For external-facing endpoints, configure TLS at the gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: healthcare-gateway
@@ -73,7 +73,7 @@ HIPAA requires that only authorized users and systems can access PHI. Implement 
 ```yaml
 # Deny all by default in the healthcare namespace
 
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -86,7 +86,7 @@ Then create specific allow policies for each service interaction:
 
 ```yaml
 # Only the patient-portal can access the patient-records service
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: patient-records-access
@@ -128,7 +128,7 @@ The patient portal can read patient records. The clinical dashboard can both rea
 Healthcare applications need role-based access control. Validate JWTs and enforce roles at the API gateway:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -141,9 +141,12 @@ spec:
   - issuer: "https://auth.healthcare.example.com"
     jwksUri: "https://auth.healthcare.example.com/.well-known/jwks.json"
     forwardOriginalToken: true
+    outputClaimToHeaders:
+    - header: x-jwt-sub
+      claim: sub
 ---
 # Only allow doctors and nurses to access clinical endpoints
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: clinical-access
@@ -185,10 +188,10 @@ spec:
 
 ## Comprehensive Audit Logging
 
-HIPAA requires audit logs for all access to PHI. Configure Istio to log every request with detailed context:
+HIPAA requires audit controls for systems that contain or use ePHI. Configure Istio to log every request with detailed context:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: healthcare-logging
@@ -210,28 +213,26 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_ACCESS_LOG_FORMAT: |
-          {
-            "timestamp": "%START_TIME%",
-            "source_identity": "%DOWNSTREAM_PEER_URI_SAN%",
-            "destination_identity": "%UPSTREAM_PEER_URI_SAN%",
-            "method": "%REQ(:METHOD)%",
-            "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
-            "response_code": "%RESPONSE_CODE%",
-            "request_id": "%REQ(X-REQUEST-ID)%",
-            "user_id": "%REQ(X-USER-ID)%",
-            "jwt_subject": "%DYNAMIC_METADATA(istio.auth:sub)%",
-            "bytes_received": "%BYTES_RECEIVED%",
-            "bytes_sent": "%BYTES_SENT%",
-            "duration_ms": "%DURATION%",
-            "tls_version": "%DOWNSTREAM_TLS_VERSION%",
-            "source_ip": "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
-          }
+    accessLogFormat: |
+      {
+        "timestamp": "%START_TIME%",
+        "source_identity": "%DOWNSTREAM_PEER_URI_SAN%",
+        "destination_identity": "%UPSTREAM_PEER_URI_SAN%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "response_code": "%RESPONSE_CODE%",
+        "request_id": "%REQ(X-REQUEST-ID)%",
+        "user_id": "%REQ(X-USER-ID)%",
+        "jwt_subject": "%REQ(X-JWT-SUB)%",
+        "bytes_received": "%BYTES_RECEIVED%",
+        "bytes_sent": "%BYTES_SENT%",
+        "duration_ms": "%DURATION%",
+        "tls_version": "%DOWNSTREAM_TLS_VERSION%",
+        "source_ip": "%DOWNSTREAM_REMOTE_ADDRESS_WITHOUT_PORT%"
+      }
 ```
 
-Ship these logs to a tamper-proof log storage system. HIPAA requires that audit logs be retained and protected from modification.
+Ship these logs to a tamper-proof log storage system. Define retention and review procedures as part of your HIPAA documentation and risk management program.
 
 ## PHI-Handling Service Isolation
 
@@ -251,7 +252,7 @@ metadata:
 Restrict which services can access PHI services:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: phi-access
@@ -272,7 +273,7 @@ spec:
 Limit what the PHI services can see with Sidecar resources:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: phi-sidecar
@@ -282,16 +283,18 @@ spec:
   - hosts:
     - "./*"
     - "istio-system/*"
+  outboundTrafficPolicy:
+    mode: REGISTRY_ONLY
 ```
 
-PHI services can only communicate within their own namespace. They can't reach out to arbitrary services.
+PHI services can only communicate with registered services in their own namespace and the Istio system namespace. They can't reach out to arbitrary services.
 
 ## Protecting External API Connections
 
 Healthcare systems often connect to external services (pharmacy networks, insurance APIs, lab systems). Control and audit these connections:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: pharmacy-network
@@ -305,27 +308,16 @@ spec:
     protocol: HTTPS
   location: MESH_EXTERNAL
   resolution: DNS
----
-apiVersion: networking.istio.io/v1beta1
-kind: DestinationRule
-metadata:
-  name: pharmacy-network-tls
-  namespace: healthcare
-spec:
-  host: api.pharmacynetwork.example.com
-  trafficPolicy:
-    tls:
-      mode: SIMPLE
 ```
 
-By default, Istio blocks outbound traffic to services not registered in the mesh. This prevents data exfiltration - PHI can't be sent to unauthorized endpoints.
+When the mesh or namespace uses `REGISTRY_ONLY` outbound traffic policy, Istio blocks outbound traffic to services not registered in the mesh. This helps prevent data exfiltration - PHI can't be sent to unauthorized endpoints through the sidecar unless the endpoint is explicitly registered.
 
 ## Availability Safeguards
 
 HIPAA also requires that systems be available when needed. Protect against service failures:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: patient-records-dr
@@ -342,7 +334,7 @@ spec:
       interval: 10s
       baseEjectionTime: 30s
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: patient-records-vs
@@ -382,6 +374,7 @@ groups:
   - alert: UnencryptedTraffic
     expr: |
       sum(rate(istio_tcp_connections_opened_total{
+        reporter="destination",
         connection_security_policy!="mutual_tls",
         destination_workload_namespace=~"healthcare|phi-services"
       }[5m])) > 0
