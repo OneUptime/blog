@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Zipkin, Tracing, Elasticsearch, Storage Backend
 
-Description: Set up production storage backends for Zipkin tracing in Istio including Elasticsearch, MySQL, and Cassandra configurations.
+Description: Set up persistent storage backends for Zipkin tracing in Istio including Elasticsearch, MySQL, and Cassandra configurations.
 
 ---
 
-Zipkin is one of the tracing backends that Istio supports out of the box, and it's often chosen for its simplicity and lighter resource footprint compared to Jaeger. But like Jaeger, the default Zipkin installation uses in-memory storage that won't survive a restart. For production, you need to back it with a real storage engine. Zipkin supports Elasticsearch, Cassandra, and MySQL as storage backends.
+Zipkin is one of the tracing backends that Istio supports out of the box, and it's often chosen for its simplicity and lighter resource footprint compared to Jaeger. But like Jaeger, the default Zipkin installation uses in-memory storage that won't survive a restart. For production, you need to back it with a real storage engine. Zipkin supports Elasticsearch and Cassandra as production-oriented storage backends, and includes a legacy MySQL storage component for smaller or transitional deployments.
 
 ## Default Zipkin Installation
 
@@ -56,7 +56,7 @@ This runs Zipkin with in-memory storage. It's fine for testing but trace data is
 
 ## Configuring Istio to Use Zipkin
 
-Tell Istio to send traces to your Zipkin deployment:
+Tell Istio to send traces to your Zipkin deployment by defining a Zipkin extension provider:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -65,16 +65,39 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
+      tracing: {}
+    extensionProviders:
+      - name: zipkin
         zipkin:
-          address: zipkin.istio-system:9411
-        sampling: 1.0
+          service: zipkin.istio-system.svc.cluster.local
+          port: 9411
 ```
 
 Apply with:
 
 ```bash
 istioctl install -f istio-operator.yaml
+```
+
+Then enable the provider with the Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: zipkin
+      randomSamplingPercentage: 1.00
+```
+
+Apply with:
+
+```bash
+kubectl apply -f telemetry.yaml
 ```
 
 ## Elasticsearch Backend
@@ -189,7 +212,7 @@ The environment variables configure the connection and index settings:
 
 ## MySQL Backend
 
-For smaller deployments, MySQL can work as a storage backend:
+For smaller low-traffic deployments, MySQL can work as a legacy storage backend:
 
 ```yaml
 apiVersion: apps/v1
@@ -273,7 +296,7 @@ spec:
               value: zipkin
 ```
 
-MySQL works fine for low to moderate traffic but doesn't scale as well as Elasticsearch for high-cardinality trace data.
+MySQL can work for low traffic, but Zipkin's MySQL storage component is legacy and is not recommended for production usage.
 
 ## Cassandra Backend
 
@@ -436,4 +459,4 @@ Zipkin is stateless (all state is in the storage backend), so you can scale hori
 
 ## Summary
 
-Configuring Zipkin's storage backend for Istio means choosing between Elasticsearch (recommended for most cases), Cassandra (for very high throughput), or MySQL (for simplicity at small scale). Deploy the storage backend with persistent volumes, configure Zipkin through environment variables, and set up automated index cleanup to manage storage growth. Verify the setup by generating traces and confirming they persist across pod restarts.
+Configuring Zipkin's storage backend for Istio means choosing between Elasticsearch (recommended for most cases), Cassandra (for very high throughput), or MySQL (for legacy small-scale use). Deploy the storage backend with persistent volumes, configure Zipkin through environment variables, and set up automated index cleanup to manage storage growth. Verify the setup by generating traces and confirming they persist across pod restarts.
