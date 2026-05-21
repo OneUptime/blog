@@ -31,16 +31,17 @@ Or with Helm:
 ```bash
 helm install istiod istio/istiod \
   --namespace istio-system \
-  --set pilot.replicaCount=3
+  --set autoscaleEnabled=false \
+  --set replicaCount=3
 ```
 
 With multiple replicas, proxies connect to different istiod instances (load balanced by the Kubernetes service). If one replica goes down, proxies reconnect to the remaining replicas.
 
-How many replicas do you need? For most production clusters, 3 is the sweet spot. 2 gives you basic redundancy, but during a rolling update you temporarily drop to 1. With 3 replicas, you always have at least 2 available.
+How many replicas do you need? For most production clusters, 3 is the sweet spot. 2 gives you basic redundancy, but a single disruption leaves no spare capacity. With 3 replicas and a PDB that requires 2 available pods, planned disruptions can keep at least 2 available.
 
 ## Pod Disruption Budget
 
-A PodDisruptionBudget prevents Kubernetes from evicting too many istiod pods at once during node maintenance or cluster autoscaling:
+A PodDisruptionBudget prevents Kubernetes from voluntarily evicting too many istiod pods at once during node maintenance or cluster autoscaling:
 
 ```yaml
 apiVersion: policy/v1
@@ -151,7 +152,7 @@ resources:
     memory: 8Gi
 ```
 
-Set requests equal to limits for critical workloads. This gives istiod a Guaranteed QoS class, meaning it will not be evicted under memory pressure:
+Set requests equal to limits for critical workloads when you want a Guaranteed QoS class. This makes istiod the least likely QoS class to be evicted under node pressure, but it does not make the pod impossible to evict:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -218,7 +219,7 @@ spec:
 
 ## Health Checks
 
-Istiod exposes health endpoints that Kubernetes uses for liveness and readiness probes. The default configuration is usually fine, but you can tune the timing:
+Istiod exposes a readiness endpoint that Kubernetes uses to decide when the pod should receive traffic. The default configuration is usually fine, but you can tune the timing:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -228,13 +229,6 @@ spec:
     pilot:
       k8s:
         readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8080
-          initialDelaySeconds: 1
-          periodSeconds: 3
-          failureThreshold: 3
-        livenessProbe:
           httpGet:
             path: /ready
             port: 8080
@@ -254,18 +248,19 @@ spec:
   components:
     pilot:
       k8s:
-        deployment:
-          spec:
-            template:
-              spec:
-                terminationGracePeriodSeconds: 60
+        overlays:
+        - kind: Deployment
+          name: istiod
+          patches:
+          - path: spec.template.spec.terminationGracePeriodSeconds
+            value: 60
 ```
 
 The default is 30 seconds. Increase it if you have many proxies connected to a single replica, as they need time to reconnect to other replicas.
 
 ## Multi-Cluster HA
 
-For true high availability, run istiod in multiple clusters with a shared root CA. This way, if one cluster's control plane is completely down, the other cluster can serve as a backup.
+For higher fault isolation, run istiod in multiple clusters with a shared root CA. With a multi-primary setup and remote secrets, each control plane can discover endpoints in both clusters, so traffic can fail over to workloads in another cluster if one cluster has a problem.
 
 With Istio multi-primary setup, each cluster runs its own istiod:
 
