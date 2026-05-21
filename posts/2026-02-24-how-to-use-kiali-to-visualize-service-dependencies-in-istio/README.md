@@ -56,7 +56,7 @@ Same as the app graph, but it splits out different versions. You'll see `reviews
 Graph Type: Workload
 ```
 
-Shows individual workloads (Deployments, StatefulSets, etc.) as separate nodes. This is the most granular view and is useful when you need to see exactly which pods are communicating.
+Shows individual workloads (Deployments, StatefulSets, etc.) as separate nodes. This is the most granular view and is useful when you need to see exactly which workload controllers are communicating.
 
 ### Service Graph
 
@@ -74,7 +74,7 @@ You can hover over any edge to see detailed stats:
 
 - Request rate (requests per second)
 - Error rate (percentage of 5xx responses)
-- Response time (p50, p95, p99)
+- Response time (average, p50, p95, or p99, depending on the selected label)
 
 Click on an edge to get even more detail, including a breakdown by response code.
 
@@ -86,14 +86,14 @@ One of the most valuable uses of Kiali is discovering dependencies you didn't kn
 - Debug endpoints that are still being called in production
 - Services depending on external APIs that aren't documented anywhere
 
-To see external dependencies (services outside the mesh), make sure "Unknown" nodes are enabled in the display settings. These appear as a special node type on the graph.
+To see external dependencies (services outside the mesh), look for "Unknown", PassthroughCluster, BlackHoleCluster, or ServiceEntry nodes in the graph. Which one appears depends on whether the traffic is represented in Istio telemetry and whether you have modeled the external service with a ServiceEntry.
 
 ## Using Edge Labels for Deeper Analysis
 
 Configure edge labels to show additional information. Click the "Display" dropdown and select what you want on the edges:
 
-- **Response Time** - Shows average response time on each edge
-- **Throughput** - Shows requests per second
+- **Response Time** - Shows average, median, 95th percentile, or 99th percentile response time on each edge
+- **Throughput** - Shows HTTP request or response bytes per second
 - **Traffic Distribution** - Shows percentage of traffic on each edge (useful during canary releases)
 
 For dependency analysis, response time labels are particularly helpful because they quickly reveal which downstream dependencies are slow.
@@ -122,11 +122,11 @@ Select only the namespaces you care about from the namespace dropdown. You can s
 
 ### Traffic Filtering
 
-Use the traffic dropdown to filter by protocol:
+Use the traffic dropdown to choose which protocol traffic and rate metric to display:
 
-- HTTP traffic only
-- gRPC traffic only
-- TCP traffic only
+- HTTP requests
+- gRPC requests or messages
+- TCP sent, received, or total bytes
 
 This is helpful when you're troubleshooting a specific protocol.
 
@@ -194,7 +194,7 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-With a ServiceEntry in place, the external dependency appears with its real name in Kiali instead of "Unknown."
+With a ServiceEntry in place, Kiali can represent the external dependency as a ServiceEntry node with its configured host instead of showing only unknown or passthrough traffic.
 
 ## Wrapping Up
 
