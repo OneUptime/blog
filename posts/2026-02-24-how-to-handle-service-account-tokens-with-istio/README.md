@@ -45,30 +45,28 @@ The flow goes like this:
 5. If valid, istiod issues an X.509 certificate with a SPIFFE identity
 6. The proxy uses this certificate for mTLS with other proxies
 
-The token audience for Istio is typically `istio-ca`. You can check this in the mesh configuration:
+The token audience for Istio is typically `istio-ca`. You can check this on an injected pod:
 
 ```bash
-kubectl get configmap istio -n istio-system -o yaml | grep -A2 "ISTIO_META"
+kubectl get pod -n your-namespace your-pod -o json | \
+  jq '.spec.volumes[] | select(.name == "istio-token").projected.sources[]'
 ```
 
 ## Configuring Token Lifetime
 
-The default token lifetime for Istio's projected tokens is 43200 seconds (12 hours). You can adjust this in the Istio installation:
+The default token lifetime for Istio's projected tokens is 43200 seconds (12 hours). Istio's default sidecar injection template sets this on the projected `istio-token` volume. If you need a different lifetime for Istio's own token, customize the sidecar injection template carefully and keep the mount path and audience aligned with Istio's expectations:
 
 ```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    global:
-      jwtPolicy: third-party-jwt
-  meshConfig:
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_TOKEN_ROTATION_PERIOD: "3600s"
+- name: istio-token
+  projected:
+    sources:
+      - serviceAccountToken:
+          path: istio-token
+          expirationSeconds: 3600
+          audience: istio-ca
 ```
 
-For the underlying Kubernetes projected volumes, configure the expiration:
+For your own application containers, configure the underlying Kubernetes projected volume expiration and mount it into the container that needs to read it:
 
 ```yaml
 apiVersion: apps/v1
@@ -82,6 +80,10 @@ spec:
       containers:
         - name: your-app
           image: your-app:latest
+          volumeMounts:
+            - name: sa-token
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
       volumes:
         - name: sa-token
           projected:
@@ -105,14 +107,14 @@ kubectl exec -n your-namespace deploy/your-app -c istio-proxy -- \
   ls -la /var/run/secrets/tokens/
 ```
 
-Verify the token is valid:
+Inspect the token payload:
 
 ```bash
 kubectl exec -n your-namespace deploy/your-app -c istio-proxy -- \
-  cat /var/run/secrets/tokens/istio-token | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+  python3 -c 'import base64,json,pathlib; p=pathlib.Path("/var/run/secrets/tokens/istio-token").read_text().split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p)), indent=2))'
 ```
 
-This decodes the JWT payload and shows you the audience, expiry, and service account name.
+This decodes the JWT payload and shows you the audience, expiry, and service account name. To validate the token signature and audience, use the Kubernetes TokenReview API or check istiod's token validation result in the logs.
 
 Check istiod logs for token validation errors:
 
@@ -128,7 +130,7 @@ Common error messages and what they mean:
 
 ## Handling Token Rotation
 
-Kubernetes automatically rotates projected tokens before they expire. The kubelet requests a new token when the current one reaches 80% of its lifetime. The new token is written to the same file path.
+Kubernetes automatically rotates projected tokens before they expire. The kubelet requests a new token when the current one reaches 80% of its lifetime or is older than 24 hours. The new token is written to the same file path.
 
 Istio's proxy monitors the token file for changes and picks up the new token automatically. You can verify rotation is working:
 
@@ -193,18 +195,19 @@ kubectl get pod -n production -l app=your-app -o json | \
 
 ## Using Third-Party JWT vs First-Party JWT
 
-Istio supports two JWT policies:
+Older Istio releases exposed two JWT policies:
 
 - `third-party-jwt`: Uses projected service account tokens with a specific audience. This is the default and recommended approach.
-- `first-party-jwt`: Uses the legacy Kubernetes API server token. Only use this if your cluster does not support projected tokens.
+- `first-party-jwt`: Used the legacy Kubernetes API server token. This legacy option has been deprecated and removed in current Istio releases.
 
-Check which policy your Istio installation uses:
+For current Istio installs, verify that injected pods have the projected `istio-token` volume instead:
 
 ```bash
-kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep jwtPolicy
+kubectl get pod -n your-namespace your-pod -o json | \
+  jq '.spec.volumes[] | select(.name == "istio-token")'
 ```
 
-If you are running an older cluster that does not support the TokenRequest API, you might need to fall back:
+If you are running an older Istio release on an older cluster that does not support the TokenRequest API, you may see older documentation that uses:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -215,13 +218,13 @@ spec:
       jwtPolicy: first-party-jwt
 ```
 
-But every modern Kubernetes cluster (1.20+) supports projected tokens, so there should not be a reason to use first-party JWT anymore.
+But every modern Kubernetes cluster (1.20+) supports projected tokens, and current Istio releases expect the `third-party-jwt` model.
 
 ## Security Best Practices for Tokens
 
 Keep these practices in mind:
 
-1. Always use `third-party-jwt` policy. It provides audience binding, which means a token intended for Istio cannot be used to authenticate against other services.
+1. Use the current `third-party-jwt` model. It provides audience binding, which means a token intended for Istio cannot be used to authenticate against other services.
 
 2. Set appropriate token lifetimes. Shorter lifetimes reduce the window of compromise if a token is leaked, but tokens that are too short can cause issues if there is clock skew between nodes.
 
@@ -241,12 +244,12 @@ spec:
       rules:
         - alert: HighTokenValidationFailures
           expr: |
-            rate(pilot_total_xds_rejects{type="cds"}[5m]) > 0.1
+            rate(citadel_server_authentication_failure_count[5m]) > 0.1
           for: 5m
           labels:
             severity: warning
           annotations:
-            summary: "High rate of xDS rejections, possibly token-related"
+            summary: "High rate of Istio CA authentication failures"
 ```
 
 Service account tokens are a critical but often overlooked part of the Istio security chain. When they work, you never think about them. When they break, nothing works. Understanding how they flow from Kubernetes through Istio to your workloads makes troubleshooting much faster when problems do show up.
