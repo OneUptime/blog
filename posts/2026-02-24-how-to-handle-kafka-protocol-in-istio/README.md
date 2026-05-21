@@ -51,7 +51,7 @@ Using a headless service is important because Kafka clients need to connect to s
 
 ## StatefulSet for Kafka Brokers
 
-A typical Kafka broker deployment uses a StatefulSet:
+A typical Kafka broker deployment uses a StatefulSet. The snippet below focuses on the listener and sidecar settings; a real deployment also needs the required storage and KRaft or ZooKeeper configuration for the Kafka version you are running.
 
 ```yaml
 apiVersion: apps/v1
@@ -125,7 +125,7 @@ mtls:
   mode: PERMISSIVE
 ```
 
-Be careful not to confuse Istio's mTLS with Kafka's own SSL/TLS configuration. They're independent layers. If you're using Istio mTLS, you generally don't need Kafka's native TLS for intra-cluster communication. Using both adds unnecessary overhead.
+Be careful not to confuse Istio's mTLS with Kafka's own SSL/TLS configuration. They're independent layers. If you're using Istio mTLS, you may not need Kafka's native TLS for mesh-internal transport encryption, but you may still want Kafka TLS or SASL for Kafka-level authentication, client identity, or end-to-end application-layer encryption. Using both is valid, but it adds operational complexity and overhead.
 
 ## Connection Pool and Timeout Settings
 
@@ -138,7 +138,7 @@ metadata:
   name: kafka-dr
   namespace: kafka
 spec:
-  host: "*.kafka-headless.kafka.svc.cluster.local"
+  host: kafka-headless.kafka.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -150,7 +150,7 @@ spec:
           probes: 5
 ```
 
-Note the wildcard host pattern `*.kafka-headless.kafka.svc.cluster.local`. This applies the DestinationRule to all individual broker pods behind the headless service.
+Note the service host `kafka-headless.kafka.svc.cluster.local`. Istio applies the DestinationRule to traffic for the headless service and its endpoints.
 
 The keepalive settings are important because Kafka consumer connections can be idle between poll intervals. Without keepalives, idle connections might get cleaned up by the sidecar or network infrastructure.
 
