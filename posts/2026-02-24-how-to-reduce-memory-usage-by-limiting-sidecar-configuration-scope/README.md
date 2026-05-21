@@ -10,7 +10,7 @@ Description: Reduce Envoy proxy memory consumption in large Istio meshes by usin
 
 If you have ever monitored memory usage in an Istio mesh, you might have been surprised by how much memory each Envoy sidecar consumes. In a mesh with hundreds of services, each sidecar can use 100MB or more of RAM just to hold the configuration for all those services. Multiply that by thousands of pods and you are looking at significant resource waste.
 
-The root cause is that by default, istiod sends every proxy the full service mesh configuration. Every listener, every route, every cluster for every service - regardless of whether a particular pod actually communicates with those services. The Sidecar resource fixes this by scoping the configuration down to only what each workload needs.
+The root cause is that by default, istiod sends every proxy the full service mesh configuration. Every listener, every route, every cluster for every service - regardless of whether a particular pod actually communicates with those services. The Sidecar resource helps by scoping the configuration down to only what each workload needs.
 
 ## Understanding the Memory Problem
 
@@ -121,14 +121,14 @@ spec:
         - "istio-system/*"
         - "backend/cart-service.backend.svc.cluster.local"
         - "backend/payment-service.backend.svc.cluster.local"
-        - "*/api.stripe.com"
+        - "external-services/api.stripe.com"
 ```
 
-This proxy only loads configuration for 3 services plus istio-system. Compared to the full mesh configuration, this can reduce memory usage by 80-90%.
+This proxy only loads configuration for the listed backend services, an exported `ServiceEntry` for `api.stripe.com` in the `external-services` namespace, plus istio-system. Compared to the full mesh configuration, this can significantly reduce memory usage.
 
 ## Strategy 3: Global Mesh Default
 
-Set a mesh-wide default Sidecar in the `istio-system` namespace that acts as the baseline:
+Set a mesh-wide default Sidecar in the mesh root namespace that acts as the baseline. In many installations this is `istio-system`, but use the namespace configured as `meshConfig.rootNamespace` if your mesh uses a different root namespace:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -143,9 +143,9 @@ spec:
         - "istio-system/*"
 ```
 
-This global Sidecar applies to any namespace that does not have its own Sidecar resource. It restricts every workload to its own namespace plus istio-system by default. You then add broader visibility only where needed.
+This global Sidecar applies to any namespace that does not have its own Sidecar resource. It scopes every workload to its own namespace plus istio-system by default. You then add broader visibility only where needed.
 
-Note: A Sidecar in the `istio-system` namespace with no `workloadSelector` serves as the mesh-wide default.
+Note: A Sidecar in the mesh root namespace with no `workloadSelector` serves as the mesh-wide default.
 
 ## Measuring the Impact
 
@@ -162,7 +162,7 @@ istioctl proxy-config endpoints deploy/my-service -n backend | wc -l
 kubectl top pod -l app=my-service -n backend --containers | grep istio-proxy
 ```
 
-In a mesh with 500 services, if a workload only needs 10, you should see roughly a 98% reduction in cluster count and a proportional memory decrease.
+In a mesh with 500 services, if a workload only needs 10, you should see a large reduction in cluster count. Memory usually decreases as well, although it will not be exactly proportional because Envoy still keeps base listeners, passthrough clusters, telemetry state, and other proxy overhead.
 
 ## Real-World Numbers
 
@@ -181,7 +181,7 @@ These numbers are approximate and depend on factors like the number of endpoints
 
 Besides memory, Sidecar resources also improve configuration push performance:
 
-- **Smaller configuration updates.** When a service changes, istiod only pushes updates to proxies that have that service in their Sidecar scope.
+- **Smaller configuration updates.** When a service changes, istiod can generate and send smaller updates because scoped proxies only import the configuration they can see.
 - **Faster proxy startup.** Less configuration to process means pods start faster.
 - **Lower istiod CPU usage.** Computing and sending smaller configurations is less work.
 
@@ -191,10 +191,10 @@ You can see the push performance in istiod metrics:
 # Configuration push latency
 pilot_proxy_convergence_time_bucket
 
-# Number of proxies updated per push
+# Time a proxy spends waiting in the push queue
 pilot_proxy_queue_time_bucket
 
-# Push errors
+# XDS build and send errors by type
 pilot_xds_pushes{type="cds"}
 ```
 
@@ -275,7 +275,7 @@ Here is a practical rollout plan:
 
 ## Common Pitfalls
 
-**Forgetting istio-system.** If you exclude `istio-system/*`, some Istio features break (like certificate rotation and telemetry).
+**Forgetting istio-system.** If you exclude `istio-system/*`, some Istio features can break, including egress and telemetry features that depend on control-plane services.
 
 **Breaking cross-namespace communication.** Always test after applying Sidecars. Watch for NR (no route) flags in access logs.
 
