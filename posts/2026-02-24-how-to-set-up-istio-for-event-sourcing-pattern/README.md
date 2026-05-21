@@ -50,6 +50,10 @@ spec:
         env:
         - name: EVENT_STORE_URL
           value: "http://event-store:80"
+        resources:
+          requests:
+            cpu: 250m
+            memory: 256Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -76,6 +80,10 @@ spec:
         env:
         - name: READ_DB_HOST
           value: "postgres-read"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -154,7 +162,7 @@ spec:
 Use Istio VirtualService to route based on the operation type:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-api
@@ -165,6 +173,16 @@ spec:
   gateways:
   - api-gateway
   http:
+  # Event stream endpoint - put this before the broader /api/orders rules
+  - match:
+    - uri:
+        prefix: /api/orders/events
+    route:
+    - destination:
+        host: event-store
+        port:
+          number: 80
+    timeout: 0s
   # Commands - create and modify events
   - match:
     - uri:
@@ -208,16 +226,6 @@ spec:
       attempts: 2
       perTryTimeout: 1s
       retryOn: 5xx,connect-failure
-  # Event stream endpoint
-  - match:
-    - uri:
-        prefix: /api/orders/events
-    route:
-    - destination:
-        host: event-store
-        port:
-          number: 80
-    timeout: 0s
 ```
 
 The event stream endpoint has `timeout: 0s` which disables the timeout - important for long-lived streaming connections.
@@ -227,7 +235,7 @@ The event stream endpoint has `timeout: 0s` which disables the timeout - importa
 The command handler writes to the event store on every command. This path needs strong reliability:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: event-store
@@ -275,7 +283,7 @@ If the client wants to retry a failed command, the client should resend the same
 The projection service reads from the event stream and writes to the read database. It is a critical component - if it falls behind, queries return stale data. Apply appropriate traffic policies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: projection-service
@@ -324,7 +332,7 @@ Only the admin service and health/metrics endpoints can reach the projection ser
 When you need to rebuild projections (after a schema change or bug fix), the projection service replays all events from the beginning. This generates a lot of internal traffic. To prevent this from affecting other services, use traffic policies:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: event-store-internal
@@ -369,6 +377,8 @@ Set up alerts for projection lag through your event platform metrics (Kafka cons
 ## Scaling Strategy
 
 Each component scales independently based on its workload:
+
+CPU-based HPAs require CPU requests on the target pods, as shown in the deployment examples above.
 
 ```yaml
 apiVersion: autoscaling/v2
