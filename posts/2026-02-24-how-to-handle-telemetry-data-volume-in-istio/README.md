@@ -14,7 +14,7 @@ One of the first things teams notice after deploying Istio is the explosion of t
 
 The scale of telemetry data in Istio comes from several factors:
 
-**Metric cardinality**: Each unique combination of metric labels creates a separate time series. The `istio_requests_total` metric includes labels like `source_workload`, `destination_workload`, `source_namespace`, `destination_namespace`, `response_code`, `request_protocol`, and more. If you have 50 services, each calling 5 others, with 10 possible response codes, you already have 50 * 5 * 10 = 2,500 time series just for that one metric. Add in all the other labels and metrics, and you can easily reach hundreds of thousands of time series.
+**Metric cardinality**: Each unique combination of metric labels creates a separate time series. The `istio_requests_total` metric includes labels like `source_workload`, `destination_workload`, `source_workload_namespace`, `destination_workload_namespace`, `response_code`, `request_protocol`, and more. If you have 50 services, each calling 5 others, with 10 possible response codes, you already have 50 * 5 * 10 = 2,500 time series just for that one metric. Add in all the other labels and metrics, and you can easily reach hundreds of thousands of time series.
 
 **Trace volume**: At 1% sampling, 10,000 RPS means 100 trace spans per second. At each hop, two spans are generated (client and server). A trace spanning 5 services produces 10 spans. That is 1,000 spans per second just from sampled traces.
 
@@ -25,13 +25,16 @@ Check your current metric cardinality:
 ```bash
 # Count unique time series for Istio metrics
 
-kubectl exec deploy/prometheus-server -n monitoring -- curl -s localhost:9090/api/v1/label/__name__/values | python3 -c "
+kubectl exec deploy/prometheus-server -n monitoring -- \
+  curl -sG --data-urlencode 'query=count by (__name__) ({__name__=~"istio_.*"})' \
+  localhost:9090/api/v1/query | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-istio_metrics = [m for m in data.get('data', []) if m.startswith('istio_')]
-print(f'Istio metric names: {len(istio_metrics)}')
-for m in istio_metrics:
-    print(f'  {m}')
+series = data.get('data', {}).get('result', [])
+total = sum(int(float(item['value'][1])) for item in series)
+print(f'Istio time series: {total}')
+for item in sorted(series, key=lambda x: int(float(x['value'][1])), reverse=True):
+    print(f\"  {item['metric'].get('__name__')}: {int(float(item['value'][1]))}\")
 "
 ```
 
@@ -42,7 +45,7 @@ for m in istio_metrics:
 The most effective way to reduce cardinality is to remove labels you do not use from your metrics:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: reduce-cardinality
@@ -79,7 +82,7 @@ Common labels to consider removing:
 Instead of tracking every individual response code, you can aggregate them into classes:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: aggregate-response-codes
@@ -103,7 +106,7 @@ This reduces the response code label from potentially dozens of values (200, 201
 The number of clusters (upstream services) configured in each sidecar affects the number of metrics generated. Use Sidecar resources to limit the scope:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: limit-scope
@@ -124,7 +127,7 @@ This reduces the number of clusters in each sidecar's config, which reduces the 
 The sampling rate is the simplest control for trace volume:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: trace-sampling
@@ -139,7 +142,7 @@ spec:
 Use higher rates for specific namespaces or workloads that need more visibility:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: debug-tracing
@@ -154,7 +157,7 @@ spec:
 Custom trace tags add data to each span. Be selective:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: trace-tags
@@ -176,7 +179,7 @@ Only add tags that you actually use for searching or filtering traces.
 Not every service needs access logs. Disable them for noisy services that generate a lot of traffic:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: disable-logs
@@ -193,39 +196,20 @@ spec:
 
 ### Log Only Errors
 
-If you only care about failed requests, you can configure access logging to only log non-200 responses using an EnvoyFilter:
+If you only care about failed requests, you can configure access logging to only log responses with status code 400 or higher:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
 metadata:
   name: error-only-logging
   namespace: istio-system
 spec:
-  configPatches:
-  - applyTo: NETWORK_FILTER
-    match:
-      listener:
-        filterChain:
-          filter:
-            name: envoy.filters.network.http_connection_manager
-    patch:
-      operation: MERGE
-      value:
-        typed_config:
-          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-          access_log:
-          - name: envoy.access_loggers.file
-            typed_config:
-              "@type": type.googleapis.com/envoy.extensions.access_loggers.file.v3.FileAccessLog
-              path: /dev/stdout
-            filter:
-              status_code_filter:
-                comparison:
-                  op: GE
-                  value:
-                    default_value: 400
-                    runtime_key: access_log_min_status
+  accessLogging:
+  - providers:
+    - name: envoy
+    filter:
+      expression: "response.code >= 400"
 ```
 
 This only logs requests with status code 400 or higher, dramatically reducing log volume for services that mostly return 200.
@@ -244,8 +228,9 @@ global:
 
 storage:
   tsdb:
-    retention.time: 15d
-    retention.size: 50GB
+    retention:
+      time: 15d
+      size: 50GB
 ```
 
 For long-term storage, use Prometheus remote write to send data to a more cost-effective storage backend like Thanos, Cortex, or Mimir:
