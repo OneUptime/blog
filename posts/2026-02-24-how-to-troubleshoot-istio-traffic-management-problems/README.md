@@ -28,7 +28,7 @@ istioctl analyze -n production
 istioctl analyze -f my-virtualservice.yaml
 ```
 
-Common issues it catches include VirtualServices referencing non-existent Gateways, DestinationRules with subsets that do not match any pods, and conflicting routing rules.
+Common issues it catches include VirtualServices referencing non-existent Gateways, VirtualServices referencing hosts that do not exist, and conflicting routing rules.
 
 ## Check Proxy Configuration Sync
 
@@ -108,7 +108,7 @@ spec:
     - orders-service.production.svc.cluster.local
 ```
 
-If a client in a different namespace calls `orders-service.production`, the short name might not match. Use the FQDN to be safe.
+Short names are resolved relative to the namespace of the VirtualService, not the namespace of the service. Use the FQDN to be safe.
 
 **2. Gateway binding:** If the VirtualService should apply to mesh traffic (east-west), do not specify a gateway. If it should apply to ingress traffic, bind it to the correct gateway:
 
@@ -134,7 +134,7 @@ kubectl get virtualservices --all-namespaces -o json | \
 A common issue is defining subsets in a DestinationRule that do not match any actual pods:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-service
@@ -176,14 +176,14 @@ spec:
           weight: 10
 ```
 
-First, make sure weights add up to 100. Then check that both subsets have healthy endpoints:
+First, remember that weights are relative: a destination receives `weight / sum(all weights)` requests. Then check that both subsets have healthy endpoints:
 
 ```bash
 # Check endpoints for each subset
 istioctl proxy-config endpoints <client-pod> -n production | grep orders-service
 ```
 
-If one subset has no healthy endpoints, all traffic will go to the other subset regardless of weights.
+If one subset has no healthy endpoints, requests routed to that subset can fail with 503s instead of being redistributed according to the weights you expected.
 
 ## Retries Not Working as Expected
 
@@ -195,10 +195,10 @@ istioctl proxy-config routes <pod-name> -n production -o json | \
   jq '.[].virtualHosts[].routes[].route.retryPolicy'
 ```
 
-Istio retries by default on connection failures and 503 responses. If your application already handles retries, you might be getting more retries than expected. Disable Istio retries explicitly if needed:
+Istio's default cluster-wide HTTP retry policy retries twice for `connect-failure`, `refused-stream`, `unavailable`, and `cancelled`. If your application already handles retries, you might be getting more retries than expected. Disable Istio retries explicitly if needed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: orders-service
@@ -223,7 +223,7 @@ istioctl proxy-config routes <pod-name> -n production -o json | \
   jq '.[].virtualHosts[].routes[].route.timeout'
 ```
 
-Timeouts can be set at multiple levels: VirtualService route timeout, DestinationRule connection pool settings, and the application itself. The most restrictive timeout wins.
+Timeouts can be set at multiple levels: VirtualService route timeout for HTTP requests, DestinationRule connection pool settings for connection behavior, and the application itself. The effective failure is whichever relevant limit is reached first.
 
 ```yaml
 # VirtualService timeout
@@ -247,7 +247,7 @@ kubectl get configmap istio -n istio-system -o yaml | grep accessLogFile
 If access logs are not enabled, you can enable them:
 
 ```bash
-istioctl install --set meshConfig.accessLogFile=/dev/stdout
+istioctl install <flags-you-used-to-install-Istio> --set meshConfig.accessLogFile=/dev/stdout
 ```
 
 Then check the sidecar logs:
