@@ -16,9 +16,9 @@ The Istio project spans multiple repositories under the `github.com/istio` organ
 
 | Repository | Purpose |
 |---|---|
-| `istio/istio` | Core Istio control plane and proxy |
+| `istio/istio` | Core Istio control plane and integration code |
 | `istio/istio.io` | Documentation and website |
-| `istio/api` | Istio API definitions (CRDs) |
+| `istio/api` | API definitions for the Istio project |
 | `istio/proxy` | Envoy proxy extensions for Istio |
 | `istio/ztunnel` | Ambient mesh zero-trust tunnel |
 | `istio/community` | Community governance and processes |
@@ -44,7 +44,7 @@ istioctl bug-report
 # - Istio configuration
 # - Pod logs
 # - Proxy configs
-# The output file will be something like bug-report-20260224-120000.tar.gz
+# The output file will be bug-report.tgz
 ```
 
 When you create the issue, use the bug report template. GitHub will show you the template automatically when you click "New Issue." Here's what to include:
@@ -96,7 +96,7 @@ for i in $(seq 1 100); do curl -s http://productpage:9080/productpage | grep -c 
 ```bash
 # Run these and paste the output
 istioctl version
-kubectl version --short
+kubectl version
 kubectl get nodes -o wide | head -5
 
 # Also helpful:
@@ -129,13 +129,13 @@ Here's a good example of a feature request:
 Istio uses a comprehensive labeling system. Understanding these labels helps you find relevant issues and understand their status:
 
 - `kind/bug`: Confirmed bugs
-- `kind/feature-request`: New feature requests
-- `kind/cleanup`: Code cleanup and refactoring
+- `kind/enhancement`: New feature requests or enhancements
+- `kind/tech-debt`: Code cleanup and refactoring
 - `area/networking`: Traffic management related
 - `area/security`: Security and authentication
 - `area/ambient`: Ambient mesh related
-- `priority/P0`: Critical, needs immediate fix
-- `priority/P1`: Important, planned for current release
+- `lifecycle/needs-triage`: Issue needs initial triage
+- `triage/accepted`: Issue has been accepted by maintainers
 - `lifecycle/stale`: Issue has been inactive
 - `good first issue`: Suitable for new contributors
 
