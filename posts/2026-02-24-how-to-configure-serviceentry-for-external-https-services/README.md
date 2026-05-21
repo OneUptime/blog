@@ -32,7 +32,7 @@ spec:
   resolution: DNS
 ```
 
-With `protocol: HTTPS`, Envoy recognizes this as TLS traffic and passes it through. It uses the SNI (Server Name Indication) header to route the traffic to the right destination. Your application handles the TLS handshake directly with the external server.
+With `protocol: HTTPS`, Envoy treats this as TLS-encrypted traffic and passes it through. In sidecars, `HTTPS` behaves like `TLS`: Envoy does not decrypt the HTTP payload, and routes the connection using TLS information such as SNI (Server Name Indication). Your application handles the TLS handshake directly with the external server.
 
 Apply and verify:
 
@@ -49,7 +49,7 @@ kubectl exec deploy/payment-service -c payment-service -- \
 
 You will see two protocol options for TLS traffic in Istio - `HTTPS` and `TLS`. They behave differently:
 
-**HTTPS** tells Envoy that the traffic is HTTP over TLS. Envoy can extract the SNI from the ClientHello for routing but does not inspect the HTTP payload (since it is encrypted).
+**HTTPS** tells Envoy that the traffic is HTTP over TLS. In sidecars, Envoy does not decrypt the traffic, so this behaves like TLS-encrypted data and does not provide HTTP-level routing or metrics.
 
 **TLS** is more generic. It tells Envoy this is arbitrary TLS traffic, not necessarily HTTP. Use this for non-HTTP TLS protocols like TLS-encrypted database connections.
 
@@ -86,13 +86,14 @@ spec:
     - number: 80
       name: http-port
       protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https-port
       protocol: HTTPS
   resolution: DNS
 ```
 
-Then create a DestinationRule that tells Envoy to originate TLS for connections to port 443:
+Then create a DestinationRule that tells Envoy to originate TLS for HTTP requests on service port 80:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -104,30 +105,12 @@ spec:
   trafficPolicy:
     portLevelSettings:
       - port:
-          number: 443
+          number: 80
         tls:
           mode: SIMPLE
 ```
 
-Finally, add a VirtualService that redirects HTTP traffic to the HTTPS port:
-
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: external-api-vs
-spec:
-  hosts:
-    - api.example.com
-  http:
-    - match:
-        - port: 80
-      route:
-        - destination:
-            host: api.example.com
-            port:
-              number: 443
-```
+The `targetPort: 443` setting sends traffic for the HTTP service port to the external service's HTTPS port, and the DestinationRule originates TLS before that traffic leaves the mesh.
 
 Now your application can call `http://api.example.com` and Istio handles the TLS upgrade transparently. The external server sees a proper HTTPS connection.
 
@@ -135,17 +118,17 @@ Now your application can call `http://api.example.com` and Istio handles the TLS
 
 Some external services require client certificates (mutual TLS). You need to provide the client certificate and key to Envoy so it can present them during the TLS handshake.
 
-First, create a Kubernetes secret with your client certificate:
+First, create a Kubernetes secret with your client certificate in the same namespace as the client workload:
 
 ```bash
 kubectl create secret generic api-client-cert \
-  --from-file=cert=client.crt \
-  --from-file=key=client.key \
-  --from-file=cacert=ca.crt \
-  -n istio-system
+  --from-file=tls.crt=client.crt \
+  --from-file=tls.key=client.key \
+  --from-file=ca.crt=ca.crt \
+  -n default
 ```
 
-Then configure the DestinationRule with mTLS:
+Then configure the DestinationRule with mTLS. For sidecars, `credentialName` requires a `workloadSelector` so Istio knows which workloads can use the secret:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -153,14 +136,18 @@ kind: DestinationRule
 metadata:
   name: mtls-external-api
 spec:
+  workloadSelector:
+    matchLabels:
+      app: payment-service
   host: secure-api.partner.com
   trafficPolicy:
-    tls:
-      mode: MUTUAL
-      clientCertificate: /etc/istio/api-client-cert/cert
-      privateKey: /etc/istio/api-client-cert/key
-      caCertificates: /etc/istio/api-client-cert/cacert
-      sni: secure-api.partner.com
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: MUTUAL
+          credentialName: api-client-cert
+          sni: secure-api.partner.com
 ```
 
 The corresponding ServiceEntry:
@@ -175,6 +162,10 @@ spec:
     - secure-api.partner.com
   location: MESH_EXTERNAL
   ports:
+    - number: 80
+      name: http-port
+      protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
       protocol: HTTPS
