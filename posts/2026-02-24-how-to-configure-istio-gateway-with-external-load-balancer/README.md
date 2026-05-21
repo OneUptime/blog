@@ -39,7 +39,7 @@ The default creates a Layer 4 (TCP/UDP) load balancer on most cloud providers.
 
 ### Network Load Balancer (NLB)
 
-NLB is the recommended choice for Istio on AWS. It operates at Layer 4, preserves client IP, and has lower latency:
+NLB is the recommended choice for Istio on AWS. It operates at Layer 4, can preserve client IP, and has lower latency:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -54,6 +54,7 @@ spec:
           service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
           service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
           service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+          service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "http"
           service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/healthz/ready"
           service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
 ```
@@ -73,6 +74,7 @@ metadata:
     service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     service.beta.kubernetes.io/aws-load-balancer-attributes: load_balancing.cross_zone.enabled=true
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: preserve_client_ip.enabled=true
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: /healthz/ready
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: http
@@ -82,36 +84,23 @@ Using `nlb-target-type: ip` routes traffic directly to pod IPs instead of throug
 
 ### Preserving Client IP on AWS
 
-With an NLB using instance targets, the client IP is preserved by default. With IP targets, enable proxy protocol if needed:
+With an NLB using instance targets, the client IP is preserved by default. With TCP or TLS IP targets, client IP preservation is disabled by default, so enable `preserve_client_ip.enabled=true` when supported or use proxy protocol if the gateway needs the original client IP:
 
 ```yaml
 annotations:
   service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
 ```
 
-Then configure the gateway to understand proxy protocol via EnvoyFilter:
+Then configure the gateway to understand proxy protocol:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: proxy-protocol
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-  - applyTo: LISTENER
-    match:
-      context: GATEWAY
-    patch:
-      operation: MERGE
-      value:
-        listener_filters:
-        - name: envoy.filters.listener.proxy_protocol
-          typed_config:
-            "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        proxyProtocol: {}
 ```
 
 ## GCP Configuration
@@ -151,7 +140,7 @@ spec:
       enabled: true
       k8s:
         serviceAnnotations:
-          networking.gke.io/load-balancer-type: "External"
+          cloud.google.com/l4-rbs: "enabled"
         service:
           loadBalancerIP: "YOUR_STATIC_IP"
 ```
@@ -183,7 +172,7 @@ serviceAnnotations:
 
 ## Static IP Addresses
 
-To keep a stable IP address across gateway restarts and upgrades:
+To keep a stable IP address across gateway restarts and upgrades on providers that still support `spec.loadBalancerIP`:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -198,7 +187,7 @@ spec:
           loadBalancerIP: "203.0.113.10"
 ```
 
-The static IP must be pre-allocated with your cloud provider. Without it, you get a new IP every time the Service is recreated.
+The static IP must be pre-allocated with your cloud provider. Kubernetes deprecated `spec.loadBalancerIP` in v1.24 because provider behavior varies, so prefer provider-specific static IP annotations when your cloud supports them. Without a reserved static IP, you can get a new IP when the Service is recreated.
 
 ## Internal vs External Load Balancers
 
@@ -232,7 +221,8 @@ Cloud load balancers have idle connection timeouts that can close long-lived con
 
 ```yaml
 annotations:
-  service.beta.kubernetes.io/aws-load-balancer-connection-idle-timeout: "3600"
+  service.beta.kubernetes.io/aws-load-balancer-listener-attributes.TCP-80: tcp.idle_timeout.seconds=3600
+  service.beta.kubernetes.io/aws-load-balancer-listener-attributes.TCP-443: tcp.idle_timeout.seconds=3600
 ```
 
 This sets the idle timeout to 1 hour, which is important for WebSocket and gRPC streaming connections.
