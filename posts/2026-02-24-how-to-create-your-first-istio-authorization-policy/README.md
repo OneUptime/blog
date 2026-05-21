@@ -42,7 +42,7 @@ spec:
 There are four main parts:
 
 1. **selector** - Which workloads this policy applies to
-2. **action** - What to do when a rule matches (ALLOW, DENY, or CUSTOM)
+2. **action** - What to do when a rule matches (ALLOW, DENY, AUDIT, or CUSTOM)
 3. **rules** - The conditions that determine if traffic matches
 4. **from/to/when** - The specifics of what traffic to match
 
@@ -50,7 +50,7 @@ There are four main parts:
 
 Before you start, make sure you have:
 
-- A running Kubernetes cluster with Istio installed
+- A running Kubernetes cluster with Istio installed and mutual TLS enabled
 - At least two services deployed with Istio sidecar injection enabled
 - `kubectl` and `istioctl` configured
 
@@ -169,6 +169,7 @@ rules:
           principals: ["cluster.local/ns/my-ns/sa/my-sa"]
 
           # Namespace-based
+          # Requires mTLS
           namespaces: ["frontend", "backend"]
 
           # IP-based
@@ -214,7 +215,7 @@ Update the policy to only allow traffic from the sleep service account:
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: httpbin-allow-sleep
+  name: httpbin-allow-get
   namespace: authz-demo
 spec:
   selector:
@@ -290,7 +291,7 @@ spec:
     - to:
         - operation:
             paths: ["/health", "/metrics"]
-    # Authenticated endpoints
+    # Authenticated endpoints (requires RequestAuthentication)
     - from:
         - source:
             requestPrincipals: ["*"]
