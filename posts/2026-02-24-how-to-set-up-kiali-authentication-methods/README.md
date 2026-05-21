@@ -55,7 +55,7 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: kiali-viewer
+  name: kiali-user-viewer
 rules:
   - apiGroups: [""]
     resources: ["namespaces", "pods", "replicationcontrollers", "services"]
@@ -77,7 +77,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: kiali-viewer
+  name: kiali-user-viewer
 subjects:
   - kind: ServiceAccount
     name: kiali-user
@@ -159,19 +159,18 @@ You also need to create a client in Keycloak:
 Then create a Kubernetes secret with the client secret:
 
 ```bash
-kubectl create secret generic kiali-oidc \
+kubectl create secret generic kiali \
   -n istio-system \
   --from-literal=oidc-secret=YOUR_CLIENT_SECRET
 ```
 
-Update the Kiali config to reference the secret:
+Kiali reads the OIDC client secret from the `oidc-secret` key in the `kiali` secret when that secret is mounted into the Kiali pod:
 
 ```yaml
     auth:
       strategy: openid
       openid:
         client_id: kiali
-        client_secret: oidcSecret:kiali-oidc:oidc-secret
         issuer_uri: https://keycloak.example.com/realms/istio
 ```
 
@@ -224,8 +223,6 @@ data:
   config.yaml: |
     auth:
       strategy: header
-      header:
-        header_name: X-Forwarded-User
 ```
 
 Set up an OAuth2 Proxy in front of Kiali:
@@ -257,11 +254,12 @@ spec:
             - --cookie-secret=RANDOM_SECRET
             - --upstream=http://kiali.istio-system:20001
             - --http-address=0.0.0.0:4180
-            - --set-xauthrequest=true
-            - --pass-user-headers=true
+            - --pass-authorization-header=true
           ports:
             - containerPort: 4180
 ```
+
+The proxy must pass a token that your Kubernetes API server can validate in the `Authorization: Bearer` header.
 
 ## Anonymous Access (Development Only)
 
@@ -285,7 +283,7 @@ Never use anonymous mode in production. Anyone who can reach the Kiali URL can s
 
 ## Restricting Namespace Access
 
-Regardless of the authentication method, you can restrict which namespaces a user can see. Use Kubernetes RBAC for this:
+For authenticated methods that support namespace access control, you can restrict which namespaces a user can see. Use Kubernetes RBAC for this:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
