@@ -22,6 +22,8 @@ Before customizing, it helps to know what Istio collects by default. The standar
 | `istio_request_duration_milliseconds` | Histogram | Request latency |
 | `istio_request_bytes` | Histogram | Request body size |
 | `istio_response_bytes` | Histogram | Response body size |
+| `istio_request_messages_total` | Counter | gRPC request messages sent from a client |
+| `istio_response_messages_total` | Counter | gRPC response messages sent from a server |
 | `istio_tcp_sent_bytes_total` | Counter | TCP bytes sent |
 | `istio_tcp_received_bytes_total` | Counter | TCP bytes received |
 | `istio_tcp_connections_opened_total` | Counter | TCP connections opened |
@@ -118,14 +120,14 @@ spec:
           tagOverrides:
             tenant_id:
               operation: UPSERT
-              value: "request.headers['x-tenant-id'] || 'unknown'"
+              value: "'x-tenant-id' in request.headers ? request.headers['x-tenant-id'] : 'unknown'"
 ```
 
 Be careful with this - if the header has many unique values, it will create high cardinality. Only do this for headers with a bounded set of values.
 
 ### Adding Environment-Based Labels
 
-Add labels based on environment variables in the proxy container:
+Add labels based on proxy metadata:
 
 ```yaml
 spec:
@@ -138,7 +140,7 @@ spec:
           tagOverrides:
             cluster_name:
               operation: UPSERT
-              value: "node.metadata['CLUSTER_ID'] || 'unknown'"
+              value: "'CLUSTER_ID' in node.metadata ? node.metadata['CLUSTER_ID'] : 'unknown'"
 ```
 
 ## Disabling Unused Metrics
@@ -267,7 +269,7 @@ Look at the label set. If you removed `request_protocol`, it shouldn't appear.
 You can also check what metrics Envoy is generating on a specific pod:
 
 ```bash
-kubectl exec -it <pod-name> -c istio-proxy -- pilot-agent request GET stats/prometheus | head -50
+kubectl exec <pod-name> -c istio-proxy -- curl -sS 'localhost:15000/stats/prometheus' | head -50
 ```
 
 ### Check the Telemetry Resource
