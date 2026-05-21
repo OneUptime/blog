@@ -8,13 +8,13 @@ Description: A practical guide to understanding the iptables rules that Istio cr
 
 ---
 
-When you deploy Istio in your Kubernetes cluster, something interesting happens behind the scenes. Every pod that gets an Envoy sidecar injected also gets a set of iptables rules configured by an init container called `istio-init`. These rules are the foundation of how Istio transparently intercepts all traffic without requiring any changes to your application code.
+When you deploy Istio in your Kubernetes cluster, something interesting happens behind the scenes. In the default sidecar setup without Istio CNI, every pod that gets an Envoy sidecar injected also gets a set of iptables rules configured by an init container called `istio-init`. These rules are the foundation of how Istio transparently intercepts all traffic without requiring any changes to your application code.
 
 Understanding these iptables rules is critical when you're debugging connectivity issues, figuring out why traffic isn't flowing as expected, or just trying to understand the full picture of what Istio does at the network level.
 
 ## The istio-init Container
 
-Before your application container starts, the `istio-init` container runs a program called `istio-iptables` (previously `pilot-agent istio-iptables`). This program sets up the iptables rules inside the pod's network namespace. You can see this container in any Istio-injected pod:
+Before your application container starts, the `istio-init` container runs a program called `istio-iptables` (previously `pilot-agent istio-iptables`). This program sets up the iptables rules inside the pod's network namespace. In clusters that use Istio CNI, the CNI node agent applies the same kind of redirection rules instead of injecting `istio-init`. In a non-CNI Istio-injected pod, you can see this container with:
 
 ```bash
 kubectl get pod my-app-pod -o jsonpath='{.spec.initContainers[*].name}'
@@ -31,10 +31,10 @@ kubectl get pod my-app-pod -o jsonpath='{.spec.initContainers[?(@.name=="istio-i
 The most direct way to see what iptables rules Istio created is to exec into a pod and inspect them. You'll need the `NET_ADMIN` capability or you can use `nsenter` from the node. Here's the simplest approach using a debug container:
 
 ```bash
-kubectl debug -it my-app-pod --image=nicolaka/netshoot --target=istio-proxy -- iptables -t nat -L -v -n
+kubectl debug -it my-app-pod --image=nicolaka/netshoot --target=istio-proxy --profile=netadmin -- iptables -t nat -L -v -n
 ```
 
-If your cluster supports ephemeral containers, this gives you a clean view. Alternatively, if you have node access:
+If your cluster supports ephemeral containers, this gives you a clean view. Alternatively, if you have node access and the container is running under Docker:
 
 ```bash
 # Find the PID of your container
@@ -73,8 +73,8 @@ REDIRECT   tcp  --  0.0.0.0/0        0.0.0.0/0   redir ports 15006
 Chain ISTIO_OUTPUT (1 references)
 target     prot opt source               destination
 RETURN     all  --  127.0.0.6        0.0.0.0/0
-ISTIO_IN_REDIRECT  all  --  0.0.0.0/0  !127.0.0.1   owner UID match 1337
-RETURN     all  --  0.0.0.0/0        0.0.0.0/0   ! owner UID match 1337
+ISTIO_IN_REDIRECT  tcp  --  0.0.0.0/0  !127.0.0.1   owner UID match 1337
+RETURN     all  --  0.0.0.0/0        0.0.0.0/0   owner UID match 1337
 RETURN     all  --  0.0.0.0/0        127.0.0.1
 ISTIO_REDIRECT  all  --  0.0.0.0/0    0.0.0.0/0
 
@@ -110,9 +110,9 @@ This is where it gets interesting. The rules here are evaluated in order:
 
 1. **Traffic from 127.0.0.6** - This is Envoy's internal address for inbound traffic forwarding. It gets a RETURN (no redirection) to avoid infinite loops.
 
-2. **Traffic from UID 1337 to non-localhost** - UID 1337 is the Envoy proxy user. When Envoy sends traffic to non-localhost destinations, it gets redirected to `ISTIO_IN_REDIRECT` (port 15006). This handles the case where Envoy needs to send traffic back to the inbound path.
+2. **Loopback traffic from UID 1337 to non-localhost** - UID 1337 is the Envoy proxy user. When Envoy sends traffic over loopback to the pod IP, it gets redirected to `ISTIO_IN_REDIRECT` (port 15006). This handles the case where Envoy needs to send traffic back to the inbound path.
 
-3. **Traffic NOT from UID 1337** - Any traffic not from Envoy gets a RETURN. Wait, that seems wrong, right? Actually, this rule works because of ordering. Traffic from your app (not UID 1337) that doesn't match rule 2 falls through to the catch-all redirect.
+3. **Traffic from UID 1337** - Other traffic from Envoy gets a RETURN. This avoids redirecting Envoy's own outbound connections back into Envoy and creating a loop.
 
 4. **Traffic to 127.0.0.1** - Localhost traffic gets a RETURN, meaning it's not intercepted. Your app can talk to localhost freely.
 
