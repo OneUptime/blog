@@ -8,7 +8,7 @@ Description: Step-by-step guide to integrating Apache SkyWalking with Istio for 
 
 ---
 
-Apache SkyWalking is more than just a tracing backend. It's a full Application Performance Monitoring (APM) platform that provides service topology maps, performance metrics, alerting, and distributed tracing all in one package. It integrates natively with Istio's access log and metrics data, giving you a comprehensive view of your mesh without deploying multiple tools.
+Apache SkyWalking is more than just a tracing backend. It's a full Application Performance Monitoring (APM) platform that provides service topology maps, performance metrics, alerting, and distributed tracing all in one package. It integrates natively with Istio's Envoy access logs and metrics service data, giving you a comprehensive view of your mesh without deploying multiple tools.
 
 ## What Makes SkyWalking Different
 
@@ -17,7 +17,7 @@ Most tracing backends focus on traces. SkyWalking goes further by consuming Isti
 ```mermaid
 graph TD
     A[Istio Envoy Sidecars] -->|Access Logs via ALS| B[SkyWalking OAP]
-    A -->|Metrics via Prometheus| B
+    A -->|Metrics via Envoy Metrics Service| B
     A -->|Traces via gRPC| B
     B --> C[Elasticsearch Storage]
     B --> D[SkyWalking UI]
@@ -38,7 +38,7 @@ metadata:
   name: skywalking-oap
   namespace: observability
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: skywalking-oap
@@ -56,8 +56,12 @@ spec:
             - name: SW_STORAGE_ES_CLUSTER_NODES
               value: elasticsearch.observability:9200
             - name: SW_ENVOY_METRIC_ALS_HTTP_ANALYSIS
-              value: default
+              value: mx-mesh
             - name: SW_ENVOY_METRIC_ALS_TCP_ANALYSIS
+              value: mx-mesh
+            - name: SW_TELEMETRY
+              value: prometheus
+            - name: SW_HEALTH_CHECKER
               value: default
           ports:
             - containerPort: 11800
@@ -151,6 +155,7 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
+    enableEnvoyAccessLogService: true
     accessLogFile: ""
     defaultConfig:
       envoyAccessLogService:
@@ -189,6 +194,9 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
+    defaultProviders:
+      tracing:
+        - skywalking
     extensionProviders:
       - name: skywalking
         skywalking:
@@ -210,8 +218,16 @@ spec:
     defaultConfig:
       envoyMetricsService:
         address: skywalking-oap.observability:11800
-        tlsSettings:
-          mode: DISABLE
+      proxyStatsMatcher:
+        inclusionRegexps:
+          - ".*membership_healthy.*"
+          - ".*upstream_cx_active.*"
+          - ".*upstream_cx_total.*"
+          - ".*upstream_rq_active.*"
+          - ".*upstream_rq_total.*"
+          - ".*upstream_rq_pending_active.*"
+          - ".*lb_healthy_panic.*"
+          - ".*upstream_cx_none_healthy.*"
 ```
 
 ## Verifying the Integration
@@ -271,27 +287,20 @@ SkyWalking includes a built-in alerting engine. Configure alerts in the OAP:
 # alarm-settings.yml (mount as ConfigMap)
 rules:
   service_resp_time_rule:
-    metrics-name: service_resp_time
-    op: ">"
-    threshold: 1000
+    expression: avg(service_resp_time) > 1000
     period: 5
-    count: 3
-    message: "Service response time is above 1000ms for 3 consecutive periods"
+    silence-period: 5
+    message: "Service response time is above 1000ms"
 
   service_sla_rule:
-    metrics-name: service_sla
-    op: "<"
-    threshold: 8000
+    expression: sum((service_sla / 100) < 80) >= 3
     period: 5
-    count: 5
-    message: "Service success rate is below 80% for 5 consecutive periods"
+    silence-period: 5
+    message: "Service success rate is below 80%"
 
   endpoint_resp_time_rule:
-    metrics-name: endpoint_resp_time
-    op: ">"
-    threshold: 2000
+    expression: avg(endpoint_resp_time) > 2000
     period: 5
-    count: 3
     message: "Endpoint response time is above 2000ms"
 ```
 
@@ -307,11 +316,8 @@ data:
   alarm-settings.yml: |
     rules:
       service_resp_time_rule:
-        metrics-name: service_resp_time
-        op: ">"
-        threshold: 1000
+        expression: avg(service_resp_time) > 1000
         period: 5
-        count: 3
         message: "Response time over 1s"
 ```
 
