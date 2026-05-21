@@ -8,11 +8,11 @@ Description: How to use AWS Certificate Manager certificates with Istio ingress 
 
 ---
 
-AWS Certificate Manager (ACM) provides free, auto-renewing TLS certificates that are tightly integrated with AWS services. Using ACM certs with Istio is not as straightforward as it is with a plain ALB, because Istio normally manages its own TLS termination. But there are solid patterns for making this work, and the operational benefits of ACM's automatic renewal are worth the effort.
+AWS Certificate Manager (ACM) provides managed, auto-renewing TLS certificates that are tightly integrated with AWS services. Public certificates used only with integrated AWS services are available at no additional certificate charge, while exportable public certificates and ACM Private CA certificates are paid options. Using ACM certs with Istio is not as straightforward as it is with a plain ALB, because Istio normally manages its own TLS termination. But there are solid patterns for making this work, and the operational benefits of ACM's automatic renewal are worth the effort.
 
 ## Understanding the Challenge
 
-ACM certificates cannot be exported. You cannot download the private key and mount it into an Istio gateway pod. AWS designed ACM specifically for use with AWS services like ALB, NLB, CloudFront, and API Gateway. The certificate and private key live inside AWS infrastructure and never leave it.
+Non-exportable ACM certificates cannot be exported. You cannot download their private key and mount it into an Istio gateway pod. AWS also supports exportable public certificates, but export must be enabled when the certificate is requested, and those certificates are billed differently. For the common AWS-integrated ACM certificate model, the certificate and private key live inside AWS infrastructure and are used by services like ALB, NLB, CloudFront, and API Gateway.
 
 This means you have two main approaches:
 
@@ -49,7 +49,7 @@ spec:
           service.beta.kubernetes.io/aws-load-balancer-type: "external"
           service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
           service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
-          service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789:certificate/abc-123"
+          service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789012:certificate/abc-123"
           service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
           service.beta.kubernetes.io/aws-load-balancer-ssl-negotiation-policy: "ELBSecurityPolicy-TLS13-1-2-2021-06"
           service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
@@ -77,8 +77,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 8080
@@ -100,15 +99,15 @@ metadata:
   name: istio-alb-ingress
   namespace: istio-system
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:us-east-1:123456789:certificate/abc-123"
+    alb.ingress.kubernetes.io/certificate-arn: "arn:aws:acm:us-east-1:123456789012:certificate/abc-123"
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443},{"HTTP":80}]'
     alb.ingress.kubernetes.io/ssl-redirect: "443"
     alb.ingress.kubernetes.io/healthcheck-path: /healthz/ready
     alb.ingress.kubernetes.io/healthcheck-port: "15021"
 spec:
+  ingressClassName: alb
   rules:
   - http:
       paths:
@@ -125,7 +124,7 @@ spec:
 
 If you want Istio to handle TLS termination (not the load balancer), you can use ACM Private CA to issue certificates that cert-manager pulls into Kubernetes secrets.
 
-First, create a Private CA in ACM:
+First, create or use an active Private CA in ACM PCA. For example, to create a subordinate CA resource:
 
 ```bash
 aws acm-pca create-certificate-authority \
@@ -149,7 +148,7 @@ kind: AWSPCAClusterIssuer
 metadata:
   name: aws-pca-issuer
 spec:
-  arn: arn:aws:acm-pca:us-east-1:123456789:certificate-authority/abc-123
+  arn: arn:aws:acm-pca:us-east-1:123456789012:certificate-authority/abc-123
   region: us-east-1
 ```
 
@@ -184,8 +183,7 @@ metadata:
   namespace: istio-system
 spec:
   selector:
-    matchLabels:
-      istio: ingressgateway
+    istio: ingressgateway
   servers:
   - port:
       number: 443
@@ -205,7 +203,7 @@ You can attach multiple ACM certificates to a single NLB by specifying multiple 
 
 ```yaml
 serviceAnnotations:
-  service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789:certificate/abc-123,arn:aws:acm:us-east-1:123456789:certificate/def-456"
+  service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:123456789012:certificate/abc-123,arn:aws:acm:us-east-1:123456789012:certificate/def-456"
 ```
 
 The NLB uses SNI to select the right certificate based on the hostname the client connects to. This works well when you have certificates for different domains.
