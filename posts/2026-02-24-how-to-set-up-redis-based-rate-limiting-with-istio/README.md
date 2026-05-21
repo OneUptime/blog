@@ -8,7 +8,7 @@ Description: Complete walkthrough for deploying a Redis-backed global rate limit
 
 ---
 
-When you need rate limits that are enforced consistently across all pods and all gateways, you need a centralized counter. Redis is the go-to choice for this because it is fast, supports atomic operations, and can handle the throughput that a busy rate limit service demands. This guide walks through the complete setup of Redis-backed rate limiting in Istio.
+When you need rate limits that are enforced consistently across gateway replicas, you need a centralized counter. Redis is the go-to choice for this because it is fast, supports atomic operations, and can handle the throughput that a busy rate limit service demands. This guide walks through the complete setup of Redis-backed rate limiting at an Istio ingress gateway.
 
 ## Architecture Overview
 
@@ -16,10 +16,10 @@ The setup has four components:
 
 1. Redis - stores rate limit counters
 2. Rate limit service - receives gRPC rate check requests from Envoy, queries Redis
-3. EnvoyFilter - tells Envoy sidecars and gateways to check the rate limit service
+3. EnvoyFilter - tells the selected Envoy gateway proxies to check the rate limit service
 4. Rate limit configuration - defines the actual limits (requests per time unit)
 
-Every request flows through Envoy, which makes a gRPC call to the rate limit service. The rate limit service increments a counter in Redis and returns either OK or OVER_LIMIT.
+Every request that matches the gateway configuration flows through Envoy, which makes a gRPC call to the rate limit service. The rate limit service increments a counter in Redis and returns either OK or OVER_LIMIT.
 
 ## Deploying Redis
 
@@ -80,7 +80,7 @@ kubectl create namespace rate-limit
 kubectl apply -f redis.yaml
 ```
 
-The `maxmemory-policy: allkeys-lru` setting is important. It ensures Redis evicts old keys when memory is full, which prevents the rate limit service from running out of memory under heavy load.
+The `maxmemory-policy: allkeys-lru` setting is important. It ensures Redis evicts old keys when memory is full, which helps Redis continue accepting writes under heavy load.
 
 ## Deploying the Rate Limit Service
 
@@ -338,9 +338,7 @@ env:
 - name: REDIS_TYPE
   value: sentinel
 - name: REDIS_URL
-  value: redis-sentinel.rate-limit.svc.cluster.local:26379
-- name: REDIS_SENTINEL_MASTER_NAME
-  value: mymaster
+  value: mymaster,redis-sentinel.rate-limit.svc.cluster.local:26379
 ```
 
 ## Monitoring Redis-Backed Rate Limiting
@@ -376,8 +374,8 @@ for i in $(seq 1 600); do
 done | sort | uniq -c
 ```
 
-You should see the first 500 return 200 (matching the global limit of 500 per second) and the rest return 429.
+With the configuration above, a single client should start seeing 429 responses after 100 requests in a minute because the per-IP limit is stricter than the global 500 requests per second limit. To test only the global limit, remove the `remote_address` action and its descriptor first.
 
 ## Summary
 
-Redis-backed rate limiting gives you centralized, consistent rate enforcement across your entire Istio mesh. The setup requires deploying Redis, the Envoy rate limit service, and EnvoyFilter configurations. While it is more complex than local rate limiting, it is the right choice when you need precise global limits. Configure Redis with LRU eviction and no persistence for optimal performance, and consider Redis Sentinel for production high availability.
+Redis-backed rate limiting gives you centralized, consistent rate enforcement across your selected Istio gateway proxies. The setup requires deploying Redis, the Envoy rate limit service, and EnvoyFilter configurations. While it is more complex than local rate limiting, it is the right choice when you need precise global limits. Configure Redis with LRU eviction and no persistence for optimal performance, and consider Redis Sentinel for production high availability.
