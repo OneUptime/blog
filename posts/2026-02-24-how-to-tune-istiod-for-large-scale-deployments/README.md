@@ -96,7 +96,7 @@ The tradeoff is configuration staleness. With a 5-second max debounce, a new pod
 
 ## Limit Discovery Scope
 
-This cannot be overstated for large deployments. Every namespace istiod watches adds overhead:
+This cannot be overstated for large deployments. By default, istiod processes configuration from every namespace, which adds overhead:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -108,7 +108,7 @@ spec:
         istio-mesh: "true"
 ```
 
-If you have 200 namespaces but only 50 are in the mesh, you just saved istiod from tracking 150 namespaces worth of resources.
+If you have 200 namespaces but only 50 are in the mesh, you just saved istiod from processing 150 namespaces worth of resources.
 
 Combine with export restrictions:
 
@@ -136,7 +136,7 @@ For every namespace in the mesh, create a default Sidecar resource:
 
 for ns in $(kubectl get ns -l istio-mesh=true -o jsonpath='{.items[*].metadata.name}'); do
   kubectl apply -f - <<EOF
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -163,12 +163,13 @@ spec:
   values:
     pilot:
       env:
-        PILOT_ENABLE_K8S_SELECT_WORKLOAD_ENTRIES: "true"
+        PILOT_ENABLE_K8S_SELECT_WORKLOAD_ENTRIES: "false"
+        PILOT_ENABLE_SERVICEENTRY_SELECT_PODS: "false"
         PILOT_SCOPE_GATEWAY_TO_NAMESPACE: "true"
         PILOT_FILTER_GATEWAY_CLUSTER_CONFIG: "true"
 ```
 
-These flags reduce the number of Kubernetes resources istiod watches, easing pressure on both istiod and the API server.
+Only disable the workload-entry and ServiceEntry pod-selection flags if you do not rely on those selection behaviors. The gateway flags scope which Gateway resources apply to a gateway workload and reduce unnecessary gateway cluster configuration.
 
 Consider also setting QPS and burst limits for istiod's API client:
 
@@ -178,9 +179,9 @@ kind: IstioOperator
 spec:
   values:
     pilot:
-      env:
-        PILOT_K8S_QPS: "100"
-        PILOT_K8S_BURST: "200"
+      extraContainerArgs:
+      - --kubernetesApiQPS=100
+      - --kubernetesApiBurst=200
 ```
 
 ## Monitor Push Performance
@@ -200,16 +201,19 @@ rate(pilot_xds_pushes[5m])
 # Connected proxies per istiod instance
 pilot_xds
 
-# Push queue size - if this grows, istiod cannot keep up
-pilot_push_triggers
+# Push trigger rate by reason
+rate(pilot_push_triggers[5m]) by (type)
 
-# Config generation time
+# Proxy queue time - if this grows, istiod cannot keep up
+histogram_quantile(0.99, sum(rate(pilot_proxy_queue_time_bucket[5m])) by (le))
+
+# Proxy convergence time
 pilot_proxy_convergence_time
 ```
 
 Healthy large-scale metrics look like:
 - p99 push time under 5 seconds
-- No growing push queue
+- No sustained increase in proxy queue time
 - Even distribution of proxies across istiod instances
 - Memory not hitting limits
 
@@ -258,14 +262,16 @@ Upgrading istiod in a large mesh requires care. Use canary upgrades to validate 
 istioctl install --revision=canary --set values.pilot.env.PILOT_DEBOUNCE_AFTER=500ms
 
 # Move a test namespace to the canary
-kubectl label namespace test-ns istio.io/rev=canary --overwrite
+kubectl label namespace test-ns istio-injection- istio.io/rev=canary --overwrite
+kubectl rollout restart deployment -n test-ns
 
 # Monitor the canary for issues
-kubectl logs -l app=istiod -l istio.io/rev=canary -n istio-system -f
+kubectl logs -l app=istiod,istio.io/rev=canary -n istio-system -f
 
 # If healthy, migrate all namespaces
 for ns in $(kubectl get ns -l istio-mesh=true -o jsonpath='{.items[*].metadata.name}'); do
-  kubectl label namespace $ns istio.io/rev=canary --overwrite
+  kubectl label namespace $ns istio-injection- istio.io/rev=canary --overwrite
+  kubectl rollout restart deployment -n $ns
 done
 ```
 
