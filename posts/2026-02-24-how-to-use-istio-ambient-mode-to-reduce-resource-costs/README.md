@@ -26,7 +26,7 @@ In ambient mode, L4 traffic flows through the ztunnel:
 App A → ztunnel (Node A) → Network → ztunnel (Node B) → App B
 ```
 
-For L7 features (HTTP routing, retries, header-based routing), traffic goes through a waypoint proxy:
+For L7 features (HTTP routing with HTTPRoute, retries, header-based routing), traffic goes through a waypoint proxy:
 
 ```text
 App A → ztunnel → Waypoint Proxy → ztunnel → App B
@@ -46,6 +46,13 @@ This installs:
 - `istiod` (the control plane)
 - `ztunnel` DaemonSet (one per node)
 - `istio-cni` DaemonSet (for transparent traffic redirection)
+
+If you plan to use waypoint proxies or Gateway API routing, make sure the Kubernetes Gateway API CRDs are installed:
+
+```bash
+kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1 || \
+  kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.0/experimental-install.yaml
+```
 
 It does not install an ingress gateway by default. Add one if you need it:
 
@@ -75,7 +82,7 @@ You should see only your application containers. No `istio-proxy` container.
 
 ## Adding L7 Features with Waypoint Proxies
 
-If you need L7 features (HTTP routing, retries, authorization based on HTTP headers), deploy a waypoint proxy:
+If you need L7 features (HTTP routing with HTTPRoute, retries, authorization based on HTTP headers), deploy a waypoint proxy:
 
 ```bash
 istioctl waypoint apply -n production --enroll-namespace
@@ -83,14 +90,14 @@ istioctl waypoint apply -n production --enroll-namespace
 
 This creates a waypoint proxy deployment in the `production` namespace. All L7 policies in that namespace are enforced by the waypoint proxy.
 
-You can also create waypoint proxies for specific service accounts:
+You can also create waypoint proxies for specific services:
 
 ```bash
-istioctl waypoint apply -n production --name payment-waypoint \
-  --for service --service-account payment-service
+istioctl waypoint apply -n production --name payment-waypoint --for service
+kubectl label service payment-service -n production istio.io/use-waypoint=payment-waypoint
 ```
 
-This creates a waypoint only for the `payment-service` service account. Other services in the namespace use only the ztunnel for L4.
+This creates a waypoint and enrolls only the `payment-service` service to use it. Other services in the namespace use only the ztunnel for L4.
 
 ## Calculating the Cost Savings
 
@@ -123,15 +130,16 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   profile: ambient
-  values:
+  components:
     ztunnel:
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 512Mi
+      k8s:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
 ```
 
 The ztunnel is a lightweight Rust-based proxy that handles mTLS and L4 routing. It uses significantly less memory than Envoy because it does not need to parse HTTP or maintain L7 state.
@@ -156,21 +164,43 @@ spec:
     protocol: HBONE
 ```
 
-To set resource limits on waypoint proxies, use the Gateway API with annotations:
+To set resource limits on waypoint proxies, attach a Gateway API infrastructure parameters `ConfigMap`:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: production-waypoint-options
+  namespace: production
+data:
+  deployment: |
+    spec:
+      template:
+        spec:
+          containers:
+          - name: istio-proxy
+            resources:
+              requests:
+                cpu: 200m
+                memory: 256Mi
+              limits:
+                cpu: 1
+                memory: 1Gi
+---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: production-waypoint
   namespace: production
-  annotations:
-    proxy.istio.io/config: |
-      concurrency: 2
   labels:
     istio.io/waypoint-for: service
 spec:
   gatewayClassName: istio-waypoint
+  infrastructure:
+    parametersRef:
+      group: ""
+      kind: ConfigMap
+      name: production-waypoint-options
   listeners:
   - name: mesh
     port: 15008
@@ -203,7 +233,7 @@ kubectl rollout restart deployment -n staging
 Step 4: Verify mTLS is working:
 
 ```bash
-istioctl proxy-config all deploy/your-service -n staging
+istioctl ztunnel-config workloads -n staging
 ```
 
 Step 5: If L7 features are needed, add a waypoint proxy:
@@ -222,7 +252,7 @@ With just ztunnel (no waypoint), you get:
 - L4 network policies
 
 You do not get:
-- HTTP routing (VirtualService)
+- HTTP routing with HTTPRoute (or alpha VirtualService support)
 - HTTP retries and timeouts
 - Header-based authorization
 - Request-level metrics (istio_requests_total)
