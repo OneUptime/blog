@@ -17,7 +17,7 @@ The most direct way to route based on request properties is through the `match` 
 Here is a basic example that routes based on a custom header:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-service-vs
@@ -55,7 +55,7 @@ This sends requests with `x-user-tier: premium` to the premium subset and everyt
 You can route based on the URI path using `exact`, `prefix`, or `regex` matching:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: app-service-vs
@@ -88,10 +88,10 @@ Order matters here. Istio evaluates match rules top-down and uses the first matc
 
 ## Consistent Hashing for Session Affinity
 
-If you want requests with the same property value to always land on the same backend (session affinity), use consistent hash-based load balancing. This is configured in the DestinationRule:
+If you want requests with the same property value to prefer the same backend (session affinity), use consistent hash-based load balancing. This is configured in the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: api-service-dr
@@ -104,14 +104,14 @@ spec:
         httpHeaderName: x-user-id
 ```
 
-Now all requests with the same `x-user-id` header value will be routed to the same backend pod. This is incredibly useful for services that maintain in-memory caches or session state.
+Now requests with the same `x-user-id` header value will generally be routed to the same backend pod while the endpoint set is stable. This is incredibly useful for services that maintain in-memory caches or session state.
 
 You can also hash on other request properties:
 
 ```yaml
 # Hash on a cookie
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: web-service-dr
@@ -128,7 +128,7 @@ spec:
 
 ```yaml
 # Hash on source IP
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: legacy-service-dr
@@ -148,7 +148,7 @@ The cookie-based approach is especially nice because if the cookie doesn't exist
 You can combine multiple match conditions. All conditions in a single match block are ANDed together, while multiple match blocks are ORed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-vs
@@ -191,7 +191,7 @@ The first rule matches when BOTH the header is "mobile" AND the URI starts with 
 You can also split traffic based on request properties with different weights:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: search-service-vs
@@ -236,7 +236,7 @@ Users in the treatment group always get the new algorithm. Users in the control 
 All the VirtualService examples above reference subsets, so you need the corresponding DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: search-service-dr
@@ -257,7 +257,7 @@ spec:
 When exact or prefix matching isn't flexible enough, use regex:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: content-vs
@@ -310,7 +310,7 @@ Look at the response headers and access logs to confirm traffic is being routed 
 
 Consistent hashing works great for session affinity, but keep in mind that when pods scale up or down, some hash keys will be remapped to different endpoints. This is normal and expected with consistent hashing. If you need stronger guarantees, consider using an external session store instead of relying on hash-based routing.
 
-Also, match conditions are evaluated sequentially. If you have many match rules, put the most common matches first to minimize evaluation overhead.
+Also, match conditions are evaluated sequentially. If you have many match rules that do not overlap, put the most common matches first to minimize evaluation overhead.
 
 ## Summary
 
