@@ -193,7 +193,7 @@ The single-branch approach is simpler and avoids the complexity of cherry-pickin
 
 ## CODEOWNERS File
 
-Use CODEOWNERS to enforce review requirements:
+Use CODEOWNERS to enforce review requirements when branch protection requires code owner reviews:
 
 ```text
 # .github/CODEOWNERS
@@ -207,7 +207,9 @@ Use CODEOWNERS to enforce review requirements:
 /services/order-service/  @your-org/order-team
 
 # Security team must review authorization policies
-**/authorization-policy*  @your-org/security-team
+**/authorization-policy*                       @your-org/security-team
+/services/api-gateway/**/authorization-policy* @your-org/api-team @your-org/security-team
+/services/order-service/**/authorization-policy* @your-org/order-team @your-org/security-team
 ```
 
 ## Commit Message Convention
@@ -246,16 +248,18 @@ jobs:
 
       - name: Install tools
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.22.0 sh -
-          echo "$PWD/istio-1.22.0/bin" >> $GITHUB_PATH
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+          echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
 
       - name: Build and validate staging
         run: |
           for svc in services/*/; do
             if [ -d "${svc}overlays/staging" ]; then
               echo "Validating ${svc} (staging)..."
-              kubectl kustomize "${svc}overlays/staging" | \
-                istioctl analyze -
+              rendered="$(mktemp)"
+              kubectl kustomize "${svc}overlays/staging" > "$rendered"
+              istioctl analyze --use-kube=false "$rendered"
+              rm "$rendered"
             fi
           done
 
@@ -264,15 +268,17 @@ jobs:
           for svc in services/*/; do
             if [ -d "${svc}overlays/production" ]; then
               echo "Validating ${svc} (production)..."
-              kubectl kustomize "${svc}overlays/production" | \
-                istioctl analyze -
+              rendered="$(mktemp)"
+              kubectl kustomize "${svc}overlays/production" > "$rendered"
+              istioctl analyze --use-kube=false "$rendered"
+              rm "$rendered"
             fi
           done
 
       - name: Check YAML syntax
         run: |
           find . -name "*.yaml" -o -name "*.yml" | \
-            xargs -I {} yamllint {} || true
+            xargs -I {} yamllint {}
 ```
 
 ## Documenting Changes
