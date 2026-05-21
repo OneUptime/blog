@@ -22,9 +22,14 @@ Client -> Envoy Sidecar -> External Authz (OPA) -> Application
 
 ## Deploying OPA
 
-Deploy OPA as a sidecar alongside your application or as a standalone service. The standalone service approach is simpler and lets multiple services share the same OPA instance:
+Deploy OPA as a sidecar alongside your application or as a standalone service. The sidecar approach is generally preferred for low-latency, highly available authorization checks, but the standalone service approach is simpler and lets multiple services share the same OPA instance:
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: opa-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -42,7 +47,7 @@ spec:
     spec:
       containers:
       - name: opa
-        image: openpolicyagent/opa:latest
+        image: openpolicyagent/opa:latest-envoy
         args:
         - "run"
         - "--server"
@@ -149,7 +154,7 @@ data:
       startswith(input.attributes.request.http.path, "/api/public")
     }
 
-    # Allow requests with valid JWT claims
+    # Allow requests with an admin role claim
     allow if {
       token := input.attributes.request.http.headers.authorization
       startswith(token, "Bearer ")
@@ -160,7 +165,7 @@ data:
 
     # Allow requests from specific service accounts
     allow if {
-      input.attributes.source.principal == "cluster.local/ns/frontend/sa/frontend"
+      input.attributes.source.principal == "spiffe://cluster.local/ns/frontend/sa/frontend"
       input.attributes.request.http.method == "GET"
     }
 ```
@@ -170,7 +175,7 @@ The `input` object contains the full Envoy external authorization request, which
 - `input.attributes.request.http.method` - HTTP method
 - `input.attributes.request.http.path` - Request path
 - `input.attributes.request.http.headers` - All HTTP headers
-- `input.attributes.source.principal` - Source SPIFFE identity (from mTLS)
+- `input.attributes.source.principal` - Source SPIFFE identity, such as `spiffe://cluster.local/ns/frontend/sa/frontend` (from mTLS)
 - `input.attributes.destination.principal` - Destination identity
 
 ## More Complex Policy Examples
@@ -235,7 +240,7 @@ For production, you do not want to store policies in ConfigMaps. OPA supports lo
 ```yaml
 containers:
 - name: opa
-  image: openpolicyagent/opa:latest
+  image: openpolicyagent/opa:latest-envoy
   args:
   - "run"
   - "--server"
@@ -255,9 +260,10 @@ Test your policies before deploying them. OPA has built-in testing:
 package istio.authz_test
 
 import rego.v1
+import data.istio.authz
 
 test_allow_public_get if {
-  allow with input as {
+  authz.allow with input as {
     "attributes": {
       "request": {
         "http": {
@@ -270,7 +276,7 @@ test_allow_public_get if {
 }
 
 test_deny_post_without_auth if {
-  not allow with input as {
+  not authz.allow with input as {
     "attributes": {
       "request": {
         "http": {
@@ -298,6 +304,6 @@ OPA logs every decision when you enable decision logging. Check the logs:
 kubectl logs -n opa-system -l app=opa
 ```
 
-OPA also exposes Prometheus metrics at `/metrics`. Key metrics to watch are `opa_decision_counter` and `opa_decision_latency`.
+OPA also exposes Prometheus metrics at `/metrics`, including Go runtime metrics and HTTP request duration metrics such as `http_request_duration_seconds`. If you enable OPA-Envoy performance metrics, watch the gRPC request duration metrics as well.
 
 The combination of Istio and OPA gives you a powerful policy enforcement layer. Istio handles the plumbing of intercepting requests and routing them to OPA, while OPA provides the flexible policy engine where you can encode any authorization logic you need. The Rego language takes some getting used to, but once you are comfortable with it, you can express policies that would be impossible with Istio's built-in AuthorizationPolicy alone.
