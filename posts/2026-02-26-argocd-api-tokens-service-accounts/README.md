@@ -242,7 +242,7 @@ This shows all tokens issued for the account, including their IDs and creation d
 
 ```bash
 # Delete a token by ID
-argocd account delete-token --account ci-pipeline --id github-actions-main
+argocd account delete-token --account ci-pipeline github-actions-main
 ```
 
 ### Revoke All Tokens
@@ -254,8 +254,8 @@ To revoke all tokens for an account, delete them one by one or recreate the acco
 argocd account get --account ci-pipeline
 
 # Delete each one
-argocd account delete-token --account ci-pipeline --id <token-id-1>
-argocd account delete-token --account ci-pipeline --id <token-id-2>
+argocd account delete-token --account ci-pipeline <token-id-1>
+argocd account delete-token --account ci-pipeline <token-id-2>
 ```
 
 ## Project-Scoped Tokens
@@ -312,7 +312,7 @@ kubectl -n ci create secret generic argocd-token \
 # Clean up old tokens (keep last 2)
 OLD_TOKENS=$(argocd account get --account $ACCOUNT -o json | jq -r '.tokens[:-2][].id')
 for TOKEN in $OLD_TOKENS; do
-  argocd account delete-token --account $ACCOUNT --id $TOKEN
+  argocd account delete-token --account $ACCOUNT $TOKEN
   echo "Deleted old token: $TOKEN"
 done
 
