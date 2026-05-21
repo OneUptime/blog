@@ -22,7 +22,7 @@ When you register external HTTP APIs in Istio, you get:
 - The ability to set timeouts and retries at the mesh level
 - Circuit breaking to prevent cascade failures
 - Access logging with full HTTP details
-- Security policies controlling which workloads can call which APIs
+- Egress controls that make unregistered external calls fail in REGISTRY_ONLY mode
 
 ## Basic HTTP API Registration
 
@@ -208,31 +208,15 @@ istioctl proxy-config endpoints deploy/my-app | grep weatherservice
 
 You should see entries for each registered host. If nothing shows up, check the namespace and exportTo settings on your ServiceEntry.
 
-## Controlling Access with AuthorizationPolicy
+## Controlling Access with REGISTRY_ONLY
 
-You can restrict which workloads are allowed to call specific external APIs using AuthorizationPolicy:
+To make registration mandatory for outbound traffic, configure Istio's outbound traffic policy as `REGISTRY_ONLY`:
 
-```yaml
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: allow-weather-api
-  namespace: default
-spec:
-  selector:
-    matchLabels:
-      app: my-app
-  action: ALLOW
-  rules:
-    - to:
-        - operation:
-            hosts:
-              - api.weatherservice.com
-            ports:
-              - "80"
+```bash
+istioctl install <flags-you-used-to-install-Istio> --set meshConfig.outboundTrafficPolicy.mode=REGISTRY_ONLY
 ```
 
-This ensures only the `my-app` workload can reach the weather API. Other workloads in the namespace are denied.
+With this mode enabled, the proxy blocks outbound HTTP traffic to hosts that do not have a Kubernetes service or ServiceEntry in the mesh. This is useful for catching missing ServiceEntries and preventing accidental calls to unregistered APIs. For strict workload-specific egress security, route outbound traffic through an Istio egress gateway and apply access policies at that gateway.
 
 ## Handling API Versioning
 
