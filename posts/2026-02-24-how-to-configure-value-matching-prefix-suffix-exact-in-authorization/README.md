@@ -150,11 +150,11 @@ spec:
         - "POST"
 ```
 
-This says: allow GET and POST requests from the `frontend` namespace, as long as the path starts with `/api/` and the host ends with `.myapp.svc.cluster.local`.
+This says: allow GET and POST requests from the `frontend` namespace, as long as mutual TLS is enabled, the path starts with `/api/`, and the host ends with `.myapp.svc.cluster.local`.
 
 ## Matching on Header Values
 
-You can also use value matching on request headers through the `when` field. The `request.headers` key supports exact matching:
+You can also use value matching on request headers through the `when` field. The `request.headers` key supports the same exact, prefix, and suffix matching syntax:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -179,11 +179,11 @@ spec:
         - "/admin/*"
 ```
 
-For header-based conditions in the `when` field, the `values` list supports exact matching, and `notValues` can be used for exclusion.
+For header-based conditions in the `when` field, the `values` list supports allowed values, and `notValues` can be used for exclusion.
 
 ## Matching on Principals and Namespaces
 
-Source identities also support matching patterns. You can use prefix and suffix matching on `principals`:
+Source identities also support matching patterns when mutual TLS is enabled. You can use prefix and suffix matching on `principals`:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -213,7 +213,7 @@ This allows any service account from the `production` namespace by using a prefi
 
 **Order within a values list is OR logic.** When you list multiple values in a field like `paths`, the policy matches if any one of those values matches. All fields within a single rule entry are ANDed together.
 
-**Test with dry-run first.** Before enforcing a policy, use the `CUSTOM` action with an external authorizer in dry-run mode, or use Istio telemetry to verify what would be matched. You can also check the Envoy access logs to see which policies are being evaluated.
+**Test with dry-run first.** Before enforcing a policy, add the `"istio.io/dry-run": "true"` annotation to evaluate the policy without enforcing it, or use Istio telemetry to verify what would be matched. You can also check the Envoy access logs to see which policies are being evaluated.
 
 ## Debugging Match Issues
 
