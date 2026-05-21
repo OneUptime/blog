@@ -8,7 +8,7 @@ Description: Systematic troubleshooting guide for waypoint proxy issues in Istio
 
 ---
 
-Waypoint proxies in Istio ambient mode handle all L7 traffic processing - HTTP routing, retries, L7 authorization policies, and application-layer metrics. When they are not working correctly, you might see 503 errors, policy violations not being enforced, routing rules being ignored, or traffic bypassing the waypoint entirely.
+Waypoint proxies in Istio ambient mode handle L7 traffic processing for enrolled resources - HTTP routing, retries, L7 authorization policies, and application-layer metrics. When they are not working correctly, you might see 503 errors, policy violations not being enforced, routing rules being ignored, or traffic bypassing the waypoint entirely.
 
 This guide takes you through a systematic approach to diagnosing and fixing waypoint proxy issues.
 
@@ -75,13 +75,13 @@ Add the label:
 kubectl label namespace bookinfo istio.io/use-waypoint=bookinfo-waypoint
 ```
 
-Verify ztunnel knows about the waypoint:
+Verify ztunnel knows about the waypoint for service traffic:
 
 ```bash
-istioctl ztunnel-config workloads | grep bookinfo
+istioctl ztunnel-config service | grep bookinfo
 ```
 
-The `WAYPOINT` column should show the waypoint address for workloads in the enrolled namespace.
+The `WAYPOINT` column should show the waypoint name for services in the enrolled namespace. If callers use pod IPs directly, check `istioctl ztunnel-config workload` instead; by default a waypoint only handles traffic addressed to services.
 
 ## Waypoint Returns 503 Errors
 
@@ -110,10 +110,16 @@ kubectl get endpoints reviews -n bookinfo
 
 If the endpoints list is empty, the service selector does not match any pods.
 
-Check that the waypoint can reach the backend directly:
+Check backend reachability from the waypoint pod's network namespace with an ephemeral debug container:
 
 ```bash
-kubectl exec deploy/bookinfo-waypoint -n bookinfo -- curl -v http://reviews:9080/reviews/1 --max-time 5
+WAYPOINT_POD=$(kubectl get pod -n bookinfo \
+  -l gateway.networking.k8s.io/gateway-name=bookinfo-waypoint \
+  -o jsonpath='{.items[0].metadata.name}')
+
+kubectl debug -n bookinfo -it "$WAYPOINT_POD" \
+  --image=curlimages/curl --target=istio-proxy -- \
+  curl -v http://reviews:9080/reviews/1 --max-time 5
 ```
 
 ## L7 Authorization Policies Not Working
@@ -154,7 +160,7 @@ If you use the old-style `selector` field instead of `targetRefs`, the policy mi
 
 ### Check if the policy is L4 or L7
 
-L4 policies (source identity, port only) are enforced by ztunnel. L7 policies (methods, paths, headers) require a waypoint. If you have an L7 policy but no waypoint, the policy will not be enforced:
+L4 policies (source identity, port only) can be enforced by ztunnel. L7 policies (methods, paths, headers) require a waypoint. If an L7 policy is incorrectly targeted to ztunnel with a workload `selector`, ztunnel fails safe by denying the traffic. If the policy is attached with `targetRefs` but no waypoint is enrolled for that target, there is no waypoint to enforce it:
 
 ```bash
 # This policy needs a waypoint
@@ -174,7 +180,7 @@ spec:
 
 ## VirtualService Routing Not Applied
 
-If your VirtualService rules are not being applied:
+If your VirtualService rules are not being applied, first confirm you intend to use VirtualService in ambient mode. Istio currently treats VirtualService support with ambient as alpha; Gateway API `HTTPRoute` is the preferred routing API for waypoints, and mixing VirtualService and Gateway API routes for the same workload is not supported.
 
 ### Check the VirtualService configuration
 
@@ -182,12 +188,12 @@ If your VirtualService rules are not being applied:
 kubectl get virtualservice -n bookinfo -o yaml
 ```
 
-Verify the `hosts` field matches the actual service name:
+Verify the `hosts` field matches the actual service host:
 
 ```yaml
 spec:
   hosts:
-    - reviews  # Must match the Kubernetes service name
+    - reviews  # Short name or FQDN for the Kubernetes service
 ```
 
 ### Check the waypoint's route configuration
@@ -232,8 +238,8 @@ kubectl scale deployment bookinfo-waypoint -n bookinfo --replicas=3
 
 2. Increase resource limits:
 ```bash
-kubectl patch deployment bookinfo-waypoint -n bookinfo --type=json \
-  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/cpu","value":"2"},{"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"1Gi"}]'
+kubectl set resources deployment/bookinfo-waypoint -n bookinfo \
+  --containers=istio-proxy --limits=cpu=2,memory=1Gi
 ```
 
 ## Waypoint Configuration Out of Sync
@@ -265,9 +271,10 @@ metadata:
   name: waypoint-logging
   namespace: bookinfo
 spec:
-  selector:
-    matchLabels:
-      gateway.networking.k8s.io/gateway-name: bookinfo-waypoint
+  targetRefs:
+    - kind: Gateway
+      group: gateway.networking.k8s.io
+      name: bookinfo-waypoint
   accessLogging:
     - providers:
         - name: envoy
@@ -295,17 +302,17 @@ Then browse:
 - `http://localhost:15000/clusters` - Upstream cluster status
 - `http://localhost:15000/listeners` - Listener configuration
 
-The config dump is particularly useful for verifying that your VirtualService, DestinationRule, and AuthorizationPolicy resources are being translated correctly into Envoy configuration.
+The config dump is particularly useful for verifying that your HTTPRoute or VirtualService, DestinationRule, and AuthorizationPolicy resources are being translated correctly into Envoy configuration.
 
 ## Troubleshooting Checklist
 
 1. Is the Gateway resource PROGRAMMED?
 2. Is the waypoint pod running and healthy?
 3. Is the namespace/service labeled with `istio.io/use-waypoint`?
-4. Does ztunnel show the waypoint in workload config?
+4. Does ztunnel show the waypoint in service or workload config?
 5. Are backend service endpoints populated?
 6. Are AuthorizationPolicies using `targetRefs` (not `selector`)?
-7. Do VirtualService hosts match actual service names?
+7. Do HTTPRoute parentRefs or VirtualService hosts match the actual service hosts?
 8. Are DestinationRule subsets defined for referenced subsets?
 9. Is the proxy config synced (check proxy-status)?
 10. What do the access logs show?
