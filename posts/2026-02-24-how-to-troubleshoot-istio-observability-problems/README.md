@@ -50,7 +50,7 @@ Look for targets that are down or have errors. Common scrape issues include:
 kubectl get pod <pod-name> -n production -o jsonpath='{.metadata.annotations}' | jq .
 ```
 
-The Istio sidecar should automatically add these annotations:
+If Istio's Prometheus metrics merging is enabled, the sidecar injector should automatically add these annotations:
 
 ```yaml
 prometheus.io/scrape: "true"
@@ -58,7 +58,7 @@ prometheus.io/port: "15020"
 prometheus.io/path: "/stats/prometheus"
 ```
 
-If they are missing, the sidecar injection might not be working correctly.
+If they are missing, metrics merging might be disabled, the Prometheus scrape configuration might not use pod annotations, or the sidecar injection might not be working correctly.
 
 ## Telemetry API Configuration
 
@@ -127,8 +127,8 @@ If you are using W3C trace context (the default in newer Istio versions), `trace
 Check if trace headers are being generated:
 
 ```bash
-# Make a request and check the headers
-kubectl exec <pod-name> -c istio-proxy -n production -- \
+# Make a request from an application container or a curl/debug pod and check the headers
+kubectl exec <pod-name> -c <app-container> -n production -- \
   curl -v http://orders-service:8080/health 2>&1 | grep -i "x-b3\|traceparent"
 ```
 
@@ -149,27 +149,39 @@ If traces show up but are fragmented (each service shows as a separate trace ins
 If traces are appearing for some requests but not others, check the sampling rate:
 
 ```bash
-# Check mesh config for tracing settings
+# Check Telemetry resources and mesh config for tracing settings
+kubectl get telemetry --all-namespaces -o yaml | grep -A 10 "tracing"
 kubectl get configmap istio -n istio-system -o yaml | grep -A 10 "tracing"
 ```
 
 The default sampling rate might be too low:
 
 ```yaml
-# In the mesh config
-meshConfig:
-  defaultConfig:
-    tracing:
-      sampling: 100.0  # 100% sampling for debugging
+# In a Telemetry resource
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: tracing-debug
+  namespace: production
+spec:
+  tracing:
+    - randomSamplingPercentage: 100.0  # 100% sampling for debugging
 ```
 
 For production, you typically want a lower rate (1-10%) to avoid overwhelming your tracing backend. But for debugging, crank it up to 100%:
 
 ```bash
-# Update sampling rate temporarily
-kubectl get configmap istio -n istio-system -o yaml | \
-  sed 's/sampling: .*/sampling: 100.0/' | \
-  kubectl apply -f -
+# Update sampling rate temporarily for a namespace
+kubectl apply -f - <<'EOF'
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: tracing-debug
+  namespace: production
+spec:
+  tracing:
+    - randomSamplingPercentage: 100.0
+EOF
 ```
 
 Remember to set it back to a reasonable value after debugging.
@@ -290,8 +302,8 @@ If Kiali is not showing the service graph correctly, it usually means it cannot 
 # Check Kiali logs
 kubectl logs -n istio-system deployment/kiali | grep "error"
 
-# Verify Kiali's Prometheus configuration
-kubectl get configmap kiali -n istio-system -o yaml | grep prometheus_url
+# Verify Kiali's Prometheus configuration when using the Kiali Operator
+kubectl get kiali -A -o yaml | grep -A 8 "external_services:"
 ```
 
 Make sure the Prometheus URL in Kiali's configuration is correct and reachable from within the cluster.
