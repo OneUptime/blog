@@ -10,11 +10,11 @@ Description: How to implement request size limits and body-size-based authorizat
 
 Controlling request sizes is an important part of protecting your services. Without limits, a single client can send massive payloads that exhaust memory, overload processing, or fill up disk space. While many web frameworks handle this at the application level, implementing it at the mesh layer gives you a uniform enforcement point that protects every service regardless of the framework or language it uses.
 
-Istio doesn't have a dedicated "request size" field in AuthorizationPolicy, but you can achieve request size control through several mechanisms: Envoy's connection and buffer limits, EnvoyFilter for custom size checks, and external authorization for more complex logic.
+Istio doesn't have a dedicated "request size" field in AuthorizationPolicy, but you can achieve request size protection through several mechanisms: Envoy's buffer filter, connection pool limits for related resource pressure, EnvoyFilter for custom size checks, and external authorization for more complex logic.
 
-## Approach 1: Connection Buffer Limits via DestinationRule
+## Approach 1: Connection Pool Limits via DestinationRule
 
-The simplest way to limit request sizes is through Envoy's connection pool settings. You can set buffer limits that effectively cap request sizes:
+DestinationRule connection pool settings can reduce resource pressure, but they do not enforce request body size. For example, you can limit how many requests reuse a single upstream connection:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -31,7 +31,7 @@ spec:
         h2UpgradePolicy: DEFAULT
 ```
 
-However, this doesn't give you fine-grained body size control. For that, you need EnvoyFilters or external authorization.
+This controls connection reuse, not the number of bytes in an individual request body. For body size control, you need EnvoyFilters or external authorization.
 
 ## Approach 2: EnvoyFilter for Request Body Size Limits
 
@@ -63,7 +63,7 @@ spec:
         name: envoy.filters.http.buffer
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
-          maxRequestBytes: 1048576  # 1MB max request body
+          max_request_bytes: 1048576  # 1MB max request body
 ```
 
 This rejects any request with a body larger than 1MB with a 413 (Payload Too Large) response.
@@ -91,16 +91,16 @@ spec:
     patch:
       operation: MERGE
       value:
-        perFilterConfig:
+        typed_per_filter_config:
           envoy.filters.http.buffer:
             "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.BufferPerRoute
             buffer:
-              maxRequestBytes: 5242880  # 5MB for this route
+              max_request_bytes: 5242880  # 5MB for this route
 ```
 
 ## Approach 3: Content-Length Header Matching
 
-If clients include the Content-Length header (which most HTTP clients do), you can use a Lua filter to check it before the request body is transmitted:
+If clients include the Content-Length header (which most HTTP clients do), you can use a Lua filter to check it without buffering the full request body:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -144,7 +144,7 @@ spec:
                   max_size = 1048576  -- 1MB for API calls
                 end
 
-                if size > max_size then
+                if size and size > max_size then
                   request_handle:respond(
                     {[":status"] = "413"},
                     "Request body too large. Maximum size: " .. max_size .. " bytes"
@@ -154,7 +154,7 @@ spec:
             end
 ```
 
-This approach is fast because it checks the header before the body is even read. But it relies on the client sending an accurate Content-Length header. Chunked transfer encoding won't have this header.
+This approach is fast because it checks the header before the full body is buffered by Envoy or read by the application. But it relies on the client sending an accurate Content-Length header. Chunked transfer encoding won't have this header.
 
 ## Approach 4: External Authorization with Size Validation
 
@@ -199,7 +199,7 @@ spec:
   - port: 8080
 ```
 
-Here's a simple size authorization server in Python:
+Here's a simple size authorization server in Python. This example assumes `includeRequestBodyInCheck` is enabled in the provider config below, so the authorization request's `Content-Length` reflects the buffered body sent to the authorizer:
 
 ```python
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -218,10 +218,8 @@ SIZE_LIMITS = {
 
 class AuthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        content_length = self.headers.get("x-original-content-length", "0")
-        path = self.headers.get("x-original-path", "/")
-        content_type = self.headers.get("x-original-content-type", "")
-
+        content_length = self.headers.get("content-length", "0")
+        path = self.path
         size = int(content_length)
 
         # Find the matching limit
@@ -243,6 +241,7 @@ class AuthHandler(BaseHTTPRequestHandler):
             }).encode())
         else:
             self.send_response(200)
+            self.send_header("x-size-checked", "true")
             self.end_headers()
 
     def log_message(self, format, *args):
@@ -264,8 +263,10 @@ spec:
         service: size-authz.istio-system.svc.cluster.local
         port: 8080
         includeRequestHeadersInCheck:
-        - content-length
         - content-type
+        includeRequestBodyInCheck:
+          maxRequestBytes: 104857600  # 100MB maximum body to buffer for authorization
+          allowPartialMessage: false
         headersToUpstreamOnAllow:
         - x-size-checked
 ```
@@ -291,7 +292,7 @@ spec:
         methods: ["POST", "PUT", "PATCH"]
 ```
 
-Notice the policy only applies to methods that have request bodies. GET and DELETE requests skip the size check.
+Notice the policy only applies to methods that commonly carry request bodies. GET and DELETE requests skip the size check.
 
 ## Applying Size Limits at the Ingress Gateway
 
@@ -323,7 +324,7 @@ spec:
         name: envoy.filters.http.buffer
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.buffer.v3.Buffer
-          maxRequestBytes: 10485760  # 10MB global limit
+          max_request_bytes: 10485760  # 10MB global limit
 ```
 
 This creates a baseline limit for all incoming traffic. Individual services can then have tighter limits applied closer to the workload.
