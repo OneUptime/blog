@@ -14,16 +14,20 @@ Here is how to configure sampling rates properly in Istio.
 
 ## How Sampling Works in Istio
 
-When a request enters the mesh, the first proxy it hits makes a sampling decision. It rolls the dice, and if the request falls within the sampling percentage, the proxy generates a trace span and sets propagation headers so that downstream services also trace that request.
+When a request enters the mesh without an existing sampling decision, the first proxy it hits makes that decision. It rolls the dice, and if the request falls within the sampling percentage, the proxy generates a trace span and sets propagation headers. Downstream proxies can then continue that trace when the application propagates those headers on its outgoing requests.
 
 The key headers are:
 
+- `x-request-id` - Envoy request ID used for consistent trace and log sampling
 - `x-b3-traceid` - Unique ID for the trace
 - `x-b3-spanid` - Unique ID for the span
+- `x-b3-parentspanid` - ID of the parent span
 - `x-b3-sampled` - Whether this trace is sampled (1) or not (0)
+- `x-b3-flags` - B3 debug flag
 - `traceparent` - W3C trace context header (used by OpenTelemetry)
+- `tracestate` - Additional W3C trace context state
 
-When `x-b3-sampled` is set to `1`, all downstream proxies will generate spans for that request regardless of their own sampling configuration. This is important because it means sampling is a per-trace decision, not a per-hop decision.
+When `x-b3-sampled` is set to `1`, downstream proxies that receive the propagated context will respect that sampling decision instead of making a new random sampling decision. This is important because it means sampling is a per-trace decision, not a per-hop decision.
 
 ## Setting the Global Sampling Rate
 
@@ -42,7 +46,7 @@ spec:
       randomSamplingPercentage: 5.0
 ```
 
-This tells Istio to sample 5% of requests randomly. The `randomSamplingPercentage` accepts a float between 0 and 100.
+This tells Istio to sample 5% of requests randomly. The `randomSamplingPercentage` accepts values from 0.00 to 100.00 in 0.01% increments.
 
 Common production values:
 
@@ -147,7 +151,7 @@ The API gateway handles all incoming traffic, so a low rate keeps the volume man
 
 ## Pod Annotation Override
 
-For quick debugging, you can override the sampling rate on a specific pod without creating a Telemetry resource:
+For quick debugging, you can override mesh-wide sampling on a specific pod without creating a Telemetry resource, as long as a Telemetry API resource is not already setting sampling for that workload:
 
 ```yaml
 apiVersion: apps/v1
@@ -193,8 +197,9 @@ Istio follows a clear precedence order for sampling configuration:
 1. **Incoming trace headers** - If the request already has a sampling decision in its headers, that decision is respected
 2. **Workload-specific Telemetry** - Selector-based Telemetry in the same namespace
 3. **Namespace-scoped Telemetry** - Telemetry without a selector in the namespace
-4. **Mesh-wide Telemetry** - Telemetry in `istio-system` without a selector
-5. **MeshConfig** - The `tracing.sampling` field in mesh configuration
+4. **Mesh-wide Telemetry** - Telemetry in the root configuration namespace, usually `istio-system`, without a selector
+5. **Pod annotation** - The `proxy.istio.io/config` annotation
+6. **MeshConfig** - The `tracing.sampling` field in mesh configuration
 
 Higher-priority configurations override lower-priority ones.
 
@@ -225,7 +230,7 @@ processors:
           sampling_percentage: 1
 ```
 
-With this setup, you would set Istio's sampling to 100% (so all spans reach the Collector) and let the Collector decide which traces to keep. This gives you all error traces and slow traces plus a random sample of normal ones.
+With this setup, you would set Istio's sampling to 100% (so all spans reach the Collector) and let the Collector decide which traces to keep. For effective tail sampling, all spans for the same trace must reach the same Collector instance. This gives you all error traces and slow traces plus a random sample of normal ones.
 
 The tradeoff is that 100% sampling at the proxy level costs more CPU and bandwidth. But you get much better trace coverage for the cases that matter.
 
