@@ -29,15 +29,15 @@ The `istioctl proxy-status` output shows the proxy version for each pod. You wil
 
 ```text
 NAME                              CDS    LDS    EDS    RDS    ISTIOD                    VERSION
-my-app-abc.default                SYNCED SYNCED SYNCED SYNCED istiod-7f8b9c6d4-x2k9p   1.20.2
-my-app-def.default                SYNCED SYNCED SYNCED SYNCED istiod-7f8b9c6d4-x2k9p   1.19.6
+my-app-abc.default                SYNCED SYNCED SYNCED SYNCED istiod-7f8b9c6d4-x2k9p   1.30.0
+my-app-def.default                SYNCED SYNCED SYNCED SYNCED istiod-7f8b9c6d4-x2k9p   1.29.2
 ```
 
-In this example, one pod has version 1.20.2 and another has 1.19.6. That is version skew.
+In this example, one pod has version 1.30.0 and another has 1.29.2. That is version skew.
 
 ## Istio's Version Compatibility Policy
 
-Istio officially supports a version skew of N-1 to N+1 between the control plane and data plane. This means if your control plane is version 1.20, your data plane proxies can be 1.19, 1.20, or 1.21.
+Istio officially supports the control plane being one minor version ahead of the data plane, but the data plane cannot be ahead of the control plane. This means if your control plane is version 1.30, your data plane proxies can be 1.29 or 1.30, but not 1.31.
 
 Going beyond one minor version of skew is not supported and can lead to:
 - xDS protocol incompatibilities
@@ -45,13 +45,13 @@ Going beyond one minor version of skew is not supported and can lead to:
 - Unexpected behavior with newer API fields
 - Potential crashes or connection failures
 
-You can check for unsupported version skew easily:
+You can check the versions in the mesh with:
 
 ```bash
-istioctl version --short
+istioctl version
 ```
 
-If the versions are more than one minor version apart, you should prioritize getting the lagging proxies updated.
+If the control plane is more than one minor version ahead of the data plane, or if any data plane proxy is ahead of the control plane, you should prioritize getting the proxies back onto a supported version.
 
 ## Detecting Version Skew
 
@@ -64,7 +64,7 @@ kubectl get pods --all-namespaces -o jsonpath='{range .items[*]}{range .spec.con
 
 This shows you all the distinct sidecar images in use across the cluster.
 
-For a more targeted check, use a label selector:
+For a more targeted namespace-specific check:
 
 ```bash
 kubectl get pods -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[?(@.name=="istio-proxy")]}{.image}{end}{"\n"}{end}'
@@ -76,16 +76,16 @@ The safest way to handle version skew is to use Istio's canary upgrade feature. 
 
 ```bash
 # Install the new version with a revision label
-istioctl install --set revision=1-21 --set tag=1.21.0
+istioctl install --set revision=1-30-0
 ```
 
-This creates a new istiod deployment named `istiod-1-21` that runs alongside your existing istiod. Both control planes operate simultaneously.
+This creates a new istiod deployment named `istiod-1-30-0` that runs alongside your existing istiod. Both control planes operate simultaneously.
 
 Then, migrate namespaces one at a time:
 
 ```bash
 # Switch a namespace to the new control plane
-kubectl label namespace my-namespace istio.io/rev=1-21 --overwrite
+kubectl label namespace my-namespace istio.io/rev=1-30-0 --overwrite
 kubectl label namespace my-namespace istio-injection-
 
 # Restart pods to pick up the new sidecar
@@ -98,10 +98,10 @@ Check that the pods in that namespace are now connected to the new control plane
 istioctl proxy-status | grep my-namespace
 ```
 
-You should see them connected to `istiod-1-21`. Once all namespaces are migrated and running smoothly, remove the old control plane:
+You should see them connected to `istiod-1-30-0`. Once all namespaces are migrated and running smoothly, remove the old control plane:
 
 ```bash
-istioctl uninstall --revision default
+istioctl uninstall --revision 1-29-2
 ```
 
 ## Handling Skew During Rollouts
@@ -110,7 +110,7 @@ Even with a good upgrade strategy, you will have a period where some pods have t
 
 ### Keep Configuration Compatible
 
-Do not start using new Istio API features until all proxies have been upgraded. If you use a field that only exists in version 1.21 but some proxies are still on 1.20, those older proxies will ignore the field (at best) or have unexpected behavior.
+Do not start using new Istio API features until all proxies have been upgraded. If you use a field that only exists in version 1.30 but some proxies are still on 1.29, those older proxies may ignore the field or have unexpected behavior.
 
 ```yaml
 # Do not use this if any proxies are still on a version that does not support it
@@ -134,10 +134,10 @@ Stick to API features that are supported by the oldest proxy version in your mes
 Watch error rates closely during the upgrade window:
 
 ```promql
-sum(rate(istio_requests_total{response_code=~"5.."}[5m])) by (source_version, destination_version)
+sum(rate(istio_requests_total{response_code=~"5.."}[5m])) by (source_canonical_revision, destination_canonical_revision)
 ```
 
-This query breaks down error rates by the source and destination proxy versions, which helps you spot if a specific version combination is having issues.
+This query breaks down error rates by the source and destination workload revisions. To correlate that with proxy version skew, compare it with `istioctl proxy-status` or your `istio_build{component="proxy"}` metrics.
 
 ### Prioritize Critical Services
 
@@ -175,9 +175,9 @@ kubectl rollout restart statefulset -n my-namespace
 kubectl rollout restart daemonset -n my-namespace
 ```
 
-### In-Place Proxy Upgrade (Experimental)
+### Inspect the Running Proxy Version
 
-Istio has been working on in-place proxy upgrades that do not require pod restarts. Check if your version supports it:
+Istio in-place upgrades update the control plane and gateways, but sidecar proxies still need the workload pods to be recreated. If you need to inspect what a stuck pod is running:
 
 ```bash
 istioctl proxy-config bootstrap my-pod -n default | grep -i version
@@ -194,10 +194,7 @@ groups:
   - alert: IstioVersionSkew
     expr: |
       count(count by (tag) (
-        label_replace(
-          istio_build{component="proxy"},
-          "tag", "$1", "tag", "(.*)"
-        )
+        istio_build{component="proxy"}
       )) > 1
     for: 24h
     labels:
@@ -216,7 +213,7 @@ If you run into problems after upgrading some proxies, you can roll back by:
 2. Restarting the affected pods
 
 ```bash
-kubectl label namespace my-namespace istio.io/rev=1-20 --overwrite
+kubectl label namespace my-namespace istio.io/rev=1-29-2 --overwrite
 kubectl rollout restart deployment -n my-namespace
 ```
 
