@@ -24,8 +24,13 @@ kubectl get networkpolicies --all-namespaces
 # List all RBAC roles and bindings
 kubectl get clusterroles,clusterrolebindings,roles,rolebindings --all-namespaces
 
-# Check for existing PodSecurityPolicies or PodSecurityStandards
+# Check for legacy PodSecurityPolicies, if the cluster is older than Kubernetes 1.25
 kubectl get podsecuritypolicies 2>/dev/null
+
+# Check Pod Security Admission labels on namespaces
+kubectl get namespaces --show-labels | grep "pod-security.kubernetes.io" || true
+
+# Check pod-level security context already in use
 kubectl get pods --all-namespaces -o json | \
   jq '.items[] | {name: .metadata.name, namespace: .metadata.namespace, securityContext: .spec.securityContext}'
 
@@ -35,7 +40,7 @@ kubectl get peerauthentication,authorizationpolicy,requestauthentication --all-n
 
 ## Migrating Network Policies to Istio Authorization Policies
 
-Kubernetes NetworkPolicies work at L3/L4 (IP addresses and ports). Istio AuthorizationPolicies work at L7 (HTTP methods, paths, headers) and can also do L4. The migration path is to replace NetworkPolicies with more granular Istio policies.
+Kubernetes NetworkPolicies work at L3/L4 (IP addresses and ports). Istio AuthorizationPolicies work at L7 (HTTP methods, paths, headers) and can also do L4 for traffic handled by Istio proxies. The migration path is to add Istio policies that mirror or refine your existing NetworkPolicies, then decide whether any NetworkPolicies can be safely removed.
 
 Here is a typical Kubernetes NetworkPolicy:
 
@@ -59,7 +64,7 @@ spec:
       protocol: TCP
 ```
 
-The equivalent Istio AuthorizationPolicy gives you more control:
+The equivalent Istio AuthorizationPolicy gives you more control, assuming the frontend pods run as the `frontend` service account:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -105,13 +110,12 @@ spec:
 ### Phase 2: Verify mTLS is Working
 
 ```bash
-# Check mTLS status between services
-istioctl proxy-config listeners my-pod -o json | \
-  jq '.[].filterChains[].transportSocket'
+# Confirm the sidecar has workload certificates
+istioctl proxy-config secret deployment/frontend.production
 
-# Verify traffic is encrypted
-kubectl exec my-pod -c istio-proxy -- \
-  pilot-agent request GET stats | grep "ssl"
+# Inspect the proxy configuration for TLS settings
+istioctl proxy-config listeners deployment/backend.production -o json | \
+  jq '.[].filterChains[]?.transportSocket? | select(. != null)'
 ```
 
 ### Phase 3: Switch to STRICT per-namespace
@@ -199,7 +203,7 @@ spec:
 
 ## Adding JWT Authentication
 
-For services that receive external traffic, add JWT validation at the mesh level:
+For services that receive external traffic, add JWT validation to the selected workload:
 
 ```yaml
 apiVersion: security.istio.io/v1
