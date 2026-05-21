@@ -18,15 +18,16 @@ Istio publishes security advisories in several places:
 
 1. **Istio Security Page**: https://istio.io/latest/news/security/
 2. **GitHub Security Advisories**: https://github.com/istio/istio/security/advisories
-3. **Mailing List**: istio-security-announce@googlegroups.com
-4. **CVE Databases**: NVD, Mitre
+3. **Istio News RSS Feed**: https://istio.io/latest/news/feed.xml
+4. **Istio Announcements**: https://discuss.istio.io/c/announcements
+5. **CVE Databases**: NVD, CVE.org
 
-The mailing list is the fastest notification channel. Subscribe to it:
+The Istio security page and news feed are the primary channels to monitor. Subscribe to the feed:
 
 ```bash
 # Subscribe at:
 
-# https://groups.google.com/g/istio-security-announce
+# https://istio.io/latest/news/feed.xml
 ```
 
 ## Set Up Monitoring
@@ -47,7 +48,7 @@ gh api repos/istio/istio/security-advisories --jq '.[0:5] | .[] | "\(.published_
 Subscribe to the Istio news feed:
 
 ```text
-https://istio.io/latest/news/security/index.xml
+https://istio.io/latest/news/feed.xml
 ```
 
 Add this to your RSS reader or monitoring tool.
@@ -76,10 +77,10 @@ gh api repos/istio/istio/security-advisories \
 
 # Check if current version has known CVEs
 echo ""
-echo "Checking for CVEs affecting $CURRENT..."
+echo "Review affected ranges for $CURRENT:"
 gh api "repos/istio/istio/security-advisories" \
-  --jq ".[] | select(.vulnerabilities[]?.vulnerable_version_range | contains(\"$CURRENT\")) | \"AFFECTED: \(.cve_id) - \(.summary)\"" \
-  2>/dev/null
+  --jq '.[] | select(.state == "published") | "\(.cve_id // .ghsa_id): \(.summary)\n  Affected: \([.vulnerabilities[]?.vulnerable_version_range] | unique | join(", "))\n  Patched: \([.vulnerabilities[]?.patched_versions] | unique | join(", "))\n  URL: \(.html_url)\n"' \
+  2>/dev/null | head -60
 ```
 
 ### Integrate with Alerting
@@ -107,9 +108,9 @@ spec:
                 - -c
                 - |
                   # Fetch the Istio security RSS feed
-                  FEED=$(curl -s https://istio.io/latest/news/security/index.xml)
+                  FEED=$(curl -s https://istio.io/latest/news/feed.xml)
 
-                  # Check for entries in the last 7 days
+                  # Check for entries from the current year
                   RECENT=$(echo "$FEED" | grep -c "<pubDate>.*$(date +%Y)")
 
                   if [ "$RECENT" -gt 0 ]; then
@@ -204,7 +205,7 @@ For large deployments, use the canary upgrade approach:
 istioctl install --set revision=1-22-2
 
 # Migrate namespaces one at a time
-kubectl label namespace test-ns istio.io/rev=1-22-2 --overwrite
+kubectl label namespace test-ns istio-injection- istio.io/rev=1-22-2 --overwrite
 kubectl rollout restart deployment -n test-ns
 
 # Verify
