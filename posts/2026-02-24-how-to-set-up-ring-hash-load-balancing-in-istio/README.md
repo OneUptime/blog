@@ -8,11 +8,11 @@ Description: Set up ring hash load balancing in Istio to achieve consistent rout
 
 ---
 
-Ring hash is the default consistent hashing implementation in Istio and Envoy. When you configure `consistentHash` in a DestinationRule, Envoy uses a ring hash algorithm under the hood. Understanding how ring hash works and how to tune it gives you better control over session affinity and traffic distribution in your mesh.
+Ring hash is Istio's default consistent hashing implementation. When you configure `consistentHash` with `ringHash` in a DestinationRule, Envoy uses a ring hash algorithm under the hood. Understanding how ring hash works and how to tune it gives you better control over session affinity and traffic distribution in your mesh.
 
 ## Ring Hash Basics
 
-A ring hash algorithm places each backend endpoint at multiple positions on a virtual ring (a circular hash space from 0 to 2^32). When a request comes in, its hash key gets mapped to a position on the ring, and Envoy walks clockwise to find the nearest endpoint.
+A ring hash algorithm places each backend endpoint at multiple positions on a virtual ring. When a request comes in, its hash key gets mapped to a position on the ring, and Envoy walks clockwise to find the nearest endpoint.
 
 Each endpoint gets multiple positions on the ring (called "virtual nodes"). More virtual nodes per endpoint means more even distribution but more memory usage.
 
@@ -33,7 +33,7 @@ Each pod appears multiple times on the ring. A request with hash value 200 goes 
 
 ## Configuration
 
-Ring hash is automatically selected when you use `consistentHash` in your DestinationRule. There is no separate flag to enable it - it is the default consistent hash algorithm.
+Ring hash is selected when you use `consistentHash.ringHash` in your DestinationRule. Istio also supports Maglev through `consistentHash.maglev`.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -46,7 +46,8 @@ spec:
     loadBalancer:
       consistentHash:
         httpHeaderName: x-session-id
-        minimumRingSize: 1024
+        ringHash:
+          minimumRingSize: 1024
 ```
 
 The `minimumRingSize` controls how many entries the hash ring has at minimum. The default value is 1024. A larger ring gives better distribution at the cost of memory.
@@ -99,7 +100,10 @@ spec:
     spec:
       containers:
       - name: cache
-        image: nginx:latest
+        image: registry.k8s.io/e2e-test-images/agnhost:2.45
+        args:
+        - netexec
+        - --http-port=8080
         ports:
         - containerPort: 8080
 ---
@@ -113,7 +117,8 @@ spec:
     loadBalancer:
       consistentHash:
         httpHeaderName: x-cache-key
-        minimumRingSize: 2048
+        ringHash:
+          minimumRingSize: 2048
 ```
 
 Apply everything:
@@ -122,7 +127,7 @@ Apply everything:
 kubectl apply -f cache-service.yaml
 ```
 
-Now requests with the same `x-cache-key` header value always route to the same pod. This is perfect for distributed caching where you want cache hits to go to the node that has the data.
+Now requests with the same `x-cache-key` header value route to the same pod while the backend set is stable. This is perfect for distributed caching where you want cache hits to go to the node that has the data.
 
 ## Testing Ring Hash Behavior
 
@@ -135,15 +140,15 @@ kubectl run curl-test --image=curlimages/curl -it --rm -- sh
 Inside the pod:
 
 ```bash
-# Same key should always go to same pod
+# Same key should go to the same pod while the backend set is stable
 
 for i in $(seq 1 10); do
-  curl -s -H "x-cache-key: user-42" http://cache-service:8080/
+  curl -s -H "x-cache-key: user-42" http://cache-service:8080/hostname
 done
 
 # Different key should go to (likely) a different pod
 for i in $(seq 1 10); do
-  curl -s -H "x-cache-key: user-99" http://cache-service:8080/
+  curl -s -H "x-cache-key: user-99" http://cache-service:8080/hostname
 done
 ```
 
@@ -189,11 +194,11 @@ Istio offers two consistent hash algorithms: ring hash and maglev. Ring hash is 
 | Feature | Ring Hash | Maglev |
 |---------|-----------|--------|
 | Distribution evenness | Good (depends on ring size) | Better (by design) |
-| Lookup speed | O(log n) | O(1) |
+| Lookup speed | Good | Faster |
 | Memory usage | Configurable via ring size | Fixed based on table size |
-| Minimum disruption on change | Good | Slightly better |
+| Minimum disruption on change | Better | Good |
 
-For most use cases, ring hash is fine. Maglev is worth considering when you have hundreds of endpoints and need the most even distribution possible.
+For most use cases, ring hash is fine. Maglev is worth considering when you need faster table build and host selection times or more even distribution with a fixed-size lookup table.
 
 ## Combining Ring Hash with Outlier Detection
 
@@ -210,7 +215,8 @@ spec:
     loadBalancer:
       consistentHash:
         httpHeaderName: x-cache-key
-        minimumRingSize: 2048
+        ringHash:
+          minimumRingSize: 2048
     outlierDetection:
       consecutive5xxErrors: 5
       interval: 10s
