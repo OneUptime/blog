@@ -26,7 +26,7 @@ kubectl logs -n istio-system deploy/istiod --tail=100 | grep -i "error\|warn\|fa
 istioctl proxy-status
 ```
 
-The `istioctl proxy-status` output is your first clue. If proxies show `STALE`, it means they haven't received the latest configuration from Istiod. If they show `NOT SENT`, Istiod may not even know about them.
+The `istioctl proxy-status` output is your first clue. If proxies show `STALE`, it means Istiod has sent an update but has not received an acknowledgement from Envoy. If they show `NOT SENT`, Istiod has not sent that xDS type to the proxy, usually because there was nothing to send. If a proxy is missing from the list entirely, it is not currently connected to an Istiod instance.
 
 ```text
 NAME                                  CLUSTER        CDS        LDS        EDS        RDS        ECDS        ISTIOD
@@ -96,7 +96,7 @@ error	SDS: failed to generate secret for proxy: authentication failure
 kubectl logs -n istio-system deploy/istiod -f | grep -i "rotation\|renew\|expire"
 ```
 
-**Checking the CA certificate itself:**
+**Checking the CA certificate itself with the default self-signed CA:**
 ```bash
 kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | base64 -d | openssl x509 -text -noout
 ```
@@ -117,16 +117,16 @@ Check what services Istiod knows about:
 kubectl exec -n istio-system deploy/istiod -- \
   curl -s "localhost:15014/debug/registryz" | python3 -m json.tool | head -100
 
-# Check endpoints for a specific service
+# Check Istiod's endpoint shards
 kubectl exec -n istio-system deploy/istiod -- \
-  curl -s "localhost:15014/debug/endpointz?servicePort=8080" | python3 -m json.tool
+  curl -s "localhost:15014/debug/endpointShardz" | python3 -m json.tool
 ```
 
-If a service is missing from the registry, check that the Kubernetes service and endpoints exist:
+If a service is missing from the registry, check that the Kubernetes service and endpoint slices exist:
 
 ```bash
 kubectl get svc my-service -n my-namespace
-kubectl get endpoints my-service -n my-namespace
+kubectl get endpointslices -n my-namespace -l kubernetes.io/service-name=my-service
 ```
 
 ## Debugging Webhook Issues
@@ -171,11 +171,11 @@ Key metrics to watch:
 ```bash
 # Number of connected proxies
 kubectl exec -n istio-system deploy/istiod -- \
-  curl -s "localhost:15014/metrics" | grep "pilot_xds_pushes"
+  curl -s "localhost:15014/metrics" | grep -E "^pilot_xds(\{| )"
 
 # Push time
 kubectl exec -n istio-system deploy/istiod -- \
-  curl -s "localhost:15014/metrics" | grep "pilot_proxy_convergence_time"
+  curl -s "localhost:15014/metrics" | grep "pilot_xds_push_time"
 
 # Configuration errors
 kubectl exec -n istio-system deploy/istiod -- \
@@ -205,7 +205,7 @@ kubectl exec -n istio-system deploy/istiod -- \
 kubectl exec -n istio-system deploy/istiod -- \
   curl -s "localhost:15014/debug/registryz" | python3 -m json.tool
 
-# View the internal EDS registry
+# View the internal EDS configuration
 kubectl exec -n istio-system deploy/istiod -- \
   curl -s "localhost:15014/debug/edsz" | python3 -m json.tool
 ```
