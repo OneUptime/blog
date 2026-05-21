@@ -38,7 +38,7 @@ kubectl label namespace ecommerce istio-injection=enabled
 Set up the Istio ingress gateway to handle incoming traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: ecommerce-gateway
@@ -71,7 +71,7 @@ spec:
 Route traffic to the appropriate services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ecommerce-routes
@@ -127,7 +127,7 @@ spec:
 The checkout flow is the most critical path in your application. Protect it with retries, timeouts, and circuit breaking:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-service-vs
@@ -145,7 +145,7 @@ spec:
       perTryTimeout: 10s
       retryOn: 5xx,reset,connect-failure
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service-vs
@@ -164,14 +164,14 @@ spec:
       retryOn: reset,connect-failure
 ```
 
-Notice the payment service has only 1 retry and doesn't retry on 5xx. Payment operations aren't always safe to retry because you could charge a customer twice. Only retry on connection failures where the request definitely didn't reach the payment provider.
+Notice the payment service has only 1 retry and doesn't retry on 5xx. Payment operations aren't always safe to retry because you could charge a customer twice. Keep retries limited to connection-level failures, and make payment operations idempotent before relying on retries.
 
 ## Circuit Breaking for High-Traffic Services
 
 During sales events, protect your services from being overwhelmed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-catalog-dr
@@ -191,8 +191,15 @@ spec:
       interval: 15s
       baseEjectionTime: 30s
       maxEjectionPercent: 30
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+  - name: canary
+    labels:
+      version: canary
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: cart-service-dr
@@ -218,7 +225,7 @@ spec:
 E-commerce handles sensitive data: credit card numbers, personal information, order details. Encrypt everything with strict mTLS:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -231,7 +238,7 @@ spec:
 Restrict which services can access the payment service:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: payment-service-authz
@@ -337,7 +344,7 @@ spec:
 Never deploy new code to all users during peak shopping hours. Use canary releases:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-catalog-vs
