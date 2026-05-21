@@ -25,7 +25,7 @@ The tradeoff is that Helm installation requires a bit more setup since you need 
 
 You'll need:
 
-- Kubernetes cluster version 1.25+
+- A Kubernetes cluster version supported by the Istio release you're installing. For example, Istio 1.29 supports Kubernetes 1.31 through 1.35.
 - Helm 3.6 or later
 - kubectl configured for your cluster
 - Cluster admin permissions
@@ -70,7 +70,7 @@ kubectl create namespace istio-system
 The base chart installs Istio's Custom Resource Definitions (CRDs) and other cluster-scoped resources. This must be installed first:
 
 ```bash
-helm install istio-base istio/base -n istio-system --wait
+helm install istio-base istio/base -n istio-system --set defaultRevision=default --wait
 ```
 
 Verify the CRDs were created:
@@ -125,17 +125,16 @@ One of Helm's biggest advantages is how easy it is to customize installations. C
 ```yaml
 # istiod-values.yaml
 
-pilot:
-  resources:
-    requests:
-      cpu: 200m
-      memory: 256Mi
-    limits:
-      cpu: 500m
-      memory: 1Gi
-  autoscaleEnabled: true
-  autoscaleMin: 2
-  autoscaleMax: 5
+resources:
+  requests:
+    cpu: 200m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+autoscaleEnabled: true
+autoscaleMin: 2
+autoscaleMax: 5
 
 meshConfig:
   accessLogFile: /dev/stdout
@@ -161,6 +160,9 @@ service:
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
     service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
   ports:
+    - name: status-port
+      port: 15021
+      targetPort: 15021
     - name: http2
       port: 80
       targetPort: 80
@@ -186,7 +188,7 @@ kubectl label namespace default istio-injection=enabled
 Deploy a test application to make sure sidecars get injected properly:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/bookinfo/platform/kube/bookinfo.yaml
 ```
 
 Check the pods:
@@ -224,7 +226,7 @@ helm install istiod-canary istio/istiod -n istio-system \
 Then migrate workloads namespace by namespace by changing the injection label:
 
 ```bash
-kubectl label namespace default istio.io/rev=canary --overwrite
+kubectl label namespace default istio-injection- istio.io/rev=canary --overwrite
 kubectl rollout restart deployment -n default
 ```
 
