@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Jaeger, Tracing, Elasticsearch, Storage
 
-Description: Configure production-grade storage backends for Jaeger tracing in Istio including Elasticsearch, Cassandra, and Kafka setups.
+Description: Configure production-grade storage backends for Jaeger tracing in Istio including Elasticsearch and Cassandra setups.
 
 ---
 
@@ -15,7 +15,7 @@ The default Jaeger installation for Istio uses in-memory storage, which is fine 
 The Istio addon Jaeger uses the all-in-one deployment with in-memory storage:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.29/samples/addons/jaeger.yaml
 ```
 
 This creates a single pod that acts as collector, query service, and storage all in one. It works for development but has hard limits on trace retention and no persistence.
@@ -47,8 +47,16 @@ spec:
         - name: elasticsearch
           image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
           env:
-            - name: discovery.type
-              value: single-node
+            - name: cluster.name
+              value: jaeger-es
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: discovery.seed_hosts
+              value: elasticsearch.istio-system.svc.cluster.local
+            - name: cluster.initial_master_nodes
+              value: elasticsearch-0,elasticsearch-1,elasticsearch-2
             - name: xpack.security.enabled
               value: "false"
             - name: ES_JAVA_OPTS
@@ -82,6 +90,7 @@ metadata:
   name: elasticsearch
   namespace: istio-system
 spec:
+  clusterIP: None
   selector:
     app: elasticsearch
   ports:
@@ -113,7 +122,7 @@ spec:
     spec:
       containers:
         - name: jaeger-collector
-          image: jaegertracing/jaeger-collector:1.53
+          image: jaegertracing/jaeger-collector:1.76.0
           args:
             - --es.server-urls=http://elasticsearch.istio-system:9200
             - --es.index-prefix=istio
@@ -126,6 +135,8 @@ spec:
               name: http
             - containerPort: 14250
               name: grpc
+            - containerPort: 4317
+              name: otlp-grpc
           env:
             - name: SPAN_STORAGE_TYPE
               value: elasticsearch
@@ -149,7 +160,7 @@ spec:
     spec:
       containers:
         - name: jaeger-query
-          image: jaegertracing/jaeger-query:1.53
+          image: jaegertracing/jaeger-query:1.76.0
           args:
             - --es.server-urls=http://elasticsearch.istio-system:9200
             - --es.index-prefix=istio
@@ -190,6 +201,8 @@ spec:
       name: http
     - port: 14250
       name: grpc
+    - port: 4317
+      name: otlp-grpc
 ```
 
 ## Configuring Istio to Send Traces to Jaeger
@@ -203,10 +216,12 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        zipkin:
-          address: jaeger-collector.istio-system:9411
-        sampling: 1.0
+      tracing: {}
+    extensionProviders:
+      - name: jaeger
+        opentelemetry:
+          service: jaeger-collector.istio-system.svc.cluster.local
+          port: 4317
 ```
 
 Apply with:
@@ -215,7 +230,22 @@ Apply with:
 istioctl install -f istio-operator.yaml
 ```
 
-The `sampling: 1.0` means 1% of traces are sampled. For production with high traffic, start with 1% and adjust based on your storage capacity.
+Then enable the provider and set the sampling rate with the Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: jaeger
+      randomSamplingPercentage: 1.0
+```
+
+The `randomSamplingPercentage: 1.0` means 1% of traces are sampled. For production with high traffic, start with 1% and adjust based on your storage capacity.
 
 ## Setting Up Cassandra Backend
 
@@ -241,7 +271,7 @@ spec:
     spec:
       containers:
         - name: jaeger-collector
-          image: jaegertracing/jaeger-collector:1.53
+          image: jaegertracing/jaeger-collector:1.76.0
           args:
             - --cassandra.servers=cassandra.istio-system
             - --cassandra.keyspace=jaeger_v1_istio
@@ -250,7 +280,11 @@ spec:
               value: cassandra
           ports:
             - containerPort: 14268
+              name: http
             - containerPort: 14250
+              name: grpc
+            - containerPort: 4317
+              name: otlp-grpc
 ```
 
 Before starting the collector, you need to initialize the Cassandra schema:
@@ -259,7 +293,7 @@ Before starting the collector, you need to initialize the Cassandra schema:
 # Run the schema creation job
 
 kubectl run jaeger-cassandra-schema \
-  --image=jaegertracing/jaeger-cassandra-schema:1.53 \
+  --image=jaegertracing/jaeger-cassandra-schema:1.76.0 \
   --restart=Never \
   --env="CQLSH_HOST=cassandra.istio-system" \
   --env="DATACENTER=dc1" \
@@ -269,16 +303,42 @@ kubectl run jaeger-cassandra-schema \
 
 ## Index Management for Elasticsearch
 
-Traces accumulate fast. Set up index lifecycle management to automatically delete old traces:
+Traces accumulate fast. Jaeger's default Elasticsearch storage writes daily indices, so the simplest retention control is the built-in index cleaner:
+
+```yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: jaeger-es-index-cleaner
+  namespace: istio-system
+spec:
+  schedule: "0 2 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: jaeger-es-index-cleaner
+              image: jaegertracing/jaeger-es-index-cleaner:1.76.0
+              args:
+                - "7"
+                - "http://elasticsearch.istio-system:9200"
+                - --index-prefix=istio
+          restartPolicy: OnFailure
+```
+
+This runs daily at 2 AM and deletes indices older than 7 days.
+
+If you want Elasticsearch ILM instead, create the policy with the name Jaeger expects, initialize the rollover templates with ILM enabled, and run Jaeger with `--es.use-ilm=true` and `--es.use-aliases=true`:
 
 ```bash
-# Create an ILM policy
-curl -X PUT "http://elasticsearch.istio-system:9200/_ilm/policy/jaeger-traces" \
+curl -X PUT "http://elasticsearch.istio-system:9200/_ilm/policy/jaeger-ilm-policy" \
   -H 'Content-Type: application/json' \
   -d '{
     "policy": {
       "phases": {
         "hot": {
+          "min_age": "0ms",
           "actions": {
             "rollover": {
               "max_age": "1d",
@@ -295,33 +355,14 @@ curl -X PUT "http://elasticsearch.istio-system:9200/_ilm/policy/jaeger-traces" \
       }
     }
   }'
+
+kubectl run jaeger-es-rollover-init \
+  --image=jaegertracing/jaeger-es-rollover:1.76.0 \
+  --restart=Never \
+  --env="ES_USE_ILM=true" \
+  -n istio-system \
+  -- init http://elasticsearch.istio-system:9200
 ```
-
-Alternatively, use Jaeger's built-in index cleaner:
-
-```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: jaeger-es-index-cleaner
-  namespace: istio-system
-spec:
-  schedule: "0 2 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: jaeger-es-index-cleaner
-              image: jaegertracing/jaeger-es-index-cleaner:1.53
-              args:
-                - "7"
-                - "http://elasticsearch.istio-system:9200"
-                - --index-prefix=istio
-          restartPolicy: OnFailure
-```
-
-This runs daily at 2 AM and deletes indices older than 7 days.
 
 ## Verifying the Setup
 
