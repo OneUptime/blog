@@ -8,13 +8,13 @@ Description: Learn how to set up Prometheus alerts for degraded ArgoCD applicati
 
 ---
 
-A Degraded application in ArgoCD means the Kubernetes resources are deployed but not functioning correctly. Pods might be crash-looping, readiness probes are failing, PersistentVolumeClaims are stuck in Pending, or Jobs have failed. This is different from an OutOfSync state - a Degraded application can be perfectly synced with Git but still broken at runtime.
+A Degraded application in ArgoCD means one or more tracked Kubernetes resources has a health assessment indicating failure or an inability to reach a healthy state. Pods might be crash-looping if ArgoCD is directly tracking Pods, readiness probes might cause a workload to miss its progress deadline, PersistentVolumeClaims might be stuck in Pending, or Jobs might have failed. This is different from an OutOfSync state - a Degraded application can be perfectly synced with Git but still broken at runtime.
 
 Degraded health alerts are your last line of defense. They catch problems that manifest only after deployment, problems that no amount of Git validation or sync monitoring can detect.
 
 ## Understanding Degraded Health
 
-ArgoCD aggregates the health of all resources in an application to determine the overall health status. If any single resource is unhealthy, the entire application health degrades:
+ArgoCD aggregates the health of an application's tracked resources to determine the overall health status. If an immediate child resource is Degraded, the entire application health degrades:
 
 ```mermaid
 flowchart TD
@@ -23,7 +23,7 @@ flowchart TD
     A --> D[ConfigMap: config]
     A --> E[PVC: data-volume]
 
-    B -->|Pod CrashLoopBackOff| F[Degraded]
+    B -->|ProgressDeadlineExceeded| F[Degraded]
     C --> G[Healthy]
     D --> H[Healthy]
     E --> I[Healthy]
@@ -34,7 +34,7 @@ flowchart TD
     I --> J
 ```
 
-Even one Degraded resource makes the whole application Degraded. This is a conservative approach that ensures you are always aware of problems.
+Even one Degraded immediate child resource makes the whole application Degraded. This is a conservative approach that ensures you are always aware of problems.
 
 ## Key Metric for Degraded Detection
 
@@ -223,22 +223,22 @@ Route Degraded alerts appropriately:
 route:
   routes:
   # Production degraded - page immediately
-  - match:
-      alertname: ArgocdProductionDegraded
+  - matchers:
+    - alertname="ArgocdProductionDegraded"
     receiver: pagerduty-platform
     group_wait: 30s
     repeat_interval: 1h
 
   # Synced but Degraded - likely a bad deploy
-  - match:
-      alertname: ArgocdSyncedButDegraded
+  - matchers:
+    - alertname="ArgocdSyncedButDegraded"
     receiver: slack-deployments
     group_wait: 1m
     repeat_interval: 2h
 
   # Mass degradation - escalate immediately
-  - match:
-      alertname: ArgocdMassDegradation
+  - matchers:
+    - alertname="ArgocdMassDegradation"
     receiver: pagerduty-cluster
     group_wait: 0s
     repeat_interval: 30m
@@ -246,11 +246,11 @@ route:
 receivers:
 - name: pagerduty-platform
   pagerduty_configs:
-  - service_key: '<platform-team-key>'
+  - routing_key: '<platform-team-key>'
 
 - name: pagerduty-cluster
   pagerduty_configs:
-  - service_key: '<cluster-team-key>'
+  - routing_key: '<cluster-team-key>'
     severity: critical
 
 - name: slack-deployments
@@ -275,7 +275,7 @@ When a Degraded alert fires, follow this investigation workflow:
 argocd app get my-app
 
 # Check which resources are unhealthy
-argocd app resources my-app --health-status Degraded
+argocd app resources my-app --output tree=detailed
 
 # Look at pod status for the degraded resources
 kubectl get pods -n production -l app=my-app
@@ -306,8 +306,7 @@ groups:
 
   - record: argocd:degraded_by_namespace
     expr: |
-      count(argocd_app_info{health_status="Degraded"}) by (dest_namespace)
-      or vector(0)
+      count by (dest_namespace) (argocd_app_info{health_status="Degraded"})
 ```
 
 ## Suppressing False Positives
