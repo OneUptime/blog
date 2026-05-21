@@ -27,7 +27,7 @@ You can see the current workload certificate:
 ```bash
 istioctl proxy-config secret \
   $(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}') \
-  -o json | jq '.dynamicActiveSecrets[0].secret.tlsCertificate'
+  -n sample -o json | jq '.dynamicActiveSecrets[0].secret.tlsCertificate'
 ```
 
 ## Setting Up the CA Hierarchy for Federation
@@ -86,55 +86,80 @@ For production environments, you probably want to use an external CA instead of 
 
 ### HashiCorp Vault Integration
 
-Configure Istio to use Vault's PKI secrets engine:
+Use Vault's PKI secrets engine to issue the intermediate CA, then install the resulting CA files into Istio's `cacerts` secret. Istio does not read Vault PKI directly by setting Vault connection details on `istiod`; it reads the signing certificate, signing key, root certificate, and chain from the mounted `cacerts` secret.
+
+```bash
+# Example: generate an intermediate CSR in Vault and sign it with the root PKI mount
+vault write -format=json pki_int/intermediate/generate/exported \
+  common_name="Mesh West Intermediate CA" \
+  ttl="43800h" > west-intermediate.json
+
+jq -r '.data.csr' west-intermediate.json > west-csr.pem
+jq -r '.data.private_key' west-intermediate.json > west-key.pem
+
+vault write -format=json pki/root/sign-intermediate \
+  csr=@west-csr.pem \
+  format=pem \
+  ttl="43800h" > west-signed.json
+
+jq -r '.data.certificate' west-signed.json > west-cert.pem
+jq -r '.data.issuing_ca' west-signed.json > root-cert.pem
+cat west-cert.pem root-cert.pem > west-chain.pem
+
+kubectl create secret generic cacerts -n istio-system \
+  --context=cluster-west \
+  --from-file=ca-cert.pem=west-cert.pem \
+  --from-file=ca-key.pem=west-key.pem \
+  --from-file=root-cert.pem=root-cert.pem \
+  --from-file=cert-chain.pem=west-chain.pem
+```
+
+### cert-manager Integration
+
+cert-manager is a popular choice because it runs natively in Kubernetes. For Istio workload certificates, integrate it through Istio's Kubernetes CSR external CA flow or cert-manager's `istio-csr` agent, rather than pointing an Istio `cacerts` secret at a cert-manager `Certificate` secret.
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  meshConfig:
-    caCertificates:
-      - pem: |
-          <vault root certificate>
   values:
     pilot:
       env:
-        CA_PROVIDER: VaultCA
-        VAULT_ADDR: "https://vault.example.com:8200"
-        VAULT_PKI_PATH: "pki_int/sign/istio-ca"
-        VAULT_TOKEN: "<vault-token>"
+        EXTERNAL_CA: ISTIOD_RA_KUBERNETES_API
+  meshConfig:
+    defaultConfig:
+      proxyMetadata:
+        ISTIO_META_CERT_SIGNER: istio-system
+    caCertificates:
+      - pem: |
+          <cert-manager issuer CA certificate>
+        certSigners:
+          - clusterissuers.cert-manager.io/istio-system
+  components:
+    pilot:
+      k8s:
+        env:
+          - name: CERT_SIGNER_DOMAIN
+            value: clusterissuers.cert-manager.io
+          - name: PILOT_CERT_PROVIDER
+            value: k8s.io/clusterissuers.cert-manager.io/istio-system
+        overlays:
+          - kind: ClusterRole
+            name: istiod-clusterrole-istio-system
+            patches:
+              - path: rules[-1]
+                value: |
+                  apiGroups:
+                    - certificates.k8s.io
+                  resourceNames:
+                    - clusterissuers.cert-manager.io/istio-system
+                  resources:
+                    - signers
+                  verbs:
+                    - approve
 ```
 
-### cert-manager Integration
-
-cert-manager is a popular choice because it runs natively in Kubernetes:
-
-```yaml
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: istio-ca
-  namespace: istio-system
-spec:
-  ca:
-    secretName: cacerts
----
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: istio-ca-cert
-  namespace: istio-system
-spec:
-  isCA: true
-  duration: 43800h  # 5 years
-  secretName: cacerts
-  commonName: istio-ca
-  issuerRef:
-    name: istio-ca
-    kind: Issuer
-```
-
-cert-manager handles automatic renewal of the intermediate CA certificate, which removes a big operational burden.
+With this model, cert-manager handles signing and renewal through its issuer configuration, while Istio requests workload certificates through the Kubernetes CSR API.
 
 ## Certificate Rotation Strategy
 
@@ -142,7 +167,7 @@ Certificate rotation in a federated setup has three levels, and each needs a dif
 
 ### Workload Certificate Rotation
 
-Istio handles this automatically. By default, workload certificates are valid for 24 hours and get rotated when they reach 80% of their lifetime. You can adjust this:
+Istio handles this automatically. By default, workload certificates are valid for 24 hours and the proxy agent rotates them before expiry. You can adjust this:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -151,8 +176,8 @@ spec:
   meshConfig:
     defaultConfig:
       proxyMetadata:
-        SECRET_TTL: "12h"        # Certificate lifetime
-        SECRET_GRACE_PERIOD: "2h" # Rotate this long before expiry
+        SECRET_TTL: "12h"                  # Certificate lifetime
+        SECRET_GRACE_PERIOD_RATIO: "0.5"   # Start rotation halfway through the lifetime
 ```
 
 ### Intermediate CA Rotation
@@ -189,19 +214,23 @@ Step 1: Generate a new root CA.
 
 Step 2: Create new intermediate CAs signed by the new root.
 
-Step 3: Update the `cert-chain.pem` to include both roots during the transition:
+Step 3: Update the trust bundle in `root-cert.pem` to include both roots during the transition, and use a `cert-chain.pem` that contains the new intermediate certificate and its issuing chain:
 
 ```bash
-# cert-chain.pem should contain:
+# root-cert.pem should contain:
+# 1. New root cert
+# 2. Old root cert (for backward compatibility during transition)
+cat new-root-cert.pem old-root-cert.pem > transition-root.pem
+
+# cert-chain.pem should contain the chain used by istiod:
 # 1. New intermediate cert
 # 2. New root cert
-# 3. Old root cert (for backward compatibility during transition)
-cat new-west-cert.pem new-root-cert.pem old-root-cert.pem > transition-chain.pem
+cat new-west-cert.pem new-root-cert.pem > transition-chain.pem
 ```
 
 Step 4: Apply the transition configuration and wait for all workloads to pick up the new certificates.
 
-Step 5: Once all workloads have new certificates, remove the old root from the chain.
+Step 5: Once all workloads have new certificates and trust the new root, remove the old root from the trust bundle.
 
 ## Monitoring Certificate Health
 
@@ -233,7 +262,7 @@ groups:
 
       - alert: WorkloadCertRenewalFailure
         expr: |
-          sum(rate(citadel_server_csr_sign_error_count[5m])) > 0
+          sum(rate(citadel_server_csr_sign_err_count[5m])) > 0
         for: 5m
         labels:
           severity: critical
@@ -246,7 +275,7 @@ You can also use `istioctl` to check the overall certificate health:
 ```bash
 istioctl proxy-config secret \
   $(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}') \
-  --context=cluster-west
+  -n sample --context=cluster-west
 ```
 
 The output shows the certificate serial number, validity period, and whether it's been rotated recently.
