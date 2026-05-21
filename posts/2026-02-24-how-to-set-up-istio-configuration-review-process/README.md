@@ -32,18 +32,19 @@ Use GitHub's CODEOWNERS file to require reviews from people who understand Istio
 
 # Mesh-wide configuration requires platform team review
 
-istio/mesh/ @platform-team
-istio/gateways/ @platform-team
+istio/mesh/ @your-org/platform-team
+istio/gateways/ @your-org/platform-team
+
+# Service-specific config can be reviewed by the service team.
+# Later matching rules below override these broader patterns.
+istio/services/payment-service/ @your-org/payment-team @your-org/platform-team
+istio/services/api-gateway/ @your-org/api-team @your-org/platform-team
 
 # Authorization policies require security team review
-**/authorization-policy*.yaml @security-team @platform-team
-
-# Service-specific config can be reviewed by the service team
-istio/services/payment-service/ @payment-team @platform-team
-istio/services/api-gateway/ @api-team @platform-team
+**/authorization-policy*.yaml @your-org/security-team @your-org/platform-team
 
 # EnvoyFilter resources require senior engineer review
-**/envoyfilter*.yaml @senior-engineers @platform-team
+**/envoyfilter*.yaml @your-org/senior-engineers @your-org/platform-team
 ```
 
 This ensures that the right people review each type of change. Mesh-wide changes get platform team review. Security changes get security team review. EnvoyFilter changes get senior engineer review because they are the most likely to cause problems.
@@ -68,7 +69,7 @@ jobs:
 
       - name: Install tools
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
           sudo mv istio-*/bin/istioctl /usr/local/bin/
 
       - name: YAML syntax check
@@ -78,11 +79,7 @@ jobs:
 
       - name: Istio analysis
         run: |
-          istioctl analyze -R istio/ 2>&1 | tee analysis.txt
-          if grep -q "Error" analysis.txt; then
-            echo "Istio analysis found errors"
-            exit 1
-          fi
+          istioctl analyze --use-kube=false istio/
 
       - name: Check for dangerous patterns
         run: |
@@ -111,7 +108,7 @@ jobs:
         run: |
           for file in $(find istio/ -name '*.yaml'); do
             if grep -q "kind: AuthorizationPolicy" "$file"; then
-              if grep -q 'principals: \["\\*"\]' "$file"; then
+              if grep -Eq 'principals:[[:space:]]*\[[[:space:]]*"?\*"?[[:space:]]*\]' "$file"; then
                 echo "ERROR: Wildcard principal in authorization policy: $file"
                 exit 1
               fi
@@ -142,7 +139,7 @@ Create a review checklist that reviewers must go through. Include it in your PR 
 ### VirtualService
 - [ ] Timeout is set explicitly (not relying on defaults)
 - [ ] Retry configuration is appropriate (idempotent operations only)
-- [ ] Route weights sum to 100 if using weighted routing
+- [ ] Route weights express the intended proportions (Istio treats weights as relative)
 - [ ] Match rules are ordered correctly (most specific first)
 - [ ] No overlapping rules with other VirtualServices for the same host
 
@@ -213,7 +210,8 @@ jobs:
           # Test that routes work correctly
           kubectl exec deploy/test-client -n staging -- curl -s http://api-service:8080/health
           # Test that auth policies are enforced
-          kubectl exec deploy/unauthorized-client -n staging -- curl -sf http://api-service:8080/api/v1/data || echo "Auth correctly denied"
+          STATUS=$(kubectl exec deploy/unauthorized-client -n staging -- curl -s -o /dev/null -w "%{http_code}" http://api-service:8080/api/v1/data)
+          test "$STATUS" = "403"
 ```
 
 ## Diff Review Tool
