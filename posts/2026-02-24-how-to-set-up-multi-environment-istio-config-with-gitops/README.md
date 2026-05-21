@@ -67,7 +67,6 @@ istio-config/
       kustomization.yaml
       patches/
         gateway-hosts.yaml
-        production-tls.yaml
         strict-outlier-detection.yaml
 ```
 
@@ -183,13 +182,36 @@ Development gets relaxed settings and different hostnames:
 # environments/dev/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: dev
 resources:
   - ../../base/platform
   - ../../base/services/api-gateway
   - ../../base/services/user-service
   - ../../base/services/order-service
 patches:
+  - target:
+      group: networking.istio.io
+      version: v1
+      kind: VirtualService
+    patch: |-
+      - op: add
+        path: /metadata/namespace
+        value: dev
+  - target:
+      group: networking.istio.io
+      version: v1
+      kind: DestinationRule
+    patch: |-
+      - op: add
+        path: /metadata/namespace
+        value: dev
+  - target:
+      group: security.istio.io
+      version: v1
+      kind: AuthorizationPolicy
+    patch: |-
+      - op: add
+        path: /metadata/namespace
+        value: dev
   - path: patches/gateway-hosts.yaml
   - path: patches/relaxed-timeouts.yaml
   - path: patches/permissive-mtls.yaml
@@ -259,15 +281,37 @@ Production gets strict settings and real hostnames:
 # environments/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: production
 resources:
   - ../../base/platform
   - ../../base/services/api-gateway
   - ../../base/services/user-service
   - ../../base/services/order-service
 patches:
+  - target:
+      group: networking.istio.io
+      version: v1
+      kind: VirtualService
+    patch: |-
+      - op: add
+        path: /metadata/namespace
+        value: production
+  - target:
+      group: networking.istio.io
+      version: v1
+      kind: DestinationRule
+    patch: |-
+      - op: add
+        path: /metadata/namespace
+        value: production
+  - target:
+      group: security.istio.io
+      version: v1
+      kind: AuthorizationPolicy
+    patch: |-
+      - op: add
+        path: /metadata/namespace
+        value: production
   - path: patches/gateway-hosts.yaml
-  - path: patches/production-tls.yaml
   - path: patches/strict-outlier-detection.yaml
 ```
 
@@ -366,8 +410,7 @@ spec:
     namespace: production
   syncPolicy:
     automated:
-      prune: true
-      selfHeal: false  # Manual sync for production
+      enabled: false  # Manual sync for production
 ```
 
 ### With Flux CD
