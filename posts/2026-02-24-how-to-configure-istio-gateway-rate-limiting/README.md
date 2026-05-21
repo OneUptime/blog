@@ -12,23 +12,23 @@ Rate limiting at the Istio Gateway protects your backend services from being ove
 
 ## Local vs Global Rate Limiting
 
-**Local rate limiting** applies per gateway pod. If you have 3 gateway pods and set a limit of 100 requests per second, each pod allows 100 RPS independently, for a total of 300 RPS across the cluster.
+**Local rate limiting** applies per gateway pod. If you have 3 gateway pods and set a limit of 100 requests per minute, each pod allows 100 requests per minute independently, for a total of 300 requests per minute across the cluster.
 
-**Global rate limiting** uses a centralized rate limit service. All gateway pods check against the same rate limit counters, so a limit of 100 RPS means 100 RPS total regardless of how many gateway pods you have.
+**Global rate limiting** uses a centralized rate limit service. All gateway pods check against the same rate limit counters, so a limit of 100 requests per minute means 100 requests per minute total regardless of how many gateway pods you have.
 
 ```mermaid
 graph TD
     subgraph "Local Rate Limiting"
-        A1[Client] --> B1[Gateway Pod 1<br/>100 RPS limit]
-        A1 --> B2[Gateway Pod 2<br/>100 RPS limit]
-        A1 --> B3[Gateway Pod 3<br/>100 RPS limit]
+        A1[Client] --> B1[Gateway Pod 1<br/>100 req/min limit]
+        A1 --> B2[Gateway Pod 2<br/>100 req/min limit]
+        A1 --> B3[Gateway Pod 3<br/>100 req/min limit]
     end
 
     subgraph "Global Rate Limiting"
         A2[Client] --> C1[Gateway Pod 1]
         A2 --> C2[Gateway Pod 2]
         A2 --> C3[Gateway Pod 3]
-        C1 --> D[Rate Limit Service<br/>100 RPS shared]
+        C1 --> D[Rate Limit Service<br/>100 req/min shared]
         C2 --> D
         C3 --> D
     end
@@ -90,7 +90,7 @@ spec:
 
 This configuration:
 - Allows 100 requests per 60-second window per gateway pod
-- Adds a `x-local-rate-limit` response header when rate limiting is active
+- Adds a `x-local-rate-limit` response header to locally rate-limited responses
 - Returns a 429 (Too Many Requests) when the limit is exceeded
 
 ## Per-Route Local Rate Limiting
@@ -190,12 +190,15 @@ spec:
     spec:
       containers:
       - name: ratelimit
-        image: envoyproxy/ratelimit:master
+        image: docker.io/envoyproxy/ratelimit:30a4ce1a
+        command: ["/bin/ratelimit"]
         ports:
         - containerPort: 8080
           name: http
         - containerPort: 8081
           name: grpc
+        - containerPort: 6070
+          name: debug
         env:
         - name: USE_STATSD
           value: "false"
@@ -209,6 +212,10 @@ spec:
           value: /data
         - name: RUNTIME_SUBDIRECTORY
           value: ratelimit
+        - name: RUNTIME_WATCH_ROOT
+          value: "false"
+        - name: RUNTIME_IGNOREDOTFILES
+          value: "true"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -228,6 +235,8 @@ spec:
     port: 8080
   - name: grpc
     port: 8081
+  - name: debug
+    port: 6070
   selector:
     app: ratelimit
 ```
@@ -304,33 +313,9 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.istio-system.svc.cluster.local
+                authority: ratelimit.istio-system.svc.cluster.local
             transport_api_version: V3
-  - applyTo: CLUSTER
-    match:
-      cluster:
-        service: ratelimit.istio-system.svc.cluster.local
-    patch:
-      operation: ADD
-      value:
-        name: rate_limit_cluster
-        type: STRICT_DNS
-        connect_timeout: 0.25s
-        lb_policy: ROUND_ROBIN
-        load_assignment:
-          cluster_name: rate_limit_cluster
-          endpoints:
-          - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: ratelimit.istio-system.svc.cluster.local
-                    port_value: 8081
-        typed_extension_protocol_options:
-          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
-            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
-            explicit_http_config:
-              http2_protocol_options: {}
 ```
 
 ### Step 4: Define Rate Limit Actions
@@ -366,7 +351,7 @@ spec:
           - remote_address: {}
 ```
 
-This sends the request path and client IP to the rate limit service, which matches them against the rules defined in the ConfigMap.
+This sends the request path and Envoy's trusted remote address to the rate limit service, which matches them against the rules defined in the ConfigMap.
 
 ## Rate Limiting by Custom Headers
 
@@ -420,7 +405,16 @@ You should see mostly 200 responses until the limit is hit, then 429 responses.
 
 ## Monitoring Rate Limits
 
-Check rate limit metrics in the Envoy stats:
+Local rate limit statistics are disabled by default in Istio. Enable them with a `proxyStatsMatcher` annotation on the gateway deployment:
+
+```yaml
+proxy.istio.io/config: |-
+  proxyStatsMatcher:
+    inclusionRegexps:
+    - ".*http_local_rate_limit.*"
+```
+
+Then check rate limit metrics in the Envoy stats:
 
 ```bash
 kubectl exec -n istio-system deploy/istio-ingressgateway -- \
