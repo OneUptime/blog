@@ -23,7 +23,7 @@ graph LR
 ```
 
 - **Collector** - Receives spans from Envoy sidecars
-- **Storage Backend** - Stores trace data (in-memory, Cassandra, Elasticsearch, or Kafka)
+- **Storage Backend** - Stores trace data (in-memory, Badger, Cassandra, Elasticsearch, or OpenSearch; Kafka can be used as an intermediate buffer)
 - **Query** - Serves the API for retrieving traces
 - **UI** - Web interface for viewing and searching traces
 
@@ -51,7 +51,7 @@ spec:
     spec:
       containers:
         - name: jaeger
-          image: jaegertracing/all-in-one:1.54
+          image: jaegertracing/all-in-one:1.76.0
           env:
             - name: COLLECTOR_ZIPKIN_HOST_PORT
               value: ":9411"
@@ -124,8 +124,7 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 100
+      tracing: {}
     extensionProviders:
       - name: jaeger
         zipkin:
@@ -170,6 +169,8 @@ kind: IstioOperator
 spec:
   meshConfig:
     enableTracing: true
+    defaultConfig:
+      tracing: {}
     extensionProviders:
       - name: jaeger-otel
         opentelemetry:
@@ -212,7 +213,7 @@ spec:
     spec:
       containers:
         - name: jaeger-collector
-          image: jaegertracing/jaeger-collector:1.54
+          image: jaegertracing/jaeger-collector:1.76.0
           env:
             - name: SPAN_STORAGE_TYPE
               value: elasticsearch
@@ -255,7 +256,7 @@ spec:
     spec:
       containers:
         - name: jaeger-query
-          image: jaegertracing/jaeger-query:1.54
+          image: jaegertracing/jaeger-query:1.76.0
           env:
             - name: SPAN_STORAGE_TYPE
               value: elasticsearch
@@ -289,7 +290,7 @@ spec:
         spec:
           containers:
             - name: index-cleaner
-              image: jaegertracing/jaeger-es-index-cleaner:1.54
+              image: jaegertracing/jaeger-es-index-cleaner:1.76.0
               args:
                 - "14"
                 - http://elasticsearch.observability:9200
@@ -354,7 +355,9 @@ Generate traffic and check for traces:
 
 ```bash
 # Deploy sample app if not already deployed
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl label namespace default istio-injection=enabled --overwrite
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/bookinfo/platform/kube/bookinfo.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/sleep/sleep.yaml
 
 # Generate traffic
 for i in $(seq 1 50); do
@@ -381,7 +384,9 @@ istioctl proxy-config bootstrap deploy/productpage -o json | grep -A10 tracing
 
 # Check for connectivity issues
 kubectl exec deploy/productpage -c istio-proxy -- \
-  curl -s http://jaeger-collector.observability:9411/api/v2/spans
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+  -H "Content-Type: application/json" --data '[]' \
+  http://jaeger-collector.observability:9411/api/v2/spans
 ```
 
 If traces appear but are disconnected (single-span traces), your application isn't propagating trace headers. This is an application-level fix, not an Istio configuration issue.
@@ -411,6 +416,7 @@ env:
 ```
 
 This decouples span ingestion from storage writes, preventing backpressure from affecting your mesh's trace reporting.
+When collectors write to Kafka, you must also run `jaeger-ingester` to read from Kafka and write to the actual storage backend.
 
 ## Summary
 
