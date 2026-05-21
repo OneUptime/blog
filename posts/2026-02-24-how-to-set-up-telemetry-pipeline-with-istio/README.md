@@ -31,7 +31,7 @@ Envoy Proxies --> OTel Collector --> Backends
 
 ## Step 1: Deploy the Observability Stack
 
-Start by deploying your backends. For this guide, we will use Prometheus for metrics, Grafana Tempo for traces, and Loki for logs:
+Start by deploying your backends. For this guide, we will use the Istio sample Prometheus for metrics, Grafana Tempo for traces, and Loki for logs:
 
 ```bash
 # Create namespace
@@ -40,6 +40,9 @@ kubectl create namespace observability
 
 # Deploy Prometheus
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
+
+# Enable Prometheus remote write ingestion for the Collector
+kubectl patch deployment prometheus -n istio-system --type='json' -p='[{"op":"add","path":"/spec/template/spec/containers/1/args/-","value":"--web.enable-remote-write-receiver"}]'
 
 # Deploy Grafana
 kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
@@ -82,6 +85,15 @@ data:
                 - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
                   regex: "true"
                   action: keep
+                - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+                  action: replace
+                  target_label: __metrics_path__
+                  regex: (.+)
+                - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+                  action: replace
+                  regex: ([^:]+)(?::\d+)?;(\d+)
+                  replacement: $1:$2
+                  target_label: __address__
 
     processors:
       batch:
@@ -100,8 +112,8 @@ data:
         error_mode: ignore
         traces:
           span:
-            - 'attributes["http.target"] == "/healthz"'
-            - 'attributes["http.target"] == "/readyz"'
+            - 'span.attributes["http.target"] == "/healthz"'
+            - 'span.attributes["http.target"] == "/readyz"'
 
     exporters:
       otlp/tempo:
@@ -109,9 +121,9 @@ data:
         tls:
           insecure: true
       prometheusremotewrite:
-        endpoint: http://prometheus.observability:9090/api/v1/write
-      loki:
-        endpoint: http://loki.observability:3100/loki/api/v1/push
+        endpoint: http://prometheus.istio-system:9090/api/v1/write
+      otlphttp/loki:
+        endpoint: http://loki.observability:3100/otlp
 
     service:
       pipelines:
@@ -126,7 +138,35 @@ data:
         logs:
           receivers: [otlp]
           processors: [memory_limiter, batch]
-          exporters: [loki]
+          exporters: [otlphttp/loki]
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: observability
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: otel-collector
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "endpoints", "services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: otel-collector
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: otel-collector
+subjects:
+  - kind: ServiceAccount
+    name: otel-collector
+    namespace: observability
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -148,7 +188,7 @@ spec:
       serviceAccountName: otel-collector
       containers:
         - name: collector
-          image: otel/opentelemetry-collector-contrib:0.92.0
+          image: ghcr.io/open-telemetry/opentelemetry-collector-releases/opentelemetry-collector-contrib:0.152.0
           args: ["--config=/etc/otelcol-contrib/config.yaml"]
           ports:
             - containerPort: 4317
@@ -261,8 +301,8 @@ Make sure Prometheus scrapes the Istio proxies and the control plane:
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: prometheus-config
-  namespace: observability
+  name: prometheus
+  namespace: istio-system
 data:
   prometheus.yml: |
     global:
@@ -299,12 +339,12 @@ Import the Istio dashboards into Grafana:
 
 ```bash
 # Port forward to Grafana
-kubectl port-forward svc/grafana -n observability 3000:3000
+kubectl port-forward svc/grafana -n istio-system 3000:3000
 ```
 
 Add data sources in Grafana:
 
-- **Prometheus** - URL: `http://prometheus.observability:9090`
+- **Prometheus** - URL: `http://prometheus.istio-system:9090`
 - **Tempo** - URL: `http://tempo.observability:3100`
 - **Loki** - URL: `http://loki.observability:3100`
 
@@ -320,11 +360,11 @@ Run through each telemetry signal to verify data is flowing:
 
 ```bash
 # Check metrics in Prometheus
-kubectl port-forward svc/prometheus -n observability 9090:9090
+kubectl port-forward svc/prometheus -n istio-system 9090:9090
 # Query: istio_requests_total
 
 # Check traces in Tempo
-kubectl port-forward svc/tempo -n observability 3200:3200
+kubectl port-forward svc/tempo -n observability 3100:3100
 # Use Grafana Explore with Tempo data source
 
 # Check access logs
