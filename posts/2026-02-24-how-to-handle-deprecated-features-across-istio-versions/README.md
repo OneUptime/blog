@@ -8,13 +8,13 @@ Description: A comprehensive guide to identifying, tracking, and handling deprec
 
 ---
 
-Istio moves fast. Every minor release deprecates old features, changes API versions, and shifts recommended practices. If you are not actively tracking these changes, you will eventually upgrade and find that something you depend on no longer works. Or worse, it still works but produces subtly different behavior.
+Istio moves fast. Minor releases can deprecate old features, change API versions, and shift recommended practices. If you are not actively tracking these changes, you will eventually upgrade and find that something you depend on no longer works. Or worse, it still works but produces subtly different behavior.
 
 This guide covers the major deprecations across recent Istio versions and gives you practical strategies for staying ahead of them.
 
 ## Why Deprecations Matter
 
-A deprecated feature still works in the version where it is deprecated. But it will be removed in a future version, usually within two to three minor releases. If you ignore deprecation warnings and then try to skip multiple versions during an upgrade, you will hit hard breakages.
+A deprecated feature still works in the version where it is deprecated. But it will be removed in a future version, often after one or more supported release cycles. If you ignore deprecation warnings and then try to skip multiple versions during an upgrade, you will hit hard breakages.
 
 The pattern is typically:
 1. Feature deprecated with warnings in version N
@@ -35,18 +35,14 @@ One of the most common deprecations in Istio is API version changes. Here is the
 apiVersion: networking.istio.io/v1alpha3
 
 # Current recommended
-apiVersion: networking.istio.io/v1beta1
-
-# Future direction (for some resources)
 apiVersion: networking.istio.io/v1
 ```
 
-The v1alpha3 versions of VirtualService, DestinationRule, Gateway, ServiceEntry, and Sidecar resources still work, but you should update to v1beta1:
+The v1alpha3 and v1beta1 versions of VirtualService, DestinationRule, Gateway, ServiceEntry, and Sidecar resources may still work in many supported versions, but you should update to v1:
 
 ```bash
-# Find all resources using v1alpha3
-kubectl get virtualservices,destinationrules,gateways,serviceentries,sidecars --all-namespaces -o json | \
-  jq -r '.items[] | select(.apiVersion | contains("v1alpha3")) | "\(.apiVersion) \(.kind) \(.metadata.namespace)/\(.metadata.name)"'
+# Find manifests using older networking API versions
+rg 'apiVersion: networking\.istio\.io/v1(alpha3|beta1)' ./manifests ./deploy ./k8s 2>/dev/null || true
 ```
 
 Update them by changing the apiVersion field. The spec remains the same:
@@ -66,7 +62,7 @@ spec:
             host: my-service
 
 # After
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -105,7 +101,7 @@ If these exist, delete them. They do nothing in modern Istio and just clutter yo
 The replacement is the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -123,11 +119,11 @@ spec:
         - name: envoy
 ```
 
-### istioctl install Deprecation
+### In-Cluster Operator Deprecation
 
-Starting with Istio 1.23-1.24, the `istioctl install` command moved to maintenance mode. Helm is the recommended installation method.
+Starting with Istio 1.23-1.24, the in-cluster Istio operator was deprecated and then removed. The `istioctl install` command and Helm remain supported installation methods, and Helm is recommended for most production GitOps workflows.
 
-If you are still using IstioOperator resources with istioctl:
+If you are still using in-cluster IstioOperator resources:
 
 ```yaml
 # This is the old way
@@ -143,7 +139,7 @@ spec:
             cpu: 500m
 ```
 
-Migrate to Helm values:
+Migrate to Helm values, or keep using `istioctl install -f` outside the cluster:
 
 ```yaml
 # This is the new way (Helm values file)
@@ -166,7 +162,7 @@ Common EnvoyFilter use cases and their replacements:
 
 ```yaml
 # Instead of EnvoyFilter for headers
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: add-headers
@@ -183,12 +179,12 @@ spec:
             host: my-service
 ```
 
-**Rate limiting:** Use rate limit filter in the Telemetry API or external rate limiting.
+**Rate limiting:** Istio's documented rate limiting task still uses EnvoyFilter, or you can use external rate limiting at another gateway/API layer.
 
-**Custom access log format:** Use the Telemetry API:
+**Access log enablement:** Use the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: custom-logging
@@ -197,6 +193,8 @@ spec:
     - providers:
         - name: envoy
 ```
+
+Custom access log formats are still configured with mesh access log settings such as `meshConfig.accessLogFormat`.
 
 ### Sidecar Injection Label
 
@@ -215,11 +213,11 @@ kubectl label namespace default istio.io/dataplane-mode=ambient
 
 ### Gateway Resources
 
-The Istio-specific Gateway resource (networking.istio.io/v1beta1 Gateway) is being gradually replaced by the Kubernetes Gateway API:
+The Istio-specific Gateway resource (networking.istio.io/v1 Gateway) is being gradually replaced by the Kubernetes Gateway API:
 
 ```yaml
 # Old Istio Gateway
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: my-gateway
@@ -254,8 +252,10 @@ Similarly, VirtualService route rules can be replaced with HTTPRoute:
 
 ```yaml
 # Old VirtualService
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
+metadata:
+  name: my-route
 spec:
   hosts:
     - app.example.com
@@ -269,6 +269,8 @@ spec:
 # New HTTPRoute
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
+metadata:
+  name: my-route
 spec:
   parentRefs:
     - name: my-gateway
@@ -290,17 +292,15 @@ Create a script that checks for deprecated configurations:
 #!/bin/bash
 echo "=== Checking for deprecated Istio configurations ==="
 
-# Check for v1alpha3 API versions
+# Check manifests for older networking API versions
 echo ""
-echo "--- Resources using deprecated v1alpha3 API ---"
-kubectl get virtualservices,destinationrules,gateways,serviceentries --all-namespaces -o json 2>/dev/null | \
-  jq -r '.items[] | select(.apiVersion | contains("v1alpha3")) | "\(.kind) \(.metadata.namespace)/\(.metadata.name)"'
+echo "--- Manifests using older networking API versions ---"
+rg 'apiVersion: networking\.istio\.io/v1(alpha3|beta1)' ./manifests ./deploy ./k8s 2>/dev/null || true
 
-# Check for v1beta1 security APIs (should be v1)
+# Check manifests for v1beta1 security APIs (should be v1)
 echo ""
-echo "--- Security resources using v1beta1 (should be v1) ---"
-kubectl get authorizationpolicies,peerauthentications,requestauthentications --all-namespaces -o json 2>/dev/null | \
-  jq -r '.items[] | select(.apiVersion | contains("v1beta1")) | "\(.kind) \(.metadata.namespace)/\(.metadata.name)"'
+echo "--- Security manifests using v1beta1 (should be v1) ---"
+rg 'apiVersion: security\.istio\.io/v1beta1' ./manifests ./deploy ./k8s 2>/dev/null || true
 
 # Check for EnvoyFilters
 echo ""
@@ -308,9 +308,9 @@ echo "--- EnvoyFilters (review for alternatives) ---"
 kubectl get envoyfilter --all-namespaces -o json 2>/dev/null | \
   jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name)"'
 
-# Check for IstioOperator resources
+# Check for in-cluster Istio operator resources
 echo ""
-echo "--- IstioOperator resources (migrate to Helm) ---"
+echo "--- In-cluster IstioOperator resources (migrate away from the removed in-cluster operator) ---"
 kubectl get istiooperator --all-namespaces -o json 2>/dev/null | \
   jq -r '.items[] | "\(.metadata.namespace)/\(.metadata.name)"'
 
