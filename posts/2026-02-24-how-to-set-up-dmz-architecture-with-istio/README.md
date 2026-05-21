@@ -220,7 +220,7 @@ spec:
 
 An important DMZ property is that internal services should not be able to call DMZ services. Traffic should flow in one direction: internet -> DMZ -> internal. If internal services could call DMZ services, an attacker who compromises an internal service could potentially use a DMZ service as a proxy to exfiltrate data.
 
-Use Sidecar resources to enforce this:
+The DMZ deny-all policy above is what blocks unexpected internal callers at the destination. You can also use Sidecar resources to reduce outbound service visibility from the internal namespace:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -235,11 +235,11 @@ spec:
     - "istio-system/*"
 ```
 
-By only including `./*` (same namespace) and `istio-system/*`, internal services can't see or reach anything in the DMZ namespace.
+By only including `./*` (same namespace) and `istio-system/*`, internal services do not receive outbound mesh configuration for services in the DMZ namespace, so they cannot route to DMZ services by service hostname through the mesh.
 
-## Adding a WAF Layer
+## Adding a WAF or Gateway Rate Limit Layer
 
-For production DMZ architectures, you'll want a Web Application Firewall (WAF) in front of your ingress gateway. You can use an EnvoyFilter to add custom Lua or WASM filters at the gateway level:
+For production DMZ architectures, you'll often want a Web Application Firewall (WAF) in front of your ingress gateway. At the Istio gateway itself, you can also use an EnvoyFilter to add controls such as local rate limiting:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -309,14 +309,14 @@ kubectl logs -l app=api-gateway -c istio-proxy -n dmz --tail=100
 Verify that the boundaries work as expected:
 
 ```bash
-# Should succeed: ingress -> DMZ
-kubectl exec deploy/test-pod -n istio-system -- curl -v http://api-gateway.dmz:8080/health
+# Should succeed: public ingress gateway -> DMZ
+curl -vk --resolve api.example.com:443:$INGRESS_IP https://api.example.com/api/health
 
 # Should fail: direct access to internal from outside DMZ
-kubectl exec deploy/test-pod -n default -- curl -v http://user-service.internal:8080/internal/users/1
+kubectl exec deploy/test-pod -n default -- curl -v http://user-service.internal.svc.cluster.local:8080/internal/users/1
 
 # Should fail: internal -> DMZ (backflow)
-kubectl exec deploy/user-service -n internal -- curl -v http://api-gateway.dmz:8080/api/health
+kubectl exec deploy/user-service -n internal -- curl -v http://api-gateway.dmz.svc.cluster.local:8080/api/health
 ```
 
 A well-configured DMZ architecture with Istio gives you the same security properties as traditional DMZ networks but with the flexibility and granularity of a service mesh. Traffic flows in a controlled direction, each zone has strict access policies, and every connection is authenticated and encrypted.
