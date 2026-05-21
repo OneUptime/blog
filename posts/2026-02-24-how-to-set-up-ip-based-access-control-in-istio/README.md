@@ -19,9 +19,9 @@ Before writing any policies, you need to understand how Istio determines the sou
 - **Direct remote address** - The IP address of the immediate downstream connection (the last hop before the Envoy proxy)
 - **Original client IP** - The real client IP, typically extracted from the `X-Forwarded-For` header
 
-When traffic comes directly from another pod in the mesh, the direct remote address is usually the pod IP. But when traffic comes through an external load balancer or ingress gateway, the direct remote address is the load balancer's IP, not the actual client.
+When traffic comes directly from another pod in the mesh, the direct remote address is usually the pod IP. But when traffic comes through an external HTTP/HTTPS load balancer or ingress gateway, the direct remote address can be the load balancer's IP, not the actual client.
 
-To work with real client IPs, you need to configure Istio to trust the `X-Forwarded-For` header.
+To work with real client IPs from HTTP/HTTPS load balancers, you need to configure Istio to trust the `X-Forwarded-For` header. For network load balancers that preserve the packet source address with `externalTrafficPolicy: Local`, use `ipBlocks` instead.
 
 ## Configuring the Gateway to Preserve Client IP
 
@@ -97,7 +97,7 @@ DENY policies are evaluated before ALLOW policies, so any traffic from these IPs
 
 ## Using remoteIpBlocks for External Traffic
 
-When traffic passes through a load balancer, `ipBlocks` matches the direct remote address, which might be the load balancer IP rather than the actual client. To match on the original client IP (from `X-Forwarded-For`), use `remoteIpBlocks`:
+When traffic passes through an HTTP/HTTPS load balancer, `ipBlocks` matches the direct remote address, which might be the load balancer IP rather than the actual client. To match on the original client IP from `X-Forwarded-For`, use `remoteIpBlocks`:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -117,7 +117,7 @@ spec:
         - "203.0.113.0/24"
 ```
 
-The `remoteIpBlocks` field uses the IP extracted from `X-Forwarded-For` based on the `numTrustedProxies` setting. This is what you want when controlling access for external clients coming through an ingress gateway.
+The `remoteIpBlocks` field uses the IP extracted from `X-Forwarded-For` based on the `numTrustedProxies` setting, or from the PROXY protocol when that is configured. This is what you want when controlling access for external clients coming through an ingress gateway behind an HTTP/HTTPS load balancer or a PROXY-protocol-aware TCP proxy. If your network load balancer preserves the packet source IP with `externalTrafficPolicy: Local`, use `ipBlocks`.
 
 For internal mesh traffic (pod-to-pod), stick with `ipBlocks` since there is no load balancer in the way.
 
@@ -230,7 +230,7 @@ To see what the proxy thinks the client IP is, check the Envoy access logs:
 kubectl logs <gateway-pod> -c istio-proxy -n istio-system | tail -20
 ```
 
-The access log format includes the downstream remote address and the `X-Forwarded-For` header value, which helps you verify that the right IP is being used for policy evaluation.
+If Envoy access logs are enabled, the default access log format includes the downstream remote address and the `X-Forwarded-For` header value, which helps you verify that the right IP is being used for policy evaluation.
 
 You can also inspect the loaded authorization config:
 
@@ -240,9 +240,9 @@ istioctl proxy-config listener <pod-name> -n default -o json | grep -A 20 "rbac"
 
 ## Common Pitfalls
 
-**Forgetting numTrustedProxies.** If you do not set this, `remoteIpBlocks` will not work correctly because Istio will not know how to extract the real client IP from `X-Forwarded-For`.
+**Forgetting numTrustedProxies.** If you use `X-Forwarded-For` and do not set this, `remoteIpBlocks` will not work correctly because Istio will not know how to extract the real client IP from the header.
 
-**Using ipBlocks for external traffic.** When traffic passes through a load balancer, `ipBlocks` will match the load balancer's IP, not the client's. Use `remoteIpBlocks` instead.
+**Using the wrong IP field for your load balancer type.** When traffic passes through an HTTP/HTTPS load balancer, `ipBlocks` will match the load balancer's IP, not the client's. Use `remoteIpBlocks` for `X-Forwarded-For` or PROXY protocol, and `ipBlocks` when the packet source IP is preserved with `externalTrafficPolicy: Local`.
 
 **CIDR notation mistakes.** Double-check your CIDR ranges. A `/24` covers 256 addresses, a `/32` is a single IP. Getting this wrong can either block too much or too little.
 
