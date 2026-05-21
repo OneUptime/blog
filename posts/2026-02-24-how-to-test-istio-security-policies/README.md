@@ -200,7 +200,7 @@ kubectl exec -n security-test deploy/client-a -c sleep -- \
 
 ## Testing RequestAuthentication with JWT
 
-RequestAuthentication validates JWT tokens on incoming requests. Here is a policy that requires a valid JWT:
+RequestAuthentication validates JWT tokens on incoming requests. Here is a policy that validates JWTs when they are present:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -217,7 +217,11 @@ spec:
     jwksUri: "https://accounts.example.com/.well-known/jwks.json"
 ```
 
-RequestAuthentication alone only validates tokens that are present. To actually require tokens, pair it with an AuthorizationPolicy:
+RequestAuthentication alone only validates tokens that are present. To actually require tokens, remove the earlier ALLOW policy and pair it with an AuthorizationPolicy:
+
+```bash
+kubectl delete authorizationpolicy allow-client-a-only -n security-test
+```
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -256,6 +260,10 @@ kubectl exec -n security-test deploy/client-a -c sleep -- \
 ## Testing Namespace Isolation
 
 A common security pattern is to deny all traffic by default and only allow specific communication paths. Apply a default-deny policy:
+
+```bash
+kubectl delete authorizationpolicy require-jwt -n security-test
+```
 
 ```yaml
 apiVersion: security.istio.io/v1
