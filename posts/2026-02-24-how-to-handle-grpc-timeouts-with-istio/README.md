@@ -114,7 +114,7 @@ spec:
       timeout: 0s
 ```
 
-Then configure the idle timeout through an EnvoyFilter if the default is not sufficient:
+Then configure the upstream connection pool idle timeout through a DestinationRule if the default is not sufficient:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -132,7 +132,7 @@ spec:
         idleTimeout: 3600s
 ```
 
-The `idleTimeout` controls how long a connection with no active requests stays open. For streaming, you want this to be long enough to cover gaps between messages.
+The DestinationRule `idleTimeout` controls how long an upstream connection with no active requests stays open. If you need to control quiet periods within an active stream, configure Envoy's stream idle timeout separately, typically with an EnvoyFilter.
 
 ## Timeout Interaction with gRPC Deadlines
 
@@ -208,7 +208,7 @@ If a backend pod is unresponsive at the TCP level (not accepting connections), t
 When you hit timeouts with gRPC in Istio, the symptoms can be confusing. Here are some things to check:
 
 ```bash
-# Check the response headers for timeout info
+# Check Envoy timeout counters
 
 kubectl exec -it <client-pod> -c istio-proxy -- \
   pilot-agent request GET stats | grep "upstream_rq_timeout"
@@ -220,9 +220,10 @@ kubectl logs <client-pod> -c istio-proxy | grep "response_flags"
 Response flags in the access log tell you why a request ended:
 - `UT` - upstream request timeout
 - `DC` - downstream connection termination
-- `DT` - request exceeded the deadline (from grpc-timeout header)
+- `SI` - stream idle timeout
+- `DT` - duration timeout, such as a configured maximum connection or stream duration
 
-If you see `UT`, the Envoy route timeout triggered. If you see `DT`, the client's gRPC deadline was reached.
+If you see `UT`, an Envoy upstream request timeout triggered. If you see `SI`, the stream was idle longer than the configured stream idle timeout. A client-side gRPC deadline may simply appear to Envoy as downstream cancellation rather than a distinct `grpc-timeout` response flag.
 
 ## Best Practices
 
