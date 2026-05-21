@@ -10,7 +10,7 @@ Description: Configure timeouts and retry policies for external services in Isti
 
 External services fail. They time out, return errors, and occasionally just drop connections. Your application should handle these failures gracefully, but implementing retry logic and timeout management in every microservice is tedious and error-prone. Istio lets you configure timeouts and retries at the mesh level using VirtualService resources, so every call to an external service gets automatic resilience.
 
-The beauty of this approach is that your application code stays simple. It makes a call, and if it fails, Istio handles the retry transparently. If the external service is too slow, Istio cuts the connection at the timeout boundary instead of letting your pod hang.
+The beauty of this approach is that your application code stays simple. It makes a call, and if it fails, Istio handles the retry transparently. If the external service is too slow, Istio cuts the connection at the timeout boundary instead of letting your pod hang. For HTTPS external APIs, these HTTP-level policies require TLS origination by Istio; if the application sends HTTPS directly, the sidecar cannot inspect the encrypted HTTP request.
 
 ## Setting Up Timeouts
 
@@ -28,10 +28,25 @@ spec:
     - api.slow-service.com
   location: MESH_EXTERNAL
   ports:
-    - number: 443
-      name: https
-      protocol: HTTPS
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
   resolution: DNS
+```
+
+Add a DestinationRule so the sidecar originates TLS when it sends the request to the external service:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: slow-api-tls
+spec:
+  host: api.slow-service.com
+  trafficPolicy:
+    tls:
+      mode: SIMPLE
 ```
 
 Then create a VirtualService with a timeout:
@@ -50,7 +65,7 @@ spec:
         - destination:
             host: api.slow-service.com
             port:
-              number: 443
+              number: 80
 ```
 
 Now if `api.slow-service.com` takes more than 5 seconds to respond, Envoy terminates the connection and returns a 504 Gateway Timeout to your application.
@@ -76,7 +91,7 @@ spec:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
 ```
 
 Breaking down the retry configuration:
@@ -137,7 +152,7 @@ spec:
         - destination:
             host: api.payment-gateway.com
             port:
-              number: 443
+              number: 80
 ```
 
 With this configuration:
@@ -174,7 +189,7 @@ spec:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
     - match:
         - uri:
             prefix: /fast-endpoint
@@ -187,13 +202,13 @@ spec:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
     - timeout: 5s
       route:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
 ```
 
 The slow endpoint gets a generous 30-second timeout with fewer retries. The fast endpoint gets an aggressive 3-second timeout with more retries. Everything else gets the default 5-second timeout.
@@ -215,15 +230,15 @@ spec:
         attempts: 3
         perTryTimeout: 5s
         retryOn: 5xx,connect-failure
-        retryRemoteLocalities: true
+        backoff: 100ms
       route:
         - destination:
             host: api.example.com
             port:
-              number: 443
+              number: 80
 ```
 
-Envoy adds automatic jittered backoff between retries by default. The base interval is 25ms and doubles with each retry, up to a maximum of 250ms. This is built into Envoy and you do not need to configure it explicitly.
+The `backoff` field sets the minimum duration between retry attempts. If you omit it, Envoy adds automatic jittered backoff between retries by default. The base interval is 25ms and doubles with each retry, up to a maximum of 250ms.
 
 ## Timeout for TCP Services
 
@@ -267,7 +282,7 @@ spec:
         - destination:
             host: api.data-export.com
             port:
-              number: 443
+              number: 80
 ```
 
 Setting `timeout: 0s` disables the timeout entirely. Use this sparingly and only for endpoints that genuinely need it.
@@ -286,12 +301,12 @@ istio_requests_total{
 
 # Look at retry attempts
 envoy_cluster_upstream_rq_retry{
-  cluster_name="outbound|443||api.example.com"
+  cluster_name="outbound|80||api.example.com"
 }
 
 # Retry successes (retry worked)
 envoy_cluster_upstream_rq_retry_success{
-  cluster_name="outbound|443||api.example.com"
+  cluster_name="outbound|80||api.example.com"
 }
 ```
 
@@ -303,6 +318,6 @@ If you see a lot of 504s, your timeouts might be too aggressive. If retries are 
 
 **Do not retry non-idempotent requests.** If the external API charges money or creates resources, retrying a timed-out request might double-charge or create duplicates. Use `retryOn` carefully and consider only retrying on `connect-failure` for non-idempotent endpoints.
 
-**Set both timeout and perTryTimeout.** Without an overall timeout, retries can keep going indefinitely. Without perTryTimeout, each retry waits for the full timeout before giving up.
+**Set both timeout and perTryTimeout.** Without an overall timeout, the total retry window is limited by the retry count, but each attempt can wait much longer than you expect. Without perTryTimeout, each retry waits for the full timeout before giving up.
 
 **Monitor and tune.** Timeouts and retries are not set-and-forget configurations. External services change their performance characteristics over time. Review your metrics regularly and adjust settings based on what you see.
