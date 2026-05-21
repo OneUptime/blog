@@ -26,7 +26,7 @@ The components involved:
 Start with your two versions deployed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -41,7 +41,7 @@ spec:
     labels:
       version: canary
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -90,8 +90,12 @@ if [ "$CURRENT_WEIGHT" -eq 0 ]; then
 else
   # Query Prometheus for canary error rate over last 5 minutes
   ERROR_RATE=$(curl -s "$PROMETHEUS_URL/api/v1/query" \
-    --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"my-app-canary\",response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total{destination_workload=\"my-app-canary\"}[5m]))" \
+    --data-urlencode "query=sum(rate(istio_requests_total{reporter=\"destination\",destination_service_name=\"my-app\",destination_workload_namespace=\"$NAMESPACE\",destination_version=\"canary\",response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total{reporter=\"destination\",destination_service_name=\"my-app\",destination_workload_namespace=\"$NAMESPACE\",destination_version=\"canary\"}[5m]))" \
     | jq -r '.data.result[0].value[1] // "0"')
+
+  if ! [[ "$ERROR_RATE" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    ERROR_RATE=0
+  fi
 
   echo "Canary error rate: $ERROR_RATE"
 
@@ -151,7 +155,7 @@ spec:
           serviceAccountName: rollout-controller
           containers:
           - name: controller
-            image: bitnami/kubectl:latest
+            image: ghcr.io/your-org/rollout-controller:1.0.0 # include kubectl, curl, jq, bc, and bash
             command: ["/bin/bash", "/scripts/rollout.sh"]
             volumeMounts:
             - name: scripts
@@ -182,6 +186,12 @@ rules:
 - apiGroups: ["networking.istio.io"]
   resources: ["virtualservices"]
   verbs: ["get", "patch", "update"]
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale"]
+  verbs: ["get", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -205,16 +215,21 @@ Error rate alone is not always enough. You should also check latency. If the can
 ```bash
 # Query P99 latency for canary
 CANARY_P99=$(curl -s "$PROMETHEUS_URL/api/v1/query" \
-  --data-urlencode "query=histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload=\"my-app-canary\"}[5m])) by (le))" \
+  --data-urlencode "query=histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter=\"destination\",destination_service_name=\"my-app\",destination_workload_namespace=\"$NAMESPACE\",destination_version=\"canary\"}[5m])) by (le))" \
   | jq -r '.data.result[0].value[1] // "0"')
 
 # Query P99 latency for stable
 STABLE_P99=$(curl -s "$PROMETHEUS_URL/api/v1/query" \
-  --data-urlencode "query=histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload=\"my-app-stable\"}[5m])) by (le))" \
+  --data-urlencode "query=histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter=\"destination\",destination_service_name=\"my-app\",destination_workload_namespace=\"$NAMESPACE\",destination_version=\"stable\"}[5m])) by (le))" \
   | jq -r '.data.result[0].value[1] // "0"')
 
 # Roll back if canary is 2x slower
-LATENCY_RATIO=$(echo "$CANARY_P99 / $STABLE_P99" | bc -l)
+if [[ "$CANARY_P99" =~ ^[0-9]+(\.[0-9]+)?$ ]] && [[ "$STABLE_P99" =~ ^[0-9]+(\.[0-9]+)?$ ]] && (( $(echo "$STABLE_P99 > 0" | bc -l) )); then
+  LATENCY_RATIO=$(echo "$CANARY_P99 / $STABLE_P99" | bc -l)
+else
+  LATENCY_RATIO=0
+fi
+
 if (( $(echo "$LATENCY_RATIO > 2.0" | bc -l) )); then
   echo "Canary latency too high ($CANARY_P99 ms vs $STABLE_P99 ms). Rolling back!"
   NEW_CANARY=0
@@ -235,7 +250,7 @@ With a 5-minute interval and 10% steps, a full rollout looks like:
 | ... | ... | ... |
 | T+45 | 90% -> 100% | Full rollout complete |
 
-Total time: about 50 minutes for a full rollout. Adjust the interval and step size based on your needs. For critical services, use smaller steps (5%) and longer intervals (10 minutes).
+Total time: about 45 minutes once the controller starts. Adjust the interval and step size based on your needs. For critical services, use smaller steps (5%) and longer intervals (10 minutes).
 
 ## Handling the Rollback Case
 
