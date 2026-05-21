@@ -100,7 +100,7 @@ spec:
     outputPayloadToHeader: x-jwt-payload
 ```
 
-The `outputPayloadToHeader` option decodes the JWT payload and puts it in a header, which downstream services can read without doing their own JWT parsing.
+The `outputPayloadToHeader` option puts the successfully verified JWT payload in a header as base64-encoded JSON, which downstream services can decode without doing their own JWT verification.
 
 Note that RequestAuthentication only validates tokens that are present. It does not require a token to be present. To enforce that every request must have a valid JWT, pair it with an AuthorizationPolicy:
 
@@ -150,7 +150,7 @@ spec:
 
 This policy only allows requests to the `admin-api` service if the JWT contains a `role` claim with the value `admin` or `superadmin`.
 
-Another tenant might have a simpler model where they just need to restrict access based on IP ranges:
+Another tenant might have a simpler model where they need to restrict access based on IP ranges while still allowing same-tenant workloads:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -171,11 +171,11 @@ spec:
         - tenant-b
 ```
 
-## Per-Tenant Rate Limiting Policies
+## Per-Tenant High-Volume Endpoint Restrictions
 
-Tie rate limiting to tenant security policies. A tenant with a higher security tier might get more relaxed limits, while free-tier tenants get tighter restrictions.
+For quota-style rate limiting, Istio uses Envoy rate limiting configuration. AuthorizationPolicy is still useful for tenant-specific access rules around high-volume endpoints.
 
-Create per-tenant rate limit authorization that denies traffic when custom conditions are met:
+Create per-tenant authorization that denies traffic when custom conditions are met:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -252,7 +252,7 @@ spec:
     - "istio-system/*"
 ```
 
-With `REGISTRY_ONLY`, the tenant can only reach services that are registered in the mesh. Any attempt to call an external API will fail unless you explicitly create a ServiceEntry for it:
+With `REGISTRY_ONLY`, unknown outbound traffic is dropped by the sidecar, and external destinations should be explicitly declared in the service registry. Any attempt to call an unregistered external API will fail from the sidecar unless you explicitly create a ServiceEntry for it:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -272,7 +272,7 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-This whitelisting approach gives you control over data exfiltration risks. Tenant A can reach Stripe and Twilio, but nothing else outside the mesh.
+This whitelisting approach helps reduce accidental external calls and improves visibility into allowed egress. Tenant A's sidecars can reach the registered Stripe and Twilio hosts, while other external hosts remain unregistered.
 
 ## Combining Policies for Defense in Depth
 
@@ -296,8 +296,8 @@ kubectl get serviceentry -n tenant-a
 kubectl get telemetry -n tenant-a
 ```
 
-Each layer catches things that the other layers might miss. mTLS protects against spoofing at the transport layer. JWT validation protects against unauthorized users at the application layer. Authorization policies enforce business rules. Egress restrictions prevent data leaks. And audit logging gives you a trail for compliance.
+Each layer catches things that the other layers might miss. mTLS protects against spoofing at the transport layer. JWT validation protects against unauthorized users at the application layer. Authorization policies enforce business rules. Egress restrictions reduce accidental external calls and improve visibility. And audit logging gives you a trail for compliance.
 
 ## Summary
 
-Istio's namespace-scoped resources let you treat each tenant as a separate security zone. You can mix and match mTLS modes, JWT providers, authorization rules, egress restrictions, and logging levels to match each tenant's specific needs. The key is to start with strong mesh-wide defaults and then customize per tenant where needed. This gives you a secure baseline that no tenant can accidentally weaken, with the flexibility to accommodate different requirements.
+Istio's namespace-scoped resources let you treat each tenant as a separate security zone. You can mix and match mTLS modes, JWT providers, authorization rules, egress restrictions, and logging levels to match each tenant's specific needs. The key is to start with strong mesh-wide defaults and then customize per tenant where needed. This gives you a secure baseline with the flexibility to accommodate different requirements without weakening other tenant namespaces.
