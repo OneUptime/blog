@@ -132,7 +132,7 @@ env:
 Add a check in your application code that detects mirrored traffic. Istio adds a `-shadow` suffix to the `Host` header for mirrored requests.
 
 ```python
-from flask import Flask, request
+from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
