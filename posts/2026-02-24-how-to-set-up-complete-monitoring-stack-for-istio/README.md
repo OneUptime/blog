@@ -82,14 +82,9 @@ spec:
     any: true
   jobLabel: envoy-stats
   podMetricsEndpoints:
-  - path: /stats/prometheus
+  - port: http-envoy-prom
+    path: /stats/prometheus
     interval: 15s
-    relabelings:
-    - action: keep
-      sourceLabels: [__meta_kubernetes_pod_container_name]
-      regex: "istio-proxy"
-    - action: keep
-      sourceLabels: [__meta_kubernetes_pod_annotationpresent_prometheus_io_scrape]
 ```
 
 ## Enabling Istio Metrics
@@ -168,7 +163,10 @@ helm install kiali kiali/kiali-server \
   --set auth.strategy="anonymous" \
   --set external_services.prometheus.url="http://prometheus-kube-prometheus-prometheus.monitoring:9090" \
   --set external_services.grafana.url="http://prometheus-grafana.monitoring:80" \
-  --set external_services.tracing.url="http://jaeger-query.istio-system:16685/jaeger"
+  --set external_services.tracing.enabled=true \
+  --set external_services.tracing.provider="jaeger" \
+  --set external_services.tracing.use_grpc=true \
+  --set external_services.tracing.internal_url="http://jaeger-query.istio-system:16685/jaeger"
 ```
 
 For production, use a proper authentication strategy instead of anonymous:
@@ -186,14 +184,11 @@ auth:
 Install Jaeger for distributed tracing:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/jaegertracing/jaeger-operator/main/deploy/crds/jaegertracing.io_jaegers_crd.yaml
-kubectl apply -f https://raw.githubusercontent.com/jaegertracing/jaeger-operator/main/deploy/service_account.yaml
-kubectl apply -f https://raw.githubusercontent.com/jaegertracing/jaeger-operator/main/deploy/role.yaml
-kubectl apply -f https://raw.githubusercontent.com/jaegertracing/jaeger-operator/main/deploy/role_binding.yaml
-kubectl apply -f https://raw.githubusercontent.com/jaegertracing/jaeger-operator/main/deploy/operator.yaml
+kubectl create namespace observability
+kubectl create -f https://github.com/jaegertracing/jaeger-operator/releases/download/v1.76.0/jaeger-operator.yaml -n observability
 ```
 
-Or use a simpler all-in-one deployment:
+Then create a Jaeger instance:
 
 ```yaml
 apiVersion: jaegertracing.io/v1
@@ -222,13 +217,26 @@ spec:
   meshConfig:
     enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 10
-        zipkin:
-          address: jaeger-collector.istio-system:9411
+      tracing: {}
+    extensionProviders:
+    - name: jaeger
+      opentelemetry:
+        service: jaeger-collector.istio-system.svc.cluster.local
+        port: 4317
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: jaeger
+    randomSamplingPercentage: 10
 ```
 
-The `sampling: 10` means 10% of requests are traced. Adjust based on your traffic volume - 100% sampling in production can generate enormous amounts of data.
+The `randomSamplingPercentage: 10` means 10% of requests are traced. Adjust based on your traffic volume - 100% sampling in production can generate enormous amounts of data.
 
 ## Installing Alertmanager
 
