@@ -26,7 +26,7 @@ Here is what happens step by step:
 ```yaml
 # This causes the problem
 
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -38,19 +38,19 @@ spec:
 
 ## Solution 1: Probe Rewriting (Recommended)
 
-Istio's probe rewriting is the cleanest solution. It is enabled by default since Istio 1.10. When active, the sidecar injector rewrites your HTTP probes to go through the Istio agent on port 15021, which can reach your application without mTLS.
+Istio's probe rewriting is the cleanest solution. It is enabled by default in Istio's built-in configuration profiles. When active, the sidecar injector rewrites your HTTP probes to go through the Istio agent on port 15020, which can reach your application without mTLS.
 
 Verify it is working:
 
 ```bash
-# Check the mesh config
-kubectl get cm istio -n istio-system -o yaml | grep rewriteAppHTTPProbers
+# Check the sidecar injector config
+kubectl get cm istio-sidecar-injector -n istio-system -o yaml | grep rewriteAppHTTPProbe
 
 # Look at the actual pod spec (not the deployment)
 kubectl get pod <pod-name> -o yaml | grep -A8 "livenessProbe"
 ```
 
-If probe rewriting is active, you should see the liveness probe targeting port 15021 with a path like `/app-health/<container>/livez`.
+If probe rewriting is active, you should see the liveness probe targeting port 15020 with a path like `/app-health/<container>/livez`.
 
 Your deployment stays simple:
 
@@ -151,7 +151,7 @@ The `wget` or `curl` command runs inside the container and connects to localhost
 You can set a PeerAuthentication policy that uses STRICT mTLS for your application port but PERMISSIVE for the health check port:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: my-service-mtls
@@ -168,6 +168,8 @@ spec:
 ```
 
 This allows the health check port to accept both mTLS and plain HTTP connections while the main application port requires mTLS.
+
+Make sure the port in `portLevelMtls` is the workload port, not the Kubernetes Service port, and that the port is bound by a Service.
 
 ## Verifying the Fix
 
@@ -195,22 +197,22 @@ You can simulate what the kubelet does to test your setup:
 kubectl exec -it <another-pod> -- curl -v http://<pod-ip>:8080/healthz
 
 # This should fail with STRICT mTLS on the main port
-# But succeed with probe rewriting via port 15021
+# But succeed with probe rewriting via port 15020
 
 # Test the probe rewrite endpoint
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  curl -v http://localhost:15021/app-health/my-service/livez
+  curl -v http://localhost:15020/app-health/my-service/livez
 ```
 
 ## Common Mistakes
 
-**Forgetting that probe rewriting only works for HTTP probes.** If you use TCP probes, Istio does not rewrite them. TCP probes go directly to the port, and if Envoy is listening (which it always is for meshed ports), the probe passes. This means TCP probes with mTLS do not fail, but they also do not actually check your application.
+**Forgetting that probe rewriting covers more than HTTP probes.** Istio uses probe rewriting for HTTP, TCP, and gRPC probes by default. If you disable probe rewriting and use TCP probes, the kubelet checks whether the port is open; in a meshed pod that can mean it reaches Envoy, so the probe may pass without actually checking your application.
 
 **Applying STRICT mTLS before checking probe rewriting.** Always verify that probe rewriting is enabled before switching to STRICT mode:
 
 ```bash
 # Verify probe rewriting globally
-kubectl get cm istio -n istio-system -o jsonpath='{.data.mesh}' | grep -i prober
+kubectl get cm istio-sidecar-injector -n istio-system -o yaml | grep rewriteAppHTTPProbe
 ```
 
 **Not accounting for the init container race condition.** Even with probe rewriting, if your application starts before the sidecar, early probes can fail. Use `holdApplicationUntilProxyStarts`:
@@ -238,4 +240,4 @@ If you are migrating from PERMISSIVE to STRICT mTLS, here is a safe sequence:
 kubectl get pods -n default -w
 ```
 
-The combination of probe rewriting and `holdApplicationUntilProxyStarts` handles the vast majority of liveness probe issues with mTLS. If you are on Istio 1.10 or newer, the defaults should work without any extra configuration.
+The combination of probe rewriting and `holdApplicationUntilProxyStarts` handles the vast majority of liveness probe issues with mTLS. On current Istio installations that use the built-in profiles, the defaults should work without any extra configuration.
