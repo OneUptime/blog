@@ -25,7 +25,7 @@ You need two Kubernetes clusters. For this walkthrough, I will call them `cluste
 Make sure you have:
 
 - `kubectl` installed and configured to talk to both clusters
-- `istioctl` version 1.20+ installed
+- `istioctl` installed for the Istio version you plan to deploy
 - Cluster contexts named `cluster1` and `cluster2` in your kubeconfig
 
 Set up your context variables:
@@ -78,7 +78,7 @@ popd
 
 ## Step 2: Label Clusters with Topology
 
-Istio uses labels on the `istio-system` namespace to determine the mesh, cluster, and network identity. Since both clusters are on the same network, they get the same network label:
+Istio can use the `topology.istio.io/network` label on the `istio-system` namespace as the cluster's default network. Since both clusters are on the same network, they get the same network label:
 
 ```bash
 kubectl label namespace istio-system topology.istio.io/network=network1 --context="${CTX_CLUSTER1}"
@@ -180,11 +180,20 @@ kubectl apply -f samples/helloworld/helloworld.yaml -l version=v2 -n sample --co
 kubectl apply -f samples/helloworld/helloworld.yaml -l service=helloworld -n sample --context="${CTX_CLUSTER2}"
 ```
 
-Deploy the sleep client in both clusters:
+Before testing traffic, confirm Istiod can see the remote cluster:
 
 ```bash
-kubectl apply -f samples/sleep/sleep.yaml -n sample --context="${CTX_CLUSTER1}"
-kubectl apply -f samples/sleep/sleep.yaml -n sample --context="${CTX_CLUSTER2}"
+istioctl remote-clusters --context="${CTX_CLUSTER1}"
+istioctl remote-clusters --context="${CTX_CLUSTER2}"
+```
+
+Both commands should show the local and remote clusters with a `synced` status.
+
+Deploy the curl client in both clusters:
+
+```bash
+kubectl apply -f samples/curl/curl.yaml -n sample --context="${CTX_CLUSTER1}"
+kubectl apply -f samples/curl/curl.yaml -n sample --context="${CTX_CLUSTER2}"
 ```
 
 Now test cross-cluster connectivity:
@@ -192,8 +201,8 @@ Now test cross-cluster connectivity:
 ```bash
 # From cluster1, call helloworld multiple times
 for i in $(seq 1 10); do
-  kubectl exec -n sample -c sleep \
-    "$(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}' --context=${CTX_CLUSTER1})" \
+  kubectl exec -n sample -c curl \
+    "$(kubectl get pod -n sample -l app=curl -o jsonpath='{.items[0].metadata.name}' --context="${CTX_CLUSTER1}")" \
     --context="${CTX_CLUSTER1}" -- curl -sS helloworld.sample:5000/hello
 done
 ```
@@ -223,8 +232,8 @@ kubectl logs -n istio-system -l app=istiod --context="${CTX_CLUSTER1}" | grep "r
 REMOTE_POD_IP=$(kubectl get pod -n sample -l app=helloworld -o jsonpath='{.items[0].status.podIP}' --context="${CTX_CLUSTER2}")
 
 # Try to reach it from cluster1
-kubectl exec -n sample -c sleep \
-  "$(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}' --context=${CTX_CLUSTER1})" \
+kubectl exec -n sample -c curl \
+  "$(kubectl get pod -n sample -l app=curl -o jsonpath='{.items[0].metadata.name}' --context="${CTX_CLUSTER1}")" \
   --context="${CTX_CLUSTER1}" -- curl -sS ${REMOTE_POD_IP}:5000/hello
 ```
 
