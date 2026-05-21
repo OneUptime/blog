@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: ArgoCD, GitOps, Kubernetes, Disaster Recovery, High Availability
 
-Description: Learn how to set up an active-passive ArgoCD disaster recovery configuration with automatic failover, state synchronization, and recovery procedures.
+Description: Learn how to set up an active-passive ArgoCD disaster recovery configuration with failover procedures, state synchronization, and recovery steps.
 
 ---
 
@@ -60,9 +60,9 @@ kubectl apply -n argocd \
 kubectl wait --for=condition=available deployment --all -n argocd --timeout=180s
 ```
 
-### Step 2: Disable Auto-Sync on Passive
+### Step 2: Disable Reconciliation on Passive
 
-The passive instance should have all application definitions but should NOT automatically sync them. This prevents two ArgoCD instances from competing to manage the same clusters:
+The passive instance should have all application definitions but should NOT reconcile or sync them. This prevents two ArgoCD instances from competing to manage the same clusters:
 
 ```yaml
 # On the passive instance, scale down the application controller
@@ -110,13 +110,25 @@ for cm in argocd-cm argocd-rbac-cm argocd-cmd-params-cm \
 import sys, yaml
 doc = yaml.safe_load(sys.stdin)
 meta = doc.get('metadata', {})
-for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
+for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields', 'ownerReferences']:
     meta.pop(f, None)
 print(yaml.dump(doc, default_flow_style=False))
 " | kubectl apply -f - -n "$NAMESPACE" --context="$DR_CONTEXT"
 done
 
-# Sync Secrets (repos, clusters)
+# Sync Secrets (Argo CD server secret, repos, clusters)
+echo "Syncing Secret: argocd-secret"
+kubectl get secret argocd-secret -n "$NAMESPACE" \
+  --context="$PRIMARY_CONTEXT" -o yaml | \
+  python3 -c "
+import sys, yaml
+doc = yaml.safe_load(sys.stdin)
+meta = doc.get('metadata', {})
+for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields', 'ownerReferences']:
+    meta.pop(f, None)
+print(yaml.dump(doc, default_flow_style=False))
+" | kubectl apply -f - -n "$NAMESPACE" --context="$DR_CONTEXT"
+
 for label in repository repo-creds cluster; do
   echo "Syncing Secrets: $label"
   kubectl get secrets -n "$NAMESPACE" \
@@ -131,7 +143,7 @@ for doc in yaml.safe_load_all(sys.stdin):
         items = [doc]
     for item in items:
         meta = item.get('metadata', {})
-        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
+        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields', 'ownerReferences']:
             meta.pop(f, None)
         print('---')
         print(yaml.dump(item, default_flow_style=False))
@@ -153,7 +165,7 @@ for doc in yaml.safe_load_all(sys.stdin):
         items = [doc]
     for item in items:
         meta = item.get('metadata', {})
-        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
+        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields', 'ownerReferences']:
             meta.pop(f, None)
         item.pop('status', None)
         print('---')
@@ -175,7 +187,7 @@ for doc in yaml.safe_load_all(sys.stdin):
         items = [doc]
     for item in items:
         meta = item.get('metadata', {})
-        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields']:
+        for f in ['resourceVersion', 'uid', 'creationTimestamp', 'managedFields', 'ownerReferences']:
             meta.pop(f, None)
         item.pop('status', None)
         item.pop('operation', None)
@@ -190,7 +202,7 @@ echo "Applications: $(kubectl get applications.argoproj.io -n $NAMESPACE --conte
 
 ### Step 4: Schedule Regular Syncs
 
-Run the sync as a CronJob:
+Run the sync as a CronJob. Use an image that includes `kubectl`, `bash`, `python3`, and `PyYAML` so the script can run:
 
 ```yaml
 apiVersion: batch/v1
@@ -207,7 +219,7 @@ spec:
           serviceAccountName: argocd-dr-sync
           containers:
             - name: sync
-              image: bitnami/kubectl:latest
+              image: your-registry/argocd-dr-sync:latest
               command:
                 - /bin/bash
                 - /scripts/sync-argocd-config.sh
