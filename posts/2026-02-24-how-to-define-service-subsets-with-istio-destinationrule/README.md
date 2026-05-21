@@ -182,7 +182,7 @@ spec:
         baseEjectionTime: 60s
 ```
 
-The top-level `trafficPolicy` applies to all subsets by default. The v2 subset overrides it with stricter connection limits and outlier detection. The v1 subset just inherits the top-level policy.
+The top-level `trafficPolicy` applies to all subsets by default. The v2 subset adds stricter connection limits and outlier detection while still inheriting settings it does not override. The v1 subset just inherits the top-level policy.
 
 ## Verifying Subsets Are Working
 
