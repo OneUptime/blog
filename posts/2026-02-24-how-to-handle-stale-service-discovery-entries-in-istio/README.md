@@ -69,38 +69,25 @@ kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/debug/endp
 
 ## Fixing Stale DNS Entries
 
-For ServiceEntry resources that use DNS resolution, stale entries come from expired DNS caches. Force a re-resolution by restarting the affected proxy:
+For ServiceEntry resources that use DNS resolution, stale entries can come from cached DNS results that have not been refreshed yet. Force a re-resolution by restarting the affected proxy:
 
 ```bash
 kubectl rollout restart deploy/caller-service -n frontend
 ```
 
-For a less disruptive approach, use Istio's DNS proxy with shorter effective TTL by controlling the upstream DNS cache:
+For a less disruptive approach, configure Istio's DNS refresh interval for `STRICT_DNS` clusters through the mesh configuration:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 metadata:
-  name: coredns
-  namespace: kube-system
-data:
-  Corefile: |
-    .:53 {
-        errors
-        health
-        kubernetes cluster.local in-addr.arpa ip6.arpa {
-            pods insecure
-            fallthrough in-addr.arpa ip6.arpa
-        }
-        forward . /etc/resolv.conf
-        cache 10
-        loop
-        reload
-        loadbalance
-    }
+  name: istio
+spec:
+  meshConfig:
+    dnsRefreshRate: 10s
 ```
 
-Reducing the DNS cache from 30 seconds to 10 seconds means stale DNS entries clear faster.
+Reducing the DNS refresh interval from the default 60 seconds to 10 seconds means proxy-side DNS results for `resolution: DNS` ServiceEntries refresh faster.
 
 ## Handling Stale Entries During Deployments
 
@@ -135,15 +122,20 @@ The `preStop` hook adds a 5-second delay before the container receives SIGTERM. 
 Additionally, configure the Envoy proxy to drain connections gracefully:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: ProxyConfig
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: default
-  namespace: istio-system
+  name: my-service
 spec:
-  drainDuration: 45s
-  terminationDrainDuration: 5s
+  template:
+    metadata:
+      annotations:
+        proxy.istio.io/config: |
+          drainDuration: 45s
+          terminationDrainDuration: 5s
 ```
+
+You can set these values in `meshConfig.defaultConfig` or on a workload with the `proxy.istio.io/config` pod annotation. Proxy configuration fields are applied when workloads start, so restart affected workloads after changing them.
 
 ## Using Outlier Detection to Handle Stale Endpoints
 
