@@ -45,7 +45,7 @@ The columns:
 - **MATCH** - The URL match pattern
 - **VIRTUAL SERVICE** - Which VirtualService created this route (empty means default Istio routing)
 
-Notice that `reviews` has a VirtualService (`reviews-vs.default`) while other services don't. Services without VirtualServices use default round-robin routing.
+Notice that `reviews` has a VirtualService (`reviews-vs.default`) while other services don't. Services without VirtualServices get default routes to the service cluster, and Istio uses least-requests load balancing by default unless a DestinationRule changes it.
 
 ## Filtering Routes
 
@@ -171,8 +171,9 @@ match:
     prefix: /api
 ```
 ```json
-// Envoy route
-"match": { "prefix": "/api" }
+{
+  "match": { "prefix": "/api" }
+}
 ```
 
 **Exact match:**
@@ -183,8 +184,9 @@ match:
     exact: /api/v1/health
 ```
 ```json
-// Envoy route
-"match": { "path": "/api/v1/health" }
+{
+  "match": { "path": "/api/v1/health" }
+}
 ```
 
 **Regex match:**
@@ -195,8 +197,9 @@ match:
     regex: "/api/v[0-9]+/.*"
 ```
 ```json
-// Envoy route
-"match": { "safeRegex": { "regex": "/api/v[0-9]+/.*" } }
+{
+  "match": { "safeRegex": { "regex": "/api/v[0-9]+/.*" } }
+}
 ```
 
 Check the JSON output to verify your matches translated correctly:
@@ -260,7 +263,7 @@ for rc in data:
 "
 ```
 
-If the timeout isn't what you set in the VirtualService, check for conflicting settings. Istio also applies mesh-wide defaults that can override per-route settings.
+If the timeout isn't what you set in the VirtualService, check for conflicting settings. Istio's mesh-wide retry defaults can also appear on routes that don't set their own retry policy.
 
 ## Inbound vs Outbound Routes
 
@@ -274,7 +277,7 @@ istioctl pc routes my-pod.default --name 9080
 istioctl pc routes my-pod.default --name "inbound|9080||"
 ```
 
-Inbound routes are usually simpler - they just forward to the local application. But if you have AuthorizationPolicies, you'll see RBAC filters applied to inbound routes.
+Inbound routes are usually simpler - they just forward to the local application. But if you have AuthorizationPolicies, check the listener or HTTP filter configuration instead; Istio authorization is enforced through Envoy RBAC filters, not by changing the route table itself.
 
 ## Route Order Matters
 
@@ -293,7 +296,7 @@ for rc in data:
 "
 ```
 
-Istio orders routes from most specific to least specific. Exact matches come first, then prefix matches ordered by length (longest first), then regex matches.
+Order your VirtualService HTTP rules from most specific to least specific, with catch-all routes last. If an earlier route catches the request, later routes won't be used.
 
 ## Default Routes
 
