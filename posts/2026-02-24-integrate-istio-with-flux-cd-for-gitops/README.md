@@ -22,7 +22,8 @@ Bootstrap Flux into your cluster. This command creates a Git repository (or uses
 
 ```bash
 flux bootstrap github \
-  --owner=your-org \
+  --token-auth \
+  --owner=your-github-username \
   --repository=fleet-infra \
   --branch=main \
   --path=clusters/production \
@@ -106,7 +107,7 @@ spec:
   chart:
     spec:
       chart: base
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -132,7 +133,7 @@ spec:
   chart:
     spec:
       chart: istiod
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -166,7 +167,7 @@ spec:
   chart:
     spec:
       chart: gateway
-      version: "1.22.x"
+      version: "1.29.x"
       sourceRef:
         kind: HelmRepository
         name: istio
@@ -180,7 +181,7 @@ The `dependsOn` field ensures resources are installed in the correct order.
 
 ## Managing Istio Config Resources with Kustomizations
 
-Create a Flux Kustomization that points to your Istio configuration directory:
+Create a Flux Kustomization that points to your Istio configuration directory, assuming another Flux Kustomization named `istio-installation` applies the Istio HelmRepository and HelmRelease manifests first:
 
 ```yaml
 apiVersion: kustomize.toolkit.fluxcd.io/v1
@@ -197,7 +198,7 @@ spec:
   path: ./infrastructure/istio/mesh-config
   prune: true
   dependsOn:
-  - name: istio-controller
+  - name: istio-installation
   healthChecks:
   - apiVersion: networking.istio.io/v1
     kind: Gateway
@@ -277,7 +278,7 @@ spec:
 Flux has a built-in notification system. Configure alerts for Istio resource reconciliation events:
 
 ```yaml
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
@@ -288,7 +289,7 @@ spec:
   secretRef:
     name: slack-webhook-url
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: istio-alerts
@@ -317,7 +318,7 @@ spec:
   chart:
     spec:
       chart: istiod
-      version: "1.23.x"  # Updated from 1.22.x
+      version: "1.30.x"  # Updated from 1.29.x
 ```
 
 Commit, push, and Flux takes care of the rest. If the upgrade fails, Flux will report the error and you can revert the commit.
