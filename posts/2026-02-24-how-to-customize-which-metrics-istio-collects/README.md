@@ -18,6 +18,8 @@ Istio generates these metrics by default:
 - `istio_request_duration_milliseconds` - request latency histogram
 - `istio_request_bytes` - request body size histogram
 - `istio_response_bytes` - response body size histogram
+- `istio_request_messages_total` - gRPC request messages
+- `istio_response_messages_total` - gRPC response messages
 - `istio_tcp_sent_bytes_total` - TCP bytes sent
 - `istio_tcp_received_bytes_total` - TCP bytes received
 - `istio_tcp_connections_opened_total` - TCP connections opened
@@ -27,7 +29,7 @@ Each HTTP metric includes labels like `reporter`, `source_workload`, `destinatio
 
 ## Using the Telemetry API
 
-The Telemetry API (introduced in Istio 1.12, stable since 1.18) is the recommended way to customize metrics. It uses the `telemetry.istio.io/v1` API group.
+The Telemetry API is the recommended way to customize metrics. It has been available as a first-class Istio API for some time, and the `telemetry.istio.io/v1` API version was promoted in Istio 1.22.
 
 ### Mesh-Wide Configuration
 
@@ -63,11 +65,11 @@ spec:
         - name: prometheus
       overrides:
         - match:
-            metric: REQUEST_BYTES
+            metric: REQUEST_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
         - match:
-            metric: RESPONSE_BYTES
+            metric: RESPONSE_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
 ```
@@ -78,8 +80,8 @@ Available metric names for the `match.metric` field:
 - `ALL_METRICS`
 - `REQUEST_COUNT`
 - `REQUEST_DURATION`
-- `REQUEST_BYTES`
-- `RESPONSE_BYTES`
+- `REQUEST_SIZE`
+- `RESPONSE_SIZE`
 - `TCP_OPENED_CONNECTIONS`
 - `TCP_CLOSED_CONNECTIONS`
 - `TCP_SENT_BYTES`
@@ -178,16 +180,16 @@ spec:
               operation: UPSERT
               value: "request.headers['x-payment-method']"
         - match:
-            metric: REQUEST_BYTES
+            metric: REQUEST_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
         - match:
-            metric: RESPONSE_BYTES
+            metric: RESPONSE_SIZE
             mode: CLIENT_AND_SERVER
           disabled: true
 ```
 
-Namespace-level configuration merges with the mesh-wide configuration. Namespace settings take precedence for any overlapping overrides.
+Namespace-level configuration inherits from the mesh-wide configuration, but any fields specified in the namespace resource override the corresponding parent configuration.
 
 ## Workload-Level Customization
 
@@ -314,10 +316,10 @@ tagOverrides:
 ```yaml
 overrides:
   - match:
-      metric: REQUEST_BYTES
+      metric: REQUEST_SIZE
     disabled: true
   - match:
-      metric: RESPONSE_BYTES
+      metric: RESPONSE_SIZE
     disabled: true
 ```
 
