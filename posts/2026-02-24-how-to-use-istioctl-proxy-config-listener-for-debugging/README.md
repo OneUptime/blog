@@ -80,7 +80,7 @@ The outbound listener uses filter chain matching based on the original destinati
 
 ### Port Conflict
 
-If your application listens on a port that conflicts with Istio's internal ports (15000, 15001, 15006, 15020, 15021, 15090), traffic will not work correctly:
+If your application listens on a port that conflicts with Istio sidecar ports (15000, 15001, 15002, 15004, 15006, 15008, 15020, 15021, 15053 when DNS capture is enabled, or 15090), traffic will not work correctly:
 
 ```bash
 # Check what ports your listeners are on
@@ -102,16 +102,16 @@ This usually means the Kubernetes Service does not have that port defined, or th
 
 ### HTTP vs TCP Protocol Detection
 
-Istio auto-detects whether traffic on a port is HTTP or TCP. If it gets this wrong, things break. Check the listener to see which protocol Envoy is expecting:
+Istio can automatically detect HTTP and HTTP/2 traffic. If it cannot determine the protocol, it treats the traffic as plain TCP. Check the listener to see which protocol Envoy is expecting:
 
 ```bash
 istioctl proxy-config listener productpage-v1-6b746f74dc-9rlmh.bookinfo \
-  --port 9080 -o json | grep -A5 "filterChainMatch"
+  --port 9080 -o json | grep -E "http_connection_manager|tcp_proxy"
 ```
 
-If you see `httpConnectionManager` in the filter chain, Envoy is treating this as HTTP. If you see `tcpProxy`, it is treating it as TCP.
+If you see `envoy.filters.network.http_connection_manager` in the filter chain, Envoy is treating this as HTTP. If you see `envoy.filters.network.tcp_proxy`, it is treating it as TCP.
 
-To force HTTP protocol detection, name your Kubernetes Service port with an `http-` prefix:
+To explicitly select HTTP, name your Kubernetes Service port with an `http-` prefix:
 
 ```yaml
 apiVersion: v1
@@ -124,6 +124,8 @@ spec:
     port: 8080
     targetPort: 8080
 ```
+
+On Kubernetes 1.18 and later, you can also set `appProtocol: http` on the Service port.
 
 ### Passthrough Traffic
 
@@ -144,14 +146,17 @@ istioctl proxy-config listener productpage-v1-6b746f74dc-9rlmh.bookinfo \
   --port 9080 -o json
 ```
 
-Look for the `filters` array within each filter chain. For HTTP traffic, you will see filters like:
+Look for the `filters` array within each filter chain. For HTTP traffic, the network filter is:
 
 - `envoy.filters.network.http_connection_manager`: The main HTTP processing filter
+
+Inside that filter's `typed_config.http_filters` array, you may see HTTP filters like:
+
 - `envoy.filters.http.fault`: Fault injection (if VirtualService has fault config)
 - `envoy.filters.http.cors`: CORS handling
 - `envoy.filters.http.router`: The final routing filter
 
-For inbound traffic, you will also see:
+For inbound traffic, you will also see these when matching policies are configured:
 - `envoy.filters.http.rbac`: Authorization policy enforcement
 - `envoy.filters.http.jwt_authn`: JWT validation
 
