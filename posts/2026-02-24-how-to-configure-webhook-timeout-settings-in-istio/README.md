@@ -14,7 +14,7 @@ This guide covers how to view, configure, and tune webhook timeout settings for 
 
 ## Default Timeout Values
 
-Istio sets a default timeout of 10 seconds for its webhooks. You can see the current value:
+Kubernetes applies a default timeout of 10 seconds for admission webhooks when `timeoutSeconds` is not set, which is how current Istio manifests commonly render. You can see whether an explicit value is set:
 
 ```bash
 # Check mutating webhook timeout
@@ -52,7 +52,7 @@ You should consider changing the timeout in these situations:
 # Increase timeout to 30 seconds
 kubectl patch mutatingwebhookconfiguration istio-sidecar-injector \
   --type='json' \
-  -p='[{"op": "replace", "path": "/webhooks/0/timeoutSeconds", "value": 30}]'
+  -p='[{"op": "add", "path": "/webhooks/0/timeoutSeconds", "value": 30}]'
 ```
 
 Note that if you have multiple webhooks in the configuration, you need to patch each one:
@@ -70,15 +70,28 @@ kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o json | \
 
 ### Using IstioOperator
 
-When installing or upgrading Istio, you can set the timeout through the IstioOperator:
+When installing or upgrading Istio with `istioctl`, you can set the timeout through IstioOperator overlays:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  values:
-    sidecarInjectorWebhook:
-      timeoutSeconds: 30
+  components:
+    pilot:
+      k8s:
+        overlays:
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: MutatingWebhookConfiguration
+          name: istio-sidecar-injector
+          patches:
+          - path: webhooks.[name:rev.namespace.sidecar-injector.istio.io].timeoutSeconds
+            value: 30
+          - path: webhooks.[name:rev.object.sidecar-injector.istio.io].timeoutSeconds
+            value: 30
+          - path: webhooks.[name:namespace.sidecar-injector.istio.io].timeoutSeconds
+            value: 30
+          - path: webhooks.[name:object.sidecar-injector.istio.io].timeoutSeconds
+            value: 30
 ```
 
 This ensures the timeout survives Istio upgrades.
@@ -89,20 +102,20 @@ This ensures the timeout survives Istio upgrades.
 # Increase timeout to 30 seconds
 kubectl patch validatingwebhookconfiguration istio-validator-istio-system \
   --type='json' \
-  -p='[{"op": "replace", "path": "/webhooks/0/timeoutSeconds", "value": 30}]'
+  -p='[{"op": "add", "path": "/webhooks/0/timeoutSeconds", "value": 30}]'
 ```
 
 ## Understanding Timeout Behavior
 
 When a timeout occurs, the behavior depends on the `failurePolicy`:
 
-### failurePolicy: Fail (Default)
+### failurePolicy: Fail
 
 ```text
 timeout reached -> webhook call fails -> pod creation rejected
 ```
 
-The pod is not created. The deployment controller will retry, but if istiod remains slow, pods keep failing.
+The pod is not created. The deployment controller will retry, but if istiod remains slow, pods keep failing. Istio sidecar injection webhooks use `failurePolicy: Fail`; Istio validation webhooks may start with `Ignore` during installation and switch to `Fail` after istiod is ready.
 
 ### failurePolicy: Ignore
 
@@ -110,7 +123,7 @@ The pod is not created. The deployment controller will retry, but if istiod rema
 timeout reached -> webhook call fails -> pod created WITHOUT sidecar
 ```
 
-The pod is created but without the sidecar. This means no mTLS, no traffic management, and no observability for that pod.
+The pod is created but without the sidecar. In sidecar mode, this means no sidecar-provided mTLS, traffic management, or observability for that pod.
 
 ## Diagnosing Timeout Issues
 
@@ -132,7 +145,7 @@ time kubectl run test-timeout --image=nginx --dry-run=server -n my-namespace -o 
 
 # Check istiod's injection latency metric
 kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep sidecar_injection_time
+  curl -s localhost:15014/metrics | grep sidecar_injection_time_seconds
 ```
 
 ### Check Istiod Load
@@ -145,9 +158,9 @@ kubectl top pod -n istio-system -l app=istiod
 kubectl exec -n istio-system deploy/istiod -- \
   curl -s localhost:15014/metrics | grep pilot_xds_connected
 
-# Push queue depth
+# Push queue time
 kubectl exec -n istio-system deploy/istiod -- \
-  curl -s localhost:15014/metrics | grep pilot_push_status
+  curl -s localhost:15014/metrics | grep pilot_proxy_queue_time
 ```
 
 ## Tuning Strategies
@@ -170,9 +183,19 @@ spec:
           limits:
             cpu: 4
             memory: 8Gi
-  values:
-    sidecarInjectorWebhook:
-      timeoutSeconds: 25
+        overlays:
+        - apiVersion: admissionregistration.k8s.io/v1
+          kind: MutatingWebhookConfiguration
+          name: istio-sidecar-injector
+          patches:
+          - path: webhooks.[name:rev.namespace.sidecar-injector.istio.io].timeoutSeconds
+            value: 25
+          - path: webhooks.[name:rev.object.sidecar-injector.istio.io].timeoutSeconds
+            value: 25
+          - path: webhooks.[name:namespace.sidecar-injector.istio.io].timeoutSeconds
+            value: 25
+          - path: webhooks.[name:object.sidecar-injector.istio.io].timeoutSeconds
+            value: 25
 ```
 
 ### Strategy 2: Scale Istiod Horizontally
