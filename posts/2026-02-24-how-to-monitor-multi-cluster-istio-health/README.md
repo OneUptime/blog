@@ -43,7 +43,7 @@ groups:
   - name: istio-control-plane
     rules:
       - alert: IstiodDown
-        expr: absent(up{job="istiod"} == 1)
+        expr: up{job="istiod"} == 0
         for: 2m
         labels:
           severity: critical
@@ -51,7 +51,7 @@ groups:
           summary: "Istiod is not responding in {{ $labels.cluster }}"
 
       - alert: IstiodHighPushLatency
-        expr: histogram_quantile(0.99, rate(pilot_proxy_convergence_time_bucket[5m])) > 10
+        expr: histogram_quantile(0.99, sum by (le, cluster) (rate(pilot_proxy_convergence_time_bucket[5m]))) > 10
         for: 5m
         labels:
           severity: warning
@@ -79,7 +79,7 @@ for ctx in cluster1 cluster2; do
 done
 ```
 
-Look for proxies with `STALE` status, which means they haven't received recent configuration updates.
+Look for proxies with `STALE` status, which means istiod sent an update but has not received an acknowledgement from Envoy.
 
 Automate this check:
 
@@ -110,9 +110,9 @@ for ctx in cluster1 cluster2; do
   kubectl --context=${ctx} get pods -n istio-system -l istio=eastwestgateway
 
   # Health check endpoint
-  EW_IP=$(kubectl --context=${ctx} get svc -n istio-system istio-eastwestgateway \
-    -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-  curl -s -o /dev/null -w "%{http_code}" http://${EW_IP}:15021/healthz/ready
+  EW_ADDR=$(kubectl --context=${ctx} get svc -n istio-system istio-eastwestgateway \
+    -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
+  curl -s -o /dev/null -w "%{http_code}" http://${EW_ADDR}:15021/healthz/ready
   echo ""
 done
 ```
@@ -162,19 +162,19 @@ Verify that each cluster sees endpoints from other clusters:
 # Check endpoint counts
 for ctx in cluster1 cluster2; do
   echo "=== ${ctx} ==="
-  istioctl --context=${ctx} proxy-config endpoints deploy/sleep -n sample | \
+  istioctl --context=${ctx} proxy-config endpoints deployment/sleep -n sample | \
     grep "my-service" | wc -l
 done
 ```
 
-If cluster1 has 3 pods and cluster2 has 3 pods of my-service, each cluster should show 6 endpoints.
+In a same-network mesh, if cluster1 has 3 pods and cluster2 has 3 pods of my-service, each cluster should show 6 workload endpoints. In a multi-network mesh, remote endpoints may be represented through the remote network's east-west gateway, so verify that the expected remote gateway endpoint appears instead of expecting every remote pod IP directly.
 
 Monitor with Prometheus:
 
 ```yaml
 - alert: CrossClusterEndpointsMissing
   expr: |
-    pilot_services{cluster="cluster1"} != pilot_services{cluster="cluster2"}
+    sum(pilot_services{cluster="cluster1"}) != sum(pilot_services{cluster="cluster2"})
   for: 10m
   labels:
     severity: warning
@@ -190,7 +190,7 @@ mTLS certificates expire, and when they do, cross-cluster communication breaks. 
 # Check the root CA expiry
 for ctx in cluster1 cluster2; do
   echo "=== ${ctx} ==="
-  kubectl --context=${ctx} get secret cacerts -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
+  kubectl --context=${ctx} get secret cacerts -n istio-system -o jsonpath='{.data.root-cert\.pem}' | \
     base64 -d | openssl x509 -noout -dates
 done
 ```
@@ -199,15 +199,7 @@ Check workload certificates:
 
 ```bash
 # Get the certificate from a sidecar
-istioctl --context=cluster1 proxy-config secret deploy/my-app -n production -o json | \
-  python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for s in data.get('dynamicActiveSecrets', []):
-  name = s.get('name', '')
-  cert = s.get('secret', {}).get('tlsCertificate', {})
-  print(f'Secret: {name}')
-"
+istioctl --context=cluster1 proxy-config secret deployment/my-app -n production
 ```
 
 ## Unified Dashboard
@@ -260,26 +252,24 @@ groups:
 
       - alert: CrossClusterTrafficDrop
         expr: |
-          rate(istio_requests_total{
-            source_cluster!=destination_cluster
-          }[5m]) == 0
+          (
+            sum(rate(istio_requests_total{source_cluster="cluster1",destination_cluster="cluster2"}[5m])) +
+            sum(rate(istio_requests_total{source_cluster="cluster2",destination_cluster="cluster1"}[5m]))
+          ) == 0
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "No cross-cluster traffic detected"
 
-      - alert: RemoteSecretExpiring
+      - alert: RemoteClusterSyncTimeout
         expr: |
-          (kube_secret_created{
-            secret=~"istio-remote-secret.*",
-            namespace="istio-system"
-          } + 31536000) - time() < 604800
+          increase(remote_cluster_sync_timeouts_total[10m]) > 0
         for: 1h
         labels:
           severity: warning
         annotations:
-          summary: "Remote secret for cluster {{ $labels.secret }} expires within 7 days"
+          summary: "Istiod is timing out while syncing a remote cluster"
 ```
 
 ## Quick Health Check Script
