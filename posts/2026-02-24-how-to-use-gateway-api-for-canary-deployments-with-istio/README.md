@@ -317,24 +317,24 @@ Check error rates:
 # From Prometheus - compare error rates
 
 # Canary error rate
-rate(istio_requests_total{destination_service="my-app-canary.production.svc.cluster.local",response_code=~"5.."}[5m])
+sum(rate(istio_requests_total{destination_service="my-app-canary.production.svc.cluster.local",response_code=~"5.."}[5m]))
 /
-rate(istio_requests_total{destination_service="my-app-canary.production.svc.cluster.local"}[5m])
+sum(rate(istio_requests_total{destination_service="my-app-canary.production.svc.cluster.local"}[5m]))
 
 # Stable error rate
-rate(istio_requests_total{destination_service="my-app-stable.production.svc.cluster.local",response_code=~"5.."}[5m])
+sum(rate(istio_requests_total{destination_service="my-app-stable.production.svc.cluster.local",response_code=~"5.."}[5m]))
 /
-rate(istio_requests_total{destination_service="my-app-stable.production.svc.cluster.local"}[5m])
+sum(rate(istio_requests_total{destination_service="my-app-stable.production.svc.cluster.local"}[5m]))
 ```
 
 Check latency:
 
 ```bash
 # P99 latency for canary
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service="my-app-canary.production.svc.cluster.local"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_service="my-app-canary.production.svc.cluster.local"}[5m])))
 
 # P99 latency for stable
-histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service="my-app-stable.production.svc.cluster.local"}[5m]))
+histogram_quantile(0.99, sum by (le) (rate(istio_request_duration_milliseconds_bucket{destination_service="my-app-stable.production.svc.cluster.local"}[5m])))
 ```
 
 ## Rolling Back
@@ -417,11 +417,11 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: my-app
-  gatewayRefs:
-  - name: web-gateway
-    namespace: production
   service:
     port: 80
+    gatewayRefs:
+    - name: web-gateway
+      namespace: production
   analysis:
     interval: 1m
     threshold: 5
