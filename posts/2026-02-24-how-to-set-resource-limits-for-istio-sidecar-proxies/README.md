@@ -8,7 +8,7 @@ Description: How to configure CPU and memory resource requests and limits for Is
 
 ---
 
-Every pod in an Istio mesh gets an Envoy sidecar proxy injected alongside the application container. That sidecar consumes CPU and memory, and in a cluster with thousands of pods, these resources add up fast. Setting appropriate resource limits for the sidecar is important both for cluster efficiency and for preventing your application containers from being starved of resources.
+In Istio sidecar mode, every injected pod gets an Envoy sidecar proxy alongside the application container. That sidecar consumes CPU and memory, and in a cluster with thousands of pods, these resources add up fast. Setting appropriate resource limits for the sidecar is important both for cluster efficiency and for preventing your application containers from being starved of resources.
 
 This guide covers how to set sidecar resource limits at the global level and how to override them for specific workloads.
 
@@ -55,7 +55,7 @@ helm upgrade istiod istio/istiod -n istio-system \
   --set global.proxy.resources.limits.memory=256Mi
 ```
 
-The `concurrency` setting controls how many worker threads Envoy uses. The default of 2 is fine for most workloads. High-throughput services might benefit from more, but increasing concurrency also increases CPU usage.
+The `concurrency` setting controls how many worker threads Envoy uses. If it is unset, Istio automatically determines the value from CPU limits; if it is set to `0`, Envoy uses all cores on the machine. High-throughput services might benefit from a fixed value, but increasing concurrency can also increase CPU usage.
 
 ## Per-Workload Resource Overrides
 
@@ -191,7 +191,7 @@ annotations:
 In large clusters, each sidecar gets the full mesh configuration pushed to it by default. You can reduce memory usage by restricting what each sidecar knows about:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: api-sidecar
@@ -207,7 +207,7 @@ spec:
     - "istio-system/*"
 ```
 
-This tells the sidecar to only load configuration for services in the listed namespaces, significantly reducing memory usage. In a mesh with 500 services, restricting a sidecar to only the 20 services it actually talks to can cut memory by 80%.
+This tells the sidecar to only load configuration for services in the listed namespaces, significantly reducing memory usage. In a mesh with 500 services, restricting a sidecar to only the services it actually talks to can substantially cut memory usage.
 
 ## Setting Envoy Concurrency
 
@@ -226,7 +226,7 @@ spec:
           concurrency: 1
 ```
 
-Set `concurrency: 1` for low-traffic services to save CPU. For high-traffic services, `concurrency: 2` or `concurrency: 4` helps spread the load across cores.
+Set `concurrency: 1` for low-traffic services if you have benchmarked that one worker is enough. For high-traffic services, `concurrency: 2` or `concurrency: 4` can help spread the load across cores. Changes to proxy configuration require workloads to be restarted before they take effect.
 
 ## Monitoring Sidecar Resources Over Time
 
@@ -254,7 +254,7 @@ spec:
     - alert: SidecarHighCPUUsage
       expr: |
         rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])
-        / container_spec_cpu_quota{container="istio-proxy"} * 100000 > 0.85
+        / (container_spec_cpu_quota{container="istio-proxy"} / container_spec_cpu_period{container="istio-proxy"}) > 0.85
       for: 5m
       labels:
         severity: warning
