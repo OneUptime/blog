@@ -28,12 +28,16 @@ kind: ValidatingWebhookConfiguration
 metadata:
   name: istio-validator-istio-system
 webhooks:
-- name: validation.istio.io
+- name: rev.validation.istio.io
+  admissionReviewVersions:
+  - v1beta1
+  - v1
   clientConfig:
     service:
       name: istiod
       namespace: istio-system
       path: /validate
+      port: 443
   rules:
   - apiGroups:
     - security.istio.io
@@ -47,7 +51,10 @@ webhooks:
     - UPDATE
     resources:
     - "*"
+    scope: "*"
   failurePolicy: Fail
+  sideEffects: None
+  timeoutSeconds: 10
 ```
 
 The `failurePolicy: Fail` means that if the webhook is unreachable (e.g., istiod is down), resource creation will be rejected. This is the safe default for production.
@@ -58,7 +65,7 @@ Istio's webhook validates several things:
 
 **Schema validation**: Checks that all fields are valid and properly structured. For example, it rejects a VirtualService with an unknown field in the spec.
 
-**Reference validation**: Checks that referenced objects exist or are valid. For example, if a VirtualService references a Gateway that doesn't match the expected format.
+**Reference validation**: Checks that references are valid enough for admission. For example, if a VirtualService references a Gateway that doesn't match the expected format. Use `istioctl analyze` for broader cross-resource checks, such as references to resources that do not exist.
 
 **Logical validation**: Catches logical errors like duplicate route matches, invalid regex patterns, or conflicting configurations.
 
@@ -83,7 +90,7 @@ spec:
 Applying this gives you:
 
 ```text
-Error from server: error when creating "bad-route.yaml": admission webhook "validation.istio.io" denied the request: configuration is invalid: port number -1 is not valid
+Error from server: error when creating "bad-route.yaml": admission webhook "rev.validation.istio.io" denied the request: configuration is invalid: port number -1 is not valid
 ```
 
 ## Testing Validation Without Applying
@@ -122,8 +129,8 @@ The analyzer checks for things the webhook can't, like:
 Example output:
 
 ```text
-Warning [IST0101] (VirtualService default/reviews-route) Referenced host not found: "reviews-v3"
-Warning [IST0108] (DestinationRule default/reviews) No matching subsets for labels {version: v4}
+Error [IST0101] (VirtualService reviews-route.default) Referenced host not found: "reviews-v3"
+Info [IST0118] (Service reviews.default) Port name reviews-http (port: 80, targetPort: 80) doesn't follow the naming convention of Istio port.
 Info [IST0102] (Namespace default) The namespace is not enabled for Istio injection.
 ```
 
@@ -182,7 +189,6 @@ kind: ClusterPolicy
 metadata:
   name: require-istio-retry-policy
 spec:
-  validationFailureAction: Enforce
   rules:
   - name: check-retries
     match:
@@ -191,6 +197,7 @@ spec:
           kinds:
           - networking.istio.io/v1/VirtualService
     validate:
+      failureAction: Enforce
       message: "VirtualService must include retry configuration"
       pattern:
         spec:
