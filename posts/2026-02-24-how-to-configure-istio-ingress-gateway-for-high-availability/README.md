@@ -153,11 +153,13 @@ metadata:
   name: istio-ingressgateway
   namespace: istio-system
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
+    service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-healthy-threshold: "2"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-unhealthy-threshold: "2"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-interval: "10"
+    service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "HTTP"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/healthz/ready"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-port: "15021"
 spec:
@@ -176,7 +178,7 @@ spec:
       targetPort: 15021
 ```
 
-Cross-zone load balancing ensures traffic reaches healthy pods regardless of which zone the NLB endpoint is in. The health check on port 15021 uses Envoy's built-in health endpoint.
+Cross-zone load balancing ensures traffic reaches healthy pods regardless of which zone the NLB endpoint is in. The health check on port 15021 uses Istio's gateway readiness endpoint.
 
 ### GCP
 
@@ -187,8 +189,7 @@ metadata:
   name: istio-ingressgateway
   namespace: istio-system
   annotations:
-    cloud.google.com/neg: '{"ingress": true}'
-    cloud.google.com/backend-config: '{"default": "istio-gateway-backend"}'
+    cloud.google.com/l4-rbs: "enabled"
 spec:
   type: LoadBalancer
   selector:
@@ -286,7 +287,7 @@ Do not just rely on Kubernetes internal health checks. Set up external monitorin
 ```bash
 # Simple external health check
 
-curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/healthz/ready
+curl -s -o /dev/null -w "%{http_code}" https://your-domain.com/api/health
 
 # From your monitoring tool, check the status endpoint
 curl -s http://<gateway-external-ip>:15021/healthz/ready
@@ -318,10 +319,10 @@ spec:
           app: internal-gateway
         k8s:
           replicaCount: 2
+          serviceAnnotations:
+            networking.gke.io/load-balancer-type: "Internal"
           service:
-            type: ClusterIP
-            annotations:
-              cloud.google.com/load-balancer-type: Internal
+            type: LoadBalancer
 ```
 
 This separates public-facing traffic from internal traffic, so an issue with one does not affect the other.
@@ -331,8 +332,8 @@ This separates public-facing traffic from internal traffic, so an issue with one
 Test your HA configuration by simulating failures:
 
 ```bash
-# Test pod failure
-kubectl delete pod -l app=istio-ingressgateway -n istio-system
+# Test one pod failure
+kubectl delete pod "$(kubectl get pod -l app=istio-ingressgateway -n istio-system -o jsonpath='{.items[0].metadata.name}')" -n istio-system
 
 # Test during a rolling update
 kubectl rollout restart deployment/istio-ingressgateway -n istio-system
