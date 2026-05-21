@@ -17,14 +17,14 @@ Understanding the different types of upstream connection errors and how to fix t
 Envoy tracks several distinct connection error conditions. Each one has a different response flag in the access logs:
 
 - **UF** - Upstream connection failure. TCP connection could not be established.
-- **UH** - No healthy upstream. All endpoints are ejected by outlier detection.
+- **UH** - No healthy upstream. Envoy has no healthy endpoints available for the cluster.
 - **UC** - Upstream connection termination. Connection was established but then closed unexpectedly.
 - **UR** - Upstream remote reset. The upstream sent a TCP RST.
 - **UO** - Upstream overflow. The connection pool is full.
 
 ## Diagnosing the Error
 
-First, enable access logging and check the response flags:
+First, make sure access logging is enabled and check the response flags:
 
 ```bash
 kubectl logs <pod-name> -c istio-proxy --tail=100
@@ -70,7 +70,7 @@ Look for pods in CrashLoopBackOff or containers that are not passing readiness p
 kubectl get networkpolicies -n default
 ```
 
-If you have NetworkPolicies, make sure they allow traffic from the Envoy sidecar (source port can vary) to the application port.
+If you have NetworkPolicies, make sure they allow traffic from the calling workload namespace or pod labels to the application port.
 
 **4. The sidecar is not injected on the target pod:**
 
@@ -87,7 +87,7 @@ kubectl rollout restart deployment my-service -n default
 
 ## Fixing UH - No Healthy Upstream
 
-UH means the outlier detection has ejected all endpoints. This happens when all pods are returning errors:
+UH means Envoy has no healthy upstream endpoints for the cluster. This can happen when there are no ready endpoints, health checks mark endpoints unhealthy, or outlier detection ejects the available endpoints:
 
 ```bash
 # Check how many endpoints are healthy
@@ -115,7 +115,7 @@ spec:
       maxEjectionPercent: 30
 ```
 
-Increasing `consecutive5xxErrors` from 5 to 10 gives pods more room for transient errors before being ejected. Setting `maxEjectionPercent: 30` ensures at least 70% of your pods are always in the pool.
+Increasing `consecutive5xxErrors` from 5 to 10 gives pods more room for transient errors before being ejected. Setting `maxEjectionPercent: 30` caps ejection to 30% of the load balancing pool, which keeps most endpoints eligible when you have enough replicas.
 
 ## Fixing UC - Upstream Connection Termination
 
@@ -210,7 +210,7 @@ spec:
       terminationGracePeriodSeconds: 30
 ```
 
-The `preStop` sleep gives Envoy time to stop routing new requests to the pod before the application starts shutting down.
+The `preStop` sleep keeps the application process alive while Kubernetes and Istio propagate the endpoint removal, reducing the chance that new requests are sent to a pod that is already shutting down.
 
 ## Connection Retry Configuration
 
@@ -235,7 +235,7 @@ spec:
         retryOn: connect-failure,reset,refused-stream
 ```
 
-The `connect-failure` retry policy handles UF errors, and `reset` handles UR errors. These are safe to retry because the request never reached the application.
+The `connect-failure` retry policy handles connection failures such as many UF errors, and `reset` handles reset conditions such as many UR errors. Use retries carefully for non-idempotent requests because a reset does not always prove the application did no work.
 
 ## Comprehensive Debugging Script
 
@@ -263,4 +263,4 @@ istioctl x describe pod <target-pod>.default
 
 ## Summary
 
-Upstream connection errors in Istio come in several flavors, and each one has a different root cause and fix. The response flags in the access logs are the most important diagnostic tool. UF means the connection could not be established (check ports and pods), UH means all endpoints are ejected (tune outlier detection), UC means the connection was terminated (check keep-alive settings), and UO means the pool is full (increase limits or fix slowness). Always configure retries for `connect-failure` and `reset` since those errors are safe to retry automatically.
+Upstream connection errors in Istio come in several flavors, and each one has a different root cause and fix. The response flags in the access logs are the most important diagnostic tool. UF means the connection could not be established (check ports and pods), UH means Envoy has no healthy upstream endpoints (check endpoint readiness and outlier detection), UC means the connection was terminated (check keep-alive settings), and UO means the pool is full (increase limits or fix slowness). Configure retries for `connect-failure` and `reset` when the operation is safe to retry.
