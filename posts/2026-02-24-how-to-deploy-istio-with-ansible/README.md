@@ -8,7 +8,7 @@ Description: Automate Istio service mesh deployment and configuration using Ansi
 
 ---
 
-Ansible might not be the first tool that comes to mind for Kubernetes management, but it works surprisingly well for deploying Istio. If your team already uses Ansible for infrastructure automation, adding Istio deployment to your existing playbooks keeps everything in one toolchain. The kubernetes.core and community.kubernetes Ansible collections give you everything you need.
+Ansible might not be the first tool that comes to mind for Kubernetes management, but it works surprisingly well for deploying Istio. If your team already uses Ansible for infrastructure automation, adding Istio deployment to your existing playbooks keeps everything in one toolchain. The kubernetes.core Ansible collection gives you everything you need.
 
 This guide builds an Ansible playbook that installs Istio from scratch and manages its configuration.
 
@@ -18,13 +18,12 @@ Install the required Ansible collections:
 
 ```bash
 ansible-galaxy collection install kubernetes.core
-ansible-galaxy collection install community.kubernetes
 ```
 
 Make sure you have the Python dependencies too:
 
 ```bash
-pip install kubernetes openshift helm
+pip install kubernetes PyYAML jsonpatch
 ```
 
 Your control machine needs kubectl configured to access the target cluster, and Helm 3 needs to be installed.
@@ -119,7 +118,7 @@ istio_helm_repo: https://istio-release.storage.googleapis.com/charts
     values:
       defaultRevision: default
     wait: true
-    wait_timeout: "300s"
+    timeout: "300s"
 
 - name: Verify CRDs are installed
   kubernetes.core.k8s_info:
@@ -174,7 +173,7 @@ trace_sampling: 1.0
         defaultConfig:
           holdApplicationUntilProxyStarts: true
     wait: true
-    wait_timeout: "600s"
+    timeout: "600s"
 
 - name: Wait for istiod to be ready
   kubernetes.core.k8s_info:
@@ -228,7 +227,7 @@ ingress_max_replicas: 10
         minReplicas: "{{ ingress_min_replicas }}"
         maxReplicas: "{{ ingress_max_replicas }}"
     wait: true
-    wait_timeout: "300s"
+    timeout: "300s"
 
 - name: Get ingress gateway service info
   kubernetes.core.k8s_info:
@@ -335,6 +334,15 @@ Tie the roles together:
   hosts: localhost
   connection: local
   gather_facts: false
+  module_defaults:
+    kubernetes.core.k8s:
+      kubeconfig: "{{ kubeconfig }}"
+    kubernetes.core.k8s_info:
+      kubeconfig: "{{ kubeconfig }}"
+    kubernetes.core.k8s_cluster_info:
+      kubeconfig: "{{ kubeconfig }}"
+    kubernetes.core.helm:
+      kubeconfig: "{{ kubeconfig }}"
 
   pre_tasks:
     - name: Verify cluster connectivity
@@ -352,14 +360,14 @@ Tie the roles together:
     - role: istio-config
 
   post_tasks:
-    - name: Run Istio validation
-      ansible.builtin.command: istioctl verify-install
-      register: verify_result
+    - name: Run Istio configuration analysis
+      ansible.builtin.command: istioctl analyze --all-namespaces
+      register: analyze_result
       changed_when: false
 
-    - name: Display verification result
+    - name: Display analysis result
       ansible.builtin.debug:
-        msg: "{{ verify_result.stdout }}"
+        msg: "{{ analyze_result.stdout }}"
 ```
 
 ## Running the Playbook
