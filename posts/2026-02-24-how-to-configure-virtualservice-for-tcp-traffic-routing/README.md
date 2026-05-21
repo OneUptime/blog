@@ -19,7 +19,7 @@ The main difference is what you can match on:
 | URI matching | Yes | No |
 | Header matching | Yes | No |
 | Weight-based splitting | Yes | Yes |
-| Timeout | Yes | Yes |
+| Route timeout | Yes | No |
 | Retries | Yes | No |
 | Fault injection | Yes | No |
 | Port matching | Yes | Yes |
@@ -32,7 +32,7 @@ TCP routing uses the `tcp` section of VirtualService instead of the `http` secti
 Here is a simple TCP routing configuration for a database proxy:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: database
@@ -55,7 +55,7 @@ This routes all TCP traffic on port 5432 to the database service.
 You can split TCP traffic between versions, just like HTTP:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: redis
@@ -82,7 +82,7 @@ spec:
 With the matching DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: redis
@@ -105,7 +105,7 @@ spec:
 You can match on the destination port:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: multi-port-service
@@ -144,7 +144,7 @@ Different ports go to different backend services.
 To expose TCP services through the Istio ingress gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: tcp-gateway
@@ -166,7 +166,7 @@ spec:
       hosts:
         - "cache.example.com"
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: tcp-services
@@ -216,7 +216,7 @@ Add the ports:
 You can route TCP traffic based on which workload is making the connection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: database
@@ -249,7 +249,7 @@ Blue-green deployments work for TCP services too:
 ```yaml
 # Phase 1: All traffic to blue
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-tcp-service
@@ -269,7 +269,7 @@ spec:
 
 ```yaml
 # Phase 2: Switch to green
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-tcp-service
@@ -292,7 +292,7 @@ spec:
 TCP services often need tuned connection pool settings:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database
@@ -319,7 +319,7 @@ spec:
 You can configure circuit breaking for TCP services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: database
@@ -337,7 +337,7 @@ spec:
         maxConnections: 50
 ```
 
-If a database pod has 5 consecutive errors within 30 seconds, it gets ejected from the load balancing pool for 60 seconds.
+If a database endpoint reaches 5 consecutive TCP connection failures or timeouts, it is eligible to be ejected during the outlier detection checks. Ejection starts at 60 seconds and can increase if the endpoint is ejected repeatedly.
 
 ## Debugging TCP Routing
 
@@ -362,7 +362,7 @@ kubectl exec deploy/my-client -c istio-proxy -- curl -s localhost:15090/stats/pr
 A single VirtualService can handle both HTTP and TCP traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
