@@ -23,7 +23,7 @@ Each arrow is a network hop where encryption could be present or absent. For tru
 
 ## Segment 1: Client to Load Balancer
 
-This is standard HTTPS. Configure your external load balancer with a TLS certificate from a public CA (like Let's Encrypt):
+This is standard HTTPS. If your external load balancer forwards TLS through to the Istio ingress gateway, configure the Istio gateway with a TLS certificate from a public CA (like Let's Encrypt):
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -136,7 +136,7 @@ for c in data:
 
 ## Segment 4: Service to Service (mTLS)
 
-Between mesh services, mTLS is automatic. But you need to verify there are no gaps:
+Between mesh services in sidecar mode, mTLS is automatic. But you need to verify there are no gaps:
 
 ```bash
 # Check for services without sidecars
@@ -154,25 +154,27 @@ for pod in data['items']:
 "
 ```
 
-Any pod without a sidecar is a gap in your encryption chain.
+In sidecar mode, any application pod without a sidecar is a gap in your encryption chain.
 
 ## Segment 5: Sidecar to Application (Localhost)
 
 There's one segment that's often overlooked: the connection between the Envoy sidecar and the application container. This runs over localhost (127.0.0.1) within the same pod. While localhost traffic doesn't traverse the network, it's technically unencrypted.
 
-For most threat models, localhost within a pod is considered secure (an attacker would need root access on the node to intercept it). But for extremely sensitive workloads, you can add application-level encryption:
+For most threat models, localhost within a pod is considered secure (an attacker would need root access on the node to intercept it). But for extremely sensitive workloads, you can add application-level encryption in the application itself and let Envoy pass that TLS traffic through:
 
 ```yaml
-# Application handles its own TLS
-apiVersion: networking.istio.io/v1
-kind: DestinationRule
+# Application handles its own TLS end to end
+apiVersion: v1
+kind: Service
 metadata:
-  name: app-tls
+  name: my-app
 spec:
-  host: my-app.default.svc.cluster.local
-  trafficPolicy:
-    tls:
-      mode: DISABLE  # Disable Istio mTLS, app handles TLS itself
+  ports:
+    - name: tls
+      port: 8443
+      targetPort: 8443
+  selector:
+    app: my-app
 ```
 
 In most cases, you should rely on Istio's mTLS and not worry about the localhost segment.
@@ -227,7 +229,7 @@ spec:
   rules:
     - to:
         - operation:
-            ports: ["8443"]
+            ports: ["443"]
 ```
 
 This restricts the gateway to only accept traffic on the HTTPS port.
@@ -239,7 +241,7 @@ Check that traffic between services is actually encrypted:
 ```bash
 # Check if a specific connection uses mTLS
 istioctl proxy-config cluster service-a-pod \
-  --fqdn "outbound|8080||service-b.default.svc.cluster.local" -o json | \
+  --fqdn service-b.default.svc.cluster.local -o json | \
   python3 -c "
 import json, sys
 data = json.load(sys.stdin)
@@ -273,9 +275,13 @@ spec:
   hosts:
     - api.example.com
   ports:
+    - number: 80
+      name: http
+      protocol: HTTP
+      targetPort: 443
     - number: 443
       name: https
-      protocol: TLS
+      protocol: HTTPS
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -286,21 +292,27 @@ metadata:
 spec:
   host: api.example.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+      - port:
+          number: 80
+        tls:
+          mode: SIMPLE
 ```
 
-The `tls.mode: SIMPLE` means Envoy establishes a TLS connection to the external service, verifying the server's certificate against public CAs.
+The `tls.mode: SIMPLE` means Envoy establishes a TLS connection to the external service when the application sends HTTP traffic to port 80. When SNI and SAN settings are not explicitly configured, Istio's default auto-SNI and auto-SAN validation use the downstream HTTP host/authority for certificate validation.
 
 For mutual TLS with external services:
 
 ```yaml
 trafficPolicy:
-  tls:
-    mode: MUTUAL
-    clientCertificate: /etc/certs/client.pem
-    privateKey: /etc/certs/client-key.pem
-    caCertificates: /etc/certs/ca.pem
+  portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: MUTUAL
+        clientCertificate: /etc/certs/client.pem
+        privateKey: /etc/certs/client-key.pem
+        caCertificates: /etc/certs/ca.pem
 ```
 
 ## The Complete Picture
