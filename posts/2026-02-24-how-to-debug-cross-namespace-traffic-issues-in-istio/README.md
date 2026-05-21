@@ -49,7 +49,7 @@ kubectl get sidecar -n namespace-a -o yaml
 A restrictive Sidecar:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -63,7 +63,7 @@ spec:
 This blocks visibility of all other namespaces. Fix it by adding the target namespace:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -103,7 +103,7 @@ kubectl get authorizationpolicy -n namespace-b
 A policy that only allows traffic from within the same namespace:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: namespace-only
@@ -119,7 +119,7 @@ spec:
 This blocks everything from other namespaces. To allow traffic from namespace A:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-namespace-a
@@ -131,6 +131,8 @@ spec:
         - source:
             namespaces: ["namespace-a", "namespace-b"]
 ```
+
+The `source.namespaces` match is derived from the peer certificate and requires mTLS. If mTLS is not active between the workloads, the namespace match will not identify the source namespace.
 
 Check the Envoy logs on the destination for RBAC denials:
 
@@ -147,7 +149,7 @@ kubectl get peerauthentication -n namespace-b
 ```
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: strict-mtls
@@ -187,11 +189,11 @@ istioctl proxy-config routes my-app-xxxxx.namespace-a --name "8080" -o json | gr
 
 ## Check DestinationRules Across Namespaces
 
-DestinationRules can be defined in the source namespace, the destination namespace, or the root namespace (istio-system). The precedence rules are:
+DestinationRules can be defined in the source namespace, the destination namespace, or the root namespace (istio-system by default). Istio looks them up in this order:
 
-1. DestinationRule in the destination service's namespace
-2. DestinationRule in the root namespace (if `exportTo` includes the source namespace)
-3. DestinationRule in the source namespace
+1. DestinationRule in the client/source namespace
+2. DestinationRule in the destination service's namespace
+3. DestinationRule in the root namespace, if `exportTo` makes it visible to the source namespace
 
 A DestinationRule in namespace B with restrictive traffic policies might cause issues:
 
@@ -199,16 +201,16 @@ A DestinationRule in namespace B with restrictive traffic policies might cause i
 kubectl get destinationrule -n namespace-b
 ```
 
-A common problem is a DestinationRule requiring a specific subset that does not match all pods:
+A common problem is a DestinationRule applying a TLS policy or other traffic policy that does not match how the destination service expects to receive traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
   namespace: namespace-b
 spec:
-  host: my-service
+  host: my-service.namespace-b.svc.cluster.local
   trafficPolicy:
     tls:
       mode: ISTIO_MUTUAL
@@ -216,10 +218,10 @@ spec:
 
 ## Check exportTo Settings
 
-Both VirtualServices and ServiceEntries have an `exportTo` field that controls which namespaces can see them:
+VirtualServices, DestinationRules, and ServiceEntries have an `exportTo` field that controls which namespaces can see them:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
