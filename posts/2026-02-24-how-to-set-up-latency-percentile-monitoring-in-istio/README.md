@@ -17,7 +17,7 @@ Istio makes this straightforward because every sidecar proxy already collects de
 Envoy proxies in Istio emit a histogram metric called `istio_request_duration_milliseconds`. This metric uses Prometheus histogram buckets to track how long requests take. The default buckets cover a wide range:
 
 ```text
-1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000
+0.5, 1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000, 60000, 300000, 600000, 1800000, 3600000
 ```
 
 These buckets mean Prometheus stores counts of how many requests fell into each duration range. From these counts, you can calculate any percentile you want.
@@ -36,7 +36,7 @@ You should see output with `istio_request_duration_milliseconds_bucket`, `istio_
 If these metrics are missing, verify your Istio Telemetry configuration:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -49,13 +49,13 @@ spec:
 
 ## Customizing Histogram Buckets
 
-The default buckets might not fit your use case. If your services typically respond in under 50ms, you want finer granularity at the low end. You can customize the buckets using the Telemetry API:
+The default buckets might not fit your use case. If your services typically respond in under 50ms, you want finer granularity at the low end. The Telemetry API can customize metric dimensions, but it does not customize histogram bucket boundaries:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
-  name: custom-latency-buckets
+  name: add-request-method
   namespace: istio-system
 spec:
   metrics:
@@ -65,17 +65,19 @@ spec:
         - match:
             metric: REQUEST_DURATION
             mode: CLIENT_AND_SERVER
-          tagOverrides: {}
+          tagOverrides:
+            request_method:
+              value: request.method
 ```
 
-For more granular control over the histogram buckets, you can configure this through the mesh config in your Istio operator or Helm values:
+For more granular control over the histogram buckets, add the `sidecar.istio.io/statsHistogramBuckets` annotation to the workload's pod template. For Istio standard metrics, use the `istiocustom` prefix:
 
 ```yaml
-meshConfig:
-  defaultConfig:
-    proxyStatsMatcher:
-      inclusionRegexps:
-        - ".*request_duration.*"
+spec:
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/statsHistogramBuckets: '{"istiocustom":[1,5,10,25,50,100,250,500,1000,2500,5000,10000]}'
 ```
 
 ## Prometheus Queries for Percentile Latency
@@ -115,11 +117,11 @@ histogram_quantile(0.99,
 )
 ```
 
-The `reporter="destination"` label matters here. Using the destination reporter gives you the server-side measurement, which is usually what you want. If you use `reporter="source"`, you get the client-side view which includes network latency between pods.
+The `reporter="destination"` label matters here. Using the destination reporter gives you the server-side measurement, which is usually what you want. If you use `reporter="source"`, you get the client-side proxy's view of the request.
 
 ## Breaking Down Latency by Dimensions
 
-You can slice these percentiles by response code, source service, or HTTP method:
+You can slice these percentiles by response code, source service, or request protocol:
 
 **P95 by Response Code:**
 
@@ -143,7 +145,7 @@ histogram_quantile(0.95,
 )
 ```
 
-**P95 by HTTP Method:**
+**P95 by Request Protocol:**
 
 ```promql
 histogram_quantile(0.95,
@@ -238,7 +240,7 @@ The second alert is particularly useful. It catches cases where tail latency is 
 
 ## Comparing Client vs Server Latency
 
-One useful technique is comparing the source reporter (client-side) latency against the destination reporter (server-side) latency. The difference tells you how much time is spent in the network between services:
+One useful technique is comparing the source reporter (client-side) latency against the destination reporter (server-side) latency. The difference can highlight extra client-side, proxy, or network overhead between services, but it is an approximation rather than an exact per-request network latency measurement:
 
 ```promql
 histogram_quantile(0.95,
@@ -256,7 +258,7 @@ histogram_quantile(0.95,
 )
 ```
 
-If this delta is consistently large, you might have network issues, DNS resolution delays, or overloaded nodes.
+If this delta is consistently large, you might have network issues, proxy overhead, or overloaded nodes.
 
 ## Practical Tips
 
