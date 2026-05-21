@@ -8,7 +8,7 @@ Description: How to install and configure Istio on MicroK8s, Canonical's lightwe
 
 ---
 
-MicroK8s is Canonical's lightweight Kubernetes distribution that runs on Ubuntu, macOS, and Windows. It's designed to be simple - you install it with snap and you have a working cluster in minutes. MicroK8s also has a built-in Istio addon, though you can also install Istio manually for more control.
+MicroK8s is Canonical's lightweight Kubernetes distribution that runs on Ubuntu, macOS, and Windows. It's designed to be simple - you install it with snap and you have a working cluster in minutes. MicroK8s also has a community Istio addon, though you can also install Istio manually for more control.
 
 This guide covers both approaches so you can pick the one that fits your needs.
 
@@ -21,14 +21,15 @@ This guide covers both approaches so you can pick the one that fits your needs.
 Install MicroK8s if you haven't:
 
 ```bash
-sudo snap install microk8s --classic --channel=1.30
+sudo snap install microk8s --classic --channel=1.35
 ```
 
 Add your user to the microk8s group so you don't need sudo:
 
 ```bash
 sudo usermod -a -G microk8s $USER
-sudo chown -R $USER ~/.kube
+mkdir -p ~/.kube
+chmod 0700 ~/.kube
 newgrp microk8s
 ```
 
@@ -38,16 +39,16 @@ Check the status:
 microk8s status --wait-ready
 ```
 
-## Option A: Using the Built-in Istio Addon
+## Option A: Using the Community Istio Addon
 
-MicroK8s ships with an Istio addon. Enable DNS first (Istio needs it), then enable Istio:
+MicroK8s ships with a community Istio addon. Enable the community addon repository first, then enable Istio:
 
 ```bash
-microk8s enable dns
+microk8s enable community
 microk8s enable istio
 ```
 
-The addon installer walks you through a few questions about which profile to use. For development, pick the demo profile. The installation takes a few minutes.
+The addon enables DNS and installs Istio with the demo profile. The installation takes a few minutes.
 
 Check the status:
 
@@ -68,7 +69,7 @@ MicroK8s uses addons for core Kubernetes features. Enable what Istio needs:
 ```bash
 microk8s enable dns
 microk8s enable rbac
-microk8s enable storage
+microk8s enable hostpath-storage
 ```
 
 ### Step 2: Set Up kubectl
@@ -89,7 +90,7 @@ kubectl get nodes
 
 ```bash
 curl -L https://istio.io/downloadIstio | sh -
-cd istio-1.24.0
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -238,7 +239,7 @@ MicroK8s is popular for edge deployments, and Istio can add service mesh capabil
 - Each sidecar: ~40-64 MB RAM
 - Ingress gateway: ~40-64 MB RAM
 
-For a cluster with 10 services, you're looking at roughly 1 GB of additional RAM for the full mesh.
+For a cluster with 10 single-replica services, you're looking at roughly 1 GB of additional RAM for the full mesh.
 
 ## Troubleshooting MicroK8s + Istio
 
