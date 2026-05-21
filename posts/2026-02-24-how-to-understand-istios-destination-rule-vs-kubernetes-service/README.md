@@ -33,7 +33,7 @@ What this gives you:
 - A DNS name: `product-service.default.svc.cluster.local`
 - A ClusterIP: `10.96.x.x`
 - Automatic endpoint tracking (pods matching `app: product`)
-- Round-robin load balancing (via kube-proxy)
+- Basic Service load balancing (via kube-proxy or the cluster's Service implementation)
 
 The Service answers the question: "What pods make up this logical service?"
 
@@ -48,7 +48,7 @@ A DestinationRule tells Istio how to handle traffic after a routing decision has
 - Subsets (named groups of pod versions)
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: product-service
@@ -83,7 +83,7 @@ The DestinationRule answers the question: "How should traffic behave when going 
 
 ## How They Work Together
 
-You always need a Kubernetes Service. The DestinationRule is optional and sits on top of it.
+For normal Kubernetes workloads, you need a Kubernetes Service. The DestinationRule is optional and sits on top of it. For external services, a ServiceEntry can also provide the service-registry entry that a DestinationRule targets.
 
 The flow is:
 
@@ -92,7 +92,7 @@ The flow is:
 3. DestinationRule configures how the sidecar connects to those endpoints
 
 Without a DestinationRule, Istio uses defaults:
-- Round-robin load balancing
+- Istio's default load balancing behavior
 - Default connection pool sizes
 - No outlier detection
 - mTLS based on mesh-wide settings
@@ -103,7 +103,7 @@ With a DestinationRule, you override those defaults.
 
 ### Load Balancing
 
-**Kubernetes Service** - Round-robin only. Handled by kube-proxy (iptables or IPVS mode).
+**Kubernetes Service** - Basic connection-level load balancing. Handled by kube-proxy or the cluster's Service implementation, with behavior depending on the proxy mode and cluster configuration.
 
 **DestinationRule** - Multiple algorithms:
 
@@ -134,7 +134,7 @@ trafficPolicy:
         ttl: 0s
 ```
 
-When Istio is active, the sidecar handles load balancing instead of kube-proxy. The sidecar resolves the ClusterIP to individual pod IPs and applies the configured algorithm.
+When Istio is active, the sidecar handles mesh traffic load balancing instead of relying only on kube-proxy. The sidecar receives service endpoints from Istio's service registry and applies the configured algorithm.
 
 ### Connection Management
 
@@ -164,7 +164,7 @@ This prevents any single service from overwhelming another with too many connect
 
 ### Health Checking
 
-**Kubernetes Service** - Uses readiness probes on individual pods. If a pod fails its readiness probe, it is removed from the Endpoints.
+**Kubernetes Service** - Uses readiness state on individual pods. If a pod is not ready, it is removed from the ready EndpointSlice entries used for Service traffic.
 
 **DestinationRule** - Uses outlier detection, which is passive health checking based on actual request results:
 
@@ -205,7 +205,7 @@ subsets:
 Subsets are referenced by VirtualService for traffic splitting:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -224,7 +224,7 @@ spec:
       weight: 10
 ```
 
-Without DestinationRule subsets, you cannot do version-based traffic splitting.
+Without DestinationRule subsets, you cannot do subset-based version traffic splitting for the same Istio service host.
 
 ### TLS Configuration
 
@@ -252,7 +252,7 @@ TLS modes:
 
 ### Port-Level Settings
 
-**Kubernetes Service** - Same behavior for all ports.
+**Kubernetes Service** - Can expose multiple ports, but does not define per-port mesh traffic policies such as load balancing algorithms or connection pools.
 
 **DestinationRule** - Per-port traffic policies:
 
@@ -292,7 +292,7 @@ Always create the DestinationRule with subsets before referencing them in Virtua
 
 ### Host Mismatch
 
-The `host` field in DestinationRule must match exactly what you use in VirtualService:
+The `host` field in DestinationRule should resolve to the same service host you use in VirtualService. Short names are resolved relative to the namespace of the rule, so mixing short names and FQDNs can cause mistakes:
 
 ```yaml
 # DestinationRule
@@ -304,7 +304,7 @@ spec:
     host: product-service.default.svc.cluster.local  # FQDN
 ```
 
-These might not match in all configurations. Use consistent naming.
+These might not resolve to the same host in all configurations. Use consistent naming, preferably the fully qualified service name.
 
 ### Overriding mTLS Accidentally
 
@@ -343,4 +343,4 @@ istioctl proxy-config clusters deploy/frontend -n default \
 
 This shows the actual load balancing policy, circuit breaker thresholds, and TLS settings applied to the cluster.
 
-Kubernetes Service and Istio DestinationRule are complementary pieces. The Service tells the mesh what exists. The DestinationRule tells the mesh how to get there safely and efficiently. You always need a Service. You add a DestinationRule when you need control over load balancing, connection management, health checking, or when you need to define version subsets for traffic splitting.
+Kubernetes Service and Istio DestinationRule are complementary pieces. The Service tells the mesh what exists. The DestinationRule tells the mesh how to get there safely and efficiently. For Kubernetes workloads, you need a Service. You add a DestinationRule when you need control over load balancing, connection management, health checking, or when you need to define version subsets for traffic splitting.
