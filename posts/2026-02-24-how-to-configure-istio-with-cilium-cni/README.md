@@ -40,14 +40,16 @@ kubectl get configmap cilium-config -n kube-system -o yaml | head -50
 
 There are a few Cilium settings that need to be configured for proper Istio operation.
 
-### Disable Cilium's kube-proxy Replacement for Istio Ports
+### Configure Socket Load Balancing for Istio
 
-Cilium can replace kube-proxy, but it needs to be configured to not interfere with Istio's traffic interception:
+For most Istio installations, keeping Cilium's `kubeProxyReplacement` disabled and running kube-proxy is the lowest-friction option. Cilium can replace kube-proxy, but when kube-proxy replacement is enabled it needs to be configured so socket-level load balancing does not bypass Istio's traffic interception:
 
 ```yaml
 # Cilium Helm values for Istio compatibility
 socketLB:
   hostNamespaceOnly: true
+cni:
+  exclusive: false
 ```
 
 Or if installing Cilium via Helm:
@@ -55,25 +57,27 @@ Or if installing Cilium via Helm:
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
-  --set socketLB.hostNamespaceOnly=true
+  --set socketLB.hostNamespaceOnly=true \
+  --set cni.exclusive=false
 ```
 
-This ensures Cilium's socket-level load balancing does not bypass Istio's sidecar proxies for pod-to-pod traffic.
+This ensures Cilium's socket-level load balancing does not bypass Istio's sidecar proxies for pod-to-pod traffic, and that Cilium does not remove the Istio CNI configuration from the node.
 
-### Configure Cilium CNI Chaining
+### Allow Istio CNI Chaining
 
-If you want to use both Cilium and the Istio CNI plugin, configure CNI chaining:
+If you want to use both Cilium and the Istio CNI plugin, keep Cilium as the primary CNI and allow other CNI configuration files to coexist:
 
 ```yaml
-# Cilium ConfigMap
-cni-chaining-mode: "generic-veth"
-custom-cni-conf: "false"
-enable-endpoint-routes: "true"
+# Cilium Helm values
+cni:
+  exclusive: false
 ```
+
+Verify the generated Cilium ConfigMap contains `cni-exclusive: "false"` before installing Istio CNI.
 
 ### Disable Conflicting Features
 
-If you are using Istio for mTLS, disable Cilium's encryption to avoid double encryption:
+If you are using Istio for mTLS and do not need node-to-node encryption for non-mesh traffic, disable Cilium's transparent encryption to avoid encrypting the same in-mesh traffic twice:
 
 ```bash
 helm upgrade cilium cilium/cilium \
@@ -245,7 +249,7 @@ When Cilium uses BPF host routing (which is common for performance), it can affe
 
 ```bash
 # Check if Cilium is using BPF host routing
-kubectl get configmap cilium-config -n kube-system -o jsonpath='{.data.enable-host-reachable-services}'
+kubectl exec -n kube-system <cilium-pod> -- cilium-dbg status | grep "Host Routing"
 
 # Test actual traffic flow
 kubectl exec <pod> -c <container> -- curl -s http://<service>:<port>/health
@@ -258,7 +262,7 @@ If you experience issues with traffic not being intercepted by the sidecar:
 kubectl exec <pod> -c istio-proxy -- iptables -t nat -L ISTIO_REDIRECT -n
 
 # Check Cilium's BPF maps
-kubectl exec -n kube-system <cilium-pod> -- cilium bpf lb list
+kubectl exec -n kube-system <cilium-pod> -- cilium-dbg bpf lb list
 ```
 
 ## Optimizing the Stack
@@ -310,7 +314,7 @@ spec:
 
 ### Avoid Double Encryption
 
-If using Istio mTLS, disable Cilium's WireGuard encryption:
+If using Istio mTLS and you do not need node-to-node encryption outside the mesh, disable Cilium's WireGuard encryption:
 
 ```bash
 # Check if WireGuard is enabled
@@ -320,7 +324,7 @@ kubectl get configmap cilium-config -n kube-system -o jsonpath='{.data.enable-wi
 helm upgrade cilium cilium/cilium --namespace kube-system --set encryption.enabled=false
 ```
 
-Running both mTLS and WireGuard encrypts every packet twice, adding latency and CPU overhead for no security benefit.
+Running both mTLS and WireGuard can encrypt the same in-mesh traffic twice, adding latency and CPU overhead. Keep Cilium encryption enabled only if you specifically need node-to-node encryption outside Istio's mTLS coverage.
 
 ## Troubleshooting
 
@@ -330,7 +334,7 @@ Running both mTLS and WireGuard encrypts every packet twice, adding latency and 
 # Check if Cilium's socket LB is intercepting traffic before Istio can
 cilium status | grep "KubeProxyReplacement"
 
-# If KubeProxyReplacement is "Strict", verify hostNamespaceOnly is set
+# If kube-proxy replacement is enabled, verify hostNamespaceOnly is set
 kubectl get configmap cilium-config -n kube-system -o jsonpath='{.data.bpf-lb-sock-hostns-only}'
 ```
 
@@ -354,7 +358,7 @@ kubectl logs -n istio-system -l k8s-app=istio-cni-node --tail=50
 hubble observe --verdict DROPPED --to-namespace <namespace>
 
 # Check Cilium endpoint status
-kubectl exec -n kube-system <cilium-pod> -- cilium endpoint list
+kubectl exec -n kube-system <cilium-pod> -- cilium-dbg endpoint list
 ```
 
 The Cilium + Istio combination is powerful but requires careful configuration to avoid conflicts. Take the time to validate each layer independently before combining them, and use Hubble alongside Istio's telemetry for full-stack observability.
