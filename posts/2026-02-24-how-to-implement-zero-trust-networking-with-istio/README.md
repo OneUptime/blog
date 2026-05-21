@@ -44,7 +44,13 @@ metadata:
   name: payment-service
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       serviceAccountName: payment-service
       containers:
@@ -64,7 +70,7 @@ istioctl proxy-config secret <pod-name> -n production -o json | \
 
 ## Pillar 2: Encrypt Everything with mTLS
 
-Enable strict mTLS mesh-wide:
+Enable strict mTLS mesh-wide by applying the policy in your Istio root namespace (commonly `istio-system`):
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -94,7 +100,7 @@ Monitor for non-mTLS connections:
 
 ```bash
 # In Prometheus
-istio_tcp_connections_opened_total{connection_security_policy="none"}
+istio_tcp_connections_opened_total{reporter="destination", connection_security_policy!="mutual_tls"}
 ```
 
 This metric should be zero if strict mTLS is properly enforced.
@@ -273,7 +279,7 @@ Do not try to implement everything at once. Follow this phased approach:
 - Update deployments to use specific service accounts
 
 **Phase 4 - Authorization (Week 7-10)**:
-- Start with audit mode (CUSTOM action with logging, or use ALLOW policies first)
+- Start with audit or dry-run mode (AUDIT action with an audit plugin, or the `istio.io/dry-run` annotation)
 - Build authorization policies based on observed traffic patterns
 - Apply deny-all policies namespace by namespace
 - Add explicit allow policies for legitimate traffic
