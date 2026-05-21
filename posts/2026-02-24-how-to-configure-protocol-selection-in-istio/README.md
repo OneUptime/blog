@@ -61,15 +61,15 @@ The recognized protocol prefixes are:
 - `grpc-web` - gRPC-Web traffic
 - `tcp` - Raw TCP traffic
 - `tls` - TLS encrypted traffic (passthrough)
-- `mongo` - MongoDB protocol
-- `mysql` - MySQL protocol
-- `redis` - Redis protocol
+- `mongo` - MongoDB protocol (experimental; requires the corresponding Istio protocol filter to be enabled)
+- `mysql` - MySQL protocol (experimental; requires the corresponding Istio protocol filter to be enabled)
+- `redis` - Redis protocol (experimental; requires the corresponding Istio protocol filter to be enabled)
 
 The format is `<protocol>-<suffix>` where the suffix can be anything you want. It is just for human readability. So `http-api`, `http-frontend`, and `http-whatever` all tell Istio the same thing: this port carries HTTP traffic.
 
 ## Using the appProtocol Field
 
-Starting with Kubernetes 1.19 and Istio 1.18+, you can use the `appProtocol` field instead of relying on naming conventions. This is cleaner and doesn't require you to change your port names.
+Starting with Kubernetes 1.18, you can use the `appProtocol` field instead of relying on naming conventions. This field became stable in Kubernetes 1.20. This is cleaner and doesn't require you to change your port names.
 
 ```yaml
 apiVersion: v1
@@ -97,9 +97,9 @@ spec:
 
 The `appProtocol` field takes precedence over the port name convention. So if you have a port named `http-web` with `appProtocol: tcp`, Istio will treat it as TCP.
 
-## Disabling Protocol Sniffing
+## Adjusting Protocol Detection Timeout
 
-If you want to turn off automatic protocol detection entirely, you can configure this at the mesh level. This forces Istio to treat all unnamed ports as plain TCP.
+If you need to control how long Envoy waits for the first bytes of a connection, you can configure this at the mesh level. This does not replace explicit protocol selection, but it can affect how quickly unresolved traffic falls back to plain TCP.
 
 Edit your Istio mesh configuration:
 
@@ -107,7 +107,7 @@ Edit your Istio mesh configuration:
 kubectl edit configmap istio -n istio-system
 ```
 
-Set the `protocolDetectionTimeout` to `0s`:
+Set the `protocolDetectionTimeout` to a duration such as `500ms`:
 
 ```yaml
 apiVersion: v1
@@ -117,17 +117,23 @@ metadata:
   namespace: istio-system
 data:
   mesh: |
-    protocolDetectionTimeout: 0s
+    protocolDetectionTimeout: 500ms
 ```
 
-With this setting, any port that doesn't have an explicit protocol (either through naming or `appProtocol`) will be handled as raw TCP. No sniffing, no delay, no guessing.
+With this setting, any port that doesn't have an explicit protocol (either through naming or `appProtocol`) can wait up to that duration for protocol detection before falling back to raw TCP.
 
-You can also adjust the timeout instead of disabling it. The default is `100ms`. If you have slow clients that take a while to send the first bytes, you might need to increase it:
+The current default detection timeout is `0s`, which means no timeout. Setting a timeout is generally not recommended because it can still break slow clients or server-first protocols. If you want to avoid sniffing for a service, explicitly declare the protocol on the Service port instead:
 
 ```yaml
-data:
-  mesh: |
-    protocolDetectionTimeout: 500ms
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - name: tcp-mysql
+      port: 3306
+      targetPort: 3306
 ```
 
 ## Protocol Selection with DestinationRule
@@ -188,7 +194,7 @@ One of the most frequent mistakes is naming a port something like `metrics` with
 
 Another common issue is using `https` as the protocol for internal mTLS traffic. You don't need to do this. Istio's mTLS is handled at the sidecar level, separate from your application protocol. If your app serves plain HTTP on port 8080 and Istio handles the mTLS, name the port `http-web`, not `https-web`.
 
-Also watch out for services that serve multiple protocols on the same port. This isn't supported by Istio. Each port should carry a single protocol. If you have a service that speaks both HTTP and gRPC on the same port, that actually works fine because gRPC is HTTP/2 - just label it as `grpc`.
+Also watch out for services that serve multiple protocols on the same port. This isn't supported by Istio. Each port should carry a single protocol. If you have a service that speaks both HTTP/2 and gRPC on the same port, that can work because gRPC is HTTP/2-based; label it as `grpc` or `http2` depending on the traffic you want Istio to optimize for.
 
 ## Applying Protocol Selection to Gateway Traffic
 
@@ -227,7 +233,7 @@ spec:
         - "api.example.com"
 ```
 
-The Gateway protocol field accepts `HTTP`, `HTTPS`, `GRPC`, `HTTP2`, `MONGO`, `TCP`, and `TLS`.
+The Gateway protocol field accepts `HTTP`, `HTTPS`, `GRPC`, `GRPC-WEB`, `HTTP2`, `MONGO`, `TCP`, and `TLS`.
 
 ## Summary
 
