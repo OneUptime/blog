@@ -62,7 +62,7 @@ spec:
             requestPrincipals: ["*"]
 ```
 
-`requestPrincipals: ["*"]` matches any request that has a valid JWT. The principal value is `<issuer>/<subject>` from the token. Requests without tokens or with invalid tokens get 403.
+`requestPrincipals: ["*"]` matches any request that has a valid JWT. The principal value is `<issuer>/<subject>` from the token. Requests without tokens get 403. Requests with invalid tokens are rejected by RequestAuthentication before the authorization policy is evaluated, typically with 401.
 
 ## Step 3: Add Claim-Based Rules
 
@@ -308,6 +308,8 @@ spec:
             notPaths: ["/api/public/*"]
 ```
 
+These endpoints do not require a token, but requests that include an invalid token are still rejected by RequestAuthentication.
+
 ## Testing JWT Authorization
 
 ```bash
@@ -323,7 +325,7 @@ kubectl exec -n my-app deploy/sleep -- curl -s -o /dev/null -w "%{http_code}" ht
 kubectl exec -n my-app deploy/sleep -- curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://api-service:8080/api/data
 
 # Decode token to verify claims
-echo $TOKEN | cut -d. -f2 | base64 -d 2>/dev/null | jq .
+jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | . + (if (length % 4) == 2 then "==" elif (length % 4) == 3 then "=" else "" end) | @base64d | fromjson' <<< "$TOKEN"
 ```
 
 ## Debugging JWT Authorization
@@ -339,7 +341,7 @@ kubectl get authorizationpolicy -n my-app
 kubectl logs -n my-app deploy/api-service -c istio-proxy | grep -E "jwt|rbac"
 
 # Verify Envoy config
-istioctl proxy-config listener deploy/api-service -n my-app -o json | grep -c jwt_authn
+istioctl proxy-config listener deployment/api-service -n my-app -o json | grep -c jwt_authn
 
 # Analyze configuration
 istioctl analyze -n my-app
