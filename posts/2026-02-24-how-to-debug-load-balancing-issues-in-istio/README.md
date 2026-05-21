@@ -95,11 +95,20 @@ If all endpoints are ejected, you probably have an outlier detection configurati
 
 ## Step 5: Watch Live Traffic
 
-Enable Envoy access logs to see where traffic is actually going:
+Enable Envoy access logs to see where traffic is actually going. If access logs are not already enabled, use the Telemetry API:
 
 ```bash
-# Enable access logging for a specific pod
-istioctl proxy-config log <pod-name> --level http:debug,upstream:debug
+kubectl apply -f - <<'EOF'
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  accessLogging:
+  - providers:
+    - name: envoy
+EOF
 ```
 
 Then generate some test traffic and check the logs:
@@ -135,7 +144,7 @@ for r in routes:
 "
 ```
 
-Look at the `weightedClusters` section. The weights should match your VirtualService configuration. If weights don't add up to 100 in your VirtualService, Istio normalizes them, which can cause unexpected behavior.
+Look at the `weightedClusters` section. The weights should match your VirtualService configuration. If weights don't add up to 100 in your VirtualService, Istio treats them as relative weights: each destination receives `weight / sum(all weights)` requests.
 
 ## Step 7: Debug Consistent Hash Load Balancing
 
@@ -143,16 +152,18 @@ If you're using consistent hash and traffic isn't sticking to the right pods:
 
 ```bash
 # Check if the hash policy is configured
-istioctl proxy-config cluster <pod-name> -o json | python3 -c "
+istioctl proxy-config routes <pod-name> -o json | python3 -c "
 import json, sys
-clusters = json.load(sys.stdin)
-for c in clusters:
-    if 'my-service' in c.get('name', '') and 'hashPolicy' in json.dumps(c):
-        print(json.dumps(c.get('lbConfig', {}), indent=2))
+routes = json.load(sys.stdin)
+for r in routes:
+    for vh in r.get('virtualHosts', []):
+        for route in vh.get('routes', []):
+            if 'my-service' in json.dumps(route) and 'hashPolicy' in json.dumps(route):
+                print(json.dumps(route, indent=2))
 "
 ```
 
-Verify that the header name, cookie name, or source IP setting matches what you configured. Also make sure the client is actually sending the header you're hashing on.
+Verify that the header name, cookie name, query parameter, or source IP setting matches what you configured. Also check the service cluster with `istioctl proxy-config cluster <pod-name> -o json` and confirm the load balancing policy is a consistent-hash policy such as `RING_HASH` or `MAGLEV`.
 
 Test it directly:
 
@@ -207,19 +218,20 @@ kubectl get pod <pod-name> -o jsonpath='{.spec.containers[*].name}'
 You should see `istio-proxy` alongside your application container. If it's missing, check that sidecar injection is enabled for your namespace:
 
 ```bash
-kubectl get namespace default -o jsonpath='{.metadata.labels.istio-injection}'
+kubectl get namespace default --show-labels
 ```
+
+Look for `istio-injection=enabled` or, if you're using control plane revisions, an `istio.io/rev=<revision>` label.
 
 ## Step 10: Reset and Retry
 
-If you've made configuration changes and things are still broken, the proxy might have cached stale configuration. Force a refresh:
+If you've made configuration changes and things are still broken, check whether the proxy is connected to Istiod and has acknowledged the latest xDS configuration:
 
 ```bash
-# Restart the pods to get fresh proxy config
-kubectl rollout restart deployment my-service -n default
+istioctl proxy-status
 
-# Or restart just the proxy sidecar
-kubectl exec <pod-name> -c istio-proxy -- kill -HUP 1
+# If the proxy is missing or stale after you fix the underlying issue, restart the workload pods
+kubectl rollout restart deployment my-service -n default
 ```
 
 ## Summary
