@@ -33,6 +33,9 @@ metadata:
   namespace: production
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: web-api
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -40,6 +43,8 @@ spec:
       maxUnavailable: 0
   template:
     metadata:
+      labels:
+        app: web-api
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 15s
@@ -70,7 +75,7 @@ The key settings:
 
 ## PodDisruptionBudget for Extra Protection
 
-A PodDisruptionBudget (PDB) prevents too many pods from being unavailable simultaneously:
+A PodDisruptionBudget (PDB) prevents too many pods from being evicted simultaneously:
 
 ```yaml
 apiVersion: policy/v1
@@ -85,7 +90,7 @@ spec:
       app: web-api
 ```
 
-With 3 replicas and `minAvailable: 2`, only one pod can be down at a time. This protects against both voluntary disruptions (rolling updates, node drains) and involuntary ones (node failures).
+With 3 replicas and `minAvailable: 2`, eviction-based disruptions such as `kubectl drain` can evict only one healthy pod at a time. Involuntary disruptions such as node failures still count against the budget, but a PDB cannot prevent them, and workload controllers such as Deployments are not limited by PDBs when performing rolling updates.
 
 ## Retry Configuration for the Rolling Update Window
 
@@ -112,7 +117,7 @@ spec:
       retryOn: connect-failure,refused-stream,unavailable,cancelled
 ```
 
-The `connect-failure` retry handles the case where a request is sent to a pod that has already closed its listeners. The `refused-stream` handles HTTP/2 GOAWAY responses from a draining sidecar.
+The `connect-failure` retry handles the case where a request is sent to a pod that has already closed its listeners. The `refused-stream` retry handles HTTP/2 streams that are reset with the `REFUSED_STREAM` error code.
 
 ## Connection Pool Settings for Smooth Drain
 
@@ -185,7 +190,7 @@ spec:
       version: v2
 ```
 
-When you shift traffic from stable to canary, the drain happens naturally. Pods in the stable subset continue serving their existing connections while new requests go to canary pods. Once you're confident in the canary, you update the stable deployment and remove the canary routing.
+When you shift traffic from stable to canary, Istio starts routing new requests according to the updated weights. Existing long-lived streams may continue, and pod drain still happens when pods are removed or replaced. Once you're confident in the canary, you update the stable deployment and remove the canary routing.
 
 ## Monitoring Rolling Update Health
 
