@@ -174,8 +174,8 @@ Before blocking anything, understand what traffic flows exist:
 
 ```bash
 # Check current traffic patterns using Kiali or Prometheus
-# Or use istioctl to analyze traffic
-istioctl experimental describe pod -n my-app deploy/api-service
+# Or use istioctl to inspect the Istio configuration affecting a pod
+istioctl experimental describe pod "$(kubectl get pod -n my-app -l app=api-service -o jsonpath='{.items[0].metadata.name}')" -n my-app
 ```
 
 ### Phase 2: Deploy Allow-Nothing in Dry-Run
@@ -195,7 +195,7 @@ spec:
 Monitor what would be denied:
 
 ```bash
-kubectl logs -n my-app deploy/api-service -c istio-proxy | grep "shadow_denied"
+kubectl logs -n my-app deploy/api-service -c istio-proxy | grep "shadow denied"
 ```
 
 ### Phase 3: Create Workload ALLOW Policies
@@ -249,7 +249,7 @@ kubectl logs -n my-app -l app=api-service -c istio-proxy | grep " 403 "
 
 ## Don't Forget Health Checks
 
-A common mistake with allow-nothing policies is forgetting that Kubernetes health probes also get blocked. Add health check paths to every workload's ALLOW policy:
+A common mistake with allow-nothing policies is forgetting about health check paths. Istio rewrites Kubernetes HTTP, TCP, and gRPC probes by default so they are handled through the sidecar agent, but if probe rewriting is disabled or your health checks come through the mesh, add health check paths to the workload's ALLOW policy:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -268,7 +268,7 @@ spec:
               - "/livez"
 ```
 
-This namespace-wide policy allows health checks on all workloads without needing to add health paths to every individual policy.
+This namespace-wide policy allows health check paths on all workloads without needing to add health paths to every individual policy.
 
 ## Allow-Nothing vs Deny-All
 
@@ -315,9 +315,9 @@ kubectl logs -n my-app deploy/any-service -c istio-proxy | grep "rbac"
 
 1. **Confusing empty rules with empty rule.** `rules: []` (or no rules field) = allow nothing. `rules: [{}]` = allow everything. This is the most dangerous mistake.
 
-2. **Forgetting the ingress gateway.** If traffic comes through the istio ingress gateway, your workload policies need to allow traffic from `istio-system` namespace.
+2. **Forgetting the ingress gateway.** If traffic comes through an Istio ingress gateway, your workload policies need to allow traffic from the gateway's namespace or service account, such as `istio-system` for the default ingress gateway installation.
 
-3. **Health check failures.** Kubernetes probes get blocked too. Always include health check paths in your policies.
+3. **Health check failures.** If Istio probe rewriting is disabled or health checks come through the mesh, include health check paths in your policies.
 
 4. **Metrics endpoints.** Prometheus scraping `/metrics` will fail. Add an ALLOW rule for your monitoring namespace.
 
