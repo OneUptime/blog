@@ -73,8 +73,6 @@ spec:
           protocol: TCP
         - port: 15012
           protocol: TCP
-        - port: 15014
-          protocol: TCP
 ```
 
 Also allow DNS resolution, which is essential for service discovery:
@@ -176,16 +174,16 @@ spec:
           protocol: TCP
 ```
 
-## Handling Sidecar Ports
+## Handling Istio Ports
 
-Istio sidecars use several ports for internal communication. When writing NetworkPolicies, account for these ports:
+Istio uses several ports for sidecar and control plane communication. When writing NetworkPolicies, account for the ports your workloads actually need:
 
 - **15001**: Envoy outbound listener
 - **15006**: Envoy inbound listener
 - **15010**: istiod xDS (plaintext - should be disabled in production)
 - **15012**: istiod xDS (TLS)
-- **15014**: istiod control port
-- **15020**: Health check port
+- **15014**: istiod control plane monitoring
+- **15020**: Merged Prometheus telemetry
 - **15021**: Health check
 - **15090**: Prometheus metrics
 
@@ -295,7 +293,7 @@ When traffic is blocked and you are not sure which layer is doing it:
 1. Check if the NetworkPolicy is blocking:
 
 ```bash
-# Temporarily remove NetworkPolicies and test
+# List the active NetworkPolicies, then temporarily remove the relevant ones and test
 kubectl get networkpolicies -n production
 # If traffic works without NetworkPolicies, the issue is there
 ```
@@ -313,7 +311,7 @@ istioctl x authz check <pod-name> -n production
 3. Use a pod without a sidecar to test at the network level:
 
 ```bash
-kubectl run debug --rm -it --image=busybox --restart=Never -- wget -qO- http://service:8080
+kubectl run debug -n production --rm -it --image=busybox --restart=Never --labels="sidecar.istio.io/inject=false" -- wget -qO- http://service:8080
 ```
 
 If this works but a pod with a sidecar cannot connect, the issue is in Istio configuration. If this also fails, the NetworkPolicy is blocking.
