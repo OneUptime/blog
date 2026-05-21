@@ -8,22 +8,22 @@ Description: How to design Istio service mesh architecture for government applic
 
 ---
 
-Government applications have compliance requirements that make enterprise look simple. You are dealing with FedRAMP, FISMA, NIST 800-53 controls, FIPS 140-2 validated cryptography, and accreditation processes that can take months. The good news is that Istio can help satisfy many of these controls. The bad news is that you need to configure it very specifically.
+Government applications have compliance requirements that make enterprise look simple. You are dealing with FedRAMP, FISMA, NIST 800-53 controls, FIPS 140-validated cryptography, and accreditation processes that can take months. The good news is that Istio can help satisfy many of these controls. The bad news is that you need to configure it very specifically.
 
 This guide walks through the architecture decisions you need to make when deploying Istio for government workloads.
 
-## FIPS 140-2 Compliant Cryptography
+## FIPS 140-Validated Cryptography
 
-This is the first thing to address because it affects everything else. Government applications typically need FIPS 140-2 validated cryptographic modules. Standard Istio builds use BoringSSL, which is FIPS-capable but needs to be compiled with FIPS mode enabled.
+This is the first thing to address because it affects everything else. Government applications typically need FIPS 140-validated cryptographic modules. FIPS 140-3 is the current standard for new validations, while some existing FIPS 140-2 module validations may still appear in compliance documentation. Standard Istio proxy images use Envoy with BoringSSL, but you need a vendor-supported FIPS build or update stream that is tied to a validated cryptographic module.
 
-Use a FIPS-compliant Istio build. Several vendors provide these, or you can build Istio from source with FIPS-enabled BoringCrypto:
+Use a FIPS-compliant Istio build. Several vendors provide these; do not assume that compiling Istio from source by itself creates a FIPS-validated module:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   hub: your-registry.gov/istio-fips
-  tag: 1.20.0-fips
+  tag: 1.29.2-fips
   meshConfig:
     defaultConfig:
       holdApplicationUntilProxyStarts: true
@@ -33,18 +33,19 @@ If you are using a DoD-approved container registry, pull your images from there.
 
 ## Air-Gapped Installation
 
-Many government environments are air-gapped (no internet access). You need to pre-stage all Istio images in an internal registry:
+Many government environments are air-gapped (no internet access). You need to pre-stage the Istio images used by your selected profile and features in an internal registry:
 
 ```bash
 # On a connected machine, pull and push images
 
 REGISTRY=registry.internal.gov
-VERSION=1.20.0-fips
+VERSION=1.29.2-fips
 
 images=(
   "pilot:${VERSION}"
   "proxyv2:${VERSION}"
-  "install-cni:${VERSION}"
+  "install-cni:${VERSION}" # if Istio CNI is enabled
+  "ztunnel:${VERSION}"     # if ambient mode is enabled
 )
 
 for img in "${images[@]}"; do
@@ -61,7 +62,7 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   hub: registry.internal.gov/istio
-  tag: 1.20.0-fips
+  tag: 1.29.2-fips
   values:
     global:
       imagePullPolicy: IfNotPresent
@@ -69,9 +70,9 @@ spec:
 
 ## Impact Level Classification
 
-Government systems are classified by impact level (Low, Moderate, High). Your Istio architecture should match:
+FedRAMP and FISMA systems are categorized by impact level (Low, Moderate, High), while DoD cloud systems use Impact Levels such as IL2, IL4, IL5, and IL6. Your Istio architecture should match:
 
-**IL2 (Public data)**: Standard Istio deployment with mTLS is usually sufficient.
+**IL2 (Public or non-critical mission information)**: Standard Istio deployment with mTLS is usually sufficient.
 
 **IL4 (Controlled Unclassified Information)**: Requires FIPS crypto, strict mTLS, comprehensive audit logging, and egress control.
 
@@ -109,7 +110,7 @@ spec:
         replicaCount: 2
 ```
 
-The `outboundTrafficPolicy: REGISTRY_ONLY` setting is critical. It blocks all outbound traffic unless you explicitly allow it with a ServiceEntry. This satisfies NIST AC-4 (Information Flow Enforcement) requirements.
+The `outboundTrafficPolicy: REGISTRY_ONLY` setting is critical. It blocks unknown outbound traffic from sidecar-managed workloads unless you explicitly allow it with a ServiceEntry. This helps implement and document NIST AC-4 (Information Flow Enforcement) requirements, but the control still depends on the full system boundary and policy enforcement design.
 
 ## Strict mTLS and Certificate Management
 
@@ -126,35 +127,7 @@ spec:
     mode: STRICT
 ```
 
-For government systems, you may need to use certificates from an approved Certificate Authority rather than Istio's self-signed CA. Configure Istio to use an external CA:
-
-```yaml
-apiVersion: install.istio.io/v1alpha1
-kind: IstioOperator
-spec:
-  values:
-    global:
-      pilotCertProvider: custom
-  components:
-    pilot:
-      k8s:
-        overlays:
-        - kind: Deployment
-          name: istiod
-          patches:
-          - path: spec.template.spec.volumes[100]
-            value:
-              name: cacerts
-              secret:
-                secretName: cacerts
-          - path: spec.template.spec.containers[0].volumeMounts[100]
-            value:
-              name: cacerts
-              mountPath: /etc/cacerts
-              readOnly: true
-```
-
-Create the CA secret with your government-approved certificates:
+For government systems, you may need to use certificates from an approved Certificate Authority rather than Istio's self-signed CA. Configure Istio to use plugged-in CA certificates by creating the `cacerts` secret in `istio-system` before installing Istio:
 
 ```bash
 kubectl create secret generic cacerts -n istio-system \
@@ -199,10 +172,10 @@ spec:
 
 ## Egress Control for Data Loss Prevention
 
-Government systems must control data exfiltration. Configure all outbound traffic to route through the egress gateway:
+Government systems must control data exfiltration. Configure approved outbound TLS traffic to route through the egress gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: approved-external-service
@@ -217,7 +190,7 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -235,7 +208,7 @@ spec:
     tls:
       mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: route-through-egress
@@ -271,7 +244,7 @@ spec:
           number: 443
 ```
 
-Every external connection goes through the egress gateway where it can be logged, monitored, and blocked if necessary.
+Every approved external connection configured this way goes through the egress gateway where it can be logged, monitored, and blocked if necessary.
 
 ## Audit Logging for AU Controls
 
