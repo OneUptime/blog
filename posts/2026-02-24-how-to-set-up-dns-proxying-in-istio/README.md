@@ -14,13 +14,13 @@ This feature was introduced to solve real problems. Multicluster service discove
 
 ## How DNS Proxying Works Under the Hood
 
-When DNS proxying is enabled, the iptables rules in the sidecar init container redirect DNS traffic (UDP port 53) from the application container to the Istio agent running in the sidecar. The agent acts as a DNS server with the following resolution logic:
+When DNS proxying is enabled, the iptables rules installed by the sidecar init container or Istio CNI redirect outgoing DNS packets on port 53 from the application container to the Istio agent running in the sidecar on port 15053. The agent acts as a DNS server with the following resolution logic:
 
 1. Check if the hostname matches a service in the Istio service registry
 2. If yes, return the cluster IP (for Kubernetes services) or an auto-allocated VIP (for ServiceEntry hosts)
 3. If no, forward the query to the upstream DNS server (CoreDNS or whatever is configured in the pod's resolv.conf)
 
-The agent caches responses, so repeated lookups for the same hostname are fast.
+The agent stores a local mapping of domain names to IP addresses, so lookups it can answer directly avoid a round trip to the upstream DNS server.
 
 ## Enabling DNS Proxying
 
@@ -36,7 +36,11 @@ spec:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
+  # Optional for older Istio releases; enabled by default in current releases.
+  values:
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
 ```
 
 Apply the configuration:
@@ -68,7 +72,6 @@ spec:
         proxy.istio.io/config: |
           proxyMetadata:
             ISTIO_META_DNS_CAPTURE: "true"
-            ISTIO_META_DNS_AUTO_ALLOCATE: "true"
     spec:
       containers:
         - name: my-app
@@ -87,14 +90,14 @@ metadata:
         ISTIO_META_DNS_CAPTURE: "false"
 ```
 
-## Understanding ISTIO_META_DNS_AUTO_ALLOCATE
+## Understanding Address Auto-Allocation
 
-This setting deserves special attention. When enabled, Istio automatically assigns virtual IP addresses to ServiceEntry hosts that do not have a static address configured.
+This setting deserves special attention. When IP auto-allocation is enabled, Istio automatically assigns virtual IP addresses to ServiceEntry hosts that do not have a static address configured. In current Istio releases, this is controlled by the `PILOT_ENABLE_IP_AUTOALLOCATE` environment variable on istiod, which defaults to `true`, and can be overridden per ServiceEntry with the `networking.istio.io/enable-autoallocate-ip` label.
 
 Why does this matter? Consider a TCP ServiceEntry:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-mysql
@@ -118,11 +121,11 @@ For HTTP services, this is less of an issue because the Host header provides rou
 Check that the iptables rules are redirecting DNS:
 
 ```bash
-kubectl exec deploy/my-app -c istio-proxy -n default -- \
+kubectl exec deploy/my-app -c my-app -n default -- \
   iptables-save | grep 53
 ```
 
-You should see rules redirecting UDP port 53 to the Istio agent.
+You should see rules redirecting DNS traffic on port 53 to the Istio agent on port 15053. If your workload uses Istio CNI or a minimal container image that does not include `iptables-save`, verify with a DNS lookup instead.
 
 Check DNS resolution from inside the app container:
 
@@ -154,7 +157,7 @@ No special CoreDNS configuration is needed.
 DNS proxying improves ServiceEntry behavior for external services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -175,9 +178,9 @@ With DNS proxying, when your app resolves `api.example.com`, the proxy can inter
 
 DNS proxying reduces load on CoreDNS because the sidecar handles most lookups locally. In large clusters where CoreDNS is already under pressure, this can be significant.
 
-The Istio agent caches DNS responses, so the first lookup for a service might be slightly slower (the agent needs to check the registry), but subsequent lookups are faster than going to CoreDNS.
+The Istio agent keeps local service mappings, so lookups it can answer directly avoid going to CoreDNS.
 
-Memory overhead is minimal. The agent keeps a small in-memory cache of DNS responses.
+Memory overhead is minimal. The agent keeps the DNS data it needs in memory.
 
 ## Troubleshooting DNS Proxying
 
@@ -187,17 +190,18 @@ Memory overhead is minimal. The agent keeps a small in-memory cache of DNS respo
 kubectl logs deploy/my-app -c istio-init -n default
 ```
 
-**Incorrect resolution for external hosts**: If an external hostname resolves to the wrong IP, it might be because auto-allocation assigned a VIP. Check the agent's DNS cache:
+If you use Istio CNI instead of the init container, check the Istio CNI pod logs in the `istio-system` namespace.
+
+**Incorrect resolution for external hosts**: If an external hostname resolves to the wrong IP, it might be because auto-allocation assigned a VIP. Check whether the ServiceEntry has an explicit `spec.addresses` value or the `networking.istio.io/enable-autoallocate-ip` label, then verify the DNS response from the application container:
 
 ```bash
-kubectl exec deploy/my-app -c istio-proxy -n default -- \
-  curl -s localhost:15000/config_dump | grep -A5 "dns"
+kubectl exec deploy/my-app -c my-app -n default -- nslookup api.example.com
 ```
 
 **Upstream DNS failures**: If the agent cannot reach the upstream DNS server, all non-mesh DNS queries will fail. Check the resolv.conf configuration:
 
 ```bash
-kubectl exec deploy/my-app -c istio-proxy -n default -- cat /etc/resolv.conf
+kubectl exec deploy/my-app -c my-app -n default -- cat /etc/resolv.conf
 ```
 
 **NDOTS interaction**: Kubernetes pods typically have `ndots:5` in resolv.conf, which causes short hostnames to be tried with cluster domain suffixes first. The DNS proxy respects this, so external hostname resolution behavior should be the same as without the proxy.
