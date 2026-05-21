@@ -25,14 +25,14 @@ spec:
     accessLogEncoding: JSON
 ```
 
-With default JSON encoding, the output includes all standard Envoy fields:
+With default JSON encoding, the output includes Istio's default access log fields:
 
 ```json
 {
   "authority": "httpbin.default:8000",
   "bytes_received": "0",
   "bytes_sent": "615",
-  "connection_termination_details": null,
+  "connection_termination_details": "-",
   "downstream_local_address": "10.244.1.5:8000",
   "downstream_remote_address": "10.244.1.3:45678",
   "duration": "4",
@@ -40,7 +40,7 @@ With default JSON encoding, the output includes all standard Envoy fields:
   "path": "/status/200",
   "protocol": "HTTP/1.1",
   "request_id": "a1b2c3d4-e5f6-7890",
-  "requested_server_name": null,
+  "requested_server_name": "-",
   "response_code": "200",
   "response_code_details": "via_upstream",
   "response_flags": "-",
@@ -50,9 +50,9 @@ With default JSON encoding, the output includes all standard Envoy fields:
   "upstream_host": "10.244.1.5:8000",
   "upstream_local_address": "127.0.0.6:44444",
   "upstream_service_time": "3",
-  "upstream_transport_failure_reason": null,
+  "upstream_transport_failure_reason": "-",
   "user_agent": "curl/7.88.1",
-  "x_forwarded_for": null
+  "x_forwarded_for": "-"
 }
 ```
 
