@@ -55,20 +55,20 @@ Agree on naming conventions early. Here is a practical convention that works wel
 ```yaml
 # VirtualService: <service-name>-<purpose>
 
-name: checkout-canary
-name: payments-external
+- name: checkout-canary
+- name: payments-external
 
 # DestinationRule: <service-name>-<purpose>
-name: checkout-circuit-breaker
-name: payments-tls
+- name: checkout-circuit-breaker
+- name: payments-tls
 
 # AuthorizationPolicy: <target-service>-<policy-type>
-name: checkout-allow-frontend
-name: payments-deny-external
+- name: checkout-allow-frontend
+- name: payments-deny-external
 
 # ServiceEntry: <external-service>-<protocol>
-name: stripe-api-https
-name: sendgrid-smtp-tcp
+- name: stripe-api-https
+- name: sendgrid-smtp-tcp
 ```
 
 Document these in a shared style guide and enforce them through validation. You can use a Kyverno policy:
@@ -79,7 +79,6 @@ kind: ClusterPolicy
 metadata:
   name: istio-naming-convention
 spec:
-  validationFailureAction: Enforce
   rules:
     - name: virtualservice-naming
       match:
@@ -88,6 +87,7 @@ spec:
               kinds:
                 - VirtualService
       validate:
+        failureAction: Enforce
         message: "VirtualService names must follow the pattern: <service>-<purpose>"
         pattern:
           metadata:
@@ -158,7 +158,7 @@ kind: ClusterPolicy
 metadata:
   name: restrict-envoyfilter
 spec:
-  validationFailureAction: Enforce
+  background: false
   rules:
     - name: platform-team-only
       match:
@@ -172,8 +172,16 @@ spec:
               - kind: Group
                 name: platform-team
       validate:
+        failureAction: Enforce
         message: "Only the platform team can create EnvoyFilter resources"
-        deny: {}
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.operation }}"
+                operator: In
+                value:
+                  - CREATE
+                  - UPDATE
 ```
 
 ## Change Review Process
@@ -232,7 +240,7 @@ for file in $(find . -name "*.yaml" -path "*/istio/*"); do
 done
 
 # Check for conflicts
-istioctl analyze --use-kube=false -A
+istioctl analyze --use-kube=false .
 ```
 
 Add this to your CI pipeline so that every pull request is validated before merge.
@@ -287,11 +295,11 @@ Set up regular audits of your Istio configuration:
 # Find VirtualServices without owners
 kubectl get virtualservices -A -o json | jq '.items[] | select(.metadata.labels.owner == null) | .metadata.name'
 
-# Find unused DestinationRules
+# Find broken resource references
 istioctl analyze -A 2>&1 | grep "Referenced"
 
 # Check for overly permissive authorization policies
-kubectl get authorizationpolicies -A -o json | jq '.items[] | select(.spec.rules == null) | .metadata.name'
+kubectl get authorizationpolicies -A -o json | jq '.items[] | select((.spec.action == null or .spec.action == "ALLOW") and (.spec.rules[]? == {})) | .metadata.name'
 ```
 
 Run these checks weekly and assign owners to orphaned resources. Resources without owners should be reviewed and either assigned or removed.
@@ -301,7 +309,7 @@ Run these checks weekly and assign owners to orphaned resources. Resources witho
 Every Istio resource should have annotations explaining its purpose:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: checkout-canary
