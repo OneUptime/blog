@@ -14,14 +14,14 @@ Multi-cluster Istio is one of the most complex infrastructure setups you can hav
 
 The first thing to document is which multi-cluster model you're using. Istio supports several, and the choice affects everything else:
 
-```markdown
+````markdown
 # Istio Multi-Cluster Architecture
 
 ## Deployment Model
 
 **Model:** Primary-Primary on Different Networks
-**Istio Version:** 1.20.2
-**Kubernetes Version:** 1.28.x
+**Istio Version:** 1.30.0
+**Kubernetes Version:** 1.32.x
 
 ### Cluster Inventory
 
@@ -33,7 +33,7 @@ The first thing to document is which multi-cluster model you're using. Istio sup
 
 ### Architecture Diagram
 
-```
+```text
     [prod-us-east]          [prod-us-west]         [prod-eu]
     ┌─────────────┐        ┌─────────────┐       ┌─────────────┐
     │ istiod      │        │ istiod      │       │ istiod      │
@@ -42,8 +42,8 @@ The first thing to document is which multi-cluster model you're using. Istio sup
     └─────────────┘        └─────────────┘       └─────────────┘
           |                       |                      |
      network-east            network-west           network-eu
-```text
 ```
+````
 
 ## Documenting Trust Configuration
 
@@ -130,7 +130,7 @@ istioctl --context=prod-us-east proxy-config endpoints deploy/frontend -n defaul
 
 In multi-network setups, east-west gateways handle cross-cluster traffic:
 
-```markdown
+````markdown
 ## East-West Gateways
 
 ### Gateway Configuration
@@ -138,7 +138,7 @@ In multi-network setups, east-west gateways handle cross-cluster traffic:
 
 ```yaml
 # East-west gateway in each cluster
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: cross-network-gateway
@@ -160,7 +160,6 @@ spec:
       mode: AUTO_PASSTHROUGH
 ```
 
-```markdown
 ### East-West Gateway Endpoints
 
 | Cluster | Gateway Service | External IP | Port |
@@ -168,7 +167,7 @@ spec:
 | prod-us-east | istio-eastwestgateway | 34.102.136.180 | 15443 |
 | prod-us-west | istio-eastwestgateway | 35.203.120.45 | 15443 |
 | prod-eu | istio-eastwestgateway | 35.240.60.22 | 15443 |
-```
+````
 
 ```bash
 # Verify east-west gateway is running
@@ -182,18 +181,19 @@ done
 
 Document how traffic is distributed across clusters:
 
-```markdown
+````markdown
 ## Locality-Aware Routing
 
 ### Configuration
-Locality-aware routing is enabled mesh-wide. Traffic prefers local
-endpoints, then same-region endpoints, then cross-region endpoints.
+Locality-aware routing is enabled for this service. Istio uses endpoint
+locality metadata and outlier detection to prefer healthy local endpoints
+and fail over according to the regional policy below.
 
 ### Failover Configuration
 ```
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service-locality
@@ -201,8 +201,8 @@ metadata:
   annotations:
     docs/description: |
       Payment service locality configuration.
-      Traffic stays in-region unless health drops below 70%.
-      Failover priority: same-zone > same-region > cross-region.
+      Traffic prefers healthy local endpoints and fails over by region
+      when outlier detection ejects unhealthy endpoints.
 spec:
   host: payment-service.production.svc.cluster.local
   trafficPolicy:
@@ -226,7 +226,6 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-```markdown
 ### Expected Traffic Flow
 
 | Client Region | Primary | Failover 1 | Failover 2 |
@@ -234,13 +233,13 @@ spec:
 | us-east-1 | prod-us-east | prod-us-west | prod-eu |
 | us-west-2 | prod-us-west | prod-us-east | prod-eu |
 | eu-west-1 | prod-eu | prod-us-east | prod-us-west |
-```
+````
 
 ## Documenting Multi-Cluster Operations
 
 Include operational procedures specific to multi-cluster:
 
-```markdown
+````markdown
 ## Operational Procedures
 
 ### Adding a New Cluster
@@ -248,19 +247,19 @@ Include operational procedures specific to multi-cluster:
 1. Install Istio with the shared root CA:
    ```bash
    istioctl install --context=new-cluster -f istio-config.yaml
-   ```bash
+   ```
 
 2. Create remote secrets in all existing clusters:
    ```bash
    istioctl create-remote-secret --context=new-cluster --name=new-cluster | \
      kubectl apply --context=prod-us-east -f -
-   ```bash
+   ```
 
 3. Create remote secrets for existing clusters in the new cluster:
    ```bash
    istioctl create-remote-secret --context=prod-us-east --name=prod-us-east | \
      kubectl apply --context=new-cluster -f -
-   ```bash
+   ```
 
 4. Deploy the east-west gateway in the new cluster
 
@@ -268,7 +267,7 @@ Include operational procedures specific to multi-cluster:
    ```bash
    istioctl --context=new-cluster proxy-config endpoints deploy/sleep -n default | \
      grep prod-us-east
-   ```bash
+   ```
 
 ### Removing a Cluster
 
@@ -284,7 +283,7 @@ Include operational procedures specific to multi-cluster:
 3. Restart istiod: `kubectl rollout restart deploy/istiod -n istio-system`
 4. Perform rolling restart of all workloads
 5. Verify mTLS is working with the new cert
-```text
+````
 
 ## Documenting Network Configuration
 
@@ -310,7 +309,7 @@ The following firewall rules must be in place for cross-cluster communication:
 | Source | Destination | Port | Protocol | Purpose |
 |--------|-------------|------|----------|---------|
 | Any cluster | East-west GW IPs | 15443 | TCP | Cross-cluster mTLS |
-| Any cluster | istiod IPs | 15012 | TCP | Control plane communication |
+| Istiod in each primary cluster | Remote Kubernetes API servers | 443 | TCP | Endpoint discovery via remote secrets |
 ```
 
 Multi-cluster Istio documentation requires more effort than single-cluster, but the payoff is proportional. When something breaks at 3 AM and the on-call engineer needs to figure out why traffic isn't flowing between clusters, having clear documentation about the architecture, trust configuration, and operational procedures is the difference between a 10-minute fix and a 2-hour investigation.
