@@ -8,7 +8,7 @@ Description: How to inspect the Envoy bootstrap configuration with istioctl prox
 
 ---
 
-The bootstrap configuration is the initial configuration that Envoy loads when it starts up. It defines how the proxy connects to the Istio control plane (istiod), what tracing and stats backends to use, and various runtime settings. Unlike the dynamic configuration (clusters, listeners, routes, endpoints) that changes during the proxy's lifetime, the bootstrap configuration is static and set at startup.
+The bootstrap configuration is the initial configuration that Envoy loads when it starts up. It defines how the proxy connects to Istio's local agent for xDS, how the agent connects to the Istio control plane (istiod), what tracing and stats backends to use, and various runtime settings. Unlike the dynamic configuration (clusters, listeners, routes, endpoints) that changes during the proxy's lifetime, the bootstrap configuration is static and set at startup.
 
 When a sidecar proxy is not connecting to the control plane, not sending telemetry, or has unexpected global settings, the bootstrap configuration is where you need to look.
 
@@ -34,7 +34,7 @@ istioctl proxy-config bootstrap productpage-v1-6b746f74dc-9rlmh.bookinfo -o json
 
 ### Control Plane Connection (ADS)
 
-The most important part of the bootstrap is how the proxy connects to istiod for dynamic configuration:
+The most important part of the bootstrap is how Envoy connects to the local Istio agent for dynamic configuration:
 
 ```bash
 istioctl proxy-config bootstrap productpage-v1-6b746f74dc-9rlmh.bookinfo -o json | \
@@ -65,7 +65,7 @@ You will see the ADS (Aggregated Discovery Service) configuration:
 }
 ```
 
-The `xds-grpc` cluster name refers to the bootstrap static cluster that connects to istiod.
+The `xds-grpc` cluster name refers to the bootstrap static cluster that Envoy uses to connect to the local Istio agent's xDS socket. The agent connects upstream to istiod.
 
 ### Static Clusters
 
@@ -85,8 +85,8 @@ for c in static:
 
 Typical static clusters include:
 
-- **xds-grpc**: Connection to istiod for xDS configuration
-- **sds-grpc**: Secret Discovery Service for certificates
+- **xds-grpc**: Connection to the local Istio agent for xDS configuration
+- **sds-grpc**: Secret Discovery Service for workload certificates over a local Unix domain socket
 - **agent**: The local pilot-agent for health checks and cert management
 - **prometheus_stats**: Local stats endpoint
 - **zipkin**: Tracing backend (if configured)
@@ -169,7 +169,7 @@ The admin interface runs on port 15000 and is bound to localhost only for securi
 
 ### Proxy Not Connecting to istiod
 
-If the proxy cannot reach istiod, check the xds-grpc static cluster:
+If the proxy cannot reach istiod, first check the xds-grpc static cluster to confirm Envoy is configured to reach the local Istio agent:
 
 ```bash
 istioctl proxy-config bootstrap productpage-v1-6b746f74dc-9rlmh.bookinfo -o json | \
@@ -183,7 +183,7 @@ for cluster in bootstrap.get('staticResources', {}).get('clusters', []):
 "
 ```
 
-Look for the load assignment to see what address and port istiod is configured at:
+Look for the load assignment to see the local xDS socket Envoy is configured to use:
 
 ```json
 {
@@ -195,9 +195,8 @@ Look for the load assignment to see what address and port istiod is configured a
           {
             "endpoint": {
               "address": {
-                "socketAddress": {
-                  "address": "istiod.istio-system.svc",
-                  "portValue": 15012
+                "pipe": {
+                  "path": "./etc/istio/proxy/XDS"
                 }
               }
             }
@@ -209,15 +208,15 @@ Look for the load assignment to see what address and port istiod is configured a
 }
 ```
 
-If the address or port is wrong, the proxy was configured incorrectly at injection time. Check the istio-sidecar-injector ConfigMap:
+If the socket path is missing or wrong, the proxy was configured incorrectly at injection time. If the socket path is correct but the proxy is still not connected, use `istioctl proxy-status` to confirm which proxies are connected to istiod:
 
 ```bash
-kubectl get configmap istio-sidecar-injector -n istio-system -o yaml | grep discoveryAddress
+istioctl proxy-status
 ```
 
 ### Wrong Istio Revision
 
-If you have multiple Istio revisions installed, the bootstrap shows which control plane the proxy is configured to use. Check the xds-grpc cluster address.
+If you have multiple Istio revisions installed, the bootstrap can show which revision injected the proxy through the node metadata. Use `istioctl proxy-status` to confirm which istiod instance the proxy is connected to.
 
 ### Certificate Issues
 
@@ -238,7 +237,7 @@ If you applied an EnvoyFilter but it is not taking effect, check if the bootstra
 kubectl logs productpage-v1-6b746f74dc-9rlmh -c istio-proxy -n bookinfo | grep "bootstrap"
 ```
 
-EnvoyFilters that modify bootstrap configuration are applied at pod startup. If the pod was already running when you created the EnvoyFilter, you need to restart it.
+EnvoyFilters that modify bootstrap configuration are deprecated and are applied at pod startup. If the pod was already running when you created the EnvoyFilter, you need to restart it.
 
 ## Comparing Bootstrap Across Pods
 
