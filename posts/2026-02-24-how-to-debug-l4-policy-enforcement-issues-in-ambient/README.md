@@ -107,7 +107,7 @@ spec:
             paths: ["/api/*"]
 ```
 
-If you apply the second policy without a waypoint proxy, ztunnel will see the L7 fields and effectively ignore them for enforcement, which can lead to unexpected behavior. The connection might be allowed when you expected it to be restricted to GET requests only.
+If you apply the second policy without a waypoint proxy, ztunnel cannot enforce the L7 fields and fails safe by denying the connection. To restrict requests by method or path in ambient mode, attach the policy to a waypoint proxy with `targetRefs`.
 
 ## Debugging Connection Denials
 
@@ -215,20 +215,20 @@ kubectl exec -n my-app allowed-client -- \
 
 ### Namespace vs Mesh-Wide Policies
 
-A policy in `istio-system` namespace applies mesh-wide. A policy in a workload namespace applies only to that namespace:
+A policy in the Istio root namespace, traditionally `istio-system`, applies mesh-wide. A policy in a workload namespace applies only to that namespace:
 
 ```yaml
-# This applies to ALL workloads in the mesh
+# This allow-nothing policy applies to ALL workloads in the mesh
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: mesh-deny-all
+  name: mesh-allow-nothing
   namespace: istio-system
 spec:
   {}
 ```
 
-If you have a mesh-wide deny-all and a namespace-level allow, the allow policy takes precedence for matching requests. But make sure both policies are loaded in ztunnel.
+If you have a mesh-wide allow-nothing policy and a namespace-level ALLOW policy, requests that match the namespace-level ALLOW policy are allowed. But make sure both policies are loaded in ztunnel. Do not use an explicit mesh-wide DENY-all policy as a baseline, because DENY policies take precedence over ALLOW policies.
 
 ### ALLOW vs DENY Policy Interaction
 
@@ -289,9 +289,9 @@ ztunnel exposes metrics that show policy enforcement activity:
 
 ```bash
 kubectl exec -n istio-system $ZTUNNEL -- \
-  curl -s localhost:15020/metrics | grep -E "ztunnel_connections|ztunnel_denied"
+  curl -s localhost:15020/metrics | grep -E "istio_tcp_connections_(opened|closed)_total"
 ```
 
-Rising denial counts indicate that policies are actively blocking traffic. Compare these metrics with your expected behavior to identify misconfigurations.
+Compare these metrics with your expected connection activity to identify misconfigurations. For policy denials, use ztunnel logs because denied connections may not appear as successfully opened TCP connections.
 
 Debugging L4 policies in ambient mode comes down to verifying that policies are loaded in ztunnel, checking that selectors and principals match correctly, and using debug logging to see exactly which policy is making each decision.
