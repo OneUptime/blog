@@ -8,7 +8,7 @@ Description: Step-by-step guide to diagnosing and fixing service-to-service conn
 
 ---
 
-Your service A tries to call service B and gets an error. In a plain Kubernetes setup, you would check the Service, Endpoints, and DNS. With Istio in the picture, there are additional layers to investigate: sidecar injection, mTLS handshakes, VirtualService routing, DestinationRules, and AuthorizationPolicies. Each of these can silently break service-to-service communication.
+Your service A tries to call service B and gets an error. In a plain Kubernetes setup, you would check the Service, EndpointSlices, and DNS. With Istio in the picture, there are additional layers to investigate: sidecar injection, mTLS handshakes, VirtualService routing, DestinationRules, and AuthorizationPolicies. Each of these can silently break service-to-service communication.
 
 Here is a systematic approach to debugging these issues.
 
@@ -22,7 +22,7 @@ Before going deep into Istio internals, rule out the simple stuff.
 kubectl get pod -n default -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spec.containers[*]}{.name}{","}{end}{"\n"}{end}'
 ```
 
-Look for `istio-proxy` in the container list. If one side does not have a sidecar, mTLS will fail unless PeerAuthentication is set to PERMISSIVE.
+Look for `istio-proxy` in the container list. If the source pod does not have a sidecar and the destination sidecar requires STRICT mTLS, the request will fail unless PeerAuthentication is set to PERMISSIVE.
 
 You can also check injection status:
 
@@ -34,20 +34,20 @@ istioctl x describe pod my-app-xxxxx -n default
 
 ```bash
 kubectl get svc my-service -n default
-kubectl get endpoints my-service -n default
+kubectl get endpointslice -n default -l kubernetes.io/service-name=my-service
 ```
 
-If the Endpoints list is empty, the pods backing the service might not be ready, or the label selector is wrong.
+If the EndpointSlice list is empty or has no ready endpoints, the pods backing the service might not be ready, or the label selector is wrong.
 
-### Test Basic Connectivity Without Istio
+### Test Basic Connectivity From the Source Pod
 
-Exec into the source pod and try a direct connection:
+Exec into the source application container and try a connection:
 
 ```bash
-kubectl exec -it my-app-xxxxx -c istio-proxy -- curl -v http://my-service.default.svc.cluster.local:8080
+kubectl exec -it my-app-xxxxx -c my-app -- curl -v http://my-service.default.svc.cluster.local:8080
 ```
 
-If this works from the istio-proxy container but not from the app container, the issue is in how the app is making the request.
+If this works from a simple curl or debug pod in the same namespace but not from the app container, the issue is in how the app is making the request.
 
 ## Check mTLS Configuration
 
@@ -74,7 +74,7 @@ Pod is STRICT, clients configured automatically
 If the source pod is not in the mesh (no sidecar) and the destination has STRICT mTLS, the connection will be refused. Either inject the sidecar into the source pod or set the destination's PeerAuthentication to PERMISSIVE:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: allow-plaintext
@@ -104,7 +104,7 @@ kubectl get authorizationpolicy -n default -o yaml
 A common mistake is creating an ALLOW policy that is too restrictive, effectively denying everything else:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend
@@ -147,7 +147,7 @@ kubectl get destinationrule -n default
 A DestinationRule with a subset that does not match any pod labels will result in no healthy upstream errors:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -193,7 +193,7 @@ kubectl get sidecar -n default -o yaml
 If the Sidecar egress config does not include the destination service's namespace, the proxy will not have routes for it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -218,13 +218,13 @@ Add the destination namespace:
 If you still cannot figure out what is happening, enable access logs to see the actual request flow:
 
 ```bash
-istioctl install --set meshConfig.accessLogFile=/dev/stdout
+istioctl install <flags-you-used-to-install-Istio> --set meshConfig.accessLogFile=/dev/stdout
 ```
 
 Or apply a Telemetry resource:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -246,9 +246,9 @@ kubectl logs my-app-xxxxx -c istio-proxy --tail=50
 kubectl logs my-service-xxxxx -c istio-proxy --tail=50
 ```
 
-The access log includes response codes, upstream hosts, and flags that tell you exactly where the request went and why it failed.
+The access log includes response codes, upstream hosts, response flags, and response code details that tell you where the request went and why it failed.
 
-## Common Response Flags
+## Common Response Flags and Details
 
 Envoy access logs include response flags that explain the failure:
 
@@ -257,20 +257,19 @@ Envoy access logs include response flags that explain the failure:
 - `URX` - Request was rejected because upstream retry limit was reached
 - `NR` - No route configured
 - `UAEX` - Unauthorized (external auth denied)
-- `RBAC` - RBAC access denied
 
-A log line with `response_flags: UH` means Envoy has no healthy endpoints to send traffic to. A `NR` flag means no route matches the request.
+A log line with `response_flags: UH` means Envoy has no healthy endpoints to send traffic to. A `NR` flag means no route matches the request. For Istio AuthorizationPolicy denials, check the response code details, such as `rbac_access_denied_matched_policy[...]`, or the `RBAC: access denied` response body.
 
 ## The Full Debugging Checklist
 
 1. Verify sidecar injection on both sides
-2. Check Service and Endpoints exist
+2. Check Service and EndpointSlices exist
 3. Check PeerAuthentication mTLS mode
 4. Check AuthorizationPolicies for RBAC blocks
 5. Check VirtualService routing
 6. Check DestinationRule subsets and labels
 7. Check Envoy upstream endpoints
 8. Check Sidecar resource scope
-9. Enable access logging and check response flags
+9. Enable access logging and check response flags and details
 
 Working through this list systematically will get you to the root cause of most service-to-service connectivity issues in Istio. The key is knowing which layer to look at and having the right commands ready.
