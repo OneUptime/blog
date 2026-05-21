@@ -38,7 +38,7 @@ sequenceDiagram
 
 ## Enabling Strict mTLS
 
-Istio has three mTLS modes:
+Istio has several mTLS modes. The ones you will set most often are:
 
 - **PERMISSIVE** - accepts both plain text and mTLS traffic (default after installation)
 - **STRICT** - only accepts mTLS traffic
@@ -60,6 +60,7 @@ spec:
 ```
 
 Applying this in the `istio-system` namespace makes it a mesh-wide policy. Every service must now present a valid mTLS certificate to communicate.
+This assumes `istio-system` is your Istio root namespace, which is the default for most installations.
 
 ## Namespace-Level mTLS
 
@@ -105,7 +106,7 @@ spec:
     mode: PERMISSIVE
 ```
 
-You can even set different modes per port:
+You can even set different modes per workload port:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -126,7 +127,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-Port 8080 requires mTLS while port 9090 accepts plain text. This is useful when a service has an internal API (mTLS) and a health check endpoint (plain text from a load balancer that can't do mTLS).
+Workload port 8080 requires mTLS while workload port 9090 accepts plain text. This is useful when a service has an internal API (mTLS) and a health check endpoint (plain text from a load balancer that can't do mTLS). The port value here is the workload container port, not the Kubernetes Service port.
 
 ## Configuring DestinationRule for mTLS
 
@@ -242,21 +243,16 @@ If you're adding Istio to an existing cluster, jumping straight to strict mTLS w
 
 1. Install Istio with default PERMISSIVE mode
 2. Gradually inject sidecars into your workloads
-3. Monitor traffic to see what's using mTLS and what's not:
-
-```bash
-istioctl experimental authz check <pod-name> -n production
-```
-
+3. Monitor traffic metrics to see what's using mTLS and what's not
 4. Once all services have sidecars, switch namespaces to STRICT one at a time
 5. After verifying everything works, apply mesh-wide STRICT policy
 
-Keep an eye on the `istio_requests_total` metric filtered by `connection_security_policy`. This tells you whether connections are using `mutual_tls` or `none`:
+Keep an eye on the destination-reported `istio_requests_total` metric filtered by `connection_security_policy`. This tells you whether connections are using `mutual_tls`:
 
 ```promql
-sum(rate(istio_requests_total{connection_security_policy="mutual_tls"}[5m])) by (destination_service)
+sum(rate(istio_requests_total{reporter="destination",connection_security_policy="mutual_tls"}[5m])) by (destination_service)
 /
-sum(rate(istio_requests_total[5m])) by (destination_service)
+sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_service)
 ```
 
 This gives you the percentage of mTLS traffic per service. When it's 100% for all services, you're safe to go strict.
