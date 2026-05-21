@@ -72,8 +72,8 @@ This catches issues like:
 
 ```bash
 # Example output
-Warning [IST0101] (VirtualService production/my-vs) Referenced host not found: "api-service.staging.svc.cluster.local"
-Error [IST0134] (Sidecar production/duplicate-sidecar) A Sidecar resource in namespace production already exists without a workloadSelector
+Error [IST0101] (VirtualService my-vs.production) Referenced gateway not found: "missing-gateway"
+Error [IST0111] (Sidecar duplicate-sidecar.production) More than one sidecar resource in a namespace has no workload selector
 ```
 
 ## Step 3: Inspect Listeners
