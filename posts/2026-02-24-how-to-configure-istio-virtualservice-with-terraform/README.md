@@ -98,6 +98,8 @@ Including both the Gateway name and "mesh" in the gateways list means the routin
 
 One of the most common uses for VirtualService is canary releases. Split traffic between two versions of your service:
 
+This assumes you already have a corresponding DestinationRule that defines the `stable` and `canary` subsets.
+
 ```hcl
 variable "canary_weight" {
   description = "Percentage of traffic to send to canary"
@@ -222,6 +224,8 @@ resource "kubernetes_manifest" "header_routing_vs" {
 
 Requests with the `x-test-version: v2` header go to the v2 subset. Everything else goes to v1.
 
+This assumes you already have a corresponding DestinationRule that defines the `v1` and `v2` subsets.
+
 ## Configuring Retries and Timeouts
 
 Add resilience to your routing with retries and timeouts:
@@ -263,7 +267,7 @@ resource "kubernetes_manifest" "resilient_vs" {
 }
 ```
 
-The `perTryTimeout` multiplied by `attempts` should be less than or equal to the overall `timeout`. Otherwise the overall timeout will cut off retries before they exhaust their attempts.
+Remember that `attempts` is the number of retries, so the maximum number of requests is the initial request plus those retries. If the overall `timeout` is too low relative to `perTryTimeout` and retry backoff, Istio may run fewer retries than the configured `attempts` value.
 
 ## URL Rewriting
 
@@ -431,4 +435,4 @@ service_routes = {
 }
 ```
 
-Managing VirtualServices through Terraform gives you a reviewable, auditable trail of every routing change. When something goes wrong with traffic routing, you can check the Terraform state to see what changed and when. And because every change goes through `terraform plan` first, you catch misconfiguration before it hits your cluster.
+Managing VirtualServices through Terraform gives you a reviewable, auditable trail of routing changes when the configuration is stored in version control or run through CI/CD. When something goes wrong with traffic routing, you can check the Terraform state to see the currently managed configuration. And because every direct `terraform apply` creates a plan first, you can catch many schema and configuration issues before they hit your cluster.
