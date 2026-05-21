@@ -46,12 +46,12 @@ jobs:
 
       - name: Install istioctl
         run: |
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-          echo "$PWD/istio-1.20.0/bin" >> $GITHUB_PATH
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+          echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
 
       - name: Validate Istio configurations
         run: |
-          find k8s/istio -name '*.yaml' -o -name '*.yml' | while read f; do
+          find k8s/istio -type f \( -name '*.yaml' -o -name '*.yml' \) | while read f; do
             echo "Validating $f..."
             istioctl validate -f "$f"
           done
@@ -65,10 +65,10 @@ validate-istio:
   stage: validate
   before_script:
     - apt-get update && apt-get install -y curl
-    - curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-    - export PATH=$PWD/istio-1.20.0/bin:$PATH
+    - curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+    - export PATH=$PWD/istio-1.30.0/bin:$PATH
   script:
-    - find k8s/istio -name '*.yaml' -o -name '*.yml' -exec istioctl validate -f {} \;
+    - find k8s/istio -type f \( -name '*.yaml' -o -name '*.yml' \) -exec istioctl validate -f {} \;
   rules:
     - changes:
         - k8s/istio/**/*
@@ -81,7 +81,7 @@ validate-istio:
 ```yaml
       - name: Install kubeconform
         run: |
-          wget https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+          wget https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
           tar xzf kubeconform-linux-amd64.tar.gz
           mv kubeconform /usr/local/bin/
 
@@ -120,14 +120,14 @@ Example policies:
 
 package main
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     route := input.spec.http[_]
     not route.timeout
     msg := sprintf("VirtualService '%s' must define a timeout on all HTTP routes", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "VirtualService"
     route := input.spec.http[_]
     retry := route.retries
@@ -135,7 +135,7 @@ deny[msg] {
     msg := sprintf("VirtualService '%s' has retry attempts > 5, which may cause cascading failures", [input.metadata.name])
 }
 
-deny[msg] {
+deny contains msg if {
     input.kind == "DestinationRule"
     not input.spec.trafficPolicy.connectionPool
     msg := sprintf("DestinationRule '%s' should define connection pool settings", [input.metadata.name])
@@ -147,28 +147,32 @@ Add conftest to your CI:
 ```yaml
       - name: Install conftest
         run: |
-          wget https://github.com/open-policy-agent/conftest/releases/download/v0.46.0/conftest_0.46.0_Linux_x86_64.tar.gz
-          tar xzf conftest_0.46.0_Linux_x86_64.tar.gz
+          wget https://github.com/open-policy-agent/conftest/releases/download/v0.68.2/conftest_0.68.2_Linux_x86_64.tar.gz
+          tar xzf conftest_0.68.2_Linux_x86_64.tar.gz
           mv conftest /usr/local/bin/
 
       - name: Run policy checks
         run: |
-          find k8s/istio -name '*.yaml' | xargs conftest test --policy policies/istio/
+          find k8s/istio -type f \( -name '*.yaml' -o -name '*.yml' \) | xargs conftest test --policy policies/istio/
 ```
 
 ## Dry-Run Validation Against a Real Cluster
 
-For the most thorough validation, you can use `kubectl apply --dry-run=server` against a test cluster. This catches issues that offline tools miss, like references to non-existent services or namespace problems.
+For the most thorough API validation, you can use `kubectl apply --dry-run=server` against a test cluster. This submits the request to the Kubernetes API server without persisting it, so it catches issues that offline tools miss, like server-side schema validation, admission webhook failures, or missing namespaces.
 
 ```yaml
+      - name: Configure kubeconfig
+        run: |
+          echo "${{ secrets.TEST_CLUSTER_KUBECONFIG }}" > "$RUNNER_TEMP/kubeconfig"
+
       - name: Server-side dry run
         run: |
-          find k8s/istio -name '*.yaml' | while read f; do
+          find k8s/istio -type f \( -name '*.yaml' -o -name '*.yml' \) | while read f; do
             echo "Dry-run: $f"
             kubectl apply -f "$f" --dry-run=server
           done
         env:
-          KUBECONFIG: ${{ secrets.TEST_CLUSTER_KUBECONFIG }}
+          KUBECONFIG: ${{ runner.temp }}/kubeconfig
 ```
 
 This requires a test cluster, so it is not always practical. But when you have one, it catches an entire class of errors that static analysis misses.
@@ -205,26 +209,30 @@ jobs:
       - name: Install tools
         run: |
           # istioctl
-          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-          echo "$PWD/istio-1.20.0/bin" >> $GITHUB_PATH
+          curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+          echo "$PWD/istio-1.30.0/bin" >> $GITHUB_PATH
 
           # kubeconform
-          wget -q https://github.com/yannh/kubeconform/releases/download/v0.6.4/kubeconform-linux-amd64.tar.gz
+          wget -q https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz
           tar xzf kubeconform-linux-amd64.tar.gz
           mv kubeconform /usr/local/bin/
 
           # conftest
-          wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.46.0/conftest_0.46.0_Linux_x86_64.tar.gz
-          tar xzf conftest_0.46.0_Linux_x86_64.tar.gz
+          wget -q https://github.com/open-policy-agent/conftest/releases/download/v0.68.2/conftest_0.68.2_Linux_x86_64.tar.gz
+          tar xzf conftest_0.68.2_Linux_x86_64.tar.gz
           mv conftest /usr/local/bin/
+
+          # PyYAML for the syntax check
+          python3 -m pip install pyyaml
 
       - name: Validate YAML syntax
         run: |
-          find k8s -name '*.yaml' | xargs python3 -c "
+          find k8s -type f \( -name '*.yaml' -o -name '*.yml' \) | xargs python3 -c "
           import yaml, sys
           for f in sys.argv[1:]:
               try:
-                  list(yaml.safe_load_all(open(f)))
+                  with open(f) as fh:
+                      list(yaml.safe_load_all(fh))
               except yaml.YAMLError as e:
                   print(f'YAML error in {f}: {e}')
                   sys.exit(1)
@@ -232,7 +240,7 @@ jobs:
 
       - name: Validate Istio configs
         run: |
-          find k8s/istio -name '*.yaml' -exec istioctl validate -f {} \;
+          find k8s/istio -type f \( -name '*.yaml' -o -name '*.yml' \) -exec istioctl validate -f {} \;
 
       - name: Validate Kubernetes schemas
         run: |
@@ -240,7 +248,7 @@ jobs:
 
       - name: Check policies
         run: |
-          find k8s/istio -name '*.yaml' | xargs conftest test --policy policies/istio/
+          find k8s/istio -type f \( -name '*.yaml' -o -name '*.yml' \) | xargs conftest test --policy policies/istio/
 
       - name: Analyze cross-resource issues
         run: |
@@ -255,8 +263,8 @@ Downloading istioctl and other tools on every CI run wastes time. Cache them:
       - name: Cache Istio CLI
         uses: actions/cache@v4
         with:
-          path: istio-1.20.0
-          key: istio-1.20.0
+          path: istio-1.30.0
+          key: istio-1.30.0
 ```
 
 ## Handling Validation Failures Gracefully
