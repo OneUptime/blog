@@ -61,7 +61,7 @@ metadata:
 Enable strict mTLS mesh-wide to ensure all communication is encrypted and authenticated:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -80,7 +80,7 @@ The most important part is preventing Tenant A from calling Tenant B's services.
 ```yaml
 # Default deny for Tenant A's namespace
 
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -89,7 +89,7 @@ spec:
   {}
 ---
 # Allow intra-namespace communication for Tenant A
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-intra-namespace
@@ -106,7 +106,7 @@ spec:
 Do the same for every tenant namespace:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -114,7 +114,7 @@ metadata:
 spec:
   {}
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-intra-namespace
@@ -142,7 +142,7 @@ metadata:
   labels:
     istio-injection: enabled
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-all-tenants
@@ -158,10 +158,10 @@ spec:
         - tenant-c
 ```
 
-Or use a wildcard approach if you label tenant namespaces consistently:
+Or use a wildcard approach if tenant namespaces follow a consistent naming convention:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-all-tenants
@@ -172,9 +172,7 @@ spec:
   - from:
     - source:
         namespaces:
-        - tenant-a
-        - tenant-b
-        - tenant-c
+        - tenant-*
     to:
     - operation:
         methods:
@@ -184,9 +182,9 @@ spec:
         - /api/*
 ```
 
-## Per-Tenant Rate Limiting
+## Rate Limiting Shared Services
 
-Prevent one tenant from consuming disproportionate resources with per-tenant rate limiting. Using the EnvoyFilter approach with local rate limiting:
+Prevent one tenant from consuming disproportionate resources by rate limiting shared services. Using the EnvoyFilter approach with local rate limiting caps traffic per shared-api proxy instance; for tenant-specific quotas, use a global rate limit service keyed by a trusted tenant identity or header.
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -238,7 +236,7 @@ spec:
 Route traffic to different backends based on the tenant. This is useful when tenants have different service tiers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: shared-api-routing
@@ -261,12 +259,31 @@ spec:
         subset: standard
 ```
 
+The `premium` and `standard` subsets must be declared in a `DestinationRule`:
+
+```yaml
+apiVersion: networking.istio.io/v1
+kind: DestinationRule
+metadata:
+  name: shared-api
+  namespace: shared-services
+spec:
+  host: shared-api
+  subsets:
+  - name: premium
+    labels:
+      tier: premium
+  - name: standard
+    labels:
+      tier: standard
+```
+
 ## Sidecar Resource Configuration
 
 By default, each Envoy sidecar is configured with information about all services in the mesh. In a multi-tenant setup, this means Tenant A's sidecars know about Tenant B's services. You can restrict this with the Sidecar resource:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: tenant-a-sidecar
@@ -279,7 +296,7 @@ spec:
     - "istio-system/*"
 ```
 
-This limits the sidecar's knowledge to services in the tenant-a namespace and the shared-services namespace. Tenant A's sidecars won't even know that Tenant B's services exist. This improves performance (less configuration to push) and adds another layer of isolation.
+This limits the sidecar's generated outbound configuration to services in the tenant-a namespace and the shared-services namespace. This improves performance by pushing less configuration, but it is not an enforcement boundary by itself; use authorization policies and Kubernetes network policies for access control.
 
 ## Monitoring Per Tenant
 
@@ -325,7 +342,7 @@ kubectl create namespace $TENANT
 kubectl label namespace $TENANT istio-injection=enabled tenant=$TENANT
 
 kubectl apply -f - <<EOF
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -333,7 +350,7 @@ metadata:
 spec:
   {}
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-intra-namespace
@@ -350,7 +367,7 @@ spec:
         namespaces:
         - shared-services
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
