@@ -10,7 +10,7 @@ Description: Learn how to manage Istio Helm chart dependencies including orderin
 
 Istio's Helm charts have a specific dependency chain that you need to respect. Install them out of order and things break in confusing ways. Forget to match versions across charts and you end up with incompatible control plane components. This is one of those areas where understanding the dependency graph saves you from hours of debugging.
 
-This guide covers how to manage Istio chart dependencies properly, from installation ordering to building umbrella charts that handle everything automatically.
+This guide covers how to manage Istio chart dependencies properly, from installation ordering to building umbrella charts that keep related charts pinned together.
 
 ## The Istio Chart Dependency Chain
 
@@ -21,7 +21,7 @@ Istio splits its Helm installation into several charts, and they have a strict o
 3. **istio/cni** (optional) - Can be installed alongside or after istiod.
 4. **istio/gateway** - Depends on istiod being running.
 
-If you install istiod before base, Kubernetes will reject the resources because the CRDs do not exist yet. If you install a gateway before istiod is healthy, the gateway pods will crash-loop because they cannot connect to the control plane for configuration.
+If you install istiod before base, Kubernetes will reject resources that use Istio CRDs because the CRDs do not exist yet. If you install a gateway before istiod is healthy, gateway pods can fail injection or stay unready because they cannot get configuration from the control plane.
 
 ## Version Alignment
 
@@ -30,6 +30,9 @@ All Istio charts in a single installation must be the same version. Mixing a 1.2
 Always pin your versions explicitly:
 
 ```bash
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+
 ISTIO_VERSION="1.22.0"
 
 helm install istio-base istio/base \
@@ -38,16 +41,18 @@ helm install istio-base istio/base \
 
 helm install istiod istio/istiod \
   --version ${ISTIO_VERSION} \
-  -n istio-system
+  -n istio-system \
+  --wait
 
 helm install istio-ingress istio/gateway \
   --version ${ISTIO_VERSION} \
-  -n istio-ingress --create-namespace
+  -n istio-ingress --create-namespace \
+  --wait
 ```
 
 ## Building an Umbrella Chart
 
-Managing three separate Helm commands gets old fast. An umbrella chart wraps all the Istio sub-charts into a single installable unit and handles the dependency ordering for you.
+Managing three separate Helm commands gets old fast. An umbrella chart wraps all the Istio sub-charts into a single installable unit. Helm will install CRDs from the base chart before templated resources, but all sub-charts are still part of one release and share one release namespace.
 
 Create a new chart:
 
@@ -125,8 +130,9 @@ helm dependency build
 This downloads the sub-charts into the `charts/` directory. Now you can install everything with one command:
 
 ```bash
-helm install istio ./istio-umbrella \
-  -n istio-system --create-namespace
+helm install istio . \
+  -n istio-system --create-namespace \
+  --wait
 ```
 
 ## Handling Dependency Build and Update
@@ -188,6 +194,8 @@ CRDs are tricky with Helm. By design, Helm installs CRDs but does not upgrade th
 Check if CRDs need updating:
 
 ```bash
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
 helm pull istio/base --version 1.22.0 --untar
 kubectl diff -f base/crds/
 ```
@@ -253,7 +261,7 @@ spec:
         - -c
         - |
           echo "Checking Kubernetes version..."
-          kubectl version --short
+          kubectl version
           echo "Checking for conflicting Istio installations..."
           if kubectl get namespace istio-system 2>/dev/null; then
             echo "WARNING: istio-system namespace already exists"
@@ -264,7 +272,7 @@ spec:
 
 ## Upgrade Strategy with Dependencies
 
-When upgrading Istio through an umbrella chart, the sub-charts upgrade in dependency order. But you should still be careful:
+When upgrading Istio through an umbrella chart, Helm renders and applies the sub-charts as one release. CRDs still need separate attention, and you should check the full manifest before applying the upgrade:
 
 ```bash
 # Check what will change before applying
@@ -280,4 +288,4 @@ The `helm-diff` plugin is invaluable here. It shows you exactly what resources w
 helm plugin install https://github.com/databus23/helm-diff
 ```
 
-Managing Istio Helm chart dependencies properly is about two things: getting the ordering right and keeping versions aligned. An umbrella chart handles both of these automatically, and once you set it up, Istio installations become a single command with predictable results. The investment in building that umbrella chart is worth it as soon as you have more than one environment to manage.
+Managing Istio Helm chart dependencies properly is about two things: getting the ordering right and keeping versions aligned. An umbrella chart can keep the versions aligned and reduce the install to a single command, as long as you account for CRD handling and the shared release namespace. The investment in building that umbrella chart is worth it as soon as you have more than one environment to manage.
