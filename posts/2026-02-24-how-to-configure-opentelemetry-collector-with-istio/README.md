@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, OpenTelemetry, Observability, Tracing, Kubernetes
 
-Description: Complete guide to deploying and configuring the OpenTelemetry Collector to work with Istio for traces, metrics, and access logs.
+Description: Complete guide to deploying and configuring the OpenTelemetry Collector to work with Istio for traces and access logs.
 
 ---
 
-The OpenTelemetry Collector is the glue between Istio's telemetry output and your observability backends. It receives traces, metrics, and logs from Istio's Envoy proxies, processes them, and exports them to whatever backends you use. Whether you are running Jaeger, Prometheus, Grafana Tempo, Datadog, or any combination of backends, the OTel Collector handles the fan-out.
+The OpenTelemetry Collector is the glue between Istio's telemetry output and your observability backends. It receives traces and access logs from Istio's Envoy proxies, can receive metrics from instrumented workloads or other collectors, processes them, and exports them to whatever backends you use. Whether you are running Jaeger, Prometheus, Grafana Tempo, Datadog, or any combination of backends, the OTel Collector handles the fan-out.
 
 Getting the Collector properly integrated with Istio takes some configuration on both sides. Here is how to set it up end to end.
 
@@ -16,8 +16,8 @@ Getting the Collector properly integrated with Istio takes some configuration on
 
 The data flow looks like this:
 
-1. Envoy sidecar proxies generate telemetry data (traces, metrics, access logs)
-2. Proxies send the data to the OpenTelemetry Collector using OTLP (OpenTelemetry Protocol)
+1. Envoy sidecar proxies generate telemetry data (traces, Prometheus-format metrics, access logs)
+2. Proxies send traces and access logs to the OpenTelemetry Collector using OTLP (OpenTelemetry Protocol)
 3. The Collector processes the data (batching, filtering, enriching)
 4. The Collector exports the data to one or more backends
 
@@ -105,7 +105,7 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.92.0
+          image: otel/opentelemetry-collector-contrib:0.152.0
           args:
             - --config=/etc/otelcol-contrib/config.yaml
           ports:
@@ -161,13 +161,14 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     extensionProviders:
       - name: otel
         opentelemetry:
           service: otel-collector.observability.svc.cluster.local
           port: 4317
           resource_detectors:
-            - environment
+            environment: {}
 ```
 
 Then activate tracing with a Telemetry resource:
@@ -238,11 +239,11 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]
 
 exporters:
-  loki:
-    endpoint: http://loki.observability:3100/loki/api/v1/push
+  otlphttp/loki:
+    endpoint: http://loki.observability:3100/otlp
 ```
 
 ## Advanced Collector Processing
@@ -318,7 +319,7 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.92.0
+          image: otel/opentelemetry-collector-contrib:0.152.0
           args:
             - --config=/etc/otelcol-contrib/config.yaml
           ports:
@@ -385,8 +386,8 @@ Common issues and their fixes:
 
 kubectl logs deploy/otel-collector -n observability | tail -20
 
-# Verify OTLP endpoint is reachable from a proxy
-kubectl exec deploy/my-app -c istio-proxy -- curl -v otel-collector.observability:4317
+# Verify the OTLP gRPC port is reachable from a pod that has curl
+kubectl exec deploy/my-app -c my-app -- curl -v telnet://otel-collector.observability:4317
 
 # Check Istio trace config
 istioctl proxy-config bootstrap deploy/my-app -o json | jq '.bootstrap.tracing'
