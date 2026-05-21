@@ -31,7 +31,7 @@ spec:
       targetPort: 27017
 ```
 
-The prefix `mongo` is one of Istio's recognized protocol prefixes. You can also use `tcp-mongo` or set the `appProtocol`:
+The prefix `mongo` is one of Istio's recognized protocol prefixes. You can also use a suffix like `mongo-db`, or set the `appProtocol`:
 
 ```yaml
 ports:
@@ -41,7 +41,7 @@ ports:
     appProtocol: mongo
 ```
 
-When Istio recognizes the port as MongoDB, it applies a TCP proxy filter and can collect MongoDB-specific metrics if you have that feature enabled.
+MongoDB protocol support in Istio is experimental. When Istio recognizes the port as MongoDB and the Mongo filter is enabled, it can add Envoy's Mongo proxy network filter and collect MongoDB-specific filter metrics. If that filter is not enabled, the traffic is treated as an opaque TCP stream.
 
 ## Deploying MongoDB with Istio
 
@@ -197,7 +197,7 @@ The `tcpKeepalive` settings help detect dead connections. MongoDB connections ca
 
 ## Connecting to External MongoDB (Atlas, etc.)
 
-If you use MongoDB Atlas or another hosted MongoDB service, configure a ServiceEntry:
+If you use MongoDB Atlas or another hosted MongoDB service, configure a ServiceEntry. Atlas connections from MongoDB drivers are usually TLS-encrypted, so treat this traffic as TCP/TLS passthrough rather than asking Istio to inspect the MongoDB wire protocol:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -211,14 +211,14 @@ spec:
   location: MESH_EXTERNAL
   ports:
     - number: 27017
-      name: mongo
+      name: tcp-mongo-atlas
       protocol: TCP
   resolution: NONE
 ```
 
 MongoDB Atlas uses SRV records for service discovery. The MongoDB driver queries DNS SRV records to find the replica set members. Make sure your Istio configuration allows DNS queries and connections to all the resolved hosts.
 
-For TLS connections to Atlas:
+For TLS connections to Atlas, let the MongoDB driver handle TLS. Do not configure Istio TLS origination with `SIMPLE`, because that would add another TLS layer around the driver's TLS connection. You can omit the `DestinationRule` TLS settings entirely, or set TLS mode to `DISABLE` explicitly:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -230,15 +230,7 @@ spec:
   host: "*.mongodb.net"
   trafficPolicy:
     tls:
-      mode: SIMPLE
-```
-
-Since Atlas requires TLS, and the MongoDB driver handles TLS itself, you might need to use `DISABLE` instead of `SIMPLE` to avoid double TLS:
-
-```yaml
-trafficPolicy:
-  tls:
-    mode: DISABLE
+      mode: DISABLE
 ```
 
 This tells Istio's sidecar not to add its own TLS layer, letting the MongoDB driver's TLS pass through as-is.
