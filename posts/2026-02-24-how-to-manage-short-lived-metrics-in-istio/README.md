@@ -8,7 +8,7 @@ Description: Handle short-lived metrics from ephemeral pods, canary deployments,
 
 ---
 
-Short-lived metrics are a sneaky problem in Istio monitoring. When pods come and go frequently - think autoscaling events, rolling deployments, canary releases, cron jobs, or spot instances - the metrics they generate become stale quickly. Prometheus marks time series as stale when a target disappears, but those series still show up in queries for a while. This leads to confusing dashboards, phantom services in topology views, and alerts that fire on services that no longer exist.
+Short-lived metrics are a sneaky problem in Istio monitoring. When pods come and go frequently - think autoscaling events, rolling deployments, canary releases, cron jobs, or spot instances - the metrics they generate become stale quickly. Prometheus marks time series as stale when a target disappears, and range queries can still include historical samples after the series has disappeared from instant queries. This leads to confusing dashboards, phantom services in topology views, and alerts that fire on services that no longer exist.
 
 ## The Problem with Ephemeral Workloads
 
@@ -18,8 +18,8 @@ In Kubernetes, pods are ephemeral by nature. But metrics are typically designed 
 2. The pod runs for a short time (minutes to hours)
 3. The pod is terminated (autoscale down, deployment, job completion)
 4. Prometheus has metrics for that pod, but no new data is coming in
-5. For the next 5 minutes (Prometheus staleness period), the old data still shows up in queries
-6. After staleness, the series disappears from instant queries but remains in range queries
+5. Prometheus marks the series stale soon after the target disappears
+6. After staleness, the series disappears from instant queries but historical samples remain available to range queries
 
 For services that scale up and down frequently, this creates a messy picture. You might see 50 pods worth of metrics when only 10 pods are actually running.
 
@@ -62,17 +62,18 @@ The `[5m]` window should be at least 4x your scrape interval. For 30-second scra
 
 ### Filter Out Stale Series
 
-Use the `up` metric or `kube_pod_info` to filter only currently running pods:
+Use Kubernetes pod state metrics to filter only currently running pods. This example assumes your Istio metrics and kube-state-metrics both expose compatible `namespace` and `pod` labels:
 
 ```promql
 # Only count metrics from currently running pods
-sum(rate(istio_requests_total{
-  reporter="destination",
-  destination_workload="my-service"
-}[5m]))
-by (destination_workload)
-* on (destination_workload) group_left()
-(count by (destination_workload)(up{job="envoy-stats"} == 1) > 0)
+sum by (destination_workload) (
+  rate(istio_requests_total{
+    reporter="destination",
+    destination_workload="my-service"
+  }[5m])
+  and on (namespace, pod)
+  (kube_pod_status_phase{phase="Running"} == 1)
+)
 ```
 
 ### Using `absent()` for Short-Lived Services
@@ -114,10 +115,10 @@ Be careful - shorter intervals mean more load on Prometheus.
 
 ### Pushgateway for Job Metrics
 
-For very short-lived jobs (less than a minute), metrics might not get scraped at all. You can configure Envoy to push metrics to a Pushgateway:
+For very short-lived service-level jobs (less than a minute), metrics might not get scraped at all. Use the Pushgateway carefully for final job outcome metrics, and avoid per-pod or per-instance labels that would leave stale series behind:
 
 ```yaml
-apiVersion: apps/v1
+apiVersion: batch/v1
 kind: Job
 metadata:
   name: data-migration
@@ -136,9 +137,10 @@ spec:
             - |
               # Run the migration
               ./run-migration.sh
-              # Push final metrics before exit
-              curl -s localhost:15020/stats/prometheus | \
+              # Push a final service-level success metric before exit
+              printf 'data_migration_last_success_unixtime %s\n' "$(date +%s)" | \
                 curl --data-binary @- http://pushgateway.monitoring:9091/metrics/job/data-migration
+      restartPolicy: Never
 ```
 
 ### Configuring Sidecar Lifecycle for Jobs
@@ -146,7 +148,7 @@ spec:
 A common issue with Istio sidecar in Jobs is that the sidecar doesn't terminate when the main container finishes. Configure proper lifecycle handling:
 
 ```yaml
-apiVersion: apps/v1
+apiVersion: batch/v1
 kind: Job
 metadata:
   name: short-job
@@ -166,9 +168,10 @@ spec:
               ./do-work.sh
               # Signal the sidecar to quit
               curl -X POST http://localhost:15020/quitquitquit
+      restartPolicy: Never
 ```
 
-The `/quitquitquit` endpoint tells the Envoy sidecar to shut down cleanly, which ensures final metrics are flushed.
+The `/quitquitquit` endpoint tells the Istio proxy to shut down, which lets the Job complete instead of waiting on the sidecar. It does not replace scraping or pushing any final metrics you need to keep.
 
 ## Handling Canary Metrics
 
@@ -230,10 +233,10 @@ Your alerts need to tolerate pod churn. Avoid alerts that trigger just because p
 # Better: Alerts when the aggregate rate drops to zero
 - alert: ServiceDown
   expr: |
-    sum(rate(istio_requests_total{
+    (sum(rate(istio_requests_total{
       reporter="destination",
       destination_workload="my-service"
-    }[5m])) == 0
+    }[5m])) or vector(0)) == 0
     and
     sum(rate(istio_requests_total{
       reporter="destination",
@@ -248,7 +251,7 @@ The improved version checks that the service was previously active (ruling out s
 
 ### Prometheus Staleness Handling
 
-Prometheus marks series as stale 5 minutes after the last scrape. You can't change this timeout, but you can account for it in queries by using slightly longer range vectors:
+Prometheus marks series stale when a scrape no longer returns them or when the target disappears. For metrics with explicit timestamps, Prometheus can keep using the most recent sample for the default 5-minute lookback period before the series disappears. You can account for scrape gaps in queries by using slightly longer range vectors:
 
 ```promql
 # Use a range that exceeds the staleness period
@@ -260,12 +263,11 @@ sum(rate(istio_requests_total{
 
 ### TSDB Tombstone Cleanup
 
-For truly stale series that you want gone from Prometheus storage, you can use the admin API:
+For truly stale series that you want gone from Prometheus storage, you can use the admin API if Prometheus was started with `--web.enable-admin-api`:
 
 ```bash
 # Delete series for a removed service
-curl -X POST 'http://prometheus:9090/api/v1/admin/tsdb/delete_series' \
-  -d 'match[]=istio_requests_total{destination_workload="removed-service"}'
+curl -X POST -g 'http://prometheus:9090/api/v1/admin/tsdb/delete_series?match[]=istio_requests_total{destination_workload="removed-service"}'
 
 # Trigger compaction
 curl -X POST 'http://prometheus:9090/api/v1/admin/tsdb/clean_tombstones'
