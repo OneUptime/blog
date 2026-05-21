@@ -129,7 +129,7 @@ The `topologySpreadConstraints` ensure that replicas are distributed across diff
 
 ## Handling istiod Failure
 
-If the node running istiod fails, you lose the control plane. Existing proxies continue working with their cached configuration, but new pods will not get sidecar injection and configuration updates will not be distributed.
+If the node running istiod fails, you lose the control plane. Existing proxies continue working with their cached configuration, but configuration updates will not be distributed. With the default sidecar injection webhook failure policy, new pod creation in injection-enabled namespaces can be rejected while istiod is unavailable.
 
 For edge environments with multiple nodes, run istiod with anti-affinity:
 
@@ -159,15 +159,17 @@ If your edge cluster only has one or two nodes and you cannot afford two istiod 
 
 ## Configuring Faster Pod Eviction
 
-By default, Kubernetes waits 5 minutes before evicting pods from a failed node. That is way too long for edge. Configure the node controller to detect and evict faster:
+By default, Kubernetes adds `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` tolerations with `tolerationSeconds: 300` to pods that do not set them explicitly. That is way too long for edge. Configure the node controller to detect failed nodes faster, and configure the API server default tolerations or explicit pod tolerations to evict faster:
 
 ```bash
-# On the K3s/K8s API server, reduce tolerations
+# On K3s, add to /etc/rancher/k3s/config.yaml:
 
-# For K3s, add to /etc/rancher/k3s/config.yaml:
 # kube-controller-manager-arg:
 #   - "node-monitor-grace-period=20s"
-#   - "pod-eviction-timeout=30s"
+#
+# kube-apiserver-arg:
+#   - "default-not-ready-toleration-seconds=30"
+#   - "default-unreachable-toleration-seconds=30"
 ```
 
 Also add tolerations to your pods to control how long they wait before being evicted from a NotReady node:
