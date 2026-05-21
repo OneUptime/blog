@@ -292,7 +292,7 @@ spec:
               number: 80
 ```
 
-The `Strict-Transport-Security` header tells browsers to always use HTTPS for the next year (31536000 seconds). After seeing this header once, the browser will never even try HTTP for this domain.
+The `Strict-Transport-Security` header tells browsers to always use HTTPS for the next year (31536000 seconds). After seeing this header once over HTTPS, the browser upgrades future HTTP attempts for this domain until the policy expires.
 
 ## Testing the Redirect
 
@@ -350,7 +350,7 @@ The `RequestRedirect` filter handles the redirect in a Gateway API-native way.
 
 **Missing HTTP server in the Gateway.** If you only define an HTTPS server, HTTP requests get connection refused instead of redirected. You need both the HTTPS server and the HTTP server with the redirect.
 
-**Redirect loop.** This happens when something in front of the gateway (like a cloud load balancer) terminates TLS and forwards HTTP to the gateway. The gateway sees HTTP and redirects to HTTPS, but the load balancer converts HTTPS back to HTTP, creating an infinite loop. Fix this by configuring the load balancer to pass through TLS or by using the `X-Forwarded-Proto` header.
+**Redirect loop.** This happens when something in front of the gateway (like a cloud load balancer) terminates TLS and forwards HTTP to the gateway. The gateway sees HTTP and redirects to HTTPS, but the load balancer converts HTTPS back to HTTP, creating an infinite loop. Fix this by configuring the load balancer to pass through TLS, forward HTTPS to the gateway, or set trusted forwarded-proto/topology handling for the gateway.
 
 **Not matching the right port in VirtualService.** If you use VirtualService-based redirect, make sure the `port` match is correct. Port 80 for HTTP, port 443 for HTTPS.
 
