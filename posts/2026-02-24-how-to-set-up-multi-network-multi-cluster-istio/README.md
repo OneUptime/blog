@@ -15,7 +15,7 @@ When your Kubernetes clusters live on different networks and pods can't directly
 In a multi-network setup, each cluster gets labeled with a network identifier. When a service in cluster1 needs to talk to a service in cluster2, the traffic flows like this:
 
 1. The sidecar in cluster1 sends traffic to the east-west gateway in cluster2
-2. The east-west gateway in cluster2 terminates the mTLS connection and routes to the destination pod
+2. The east-west gateway in cluster2 uses TLS passthrough and routes the existing mTLS connection to the destination pod
 3. The response follows the reverse path
 
 This means cross-cluster traffic always goes through a gateway, which adds a small amount of latency but works across any network topology.
@@ -23,7 +23,7 @@ This means cross-cluster traffic always goes through a gateway, which adds a sma
 ## Prerequisites
 
 - Two Kubernetes clusters on separate networks
-- istioctl installed (1.20+)
+- A supported Istio release and matching istioctl version
 - kubectl contexts for both clusters
 - A shared root CA (or the ability to create one)
 
@@ -58,7 +58,10 @@ for cluster in cluster1 cluster2; do
 
   openssl x509 -req -sha256 -days 3650 \
     -CA root-cert.pem -CAkey root-key.pem -CAcreateserial \
+    -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n") \
     -in ${cluster}-ca-csr.pem -out ${cluster}-ca-cert.pem
+
+  cat ${cluster}-ca-cert.pem root-cert.pem > ${cluster}-cert-chain.pem
 done
 ```
 
@@ -67,18 +70,23 @@ Install the CA secrets:
 ```bash
 for ctx in ${CTX_CLUSTER1} ${CTX_CLUSTER2}; do
   cluster=$(echo ${ctx})
-  kubectl --context=${ctx} create namespace istio-system
+  kubectl --context=${ctx} create namespace istio-system --dry-run=client -o yaml | \
+    kubectl --context=${ctx} apply -f -
   kubectl --context=${ctx} create secret generic cacerts -n istio-system \
     --from-file=ca-cert.pem=${cluster}-ca-cert.pem \
     --from-file=ca-key.pem=${cluster}-ca-key.pem \
     --from-file=root-cert.pem=root-cert.pem \
-    --from-file=cert-chain.pem=${cluster}-ca-cert.pem
+    --from-file=cert-chain.pem=${cluster}-cert-chain.pem
 done
 ```
 
 ## Step 2: Install Istio on Cluster 1
 
-The key difference from flat networking is the `network` label. Each cluster gets a unique network name:
+The key difference from flat networking is the `network` setting. Each cluster gets a unique network name:
+
+```bash
+kubectl --context=${CTX_CLUSTER1} label namespace istio-system topology.istio.io/network=network1 --overwrite
+```
 
 ```yaml
 # cluster1-config.yaml
@@ -194,6 +202,10 @@ EOF
 ## Step 4: Install Istio on Cluster 2
 
 Repeat the same process for cluster 2 with `network2`:
+
+```bash
+kubectl --context=${CTX_CLUSTER2} label namespace istio-system topology.istio.io/network=network2 --overwrite
+```
 
 ```yaml
 # cluster2-config.yaml
@@ -313,8 +325,9 @@ for ctx in ${CTX_CLUSTER1} ${CTX_CLUSTER2}; do
 done
 
 # Test connectivity
-kubectl --context=${CTX_CLUSTER1} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/sleep/sleep.yaml
-kubectl --context=${CTX_CLUSTER2} apply -n sample -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/helloworld/helloworld.yaml
+kubectl --context=${CTX_CLUSTER1} apply -n sample -f samples/sleep/sleep.yaml
+kubectl --context=${CTX_CLUSTER1} apply -n sample -f samples/helloworld/helloworld.yaml -l service=helloworld
+kubectl --context=${CTX_CLUSTER2} apply -n sample -f samples/helloworld/helloworld.yaml
 ```
 
 Check that the proxy config shows the east-west gateway as an endpoint:
