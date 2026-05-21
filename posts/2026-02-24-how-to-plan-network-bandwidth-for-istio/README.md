@@ -26,7 +26,7 @@ Sidecar proxies export metrics to Prometheus (or other collectors), generate tra
 Mutual TLS adds overhead to every service-to-service call due to the TLS record framing and encryption padding.
 
 ### 4. Health Check Traffic
-istiod performs health checks and the sidecars maintain keepalive connections to the control plane.
+Kubernetes health probes may be rewritten through the sidecar, and sidecars maintain keepalive connections to the control plane.
 
 ### 5. Certificate Operations
 Certificate signing requests and certificate distribution add traffic between workloads and istiod.
@@ -43,15 +43,15 @@ The xDS protocol streams configuration from istiod to sidecars. The bandwidth de
 istioctl proxy-config all <pod-name> -n <namespace> -o json | wc -c
 ```
 
-A typical proxy in a mesh with 500 services might receive 2-5 MB of initial configuration. After that, only deltas are pushed.
+A typical proxy in a mesh with 500 services might receive 2-5 MB of initial configuration. After that, only changed configuration is pushed.
 
 **Ongoing xDS traffic estimate:**
 
 ```text
-Per_Proxy_xDS = Initial_Config_Size + (Changes_Per_Hour x Avg_Delta_Size)
+Per_Proxy_xDS = Changes_Per_Hour x Avg_Changed_Config_Size
 
 Example:
-  500 proxies, 5 MB initial config, 20 config changes per hour, 50 KB average delta
+  500 proxies, 5 MB initial config, 20 config changes per hour, 50 KB average changed config
 
   Initial burst: 500 x 5 MB = 2.5 GB (one-time, during rollout or restart)
   Ongoing: 500 proxies x 20 changes/hr x 50 KB = 500 MB/hr = ~140 KB/s sustained
@@ -113,7 +113,7 @@ Example:
 Reduce this by extending the scrape interval or filtering out unnecessary metrics:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: mesh-default
@@ -187,7 +187,7 @@ Make sure your network policies allow the additional traffic flows that Istio ne
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-istiod
+  name: allow-istio-control-and-telemetry
   namespace: default
 spec:
   podSelector: {}
@@ -197,7 +197,7 @@ spec:
             matchLabels:
               kubernetes.io/metadata.name: istio-system
       ports:
-        - port: 15017
+        - port: 15090
           protocol: TCP
   egress:
     - to:
