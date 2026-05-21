@@ -35,7 +35,7 @@ kubectl get peerauthentication --all-namespaces
 kubectl get peerauthentication -n istio-system -o yaml
 ```
 
-If you have not set any PeerAuthentication, Istio defaults to PERMISSIVE mode. This means services with sidecars will use mTLS when talking to each other, but they will also accept plaintext traffic from services without sidecars.
+If you have not set any PeerAuthentication, Istio defaults to PERMISSIVE mode. This means services with sidecars will use mTLS when talking to other workloads with sidecars, but they will also accept plaintext traffic from services without sidecars.
 
 Check the actual mTLS status between services:
 
@@ -64,7 +64,7 @@ kubectl rollout restart deployment <deployment-name> -n <namespace>
 
 ## Step 3: Set Permissive Mode Mesh-Wide
 
-If you have not already, explicitly set permissive mode at the mesh level:
+If you have not already, explicitly set permissive mode at the mesh level. The example below assumes `istio-system` is your Istio root namespace. If you installed Istio with a different root namespace, use that namespace instead:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -137,7 +137,7 @@ kubectl logs -n staging -l app=my-service -c istio-proxy --tail=100 | grep "503\
 istioctl proxy-config listeners <pod-name> -n staging
 ```
 
-If you see 503 errors with "upstream_reset_before_response_started" flags, a client without a sidecar is trying to reach a service in this namespace. You need to either add a sidecar to the client or create an exception.
+If you see 503 errors with "upstream_reset_before_response_started" flags, a client without a sidecar may be trying to reach a service in this namespace. Check the source of the failed request, then either add a sidecar to the client or create an exception.
 
 ### Create Exceptions for Specific Workloads
 
@@ -160,7 +160,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-This makes port 8081 accept plaintext while all other ports require mTLS.
+This makes workload port 8081 accept plaintext or mTLS while all other ports require mTLS. The `portLevelMtls` key is the workload container port, not the Kubernetes Service port.
 
 ## Step 6: Handle Cross-Namespace Communication
 
@@ -190,11 +190,11 @@ spec:
       restartPolicy: Never
 ```
 
-But be aware that jobs with sidecars need special handling because the sidecar does not terminate when the job container finishes. You can handle this with a preStop hook or by using Istio's native job handling (available in newer versions).
+But be aware that jobs with legacy sidecars need special handling because the sidecar can keep the pod running after the job container finishes. You can handle this by explicitly terminating the proxy when the job completes or by using Kubernetes native sidecars with Istio on supported Kubernetes and Istio versions.
 
 ## Step 7: Enable Strict Mode Mesh-Wide
 
-Once every namespace has been individually tested with strict mode, enable it at the mesh level:
+Once every namespace has been individually tested with strict mode, enable it at the mesh level. Again, use your Istio root namespace if it is not `istio-system`:
 
 ```yaml
 apiVersion: security.istio.io/v1
