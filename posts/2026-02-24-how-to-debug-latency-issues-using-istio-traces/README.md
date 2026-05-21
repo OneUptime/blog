@@ -8,7 +8,7 @@ Description: A practical guide to using Istio distributed traces to identify and
 
 ---
 
-A user reports that the checkout page takes 8 seconds to load. Your metrics show that the checkout service's p99 latency has spiked. But the checkout service calls five other services, and each of those might call others. Where is the time being spent? This is exactly the problem distributed tracing was built to solve, and Istio makes it possible to debug latency without adding instrumentation to your application code.
+A user reports that the checkout page takes 8 seconds to load. Your metrics show that the checkout service's p99 latency has spiked. But the checkout service calls five other services, and each of those might call others. Where is the time being spent? This is exactly the problem distributed tracing was built to solve, and Istio can emit proxy spans without adding tracing instrumentation to your application code. For complete end-to-end traces, your application or libraries still need to propagate trace context headers between incoming and outgoing requests.
 
 ## Reading a Trace Waterfall
 
@@ -60,7 +60,7 @@ curl -s "http://jaeger:16686/api/traces?service=checkout-service&minDuration=2s&
 In the Jaeger UI, use the "Min Duration" field to filter. In Grafana with Tempo, use TraceQL:
 
 ```text
-{resource.service.name = "checkout-service"} | duration > 2s
+{ trace:duration > 2s && resource.service.name = "checkout-service" }
 ```
 
 ### By Percentile Analysis
@@ -69,10 +69,11 @@ Find traces that represent the p99 latency:
 
 ```bash
 # Get the p99 value from Prometheus
-curl -s 'http://prometheus:9090/api/v1/query?query=histogram_quantile(0.99,sum(rate(istio_request_duration_milliseconds_bucket{destination_service="checkout-service"}[5m]))by(le))'
+curl -G -s 'http://prometheus:9090/api/v1/query' \
+  --data-urlencode 'query=histogram_quantile(0.99,sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service="checkout-service.default.svc.cluster.local"}[5m]))by(le))'
 ```
 
-Then search for traces with durations near that p99 value.
+Then search for traces with durations near that p99 value. Replace the `destination_service` value with the label value used in your cluster; Istio commonly reports the fully qualified service host.
 
 ## Interpreting Span Timing
 
@@ -83,26 +84,28 @@ Each span in an Istio trace has several timing properties. Understanding them he
 For each service-to-service call, there are two spans:
 
 - **Client span:** Measured at the calling service's sidecar. Includes network time + server processing.
-- **Server span:** Measured at the receiving service's sidecar. Just the server processing time.
+- **Server span:** Measured at the receiving service's sidecar. Includes the destination proxy's view of the request, the application processing time, and the response path back through that proxy.
 
-The difference tells you about network latency:
+The difference tells you about proxy and network overhead:
 
 ```text
-Network latency (round trip) = Client span duration - Server span duration
+Proxy/network overhead (approximate) = Client span duration - Server span duration
 ```
 
-If a client span is 500ms but the server span is only 50ms, you have 450ms of network overhead. This could be:
+If a client span is 500ms but the server span is only 50ms, you have roughly 450ms outside the destination sidecar's measured handling time. This could be:
 - Actual network latency (unlikely to be that high within a cluster)
 - mTLS handshake time (if it's a new connection)
 - Connection pool exhaustion (waiting for a free connection)
 
 ### Gap Between Parent and Child Spans
 
-If a parent span is 1000ms but its child spans only add up to 200ms, the remaining 800ms is time the application spent doing work between calls (like database queries, computation, or sleeping).
+If a parent span is 1000ms but its child spans cover only 200ms of the parent's timeline, the remaining 800ms is time the application spent doing work between calls (like database queries, computation, or sleeping).
 
 ```text
-Application processing time = Parent span duration - Sum of child span durations
+Application processing time (approximate) = Parent span duration - Wall-clock time covered by child spans
 ```
+
+Use the wall-clock coverage of child spans rather than a raw sum when child spans overlap.
 
 ### Concurrent vs Sequential Child Spans
 
@@ -217,17 +220,17 @@ spec:
         maxRequestsPerConnection: 100
 ```
 
-### Pattern 5: DNS Resolution Delay
+### Pattern 5: Possible DNS Resolution Delay
 
-A gap at the very beginning of the first span in a trace:
+A large delay before the destination-side span appears for an external or newly resolved service:
 
 ```text
-Total trace: 2.5s
-First span starts after: 500ms delay
-Actual processing: 2.0s
+Client span starts:       T+0ms
+Destination span starts:  T+500ms
+Actual processing:        2.0s
 ```
 
-**Cause:** DNS resolution for the service name. Usually happens with external services or when CoreDNS is under load.
+**Cause:** DNS resolution or connection establishment for the service name. DNS delay is not usually visible as its own Istio span, so confirm this with Envoy stats, CoreDNS metrics, or proxy logs. It is more common with external services or when CoreDNS is under load.
 
 ## Using Envoy Stats to Confirm Latency Sources
 
@@ -259,8 +262,8 @@ kubectl exec deploy/checkout-service -c istio-proxy -- \
 8. **Verify the fix** by checking new traces
 
 ```bash
-# Quick check: get the trace ID from access logs
-kubectl logs deploy/checkout-service -c istio-proxy --tail=10 | jq -r '.trace_id'
+# Quick check: get trace IDs when your JSON access log format includes %TRACE_ID%
+kubectl logs deploy/checkout-service -c istio-proxy --tail=10 | jq -r 'select(.trace_id != null) | .trace_id'
 
 # Look up that trace
 # In Jaeger: http://jaeger:16686/trace/{trace_id}
@@ -284,7 +287,7 @@ spec:
         - alert: ServiceHighLatency
           expr: |
             histogram_quantile(0.99,
-              sum(rate(istio_request_duration_milliseconds_bucket[5m])) by (le, destination_service)
+              sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination"}[5m])) by (le, destination_service)
             ) > 2000
           for: 5m
           annotations:
