@@ -28,7 +28,7 @@ kubectl describe pod <pod-name> | tail -30
 You will see events like:
 
 ```text
-Warning  Unhealthy  2s (x3 over 12s)  kubelet  Liveness probe failed: Get "http://10.244.1.5:15021/app-health/my-app/livez": dial tcp 10.244.1.5:15021: connect: connection refused
+Warning  Unhealthy  2s (x3 over 12s)  kubelet  Liveness probe failed: Get "http://10.244.1.5:15020/app-health/my-app/livez": dial tcp 10.244.1.5:15020: connect: connection refused
 ```
 
 Or:
@@ -49,14 +49,14 @@ kubectl get pod <pod-name> -o yaml | grep -B2 -A15 "readinessProbe"
 ```
 
 If probe rewriting is working, you should see:
-- Port changed to `15021`
+- Port changed to `15020`
 - Path changed to `/app-health/<container-name>/livez` or `/readyz`
 
 If you see the original port and path (like port 8080 and `/healthz`), probe rewriting is not active. This happens when:
 
 1. The sidecar was injected by an older version of Istio
 2. The annotation `sidecar.istio.io/rewriteAppHTTPProbers` is set to "false"
-3. The probe type is not HTTP (TCP and exec probes are not rewritten)
+3. The probe type is `exec` (HTTP, TCP, and gRPC probes can be rewritten by Istio; exec probes do not need rewriting)
 
 Fix: re-inject the sidecar by restarting the pod:
 
@@ -86,11 +86,11 @@ If the direct test passes, test through the Istio agent:
 ```bash
 # Test the liveness probe path
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  curl -v http://localhost:15021/app-health/my-app/livez
+  curl -v http://localhost:15020/app-health/my-app/livez
 
 # Test the readiness probe path
 kubectl exec -it <pod-name> -c istio-proxy -- \
-  curl -v http://localhost:15021/app-health/my-app/readyz
+  curl -v http://localhost:15020/app-health/my-app/readyz
 
 # Test the sidecar's own readiness
 kubectl exec -it <pod-name> -c istio-proxy -- \
@@ -111,7 +111,7 @@ kubectl get pod <pod-name> -o jsonpath='{range .status.containerStatuses[*]}{.na
 kubectl logs <pod-name> -c istio-proxy --previous
 ```
 
-If the sidecar is crashing, your health probes will fail because port 15021 is not available. Check the sidecar logs for errors:
+If the sidecar is crashing, rewritten application probes and the sidecar readiness probe will fail because the Istio agent is not available. Check the sidecar logs for errors:
 
 ```bash
 kubectl logs <pod-name> -c istio-proxy | head -50
@@ -130,7 +130,7 @@ If you have STRICT mTLS and probe rewriting is not active:
 # Check mTLS mode
 kubectl get peerauthentication -n default -o yaml
 
-# Check the namespace-level policy
+# Check the mesh-level policy in the root namespace, if istio-system is your root namespace
 kubectl get peerauthentication -n istio-system -o yaml
 ```
 
@@ -213,19 +213,19 @@ metadata:
 
 ## Step 10: Check Network Policies
 
-If you have Kubernetes NetworkPolicies, they might block probe traffic:
+Standard Kubernetes NetworkPolicies usually do not block kubelet probes from the node running the pod, because traffic from a pod's node is allowed. If probes still look blocked, check for CNI-specific host endpoint policies, node firewalls, or cloud firewall rules:
 
 ```bash
 kubectl get networkpolicy -n default
 ```
 
-Make sure the kubelet's IP range is allowed to access health check ports. The kubelet sends probes from the node's IP, not from within the cluster network.
+Make sure node-originated traffic can reach the health check ports. The kubelet sends HTTP probes to the pod IP, and TCP probes are opened from the node.
 
 ## Quick Reference: Common Failures and Fixes
 
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
-| Connection refused on 15021 | Sidecar not running | Check sidecar logs, restart pod |
+| Connection refused on 15020 app-health path | Sidecar agent not running | Check sidecar logs, restart pod |
 | 503 from probe | App reporting unhealthy | Check app logs, test directly |
 | Timeout on probe | App too slow to respond | Increase `timeoutSeconds` |
 | Probes fail only with STRICT mTLS | Probe rewriting disabled | Enable `rewriteAppHTTPProbers` |
@@ -255,7 +255,7 @@ echo "=== Direct Health Check ==="
 kubectl exec -it $POD -c $CONTAINER -- curl -sf http://localhost:8080/healthz && echo "PASS" || echo "FAIL"
 
 echo "=== Sidecar Agent Health Check ==="
-kubectl exec -it $POD -c istio-proxy -- curl -sf http://localhost:15021/app-health/$CONTAINER/livez && echo "PASS" || echo "FAIL"
+kubectl exec -it $POD -c istio-proxy -- curl -sf http://localhost:15020/app-health/$CONTAINER/livez && echo "PASS" || echo "FAIL"
 
 echo "=== Sidecar Readiness ==="
 kubectl exec -it $POD -c istio-proxy -- curl -sf http://localhost:15021/healthz/ready && echo "PASS" || echo "FAIL"
