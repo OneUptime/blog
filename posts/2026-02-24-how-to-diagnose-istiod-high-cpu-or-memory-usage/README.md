@@ -45,22 +45,22 @@ Key metrics to check:
 
 ```promql
 # Number of connected proxies
-pilot_xds_connected_endpoints
+pilot_xds
 
 # Configuration push rate
-rate(pilot_xds_pushes[5m])
+rate(pilot_push_triggers[5m])
 
-# Push queue size (should be near 0)
-pilot_push_triggers
+# Push trigger rate by reason
+sum(rate(pilot_push_triggers[5m])) by (reason)
 
 # Time to push configuration
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 
-# Number of Kubernetes resources being watched
-pilot_k8s_reg_events
+# Kubernetes registry event rate
+rate(pilot_k8s_reg_events[5m])
 
-# Webhook call count (validation webhook)
-sum(rate(galley_validation_http_error[5m]))
+# Validation webhook pass/fail rate
+sum(rate(galley_validation_passed[5m])) + sum(rate(galley_validation_failed[5m]))
 ```
 
 ## Common Causes of High CPU
@@ -70,7 +70,7 @@ sum(rate(galley_validation_http_error[5m]))
 Each connected proxy requires CPU for maintaining the gRPC connection and pushing configuration updates:
 
 ```promql
-pilot_xds_connected_endpoints
+pilot_xds
 ```
 
 With hundreds or thousands of proxies, even routine configuration updates become expensive because Istiod must compute and push config for each proxy.
@@ -89,7 +89,7 @@ Every change to a Kubernetes Service, Deployment, ConfigMap (for Istio config), 
 
 ```promql
 # Push trigger rate
-rate(pilot_xds_pushes[5m])
+rate(pilot_push_triggers[5m])
 ```
 
 If the push rate is very high, something is changing frequently. Check what is triggering pushes:
@@ -151,7 +151,7 @@ Istiod caches the computed Envoy configuration for each proxy. More proxies and 
 
 ```promql
 # Approximate config cache size
-pilot_xds_cache_size
+xds_cache_size
 ```
 
 ### 2. Kubernetes Watch Caches
@@ -159,7 +159,7 @@ pilot_xds_cache_size
 Istiod maintains in-memory caches of all Kubernetes resources it watches (Services, Endpoints, Pods, Istio CRDs). In large clusters, these caches get big:
 
 ```bash
-# Check how many resources are cached
+# Check Kubernetes config event volume
 kubectl exec deploy/istiod -n istio-system -- curl -s localhost:15014/metrics | grep "pilot_k8s_cfg_events"
 ```
 
@@ -275,8 +275,8 @@ spec:
   values:
     pilot:
       env:
-        PILOT_DEBOUNCE_AFTER: "100ms"
-        PILOT_DEBOUNCE_MAX: "1s"
+        PILOT_DEBOUNCE_AFTER: "500ms"
+        PILOT_DEBOUNCE_MAX: "10s"
         PILOT_PUSH_THROTTLE: "100"
 ```
 
