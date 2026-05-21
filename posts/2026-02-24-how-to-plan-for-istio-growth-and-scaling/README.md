@@ -29,15 +29,14 @@ Before you can plan for growth, you need to track it. Set up dashboards for thes
 ```promql
 # Total pods in the mesh over time
 
-count(kube_pod_labels{label_security_istio_io_tlsMode="istio"})
+count(kube_pod_container_info{container="istio-proxy"})
 
 # Total services
 count(kube_service_info)
 
-# Total Istio configuration resources
-count(galley_istio_networking_virtualservices)
-+ count(galley_istio_networking_destinationrules)
-+ count(galley_istio_security_authorizationpolicies)
+# Total services and virtual services known to istiod
+sum(pilot_services)
++ sum(pilot_virt_services)
 
 # Request rate trend
 sum(rate(istio_requests_total[5m]))
@@ -94,11 +93,11 @@ The xDS push time is the best indicator of whether istiod is keeping up:
 # P99 push time
 histogram_quantile(0.99, sum(rate(pilot_xds_push_time_bucket[5m])) by (le))
 
-# Push queue depth (should be near zero in steady state)
-pilot_push_triggers
+# P99 proxy queue time
+histogram_quantile(0.99, sum(rate(pilot_proxy_queue_time_bucket[5m])) by (le))
 
 # Number of connected proxies per istiod instance
-sum(pilot_xds_pushes) by (pod)
+sum(pilot_xds) by (pod)
 ```
 
 If P99 push time exceeds 5 seconds, your control plane needs more resources or replicas.
@@ -134,6 +133,9 @@ metadata:
   name: api-gateway
   namespace: frontend
 spec:
+  workloadSelector:
+    labels:
+      app: api-gateway
   egress:
     - hosts:
         - "./*"
@@ -221,7 +223,7 @@ istioctl remote-clusters
 istioctl analyze --all-namespaces
 ```
 
-Multi-cluster adds complexity but removes single-cluster scaling limits. Plan the transition early if you expect to exceed:
+Multi-cluster adds complexity but helps you move past many single-cluster scaling bottlenecks. Plan the transition early if you expect to exceed:
 
 - 5,000 pods in a single cluster
 - 10,000 services
@@ -311,9 +313,9 @@ groups:
 
       - alert: MeshGrowthRate
         expr: |
-          (count(kube_pod_labels{label_security_istio_io_tlsMode="istio"})
-          - count(kube_pod_labels{label_security_istio_io_tlsMode="istio"} offset 7d))
-          / count(kube_pod_labels{label_security_istio_io_tlsMode="istio"} offset 7d)
+          (count(kube_pod_container_info{container="istio-proxy"})
+          - count(kube_pod_container_info{container="istio-proxy"} offset 7d))
+          / count(kube_pod_container_info{container="istio-proxy"} offset 7d)
           > 0.2
         for: 1h
         annotations:
