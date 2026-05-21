@@ -8,11 +8,11 @@ Description: Deep dive into the istio_requests_total metric covering its labels,
 
 ---
 
-The `istio_requests_total` metric is arguably the most important metric in your Istio service mesh. It's a counter that increments for every HTTP, gRPC, and HTTP/2 request processed by the Envoy sidecars. From this single metric, you can derive request rates, error rates, success rates, traffic patterns, and service dependencies. If you only monitor one Istio metric, make it this one.
+The `istio_requests_total` metric is arguably the most important metric in your Istio service mesh. It's a counter that increments for every HTTP, gRPC, and HTTP/2 request processed by an Istio proxy. From this single metric, you can derive request rates, error rates, success rates, traffic patterns, and service dependencies. If you only monitor one Istio metric, make it this one.
 
 ## What istio_requests_total Tracks
 
-Every time a request flows through an Envoy sidecar, `istio_requests_total` increments by 1. It's a Prometheus counter, which means it only goes up (or resets to 0 when the proxy restarts). You always use it with `rate()` or `increase()` to get useful values.
+Every time an HTTP, HTTP/2, or gRPC request is handled by an Istio proxy, `istio_requests_total` increments by 1. It's a Prometheus counter, which means it only goes up (or resets to 0 when the proxy restarts). You always use it with `rate()` or `increase()` to get useful values.
 
 ## The Labels
 
@@ -33,14 +33,13 @@ istio_requests_total{
   request_protocol="http",
   response_code="200",
   response_flags="-",
-  connection_security_policy="mutual_tls",
-  grpc_response_status=""
+  connection_security_policy="mutual_tls"
 } 15234
 ```
 
 Here's what each label means:
 
-**reporter** - who's reporting this metric. `"destination"` means the server-side proxy reported it; `"source"` means the client-side proxy. Each request creates two data points.
+**reporter** - who's reporting this metric. `"destination"` means the server-side proxy reported it; `"source"` means the client-side proxy or gateway reported it. In sidecar-to-sidecar traffic, a request commonly creates both source and destination data points.
 
 **source_workload / destination_workload** - the name of the sending and receiving workload (usually matches the Deployment name).
 
@@ -50,15 +49,15 @@ Here's what each label means:
 
 **destination_service** - the full DNS name of the destination service.
 
-**request_protocol** - `"http"`, `"grpc"`, or `"tcp"`.
+**request_protocol** - the request protocol, such as `"http"` or `"grpc"`. TCP traffic uses separate Istio TCP metrics, not `istio_requests_total`.
 
-**response_code** - the HTTP response status code as a string.
+**response_code** - the HTTP response status code as a string. This label is present on HTTP metrics.
 
 **response_flags** - Envoy-specific flags indicating special conditions (circuit breaking, timeouts, etc.). `"-"` means no flags.
 
-**connection_security_policy** - `"mutual_tls"` or `"none"`.
+**connection_security_policy** - the service authentication policy. Current Istio docs describe `"mutual_tls"` for secured destination reports and `"unknown"` for source reports.
 
-**grpc_response_status** - the gRPC status code (empty for non-gRPC requests).
+**grpc_response_status** - the gRPC status code. This label is present only on gRPC metrics.
 
 ## Essential Queries
 
@@ -150,7 +149,7 @@ sum(rate(istio_requests_total{reporter="destination"}[5m])) by (destination_work
 
 ## Understanding the Reporter Label
 
-The `reporter` label is critical and frequently misunderstood. Every request is reported twice:
+The `reporter` label is critical and frequently misunderstood. For sidecar-to-sidecar traffic, a request is commonly reported twice:
 
 1. By the source proxy (client side) with `reporter="source"`
 2. By the destination proxy (server side) with `reporter="destination"`
