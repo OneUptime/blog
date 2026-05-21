@@ -27,7 +27,7 @@ spec:
     accessLogEncoding: JSON
 ```
 
-If you want to customize which fields are logged:
+If you want to enable access logging with the Telemetry API instead:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -79,6 +79,7 @@ config:
         Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
         Kube_Tag_Prefix     kube.var.log.containers.
         Merge_Log           On
+        Merge_Parser        istio-envoy-json
         Keep_Log            Off
         K8S-Logging.Parser  On
         K8S-Logging.Exclude On
@@ -87,13 +88,6 @@ config:
         Name    grep
         Match   kube.*
         Regex   $kubernetes['container_name'] istio-proxy
-
-    [FILTER]
-        Name         parser
-        Match        kube.*
-        Key_Name     log
-        Parser       istio-envoy-json
-        Reserve_Data On
 
   customParsers: |
     [PARSER]
@@ -335,7 +329,7 @@ Key things to watch for are buffer overflow warnings and retry errors. If Fluent
 
 Istio generates a lot of access logs. To control volume, you can:
 
-Use the Telemetry API to sample logs:
+Use the Telemetry API to filter logs:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
