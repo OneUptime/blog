@@ -36,7 +36,7 @@ kubectl top pods -n your-namespace --containers | grep istio-proxy
 Or use a Prometheus query to get the 95th percentile of sidecar CPU usage:
 
 ```promql
-quantile(0.95, rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m]))
+quantile_over_time(0.95, (sum by (pod, namespace) (rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])))[1h:])
 ```
 
 Once you know actual usage, set appropriate requests:
@@ -61,7 +61,7 @@ For low-traffic services, you can go even lower. Some teams run sidecars with 10
 
 ## Step 2: Reduce Envoy Concurrency
 
-By default, Envoy uses 2 worker threads. For most services, 1 thread is plenty:
+By default, Istio automatically determines Envoy worker threads from the proxy CPU requests and limits. For low-traffic services, 1 thread is often plenty:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -72,7 +72,7 @@ spec:
       concurrency: 1
 ```
 
-Each worker thread consumes memory for its connection pools and listeners. Dropping from 2 to 1 can save 20-30% of sidecar memory usage.
+Each worker thread consumes memory for its connection pools and listeners. If a proxy would otherwise use 2 or more worker threads, dropping to 1 can save sidecar memory.
 
 For high-traffic services that genuinely need more throughput, override this per-pod:
 
@@ -92,7 +92,7 @@ This is one of the highest-impact optimizations. By default, every sidecar recei
 Use the `Sidecar` resource to limit visibility:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -110,7 +110,7 @@ The memory savings can be 50-70% per sidecar depending on your cluster size.
 
 ## Step 4: Disable Unused Features
 
-Istio comes with many features enabled by default. Turn off what you do not use:
+Some Istio features are optional or enabled by default depending on your install profile. Turn off what you do not use:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -119,7 +119,7 @@ spec:
   meshConfig:
     accessLogFile: ""
     enableTracing: false
-    enablePrometheusMerge: true
+    enablePrometheusMerge: false
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "false"
@@ -167,7 +167,7 @@ For clusters under 100 services, a single istiod replica with 200m CPU and 512Mi
 
 ## Step 6: Use Discovery Selectors
 
-If you only use Istio in certain namespaces, tell istiod to stop watching the rest:
+If you only use Istio in certain namespaces, tell istiod to ignore configuration from the rest:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -179,11 +179,11 @@ spec:
         istio-injection: enabled
 ```
 
-This reduces the number of Kubernetes API watches istiod maintains, lowering its CPU and memory usage. It also reduces the configuration that gets pushed to sidecars.
+Discovery selectors do not remove the namespace watch itself, but they make istiod ignore objects from unselected namespaces early in processing, lowering CPU and memory usage. They also reduce the configuration that gets pushed to sidecars.
 
 ## Step 7: Consider Ambient Mode
 
-Istio ambient mode eliminates sidecar proxies entirely for L4 traffic management. Instead of a per-pod sidecar, it uses a per-node ztunnel daemon and optional per-service waypoint proxies.
+Istio ambient mode eliminates sidecar proxies entirely for L4 traffic management. Instead of a per-pod sidecar, it uses a per-node ztunnel daemon and optional waypoint proxies for L7 processing.
 
 The cost savings can be dramatic:
 
@@ -201,7 +201,7 @@ Label namespaces for ambient mode instead of sidecar injection:
 kubectl label namespace your-namespace istio.io/dataplane-mode=ambient
 ```
 
-For workloads that only need mTLS and L4 traffic management, ambient mode can reduce proxy costs by 80-90%.
+For workloads that only need mTLS and L4 traffic management, ambient mode can substantially reduce proxy costs.
 
 ## Step 8: Clean Up Unused Resources
 
