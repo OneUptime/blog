@@ -8,7 +8,7 @@ Description: Building custom logging Wasm plugins for Istio to capture structure
 
 ---
 
-Istio provides access logging through Envoy, but the built-in logging format may not match what your organization needs. Maybe you need to log specific headers, include request body hashes for audit trails, send logs to a custom aggregation service, or apply conditional logging rules. Wasm plugins let you build exactly the logging pipeline you need, running directly in the proxy with access to all request and response data.
+Istio provides access logging through Envoy, but the built-in logging format may not match what your organization needs. Maybe you need to log specific headers, include request body hashes for audit trails, send logs to a custom aggregation service, or apply conditional logging rules. Wasm plugins let you build exactly the logging pipeline you need, running directly in the proxy with access to request and response metadata and buffered body data.
 
 ## Why Custom Logging with Wasm
 
@@ -100,6 +100,8 @@ impl RootContext for LoggerRoot {
             method: String::new(),
             path: String::new(),
             captured_request_headers: Vec::new(),
+            response_status: 0,
+            duration_ms: 0,
         }))
     }
 
@@ -120,6 +122,8 @@ struct LoggerHttp {
     method: String,
     path: String,
     captured_request_headers: Vec<(String, String)>,
+    response_status: u32,
+    duration_ms: u64,
 }
 
 impl Context for LoggerHttp {}
@@ -147,6 +151,7 @@ impl HttpContext for LoggerHttp {
     fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
         let status = self.get_http_response_header(":status").unwrap_or_default();
         let status_code: u32 = status.parse().unwrap_or(0);
+        self.response_status = status_code;
 
         // Skip non-error responses if configured
         if self.only_log_errors && status_code < 400 {
@@ -158,6 +163,7 @@ impl HttpContext for LoggerHttp {
             .unwrap_or(Duration::from_secs(0))
             .as_millis() as u64;
         let duration_ms = now - self.request_start;
+        self.duration_ms = duration_ms;
 
         // Build structured log entry
         let mut log_entry = serde_json::json!({
@@ -228,6 +234,19 @@ Instead of writing to stdout, you can send logs to an external service using HTT
 
 ```rust
 impl HttpContext for LoggerHttp {
+    fn on_http_response_headers(&mut self, _num_headers: usize, _end_of_stream: bool) -> Action {
+        let status = self.get_http_response_header(":status").unwrap_or_default();
+        self.response_status = status.parse().unwrap_or(0);
+
+        let now = self.get_current_time()
+            .duration_since(std::time::SystemTime::UNIX_EPOCH)
+            .unwrap_or(Duration::from_secs(0))
+            .as_millis() as u64;
+        self.duration_ms = now.saturating_sub(self.request_start);
+
+        Action::Continue
+    }
+
     fn on_log(&mut self) {
         let log_entry = serde_json::json!({
             "timestamp": self.get_current_time()
@@ -238,7 +257,7 @@ impl HttpContext for LoggerHttp {
             "path": self.path,
             "status_code": self.response_status,
             "duration_ms": self.duration_ms,
-            "headers": self.captured_headers,
+            "headers": self.captured_request_headers,
         });
 
         let body = serde_json::to_vec(&log_entry).unwrap_or_default();
@@ -259,7 +278,7 @@ impl HttpContext for LoggerHttp {
 }
 ```
 
-The `on_log` callback is called after the request is complete, so it does not add latency to the request processing.
+The `on_log` callback is called after the stream is complete, so it is a better place for asynchronous log shipping than request or response header callbacks. Keep the timeout small so log delivery failures do not tie up proxy resources.
 
 ## Conditional Logging
 
@@ -315,8 +334,7 @@ pluginConfig:
 For compliance and audit trails, you might need to log a hash of the request body without logging the actual content:
 
 ```rust
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use sha2::{Digest, Sha256};
 
 impl HttpContext for AuditLoggerHttp {
     fn on_http_request_body(&mut self, body_size: usize, end_of_stream: bool) -> Action {
@@ -325,9 +343,8 @@ impl HttpContext for AuditLoggerHttp {
         }
 
         if let Some(body) = self.get_http_request_body(0, body_size) {
-            let mut hasher = DefaultHasher::new();
-            body.hash(&mut hasher);
-            self.body_hash = format!("{:x}", hasher.finish());
+            let digest = Sha256::digest(&body);
+            self.body_hash = format!("{:x}", digest);
         }
 
         Action::Continue
@@ -352,7 +369,7 @@ impl HttpContext for AuditLoggerHttp {
 
 ## Collecting Logs
 
-The logs emitted by Wasm plugins via `log::info!()` end up in the Envoy proxy's stdout, which Kubernetes captures as container logs:
+The logs emitted by Wasm plugins via `log::info!()` end up in the Envoy proxy's application logs, which Kubernetes captures as container logs:
 
 ```bash
 # View logs from the proxy container
@@ -362,14 +379,14 @@ kubectl logs -n my-app -l app=api-gateway -c istio-proxy | grep "AUDIT\|custom-l
 kubectl logs -n my-app -l app=api-gateway -c istio-proxy -f
 ```
 
-You can then collect these logs with Fluentd, Fluent Bit, Vector, or any other log collector that reads container stdout.
+You can then collect these logs with Fluentd, Fluent Bit, Vector, or any other log collector that reads container stdout and stderr streams.
 
 ## Performance Tips
 
 - Use `FAIL_OPEN` for logging plugins so logging failures do not affect traffic
 - Set a reasonable `sample_rate` for high-traffic services
 - Avoid logging request/response bodies unless absolutely necessary (audit use cases)
-- Use `on_log` for async log shipping to avoid adding latency to requests
+- Use `on_log` for async log shipping after stream completion, and keep callout timeouts short
 - Batch log entries in shared data and flush periodically for high-throughput scenarios
 
 ## Summary
