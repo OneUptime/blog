@@ -15,7 +15,7 @@ Fault injection is one of Istio's most useful features for chaos testing. You co
 Fault injection is configured in a VirtualService using the `fault` field:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service-fault
@@ -91,7 +91,7 @@ You need to see `istio-proxy` in the container list. If the client doesn't have 
 
 ## Step 4: Check the Host Field
 
-The `hosts` field in the VirtualService must match how the client addresses the service. If the client calls `http://my-service:8080` but the VirtualService host is `my-service.production.svc.cluster.local`, it should match since Kubernetes resolves the short name.
+The `hosts` field in the VirtualService must match the destination host for the service. If the client is in the same namespace and calls `http://my-service:8080`, Istio can map that request to `my-service.production.svc.cluster.local`. In production, using the fully qualified service name avoids namespace-related surprises.
 
 But there are edge cases. If the client is in a different namespace:
 
@@ -182,7 +182,7 @@ for item in data['items']:
 "
 ```
 
-If there are multiple VirtualServices for the same host, Istio merges them. The merge order can be surprising, and your fault rules might end up after the normal routing rules, meaning they never match.
+If there are multiple VirtualServices for the same gateway host, Istio can merge them, but only for gateway-bound VirtualServices. Host merging is not supported for sidecars, so splitting mesh-internal rules for the same host across multiple VirtualServices can make the result ineffective or surprising. Even for gateway-bound VirtualServices, merge order can be surprising, and catch-all rules can override more specific rules.
 
 Consolidate into a single VirtualService:
 
@@ -229,7 +229,7 @@ If the Sidecar resource doesn't include the target host in its egress, the Virtu
 Strip everything down to the simplest possible fault injection to isolate the issue:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: simple-fault-test
