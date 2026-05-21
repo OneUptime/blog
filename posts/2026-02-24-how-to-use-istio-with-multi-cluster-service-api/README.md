@@ -35,7 +35,9 @@ You need:
 Install the MCS API CRDs on each cluster:
 
 ```bash
-kubectl apply -f https://github.com/kubernetes-sigs/mcs-api/releases/latest/download/mcs-api-crds.yaml
+kubectl apply \
+  -f https://raw.githubusercontent.com/kubernetes-sigs/mcs-api/v0.5.0/config/crd/multicluster.x-k8s.io_serviceexports.yaml \
+  -f https://raw.githubusercontent.com/kubernetes-sigs/mcs-api/v0.5.0/config/crd/multicluster.x-k8s.io_serviceimports.yaml
 ```
 
 Verify the CRDs are present:
@@ -75,8 +77,11 @@ openssl req -newkey rsa:4096 -sha256 -nodes \
 openssl x509 -req -sha256 -days 3650 \
   -CA root-cert.pem -CAkey root-key.pem \
   -set_serial 1 \
+  -extfile <(printf "basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign") \
   -in cluster1-ca-csr.pem \
   -out cluster1-ca-cert.pem
+
+cat cluster1-ca-cert.pem root-cert.pem > cluster1-cert-chain.pem
 ```
 
 Create the `cacerts` secret in each cluster:
@@ -104,9 +109,15 @@ spec:
   values:
     global:
       meshID: mesh1
+      externalIstiod: true
       multiCluster:
         clusterName: cluster1
       network: network1
+    pilot:
+      env:
+        ENABLE_MCS_SERVICE_DISCOVERY: "true"
+        ENABLE_MCS_HOST: "true"
+        MCS_API_VERSION: "v1beta1"
   meshConfig:
     defaultConfig:
       proxyMetadata:
@@ -120,47 +131,73 @@ istioctl install --context="${CTX_CLUSTER1}" -f cluster1-config.yaml
 
 On cluster2 (remote):
 
+```bash
+# Install the primary cluster's east-west gateway first
+samples/multicluster/gen-eastwest-gateway.sh \
+  --network network1 | \
+  istioctl install --context="${CTX_CLUSTER1}" -f -
+
+kubectl --context="${CTX_CLUSTER2}" create namespace istio-system
+kubectl --context="${CTX_CLUSTER2}" annotate namespace istio-system \
+  topology.istio.io/controlPlaneClusters=cluster1
+kubectl --context="${CTX_CLUSTER2}" label namespace istio-system \
+  topology.istio.io/network=network2
+
+kubectl apply --context="${CTX_CLUSTER1}" -n istio-system -f \
+  samples/multicluster/expose-istiod.yaml
+
+export DISCOVERY_ADDRESS=$(kubectl --context="${CTX_CLUSTER1}" \
+  -n istio-system get svc istio-eastwestgateway \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+```
+
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 metadata:
   name: istio-remote
 spec:
+  profile: remote
   values:
+    istiodRemote:
+      injectionPath: /inject/cluster/cluster2/net/network2
     global:
-      meshID: mesh1
-      multiCluster:
-        clusterName: cluster2
-      network: network2
+      remotePilotAddress: ${DISCOVERY_ADDRESS}
 ```
 
 ```bash
-istioctl install --context="${CTX_CLUSTER2}" -f cluster2-config.yaml
+envsubst < cluster2-config.yaml | \
+  istioctl install --context="${CTX_CLUSTER2}" -f -
+
+istioctl create-remote-secret \
+  --context="${CTX_CLUSTER2}" \
+  --name=cluster2 | \
+  kubectl apply -f - --context="${CTX_CLUSTER1}"
 ```
 
 ## Setting Up East-West Gateways
 
-If your clusters are on different networks and pods cannot communicate directly, you need east-west gateways. Install one on each cluster:
+If your clusters are on different networks and pods cannot communicate directly, you need east-west gateways. Install one on cluster2 as well:
 
 ```bash
-# On cluster1
+# On cluster2
 samples/multicluster/gen-eastwest-gateway.sh \
-  --network network1 | \
-  istioctl install --context="${CTX_CLUSTER1}" -f -
+  --network network2 | \
+  istioctl install --context="${CTX_CLUSTER2}" -f -
 
 # Expose services through the gateway
-kubectl apply --context="${CTX_CLUSTER1}" -f \
+kubectl apply --context="${CTX_CLUSTER1}" -n istio-system -f \
   samples/multicluster/expose-services.yaml
 ```
 
-Do the same for cluster2.
+Because cluster2 is installed with the remote profile, exposing services on the primary cluster exposes them on the east-west gateways of both clusters.
 
 ## Exporting a Service
 
 Now comes the MCS API part. Say you have a `payment-service` running in cluster1 that you want to make available to cluster2. Create a ServiceExport:
 
 ```yaml
-apiVersion: multicluster.x-k8s.io/v1alpha1
+apiVersion: multicluster.x-k8s.io/v1beta1
 kind: ServiceExport
 metadata:
   name: payment-service
@@ -173,14 +210,14 @@ Apply it in cluster1:
 kubectl apply --context="${CTX_CLUSTER1}" -f payment-service-export.yaml
 ```
 
-Istio watches for ServiceExport resources and makes the service discoverable across the mesh.
+With MCS service discovery enabled, Istio watches for ServiceExport resources and makes the service discoverable across the mesh.
 
 ## Consuming an Exported Service
 
 In cluster2, a ServiceImport resource will be created automatically (or you can create one manually depending on your setup):
 
 ```yaml
-apiVersion: multicluster.x-k8s.io/v1alpha1
+apiVersion: multicluster.x-k8s.io/v1beta1
 kind: ServiceImport
 metadata:
   name: payment-service
@@ -198,11 +235,11 @@ Services in cluster2 can now reach the payment service using the clusterset DNS 
 curl http://payment-service.payments.svc.clusterset.local:8080
 ```
 
-Or, with Istio's DNS proxying enabled, you can often use the regular service name and Istio will route to the appropriate cluster based on locality and load.
+The clusterset DNS name is the MCS-standard name. If the service also exists locally as a Kubernetes Service, Istio can route the regular `svc.cluster.local` host according to its normal multicluster service discovery behavior.
 
 ## Traffic Management Across Clusters
 
-You can use Istio's VirtualService to control how traffic flows between clusters. For example, to prefer the local cluster but fail over to the remote one:
+You can use Istio's DestinationRule to control traffic policy across clusters. For example, to enable outlier detection for an exported service:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -211,7 +248,7 @@ metadata:
   name: payment-service-dr
   namespace: payments
 spec:
-  host: payment-service.payments.svc.cluster.local
+  host: payment-service.payments.svc.clusterset.local
   trafficPolicy:
     outlierDetection:
       consecutive5xxErrors: 3
@@ -222,7 +259,7 @@ spec:
         maxConnections: 100
 ```
 
-Istio's locality-aware load balancing will automatically prefer endpoints in the same cluster or region. If the local instances become unhealthy (detected by outlier detection), traffic fails over to the remote cluster.
+Istio load balances across discovered endpoints by default. To prefer local endpoints or fail over between regions, configure Istio locality load balancing in addition to outlier detection.
 
 ## Monitoring Cross-Cluster Traffic
 
@@ -242,18 +279,17 @@ If services cannot reach each other across clusters, check these things:
 
 ```bash
 # Verify endpoints are discovered
-istioctl proxy-config endpoint deploy/my-app --context="${CTX_CLUSTER1}" | grep payment-service
+istioctl proxy-config endpoint deploy/my-app.default --context="${CTX_CLUSTER2}" | grep payment-service
 
 # Check that the east-west gateway is reachable
-kubectl exec deploy/my-app --context="${CTX_CLUSTER2}" -- \
-  curl -v http://eastwestgateway.istio-system.svc:15443
+kubectl get svc istio-eastwestgateway -n istio-system --context="${CTX_CLUSTER1}"
 
-# Verify mTLS is working across clusters
-istioctl authn tls-check deploy/my-app.default payment-service.payments.svc.cluster.local
+# Verify workload certificates are available to the proxy
+istioctl proxy-config secret deploy/my-app.default --context="${CTX_CLUSTER2}"
 ```
 
 Common problems include firewall rules blocking east-west gateway traffic, mismatched trust domains (different root CAs), and missing remote secrets that allow clusters to discover each other's endpoints.
 
 ## Summary
 
-Using Istio with the Multi-Cluster Services API gives you a standardized way to expose and consume services across Kubernetes cluster boundaries. The MCS API handles service export and discovery while Istio manages the actual data plane traffic, mTLS, and observability. Together, they make multi-cluster service communication almost as straightforward as single-cluster communication, with the added bonus of locality-aware load balancing and automatic failover.
+Using Istio with the Multi-Cluster Services API gives you a standardized way to expose and consume services across Kubernetes cluster boundaries. The MCS API handles service export and discovery while Istio manages the actual data plane traffic, mTLS, and observability. Together, they make multi-cluster service communication almost as straightforward as single-cluster communication, with the added bonus of locality-aware load balancing and failover when you configure the relevant Istio traffic policy.
