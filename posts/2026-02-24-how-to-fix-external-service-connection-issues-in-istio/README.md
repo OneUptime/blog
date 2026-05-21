@@ -39,7 +39,7 @@ If it shows `ALLOW_ANY` or is not set, external connections should work without 
 A ServiceEntry tells Istio about an external service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -68,7 +68,7 @@ Most external APIs use HTTPS. The trickiest part is getting TLS right. Your appl
 For TLS origination at the application level (the app does its own TLS):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-https
@@ -89,7 +89,7 @@ The protocol `HTTPS` tells Envoy to treat this as TLS passthrough. The sidecar d
 For TLS origination at the sidecar level (your app sends HTTP, the sidecar encrypts):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -104,10 +104,11 @@ spec:
   - number: 80
     name: http
     protocol: HTTP
+    targetPort: 443
   location: MESH_EXTERNAL
   resolution: DNS
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-api-tls
@@ -115,18 +116,21 @@ metadata:
 spec:
   host: api.example.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
 ```
 
 ## DNS Resolution Failures
 
-External services rely on DNS resolution. If the sidecar can't resolve the hostname, connections fail.
+External services rely on DNS resolution. If the workload or the sidecar can't resolve the hostname it needs, connections fail.
 
 Test DNS from inside the pod:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -n my-namespace -- nslookup api.example.com
+kubectl exec <pod-name> -n my-namespace -- nslookup api.example.com
 ```
 
 If DNS fails, check:
@@ -134,7 +138,7 @@ If DNS fails, check:
 2. The upstream DNS servers can resolve external hostnames
 3. There's no NetworkPolicy blocking DNS traffic
 
-Istio's DNS proxy can also cause issues. If enabled, it intercepts DNS queries:
+Istio's DNS proxy can also affect what the application sees. If enabled, it intercepts DNS queries from the application:
 
 ```bash
 kubectl get configmap istio -n istio-system -o yaml | grep -A 5 "DNS"
@@ -145,7 +149,7 @@ kubectl get configmap istio -n istio-system -o yaml | grep -A 5 "DNS"
 If you need to connect to an external service by IP address (no hostname):
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-ip-service
@@ -172,7 +176,7 @@ The `hosts` field is just a name for Istio's internal tracking. The actual routi
 External service calls might time out if the connection takes longer than expected. Check the timeout configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-vs
@@ -189,14 +193,14 @@ spec:
           number: 443
 ```
 
-The default timeout is 15 seconds. If the external service is slow, increase it.
+By default, Istio does not set an HTTP route timeout. If you configure a timeout and the external service is slow, increase it.
 
 ## Wildcard Hosts
 
 Sometimes you need to allow access to multiple subdomains of an external service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-wildcard
@@ -212,14 +216,29 @@ spec:
   resolution: NONE
 ```
 
-Note that `resolution: NONE` is used because DNS needs to resolve specific subdomains, not the wildcard. Each connection resolves the actual hostname it's connecting to.
+Note that `resolution: NONE` is used because `DNS` resolution cannot be used with wildcard hosts. The application resolves the actual hostname, and the proxy forwards to the original destination IP address.
 
 ## Egress Gateway for External Traffic
 
 For more control over external traffic, route it through an egress gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: external-api
+  namespace: my-namespace
+spec:
+  hosts:
+  - api.example.com
+  ports:
+  - number: 443
+    name: tls
+    protocol: TLS
+  location: MESH_EXTERNAL
+  resolution: DNS
+---
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -230,14 +249,14 @@ spec:
   servers:
   - port:
       number: 443
-      name: https
-      protocol: HTTPS
+      name: tls
+      protocol: TLS
     hosts:
     - api.example.com
     tls:
       mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-api-via-egress
