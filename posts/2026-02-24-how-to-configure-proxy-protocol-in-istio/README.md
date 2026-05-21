@@ -44,81 +44,53 @@ You don't need PROXY protocol when:
 
 ## Configuring the Istio Ingress Gateway to Accept PROXY Protocol
 
-The Istio ingress gateway needs to be configured to parse PROXY protocol headers from the upstream load balancer. This is done using an `EnvoyFilter`:
+The Istio ingress gateway needs to be configured to parse PROXY protocol headers from the upstream load balancer. For all TCP listeners on gateways, set `gatewayTopology.proxyProtocol` in your `IstioOperator` configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1alpha3
-kind: EnvoyFilter
-metadata:
-  name: proxy-protocol-listener
-  namespace: istio-system
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
 spec:
-  workloadSelector:
-    labels:
-      istio: ingressgateway
-  configPatches:
-    - applyTo: LISTENER
-      match:
-        context: GATEWAY
-        listener:
-          portNumber: 8080
-      patch:
-        operation: MERGE
-        value:
-          listenerFilters:
-            - name: envoy.filters.listener.proxy_protocol
-              typedConfig:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
-            - name: envoy.filters.listener.tls_inspector
-              typedConfig:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector
+  meshConfig:
+    defaultConfig:
+      gatewayTopology:
+        proxyProtocol: {}
 ```
 
-Note the ordering: the `proxy_protocol` filter must come before the `tls_inspector` filter. This is because PROXY protocol header is the first thing on the connection, before the TLS handshake.
+Alternatively, you can configure a specific gateway workload with the `proxy.istio.io/config` pod annotation:
 
-If you want to handle both HTTP (port 8080) and HTTPS (port 8443) with PROXY protocol:
+```yaml
+metadata:
+  annotations:
+    "proxy.istio.io/config": '{"gatewayTopology" : { "proxyProtocol": {} }}'
+```
+
+If you use a custom `EnvoyFilter` instead, note the ordering: the `proxy_protocol` listener filter must come before the `tls_inspector` filter. This is because PROXY protocol header is the first thing on the connection, before the TLS handshake.
+
+For example, to insert the listener filter before `tls_inspector` on the HTTPS listener:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: proxy-protocol-all-listeners
+  name: proxy-protocol-https-listener
   namespace: istio-system
 spec:
   workloadSelector:
     labels:
       istio: ingressgateway
   configPatches:
-    - applyTo: LISTENER
-      match:
-        context: GATEWAY
-        listener:
-          portNumber: 8080
-      patch:
-        operation: MERGE
-        value:
-          listenerFilters:
-            - name: envoy.filters.listener.proxy_protocol
-              typedConfig:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
-            - name: envoy.filters.listener.tls_inspector
-              typedConfig:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector
-    - applyTo: LISTENER
+    - applyTo: LISTENER_FILTER
       match:
         context: GATEWAY
         listener:
           portNumber: 8443
+          listenerFilter: envoy.filters.listener.tls_inspector
       patch:
-        operation: MERGE
+        operation: INSERT_BEFORE
         value:
-          listenerFilters:
-            - name: envoy.filters.listener.proxy_protocol
-              typedConfig:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
-            - name: envoy.filters.listener.tls_inspector
-              typedConfig:
-                "@type": type.googleapis.com/envoy.extensions.filters.listener.tls_inspector.v3.TlsInspector
+          name: envoy.filters.listener.proxy_protocol
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.listener.proxy_protocol.v3.ProxyProtocol
 ```
 
 ## Configuring the Load Balancer
@@ -136,7 +108,8 @@ metadata:
   name: istio-ingressgateway
   namespace: istio-system
   annotations:
-    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "instance"
     service.beta.kubernetes.io/aws-load-balancer-proxy-protocol: "*"
 spec:
   type: LoadBalancer
@@ -148,6 +121,8 @@ spec:
       targetPort: 8443
       name: https
 ```
+
+The `aws-load-balancer-proxy-protocol` annotation enables PROXY protocol v2 on all target groups when using the AWS Load Balancer Controller. You can also use `service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: proxy_protocol_v2.enabled=true`.
 
 ### HAProxy
 
@@ -166,7 +141,7 @@ The `send-proxy-v2` directive tells HAProxy to add PROXY protocol v2 headers.
 
 ## Sending PROXY Protocol from Istio
 
-In some cases, you might need Istio to send PROXY protocol headers to an upstream service. For example, if your backend expects PROXY protocol. You can configure this with a transport socket on the cluster:
+In some cases, you might need Istio to send PROXY protocol headers to an upstream service. For example, if your backend expects PROXY protocol. You can configure this by wrapping the cluster's transport socket:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -188,18 +163,29 @@ spec:
       patch:
         operation: MERGE
         value:
-          upstreamConnectionOptions:
-            happyEyeballsConfig: {}
-          transportSocket: {}
+          transport_socket:
+            name: envoy.transport_sockets.upstream_proxy_protocol
+            typed_config:
+              "@type": type.googleapis.com/envoy.extensions.transport_sockets.proxy_protocol.v3.ProxyProtocolUpstreamTransport
+              config:
+                version: V2
+              transport_socket:
+                name: envoy.transport_sockets.raw_buffer
+                typed_config:
+                  "@type": type.googleapis.com/envoy.extensions.transport_sockets.raw_buffer.v3.RawBuffer
 ```
 
-For the upstream PROXY protocol case, you'll typically use an Envoy filter that adds the protocol header to the outgoing connection.
+For the upstream PROXY protocol case, you'll typically wrap the upstream cluster's transport socket with `envoy.transport_sockets.upstream_proxy_protocol`.
 
 ## Testing PROXY Protocol Configuration
 
-After configuring, you need to verify it's working. The tricky part is that you can't just `curl` a PROXY protocol endpoint - regular HTTP clients don't send the PROXY protocol header.
+After configuring, you need to verify it's working. The tricky part is that regular HTTP clients don't send the PROXY protocol header by default.
 
-Use a tool like `socat` or `ncat` for testing:
+Use `curl --haproxy-protocol` for PROXY protocol v1 testing, or a tool like `socat` or `ncat` if you need to craft the header yourself:
+
+```bash
+curl --haproxy-protocol http://<gateway-ip>/
+```
 
 ```bash
 # Send a request with PROXY protocol v1 header
@@ -207,8 +193,6 @@ Use a tool like `socat` or `ncat` for testing:
 echo -e "PROXY TCP4 192.168.1.100 10.0.0.5 12345 80\r\nGET / HTTP/1.1\r\nHost: my-app.example.com\r\n\r\n" | \
   ncat <gateway-ip> 80
 ```
-
-Or use `curl` with HAProxy's `hatcp` tool if available:
 
 ```bash
 # Check what source IP the gateway sees
@@ -247,4 +231,6 @@ When you combine PROXY protocol with Istio's mTLS, the flow looks like this:
 5. TLS handshake (either passthrough or termination)
 6. Envoy uses the extracted client IP for XFF headers, logging, and authorization
 
-This means your AuthorizationPolicy can use `remoteIpBlocks` to match on the real client IP even when traffic comes through a Layer 4 load balancer. That's a powerful combination for building proper access control at the mesh edge.
+For HTTP traffic, Istio sets or appends the client IP from PROXY protocol in `X-Forwarded-For` and `X-Envoy-External-Address`. If `numTrustedProxies` is also configured and an `X-Forwarded-For` header is received, Istio uses the XFF-based trusted client address calculation instead of the PROXY protocol address.
+
+This means your AuthorizationPolicy can use `remoteIpBlocks` to match on the real client IP even when traffic comes through a Layer 4 load balancer, as long as PROXY protocol is the source of the trusted client address. That's a powerful combination for building proper access control at the mesh edge.
