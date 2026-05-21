@@ -31,7 +31,7 @@ If you do not already have a staging cluster, create one that matches your produ
 # Example with GKE
 
 gcloud container clusters create istio-staging \
-  --cluster-version=1.28 \
+  --cluster-version=1.33 \
   --num-nodes=3 \
   --machine-type=e2-standard-4 \
   --region=us-central1
@@ -41,9 +41,9 @@ Install the same Istio version as production using the same method (istioctl, He
 
 ```bash
 # If production uses Helm
-helm install istio-base istio/base -n istio-system --version 1.20.5
-helm install istiod istio/istiod -n istio-system --version 1.20.5 -f production-istiod-values.yaml
-helm install istio-ingressgateway istio/gateway -n istio-system --version 1.20.5 -f production-gateway-values.yaml
+helm install istio-base istio/base -n istio-system --version 1.29.2 --create-namespace
+helm install istiod istio/istiod -n istio-system --version 1.29.2 -f production-istiod-values.yaml --wait
+helm install istio-ingressgateway istio/gateway -n istio-system --version 1.29.2 -f production-gateway-values.yaml --wait
 ```
 
 The key is using the exact same values files. Store them in version control so both environments draw from the same source of truth.
@@ -66,7 +66,7 @@ kubectl get envoyfilters --all-namespaces -o yaml > ef-export.yaml
 Clean the exports (remove resource versions, UIDs, and other cluster-specific metadata) and apply them to staging:
 
 ```bash
-# Strip cluster-specific fields and apply to staging
+# After cleaning cluster-specific fields, apply to staging
 for f in vs-export.yaml dr-export.yaml gw-export.yaml se-export.yaml authz-export.yaml pa-export.yaml ef-export.yaml; do
   kubectl apply -f $f --context=staging-cluster
 done
@@ -81,6 +81,19 @@ Deploy the same services as production. They do not need to be the full applicat
 A simple approach is using Istio's sample apps:
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-app
+  labels:
+    istio-injection: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: httpbin
+  namespace: test-app
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -91,28 +104,36 @@ spec:
   selector:
     matchLabels:
       app: httpbin
+      version: v1
   template:
     metadata:
       labels:
         app: httpbin
+        version: v1
     spec:
+      serviceAccountName: httpbin
       containers:
       - name: httpbin
-        image: docker.io/kennethreitz/httpbin
+        image: docker.io/mccutchen/go-httpbin:v2.15.0
+        imagePullPolicy: IfNotPresent
         ports:
-        - containerPort: 80
+        - containerPort: 8080
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: httpbin
   namespace: test-app
+  labels:
+    app: httpbin
+    service: httpbin
 spec:
   selector:
     app: httpbin
   ports:
-  - port: 80
-    targetPort: 80
+  - name: http
+    port: 8000
+    targetPort: 8080
 ```
 
 For more realistic testing, deploy your actual services with test data. The closer staging matches production, the more confidence the upgrade test gives you.
@@ -160,7 +181,7 @@ Now perform the upgrade in staging using the exact same procedure you plan to us
 
 ```bash
 # If using istioctl
-export PATH=$PWD/istio-1.21.0/bin:$PATH
+export PATH=$PWD/istio-1.30.0/bin:$PATH
 istioctl x precheck
 istioctl upgrade -y
 ```
@@ -168,9 +189,9 @@ istioctl upgrade -y
 Or with Helm:
 
 ```bash
-helm upgrade istio-base istio/base -n istio-system --version 1.21.0
-helm upgrade istiod istio/istiod -n istio-system --version 1.21.0 -f production-istiod-values.yaml --wait
-helm upgrade istio-ingressgateway istio/gateway -n istio-system --version 1.21.0 -f production-gateway-values.yaml --wait
+helm upgrade istio-base istio/base -n istio-system --version 1.30.0
+helm upgrade istiod istio/istiod -n istio-system --version 1.30.0 -f production-istiod-values.yaml --wait
+helm upgrade istio-ingressgateway istio/gateway -n istio-system --version 1.30.0 -f production-gateway-values.yaml --wait
 ```
 
 Watch the upgrade:
@@ -243,7 +264,7 @@ STAGING_CONTEXT="staging-cluster"
 echo "Testing Istio upgrade to $VERSION in staging"
 
 # Record baseline
-kubectl --context=$STAGING_CONTEXT exec deploy/sleep -n test-app -- curl -s httpbin.test-app:80/status/200
+kubectl --context=$STAGING_CONTEXT exec deploy/sleep -n test-app -- curl -s httpbin.test-app:8000/status/200
 istioctl --context=$STAGING_CONTEXT proxy-status > pre-upgrade-status.txt
 
 # Perform upgrade
@@ -265,7 +286,7 @@ istioctl --context=$STAGING_CONTEXT proxy-status > post-upgrade-status.txt
 PASS=0
 FAIL=0
 for i in $(seq 1 100); do
-  CODE=$(kubectl --context=$STAGING_CONTEXT exec deploy/sleep -n test-app -- curl -s -o /dev/null -w "%{http_code}" httpbin.test-app:80/status/200)
+  CODE=$(kubectl --context=$STAGING_CONTEXT exec deploy/sleep -n test-app -- curl -s -o /dev/null -w "%{http_code}" httpbin.test-app:8000/status/200)
   if [ "$CODE" = "200" ]; then
     PASS=$((PASS+1))
   else
