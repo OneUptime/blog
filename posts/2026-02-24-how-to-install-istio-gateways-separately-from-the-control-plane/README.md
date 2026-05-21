@@ -62,10 +62,9 @@ Put gateways in their own namespace. This gives you clean RBAC boundaries:
 
 ```bash
 kubectl create namespace istio-ingress
-kubectl label namespace istio-ingress istio-injection=enabled
 ```
 
-The `istio-injection=enabled` label is important. The gateway pod itself gets an Envoy proxy, and it needs to connect to istiod for configuration.
+The gateway chart uses Istio's injection mechanism to populate the Envoy proxy configuration. Make sure the namespace does not have `istio-injection=disabled`, otherwise the gateway pod will not be injected correctly.
 
 ## Step 3: Install the Ingress Gateway
 
@@ -73,12 +72,18 @@ Using the Istio gateway Helm chart:
 
 ```yaml
 # values-ingress.yaml
+labels:
+  istio: ingressgateway
+
 service:
   type: LoadBalancer
   annotations:
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
     service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
   ports:
+    - name: status-port
+      port: 15021
+      targetPort: 15021
     - name: http2
       port: 80
       targetPort: 80
@@ -137,14 +142,19 @@ If you need to control outbound traffic, install an egress gateway in its own na
 
 ```bash
 kubectl create namespace istio-egress
-kubectl label namespace istio-egress istio-injection=enabled
 ```
 
 ```yaml
 # values-egress.yaml
+labels:
+  istio: egressgateway
+
 service:
   type: ClusterIP
   ports:
+    - name: status-port
+      port: 15021
+      targetPort: 15021
     - name: http2
       port: 80
       targetPort: 80
@@ -178,7 +188,6 @@ You can run multiple gateways for different use cases. For example, a public gat
 
 ```bash
 kubectl create namespace istio-ingress-internal
-kubectl label namespace istio-ingress-internal istio-injection=enabled
 ```
 
 ```yaml
@@ -192,6 +201,9 @@ service:
     service.beta.kubernetes.io/aws-load-balancer-type: nlb
     service.beta.kubernetes.io/aws-load-balancer-scheme: internal
   ports:
+    - name: status-port
+      port: 15021
+      targetPort: 15021
     - name: http2
       port: 80
       targetPort: 80
