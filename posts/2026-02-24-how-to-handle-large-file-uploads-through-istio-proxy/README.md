@@ -8,7 +8,7 @@ Description: How to configure Istio to handle large file uploads properly, inclu
 
 ---
 
-File uploads are one of those things that work fine in development and then break in production when you add a service mesh. The Istio sidecar proxy (Envoy) has default limits on request body sizes, buffer sizes, and timeouts that are reasonable for typical API traffic but completely inadequate for large file uploads. A 50MB file upload that works perfectly without Istio will hit a wall when the sidecar is in the path.
+File uploads are one of those things that work fine in development and then break in production when you add a service mesh. Envoy streams proxied request bodies by default, but timeouts, idle timeouts, header limits, and any filters that buffer request bodies can still break large uploads. A 50MB file upload that works perfectly without Istio can hit a wall when the sidecar is in the path.
 
 The symptoms are usually clear: upload requests fail with 413 (Payload Too Large), 408 (Request Timeout), or the connection just drops mid-upload. Fixing this requires adjusting several settings across different Istio resources.
 
@@ -50,14 +50,14 @@ spec:
         value:
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
-            max_request_headers_kb: 60
+            max_request_headers_kb: 96
 ```
 
-The `max_request_headers_kb` limits header size, not body size. This is relevant because multipart upload headers can be large if there are many form fields.
+The `max_request_headers_kb` limits HTTP request header size, not body size. Envoy's default is 60 KiB, so set this only if your clients send large HTTP headers such as cookies, authorization metadata, or custom headers.
 
 ## Timeout Configuration
 
-Large file uploads take time, especially over slower connections. The default Istio timeout of 15 seconds is nowhere near enough for a multi-gigabyte upload.
+Large file uploads take time, especially over slower connections. Istio's VirtualService request timeout is disabled by default, while Envoy's route timeout defaults to 15 seconds if Istio or another control plane generates a route without overriding it. If you have configured a route timeout, make sure it is long enough for your upload path.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -209,7 +209,7 @@ spec:
         http1MaxPendingRequests: 50
 ```
 
-`maxRequestsPerConnection: 0` means unlimited requests per connection. This prevents the proxy from closing a connection during an active upload because it hit a request limit.
+`maxRequestsPerConnection: 0` means unlimited requests per connection, which is also Istio's default. If you changed this value elsewhere, setting it back to `0` prevents connection reuse limits from forcing frequent connection drains between uploads.
 
 ## Disabling Retries for Upload Routes
 
@@ -296,14 +296,12 @@ kubectl exec -it <pod-name> -c istio-proxy -n default -- \
 Test your configuration with progressively larger files:
 
 ```bash
-# Generate a test file
-dd if=/dev/zero of=/tmp/testfile bs=1M count=100
-
-# Upload through the mesh
+# Generate a test file inside the client pod and upload it through the mesh
 kubectl exec -it <client-pod> -n default -- \
+  sh -c 'dd if=/dev/zero of=/tmp/testfile bs=1M count=100 && \
   curl -X POST -F "file=@/tmp/testfile" \
   http://upload-service.default.svc.cluster.local:8080/upload \
-  -w "\n%{http_code} %{time_total}s\n"
+  -w "\n%{http_code} %{time_total}s\n"'
 ```
 
 Start with small files and increase the size to find where things break. This helps you identify which limit is the bottleneck.
