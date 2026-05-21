@@ -298,6 +298,6 @@ istioctl analyze
 
 ## Gateway API Alternative
 
-It is worth noting that the newer Kubernetes Gateway API (which Istio also supports) does not use label selectors. Instead, it references gateway deployments directly by name and namespace. If you are starting a new project, consider using the Gateway API instead of Istio's native Gateway resource.
+It is worth noting that the newer Kubernetes Gateway API (which Istio also supports) does not use the Istio Gateway `selector` field. Instead, an Istio-managed Gateway API resource can automatically provision the gateway Deployment and Service, or it can be linked to manually deployed infrastructure with Gateway API fields such as `addresses`. If you are starting a new project, consider using the Gateway API instead of Istio's native Gateway resource.
 
 The Gateway selector is a small piece of configuration, but it is the link between your Gateway resource and the actual Envoy proxy that handles the traffic. Understanding how it works and knowing how to debug it saves a lot of troubleshooting time, especially as you scale to multiple gateway deployments in a cluster.
