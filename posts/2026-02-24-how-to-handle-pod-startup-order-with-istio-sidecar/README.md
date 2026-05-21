@@ -72,9 +72,9 @@ spec:
         image: my-app:latest
 ```
 
-## Solution 2: Native Sidecar Containers (Kubernetes 1.28+)
+## Solution 2: Native Sidecar Containers (Kubernetes 1.29+)
 
-Kubernetes 1.28 introduced native sidecar support through the `restartPolicy` field on init containers. When Istio uses this feature, the sidecar runs as an init container with `restartPolicy: Always`, which means:
+Kubernetes 1.28 introduced native sidecar support through the `restartPolicy` field on init containers as an alpha feature gate. It is enabled by default starting in Kubernetes 1.29 and stable in Kubernetes 1.33. When Istio uses this feature, the sidecar runs as an init container with `restartPolicy: Always`, which means:
 
 - It starts before regular containers (guaranteed by Kubernetes)
 - It keeps running after the init phase
@@ -110,7 +110,6 @@ Kubernetes won't start your application container until this startup probe succe
 Sometimes you can't use the above solutions (maybe you're on an older Kubernetes version or can't change the mesh config). In that case, build retry logic into your application:
 
 ```python
-import time
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -131,8 +130,11 @@ Or in Go:
 func waitForSidecar() error {
     for i := 0; i < 30; i++ {
         resp, err := http.Get("http://localhost:15021/healthz/ready")
-        if err == nil && resp.StatusCode == 200 {
-            return nil
+        if err == nil {
+            resp.Body.Close()
+            if resp.StatusCode == http.StatusOK {
+                return nil
+            }
         }
         time.Sleep(time.Second)
     }
@@ -159,7 +161,7 @@ The script:
 # wait-for-sidecar.sh
 
 echo "Waiting for Istio sidecar..."
-until curl -s -o /dev/null http://localhost:15021/healthz/ready; do
+until curl -fsS -o /dev/null http://localhost:15021/healthz/ready; do
   sleep 1
 done
 echo "Sidecar is ready"
@@ -169,13 +171,13 @@ exec "$@"
 
 ## Init Container Dependencies
 
-If your init containers need network access (like downloading configuration or running database migrations), they'll also be affected by the sidecar not being ready. The `istio-init` container sets up iptables, but the sidecar isn't running during the init container phase.
+If your init containers need network access (like downloading configuration or running database migrations), they'll also be affected by the sidecar not being ready. With the default init-container redirection model, the `istio-init` container sets up iptables before your application init containers run, but the sidecar isn't running during the init container phase.
 
 There are a few approaches:
 
 ### Exclude Init Container Traffic
 
-Use the `traffic.sidecar.istio.io/excludeOutboundIPRanges` annotation to bypass the sidecar for specific IPs:
+Use the `traffic.sidecar.istio.io/excludeOutboundIPRanges` annotation to bypass the sidecar for specific IPs. This applies to the whole pod, so application container traffic to the same IPs will also bypass the sidecar:
 
 ```yaml
 apiVersion: apps/v1
@@ -197,9 +199,9 @@ spec:
         image: my-app:latest
 ```
 
-### Use Istio CNI Plugin
+### Use Istio CNI Plugin with a UID Bypass
 
-The Istio CNI plugin can be configured to not redirect traffic from init containers:
+The Istio CNI plugin replaces the privileged `istio-init` container, but it does not automatically make application init container traffic bypass the sidecar. With Istio CNI, redirection is configured before init containers run, and the sidecar still starts later with the regular containers:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -210,7 +212,18 @@ spec:
       enabled: true
 ```
 
-With the CNI plugin, iptables rules are set up at the CNI level, after the pod's network namespace is created but before any containers start. Init containers run without traffic interception.
+If you use Istio CNI and an init container needs network access before the proxy starts, run that init container as the proxy UID so its traffic is not captured:
+
+```yaml
+initContainers:
+- name: db-migrate
+  image: my-app:latest
+  command: ["./migrate"]
+  securityContext:
+    runAsUser: 1337
+```
+
+This UID is the default Istio proxy UID. Some platforms use a different proxy UID, so check your injected proxy settings before relying on this.
 
 ### Exclude Specific Ports
 
@@ -219,7 +232,7 @@ annotations:
   traffic.sidecar.istio.io/excludeOutboundPorts: "5432,3306"
 ```
 
-This bypasses the sidecar for traffic to specific ports, which is useful when init containers need to reach databases.
+This bypasses the sidecar for traffic to specific ports, which is useful when init containers need to reach databases. Like IP range exclusions, it also applies to application container traffic.
 
 ## Startup Probes for Reliability
 
@@ -267,4 +280,4 @@ kubectl logs my-app-xyz -c my-app | head -20
 
 Look at the timestamps. If the application container started before the sidecar was ready, you'll see connection errors in the app logs and "not ready" messages in the sidecar logs.
 
-Getting pod startup order right with Istio is a solved problem if you're running Kubernetes 1.28 or later with native sidecars. For older clusters, `holdApplicationUntilProxyStarts` is the go-to solution. Either way, adding retry logic to your application is still good practice since transient network issues can happen regardless of startup order.
+Getting pod startup order right with Istio is a solved problem if you're running Kubernetes with native sidecars enabled. For older clusters, `holdApplicationUntilProxyStarts` is the go-to solution. Either way, adding retry logic to your application is still good practice since transient network issues can happen regardless of startup order.
