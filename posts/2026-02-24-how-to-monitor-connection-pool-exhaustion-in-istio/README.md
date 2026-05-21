@@ -35,11 +35,11 @@ spec:
         maxRetries: 3
 ```
 
-When any of these limits are reached, new requests get a 503 response with an `UO` (upstream overflow) flag in the Envoy access logs.
+When circuit breaker limits such as maximum connections, pending requests, active requests, or retries are reached, new requests can get a 503 response with an `UO` (upstream overflow) flag in the Envoy access logs. `maxRequestsPerConnection` is different: it controls when a connection is closed after serving requests, rather than rejecting a new request by itself.
 
 ## Key Metrics for Connection Pool Monitoring
 
-Envoy exposes detailed connection pool statistics for every upstream cluster:
+Envoy can expose detailed connection pool statistics for every upstream cluster. In Istio, many Envoy stats are disabled by default to reduce proxy overhead, so make sure your mesh or workload `proxyStatsMatcher` includes the upstream and circuit breaker stats you want to scrape.
 
 ### Overflow Metrics
 
@@ -61,8 +61,8 @@ envoy_cluster_upstream_rq_pending_total
 # Current active connections per upstream cluster
 envoy_cluster_upstream_cx_active
 
-# Maximum observed active connections
-envoy_cluster_upstream_cx_max
+# Remaining connections before the connection circuit breaker opens
+envoy_cluster_circuit_breakers_default_remaining_cx
 
 # Total connections created
 envoy_cluster_upstream_cx_total
@@ -77,7 +77,7 @@ envoy_cluster_upstream_rq_pending_active
 # Active requests on established connections
 envoy_cluster_upstream_rq_active
 
-# Requests that timed out while pending
+# Requests failed due to connection pool connection failure or remote connection termination
 envoy_cluster_upstream_rq_pending_failure_eject
 ```
 
@@ -151,7 +151,7 @@ spec:
       expr: |
         envoy_cluster_upstream_cx_active
         /
-        envoy_cluster_circuit_breakers_default_cx_open * 0 + 100
+        (envoy_cluster_upstream_cx_active + envoy_cluster_circuit_breakers_default_remaining_cx)
         > 0.80
       for: 5m
       labels:
