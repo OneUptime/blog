@@ -110,7 +110,7 @@ spec:
     app: postgres
 ```
 
-Notice the port name uses the `tcp-` prefix. This is critical for headless services because Istio needs to know the protocol to handle the traffic correctly.
+Notice the port name uses the `tcp-` prefix. This is important because Istio uses service port names, or the Kubernetes `appProtocol` field, to determine the protocol when automatic protocol detection is not enough.
 
 ## Problem: Peer-to-Peer Communication in StatefulSets
 
@@ -136,9 +136,9 @@ spec:
 
 ## Problem: Server-First Protocols
 
-Many databases use server-first protocols where the server sends data before the client. PostgreSQL, MySQL, and MongoDB all do this. Istio's Envoy proxy expects client-first communication by default for TCP connections.
+Some databases use server-first protocols where the server sends data before the client. MySQL and MongoDB ports are common examples called out by Istio. PostgreSQL is typically client-first, but it should still be declared as opaque TCP unless you are intentionally using protocol-specific handling. Istio's automatic protocol detection relies on inspecting the first bytes of a connection, which is incompatible with server-first protocols.
 
-The fix is to ensure proper port naming and protocol detection:
+The fix is to ensure proper port naming or set `appProtocol` explicitly:
 
 ```yaml
 apiVersion: v1
@@ -149,6 +149,7 @@ spec:
   clusterIP: None
   ports:
   - name: tcp-postgres    # tcp- prefix tells Istio this is raw TCP
+    appProtocol: tcp      # Kubernetes 1.18+; takes precedence over the port name
     port: 5432
     targetPort: 5432
 ```
@@ -201,7 +202,7 @@ spec:
 
 ## Configuring DestinationRules for StatefulSets
 
-For headless services, DestinationRules work slightly differently. You can target specific pods or the service as a whole:
+For headless services, DestinationRules work slightly differently. You can target the service as a whole:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -220,16 +221,30 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-For scenarios where you need different policies for different pods:
+For scenarios where you need different policies for different pods, create a Service that selects that StatefulSet pod and attach the policy to that Service. A `DestinationRule` host must refer to a service in Istio's service registry, so a pod DNS name by itself is not a reliable policy target:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-primary
+  namespace: database
+spec:
+  clusterIP: None
+  ports:
+  - name: tcp-postgres
+    port: 5432
+    targetPort: 5432
+  selector:
+    statefulset.kubernetes.io/pod-name: postgres-0
+---
 apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: postgres-primary
   namespace: database
 spec:
-  host: postgres-0.postgres-headless.database.svc.cluster.local
+  host: postgres-primary.database.svc.cluster.local
   trafficPolicy:
     connectionPool:
       tcp:
@@ -265,7 +280,7 @@ spec:
               - pg_ctl stop -m fast -D /var/lib/postgresql/data
 ```
 
-Set `terminationDrainDuration` to be less than `terminationGracePeriodSeconds` so the sidecar shuts down after the application but before the pod is forcefully killed.
+Set `terminationDrainDuration` to be less than `terminationGracePeriodSeconds` so Envoy has time to drain before the pod is forcefully killed. Coordinate this with the application's own shutdown hook, because the drain setting controls the proxy shutdown window rather than guaranteeing that the proxy waits for the database process to exit.
 
 ## Option: Exclude StatefulSets from the Mesh
 
