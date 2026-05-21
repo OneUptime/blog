@@ -16,7 +16,7 @@ That said, it carries more risk than a canary approach because there is a brief 
 
 In-place upgrades work well when:
 
-- You are upgrading between patch versions (e.g., 1.21.0 to 1.21.3)
+- You are upgrading between patch versions (e.g., 1.29.0 to 1.29.2)
 - Your cluster is in a non-production environment
 - You have a solid rollback plan
 - You want a simpler, faster process than canary
@@ -41,9 +41,9 @@ istioctl version
 Output:
 
 ```text
-client version: 1.21.0
-control plane version: 1.20.5
-data plane version: 1.20.5 (35 proxies)
+client version: 1.30.0
+control plane version: 1.29.2
+data plane version: 1.29.2 (35 proxies)
 ```
 
 ## Step 1: Review the Release Notes
@@ -56,9 +56,8 @@ Before touching anything, read the release notes for the target version. Look fo
 - Known issues
 
 ```bash
-# Check what will change
-
-istioctl manifest diff <old-manifest.yaml> <new-manifest.yaml>
+# Check what will change between generated manifests
+diff -u old-manifest.yaml new-manifest.yaml
 ```
 
 If you saved your install manifest previously, you can generate a diff. If not, at minimum review the official Istio changelog.
@@ -68,10 +67,10 @@ If you saved your install manifest previously, you can generate a diff. If not, 
 Export your current Istio configuration so you can restore it if needed:
 
 ```bash
-# Export IstioOperator config if you used operator-based install
+# Export IstioOperator config if your cluster has one
 kubectl get istiooperator -n istio-system -o yaml > istio-backup.yaml
 
-# Export all Istio custom resources
+# Export common Istio traffic-management custom resources
 kubectl get virtualservices,destinationrules,gateways,serviceentries,sidecars --all-namespaces -o yaml > istio-resources-backup.yaml
 ```
 
@@ -86,8 +85,8 @@ You will need the same flags for the upgrade.
 ## Step 3: Download the New Version
 
 ```bash
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.21.0 sh -
-cd istio-1.21.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
+cd istio-1.30.0
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -150,9 +149,9 @@ istioctl version
 The control plane version should now show the new version, while the data plane version still shows the old version (because sidecar proxies have not been restarted yet).
 
 ```text
-client version: 1.21.0
-control plane version: 1.21.0
-data plane version: 1.20.5 (35 proxies)
+client version: 1.30.0
+control plane version: 1.30.0
+data plane version: 1.29.2 (35 proxies)
 ```
 
 Check that istiod is healthy:
@@ -215,11 +214,11 @@ Verify traffic is flowing correctly by checking your application health endpoint
 
 ## Rolling Back If Something Goes Wrong
 
-If you notice problems after the upgrade, you can roll back by installing the old version:
+If you notice problems after the upgrade, you can roll back by using the old version:
 
 ```bash
 # Use the old istioctl binary
-./istio-1.20.5/bin/istioctl install --set profile=default -y
+./istio-1.29.2/bin/istioctl upgrade --set profile=default -y
 ```
 
 Then restart your workloads again to get the old sidecar version:
@@ -246,7 +245,7 @@ kubectl rollout restart deployment/istio-ingressgateway -n istio-system
 
 ## Tips for Smoother In-Place Upgrades
 
-**Always upgrade one minor version at a time.** Jumping from 1.19 to 1.21 is not supported. Go 1.19 to 1.20, validate, then 1.20 to 1.21.
+**Always upgrade one minor version at a time.** Jumping from 1.28 to 1.30 is not supported for an in-place upgrade. Go 1.28 to 1.29, validate, then 1.29 to 1.30.
 
 **Schedule upgrades during low-traffic periods.** While Istio maintains backward compatibility during the upgrade window, reducing traffic gives you more breathing room if something goes wrong.
 
