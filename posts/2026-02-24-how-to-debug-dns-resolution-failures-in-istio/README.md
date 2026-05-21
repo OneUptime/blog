@@ -16,9 +16,9 @@ Here is how to systematically debug DNS issues when Istio is involved.
 
 In a standard Kubernetes setup, pods use CoreDNS (or kube-dns) for name resolution. The flow is simple: app makes a DNS query, it goes to CoreDNS through the cluster DNS service, and CoreDNS responds.
 
-With Istio (1.8+), there is an additional layer called the Istio DNS proxy. When enabled, the sidecar intercepts DNS queries from the application and can resolve them locally for known services, or forward them to the upstream DNS server for external names.
+With Istio (1.8+), there is an additional layer called the Istio DNS proxy. When enabled in sidecar mode, the sidecar intercepts DNS queries from the application and can resolve them locally for known services, or forward them to the upstream DNS server for external names. In ambient mode, ztunnel handles DNS capture, and DNS proxying is enabled by default from Istio 1.25 onward.
 
-The DNS proxy is controlled by the `ISTIO_META_DNS_CAPTURE` and `ISTIO_META_DNS_AUTO_ALLOCATE` environment variables on the istio-proxy container. Check if they are enabled:
+In sidecar mode, DNS capture is controlled with the `ISTIO_META_DNS_CAPTURE` proxy metadata setting. ServiceEntry address auto-allocation is configured by the control plane and can be overridden per ServiceEntry with the `networking.istio.io/enable-autoallocate-ip` label. Check if DNS capture is enabled:
 
 ```bash
 kubectl get pod my-app-xxxxx -o jsonpath='{.spec.containers[?(@.name=="istio-proxy")].env}' | python3 -m json.tool
@@ -27,10 +27,10 @@ kubectl get pod my-app-xxxxx -o jsonpath='{.spec.containers[?(@.name=="istio-pro
 Or check the mesh config:
 
 ```bash
-kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep -A 5 dnsCapture
+kubectl get configmap istio -n istio-system -o jsonpath='{.data.mesh}' | grep -A 5 ISTIO_META_DNS_CAPTURE
 ```
 
-## Step 1: Test DNS from Different Containers
+## Step 1: Test DNS from Different Pods
 
 Test DNS resolution from the application container:
 
@@ -38,13 +38,16 @@ Test DNS resolution from the application container:
 kubectl exec my-app-xxxxx -c my-app -- nslookup my-service.default.svc.cluster.local
 ```
 
-Test from the istio-proxy container:
+Test from an uninjected debug pod:
 
 ```bash
-kubectl exec my-app-xxxxx -c istio-proxy -- nslookup my-service.default.svc.cluster.local
+kubectl run dns-test --image=busybox:1.28 --restart=Never \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
+  -- sleep 3600
+kubectl exec dns-test -- nslookup my-service.default.svc.cluster.local
 ```
 
-If DNS works from istio-proxy but not from the app container, the issue is in the DNS interception or proxy layer. If it fails from both, the issue is likely with CoreDNS or the service itself.
+If DNS works from an uninjected debug pod but not from the app container, the issue is in the pod DNS configuration or Istio DNS interception layer. If it fails from both, the issue is likely with CoreDNS or the service itself. Testing DNS from inside the `istio-proxy` container is usually not a reliable comparison, because DNS proxying applies to application DNS requests, not to Envoy's own DNS lookups.
 
 ## Step 2: Check the Pod DNS Configuration
 
@@ -102,10 +105,10 @@ When Istio's DNS proxy is enabled, it intercepts DNS queries before they reach C
 
 ### ServiceEntry DNS resolution
 
-If you have a ServiceEntry with `resolution: DNS`, the Istio DNS proxy resolves the hostname. If the DNS proxy can not resolve it, the request fails.
+If you have a ServiceEntry with `resolution: DNS`, Envoy resolves the hostname asynchronously and uses those results for traffic routing. This is separate from Istio DNS proxying for application DNS queries.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-api
@@ -126,17 +129,17 @@ Check if the Envoy proxy has endpoints for this host:
 istioctl proxy-config endpoints my-app-xxxxx.default --cluster "outbound|443||api.external.com"
 ```
 
-If endpoints are empty, the DNS resolution in the proxy is failing.
+If endpoints are empty, Envoy's DNS resolution for that ServiceEntry is failing.
 
 ### DNS auto-allocation conflicts
 
-When `ISTIO_META_DNS_AUTO_ALLOCATE` is enabled, Istio assigns virtual IPs to ServiceEntry hosts. This can conflict with actual IPs if there is an overlap:
+When ServiceEntry address auto-allocation is enabled, Istio assigns virtual IPs to ServiceEntry hosts that do not have explicit `spec.addresses`. These addresses come from the `240.240.0.0/16` range to avoid conflicting with real services, but you should still verify the allocated address if routing looks wrong:
 
 ```bash
 istioctl proxy-config clusters my-app-xxxxx.default | grep api.external.com
 ```
 
-Look at the assigned IP. If it conflicts with anything in your cluster, you have a problem.
+Look at the assigned IP. If the application is getting a virtual IP when it expects the public DNS answer, adjust the ServiceEntry address or the auto-allocation label.
 
 ## Step 5: Check for ndots Issues
 
@@ -173,10 +176,10 @@ kubectl get svc my-headless-service -o jsonpath='{.spec.clusterIP}'
 
 ```
 
-With Istio, headless service DNS resolution can be tricky because the sidecar needs to know about individual pod endpoints. Check if the endpoints are populated:
+With Istio, headless service DNS resolution can be tricky because the sidecar needs to know about individual pod endpoints. Check if the EndpointSlices are populated:
 
 ```bash
-kubectl get endpoints my-headless-service
+kubectl get endpointslice -l kubernetes.io/service-name=my-headless-service
 ```
 
 And check the proxy config:
@@ -206,13 +209,15 @@ kubectl get secrets -n istio-system -l istio/multiCluster=true
 Use dig for more detailed DNS information:
 
 ```bash
-kubectl exec my-app-xxxxx -c istio-proxy -- dig +short my-service.default.svc.cluster.local
+kubectl exec my-app-xxxxx -c my-app -- dig +short my-service.default.svc.cluster.local
 ```
 
 If dig is not available, use the busybox debug pod:
 
 ```bash
-kubectl run dns-test --image=busybox:1.28 --restart=Never -- sleep 3600
+kubectl run dns-test --image=busybox:1.28 --restart=Never \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' \
+  -- sleep 3600
 kubectl exec dns-test -- nslookup my-service.default.svc.cluster.local
 ```
 
@@ -224,7 +229,7 @@ kubectl exec dns-test -- nslookup api.external.com
 
 ## Step 9: Disable DNS Proxy Temporarily
 
-If you suspect the Istio DNS proxy is the problem, you can disable it for a specific pod by adding an annotation:
+If you suspect the Istio DNS proxy is the problem in sidecar mode, you can disable it for a specific pod by adding an annotation:
 
 ```yaml
 apiVersion: v1
@@ -246,12 +251,12 @@ Restart the pod and test DNS again. If it works with the DNS proxy disabled, the
 | `NXDOMAIN` | Service does not exist or wrong search domain | Check service name and namespace |
 | `SERVFAIL` | CoreDNS upstream failure | Check CoreDNS logs and upstream DNS |
 | Timeout | DNS server unreachable | Check CoreDNS pods and network policies |
-| Wrong IP returned | DNS proxy auto-allocation conflict | Check allocated IPs |
+| Wrong IP returned | Unexpected DNS proxy auto-allocation result | Check allocated IPs |
 | Works in one pod, fails in another | Sidecar resource limiting DNS | Check Sidecar egress hosts |
 
 ## Debugging Checklist
 
-1. Test DNS from both the app container and istio-proxy
+1. Test DNS from both the app container and an uninjected debug pod
 2. Verify resolv.conf is correct
 3. Check CoreDNS pods are healthy
 4. Check Istio DNS proxy settings
