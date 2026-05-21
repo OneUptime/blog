@@ -87,7 +87,28 @@ spec:
 ```
 
 ```yaml
-# Step 4: Require admin role for admin routes
+# Step 4: Allow authenticated API routes
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-authenticated-api
+  namespace: backend
+spec:
+  selector:
+    matchLabels:
+      app: api-server
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            requestPrincipals: ["*"]
+      to:
+        - operation:
+            paths: ["/api/*"]
+```
+
+```yaml
+# Step 5: Require admin role for admin routes
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
@@ -107,6 +128,27 @@ spec:
           notValues: ["admin"]
 ```
 
+```yaml
+# Step 6: Allow admin routes when the admin role is present
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-admin-role
+  namespace: backend
+spec:
+  selector:
+    matchLabels:
+      app: api-server
+  action: ALLOW
+  rules:
+    - to:
+        - operation:
+            paths: ["/admin/*"]
+      when:
+        - key: request.auth.claims[role]
+          values: ["admin"]
+```
+
 ## Path Matching Patterns
 
 AuthorizationPolicy supports several path matching patterns:
@@ -114,11 +156,12 @@ AuthorizationPolicy supports several path matching patterns:
 | Pattern | Matches |
 |---------|---------|
 | `/api/users` | Exact path `/api/users` |
-| `/api/*` | Single segment: `/api/users`, `/api/orders`, but NOT `/api/users/123` |
-| `/api/**` | Not supported - use `/api/*` which matches any path starting with `/api/` in Istio |
+| `/api/*` | Prefix match: `/api/users`, `/api/orders`, and `/api/users/123` |
+| `/api/{*}` | One path segment, such as `/api/users`, but NOT `/api/users/123` |
+| `/api/{**}` | Zero or more path segments at the end of the path, such as `/api/`, `/api/users`, and `/api/users/123` |
 | `/api/v1/*` | Paths like `/api/v1/users`, `/api/v1/orders` |
 
-Wait, there's a nuance. In Istio's AuthorizationPolicy, the `*` at the end of a path matches any suffix, including paths with multiple segments. So `/api/*` actually matches `/api/users`, `/api/users/123`, and `/api/users/123/orders`. It behaves like a prefix match when at the end.
+Wait, there's a nuance. In Istio's AuthorizationPolicy, the `*` at the end of a path matches any suffix, including paths with multiple segments. So `/api/*` actually matches `/api/users`, `/api/users/123`, and `/api/users/123/orders`. It behaves like a prefix match when at the end. If you need segment-aware matching, use Istio's path templates such as `{*}` and `{**}`.
 
 ```yaml
 # This matches everything under /api/
@@ -163,6 +206,26 @@ spec:
     - from:
         - source:
             notRequestPrincipals: ["*"]
+      to:
+        - operation:
+            paths: ["/api/*"]
+            methods: ["POST", "PUT", "DELETE", "PATCH"]
+---
+# Allow write operations when a valid JWT is present
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-authenticated-writes
+  namespace: backend
+spec:
+  selector:
+    matchLabels:
+      app: api-server
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            requestPrincipals: ["*"]
       to:
         - operation:
             paths: ["/api/*"]
@@ -256,7 +319,7 @@ spec:
 apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
-  name: internal-host-no-auth
+  name: allow-api-host-authenticated
   namespace: backend
 spec:
   selector:
@@ -264,6 +327,13 @@ spec:
       app: api-server
   action: ALLOW
   rules:
+    - from:
+        - source:
+            requestPrincipals: ["*"]
+      to:
+        - operation:
+            hosts: ["api.example.com"]
+            paths: ["/api/*"]
     - to:
         - operation:
             hosts: ["internal.example.com"]
@@ -415,12 +485,13 @@ kubectl exec deploy/sleep -c sleep -- \
 
 When multiple AuthorizationPolicies apply to the same workload, Istio evaluates them in this order:
 
-1. **DENY** policies are checked first. If any DENY rule matches, the request is denied (403).
-2. **ALLOW** policies are checked next. If any ALLOW rule matches, the request is allowed.
-3. If there are ALLOW policies but none match, the request is denied (403).
-4. If there are no ALLOW or DENY policies, the request is allowed.
+1. **CUSTOM** policies are checked first. If any matching CUSTOM policy's extension provider returns deny, the request is denied (403).
+2. **DENY** policies are checked next. If any DENY rule matches, the request is denied (403).
+3. If there are no ALLOW policies for the workload, the request is allowed.
+4. **ALLOW** policies are checked next. If any ALLOW rule matches, the request is allowed.
+5. If there are ALLOW policies but none match, the request is denied (403).
 
-Understanding this order is essential for per-route auth. Put your public route ALLOW rules and your DENY rules together, and the combination creates the per-route behavior you want.
+Understanding this order is essential for per-route auth. Put your public route ALLOW rules, authenticated-route ALLOW rules, and DENY rules together, and the combination creates the per-route behavior you want.
 
 ## Debugging Per-Route Auth
 
