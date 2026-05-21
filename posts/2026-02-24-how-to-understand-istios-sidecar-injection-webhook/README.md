@@ -8,7 +8,7 @@ Description: A thorough explanation of how Istio's sidecar injection webhook wor
 
 ---
 
-Sidecar injection is how Istio adds the Envoy proxy to your pods. Without it, your pods would not be part of the mesh. The injection happens automatically through a Kubernetes mutating admission webhook, which modifies pod specs before they are created. Understanding this mechanism is critical because injection problems are one of the most common issues people run into with Istio.
+In Istio sidecar mode, sidecar injection is how Istio adds the Envoy proxy to your pods. Without it, your pods would not be part of the sidecar-based mesh. The injection happens automatically through a Kubernetes mutating admission webhook, which modifies pod specs before they are created. Understanding this mechanism is critical because injection problems are one of the most common issues people run into with Istio.
 
 ## How the Webhook Works
 
@@ -159,7 +159,7 @@ The most common approach. Label the namespace and all new pods get injected:
 kubectl label namespace default istio-injection=enabled
 ```
 
-### Pod-Level Annotation
+### Pod-Level Label
 
 Override injection at the pod level:
 
@@ -167,7 +167,7 @@ Override injection at the pod level:
 apiVersion: v1
 kind: Pod
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "true"
 ```
 
@@ -175,7 +175,7 @@ Or disable injection for a specific pod in an injected namespace:
 
 ```yaml
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "false"
 ```
 
@@ -266,11 +266,10 @@ kubectl get namespace default --show-labels | grep istio
 # Check if the webhook is active
 kubectl get mutatingwebhookconfiguration
 
-# Check for injection-disable annotations on the pod
+# Check for injection-disable labels or deprecated annotations on the pod
+kubectl get pod my-app-xyz -o jsonpath='{.metadata.labels}' | python3 -m json.tool
 kubectl get pod my-app-xyz -o jsonpath='{.metadata.annotations}' | python3 -m json.tool
 ```
-
-Also check if the pod's service account has the annotation to skip injection.
 
 ### Injection Webhook Failing
 
