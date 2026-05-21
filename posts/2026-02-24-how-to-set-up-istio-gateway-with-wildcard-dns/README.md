@@ -333,7 +333,7 @@ curl -H "Host: unknown.example.com" http://$GATEWAY_IP/
 
 ## Limitations
 
-Wildcard DNS records only match one level of subdomain. `*.example.com` matches `api.example.com` but does not match `v1.api.example.com`. If you need multiple levels, you would need additional wildcard records like `*.api.example.com`.
+Wildcard DNS records are evaluated using DNS wildcard rules and can synthesize answers for names below the wildcard when there is no closer matching DNS name. However, wildcard TLS certificates only match one label, and Istio Gateway host wildcards are written in the left-most label. In this setup, `*.example.com` matches `api.example.com` but not `v1.api.example.com`. If you need multiple levels for HTTPS routing, you would need additional wildcard hosts and certificates like `*.api.example.com`.
 
 The same limitation applies to the Gateway host field - `*.example.com` in the Gateway only matches single-level subdomains.
 
