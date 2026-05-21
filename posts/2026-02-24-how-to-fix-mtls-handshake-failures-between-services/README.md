@@ -12,11 +12,12 @@ Mutual TLS (mTLS) in Istio encrypts traffic between services and provides identi
 
 ## Understanding mTLS Modes in Istio
 
-Istio has three mTLS modes, and mixing them up is the number one cause of handshake failures:
+Istio has three explicit mTLS enforcement modes, plus `UNSET` for inheriting from a parent policy. Mixing them up is the number one cause of handshake failures:
 
 - **PERMISSIVE**: Accepts both plaintext and mTLS traffic. This is the default.
 - **STRICT**: Only accepts mTLS traffic. Plaintext connections are rejected.
 - **DISABLE**: No mTLS. All traffic is plaintext.
+- **UNSET**: Inherit from the namespace or mesh-level policy. If there is no parent policy, Istio treats it as PERMISSIVE.
 
 The mode is set through PeerAuthentication resources:
 
@@ -134,24 +135,24 @@ kubectl logs -l app=istiod -n istio-system | grep -i "certificate\|cert\|error"
 You can also check certificate expiration directly:
 
 ```bash
-istioctl proxy-config secret <pod-name> -n my-namespace -o json | jq '.[0].secret.tlsCertificate.certificateChain.inlineBytes' -r | base64 -d | openssl x509 -noout -dates
+istioctl proxy-config secret <pod-name> -n my-namespace -o json | jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | base64 -d | openssl x509 -noout -dates
 ```
 
 ## Root CA Mismatch
 
-If you're running multiple Istio control planes or have migrated from one CA to another, different services might have certificates signed by different CAs. They can't verify each other's certificates.
+If you're running multiple Istio control planes or have migrated from one CA to another, different services might have certificates signed by different CAs. They can't verify each other's certificates unless their proxies have the right trust bundle.
 
 Check the CA on both sides:
 
 ```bash
-istioctl proxy-config secret <source-pod> -n source-ns -o json | jq '.[1].secret.validationContext.trustedCa.inlineBytes' -r | base64 -d | openssl x509 -noout -subject -issuer
+istioctl proxy-config secret <source-pod> -n source-ns -o json | jq -r '.dynamicActiveSecrets[] | select(.name == "ROOTCA") | .secret.validationContext.trustedCa.inlineBytes' | base64 -d | openssl x509 -noout -subject -issuer
 ```
 
 ```bash
-istioctl proxy-config secret <dest-pod> -n dest-ns -o json | jq '.[1].secret.validationContext.trustedCa.inlineBytes' -r | base64 -d | openssl x509 -noout -subject -issuer
+istioctl proxy-config secret <dest-pod> -n dest-ns -o json | jq -r '.dynamicActiveSecrets[] | select(.name == "ROOTCA") | .secret.validationContext.trustedCa.inlineBytes' | base64 -d | openssl x509 -noout -subject -issuer
 ```
 
-They should have the same root CA. If they don't, you have a trust domain problem.
+They should have compatible root CAs in their trust bundles. If they don't, you have a CA or trust bundle configuration problem. In multi-cluster or migration setups, also check your trust domain and `trustDomainAliases` settings.
 
 ## Port-Level mTLS Exclusions
 
@@ -171,12 +172,10 @@ spec:
     mode: STRICT
   portLevelMtls:
     8080:
-      mode: PERMISSIVE
-    15021:
       mode: DISABLE
 ```
 
-Port 15021 is Istio's health check port. If something is probing that port and failing because of mTLS, disable it at the port level.
+The port number in `portLevelMtls` is the workload's container port, not the Kubernetes Service port or Istio's sidecar status port. If your app's health check uses workload port 8080 and fails because of mTLS, disable mTLS on that workload port.
 
 ## Debugging with Envoy Logs
 
