@@ -25,7 +25,7 @@ The risk window is during steps 2 and 3. If traffic is still flowing to the term
 
 ## Prerequisite: Multiple Replicas
 
-The most fundamental requirement is running more than one replica of each deployment. If you have a single-replica deployment, there is no way to avoid a brief gap.
+The most reliable approach is running more than one replica of each deployment. A single-replica deployment can avoid a planned rollout gap only if it can create a surge pod before terminating the old pod, but it still has no spare capacity for node failures or other disruptions.
 
 ```yaml
 apiVersion: apps/v1
@@ -60,7 +60,7 @@ spec:
       app: my-service
 ```
 
-This guarantees at least 2 pods are always running, regardless of voluntary disruptions like rolling restarts.
+This allows voluntary evictions only when at least 2 selected pods remain healthy. PDBs do not control how a Deployment performs its own rolling update, so keep the Deployment strategy configured with `maxUnavailable: 0`.
 
 ## Enable holdApplicationUntilProxyStarts
 
@@ -83,25 +83,27 @@ meshConfig:
     holdApplicationUntilProxyStarts: true
 ```
 
-This ensures the new pod does not start serving traffic until the sidecar proxy is fully initialized and connected to the control plane.
+This delays the application container until the sidecar proxy is ready, reducing startup race conditions. Your application readiness probe still determines when the pod is added to Service endpoints.
 
 ## Configure Proxy Readiness
 
 The sidecar proxy has its own readiness probe. Make sure it is configured properly:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: ProxyConfig
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: my-proxy-config
-  namespace: my-app
+  name: my-service
 spec:
-  concurrency: 2
-  environmentVariables:
-    ISTIO_AGENT_FLAGS: "--readinessProbe=true"
+  template:
+    metadata:
+      annotations:
+        readiness.status.sidecar.istio.io/initialDelaySeconds: "0"
+        readiness.status.sidecar.istio.io/periodSeconds: "15"
+        readiness.status.sidecar.istio.io/failureThreshold: "4"
 ```
 
-The default readiness probe checks that the proxy can reach the control plane and has received its initial configuration. This is usually sufficient, but for critical services, you might want additional checks.
+The injected readiness probe checks the sidecar health endpoint. The annotations above tune the probe timing; the default settings are usually sufficient, but for critical services, make sure your application readiness probe also reflects whether the application can safely receive traffic.
 
 ## Graceful Shutdown Configuration
 
@@ -161,7 +163,7 @@ Keep a close eye on your metrics during the sidecar rollout:
 
 ```bash
 # Watch for proxy version changes in real time
-watch 'istioctl proxy-status | grep -c "1.21"'
+watch 'istioctl proxy-status | grep -c "<target-version>"'
 ```
 
 Set up a dashboard that shows:
@@ -205,14 +207,18 @@ This is slower than a rollout restart but gives more control.
 You can control sidecar injection at the pod level using annotations. This is useful if you want to upgrade sidecars for specific pods rather than entire deployments:
 
 ```yaml
-apiVersion: v1
-kind: Pod
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  annotations:
-    sidecar.istio.io/proxyImage: docker.io/istio/proxyv2:1.21.0
+  name: my-service
+spec:
+  template:
+    metadata:
+      annotations:
+        sidecar.istio.io/proxyImage: docker.io/istio/proxyv2:<target-version>
 ```
 
-This forces a specific proxy version regardless of the control plane version. Use this sparingly - it is better to keep proxies in sync with the control plane.
+This overrides the proxy image injected for newly created pods from that workload. Use this sparingly - it is better to keep proxies in sync with the control plane.
 
 ## Verifying Zero Downtime
 
