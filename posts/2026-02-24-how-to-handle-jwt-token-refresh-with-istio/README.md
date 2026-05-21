@@ -12,7 +12,7 @@ JWTs expire. That's by design - short-lived tokens limit the window of exposure 
 
 ## How Token Expiration Works in Istio
 
-When a request arrives with a JWT, the Envoy proxy checks the `exp` (expiration) claim. If the current time is past the expiration, the proxy returns 401 Unauthorized. There's no built-in grace period or tolerance for clock skew.
+When a request arrives with a JWT, the Envoy proxy checks the `exp` (expiration) claim. If the token is expired beyond Istio's default 60-second clock skew, the proxy returns 401 Unauthorized.
 
 The timeline looks like this:
 
@@ -28,7 +28,7 @@ sequenceDiagram
     Service-->>Client: 200 OK
 
     Client->>Envoy: Request with JWT (exp: 12:00:00)
-    Note over Envoy: Current time: 12:00:01
+    Note over Envoy: Current time: 12:01:01
     Envoy-->>Client: 401 Unauthorized (token expired)
 ```
 
@@ -36,8 +36,9 @@ sequenceDiagram
 
 An important point: Istio does not perform token refresh. It's a token validator, not an OAuth client. The refresh flow is entirely the responsibility of the client application. Istio's role is:
 
-- Accept valid tokens.
+- Accept valid tokens when they are presented.
 - Reject expired or invalid tokens.
+- Require a separate AuthorizationPolicy if requests without a token should be rejected.
 - That's it.
 
 ## Client-Side Refresh Strategies
@@ -73,9 +74,12 @@ class TokenManager:
         data = response.json()
         self.token = data['access_token']
         self.expires_at = time.time() + data['expires_in']
+
+    def force_refresh(self):
+        self._refresh()
 ```
 
-This is the preferred approach. Requests never fail due to expired tokens because the client always has a fresh one.
+This is the preferred approach. Requests are much less likely to fail due to expired tokens because the client refreshes before the expiry time.
 
 ### Strategy 2: Reactive Refresh (Retry on 401)
 
@@ -156,10 +160,10 @@ Key rotation is different from token refresh but related. When the identity prov
 1. New tokens are signed with the new key.
 2. Old tokens (still in use, not yet expired) were signed with the old key.
 
-Istio's JWKS cache needs to include both keys during the transition. Envoy refreshes the JWKS approximately every 5 minutes. The identity provider should:
+Istio's JWKS cache needs to include both keys during the transition. The refresh timing depends on how Istio fetches JWKS: Envoy remote JWKS commonly uses a 5-minute cache duration, while Istio's control-plane JWKS refresh interval defaults to 20 minutes. The identity provider should:
 
 1. Add the new key to the JWKS endpoint.
-2. Wait for caches to refresh (at least 10 minutes).
+2. Wait for caches to refresh (longer than the configured JWKS cache or refresh interval).
 3. Start signing tokens with the new key.
 4. Keep the old key in JWKS until all old tokens expire.
 5. Remove the old key from JWKS.
@@ -198,7 +202,7 @@ jwtRules:
     outputPayloadToHeader: x-jwt-payload
 ```
 
-The backend can read the `exp` claim from the forwarded payload.
+The backend can base64url-decode the forwarded payload and read the `exp` claim from the JSON.
 
 ## Handling Refresh Token Endpoints
 
@@ -224,7 +228,7 @@ spec:
             methods: ["POST"]
 ```
 
-The refresh endpoint typically receives a refresh token (which is NOT a JWT that Istio validates) and returns a new access token.
+The refresh endpoint typically receives a refresh token and returns a new access token. If the refresh token is opaque or is not the access-token JWT that Istio is configured to validate, send it in the request body, a cookie, or another location that is not configured as an Istio JWT token source; otherwise Istio may reject it before the request reaches the service.
 
 ## Monitoring Token Expiration
 
