@@ -34,7 +34,7 @@ Istio gives you fine-grained control over how traffic flows between services. Yo
 For example, to send 90% of traffic to v1 and 10% to v2:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -53,16 +53,16 @@ spec:
       weight: 10
 ```
 
-Kubernetes by itself cannot do this. The built-in Service object just round-robins across all pods that match the selector.
+Kubernetes by itself cannot do this kind of version-weighted routing. The built-in Service object load-balances across the ready endpoints that match the selector, but it does not know that one group of pods is "v1" and another is "v2".
 
 ### 2. Security
 
-Istio automatically encrypts all traffic between services using mutual TLS (mTLS). Each service gets a cryptographic identity, and every connection is authenticated and encrypted. You do not need to modify your application code at all.
+Istio automatically configures workload sidecars to use mutual TLS (mTLS) when they call other workloads in the mesh. Each service gets a cryptographic identity, and sidecar-to-sidecar connections can be authenticated and encrypted without modifying your application code. By default, workloads accept both mTLS and plaintext traffic in permissive mode; use a `PeerAuthentication` policy with `STRICT` mode if you want to require mTLS.
 
 You can also set up authorization policies to control which services can talk to which:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend
@@ -86,6 +86,8 @@ Every request that flows through the mesh gets automatically tracked. Istio gene
 
 Without Istio, you would need to instrument each service with a metrics library, add tracing headers, and configure exporters. With Istio, the sidecar proxy handles all of that transparently.
 
+There is one important tracing caveat: Istio proxies can generate and report spans, but your applications still need to propagate trace context headers on outgoing requests if you want separate spans to be joined into a complete distributed trace.
+
 You can query these metrics through Prometheus:
 
 ```bash
@@ -102,7 +104,7 @@ histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{des
 Istio adds retry logic, circuit breaking, and outlier detection at the network level. If a service instance starts returning errors, Istio can automatically stop sending traffic to it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -121,7 +123,7 @@ This ejects a pod from the load balancing pool if it returns 3 consecutive 5xx e
 
 Istio works by injecting a sidecar proxy (Envoy) into every pod. When your application makes an HTTP request to another service, the request does not go directly to the destination. Instead:
 
-1. Your app sends the request to localhost (it thinks it is talking to the target service)
+1. Your app sends the request to the target service address as usual
 2. iptables rules redirect the outbound traffic to the Envoy sidecar
 3. The sidecar applies any routing rules, retries, or policies
 4. The sidecar encrypts the request with mTLS
@@ -156,7 +158,7 @@ It is worth being clear about what Istio does not handle:
 
 - **Application logic** - Istio does not change how your application works. It only manages the network layer.
 - **Container orchestration** - That is still Kubernetes. Istio sits on top of it.
-- **Database connections** - Istio can manage TCP traffic, but it does not understand database protocols. Connection pooling and query optimization are still your responsibility.
+- **Database connections** - Istio can manage TCP traffic, but database-level behavior such as connection pooling and query optimization is still your responsibility.
 - **Service discovery** - Istio uses the Kubernetes service registry. It does not replace it.
 
 ## When Should You Use Istio?
@@ -185,7 +187,7 @@ To try Istio out:
 curl -L https://istio.io/downloadIstio | sh -
 cd istio-*
 
-# Install with the demo profile (includes all features)
+# Install with the demo profile (good for trying the samples)
 bin/istioctl install --set profile=demo -y
 
 # Enable sidecar injection for your namespace
