@@ -57,7 +57,7 @@ Look for your hostname in the output. If it is not there, the VirtualService eit
 Fix: Create or fix the VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -95,7 +95,7 @@ curl https://my-app.example.com/api/data --resolve "my-app.example.com:443:34.12
 
 ### Cause 3: Wrong Port Configuration
 
-If the destination port in the VirtualService does not match the Kubernetes Service port, Envoy will not find a route.
+If the destination port in the VirtualService does not match the Kubernetes Service port, Envoy can route to the wrong or a missing upstream cluster.
 
 Check the Service:
 
@@ -124,7 +124,7 @@ The VirtualService destination port should match the Service port (80), not the 
 
 ### Cause 4: Service Port Naming
 
-Istio uses port names to determine the protocol. If the port is not named or uses an unrecognized name, Istio might handle it as TCP and not create HTTP routes.
+Istio can automatically detect HTTP and HTTP/2 traffic, but explicit protocol selection is still safer and is required in some environments. You can set it with the Kubernetes Service port name or the `appProtocol` field. If Istio cannot determine the protocol, it treats the traffic as plain TCP and HTTP routes will not apply.
 
 ```yaml
 # Good - Istio recognizes this as HTTP
@@ -137,17 +137,17 @@ Istio uses port names to determine the protocol. If the port is not named or use
     - name: http-web
       port: 8080
 
-# Bad - Istio does not recognize this as HTTP
+# Not explicit - relies on automatic protocol detection
   ports:
     - name: web
       port: 8080
 
-# Bad - No name at all (treated as TCP)
+# Not explicit - relies on automatic protocol detection
   ports:
     - port: 8080
 ```
 
-Fix the port naming to use an Istio-recognized prefix: `http`, `http2`, `grpc`, `tcp`, `tls`, `https`, `mongo`, `redis`, `mysql`.
+Fix the port naming to use an Istio-recognized prefix: `http`, `http2`, `grpc`, `grpc-web`, `tcp`, `tls`, `https`, `mongo`, `redis`, `mysql`. On Kubernetes 1.18 and later, you can also set `appProtocol`; if both are set, `appProtocol` takes precedence.
 
 ### Cause 5: Sidecar Resource Filtering
 
@@ -160,7 +160,7 @@ kubectl get sidecar -n default -o yaml
 If the Sidecar limits egress hosts, the proxy will not have routes for excluded services:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
