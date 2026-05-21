@@ -76,7 +76,7 @@ spec:
 Setting `accessLogFile` to empty disables access logging entirely. If you still need some logging, use access log filtering to only log errors:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: selective-logging
@@ -161,13 +161,13 @@ spec:
 
 This is a trade-off. You lose encryption between services but save the TLS handshake overhead. Only do this if your edge network is physically secure and you understand the risk.
 
-A better middle ground is to keep mTLS but tune the TLS session cache:
+A better middle ground is to keep mTLS and avoid unnecessary reconnects by enabling TCP keepalive for upstream connections:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
 kind: EnvoyFilter
 metadata:
-  name: tls-session-cache
+  name: upstream-tcp-keepalive
   namespace: edge-app
 spec:
   configPatches:
@@ -185,7 +185,7 @@ spec:
 
 ## Considering Ambient Mode for Latency
 
-Istio ambient mode can reduce latency for L4 traffic because the ztunnel is implemented as a transparent proxy at the node level. There is no iptables redirection to a sidecar container:
+Istio ambient mode can reduce latency for L4 traffic because ztunnel is implemented as a transparent proxy at the node level. There is no sidecar container on the data path:
 
 ```bash
 istioctl install --set profile=ambient
@@ -194,10 +194,10 @@ istioctl install --set profile=ambient
 For L4 traffic (TCP, basic mTLS), ambient mode adds less than 0.5ms of latency in most cases. If you only need L7 features for specific services, deploy waypoint proxies selectively:
 
 ```bash
-istioctl waypoint apply --namespace edge-app --name latency-critical-waypoint
+istioctl waypoint apply --namespace edge-app --name latency-critical-waypoint --enroll-namespace
 ```
 
-Only namespaces with waypoint proxies pay the L7 processing cost.
+Only workloads enrolled to use waypoint proxies pay the L7 processing cost.
 
 ## Benchmarking Latency
 
