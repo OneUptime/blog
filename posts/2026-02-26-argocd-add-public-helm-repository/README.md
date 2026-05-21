@@ -54,7 +54,7 @@ argocd repo add https://grafana.github.io/helm-charts \
 argocd repo list
 ```
 
-The `--type helm` flag tells ArgoCD this is a Helm repository, not a Git repository. The `--name` is an alias used when referencing charts.
+The `--type helm` flag tells ArgoCD this is a Helm repository, not a Git repository. The `--name` is the repository name and is required for Helm repositories.
 
 ## Adding a Helm Repository Declaratively
 
@@ -321,10 +321,10 @@ You can use semantic version ranges, but for production deployments, pinning to 
 ## Checking Available Chart Versions
 
 ```bash
-# List available versions of a chart
+# Check repository registration/details
 argocd repo get https://prometheus-community.github.io/helm-charts
 
-# Or use helm CLI for more detail
+# Use helm CLI to list chart versions
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm search repo prometheus-community/kube-prometheus-stack --versions | head -20
 ```
@@ -344,17 +344,11 @@ helm search repo prometheus-community/ | grep kube-prometheus
 
 ### Slow Index Downloads
 
-Large repositories like Bitnami have huge `index.yaml` files. This can cause timeouts:
+Large repositories like Bitnami have huge `index.yaml` files. This can make Helm operations slower:
 
-```yaml
-# Increase timeout for Helm operations
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: argocd
-data:
-  timeout.reconciliation: 300s
+```bash
+# Increase the repo-server execution timeout for Helm operations
+kubectl -n argocd set env deployment/argocd-repo-server ARGOCD_EXEC_TIMEOUT=5m
 ```
 
 ### Repository Index Stale
@@ -362,7 +356,7 @@ data:
 ArgoCD caches the Helm repository index. Force a refresh:
 
 ```bash
-argocd repo get https://prometheus-community.github.io/helm-charts --refresh
+argocd repo get https://prometheus-community.github.io/helm-charts --refresh hard
 ```
 
 Public Helm repositories are the backbone of community Kubernetes tooling. With ArgoCD managing them, you get version control, audit trails, and automated sync for all your infrastructure components. For more on deploying Helm charts with ArgoCD, see the [comprehensive Helm deployment guide](https://oneuptime.com/blog/post/2026-01-25-deploy-helm-charts-argocd/view).
