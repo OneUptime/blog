@@ -139,18 +139,21 @@ When the Istio DNS proxy is enabled (`ISTIO_META_DNS_CAPTURE: "true"`), DNS quer
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
+  values:
+    pilot:
+      env:
+        PILOT_ENABLE_IP_AUTOALLOCATE: "true"
   meshConfig:
     defaultConfig:
       proxyMetadata:
         ISTIO_META_DNS_CAPTURE: "true"
-        ISTIO_META_DNS_AUTO_ALLOCATE: "true"
 ```
 
 With DNS proxy enabled, the resolution for headless services works like this:
 
 - `cassandra.database.svc.cluster.local` returns all pod IPs (same as without Istio)
 - `cassandra-0.cassandra.database.svc.cluster.local` returns the specific pod IP
-- In multicluster, remote cluster pods are included in the DNS response
+- In multicluster, same-network endpoints from other clusters can be included in the DNS response
 
 ## Traffic Management for Headless Services
 
@@ -182,7 +185,7 @@ spec:
 
 ### VirtualService Limitations
 
-VirtualService route rules have limited applicability for headless services because the client is already choosing the specific pod through DNS. You cannot do percentage-based traffic splitting the way you would with a ClusterIP service. However, you can apply timeout and retry settings:
+VirtualService route rules have limited applicability for headless services because the client is already choosing the specific pod through DNS. You cannot do percentage-based traffic splitting the way you would with a ClusterIP service. For TCP protocols such as Cassandra CQL, VirtualService rules are limited to connection-level TCP routing:
 
 ```yaml
 apiVersion: networking.istio.io/v1beta1
@@ -205,9 +208,9 @@ spec:
 
 ## mTLS with Headless Services
 
-By default, Istio applies mTLS to headless service traffic. This works at the individual pod-to-pod connection level. Each connection from a client pod to a specific headless service pod is encrypted with mTLS.
+By default, Istio automatically configures workload sidecars to use mTLS when calling other workloads, while destination workloads accept both mTLS and plaintext traffic in PERMISSIVE mode unless you configure STRICT mode. This works at the individual pod-to-pod connection level. Each connection from an Istio-injected client pod to a specific Istio-injected headless service pod can use mTLS.
 
-If your database driver or application protocol does not work well with mTLS (because the sidecar cannot parse the protocol), you can disable mTLS for the service:
+If you need the database pods to accept plaintext traffic only, you can disable mTLS for the workload:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -233,13 +236,13 @@ spec:
 
 ## Headless Services in Multicluster
 
-Headless services in multicluster setups work when DNS proxying is enabled. The Istio agent returns pod IPs from both local and remote clusters. For the same-network model, the client connects directly to remote pod IPs. For different-network models, traffic routes through the east-west gateway.
+Headless services in multicluster setups work when DNS proxying is enabled. The Istio agent can return same-network endpoints from both local and remote clusters. For the same-network model, the client connects directly to remote pod IPs. For different-network models, traffic routes through the east-west gateway.
 
 One tricky aspect: pod-specific DNS names (like `cassandra-0.cassandra.database.svc.cluster.local`) only work for local pods by default. Resolving specific pods in remote clusters requires additional DNS configuration or using the Istio DNS proxy with appropriate service registry setup.
 
 ## Common Issues
 
-**Protocol detection failing**: Headless services often use non-HTTP protocols. Make sure your port names start with the correct prefix (`tcp-`, `mysql-`, `mongo-`, etc.). If protocol detection fails, the sidecar might mishandle the traffic.
+**Protocol detection failing**: Headless services often use non-HTTP protocols. Make sure your port names start with the correct prefix, such as `tcp-` for opaque TCP. Protocols such as `mysql-` and `mongo-` require Istio's experimental application-protocol support to be enabled; otherwise use `tcp-`. If protocol detection fails, the sidecar might mishandle the traffic.
 
 **Connection timeouts**: Some database drivers maintain persistent connections and expect specific TCP behavior. The sidecar proxy can interfere with this. If you see connection issues, try adjusting the idle timeout:
 
