@@ -8,7 +8,7 @@ Description: How to collect metrics, traces, and logs from VM workloads in an Is
 
 ---
 
-VM workloads in an Istio mesh generate the same telemetry data as Kubernetes workloads. The sidecar proxy on the VM produces Prometheus metrics, distributes trace spans, and writes access logs. The challenge is collecting this data, since VMs are not part of Kubernetes and do not have the same service discovery and scraping infrastructure.
+VM workloads in an Istio mesh generate the same telemetry data as Kubernetes workloads. The sidecar proxy on the VM produces Prometheus metrics, sends trace spans, and writes access logs. The challenge is collecting this data, since VMs are not part of Kubernetes and do not have the same service discovery and scraping infrastructure.
 
 This post covers how to scrape metrics from VM sidecars, collect traces, aggregate logs, and build dashboards that give you visibility into both VM and Kubernetes workloads.
 
@@ -28,8 +28,10 @@ These metrics are available on the sidecar's Prometheus endpoint:
 ```bash
 # On the VM
 
-curl localhost:15090/stats/prometheus
+curl localhost:15020/stats/prometheus
 ```
+
+Use port `15090` only when you specifically want Envoy-only metrics.
 
 The metrics include standard Istio labels like `source_workload`, `destination_service`, `response_code`, and importantly `source_cluster` and `destination_cluster`.
 
@@ -45,9 +47,9 @@ scrape_configs:
   metrics_path: /stats/prometheus
   static_configs:
   - targets:
-    - '10.0.1.10:15090'
-    - '10.0.1.11:15090'
-    - '10.0.1.12:15090'
+    - '10.0.1.10:15020'
+    - '10.0.1.11:15020'
+    - '10.0.1.12:15020'
     labels:
       cluster: cluster1
       source: vm
@@ -74,7 +76,7 @@ Create a JSON file with your VM targets:
 ```json
 [
   {
-    "targets": ["10.0.1.10:15090", "10.0.1.11:15090"],
+    "targets": ["10.0.1.10:15020", "10.0.1.11:15020"],
     "labels": {
       "app": "legacy-db",
       "namespace": "vm-apps",
@@ -82,7 +84,7 @@ Create a JSON file with your VM targets:
     }
   },
   {
-    "targets": ["10.0.2.20:15090"],
+    "targets": ["10.0.2.20:15020"],
     "labels": {
       "app": "legacy-api",
       "namespace": "vm-apps",
@@ -110,7 +112,7 @@ scrape_configs:
   - source_labels: [__address__]
     regex: '(.+):.*'
     target_label: __address__
-    replacement: '${1}:15090'
+    replacement: '${1}:15020'
 ```
 
 ### Approach 4: Push-Based Metrics with OpenTelemetry Collector
@@ -126,7 +128,7 @@ receivers:
       - job_name: 'istio-proxy'
         metrics_path: /stats/prometheus
         static_configs:
-        - targets: ['localhost:15090']
+        - targets: ['localhost:15020']
 
 exporters:
   prometheusremotewrite:
@@ -163,7 +165,21 @@ spec:
         port: 4317
 ```
 
-The VM sidecar picks up this configuration from Istiod and sends spans to the configured collector. No additional configuration is needed on the VM itself.
+Then enable that provider with the Telemetry API:
+
+```yaml
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+  - providers:
+    - name: jaeger
+```
+
+The VM sidecar picks up this configuration from Istiod and sends spans to the configured collector. No additional tracing configuration is needed on the VM itself.
 
 Verify traces are being sent:
 
@@ -185,7 +201,7 @@ If your application does not propagate headers, you will see disconnected spans 
 Enable access logging for VM workloads through the Telemetry API:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: vm-logging
@@ -200,38 +216,35 @@ Access logs are written to the sidecar's stdout on the VM, which goes to the sys
 
 ```bash
 # View access logs on the VM
-sudo journalctl -u istio -f | grep '\[accesslog\]'
+sudo journalctl -u istio -f
 ```
 
 To ship these logs to a central system, use a log collector on the VM:
 
-```yaml
-# Promtail configuration for VM Istio logs
-scrape_configs:
-- job_name: istio-access-logs
-  journal:
-    labels:
-      job: istio-vm
-    path: /var/log/journal
-  relabel_configs:
-  - source_labels: ['__journal__systemd_unit']
-    target_label: 'unit'
-  pipeline_stages:
-  - match:
-      selector: '{unit="istio.service"}'
-      stages:
-      - json:
-          expressions:
-            method: method
-            path: path
-            response_code: response_code
-            duration: duration
-      - labels:
-          method:
-          response_code:
-  - static_labels:
-      cluster: cluster1
-      workload_type: vm
+```river
+# Grafana Alloy configuration for VM Istio logs
+loki.source.journal "istio" {
+  matches    = "_SYSTEMD_UNIT=istio.service"
+  labels     = { job = "istio-vm" }
+  forward_to = [loki.process.istio.receiver]
+}
+
+loki.process "istio" {
+  forward_to = [loki.write.default.receiver]
+
+  stage.static_labels {
+    values = {
+      cluster       = "cluster1"
+      workload_type = "vm"
+    }
+  }
+}
+
+loki.write "default" {
+  endpoint {
+    url = "https://loki.example.com/loki/api/v1/push"
+  }
+}
 ```
 
 ## Grafana Dashboards for VM Workloads
@@ -309,19 +322,19 @@ groups:
 
   - alert: VMSidecarDisconnected
     expr: |
-      absent(up{job="istio-vm-proxies"} == 1)
+      up{job="istio-vm-proxies"} == 0
     for: 5m
     labels:
       severity: critical
     annotations:
-      summary: "VM sidecar is not responding to scrapes"
+      summary: "VM sidecar {{ $labels.instance }} is not responding to scrapes"
 ```
 
 ## Kiali Visibility for VM Workloads
 
-Kiali automatically displays VM workloads in the service graph if they are registered as WorkloadEntries. You will see:
+Kiali displays VM workloads in the service graph when the VM is represented by a WorkloadEntry and Prometheus is scraping the VM sidecar metrics. You will see:
 
-- VM workloads as nodes in the graph (with a VM icon)
+- VM workloads as nodes in the graph
 - Traffic edges between VM and Kubernetes workloads
 - Error rates and latency for VM endpoints
 
@@ -329,10 +342,10 @@ Make sure Kiali has access to the namespace where your WorkloadEntries live.
 
 ## Troubleshooting
 
-**No metrics from VM**: Check that port 15090 is accessible and the sidecar is running:
+**No metrics from VM**: Check that port 15020 is accessible and the sidecar is running:
 
 ```bash
-curl localhost:15090/stats/prometheus | head -20
+curl localhost:15020/stats/prometheus | head -20
 ```
 
 **Missing labels on metrics**: Some labels like `destination_cluster` only appear when the VM sidecar has properly registered with Istiod. Check proxy status:
