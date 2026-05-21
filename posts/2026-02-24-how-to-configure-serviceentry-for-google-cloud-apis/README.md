@@ -8,13 +8,13 @@ Description: Set up Istio ServiceEntry for Google Cloud APIs including storage, 
 
 ---
 
-Google Cloud APIs all go through `*.googleapis.com` endpoints. When your Kubernetes workloads call GCP services - Cloud Storage, Pub/Sub, BigQuery, Firestore, or any other Google Cloud product - those calls need to be registered in Istio's service registry if you want visibility and traffic management.
+Most Google Cloud APIs use `*.googleapis.com` service endpoints. When your Kubernetes workloads call GCP services - Cloud Storage, Pub/Sub, BigQuery, Firestore, or other Google Cloud products - those calls need to be registered in Istio's service registry if you want visibility and traffic management in `REGISTRY_ONLY` mode.
 
 Whether you run on GKE or another Kubernetes platform, setting up ServiceEntries for Google Cloud APIs follows the same patterns. The main consideration is that Google Cloud has dozens of API endpoints and you need to decide between a wildcard approach and specific per-service entries.
 
 ## The Wildcard Approach
 
-The quickest way to allow all Google Cloud API calls is a single wildcard ServiceEntry:
+The quickest way to allow Google Cloud API calls that use `googleapis.com` endpoints is a single wildcard ServiceEntry:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -35,7 +35,7 @@ spec:
   resolution: NONE
 ```
 
-This covers every Google Cloud API endpoint in one shot. You also need to include the `accounts.google.com` and `oauth2.googleapis.com` endpoints for authentication:
+This covers the `googleapis.com` API endpoints in one shot. You also need to include the `accounts.google.com` and `oauth2.googleapis.com` endpoints for authentication flows that use them:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -168,7 +168,7 @@ metadata:
   name: cloudsql-instance
 spec:
   hosts:
-    - my-project:us-central1:my-instance
+    - cloudsql-instance.example.com
   addresses:
     - 34.123.45.67/32
   location: MESH_EXTERNAL
@@ -223,7 +223,7 @@ spec:
     - address: 169.254.169.254
 ```
 
-This is important because GCP client libraries call the metadata server to get access tokens. Without this ServiceEntry in REGISTRY_ONLY mode, authentication fails silently.
+This is important because GCP client libraries call the metadata server to get access tokens. Without this ServiceEntry in `REGISTRY_ONLY` mode, authentication requests can fail.
 
 ## Google Container Registry / Artifact Registry
 
@@ -249,26 +249,9 @@ spec:
 
 ## Adding Timeouts for GCP APIs
 
-Some GCP operations can be slow (BigQuery queries, large GCS uploads). Set appropriate timeouts:
+Some GCP operations can be slow (BigQuery queries, large GCS uploads). For normal HTTPS calls from your application to Google APIs, Istio treats the connection as TLS passthrough, so HTTP `VirtualService` request timeouts do not apply. Set timeouts in the Google Cloud client library or application HTTP client.
 
-```yaml
-apiVersion: networking.istio.io/v1
-kind: VirtualService
-metadata:
-  name: gcp-bigquery-timeout
-spec:
-  hosts:
-    - "bigquery.googleapis.com"
-  http:
-    - timeout: 120s
-      route:
-        - destination:
-            host: bigquery.googleapis.com
-            port:
-              number: 443
-```
-
-For Cloud Storage uploads:
+If you use Istio TLS origination, where the application sends plain HTTP to the sidecar and the sidecar originates TLS to the external service, then an HTTP `VirtualService` timeout can apply. In that pattern, the matching ServiceEntry and DestinationRule use an HTTP service port that targets port 443:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -284,7 +267,7 @@ spec:
         - destination:
             host: storage.googleapis.com
             port:
-              number: 443
+              number: 80
 ```
 
 ## Connection Pool Configuration
@@ -304,7 +287,7 @@ spec:
         maxConnections: 200
       http:
         maxRequestsPerConnection: 50
-        maxPendingRequests: 100
+        http1MaxPendingRequests: 100
 ```
 
 ## Verifying GCP ServiceEntries
@@ -326,19 +309,19 @@ istioctl proxy-config endpoints deploy/my-app | grep googleapis
 
 ## Monitoring GCP API Usage
 
-Once registered, GCP API calls show up in Istio metrics:
+Once registered, GCP API calls show up in Istio metrics. For normal HTTPS passthrough traffic, use TCP metrics because the sidecar cannot see encrypted HTTP request details:
 
 ```bash
-# Request count per GCP service
-istio_requests_total{destination_service=~".*googleapis.com"}
+# Connections per GCP service
+istio_tcp_connections_opened_total{destination_service=~".*googleapis.com"}
 
-# Latency to specific GCP APIs
-istio_request_duration_milliseconds_bucket{
+# Bytes sent to a specific GCP API
+istio_tcp_sent_bytes_total{
   destination_service="bigquery.googleapis.com"
 }
 ```
 
-This is great for understanding your GCP API usage patterns. You can see which services make the most GCP calls, identify slow API interactions, and track error rates.
+This is useful for understanding your GCP API usage patterns. You can see which services make the most GCP connections and move the most traffic. HTTP request counts, latency histograms, and response-code error rates require Istio to observe HTTP or gRPC traffic, such as with TLS origination or an egress gateway pattern.
 
 ## Complete Setup for a Typical GCP Application
 
