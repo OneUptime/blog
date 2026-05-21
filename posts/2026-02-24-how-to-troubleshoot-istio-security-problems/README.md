@@ -17,12 +17,13 @@ This guide covers how to systematically troubleshoot the most common Istio secur
 The first thing to check when you suspect a security issue is whether mTLS is working correctly between your services.
 
 ```bash
-# Check the mTLS status for a specific service
-
-istioctl authn tls-check <pod-name> -n production orders-service.production.svc.cluster.local
+# Check the outbound cluster configuration for a specific service
+istioctl proxy-config cluster <client-pod> -n production \
+  --fqdn orders-service.production.svc.cluster.local -o json | \
+  jq '.dynamicActiveClusters[].cluster.transportSocket'
 ```
 
-This shows whether the client thinks it should use mTLS and whether the server is configured to accept it. If there is a mismatch (client sending plaintext when server expects mTLS, or vice versa), connections will fail.
+This shows whether the client proxy is configured with a TLS transport socket for that upstream service. Pair that with the server-side PeerAuthentication policies below to find mismatches, such as a client sending plaintext when the server expects mTLS.
 
 Check the PeerAuthentication policies that might affect your namespace:
 
@@ -167,8 +168,8 @@ istioctl proxy-config secret <pod-name> -n production
 
 # Check certificate expiration
 istioctl proxy-config secret <pod-name> -n production -o json | \
-  jq '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
-  tr -d '"' | base64 -d | openssl x509 -noout -dates
+  jq '[.dynamicActiveSecrets[] | select(.name == "default")][0].secret.tlsCertificate.certificateChain.inlineBytes' -r | \
+  base64 -d | openssl x509 -noout -dates
 ```
 
 If certificates are expired, check the istiod certificate authority:
@@ -177,8 +178,9 @@ If certificates are expired, check the istiod certificate authority:
 # Check istiod logs for CA issues
 kubectl logs -n istio-system deployment/istiod | grep "CA\|cert\|error"
 
-# Check the root certificate
-kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
+# Check the root certificate delivered to the proxy
+istioctl proxy-config secret <pod-name> -n production -o json | \
+  jq '[.dynamicActiveSecrets[] | select(.name == "ROOTCA")][0].secret.validationContext.trustedCa.inlineBytes' -r | \
   base64 -d | openssl x509 -noout -dates -subject
 ```
 
@@ -205,16 +207,17 @@ spec:
 
 Common JWT issues:
 
-**1. JWKS endpoint unreachable**: The sidecar needs to be able to reach the JWKS endpoint. Check if there is a ServiceEntry for external access:
+**1. JWKS endpoint unreachable**: The mesh needs to be able to reach the JWKS endpoint when Envoy is configured to fetch remote JWKS. Check if there is a ServiceEntry for external access:
 
 ```bash
 # Check if the JWKS URL is accessible from within the mesh
-kubectl exec <pod-name> -c istio-proxy -n production -- curl -s https://www.googleapis.com/oauth2/v3/certs | head -5
+kubectl exec <pod-name> -c <app-container> -n production -- \
+  curl -s https://www.googleapis.com/oauth2/v3/certs | head -5
 ```
 
 **2. Token issuer mismatch**: The `iss` claim in the JWT must exactly match the issuer in the RequestAuthentication.
 
-**3. Missing audience**: If your JWT has an `aud` claim but you did not specify audiences in the config, validation might fail. Add the expected audiences:
+**3. Missing audience**: If your JWT has an `aud` claim but you did not specify audiences in the config, Istio accepts the service name as the audience. If your token uses a different audience, add the expected audiences:
 
 ```yaml
 jwtRules:
@@ -251,14 +254,14 @@ Use `istioctl` to test security configuration without making actual requests:
 istioctl analyze -n production
 
 # Check what policies apply to a specific workload
-istioctl experimental authz check <pod-name> -n production
+istioctl x authz check <pod-name> -n production
 ```
 
 You can also test with curl from within the mesh:
 
 ```bash
 # Test from a pod inside the mesh
-kubectl exec <client-pod> -c istio-proxy -n production -- \
+kubectl exec <client-pod> -c <app-container> -n production -- \
   curl -v http://orders-service:8080/health 2>&1 | grep "< HTTP"
 ```
 
@@ -266,4 +269,4 @@ A 403 response with "RBAC: access denied" in the response body confirms an Autho
 
 ## Summary
 
-Istio security troubleshooting comes down to three main areas: mTLS configuration (check PeerAuthentication policies and certificate status), authorization policies (enable RBAC debug logging and watch for implicit deny behavior), and JWT validation (verify JWKS accessibility and token claims). The key tools are `istioctl authn tls-check`, `istioctl proxy-config log` with debug levels, and careful inspection of proxy logs. Most security issues become obvious once you know which tool to use.
+Istio security troubleshooting comes down to three main areas: mTLS configuration (check PeerAuthentication policies and certificate status), authorization policies (enable RBAC debug logging and watch for implicit deny behavior), and JWT validation (verify JWKS accessibility and token claims). The key tools are `istioctl proxy-config cluster`, `istioctl proxy-config secret`, `istioctl proxy-config log` with debug levels, and careful inspection of proxy logs. Most security issues become obvious once you know which tool to use.
