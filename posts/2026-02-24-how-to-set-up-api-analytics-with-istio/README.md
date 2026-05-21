@@ -28,7 +28,7 @@ These metrics are labeled with source and destination service names, namespaces,
 Istio works with Prometheus out of the box. Install the Istio Prometheus add-on:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 Verify Prometheus is scraping Istio metrics:
@@ -50,7 +50,7 @@ You should see metrics flowing in from all your services.
 Install Grafana with Istio's pre-built dashboards:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
 ```
 
 Access it:
@@ -64,16 +64,16 @@ Istio ships with several dashboards:
 - **Mesh Dashboard** - overall mesh health
 - **Service Dashboard** - per-service metrics
 - **Workload Dashboard** - per-workload details
-- **Performance Dashboard** - control plane performance
+- **Control Plane Dashboard** - control plane health and performance
 
 ## Building API-Specific Dashboards
 
-The default Istio dashboards are great for operations, but for API analytics you want to focus on different things. Create a custom Grafana dashboard with these panels:
+The default Istio dashboards are great for operations, but for API analytics you want to focus on different things. Create a custom Grafana dashboard with these panels. The `request_host` and `request_url_path` labels in these queries come from the custom Telemetry configuration below:
 
 ### Total API Requests per Endpoint
 
 ```text
-sum(rate(istio_requests_total{reporter="source", destination_service=~".*", request_host="api.example.com"}[5m])) by (destination_service, request_url_path)
+sum(rate(istio_requests_total{reporter="source", request_host="api.example.com"}[5m])) by (destination_service, request_url_path)
 ```
 
 ### Error Rate by Endpoint
@@ -121,6 +121,9 @@ spec:
             request_method:
               operation: UPSERT
               value: request.method
+            request_host:
+              operation: UPSERT
+              value: request.host
             api_version:
               operation: UPSERT
               value: request.headers["x-api-version"]
@@ -129,7 +132,7 @@ spec:
               value: request.headers["x-client-id"]
 ```
 
-This adds `request_url_path`, `request_method`, `api_version`, and `client_id` as metric labels. Now you can query per-client and per-API-version analytics.
+This adds `request_url_path`, `request_method`, `request_host`, `api_version`, and `client_id` as metric labels. Now you can query per-client and per-API-version analytics.
 
 ## Per-Client Analytics
 
@@ -149,6 +152,8 @@ Client error rates:
 
 ```text
 sum(rate(istio_requests_total{client_id!="", response_code=~"5.*"}[1h])) by (client_id)
+/
+sum(rate(istio_requests_total{client_id!=""}[1h])) by (client_id)
 ```
 
 ## Access Logging for Detailed Analytics
@@ -200,7 +205,7 @@ spec:
 Kiali provides visual analytics about how services communicate:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.20/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 istioctl dashboard kiali
 ```
 
@@ -235,7 +240,7 @@ data:
             action: keep
 ```
 
-This forwards all Istio metrics to an external analytics platform while filtering out non-Istio metrics.
+Add this `remote_write` configuration to your Prometheus configuration to forward Istio metrics to an external analytics platform while filtering out non-Istio metrics.
 
 ## Alerting on API Metrics
 
@@ -298,9 +303,9 @@ sum(rate(istio_requests_total{reporter="source", response_code!~"5.*"}[5m])) / s
 sum(rate(istio_response_bytes_sum[5m])) / sum(rate(istio_response_bytes_count[5m]))
 ```
 
-**Busiest hours:**
+**Hourly request volume:**
 ```text
-sum(increase(istio_requests_total{request_host="api.example.com"}[1h])) by (hour)
+sum(increase(istio_requests_total{request_host="api.example.com"}[1h]))
 ```
 
 Istio gives you API analytics capability that would otherwise require a dedicated analytics service. The combination of automatic metric collection, Prometheus, and Grafana covers most analytics needs without any application changes.
