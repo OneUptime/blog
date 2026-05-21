@@ -10,7 +10,7 @@ Description: Set up cross-region failover load balancing in Istio so traffic aut
 
 If you are running services across multiple regions, you need a plan for what happens when an entire region goes down. Maybe there is an AWS outage in us-east-1, or your deployment in eu-west-1 has a bad config push that takes down all pods. Without failover, your users in that region are stuck.
 
-Istio's locality failover lets you define exactly where traffic should go when the local region is not available. You set up a chain of fallback regions, and Istio handles the routing automatically based on endpoint health.
+Istio's locality failover lets you define where traffic should go when the local region is not available. You set up predictable fallback regions, and Istio handles the routing automatically based on endpoint health.
 
 ## Prerequisites
 
@@ -32,6 +32,19 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,REGION:.metadata.labels.
 Suppose you have a `search-api` service that needs to be available in three regions. Each region has its own deployment:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-api
+  namespace: default
+spec:
+  selector:
+    app: search-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -79,7 +92,7 @@ kind: DestinationRule
 metadata:
   name: search-api
 spec:
-  host: search-api
+  host: search-api.default.svc.cluster.local
   trafficPolicy:
     outlierDetection:
       consecutive5xxErrors: 3
@@ -112,16 +125,17 @@ Istio assigns priority levels to endpoints based on their locality relative to t
 | Priority | Locality | Description |
 |----------|----------|-------------|
 | 0 | Same zone | Preferred - lowest latency |
-| 1 | Same region, different zone | Fallback within region |
-| 2 | Failover region | Cross-region failover |
+| 1 | Same region and zone, different sub-zone | Used only when sub-zones are configured |
+| 2 | Same region, different zone | Fallback within region |
+| 3 | Failover region | Cross-region failover |
 
 ```mermaid
 graph TD
     A[Request from us-east-1a] --> B{Priority 0: us-east-1a healthy?}
     B -->|Yes| C[Route to us-east-1a]
-    B -->|No| D{Priority 1: Other us-east-1 zones healthy?}
+    B -->|No| D{Priority 2: Other us-east-1 zones healthy?}
     D -->|Yes| E[Route to us-east-1b or us-east-1c]
-    D -->|No| F{Priority 2: us-west-2 healthy?}
+    D -->|No| F{Priority 3: us-west-2 healthy?}
     F -->|Yes| G[Route to us-west-2]
     F -->|No| H[No healthy endpoints]
 ```
@@ -137,10 +151,10 @@ outlierDetection:
   consecutive5xxErrors: 3        # Eject after 3 consecutive 5xx errors
   interval: 10s                  # Check every 10 seconds
   baseEjectionTime: 30s          # Eject for at least 30 seconds
-  maxEjectionPercent: 100        # Allow ejecting all endpoints in a locality
+  maxEjectionPercent: 100        # Allow ejecting all endpoints in the load balancing pool
 ```
 
-**`maxEjectionPercent: 100`** is important for failover. The default is 10%, which means Envoy will only eject 10% of endpoints. If you have 10 pods in a zone and all of them are failing, only 1 gets ejected, and the other 9 keep receiving (and failing) traffic. Setting it to 100 allows all unhealthy endpoints to be ejected, which triggers the failover.
+**`maxEjectionPercent: 100`** is important for failover. The default is 10%, which means Envoy will only eject 10% of endpoints in the upstream load balancing pool. If you have 10 pods in the pool and all of them are failing, only 1 gets ejected, and the other 9 keep receiving (and failing) traffic. Setting it to 100 allows all unhealthy endpoints to be ejected, which triggers the failover.
 
 **`consecutive5xxErrors: 3`** means a pod needs to fail 3 times in a row before it gets ejected. Lower values make failover faster but more sensitive to transient errors. Higher values are more tolerant but slower to failover.
 
@@ -151,10 +165,10 @@ You can test failover by making endpoints in one zone return errors.
 ### Method 1: Scale Down a Zone
 
 ```bash
-kubectl scale deployment search-api --replicas=0 -n zone-a-namespace
+kubectl scale deployment search-api --replicas=0 -n us-east-1a
 ```
 
-Watch traffic shift to the next zone or region.
+This assumes you run a separate deployment or namespace for that locality. Watch traffic shift to the next zone or region as the endpoints are removed from service discovery.
 
 ### Method 2: Inject Faults
 
@@ -167,7 +181,7 @@ metadata:
   name: search-api-fault-test
 spec:
   hosts:
-    - search-api
+    - search-api.default.svc.cluster.local
   http:
     - fault:
         abort:
@@ -179,11 +193,13 @@ spec:
             topology.kubernetes.io/zone: us-east-1a
       route:
         - destination:
-            host: search-api
+            host: search-api.default.svc.cluster.local
     - route:
         - destination:
-            host: search-api
+            host: search-api.default.svc.cluster.local
 ```
+
+The `sourceLabels` selector matches labels on the calling workload. If your Kubernetes version or cluster configuration does not add topology labels to pods, add an equivalent zone label to the source workload before using this test.
 
 ### Method 3: Check Endpoint Priorities
 
@@ -197,17 +213,17 @@ istioctl proxy-config endpoint <pod-name>.default \
 
 ## Monitoring Failover Events
 
-Track when failover happens with Prometheus:
+Track where requests are going with Prometheus. In multi-cluster meshes where each region maps to a cluster, compare the source and destination clusters:
 
 ```text
-# Requests by destination locality
+# Requests by source and destination cluster
 
 sum(rate(istio_requests_total{
   destination_service="search-api.default.svc.cluster.local"
-}[5m])) by (destination_canonical_revision, source_workload)
+}[5m])) by (source_cluster, destination_cluster, source_workload)
 ```
 
-Set up alerts for when traffic is routing cross-region unexpectedly:
+Set up alerts for when traffic from a region is routing to a different destination cluster unexpectedly. Adjust the cluster names to match your mesh:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -222,8 +238,11 @@ spec:
           expr: |
             sum(rate(istio_requests_total{
               destination_service="search-api.default.svc.cluster.local",
-              source_workload_namespace="default"
-            }[5m])) by (source_workload) > 0
+              source_workload_namespace="default",
+              source_cluster="us-east-1",
+              destination_cluster!="us-east-1",
+              destination_cluster!="unknown"
+            }[5m])) by (source_workload, source_cluster, destination_cluster) > 0
           for: 5m
           labels:
             severity: warning
