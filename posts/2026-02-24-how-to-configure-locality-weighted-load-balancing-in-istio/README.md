@@ -10,7 +10,7 @@ Description: Configure weighted traffic distribution across zones and regions us
 
 Sometimes you want more control than simple failover gives you. Maybe you want to keep 80% of traffic local and send 20% to another zone to keep it warm. Or maybe your zones have different capacities and you need to split traffic proportionally. Istio's locality-weighted distribution lets you define exact percentages for how traffic flows between localities.
 
-This is different from failover mode, where traffic goes 100% to the local zone and only spills over when endpoints are unhealthy. With weighted distribution, you control the exact split all the time, regardless of health.
+This is different from failover mode, where traffic goes 100% to the local zone and only spills over when endpoints are unhealthy. With weighted distribution, you control the exact split during normal healthy operation, and unhealthy endpoints are still removed from the load balancing pool by outlier detection.
 
 ## Failover vs. Distribute
 
@@ -191,7 +191,7 @@ istioctl proxy-config endpoint <pod-name> \
 
 Look at the `loadBalancingWeight` field for each endpoint group. The weights should reflect your configured distribution.
 
-To see actual traffic distribution, query Prometheus:
+To see actual traffic distribution, query Prometheus. Istio's standard request metrics do not include locality labels by default, so this query is most useful when your workloads, revisions, or custom metric labels distinguish the destination zones:
 
 ```text
 sum(rate(istio_requests_total{
