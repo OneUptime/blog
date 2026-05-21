@@ -12,25 +12,28 @@ Certificates are the backbone of Istio's security. Every time two services commu
 
 ## How Istio's Certificate System Works
 
-Istio uses a built-in Certificate Authority (CA) called "istiod" (or more specifically, the Citadel component within istiod) to issue certificates to workloads. Here is the flow:
+Istio uses a built-in Certificate Authority (CA) in `istiod` to issue certificates to workloads. The Istio agent that runs alongside Envoy handles the workload key and certificate flow:
 
 1. A workload pod starts up with the Istio sidecar proxy (Envoy)
-2. The sidecar generates a private key and a Certificate Signing Request (CSR)
-3. The sidecar sends the CSR to istiod over a secure gRPC channel
+2. The Istio agent generates a private key and a Certificate Signing Request (CSR)
+3. The Istio agent sends the CSR to istiod over gRPC with its workload credentials
 4. Istiod validates the request (checking the pod's service account token)
-5. Istiod signs the certificate and sends it back to the sidecar
-6. The sidecar uses the certificate for mTLS with other services
+5. Istiod signs the certificate and sends it back to the Istio agent
+6. Envoy gets the certificate and key from the Istio agent through SDS and uses them for mTLS with other services
 
 ```mermaid
 sequenceDiagram
-    participant P as Pod/Sidecar
+    participant P as Istio Agent
+    participant E as Envoy
     participant I as Istiod (CA)
     P->>P: Generate private key + CSR
-    P->>I: Send CSR with SA token
+    P->>I: Send CSR with workload credentials
     I->>I: Validate SA token
     I->>I: Sign certificate
     I->>P: Return signed certificate
-    P->>P: Use cert for mTLS
+    E->>P: Request cert/key through SDS
+    P->>E: Provide cert/key
+    E->>E: Use cert for mTLS
 ```
 
 ## Viewing Current Certificates
@@ -58,7 +61,7 @@ You can also extract and decode the actual certificate:
 
 ```bash
 istioctl proxy-config secret <pod-name> -n <namespace> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '.dynamicActiveSecrets[] | select(.name=="default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout
 ```
 
@@ -119,7 +122,7 @@ kubectl set env deployment/istiod -n istio-system DEFAULT_WORKLOAD_CERT_TTL=12h
 
 ## Certificate Rotation
 
-Istio automatically rotates workload certificates before they expire. The sidecar proxy requests a new certificate when the current one reaches about 80% of its lifetime. For a 24-hour certificate, rotation happens roughly every 19 hours.
+Istio automatically rotates workload certificates before they expire. By default, the Istio agent starts rotation when the certificate enters its grace period, controlled by `SECRET_GRACE_PERIOD_RATIO` and a small jitter. With the default ratio of `0.5`, a 24-hour certificate starts rotating at roughly the halfway point of its lifetime.
 
 You can verify rotation is working by watching the secret changes:
 
@@ -129,7 +132,7 @@ istioctl proxy-config secret <pod-name> -n <namespace>
 
 Run this command periodically and you will see the certificate serial number change after rotation.
 
-If rotation fails, the sidecar falls back to using the expired certificate, which will cause mTLS failures. Monitor for this with:
+If rotation fails, Envoy may continue using the last certificate until it expires. Once the certificate is expired, mTLS connections will fail. Monitor for this with:
 
 ```bash
 kubectl logs <pod-name> -c istio-proxy | grep -i "certificate" | grep -i "error\|expired\|fail"
@@ -140,7 +143,7 @@ kubectl logs <pod-name> -c istio-proxy | grep -i "certificate" | grep -i "error\
 Set up Prometheus metrics to track certificate status:
 
 ```text
-# Certificate expiry (seconds until expiration)
+# Root CA expiry as a Unix timestamp
 
 citadel_server_root_cert_expiry_timestamp
 
@@ -196,13 +199,13 @@ kubectl delete pod <pod-name> -n <namespace>
 
 Restarting the pod forces it to get a fresh certificate from istiod.
 
-**Check if mTLS is working between two services:**
+**Check mTLS-related configuration for a pod:**
 
 ```bash
 istioctl x describe pod <pod-name> -n <namespace>
 ```
 
-This shows whether mTLS is active and what certificates are in use.
+This shows whether the pod is in the mesh and which traffic policies, including mTLS-related settings, apply to it.
 
 **Verify the certificate chain:**
 
