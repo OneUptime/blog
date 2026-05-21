@@ -14,13 +14,13 @@ This post covers how to set up mutual authentication between specific pairs of s
 
 ## Understanding Istio mTLS Modes
 
-Istio has three mTLS modes:
+For PeerAuthentication, you will usually work with three mTLS enforcement modes:
 
 - **DISABLE** - No mTLS, plaintext only
 - **PERMISSIVE** - Accepts both mTLS and plaintext (good for migration)
 - **STRICT** - Requires mTLS, rejects plaintext
 
-The default installation sets PERMISSIVE mode mesh-wide. This means services can communicate with or without mTLS. For mutual authentication between specific services, you want STRICT mode on those services.
+The API also has **UNSET**, which inherits from the namespace or mesh policy. By default, sidecars accept both mTLS and plaintext traffic, and Istio's automatic mTLS sends mTLS between workloads with sidecars unless a DestinationRule overrides it. For mutual authentication between specific services, you want STRICT mode on those services.
 
 ## Scenario Setup
 
@@ -50,6 +50,8 @@ spec:
 ```bash
 kubectl apply -f mesh-peer-auth.yaml
 ```
+
+This example assumes `istio-system` is your Istio root namespace. If your installation uses a different root namespace, apply the mesh-wide policy there instead.
 
 ## Step 2: Enforce STRICT mTLS on Target Services
 
@@ -89,24 +91,17 @@ Now both `payment-service` and `order-service` require mTLS for all incoming con
 
 ## Step 3: Verify Mutual Authentication
 
-Check that both services are using mTLS:
+Check that the client proxy is configured to originate mTLS when calling `payment-service`:
 
 ```bash
-# Check if mTLS is active between order-service and payment-service
-
-istioctl authn tls-check deploy/order-service -n default payment-service.default.svc.cluster.local
+istioctl proxy-config cluster deploy/order-service -n default --fqdn payment-service.default.svc.cluster.local -o json | grep -A8 "transportSocket"
 ```
 
-You should see `STRICT` in the output. You can also verify by looking at the connection details:
-
-```bash
-# Check the TLS configuration on the proxy
-istioctl proxy-config cluster deploy/order-service -n default --fqdn payment-service.default.svc.cluster.local -o json | grep -A5 "transportSocket"
-```
+You should see a transport socket with an Istio mTLS TLS context in the output. You will also test the server-side STRICT requirement later by calling from a pod without a sidecar.
 
 ## Step 4: Restrict Which Services Can Authenticate
 
-STRICT mTLS ensures that only mesh services (with valid certificates) can connect, but any mesh service can still call payment-service. To restrict it to only order-service, add an AuthorizationPolicy:
+STRICT mTLS ensures that only mesh services (with valid certificates) can connect, but any mesh service can still call payment-service. To restrict it to only order-service, add an AuthorizationPolicy. This example assumes the workloads use Kubernetes service accounts named `order-service` and `payment-service`:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -156,7 +151,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-Port 8080 (the main API port) requires mTLS. Port 9090 (maybe a metrics port) allows both mTLS and plaintext. This is useful when external monitoring tools need to scrape metrics but do not support mTLS.
+Port 8080 (the main API container port) requires mTLS. Port 9090 (maybe a metrics container port) allows both mTLS and plaintext. The port numbers in `portLevelMtls` are workload ports, not Kubernetes Service ports. This is useful when external monitoring tools need to scrape metrics but do not support mTLS.
 
 ## DestinationRule for Client-Side mTLS
 
@@ -175,7 +170,7 @@ spec:
       mode: ISTIO_MUTUAL
 ```
 
-`ISTIO_MUTUAL` tells the client sidecar to use Istio's built-in certificates for mTLS. This is the default behavior when mTLS is enabled, but being explicit prevents any ambiguity.
+`ISTIO_MUTUAL` tells the client sidecar to use Istio's built-in certificates for mTLS. Istio's automatic mTLS normally handles this for sidecar-to-sidecar traffic when no DestinationRule TLS settings are configured, but being explicit prevents any ambiguity.
 
 ## Bidirectional Strict Authentication
 
