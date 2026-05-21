@@ -33,7 +33,7 @@ You can see this by extracting the certificate from a running proxy:
 
 ```bash
 istioctl proxy-config secret <pod-name>.default -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout | grep -A 2 "Subject Alternative Name"
 ```
 
@@ -86,7 +86,7 @@ spec:
         namespaces: ["frontend"]
 ```
 
-Under the hood, the `namespaces` field expands to match any SPIFFE ID containing that namespace.
+The `namespaces` field matches the source namespace that Istio derives from the peer certificate. Like `principals`, it requires mTLS to be enabled.
 
 ## Custom Trust Domains
 
@@ -123,7 +123,7 @@ spec:
     - old-mesh.example.com
 ```
 
-With this configuration, your mesh will trust certificates with SANs from any of these trust domains. This is useful during migrations where you are moving from one mesh to another.
+With this configuration, Istio treats identities from these trust domains as aliases when evaluating policies. Cross-mesh TLS trust still requires the relevant trust bundle or CA trust to be configured. This is useful during migrations where you are moving from one mesh to another.
 
 ## DNS SANs for Gateway Certificates
 
@@ -174,7 +174,7 @@ When debugging connection issues, you can verify that the SANs match what your p
 ```bash
 # Check what SAN a workload has
 istioctl proxy-config secret <pod-name> -o json | \
-  jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
+  jq -r '.dynamicActiveSecrets[] | select(.name == "default") | .secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout | grep URI
 
 # Check what principals an authorization policy expects
@@ -185,7 +185,7 @@ If the SAN in the certificate does not match what the authorization policy expec
 
 ## SAN Validation in DestinationRule
 
-You can configure SAN validation when connecting to external services:
+You can configure SAN validation when connecting to external services. Use this with a matching `ServiceEntry` or another service-registry entry for the external host:
 
 ```yaml
 apiVersion: networking.istio.io/v1
