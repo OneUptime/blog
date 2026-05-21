@@ -176,14 +176,19 @@ kubectl apply -f backup/
 **Recovery if you have a backup**:
 
 ```bash
-# Restore the CA secret
+# Restore the CA secret you backed up
+kubectl apply -f backup/istio-ca-secret.yaml
+
+# Or, for installations using cacerts
 kubectl apply -f backup/cacerts.yaml
 
 # Restart istiod to pick up the restored certificate
 kubectl rollout restart deploy/istiod -n istio-system
 
 # Restart all workloads to get new certificates signed by the restored CA
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+for ns in $(
+  { kubectl get namespaces -l istio-injection=enabled -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; kubectl get namespaces -l istio.io/rev -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; } | sort -u
+); do
   kubectl rollout restart deploy -n $ns
 done
 ```
@@ -191,14 +196,19 @@ done
 **Recovery if you do not have a backup**:
 
 ```bash
-# Delete the old CA secret so istiod generates a new one
-kubectl delete secret istio-ca-secret -n istio-system
+# For the default self-signed CA, delete the missing or corrupt CA secret so istiod generates a new one
+kubectl delete secret istio-ca-secret -n istio-system --ignore-not-found
+
+# If you configured istiod to store its self-signed CA in cacerts, delete that secret instead
+kubectl delete secret cacerts -n istio-system --ignore-not-found
 
 # Restart istiod
 kubectl rollout restart deploy/istiod -n istio-system
 
 # Restart ALL workloads to get new certificates
-for ns in $(kubectl get namespaces -l istio-injection=enabled -o jsonpath='{.items[*].metadata.name}'); do
+for ns in $(
+  { kubectl get namespaces -l istio-injection=enabled -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; kubectl get namespaces -l istio.io/rev -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'; } | sort -u
+); do
   kubectl rollout restart deploy -n $ns
 done
 ```
