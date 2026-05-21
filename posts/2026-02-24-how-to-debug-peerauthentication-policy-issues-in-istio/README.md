@@ -42,9 +42,9 @@ istioctl x describe pod <target-pod-name> -n <target-namespace>
 
 This command outputs the effective PeerAuthentication mode and shows which policy is responsible.
 
-## Step 2: Verify mTLS Status Between Two Pods
+## Step 2: Check the Predicted mTLS Status
 
-Check if the connection between the source and destination is actually using mTLS:
+Check what Istio predicts for traffic to the destination pod:
 
 ```bash
 istioctl x describe pod <target-pod-name> -n <target-namespace>
@@ -53,13 +53,13 @@ istioctl x describe pod <target-pod-name> -n <target-namespace>
 Look for output like:
 
 ```text
-Pod is STRICT and target is STRICT (mTLS is used)
+Pilot reports that pod enforces mTLS and clients speak mTLS
 ```
 
 or
 
 ```text
-WARNING: pod is not in mesh (no sidecar)
+WARNING Pilot predicts TLS Conflict on <pod-name> port <port> (pod enforces mTLS, clients speak HTTP)
 ```
 
 ## Step 3: Check the Proxy Configuration
@@ -83,11 +83,13 @@ for l in data:
     for fc in l.get('filterChains', []):
         ts = fc.get('transportSocket', {})
         if ts:
-            print(f'Port {port}: {ts.get(\"name\", \"none\")}')
+            tc = ts.get('typedConfig') or ts.get('typed_config') or {}
+            require_client_cert = tc.get('requireClientCertificate', tc.get('require_client_certificate', 'unknown'))
+            print(f'Port {port}: {ts.get(\"name\", \"none\")} requireClientCertificate={require_client_cert}')
 "
 ```
 
-If a port shows a `tls` transport socket with `requireClientCertificate: true`, that port is in STRICT mode.
+If an inbound workload port shows a `tls` transport socket with `requireClientCertificate=true`, that port is requiring client certificates and is effectively in STRICT mode.
 
 ## Step 4: Check the Client Side
 
@@ -95,7 +97,7 @@ The issue might be on the client side. Check if there's a DestinationRule that o
 
 ```bash
 kubectl get destinationrules --all-namespaces -o json | \
-  jq '.items[] | select(.spec.host | contains("<target-service>")) | {name: .metadata.name, ns: .metadata.namespace, tls: .spec.trafficPolicy.tls}'
+  jq '.items[] | select(.spec.host | contains("<target-service>")) | {name: .metadata.name, ns: .metadata.namespace, topLevelTls: .spec.trafficPolicy.tls, portLevelTls: [.spec.trafficPolicy.portLevelSettings[]?.tls]}'
 ```
 
 If you find a DestinationRule with `tls.mode: DISABLE` while the server is STRICT, that's your problem. Either remove the TLS override from the DestinationRule or change it to `ISTIO_MUTUAL`.
@@ -118,7 +120,7 @@ kubectl logs <target-pod-name> -n <target-namespace> -c istio-proxy --tail=100
 
 Look for entries with response flags like:
 
-- `UC` (upstream connection failure)
+- `UC` (upstream connection termination)
 - `UF` (upstream connection failure)
 - `NR` (no route configured)
 - `DC` (downstream connection termination)
@@ -225,7 +227,7 @@ spec:
 kubectl get peerauthentication -n <namespace>
 ```
 
-If you see multiple policies without selectors, or multiple policies with overlapping selectors, that's the problem.
+If you see multiple namespace-wide policies without selectors, or multiple workload-specific policies with overlapping selectors, that's likely the problem. Istio uses the narrowest matching policy first, and if more than one workload-specific policy matches, it picks the oldest one.
 
 **Fix:** Delete duplicate policies. Keep one namespace-wide policy and avoid overlapping selectors.
 
