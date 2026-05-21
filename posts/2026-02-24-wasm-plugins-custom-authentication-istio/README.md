@@ -8,7 +8,7 @@ Description: Build a custom authentication Wasm plugin for Istio that validates 
 
 ---
 
-Istio has built-in support for JWT validation and mTLS authentication, but sometimes you need custom authentication logic that goes beyond what the standard features offer. Maybe you need to validate API keys against a database, check custom token formats, or integrate with a proprietary identity provider. Wasm plugins let you implement custom authentication directly in the Envoy proxy, running in the AUTHN phase of the filter chain.
+Istio has built-in support for JWT validation and mTLS authentication, but sometimes you need custom authentication logic that goes beyond what the standard features offer. Maybe you need to validate API keys against a database, check custom token formats, or integrate with a proprietary identity provider. Wasm plugins let you implement custom authentication directly in the Envoy proxy, running in the AUTHN phase before Istio authentication filters.
 
 ## Why Custom Authentication in Wasm
 
@@ -20,7 +20,7 @@ There are several scenarios where built-in Istio authentication falls short:
 - Authentication that depends on request body content
 - Rate limiting tied to authentication (different limits for different API keys)
 
-A Wasm authentication plugin runs inside Envoy, which means it adds minimal latency compared to an external authentication service. The request does not need to leave the proxy for the auth check.
+A Wasm authentication plugin runs inside Envoy, which means local checks add minimal latency compared to an external authentication service. For checks that use only request data and local plugin configuration, the request does not need to leave the proxy.
 
 ## Building an API Key Authentication Plugin
 
@@ -123,7 +123,8 @@ impl HttpContext for AuthHttp {
             Some(key) => {
                 match self.api_keys.get(&key) {
                     None => {
-                        log::warn!("Invalid API key attempt: {}", &key[..4.min(key.len())]);
+                        let prefix: String = key.chars().take(4).collect();
+                        log::warn!("Invalid API key attempt: {}", prefix);
                         self.send_http_response(
                             403,
                             vec![("content-type", "application/json")],
@@ -147,7 +148,7 @@ impl HttpContext for AuthHttp {
 
 ## Deploying the Authentication Plugin
 
-Deploy the plugin in the AUTHN phase so it runs before any other processing:
+Deploy the plugin in the AUTHN phase so it runs before Istio authentication filters:
 
 ```yaml
 apiVersion: extensions.istio.io/v1alpha1
@@ -174,7 +175,7 @@ spec:
       ak_live_mno345pqr678: "partner-integration"
 ```
 
-The `failStrategy: FAIL_CLOSE` setting is important for authentication plugins. If the plugin fails to load, requests should be rejected rather than allowed through unauthenticated.
+The `failStrategy: FAIL_CLOSE` setting is important for authentication plugins. If the plugin fails to load or hits a fatal runtime error, subsequent requests fail with 5xx instead of bypassing the plugin.
 
 ## External Authentication with HTTP Callouts
 
@@ -202,7 +203,7 @@ impl HttpContext for AuthHttp {
         let body = format!(r#"{{"token":"{}"}}"#, token);
 
         match self.dispatch_http_call(
-            "auth-service",  // cluster name in Envoy config
+            "outbound|80||auth-service.auth-system.svc.cluster.local",  // Envoy cluster name for this Kubernetes service and port
             headers,
             Some(body.as_bytes()),
             vec![],
@@ -270,7 +271,7 @@ spec:
   - port: 80
 ```
 
-In the `dispatch_http_call`, the first argument references an Envoy cluster. In Istio, services are automatically registered as clusters using their FQDN.
+In the `dispatch_http_call`, the first argument references an Envoy cluster. In Istio, Kubernetes services are automatically registered as clusters with names such as `outbound|80||auth-service.auth-system.svc.cluster.local`, where the port and service FQDN match the target service.
 
 ## Testing the Authentication Plugin
 
@@ -287,8 +288,8 @@ kubectl exec test-pod -n my-app -- curl -s -o /dev/null -w "%{http_code}" -H "x-
 # Test bypass path - should get 200 without API key
 kubectl exec test-pod -n my-app -- curl -s -o /dev/null -w "%{http_code}" http://api-gateway:8080/health
 
-# Check that the authenticated client header is set
-kubectl exec test-pod -n my-app -- curl -s -H "x-api-key: ak_live_abc123def456" http://api-gateway:8080/api/data -v 2>&1 | grep x-authenticated-client
+# If the upstream endpoint echoes request headers, check that the authenticated client header is set
+kubectl exec test-pod -n my-app -- curl -s -H "x-api-key: ak_live_abc123def456" http://api-gateway:8080/api/headers | grep x-authenticated-client
 ```
 
 ## Security Considerations
@@ -303,4 +304,4 @@ When building authentication plugins:
 
 ## Summary
 
-Wasm plugins provide a powerful way to implement custom authentication in Istio. Whether you are validating API keys from a static list, checking custom tokens against an external service, or implementing multi-factor authentication flows, the proxy-wasm SDK gives you full access to request headers and the ability to make async HTTP callouts. Deploy auth plugins in the AUTHN phase with FAIL_CLOSE to ensure unauthenticated requests are always blocked.
+Wasm plugins provide a powerful way to implement custom authentication in Istio. Whether you are validating API keys from a static list, checking custom tokens against an external service, or implementing multi-factor authentication flows, the proxy-wasm SDK gives you full access to request headers and the ability to make async HTTP callouts. Deploy auth plugins in the AUTHN phase with FAIL_CLOSE so fatal plugin failures do not bypass authentication.
