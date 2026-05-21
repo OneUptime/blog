@@ -8,7 +8,7 @@ Description: Set up L7 authorization policies in Istio ambient mode using waypoi
 
 ---
 
-L4 authorization in ambient mode handles the basics: which service can connect to which other service. But sometimes you need more granularity. You want to allow a service to call GET on /api/v1/users but not DELETE. Or you want to restrict access to admin endpoints based on JWT claims. For this, you need L7 authorization, which requires a waypoint proxy.
+L4 authorization in ambient mode handles the basics: which service can connect to which other service. But sometimes you need more granularity. You want to allow a service to call GET on /api/v1/users but not DELETE. Or you want to restrict access to admin endpoints based on JWT claims after configuring request authentication. For this, you need L7 authorization, which requires a waypoint proxy.
 
 This guide walks through setting up L7 authorization policies with waypoint proxies in Istio ambient mode.
 
@@ -31,10 +31,10 @@ First, make sure your namespace is in ambient mode:
 kubectl label namespace default istio.io/dataplane-mode=ambient
 ```
 
-Create a waypoint proxy for the namespace:
+Create a waypoint proxy for the namespace and enroll the namespace to use it:
 
 ```bash
-istioctl waypoint apply --namespace default
+istioctl waypoint apply --namespace default --enroll-namespace
 ```
 
 Verify it is running:
@@ -57,9 +57,10 @@ metadata:
   name: api-access-control
   namespace: default
 spec:
-  selector:
-    matchLabels:
-      app: my-api
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: my-api
   action: ALLOW
   rules:
   - from:
@@ -94,9 +95,10 @@ metadata:
   name: path-based-access
   namespace: default
 spec:
-  selector:
-    matchLabels:
-      app: user-service
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: user-service
   action: ALLOW
   rules:
   - from:
@@ -135,9 +137,10 @@ metadata:
   name: header-based-access
   namespace: default
 spec:
-  selector:
-    matchLabels:
-      app: internal-api
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: internal-api
   action: ALLOW
   rules:
   - from:
@@ -164,9 +167,10 @@ metadata:
   name: deny-admin-paths
   namespace: default
 spec:
-  selector:
-    matchLabels:
-      app: my-api
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: my-api
   action: DENY
   rules:
   - to:
@@ -214,9 +218,10 @@ metadata:
   name: l7-http-policy
   namespace: default
 spec:
-  selector:
-    matchLabels:
-      app: my-api
+  targetRefs:
+  - kind: Service
+    group: ""
+    name: my-api
   action: ALLOW
   rules:
   - from:
@@ -237,15 +242,16 @@ spec:
 
 The L4 policy ensures only the `default` and `frontend` namespaces can even establish a connection. The L7 policy then further restricts what HTTP requests are allowed.
 
-## Service-Account-Scoped Waypoint
+## Service-Scoped Waypoint
 
-For fine-grained control, create waypoints for specific service accounts:
+For fine-grained control, create waypoints for specific services:
 
 ```bash
-istioctl waypoint apply --namespace default --service-account my-api
+istioctl waypoint apply --namespace default --name my-api-waypoint
+kubectl label service my-api istio.io/use-waypoint=my-api-waypoint
 ```
 
-Now only traffic destined for workloads using the `my-api` service account flows through this waypoint. Other traffic in the namespace goes directly through ztunnel.
+Now traffic destined for the `my-api` service flows through this waypoint. Other traffic in the namespace uses the namespace waypoint if one is configured, or goes directly through ztunnel if no waypoint applies.
 
 This is useful when only certain services need L7 authorization:
 
@@ -298,18 +304,18 @@ The waypoint proxy reports L7 authorization metrics:
 
 ```promql
 sum(rate(istio_requests_total{
-  app="waypoint",
+  destination_workload="waypoint",
   response_code="403"
 }[5m])) by (source_workload, destination_workload)
 ```
 
 This shows the rate of denied requests, grouped by source and destination.
 
-For a breakdown by path:
+If you explicitly add a custom Telemetry tag for request paths, you can break the denied requests down by path:
 
 ```promql
 sum(rate(istio_requests_total{
-  app="waypoint",
+  destination_workload="waypoint",
   response_code="403"
 }[5m])) by (destination_workload, request_path)
 ```
@@ -335,13 +341,13 @@ kubectl logs -n default deploy/waypoint | grep "my-api"
 3. Check the effective policies:
 
 ```bash
-istioctl x authz check deploy/my-api
+istioctl x authz check deploy/waypoint -n default
 ```
 
-4. Verify the waypoint is associated with the target workload:
+4. Verify the waypoint is associated with the target service:
 
 ```bash
-istioctl x describe pod my-api-pod
+istioctl ztunnel-config service -n default
 ```
 
 ## Performance Considerations
