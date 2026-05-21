@@ -12,10 +12,10 @@ You configured retries in your VirtualService but requests are still failing on 
 
 ## How Istio Retries Work
 
-Istio configures retries in the Envoy proxy. By default, Envoy retries failed requests up to 2 times. You can override this with a VirtualService:
+Istio configures retries in the Envoy proxy. By default, Istio retries failed HTTP requests up to 2 times. You can override this with a VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -86,32 +86,29 @@ kubectl exec deploy/my-client -n production -c sleep -- \
   curl -v -o /dev/null -w "%{http_code}" my-service.production:8080/api
 ```
 
-If you're getting 400 or 404 errors, those won't be retried by default. To retry specific status codes:
+If you're getting 400 or 404 errors, those won't be retried by default. To retry specific status codes, include the actual status codes in `retryOn`:
 
 ```yaml
 retries:
   attempts: 3
-  retryOn: "retriable-status-codes"
-  retriableStatusCodes:
-    - 503
-    - 429
+  retryOn: "503,429"
 ```
 
-Wait, that's not quite how Istio exposes this. The `retryOn` field is a comma-separated string matching Envoy retry policies. For custom status codes, use:
+The `retryOn` field is a comma-separated string matching Envoy retry policies, and Istio also allows HTTP status codes directly. You can combine named policies and explicit status codes:
 
 ```yaml
 retries:
   attempts: 3
-  retryOn: "5xx,retriable-status-codes"
+  retryOn: "5xx,429"
 ```
 
-And then the actual status codes are controlled at the Envoy level via headers or EnvoyFilter.
+The status codes must be responses returned by the destination. For example, a connection reset that Istio translates into a 503 response won't match `retryOn: "503"` because the destination did not actually return 503; use a condition such as `reset` for that case.
 
 ## Step 3: Check if the Request is Idempotent
 
-Envoy has a built-in safety mechanism: by default, it only retries requests it considers safe to retry. POST requests are generally not retried because they might not be idempotent.
+Retries can duplicate application operations. POST requests are often not idempotent, so you should be careful before enabling retry conditions that can replay them.
 
-However, Istio overrides this behavior. With Istio's retry configuration, POST requests are retried by default. If they're not being retried, check if there's an EnvoyFilter or another configuration overriding the default behavior.
+Istio's HTTP retry policy is applied by the sidecar proxy according to the configured retry conditions; it does not make a request safe just because the retry is transparent to the application. If POST requests are not being retried, check whether the failure matches `retryOn`, whether the request body can be buffered for retry, and whether an EnvoyFilter or another configuration is overriding the route policy.
 
 Verify with the proxy configuration:
 
@@ -132,28 +129,28 @@ retries:
 
 Each retry gets `perTryTimeout` seconds to complete. If the server takes 500ms to respond and your `perTryTimeout` is 100ms, every retry will also timeout.
 
-The total timeout for a request with retries is approximately: `attempts * perTryTimeout`. But there's also an overall route timeout that can cut retries short.
+The maximum number of tries is the initial request plus the configured retry `attempts`, so the per-try timeout budget is approximately: `(attempts + 1) * perTryTimeout`, plus retry backoff. But there's also an overall route timeout that can cut retries short.
 
 ## Step 5: Check the Overall Route Timeout
 
-The route timeout is the maximum time for the entire request, including all retries. By default, it's 15 seconds. If your retries exceed this, they get cut off:
+The route timeout is the maximum time for the entire request, including all retries. In Istio, the `timeout` field is disabled by default unless you configure it. If your configured timeout is shorter than the retry sequence, retries get cut off:
 
 ```yaml
 http:
   - timeout: 5s  # Overall timeout
     retries:
       attempts: 3
-      perTryTimeout: 3s  # 3 attempts * 3s = 9s, but overall timeout is 5s!
+      perTryTimeout: 3s  # Up to 4 tries * 3s = 12s, but overall timeout is 5s!
     route:
       - destination:
           host: my-service.production.svc.cluster.local
 ```
 
-In this example, the third retry will never complete because the 5s overall timeout will kill the request first. Set the overall timeout high enough to accommodate all retries:
+In this example, later retries will never complete because the 5s overall timeout will kill the request first. Set the overall timeout high enough to accommodate all tries and retry backoff:
 
 ```yaml
 http:
-  - timeout: 10s  # Must be >= attempts * perTryTimeout
+  - timeout: 15s  # Must allow the initial try, retry attempts, and backoff
     retries:
       attempts: 3
       perTryTimeout: 3s
@@ -191,7 +188,7 @@ If `upstream_rq_retry_overflow` is non-zero, the retry budget is exhausted. Envo
 
 ## Step 7: Check the Retry Budget
 
-Envoy has a circuit breaker for retries. By default, only 20% of active requests can be retries. This prevents retry storms where retries cause more load, which causes more failures, which causes more retries.
+Envoy has circuit breaker settings for retries. Istio's `retryBudget` can limit concurrent retries to a percentage of active and pending requests; its default budget is 20% with a minimum retry concurrency of 3. This prevents retry storms where retries cause more load, which causes more failures, which causes more retries.
 
 Check the retry budget:
 
@@ -209,7 +206,7 @@ for c in data:
     if retry_budget:
       print(f'Retry budget: {retry_budget}')
     else:
-      max_retries = t.get('maxRetries', 'default (3)')
+      max_retries = t.get('maxRetries', 'not configured')
       print(f'Max retries: {max_retries}')
 "
 ```
@@ -217,7 +214,7 @@ for c in data:
 You can increase the retry budget with a DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -225,10 +222,12 @@ metadata:
 spec:
   host: my-service.production.svc.cluster.local
   trafficPolicy:
-    connectionPool:
-      http:
-        maxRetries: 10
+    retryBudget:
+      percent: 30
+      minRetryConcurrency: 5
 ```
+
+If you are using the older outstanding-retry circuit breaker instead of `retryBudget`, `trafficPolicy.connectionPool.http.maxRetries` controls the maximum number of retries that can be outstanding to all hosts in a cluster at a given time.
 
 ## Step 8: Check for EnvoyFilters Overriding Retries
 
@@ -241,26 +240,21 @@ kubectl get envoyfilter -n istio-system
 
 An EnvoyFilter might disable retries or modify the retry policy. Review each one.
 
-## Step 9: Test Retries with Fault Injection
+## Step 9: Test Retries with Controlled Failures
 
-Inject a fault to verify retries work:
+Use a test backend or temporary application behavior that returns retriable failures to verify retries work. Istio fault injection is useful for many failure tests, but fault injection cannot be combined with retry or timeout configuration on the same VirtualService, so don't rely on an Istio abort fault in the same rule to prove retry behavior.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
-  name: test-retries
+  name: my-service
   namespace: production
 spec:
   hosts:
     - my-service.production.svc.cluster.local
   http:
-    - fault:
-        abort:
-          httpStatus: 503
-          percentage:
-            value: 50
-      retries:
+    - retries:
         attempts: 3
         perTryTimeout: 2s
         retryOn: "5xx"
@@ -269,7 +263,7 @@ spec:
             host: my-service.production.svc.cluster.local
 ```
 
-With 50% failure rate and 3 retry attempts, most requests should eventually succeed. Send 10 requests and count the successes:
+If your test backend returns 503 for some requests and 200 for others, retries should improve the success rate. Send 10 requests and count the successes:
 
 ```bash
 for i in $(seq 1 10); do
@@ -279,13 +273,7 @@ done
 echo ""
 ```
 
-If you see mostly 200s, retries are working. If you see 503s, retries aren't triggering.
-
-After testing, remove the fault injection:
-
-```bash
-kubectl delete virtualservice test-retries -n production
-```
+If you see mostly 200s, retries are working. If you still see the original failure rate, retries aren't triggering.
 
 ## Common Issues Summary
 
@@ -293,8 +281,8 @@ kubectl delete virtualservice test-retries -n production
 |---------|-------|-----|
 | No retries at all | Wrong retryOn condition | Match retryOn to the error type |
 | Retries timeout | perTryTimeout too short | Increase perTryTimeout |
-| Retries cut off | Overall timeout too short | Set timeout >= attempts * perTryTimeout |
-| Retry overflow | Retry budget exhausted | Increase maxRetries in DestinationRule |
-| POST not retried | Envoy safety check | Check retry configuration explicitly |
+| Retries cut off | Overall timeout too short | Set timeout high enough for the initial try, retry attempts, and backoff |
+| Retry overflow | Retry budget exhausted | Increase retryBudget or maxRetries in DestinationRule |
+| POST duplicated | Non-idempotent operation retried | Restrict retryOn conditions or make the operation idempotent |
 
-Retry debugging is mostly about matching the failure type to the retry condition and making sure the timeouts are aligned. Use the Envoy stats to see what's actually happening, and test with fault injection to verify your configuration before relying on it in production.
+Retry debugging is mostly about matching the failure type to the retry condition and making sure the timeouts are aligned. Use the Envoy stats to see what's actually happening, and test with controlled failures before relying on the configuration in production.
