@@ -62,7 +62,7 @@ There are a few situations where you might need to modify these defaults:
 
 ## Configuring Privileged Mode for the Init Container
 
-If you need the init container to run in full privileged mode (not just with specific capabilities):
+If you need the injected Istio containers to run in full privileged mode (not just with specific capabilities), set `global.proxy.privileged`:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -70,6 +70,8 @@ kind: IstioOperator
 spec:
   values:
     global:
+      proxy:
+        privileged: true
       proxy_init:
         resources:
           requests:
@@ -81,7 +83,7 @@ spec:
         ISTIO_META_DNS_CAPTURE: "true"
 ```
 
-For per-pod control, you can use the custom injection template approach. However, it's better to avoid full privileged mode and use the minimum necessary capabilities instead.
+This setting affects the generated `istio-init` and `istio-proxy` security contexts in current injection templates. For per-pod or init-container-only control, you can use the custom injection template approach. However, it's better to avoid full privileged mode and use the minimum necessary capabilities instead.
 
 ## Using Istio CNI to Avoid Privileged Init Containers
 
@@ -93,6 +95,7 @@ kind: IstioOperator
 spec:
   components:
     cni:
+      namespace: istio-system
       enabled: true
   values:
     cni:
@@ -108,14 +111,16 @@ spec:
 ```
 
 ```bash
-istioctl install -f istio-cni.yaml
+istioctl install -f istio-cni.yaml -y
 ```
 
 With the CNI plugin:
-- No init container is injected
-- No `NET_ADMIN` or `NET_RAW` capabilities needed on any pod container
+- The privileged `istio-init` init container is not injected
+- No `NET_ADMIN` or `NET_RAW` capabilities needed on application pod containers
 - The iptables rules are set up by the CNI plugin on the node
 - The proxy container can run with minimal security privileges
+
+Istio may still inject the unprivileged `istio-validation` init container for CNI race-condition detection and repair.
 
 Verify CNI is working:
 
@@ -157,9 +162,13 @@ kind: Deployment
 metadata:
   name: debug-service
 spec:
+  selector:
+    matchLabels:
+      app: debug-service
   template:
     metadata:
-      annotations:
+      labels:
+        app: debug-service
         sidecar.istio.io/inject: "true"
     spec:
       containers:
@@ -167,23 +176,21 @@ spec:
         image: my-app:1.0
 ```
 
-To run the proxy as root, you would need to modify the injection template or use a custom template. However, this is strongly discouraged in production. Instead, use `kubectl exec` with the proxy container for debugging:
+To run the proxy as root, you would need to modify the injection template or use a custom template. However, this is strongly discouraged in production. Instead, use `istioctl proxy-config` for Envoy-level debugging:
 
 ```bash
 POD=$(kubectl get pod -l app=debug-service -o jsonpath='{.items[0].metadata.name}')
 
-# Check iptables rules (from the proxy container)
-
-kubectl exec $POD -c istio-proxy -- iptables -t nat -L -n -v
-
-# Check network configuration
-kubectl exec $POD -c istio-proxy -- ss -tlnp
-kubectl exec $POD -c istio-proxy -- netstat -tlnp
+# Check Envoy listeners and clusters
+istioctl proxy-config listener "$POD"
+istioctl proxy-config cluster "$POD"
 ```
+
+If you need to inspect pod network namespace iptables directly, use a temporary debug container or node-level tooling with the required privileges rather than changing the long-running proxy container to root.
 
 ## Pod Security Standards and Istio
 
-Kubernetes Pod Security Standards (PSS) define three levels: Privileged, Baseline, and Restricted. Istio's default security context is compatible with the Baseline level but not the Restricted level.
+Kubernetes Pod Security Standards (PSS) define three levels: Privileged, Baseline, and Restricted. Istio's default sidecar security context is compatible with the Baseline level, but the default `istio-init` container is not because Baseline does not allow adding `NET_ADMIN` or `NET_RAW`.
 
 **Baseline level compatibility (default Istio):**
 
@@ -197,7 +204,7 @@ metadata:
     pod-security.kubernetes.io/enforce: baseline
 ```
 
-This works because Baseline allows `NET_ADMIN` and `NET_RAW` capabilities on init containers.
+This works only when the privileged init-container requirement is removed, for example by using Istio CNI. Without CNI, the injected `istio-init` container adds capabilities that Baseline does not allow.
 
 **Restricted level requires CNI:**
 
@@ -213,9 +220,10 @@ metadata:
 
 For the Restricted level, you must use the Istio CNI plugin because:
 - No containers can have `NET_ADMIN` or `NET_RAW` capabilities
-- All containers must run as non-root
+- Containers must run as non-root
 - `allowPrivilegeEscalation` must be false
 - `seccompProfile` must be set
+- Containers must drop all capabilities and can only add back `NET_BIND_SERVICE`
 
 ## Configuring seccomp Profiles
 
@@ -254,7 +262,7 @@ spec:
       chained: false
 ```
 
-This allows Istio to work within OpenShift's default SCC without any additional privileges.
+This keeps application pods from needing the init-container privileges that OpenShift's restricted SCC blocks. The Istio CNI node agent itself still runs with elevated node-level privileges.
 
 ## Auditing Proxy Security
 
@@ -273,11 +281,11 @@ kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .spe
 
 ## Best Practices
 
-1. **Use Istio CNI in production** - it eliminates the need for elevated capabilities entirely
+1. **Use Istio CNI in production** - it eliminates the need for elevated capabilities on application pods
 2. **Never run the proxy in full privileged mode in production** - use specific capabilities instead
 3. **Use Pod Security Standards** - enforce Baseline or Restricted levels
 4. **Audit regularly** - check that no pods have unexpected security contexts
 5. **Keep the proxy running as UID 1337** - don't change the default non-root user unless absolutely necessary
 6. **Use read-only root filesystem** - the default, keeps the proxy container immutable
 
-The default security configuration of Istio's sidecar is already pretty good. The main decision you need to make is whether to use the init container approach (simpler setup, needs `NET_ADMIN`) or the CNI plugin (no extra capabilities needed, slightly more complex infrastructure). For most production environments, the CNI plugin is the better choice.
+The default security configuration of Istio's sidecar is already pretty good. The main decision you need to make is whether to use the init container approach (simpler setup, needs `NET_ADMIN` in application pods) or the CNI plugin (moves the elevated privileges to the node agent, slightly more complex infrastructure). For most production environments, the CNI plugin is the better choice.
