@@ -21,12 +21,25 @@ spec:
   meshConfig:
     accessLogFile: /dev/stdout
     accessLogEncoding: JSON
+    accessLogFormat: |
+      {
+        "authority": "%REQ(:AUTHORITY)%",
+        "method": "%REQ(:METHOD)%",
+        "path": "%REQ(X-ENVOY-ORIGINAL-PATH?:PATH)%",
+        "protocol": "%PROTOCOL%",
+        "response_code": "%RESPONSE_CODE%",
+        "grpc_status": "%GRPC_STATUS%",
+        "response_flags": "%RESPONSE_FLAGS%",
+        "duration": "%DURATION%",
+        "upstream_host": "%UPSTREAM_HOST%",
+        "upstream_cluster": "%UPSTREAM_CLUSTER_RAW%"
+      }
 ```
 
-Or patch the existing config:
+Or apply the updated `IstioOperator` file to an existing installation:
 
 ```bash
-kubectl patch cm istio -n istio-system --type merge -p '{"data":{"mesh":"accessLogFile: /dev/stdout\naccessLogEncoding: JSON"}}'
+istioctl install -f istio-operator.yaml
 ```
 
 After enabling, you will see access logs in the istio-proxy container:
@@ -72,7 +85,7 @@ Response flags tell you what went wrong. For gRPC issues, the most common ones a
 - `UO` - upstream overflow (circuit breaker tripped)
 - `UT` - upstream request timeout
 - `DC` - downstream connection termination
-- `DT` - downstream request timed out (gRPC deadline exceeded)
+- `DT` - request or connection exceeded a configured max duration
 - `NR` - no route configured
 - `URX` - upstream retry limit exceeded
 - `RL` - rate limited
@@ -193,8 +206,12 @@ The client times out but the server never received the request.
 3. Sidecar not injected on server side
 
 ```bash
-# Check mTLS status
-istioctl authn tls-check <client-pod> grpc-backend.default.svc.cluster.local
+# Check PeerAuthentication and DestinationRule TLS settings
+kubectl get peerauthentication -A
+kubectl get destinationrule -A -o yaml | grep -A5 "tls:"
+
+# Check the generated upstream cluster for TLS configuration
+istioctl proxy-config clusters <client-pod> --fqdn grpc-backend.default.svc.cluster.local -o json | grep -A5 "transportSocket"
 
 # Verify sidecar injection
 kubectl get pod <server-pod> -o jsonpath='{.spec.containers[*].name}'
