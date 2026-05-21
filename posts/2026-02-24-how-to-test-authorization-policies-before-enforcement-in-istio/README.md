@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Authorization, Testing, Security, Kubernetes, Dry Run
 
-Description: Techniques for testing and validating Istio authorization policies before enforcing them in production, including dry-run mode and shadow policies.
+Description: Techniques for testing and validating Istio authorization policies before enforcing them in production, including dry-run mode and gradual rollouts.
 
 ---
 
@@ -25,7 +25,7 @@ Testing before enforcement helps you catch these issues without impacting users.
 
 ## Method 1: Dry-Run with Istio Telemetry
 
-Istio 1.19 and later supports a dry-run mode for authorization policies. You enable it by adding an annotation:
+Current Istio releases support an alpha dry-run mode for `ALLOW` and `DENY` authorization policies. You enable it by adding an annotation:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -51,15 +51,19 @@ spec:
         paths: ["/api/*"]
 ```
 
-With dry-run enabled, the policy is loaded into the Envoy proxy but does not actually enforce. Instead, it logs what the decision would have been. Real traffic continues to flow unaffected.
+With dry-run enabled, the policy is loaded into the Envoy proxy but does not actually enforce. Instead, Istio exposes what the decision would have been through proxy debug logs, metrics, and tracing. Real traffic continues to flow unaffected.
 
-Check the Envoy access logs to see the dry-run results:
+Enable RBAC debug logging and check the Envoy proxy logs to see the dry-run results:
+
+```bash
+istioctl proxy-config log <pod-name> -n default --level "rbac:debug"
+```
 
 ```bash
 kubectl logs <pod-name> -c istio-proxy | grep "shadow"
 ```
 
-The access log includes a `shadow_effective_policy_id` and `shadow_engine_result` that tell you whether the dry-run policy would have allowed or denied each request.
+The proxy log includes entries such as `shadow denied, matched policy ns[default]-policy[test-policy]-rule[0]`. Dry-run results are also available in Envoy RBAC metrics with labels such as `authz_dry_run_action` and `authz_dry_run_result`.
 
 ## Method 2: Monitoring-Only Rollout
 
@@ -106,13 +110,13 @@ Run your integration tests against the test namespace and check for 403 errors.
 
 ## Method 3: RBAC Debug Logging
 
-Before applying a policy to production, enable RBAC debug logging on the target workload:
+Before applying a policy to production, enable RBAC debug logging on the target workload in dry-run mode, staging, or a canary rollout:
 
 ```bash
 istioctl proxy-config log <pod-name> -n default --level rbac:debug
 ```
 
-Then apply the policy and monitor the logs:
+Then apply the dry-run, staging, or canary policy and monitor the logs:
 
 ```bash
 kubectl logs <pod-name> -c istio-proxy -f | grep rbac
@@ -125,7 +129,7 @@ rbac_log: enforced allowed, matched policy ns[default]-policy[test-policy]-rule[
 rbac_log: enforced denied, no matched policy found
 ```
 
-These tell you exactly which requests are being allowed and denied, and which policy rules are responsible.
+These tell you which requests are being allowed and denied, and which policy rules are responsible. If you apply a normal policy to a production workload, it will enforce immediately while you are watching the logs.
 
 ## Method 4: Start with DENY Instead of ALLOW
 
@@ -155,7 +159,7 @@ spec:
         paths: ["/internal/*"]
 ```
 
-This blocks external access to internal paths without affecting any other traffic. You can gradually add more DENY rules until you have covered all the cases, and then switch to an ALLOW-based approach.
+This blocks access to internal paths from mesh namespaces other than `default` and `gateway` without affecting any other traffic. Namespace-based matches are derived from the peer certificate, so make sure mTLS is enabled for the traffic you expect to match. You can gradually add more DENY rules until you have covered all the cases, and then switch to an ALLOW-based approach.
 
 ## Method 5: Gradual Rollout with Workload Selectors
 
@@ -180,14 +184,14 @@ spec:
         - "cluster.local/ns/default/sa/api-gateway"
 ```
 
-Only pods with both `app: my-service` and `version: canary` get the policy. The rest of the pods continue without authorization enforcement. If the canary works fine, expand the selector.
+Only pods with both `app: my-service` and `version: canary` get this policy. Pods that do not match the selector are unaffected by this policy. If the canary works fine, expand the selector.
 
 ## Method 6: Use istioctl analyze
 
 Before applying any policy, run `istioctl analyze` to catch configuration errors:
 
 ```bash
-istioctl analyze -n default authorization-policy.yaml
+istioctl analyze authorization-policy.yaml
 ```
 
 This checks for common issues like:
@@ -200,13 +204,13 @@ It will not tell you if your rules are logically correct (that requires actual t
 
 ## Method 7: Simulate with istioctl x authz check
 
-After applying a policy, use `istioctl x authz check` to see how it would evaluate for a specific workload:
+After applying a policy, use `istioctl x authz check` to inspect which authorization policies are loaded for a specific workload:
 
 ```bash
 istioctl x authz check <pod-name> -n default
 ```
 
-This shows all policies loaded in the proxy and their rules. You can manually trace through the rules to predict whether a specific request would be allowed or denied.
+This shows the authorization policies loaded in the proxy and their rules. It is useful for checking policy propagation and manually tracing through the rules to predict whether a specific request would be allowed or denied.
 
 ## Building a Testing Workflow
 
