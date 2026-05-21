@@ -17,7 +17,12 @@ Start by understanding how much Istio is actually consuming:
 ```bash
 # Total sidecar resource usage across the cluster
 
-kubectl top pods --all-namespaces --containers | grep istio-proxy | awk '{cpu+=$3; mem+=$4} END {print "Total CPU:", cpu, "m, Total Memory:", mem, "Mi"}'
+kubectl top pods --all-namespaces --containers --no-headers | awk '
+  function cpu_m(v) { if (v ~ /n$/) return v/1000000; if (v ~ /u$/) return v/1000; if (v ~ /m$/) return v+0; return v*1000 }
+  function mem_mi(v) { if (v ~ /Ki$/) return v/1024; if (v ~ /Mi$/) return v+0; if (v ~ /Gi$/) return v*1024; return v/1048576 }
+  $3 == "istio-proxy" { cpu += cpu_m($4); mem += mem_mi($5) }
+  END { printf "Total CPU: %.0fm, Total Memory: %.0fMi\n", cpu, mem }
+'
 
 # Control plane resource usage
 kubectl top pods -n istio-system
@@ -82,7 +87,7 @@ The difference between requesting 128Mi and 32Mi per sidecar, multiplied by 1000
 This has been mentioned in other contexts but deserves emphasis here because of its impact on resource usage. Each service in the mesh configuration adds memory overhead to every sidecar:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -123,10 +128,6 @@ spec:
   meshConfig:
     enableTracing: false
     accessLogFile: ""
-    defaultConfig:
-      holdApplicationUntilProxyStarts: true
-      proxyMetadata:
-        BOOTSTRAP_XDS_AGENT: "true"
 ```
 
 Disabling tracing removes the tracing extension and its CPU overhead. Disabling access logging removes file I/O and the log buffer memory.
@@ -136,7 +137,7 @@ Disabling tracing removes the tracing extension and its CPU overhead. Disabling 
 Telemetry is one of the larger consumers of sidecar CPU and memory:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: resource-efficient
@@ -182,34 +183,34 @@ spec:
     spec:
       template:
         metadata:
-          annotations:
+          labels:
             sidecar.istio.io/inject: "false"
 ```
 
 Or exclude entire namespaces:
 
 ```bash
-kubectl label namespace monitoring istio-injection=disabled
-kubectl label namespace ci-cd istio-injection=disabled
+kubectl label namespace monitoring istio-injection=disabled --overwrite
+kubectl label namespace ci-cd istio-injection=disabled --overwrite
 ```
 
 Every pod without a sidecar saves the full sidecar resource allocation.
 
 ## Use Distroless Proxy Images
 
-The distroless image is smaller and uses less memory:
+The distroless image is smaller and removes non-essential tools:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
-  values:
-    global:
-      proxy:
-        image: distroless
+  meshConfig:
+    defaultConfig:
+      image:
+        imageType: distroless
 ```
 
-The savings are modest per pod (5-10MB memory), but they add up across many pods.
+The runtime CPU and memory savings are usually modest, but smaller images reduce image storage and pull overhead across many pods.
 
 ## Optimize the Control Plane
 
@@ -234,16 +235,22 @@ spec:
 Use HPA so istiod scales down during quiet periods:
 
 ```yaml
-hpaSpec:
-  minReplicas: 1
-  maxReplicas: 5
-  metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  components:
+    pilot:
+      k8s:
+        hpaSpec:
+          minReplicas: 1
+          maxReplicas: 5
+          metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
 ```
 
 ## Remove Unused Components
@@ -293,7 +300,12 @@ kubectl get pods --all-namespaces -o json | jq -r '
   .resources.requests // {} |
   [.cpu // "0", .memory // "0"] |
   @tsv
-' | awk '{cpu+=$1; mem+=$2} END {print "Total CPU requests:", cpu, "Total Memory requests:", mem}'
+' | awk '
+  function cpu_m(v) { if (v ~ /n$/) return v/1000000; if (v ~ /u$/) return v/1000; if (v ~ /m$/) return v+0; return v*1000 }
+  function mem_mi(v) { if (v ~ /Ki$/) return v/1024; if (v ~ /Mi$/) return v+0; if (v ~ /Gi$/) return v*1024; return v/1048576 }
+  { cpu += cpu_m($1); mem += mem_mi($2) }
+  END { printf "Total CPU requests: %.0fm, Total Memory requests: %.0fMi\n", cpu, mem }
+'
 ```
 
 Create a Grafana dashboard that tracks total Istio resource consumption over time. This helps you demonstrate the ROI of optimization work.
