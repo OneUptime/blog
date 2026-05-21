@@ -14,13 +14,13 @@ Here are the fastest ways to verify mTLS is working correctly between your servi
 
 ## Check Mesh-Wide mTLS Policy
 
-First, see what PeerAuthentication policies are in effect. The mesh-wide policy lives in the `istio-system` namespace:
+First, see what PeerAuthentication policies are in effect. The mesh-wide policy lives in Istio's root namespace, which is commonly `istio-system`:
 
 ```bash
 kubectl get peerauthentication -n istio-system
 ```
 
-If you see a policy named `default` with mode `STRICT`, all traffic in the mesh requires mTLS:
+If you see a policy named `default` with mode `STRICT`, workloads inherit strict mTLS unless a more specific namespace, workload, or port-level policy overrides it:
 
 ```bash
 kubectl get peerauthentication default -n istio-system -o jsonpath='{.spec.mtls.mode}'
@@ -36,46 +36,49 @@ kubectl get peerauthentication -A
 
 This shows all PeerAuthentication policies across all namespaces. A namespace-level policy overrides the mesh-wide one, and a workload-level policy overrides the namespace-level one.
 
-## Use istioctl authn tls-check
+## Use istioctl x describe
 
-This is the single most useful command for checking mTLS status. It shows you the TLS status for connections from a specific workload to all destination services:
+This is one of the most useful commands for checking mTLS status. It shows the Istio configuration affecting a pod and reports whether Pilot predicts mTLS conflicts:
 
 ```bash
-istioctl authn tls-check deploy/my-app.default
+POD=$(kubectl get pod -n default -l app=my-app -o jsonpath='{.items[0].metadata.name}')
+istioctl x describe pod "$POD" -n default
 ```
 
-Note the format: `deploy/<deployment-name>.<namespace>`. The output shows:
+The output shows:
 
 ```text
-HOST:PORT                                        STATUS   SERVER       CLIENT     AUTHN POLICY        DESTINATION RULE
-api-server.backend.svc.cluster.local:8080        OK       STRICT       mTLS       default/istio-sys   -
-frontend.default.svc.cluster.local:80            OK       STRICT       mTLS       default/istio-sys   -
-db-service.data.svc.cluster.local:5432           OK       PERMISSIVE   mTLS       -                   -
+Pod: my-app-7d9c8f6c8b-x2abc
+   Pod Ports: 8080 (my-app), 15090 (istio-proxy)
+--------------------
+Service: my-app
+   Port: http 8080/HTTP
+Pilot reports that pod enforces mTLS and clients speak mTLS
 ```
 
-Key columns to look at:
+Key lines to look at:
 
-- **STATUS**: Should be `OK`. If it says `CONFLICT`, there is a mismatch between the client and server mTLS settings.
-- **SERVER**: The mTLS mode the destination expects (from PeerAuthentication)
-- **CLIENT**: Whether the source is sending mTLS (based on DestinationRule)
-- **AUTHN POLICY**: Which PeerAuthentication policy is in effect
+- **Pilot reports that pod enforces mTLS**: The destination is requiring mTLS from PeerAuthentication.
+- **clients speak mTLS**: The client-side configuration is expected to originate mTLS.
+- **WARNING Pilot predicts TLS Conflict**: There is a mismatch between the client and server TLS settings.
 
 ## Check mTLS for a Specific Connection
 
-If you want to check mTLS between two specific services:
+If you want to check mTLS between two specific services, inspect the source proxy's outbound cluster for the destination:
 
 ```bash
-istioctl authn tls-check deploy/frontend.default api-server.backend.svc.cluster.local
+istioctl proxy-config clusters deployment/frontend -n default \
+  --fqdn api-server.backend.svc.cluster.local -o json | grep -i "transportSocket" -A8
 ```
 
-This narrows the output to just that one connection, which is easier to read when you are debugging a specific issue.
+This narrows the output to the destination cluster, which is easier to read when you are debugging a specific issue.
 
 ## Verify with Proxy Configuration
 
 You can verify mTLS at the proxy level by checking the Envoy cluster configuration:
 
 ```bash
-istioctl proxy-config clusters deploy/my-app -n default -o json | \
+istioctl proxy-config clusters deployment/my-app -n default -o json | \
   python3 -c "
 import sys, json
 for cluster in json.load(sys.stdin):
@@ -91,7 +94,7 @@ If mTLS is active, you will see `envoy.transport_sockets.tls` as the transport s
 A simpler check:
 
 ```bash
-istioctl proxy-config clusters deploy/my-app -n default --fqdn api-server.backend.svc.cluster.local -o json | grep -i "transport_socket" -A5
+istioctl proxy-config clusters deployment/my-app -n default --fqdn api-server.backend.svc.cluster.local -o json | grep -i "transportSocket" -A5
 ```
 
 ## Check Certificates
@@ -99,7 +102,7 @@ istioctl proxy-config clusters deploy/my-app -n default --fqdn api-server.backen
 Verify the actual certificates being used by the sidecar:
 
 ```bash
-istioctl proxy-config secret deploy/my-app -n default
+istioctl proxy-config secret deployment/my-app -n default
 ```
 
 This shows the certificates loaded in the Envoy proxy:
@@ -115,7 +118,7 @@ The `default` entry is the workload certificate used for mTLS. `ROOTCA` is the r
 To see the certificate details:
 
 ```bash
-istioctl proxy-config secret deploy/my-app -n default -o json | \
+istioctl proxy-config secret deployment/my-app -n default -o json | \
   python3 -c "
 import sys, json, base64, subprocess
 data = json.load(sys.stdin)
@@ -132,20 +135,19 @@ This shows you the SPIFFE identity in the certificate's SAN field, which should 
 
 ## Test mTLS from Inside a Pod
 
-You can test whether a connection actually uses mTLS by making a request and checking the response headers:
+You can test whether the connection succeeds under the current mTLS policy by making a request from the application container:
 
 ```bash
-kubectl exec deploy/my-app -n default -c istio-proxy -- \
+kubectl exec deploy/my-app -n default -c my-app -- \
   curl -s -o /dev/null -w "%{http_code}" http://api-server.backend:8080/health
 ```
 
-If mTLS is working, this returns 200. If the server requires STRICT mTLS and the client is not sending it, you get a connection reset or 503.
+If mTLS is configured correctly and the application is healthy, this returns 200. If the server requires STRICT mTLS and the client is not sending it, you get a connection reset or 503. This test confirms end-to-end behavior; the application-level `curl` command itself will not show the sidecar-to-sidecar TLS handshake.
 
-For more detail, check the connection with verbose output:
+For more detail, check the proxy access logs or Envoy transport failure reason:
 
 ```bash
-kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -v http://api-server.backend:8080/health 2>&1 | grep -i "ssl\|tls\|certificate"
+kubectl logs deploy/my-app -n default -c istio-proxy | grep -i "TLS_error\|transport failure"
 ```
 
 ## Check Using Envoy Stats
@@ -154,19 +156,19 @@ Envoy tracks mTLS-related statistics that tell you what is happening at the conn
 
 ```bash
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep ssl
+  pilot-agent request GET stats | grep ssl
 ```
 
-Key stats to look for:
+Example stats to look for:
 
 ```text
-ssl.handshake: 42          # Successful TLS handshakes
-ssl.connection_error: 0    # Failed TLS connections
-ssl.no_certificate: 0      # Connections without client cert
-ssl.fail_verify_cert_hash: 0  # Certificate verification failures
+cluster.outbound|8080||api-server.backend.svc.cluster.local.ssl.handshake: 42
+cluster.outbound|8080||api-server.backend.svc.cluster.local.ssl.connection_error: 0
+listener.0.0.0.0_8080.ssl.no_certificate: 0
+listener.0.0.0.0_8080.ssl.fail_verify_cert_hash: 0
 ```
 
-If `ssl.connection_error` or `ssl.fail_verify_cert_hash` is non-zero, there are mTLS problems.
+If `ssl.connection_error` or `ssl.fail_verify_cert_hash` increases while you reproduce the request, there are likely mTLS problems. Exact stat names can vary by Envoy and Istio configuration, and some stats may require proxy stats matcher settings.
 
 ## Check for Mixed-Mode Issues
 
@@ -232,7 +234,7 @@ for dr in data['items']:
 
 echo ""
 echo "=== Proxy Certificate Status ==="
-istioctl proxy-config secret deploy/${1:-my-app} -n ${2:-default} 2>/dev/null || echo "  Could not check (specify deployment and namespace)"
+istioctl proxy-config secret deployment/${1:-my-app} -n ${2:-default} 2>/dev/null || echo "  Could not check (specify deployment and namespace)"
 ```
 
 Run it with `./check-mtls.sh my-app default` for a comprehensive mTLS status check. This covers the policy layer, the destination rules, and the actual certificate state in the proxy, giving you a complete picture of your mTLS configuration.
