@@ -8,7 +8,7 @@ Description: Configure header-based canary routing in Istio to direct specific u
 
 ---
 
-Header-based canary routing lets you send specific requests to the canary version based on HTTP headers. Unlike percentage-based routing where random users hit the canary, header-based routing gives you control over exactly who sees the new version. QA teams can test in production, beta users can get early access, and developers can verify changes with real traffic before broader rollout.
+Header-based canary routing lets you send specific requests to the canary version based on HTTP headers. Unlike percentage-based routing where a weighted share of requests hits the canary, header-based routing gives you control over exactly who sees the new version. QA teams can test in production, beta users can get early access, and developers can verify changes with real traffic before broader rollout.
 
 This approach is especially useful when you need to test a new version with specific user accounts, specific client applications, or specific test scenarios.
 
@@ -214,7 +214,7 @@ spec:
   - match:
     - headers:
         cookie:
-          regex: ".*canary=true.*"
+          regex: '(^|.*;\s*)canary=true(;.*|$)'
     route:
     - destination:
         host: my-app
@@ -251,7 +251,7 @@ def get_data():
     return response.json()
 ```
 
-Or use Istio's `HeaderOperations` to inject headers:
+You can also use Istio's `HeaderOperations` to inject routing metadata before a request reaches the selected service. This is useful for marking routed traffic, but it does not replace application-level propagation to downstream calls:
 
 ```yaml
 apiVersion: networking.istio.io/v1
