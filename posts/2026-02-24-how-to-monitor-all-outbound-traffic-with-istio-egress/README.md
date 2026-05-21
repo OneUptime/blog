@@ -71,7 +71,7 @@ spec:
       enabled: true
 ```
 
-Once the egress gateway is running, route your external traffic through it (see previous posts for the ServiceEntry + Gateway + VirtualService pattern). The egress gateway becomes your centralized monitoring point for all outbound traffic.
+Once the egress gateway is running, route your external traffic through it (see previous posts for the ServiceEntry + Gateway + VirtualService pattern). The egress gateway becomes your centralized monitoring point for mesh-managed outbound traffic. If you need to ensure workloads cannot bypass it, enforce that separately with Kubernetes NetworkPolicy, firewall rules, or cloud network controls.
 
 ## Step 4: Query Egress Metrics with Prometheus
 
@@ -86,7 +86,7 @@ istio_requests_total
 istio_request_duration_milliseconds
 ```
 
-You can query these in Prometheus. For example, to see all outbound HTTP requests grouped by destination:
+You can query these in Prometheus. For example, to see all outbound HTTP requests grouped by source workload:
 
 ```promql
 sum(rate(istio_requests_total{reporter="source", destination_service_namespace="istio-system", destination_service_name="istio-egressgateway"}[5m])) by (source_workload, source_workload_namespace)
@@ -97,13 +97,13 @@ This shows which workloads are sending traffic through the egress gateway.
 To see outbound requests by external destination host:
 
 ```promql
-sum(rate(istio_requests_total{reporter="destination", source_workload="istio-egressgateway"}[5m])) by (destination_service_name, response_code)
+sum(rate(istio_requests_total{reporter="source", source_workload="istio-egressgateway", source_workload_namespace="istio-system"}[5m])) by (destination_service, response_code)
 ```
 
 For total bytes sent to external services:
 
 ```promql
-sum(rate(istio_tcp_sent_bytes_total{reporter="source", destination_service_name="istio-egressgateway"}[5m])) by (source_workload)
+sum(rate(istio_tcp_sent_bytes_total{reporter="source", source_workload="istio-egressgateway", source_workload_namespace="istio-system"}[5m])) by (destination_service)
 ```
 
 ## Step 5: Set Up Alerts for Unexpected Traffic
@@ -190,7 +190,7 @@ This ensures all traffic through the egress gateway gets logged, not just errors
 
 ## Monitoring Blocked Traffic
 
-When using `REGISTRY_ONLY` mode, traffic to unregistered external hosts gets blocked. These blocked connections show up as `BlackHoleCluster` or `PassthroughCluster` entries in the metrics and logs.
+When using `REGISTRY_ONLY` mode, traffic to unregistered external hosts gets blocked. These blocked connections show up as `BlackHoleCluster` entries in the metrics and logs.
 
 To find blocked outbound connections:
 
@@ -198,7 +198,7 @@ To find blocked outbound connections:
 sum(rate(istio_requests_total{destination_service="BlackHoleCluster"}[5m])) by (source_workload, source_workload_namespace)
 ```
 
-This is incredibly useful for security monitoring. If you see traffic hitting the BlackHoleCluster, it means some workload is trying to reach an external host that is not registered. It could be a misconfiguration, or it could be something more concerning.
+This is incredibly useful for security monitoring. If you see traffic hitting the BlackHoleCluster, it means some workload is trying to reach an external host that is not registered. In `ALLOW_ANY` mode, similar unregistered external traffic is allowed through the `PassthroughCluster` instead. Either case could be a misconfiguration, or it could be something more concerning.
 
 ## Creating a Traffic Inventory
 
