@@ -18,7 +18,7 @@ Envoy supports several log levels, from most verbose to least:
 
 - **trace**: Extremely detailed, includes every internal event
 - **debug**: Detailed information useful for troubleshooting
-- **info**: General operational messages (default)
+- **info**: General operational messages (Envoy's default; Istio resets sidecar loggers to `warning` by default)
 - **warning**: Problems that don't cause failures but should be investigated
 - **error**: Actual failures
 - **critical**: Severe errors that affect proxy operation
@@ -46,8 +46,8 @@ istioctl proxy-config log deploy/my-app -n production --level debug
 # Set specific loggers
 istioctl proxy-config log deploy/my-app -n production --level connection:debug,router:debug,http:debug
 
-# Set back to warning when done
-istioctl proxy-config log deploy/my-app -n production --level warning
+# Reset back to the default level when done
+istioctl proxy-config log deploy/my-app -n production -r
 ```
 
 You can also check the current log levels:
@@ -162,7 +162,7 @@ spec:
 You can also use the Telemetry API for more control:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: access-logging
@@ -176,7 +176,7 @@ spec:
 To enable access logging only for specific namespaces:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: access-logging
@@ -192,7 +192,7 @@ spec:
 You might not want to log every single request. For high-traffic services, logging only errors can reduce log volume significantly:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: error-only-logging
@@ -202,7 +202,7 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400"
+        expression: "!has(response.code) || response.code >= 400"
 ```
 
 Other useful filter expressions:
@@ -210,11 +210,11 @@ Other useful filter expressions:
 ```yaml
 # Log only 5xx errors
 filter:
-  expression: "response.code >= 500"
+  expression: "!has(response.code) || response.code >= 500"
 
 # Log slow requests (over 1 second)
 filter:
-  expression: "response.duration > 1000"
+  expression: "request.duration > duration('1s')"
 
 # Log specific paths
 filter:
@@ -285,7 +285,7 @@ kubectl logs deploy/my-app -c istio-proxy -n production --tail=50
 kubectl logs deploy/my-app -c istio-proxy -n production | grep "failing-endpoint"
 
 # 5. Reset log levels
-istioctl proxy-config log deploy/my-app -n production --level warning
+istioctl proxy-config log deploy/my-app -n production -r
 ```
 
 The combination of access logs for request-level visibility and component logs for internal proxy behavior gives you everything you need to diagnose most issues. Just remember to dial the verbosity back down when you're done - debug logging in production generates a lot of noise and can affect performance at high request rates.
