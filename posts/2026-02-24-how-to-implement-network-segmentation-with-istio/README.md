@@ -18,7 +18,7 @@ By default, every pod in a Kubernetes cluster can talk to every other pod. That'
 
 Istio uses the Envoy sidecar proxy to intercept all network traffic between services. This means you can enforce segmentation rules at the proxy level without modifying your application code. The key resources you'll work with are `AuthorizationPolicy` and `PeerAuthentication`.
 
-First, make sure you have strict mTLS enabled across your mesh:
+First, make sure you have strict mTLS enabled across your mesh. For a mesh-wide policy, apply it in Istio's root namespace, which is usually `istio-system`:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -49,15 +49,15 @@ spec:
   {}
 ```
 
-An empty spec with no rules means "deny everything." Apply this to each namespace that represents a zone:
+An empty spec with no rules means "deny everything" for workloads in that namespace. Apply an equivalent manifest to each namespace that represents a zone, changing `metadata.namespace` for each zone:
 
 ```bash
-kubectl apply -f deny-all-policy.yaml -n backend
-kubectl apply -f deny-all-policy.yaml -n data
-kubectl apply -f deny-all-policy.yaml -n frontend
+kubectl apply -f deny-all-backend.yaml
+kubectl apply -f deny-all-data.yaml
+kubectl apply -f deny-all-frontend.yaml
 ```
 
-Now nothing can talk to anything within those namespaces. You'll build up access rules from here.
+Now workloads in those namespaces won't accept traffic unless another authorization policy allows it. You'll build up access rules from here.
 
 ## Allowing Intra-Zone Communication
 
@@ -173,7 +173,7 @@ Then query for `istio_requests_total{response_code="403"}` to see denied request
 
 ## Practical Tips for Rolling Out Segmentation
 
-Don't try to segment everything at once. Start with a single namespace, put it in audit mode first, and watch what breaks. Istio supports a `CUSTOM` action with external authorization, but for most teams, the built-in `ALLOW` and `DENY` actions are enough.
+Don't try to segment everything at once. Start with a single namespace, use Istio's dry-run annotation to see the effect before enforcing the policy, and watch what breaks. Istio supports a `CUSTOM` action with external authorization, but for most teams, the built-in `ALLOW` and `DENY` actions are enough.
 
 A good rollout strategy looks like this:
 
@@ -183,11 +183,13 @@ A good rollout strategy looks like this:
 4. Expand to additional namespaces one at a time
 5. Add default-deny policies last, after all allow rules are in place
 
-One common mistake is forgetting about health checks. Kubernetes liveness and readiness probes come from the kubelet, which doesn't go through the Envoy proxy. So they won't be affected by your authorization policies. But if you're using gRPC health checks through the mesh, make sure to account for those in your policies.
+One common mistake is forgetting about health checks. Kubernetes liveness and readiness probes come from the kubelet, and HTTP, TCP, and gRPC probes are rewritten by Istio by default so the sidecar agent can handle them correctly with mTLS. If you disable probe rewriting or run health checks through the mesh like normal service traffic, make sure to account for those requests in your policies.
 
 ## Combining with Network Policies
 
 Istio segmentation works at Layer 7, but you can add Kubernetes NetworkPolicy resources for Layer 3/4 defense in depth. The two complement each other well. NetworkPolicy blocks traffic at the network level before it even reaches the Envoy proxy, while Istio authorization policies provide fine-grained application-level control.
+
+Assuming your namespaces are labeled with `zone: frontend` and `zone: backend`, a NetworkPolicy layer could look like this:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
