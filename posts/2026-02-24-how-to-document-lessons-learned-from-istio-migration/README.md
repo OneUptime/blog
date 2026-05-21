@@ -23,18 +23,20 @@ Document every major decision and why you made it. This is the single most valua
 ```markdown
 ## Decision: Istio Installation Method
 - **Decision**: Use istioctl with revision-based upgrades
-- **Alternatives considered**: Helm, Istio Operator
+- **Alternatives considered**: Helm, in-cluster Istio Operator
 - **Why**: Revision-based upgrades let us run canary control planes,
   which is critical for our zero-downtime requirement. Helm was rejected
-  because revision support was more complex. The operator was rejected
-  because it adds another component to manage.
+  because revision support was more complex. The in-cluster operator was
+  rejected because it has been removed from current Istio releases and
+  adds another component to manage.
 - **Date**: 2026-01-15
 
 ## Decision: mTLS Rollout Strategy
 - **Decision**: Start PERMISSIVE, move to STRICT per-namespace
 - **Alternatives considered**: Mesh-wide STRICT from day one
-- **Why**: We have 3 services that talk to external databases without
-  sidecars. STRICT mode would break these until we configure exceptions.
+- **Why**: We have 3 services that still receive traffic from legacy
+  clients without sidecars. STRICT mode would break these until we
+  migrate the clients or configure exceptions.
 - **Date**: 2026-01-20
 
 ## Decision: Keep Kubernetes NetworkPolicies
@@ -64,16 +66,16 @@ Create a structured log of every issue you hit during migration:
 ## Issue: Pods stuck in Init state after sidecar injection
 - **Symptoms**: Pods never became Ready, stuck in Init:0/1
 - **Root cause**: The istio-init container could not modify iptables
-  because the node had a restrictive PodSecurityPolicy.
-- **Resolution**: Updated PSP to allow NET_ADMIN and NET_RAW capabilities
-  for the istio-init container.
+  because the cluster had a restrictive pod admission policy.
+- **Resolution**: Installed Istio CNI so application pods no longer needed
+  privileged init containers with NET_ADMIN and NET_RAW capabilities.
 - **Time to resolve**: 2 hours
 - **Impact**: New deployments were blocked for 1 hour
 
 ## Issue: Intermittent 503 errors on high-traffic service
 - **Symptoms**: 2-3% of requests to the payments service returned 503
-- **Root cause**: Default connection pool settings were too low.
-  http1MaxPendingRequests default of 1024 was insufficient.
+- **Root cause**: An existing DestinationRule connection pool override was
+  too low. http1MaxPendingRequests of 1024 was insufficient.
 - **Resolution**: Created DestinationRule with increased connection
   pool limits (http1MaxPendingRequests: 4096, maxConnections: 2000)
 - **Time to resolve**: 5 hours (initially misdiagnosed as DNS issue)
