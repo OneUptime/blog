@@ -25,7 +25,7 @@ There are a few solid reasons to consider this integration:
 
 Before starting, make sure you have:
 
-- A Kubernetes cluster with Istio 1.14+ installed
+- A Kubernetes cluster with a current Istio release installed
 - SPIRE server and agents deployed in the cluster
 - `istioctl` and `kubectl` configured
 - Familiarity with SPIFFE ID format: `spiffe://<trust-domain>/<workload-identifier>`
@@ -35,55 +35,63 @@ Before starting, make sure you have:
 If you do not already have SPIRE running, deploy it first. The SPIRE project provides Helm charts that make this straightforward.
 
 ```bash
-helm repo add spire https://spiffe.github.io/helm-charts-hardened/
-helm repo update
-
-helm install spire-crds spire/spire-crds \
-  --namespace spire-system \
+helm upgrade --install spire-crds spire-crds \
+  --repo https://spiffe.github.io/helm-charts-hardened/ \
+  --namespace spire-server \
   --create-namespace
 
-helm install spire spire/spire \
-  --namespace spire-system \
+helm upgrade --install spire spire \
+  --repo https://spiffe.github.io/helm-charts-hardened/ \
+  --namespace spire-server \
+  --wait \
   --set global.spire.trustDomain="example.org"
 ```
 
 Verify the SPIRE server is running:
 
 ```bash
-kubectl get pods -n spire-system
+kubectl get pods -n spire-server
 ```
 
-You should see the SPIRE server and agent pods in a Running state.
+You should see the SPIRE server, SPIRE agent, SPIFFE CSI driver, and SPIRE Controller Manager pods in a Running state.
 
 ## Configuring SPIRE for Istio Integration
 
-SPIRE needs to know about Istio workloads and issue them SVID (SPIFFE Verifiable Identity Document) certificates. The key piece is configuring a registration entry for Istio's workloads.
+SPIRE needs to know about Istio workloads and issue them SVID (SPIFFE Verifiable Identity Document) certificates. The key piece is configuring registration entries for Istio's workloads. Istio requires workload identities to use the SPIFFE ID format `spiffe://<trust-domain>/ns/<namespace>/sa/<service-account>`.
 
-Create a SPIRE registration entry that matches Istio sidecar workloads:
+Create a `ClusterSPIFFEID` that matches Istio sidecar workloads:
 
-```bash
-kubectl exec -n spire-system spire-server-0 -- \
-  /opt/spire/bin/spire-server entry create \
-  -spiffeID spiffe://example.org/ns/default/sa/default \
-  -parentID spiffe://example.org/spire/agent/k8s_psat/demo-cluster \
-  -selector k8s:ns:default \
-  -selector k8s:sa:default
+```yaml
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: istio-sidecar-reg
+spec:
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      spiffe.io/spire-managed-identity: "true"
+  workloadSelectorTemplates:
+    - "k8s:ns:my-app"
 ```
 
-For broader coverage across namespaces, you can create entries that match by namespace:
+Create another `ClusterSPIFFEID` for the Istio ingress gateway:
 
-```bash
-kubectl exec -n spire-system spire-server-0 -- \
-  /opt/spire/bin/spire-server entry create \
-  -spiffeID spiffe://example.org/ns/istio-system/sa/istiod \
-  -parentID spiffe://example.org/spire/agent/k8s_psat/demo-cluster \
-  -selector k8s:ns:istio-system \
-  -selector k8s:sa:istiod
+```yaml
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: istio-ingressgateway-reg
+spec:
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  workloadSelectorTemplates:
+    - "k8s:ns:istio-system"
+    - "k8s:sa:istio-ingressgateway-service-account"
 ```
 
 ## Configuring Istio to Use SPIRE
 
-Istio supports custom certificate providers through its SDS (Secret Discovery Service) API. To point Istio at SPIRE, you configure the mesh to use SPIRE's Workload API socket instead of the default istiod CA.
+Istio supports SPIRE through Envoy's SDS (Secret Discovery Service) API. To point Istio at SPIRE, configure the mesh and sidecar injection template to mount the SPIFFE CSI driver's Envoy-compatible SDS socket. Make sure the Istio trust domain matches SPIRE's trust domain.
 
 Install or update Istio with the SPIRE integration enabled:
 
@@ -95,47 +103,63 @@ metadata:
 spec:
   profile: default
   meshConfig:
-    caCertificates: []
+    trustDomain: example.org
   values:
-    pilot:
-      env:
-        PILOT_CERT_PROVIDER: spiffe
-    global:
-      caAddress: ""
+    sidecarInjectorWebhook:
+      templates:
+        spire: |
+          labels:
+            spiffe.io/spire-managed-identity: "true"
+          spec:
+            initContainers:
+            - name: istio-proxy
+              volumeMounts:
+              - name: workload-socket
+                mountPath: /run/secrets/workload-spiffe-uds
+                readOnly: true
+            volumes:
+              - name: workload-socket
+                csi:
+                  driver: "csi.spiffe.io"
+                  readOnly: true
   components:
     ingressGateways:
       - name: istio-ingressgateway
         enabled: true
+        label:
+          istio: ingressgateway
         k8s:
           overlays:
             - apiVersion: apps/v1
               kind: Deployment
               name: istio-ingressgateway
               patches:
-                - path: spec.template.spec.volumes[+]
+                - path: spec.template.spec.volumes.[name:workload-socket]
                   value:
-                    name: spire-agent-socket
-                    hostPath:
-                      path: /run/spire/sockets
-                      type: DirectoryOrCreate
-                - path: spec.template.spec.containers[0].volumeMounts[+]
+                    name: workload-socket
+                    csi:
+                      driver: "csi.spiffe.io"
+                      readOnly: true
+                - path: spec.template.spec.containers.[name:istio-proxy].volumeMounts.[name:workload-socket]
                   value:
-                    name: spire-agent-socket
-                    mountPath: /run/spire/sockets
+                    name: workload-socket
+                    mountPath: /run/secrets/workload-spiffe-uds
                     readOnly: true
 ```
+
+This sidecar template uses `initContainers` because Kubernetes native sidecars inject `istio-proxy` there. If native sidecar support is disabled in your Istio control plane, change `initContainers` to `containers` in the `spire` template.
 
 Apply this configuration:
 
 ```bash
-istioctl install -f istio-spire-config.yaml -y
+istioctl install --skip-confirmation -f istio-spire-config.yaml
 ```
 
 ## Mounting the SPIRE Agent Socket in Sidecars
 
-Every Envoy sidecar needs access to the SPIRE agent's Workload API socket. You achieve this by configuring the sidecar injection template to mount the SPIRE agent socket.
+Every Envoy sidecar needs access to the SPIRE agent's Envoy SDS socket. You achieve this by using the custom `spire` sidecar injection template from the Istio configuration.
 
-Add an annotation to your namespaces or pods to include the SPIRE volume mount:
+Add a label to your namespace and an annotation to your workloads to include the SPIRE volume mount:
 
 ```yaml
 apiVersion: v1
@@ -146,29 +170,21 @@ metadata:
     istio-injection: enabled
 ```
 
-Then patch the Istio sidecar injector to include the SPIRE socket volume:
-
-```bash
-kubectl get configmap istio-sidecar-injector -n istio-system -o yaml > injector.yaml
-```
-
-In the sidecar injector template, add the volume and volume mount for the SPIRE socket. The relevant section should include:
+Then add the template annotation to your pod spec:
 
 ```yaml
-volumes:
-  - name: spire-agent-socket
-    hostPath:
-      path: /run/spire/sockets
-      type: DirectoryOrCreate
-containers:
-  - name: istio-proxy
-    volumeMounts:
-      - name: spire-agent-socket
-        mountPath: /run/spire/sockets
-        readOnly: true
-    env:
-      - name: PILOT_CERT_PROVIDER
-        value: spiffe
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin
+  namespace: my-app
+spec:
+  template:
+    metadata:
+      labels:
+        spiffe.io/spire-managed-identity: "true"
+      annotations:
+        inject.istio.io/templates: "sidecar,spire"
 ```
 
 ## Verifying the Integration
@@ -178,13 +194,43 @@ After deploying a workload, check that the sidecar is getting its identity from 
 Deploy a test application:
 
 ```bash
-kubectl apply -f samples/httpbin/httpbin.yaml -n my-app
+kubectl apply -n my-app -f - <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: httpbin
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: httpbin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: httpbin
+  template:
+    metadata:
+      labels:
+        app: httpbin
+        spiffe.io/spire-managed-identity: "true"
+      annotations:
+        inject.istio.io/templates: "sidecar,spire"
+    spec:
+      serviceAccountName: httpbin
+      containers:
+        - name: httpbin
+          image: docker.io/kong/httpbin
+          ports:
+            - containerPort: 80
+EOF
 ```
 
 Check the certificate chain on the sidecar:
 
 ```bash
-istioctl proxy-config secret httpbin-pod-name -n my-app
+HTTPBIN_POD=$(kubectl get pod -n my-app -l app=httpbin -o jsonpath="{.items[0].metadata.name}")
+istioctl proxy-config secret "$HTTPBIN_POD" -n my-app
 ```
 
 The output should show certificates with SPIFFE URIs matching your SPIRE trust domain:
@@ -198,7 +244,7 @@ ROOTCA          CA             ACTIVE   true         def456...       2027-02-24 
 You can also inspect the actual certificate:
 
 ```bash
-istioctl proxy-config secret httpbin-pod-name -n my-app -o json | \
+istioctl proxy-config secret "$HTTPBIN_POD" -n my-app -o json | \
   jq -r '.dynamicActiveSecrets[0].secret.tlsCertificate.certificateChain.inlineBytes' | \
   base64 -d | openssl x509 -text -noout
 ```
@@ -207,30 +253,39 @@ Look for the Subject Alternative Name field - it should contain a SPIFFE URI lik
 
 ## Handling Registration Entry Automation
 
-Manually creating SPIRE registration entries for every workload is not practical at scale. The SPIRE project provides a Kubernetes workload registrar that automates this.
+Manually creating SPIRE registration entries for every workload is not practical at scale. The SPIRE project provides SPIRE Controller Manager, which automates this with `ClusterSPIFFEID` custom resources.
 
-Deploy the SPIRE Kubernetes Registrar:
+The hardened SPIRE Helm chart installs SPIRE Controller Manager by default. You can define additional identities with `ClusterSPIFFEID` resources:
 
-```bash
-helm install spire-registrar spire/spire \
-  --namespace spire-system \
-  --set k8sWorkloadRegistrar.enabled=true
+```yaml
+apiVersion: spire.spiffe.io/v1alpha1
+kind: ClusterSPIFFEID
+metadata:
+  name: my-app-workloads
+spec:
+  spiffeIDTemplate: "spiffe://{{ .TrustDomain }}/ns/{{ .PodMeta.Namespace }}/sa/{{ .PodSpec.ServiceAccountName }}"
+  podSelector:
+    matchLabels:
+      spiffe.io/spire-managed-identity: "true"
+  workloadSelectorTemplates:
+    - "k8s:ns:my-app"
 ```
 
-The registrar watches for new pods and automatically creates SPIRE registration entries based on the pod's service account and namespace. This way, every new Istio sidecar automatically gets a SPIRE-issued identity without manual intervention.
+The controller manager watches for matching pods and automatically creates SPIRE registration entries based on the pod's service account and namespace. This way, every new Istio sidecar automatically gets a SPIRE-issued identity without manual intervention.
 
 ## Troubleshooting Common Issues
 
-**Sidecar fails to start with certificate errors**: Check that the SPIRE agent is running on the same node as the pod. The Workload API socket must be accessible at the expected path.
+**Sidecar fails to start with certificate errors**: Check that the SPIRE agent and SPIFFE CSI driver are running on the same node as the pod. The SDS socket must be accessible at the expected path.
 
 ```bash
-kubectl get pods -n spire-system -o wide
+kubectl get pods -n spire-server -o wide
 ```
 
 **SPIFFE ID mismatch**: Make sure the registration entries match the namespace and service account of your workloads. A mismatch means SPIRE will not issue a certificate.
 
 ```bash
-kubectl exec -n spire-system spire-server-0 -- \
+SPIRE_SERVER_POD=$(kubectl get pod -n spire-server -l statefulset.kubernetes.io/pod-name=spire-server-0 -o jsonpath="{.items[0].metadata.name}")
+kubectl exec -n spire-server "$SPIRE_SERVER_POD" -c spire-server -- \
   /opt/spire/bin/spire-server entry show
 ```
 
