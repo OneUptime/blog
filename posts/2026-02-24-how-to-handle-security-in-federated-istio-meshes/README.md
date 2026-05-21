@@ -19,7 +19,7 @@ The first rule of federated mesh security: enforce strict mTLS on everything. No
 Apply a mesh-wide PeerAuthentication policy on both meshes:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -36,15 +36,17 @@ kubectl apply --context=cluster-west -f strict-mtls.yaml
 kubectl apply --context=cluster-east -f strict-mtls.yaml
 ```
 
-Verify that mTLS is actually enforced:
+Verify that mTLS is configured for outbound calls:
 
 ```bash
-istioctl authn tls-check \
-  $(kubectl get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}') \
-  checkout.shop.svc.cluster.local --context=cluster-west
+SOURCE_POD=$(kubectl --context=cluster-west get pod -n sample -l app=sleep -o jsonpath='{.items[0].metadata.name}')
+istioctl proxy-config clusters "${SOURCE_POD}.sample" \
+  --fqdn checkout.shop.svc.cluster.local \
+  --context=cluster-west \
+  -o json
 ```
 
-The output should show `STRICT` for all services.
+The output should show an Istio mutual TLS transport socket for the outbound cluster.
 
 ## Cross-Mesh Authorization Policies
 
@@ -53,7 +55,7 @@ Authorization policies in a federated setup need to consider where the request o
 Here's an authorization policy that allows traffic from the local mesh but limits what the remote mesh can do:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-local-mesh
@@ -71,7 +73,7 @@ spec:
 For cross-mesh traffic, the SPIFFE identity will use the remote mesh's trust domain. If the remote mesh uses `cluster-east.local` as its trust domain:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-remote-readonly
@@ -93,10 +95,10 @@ This allows the remote mesh's frontend service to make GET requests to specific 
 
 ## Securing the East-West Gateway
 
-The east-west gateway is the most critical security boundary in a federated setup. Lock it down with a Gateway resource that only accepts traffic with valid mTLS certificates:
+The east-west gateway is the most critical security boundary in a federated setup. Lock it down with a Gateway resource that exposes only passthrough TLS for mesh traffic, while the destination workloads enforce the mTLS certificates:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: eastwest-gateway
@@ -117,10 +119,10 @@ spec:
 
 The `AUTO_PASSTHROUGH` mode means the gateway passes the TLS connection through to the destination without terminating it. This preserves the end-to-end mTLS between the source and destination workloads.
 
-Add an authorization policy on the gateway to restrict which services can be accessed from outside:
+Add an authorization policy on the gateway to restrict which remote network ranges can connect to the east-west port. For passthrough TLS, keep these rules to connection-level attributes such as source IP and port:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: eastwest-gateway-policy
@@ -133,7 +135,7 @@ spec:
   rules:
     - from:
         - source:
-            namespaces: ["istio-system"]
+            ipBlocks: ["203.0.113.0/24"]
       to:
         - operation:
             ports: ["15443"]
@@ -141,7 +143,7 @@ spec:
 
 ## Network Policies as an Extra Layer
 
-Istio's authorization policies work at Layer 7, but you should also have Kubernetes NetworkPolicies as a Layer 3/4 safety net:
+Istio's authorization policies can enforce identity and application-layer rules, but you should also have Kubernetes NetworkPolicies as a Layer 3/4 safety net:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -173,7 +175,7 @@ This ensures that even if Istio's authorization is misconfigured, only traffic f
 For services that handle sensitive data, add an extra layer of authentication with JWT validation:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -191,7 +193,7 @@ spec:
 Combine this with an authorization policy that requires a valid JWT:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: require-jwt
@@ -217,7 +219,7 @@ This way, even if a service from the remote mesh has valid mTLS credentials, it 
 Turn on access logging for the east-west gateway to track all cross-mesh requests:
 
 ```yaml
-apiVersion: telemetry.istio.io/v1alpha1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: gateway-access-logging
