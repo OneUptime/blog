@@ -4,18 +4,18 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Blue-Green Deployment, VirtualService, Traffic Management, Kubernetes
 
-Description: A step-by-step guide to implementing blue-green deployments using Istio VirtualService for instant traffic switching between versions.
+Description: A step-by-step guide to implementing blue-green deployments using Istio VirtualService for fast traffic switching between versions.
 
 ---
 
-Blue-green deployments give you the ability to switch all traffic from one version to another instantly. Unlike canary deployments where you gradually shift traffic, blue-green is all-or-nothing. You run two identical environments (blue and green), route all traffic to one of them, and switch to the other when you are ready. Istio makes the switch instantaneous and reversible.
+Blue-green deployments give you the ability to switch all traffic from one version to another quickly. Unlike canary deployments where you gradually shift traffic, blue-green is all-or-nothing. You run two identical environments (blue and green), route all traffic to one of them, and switch to the other when you are ready. Istio makes the switch fast and reversible.
 
 ## Blue-Green vs Canary
 
 The difference is straightforward:
 
 - **Canary**: Gradually shift traffic (5% -> 25% -> 50% -> 100%)
-- **Blue-Green**: Instantly switch all traffic from blue to green (100% blue -> 100% green)
+- **Blue-Green**: Switch all traffic from blue to green at once (100% blue -> 100% green)
 
 Blue-green is simpler to reason about. There is no ambiguity about which version is serving traffic. Either everyone gets blue or everyone gets green.
 
@@ -109,7 +109,7 @@ spec:
 Define subsets for blue and green:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -130,7 +130,7 @@ spec:
 Initially, all traffic goes to the blue deployment:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -168,7 +168,7 @@ curl http://localhost:8081/api/test
 You can also use Istio's header-based routing to test green without affecting production traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -199,7 +199,7 @@ Internal testers can add the `x-test-green: true` header to hit the green deploy
 When you are confident green is working, flip the traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -219,14 +219,14 @@ spec:
 kubectl apply -f virtualservice-green.yaml
 ```
 
-The switch is instant. Envoy proxies receive the new configuration within seconds and all new requests go to green. Existing connections to blue finish normally.
+The switch is fast. Envoy proxies receive the new configuration within seconds and new requests go to green after the updated route is applied. In-flight requests to blue can finish normally.
 
 ## Phase 4: Rollback if Needed
 
 If something goes wrong with green, roll back to blue:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -263,7 +263,7 @@ Either way, you always have two running environments.
 For external traffic through an ingress gateway:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
@@ -282,7 +282,7 @@ spec:
         mode: SIMPLE
         credentialName: app-tls-cert
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -309,7 +309,7 @@ You can script the switch for use in CI/CD pipelines:
 ACTIVE_COLOR=$1  # "blue" or "green"
 
 cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -349,7 +349,7 @@ kubectl exec deploy/my-app-green -c istio-proxy -- curl -s localhost:15090/stats
 ## Blue-Green vs Canary: When to Use Which
 
 Use blue-green when:
-- You want a clean, instant switch
+- You want a clean, all-at-once switch
 - The change is significant and does not lend itself to gradual rollout
 - You need an easy rollback path
 - Database schema changes require all instances to be on the same version
@@ -363,7 +363,7 @@ Use canary when:
 
 1. **Resource cost** - You need double the resources since both versions run simultaneously. This is the main downside of blue-green.
 2. **Database compatibility** - Both versions must be compatible with the current database schema. Schema changes need careful planning.
-3. **In-flight requests** - When you switch, in-flight requests to the old version complete normally. No requests are dropped.
-4. **DNS considerations** - If you use DNS-based routing outside of Istio, the switch is not instant because of DNS caching. With Istio, the switch is truly instant.
+3. **In-flight requests** - When you switch, in-flight requests to the old version can complete normally. The route change itself does not require dropping active requests.
+4. **DNS considerations** - If you use DNS-based routing outside of Istio, the switch is delayed by DNS caching. With Istio, the switch is controlled by proxy configuration propagation instead of DNS TTLs.
 
-Blue-green deployments with Istio are straightforward and give you the simplest possible rollback story. One `kubectl apply` and all traffic switches. Another `kubectl apply` and it switches back. No complexity, no partial states.
+Blue-green deployments with Istio are straightforward and give you the simplest possible rollback story. One `kubectl apply` and traffic switches as proxies receive the updated configuration. Another `kubectl apply` and it switches back. No complexity, no gradual traffic split.
