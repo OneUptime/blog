@@ -21,7 +21,12 @@ You need a Kubernetes cluster with Istio installed, and at least one VM that can
 Make sure Istio is installed with VM support:
 
 ```bash
-istioctl install --set values.pilot.env.PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION=true --set values.pilot.env.PILOT_ENABLE_WORKLOAD_ENTRY_HEALTHCHECKS=true
+istioctl install \
+  --set values.global.meshID=mesh1 \
+  --set values.global.multiCluster.clusterName=Kubernetes \
+  --set values.global.network=kube-network \
+  --set values.pilot.env.PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION=true \
+  --set values.pilot.env.PILOT_ENABLE_WORKLOAD_ENTRY_HEALTHCHECKS=true
 ```
 
 ## Step 1: Deploy Kubernetes Services
@@ -56,7 +61,7 @@ spec:
       serviceAccountName: bookinfo-productpage
       containers:
       - name: productpage
-        image: docker.io/istio/examples-bookinfo-productpage-v1:1.18.0
+        image: registry.istio.io/release/examples-bookinfo-productpage-v1:1.20.3
         ports:
         - containerPort: 9080
 ---
@@ -102,7 +107,7 @@ spec:
       serviceAccountName: bookinfo-reviews
       containers:
       - name: reviews
-        image: docker.io/istio/examples-bookinfo-reviews-v3:1.18.0
+        image: registry.istio.io/release/examples-bookinfo-reviews-v3:1.20.3
         ports:
         - containerPort: 9080
 ---
@@ -130,7 +135,7 @@ metadata:
 Define WorkloadGroups for the ratings and details services that will run on VMs:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: ratings-vm
@@ -148,7 +153,7 @@ spec:
       port: 9080
       path: /ratings/0
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: WorkloadGroup
 metadata:
   name: details-vm
@@ -167,7 +172,11 @@ spec:
       path: /details/0
 ```
 
-Create the service accounts and services:
+Apply the WorkloadGroups, then create the service accounts and services:
+
+```bash
+kubectl apply -f workloadgroups.yaml
+```
 
 ```yaml
 apiVersion: v1
@@ -212,10 +221,13 @@ spec:
 VMs on a different network need the east-west gateway to communicate with the cluster:
 
 ```bash
-# Install the east-west gateway
+# Install the east-west gateway for the cluster network
+samples/multicluster/gen-eastwest-gateway.sh --network kube-network | istioctl install -y -f -
 
-kubectl apply -f samples/multicluster/expose-istiod.yaml
-kubectl apply -f samples/multicluster/expose-services.yaml
+# Expose istiod and cluster services through the east-west gateway
+kubectl apply -n istio-system -f samples/multicluster/expose-istiod.yaml
+kubectl apply -n istio-system -f samples/multicluster/expose-services.yaml
+kubectl label namespace istio-system topology.istio.io/network=kube-network --overwrite
 ```
 
 Verify the gateway is running:
@@ -234,6 +246,7 @@ istioctl x workload entry configure \
   --name ratings-vm \
   --namespace bookinfo \
   --clusterID Kubernetes \
+  --autoregister \
   --output ratings-vm-files
 
 # For the details VM
@@ -241,10 +254,11 @@ istioctl x workload entry configure \
   --name details-vm \
   --namespace bookinfo \
   --clusterID Kubernetes \
+  --autoregister \
   --output details-vm-files
 ```
 
-This creates configuration files including `cluster.env`, `mesh.yaml`, `root-cert.pem`, and `istio-token` in the output directories.
+This creates configuration files including `cluster.env`, `mesh.yaml`, `root-cert.pem`, `istio-token`, and `hosts` in the output directories.
 
 ## Step 5: Set Up the VMs
 
@@ -252,18 +266,19 @@ Copy the generated files to each VM and install the Istio sidecar. On the rating
 
 ```bash
 # Install the Istio sidecar
-curl -LO https://storage.googleapis.com/istio-release/releases/1.20.0/deb/istio-sidecar.deb
+curl -LO https://storage.googleapis.com/istio-release/releases/1.30.0/deb/istio-sidecar.deb
 sudo dpkg -i istio-sidecar.deb
 
 # Copy the configuration files
-sudo mkdir -p /etc/certs /var/run/secrets/tokens
+sudo mkdir -p /etc/certs /var/run/secrets/tokens /etc/istio/proxy
 sudo cp root-cert.pem /etc/certs/root-cert.pem
 sudo cp istio-token /var/run/secrets/tokens/istio-token
 sudo cp cluster.env /var/lib/istio/envoy/cluster.env
 sudo cp mesh.yaml /etc/istio/config/mesh
+sudo sh -c 'cat hosts >> /etc/hosts'
 
 # Set ownership
-sudo chown -R istio-proxy:istio-proxy /etc/certs /var/run/secrets /var/lib/istio /etc/istio
+sudo chown -R istio-proxy /etc/certs /var/run/secrets /var/lib/istio /etc/istio/proxy /etc/istio/config
 
 # Start the sidecar
 sudo systemctl start istio
@@ -278,8 +293,7 @@ On the ratings VM, run the ratings service. You can use Docker or run it directl
 # Using Docker
 docker run -d --name ratings \
   --network host \
-  -p 9080:9080 \
-  docker.io/istio/examples-bookinfo-ratings-v1:1.18.0
+  registry.istio.io/release/examples-bookinfo-ratings-v1:1.20.3
 
 # Or if running the binary directly
 # Download and run the ratings service
@@ -291,8 +305,7 @@ Do the same on the details VM with the details service:
 ```bash
 docker run -d --name details \
   --network host \
-  -p 9080:9080 \
-  docker.io/istio/examples-bookinfo-details-v1:1.18.0
+  registry.istio.io/release/examples-bookinfo-details-v1:1.20.3
 ```
 
 ## Step 7: Verify the Setup
@@ -328,7 +341,7 @@ If everything is working, you should see the full Bookinfo page with ratings (st
 Now you can apply Istio traffic policies that span both Kubernetes and VM workloads:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: ratings-route
