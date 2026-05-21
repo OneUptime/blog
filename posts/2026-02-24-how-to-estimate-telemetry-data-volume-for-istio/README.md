@@ -117,17 +117,28 @@ apiVersion: install.istio.io/v1alpha1
 kind: IstioOperator
 spec:
   meshConfig:
+    enableTracing: true
     defaultConfig:
-      tracing:
-        sampling: 1.0
+      tracing: {}
     extensionProviders:
       - name: zipkin
         zipkin:
           service: zipkin.istio-system.svc.cluster.local
           port: 9411
+---
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: zipkin
+      randomSamplingPercentage: 1.0
 ```
 
-The `sampling` value is a percentage (1.0 = 1%, 100.0 = 100%).
+The `randomSamplingPercentage` value is a percentage (1.0 = 1%, 100.0 = 100%).
 
 For production, start with 1% and adjust based on your debugging needs and storage budget.
 
@@ -170,7 +181,7 @@ That is a lot of data. Access logs should be used selectively.
 Instead of enabling access logs mesh-wide, target specific namespaces or workloads:
 
 ```yaml
-apiVersion: networking.istio.io/v1
+apiVersion: telemetry.istio.io/v1
 kind: Telemetry
 metadata:
   name: access-logs
