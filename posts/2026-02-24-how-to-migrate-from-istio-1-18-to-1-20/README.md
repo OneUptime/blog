@@ -8,7 +8,7 @@ Description: A detailed guide for migrating from Istio 1.18 to 1.20, covering br
 
 ---
 
-Migrating from Istio 1.18 to 1.20 spans two minor versions, which means you need to be aware of breaking changes and deprecations from both the 1.19 and 1.20 releases. While Istio supports skipping one minor version during upgrades (so 1.18 to 1.20 is within the supported range), you should still review the changes from both intermediate releases carefully.
+Migrating from Istio 1.18 to 1.20 spans two minor versions, which means you need to be aware of breaking changes and deprecations from both the 1.19 and 1.20 releases. Istio supports skipping one minor version when using revision-based upgrades (so 1.18 to 1.20 is within the supported range), but in-place upgrades should go through each intermediate minor release. You should still review the changes from both intermediate releases carefully.
 
 This guide takes you through the migration step by step, with real commands and configuration changes you need to make.
 
@@ -27,6 +27,9 @@ istioctl proxy-status
 # Check for configuration issues
 istioctl analyze --all-namespaces
 
+# Check upgrade readiness
+istioctl x precheck
+
 # Export current configuration
 kubectl get istiooperator -n istio-system -o yaml > current-config-backup.yaml
 ```
@@ -37,28 +40,28 @@ Save the output of these commands. You will need them for comparison after the m
 
 ### Changes in Istio 1.19
 
-1. **Gateway API v1beta1 became the default**: If you were using v1alpha2 Gateway API resources, they need updating.
+1. **EnvoyFilter extension configuration became stricter**: EnvoyFilter patches that inject Envoy extensions must use canonical filter names and specify type URLs in `typed_config`.
 
-2. **ExternalName service handling changed**: Services of type ExternalName are no longer automatically included in the mesh. You need explicit ServiceEntry resources.
+2. **Helm base chart resources changed**: Several resources that were duplicated in the `base` chart were fully removed from that chart and must come from the `istiod` chart.
 
-3. **`meshConfig.enablePrometheusMerge` default changed**: This now defaults to true, meaning Prometheus annotations on pods merge with Istio metrics.
+3. **Gateway API Service parentRefs became stricter**: Gateway API routes that attach to a Kubernetes Service must explicitly set `group: ""` on the Service `parentRef`.
 
 ### Changes in Istio 1.20
 
-1. **Minimum Kubernetes version bumped to 1.25**: If your cluster is on 1.24 or earlier, upgrade Kubernetes first.
+1. **Minimum supported Kubernetes version is 1.25**: If your cluster is on 1.24 or earlier, upgrade Kubernetes first.
 
-2. **`IstioOperator` v1alpha1 changes**: Several fields were deprecated or restructured.
+2. **ExternalName service handling was updated**: Istio 1.20 revamped ExternalName support. There are no default behavior changes unless you opt in, but you should review any VirtualService or DestinationRule resources that target ExternalName services.
 
-3. **Ambient mesh changes**: If you were using experimental ambient features, the API changed significantly.
+3. **Ambient mesh installation changed**: Istio 1.20 removed support for installing the `ambient` profile with the in-cluster operator and added basic revision support for ztunnel with `istioctl`.
 
-4. **Telemetry API became the standard**: The legacy mixer-based telemetry configuration is fully removed.
+4. **Gateway API policy attachment expanded**: `AuthorizationPolicy`, `RequestAuthentication`, `Telemetry`, and `WasmPlugin` can be attached to Kubernetes Gateway resources through `targetRef`.
 
 ## Verify Kubernetes Compatibility
 
 Istio 1.20 requires Kubernetes 1.25 or newer:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 If you are on Kubernetes 1.24, upgrade your cluster first before proceeding with the Istio migration.
@@ -86,8 +89,8 @@ The recommended approach for this kind of version jump is a canary (revision-bas
 ### Step 1: Download Istio 1.20
 
 ```bash
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.0 sh -
-cd istio-1.20.0
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.20.8 sh -
+cd istio-1.20.8
 export PATH=$PWD/bin:$PATH
 ```
 
@@ -104,7 +107,7 @@ If using Helm:
 ```bash
 helm install istiod-1-20 istio/istiod \
   --namespace istio-system \
-  --version 1.20.0 \
+  --version 1.20.8 \
   --set revision=1-20 \
   -f your-values.yaml \
   --wait
@@ -130,14 +133,14 @@ kubectl get envoyfilter --all-namespaces -o yaml
 
 EnvoyFilter resources that reference specific Envoy API versions may need updating. Istio 1.20 ships with a newer version of Envoy, and some filter names or config structures may have changed.
 
-Update any deprecated fields in your DestinationRules:
+Use the stable API version for new DestinationRule manifests:
 
 ```yaml
-# Old (1.18)
+# Older manifests may use
 apiVersion: networking.istio.io/v1alpha3
 kind: DestinationRule
 
-# New (1.20) - use v1beta1
+# Newer manifests can use
 apiVersion: networking.istio.io/v1beta1
 kind: DestinationRule
 ```
@@ -151,7 +154,7 @@ Switch namespaces from the old revision to the new one:
 kubectl label namespace default istio-injection-
 
 # Add the new revision label
-kubectl label namespace default istio.io/rev=1-20
+kubectl label namespace default istio.io/rev=1-20 --overwrite
 
 # Restart pods to pick up the new sidecar
 kubectl rollout restart deployment -n default
@@ -174,7 +177,7 @@ After migrating a namespace, verify everything works:
 kubectl logs deploy/my-app -c istio-proxy --tail=50
 
 # Verify mTLS is working
-istioctl authn tls-check deploy/my-app -n default
+istioctl x describe pod my-app-pod -n default
 
 # Check routes
 istioctl proxy-config routes deploy/my-app -n default
@@ -190,7 +193,7 @@ Repeat Step 4 for each namespace. Do it one at a time and verify after each:
 ```bash
 for ns in namespace1 namespace2 namespace3; do
   kubectl label namespace $ns istio-injection-
-  kubectl label namespace $ns istio.io/rev=1-20
+  kubectl label namespace $ns istio.io/rev=1-20 --overwrite
   kubectl rollout restart deployment -n $ns
   echo "Waiting for $ns to stabilize..."
   sleep 60
@@ -206,7 +209,7 @@ Update the gateway to use the new version:
 # If using Helm
 helm upgrade istio-ingressgateway istio/gateway \
   --namespace istio-system \
-  --version 1.20.0 \
+  --version 1.20.8 \
   --set revision=1-20
 ```
 
@@ -214,11 +217,20 @@ Or if using istioctl, the gateway should already be part of the revision install
 
 ### Step 8: Remove the Old Version
 
-Once all workloads are on 1.20 and everything is verified:
+Once all workloads are on 1.20 and everything is verified, point the default tag at the new revision:
 
 ```bash
-# Remove old control plane
-istioctl uninstall --revision default
+istioctl tag set default --revision 1-20 --overwrite
+```
+
+Then remove the old control plane:
+
+```bash
+# Remove old control plane if it was revisioned
+istioctl uninstall --revision old-revision -y
+
+# Or remove an old non-revisioned istioctl installation with the original install options
+istioctl uninstall -f manifests/profiles/default.yaml -y
 
 # Or with Helm
 helm uninstall istiod -n istio-system
@@ -227,11 +239,10 @@ helm uninstall istiod -n istio-system
 # The label will be removed when you switch to default
 ```
 
-Then switch from revision-based to the default:
+If the old installation was non-revisioned, remove the old injection webhook after the new default tag is in place:
 
 ```bash
-# Finalize by removing the revision tag
-istioctl tag set default --revision 1-20 --overwrite
+kubectl delete mutatingwebhookconfiguration istio-sidecar-injector
 ```
 
 ## Post-Migration Verification
@@ -252,7 +263,7 @@ kubectl top pods -n istio-system
 
 ## Rollback Procedure
 
-If something goes wrong, you can roll back by switching namespaces back to the old revision:
+If something goes wrong before you remove the old control plane, you can roll back by switching namespaces back to the old revision. For an old non-revisioned installation, use:
 
 ```bash
 kubectl label namespace default istio.io/rev-
