@@ -14,23 +14,23 @@ Here is how to plan and execute an Istio upgrade across a multicluster environme
 
 ## Understanding Multicluster Compatibility
 
-In an Istio multicluster mesh, the control planes in different clusters communicate and share service information. This communication has compatibility requirements:
+In an Istio multicluster mesh, Istiod discovers remote services by watching the Kubernetes API servers for clusters attached with remote secrets. In primary-remote topologies, remote clusters connect to the primary cluster's control plane. This has compatibility requirements:
 
-- All control planes in the mesh should be within one minor version of each other
+- The control plane can be one minor version ahead of the data plane, but the data plane should not be ahead of the control plane
 - Cross-cluster mTLS requires compatible certificate chains
 - Service discovery relies on consistent API versions across clusters
 
-If cluster A is running Istio 1.20 and you upgrade cluster B to 1.22, you have a two-version gap that can cause problems. Always upgrade one minor version at a time and keep all clusters within one version of each other.
+If cluster A is running Istio 1.28 and you upgrade cluster B directly to 1.30, you have a two-version gap that can cause problems while older proxies are still connected. Upgrade one minor version at a time and keep the control plane no more than one version ahead of the sidecars it manages.
 
 ```mermaid
 graph LR
     subgraph Cluster A - Primary
-        A[istiod v1.20] --> B[Services]
+        A[istiod v1.28] --> B[Services]
     end
     subgraph Cluster B - Remote
-        C[istiod v1.20] --> D[Services]
+        C[Remote Istio config v1.28] --> D[Services]
     end
-    A <-->|Cross-cluster discovery| C
+    A -->|Watches remote API| C
     B <-->|Cross-cluster traffic| D
 ```
 
@@ -106,7 +106,7 @@ The primary cluster must be upgraded first because remote clusters depend on its
 
 ```bash
 # On the primary cluster
-export PATH=$PWD/istio-1.21.0/bin:$PATH
+export PATH=$PWD/istio-1.30.0/bin:$PATH
 
 # Pre-check
 istioctl x precheck --context=cluster-primary
@@ -118,8 +118,8 @@ istioctl upgrade --context=cluster-primary -y
 Or with Helm:
 
 ```bash
-helm upgrade istio-base istio/base -n istio-system --version 1.21.0 --kube-context=cluster-primary
-helm upgrade istiod istio/istiod -n istio-system --version 1.21.0 -f values.yaml --wait --kube-context=cluster-primary
+helm upgrade istio-base istio/base -n istio-system --version 1.30.0 --kube-context=cluster-primary
+helm upgrade istiod istio/istiod -n istio-system --version 1.30.0 -f values.yaml --wait --kube-context=cluster-primary
 ```
 
 Verify the primary is healthy:
@@ -148,14 +148,14 @@ Upgrade remote clusters one at a time:
 ```bash
 # Upgrade remote cluster 1
 istioctl upgrade --context=cluster-remote-1 -y
-kubectl rollout status deployment/istiod -n istio-system --context=cluster-remote-1
+istioctl version --context=cluster-remote-1
 
 # Validate
 kubectl exec -n test deploy/sleep --context=cluster-remote-1 -- curl -s http://httpbin.test.svc.cluster.local:80/status/200
 
 # Upgrade remote cluster 2
 istioctl upgrade --context=cluster-remote-2 -y
-kubectl rollout status deployment/istiod -n istio-system --context=cluster-remote-2
+istioctl version --context=cluster-remote-2
 ```
 
 ### Step 4: Update Sidecars Across All Clusters
@@ -215,9 +215,9 @@ done
 
 ## Handling Shared Root CA
 
-In multicluster meshes, all clusters share a root CA for mTLS. During upgrades, make sure the root CA configuration is consistent.
+In multicluster meshes, all clusters must establish trust with each other for mTLS. In multi-primary deployments, this is commonly done with a shared root CA and per-cluster intermediate certificates. During upgrades, make sure the root CA configuration is consistent.
 
-If you use the Istio CA (citadel):
+If you use Istio CA with a `cacerts` secret:
 
 ```bash
 # Check root cert on each cluster
@@ -238,8 +238,10 @@ kubectl get pods -n istio-system -l istio=eastwestgateway --context=cluster-a
 
 # Upgrade the gateway
 helm upgrade istio-eastwestgateway istio/gateway -n istio-system \
-  --version 1.21.0 \
+  --version 1.30.0 \
   -f eastwest-gateway-values.yaml \
+  --set name=istio-eastwestgateway \
+  --set networkGateway=network1 \
   --kube-context=cluster-a
 ```
 
@@ -251,7 +253,8 @@ If the upgrade breaks cross-cluster communication, roll back the upgraded cluste
 
 ```bash
 # Roll back the last upgraded cluster
-helm rollback istiod 1 -n istio-system --kube-context=cluster-remote-1
+helm history istiod -n istio-system --kube-context=cluster-remote-1
+helm rollback istiod <previous-revision> -n istio-system --kube-context=cluster-remote-1
 ```
 
 Since the other clusters were not changed, rolling back one cluster should restore the previous working state.
@@ -260,9 +263,9 @@ If you upgraded multiple clusters before noticing the problem, roll them back in
 
 ```bash
 # Reverse order of upgrade
-helm rollback istiod 1 -n istio-system --kube-context=cluster-remote-2
-helm rollback istiod 1 -n istio-system --kube-context=cluster-remote-1
-helm rollback istiod 1 -n istio-system --kube-context=cluster-primary
+helm rollback istiod <previous-revision> -n istio-system --kube-context=cluster-remote-2
+helm rollback istiod <previous-revision> -n istio-system --kube-context=cluster-remote-1
+helm rollback istiod <previous-revision> -n istio-system --kube-context=cluster-primary
 ```
 
 ## Monitoring Multicluster Upgrades
