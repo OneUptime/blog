@@ -14,7 +14,7 @@ If you're looking to add a service mesh to your Kubernetes cluster, istioctl is 
 
 Before you start, make sure you have:
 
-- A running Kubernetes cluster (version 1.25 or later)
+- A running Kubernetes cluster with a version supported by your Istio release (Istio 1.30 supports Kubernetes 1.32 through 1.36)
 - kubectl configured and pointing to your cluster
 - Sufficient cluster resources (at least 4 vCPUs and 8 GB RAM recommended)
 
@@ -33,16 +33,16 @@ First, grab the latest Istio release. The easiest way is using the official down
 curl -L https://istio.io/downloadIstio | sh -
 ```
 
-This downloads the latest stable release and extracts it into a directory named something like `istio-1.24.0`. If you want a specific version, you can set it:
+This downloads the latest release and extracts it into a directory named something like `istio-1.30.0`. If you want a specific version, you can set it:
 
 ```bash
-curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.24.0 sh -
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.30.0 sh -
 ```
 
 Now move into the Istio directory:
 
 ```bash
-cd istio-1.24.0
+cd istio-1.30.0
 ```
 
 ## Step 2: Add istioctl to Your PATH
@@ -121,13 +121,13 @@ Also verify the services:
 kubectl get svc -n istio-system
 ```
 
-You can also use istioctl to check the overall status:
+You can also use istioctl to analyze the mesh configuration:
 
 ```bash
-istioctl verify-install
+istioctl analyze
 ```
 
-This compares what's actually deployed against what the installation profile expects and flags any discrepancies.
+This checks your cluster configuration and flags validation issues that could affect the mesh.
 
 ## Step 6: Enable Sidecar Injection
 
@@ -177,6 +177,9 @@ If you're on a cloud provider, you'll see an external IP or hostname in the EXTE
 
 ```bash
 export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+if [ -z "$INGRESS_HOST" ]; then
+  export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 export INGRESS_PORT=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.spec.ports[?(@.name=="http2")].port}')
 export GATEWAY_URL=$INGRESS_HOST:$INGRESS_PORT
 ```
@@ -233,8 +236,8 @@ istioctl analyze
 # Check the configuration of a specific pod's proxy
 istioctl proxy-config routes deploy/productpage-v1
 
-# Open the Envoy dashboard for a pod
-istioctl dashboard envoy deploy/productpage-v1
+# Open the proxy dashboard for a pod
+istioctl dashboard proxy deploy/productpage-v1
 ```
 
 ## Upgrading Istio
@@ -245,7 +248,7 @@ When a new version comes out, upgrading with istioctl is straightforward. Downlo
 istioctl upgrade -y
 ```
 
-This performs a canary upgrade of the control plane. You can also do in-place upgrades or revision-based upgrades for zero-downtime scenarios.
+This performs an in-place upgrade of the control plane and gateways. For production environments, Istio recommends revision-based canary upgrades for a safer rollout.
 
 ## Uninstalling Istio
 
@@ -256,7 +259,7 @@ istioctl uninstall --purge -y
 kubectl delete namespace istio-system
 ```
 
-The `--purge` flag removes everything, including the CRDs and webhooks that istioctl install created.
+The `--purge` flag removes all Istio resources, including cluster-scoped resources that may be shared with other Istio control planes.
 
 ## Troubleshooting Common Issues
 
