@@ -20,7 +20,7 @@ Most enterprises run workloads across multiple Kubernetes clusters. Maybe you ha
 
 **Multi-Primary** gives each cluster its own control plane. Clusters discover each other's services and can route traffic across cluster boundaries. This is the better choice for enterprises because it eliminates a single point of failure.
 
-Here is the setup for a multi-primary mesh on two clusters:
+Here is the setup for a multi-primary mesh on two clusters that share a network:
 
 ```bash
 # On cluster1
@@ -34,7 +34,7 @@ istioctl install --set profile=default \
 istioctl install --set profile=default \
   --set values.global.meshID=enterprise-mesh \
   --set values.global.multiCluster.clusterName=cluster2 \
-  --set values.global.network=network2
+  --set values.global.network=network1
 ```
 
 Then enable cross-cluster service discovery by installing the remote secret on each cluster:
@@ -142,10 +142,29 @@ spec:
 
 This ensures all service-to-service communication is encrypted and authenticated. Any service that cannot present a valid mTLS certificate is rejected.
 
-For external services that cannot participate in mTLS, create a `DestinationRule` with TLS origination:
+For external HTTP services that you want the sidecar to upgrade to TLS, create a `ServiceEntry` and `DestinationRule` with TLS origination:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
+kind: ServiceEntry
+metadata:
+  name: legacy-api
+  namespace: team-alpha
+spec:
+  hosts:
+  - legacy-api.internal.corp
+  ports:
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
+  - number: 443
+    name: https
+    protocol: HTTPS
+  resolution: DNS
+  location: MESH_EXTERNAL
+---
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: external-service-tls
@@ -153,8 +172,11 @@ metadata:
 spec:
   host: legacy-api.internal.corp
   trafficPolicy:
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
 ```
 
 ## Egress Control
@@ -162,7 +184,7 @@ spec:
 Enterprises typically need to control and audit outbound traffic. Deploy an egress gateway and route external traffic through it:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: ServiceEntry
 metadata:
   name: external-payment-api
@@ -176,7 +198,7 @@ spec:
   resolution: DNS
   location: MESH_EXTERNAL
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Gateway
 metadata:
   name: egress-gateway
@@ -193,7 +215,7 @@ spec:
     tls:
       mode: PASSTHROUGH
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: external-payment-via-egress
@@ -233,11 +255,11 @@ spec:
 Enterprise Istio upgrades need to be safe and reversible. Use revision-based upgrades (also called canary upgrades) so you can run two versions of istiod side by side:
 
 ```bash
-# Install the new version with a revision tag
-istioctl install --set revision=1-20 --set profile=default -y
+# Install the new version with a revision
+istioctl install --set revision=1-30 --set profile=default -y
 
 # Label namespaces to use the new revision
-kubectl label namespace team-alpha istio.io/rev=1-20 --overwrite
+kubectl label namespace team-alpha istio-injection- istio.io/rev=1-30 --overwrite
 
 # Restart workloads to pick up the new sidecar
 kubectl rollout restart deployment -n team-alpha
@@ -246,7 +268,7 @@ kubectl rollout restart deployment -n team-alpha
 Once you confirm the new version works, migrate remaining namespaces and remove the old control plane:
 
 ```bash
-istioctl uninstall --revision=1-19 -y
+istioctl uninstall --revision=1-29 -y
 ```
 
 This approach means you never have a moment where the entire mesh is running an untested version.
@@ -283,7 +305,7 @@ For access logs, use JSON encoding and ship them to a centralized logging system
 Protect your services from cascading failures with circuit breakers:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: payment-service
