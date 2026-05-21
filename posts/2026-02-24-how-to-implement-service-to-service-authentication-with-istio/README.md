@@ -37,7 +37,7 @@ Before making changes, check the current mTLS configuration in your cluster:
 
 kubectl get peerauthentication --all-namespaces
 
-# Check if mTLS is working between services
+# Inspect the Istio configuration affecting a pod
 istioctl x describe pod <pod-name> -n <namespace>
 ```
 
@@ -54,7 +54,7 @@ This shows the certificates loaded by the sidecar proxy.
 The simplest approach is to enable strict mTLS across the entire mesh. Create a PeerAuthentication resource in the `istio-system` namespace:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -81,7 +81,7 @@ kubectl apply -f mesh-peer-auth.yaml
 If you can't switch everything to strict mTLS at once (maybe you have services that haven't been onboarded to the mesh yet), use PERMISSIVE mode:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -98,7 +98,7 @@ PERMISSIVE mode accepts both plaintext and mTLS connections. This lets you gradu
 You can also control mTLS at the namespace level. This is useful when different teams manage different namespaces:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -107,7 +107,7 @@ spec:
   mtls:
     mode: STRICT
 ---
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -124,7 +124,7 @@ Namespace-level policies override the mesh-wide policy. Service-level policies o
 Some services have specific ports that need to accept plaintext traffic (for example, health check endpoints from load balancers outside the mesh):
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: PeerAuthentication
 metadata:
   name: order-service-mtls
@@ -140,14 +140,14 @@ spec:
       mode: DISABLE
 ```
 
-This keeps mTLS strict on all ports except 8081, where plaintext is allowed.
+This keeps mTLS strict on all ports except workload port 8081, where plaintext is allowed. The port in `portLevelMtls` is the workload's port, not the Kubernetes Service port, and it must be bound by a Service for Istio to apply the setting.
 
 ## Setting Up Authorization Policies
 
 mTLS verifies identity, but it doesn't control who can call what. For that, you need AuthorizationPolicy resources. Here's how to restrict the order service so only specific services can access it:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: order-service-authz
@@ -186,7 +186,7 @@ This policy says: the frontend and admin-dashboard can call GET, POST, and PUT o
 For maximum security, start with a default deny policy and then explicitly allow traffic:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: deny-all
@@ -198,7 +198,7 @@ spec:
 An empty spec with no rules means deny everything. Then add ALLOW policies for each legitimate communication path:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: AuthorizationPolicy
 metadata:
   name: allow-frontend-to-order
@@ -220,8 +220,8 @@ spec:
 When mTLS or authorization blocks traffic, you'll see errors. Here's how to debug them:
 
 ```bash
-# Check if mTLS is active between two pods
-istioctl authn tls-check <pod-name> <destination-service>
+# Compare the root certificates used by two sidecar proxies
+istioctl proxy-config rootca-compare <source-pod>.<source-namespace> <destination-pod>.<destination-namespace>
 
 # Look at Envoy logs for connection errors
 kubectl logs deploy/order-service -c istio-proxy -n production | grep "403\|rbac"
@@ -287,13 +287,13 @@ This gives the order service a unique identity that you can reference in authori
 
 ## Monitoring Authentication
 
-Istio exposes metrics that help you track authentication. The `istio_tcp_connections_closed_total` metric with the `connection_security_policy` label tells you whether connections are using mTLS:
+Istio exposes metrics that help you track authentication. For HTTP traffic, the `istio_requests_total` metric with the `connection_security_policy` label tells you whether requests are using mTLS:
 
 ```bash
-# Check via Prometheus
+# Check HTTP traffic via Prometheus
 istio_requests_total{connection_security_policy="mutual_tls"}
 ```
 
-You can set up alerts for any plaintext connections when you expect all traffic to use mTLS. This catches misconfigurations early.
+You can set up alerts for any plaintext HTTP requests when you expect all traffic to use mTLS. This catches misconfigurations early.
 
 Service-to-service authentication with Istio gives you encryption, identity verification, and access control without touching your application code. Start with PERMISSIVE mode, verify everything works, then switch to STRICT. Add authorization policies to control which services can talk to each other, and use dedicated service accounts for each workload.
