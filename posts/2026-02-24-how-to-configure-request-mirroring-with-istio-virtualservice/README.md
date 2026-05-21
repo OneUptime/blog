@@ -30,14 +30,14 @@ graph LR
     D -.->|Response discarded| B
 ```
 
-The mirrored request is a true copy - same headers, same body, same method. The only difference is that Envoy appends `-shadow` to the Host header so the mirror knows it is receiving shadowed traffic.
+The mirrored request is a true copy - same body and same method, with the same headers except for the Host/Authority header. Envoy appends `-shadow` to that header so the mirror knows it is receiving shadowed traffic.
 
 ## Basic Mirroring Setup
 
 Here is the simplest mirroring configuration:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -62,7 +62,7 @@ Every request to my-app goes to v1 (as normal) and a copy goes to v2. The `mirro
 You will also need the DestinationRule:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-app
@@ -83,7 +83,7 @@ spec:
 Mirroring 100% of traffic can be heavy. If your service gets a lot of traffic, mirror just a percentage:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -110,7 +110,7 @@ This mirrors only 10% of requests. It is a good starting point to see how the mi
 The mirror does not have to be a different subset of the same service. You can mirror to a completely different service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -139,7 +139,7 @@ This mirrors all payment requests to an audit service. The audit service can log
 You can mirror only specific paths or match conditions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -210,9 +210,9 @@ There are several things to keep in mind:
 
 **The Host header is modified.** Envoy adds `-shadow` to the Host header of mirrored requests. So if the original request has `Host: my-app`, the mirror receives `Host: my-app-shadow`. Your mirror service needs to handle this, or you should configure it to ignore the Host header.
 
-**Mirrored requests are fire-and-forget.** If the mirror is slow or returns errors, it has zero impact on the primary route. The client never knows about the mirror.
+**Mirrored requests are fire-and-forget.** If the mirror is slow or returns errors, Envoy does not wait for the mirrored response before returning the primary response. The client never knows about the mirror.
 
-**Timeouts still apply.** Envoy will not wait forever for the mirror. Mirrored requests have their own timeout based on the proxy configuration.
+**Timeouts still apply.** Mirrored requests are still upstream requests from Envoy, so proxy timeouts and connection limits still bound them even though their responses are not returned to the client.
 
 **Body is included.** POST and PUT bodies are copied to the mirrored request. This means your mirror service might process write operations. If you are mirroring to a service that writes to a database, be careful about side effects.
 
@@ -225,7 +225,7 @@ This is probably the biggest concern with mirroring. If your service creates rec
 3. **Only mirror read requests** by matching on the GET method:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -263,13 +263,13 @@ To confirm mirroring is set up correctly:
 kubectl get vs my-app -o yaml
 
 # Verify Envoy configuration
-istioctl proxy-config routes deploy/my-app-v1 -o json
+istioctl proxy-config routes deployment/my-app-v1 -o json
 
 # Watch logs on the mirror
 kubectl logs deploy/my-app-v2 -c istio-proxy -f
 
 # Send a test request and watch both services
-curl http://my-app.default.svc.cluster.local/api/test
+kubectl exec deploy/curl -c curl -- curl -sS http://my-app.default.svc.cluster.local/api/test
 ```
 
 ## Cleaning Up
@@ -277,7 +277,7 @@ curl http://my-app.default.svc.cluster.local/api/test
 When you are done testing, remove the mirroring by updating the VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-app
@@ -292,4 +292,4 @@ spec:
             subset: v1
 ```
 
-Request mirroring is one of Istio's most powerful features for safe testing. It lets you validate new versions with real production traffic patterns without any risk to your users. Combined with good monitoring, it gives you high confidence before you start shifting real traffic.
+Request mirroring is one of Istio's most powerful features for safe testing. It lets you validate new versions with real production traffic patterns without exposing mirrored responses to your users. Combined with good monitoring, it gives you high confidence before you start shifting real traffic.
