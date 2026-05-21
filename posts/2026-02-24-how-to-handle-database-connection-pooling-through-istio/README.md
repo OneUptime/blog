@@ -26,7 +26,7 @@ With Istio, there is an extra hop:
 Application Pool (50 connections) -> Client Sidecar -> Server Sidecar -> Database (max_connections: 200)
 ```
 
-Both sidecars manage their own connection handling. The client sidecar controls outbound connections. The server sidecar controls inbound connections. And Istio has its own connection pool settings in the DestinationRule that can interfere with your application pool.
+Both sidecars manage their own connection handling. The client sidecar controls outbound connections. The server sidecar controls inbound connections. And Istio has its own connection pool settings in the DestinationRule that can interfere with your application pool. DestinationRule settings are normally applied on the client side for outbound traffic to the database service; if you need to control how many inbound connections the database pod's sidecar accepts, configure the Sidecar resource's inbound connection pool.
 
 ## Istio's Connection Pool Settings
 
@@ -48,13 +48,13 @@ spec:
         idleTimeout: 3600s
 ```
 
-The `maxConnections` is the maximum number of TCP connections the Envoy proxy will make to the destination. If your application tries to open more connections than this limit, the extra connection attempts will be queued or rejected.
+The `maxConnections` is the maximum number of HTTP/1 or TCP connections an Envoy proxy will make to the destination host. If a single proxy tries to open more connections than this limit, the extra connection attempts can be rejected by Envoy's connection circuit breaker.
 
 ## Sizing the Connection Limits
 
-The math goes like this. Say you have 5 replicas of your application, each with a connection pool of 20 connections. That is 100 connections total. All 100 go through the client sidecars (one per pod) and then hit the server sidecar on the database pod.
+The math has two parts. Say you have 5 replicas of your application, each with a connection pool of 20 connections. That is 100 potential database connections in total. But the outbound DestinationRule limit is applied by each client sidecar, so each application pod's sidecar needs enough room for that pod's 20 connections, not for all 100 connections from the deployment.
 
-Your DestinationRule `maxConnections` must be at least 100 to avoid rejections. But do not just set it to the exact number. Leave headroom for connection churn:
+Your DestinationRule `maxConnections` must be at least 20 to avoid rejections from a single pod. But do not just set it to the exact number. Leave headroom for connection churn:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -67,20 +67,23 @@ spec:
   trafficPolicy:
     connectionPool:
       tcp:
-        maxConnections: 150
+        maxConnections: 30
 ```
 
-And your database `max_connections` should be higher still - 200 in this case, to accommodate the connection overhead.
+And your database `max_connections` should be higher than the total connections across all pods - 200 in this case, to accommodate the 100 application connections plus overhead.
 
 The formula:
 
 ```text
-database max_connections > DestinationRule maxConnections > sum(all application pool sizes)
+database max_connections > sum(all application pool sizes)
+DestinationRule maxConnections > largest per-pod application pool size
 ```
+
+If the database pod is also in the mesh, remember that DestinationRule connection pool settings can also be used as the database sidecar's inbound default unless a Sidecar resource overrides them. In that case, set the database sidecar's inbound connection pool high enough for the aggregate client connections.
 
 ## Handling Multiple Services
 
-Things get more complex when multiple services connect to the same database. Each service has its own sidecar, and each sidecar applies the DestinationRule independently.
+Things get more complex when multiple services connect to the same database. Each service has its own sidecars, and each sidecar applies the DestinationRule independently.
 
 If Service A has 5 pods with pool size 20, and Service B has 3 pods with pool size 10, the total is:
 - Service A: 5 x 20 = 100 connections
@@ -98,10 +101,10 @@ spec:
   trafficPolicy:
     connectionPool:
       tcp:
-        maxConnections: 200
+        maxConnections: 30
 ```
 
-Set `maxConnections` to 200 to handle the 130 connections with headroom.
+Set the database `max_connections` high enough to handle the 130 total connections with headroom. Set Istio `maxConnections` high enough for the largest pool behind any one client sidecar; in this example, a value like 30 handles Service A's per-pod pool of 20 with headroom. If the database workload has an Istio sidecar and you need to limit inbound concurrency there, configure a higher inbound connection pool on the database pod's Sidecar resource.
 
 ## Idle Connection Timeouts
 
@@ -110,7 +113,7 @@ This is where things often go wrong. You have four timeout settings that need to
 1. Application pool idle timeout (e.g., HikariCP's `idleTimeout`)
 2. Istio DestinationRule `idleTimeout`
 3. PgBouncer or ProxySQL idle timeout (if using a database proxy)
-4. Database server idle timeout (PostgreSQL's `idle_in_transaction_session_timeout`, MySQL's `wait_timeout`)
+4. Database server idle timeout (PostgreSQL's `idle_session_timeout` for idle sessions, `idle_in_transaction_session_timeout` for idle transactions, MySQL's `wait_timeout`)
 
 The rule is: the closer to the application, the shorter the timeout should be.
 
@@ -133,7 +136,7 @@ connectionPool:
 spring.datasource.hikari.idle-timeout=600000   # 10 minutes
 
 # PostgreSQL
-idle_in_transaction_session_timeout = 3600000  # 60 minutes
+idle_session_timeout = 3600000  # 60 minutes
 ```
 
 If Istio closes a connection before the application's pool notices, the pool will try to use a dead connection and get an error. Setting the application timeout shorter than Istio's ensures the pool retires connections before they get closed by the proxy.
@@ -208,7 +211,7 @@ spec:
       maxEjectionPercent: 50
 ```
 
-If a database endpoint gets 5 consecutive connection errors within 30 seconds, Istio ejects it from the load balancing pool for 30 seconds. This prevents your application from hammering a failing database instance.
+If a database endpoint gets 5 consecutive qualifying failures, Istio can eject it from the load balancing pool. For TCP services, connection timeouts and connection failures count toward this metric. The `interval` controls how often Envoy analyzes hosts for ejection, and `baseEjectionTime` is the minimum ejection duration. This prevents your application from hammering a failing database instance.
 
 ## Monitoring Connection Pool Behavior
 
@@ -239,8 +242,8 @@ When setting up database connection pooling with Istio:
 
 1. Inventory all services connecting to the database and their pool sizes
 2. Calculate the total maximum connections across all services
-3. Set Istio `maxConnections` higher than the total (add 30-50% headroom)
-4. Set the database `max_connections` higher than Istio's limit
+3. Set Istio `maxConnections` higher than the largest per-pod pool size (add 30-50% headroom)
+4. Set the database `max_connections` higher than the total application connection count
 5. Align idle timeouts: app < Istio < database
 6. Monitor `upstream_cx_overflow` to detect connection pressure
 7. Consider PgBouncer/ProxySQL for workloads with many small services
