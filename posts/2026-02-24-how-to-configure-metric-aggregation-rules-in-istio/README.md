@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Metric, Aggregation, Prometheus, Recording Rules
 
-Description: How to configure metric aggregation rules in Istio using Prometheus recording rules, Telemetry API tag overrides, and EnvoyFilter to reduce cardinality and improve query performance.
+Description: How to configure metric aggregation rules in Istio using Prometheus recording rules, Telemetry API tag overrides, and the OpenTelemetry Collector to reduce cardinality and improve query performance.
 
 ---
 
@@ -182,12 +182,16 @@ spec:
           operation: REMOVE
         connection_security_policy:
           operation: REMOVE
+        request_protocol:
+          operation: REMOVE
     - match:
         metric: REQUEST_DURATION
       tagOverrides:
         source_principal:
           operation: REMOVE
         destination_principal:
+          operation: REMOVE
+        request_protocol:
           operation: REMOVE
     - match:
         metric: REQUEST_SIZE
@@ -196,6 +200,8 @@ spec:
           operation: REMOVE
         destination_principal:
           operation: REMOVE
+        request_protocol:
+          operation: REMOVE
     - match:
         metric: RESPONSE_SIZE
       tagOverrides:
@@ -203,9 +209,11 @@ spec:
           operation: REMOVE
         destination_principal:
           operation: REMOVE
+        request_protocol:
+          operation: REMOVE
 ```
 
-This removes the `source_principal` and `destination_principal` labels from all metrics at the proxy level, before they ever reach Prometheus. This is the most effective way to reduce cardinality.
+This removes the `source_principal`, `destination_principal`, and `request_protocol` labels from these metrics at the proxy level, before they ever reach Prometheus. This is the most effective way to reduce cardinality.
 
 ## Response Code Aggregation
 
@@ -225,7 +233,7 @@ spec:
     - match:
         metric: REQUEST_COUNT
       tagOverrides:
-        response_code_class:
+        response_code:
           operation: UPSERT
           value: |
             response.code >= 500 ? '5xx' :
@@ -241,7 +249,7 @@ Then in your recording rules, aggregate by the class instead of individual codes
 - record: istio:requests_by_class:rate5m
   expr: |
     sum(rate(istio_requests_total{reporter="destination"}[5m]))
-    by (destination_service_name, response_code_class)
+    by (destination_service_name, response_code)
 ```
 
 ## OpenTelemetry Collector Aggregation
@@ -270,7 +278,7 @@ This drops all labels except the ones listed and sums the values.
 
 Here is a practical aggregation strategy for a mesh with 100+ services:
 
-1. **Proxy level**: Remove labels you never query (principal, protocol, security policy)
+1. **Proxy level**: Remove labels you never query (principal, request protocol, security policy)
 2. **OTel Collector**: Aggregate by destination only, dropping source labels for storage-optimized metrics
 3. **Prometheus recording rules**: Pre-compute latency percentiles, error rates, and SLO metrics
 4. **Grafana variables**: Use recording rules in dashboards for fast rendering
