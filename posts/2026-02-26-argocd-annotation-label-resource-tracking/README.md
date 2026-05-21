@@ -8,9 +8,9 @@ Description: Learn how to configure and use ArgoCD annotation+label resource tra
 
 ---
 
-Annotation+label tracking is the recommended resource tracking method for most ArgoCD deployments. It combines the precision of annotation-based tracking with the convenience of label-based querying. ArgoCD uses the annotation for actual ownership decisions while also setting the standard `app.kubernetes.io/instance` label for easy kubectl queries and compatibility with other tools.
+Annotation+label tracking is useful when you want annotation-based tracking while still keeping the standard `app.kubernetes.io/instance` label for compatibility with other tools. It combines the precision of annotation-based tracking with the convenience of label-based querying. ArgoCD uses the annotation for actual ownership decisions while also setting the standard `app.kubernetes.io/instance` label for easy kubectl queries and compatibility with other tools.
 
-This guide covers how annotation+label tracking works, how to configure it, and why it is the best default choice for production environments.
+This guide covers how annotation+label tracking works, how to configure it, and when it is a good choice for production environments.
 
 ## How Annotation+Label Tracking Works
 
@@ -31,7 +31,7 @@ The key distinction is that ArgoCD uses the **annotation** for all tracking deci
 - Identifying resources for pruning
 - Detecting orphaned resources
 
-The **label** is added as a convenience but is not used for critical tracking decisions. This means even if the label is overwritten by Helm or another tool, ArgoCD's tracking remains intact.
+The **label** is added as a convenience but is not used for critical tracking decisions. The label value is still subject to the Kubernetes 63-character label value limit, so long application names are truncated in the label while the annotation keeps the full tracking identity. This means even if the label is overwritten by Helm or another tool, ArgoCD's tracking remains intact.
 
 ## Configuring Annotation+Label Tracking
 
@@ -52,8 +52,8 @@ With Helm:
 ```yaml
 # values.yaml for argo-cd chart
 
-server:
-  config:
+configs:
+  cm:
     application.resourceTrackingMethod: "annotation+label"
 ```
 
@@ -77,7 +77,7 @@ argocd app sync my-app
 argocd app list -o name | xargs -I {} argocd app sync {}
 ```
 
-## Why Annotation+Label Is Recommended
+## Why Use Annotation+Label Tracking
 
 ### Precise Tracking via Annotations
 
@@ -94,13 +94,13 @@ This means:
 
 ### Easy Querying via Labels
 
-The label enables standard kubectl queries:
+The label enables standard kubectl queries when the application name fits in the Kubernetes label value limit:
 
 ```bash
-# List all resources managed by an ArgoCD application
+# List common workload resources managed by an ArgoCD application
 kubectl get all -l app.kubernetes.io/instance=my-app -n production
 
-# Count resources per application
+# Count common workload resources per application
 kubectl get all --all-namespaces -l app.kubernetes.io/instance \
   -o jsonpath='{range .items[*]}{.metadata.labels.app\.kubernetes\.io/instance}{"\n"}{end}' | sort | uniq -c
 
@@ -129,10 +129,8 @@ After syncing with annotation+label tracking enabled:
 
 ```bash
 # Check both label and annotation
-kubectl get deployment api-server -n production -o jsonpath='{
-  "label": "{.metadata.labels.app\.kubernetes\.io/instance}",
-  "annotation": "{.metadata.annotations.argocd\.argoproj\.io/tracking-id}"
-}'
+kubectl get deployment api-server -n production \
+  -o jsonpath='label: {.metadata.labels.app\.kubernetes\.io/instance}{"\n"}annotation: {.metadata.annotations.argocd\.argoproj\.io/tracking-id}{"\n"}'
 
 # Expected output:
 # label: my-app
@@ -179,7 +177,7 @@ metadata:
 
 ### Helm Charts That Set the Instance Label
 
-When a Helm chart explicitly sets `app.kubernetes.io/instance`, ArgoCD will overwrite it with the ArgoCD application name during sync. To preserve the Helm value, use `ignoreDifferences`:
+When a Helm chart explicitly sets `app.kubernetes.io/instance`, ArgoCD will overwrite it with the ArgoCD application name during sync. To preserve the Helm value on an existing resource during sync, use `ignoreDifferences` together with `RespectIgnoreDifferences=true`:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -192,13 +190,16 @@ spec:
       kind: Deployment
       jsonPointers:
         - /metadata/labels/app.kubernetes.io~1instance
+  syncPolicy:
+    syncOptions:
+      - RespectIgnoreDifferences=true
 ```
 
-With annotation+label tracking, this only affects the label display. Tracking still works correctly via the annotation.
+With annotation+label tracking, this only affects the label display on resources where the ignored field is respected during sync. Tracking still works correctly via the annotation.
 
-### CRDs with Non-Standard Metadata
+### Resources with Metadata Mutations
 
-Some CRDs have restricted metadata handling. If a CRD does not allow custom annotations, annotation tracking will fail for that resource. In this rare case, the resource will not appear in ArgoCD's resource tree.
+Kubernetes resources normally support custom annotations, including custom resources. If an admission controller or another controller strips or rejects ArgoCD's tracking annotation, annotation tracking will fail for that resource. In this rare case, the resource may not appear correctly in ArgoCD's resource tree.
 
 Check if an annotation was applied:
 
@@ -274,7 +275,7 @@ NS=$2
 echo "Checking tracking consistency for $APP_NAME in $NS"
 
 # Resources tracked by annotation (what ArgoCD sees)
-ARGOCD_RESOURCES=$(argocd app resources "$APP_NAME" -o json | jq -r '.[] | "\(.kind)/\(.name)"' | sort)
+ARGOCD_RESOURCES=$(argocd app get "$APP_NAME" -o json | jq -r '.status.resources[] | "\(.kind)/\(.name)"' | sort)
 
 # Resources tracked by label (what kubectl sees)
 LABEL_RESOURCES=$(kubectl get all -n "$NS" -l app.kubernetes.io/instance="$APP_NAME" -o json | jq -r '.items[] | "\(.kind)/\(.metadata.name)"' | sort)
