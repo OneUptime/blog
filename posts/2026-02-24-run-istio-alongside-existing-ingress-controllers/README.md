@@ -38,10 +38,10 @@ kubectl get pods -n istio-system
 
 ## Understanding the Architecture
 
-When you run both controllers, each gets its own LoadBalancer service. Your DNS entries determine which controller handles which traffic. The key insight is that both can coexist peacefully because they watch different resource types:
+When you run both controllers, each gets its own LoadBalancer service. Your DNS entries determine which controller handles which traffic. The key insight is that both can coexist peacefully because they are configured through different resource types:
 
 - NGINX Ingress Controller watches `Ingress` resources (or `IngressClass` resources assigned to it)
-- Istio Ingress Gateway watches `Gateway` and `VirtualService` resources
+- Istio's control plane watches Istio `Gateway` and `VirtualService` resources and programs the Istio ingress gateway
 
 They do not conflict because they are looking at completely different Kubernetes objects.
 
@@ -75,7 +75,7 @@ NAME                   TYPE           CLUSTER-IP     EXTERNAL-IP    PORT(S)
 istio-ingressgateway   LoadBalancer   10.96.45.123   34.56.78.90    15021:31234/TCP,80:30080/TCP,443:30443/TCP
 ```
 
-If you need to customize the gateway deployment, create an IstioOperator resource:
+If you need to customize the gateway deployment, use an IstioOperator configuration with `istioctl install -f`:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -143,6 +143,8 @@ spec:
       credentialName: api-tls-cert
 ```
 
+Make sure the TLS secret named `api-tls-cert` exists in the same namespace as the gateway workload, which is `istio-system` in this example.
+
 ```yaml
 apiVersion: networking.istio.io/v1
 kind: VirtualService
@@ -160,7 +162,7 @@ spec:
         prefix: /
     route:
     - destination:
-        host: api-service
+        host: api-service.default.svc.cluster.local
         port:
           number: 8080
 ```
@@ -174,16 +176,15 @@ kubectl apply -f virtualservice.yaml
 
 ## Step 5: Keep Your NGINX Ingress Running
 
-Your existing NGINX Ingress resources stay exactly as they are:
+Your existing NGINX Ingress resources stay assigned to NGINX:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: api-ingress
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
   - host: api.example.com
     http:
@@ -203,9 +204,9 @@ Both routes point to the same backend service. Traffic coming through `api.examp
 
 One tricky part: if you enable Istio sidecar injection for a namespace, your pods will get Envoy sidecars. This is fine and actually beneficial, but you need to make sure your NGINX ingress can still reach those pods.
 
-The good news is that by default, Istio allows traffic from any source to reach pods on their original ports. You do not need to create any special policies for this unless you have enabled strict mTLS with restrictive authorization policies.
+The good news is that by default, Istio sidecars accept both plaintext and mTLS traffic. You do not need to create any special policies for this unless you have enabled strict mTLS or restrictive authorization policies.
 
-If you do have strict policies, add a policy that allows traffic from the NGINX ingress:
+If the NGINX ingress is also part of the mesh and sends mTLS identity, add a policy that allows traffic from its namespace. Source namespace matching depends on mTLS identity, so for an unmeshed NGINX ingress you should either keep the backend workload in permissive mTLS mode or allow traffic by source IP range instead.
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -214,6 +215,9 @@ metadata:
   name: allow-nginx-ingress
   namespace: default
 spec:
+  selector:
+    matchLabels:
+      app: api
   rules:
   - from:
     - source:
@@ -231,12 +235,19 @@ Once you have verified that traffic flows correctly through Istio, start migrati
 
 ```bash
 # When ready, update the Istio Gateway to accept the production hostname
-kubectl patch gateway api-gateway -n istio-system --type merge -p '{
+kubectl patch gateways.networking.istio.io api-gateway -n istio-system --type merge -p '{
   "spec": {
-    "servers": [{
-      "port": {"number": 80, "name": "http", "protocol": "HTTP"},
-      "hosts": ["api.example.com", "api-v2.example.com"]
-    }]
+    "servers": [
+      {
+        "port": {"number": 80, "name": "http", "protocol": "HTTP"},
+        "hosts": ["api.example.com", "api-v2.example.com"]
+      },
+      {
+        "port": {"number": 443, "name": "https", "protocol": "HTTPS"},
+        "hosts": ["api.example.com", "api-v2.example.com"],
+        "tls": {"mode": "SIMPLE", "credentialName": "api-tls-cert"}
+      }
+    ]
   }
 }'
 ```
@@ -247,10 +258,13 @@ Use Istio's built-in telemetry to compare traffic patterns:
 
 ```bash
 # Check Istio gateway metrics
-kubectl exec -n istio-system deploy/istio-ingressgateway -- pilot-agent request GET stats | grep downstream_rq
+kubectl exec -n istio-system deploy/istio-ingressgateway -c istio-proxy -- pilot-agent request GET stats | grep downstream_rq
 
-# Check NGINX metrics (if you have metrics enabled)
-kubectl get --raw "/api/v1/namespaces/ingress-nginx/pods/$(kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller -o jsonpath='{.items[0].metadata.name}')/proxy/metrics" | grep nginx_ingress_controller_requests
+# In another terminal, forward NGINX metrics locally if you have metrics enabled
+kubectl port-forward -n ingress-nginx deploy/ingress-nginx-controller 10254:10254
+
+# Then check NGINX request metrics
+curl -s http://127.0.0.1:10254/metrics | grep nginx_ingress_controller_requests
 ```
 
 ## Common Pitfalls
