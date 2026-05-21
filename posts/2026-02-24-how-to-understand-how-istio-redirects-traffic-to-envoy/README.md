@@ -17,7 +17,7 @@ The traffic redirection mechanism is the core plumbing that makes the entire ser
 Here's what happens when your application makes an outbound request:
 
 1. Your app opens a TCP connection to, say, `reviews:9080`
-2. The kernel resolves this and tries to send the packet to the destination
+2. DNS resolution turns `reviews` into an IP address, and the kernel tries to send the packet to that destination
 3. iptables rules (or another interception method) catch the packet in the OUTPUT chain
 4. The packet gets redirected to Envoy's outbound listener on port 15001
 5. Envoy looks up the destination in its configuration, applies routing rules, and forwards it
@@ -50,52 +50,57 @@ This is how Envoy knows where the traffic was actually headed, even though the p
 
 ### Method 2: iptables with TPROXY
 
-TPROXY (transparent proxy) is an alternative iptables target that preserves the original destination address in the packet itself, rather than modifying it. This has some advantages:
+TPROXY (transparent proxy) is an alternative iptables target for inbound traffic that redirects without NATing the connection, so the original source and destination addresses and ports are preserved. This has some advantages:
 
 ```bash
 iptables -t mangle -A ISTIO_INBOUND -p tcp -j TPROXY \
   --on-port 15006 --on-ip 0.0.0.0 --tproxy-mark 1337/0xffffffff
 ```
 
-With TPROXY, Envoy can read the original destination directly from the packet headers. This is particularly useful for preserving the source IP address of incoming connections. You enable TPROXY mode with the `interceptionMode` field:
+With TPROXY, Envoy can use the original destination listener filter with `SO_ORIGINAL_DST` while preserving the source IP address of incoming connections. You enable TPROXY mode with the `sidecar.istio.io/interceptionMode` pod annotation, or mesh-wide through `meshConfig.defaultConfig.interceptionMode`:
 
 ```yaml
-apiVersion: networking.istio.io/v1
-kind: Sidecar
+apiVersion: v1
+kind: Pod
 metadata:
-  name: default
-spec:
-  ingress:
-    - port:
-        number: 9080
-        protocol: HTTP
-      defaultEndpoint: 127.0.0.1:9080
-      captureMode: TPROXY
+  name: my-app
+  annotations:
+    sidecar.istio.io/interceptionMode: TPROXY
 ```
 
 ### Method 3: Istio CNI Plugin
 
-The CNI (Container Network Interface) plugin approach moves the iptables setup from an init container to a node-level CNI plugin. This is the recommended approach for production because it removes the need for `NET_ADMIN` and `NET_RAW` capabilities on the init container.
+The CNI (Container Network Interface) plugin approach moves the iptables setup from an init container to a node-level CNI plugin. This is often preferred in production because it removes the need for privileged init containers and the `NET_ADMIN` and `NET_RAW` capabilities on application pods.
 
 Install Istio with CNI enabled:
 
 ```bash
-istioctl install --set components.cni.enabled=true
+cat <<EOF > istio-cni.yaml
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+spec:
+  components:
+    cni:
+      namespace: istio-system
+      enabled: true
+EOF
+
+istioctl install -f istio-cni.yaml -y
 ```
 
 The CNI plugin runs as a DaemonSet and configures iptables rules when pods are created, before any containers start. The end result is the same iptables rules, but the security posture is better.
 
 ### Method 4: Ambient Mesh (ztunnel)
 
-The newer ambient mesh mode takes a completely different approach. Instead of sidecar proxies and iptables in each pod, a node-level proxy called ztunnel handles Layer 4 traffic. For Layer 7 features, traffic gets routed through waypoint proxies.
+The newer ambient mesh mode takes a different approach. Instead of injecting an Envoy sidecar into each pod, a node-level proxy called ztunnel handles Layer 4 traffic. For Layer 7 features, traffic gets routed through waypoint proxies.
 
-In ambient mode, traffic interception uses eBPF or routing rules at the node level:
+In ambient mode, the Istio CNI node agent enters the workload pod's network namespace, installs redirection rules, and coordinates with the node-local ztunnel, which opens the in-pod ports used for capture:
 
 ```bash
 istioctl install --set profile=ambient
 ```
 
-Pods in ambient mode don't get sidecars at all. The ztunnel uses Linux networking features like transparent proxying and routing rules to intercept traffic.
+Pods in ambient mode don't get sidecars at all. The ztunnel uses Linux networking features such as iptables REDIRECT and TPROXY rules to intercept traffic.
 
 ## Understanding the Envoy Listeners
 
@@ -126,8 +131,8 @@ Let's trace an outbound HTTP request step by step. Say your `productpage` pod ca
 # The kernel processes this in the OUTPUT chain
 
 # Step 2: iptables redirects to 127.0.0.1:15001
-# You can see the NAT translation with conntrack
-kubectl exec productpage-pod -c istio-proxy -- \
+# You can see the NAT translation with conntrack from a debug container
+kubectl debug productpage-pod -it --image=nicolaka/netshoot --profile=netadmin -- \
   conntrack -L -p tcp --dport 9080
 
 # Step 3: Envoy receives the connection on the virtualOutbound listener
@@ -148,7 +153,7 @@ istioctl proxy-config endpoint productpage-pod --cluster "outbound|9080||reviews
 
 **Traffic not being intercepted:**
 
-Check if the pod has the sidecar injected and the init container ran:
+Check if the pod has the sidecar injected and, when you are not using Istio CNI, whether the init container ran:
 
 ```bash
 kubectl get pod my-pod -o jsonpath='{.spec.containers[*].name}'
