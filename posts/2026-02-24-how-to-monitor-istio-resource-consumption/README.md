@@ -16,8 +16,8 @@ This guide shows you how to set up comprehensive monitoring for Istio's resource
 
 There are two categories of Istio resource consumption:
 
-1. **Control plane**: istiod, ingress/egress gateways. These are dedicated pods in the istio-system namespace.
-2. **Data plane**: Envoy sidecar proxies running in every application pod. This is where most of the aggregate resource usage comes from.
+1. **Control plane**: istiod. This is the component that configures the mesh.
+2. **Data plane**: Envoy sidecar proxies running in every application pod, plus ingress/egress gateways. This is where most of the aggregate resource usage comes from.
 
 ## Checking Resource Usage with kubectl
 
@@ -32,7 +32,12 @@ kubectl top pods -n istio-system
 kubectl top pods -n my-namespace --containers | grep istio-proxy
 
 # Total sidecar resource usage across all namespaces
-kubectl top pods -A --containers | grep istio-proxy | awk '{sum_cpu+=$3; sum_mem+=$4} END {print "Total CPU:", sum_cpu"m", "Total Memory:", sum_mem"Mi"}'
+kubectl top pods -A --containers --no-headers | awk '
+  function cpu_m(v) { if (v ~ /n$/) return v / 1000000; if (v ~ /u$/) return v / 1000; if (v ~ /m$/) return v + 0; return (v + 0) * 1000 }
+  function mem_mi(v) { if (v ~ /Ki$/) return v / 1024; if (v ~ /Mi$/) return v + 0; if (v ~ /Gi$/) return (v + 0) * 1024; if (v ~ /Ti$/) return (v + 0) * 1048576; return (v + 0) / 1048576 }
+  $3 == "istio-proxy" { sum_cpu += cpu_m($4); sum_mem += mem_mi($5) }
+  END { printf "Total CPU: %.0fm Total Memory: %.0fMi\n", sum_cpu, sum_mem }
+'
 ```
 
 ## Setting Up Prometheus Metrics
@@ -83,7 +88,7 @@ rate(pilot_xds_pushes{type="cds"}[5m])
 ### Number of Connected Sidecars
 
 ```promql
-pilot_xds_connected_clients
+pilot_xds
 ```
 
 ### Configuration Push Latency
@@ -115,8 +120,13 @@ sum(rate(container_cpu_usage_seconds_total{container="istio-proxy"}[5m])) by (na
 ### Sidecar Memory as Percentage of Limit
 
 ```promql
-container_memory_working_set_bytes{container="istio-proxy"}
-/ container_spec_memory_limit_bytes{container="istio-proxy"} * 100
+(
+  container_memory_working_set_bytes{container="istio-proxy"}
+  / on(namespace, pod, container)
+  container_spec_memory_limit_bytes{container="istio-proxy"}
+) * 100
+and on(namespace, pod, container)
+container_spec_memory_limit_bytes{container="istio-proxy"} > 0
 ```
 
 ### Top 10 Sidecar Memory Consumers
@@ -130,8 +140,8 @@ topk(10, container_memory_working_set_bytes{container="istio-proxy"})
 Istio ships with pre-built Grafana dashboards. If you are using the istio addons, deploy them:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.22/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
 ```
 
 For a custom dashboard focused on resource consumption, create a ConfigMap:
@@ -221,8 +231,13 @@ spec:
     rules:
     - alert: IstiodHighMemory
       expr: |
-        container_memory_working_set_bytes{namespace="istio-system", container="discovery"}
-        / container_spec_memory_limit_bytes{namespace="istio-system", container="discovery"} > 0.8
+        (
+          container_memory_working_set_bytes{namespace="istio-system", container="discovery"}
+          / on(namespace, pod, container)
+          container_spec_memory_limit_bytes{namespace="istio-system", container="discovery"}
+        ) > 0.8
+        and on(namespace, pod, container)
+        container_spec_memory_limit_bytes{namespace="istio-system", container="discovery"} > 0
       for: 10m
       labels:
         severity: warning
@@ -240,8 +255,13 @@ spec:
     rules:
     - alert: SidecarMemoryNearLimit
       expr: |
-        container_memory_working_set_bytes{container="istio-proxy"}
-        / container_spec_memory_limit_bytes{container="istio-proxy"} > 0.9
+        (
+          container_memory_working_set_bytes{container="istio-proxy"}
+          / on(namespace, pod, container)
+          container_spec_memory_limit_bytes{container="istio-proxy"}
+        ) > 0.9
+        and on(namespace, pod, container)
+        container_spec_memory_limit_bytes{container="istio-proxy"} > 0
       for: 5m
       labels:
         severity: warning
@@ -307,4 +327,4 @@ kubectl exec -n istio-system deploy/istiod -- curl -s localhost:15014/metrics | 
 
 ## Summary
 
-Monitoring Istio resource consumption requires tracking both the control plane (istiod, gateways) and the data plane (sidecar proxies). Use `kubectl top` for quick checks, Prometheus queries for detailed analysis, and Grafana dashboards for ongoing visibility. Set up alerts for high memory usage, OOMKilled restarts, and total cluster-wide sidecar resource consumption. Track trends over time to anticipate capacity needs before they become emergencies.
+Monitoring Istio resource consumption requires tracking both the control plane (istiod) and the data plane (sidecar proxies and gateways). Use `kubectl top` for quick checks, Prometheus queries for detailed analysis, and Grafana dashboards for ongoing visibility. Set up alerts for high memory usage, OOMKilled restarts, and total cluster-wide sidecar resource consumption. Track trends over time to anticipate capacity needs before they become emergencies.
