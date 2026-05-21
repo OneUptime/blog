@@ -157,7 +157,10 @@ spec:
           expr: |
             namespace:istio_requests_errors:rate5m
             /
-            namespace:istio_requests_total:rate5m
+            sum(namespace:istio_requests_total:rate5m) by (
+              destination_service_namespace,
+              destination_service_name
+            )
 ```
 
 ## Aggregating Trace Data
@@ -224,7 +227,7 @@ data:
           exporters: [otlp]
 ```
 
-This keeps all error traces and slow traces while sampling normal traces at 5%.
+When all spans for each trace reach the same collector instance, this keeps all error traces and slow traces while sampling normal traces at 5%.
 
 ## Aggregating Access Logs
 
@@ -241,10 +244,10 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400 || connection.duration > duration('5s')"
+        expression: "response.code >= 400 || request.duration > duration('5s')"
 ```
 
-This logs only errors and slow connections, which are the logs you actually look at when debugging.
+This logs only errors and slow requests, which are the logs you actually look at when debugging.
 
 ## Using OpenTelemetry Collector as an Aggregation Layer
 
@@ -291,7 +294,8 @@ After configuring aggregation, verify that the changes took effect:
 curl -s http://prometheus:9090/api/v1/status/tsdb | jq '.data.seriesCountByMetricName[:10]'
 
 # Compare before and after
-curl -s http://prometheus:9090/api/v1/query?query=count({__name__=~"istio_.*"})
+curl -sG http://prometheus:9090/api/v1/query \
+  --data-urlencode 'query=count({__name__=~"istio_.*"})'
 ```
 
 Monitor the memory usage of your Prometheus instance to confirm the reduction:
