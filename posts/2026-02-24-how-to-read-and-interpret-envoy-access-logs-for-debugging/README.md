@@ -58,16 +58,22 @@ Breaking this down field by field:
 | 4 | Response Flags | `-` | Why the response was generated (see below) |
 | 5 | Response Code Details | `via_upstream` | Additional response info |
 | 6 | Connection Termination | `-` | Who closed the connection |
-| 7 | Upstream Service Time | `"-"` | Time in ms for upstream to respond |
+| 7 | Upstream Transport Failure Reason | `"-"` | Transport-level failure reason, when present |
 | 8 | Request Body Bytes | `0` | Size of request body |
 | 9 | Response Body Bytes | `1234` | Size of response body |
 | 10 | Duration | `15` | Total request duration in ms |
-| 11 | Upstream Duration | `14` | Time spent in upstream in ms |
+| 11 | Upstream Service Time | `14` | `x-envoy-upstream-service-time` response header |
 | 12 | X-Forwarded-For | `"-"` | Client IP |
 | 13 | User Agent | `"curl/7.68.0"` | User-Agent header |
 | 14 | Request ID | `"abc-123-def"` | X-Request-Id header |
 | 15 | Authority | `"my-service:8080"` | Host/Authority header |
 | 16 | Upstream Host | `"10.0.0.5:8080"` | The actual upstream IP |
+| 17 | Upstream Cluster | `inbound|8080||` | The selected upstream cluster |
+| 18 | Upstream Local Address | `10.0.0.10:45678` | Local address used for the upstream connection |
+| 19 | Downstream Local Address | `10.0.0.5:8080` | Local address on the downstream side |
+| 20 | Downstream Remote Address | `10.0.0.10:34567` | Remote downstream address |
+| 21 | Requested Server Name | `outbound_.8080_._.my-service.default.svc.cluster.local` | Requested SNI/server name, when present |
+| 22 | Route Name | `default` | Envoy route name |
 
 ## Response Flags - The Most Important Field
 
@@ -117,8 +123,9 @@ This tells you how many 503s are caused by each response flag. If you see lots o
 ```bash
 # Find requests taking longer than 1000ms
 kubectl logs deploy/my-service -c istio-proxy --tail=1000 | awk '{
-  # Duration is typically field 11 (may vary slightly)
-  if ($11+0 > 1000) print $0
+  # With Istio's default text format, duration is field 12 in awk because
+  # the quoted request line is split into method, path, and protocol.
+  if ($12+0 > 1000) print $0
 }'
 ```
 
@@ -140,7 +147,7 @@ Check both the source and destination proxy logs to see the request from both si
 
 ## Understanding Inbound vs Outbound Logs
 
-Each proxy logs both inbound (requests received) and outbound (requests sent) traffic. You can distinguish them by the route name field at the end of the log:
+Each proxy logs both inbound (requests received) and outbound (requests sent) traffic. You can distinguish them by the upstream cluster field after the upstream host:
 
 - **inbound|8080||** - This is an inbound request (traffic entering the service)
 - **outbound|8080|v1|backend.default.svc.cluster.local** - This is an outbound request (traffic leaving to another service)
