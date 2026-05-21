@@ -115,15 +115,14 @@ For Fastify applications:
 
 ```javascript
 const fastify = require('fastify')({ logger: true });
-const { AsyncLocalStorage } = require('async_hooks');
-
-const traceStore = new AsyncLocalStorage();
 
 const TRACE_HEADERS = [
   'x-request-id', 'x-b3-traceid', 'x-b3-spanid',
   'x-b3-parentspanid', 'x-b3-sampled', 'x-b3-flags',
   'b3', 'traceparent', 'tracestate'
 ];
+
+fastify.decorateRequest('traceHeaders', null);
 
 // Fastify plugin for trace context
 fastify.register(async function tracePlugin(app) {
@@ -185,8 +184,8 @@ app.get('/api/orders', async (req, res) => {
 ## Method 4: Using got HTTP Client
 
 ```javascript
-const got = require('got');
-const { getTraceHeaders } = require('./tracing');
+import got from 'got';
+import { getTraceHeaders } from './tracing.js';
 
 const tracedClient = got.extend({
   hooks: {
@@ -258,8 +257,26 @@ The easiest approach if you want zero-code changes is using the OpenTelemetry No
 // tracing-setup.js - require this FIRST before anything else
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+const {
+  CompositePropagator,
+  W3CBaggagePropagator,
+  W3CTraceContextPropagator
+} = require('@opentelemetry/core');
+const {
+  B3InjectEncoding,
+  B3Propagator
+} = require('@opentelemetry/propagator-b3');
 
 const sdk = new NodeSDK({
+  // Avoid exporting application spans when Envoy/Istio is the only span reporter.
+  spanProcessors: [],
+  textMapPropagator: new CompositePropagator({
+    propagators: [
+      new W3CTraceContextPropagator(),
+      new W3CBaggagePropagator(),
+      new B3Propagator({ injectEncoding: B3InjectEncoding.MULTI_HEADER })
+    ],
+  }),
   instrumentations: [
     getNodeAutoInstrumentations({
       '@opentelemetry/instrumentation-http': {
@@ -270,8 +287,6 @@ const sdk = new NodeSDK({
       },
     }),
   ],
-  // Don't export traces since Istio handles that
-  traceExporter: undefined,
 });
 
 sdk.start();
@@ -289,7 +304,7 @@ Or in your Dockerfile:
 CMD ["node", "--require", "./tracing-setup.js", "app.js"]
 ```
 
-This automatically instruments Express, http/https modules, and popular HTTP clients. It propagates trace context without any changes to your application code.
+This automatically instruments Express, http/https modules, and popular HTTP clients. The explicit propagator configuration keeps W3C Trace Context and B3 multi-header propagation enabled for Istio environments. Remove the empty `spanProcessors` setting and configure an OpenTelemetry exporter if you also want the application to export its own spans.
 
 ## Testing Trace Propagation
 
