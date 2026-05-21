@@ -42,8 +42,8 @@ histogram_quantile(0.50,
 # Total xDS pushes per second
 sum(rate(pilot_xds_pushes[5m])) by (type)
 
-# Push errors
-sum(rate(pilot_xds_push_errors[5m]))
+# xDS internal errors and proxy rejections
+sum(rate(pilot_total_xds_internal_errors[5m])) + sum(rate(pilot_total_xds_rejects[5m]))
 ```
 
 Push time should normally be well under 1 second. If P99 push time exceeds 5 seconds, something is wrong - probably too many resources in the mesh, istiod running out of memory, or API server latency.
@@ -73,22 +73,23 @@ pilot_conflict_inbound_listener
 # Outbound listener conflicts
 pilot_conflict_outbound_listener_tcp_over_current_tcp
 
-# HTTP route conflicts
-pilot_conflict_outbound_listener_http_over_current_tcp
+# Duplicate VirtualService domains
+pilot_vservice_dup_domain
 ```
 
 Any non-zero value means your Istio configuration has issues that could cause unexpected routing behavior.
 
 ### Service Discovery
 
-Track how many services and endpoints istiod is managing:
+Track how many services istiod is managing and watch endpoint health:
 
 ```promql
 # Number of known services
 pilot_services
 
-# Number of endpoints
-pilot_endpoints
+# Endpoint health indicators
+pilot_endpoint_not_ready
+pilot_k8s_endpoints_pending_pod
 
 # Configuration validation errors
 sum(galley_validation_failed) by (reason)
@@ -108,7 +109,7 @@ sum(rate(citadel_server_csr_count[5m]))
 # Certificate signing errors
 sum(rate(citadel_server_csr_parsing_err_count[5m]))
 
-# Success rate of CSR processing
+# Successful certificate issuances per second
 sum(rate(citadel_server_success_cert_issuance_count[5m]))
 ```
 
@@ -182,7 +183,11 @@ spec:
     # Push errors
     - alert: IstiodPushErrors
       expr: |
-        sum(rate(pilot_xds_push_errors[5m])) > 0
+        (
+          sum(rate(pilot_total_xds_internal_errors[5m]))
+          +
+          sum(rate(pilot_total_xds_rejects[5m]))
+        ) > 0
       for: 5m
       labels:
         severity: warning
@@ -193,7 +198,7 @@ spec:
     # Proxy disconnections
     - alert: IstiodProxyDisconnections
       expr: |
-        sum(pilot_xds) < sum(kube_pod_info{created_by_kind="ReplicaSet"}) * 0.5
+        sum(pilot_xds) < sum(kube_pod_container_info{container="istio-proxy"}) * 0.5
       for: 5m
       labels:
         severity: critical
