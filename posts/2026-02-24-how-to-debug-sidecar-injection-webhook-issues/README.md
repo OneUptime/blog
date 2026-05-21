@@ -14,7 +14,7 @@ Debugging webhook issues requires understanding how the admission webhook pipeli
 
 ## How Sidecar Injection Works
 
-When you create a pod (directly or through a Deployment, Job, etc.), the Kubernetes API server sends the pod spec to all configured mutating admission webhooks before persisting it to etcd. The Istio sidecar injector webhook receives this request, decides whether to inject a sidecar, and if so, returns a JSON patch that adds the Envoy container, init container, and volumes to the pod spec.
+When you create a pod (directly or through a Deployment, Job, etc.), the Kubernetes API server sends the pod spec to matching mutating admission webhooks before persisting it to etcd. The Istio sidecar injector webhook receives this request, decides whether to inject a sidecar, and if so, returns a JSON patch that adds the Envoy container, any required init container, and volumes to the pod spec.
 
 The components involved:
 - **MutatingWebhookConfiguration** named `istio-sidecar-injector` - tells Kubernetes which pods to send to the webhook
@@ -67,15 +67,15 @@ If neither label is present, pods in that namespace won't get sidecars. Add the 
 kubectl label namespace my-namespace istio-injection=enabled
 ```
 
-## Step 3: Check Pod-Level Annotations
+## Step 3: Check Pod-Level Labels
 
 Even if the namespace has the right label, individual pods can opt out of injection:
 
 ```bash
-kubectl get pod my-pod -o jsonpath='{.metadata.annotations}' | jq .
+kubectl get pod my-pod -o jsonpath='{.metadata.labels}' | jq .
 ```
 
-Look for `sidecar.istio.io/inject: "false"`. If this annotation is present, the sidecar won't be injected regardless of namespace labels.
+Look for `sidecar.istio.io/inject: "false"`. If this label is present, the sidecar won't be injected regardless of namespace labels. Older workloads may use the same key as an annotation, but the annotation form is deprecated in favor of the label.
 
 ## Step 4: Verify istiod Is Running
 
@@ -110,26 +110,26 @@ The API server needs to reach istiod on its service endpoint. Test this:
 kubectl get svc istiod -n istio-system
 ```
 
-Verify the service has endpoints:
+Verify the service has EndpointSlices:
 
 ```bash
-kubectl get endpoints istiod -n istio-system
+kubectl get endpointslice -n istio-system -l kubernetes.io/service-name=istiod
 ```
 
-If there are no endpoints, the istiod pods either aren't running or their labels don't match the service selector.
+If there are no ready endpoints in the EndpointSlices, the istiod pods either aren't running or their labels don't match the service selector.
 
 ## Step 6: Check Certificate Issues
 
-The webhook uses TLS to communicate with the API server. Certificate problems are a common source of webhook failures:
+The API server uses TLS when it calls the webhook service. Certificate problems are a common source of webhook failures:
 
 ```bash
 kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d | openssl x509 -text -noout
 ```
 
 Check that:
-- The certificate is not expired
-- The CA bundle matches what istiod is serving
-- The SAN includes the service DNS name
+- The CA certificate is not expired
+- The CA bundle matches the root certificate used by istiod
+- The istiod serving certificate includes the service DNS name in its SAN
 
 If certificates are stale, restart istiod to trigger certificate regeneration:
 
@@ -184,13 +184,13 @@ kubectl run test-pod --image=nginx --dry-run=client -o yaml | \
 
 If this produces output with the istio-proxy container, the injection template is working. If it doesn't, there's an issue with the injection configuration.
 
-You can also compare what the webhook would produce:
+You can also check whether the live webhook configuration would inject a specific workload:
 
 ```bash
-istioctl analyze -n my-namespace
+istioctl experimental check-inject -n my-namespace deploy/my-deployment
 ```
 
-This checks for common configuration issues.
+This reports which webhook would inject the workload and why. For broader configuration checks, run `istioctl analyze -n my-namespace`.
 
 ## Step 10: Debug the Injection Template
 
@@ -206,8 +206,8 @@ If someone has customized the template and introduced a syntax error, injection 
 
 **Pods have no sidecar but no errors:**
 - Check namespace label: `kubectl get ns my-namespace --show-labels`
-- Check pod annotation: no `sidecar.istio.io/inject: "false"` present
-- For Jobs/CronJobs, ensure the template metadata has the right labels
+- Check pod label: no `sidecar.istio.io/inject: "false"` present
+- For Jobs/CronJobs, ensure the pod template metadata has the right labels
 
 **Pods fail to start with webhook errors:**
 - Check istiod is running: `kubectl get pods -n istio-system`
@@ -220,7 +220,7 @@ If someone has customized the template and introduced a syntax error, injection 
 - Verify there are no conflicting CNI configurations
 
 **Injection works for some pods but not others:**
-- Check for pod-level override annotations
+- Check for pod-level override labels or deprecated annotations
 - Verify all webhook selectors match your namespace
 - Check if the pods use `hostNetwork: true` (injection is skipped for host network pods)
 
