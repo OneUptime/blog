@@ -18,7 +18,7 @@ Unstructured logs look something like this:
 [2026-02-24T10:15:30.123Z] "GET /api/users HTTP/1.1" 200 - via_upstream - "-" 0 1234 45 43 "-" "curl/7.68.0" "abc-123-def" "users.default.svc.cluster.local" "10.244.0.15:8080"
 ```
 
-That's Envoy's default text format. It has all the information you need, but parsing it programmatically means writing regex patterns and hoping the format doesn't change between versions.
+That's close to Istio's default Envoy access log text format. It has all the information you need, but parsing it programmatically means writing regex patterns and hoping the format doesn't change between versions.
 
 Structured JSON logs give you the same data in a format that every log aggregation tool understands natively:
 
@@ -108,7 +108,7 @@ Notice that we're including `trace_id` and `span_id` fields. This is valuable fo
 
 ## Using the Telemetry API for Structured Logging
 
-The Telemetry API offers a more Kubernetes-native approach. You can configure access log providers with custom formats:
+The Telemetry API offers a more Kubernetes-native approach. You can select access log providers, including providers with custom formats defined in the mesh config:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -181,9 +181,9 @@ accessLogFormat: |
 
 This only works for headers that are present in the request or response. Envoy will output a `-` for any header that's not set.
 
-## Configuring Per-Namespace Logging Formats
+## Configuring Per-Namespace Logging Filters
 
-Different teams might want different log formats. The Telemetry API supports namespace-scoped configuration:
+Different teams might want different logging policies. The Telemetry API supports namespace-scoped configuration:
 
 ```yaml
 apiVersion: telemetry.istio.io/v1
@@ -196,10 +196,10 @@ spec:
     - providers:
         - name: envoy
       filter:
-        expression: "response.code >= 400 || response.duration > duration('1s')"
+        expression: "response.code >= 400"
 ```
 
-Team Alpha's namespace gets error and slow request logging, while other namespaces follow the mesh-wide default.
+Team Alpha's namespace gets error request logging, while other namespaces follow the mesh-wide default.
 
 ## Integrating with Log Aggregation Tools
 
@@ -223,7 +223,7 @@ For Elasticsearch/Fluentd/Kibana (EFK), Fluentd can parse JSON logs automaticall
 </source>
 ```
 
-For Grafana Loki, Promtail can handle JSON parsing with pipeline stages:
+For Grafana Loki, Grafana Alloy is the current collector and can parse JSON with `loki.process` stages. If you still run the now-deprecated Promtail, it can handle JSON parsing with pipeline stages:
 
 ```yaml
 # Promtail config snippet
