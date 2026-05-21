@@ -89,9 +89,21 @@ This creates a vertical marker on your dashboards so you can visually correlate 
 
 The most powerful way to analyze deployment impact is to run old and new versions side by side. Istio makes this straightforward with traffic splitting.
 
-First, deploy both versions:
+First, create a stable Kubernetes Service and deploy both versions:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: my-service
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -114,6 +126,8 @@ spec:
       containers:
         - name: my-service
           image: my-service:1.0.0
+          ports:
+            - containerPort: 8080
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -137,12 +151,14 @@ spec:
       containers:
         - name: my-service
           image: my-service:2.0.0
+          ports:
+            - containerPort: 8080
 ```
 
 Then set up the Istio resources to split traffic:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -156,7 +172,7 @@ spec:
       labels:
         version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
