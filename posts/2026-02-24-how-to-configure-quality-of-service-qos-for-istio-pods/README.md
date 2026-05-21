@@ -8,7 +8,7 @@ Description: How to configure Kubernetes Quality of Service classes for Istio po
 
 ---
 
-Kubernetes assigns a Quality of Service (QoS) class to every pod based on its resource configuration. This class determines the order in which pods get evicted when a node runs low on resources. When you add an Istio sidecar to a pod, the sidecar's resource configuration directly affects the pod's QoS class. Getting this wrong means your important services might get evicted before less critical ones.
+Kubernetes assigns a Quality of Service (QoS) class to every pod based on its resource configuration. This class influences how pods are handled when a node runs low on resources, but kubelet eviction order also depends on whether pods exceed requests, Pod priority, and usage relative to requests. When you add an Istio sidecar to a pod, the sidecar's resource configuration directly affects the pod's QoS class. Getting this wrong means your important services might get evicted before less critical ones.
 
 This guide explains how QoS classes work with Istio sidecars and how to configure them correctly.
 
@@ -16,9 +16,9 @@ This guide explains how QoS classes work with Istio sidecars and how to configur
 
 Kubernetes has three QoS classes, listed from most protected to least protected:
 
-1. **Guaranteed**: Every container in the pod has CPU and memory requests equal to its limits. These pods are evicted last.
-2. **Burstable**: At least one container has a resource request or limit set, but requests and limits are not equal for all containers. These pods are evicted after BestEffort but before Guaranteed.
-3. **BestEffort**: No container has any resource requests or limits. These pods are evicted first.
+1. **Guaranteed**: Every container in the pod has CPU and memory requests equal to its limits. These pods are least likely to face eviction.
+2. **Burstable**: At least one container has a resource request or limit set, but requests and limits are not equal for all containers. These pods have some protection from their requests, but can still be eviction candidates when usage exceeds requests.
+3. **BestEffort**: No container has any CPU or memory resource requests or limits. The kubelet prefers to evict these pods first when a node is under resource pressure.
 
 The critical thing to understand is that QoS is determined by ALL containers in the pod, including the Istio sidecar. If any container does not have resources set, the pod cannot be Guaranteed.
 
@@ -208,11 +208,11 @@ kubectl get pods -n istio-system -o jsonpath='{range .items[*]}{.metadata.name}{
 
 ## Combining QoS with Priority Classes
 
-QoS class and PriorityClass work together during eviction. The kubelet considers both:
+QoS class and PriorityClass work together during eviction. The kubelet does not use only the QoS class to determine eviction order; it ranks pods using:
 
-1. First, it evicts BestEffort pods in order of lowest priority
-2. Then Burstable pods, lowest priority first
-3. Finally Guaranteed pods, lowest priority first
+1. Whether the starved resource usage exceeds requests
+2. Pod Priority
+3. The amount of resource usage relative to requests
 
 For maximum protection, combine Guaranteed QoS with a high priority:
 
@@ -252,23 +252,7 @@ spec:
 
 ## Per-Namespace QoS Strategy
 
-Different namespaces might need different QoS strategies:
-
-```yaml
-# Production namespace - Guaranteed QoS for all sidecars
-apiVersion: networking.istio.io/v1beta1
-kind: Sidecar
-metadata:
-  name: default
-  namespace: production
-spec:
-  egress:
-  - hosts:
-    - "./*"
-    - "istio-system/*"
-```
-
-Combined with a LimitRange to enforce resource settings:
+Different namespaces might need different QoS strategies. A `Sidecar` resource controls proxy traffic configuration, not the sidecar container's Kubernetes resources. For namespace-level defaults, combine the Istio sidecar resource settings shown above with a LimitRange to apply default resource settings to containers that do not specify them:
 
 ```yaml
 apiVersion: v1
@@ -287,7 +271,7 @@ spec:
       memory: "512Mi"
 ```
 
-This LimitRange ensures any container without explicit resources gets default values that result in Guaranteed QoS (since default equals defaultRequest).
+This LimitRange gives containers without explicit resources default values that can result in Guaranteed QoS (since default equals defaultRequest), but verify the injected pod. Istio notes that other admission controllers such as `LimitRange` may run before sidecar injection and produce unexpected results, so explicit sidecar resource annotations or mesh-wide proxy resource defaults are still the safer way to control the `istio-proxy` container.
 
 ## Auditing QoS Across the Cluster
 
