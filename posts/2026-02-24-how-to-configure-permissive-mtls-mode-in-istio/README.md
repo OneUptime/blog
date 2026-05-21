@@ -16,7 +16,7 @@ This mode exists primarily as a migration aid. It lets you roll out Istio sideca
 
 When a sidecar receives an incoming connection in permissive mode, it inspects the first bytes of the connection to determine whether the client is initiating a TLS handshake. If it sees a TLS ClientHello message, it proceeds with mTLS. If it sees plain text (like an HTTP request line), it handles it as plain HTTP.
 
-This protocol detection happens transparently. The application behind the sidecar does not know whether the original connection was encrypted or not. It always receives plain text from the sidecar.
+This protocol detection happens transparently. The application behind the sidecar does not know whether the connection between sidecars used mTLS. For plain HTTP traffic, it receives plain HTTP from the sidecar; if the application is already using its own TLS, the sidecar passes that application-level TLS through instead of originating a new TLS connection to the app.
 
 ```mermaid
 flowchart TD
@@ -118,7 +118,7 @@ spec:
       mode: PERMISSIVE
 ```
 
-This keeps the main service ports strict while allowing plain text on the metrics port.
+This keeps the main service ports strict while allowing plain text on the metrics port. The port number in `portLevelMtls` is the workload port, not the Kubernetes Service port.
 
 ## Auto mTLS and Permissive Mode
 
@@ -133,7 +133,7 @@ This means even without any configuration changes, sidecar-to-sidecar traffic in
 
 ## Verifying Permissive Mode
 
-Check what mode a namespace is running:
+Check the PeerAuthentication resources configured in a namespace:
 
 ```bash
 kubectl get peerauthentication -n production
