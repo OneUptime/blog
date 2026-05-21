@@ -43,7 +43,7 @@ Be careful with this. Disabling TLS means traffic between your sidecar and the u
 
 ## SIMPLE - Standard TLS
 
-Use SIMPLE mode when connecting to an external HTTPS service or any service that presents a server certificate:
+Use SIMPLE mode when you want Envoy to originate TLS to an upstream service that presents a server certificate. This is useful when the application sends plain HTTP to the sidecar, but the upstream service expects HTTPS:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -53,8 +53,11 @@ metadata:
 spec:
   host: api.external-service.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
 ```
 
 In SIMPLE mode, Envoy verifies the server's certificate against its CA bundle. For well-known CAs (like Let's Encrypt), this works out of the box.
@@ -69,9 +72,12 @@ metadata:
 spec:
   host: internal-api.company.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
-      caCertificates: /etc/certs/company-ca.pem
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
+        caCertificates: /etc/certs/company-ca.pem
 ```
 
 The certificate file must be mounted into the Envoy sidecar. You can do this with a Kubernetes Secret mounted as a volume.
@@ -133,7 +139,7 @@ With `ISTIO_MUTUAL`, you do not need to specify any certificate paths. Istio han
 - Certificate rotation before expiry
 - Mutual authentication
 
-In most Istio installations with `PeerAuthentication` set to STRICT mode, mTLS is enforced automatically and you do not even need to set `ISTIO_MUTUAL` in the DestinationRule. But there are cases where you want to be explicit, or where auto-mTLS is not working as expected.
+In most Istio installations with `PeerAuthentication` set to STRICT mode and auto mTLS enabled, mTLS is enforced automatically and you do not even need to set `ISTIO_MUTUAL` in the DestinationRule. But there are cases where you want to be explicit, or where auto-mTLS is not working as expected.
 
 ## When to Use Each Mode
 
@@ -178,7 +184,7 @@ The v1 subset uses Istio mTLS while the v2-legacy subset has TLS disabled (maybe
 
 ## TLS for External Services with ServiceEntry
 
-When connecting to external services, you typically need both a ServiceEntry and a DestinationRule:
+When using Istio TLS origination for external services, you typically need both a ServiceEntry and a DestinationRule:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -189,9 +195,10 @@ spec:
   hosts:
   - api.stripe.com
   ports:
-  - number: 443
-    name: https
-    protocol: HTTPS
+  - number: 80
+    name: http
+    protocol: HTTP
+    targetPort: 443
   resolution: DNS
   location: MESH_EXTERNAL
 ---
@@ -202,11 +209,14 @@ metadata:
 spec:
   host: api.stripe.com
   trafficPolicy:
-    tls:
-      mode: SIMPLE
+    portLevelSettings:
+    - port:
+        number: 80
+      tls:
+        mode: SIMPLE
 ```
 
-The ServiceEntry registers the external host with the mesh, and the DestinationRule configures TLS for connections to it.
+The ServiceEntry registers the external host with the mesh and redirects HTTP traffic to port 443, and the DestinationRule configures Envoy to originate TLS for that upstream connection. If your application already sends HTTPS traffic to the external service, you usually only need a ServiceEntry for the HTTPS host and should not add TLS origination for the same connection.
 
 ## Verifying TLS Configuration
 
@@ -216,15 +226,15 @@ Check that TLS is properly configured on the Envoy proxy:
 istioctl proxy-config cluster <pod-name> --fqdn my-service.default.svc.cluster.local -o json
 ```
 
-Look for the `transportSocket` section in the output. For mTLS, you should see certificate paths pointing to Istio's SDS-provided certificates.
+Look for the `transportSocket` section in the output. For mTLS, you should see SDS secret references for Istio-provided certificates.
 
-You can also check if mTLS is active between two services:
+You can also inspect the Istio configuration that affects a pod:
 
 ```bash
-istioctl authn tls-check <pod-name> my-service.default.svc.cluster.local
+istioctl experimental describe pod <pod-name>
 ```
 
-This shows the current TLS status for the connection.
+This reports the DestinationRules, VirtualServices, and mTLS-related warnings that apply to the pod.
 
 ## Troubleshooting TLS Issues
 
@@ -248,4 +258,4 @@ kubectl delete destinationrule external-api-tls
 kubectl delete serviceentry external-api
 ```
 
-TLS settings in DestinationRule give you fine-grained control over connection security. For services inside the mesh, ISTIO_MUTUAL is the default and usually requires no configuration. For external services, use SIMPLE for standard HTTPS or MUTUAL when client certificates are required. Always verify your TLS configuration with istioctl to catch mismatches early.
+TLS settings in DestinationRule give you fine-grained control over connection security. For services inside the mesh, auto mTLS is the default and usually requires no DestinationRule TLS configuration. For external TLS origination, use SIMPLE for standard server-authenticated TLS or MUTUAL when client certificates are required. Always verify your TLS configuration with istioctl to catch mismatches early.
