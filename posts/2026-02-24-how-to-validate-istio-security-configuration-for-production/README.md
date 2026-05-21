@@ -22,7 +22,7 @@ Start by listing all PeerAuthentication policies:
 kubectl get peerauthentication -A -o yaml
 ```
 
-Look for any policy that sets mode to PERMISSIVE or DISABLE. In production, you want STRICT everywhere:
+Look for any policy that sets mode to PERMISSIVE or DISABLE. In production, you generally want STRICT for mesh and namespace policies:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -35,10 +35,12 @@ spec:
     mode: STRICT
 ```
 
+For mesh-wide policy, put this in your Istio root namespace. In many installations that is `istio-system`, but use the root namespace configured for your mesh.
+
 Now verify that it is actually working. Deploy a test pod without a sidecar and try to reach a service in the mesh:
 
 ```bash
-kubectl run test-no-sidecar --image=curlimages/curl --restart=Never --labels="sidecar.istio.io/inject=false" -- sleep 3600
+kubectl run test-no-sidecar --image=curlimages/curl --restart=Never --labels="sidecar.istio.io/inject=false" --command -- sleep 3600
 
 kubectl exec test-no-sidecar -- curl -s http://my-service.production.svc.cluster.local:8080
 ```
@@ -59,9 +61,9 @@ First, check for namespaces without any authorization policy:
 
 ```bash
 for ns in $(kubectl get namespaces -o jsonpath='{.items[*].metadata.name}'); do
-  count=$(kubectl get authorizationpolicy -n "$ns" 2>/dev/null | grep -c "^" || echo 0)
-  if [ "$count" -le 1 ]; then
-    echo "WARNING: Namespace $ns has $((count-1)) authorization policies"
+  count=$(kubectl get authorizationpolicy -n "$ns" -o jsonpath='{.items[*].metadata.name}' 2>/dev/null | wc -w)
+  if [ "$count" -eq 0 ]; then
+    echo "WARNING: Namespace $ns has 0 authorization policies"
   fi
 done
 ```
@@ -83,7 +85,7 @@ Then verify that each allow policy uses specific principals, not wildcards:
 kubectl get authorizationpolicy -A -o yaml | grep -A5 "source:"
 ```
 
-Watch out for policies that use `principals: ["*"]` or have no `from` field at all, as these allow traffic from any source.
+Watch out for policies that use `principals: ["*"]` or have no `from` field at all. A wildcard principal matches any non-empty authenticated principal, and a missing `from` field allows any source for that rule.
 
 ## Validate Request Authentication
 
@@ -96,7 +98,7 @@ kubectl get requestauthentication -A
 Check that the JWKS URI is reachable from inside the cluster:
 
 ```bash
-kubectl run jwt-test --image=curlimages/curl --restart=Never -- curl -s https://your-auth-provider.com/.well-known/jwks.json
+kubectl run jwt-test --image=curlimages/curl --restart=Never --command -- curl -s https://your-auth-provider.com/.well-known/jwks.json
 kubectl logs jwt-test
 kubectl delete pod jwt-test
 ```
@@ -145,7 +147,7 @@ Without the authorization policy, RequestAuthentication only validates tokens th
 Your ingress gateways handle external traffic and need proper TLS configuration:
 
 ```bash
-kubectl get gateway -A -o yaml | grep -A10 "tls:"
+kubectl get gateways.networking.istio.io -A -o yaml | grep -A10 "tls:"
 ```
 
 Make sure the TLS mode is set correctly. For production, you typically want SIMPLE or MUTUAL:
@@ -190,7 +192,7 @@ Also check for these specific anti-patterns:
 1. Services listening on port 80 without TLS redirect:
 
 ```bash
-kubectl get gateway -A -o yaml | grep "protocol: HTTP"
+kubectl get gateways.networking.istio.io -A -o yaml | grep "protocol: HTTP"
 ```
 
 If you have HTTP listeners, make sure they redirect to HTTPS:
@@ -213,14 +215,14 @@ servers:
 kubectl get pods -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} containers: {range .spec.containers[*]}{.name} {end}{"\n"}{end}' | grep -v istio-proxy | grep -v "istio-system\|kube-system"
 ```
 
-Any production pod missing the istio-proxy container is not protected by the mesh.
+In sidecar mode, any production pod missing the istio-proxy container is not protected by the mesh sidecar.
 
 ## Validate Egress Security
 
 Check what outbound traffic policies you have. The default ALLOW_ANY lets pods reach any external service:
 
 ```bash
-istioctl install --set meshConfig.outboundTrafficPolicy.mode=REGISTRY_ONLY --dry-run
+kubectl get configmap istio -n istio-system -o yaml | grep -A5 outboundTrafficPolicy
 ```
 
 For production, consider REGISTRY_ONLY mode and explicitly define ServiceEntry resources for external services:
@@ -252,8 +254,9 @@ set -e
 
 echo "Checking mTLS enforcement..."
 PERMISSIVE=$(kubectl get peerauthentication -A -o yaml | grep "mode: PERMISSIVE" | wc -l)
-if [ "$PERMISSIVE" -gt 0 ]; then
-  echo "FAIL: Found $PERMISSIVE PERMISSIVE mTLS policies"
+DISABLE=$(kubectl get peerauthentication -A -o yaml | grep "mode: DISABLE" | wc -l)
+if [ "$PERMISSIVE" -gt 0 ] || [ "$DISABLE" -gt 0 ]; then
+  echo "FAIL: Found $PERMISSIVE PERMISSIVE and $DISABLE DISABLE mTLS policies"
   exit 1
 fi
 

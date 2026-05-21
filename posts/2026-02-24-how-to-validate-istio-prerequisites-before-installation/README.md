@@ -14,17 +14,17 @@ This guide covers every prerequisite check you should run before installing Isti
 
 ## Kubernetes Version Check
 
-Istio supports specific Kubernetes versions. As a general rule, Istio 1.24 supports Kubernetes 1.27 through 1.31. Always check the official support matrix for your specific Istio version.
+Istio supports specific Kubernetes versions. As of May 2026, Istio 1.30 supports Kubernetes 1.32 through 1.36. Istio 1.24 supported Kubernetes 1.28 through 1.31, but it is now out of support. Always check the official support matrix for your specific Istio version.
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 Verify both client and server versions:
 
 ```text
-Client Version: v1.30.2
-Server Version: v1.30.2
+Client Version: v1.32.2
+Server Version: v1.32.2
 ```
 
 If your cluster version is too old, upgrade Kubernetes first.
@@ -34,9 +34,9 @@ If your cluster version is too old, upgrade Kubernetes first.
 You need cluster-admin permissions to install Istio because it creates CRDs, webhooks, and cluster-scoped RBAC resources:
 
 ```bash
-kubectl auth can-i create customresourcedefinitions --all-namespaces
-kubectl auth can-i create clusterroles --all-namespaces
-kubectl auth can-i create mutatingwebhookconfigurations --all-namespaces
+kubectl auth can-i create customresourcedefinitions.apiextensions.k8s.io --all-namespaces
+kubectl auth can-i create clusterroles.rbac.authorization.k8s.io --all-namespaces
+kubectl auth can-i create mutatingwebhookconfigurations.admissionregistration.k8s.io --all-namespaces
 ```
 
 All should return `yes`. If not, get cluster-admin access before proceeding.
@@ -75,14 +75,14 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,CPU:.status.allocatable.
 
 ## Available Pod Capacity
 
-Each Istio sidecar adds a pod to every application pod (technically, a container within the pod). Make sure your nodes can handle the additional pods:
+Istio itself adds pods for the control plane and any gateways you install. Sidecar injection adds a container to each application pod, so it increases resource usage but does not increase the Kubernetes pod count for those workloads. Make sure your nodes can handle the additional Istio pods:
 
 ```bash
 kubectl get nodes -o custom-columns=NAME:.metadata.name,PODS:.status.capacity.pods
 kubectl get pods -A --no-headers | wc -l
 ```
 
-Compare the total pod capacity against current usage. Istio itself adds about 5-10 pods (depending on profile), plus every application pod gets a sidecar container.
+Compare the total pod capacity against current usage. Istio itself adds pods depending on the profile and gateways you install, plus every injected application pod gets a sidecar container.
 
 ## Network Requirements
 
@@ -103,10 +103,10 @@ You should see your CNI pods (Calico, Cilium, Flannel, etc.) running. Istio work
 
 ### Pod-to-Pod Connectivity
 
-Test that pods can communicate across nodes:
+Test that pods can communicate. If you specifically need to validate cross-node connectivity, place the test pods on different nodes:
 
 ```bash
-# Create test pods on different nodes
+# Create test pods
 
 kubectl run test-1 --image=busybox --restart=Never -- sleep 3600
 kubectl run test-2 --image=busybox --restart=Never -- sleep 3600
@@ -133,47 +133,53 @@ You should see the cluster DNS resolve the `kubernetes.default` service.
 
 ### Port Availability
 
-Istio uses several ports. Make sure nothing conflicts:
+Istio uses several reserved and well-known ports. Application containers should not bind the Envoy sidecar ports, and network policies or firewalls must allow the control plane ports:
 
 | Port | Used By | Protocol |
 |---|---|---|
 | 15000 | Envoy admin (per sidecar) | TCP |
 | 15001 | Envoy outbound | TCP |
 | 15006 | Envoy inbound | TCP |
-| 15010 | istiod (plaintext xDS) | TCP |
-| 15012 | istiod (mTLS xDS) | TCP |
-| 15014 | istiod (monitoring) | TCP |
-| 15017 | Webhook | HTTPS |
-| 15020 | Merged Prometheus telemetry | TCP |
-| 15021 | Health check | TCP |
-| 15090 | Prometheus stats | TCP |
+| 443 | istiod webhook service | HTTPS |
+| 15002 | Envoy failure detection | TCP |
+| 15004 | Envoy debug | HTTP |
+| 15008 | Envoy HBONE mTLS tunnel | HTTP/2 |
+| 15010 | istiod plaintext xDS and CA | gRPC |
+| 15012 | istiod TLS/mTLS xDS and CA | gRPC |
+| 15014 | istiod monitoring | HTTP |
+| 15017 | Webhook container port | HTTPS |
+| 15020 | Merged Prometheus telemetry | HTTP |
+| 15021 | Health check | HTTP |
+| 15053 | DNS capture, if enabled | DNS |
+| 15090 | Envoy Prometheus stats | HTTP |
 
-Check if any of these ports are already in use:
+Check whether your application pod specs explicitly declare any of the sidecar-reserved ports:
 
 ```bash
-kubectl get svc -A -o json | jq -r '.items[] | select(.spec.ports[].port == 15012 or .spec.ports[].port == 15017) | .metadata.name'
+kubectl get pods -A -o json | jq -r '
+  .items[]
+  | select(any(.spec.containers[]?.ports[]?.containerPort; IN(15000,15001,15002,15004,15006,15008,15020,15021,15053,15090)))
+  | "\(.metadata.namespace)/\(.metadata.name)"'
 ```
 
 ## API Server Configuration
 
 ### Admission Webhooks
 
-Istio requires MutatingAdmissionWebhook and ValidatingAdmissionWebhook to be enabled on the API server:
+Istio requires MutatingAdmissionWebhook and ValidatingAdmissionWebhook support on the API server. Start by checking that the admissionregistration API is available:
 
 ```bash
 kubectl api-versions | grep admissionregistration.k8s.io/v1
 ```
 
-This should return `admissionregistration.k8s.io/v1`. If not, your API server needs webhook admission controllers enabled.
+This should return `admissionregistration.k8s.io/v1`. If not, the admissionregistration API is unavailable. On self-managed clusters, also confirm that the webhook admission plugins are not disabled on the API server.
 
 ### Third-Party Token Support
 
 Istio uses projected service account tokens. Verify support:
 
 ```bash
-kubectl get --raw /api/v1/namespaces/default/serviceaccounts/default/token -X POST \
-  -H 'Content-Type: application/json' \
-  -d '{"apiVersion":"authentication.k8s.io/v1","kind":"TokenRequest","spec":{"audiences":["istio-ca"],"expirationSeconds":3600}}' 2>/dev/null
+kubectl create token default --namespace default --audience istio-ca --duration 1h >/dev/null
 
 echo $?
 ```
@@ -220,12 +226,12 @@ If there are issues, you will see specific error messages with recommendations.
 If installing with Helm, do a dry-run first:
 
 ```bash
-helm install istio-base istio/base -n istio-system --create-namespace --dry-run
+helm install istio-base istio/base -n istio-system --create-namespace --dry-run=server
 
-helm install istiod istio/istiod -n istio-system --dry-run
+helm install istiod istio/istiod -n istio-system --create-namespace --dry-run=server
 ```
 
-This validates that the templates render correctly and checks for obvious issues.
+This validates that the templates render correctly and asks the Kubernetes API server to check the rendered manifests without persisting them.
 
 ## Platform-Specific Checks
 
@@ -274,7 +280,7 @@ If you have deny-all policies, you will need to add exceptions for Istio traffic
 
 ## Storage Class (Optional)
 
-If you plan to use Istio's persistent features (like Envoy access log files stored to disk), check available storage classes:
+Istio core does not require a storage class. If you plan to deploy add-ons or custom components that need PersistentVolumes, check available storage classes:
 
 ```bash
 kubectl get storageclasses
@@ -290,11 +296,11 @@ echo "=== Istio Pre-Installation Validation ==="
 echo ""
 
 echo "1. Kubernetes Version"
-kubectl version --short 2>/dev/null || kubectl version
+kubectl version
 echo ""
 
 echo "2. Cluster Admin Access"
-kubectl auth can-i create crds --all-namespaces
+kubectl auth can-i create customresourcedefinitions.apiextensions.k8s.io --all-namespaces
 echo ""
 
 echo "3. Node Resources"
