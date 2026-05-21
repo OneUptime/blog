@@ -195,7 +195,7 @@ meshConfig:
   - us-east.mycompany.com
 ```
 
-**Different trust domains, different root CAs**: This is the most complex scenario and is not natively supported by Istio. You would need to federate trust at a higher level or use SPIFFE federation.
+**Different trust domains, different root CAs**: This is the most complex scenario. To make communication work between meshes with different CAs, you need to exchange the trust bundles between the meshes. Istio does not provide tooling to exchange those bundles for you, so you would need to manage that manually or use a protocol such as SPIFFE federation.
 
 ## Verifying Trust Domain Configuration
 
@@ -238,7 +238,7 @@ spec:
         requestPrincipals: ["https://auth.mycompany.com/user123"]
 ```
 
-Do not confuse the trust domain-based principal with the JWT-based request principal. They serve different purposes and are evaluated independently.
+Do not confuse the trust domain-based principal with the JWT-based request principal. They serve different purposes and are matched against different attributes. If you put both fields in the same `source` block, both conditions must match.
 
 ## Common Mistakes
 
