@@ -62,6 +62,19 @@ spec:
         image: my-app:2.0.0
         ports:
         - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+  namespace: production
+spec:
+  selector:
+    app: my-app
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
 ```
 
 Create the DestinationRule with subsets:
@@ -134,24 +147,24 @@ The most important metrics to compare between the canary and the stable version 
 ```text
 # v1 error rate
 
-sum(rate(istio_requests_total{destination_service="my-app.production.svc.cluster.local",destination_version="v1",response_code=~"5.*"}[5m]))
+sum(rate(istio_requests_total{reporter="destination",destination_service="my-app.production.svc.cluster.local",destination_version="v1",response_code=~"5.*"}[5m]))
 /
-sum(rate(istio_requests_total{destination_service="my-app.production.svc.cluster.local",destination_version="v1"}[5m]))
+sum(rate(istio_requests_total{reporter="destination",destination_service="my-app.production.svc.cluster.local",destination_version="v1"}[5m]))
 
 # v2 error rate
-sum(rate(istio_requests_total{destination_service="my-app.production.svc.cluster.local",destination_version="v2",response_code=~"5.*"}[5m]))
+sum(rate(istio_requests_total{reporter="destination",destination_service="my-app.production.svc.cluster.local",destination_version="v2",response_code=~"5.*"}[5m]))
 /
-sum(rate(istio_requests_total{destination_service="my-app.production.svc.cluster.local",destination_version="v2"}[5m]))
+sum(rate(istio_requests_total{reporter="destination",destination_service="my-app.production.svc.cluster.local",destination_version="v2"}[5m]))
 ```
 
 **Latency** - Compare P99 latency:
 
 ```text
 # v1 P99
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="my-app.production.svc.cluster.local",destination_version="v1"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service="my-app.production.svc.cluster.local",destination_version="v1"}[5m])) by (le))
 
 # v2 P99
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="my-app.production.svc.cluster.local",destination_version="v2"}[5m])) by (le))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{reporter="destination",destination_service="my-app.production.svc.cluster.local",destination_version="v2"}[5m])) by (le))
 ```
 
 ## Automated Canary with Flagger
@@ -162,13 +175,15 @@ Install Flagger:
 
 ```bash
 helm repo add flagger https://flagger.app
+kubectl apply -f https://raw.githubusercontent.com/fluxcd/flagger/main/artifacts/flagger/crd.yaml
 helm upgrade -i flagger flagger/flagger \
   --namespace istio-system \
+  --set crd.create=false \
   --set meshProvider=istio \
   --set metricsServer=http://prometheus:9090
 ```
 
-Create a Canary resource that defines the rollout strategy:
+Create a Canary resource that defines the rollout strategy. For Flagger, use a single target Deployment named `my-app` with a selector such as `app: my-app`; Flagger creates and manages the stable `my-app-primary` Deployment:
 
 ```yaml
 apiVersion: flagger.app/v1beta1
@@ -217,7 +232,7 @@ kubectl set image deployment/my-app my-app=my-app:2.0.0 -n production
 
 Flagger then:
 
-1. Creates a canary Deployment (my-app-primary stays at v1)
+1. Creates a primary Deployment (my-app-primary) for the stable version and treats the target Deployment as the canary
 2. Creates a VirtualService with weighted routing
 3. Gradually shifts traffic: 10%, 20%, 30%, 40%, 50%
 4. At each step, queries Prometheus to check if the canary meets the thresholds
@@ -255,6 +270,7 @@ spec:
       rate(istio_requests_total{
         destination_workload_namespace="{{ namespace }}",
         destination_workload="{{ target }}",
+        reporter="destination",
         response_code!~"5.*"
       }[{{ interval }}])
     )
@@ -262,7 +278,8 @@ spec:
     sum(
       rate(istio_requests_total{
         destination_workload_namespace="{{ namespace }}",
-        destination_workload="{{ target }}"
+        destination_workload="{{ target }}",
+        reporter="destination"
       }[{{ interval }}])
     ) * 100
 ```
