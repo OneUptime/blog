@@ -148,7 +148,7 @@ Auth0 tokens have the issuer set to `https://your-tenant.auth0.com/` with a trai
 Decode your token to check:
 
 ```bash
-echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; payload=sys.argv[1].split(".")[1]; payload += "=" * (-len(payload) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))' "$TOKEN"
 ```
 
 Look at the `iss` field and copy it exactly into your RequestAuthentication.
@@ -242,25 +242,12 @@ spec:
     - from:
         - source:
             notRequestPrincipals: ["*"]
----
-# AuthorizationPolicy - allow health checks without JWT
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
-metadata:
-  name: allow-health
-  namespace: backend
-spec:
-  selector:
-    matchLabels:
-      app: api-server
-  action: ALLOW
-  rules:
-    - to:
+      to:
         - operation:
-            paths: ["/health", "/ready"]
+            notPaths: ["/health", "/ready"]
 ```
 
-This setup validates Auth0 tokens, blocks unauthenticated requests, and allows health check endpoints without authentication.
+This setup validates Auth0 tokens, blocks unauthenticated requests, and excludes health check endpoints from the JWT requirement.
 
 ## Debugging Auth0 Token Issues
 
@@ -274,7 +261,7 @@ kubectl logs deploy/api-server -n backend -c istio-proxy --tail=50 | grep -i jwt
 kubectl exec deploy/sleep -c sleep -- curl -s https://your-tenant.auth0.com/.well-known/jwks.json
 
 # Decode the token and verify claims
-echo "$TOKEN" | cut -d. -f2 | base64 -d 2>/dev/null | python3 -m json.tool
+python3 -c 'import base64,json,sys; payload=sys.argv[1].split(".")[1]; payload += "=" * (-len(payload) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(payload)), indent=2))' "$TOKEN"
 ```
 
 Verify that `iss`, `aud`, and `exp` all look correct. Auth0 integration with Istio is reliable once you get the issuer URL (with trailing slash) and audience right.
