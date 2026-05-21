@@ -90,13 +90,13 @@ When upgrading Istio, CRD versions can change. The general upgrade path involves
 
 Before upgrading, check the release notes for any API version changes. The Istio team typically provides a migration window of several releases before removing old API versions.
 
-Check which API versions your current resources use:
+Check which API versions your stored manifests use:
 
 ```bash
-kubectl get vs -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}: {.apiVersion}{"\n"}{end}'
+grep -R "apiVersion: networking.istio.io/v1alpha3" .
 ```
 
-This lists all VirtualServices and their API versions. If any still use `v1alpha3`, you should update them.
+This lists manifests that still declare the old API version. A live `kubectl get vs` request does not reliably tell you which version was used in the original manifest, because Kubernetes returns the object using the version requested by the client or the preferred served version.
 
 ## Updating Resources to a New API Version
 
@@ -113,17 +113,14 @@ Edit the file and change `apiVersion: networking.istio.io/v1alpha3` to `apiVersi
 kubectl apply -f my-route.yaml
 ```
 
-For a large number of resources, you can script this:
+For a large number of checked-in manifests, you can script this:
 
 ```bash
-for vs in $(kubectl get vs -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'); do
-  ns=$(echo $vs | cut -d/ -f1)
-  name=$(echo $vs | cut -d/ -f2)
-  kubectl get vs $name -n $ns -o yaml | \
-    sed 's|networking.istio.io/v1alpha3|networking.istio.io/v1|' | \
-    kubectl apply -f -
-done
+grep -Rl "apiVersion: networking.istio.io/v1alpha3" . | \
+  xargs sed -i 's|apiVersion: networking.istio.io/v1alpha3|apiVersion: networking.istio.io/v1|'
 ```
+
+Review the diff, then apply the updated manifests with your normal deployment process.
 
 ## Handling Schema Changes Between Versions
 
@@ -189,32 +186,33 @@ helm upgrade istio-base istio/base -n istio-system
 helm upgrade istiod istio/istiod -n istio-system
 ```
 
-## Dealing with Version Conversion Webhooks
+## Dealing with Version Conversion
 
-Kubernetes uses conversion webhooks to translate between API versions. Istio registers these webhooks when the CRDs are installed. If the webhook is down or misconfigured, you might see errors when working with Istio resources.
+Kubernetes can use either a `None` conversion strategy or a conversion webhook to translate between CRD versions. Istio's current CRDs keep schemas aligned across served versions and do not configure CRD conversion webhooks, so conversion usually just changes the `apiVersion` field when an object is served through a different version.
 
-Check the webhook configuration:
+Check the CRD conversion strategy:
+
+```bash
+kubectl get crd virtualservices.networking.istio.io -o jsonpath='{.spec.conversion.strategy}'
+```
+
+If you see admission webhook errors when applying Istio resources, that is separate from CRD version conversion. Check the Istio admission webhooks and make sure istiod is running:
 
 ```bash
 kubectl get mutatingwebhookconfigurations | grep istio
 kubectl get validatingwebhookconfigurations | grep istio
-```
-
-If you see errors about webhook failures, check that istiod is running:
-
-```bash
 kubectl get pods -n istio-system -l app=istiod
 ```
 
 ## Deprecation Warnings
 
-Kubernetes 1.19+ shows deprecation warnings when you use deprecated API versions. You'll see messages like:
+Kubernetes 1.19+ can show deprecation warnings for CRD versions when the CRD marks a version as deprecated. A warning might look like:
 
 ```text
 Warning: networking.istio.io/v1alpha3 VirtualService is deprecated in v1.22+, unavailable in v1.25+; use networking.istio.io/v1 VirtualService
 ```
 
-These warnings appear in kubectl output and in audit logs. They're a signal that you should update your manifests.
+These warnings appear in kubectl output and in audit logs when the CRD includes deprecation metadata for that version. They're a signal that you should update your manifests.
 
 ## Best Practices
 
