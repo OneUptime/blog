@@ -19,7 +19,7 @@ In a microservices architecture, you need to answer two questions for every requ
 
 Without Citadel, you would need to manually provision TLS certificates for every service, rotate them before they expire, and set up a trust chain so services can verify each other. For a few services that might be manageable. For hundreds of services with pods constantly being created and destroyed, it is impossible to do manually.
 
-Citadel automates all of this. Every workload gets a cryptographic identity, and every connection between services is encrypted and authenticated without any changes to your application code.
+Citadel automates all of this. Every workload gets a cryptographic identity, and Istio can use that identity to encrypt and authenticate service-to-service connections without any changes to your application code.
 
 ## How Certificate Issuance Works
 
@@ -52,7 +52,7 @@ Istiod (Citadel) validates the CSR:
 
 ### Step 5: Certificate Delivery
 
-The signed certificate is sent back to the pilot-agent, which configures Envoy to use it for all mTLS connections.
+The signed certificate is sent back to the pilot-agent. Envoy then requests the certificate and key from the agent through the Secret Discovery Service (SDS) API and uses them for mTLS connections.
 
 ### Step 6: Rotation
 
@@ -105,7 +105,7 @@ Citadel uses a hierarchical trust chain:
 
 All workloads in the mesh share the same root CA, so they all trust each other's certificates.
 
-Check the root CA:
+Check the root CA for the default self-signed CA:
 
 ```bash
 kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
@@ -128,7 +128,7 @@ kubectl create secret generic cacerts -n istio-system \
 
 Istiod will detect this secret and use it as its CA instead of generating a self-signed one.
 
-You can also integrate with external CA systems like Vault or cert-manager:
+You can also integrate with external CA systems. For example, Istio can use the Kubernetes CSR API with a custom signer such as cert-manager, though this feature is currently experimental:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -165,7 +165,7 @@ spec:
       env:
         CITADEL_SELF_SIGNED_CA_CERT_TTL: "87600h"  # 10 years for root CA
         MAX_WORKLOAD_CERT_TTL: "48h"
-        WORKLOAD_CERT_TTL: "24h"
+        DEFAULT_WORKLOAD_CERT_TTL: "24h"
 ```
 
 ## Monitoring Citadel
@@ -184,9 +184,9 @@ Key metrics:
 citadel_server_csr_count
 
 # CSR signing errors
-citadel_server_csr_sign_error_count
+citadel_server_csr_sign_err_count
 
-# Certificate chain expiry
+# Root certificate expiry
 citadel_server_root_cert_expiry_timestamp
 
 # Success rate
@@ -194,7 +194,7 @@ citadel_server_success_cert_issuance_count
 ```
 
 Set up alerts for:
-- `citadel_server_csr_sign_error_count` increasing rapidly
+- `citadel_server_csr_sign_err_count` increasing rapidly
 - `citadel_server_root_cert_expiry_timestamp` approaching current time
 - Any workload certificates that are close to expiration
 
@@ -225,18 +225,18 @@ kubectl logs -n istio-system deploy/istiod | grep -i "csr\|cert\|error"
 Common causes:
 - The service account token is invalid or expired
 - Istiod cannot reach the Kubernetes API to validate the token
-- The CA key secret is missing or corrupted
+- The CA key secret (`istio-ca-secret` for the default self-signed CA, or `cacerts` for a plugged-in CA) is missing or corrupted
 
 ### Problem: Root CA Expiring
 
-Check the root CA expiration:
+Check the root CA expiration for the default self-signed CA:
 
 ```bash
 kubectl get secret istio-ca-secret -n istio-system -o jsonpath='{.data.ca-cert\.pem}' | \
     base64 -d | openssl x509 -enddate -noout
 ```
 
-If it is close to expiring, you need to rotate it. This requires creating a new CA secret and restarting istiod. All workload certificates will be re-issued.
+If it is close to expiring, you need to rotate it. For the default self-signed CA, rotate the `istio-ca-secret` material and restart istiod. If you use a plugged-in CA, rotate the `cacerts` secret instead. Workload certificates will then be re-issued.
 
 ### Problem: Certificate Rotation Not Happening
 
@@ -252,7 +252,7 @@ The pilot-agent should request new certificates automatically. If it is not, che
 
 The CA private key is the most sensitive piece of your mesh security. If it is compromised, an attacker can issue certificates for any identity. Protect it by:
 
-- Using Kubernetes RBAC to restrict access to the `istio-ca-secret` secret
+- Using Kubernetes RBAC to restrict access to the CA secret (`istio-ca-secret` for the default self-signed CA, or `cacerts` for a plugged-in CA)
 - Enabling audit logging for secret access in the `istio-system` namespace
 - Considering an external CA (like Vault) that provides hardware-backed key storage
 - Rotating the CA periodically
