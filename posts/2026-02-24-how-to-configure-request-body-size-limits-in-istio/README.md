@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: Istio, Request Size, Envoy, Kubernetes, API Security
 
-Description: How to set and enforce request body size limits in Istio using EnvoyFilter, including per-route limits, global limits, and error handling.
+Description: How to set and enforce request body size limits in Istio using EnvoyFilter, including per-service limits, gateway limits, and error handling.
 
 ---
 
@@ -122,7 +122,7 @@ spec:
       patch:
         operation: INSERT_BEFORE
         value:
-          name: envoy.lua
+          name: envoy.filters.http.lua
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
             default_source_code:
@@ -143,11 +143,11 @@ spec:
 
 This approach doesn't buffer the body, so it uses no extra memory. But it only works when the `Content-Length` header is present. Chunked transfer encoding doesn't include this header, so chunked requests won't be checked.
 
-## Per-Route Size Limits
+## Per-Service Size Limits
 
-Different API endpoints often need different size limits. A profile picture upload might allow 5MB, while a data import endpoint might need 100MB.
+Different services often need different size limits. A profile picture upload service might allow 5MB, while a data import service might need 100MB.
 
-You can scope the EnvoyFilter using route configuration matching. But a simpler approach is to use different workload selectors for different services:
+You can set true per-route overrides with Envoy's `BufferPerRoute` configuration on routes or virtual hosts. But a simpler approach is to use different workload selectors for different services:
 
 ```yaml
 # Small limit for regular API
@@ -267,6 +267,7 @@ spec:
       patch:
         operation: MERGE
         value:
+          name: envoy.filters.network.http_connection_manager
           typed_config:
             "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
             max_request_headers_kb: 32
@@ -296,12 +297,13 @@ Verify the limits work:
 
 ```bash
 # Generate a file slightly over the limit
-dd if=/dev/zero of=/tmp/over-limit bs=1M count=11
+kubectl exec <client-pod> -n default -- \
+  dd if=/dev/zero of=/tmp/over-limit bs=1M count=11
 
 # Try to upload it
-kubectl exec -it <client-pod> -n default -- \
+kubectl exec <client-pod> -n default -- \
   curl -s -o /dev/null -w "%{http_code}" \
-  -X POST -d @/tmp/over-limit \
+  -X POST --data-binary @/tmp/over-limit \
   http://my-api.default.svc.cluster.local:8080/endpoint
 
 # Should return 413
@@ -309,12 +311,13 @@ kubectl exec -it <client-pod> -n default -- \
 
 ```bash
 # Generate a file under the limit
-dd if=/dev/zero of=/tmp/under-limit bs=1M count=5
+kubectl exec <client-pod> -n default -- \
+  dd if=/dev/zero of=/tmp/under-limit bs=1M count=5
 
 # Try to upload it
-kubectl exec -it <client-pod> -n default -- \
+kubectl exec <client-pod> -n default -- \
   curl -s -o /dev/null -w "%{http_code}" \
-  -X POST -d @/tmp/under-limit \
+  -X POST --data-binary @/tmp/under-limit \
   http://my-api.default.svc.cluster.local:8080/endpoint
 
 # Should return 200 (or whatever your service returns)
