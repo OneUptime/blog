@@ -15,19 +15,19 @@ Graceful shutdown is what separates a smooth deployment from one that drops user
 When Kubernetes terminates a pod, several things happen simultaneously, and the ordering matters a lot:
 
 1. The pod enters the `Terminating` state
-2. The pod is removed from Service endpoints (kube-proxy and Envoy stop routing new traffic to it)
-3. The `preStop` hook runs (if configured)
-4. SIGTERM is sent to all containers
-5. The termination grace period countdown starts
+2. The termination grace period countdown starts
+3. The pod is marked as terminating and no longer considered ready for normal Service traffic
+4. The `preStop` hook runs for each container that defines one
+5. SIGTERM is sent to each container after its `preStop` hook completes
 6. After the grace period, SIGKILL is sent
 
-The problem is that steps 2 and 3 happen in parallel, not in sequence. This means there is a race condition: other services might still send traffic to this pod because they have not yet received the updated endpoint list.
+The problem is that endpoint updates and container shutdown are asynchronous. This means there is a race condition: other services might still send traffic to this pod because they have not yet received the updated endpoint list.
 
 ## The Race Condition Problem
 
 Consider this scenario:
 1. Pod A is being terminated
-2. Kubernetes removes Pod A from the endpoint list
+2. Kubernetes marks Pod A as terminating and not ready for normal Service traffic
 3. Pod B's Envoy sidecar has not received the endpoint update yet (EDS propagation takes a few seconds)
 4. Pod B sends a request to Pod A
 5. Pod A's Envoy sidecar has already started shutting down
@@ -45,7 +45,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
+    metadata:
+      labels:
+        app: my-app
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -59,13 +65,13 @@ spec:
         - containerPort: 8080
 ```
 
-The 5-second sleep gives time for:
+The 5-second sleep delays SIGTERM for the application container and gives time for:
 - Kubernetes to update the endpoint list
 - istiod to process the endpoint change
 - istiod to push the updated EDS to all Envoy proxies
 - All proxies to apply the new endpoint list
 
-In most clusters, 5 seconds is enough. In very large clusters or clusters with high control plane load, you might need 10 seconds.
+In most clusters, 5 seconds is enough. In very large clusters or clusters with high control plane load, you might need 10 seconds. Remember that `preStop` time counts against `terminationGracePeriodSeconds`, and a `preStop` hook on only the application container does not delay SIGTERM for other containers.
 
 ## Configuring Sidecar Drain Duration
 
@@ -77,8 +83,13 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 30s
@@ -90,9 +101,9 @@ spec:
 ```
 
 During the drain period:
-- Envoy stops accepting new connections on the inbound listener
+- Envoy starts gracefully draining and discourages new connections
 - Existing connections continue to be served
-- New requests that arrive (from proxies that have not received the endpoint update) get a 503
+- New requests that arrive (from proxies that have not received the endpoint update) may fail, commonly with a 503
 - After the drain duration, all remaining connections are closed
 
 ## The EXIT_ON_ZERO_ACTIVE_CONNECTIONS Optimization
@@ -105,13 +116,22 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 30s
           proxyMetadata:
             EXIT_ON_ZERO_ACTIVE_CONNECTIONS: "true"
+    spec:
+      containers:
+      - name: my-app
+        image: my-app:latest
 ```
 
 With this setting, if all connections drain in 3 seconds, the sidecar exits after 3 seconds instead of waiting the full 30. This can significantly speed up rolling deployments.
@@ -120,9 +140,9 @@ With this setting, if all connections drain in 3 seconds, the sidecar exits afte
 
 A tricky aspect of graceful shutdown is the ordering between the sidecar and the application container. If the sidecar shuts down before the application, the application loses network access and cannot complete in-flight requests or make any outbound calls during its own shutdown process.
 
-Istio addresses this with the `ISTIO_QUIT_API` environment variable. When the application container exits, the pilot-agent process in the sidecar detects it and initiates its own shutdown.
+Historically, Kubernetes did not give regular sidecar containers special lifecycle ordering, so the application and proxy shutdown paths were decoupled. Newer Kubernetes native sidecar support improves this ordering when Istio is configured to use native sidecars.
 
-You can also configure the sidecar to wait for the application to exit first:
+You can also configure the sidecar to be ready before the application starts:
 
 ```yaml
 apiVersion: apps/v1
@@ -130,15 +150,24 @@ kind: Deployment
 metadata:
   name: my-app
 spec:
+  selector:
+    matchLabels:
+      app: my-app
   template:
     metadata:
+      labels:
+        app: my-app
       annotations:
         proxy.istio.io/config: |
           holdApplicationUntilProxyStarts: true
           terminationDrainDuration: 20s
+    spec:
+      containers:
+      - name: my-app
+        image: my-app:latest
 ```
 
-The `holdApplicationUntilProxyStarts` setting also affects shutdown ordering by making the proxy more aware of the application lifecycle.
+The `holdApplicationUntilProxyStarts` setting is a startup ordering option. It helps prevent application startup before the proxy is ready, but it does not by itself make the sidecar wait for application shutdown.
 
 ## Handling Long-Running Requests
 
@@ -150,8 +179,13 @@ kind: Deployment
 metadata:
   name: report-generator
 spec:
+  selector:
+    matchLabels:
+      app: report-generator
   template:
     metadata:
+      labels:
+        app: report-generator
       annotations:
         proxy.istio.io/config: |
           terminationDrainDuration: 120s
@@ -199,13 +233,13 @@ Track connection termination errors in your metrics:
 ```promql
 # Requests that failed due to upstream connection termination
 
-rate(istio_requests_total{response_flags="UC"}[5m])
+rate(istio_requests_total{response_flags=~".*UC.*"}[5m])
 
 # Requests that failed due to no healthy upstream
-rate(istio_requests_total{response_flags="UH"}[5m])
+rate(istio_requests_total{response_flags=~".*UH.*"}[5m])
 
 # Requests that failed due to upstream overflow
-rate(istio_requests_total{response_flags="UO"}[5m])
+rate(istio_requests_total{response_flags=~".*UO.*"}[5m])
 ```
 
 If you see spikes in these metrics during deployments, your graceful shutdown is not working properly.
@@ -226,7 +260,7 @@ spec:
       app: my-app
 ```
 
-This ensures at least 2 pods are always available, even during node drains or cluster upgrades. Combined with proper graceful shutdown configuration, this gives you zero-downtime deployments.
+This requires voluntary evictions to leave at least 2 matching pods available, which helps during node drains or cluster upgrades. Combined with proper graceful shutdown configuration, this reduces the risk of deployment-time errors.
 
 ## Rolling Update Configuration
 
@@ -239,6 +273,17 @@ metadata:
   name: my-app
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-app
+        image: my-app:latest
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -255,16 +300,17 @@ Here is how all the timings should line up for a well-configured graceful shutdo
 ```text
 Time    Event
 0s      Pod enters Terminating state
-0-5s    preStop sleep (endpoint propagation)
-5s      SIGTERM sent to application and sidecar
-5-35s   Sidecar draining (terminationDrainDuration: 30s)
+0-5s    Application preStop sleep (endpoint propagation)
+5s      SIGTERM sent to the application container
+0-35s   Sidecar draining window if its termination starts immediately
 5-35s   Application handling remaining requests
-35s     Sidecar exits (or earlier if EXIT_ON_ZERO_ACTIVE_CONNECTIONS)
+35s     Sidecar exits after drain starts (or earlier if EXIT_ON_ZERO_ACTIVE_CONNECTIONS)
 60s     terminationGracePeriodSeconds deadline (SIGKILL if still running)
 ```
 
 The key relationships:
-- `preStop delay` < `terminationDrainDuration` < `terminationGracePeriodSeconds`
+- `preStop delay + terminationDrainDuration` < `terminationGracePeriodSeconds`
+- If your proxy is not using native sidecar shutdown ordering, do not assume the application container's `preStop` hook delays sidecar termination
 - Leave at least 10-15 seconds of buffer before the grace period deadline
 
 Getting graceful shutdown right is not glamorous work, but it directly impacts your users. A few minutes of configuration saves you from error spikes during every deployment. Test it, monitor it, and adjust the timings based on your specific application behavior.
