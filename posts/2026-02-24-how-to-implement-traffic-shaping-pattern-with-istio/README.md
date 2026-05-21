@@ -15,7 +15,7 @@ Traffic shaping is the practice of controlling how traffic flows through your sy
 The most fundamental traffic shaping technique is weighted splitting. You control exactly what percentage of traffic goes to each version of a service:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -29,7 +29,7 @@ spec:
     labels:
       version: v2
 ---
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -48,7 +48,7 @@ spec:
       weight: 20
 ```
 
-80% goes to v1, 20% goes to v2. The weights must add up to 100.
+With weights of 80 and 20, 80% goes to v1 and 20% goes to v2. Istio treats weights as relative proportions, so using values that add up to 100 is the clearest way to express percentages.
 
 ### Gradual Rollout Strategy
 
@@ -89,7 +89,7 @@ for i in "${!WEIGHTS[@]}"; do
   wait_time=${WAIT_TIMES[$i]}
 
   cat <<EOF | kubectl apply -f -
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -114,11 +114,30 @@ EOF
     echo "Waiting ${wait_time} seconds..."
     sleep $wait_time
 
-    # Check error rate before proceeding
-    ERROR_RATE=$(kubectl exec deploy/prometheus-server -n monitoring -- curl -s 'localhost:9090/api/v1/query?query=rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local",response_code=~"5.."}[5m])' | python3 -c "import json,sys; data=json.load(sys.stdin); print(sum(float(r['value'][1]) for r in data.get('data',{}).get('result',[])))")
+    # Check 5xx error ratio before proceeding
+    ERROR_RATE=$(kubectl exec deploy/prometheus-server -n monitoring -- curl -G -s 'localhost:9090/api/v1/query' --data-urlencode 'query=sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local",response_code=~"5.."}[5m])) / sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[5m]))' | python3 -c "import json,sys; data=json.load(sys.stdin); result=data.get('data',{}).get('result',[]); print(float(result[0]['value'][1]) if result else 0)")
 
     if (( $(echo "$ERROR_RATE > 0.05" | bc -l) )); then
       echo "Error rate too high ($ERROR_RATE), rolling back!"
+      cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1
+kind: VirtualService
+metadata:
+  name: my-service
+spec:
+  hosts:
+  - my-service
+  http:
+  - route:
+    - destination:
+        host: my-service
+        subset: v1
+      weight: 100
+    - destination:
+        host: my-service
+        subset: v2
+      weight: 0
+EOF
       break
     fi
   fi
@@ -130,7 +149,7 @@ done
 Traffic mirroring sends a copy of live traffic to another service for testing, without affecting the original traffic flow. The mirrored requests are fire-and-forget; responses from the mirror are discarded:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -178,7 +197,7 @@ Fault injection lets you test how your system handles failures by artificially i
 ### Delay Injection
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -201,7 +220,7 @@ spec:
 ### Abort Injection
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -224,7 +243,7 @@ spec:
 ### Combined Fault Injection
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -253,7 +272,7 @@ spec:
 Apply faults only to specific users or conditions:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: my-service
@@ -282,10 +301,10 @@ Only requests with the `x-test-chaos: true` header get delayed. Normal traffic i
 
 ## Traffic Shifting with Session Affinity
 
-During a canary rollout, you might want users to consistently see the same version rather than bouncing between v1 and v2:
+During a canary rollout, you might want users to consistently hit the same backend pod. Istio's consistent hash load balancing can provide soft session affinity within the destination selected by the VirtualService:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: my-service
@@ -306,7 +325,7 @@ spec:
       version: v2
 ```
 
-Combined with weighted routing, users will be assigned to either v1 or v2 based on the weight, and their assignment will be sticky for the cookie's TTL.
+This does not make the weighted v1/v2 assignment itself sticky. VirtualService routing chooses the destination first, and DestinationRule load balancing is applied after that route is selected. If users must consistently see v1 or v2 during a canary, route them with an explicit request property such as an application-set cookie or header, and use weighted routing only for users without that assignment.
 
 ## Monitoring Traffic Shaping
 
@@ -316,8 +335,8 @@ Track how traffic is distributed across versions:
 # Request rate by version
 sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[5m])) by (destination_version)
 
-# Error rate by version
-sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local", response_code=~"5.."}[5m])) by (destination_version)
+# Error ratio by version
+sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local", response_code=~"5.."}[5m])) by (destination_version) / sum(rate(istio_requests_total{destination_service="my-service.default.svc.cluster.local"}[5m])) by (destination_version)
 
 # Latency by version
 histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service="my-service.default.svc.cluster.local"}[5m])) by (le, destination_version))
@@ -332,7 +351,8 @@ Confirm that the traffic split is working as expected:
 ```bash
 # Send 100 requests and count the distribution
 for i in $(seq 1 100); do
-  kubectl exec deploy/test-client -- curl -s -o /dev/null -w "%{http_code}" http://my-service:8080/api/version
+  kubectl exec deploy/test-client -- curl -s http://my-service:8080/api/version
+  echo
 done | sort | uniq -c
 ```
 
