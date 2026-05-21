@@ -49,7 +49,7 @@ This installs:
 - istiod with relaxed resource requirements
 - An ingress gateway
 - An egress gateway
-- Extra observability features enabled
+- Higher tracing and access logging settings for demonstrations
 
 If even the demo profile feels heavy, use the minimal profile and add what you need:
 
@@ -123,7 +123,12 @@ istioctl install -f dev-values.yaml -y
 With Helm:
 
 ```bash
-helm install istio-base istio/base -n istio-system --create-namespace
+helm repo add istio https://istio-release.storage.googleapis.com/charts
+helm repo update
+
+helm install istio-base istio/base -n istio-system \
+  --set defaultRevision=default \
+  --create-namespace
 
 helm install istiod istio/istiod -n istio-system \
   --set pilot.resources.requests.cpu=100m \
@@ -132,6 +137,11 @@ helm install istiod istio/istiod -n istio-system \
   --set meshConfig.accessLogFile=/dev/stdout \
   --set global.proxy.resources.requests.cpu=10m \
   --set global.proxy.resources.requests.memory=40Mi
+
+helm install istio-ingressgateway istio/gateway -n istio-system \
+  --set service.type=NodePort \
+  --set resources.requests.cpu=50m \
+  --set resources.requests.memory=64Mi
 ```
 
 ## Setting Up Port Forwarding for the Gateway
@@ -171,10 +181,10 @@ components:
 The demo profile makes it easy to add Kiali, Grafana, Jaeger, and Prometheus:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/jaeger.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
 ```
 
 Access them:
@@ -232,7 +242,7 @@ istioctl proxy-config log deploy/my-app -n my-namespace --level debug
 If redeploying to the cluster for every code change feels slow, use Telepresence to intercept traffic locally:
 
 ```bash
-# Install telepresence
+# Connect Telepresence to the cluster
 telepresence connect
 
 # Intercept a service
@@ -247,7 +257,7 @@ During development, you might not want sidecars everywhere. Skip injection for s
 
 ```yaml
 metadata:
-  annotations:
+  labels:
     sidecar.istio.io/inject: "false"
 ```
 
@@ -295,10 +305,10 @@ istioctl install --set profile=demo \
   -y
 
 echo "Installing observability addons..."
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/prometheus.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/kiali.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/grafana.yaml
-kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.24/samples/addons/jaeger.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/prometheus.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/kiali.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/grafana.yaml
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.30/samples/addons/jaeger.yaml
 
 echo "Creating dev namespace..."
 kubectl create namespace dev
