@@ -17,7 +17,7 @@ Running these checks as part of your deployment pipeline prevents issues like mi
 Before deploying, validate that your Istio manifests are correct. `istioctl analyze` catches common misconfigurations:
 
 ```bash
-istioctl analyze -n default --all-namespaces
+istioctl analyze --all-namespaces
 ```
 
 This checks for things like:
@@ -29,7 +29,7 @@ This checks for things like:
 You can also validate specific files before applying them:
 
 ```bash
-istioctl analyze -f my-virtualservice.yaml -f my-destinationrule.yaml
+istioctl analyze my-virtualservice.yaml my-destinationrule.yaml
 ```
 
 Run this as a pre-deploy step in your CI/CD pipeline:
@@ -39,7 +39,7 @@ Run this as a pre-deploy step in your CI/CD pipeline:
 
 - name: Validate Istio config
   run: |
-    istioctl analyze -f manifests/istio/ --output-threshold Error
+    istioctl analyze manifests/istio/ --output-threshold Error
     if [ $? -ne 0 ]; then
       echo "Istio configuration validation failed"
       exit 1
@@ -122,11 +122,26 @@ Check that your VirtualService references match existing DestinationRules:
 #!/bin/bash
 NAMESPACE="default"
 
-# Get all subsets referenced in VirtualServices
-VS_SUBSETS=$(kubectl get virtualservice -n $NAMESPACE -o jsonpath='{range .items[*]}{range .spec.http[*]}{range .route[*]}{.destination.host}:{.destination.subset}{"\n"}{end}{end}{end}' 2>/dev/null)
+# Get all host/subset pairs referenced in VirtualServices
+VS_SUBSETS=$(kubectl get virtualservice -n $NAMESPACE -o json 2>/dev/null | python3 -c '
+import json, sys
+for item in json.load(sys.stdin).get("items", []):
+    for http in item.get("spec", {}).get("http", []):
+        for route in http.get("route", []):
+            dest = route.get("destination", {})
+            if dest.get("subset"):
+                print("{}:{}".format(dest.get("host", ""), dest["subset"]))
+')
 
-# Get all subsets defined in DestinationRules
-DR_SUBSETS=$(kubectl get destinationrule -n $NAMESPACE -o jsonpath='{range .items[*]}{range .spec.subsets[*]}{.name}{"\n"}{end}{end}' 2>/dev/null)
+# Get all host/subset pairs defined in DestinationRules
+DR_SUBSETS=$(kubectl get destinationrule -n $NAMESPACE -o json 2>/dev/null | python3 -c '
+import json, sys
+for item in json.load(sys.stdin).get("items", []):
+    host = item.get("spec", {}).get("host", "")
+    for subset in item.get("spec", {}).get("subsets", []):
+        if subset.get("name"):
+            print("{}:{}".format(host, subset["name"]))
+')
 
 echo "VirtualService references:"
 echo "$VS_SUBSETS"
@@ -135,10 +150,11 @@ echo "DestinationRule subsets:"
 echo "$DR_SUBSETS"
 
 # Check for mismatches
-echo "$VS_SUBSETS" | while read line; do
+echo "$VS_SUBSETS" | while IFS= read -r line; do
+    HOST=$(echo "$line" | cut -d: -f1)
     SUBSET=$(echo "$line" | cut -d: -f2)
-    if [ -n "$SUBSET" ] && ! echo "$DR_SUBSETS" | grep -q "^${SUBSET}$"; then
-        echo "ERROR: Subset '$SUBSET' referenced in VirtualService but not found in any DestinationRule"
+    if [ -n "$SUBSET" ] && ! echo "$DR_SUBSETS" | grep -q "^${HOST}:${SUBSET}$"; then
+        echo "ERROR: Subset '$SUBSET' referenced for host '$HOST' in VirtualService but not found in a matching DestinationRule"
         exit 1
     fi
 done
@@ -156,19 +172,19 @@ kubectl get pods -n istio-system -l istio=ingressgateway
 istioctl proxy-config listener -n istio-system deployment/istio-ingressgateway
 
 # Check for port conflicts
-kubectl get gateway --all-namespaces -o jsonpath='{range .items[*]}{.metadata.name}: {range .spec.servers[*]}{.port.number} {end}{"\n"}{end}'
+kubectl get gateways.networking.istio.io --all-namespaces -o jsonpath='{range .items[*]}{.metadata.name}: {range .spec.servers[*]}{.port.number} {end}{"\n"}{end}'
 ```
 
 ## Checking Authorization Policy Impact
 
-Before deploying new authorization policies, dry-run them to understand their impact:
+Before deploying new authorization policies, use Istio's dry-run annotation to understand their impact without enforcing them:
 
 ```bash
 # List current policies
 kubectl get authorizationpolicies -n default -o wide
 
-# Analyze the new policy
-istioctl analyze -f new-auth-policy.yaml
+# Add metadata.annotations."istio.io/dry-run"="true" to the new policy, then analyze it
+istioctl analyze new-auth-policy.yaml
 
 # Check if there are conflicting policies
 kubectl get authorizationpolicies -n default -o jsonpath='{range .items[*]}{.metadata.name}: action={.spec.action}{"\n"}{end}'
@@ -230,7 +246,7 @@ set -e
 echo "=== Pre-Deployment Checks ==="
 
 echo "1. Validating Istio configuration..."
-istioctl analyze -f manifests/istio/ --output-threshold Error
+istioctl analyze manifests/istio/ --output-threshold Error
 echo "   PASSED"
 
 echo "2. Checking mesh health..."
@@ -243,6 +259,7 @@ echo "   PASSED"
 
 echo "3. Checking istiod health..."
 ISTIOD_READY=$(kubectl get deploy -n istio-system istiod -o jsonpath='{.status.readyReplicas}')
+ISTIOD_READY=${ISTIOD_READY:-0}
 if [ "$ISTIOD_READY" -lt 1 ]; then
     echo "   FAILED: istiod not ready"
     exit 1
@@ -251,6 +268,7 @@ echo "   PASSED"
 
 echo "4. Checking ingress gateway..."
 GW_READY=$(kubectl get deploy -n istio-system istio-ingressgateway -o jsonpath='{.status.readyReplicas}')
+GW_READY=${GW_READY:-0}
 if [ "$GW_READY" -lt 1 ]; then
     echo "   FAILED: ingress gateway not ready"
     exit 1
