@@ -44,23 +44,24 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              local api_key = request_handle:headers():get("x-api-key")
-              if api_key == nil or api_key == "" then
-                request_handle:respond(
-                  {[":status"] = "401"},
-                  '{"error": "Missing x-api-key header"}'
-                )
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                local api_key = request_handle:headers():get("x-api-key")
+                if api_key == nil or api_key == "" then
+                  request_handle:respond(
+                    {[":status"] = "401"},
+                    '{"error": "Missing x-api-key header"}'
+                  )
+                end
               end
-            end
 ```
 
 When a request comes in without the `x-api-key` header, the Lua filter sends back a 401 response immediately. The request never reaches the upstream service.
 
 ## Content-Type Validation
 
-Another common validation is making sure POST and PUT requests include the correct Content-Type header:
+Another common validation is making sure POST, PUT, and PATCH requests include the correct Content-Type header:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -88,31 +89,32 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              local method = request_handle:headers():get(":method")
-              if method == "POST" or method == "PUT" or method == "PATCH" then
-                local content_type = request_handle:headers():get("content-type")
-                if content_type == nil then
-                  request_handle:respond(
-                    {[":status"] = "415"},
-                    '{"error": "Content-Type header is required for this method"}'
-                  )
-                  return
-                end
-                if not string.find(content_type, "application/json") then
-                  request_handle:respond(
-                    {[":status"] = "415"},
-                    '{"error": "Only application/json content type is supported"}'
-                  )
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                local method = request_handle:headers():get(":method")
+                if method == "POST" or method == "PUT" or method == "PATCH" then
+                  local content_type = request_handle:headers():get("content-type")
+                  if content_type == nil then
+                    request_handle:respond(
+                      {[":status"] = "415"},
+                      '{"error": "Content-Type header is required for this method"}'
+                    )
+                    return
+                  end
+                  if not string.find(content_type, "application/json") then
+                    request_handle:respond(
+                      {[":status"] = "415"},
+                      '{"error": "Only application/json content type is supported"}'
+                    )
+                  end
                 end
               end
-            end
 ```
 
 ## Request Size Limiting
 
-Large request bodies can be used for denial-of-service attacks. You can limit request body size at the connection manager level:
+Large request headers and bodies can be used for denial-of-service attacks. You can limit request header size at the connection manager level:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -140,7 +142,7 @@ spec:
           max_request_headers_kb: 60
 ```
 
-For body size limits, you can use the buffer filter:
+Requests exceeding this header size get a 431 response automatically. For body size limits, you can use the buffer filter:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -284,28 +286,29 @@ spec:
         name: envoy.filters.http.lua
         typed_config:
           "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-          inlineCode: |
-            function envoy_on_request(request_handle)
-              local method = request_handle:headers():get(":method")
-              local path = request_handle:headers():get(":path")
-              if method == "POST" and string.find(path, "^/api/v1/users") then
-                local body = request_handle:body():getBytes(0, request_handle:body():length())
-                if body == nil or body == "" then
-                  request_handle:respond(
-                    {[":status"] = "400"},
-                    '{"error": "Request body is required"}'
-                  )
-                  return
-                end
-                if not string.find(body, '"email"') then
-                  request_handle:respond(
-                    {[":status"] = "400"},
-                    '{"error": "email field is required"}'
-                  )
-                  return
+          defaultSourceCode:
+            inlineString: |
+              function envoy_on_request(request_handle)
+                local method = request_handle:headers():get(":method")
+                local path = request_handle:headers():get(":path")
+                if method == "POST" and string.find(path, "^/api/v1/users") then
+                  local body = request_handle:body():getBytes(0, request_handle:body():length())
+                  if body == nil or body == "" then
+                    request_handle:respond(
+                      {[":status"] = "400"},
+                      '{"error": "Request body is required"}'
+                    )
+                    return
+                  end
+                  if not string.find(body, '"email"') then
+                    request_handle:respond(
+                      {[":status"] = "400"},
+                      '{"error": "email field is required"}'
+                    )
+                    return
+                  end
                 end
               end
-            end
 ```
 
 This is a basic check. Lua does not have a built-in JSON parser, so the string matching approach only works for simple field presence checks. For proper JSON schema validation, you would want to use a Wasm filter.
@@ -333,7 +336,7 @@ dd if=/dev/zero bs=2M count=1 | curl -X POST -H "Content-Type: application/json"
 
 ## Ordering Matters
 
-When you have multiple EnvoyFilter resources, the order they are applied matters. Filters are applied in alphabetical order by name within a namespace, and `istio-system` filters are applied before namespace-specific ones. Use the `priority` field to control ordering explicitly:
+When you have multiple EnvoyFilter resources, the order they are applied matters. Filters in the mesh config root namespace, often `istio-system`, are applied before matching filters in the workload namespace. Within the same context, patch sets are sorted by priority, creation time, and fully qualified resource name. Use the `priority` field to control ordering explicitly:
 
 ```yaml
 spec:
