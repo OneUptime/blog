@@ -8,7 +8,7 @@ Description: How to implement per-IP address rate limiting in Istio to protect s
 
 ---
 
-Per-IP rate limiting is one of the most fundamental protections you can put in front of your services. It prevents any single IP address from overwhelming your backend, which is critical for defending against scrapers, brute-force attacks, and lightweight DDoS attempts. In Istio, you can implement this using either local rate limiting (per-proxy) or global rate limiting (centralized), and the IP address extraction is handled by Envoy.
+Per-IP rate limiting is one of the most fundamental protections you can put in front of your services. It prevents any single IP address from overwhelming your backend, which is critical for defending against scrapers, brute-force attacks, and lightweight DDoS attempts. In Istio, true per-IP HTTP rate limiting is usually implemented with global rate limiting (centralized), while local rate limiting can provide a per-proxy backstop. The IP address extraction is handled by Envoy.
 
 ## How IP Address Extraction Works in Envoy
 
@@ -18,11 +18,11 @@ Before you can rate limit by IP, you need to know where the client IP comes from
 - **Behind a load balancer**: The real client IP is typically in the `X-Forwarded-For` header.
 - **Behind a CDN**: Similar to a load balancer, but the CDN might use a custom header.
 
-Envoy can extract the client IP from either the connection itself or from trusted headers. The `remote_address` descriptor in Envoy uses the downstream direct remote address, while `request_headers` lets you pull from any header.
+Envoy can extract the client IP from either the connection itself or from trusted headers. The `remote_address` rate limit action uses Envoy's trusted client address as determined by its `X-Forwarded-For` and trusted proxy rules, while `request_headers` lets you pull the raw value from any header.
 
 ## Configuring Istio to Trust Proxy Headers
 
-If your service sits behind a load balancer or CDN, you need to tell Istio how many proxy hops to trust. This is configured in the mesh config or through a Telemetry resource:
+If your service sits behind a load balancer or CDN, you need to tell Istio how many proxy hops to trust. This is configured in the mesh config or through the `proxy.istio.io/config` annotation on the gateway pod:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
@@ -34,13 +34,13 @@ spec:
         numTrustedProxies: 1
 ```
 
-With `numTrustedProxies: 1`, Envoy trusts one proxy hop and extracts the client IP from the second-to-last entry in the `X-Forwarded-For` header.
+With `numTrustedProxies: 1`, Envoy trusts one proxy hop and derives the trusted client IP from the `X-Forwarded-For` header.
 
-## Per-IP Local Rate Limiting
+## Local Rate Limiting Caveat
 
-For local rate limiting (no external service required), you can use Envoy's local rate limit filter with descriptors. However, the standard local rate limit filter uses a single shared token bucket. To get per-IP behavior with local rate limiting, you need to use the connection-level approach.
+For local rate limiting (no external service required), you can use Envoy's local rate limit filter with descriptors. However, the standard local rate limit filter uses a shared token bucket per Envoy process by default, or per downstream connection when `local_rate_limit_per_downstream_connection` is enabled. It does not create a separate dynamic bucket for every client IP the way the global rate limit service does.
 
-A simpler approach uses the global rate limit service with per-IP descriptors. But if you really want local-only, here is how to use a Lua filter to set headers that the local rate limiter can use:
+A simpler approach uses the global rate limit service with per-IP descriptors. But if you really want local-only, here is a coarse per-workload local rate limit you can use as a backstop:
 
 ```yaml
 apiVersion: networking.istio.io/v1alpha3
@@ -164,7 +164,8 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.rate-limit.svc.cluster.local
+                authority: ratelimit.rate-limit.svc.cluster.local
             transport_api_version: V3
           enable_x_ratelimit_headers: DRAFT_VERSION_03
   - applyTo: VIRTUAL_HOST
@@ -178,21 +179,21 @@ spec:
           - remote_address: {}
 ```
 
-The `remote_address: {}` action tells Envoy to use the downstream client IP as the descriptor value. Envoy automatically populates the `remote_address` descriptor key with the client's IP.
+The `remote_address: {}` action tells Envoy to use the trusted client IP as the descriptor value. Envoy automatically populates the `remote_address` descriptor key with that trusted address.
 
-## Using X-Forwarded-For for Real Client IP
+## Using Gateway-Forwarded Client IP in Sidecars
 
-If your services are behind a load balancer and the direct connection IP is always the load balancer's IP, you need to extract the real client IP from the `X-Forwarded-For` header instead:
+If you are applying the rate limit at a sidecar behind the ingress gateway, the direct connection IP might be another proxy rather than the original client. In that case, prefer applying the limit at the ingress gateway. If you must rate limit in the sidecar, you can key on the `X-Envoy-External-Address` header that Istio's ingress gateway populates from trusted `X-Forwarded-For` processing:
 
 ```yaml
 rate_limits:
 - actions:
   - request_headers:
-      header_name: "x-forwarded-for"
+      header_name: "x-envoy-external-address"
       descriptor_key: remote_address
 ```
 
-Be careful with this approach. The `X-Forwarded-For` header can be spoofed by clients unless your infrastructure strips or validates it. Make sure your load balancer overwrites the header rather than appending to it.
+Be careful with this approach. Client IP headers can be spoofed unless your infrastructure strips or validates client-supplied values before the request reaches Istio.
 
 ## Applying at the Ingress Gateway
 
@@ -230,7 +231,8 @@ spec:
           rate_limit_service:
             grpc_service:
               envoy_grpc:
-                cluster_name: rate_limit_cluster
+                cluster_name: outbound|8081||ratelimit.rate-limit.svc.cluster.local
+                authority: ratelimit.rate-limit.svc.cluster.local
             transport_api_version: V3
           enable_x_ratelimit_headers: DRAFT_VERSION_03
   - applyTo: VIRTUAL_HOST
