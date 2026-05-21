@@ -26,7 +26,7 @@ Or:
 no healthy upstream
 ```
 
-These come from the Envoy proxy, not from your application. The request never made it to your backend service.
+These come from the Envoy proxy, not from your application. In many cases the request never made it to your backend service; in reset cases, Envoy may have connected to the upstream but did not receive response headers.
 
 ## Step 1: Check if the Upstream Service is Healthy
 
@@ -37,14 +37,14 @@ The most basic cause is that the destination service is down:
 
 kubectl get pods -n production -l app=orders-service
 
-# Check if the service has endpoints
-kubectl get endpoints orders-service -n production
+# Check if the service has EndpointSlices
+kubectl get endpointslice -n production -l kubernetes.io/service-name=orders-service
 
 # Check if the pods are ready
 kubectl get pods -n production -l app=orders-service -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}'
 ```
 
-If there are no endpoints, the service has no healthy pods backing it. Fix the pod health issues first.
+If there are no ready endpoints, the service has no healthy pods backing it. Fix the pod health issues first.
 
 ## Step 2: Check Envoy Endpoints
 
@@ -56,7 +56,7 @@ istioctl proxy-config endpoints <client-pod> -n production \
   --cluster "outbound|8080||orders-service.production.svc.cluster.local"
 ```
 
-Look at the health status of each endpoint. If they all show as `UNHEALTHY`, the Envoy health checks are failing.
+Look at the health status of each endpoint. If they all show as `UNHEALTHY`, Envoy does not consider any endpoint usable.
 
 ## Step 3: Check for Port Mismatches
 
@@ -70,7 +70,7 @@ kubectl get svc orders-service -n production -o jsonpath='{.spec.ports[*]}'
 kubectl exec <pod-name> -n production -c orders-service -- ss -tlnp
 ```
 
-Also check the protocol naming. Istio uses the service port name to determine the protocol:
+Also check the protocol naming. Istio uses the service port name, or the Kubernetes `appProtocol` field, to determine the protocol:
 
 ```yaml
 # Correct: port name indicates protocol
@@ -88,7 +88,7 @@ spec:
       targetPort: 9090
 ```
 
-If the port name does not start with a recognized protocol (http, https, grpc, tcp, etc.), Istio treats it as opaque TCP, which can cause 503s for HTTP services.
+If the protocol is not specified and Istio cannot automatically detect it, Istio treats the traffic as opaque TCP. That can break HTTP-specific routing or gateway behavior.
 
 ## Step 4: Check DestinationRule Conflicts
 
@@ -99,11 +99,11 @@ A DestinationRule with TLS settings can cause 503s if it does not match the actu
 kubectl get destinationrule -n production -o yaml | grep -A 20 "host: orders-service"
 ```
 
-A common mistake is applying mTLS settings in a DestinationRule when PeerAuthentication is not configured for it:
+A common mistake is forcing mTLS in a DestinationRule when the destination is not part of the mesh or is not expecting mTLS:
 
 ```yaml
 # This can cause 503s if the destination does not expect mTLS
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-service
@@ -128,7 +128,7 @@ trafficPolicy:
 Overly restrictive connection pool settings in a DestinationRule can cause 503s under load:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: orders-service
@@ -227,7 +227,7 @@ If a Sidecar resource limits egress to specific hosts, and the target service is
 
 ```yaml
 # This restricts which services the sidecar can reach
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: Sidecar
 metadata:
   name: default
@@ -253,19 +253,20 @@ spec:
 
 ## Step 9: Test Direct Connectivity
 
-Bypass the sidecar to confirm the service is actually reachable:
+Compare a non-mesh client with an injected client to confirm whether the service is reachable outside of Envoy:
 
 ```bash
-# Test from the application container directly (bypassing sidecar)
-kubectl exec <pod-name> -c orders-service -n production -- \
+# Test from a temporary pod without sidecar injection
+kubectl run tmp-curl -n production --rm -it --restart=Never --image=curlimages/curl \
+  --overrides='{"metadata":{"annotations":{"sidecar.istio.io/inject":"false"}}}' -- \
   curl -v http://target-service:8080/health
 
-# Test from the sidecar (this goes through Envoy)
-kubectl exec <pod-name> -c istio-proxy -n production -- \
+# Test from an injected application container (this goes through Envoy)
+kubectl exec <client-pod> -c <app-container> -n production -- \
   curl -v http://target-service:8080/health
 ```
 
-If the direct connection works but the sidecar connection fails, the issue is in the Envoy configuration.
+If the non-mesh client works but the injected client fails, the issue is likely in the Envoy or Istio configuration.
 
 ## Quick Diagnostic Summary
 
@@ -275,8 +276,8 @@ When you see a 503 in Istio, run through this checklist:
 # 1. Target pods healthy?
 kubectl get pods -n production -l app=orders-service
 
-# 2. Endpoints registered?
-kubectl get endpoints orders-service -n production
+# 2. EndpointSlices registered?
+kubectl get endpointslice -n production -l kubernetes.io/service-name=orders-service
 
 # 3. Envoy knows about endpoints?
 istioctl proxy-config endpoints <client-pod> -n production | grep orders-service
