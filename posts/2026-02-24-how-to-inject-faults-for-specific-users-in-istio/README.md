@@ -17,7 +17,7 @@ Istio makes this possible through header-based match conditions in VirtualServic
 The idea is simple: your application or API gateway adds a header to requests from specific users, and Istio's VirtualService matches on that header to decide whether to inject faults.
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -54,9 +54,9 @@ For this to work, the user's identity needs to be in a header that Istio can mat
 If you use an API gateway (Kong, Ambassador, or your own), configure it to extract the user ID from the JWT token or session and add it as a header:
 
 ```yaml
-# Example: Envoy filter in the gateway to extract from JWT
+# Example: VirtualService matching a header added by the gateway
 
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -84,7 +84,7 @@ spec:
 
 ### Application Propagates Headers
 
-If your application already propagates user context headers through service-to-service calls, you can match on those directly. Istio requires header propagation for distributed tracing to work, so there's a good chance this is already in place.
+If your application already propagates user context headers through service-to-service calls, you can match on those directly. Istio requires applications to propagate trace context headers for distributed tracing to stitch spans together, so there's a good chance standard tracing headers are already in place.
 
 Common headers to match on:
 
@@ -96,10 +96,10 @@ Common headers to match on:
 
 ### Using JWT Claims
 
-If you're using Istio's RequestAuthentication, you can have it extract JWT claims into headers:
+If you're using Istio's RequestAuthentication, you can have it copy successfully verified JWT claims into headers:
 
 ```yaml
-apiVersion: security.istio.io/v1beta1
+apiVersion: security.istio.io/v1
 kind: RequestAuthentication
 metadata:
   name: jwt-auth
@@ -116,7 +116,7 @@ spec:
 Then match on the extracted claim:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -147,7 +147,7 @@ spec:
 You might want different fault behavior for different user types:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: payment-service
@@ -193,7 +193,7 @@ spec:
 To target multiple specific users without creating a rule for each one, use regex matching:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: order-service
@@ -235,7 +235,7 @@ Here's a complete walkthrough of setting up user-targeted fault injection.
 **Step 1**: Create the VirtualService with header-based fault injection:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: product-service
@@ -274,7 +274,7 @@ kubectl apply -f product-service-fault.yaml
 **Step 3**: Test with the targeted header:
 
 ```bash
-# This request may be delayed or aborted
+# This request may be delayed, aborted, or both
 kubectl exec deploy/test-client -n production -- curl -H "x-chaos-user: enabled" -v http://product-service:8080/products
 
 # This request is never affected
