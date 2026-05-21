@@ -35,14 +35,14 @@ spec:
 
 This sets a 1% sampling rate mesh-wide. The value is a float, so you can use decimals like `0.1` for 0.1% sampling.
 
-Common sampling rates and what they mean:
+Common sampling rates and what they mean, before accounting for multiple spans per trace:
 
-| Rate | Requests/sec at 10K RPS | Daily Trace Volume |
+| Rate | Sampled requests/sec at 10K RPS | Daily sampled traces |
 |------|--------------------------|-------------------|
-| 100% | 10,000 | ~864M spans |
-| 10% | 1,000 | ~86.4M spans |
-| 1% | 100 | ~8.64M spans |
-| 0.1% | 10 | ~864K spans |
+| 100% | 10,000 | ~864M traces |
+| 10% | 1,000 | ~86.4M traces |
+| 1% | 100 | ~8.64M traces |
+| 0.1% | 10 | ~864K traces |
 
 ## Setting Sampling via MeshConfig
 
@@ -136,16 +136,16 @@ spec:
           image: my-service:latest
 ```
 
-This is useful for temporarily increasing the sampling rate on a specific deployment for debugging without changing any cluster-wide configuration.
+This is useful for temporarily increasing the sampling rate on a specific deployment for debugging without changing any cluster-wide configuration. Because this annotation changes the proxy configuration for the pod, roll out or restart the workload for the change to take effect.
 
 ## The Priority Order
 
 When multiple sampling configurations exist, the most specific one wins:
 
-1. Pod annotation (most specific)
-2. Workload-level Telemetry (selector with matchLabels)
-3. Namespace-level Telemetry
-4. Mesh-wide Telemetry (in istio-system namespace)
+1. Workload-level Telemetry (selector with matchLabels)
+2. Namespace-level Telemetry
+3. Mesh-wide Telemetry (in istio-system namespace)
+4. Pod annotation
 5. MeshConfig defaultConfig.tracing.sampling (least specific)
 
 ## Force-Tracing with Debug Headers
@@ -172,11 +172,11 @@ The right sampling rate depends on several factors:
 
 **Traffic volume:** High-traffic services need lower sampling rates. A service handling 100K RPS at 1% still generates 1,000 traces per second.
 
-**Backend capacity:** Check how many spans per second your tracing backend can ingest and store. Jaeger with Elasticsearch can typically handle 10,000-50,000 spans per second per collector instance.
+**Backend capacity:** Check how many spans per second your tracing backend can ingest and store. The right number depends on your collector, storage backend, indexing settings, retention, and trace shape, so measure it in your own environment.
 
 **Debugging needs:** If you're actively investigating an issue, temporarily increase the sampling rate for the affected services.
 
-**Cost:** Cloud-hosted tracing services often charge per span. At $0.20 per million spans, 100% sampling on a 10K RPS service costs about $150/day.
+**Cost:** Cloud-hosted tracing services often charge per span. At $0.20 per million spans, 100% sampling on a 10K RPS service costs about $173/day before accounting for multiple spans per trace.
 
 A practical approach:
 
