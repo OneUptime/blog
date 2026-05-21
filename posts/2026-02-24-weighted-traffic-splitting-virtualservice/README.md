@@ -144,7 +144,7 @@ Verify:
 ```bash
 # Check the route config
 
-istioctl proxy-config routes deploy/my-service-v1 -n my-app
+istioctl proxy-config routes deployment/my-service-v1 -n my-app
 
 # Send test traffic and count responses
 for i in $(seq 1 100); do
@@ -399,7 +399,7 @@ EOF
 
   # Check error rate
   ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query" \
-    --data-urlencode "query=sum(rate(istio_requests_total{destination_workload=\"${SERVICE}\",destination_version=\"${NEW_SUBSET}\",response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total{destination_workload=\"${SERVICE}\",destination_version=\"${NEW_SUBSET}\"}[5m]))" \
+    --data-urlencode "query=sum(rate(istio_requests_total{destination_service_name=\"${SERVICE}\",destination_version=\"${NEW_SUBSET}\",response_code=~\"5.*\"}[5m])) / sum(rate(istio_requests_total{destination_service_name=\"${SERVICE}\",destination_version=\"${NEW_SUBSET}\"}[5m]))" \
     | jq -r '.data.result[0].value[1] // "0"')
 
   if (( $(echo "$ERROR_RATE > 0.05" | bc -l 2>/dev/null || echo 0) )); then
@@ -438,34 +438,34 @@ Track the actual traffic distribution:
 
 ```text
 # PromQL: Request rate by version
-sum(rate(istio_requests_total{destination_workload="my-service"}[5m])) by (destination_version)
+sum(rate(istio_requests_total{destination_service_name="my-service"}[5m])) by (destination_version)
 ```
 
 Compare error rates between versions:
 
 ```text
 # PromQL: Error rate by version
-sum(rate(istio_requests_total{destination_workload="my-service",response_code=~"5.*"}[5m])) by (destination_version)
+sum(rate(istio_requests_total{destination_service_name="my-service",response_code=~"5.*"}[5m])) by (destination_version)
 /
-sum(rate(istio_requests_total{destination_workload="my-service"}[5m])) by (destination_version)
+sum(rate(istio_requests_total{destination_service_name="my-service"}[5m])) by (destination_version)
 ```
 
 Compare latency:
 
 ```text
 # PromQL: P99 latency by version
-histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_workload="my-service"}[5m])) by (le, destination_version))
+histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_name="my-service"}[5m])) by (le, destination_version))
 ```
 
 Set up a Grafana dashboard with these queries so you can see the canary and stable versions side by side during the rollout.
 
 ## Common Pitfalls
 
-**Weights not adding up to 100.** Istio requires weights to sum to 100. If they do not, the VirtualService may be rejected or behavior may be undefined.
+**Weights not adding up to 100.** Istio treats weights as relative proportions, so a destination receives `weight / sum(all weights)` traffic. Use weights that add up to 100 when you want the values to read as percentages.
 
 **Not enough replicas.** If v2 has one replica and receives 50% of traffic, that one replica might be overloaded. Scale the new version proportionally to its traffic weight.
 
-**Session affinity expectations.** Weighted routing is stateless. The same user might hit v1 on one request and v2 on the next. If you need session affinity, use consistent hash-based load balancing in the DestinationRule instead of weights.
+**Session affinity expectations.** Weighted routing is stateless. The same user might hit v1 on one request and v2 on the next. Consistent hash-based load balancing in a DestinationRule can keep a user on a backend host within the selected destination, but it does not make the weighted subset choice sticky. If you need version stickiness, use explicit match rules such as a header or cookie.
 
 **Missing DestinationRule.** If you reference a subset that does not exist in the DestinationRule, requests going to that destination will return 503.
 
