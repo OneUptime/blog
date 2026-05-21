@@ -42,7 +42,7 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-Note that wildcard hosts use `resolution: NONE` because Istio cannot do DNS lookups on wildcard entries.
+Note that wildcard hosts commonly use `resolution: NONE` so the proxy forwards to the IP address the application already resolved. In newer Istio versions, `DYNAMIC_DNS` is also available for wildcard HTTP and TLS destinations when the original host can be recovered from the Host header or SNI.
 
 ### SQS and SNS
 
@@ -108,7 +108,7 @@ For RDS, you need to list the specific endpoint for your database instance. Each
 
 ### STS (Security Token Service)
 
-Almost every AWS SDK call starts with STS for credential management. Do not forget this one:
+Many AWS SDK credential flows, including IRSA, call STS for temporary credentials. Do not forget this one if your workload assumes roles or uses web identity credentials:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -131,7 +131,7 @@ spec:
 
 ### EC2 Metadata Service
 
-If your pods use IRSA (IAM Roles for Service Accounts) or instance metadata, you need to allow access to the metadata endpoint:
+If your pods rely on EC2 instance metadata, you need to allow access to the metadata endpoint. IRSA does not use the EC2 metadata endpoint; it exchanges the service account token with AWS STS using `AssumeRoleWithWebIdentity`.
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -275,9 +275,9 @@ spec:
   location: MESH_EXTERNAL
 ```
 
-### Azure Active Directory
+### Microsoft Entra ID
 
-Azure SDK calls usually start with AAD authentication:
+Azure SDK calls often use Microsoft Entra ID authentication:
 
 ```yaml
 apiVersion: networking.istio.io/v1
@@ -339,8 +339,6 @@ spec:
         connectTimeout: 5s
       http:
         maxRequestsPerConnection: 50
-    tls:
-      mode: SIMPLE
 ```
 
 ## Debugging Cloud Provider Egress
@@ -358,7 +356,7 @@ Each BlackHoleCluster line tells you a hostname that needs a ServiceEntry. Add t
 You can also check which external hosts your pod is trying to reach by looking at Envoy stats:
 
 ```bash
-kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET /stats | grep "BlackHoleCluster"
+kubectl exec <pod-name> -c istio-proxy -- pilot-agent request GET stats | grep "BlackHoleCluster"
 ```
 
 This systematic approach works for any cloud provider. Start with the main service endpoints, test, find missing hosts in the logs, and add them until everything works.
