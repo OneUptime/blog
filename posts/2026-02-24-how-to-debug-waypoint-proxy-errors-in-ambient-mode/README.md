@@ -42,6 +42,8 @@ This creates a Gateway resource:
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
+  labels:
+    istio.io/waypoint-for: service
   name: waypoint
   namespace: my-app
 spec:
@@ -79,11 +81,11 @@ kubectl get pod -n my-app -l gateway.networking.k8s.io/gateway-name=waypoint -o 
   grep -A 5 resources
 ```
 
-**Missing RBAC**: The waypoint needs a service account with proper permissions. Verify:
+**Gateway not programmed**: Istiod creates and manages the waypoint deployment from the Gateway resource. Verify that the Gateway API CRDs are installed and that the Gateway is programmed:
 
 ```bash
-kubectl get serviceaccount -n my-app waypoint
-kubectl get rolebinding -n my-app | grep waypoint
+kubectl get crd gateways.gateway.networking.k8s.io
+kubectl get gateway -n my-app waypoint
 ```
 
 ## Common Error: Traffic Not Reaching Waypoint
@@ -97,20 +99,13 @@ ZTUNNEL_POD=$(kubectl get pods -n istio-system -l app=ztunnel \
   --field-selector spec.nodeName=$SOURCE_NODE -o jsonpath='{.items[0].metadata.name}')
 
 # Check if ztunnel has waypoint information
-kubectl exec -n istio-system $ZTUNNEL_POD -- \
-  curl -s localhost:15000/config_dump | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for w in data.get('workloads', []):
-    if 'waypoint' in str(w):
-        print(json.dumps(w, indent=2))
-"
+istioctl ztunnel-config workloads $ZTUNNEL_POD.istio-system --workload-namespace my-app
 ```
 
-If the waypoint is not in ztunnel's config, check that the namespace or service account has the waypoint annotation:
+If the waypoint is not in ztunnel's config, check that the namespace, service, or pod has the waypoint label:
 
 ```bash
-kubectl get namespace my-app -o yaml | grep gateway.istio.io
+kubectl get namespace my-app -o yaml | grep istio.io/use-waypoint
 ```
 
 The namespace should have:
@@ -192,6 +187,8 @@ This tells you exactly which policy and rule caused the denial.
 
 ## Common Error: Waypoint Not Applying VirtualService Rules
 
+VirtualService support with ambient mode is currently Alpha. If you are mixing VirtualService with Gateway API routing resources, use HTTPRoute instead because that combination is not supported.
+
 If your VirtualService routing rules are not being applied by the waypoint, verify the waypoint has the configuration:
 
 ```bash
@@ -236,7 +233,7 @@ Use istioctl to verify the proxy status:
 
 ```bash
 # Check if waypoint is connected to istiod
-istioctl proxy-status | grep waypoint
+istioctl waypoint status -n my-app
 
 # Analyze for configuration issues
 istioctl analyze -n my-app
@@ -267,7 +264,7 @@ kubectl exec -n my-app deploy/waypoint -- \
   pilot-agent request GET /stats | grep downstream_cx_active
 ```
 
-Scale the waypoint by modifying the Gateway resource or using HPA:
+Scale the waypoint deployment with HPA:
 
 ```yaml
 apiVersion: autoscaling/v2
@@ -297,8 +294,8 @@ When a waypoint proxy is misbehaving, run through this:
 
 1. Is the waypoint pod running? (`kubectl get pods`)
 2. Is the namespace enrolled in the waypoint? (`kubectl get ns -o yaml`)
-3. Is the waypoint connected to istiod? (`istioctl proxy-status`)
-4. Does ztunnel know about the waypoint? (check ztunnel config dump)
+3. Is the waypoint programmed and ready? (`istioctl waypoint status`)
+4. Does ztunnel know about the waypoint? (`istioctl ztunnel-config workloads`)
 5. Are endpoints populated? (`pilot-agent request GET /clusters`)
 6. Are authorization policies correct? (enable RBAC debug logging)
 7. Are resource limits appropriate? (`kubectl top pods`)
