@@ -36,7 +36,7 @@ To get more detailed version info:
 istioctl version --output json
 ```
 
-This gives you a JSON breakdown of every proxy and its version, which is useful when you need to find specific pods that are running an old version.
+This gives you the same version information in JSON format. To find specific pods that are running an old proxy version, use `istioctl proxy-status` and check the `VERSION` column.
 
 ## Check Control Plane Health
 
@@ -112,10 +112,10 @@ kubectl get configmap istio -n istio-system -o yaml
 Or use istioctl for a cleaner view:
 
 ```bash
-istioctl mesh profile dump
+istioctl profile dump
 ```
 
-This shows you the full mesh configuration including proxy defaults, feature flags, and policy settings.
+This shows the built-in installation profile defaults that `istioctl` would use. It is useful for comparing defaults, but the live mesh configuration is the ConfigMap shown above.
 
 ## Verify the Ingress Gateway
 
@@ -144,9 +144,9 @@ istioctl proxy-status
 This shows every sidecar in the mesh and its sync status:
 
 ```text
-NAME                       CLUSTER    CDS    LDS    EDS    RDS    ECDS   ISTIOD
-frontend-abc123.default    Kubernetes SYNCED SYNCED SYNCED SYNCED        istiod-xxx
-api-def456.backend         Kubernetes SYNCED SYNCED SYNCED SYNCED        istiod-xxx
+NAME                       CLUSTER    CDS    LDS    EDS    RDS    ECDS      ISTIOD       VERSION
+frontend-abc123.default    Kubernetes SYNCED SYNCED SYNCED SYNCED IGNORED   istiod-xxx   1.22.0
+api-def456.backend         Kubernetes SYNCED SYNCED SYNCED SYNCED IGNORED   istiod-xxx   1.22.0
 ```
 
 The key columns are CDS (Cluster Discovery Service), LDS (Listener Discovery Service), EDS (Endpoint Discovery Service), and RDS (Route Discovery Service). All should show `SYNCED`. If any show `STALE` or `NOT SENT`, there is a configuration delivery problem.
@@ -156,10 +156,11 @@ The key columns are CDS (Cluster Discovery Service), LDS (Listener Discovery Ser
 After an upgrade, you want to verify that all proxies have been updated:
 
 ```bash
-istioctl proxy-status | grep -v "$(istioctl version --short --remote=false)"
+ISTIO_VERSION=$(istioctl version --short --remote=false | awk '{print $NF}')
+istioctl proxy-status | awk -v version="$ISTIO_VERSION" 'NR == 1 || $NF != version'
 ```
 
-This filters for proxies that are NOT running the same version as your istioctl client. Any remaining entries need their pods restarted to pick up the new sidecar version.
+This filters for proxies that are NOT running the same version as your istioctl client. If your client is not the target upgrade version, set `ISTIO_VERSION` to the version you expect instead. Any remaining entries need their pods restarted to pick up the new sidecar version.
 
 ## Quick Health Check Script
 
@@ -204,7 +205,7 @@ You should see `istio-sidecar-injector` or similar. If this is missing, sidecar 
 Check the webhook is pointing to the right service:
 
 ```bash
-kubectl get mutatingwebhookconfiguration istio-sidecar-injector -o yaml | grep -A5 clientConfig
+kubectl get mutatingwebhookconfiguration <webhook-name> -o yaml | grep -A5 clientConfig
 ```
 
 ## When Things Look Wrong
