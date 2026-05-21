@@ -8,13 +8,13 @@ Description: How to inspect and understand the Envoy proxy configuration for any
 
 ---
 
-Every pod in an Istio mesh has an Envoy sidecar proxy that handles all inbound and outbound traffic. The configuration of that proxy is generated dynamically by istiod based on your Istio resources (VirtualServices, DestinationRules, etc.) and the Kubernetes service registry. When traffic is not behaving as expected, looking at the actual Envoy configuration is often the fastest way to figure out what is going on.
+Every pod with an Istio sidecar has an Envoy proxy that handles inbound and outbound traffic. The configuration of that proxy is generated dynamically by istiod based on your Istio resources (VirtualServices, DestinationRules, etc.) and the Kubernetes service registry. When traffic is not behaving as expected, looking at the actual Envoy configuration is often the fastest way to figure out what is going on.
 
 Here are the practical ways to inspect Envoy configuration for any pod.
 
 ## Using istioctl proxy-config
 
-The `istioctl proxy-config` command (often shortened to `pc`) is your primary tool. It queries the Envoy configuration through the control plane and presents it in a readable format.
+The `istioctl proxy-config` command (often shortened to `pc`) is your primary tool. It retrieves the Envoy configuration for a proxy and presents it in a readable format.
 
 ### View Listeners
 
@@ -48,7 +48,7 @@ istioctl proxy-config routes deploy/my-app -n default
 For a specific port:
 
 ```bash
-istioctl proxy-config routes deploy/my-app -n default --port 80
+istioctl proxy-config routes deploy/my-app -n default --name 80
 ```
 
 This shows the route table for port 80, including any VirtualService rules that apply.
@@ -61,7 +61,7 @@ Clusters represent the backend services that Envoy can send traffic to:
 istioctl proxy-config clusters deploy/my-app -n default
 ```
 
-This lists every service endpoint the proxy knows about, including the load balancing policy and circuit breaking settings:
+This lists the service clusters the proxy knows about. Use JSON output when you need details such as load balancing policy and circuit breaking settings:
 
 ```text
 SERVICE FQDN                           PORT   SUBSET   DIRECTION   TYPE
@@ -115,7 +115,7 @@ Every Envoy sidecar exposes an admin interface on port 15000. You can access it 
 
 ```bash
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/config_dump
+  pilot-agent request GET config_dump
 ```
 
 This returns the complete Envoy configuration dump. It is a lot of data, but you can filter it:
@@ -124,11 +124,11 @@ This returns the complete Envoy configuration dump. It is a lot of data, but you
 # Get just the dynamic route configuration
 
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/config_dump?resource=dynamic_route_configs
+  pilot-agent request GET 'config_dump?resource=dynamic_route_configs'
 
 # Get listener configuration
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/config_dump?resource=dynamic_listeners
+  pilot-agent request GET 'config_dump?resource=dynamic_listeners'
 ```
 
 Other useful admin endpoints:
@@ -136,19 +136,19 @@ Other useful admin endpoints:
 ```bash
 # View all clusters and their status
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/clusters
+  pilot-agent request GET clusters
 
 # View server info (Envoy version, uptime, etc.)
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/server_info
+  pilot-agent request GET server_info
 
 # View current stats
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/stats
+  pilot-agent request GET stats
 
 # View hot restart info
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/hot_restart_version
+  pilot-agent request GET hot_restart_version
 ```
 
 ## Comparing Configuration Between Pods
@@ -199,15 +199,15 @@ Envoy stats tell you what the proxy is actually doing at runtime:
 ```bash
 # Overall request stats
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep http
+  pilot-agent request GET stats | grep http
 
 # Specific upstream cluster stats
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep "cluster.outbound|8080||api-server"
+  pilot-agent request GET stats | grep "cluster.outbound|8080||api-server"
 
 # Connection pool stats
 kubectl exec deploy/my-app -n default -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep cx_active
+  pilot-agent request GET stats | grep cx_active
 ```
 
 Key stats to watch:
