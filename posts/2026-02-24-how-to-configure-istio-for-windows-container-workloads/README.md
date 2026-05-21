@@ -12,13 +12,13 @@ Running Windows containers on Kubernetes is increasingly common, especially for 
 
 ## Current State of Istio on Windows
 
-It is important to set expectations upfront. Istio's sidecar proxy (Envoy) does not run natively on Windows. The Envoy project has experimental Windows support, but it is not production-ready for use as an Istio sidecar as of Istio 1.22. This means you cannot inject a sidecar into Windows pods the same way you do with Linux pods.
+It is important to set expectations upfront. Istio does not provide a production-supported Windows sidecar path for Kubernetes pods. Envoy has had Windows support, but the Envoy project ended official Windows support in 2023 and excludes Windows builds from its CI, release, and security processes. This means you cannot inject a sidecar into Windows pods the same way you do with Linux pods.
 
 However, you absolutely can run Istio in a mixed Linux/Windows cluster. The approach is:
 
 1. Run Istio control plane (istiod) and data plane components on Linux nodes
 2. Use Istio gateways to manage traffic entering and leaving the mesh for Windows services
-3. Register Windows services in the mesh using ServiceEntry resources
+3. Use normal Kubernetes Services for in-cluster Windows workloads, and ServiceEntry resources only for external or non-Kubernetes Windows endpoints
 4. Apply traffic management and security policies at the gateway level
 
 ## Setting Up a Mixed Cluster
@@ -109,6 +109,8 @@ spec:
       labels:
         app: dotnet-api
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       containers:
@@ -216,15 +218,19 @@ metadata:
   namespace: windows-apps
 spec:
   hosts:
-    - dotnet-api
+    - dotnet-api.example.com
+    - dotnet-api.windows-apps.svc.cluster.local
+  gateways:
+    - windows-gateway
+    - mesh
   http:
     - route:
         - destination:
-            host: dotnet-api
+            host: dotnet-api.windows-apps.svc.cluster.local
             subset: stable
           weight: 90
         - destination:
-            host: dotnet-api
+            host: dotnet-api.windows-apps.svc.cluster.local
             subset: canary
           weight: 10
 ---
@@ -234,7 +240,7 @@ metadata:
   name: dotnet-api-subsets
   namespace: windows-apps
 spec:
-  host: dotnet-api
+  host: dotnet-api.windows-apps.svc.cluster.local
   subsets:
     - name: stable
       labels:
@@ -244,7 +250,7 @@ spec:
         version: v2
 ```
 
-This works because traffic splitting happens at the gateway or calling sidecar, not at the Windows pod.
+This works because traffic splitting happens at the gateway or calling sidecar, not at the Windows pod. Make sure the stable and canary Windows pod templates include matching `version: v1` and `version: v2` labels.
 
 ## Connecting Linux Mesh Services to Windows Services
 
@@ -275,7 +281,7 @@ The calling pod's sidecar will apply the timeout and retry policies. The Windows
 
 ## Security Considerations
 
-Without a sidecar on Windows pods, you cannot enforce mTLS between the caller and the Windows service. The traffic from the caller's sidecar to the Windows pod will be plaintext. To mitigate this:
+Without a sidecar on Windows pods, you cannot enforce mTLS between the caller and the Windows service. The traffic from the caller's sidecar to the Windows pod will be plaintext. To avoid requiring mTLS for workloads that cannot terminate it:
 
 ```yaml
 apiVersion: security.istio.io/v1
@@ -308,10 +314,10 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: linux-apps
+              kubernetes.io/metadata.name: linux-apps
         - namespaceSelector:
             matchLabels:
-              name: istio-system
+              kubernetes.io/metadata.name: istio-system
 ```
 
 ## Observability for Windows Services
@@ -340,6 +346,8 @@ metadata:
 spec:
   template:
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       containers:
