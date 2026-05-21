@@ -8,13 +8,13 @@ Description: A practical guide to setting up priority-based load balancing in Is
 
 ---
 
-Not all endpoints are created equal. Sometimes you want Istio to prefer certain backends over others, falling back to lower-priority ones only when the preferred backends are unavailable or overloaded. Istio supports this through locality-aware load balancing and failover rules, which let you set up a priority hierarchy for your service endpoints.
+Not all endpoints are created equal. Sometimes you want Istio to prefer certain backends over others, falling back to lower-priority ones only when the preferred backends are unavailable or unhealthy. Istio supports this through locality-aware load balancing and failover rules, which let you set up a priority hierarchy for your service endpoints.
 
 ## How Priority-Based Load Balancing Works in Istio
 
-Istio doesn't have an explicit "priority" field you can slap on a DestinationRule. Instead, priority-based routing is achieved through a combination of locality load balancing settings, outlier detection, and traffic policy configuration. The idea is that Envoy (Istio's data plane proxy) prefers endpoints in the same locality and only fails over to other localities when local endpoints are unhealthy.
+Istio doesn't have a single numeric "priority" field you can slap on a DestinationRule. Instead, priority-based routing is achieved through a combination of locality load balancing settings, outlier detection, and traffic policy configuration. The idea is that Envoy (Istio's data plane proxy) prefers endpoints in the same locality and only fails over to other localities when higher-priority endpoints become unhealthy.
 
-Localities in Kubernetes follow a three-level hierarchy: region, zone, and sub-zone. You assign priorities by controlling how traffic distributes across these localities.
+Istio and Envoy localities follow a three-level hierarchy: region, zone, and sub-zone. In Kubernetes, the standard node topology labels cover region and zone; Istio can also use `topology.istio.io/subzone` when you need a sub-zone level. You assign priorities by controlling how traffic distributes across these localities.
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ kubectl label node worker-1 topology.kubernetes.io/zone=us-east-1a
 Here is how you set up a DestinationRule that prioritizes local endpoints and defines failover behavior:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-dr
@@ -70,7 +70,7 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-The `localityLbSetting` with `enabled: true` tells Envoy to prefer endpoints in the same locality. The `failover` block defines where traffic should go when the local zone is unhealthy. This creates an implicit priority chain: same zone > same region > failover region.
+The `localityLbSetting` with `enabled: true` tells Envoy to prefer endpoints in the same locality. Zone and sub-zone failover are supported by default; the `failover` block defines which region traffic should use when endpoints in the local region become unhealthy. This creates an implicit priority chain such as same zone > same region in another zone > configured failover region.
 
 Outlier detection is required here. Without it, Envoy can't determine when endpoints are unhealthy, so it won't trigger failover.
 
@@ -79,7 +79,7 @@ Outlier detection is required here. Without it, Envoy can't determine when endpo
 For more control over priority, use the `distribute` field instead of `failover`. This lets you specify exact percentages for how traffic from one locality should be distributed:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: order-service-dr
@@ -108,14 +108,14 @@ spec:
       simple: ROUND_ROBIN
 ```
 
-This explicitly says: traffic originating from us-east-1a should go 80% to local endpoints, 15% to us-east-1b, and 5% to us-west-2a. This gives you clear priority tiers.
+This explicitly says: traffic originating from us-east-1a should go 80% to local endpoints, 15% to us-east-1b, and 5% to us-west-2a. This gives you a weighted locality preference. It is not strict failover: some traffic still goes to the lower-weighted localities while all of those endpoints are healthy.
 
 ## Priority with Subsets
 
 You can combine locality-based priority with subset routing. This is useful when you have multiple versions and want priority behavior within each version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: DestinationRule
 metadata:
   name: catalog-service-dr
@@ -147,10 +147,10 @@ spec:
           simple: ROUND_ROBIN
 ```
 
-Then in your VirtualService, you route most traffic to `primary` and keep `fallback` as a safety net:
+Then in your VirtualService, you route traffic to `primary`. The `fallback` subset is available for a separate route or for a later weight change if you need to shift traffic back to v1:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: catalog-service-vs
@@ -164,10 +164,6 @@ spec:
             host: catalog-service
             subset: primary
           weight: 100
-      fault:
-        abort:
-          percentage:
-            value: 0
       retries:
         attempts: 3
         retryOn: 5xx
@@ -183,10 +179,17 @@ kind: Deployment
 metadata:
   name: order-service
 spec:
+  selector:
+    matchLabels:
+      app: order-service
   template:
+    metadata:
+      labels:
+        app: order-service
     spec:
       containers:
         - name: order-service
+          image: example/order-service:1.0.0
           readinessProbe:
             httpGet:
               path: /healthz
@@ -213,19 +216,19 @@ Check that locality information is properly propagated to Envoy:
 istioctl proxy-config endpoints <pod-name> --cluster "outbound|80||order-service.default.svc.cluster.local"
 ```
 
-In the output, look for the `PRIORITY` column. Endpoints in the same locality should have priority 0 (highest), while endpoints in other localities get higher numbers.
+In the output, check the endpoint status and outlier check results. For priority details, inspect the endpoint configuration as JSON and look at the `priority` values on the locality endpoint groups; same-locality endpoints should have priority 0 (highest), while lower-priority endpoint groups get higher numbers.
 
 You can also check the load balancing configuration:
 
 ```bash
-istioctl proxy-config cluster <pod-name> -o json | grep -A 20 "order-service"
+istioctl proxy-config endpoints <pod-name> --cluster "outbound|80||order-service.default.svc.cluster.local" -o json
 ```
 
 ## Troubleshooting Priority Issues
 
 If traffic isn't following your priority rules, check these common issues:
 
-1. **Outlier detection not configured**: Locality-based failover requires outlier detection. Without it, Envoy treats all endpoints as healthy and won't prioritize.
+1. **Outlier detection not configured**: Locality-based failover requires outlier detection. Without it, Envoy will not eject unhealthy endpoints and the configured failover policy will not take effect.
 
 2. **Missing topology labels**: Verify your nodes have the right labels. Envoy needs this information to determine locality.
 
@@ -239,8 +242,8 @@ istioctl proxy-config log <pod-name> --level upstream:debug
 kubectl exec <pod-name> -c istio-proxy -- curl -s localhost:15000/clusters | grep health
 ```
 
-4. **Distribute vs failover conflict**: You can use either `distribute` or `failover` in a locality setting, but not both. If you specify both, the configuration will be rejected.
+4. **Distribute vs failover conflict**: You can use only one of `distribute`, `failover`, or `failoverPriority` in a locality setting. If you specify more than one, the configuration will be rejected.
 
 ## Summary
 
-Priority-based load balancing in Istio works through locality-aware routing. You define priorities implicitly through locality hierarchies and explicitly through the `distribute` or `failover` fields in your DestinationRule. The key ingredient is outlier detection, which must be enabled for Envoy to know when to fail over from high-priority to lower-priority endpoints. Combine this with proper Kubernetes health probes and topology labels, and you get a system that always tries to use the best available endpoints first.
+Priority-based load balancing in Istio works through locality-aware routing. You define priorities implicitly through locality hierarchies, use `distribute` for weighted locality preferences, or use `failover` to constrain regional failover behavior in your DestinationRule. The key ingredient is outlier detection, which must be enabled for Envoy to know when to fail over from high-priority to lower-priority endpoints. Combine this with proper Kubernetes health probes and topology labels, and you get a system that always tries to use the best available endpoints first.
