@@ -12,7 +12,7 @@ The Envoy sidecar proxy is the workhorse of Istio. Every pod that participates i
 
 ## How Sidecar Injection Works
 
-When a pod is created in Kubernetes, the API server can call mutating admission webhooks before the pod is actually persisted. Istio registers a webhook that intercepts pod creation requests and adds the Envoy sidecar container plus an init container to the pod spec.
+When a pod is created in Kubernetes, the API server can call mutating admission webhooks before the pod is actually persisted. Istio registers a webhook that intercepts pod creation requests and adds the Envoy sidecar container, plus any required init or validation containers, to the pod spec.
 
 ```mermaid
 flowchart LR
@@ -54,7 +54,7 @@ If you are running multiple Istio versions (canary upgrades), use revision label
 kubectl label namespace my-app istio.io/rev=1-24
 ```
 
-This tells the webhook to use the specific Istio revision `1-24` for injection. Note that `istio-injection` and `istio.io/rev` are mutually exclusive - do not set both on the same namespace.
+This tells the webhook to use the specific Istio revision `1-24` for injection. Do not set both `istio-injection` and `istio.io/rev` on the same namespace; Istio will warn about multiple injection labels, and `istio-injection` takes precedence.
 
 ### Testing Automatic Injection
 
@@ -74,7 +74,7 @@ You should see both `test-pod` and `istio-proxy`.
 
 ### Excluding Specific Pods
 
-Sometimes you want injection on the namespace but need to skip specific pods. Use the `sidecar.istio.io/inject` annotation:
+Sometimes you want injection on the namespace but need to skip specific pods. Use the `sidecar.istio.io/inject` label:
 
 ```yaml
 apiVersion: v1
@@ -82,7 +82,7 @@ kind: Pod
 metadata:
   name: no-sidecar-pod
   namespace: my-app
-  annotations:
+  labels:
     sidecar.istio.io/inject: "false"
 spec:
   containers:
@@ -93,9 +93,9 @@ spec:
 
 This pod will not get a sidecar even though the namespace has injection enabled.
 
-### Excluding Specific Containers
+### Excluding Specific Ports
 
-You can also prevent the sidecar from intercepting traffic for specific ports if a pod has multiple containers:
+You can also prevent the sidecar from intercepting traffic for specific ports:
 
 ```yaml
 annotations:
@@ -146,7 +146,7 @@ istioctl kube-inject -f my-deployment.yaml --revision 1-24 | kubectl apply -f -
 To see what the injector adds without actually applying:
 
 ```bash
-istioctl kube-inject -f my-deployment.yaml --meshConfigMapName=istio -o yaml
+istioctl kube-inject -f my-deployment.yaml
 ```
 
 This is really useful for debugging. You can see the exact sidecar container spec, init container, volumes, and environment variables.
@@ -265,4 +265,4 @@ kubectl rollout restart deployment/my-api deployment/my-worker -n my-app
 
 ## Summary
 
-Automatic injection through namespace labels is the standard approach for most teams. It is simple, consistent, and works well with GitOps workflows. Manual injection has its place for debugging and special cases. Whichever method you use, remember that pods need to be restarted to pick up injection changes, and annotations on individual pods can always override namespace-level settings.
+Automatic injection through namespace labels is the standard approach for most teams. It is simple, consistent, and works well with GitOps workflows. Manual injection has its place for debugging and special cases. Whichever method you use, remember that pods need to be restarted to pick up injection changes, and labels on individual pods can always override namespace-level settings.
