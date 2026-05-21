@@ -33,8 +33,9 @@ xDS is the protocol Envoy uses to receive configuration from istiod. The "x" sta
 
 rate(pilot_xds_pushes[5m])
 
-# xDS push errors
-rate(pilot_xds_push_errors[5m])
+# xDS internal errors and proxy rejects
+rate(pilot_total_xds_internal_errors[5m])
+rate(pilot_total_xds_rejects[5m])
 
 # Number of connected proxies
 pilot_xds
@@ -54,7 +55,7 @@ The convergence time metric is critical. It measures how long it takes for a con
 rate(pilot_push_triggers[5m])
 
 # What triggered the push?
-rate(pilot_push_triggers[5m]) by (type)
+sum by (reason) (rate(pilot_push_triggers[5m]))
 ```
 
 Push triggers include:
@@ -71,15 +72,15 @@ pilot_xds
 # Connections by proxy version
 pilot_xds{version="1.24.0"}
 
-# xDS connection terminations
+# xDS requests with expired nonces
 rate(pilot_xds_expired_nonce[5m])
 ```
 
 If the number of connected proxies is lower than expected, some sidecars might be failing to connect to istiod. Compare it against the actual number of pods with sidecars:
 
 ```bash
-kubectl get pods --all-namespaces -l security.istio.io/tlsMode=istio -o json | \
-  jq '[.items[]] | length'
+kubectl get pods --all-namespaces -o json | \
+  jq '[.items[] | select(.spec.containers[].name == "istio-proxy")] | length'
 ```
 
 ### Certificate Management (Citadel)
@@ -92,6 +93,9 @@ rate(citadel_server_csr_count[5m])
 rate(citadel_server_csr_parsing_err_count[5m])
 
 # Certificate signing errors
+rate(citadel_server_csr_sign_err_count[5m])
+
+# Authentication failures
 rate(citadel_server_authentication_failure_count[5m])
 
 # Root certificate expiry (seconds remaining)
@@ -141,8 +145,6 @@ rate(galley_validation_failed[5m])
 
 # Configuration conflicts
 pilot_conflict_inbound_listener
-pilot_conflict_outbound_listener_http_over_current_tcp
-pilot_conflict_outbound_listener_tcp_over_current_http
 pilot_conflict_outbound_listener_tcp_over_current_tcp
 ```
 
@@ -216,7 +218,9 @@ spec:
             summary: "istiod P99 push latency is above 5 seconds"
 
         - alert: IstiodPushErrors
-          expr: rate(pilot_xds_push_errors[5m]) > 0
+          expr: |
+            rate(pilot_total_xds_internal_errors[5m]) > 0
+            or rate(pilot_total_xds_rejects[5m]) > 0
           for: 5m
           labels:
             severity: warning
@@ -252,7 +256,7 @@ spec:
         - alert: ConfigConflicts
           expr: |
             pilot_conflict_inbound_listener > 0
-            or pilot_conflict_outbound_listener_http_over_current_tcp > 0
+            or pilot_conflict_outbound_listener_tcp_over_current_tcp > 0
           for: 15m
           labels:
             severity: warning
@@ -269,10 +273,10 @@ As your mesh grows, istiod's resource requirements increase. Key scaling indicat
 histogram_quantile(0.99, sum(rate(pilot_proxy_convergence_time_bucket[5m])) by (le))
 
 # Number of proxies per istiod instance
-pilot_xds / count(up{job="istiod"})
+sum(pilot_xds) / count(up{job="istiod"} == 1)
 ```
 
-A single istiod instance typically handles 1000-2000 proxies comfortably. Beyond that, consider horizontal scaling:
+Istio's control plane is designed to support thousands of proxies, but exact capacity depends on your configuration size, change rate, and istiod resources. As the mesh grows, consider horizontal scaling:
 
 ```yaml
 apiVersion: install.istio.io/v1alpha1
