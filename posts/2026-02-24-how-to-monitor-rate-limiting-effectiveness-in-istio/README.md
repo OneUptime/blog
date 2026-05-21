@@ -22,23 +22,23 @@ Before setting up dashboards, think about what you need to know:
 
 ## Envoy Rate Limit Metrics
 
-Envoy exposes rate limit stats that are automatically scraped by Prometheus if you have standard Istio monitoring set up. Check what is available:
+Envoy can expose rate limit stats through the same `/stats/prometheus` endpoint that standard Istio monitoring scrapes. In Istio, many Envoy stats are disabled by default to reduce proxy overhead, so make sure your workload or mesh `proxyStatsMatcher` includes the rate limit stats you want, such as `.*ratelimit.*` and `.*http_local_rate_limit.*`. Check what is available:
 
 ```bash
 kubectl exec my-service-pod -c istio-proxy -- \
-  curl -s localhost:15000/stats | grep ratelimit
+  curl -s localhost:15000/stats | grep -E 'ratelimit|rate_limit'
 ```
 
 For global rate limiting, you will see metrics like:
 
 ```text
-cluster.rate_limit_cluster.upstream_rq_total: 5000
-cluster.rate_limit_cluster.upstream_rq_200: 4900
-cluster.rate_limit_cluster.upstream_rq_timeout: 5
-ratelimit.my-domain.over_limit: 150
-ratelimit.my-domain.ok: 4850
-ratelimit.my-domain.error: 0
-ratelimit.my-domain.failure_mode_allowed: 0
+cluster.<rate_limit_service_cluster>.upstream_rq_total: 5000
+cluster.<rate_limit_service_cluster>.upstream_rq_200: 4900
+cluster.<rate_limit_service_cluster>.upstream_rq_timeout: 5
+cluster.<route_target_cluster>.ratelimit.over_limit: 150
+cluster.<route_target_cluster>.ratelimit.ok: 4850
+cluster.<route_target_cluster>.ratelimit.error: 0
+cluster.<route_target_cluster>.ratelimit.failure_mode_allowed: 0
 ```
 
 For local rate limiting:
@@ -77,17 +77,19 @@ sum(rate(istio_requests_total{response_code="429", destination_service_name="my-
 ```promql
 # Rate limit service response time
 histogram_quantile(0.99,
-  sum(rate(envoy_cluster_upstream_rq_time_bucket{cluster_name="rate_limit_cluster"}[5m])) by (le)
+  sum(rate(envoy_cluster_upstream_rq_time_bucket{cluster_name=~".*ratelimit.*|rate_limit_cluster"}[5m])) by (le)
 )
 
-# Rate limit service error rate
-sum(rate(envoy_cluster_upstream_rq_xx{cluster_name="rate_limit_cluster", envoy_response_code_class="5"}[5m]))
+# Rate limit service error or timeout rate
+sum(rate(envoy_cluster_upstream_rq_xx{cluster_name=~".*ratelimit.*|rate_limit_cluster", envoy_response_code_class="5"}[5m]))
++
+sum(rate(envoy_cluster_upstream_rq_timeout{cluster_name=~".*ratelimit.*|rate_limit_cluster"}[5m]))
 ```
 
 ### Rate Limit Failures (requests allowed due to rate limit service being down)
 
 ```promql
-sum(rate(ratelimit_failure_mode_allowed_total[5m]))
+sum(rate({__name__=~"envoy_cluster(_.*)?_ratelimit_failure_mode_allowed"}[5m]))
 ```
 
 ## Building a Grafana Dashboard
@@ -140,11 +142,11 @@ Create a comprehensive rate limiting dashboard with these panels:
   "title": "Rate Limit Service Response Time",
   "targets": [
     {
-      "expr": "histogram_quantile(0.50, sum(rate(envoy_cluster_upstream_rq_time_bucket{cluster_name=\"rate_limit_cluster\"}[5m])) by (le))",
+      "expr": "histogram_quantile(0.50, sum(rate(envoy_cluster_upstream_rq_time_bucket{cluster_name=~\".*ratelimit.*|rate_limit_cluster\"}[5m])) by (le))",
       "legendFormat": "p50"
     },
     {
-      "expr": "histogram_quantile(0.99, sum(rate(envoy_cluster_upstream_rq_time_bucket{cluster_name=\"rate_limit_cluster\"}[5m])) by (le))",
+      "expr": "histogram_quantile(0.99, sum(rate(envoy_cluster_upstream_rq_time_bucket{cluster_name=~\".*ratelimit.*|rate_limit_cluster\"}[5m])) by (le))",
       "legendFormat": "p99"
     }
   ],
@@ -186,7 +188,7 @@ spec:
       expr: |
         histogram_quantile(0.99,
           sum(rate(envoy_cluster_upstream_rq_time_bucket{
-            cluster_name="rate_limit_cluster"
+            cluster_name=~".*ratelimit.*|rate_limit_cluster"
           }[5m])) by (le)
         ) > 100
       for: 5m
@@ -195,23 +197,27 @@ spec:
       annotations:
         summary: "Rate limit service p99 latency exceeds 100ms"
 
-    # Alert when rate limit service is unreachable
+    # Alert when rate limit service is returning errors or timing out
     - alert: RateLimitServiceDown
       expr: |
         sum(rate(envoy_cluster_upstream_rq_xx{
-          cluster_name="rate_limit_cluster",
+          cluster_name=~".*ratelimit.*|rate_limit_cluster",
           envoy_response_code_class="5"
+        }[5m])) > 0
+        or
+        sum(rate(envoy_cluster_upstream_rq_timeout{
+          cluster_name=~".*ratelimit.*|rate_limit_cluster"
         }[5m])) > 0
       for: 2m
       labels:
         severity: critical
       annotations:
-        summary: "Rate limit service is returning errors"
+        summary: "Rate limit service is returning errors or timing out"
 
     # Alert when failure mode is allowing requests through
     - alert: RateLimitFailureMode
       expr: |
-        sum(rate(ratelimit_failure_mode_allowed_total[5m])) > 0
+        sum(rate({__name__=~"envoy_cluster(_.*)?_ratelimit_failure_mode_allowed"}[5m])) > 0
       for: 1m
       labels:
         severity: critical
