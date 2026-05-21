@@ -12,7 +12,7 @@ Allow sync windows define when deployments can happen. Outside these windows, Ar
 
 ## How Allow Windows Work
 
-When you define an allow window, ArgoCD only permits syncs during the window's active period. Outside that period, sync requests are rejected.
+When you define an allow window, ArgoCD only permits syncs for matching applications during the window's active period. Outside that period, sync requests are rejected.
 
 ```mermaid
 gantt
@@ -26,7 +26,7 @@ gantt
     Sync BLOCKED    :crit, 06:00, 18h
 ```
 
-If no allow windows are defined, ArgoCD allows syncs at any time. The moment you add an allow window, syncs are only permitted during that window.
+If no allow windows match an application, ArgoCD allows syncs for that application at any time. The moment you add a matching allow window, syncs are only permitted during that window.
 
 ## Basic Maintenance Window
 
@@ -223,7 +223,7 @@ syncWindows:
     timeZone: 'UTC'
 ```
 
-The allow window permits nightly deployments, but the deny window blocks everything during the last 4 days of each quarter, a common freeze period for financial applications.
+The allow window permits nightly deployments, but the deny window blocks everything for a 4-day freeze starting on the 28th of each quarter-ending month, a common freeze period for financial applications.
 
 ## Verifying Your Maintenance Windows
 
@@ -255,7 +255,7 @@ argocd app sync my-app
 
 Without the `timeZone` field, ArgoCD uses UTC. This can cause confusion when your team thinks in local time.
 
-If you are on ArgoCD 2.6 or earlier without timezone support, convert your desired local time to UTC.
+If you are on an older ArgoCD version without timezone support, convert your desired local time to UTC.
 
 ```yaml
 # Want 2 AM Eastern (UTC-5) = 7 AM UTC
@@ -267,6 +267,6 @@ syncWindows:
       - '*'
 ```
 
-Be aware that this does not account for daylight saving time. When clocks change, your 2 AM window shifts to 3 AM or 1 AM local time. Upgrade to ArgoCD 2.7+ for proper timezone support.
+Be aware that this does not account for daylight saving time. When clocks change, your 2 AM window shifts to 3 AM or 1 AM local time. Use the `timeZone` field when your ArgoCD version supports it.
 
 For creating deny windows, see the [deny sync windows guide](https://oneuptime.com/blog/post/2026-02-26-argocd-deny-sync-windows/view). For overriding windows during emergencies, check the [sync window override guide](https://oneuptime.com/blog/post/2026-02-26-argocd-override-sync-windows-emergency/view).
