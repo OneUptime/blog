@@ -28,9 +28,9 @@ TRACE_HEADERS = [
 ]
 ```
 
-## Method 1: Flask with Thread-Local Storage
+## Method 1: Flask with Request Context
 
-Flask uses threads by default (with Gunicorn's sync workers), so thread-local storage works well:
+Flask provides request-local objects such as `g`, so you can store the captured headers for the lifetime of the current request:
 
 ```python
 from flask import Flask, request, g
@@ -138,8 +138,11 @@ async def capture_trace_headers(request: Request, call_next):
         if value:
             headers[header] = value
 
-    trace_headers_ctx.set(headers)
-    response = await call_next(request)
+    token = trace_headers_ctx.set(headers)
+    try:
+        response = await call_next(request)
+    finally:
+        trace_headers_ctx.reset(token)
     return response
 
 
@@ -178,9 +181,9 @@ For better connection pooling, use a persistent httpx client with an event hook:
 ```python
 from fastapi import FastAPI, Request
 from contextvars import ContextVar
+from contextlib import asynccontextmanager
 import httpx
 
-app = FastAPI()
 trace_headers_ctx: ContextVar[dict] = ContextVar('trace_headers', default={})
 
 TRACE_HEADERS = [
@@ -204,6 +207,15 @@ traced_client = httpx.AsyncClient(
 )
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    yield
+    await traced_client.aclose()
+
+
+app = FastAPI(lifespan=lifespan)
+
+
 @app.middleware('http')
 async def capture_trace_headers(request: Request, call_next):
     headers = {}
@@ -211,8 +223,11 @@ async def capture_trace_headers(request: Request, call_next):
         value = request.headers.get(header)
         if value:
             headers[header] = value
-    trace_headers_ctx.set(headers)
-    response = await call_next(request)
+    token = trace_headers_ctx.set(headers)
+    try:
+        response = await call_next(request)
+    finally:
+        trace_headers_ctx.reset(token)
     return response
 
 
@@ -227,11 +242,6 @@ async def get_orders():
         'products': products.json(),
         'inventory': inventory.json()
     }
-
-
-@app.on_event('shutdown')
-async def shutdown():
-    await traced_client.aclose()
 ```
 
 ## Method 5: Django Middleware
@@ -311,6 +321,7 @@ def order_list(request):
 A clean approach that works with any framework:
 
 ```python
+import asyncio
 from functools import wraps
 from contextvars import ContextVar
 
@@ -333,8 +344,11 @@ def with_tracing(header_source):
                 val = header_source(*args, **kwargs).get(h)
                 if val:
                     headers[h] = val
-            trace_ctx.set(headers)
-            return await func(*args, **kwargs)
+            token = trace_ctx.set(headers)
+            try:
+                return await func(*args, **kwargs)
+            finally:
+                trace_ctx.reset(token)
 
         @wraps(func)
         def sync_wrapper(*args, **kwargs):
@@ -343,8 +357,11 @@ def with_tracing(header_source):
                 val = header_source(*args, **kwargs).get(h)
                 if val:
                     headers[h] = val
-            trace_ctx.set(headers)
-            return func(*args, **kwargs)
+            token = trace_ctx.set(headers)
+            try:
+                return func(*args, **kwargs)
+            finally:
+                trace_ctx.reset(token)
 
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
@@ -357,7 +374,7 @@ def with_tracing(header_source):
 The least-code approach is using OpenTelemetry's Python instrumentation:
 
 ```bash
-pip install opentelemetry-distro opentelemetry-instrumentation
+pip install opentelemetry-distro opentelemetry-instrumentation opentelemetry-propagator-b3
 opentelemetry-bootstrap -a install
 ```
 
@@ -366,6 +383,7 @@ Run your application with auto-instrumentation:
 ```bash
 opentelemetry-instrument \
   --traces_exporter none \
+  --metrics_exporter none \
   --propagators tracecontext,b3multi \
   python app.py
 ```
@@ -373,10 +391,10 @@ opentelemetry-instrument \
 Or in your Dockerfile:
 
 ```dockerfile
-RUN pip install opentelemetry-distro opentelemetry-instrumentation
+RUN pip install opentelemetry-distro opentelemetry-instrumentation opentelemetry-propagator-b3
 RUN opentelemetry-bootstrap -a install
 
-CMD ["opentelemetry-instrument", "--traces_exporter", "none", "--propagators", "tracecontext,b3multi", "gunicorn", "-b", "0.0.0.0:8000", "app:create_app()"]
+CMD ["opentelemetry-instrument", "--traces_exporter", "none", "--metrics_exporter", "none", "--propagators", "tracecontext,b3multi", "gunicorn", "-b", "0.0.0.0:8000", "app:create_app()"]
 ```
 
 Setting `--traces_exporter none` is important because Istio handles trace export through the sidecar. You only need the instrumentation library for header propagation.
@@ -425,9 +443,9 @@ def test_trace_header_propagation(client):
 
 **Gevent and greenlets**: If you use Gevent workers in Gunicorn, `threading.local()` works per greenlet, not per thread. This is actually what you want, but be aware of it.
 
-**Asyncio and thread mixing**: If your FastAPI app calls synchronous code that runs in a thread pool (via `run_in_executor`), the `ContextVar` values are copied to the thread automatically in Python 3.7+.
+**Asyncio and thread mixing**: `ContextVar` values are preserved across asyncio tasks, but they are not automatically copied when you use `run_in_executor`. If you need to run synchronous code in a worker thread, use `asyncio.to_thread()` or explicitly copy the context with `contextvars.copy_context()`.
 
-**Connection pooling with requests**: The `requests` library uses connection pooling by default via urllib3. This is fine with Istio because connections go through the sidecar. But make sure you are not caching a Session with stale trace headers.
+**Connection pooling with requests**: A `requests.Session` uses connection pooling via urllib3. This is fine with Istio because connections go through the sidecar. But make sure you are not caching a Session with stale trace headers.
 
 **Forgetting about background tasks**: If your request handler spawns a background task (like with FastAPI's `BackgroundTasks`), the `ContextVar` context is preserved. But if you use Celery or a separate queue, you need to embed trace IDs in the task payload.
 
